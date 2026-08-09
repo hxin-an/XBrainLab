@@ -872,12 +872,19 @@ def test_data_compatibility_service_normalizes_target_events_at_backend_boundary
             AttachLabelsCommand(
                 mapping={"sub-01_raw.fif": str(label_path)},
                 label_paths=[str(label_path)],
-                selected_event_names=[" response ", "cue", "cue", "", "  "],
+                selected_event_names=[
+                    " response ",
+                    "Stimulus/S  1",
+                    "cue",
+                    "cue",
+                    "",
+                    "  ",
+                ],
             ),
         ),
     )
 
-    assert dataset.batch_calls[0][-1] == ["cue", "response"]
+    assert dataset.batch_calls[0][-1] == ["cue", "response", "Stimulus/S  1"]
 
 
 def test_data_compatibility_service_imports_labels_and_updates_recipe(

@@ -579,6 +579,9 @@ def test_scan_explicit_bids_hint_blocks_non_bids_folder(tmp_path: Path):
     assert scan.source_kind == "bids"
     assert scan.bids["is_bids"] is False
     assert scan.eeg_files == [str(eeg_file.resolve())]
+    assert scan.bids["root_validation_issue"] == (
+        "dataset_description.json is missing from the selected BIDS root."
+    )
     assert scan.blocked_reasons == [
         "dataset_description.json is missing from the selected BIDS root. "
         "Use Import folder for regular EEG files."
@@ -622,6 +625,7 @@ def test_bids_shaped_folder_without_valid_description_stays_regular_folder(
     assert scan.bids["is_bids"] is False
     assert scan.eeg_files == [str(eeg_file.resolve())]
     assert scan.blocked_reasons == []
+    assert any("dataset_description.json" in warning for warning in scan.warnings)
 
 
 @pytest.mark.parametrize(

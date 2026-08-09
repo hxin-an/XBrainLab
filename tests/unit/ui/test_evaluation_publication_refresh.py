@@ -573,6 +573,8 @@ def test_evaluation_cleanup_cancels_queued_publication_refresh(qtbot) -> None:
     panel = _panel(qtbot, port)
     panel.update_panel()
     panel.update_panel = MagicMock()
+    panel.matrix_widget.cleanup = MagicMock()
+    panel.bar_chart.cleanup = MagicMock()
     port.publication = _publication(generation=5, revision=5)
 
     port.notify(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, port.publication)
@@ -582,6 +584,8 @@ def test_evaluation_cleanup_cancels_queued_publication_refresh(qtbot) -> None:
 
     assert not panel._application_refresh_timer.isActive()
     panel.update_panel.assert_not_called()
+    panel.matrix_widget.cleanup.assert_called_once_with()
+    panel.bar_chart.cleanup.assert_called_once_with()
 
 
 def test_evaluation_render_exception_retries_internally_and_commits_on_success(

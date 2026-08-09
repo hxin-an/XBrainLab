@@ -7071,11 +7071,29 @@ def check_typed_montage_ui_handoff_boundary(root_dir: Path) -> list[str]:
         host_source = (
             host_path.read_text(encoding="utf-8") if host_path.exists() else ""
         )
-        if not all(
+        route_source = root_dir / "XBrainLab/llm/agent/ui_handoff.py"
+        route_registry_source = (
+            route_source.read_text(encoding="utf-8") if route_source.exists() else ""
+        )
+        registry_has_montage_route = all(
+            token in route_registry_source
+            for token in (
+                "CommandName.APPLY_MONTAGE",
+                "WorkflowUiHandoffRouteIdentity.MONTAGE_SETTINGS_DIALOG",
+            )
+        )
+        host_has_montage_adapter = all(
             token in host_source
-            for token in ("CommandName.APPLY_MONTAGE", "set_montage")
-        ):
+            for token in (
+                "WorkflowUiHandoffRouteIdentity.MONTAGE_SETTINGS_DIALOG",
+                "self._open_montage",
+                "set_montage",
+                "self._surface_result",
+            )
+        )
+        if not all((registry_has_montage_route, host_has_montage_adapter)):
             violations.append(
+                "The canonical Workflow UI route registry and "
                 f"{MONTAGE_HANDOFF_HOST} must route APPLY_MONTAGE to the existing "
                 "montage surface and return its typed outcome."
             )

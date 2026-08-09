@@ -13,6 +13,10 @@ on:
       - "artifacts/docs-site/**"
       - "docs/**"
       - "mkdocs.yml"
+      - "mkdocs.user.yml"
+      - "scripts/dev/build_docs_portal.py"
+      - "tests/unit/scripts/test_build_docs_portal.py"
+      - "user_docs/**"
   workflow_dispatch:
 
 permissions:
@@ -43,10 +47,14 @@ jobs:
             "mkdocs>=1.6.1,<2" \
             "mkdocs-material>=9.6,<10" \
             "mkdocstrings>=0.29,<1" \
-            "mkdocstrings-python>=1.16,<2"
+            "mkdocstrings-python>=1.16,<2" \
+            "pytest>=8,<9"
 
-      - name: Build documentation
-        run: mkdocs build --strict
+      - name: Test documentation portal assembly
+        run: python -m pytest tests/unit/scripts/test_build_docs_portal.py -q
+
+      - name: Build developer and user documentation
+        run: python scripts/dev/build_docs_portal.py
 
       - name: Configure Pages
         if: github.event_name != 'pull_request'
@@ -56,7 +64,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: build/dev-artifacts/docs-portal-review
 
   deploy:
     name: Deploy to GitHub Pages

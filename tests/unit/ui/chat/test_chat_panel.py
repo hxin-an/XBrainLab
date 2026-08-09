@@ -34,6 +34,7 @@ from XBrainLab.backend.controller.chat_controller import (
 )
 from XBrainLab.chat_contract import MAX_CHAT_MESSAGE_CONTENT_LENGTH
 from XBrainLab.llm.agent.assistant_activity import (
+    AssistantDecisionOwner,
     AssistantTurnActivity,
     AssistantTurnActivityPhase,
 )
@@ -2075,6 +2076,8 @@ class TestChatPanelInit:
             AssistantTurnActivity(
                 AssistantTurnActivityPhase.WAITING_FOR_DECISION,
                 command_name="apply_interpretation",
+                request_id="import-review-1",
+                decision_owner=AssistantDecisionOwner.GUI_DIALOG,
             )
         )
 
@@ -2086,14 +2089,14 @@ class TestChatPanelInit:
         assert chat_panel.send_btn.accessibleName() == "Waiting for your decision"
         assert chat_panel.send_btn.isEnabled() is False
         assert chat_panel.send_btn.toolTip() == (
-            "Continue in the open Import EEG Data window."
+            "Finish or cancel in the open Import EEG Data dialog."
         )
         assert chat_panel.header_status_text == "Local · Waiting"
         assert chat_panel.turn_activity_step.text() == (
             "Current step: Continue in Import EEG Data"
         )
         assert chat_panel.turn_activity_cancelability.text() == (
-            "Continue in the open Import EEG Data window."
+            "Finish or cancel in the open Import EEG Data dialog."
         )
 
     def test_inline_confirmation_waiting_copy_names_the_visible_card(
@@ -2104,6 +2107,8 @@ class TestChatPanelInit:
             AssistantTurnActivity(
                 AssistantTurnActivityPhase.WAITING_FOR_DECISION,
                 command_name="new_session",
+                request_id="confirmation-1",
+                decision_owner=AssistantDecisionOwner.CONFIRMATION_CARD,
             )
         )
 

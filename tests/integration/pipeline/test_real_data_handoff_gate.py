@@ -381,10 +381,13 @@ def test_physionet_internal_events_reach_real_training_through_interpretation_sp
         assert filtered.ok, filtered.message
         assert epoch.ok, epoch.message
         assert epoch.state.epoch.epoch_count == 15
-        assert set(epoch.state.epoch.event_ids) == set(class_map)
+        assert set(epoch.state.epoch.event_ids) == set(class_map.values())
         assert generated.ok, generated.message
         assert generated.diagnostics["split_audit"]["ok"] is True
         assert generated.state.dataset.available is True
+        assert set(
+            service.study.datasets[0].get_epoch_data().label_map.values()
+        ) == set(class_map.values())
 
         model = service.execute(ConfigureTrainingCommand(model_name="EEGNet"))
         options = service.execute(
@@ -415,5 +418,11 @@ def test_physionet_internal_events_reach_real_training_through_interpretation_sp
         train_metrics = history.diagnostics["rows"][0]["metrics"]["train"]
         assert RecordKey.LOSS in train_metrics
         assert RecordKey.ACC in train_metrics
+        training_record = service.training_runtime.training_plan_holders()[
+            0
+        ].get_plans()[0]
+        assert set(training_record.dataset.get_epoch_data().label_map.values()) == set(
+            class_map.values()
+        )
     finally:
         _close_service(service)

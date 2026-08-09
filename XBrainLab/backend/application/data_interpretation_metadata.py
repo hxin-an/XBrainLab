@@ -238,7 +238,7 @@ def bids_summary(
             dataset_description,
             read_budget,
         )
-    elif materialize:
+    elif materialize and source_kind == "bids":
         dataset = {}
         root_validation_issue = (
             "dataset_description.json is missing from the selected BIDS root."

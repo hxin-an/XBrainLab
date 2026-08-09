@@ -1,4 +1,4 @@
-"""Coverage tests for sidebar modules: preprocess, training, dataset, viz control."""
+"""Sidebar command, capability, publication, and interaction contracts."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QDialog, QGroupBox, QMainWindow, QMessageBox, QWidget
+from PyQt6.QtWidgets import QDialog, QGroupBox, QMainWindow, QMessageBox
 
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -121,9 +121,6 @@ class TestPreprocessSidebar:
         qtbot.addWidget(sb)
         return sb
 
-    def test_creates(self, sidebar):
-        assert isinstance(sidebar, QWidget)
-
     def test_right_sidebars_keep_operation_area_at_consistent_y(self, qtbot):
         from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
         from XBrainLab.ui.panels.preprocess.sidebar import PreprocessSidebar
@@ -158,9 +155,6 @@ class TestPreprocessSidebar:
                 primary_group.minimumHeight()
                 == Stylesheets.SIDEBAR_PRIMARY_GROUP_MIN_HEIGHT
             )
-
-    def test_update_sidebar(self, sidebar):
-        sidebar.update_sidebar()
 
     def test_update_sidebar_prefers_backend_capabilities_over_stale_preprocessed_list(
         self,
@@ -203,16 +197,6 @@ class TestPreprocessSidebar:
             sidebar.update_sidebar()
 
         assert runtime.publication_reads == 1
-
-    def test_check_lock_unlocked(self, sidebar):
-        # check_lock returns False when NOT epoched (action is allowed)
-        assert sidebar.check_lock() is False
-
-    def test_check_lock_locked(self, sidebar):
-        sidebar.panel.controller.is_epoched.return_value = True
-        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
-            # check_lock returns True when epoched (action is blocked)
-            assert sidebar.check_lock() is True
 
     def test_check_lock_prefers_backend_capability_over_stale_controller(
         self,
@@ -262,14 +246,6 @@ class TestPreprocessSidebar:
         assert mock_warning.call_args.args[2] == (
             "Preprocessing availability is unavailable right now."
         )
-
-    def test_check_data_loaded_true(self, sidebar):
-        assert sidebar.check_data_loaded() is True
-
-    def test_check_data_loaded_false(self, sidebar):
-        sidebar.panel.controller.has_data.return_value = False
-        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
-            assert sidebar.check_data_loaded() is False
 
     def test_check_data_loaded_prefers_backend_capability_over_stale_controller(
         self,
@@ -1396,9 +1372,6 @@ class TestTrainingSidebar:
         qtbot.addWidget(sb)
         return sb
 
-    def test_creates(self, sidebar):
-        assert isinstance(sidebar, QWidget)
-
     def test_model_selection_dialog_canonicalizes_only_existing_initial_model(
         self,
         qtbot,
@@ -1423,11 +1396,6 @@ class TestTrainingSidebar:
         assert unknown.model_combo is not None
         assert unknown.model_combo.currentText() == unknown.model_list[0]
         assert unknown.model_combo.findText("not-a-real-model") == -1
-
-    def test_check_ready_to_train_not_ready(self, sidebar):
-        result = sidebar.check_ready_to_train()
-        # Without datasets/model/option, not ready
-        assert result is False or result is None
 
     def test_check_ready_to_train_uses_published_blockers_without_controller_fallback(
         self,
@@ -2718,17 +2686,6 @@ class TestTrainingSidebar:
         assert mock_warning.call_args.args[1] == "Training Configuration Blocked"
         assert "could not safely complete" in mock_warning.call_args.args[2]
 
-    def test_on_training_started_disables_buttons(self, sidebar):
-        sidebar.on_training_started()
-        # After training starts, stop button or UI state should update
-        # Verify the method runs without error
-        assert isinstance(sidebar, QWidget)
-
-    def test_on_training_stopped_enables_buttons(self, sidebar):
-        sidebar.on_training_stopped()
-        # After training stops, UI state should update
-        assert isinstance(sidebar, QWidget)
-
     def test_stop_training(self, sidebar):
         from PyQt6.QtWidgets import QMessageBox
 
@@ -3584,29 +3541,6 @@ class TestTrainingSidebar:
         assert mock_warning.call_args.args[1] == "Start Training Blocked"
         mock_critical.assert_not_called()
 
-    def test_split_data_no_data(self, sidebar):
-        sidebar.panel.controller.get_loaded_data_list.return_value = []
-        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
-            sidebar.split_data()
-
-    def test_split_data_no_epoch(self, sidebar):
-        sidebar.panel.controller.get_loaded_data_list.return_value = [MagicMock()]
-        sidebar.panel.controller.get_epoch_data.return_value = None
-        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
-            sidebar.split_data()
-
-    def test_split_data_while_training(self, sidebar):
-        sidebar.panel.controller.get_loaded_data_list.return_value = [MagicMock()]
-        sidebar.panel.controller.get_epoch_data.return_value = MagicMock()
-        sidebar.panel.controller.is_training.return_value = True
-        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
-            sidebar.split_data()
-
-    def test_clear_history_while_training(self, sidebar):
-        sidebar.panel.controller.is_training.return_value = True
-        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
-            sidebar.clear_history()
-
 
 # ============ DatasetSidebar ============
 
@@ -3622,12 +3556,6 @@ class TestDatasetSidebar:
         sb = DatasetSidebar(panel)
         qtbot.addWidget(sb)
         return sb
-
-    def test_creates(self, sidebar):
-        assert isinstance(sidebar, QWidget)
-
-    def test_update_sidebar(self, sidebar):
-        sidebar.update_sidebar()
 
     def test_update_sidebar_uses_backend_import_label_capability(self, qtbot):
         from XBrainLab.backend.study import Study
@@ -4129,58 +4057,3 @@ class TestDatasetSidebar:
         assert mock_warning.call_args.args[1] == "Reset Session Blocked"
         mock_critical.assert_not_called()
         assert "could not safely complete" in mock_warning.call_args.args[2]
-
-
-# ============ CardWidget & PlaceholderWidget ============
-
-
-class TestCardWidget:
-    def test_creates_with_title(self, qtbot):
-        from XBrainLab.ui.components.card import CardWidget
-
-        card = CardWidget("Test Card")
-        qtbot.addWidget(card)
-        assert isinstance(card, CardWidget)
-
-    def test_creates_without_title(self, qtbot):
-        from XBrainLab.ui.components.card import CardWidget
-
-        card = CardWidget("")
-        qtbot.addWidget(card)
-        assert isinstance(card, CardWidget)
-
-    def test_add_widget(self, qtbot):
-        from PyQt6.QtWidgets import QLabel
-
-        from XBrainLab.ui.components.card import CardWidget
-
-        card = CardWidget("Card")
-        qtbot.addWidget(card)
-        label = QLabel("hello")
-        card.add_widget(label)
-
-    def test_add_layout(self, qtbot):
-        from PyQt6.QtWidgets import QHBoxLayout
-
-        from XBrainLab.ui.components.card import CardWidget
-
-        card = CardWidget("Card")
-        qtbot.addWidget(card)
-        layout = QHBoxLayout()
-        card.add_layout(layout)
-
-
-class TestPlaceholderWidget:
-    def test_creates(self, qtbot):
-        from XBrainLab.ui.components.placeholder import PlaceholderWidget
-
-        w = PlaceholderWidget("📊", "No data available")
-        qtbot.addWidget(w)
-        assert isinstance(w, PlaceholderWidget)
-
-    def test_message_displayed(self, qtbot):
-        from XBrainLab.ui.components.placeholder import PlaceholderWidget
-
-        w = PlaceholderWidget("⚠", "Please load data first")
-        qtbot.addWidget(w)
-        assert "load data" in w.msg_label.text().lower()

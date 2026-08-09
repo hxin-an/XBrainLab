@@ -1,0 +1,26 @@
+schema_version: 1
+case_id: graz-2a
+page: case-studies/graz-2a.md
+publication_status: unverified
+identity:
+  manifest_id: null
+  app_revision: null
+  run_id: null
+  dataset_revision: null
+  evidence_files: []
+route:
+  source: BCI Competition IV Dataset 2a
+  source_version: unpinned
+  scope: A01T/A02T/A03T training recordings with matching MAT label files
+  followable_through: import_review
+stages:
+  source_and_dataset: {status: unverified, evidence_files: []}
+  import_scope: {status: unverified, evidence_files: []}
+  labels_and_metadata: {status: unverified, evidence_files: []}
+  preprocess: {status: unverified, evidence_files: []}
+  epoch: {status: unverified, evidence_files: []}
+  split: {status: unverified, evidence_files: []}
+  model_and_training: {status: unverified, evidence_files: []}
+  evaluation: {status: unverified, evidence_files: []}
+  saliency: {status: unverified, evidence_files: []}
+  reproducibility_and_limitations: {status: unverified, evidence_files: []}

@@ -1,0 +1,57 @@
+schema_version: 1
+case_id: moabb-ofner2017
+page: case-studies/moabb-ofner2017.md
+publication_status: unverified
+generated_from:
+  source: artifacts/user-journeys/moabb-datasets-v1.json
+  site_copy: assets/manifests/moabb-datasets-v1.json
+  schema_version: 1.0.0
+  profile_id: moabb-compact-user-journeys-v1
+  source_sha256: 61097550c8fb6afeb9156c9fbe9207f471eb2d04799cf16672ac4937686a70b9
+  dataset_id: ofner2017-mi-gdf
+  moabb_version: 1.5.0
+  moabb_commit: 140809d8c48bdf2be953951ff75f688122edee34
+identity:
+  manifest_id: null
+  app_revision: null
+  run_id: null
+  dataset_revision: null
+  evidence_files: []
+route:
+  source: Upper limb movements can be decoded from the time-domain of low-frequency
+    EEG
+  source_version: dataset DOI 10.5281/zenodo.834976; MOABB 1.5.0 at 140809d8c48bdf2be953951ff75f688122edee34
+  scope: Subject(s) 1; session(s) imagination; run(s) 1, 2, 3, 4, 5, 6, 7, 8, 9; GDF
+    source
+  followable_through: planned execution guide; recorded checkpoints pending
+stages:
+  source_and_dataset:
+    status: unverified
+    evidence_files: []
+  import_scope:
+    status: unverified
+    evidence_files: []
+  labels_and_metadata:
+    status: unverified
+    evidence_files: []
+  preprocess:
+    status: unverified
+    evidence_files: []
+  epoch:
+    status: unverified
+    evidence_files: []
+  split:
+    status: unverified
+    evidence_files: []
+  model_and_training:
+    status: unverified
+    evidence_files: []
+  evaluation:
+    status: unverified
+    evidence_files: []
+  saliency:
+    status: unverified
+    evidence_files: []
+  reproducibility_and_limitations:
+    status: unverified
+    evidence_files: []

@@ -82,3 +82,47 @@ def test_filtering_combined(mock_raw_data):
     history = processed.get_preprocess_history()[-1]
     assert "Filtering 1.0 ~ 100.0 Hz" in history
     assert "Notch 50.0 Hz" in history
+
+
+def test_filtering_preserves_and_marks_nonfinite_raw_segments():
+    info = mne.create_info(ch_names=["C3", "C4"], sfreq=100, ch_types="eeg")
+    times = np.arange(2000) / 100.0
+    data = np.vstack(
+        [
+            np.sin(2 * np.pi * 10 * times),
+            np.cos(2 * np.pi * 12 * times),
+        ]
+    )
+    data[:, -20:] = np.nan
+    wrapped = Raw("trailing-gap.gdf", mne.io.RawArray(data, info))
+
+    processed = Filtering([wrapped]).data_preprocess(l_freq=1.0, h_freq=30.0)[0]
+    filtered = processed.get_mne().get_data()
+
+    assert np.isfinite(filtered[:, :-20]).all()
+    assert np.isnan(filtered[:, -20:]).all()
+    assert "BAD_nonfinite" in set(processed.get_mne().annotations.description)
+    assert processed.get_runtime_detail("filter_nonfinite_segments") == {
+        "status": "preserved_as_bad_annotations",
+        "annotation": "BAD_nonfinite",
+        "segment_count": 1,
+        "sample_count": 20,
+        "channels_with_nonfinite": ["C3", "C4"],
+    }
+
+
+def test_filtering_rejects_nonfinite_epoched_input():
+    info = mne.create_info(ch_names=["Cz"], sfreq=100, ch_types="eeg")
+    data = np.ones((2, 1, 200), dtype=float)
+    data[1, 0, 50] = np.inf
+    events = np.array([[0, 0, 1], [200, 0, 1]])
+    epochs = mne.EpochsArray(data, info, events=events, event_id={"task": 1})
+
+    with pytest.raises(
+        ValueError,
+        match="Epoched EEG data contains NaN or infinite values",
+    ):
+        Filtering([Raw("nonfinite-epo.fif", epochs)]).data_preprocess(
+            l_freq=1.0,
+            h_freq=30.0,
+        )

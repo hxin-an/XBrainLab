@@ -4,9 +4,32 @@ from __future__ import annotations
 
 import re
 
+from XBrainLab.backend.model_catalog_contract import TRAINING_MODEL_NAMES
 from XBrainLab.backend.training.input_contract import (
     training_option_value_is_valid,
 )
+
+
+def _training_model_aliases() -> tuple[str, ...]:
+    aliases: set[str] = set()
+    for catalog_name in TRAINING_MODEL_NAMES:
+        normalized = catalog_name.casefold()
+        aliases.add(normalized)
+        if "." in normalized:
+            aliases.add(normalized.rsplit(".", maxsplit=1)[-1])
+    return tuple(sorted(aliases, key=len, reverse=True))
+
+
+_TRAINING_MODEL_ALIASES = _training_model_aliases()
+
+
+def extract_explicit_training_model(text: str) -> str | None:
+    """Return the normalized catalog name explicitly written by the user."""
+    normalized = " ".join(str(text or "").casefold().split())
+    for alias in _TRAINING_MODEL_ALIASES:
+        if re.search(rf"(?<![\w.]){re.escape(alias)}(?![\w])", normalized):
+            return alias
+    return None
 
 
 def extract_explicit_training_options(text: str) -> dict[str, str]:

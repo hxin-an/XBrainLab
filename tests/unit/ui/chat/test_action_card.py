@@ -8,7 +8,10 @@ import pytest
 from PyQt6.QtCore import QPoint, QRect, Qt
 from PyQt6.QtWidgets import QBoxLayout
 
-from XBrainLab.llm.agent.confirmation import AgentConfirmationRequest
+from XBrainLab.llm.agent.confirmation import (
+    AgentConfirmationRequest,
+    AgentConfirmationRisk,
+)
 from XBrainLab.ui.chat.action_card import AssistantConfirmationCard
 
 
@@ -287,3 +290,146 @@ def test_high_risk_confirmation_stays_explicit_and_emits_the_exact_request(
     assert card.secondary_button.isEnabled() is False
     assert card.primary_button.text() == "Working..."
     assert card.primary_button.accessibleName() == "Working..."
+
+
+@pytest.mark.parametrize("width", [300, 520])
+def test_start_training_renders_typed_long_running_impact_without_overflow(
+    confirmation_card,
+    qtbot,
+    width: int,
+) -> None:
+    impact = (
+        "Starts a potentially long GPU or CPU job using the configured resources. "
+        "You can stop it after it starts."
+    )
+    request = AgentConfirmationRequest.for_action(
+        command_name="start_training",
+        params={},
+        action_label="Start training",
+        description="Run the reviewed training configuration.",
+        destructive=False,
+        publication_generation=21,
+        risk=AgentConfirmationRisk(
+            long_running=True,
+            decision_boundary="long_running",
+            impact_text=impact,
+        ),
+    )
+
+    _show_card(confirmation_card, qtbot, request, width=width)
+
+    card = confirmation_card
+    assert card.title_label.text() == "Long-running action"
+    assert card.impact_title.text() == "Impact"
+    assert card.impact_title.isVisibleTo(card)
+    assert card.impact_label.text() == impact
+    assert card.impact_label.isVisibleTo(card)
+    assert card.impact_label.wordWrap()
+    assert card.property("riskLongRunning") is True
+    assert card.property("decisionBoundary") == "long_running"
+    assert card.primary_button.text() == "Start training"
+    for widget in (card.impact_title, card.impact_label, card.primary_button):
+        assert widget.mapTo(card, QPoint(0, 0)).x() >= 0
+        assert widget.mapTo(card, widget.rect().bottomRight()).x() < card.width()
+
+
+@pytest.mark.parametrize("width", [300, 520])
+def test_setting_proposal_without_authoritative_current_values_is_not_a_diff(
+    confirmation_card,
+    qtbot,
+    width: int,
+) -> None:
+    request = AgentConfirmationRequest.for_action(
+        command_name="configure_training",
+        params={
+            "model_name": "Deep4Net",
+            "epoch": 5,
+            "batch_size": 16,
+            "learning_rate": 0.0005,
+            "repeat": 1,
+            "device": "cpu",
+            "optimizer": "adam",
+            "evaluation_option": "last_epoch",
+            "save_checkpoints_every": 0,
+        },
+        action_label="Apply training settings",
+        description="Use the reviewed configuration for the next run.",
+        destructive=False,
+        publication_generation=22,
+        confirmation_kind="setting_change",
+        risk=AgentConfirmationRisk(
+            high_impact=True,
+            decision_boundary="high_impact_setting_change",
+            impact_text=(
+                "Changes the model or training settings used by the next run."
+            ),
+        ),
+    )
+
+    _show_card(confirmation_card, qtbot, request, width=width, current_values=None)
+
+    card = confirmation_card
+    assert card.current_state_warning.isVisibleTo(card)
+    assert card.current_state_warning.objectName() == "AssistantActionContextWarning"
+    assert "color:" in card.current_state_warning.styleSheet()
+    assert "background-color:" in card.current_state_warning.styleSheet()
+    assert "could not be verified" in card.current_state_warning.text()
+    assert "not a verified comparison" in card.current_state_warning.text()
+    assert card.property("riskHighImpact") is True
+    for row in card.proposal_rows:
+        assert row.current_caption.isHidden()
+        assert row.current_value.isHidden()
+        assert row.proposed_caption.text() == "Proposed value"
+
+
+def test_complete_setting_proposal_renders_verified_current_and_proposed_values(
+    confirmation_card,
+    qtbot,
+) -> None:
+    request = AgentConfirmationRequest.for_action(
+        command_name="configure_training",
+        params={
+            "model_name": "Deep4Net",
+            "epoch": 5,
+            "batch_size": 16,
+            "learning_rate": 0.0005,
+            "repeat": 1,
+            "device": "cpu",
+            "optimizer": "adam",
+            "evaluation_option": "last_epoch",
+            "save_checkpoints_every": 0,
+        },
+        action_label="Apply training settings",
+        description="Use the reviewed configuration for the next run.",
+        destructive=False,
+        publication_generation=23,
+    )
+
+    _show_card(
+        confirmation_card,
+        qtbot,
+        request,
+        width=520,
+        current_values={
+            "Model name": "EEGNet",
+            "Training epochs": "1",
+            "Batch size": "4",
+            "Learning rate": "0.001",
+            "Repeat": "1",
+            "Device": "cpu",
+            "Optimizer": "adam",
+            "Evaluation option": "last_epoch",
+            "Save checkpoints every": "0",
+        },
+    )
+
+    card = confirmation_card
+    assert card.current_state_warning.isHidden()
+    for row in card.proposal_rows:
+        assert row.current_caption.text() == "Current"
+        assert row.proposed_caption.text() == "Proposed"
+        label = _visible_text(row.label.text())
+        if label in {"Batch size", "Training epochs", "Learning rate", "Model"}:
+            assert row.current_value.isVisibleTo(card)
+        else:
+            assert row.current_value.isHidden()

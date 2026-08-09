@@ -375,13 +375,13 @@ def test_start_training_warning_creates_command_bound_resource_receipt() -> None
 def test_start_training_receipt_approval_injects_resource_confirmation() -> None:
     preflight = _training_preflight()
     coordinator, _source, _verifier, _registry = _coordinator(
-        _context(tool_name="start_training")
+        _context(tool_name="start_training", confirmation=True)
     )
     initial = ToolAttemptDecision(
         action=ToolAttemptAction.EXECUTE,
         command_name="start_training",
         params={"append": True},
-        context=_context(tool_name="start_training"),
+        context=_context(tool_name="start_training", confirmation=True),
     )
     warning = ToolCommandResult.failure(
         "start_training",

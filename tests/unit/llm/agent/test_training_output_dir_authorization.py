@@ -21,6 +21,7 @@ from XBrainLab.llm.tools.application_surface import (
     ToolAvailabilityContext,
     ToolCommandResult,
     UserProvidedTrainingOutputDir,
+    authorize_assistant_setting_change,
     execute_application_tool_command,
 )
 from XBrainLab.llm.tools.definitions.training_def import (
@@ -58,6 +59,18 @@ def _training_params(**overrides: Any) -> dict[str, Any]:
         "device": "cpu",
         **overrides,
     }
+
+
+def _authorize_setting(
+    study: Study,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    generation = get_application_service(study).get_view_publication().generation
+    return authorize_assistant_setting_change(
+        "configure_training",
+        params,
+        publication_generation=generation,
+    )
 
 
 def _training_state(
@@ -215,10 +228,11 @@ def test_explicit_user_training_output_dir_uses_typed_provenance_path(
     )
     assert schema.verify_tool_call(("configure_training", params)).is_valid is True
 
+    study = Study()
     result = execute_application_tool_command(
-        Study(),
+        study,
         "configure_training",
-        params,
+        _authorize_setting(study, params),
     )
 
     assert isinstance(result, ToolCommandResult)
@@ -236,7 +250,7 @@ def test_explicit_user_training_output_dir_uses_typed_provenance_path(
         ),
         state=None,
     )
-    assert decision.action is ToolAttemptAction.EXECUTE
+    assert decision.action is ToolAttemptAction.CONFIRMATION_REQUIRED
     assert isinstance(
         decision.params["output_dir"],
         UserProvidedTrainingOutputDir,
@@ -260,7 +274,7 @@ def test_configure_training_without_output_dir_preserves_backend_value(
     result = execute_application_tool_command(
         study,
         "configure_training",
-        _training_params(epoch=5),
+        _authorize_setting(study, _training_params(epoch=5)),
         state=state,
     )
 

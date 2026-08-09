@@ -46,6 +46,19 @@ class TestComputeAuc:
         auc = Evaluator.compute_auc(y_true, y_pred)
         assert auc is None
 
+    @pytest.mark.parametrize("invalid", [np.nan, np.inf])
+    def test_rejects_nonfinite_predictions(self, invalid):
+        y_true = np.array([0, 1, 0, 1])
+        y_pred = np.array(
+            [[0.9, 0.1], [0.2, 0.8], [0.7, 0.3], [0.1, invalid]],
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="AUC prediction array contains NaN or infinite values",
+        ):
+            Evaluator.compute_auc(y_true, y_pred)
+
 
 class TestEvaluateMetrics:
     @pytest.fixture
@@ -115,3 +128,46 @@ class TestEvaluateMetrics:
         assert result[RecordKey.ACC] == 0
         assert result[RecordKey.AUC] is None
         assert result[RecordKey.LOSS] == 0
+
+    def test_rejects_nonfinite_model_outputs(self):
+        class NonFiniteModel(torch.nn.Module):
+            def forward(self, inputs):
+                return torch.full((len(inputs), 2), torch.nan)
+
+        loader = torch.utils.data.DataLoader(
+            torch.utils.data.TensorDataset(
+                torch.ones((4, 3)),
+                torch.tensor([0, 1, 0, 1]),
+            ),
+            batch_size=2,
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="Evaluation model output contains NaN or infinite values",
+        ):
+            Evaluator.evaluate_metrics(
+                NonFiniteModel(),
+                loader,
+                torch.nn.CrossEntropyLoss(),
+            )
+
+
+def test_evaluate_rejects_nonfinite_model_outputs():
+    class NonFiniteModel(torch.nn.Module):
+        def forward(self, inputs):
+            return torch.full((len(inputs), 2), torch.inf)
+
+    loader = torch.utils.data.DataLoader(
+        torch.utils.data.TensorDataset(
+            torch.ones((2, 3)),
+            torch.tensor([0, 1]),
+        ),
+        batch_size=2,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Evaluation model output contains NaN or infinite values",
+    ):
+        Evaluator.evaluate(NonFiniteModel(), loader, evaluation_split="test")

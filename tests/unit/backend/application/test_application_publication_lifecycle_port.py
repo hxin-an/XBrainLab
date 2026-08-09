@@ -53,6 +53,30 @@ def test_repository_publication_lifecycle_uses_application_owned_port() -> None:
     )
 
 
+def test_application_service_does_not_reexport_publication_lifecycle_internals() -> (
+    None
+):
+    compatibility_delegates = {
+        "_observer_finalizer",
+        "_saliency_notification_boundary",
+        "_discard_pending_saliency_terminal",
+        "_publish_training_live_state",
+        "_deliver_training_terminal_publication",
+        "_terminal_training_publication_event",
+        "_publish_post_training_saliency_terminal_state",
+        "_commit_post_training_saliency_terminal_state",
+        "_remember_pending_saliency_terminal",
+        "_pending_saliency_terminal",
+        "_clear_pending_saliency_terminal",
+        "_reconcile_pending_saliency_terminal",
+        "_plan_saliency_terminal_delivery",
+        "_notify_saliency_publication_changed",
+        "_visualization_batch_generation",
+    }
+
+    assert compatibility_delegates.isdisjoint(ApplicationService.__dict__)
+
+
 def test_real_study_service_construction_does_not_resolve_training_controller() -> None:
     study = Study()
 

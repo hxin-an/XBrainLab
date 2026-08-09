@@ -1,0 +1,694 @@
+{
+  "schema_version": "1.0.0",
+  "profile_id": "moabb-compact-user-journeys-v1",
+  "moabb_release": {
+    "version": "1.5.0",
+    "tag": "v1.5",
+    "commit": "140809d8c48bdf2be953951ff75f688122edee34",
+    "repository": "https://github.com/NeuroTechX/moabb",
+    "license": "BSD-3-Clause"
+  },
+  "resource_policy": {
+    "data_root": "build/moabb-data",
+    "evidence_root": "build/moabb-user-journeys",
+    "max_download_bytes": 1073741824,
+    "minimum_free_space_after_fetch_bytes": 2147483648,
+    "serial_downloads": true
+  },
+  "datasets": [
+    {
+      "id": "ofner2017-mi-gdf",
+      "moabb_class": "Ofner2017",
+      "moabb_code": "Ofner2017",
+      "paradigm": "motor_imagery",
+      "source_format": "GDF",
+      "identity": {
+        "title": "Upper limb movements can be decoded from the time-domain of low-frequency EEG",
+        "dataset_doi": "10.5281/zenodo.834976",
+        "paper_doi": "10.1371/journal.pone.0182578",
+        "license": "CC-BY-4.0",
+        "repository": "Zenodo",
+        "repository_url": "https://zenodo.org/records/834976",
+        "moabb_docs_url": "https://moabb.neurotechx.com/docs/generated/moabb.datasets.Ofner2017.html",
+        "moabb_adapter_url": "https://github.com/NeuroTechX/moabb/blob/140809d8c48bdf2be953951ff75f688122edee34/moabb/datasets/upper_limb.py"
+      },
+      "selection": {
+        "subjects": [1],
+        "sessions": ["imagination"],
+        "runs": [1, 2, 3, 4, 5, 6, 7, 8, 9],
+        "expected_trial_count": 378,
+        "expected_trials_per_class": 54,
+        "source_quality": {
+          "sampling_rate_hz": 512,
+          "audit_scope": "All 61 selected EEG channels in each checksum-pinned GDF file.",
+          "policy": "exclude_bad_spans_during_epoching",
+          "imputation": "none",
+          "nonfinite_tail_spans": [
+            {"run": 1, "start_sample": 165761, "stop_sample_exclusive": 165888, "start_seconds": 323.751953125, "stop_seconds": 324.0, "affected_eeg_channels": 61},
+            {"run": 3, "start_sample": 165470, "stop_sample_exclusive": 165888, "start_seconds": 323.18359375, "stop_seconds": 324.0, "affected_eeg_channels": 61},
+            {"run": 4, "start_sample": 167066, "stop_sample_exclusive": 167424, "start_seconds": 326.30078125, "stop_seconds": 327.0, "affected_eeg_channels": 61},
+            {"run": 5, "start_sample": 167582, "stop_sample_exclusive": 167936, "start_seconds": 327.30859375, "stop_seconds": 328.0, "affected_eeg_channels": 61},
+            {"run": 6, "start_sample": 168130, "stop_sample_exclusive": 168448, "start_seconds": 328.37890625, "stop_seconds": 329.0, "affected_eeg_channels": 61},
+            {"run": 7, "start_sample": 165124, "stop_sample_exclusive": 165376, "start_seconds": 322.5078125, "stop_seconds": 323.0, "affected_eeg_channels": 61},
+            {"run": 8, "start_sample": 165555, "stop_sample_exclusive": 165888, "start_seconds": 323.349609375, "stop_seconds": 324.0, "affected_eeg_channels": 61},
+            {"run": 9, "start_sample": 166265, "stop_sample_exclusive": 166400, "start_seconds": 324.736328125, "stop_seconds": 325.0, "affected_eeg_channels": 61}
+          ]
+        },
+        "reason": "Nine complete motor-imagery runs are the largest subject/session subset that keeps the full three-dataset registry below its 1 GiB download cap. They provide 54 trials per class before the fixed split; run 10 is excluded by this predeclared resource boundary, not by model results."
+      },
+      "expected_peak_ram_bytes": 12884901888,
+      "files": [
+        {
+          "url": "https://zenodo.org/api/records/834976/files/motorimagination_subject1_run1.gdf/content",
+          "relative_path": "ofner2017/sub-001/imagination/run-01.gdf",
+          "size_bytes": 105365484,
+          "checksum": {
+            "algorithm": "md5",
+            "value": "b937c8aca13bc6830ad1fcc42d7cd09c"
+          },
+          "source_metadata_url": "https://zenodo.org/api/records/834976/files/motorimagination_subject1_run1.gdf"
+        },
+        {
+          "url": "https://zenodo.org/api/records/834976/files/motorimagination_subject1_run2.gdf/content",
+          "relative_path": "ofner2017/sub-001/imagination/run-02.gdf",
+          "size_bytes": 105040364,
+          "checksum": {
+            "algorithm": "md5",
+            "value": "f553a8be21ecce376dca2b38fb61bef3"
+          },
+          "source_metadata_url": "https://zenodo.org/api/records/834976/files/motorimagination_subject1_run2.gdf"
+        },
+        {
+          "url": "https://zenodo.org/api/records/834976/files/motorimagination_subject1_run3.gdf/content",
+          "relative_path": "ofner2017/sub-001/imagination/run-03.gdf",
+          "size_bytes": 105365484,
+          "checksum": {
+            "algorithm": "md5",
+            "value": "850cb55b3dea50df06d2e3734f6493d6"
+          },
+          "source_metadata_url": "https://zenodo.org/api/records/834976/files/motorimagination_subject1_run3.gdf"
+        },
+        {
+          "url": "https://zenodo.org/api/records/834976/files/motorimagination_subject1_run4.gdf/content",
+          "relative_path": "ofner2017/sub-001/imagination/run-04.gdf",
+          "size_bytes": 106340844,
+          "checksum": {
+            "algorithm": "md5",
+            "value": "52aff75f40ebd805425fdffeda5ee92e"
+          },
+          "source_metadata_url": "https://zenodo.org/api/records/834976/files/motorimagination_subject1_run4.gdf"
+        },
+        {
+          "url": "https://zenodo.org/api/records/834976/files/motorimagination_subject1_run5.gdf/content",
+          "relative_path": "ofner2017/sub-001/imagination/run-05.gdf",
+          "size_bytes": 106665964,
+          "checksum": {
+            "algorithm": "md5",
+            "value": "95e99ad0dab5cf8b6858ad19b80abfd8"
+          },
+          "source_metadata_url": "https://zenodo.org/api/records/834976/files/motorimagination_subject1_run5.gdf"
+        },
+        {
+          "url": "https://zenodo.org/api/records/834976/files/motorimagination_subject1_run6.gdf/content",
+          "relative_path": "ofner2017/sub-001/imagination/run-06.gdf",
+          "size_bytes": 106991084,
+          "checksum": {
+            "algorithm": "md5",
+            "value": "e7d3ebf3451a2e12cf7574f31435e0c5"
+          },
+          "source_metadata_url": "https://zenodo.org/api/records/834976/files/motorimagination_subject1_run6.gdf"
+        },
+        {
+          "url": "https://zenodo.org/api/records/834976/files/motorimagination_subject1_run7.gdf/content",
+          "relative_path": "ofner2017/sub-001/imagination/run-07.gdf",
+          "size_bytes": 105040364,
+          "checksum": {
+            "algorithm": "md5",
+            "value": "38b838125e40295e104a24ca70ede4b5"
+          },
+          "source_metadata_url": "https://zenodo.org/api/records/834976/files/motorimagination_subject1_run7.gdf"
+        },
+        {
+          "url": "https://zenodo.org/api/records/834976/files/motorimagination_subject1_run8.gdf/content",
+          "relative_path": "ofner2017/sub-001/imagination/run-08.gdf",
+          "size_bytes": 105365484,
+          "checksum": {
+            "algorithm": "md5",
+            "value": "af92a7323ad045fc1088023f6ca08e5f"
+          },
+          "source_metadata_url": "https://zenodo.org/api/records/834976/files/motorimagination_subject1_run8.gdf"
+        },
+        {
+          "url": "https://zenodo.org/api/records/834976/files/motorimagination_subject1_run9.gdf/content",
+          "relative_path": "ofner2017/sub-001/imagination/run-09.gdf",
+          "size_bytes": 105690604,
+          "checksum": {
+            "algorithm": "md5",
+            "value": "11f21af09cfcaed6b718a2287bc72ad8"
+          },
+          "source_metadata_url": "https://zenodo.org/api/records/834976/files/motorimagination_subject1_run9.gdf"
+        }
+      ],
+      "import": {
+        "source_hint": "folder",
+        "entrypoint": "ofner2017/sub-001/imagination",
+        "selected_eeg_files": [
+          "ofner2017/sub-001/imagination/run-01.gdf",
+          "ofner2017/sub-001/imagination/run-02.gdf",
+          "ofner2017/sub-001/imagination/run-03.gdf",
+          "ofner2017/sub-001/imagination/run-04.gdf",
+          "ofner2017/sub-001/imagination/run-05.gdf",
+          "ofner2017/sub-001/imagination/run-06.gdf",
+          "ofner2017/sub-001/imagination/run-07.gdf",
+          "ofner2017/sub-001/imagination/run-08.gdf",
+          "ofner2017/sub-001/imagination/run-09.gdf"
+        ],
+        "choices": {
+          "label_carrier": "embedded_events",
+          "metadata_overrides": {
+            "run-01.gdf": {"subject": "001", "session": "imagination", "task": "motor_imagery", "run": "01"},
+            "run-02.gdf": {"subject": "001", "session": "imagination", "task": "motor_imagery", "run": "02"},
+            "run-03.gdf": {"subject": "001", "session": "imagination", "task": "motor_imagery", "run": "03"},
+            "run-04.gdf": {"subject": "001", "session": "imagination", "task": "motor_imagery", "run": "04"},
+            "run-05.gdf": {"subject": "001", "session": "imagination", "task": "motor_imagery", "run": "05"},
+            "run-06.gdf": {"subject": "001", "session": "imagination", "task": "motor_imagery", "run": "06"},
+            "run-07.gdf": {"subject": "001", "session": "imagination", "task": "motor_imagery", "run": "07"},
+            "run-08.gdf": {"subject": "001", "session": "imagination", "task": "motor_imagery", "run": "08"},
+            "run-09.gdf": {"subject": "001", "session": "imagination", "task": "motor_imagery", "run": "09"}
+          },
+          "class_map": {
+            "1536": "right elbow flexion",
+            "1537": "right elbow extension",
+            "1538": "right supination",
+            "1539": "right pronation",
+            "1540": "right hand close",
+            "1541": "right hand open",
+            "1542": "rest"
+          },
+          "internal_event_selection": {
+            "label_event_codes": ["1536", "1537", "1538", "1539", "1540", "1541", "1542"]
+          },
+          "run_event_mappings": {
+            "run-01.gdf": {
+              "1536": "right elbow flexion",
+              "1537": "right elbow extension",
+              "1538": "right supination",
+              "1539": "right pronation",
+              "1540": "right hand close",
+              "1541": "right hand open",
+              "1542": "rest"
+            },
+            "run-02.gdf": {
+              "1536": "right elbow flexion",
+              "1537": "right elbow extension",
+              "1538": "right supination",
+              "1539": "right pronation",
+              "1540": "right hand close",
+              "1541": "right hand open",
+              "1542": "rest"
+            },
+            "run-03.gdf": {
+              "1536": "right elbow flexion",
+              "1537": "right elbow extension",
+              "1538": "right supination",
+              "1539": "right pronation",
+              "1540": "right hand close",
+              "1541": "right hand open",
+              "1542": "rest"
+            },
+            "run-04.gdf": {
+              "1536": "right elbow flexion",
+              "1537": "right elbow extension",
+              "1538": "right supination",
+              "1539": "right pronation",
+              "1540": "right hand close",
+              "1541": "right hand open",
+              "1542": "rest"
+            },
+            "run-05.gdf": {
+              "1536": "right elbow flexion",
+              "1537": "right elbow extension",
+              "1538": "right supination",
+              "1539": "right pronation",
+              "1540": "right hand close",
+              "1541": "right hand open",
+              "1542": "rest"
+            },
+            "run-06.gdf": {
+              "1536": "right elbow flexion",
+              "1537": "right elbow extension",
+              "1538": "right supination",
+              "1539": "right pronation",
+              "1540": "right hand close",
+              "1541": "right hand open",
+              "1542": "rest"
+            },
+            "run-07.gdf": {
+              "1536": "right elbow flexion",
+              "1537": "right elbow extension",
+              "1538": "right supination",
+              "1539": "right pronation",
+              "1540": "right hand close",
+              "1541": "right hand open",
+              "1542": "rest"
+            },
+            "run-08.gdf": {
+              "1536": "right elbow flexion",
+              "1537": "right elbow extension",
+              "1538": "right supination",
+              "1539": "right pronation",
+              "1540": "right hand close",
+              "1541": "right hand open",
+              "1542": "rest"
+            },
+            "run-09.gdf": {
+              "1536": "right elbow flexion",
+              "1537": "right elbow extension",
+              "1538": "right supination",
+              "1539": "right pronation",
+              "1540": "right hand close",
+              "1541": "right hand open",
+              "1542": "rest"
+            }
+          }
+        }
+      },
+      "workflow": {
+        "preprocessing": [
+          {
+            "operation": "select_channels",
+            "channels": [
+              "F3", "F1", "Fz", "F2", "F4", "FFC5h", "FFC3h", "FFC1h",
+              "FFC2h", "FFC4h", "FFC6h", "FC5", "FC3", "FC1", "FCz",
+              "FC2", "FC4", "FC6", "FTT7h", "FCC5h", "FCC3h", "FCC1h",
+              "FCC2h", "FCC4h", "FCC6h", "FTT8h", "C5", "C3", "C1",
+              "Cz", "C2", "C4", "C6", "TTP7h", "CCP5h", "CCP3h",
+              "CCP1h", "CCP2h", "CCP4h", "CCP6h", "TTP8h", "CP5", "CP3",
+              "CP1", "CPz", "CP2", "CP4", "CP6", "CPP5h", "CPP3h",
+              "CPP1h", "CPP2h", "CPP4h", "CPP6h", "P3", "P1", "Pz",
+              "P2", "P4", "PPO1h", "PPO2h"
+            ]
+          },
+          {"operation": "bandpass", "low_freq": 0.3, "high_freq": 3.0},
+          {"operation": "rereference", "method": "average"},
+          {"operation": "normalize", "method": "z score"}
+        ],
+        "epoch": {
+          "t_min": 0.0,
+          "t_max": 3.0,
+          "baseline": null,
+          "event_ids": ["right elbow flexion", "right elbow extension", "right supination", "right pronation", "right hand close", "right hand open", "rest"]
+        },
+        "split": {
+          "test_ratio": 0.2,
+          "val_ratio": 0.2,
+          "split_strategy": "trial",
+          "training_mode": "individual"
+        },
+        "training_profiles": {
+          "smoke": {
+            "name": "EEGNet",
+            "device": "cpu",
+            "epochs": 1,
+            "batch_size": 16,
+            "learning_rate": 0.001,
+            "optimizer": "adam",
+            "evaluation_option": "val_acc",
+            "stopping_budget": "One epoch; command-spine smoke only."
+          },
+          "showcase": {
+            "name": "EEGNet",
+            "device": "cpu",
+            "epochs": 30,
+            "batch_size": 16,
+            "learning_rate": 0.001,
+            "optimizer": "adam",
+            "evaluation_option": "val_acc",
+            "stopping_budget": "Fixed 30-epoch upper bound with validation-accuracy checkpoint selection; the held-out test split is not used for stopping."
+          }
+        },
+        "quality_acceptance": {
+          "held_out_split": "test",
+          "test_access_policy": "Read the saved test predictions once, only after the validation-selected checkpoint and fixed epoch budget have completed.",
+          "rules": [
+            {
+              "metric": "balanced_accuracy",
+              "operator": ">=",
+              "threshold": {"kind": "fixed", "name": "predeclared_meaningful_floor", "value": 0.25},
+              "rationale": "A predeclared 25% balanced-accuracy floor requires a material margin above the seven-class 14.3% chance level without deriving the target from held-out results."
+            },
+            {
+              "metric": "accuracy",
+              "operator": ">",
+              "threshold": {"kind": "observed_baseline", "name": "majority_baseline"},
+              "rationale": "Held-out accuracy must beat the empirical majority-class classifier on the untouched test split."
+            }
+          ]
+        },
+        "seed": 1729,
+        "saliency": {
+          "profile": "recommended",
+          "methods": ["Gradient", "Gradient * Input"],
+          "max_artifact_bytes": 268435456
+        }
+      },
+      "claim_boundary": [
+        "One subject and nine runs are within-subject workflow evidence, not a dataset-wide or MOABB benchmark.",
+        "The selected runs are motor imagery; they do not exercise Ofner2017 movement-execution sessions.",
+        "The profile follows the paper's 0.3-3 Hz and common-average-reference steps but retains the native 512 Hz sampling rate and does not reproduce noisy-channel or artefact-trial rejection, DSP features, sLDA, or repeated cross-validation.",
+        "Downsampling is omitted because eight selected files contain checksum-verified non-finite tail spans; raw FFT resampling would spread them beyond BAD_nonfinite annotations, while native-rate epoching excludes annotated spans without imputation.",
+        "Per-epoch per-channel z-score normalization is an XBrainLab leakage-safe model input transform, not a preprocessing step reported by Ofner et al."
+      ]
+    },
+    {
+      "id": "physionetmi-edf-run-semantics",
+      "moabb_class": "PhysionetMI",
+      "moabb_code": "PhysionetMotorImagery",
+      "paradigm": "motor_imagery",
+      "source_format": "EDF+",
+      "identity": {
+        "title": "EEG Motor Movement/Imagery Dataset",
+        "dataset_doi": "10.13026/C28G6P",
+        "paper_doi": "10.1109/TBME.2004.827072",
+        "license": "ODC-By-1.0",
+        "repository": "PhysioNet",
+        "repository_url": "https://physionet.org/content/eegmmidb/1.0.0/",
+        "moabb_docs_url": "https://moabb.neurotechx.com/docs/generated/moabb.datasets.PhysionetMI.html",
+        "moabb_adapter_url": "https://github.com/NeuroTechX/moabb/blob/140809d8c48bdf2be953951ff75f688122edee34/moabb/datasets/physionet_mi.py"
+      },
+      "selection": {
+        "subjects": [1],
+        "sessions": ["0"],
+        "runs": [4, 6, 8, 10, 12, 14],
+        "reason": "The six imagery runs provide three repeated left/right-fist runs and three repeated both-fists/both-feet runs, exercising reviewed per-run event semantics with enough trials for a meaningful held-out split."
+      },
+      "expected_peak_ram_bytes": 536870912,
+      "files": [
+        {
+          "url": "https://physionet.org/files/eegmmidb/1.0.0/S001/S001R04.edf",
+          "relative_path": "physionetmi/sub-001/S001R04.edf",
+          "size_bytes": 2596896,
+          "checksum": {
+            "algorithm": "sha256",
+            "value": "3d161f88e1c00632585287d2ce584c2bc0f08862438eb255ea8723e00fac693d"
+          },
+          "source_metadata_url": "https://physionet.org/files/eegmmidb/1.0.0/SHA256SUMS.txt"
+        },
+        {
+          "url": "https://physionet.org/files/eegmmidb/1.0.0/S001/S001R06.edf",
+          "relative_path": "physionetmi/sub-001/S001R06.edf",
+          "size_bytes": 2596896,
+          "checksum": {
+            "algorithm": "sha256",
+            "value": "5369364f2c4e81ca141679d6dd2ba6ece61c7eb53d7fae31241b308876e1b6b3"
+          },
+          "source_metadata_url": "https://physionet.org/files/eegmmidb/1.0.0/SHA256SUMS.txt"
+        },
+        {
+          "url": "https://physionet.org/files/eegmmidb/1.0.0/S001/S001R08.edf",
+          "relative_path": "physionetmi/sub-001/S001R08.edf",
+          "size_bytes": 2596896,
+          "checksum": {
+            "algorithm": "sha256",
+            "value": "358fb5189220725141968ae285fbe9e3f36210b834ffba71d940af308e3aca68"
+          },
+          "source_metadata_url": "https://physionet.org/files/eegmmidb/1.0.0/SHA256SUMS.txt"
+        },
+        {
+          "url": "https://physionet.org/files/eegmmidb/1.0.0/S001/S001R10.edf",
+          "relative_path": "physionetmi/sub-001/S001R10.edf",
+          "size_bytes": 2596896,
+          "checksum": {
+            "algorithm": "sha256",
+            "value": "20de1c7746c2349d16bda5e9f1b0ac7b7ad1581102a2e30dd2ac422696f62fb1"
+          },
+          "source_metadata_url": "https://physionet.org/files/eegmmidb/1.0.0/SHA256SUMS.txt"
+        },
+        {
+          "url": "https://physionet.org/files/eegmmidb/1.0.0/S001/S001R12.edf",
+          "relative_path": "physionetmi/sub-001/S001R12.edf",
+          "size_bytes": 2596896,
+          "checksum": {
+            "algorithm": "sha256",
+            "value": "2b281c9b687b4c4176e83251d74743721f2d6ebd76656a972a3b9c44d9d88cd5"
+          },
+          "source_metadata_url": "https://physionet.org/files/eegmmidb/1.0.0/SHA256SUMS.txt"
+        },
+        {
+          "url": "https://physionet.org/files/eegmmidb/1.0.0/S001/S001R14.edf",
+          "relative_path": "physionetmi/sub-001/S001R14.edf",
+          "size_bytes": 2596896,
+          "checksum": {
+            "algorithm": "sha256",
+            "value": "2110c48e3106898e3dbca47e39b330637afd3d3b8bc2da3ba1e44f4ac1118137"
+          },
+          "source_metadata_url": "https://physionet.org/files/eegmmidb/1.0.0/SHA256SUMS.txt"
+        }
+      ],
+      "import": {
+        "source_hint": "folder",
+        "entrypoint": "physionetmi/sub-001",
+        "selected_eeg_files": [
+          "physionetmi/sub-001/S001R04.edf",
+          "physionetmi/sub-001/S001R06.edf",
+          "physionetmi/sub-001/S001R08.edf",
+          "physionetmi/sub-001/S001R10.edf",
+          "physionetmi/sub-001/S001R12.edf",
+          "physionetmi/sub-001/S001R14.edf"
+        ],
+        "choices": {
+          "label_carrier": "embedded_events",
+          "internal_event_selection": {
+            "label_event_codes": ["T1", "T2"]
+          },
+          "run_event_mappings": {
+            "S001R04.edf": {"T1": "left fist", "T2": "right fist"},
+            "S001R06.edf": {"T1": "both fists", "T2": "both feet"},
+            "S001R08.edf": {"T1": "left fist", "T2": "right fist"},
+            "S001R10.edf": {"T1": "both fists", "T2": "both feet"},
+            "S001R12.edf": {"T1": "left fist", "T2": "right fist"},
+            "S001R14.edf": {"T1": "both fists", "T2": "both feet"}
+          }
+        }
+      },
+      "workflow": {
+        "preprocessing": [
+          {"operation": "bandpass", "low_freq": 4.0, "high_freq": 38.0}
+        ],
+        "epoch": {
+          "t_min": 0.0,
+          "t_max": 2.0,
+          "baseline": null,
+          "event_ids": ["T1", "T2"]
+        },
+        "split": {
+          "test_ratio": 0.2,
+          "val_ratio": 0.2,
+          "split_strategy": "trial",
+          "training_mode": "individual"
+        },
+        "training_profiles": {
+          "smoke": {
+            "name": "EEGNet",
+            "device": "cpu",
+            "epochs": 1,
+            "batch_size": 8,
+            "learning_rate": 0.001,
+            "optimizer": "adam",
+            "evaluation_option": "val_acc",
+            "stopping_budget": "One epoch; command-spine smoke only."
+          },
+          "showcase": {
+            "name": "EEGNet",
+            "device": "cpu",
+            "epochs": 30,
+            "batch_size": 8,
+            "learning_rate": 0.001,
+            "optimizer": "adam",
+            "evaluation_option": "val_acc",
+            "stopping_budget": "Fixed 30-epoch upper bound with validation-accuracy checkpoint selection; the held-out test split is not used for stopping."
+          }
+        },
+        "quality_acceptance": {
+          "held_out_split": "test",
+          "test_access_policy": "Read the saved test predictions once, only after the validation-selected checkpoint and fixed epoch budget have completed.",
+          "rules": [
+            {
+              "metric": "balanced_accuracy",
+              "operator": ">",
+              "threshold": {"kind": "observed_baseline", "name": "chance_baseline"},
+              "rationale": "Four-class run-dependent motor-imagery quality must exceed uniform-chance recall across classes."
+            },
+            {
+              "metric": "accuracy",
+              "operator": ">",
+              "threshold": {"kind": "observed_baseline", "name": "majority_baseline"},
+              "rationale": "Held-out accuracy must beat the empirical majority-class classifier on the untouched test split."
+            }
+          ]
+        },
+        "seed": 1730,
+        "saliency": {
+          "profile": "recommended",
+          "methods": ["Gradient", "Gradient * Input"],
+          "max_artifact_bytes": 268435456
+        }
+      },
+      "claim_boundary": [
+        "Six imagery runs from one subject test repeated run-dependent annotation semantics and within-subject quality, not population performance.",
+        "T0 rest annotations are deliberately excluded from the supervised classes."
+      ]
+    },
+    {
+      "id": "lee2021mobile-erp-brainvision",
+      "moabb_class": "Lee2021Mobile_ERP",
+      "moabb_code": "Lee2021Mobile-ERP",
+      "paradigm": "p300_erp",
+      "source_format": "BrainVision",
+      "identity": {
+        "title": "Mobile BCI dataset of scalp- and ear-EEGs with ERP and SSVEP paradigms while standing, walking and running",
+        "dataset_doi": "10.6084/m9.figshare.c.5311787",
+        "paper_doi": "10.1038/s41597-021-01094-4",
+        "license": "CC-BY-4.0",
+        "repository": "OSF",
+        "repository_url": "https://osf.io/r7s9b/",
+        "moabb_docs_url": "https://moabb.neurotechx.com/docs/generated/moabb.datasets.Lee2021Mobile_ERP.html",
+        "moabb_adapter_url": "https://github.com/NeuroTechX/moabb/blob/140809d8c48bdf2be953951ff75f688122edee34/moabb/datasets/lee2021_mobile.py"
+      },
+      "selection": {
+        "subjects": [1],
+        "sessions": ["01"],
+        "runs": ["task-ERP"],
+        "reason": "The standing ERP training session is a compact native BrainVision recording with Target and NonTarget markers."
+      },
+      "expected_peak_ram_bytes": 1073741824,
+      "files": [
+        {
+          "url": "https://osf.io/download/hu2rs/",
+          "relative_path": "lee2021mobile/sub-01/ses-01/eeg/sub-01_ses-01_task-ERP_eeg.eeg",
+          "size_bytes": 12366200,
+          "checksum": {"algorithm": "sha256", "value": "e0f401243f39cd76e285591db999c4b16070498530763c2ddb8f5b81d54c4084"},
+          "source_metadata_url": "https://api.osf.io/v2/files/60fe45a00c4cba0107bc7226/"
+        },
+        {
+          "url": "https://osf.io/download/jvpw4/",
+          "relative_path": "lee2021mobile/sub-01/ses-01/eeg/sub-01_ses-01_task-ERP_eeg.vhdr",
+          "size_bytes": 2327,
+          "checksum": {"algorithm": "sha256", "value": "96eff453d24fa3e21ea161540761fb2c9bfab346a8f24902b8365e86c8dcd087"},
+          "source_metadata_url": "https://api.osf.io/v2/files/60fe45a03176200106381ab8/"
+        },
+        {
+          "url": "https://osf.io/download/ryj9k/",
+          "relative_path": "lee2021mobile/sub-01/ses-01/eeg/sub-01_ses-01_task-ERP_eeg.vmrk",
+          "size_bytes": 9319,
+          "checksum": {"algorithm": "sha256", "value": "f1918a726c653eb8c5fce9e0f310efd01d09a8560381924326923220838162e2"},
+          "source_metadata_url": "https://api.osf.io/v2/files/60fe459cc7a97601039dbb27/"
+        },
+        {
+          "url": "https://osf.io/download/jmxhk/",
+          "relative_path": "lee2021mobile/sub-01/ses-01/eeg/sub-01_ses-01_task-ERP_channels.tsv",
+          "size_bytes": 1873,
+          "checksum": {"algorithm": "sha256", "value": "4248434418108460907a76526038707b09b8bc2ae208feac649297f90dbd783c"},
+          "source_metadata_url": "https://api.osf.io/v2/files/60fe459cc7a97601039dbf28/"
+        },
+        {
+          "url": "https://osf.io/download/j695x/",
+          "relative_path": "lee2021mobile/sub-01/ses-01/eeg/sub-01_ses-01_task-ERP_events.tsv",
+          "size_bytes": 6271,
+          "checksum": {"algorithm": "sha256", "value": "508d2cc22afd4065b820faa376689eb2ccf9f5faf5cccd9114c16ea02cc5b65b"},
+          "source_metadata_url": "https://api.osf.io/v2/files/60fe459c0c4cba0102bc90fc/"
+        }
+      ],
+      "import": {
+        "source_hint": "file",
+        "entrypoint": "lee2021mobile/sub-01/ses-01/eeg/sub-01_ses-01_task-ERP_eeg.vhdr",
+        "selected_eeg_files": ["lee2021mobile/sub-01/ses-01/eeg/sub-01_ses-01_task-ERP_eeg.vhdr"],
+        "excluded_label_carriers": ["lee2021mobile/sub-01/ses-01/eeg/sub-01_ses-01_task-ERP_events.tsv"],
+        "choices": {
+          "label_carrier": "embedded_events",
+          "class_map": {
+            "Stimulus/S  1": "NonTarget",
+            "Stimulus/S  2": "Target"
+          },
+          "internal_event_selection": {
+            "label_event_codes": ["Stimulus/S  1", "Stimulus/S  2"]
+          },
+          "run_event_mappings": {
+            "sub-01_ses-01_task-ERP_eeg.vhdr": {
+              "Stimulus/S  1": "NonTarget",
+              "Stimulus/S  2": "Target"
+            }
+          }
+        }
+      },
+      "workflow": {
+        "preprocessing": [
+          {"operation": "bandpass", "low_freq": 0.5, "high_freq": 20.0}
+        ],
+        "epoch": {
+          "t_min": -0.25,
+          "t_max": 1.0,
+          "baseline": null,
+          "event_ids": ["Target", "NonTarget"]
+        },
+        "split": {
+          "test_ratio": 0.2,
+          "val_ratio": 0.2,
+          "split_strategy": "trial",
+          "training_mode": "individual"
+        },
+        "training_profiles": {
+          "smoke": {
+            "name": "EEGNet",
+            "device": "cpu",
+            "epochs": 1,
+            "batch_size": 32,
+            "learning_rate": 0.001,
+            "optimizer": "adam",
+            "evaluation_option": "val_acc",
+            "stopping_budget": "One epoch; command-spine smoke only."
+          },
+          "showcase": {
+            "name": "EEGNet",
+            "device": "cpu",
+            "epochs": 30,
+            "batch_size": 32,
+            "learning_rate": 0.001,
+            "optimizer": "adam",
+            "evaluation_option": "val_auc",
+            "stopping_budget": "Fixed 30-epoch upper bound with validation-AUC checkpoint selection for the imbalanced ERP task; the held-out test split is not used for stopping."
+          }
+        },
+        "quality_acceptance": {
+          "held_out_split": "test",
+          "test_access_policy": "Read the saved test predictions once, only after the validation-selected checkpoint and fixed epoch budget have completed.",
+          "rules": [
+            {
+              "metric": "roc_auc_ovr",
+              "operator": ">",
+              "threshold": {"kind": "observed_baseline", "name": "auc_chance_baseline"},
+              "rationale": "P300 Target/NonTarget evidence uses threshold-independent ROC AUC because raw accuracy is dominated by NonTarget prevalence."
+            },
+            {
+              "metric": "balanced_accuracy",
+              "operator": ">",
+              "threshold": {"kind": "observed_baseline", "name": "chance_baseline"},
+              "rationale": "Balanced accuracy must also exceed chance so both classes contribute equally to acceptance."
+            }
+          ]
+        },
+        "seed": 1731,
+        "saliency": {
+          "profile": "recommended",
+          "methods": ["Gradient", "Gradient * Input"],
+          "max_artifact_bytes": 268435456
+        }
+      },
+      "claim_boundary": [
+        "One standing training session does not validate walking/running sessions or all 24 subjects.",
+        "The BIDS events table is retained and checksummed but excluded from label application so the journey specifically tests native BrainVision markers.",
+        "P300 quality acceptance deliberately excludes raw accuracy because class imbalance can make a majority-class model look strong."
+      ]
+    }
+  ]
+}

@@ -23,6 +23,7 @@ from XBrainLab.backend.application.workflow_projection import (
     build_workflow_projection,
 )
 from XBrainLab.llm.agent.assistant_activity import (
+    AssistantDecisionOwner,
     AssistantTurnActivity,
     AssistantTurnActivityPhase,
 )
@@ -65,6 +66,9 @@ from XBrainLab.ui.components.workflow_surface_router import (
         (
             AssistantTurnActivity(
                 AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+                command_name="create_epoch",
+                request_id="epoch-dialog-1",
+                decision_owner=AssistantDecisionOwner.GUI_DIALOG,
             ),
             "Waiting for decision",
         ),

@@ -42,6 +42,39 @@ owner 的 dirty changes。
 | 5 | Expand dataset acceptance | 每新增一個真人資料集都記錄來源、格式、label semantics、可完成步驟與限制；不同副檔名不冒充不同資料集。 |
 | 6 | Candidate gate | 在明確候選 commit 跑 relevant regression、multi-dataset、UI artifact、static/docs 與真人 Windows acceptance，再決定 release claim。 |
 
+## Active Quality Closure TODO
+
+這是本輪唯一 active TODO。完成一列代表其 exit signal 已有可重跑 evidence，
+不是 worker 回報「已實作」。
+
+| Workstream | Required outcome | Exit signal | Status |
+| --- | --- | --- | --- |
+| Assistant confirmation contract | `reset_preprocess`、`generate_dataset` 與影響 training 的 setting change 都使用正確 typed confirmation evidence；不得來自一般 approval 字串。 | capability/confirmation/revision/fingerprint focused tests 與 negative stale-evidence tests 通過。 | In progress |
+| Assistant decision state | GUI navigation handoff 與真正參數/危險操作 confirmation 不再共用曖昧 `WAITING_FOR_DECISION`。 | UI presentation 能區分 navigate、confirm、blocked、error、retry，且 correlation 沒有混用。 | In progress |
+| Granite 2B tool surface | 每回合只暴露當前 intent 需要的 canonical schema，避免 `set_model` / `configure_training` 或多個 generic preprocess tool 競爭。 | representative prompts 的 schema exposure 與 selected-tool oracle 通過，且 blocked tool 無法執行。 | In progress |
+| Assistant failure/retry UX | tool runtime failure 不再全部假裝成 BLOCKED；narrow panel 仍有 correlated retry / cancel 途徑。 | error、blocked、cancel、retry screenshots 與 state-transition tests 通過。 | In progress |
+| Assistant handoff route ownership | command、dialog/panel surface、decision owner、target panel 與顯示文案只有一份 typed route descriptor；controller、host、presentation 不各自維護 mapping。 | route coverage/parity、request correlation、dialog/panel terminal-resolution tests 通過，重複 mapping source sweep 為 clean。 | In progress |
+| Assistant turn transaction | turn orchestration、pending interaction、tool session、metrics、response buffer 與 terminal cleanup 由單一 transaction owner 管理，不靠多組手動 reset/rollback。 | error/cancel/timeout/retry/new-turn characterization 先完成；再用可回滾 slice 抽取 owner，long-session/lifecycle gate 不退步。 | Pending handoff closure |
+| Chat processing state truth | typed turn presentation 是 loading/working/waiting/error/idle 唯一顯示真相；legacy boolean busy signal 不可覆寫較完整狀態。 | source guard 消除 product 雙訂閱/順序依賴，resize/stream/error screenshots 與 lifecycle tests 通過。 | Pending turn transaction |
+| Qt worker lifecycle | agent/UI tests 不留下 QThread、deferred delete 或 teardown hang；不用 CI shard 隱藏 lifecycle leak。 | isolated reproducer 與 repeated bounded lifecycle test 通過，process 可正常退出。 | In progress |
+| Obsolete test cleanup | 只在 unique behavior / source guard 已遷移後刪除 duplicate suites，不為縮短 CI 盲刪。 | replacement assertions 先紅後綠，relevant domain shard 仍通過。 | In progress |
+| Tool-call showcase | 一個可快速看見 prompt -> snapshot/capabilities -> exposed schemas -> tool/params -> verification/confirmation -> command result -> visible feedback 的 script。 | deterministic default 輸出 JSON + Markdown，含 success、blocked、confirmation、cancel、stale、error/retry；另有可選 real Granite 2B mode。 | In progress |
+| Assistant composition refactor | 在上述 behavior contract 穩定後，將約 3,100 行 `LLMController`、2,400 行 `AgentManager` 與 2,500 行 `ChatPanel` 中的 turn orchestration、confirmation、runtime lifecycle 和 presentation ownership 拆成已有 narrow owners，不改 UI 心智模型。 | 每個 slice 先有 characterization tests；product path 仍只走 ApplicationService；chat screenshots 和 tool traces 無語意差異。 | Pending contract closure |
+| UI compatibility cleanup | 盤點產品 UI 仍直接讀 controller / Study-shaped compatibility 的 call sites；優先清掉會形成第二份 readiness 或 render truth 的部分，不因檔案大就大改 UI。 | source guard + 一條 non-mocked command/publication workflow 通過，與當前 screenshots 一致。 | Pending behavior closure |
+| Data Import structured review truth | `ValidationDecision.action_items` 唯一決定 blocker 與 target step；UI 不從英文 summary/blocked reason 反推 readiness。 | safe/needs-confirmation/blocked/resource-blocked/edited-recheck tests 與 missing-action-items fail-closed guard 通過。 | In progress |
+| Publication lifecycle boundary | 已抽出的 `ApplicationPublicationLifecycle` 直接擁有 terminal/retry/shutdown/headless wait 行為；移除只有測試綁定的 ApplicationService 私有 delegate。 | 每個 delegate 有 call-site sweep，focused owner/public-result tests 與 adjacent backend publication suites 通過。 | In progress |
+| Data Import composition debt | 約 4,500 行 wizard dialog 不能再吸收 backend policy、scan 或 recipe truth；新的 MOABB / site 工作不得把 dataset-specific 規則寫回 UI。 | 本輪先用 architecture guard 阻擋新回流；真正拆分只用可回滾的獨立 refactor slice。 | Guard now; refactor later |
+| User-facing site | 另一個面向 EEG 使用者的 site source，不覆寫 developer docs；流程導航、限制與資料來源清楚。 | isolated strict MkDocs build、desktop/mobile screenshot review，不存在假 metrics 或 placeholder-as-evidence。 | In progress |
+| MOABB dataset journeys | Batch 1 先完成 3 個不同 source/paradigm 的真實 dataset；長期 campaign 目標約 80 個 MOABB dataset cases。每個 case 都使用 XBrainLab product path 走 load -> labels/metadata -> preprocess -> epoch -> split -> train -> evaluation -> saliency。未達品質門檻時先診斷資料量、切分與 validation-only tuning，不以反覆查看 test 或直接放棄收尾。 | pinned source/license/identity/subject/run/seed/recipe/metrics/saliency manifest，可 resume，且 batch 1 至少一個 case 非 GDF、一個非 MI。Campaign runner 必須 dataset-agnostic，後續可逐批擴到約 80 cases。 | Batch 1 in progress (3 cases) |
+| Case-study evidence | 每個 dataset 一頁，只顯示實際重跑的 screenshots、training result 與 limitation，不把 format coverage 冒充 dataset diversity。 | manifest 和頁面數字可對應 exact artifacts；主 agent 逐圖檢查。 | Pending pipeline |
+| Integration and review | Agent/runtime 與 user-site/evidence 使用明確的 stacked branches，不污染已綠的 EEG workflow candidate。 | 主 agent 重讀 diff、跑 combined tests、UI/product/architecture reviewers 重審，再 commit/push。 | Pending workers |
+
+分支邊界：`integration/eeg-workflow-improvements-v1@e2a3e0c3` 保留為已驗證 EEG
+workflow baseline。Assistant contract、lifecycle 與 tool-call showcase 組成一條 stacked
+candidate；user-facing site、MOABB runner 與 case evidence 組成另一條 stacked
+candidate。兩條都通過自己的 gate 後，才能依序整合；不得把尚未審查的
+worker commit 直接混入已綠 PR。
+
 ## Evidence Rule
 
 本候選的 immediate exit signal 是：五項 focused suites、populated `All Folds` Evaluation / Saliency

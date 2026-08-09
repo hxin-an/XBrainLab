@@ -20,12 +20,16 @@ from XBrainLab.backend.application.resource_preflight import (
 )
 from XBrainLab.llm.tools.application_surface import (
     READ_ONLY_TOOLS,
+    SETTING_CHANGE_CONFIRMATION_KIND,
     TOOL_TO_COMMAND,
     CapabilityPolicyUnavailable,
     ToolAvailability,
     ToolAvailabilityContext,
     ToolCommandResult,
+    assistant_setting_change_requires_confirmation,
+    authorize_assistant_setting_change,
     get_application_context,
+    setting_confirmation_params,
 )
 from XBrainLab.llm.tools.base import BaseTool
 from XBrainLab.llm.tools.result_contract import (
@@ -357,21 +361,30 @@ class ToolAttemptCoordinator:
             )
 
         tool = self._registry.get_tool(command_name)
-        if self._execution_policy.needs_confirmation(
+        evaluated_params = setting_confirmation_params(command_name, params)
+        setting_confirmation = assistant_setting_change_requires_confirmation(
+            command_name,
+            evaluated_params,
+            context.state,
+        )
+        if setting_confirmation or self._execution_policy.needs_confirmation(
             context.availability,
             tool_requires_confirmation=bool(tool and tool.requires_confirmation),
         ):
             return ToolAttemptDecision(
                 ToolAttemptAction.CONFIRMATION_REQUIRED,
                 command_name,
-                params,
+                evaluated_params,
                 context=context,
                 tool=tool,
+                confirmation_kind=(
+                    SETTING_CHANGE_CONFIRMATION_KIND if setting_confirmation else None
+                ),
             )
         return ToolAttemptDecision(
             ToolAttemptAction.EXECUTE,
             command_name,
-            params,
+            evaluated_params,
             context=context,
             tool=tool,
         )
@@ -569,17 +582,26 @@ class ToolAttemptCoordinator:
         command_name: str,
         params: dict[str, Any],
         *,
+        requires_command_confirmation: bool = True,
+        publication_generation: int | None = None,
         confirmation_kind: str | None = None,
         resource_preflight_receipt: ResourceConfirmationChallenge | None = None,
     ) -> dict[str, Any]:
         """Inject backend confirmation fields after explicit user approval."""
         confirmed = dict(params)
-        if command_name in {
-            "apply_interpretation",
-            "clear_dataset",
-            "start_training",
-        }:
+        if requires_command_confirmation:
             confirmed["confirmed"] = True
+        if confirmation_kind == SETTING_CHANGE_CONFIRMATION_KIND:
+            if type(publication_generation) is not int or publication_generation < 0:
+                raise ValueError(
+                    "Setting confirmation requires an authoritative publication "
+                    "generation."
+                )
+            confirmed = authorize_assistant_setting_change(
+                command_name,
+                confirmed,
+                publication_generation=publication_generation,
+            )
         if confirmation_kind != "resource_preflight":
             return confirmed
         if resource_preflight_receipt is None:
@@ -623,9 +645,24 @@ class ToolAttemptCoordinator:
         receipt = decision.resource_preflight_receipt
         if decision.confirmation_kind == "resource_preflight" and receipt is None:
             raise ValueError("Resource confirmation requires an authoritative receipt.")
+        context = decision.context
+        requires_command_confirmation = self._execution_policy.needs_confirmation(
+            (
+                context.availability
+                if isinstance(context, ToolAvailabilityContext)
+                else None
+            ),
+            tool_requires_confirmation=bool(
+                decision.tool and decision.tool.requires_confirmation
+            ),
+        )
         return self.confirmed_params(
             decision.command_name,
             decision.params,
+            requires_command_confirmation=requires_command_confirmation,
+            publication_generation=(
+                context.generation if context is not None else None
+            ),
             confirmation_kind=decision.confirmation_kind,
             resource_preflight_receipt=receipt,
         )

@@ -345,6 +345,27 @@ class TestDataSplittingPreviewDialogDeep:
         # Before preview runs, result should be the generator (or None)
         assert result is None or hasattr(result, "__iter__")
 
+    def test_full_data_result_after_successful_preview(self, dlg):
+        dlg._set_preview_state(
+            dlg._preview_generation_id,
+            "succeeded",
+            rows=(
+                DatasetSplitPreviewRow(
+                    name="Fold_0",
+                    train_count=80,
+                    validation_count=10,
+                    test_count=10,
+                ),
+            ),
+        )
+
+        assert dlg.get_result() == {
+            "train_type": "Full Data",
+            "is_cross_validation": False,
+            "val_splitters": [],
+            "test_splitters": [],
+        }
+
     def test_obsolete_show_split_button_is_not_rendered(self, dlg):
         assert dlg.btn_info is None
 

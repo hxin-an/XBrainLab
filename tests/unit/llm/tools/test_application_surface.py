@@ -60,6 +60,7 @@ from XBrainLab.llm.tools.application_surface import (
     ToolCommandResult,
     UserProvidedTrainingOutputDir,
     _command_for_tool,
+    authorize_assistant_setting_change,
     blocked_tool_reasons,
     build_agent_tool_policy,
     execute_application_tool_command,
@@ -123,6 +124,19 @@ def _assert_tool_command_result(
 def _state(result: ToolCommandResult) -> dict[str, Any]:
     assert isinstance(result.state, dict)
     return result.state
+
+
+def _authorize_setting(
+    study: Study,
+    tool_name: str,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    generation = get_application_service(study).get_view_publication().generation
+    return authorize_assistant_setting_change(
+        tool_name,
+        params,
+        publication_generation=generation,
+    )
 
 
 def test_agent_action_contract_registry_has_unique_tools_and_intent_aliases():
@@ -930,7 +944,11 @@ def test_application_tool_result_capability_is_rebuilt_from_post_command_state()
     result = execute_application_tool_command(
         study,
         "set_model",
-        {"model_name": "EEGNet"},
+        _authorize_setting(
+            study,
+            "set_model",
+            {"model_name": "EEGNet"},
+        ),
         availability=pre_command_availability,
         state={"pipeline_stage": "empty"},
     )
@@ -996,13 +1014,17 @@ def test_start_training_surface_preserves_backend_confirmation_boundary():
     configured = execute_application_tool_command(
         study,
         "configure_training",
-        {
-            "model_name": "EEGNet",
-            "epoch": 1,
-            "batch_size": 2,
-            "learning_rate": 0.001,
-            "device": "cpu",
-        },
+        _authorize_setting(
+            study,
+            "configure_training",
+            {
+                "model_name": "EEGNet",
+                "epoch": 1,
+                "batch_size": 2,
+                "learning_rate": 0.001,
+                "device": "cpu",
+            },
+        ),
     )
     assert isinstance(configured, ToolCommandResult)
     assert configured.ok is True
@@ -1377,7 +1399,11 @@ def test_application_tool_command_returns_structured_result_for_model_config():
     result = execute_application_tool_command(
         study,
         "set_model",
-        {"model_name": "EEGNet"},
+        _authorize_setting(
+            study,
+            "set_model",
+            {"model_name": "EEGNet"},
+        ),
     )
 
     result = _assert_tool_command_result(
@@ -1397,19 +1423,24 @@ def test_application_tool_command_preserves_host_authorized_training_output_dir(
     tmp_path,
 ):
     output_dir = tmp_path / "chatpanel-training-output"
+    study = Study()
 
     result = execute_application_tool_command(
-        Study(),
+        study,
         "configure_training",
-        {
-            "model_name": "EEGNet",
-            "epoch": 1,
-            "batch_size": 2,
-            "learning_rate": 0.001,
-            "device": "cpu",
-            "evaluation_option": "val_auc",
-            "output_dir": UserProvidedTrainingOutputDir(str(output_dir)),
-        },
+        _authorize_setting(
+            study,
+            "configure_training",
+            {
+                "model_name": "EEGNet",
+                "epoch": 1,
+                "batch_size": 2,
+                "learning_rate": 0.001,
+                "device": "cpu",
+                "evaluation_option": "val_auc",
+                "output_dir": UserProvidedTrainingOutputDir(str(output_dir)),
+            },
+        ),
     )
 
     result = _assert_tool_command_result(
@@ -1428,16 +1459,21 @@ def test_application_tool_command_preserves_host_authorized_training_output_dir(
 
 
 def test_application_tool_command_accepts_backend_valid_learning_rate_one():
+    study = Study()
     result = execute_application_tool_command(
-        Study(),
+        study,
         "configure_training",
-        {
-            "model_name": "EEGNet",
-            "epoch": 2,
-            "batch_size": 4,
-            "learning_rate": 1.0,
-            "device": "cpu",
-        },
+        _authorize_setting(
+            study,
+            "configure_training",
+            {
+                "model_name": "EEGNet",
+                "epoch": 2,
+                "batch_size": 4,
+                "learning_rate": 1.0,
+                "device": "cpu",
+            },
+        ),
     )
 
     result = _assert_tool_command_result(

@@ -8,7 +8,10 @@ from dataclasses import dataclass
 from XBrainLab.backend.application import CommandName
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 
-from .training_request import contains_explicit_training_options
+from .training_request import (
+    contains_explicit_training_options,
+    extract_explicit_training_model,
+)
 
 INTENT_TO_COMMAND: dict[str, CommandName] = AGENT_ACTION_CONTRACTS.intent_to_command()
 
@@ -421,6 +424,13 @@ def infer_user_intent(text: str) -> str:
         return "stop_training"
     if _is_primary_train_with_conditional_fallback(normalized):
         return "train"
+    if re.search(r"\btrain\b", normalized) or re.search(
+        r"\b(?:start|run|begin)\s+(?:the\s+)?training\b",
+        normalized,
+    ):
+        return "train"
+    if extract_explicit_training_model(normalized) is not None:
+        return "configure_training"
     if "configure training" in normalized or contains_explicit_training_options(
         normalized
     ):
@@ -435,7 +445,7 @@ def infer_user_intent(text: str) -> str:
         return "train"
     if "訓練" in normalized:
         return "train"
-    if "eegnet" in normalized or ("model" in normalized and "use" in normalized):
+    if "model" in normalized and "use" in normalized:
         return "configure_training"
     return "unknown"
 

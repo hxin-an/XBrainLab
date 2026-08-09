@@ -107,7 +107,7 @@ jobs:
         shell: bash
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 8
       matrix:
         command:
           - linux-unit-backend
@@ -218,7 +218,7 @@ jobs:
             coverage.xml
 
   platform-test:
-    name: Platform Tests (${{ matrix.os }}, py3.11)
+    name: Platform Tests (${{ matrix.os }}, ${{ matrix.command }}, py3.11)
     needs: changes
     if: needs.changes.outputs.product == 'true'
     runs-on: ${{ matrix.os }}
@@ -229,6 +229,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
+        command:
+          - platform-core-contracts
+          - platform-product-lifecycle
     env:
       QT_QPA_PLATFORM: offscreen
       XBL_SHARED_CI_RUNNER: "1"
@@ -263,14 +266,17 @@ jobs:
           XBL_TEST_SHARD_TIMEOUT_SECONDS: "1200"
         run: |
           mkdir -p test-results
-          poetry run -- python scripts/dev/run_tests.py platform --result-json test-results/platform-regression.json
+          poetry run -- python scripts/dev/run_tests.py ${{ matrix.command }} \
+            --result-json test-results/${{ matrix.command }}.json
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results-${{ matrix.os }}-py3.11
-          path: test-results/*.xml
+          name: test-results-${{ matrix.os }}-${{ matrix.command }}-py3.11
+          path: |
+            test-results/*.json
+            test-results/*.xml
 
   public-dataset-gate:
     name: Required Public Multi-Dataset Gate

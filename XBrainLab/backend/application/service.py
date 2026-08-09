@@ -19,8 +19,6 @@ from XBrainLab.backend.services.visualization_state_service import (
 )
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training_state_contract import (
-    PostTrainingSaliencyStatus,
-    TrainingLifecycleEvent,
     TrainingOutcomeState,
     TrainingReadBoundary,
     TrainingTerminalOutcome,
@@ -102,10 +100,7 @@ from .evaluation_render import (
 from .lifecycle_service import LifecycleCommandService
 from .pipeline_stage import pipeline_stage_readiness_summary
 from .pipeline_transaction import PipelineStateTransaction
-from .post_training_saliency import (
-    PostTrainingSaliencyAutomation,
-    SaliencyTerminalNotification,
-)
+from .post_training_saliency import PostTrainingSaliencyAutomation
 from .preprocess_render import (
     PreprocessRenderPublication,
     PreprocessRenderPublisher,
@@ -132,9 +127,6 @@ from .synchronous_training_lifecycle import (
     SynchronousTrainingLifecycleCoordinator,
 )
 from .training_configuration_reset import TrainingConfigurationResetService
-from .training_publication_lifecycle import (
-    SaliencyTerminalDeliveryPlan,
-)
 from .training_runtime import (
     StudyTrainingRuntime,
     TrainingProjectionReadPort,
@@ -750,20 +742,6 @@ class ApplicationService(Observable):
             return preprocessed_rows
         return self.dataset.get_loaded_data_rows()
 
-    @property
-    def _observer_finalizer(self) -> Callable[[], Any]:
-        """Compatibility view of publication observer cleanup ownership."""
-        return self.publication_lifecycle.observer_finalizer
-
-    @_observer_finalizer.setter
-    def _observer_finalizer(self, cleanup: Callable[[], Any]) -> None:
-        self.publication_lifecycle.observer_finalizer = cleanup
-
-    @property
-    def _saliency_notification_boundary(self) -> Any:
-        """Compatibility view of the coordinator-owned delivery boundary."""
-        return self.publication_lifecycle.saliency_notification_boundary
-
     def close(self) -> None:
         """Idempotently detach lifecycle observers and release runtime ownership."""
         from .runtime import begin_application_service_close  # noqa: PLC0415
@@ -818,112 +796,20 @@ class ApplicationService(Observable):
         if self.shutdown_lifecycle.snapshot().closed:
             raise RuntimeError(_CLOSED_SERVICE_MESSAGE)
 
-    def _discard_pending_saliency_terminal(self) -> None:
-        """Explicitly abandon terminal UI delivery during permanent close."""
-        self.publication_lifecycle.coordinator.discard_pending()
-
     def dispose(self) -> None:
         """Compatibility alias for explicit ApplicationService cleanup."""
         self.close()
-
-    def _publish_training_live_state(self, *_args: Any, **_kwargs: Any) -> None:
-        """Compatibility delegate for focused lifecycle tests."""
-        self.publication_lifecycle.publish_training_live_state(*_args, **_kwargs)
 
     def _publish_training_terminal_state(
         self,
         *_args: Any,
         **_kwargs: Any,
     ) -> bool:
-        """Compatibility delegate for headless waits and focused tests."""
+        """Compatibility delegate retained for out-of-scope UI lifecycle callers."""
         return self.publication_lifecycle.publish_training_terminal_state(
             *_args,
             **_kwargs,
         )
-
-    def _deliver_training_terminal_publication(
-        self,
-        lifecycle_event: TrainingLifecycleEvent,
-    ) -> bool:
-        """Compatibility delegate for terminal acknowledgement tests."""
-        return self.publication_lifecycle.deliver_training_terminal_publication(
-            lifecycle_event
-        )
-
-    def _terminal_training_publication_event(
-        self,
-        state: ApplicationStateSnapshot,
-    ) -> TrainingLifecycleEvent | None:
-        """Compatibility delegate for exact terminal generation tests."""
-        return self.publication_lifecycle.terminal_training_publication_event(state)
-
-    def _publish_post_training_saliency_terminal_state(
-        self,
-        status: PostTrainingSaliencyStatus,
-    ) -> bool:
-        """Compatibility delegate for terminal saliency observer tests."""
-        return self.publication_lifecycle.publish_post_training_saliency_terminal_state(
-            status
-        )
-
-    def _commit_post_training_saliency_terminal_state(
-        self,
-        status: PostTrainingSaliencyStatus,
-    ) -> bool:
-        """Compatibility delegate for command-boundary saliency delivery."""
-        return self.publication_lifecycle.commit_post_training_saliency_terminal_state(
-            status
-        )
-
-    def _remember_pending_saliency_terminal(
-        self,
-        status: PostTrainingSaliencyStatus,
-    ) -> None:
-        """Compatibility delegate for shutdown reconciliation call sites."""
-        self.publication_lifecycle.remember_pending_saliency_terminal(status)
-
-    def _pending_saliency_terminal(self) -> PostTrainingSaliencyStatus | None:
-        """Return coordinator-owned terminal identity awaiting delivery."""
-        return self.publication_lifecycle.pending_saliency_terminal()
-
-    def _clear_pending_saliency_terminal(
-        self,
-        status: PostTrainingSaliencyStatus,
-    ) -> None:
-        """Discard one exact coordinator-owned delivery obligation."""
-        self.publication_lifecycle.clear_pending_saliency_terminal(status)
-
-    def _reconcile_pending_saliency_terminal(
-        self,
-        *,
-        allow_shutdown_fenced: bool = False,
-        blocking: bool = True,
-    ) -> bool:
-        """Compatibility delegate for retained terminal saliency work."""
-        return self.publication_lifecycle.reconcile_pending_saliency_terminal(
-            allow_shutdown_fenced=allow_shutdown_fenced,
-            blocking=blocking,
-        )
-
-    def _plan_saliency_terminal_delivery(
-        self,
-        notification: SaliencyTerminalNotification,
-    ) -> SaliencyTerminalDeliveryPlan:
-        """Compatibility delegate for delivery policy tests."""
-        return self.publication_lifecycle.plan_saliency_terminal_delivery(notification)
-
-    def _notify_saliency_publication_changed(
-        self,
-        notification: SaliencyTerminalNotification | None = None,
-    ) -> bool:
-        """Compatibility delegate for visualization notification tests."""
-        return self.publication_lifecycle.notify_saliency_publication_changed(
-            notification
-        )
-
-    def _visualization_batch_generation(self) -> int | None:
-        """Compatibility delegate for command-batch diagnostics."""
-        return self.publication_lifecycle.visualization_batch_generation()
 
     def _configure_post_training_saliency(
         self,
@@ -964,7 +850,7 @@ class ApplicationService(Observable):
                 else:
                     state = self._refresh_training_publication_strict()
             if not mutation_in_progress:
-                self._reconcile_pending_saliency_terminal()
+                self.publication_lifecycle.reconcile_pending_saliency_terminal()
             return state
 
     def _refresh_training_publication_strict(self) -> ApplicationStateSnapshot:
@@ -1281,7 +1167,9 @@ class ApplicationService(Observable):
             timeout=remaining(),
         ):
             return False
-        terminal_reconciled = self._publish_training_terminal_state()
+        terminal_reconciled = (
+            self.publication_lifecycle.publish_training_terminal_state()
+        )
         if not self.training_publications.wait_for_training_delivery(
             timeout=remaining()
         ):
@@ -1296,7 +1184,9 @@ class ApplicationService(Observable):
             timeout=remaining()
         ):
             return False
-        return terminal_reconciled or self._publish_training_terminal_state()
+        return terminal_reconciled or (
+            self.publication_lifecycle.publish_training_terminal_state()
+        )
 
     def _committed_view_publication(self) -> ApplicationViewPublication:
         """Copy the internal publication without exposing mutable nested values."""
@@ -1313,8 +1203,13 @@ class ApplicationService(Observable):
         if closed is not None:
             return closed
         publication = self._committed_view_publication()
-        if not publication.usable and self._pending_saliency_terminal() is not None:
-            self._reconcile_pending_saliency_terminal(blocking=False)
+        if (
+            not publication.usable
+            and self.publication_lifecycle.pending_saliency_terminal() is not None
+        ):
+            self.publication_lifecycle.reconcile_pending_saliency_terminal(
+                blocking=False
+            )
             publication = self._committed_view_publication()
         if expected_publication_generation is not None:
             rejection = self._expected_publication_rejection_for_publication(
@@ -1384,7 +1279,7 @@ class ApplicationService(Observable):
             else nullcontext()
         )
         manager_notifications = self.training_runtime.defer_saliency_terminal(
-            self._commit_post_training_saliency_terminal_state
+            self.publication_lifecycle.commit_post_training_saliency_terminal_state
         )
         visualization_batch_generation: int | None = None
         completion_release: Callable[[], None] | None = None
@@ -1396,7 +1291,7 @@ class ApplicationService(Observable):
             ):
                 if isinstance(command, SaliencyCommand):
                     visualization_batch_generation = (
-                        self._visualization_batch_generation()
+                        self.publication_lifecycle.visualization_batch_generation()
                     )
                 result, completion_release = self._execute_at_command_boundary(
                     command,

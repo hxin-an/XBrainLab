@@ -31,11 +31,16 @@ def training_option_snapshot(option: Any) -> dict[str, Any]:
     evaluation_option = getattr(option, "evaluation_option", None)
     evaluation_value = getattr(evaluation_option, "value", evaluation_option)
     optimizer_params = getattr(option, "optim_params", None)
+    repeat_seed_getter = getattr(option, "get_configured_repeat_seeds", None)
     return {
         "epoch": getattr(option, "epoch", None),
         "batch_size": getattr(option, "bs", None),
         "learning_rate": getattr(option, "lr", None),
         "repeat": getattr(option, "repeat_num", None),
+        "seed": getattr(option, "seed", None),
+        "repeat_seeds": (
+            repeat_seed_getter() if callable(repeat_seed_getter) else None
+        ),
         "device": option.get_device() if hasattr(option, "get_device") else None,
         "optimizer": option.get_optim_name()
         if hasattr(option, "get_optim_name")

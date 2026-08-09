@@ -184,6 +184,7 @@ def test_deterministic_oracle_preserves_semantics_and_held_out_outputs(
         checkpoint_epoch=0,
         evaluation_option=TrainingEvaluation.LAST_EPOCH,
         repeat_num=1,
+        seed=1729,
     )
     plan = TrainingPlanHolder(
         ModelHolder(EEGNet, {"f1": 2, "f2": 4, "d": 1}),
@@ -196,6 +197,14 @@ def test_deterministic_oracle_preserves_semantics_and_held_out_outputs(
     assert plan.error is None
     assert len(plan.train_record_list) == 1
     record = plan.train_record_list[0]
+    assert record.seed == 1729
+    train_loader, val_loader, test_loader = plan.get_loader(record)
+    assert all(
+        loader is not None
+        and loader.generator is not None
+        and loader.generator.initial_seed() == 1729
+        for loader in (train_loader, val_loader, test_loader)
+    )
     assert record.is_finished()
     _assert_finite_history(
         record.train,

@@ -1,6 +1,7 @@
 """Training option and configuration classes for model training."""
 
 import os
+import secrets
 from collections.abc import Callable
 from enum import Enum
 from typing import Any
@@ -17,6 +18,9 @@ from .input_contract import (
     normalize_positive_finite_float,
     normalize_positive_integer,
 )
+
+MIN_TRAINING_SEED = 0
+MAX_TRAINING_SEED = 0xFFFF_FFFF
 
 
 def _normalize_output_dir(value: Any) -> str:
@@ -143,6 +147,8 @@ class TrainingOption:
         checkpoint_epoch: Checkpoint epoch
         evaluation_option: Model selection option
         repeat_num: Number of repeats
+        seed: Unsigned 32-bit base seed. A base is generated once when omitted;
+            repeat ``i`` uses ``seed + i``.
         criterion: Loss function
 
     """
@@ -160,6 +166,7 @@ class TrainingOption:
         checkpoint_epoch: int,
         evaluation_option: TrainingEvaluation,
         repeat_num: int,
+        seed: int | None = None,
     ):
         """Initialize training options and validate them.
 
@@ -176,6 +183,9 @@ class TrainingOption:
             checkpoint_epoch: Save checkpoint every N epochs.
             evaluation_option: Model selection strategy.
             repeat_num: Number of training repetitions.
+            seed: Optional reproducibility base seed in ``0..2^32-1``. When
+                omitted, one base is generated during validation. Each repeat
+                derives ``seed + repeat_index`` without wraparound.
 
         Raises:
             ValueError: If any option is invalid or not set.
@@ -192,6 +202,7 @@ class TrainingOption:
         self.checkpoint_epoch = checkpoint_epoch
         self.evaluation_option = evaluation_option
         self.repeat_num = repeat_num
+        self.seed = seed
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer_name = "adam"  # Default
         self.validate()
@@ -293,6 +304,19 @@ class TrainingOption:
             self.repeat_num,
         )
 
+        normalized_seed: int | None = None
+        try:
+            normalized_seed = self._normalize_seed(
+                self.seed,
+                repeat_num=(
+                    int(normalized["repeat_num"])
+                    if "repeat_num" in normalized
+                    else None
+                ),
+            )
+        except ValueError as exc:
+            errors.append(str(exc))
+
         if errors:
             raise ValueError("; ".join(errors))
 
@@ -304,8 +328,50 @@ class TrainingOption:
         self.lr = float(normalized["lr"])
         self.checkpoint_epoch = int(normalized["checkpoint_epoch"])
         self.repeat_num = int(normalized["repeat_num"])
+        self.seed = normalized_seed
         if self.gpu_idx is not None:
             self.gpu_idx = int(normalized["gpu_idx"])
+
+    @staticmethod
+    def _normalize_seed(value: Any, *, repeat_num: int | None) -> int:
+        if repeat_num is not None and repeat_num > MAX_TRAINING_SEED + 1:
+            raise ValueError(
+                "Invalid seed (base seed + repeat count - 1 must not exceed 4294967295)"
+            )
+        if value is None:
+            repeat_count = repeat_num if repeat_num is not None else 1
+            max_base_seed = MAX_TRAINING_SEED - (repeat_count - 1)
+            return secrets.randbelow(max_base_seed + 1)
+        if (
+            type(value) is not int
+            or not MIN_TRAINING_SEED <= value <= MAX_TRAINING_SEED
+        ):
+            raise ValueError(
+                "Invalid seed (must be an integer between 0 and 4294967295)"
+            )
+        if repeat_num is not None and value > MAX_TRAINING_SEED - (repeat_num - 1):
+            raise ValueError(
+                "Invalid seed (base seed + repeat count - 1 must not exceed 4294967295)"
+            )
+        return value
+
+    def get_seed_for_repeat(self, repeat_index: int) -> int:
+        """Return the configured ``base_seed + repeat_index``."""
+        if (
+            type(repeat_index) is not int
+            or repeat_index < 0
+            or repeat_index >= self.repeat_num
+        ):
+            raise IndexError("repeat_index is outside the configured repeat range")
+        if type(self.seed) is not int:
+            raise RuntimeError("Training base seed is unavailable")
+        return self.seed + repeat_index
+
+    def get_configured_repeat_seeds(self) -> list[int]:
+        """Return every effective seed derived from the configured base."""
+        if type(self.seed) is not int:
+            raise RuntimeError("Training base seed is unavailable")
+        return [self.seed + repeat_index for repeat_index in range(self.repeat_num)]
 
     def get_optim(self, model: torch.nn.Module) -> torch.optim.Optimizer:
         """Create and return an optimizer instance for the given model.

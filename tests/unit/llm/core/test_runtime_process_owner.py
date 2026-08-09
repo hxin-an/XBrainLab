@@ -280,7 +280,7 @@ def test_runtime_event_wait_drains_terminal_event_after_initial_empty_poll() -> 
     assert owner._event_connection.poll_count == 2
 
 
-def test_clean_zero_exit_is_accepted_when_windows_pipe_terminal_is_late() -> None:
+def test_close_succeeds_when_process_exits_zero_before_terminal_pipe_event() -> None:
     class _Process:
         pid = 123
         exitcode: int | None = None

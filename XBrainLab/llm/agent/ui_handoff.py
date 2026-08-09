@@ -12,11 +12,47 @@ from XBrainLab.backend.application.view_publication import (
     InterpretationReviewIdentity,
 )
 
+from .assistant_activity import AssistantDecisionOwner
+
 
 class WorkflowUiHandoffKind(str, Enum):
     """Why the assistant is yielding control to an existing UI surface."""
 
     DECISION_REQUIRED = "decision_required"
+
+
+class WorkflowUiHandoffSurfaceKind(str, Enum):
+    """Existing product surface used to continue one assistant handoff."""
+
+    DIALOG = "dialog"
+    PANEL = "panel"
+
+
+class WorkflowUiHandoffPanel(str, Enum):
+    """Stable main-window target for one workflow handoff route."""
+
+    DATASET = "dataset"
+    PREPROCESS = "preprocess"
+    TRAINING = "training"
+    EVALUATION = "evaluation"
+    VISUALIZATION = "visualization"
+
+
+class WorkflowUiHandoffRouteIdentity(str, Enum):
+    """Stable host adapter identity, independent of command display text."""
+
+    DATA_IMPORT_DIALOG = "data_import_dialog"
+    DATA_IMPORT_PANEL = "data_import_panel"
+    DATA_IMPORT_REVIEW_DIALOG = "data_import_review_dialog"
+    PREPROCESS_PANEL = "preprocess_panel"
+    EPOCH_SETTINGS_DIALOG = "epoch_settings_dialog"
+    DATASET_SPLIT_DIALOG = "dataset_split_dialog"
+    TRAINING_SETTINGS_DIALOG = "training_settings_dialog"
+    TRAINING_PANEL = "training_panel"
+    EVALUATION_PANEL = "evaluation_panel"
+    VISUALIZATION_PANEL = "visualization_panel"
+    SALIENCY_SETTINGS_DIALOG = "saliency_settings_dialog"
+    MONTAGE_SETTINGS_DIALOG = "montage_settings_dialog"
 
 
 class WorkflowUiHandoffResolutionStatus(str, Enum):
@@ -135,6 +171,214 @@ def _validate_suggested_values(
                 "Workflow UI handoff "
                 f"{contract} suggested_values cannot contain empty text."
             )
+
+
+@dataclass(frozen=True, slots=True)
+class WorkflowUiHandoffRouteDescriptor:
+    """Canonical route semantics shared by controller, host, and presentation."""
+
+    command: CommandName
+    surface_kind: WorkflowUiHandoffSurfaceKind
+    decision_owner: AssistantDecisionOwner
+    target_panel: WorkflowUiHandoffPanel
+    route_identity: WorkflowUiHandoffRouteIdentity
+    presentation_step: str
+    decision_copy: str
+
+    def __post_init__(self) -> None:
+        for field_name, value, expected_type in (
+            ("command", self.command, CommandName),
+            ("surface_kind", self.surface_kind, WorkflowUiHandoffSurfaceKind),
+            ("decision_owner", self.decision_owner, AssistantDecisionOwner),
+            ("target_panel", self.target_panel, WorkflowUiHandoffPanel),
+            ("route_identity", self.route_identity, WorkflowUiHandoffRouteIdentity),
+        ):
+            _require_typed_enum(
+                value,
+                expected_type,
+                contract="route descriptor",
+                field_name=field_name,
+            )
+        expected_owner = (
+            AssistantDecisionOwner.GUI_DIALOG
+            if self.surface_kind is WorkflowUiHandoffSurfaceKind.DIALOG
+            else AssistantDecisionOwner.PANEL_HANDOFF
+        )
+        if self.decision_owner is not expected_owner:
+            raise ValueError(
+                "Workflow UI handoff route decision owner must match its surface kind."
+            )
+        for field_name in ("presentation_step", "decision_copy"):
+            value = getattr(self, field_name)
+            if type(value) is not str:
+                raise TypeError(
+                    "Workflow UI handoff route descriptor "
+                    f"{field_name} must be a string."
+                )
+            normalized = " ".join(value.split())
+            if not normalized:
+                raise ValueError(
+                    "Workflow UI handoff route descriptor "
+                    f"{field_name} cannot be empty."
+                )
+            object.__setattr__(self, field_name, normalized)
+
+
+_PANEL_DECISION_COPY = "Continue in the opened XBrainLab panel."
+
+_WORKFLOW_UI_HANDOFF_ROUTES = (
+    WorkflowUiHandoffRouteDescriptor(
+        command=CommandName.SCAN_SOURCE,
+        surface_kind=WorkflowUiHandoffSurfaceKind.DIALOG,
+        decision_owner=AssistantDecisionOwner.GUI_DIALOG,
+        target_panel=WorkflowUiHandoffPanel.DATASET,
+        route_identity=WorkflowUiHandoffRouteIdentity.DATA_IMPORT_DIALOG,
+        presentation_step="Continue in Import EEG Data",
+        decision_copy="Finish or cancel in the open Import EEG Data dialog.",
+    ),
+    WorkflowUiHandoffRouteDescriptor(
+        command=CommandName.REVIEW_INTERPRETATION,
+        surface_kind=WorkflowUiHandoffSurfaceKind.PANEL,
+        decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
+        target_panel=WorkflowUiHandoffPanel.DATASET,
+        route_identity=WorkflowUiHandoffRouteIdentity.DATA_IMPORT_PANEL,
+        presentation_step="Continue in Import EEG Data",
+        decision_copy=_PANEL_DECISION_COPY,
+    ),
+    WorkflowUiHandoffRouteDescriptor(
+        command=CommandName.PREVIEW_INTERPRETATION,
+        surface_kind=WorkflowUiHandoffSurfaceKind.PANEL,
+        decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
+        target_panel=WorkflowUiHandoffPanel.DATASET,
+        route_identity=WorkflowUiHandoffRouteIdentity.DATA_IMPORT_PANEL,
+        presentation_step="Continue in Import EEG Data",
+        decision_copy=_PANEL_DECISION_COPY,
+    ),
+    WorkflowUiHandoffRouteDescriptor(
+        command=CommandName.VALIDATE_INTERPRETATION,
+        surface_kind=WorkflowUiHandoffSurfaceKind.PANEL,
+        decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
+        target_panel=WorkflowUiHandoffPanel.DATASET,
+        route_identity=WorkflowUiHandoffRouteIdentity.DATA_IMPORT_PANEL,
+        presentation_step="Continue in Import EEG Data",
+        decision_copy=_PANEL_DECISION_COPY,
+    ),
+    WorkflowUiHandoffRouteDescriptor(
+        command=CommandName.APPLY_INTERPRETATION,
+        surface_kind=WorkflowUiHandoffSurfaceKind.DIALOG,
+        decision_owner=AssistantDecisionOwner.GUI_DIALOG,
+        target_panel=WorkflowUiHandoffPanel.DATASET,
+        route_identity=WorkflowUiHandoffRouteIdentity.DATA_IMPORT_REVIEW_DIALOG,
+        presentation_step="Continue in Import EEG Data",
+        decision_copy="Finish or cancel in the open Import EEG Data dialog.",
+    ),
+    WorkflowUiHandoffRouteDescriptor(
+        command=CommandName.PREPROCESS,
+        surface_kind=WorkflowUiHandoffSurfaceKind.PANEL,
+        decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
+        target_panel=WorkflowUiHandoffPanel.PREPROCESS,
+        route_identity=WorkflowUiHandoffRouteIdentity.PREPROCESS_PANEL,
+        presentation_step="Continue in Preprocess",
+        decision_copy=_PANEL_DECISION_COPY,
+    ),
+    WorkflowUiHandoffRouteDescriptor(
+        command=CommandName.CREATE_EPOCH,
+        surface_kind=WorkflowUiHandoffSurfaceKind.DIALOG,
+        decision_owner=AssistantDecisionOwner.GUI_DIALOG,
+        target_panel=WorkflowUiHandoffPanel.PREPROCESS,
+        route_identity=WorkflowUiHandoffRouteIdentity.EPOCH_SETTINGS_DIALOG,
+        presentation_step="Continue in EEG Epoch Settings",
+        decision_copy="Finish or cancel in the open EEG Epoch Settings dialog.",
+    ),
+    WorkflowUiHandoffRouteDescriptor(
+        command=CommandName.GENERATE_DATASET,
+        surface_kind=WorkflowUiHandoffSurfaceKind.DIALOG,
+        decision_owner=AssistantDecisionOwner.GUI_DIALOG,
+        target_panel=WorkflowUiHandoffPanel.TRAINING,
+        route_identity=WorkflowUiHandoffRouteIdentity.DATASET_SPLIT_DIALOG,
+        presentation_step="Continue in Dataset Split Settings",
+        decision_copy="Finish or cancel in the open Dataset Split Settings dialog.",
+    ),
+    WorkflowUiHandoffRouteDescriptor(
+        command=CommandName.CONFIGURE_TRAINING,
+        surface_kind=WorkflowUiHandoffSurfaceKind.DIALOG,
+        decision_owner=AssistantDecisionOwner.GUI_DIALOG,
+        target_panel=WorkflowUiHandoffPanel.TRAINING,
+        route_identity=WorkflowUiHandoffRouteIdentity.TRAINING_SETTINGS_DIALOG,
+        presentation_step="Continue in Training Settings",
+        decision_copy="Finish or cancel in the open Training Settings dialog.",
+    ),
+    WorkflowUiHandoffRouteDescriptor(
+        command=CommandName.TRAIN,
+        surface_kind=WorkflowUiHandoffSurfaceKind.PANEL,
+        decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
+        target_panel=WorkflowUiHandoffPanel.TRAINING,
+        route_identity=WorkflowUiHandoffRouteIdentity.TRAINING_PANEL,
+        presentation_step="Continue in Training",
+        decision_copy=_PANEL_DECISION_COPY,
+    ),
+    WorkflowUiHandoffRouteDescriptor(
+        command=CommandName.EVALUATE,
+        surface_kind=WorkflowUiHandoffSurfaceKind.PANEL,
+        decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
+        target_panel=WorkflowUiHandoffPanel.EVALUATION,
+        route_identity=WorkflowUiHandoffRouteIdentity.EVALUATION_PANEL,
+        presentation_step="Continue in Evaluation",
+        decision_copy=_PANEL_DECISION_COPY,
+    ),
+    WorkflowUiHandoffRouteDescriptor(
+        command=CommandName.VISUALIZE,
+        surface_kind=WorkflowUiHandoffSurfaceKind.PANEL,
+        decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
+        target_panel=WorkflowUiHandoffPanel.VISUALIZATION,
+        route_identity=WorkflowUiHandoffRouteIdentity.VISUALIZATION_PANEL,
+        presentation_step="Continue in Visualization",
+        decision_copy=_PANEL_DECISION_COPY,
+    ),
+    WorkflowUiHandoffRouteDescriptor(
+        command=CommandName.SALIENCY,
+        surface_kind=WorkflowUiHandoffSurfaceKind.DIALOG,
+        decision_owner=AssistantDecisionOwner.GUI_DIALOG,
+        target_panel=WorkflowUiHandoffPanel.VISUALIZATION,
+        route_identity=WorkflowUiHandoffRouteIdentity.SALIENCY_SETTINGS_DIALOG,
+        presentation_step="Continue in Saliency Settings",
+        decision_copy="Finish or cancel in the open Saliency Settings dialog.",
+    ),
+    WorkflowUiHandoffRouteDescriptor(
+        command=CommandName.APPLY_MONTAGE,
+        surface_kind=WorkflowUiHandoffSurfaceKind.DIALOG,
+        decision_owner=AssistantDecisionOwner.GUI_DIALOG,
+        target_panel=WorkflowUiHandoffPanel.VISUALIZATION,
+        route_identity=WorkflowUiHandoffRouteIdentity.MONTAGE_SETTINGS_DIALOG,
+        presentation_step="Continue in Montage Settings",
+        decision_copy="Finish or cancel in the open Montage Settings dialog.",
+    ),
+)
+
+_WORKFLOW_UI_HANDOFF_ROUTES_BY_COMMAND = {
+    route.command: route for route in _WORKFLOW_UI_HANDOFF_ROUTES
+}
+
+
+def workflow_ui_handoff_routes() -> tuple[WorkflowUiHandoffRouteDescriptor, ...]:
+    """Return the immutable canonical workflow handoff route registry."""
+    return _WORKFLOW_UI_HANDOFF_ROUTES
+
+
+def workflow_ui_handoff_route_for(
+    command: CommandName | str,
+) -> WorkflowUiHandoffRouteDescriptor | None:
+    """Resolve one route from typed command identity or normalized command text."""
+    if isinstance(command, CommandName):
+        normalized = command
+    elif type(command) is str:
+        try:
+            normalized = CommandName(command.strip().lower())
+        except ValueError:
+            return None
+    else:
+        return None
+    return _WORKFLOW_UI_HANDOFF_ROUTES_BY_COMMAND.get(normalized)
 
 
 @dataclass(frozen=True)

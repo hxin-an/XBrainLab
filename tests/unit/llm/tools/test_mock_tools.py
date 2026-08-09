@@ -319,6 +319,32 @@ class TestPreprocessMocks:
         assert result.error_type == "precondition"
         assert result.message == "Load EEG data before preprocessing."
 
+    @pytest.mark.parametrize(
+        ("tool_type", "message"),
+        [
+            (MockBandPassFilterTool, "Error: frequencies are required"),
+            (MockNotchFilterTool, "Error: frequency is required"),
+            (MockResampleTool, "Error: rate is required"),
+            (MockNormalizeTool, "Error: method is required"),
+            (MockRereferenceTool, "Error: method is required"),
+            (MockChannelSelectionTool, "Error: channels list is required"),
+            (MockSetMontageTool, "Error: montage_name is required"),
+        ],
+    )
+    def test_preprocess_missing_parameters_return_typed_input_failure(
+        self,
+        tool_type,
+        message,
+    ):
+        result = tool_type(MockWorkflowState(data_loaded=True)).execute(object())
+
+        _assert_tool_result(
+            result,
+            ok=False,
+            message=message,
+            error_type="input",
+        )
+
     def test_standard_preprocess(self, study):
         result = MockStandardPreprocessTool(
             MockWorkflowState(data_loaded=True)

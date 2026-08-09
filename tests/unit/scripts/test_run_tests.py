@@ -5,9 +5,11 @@ import os
 import subprocess
 import sys
 import tempfile
+from collections import Counter
 from pathlib import Path
 
 import pytest
+import yaml
 
 from scripts.dev import run_tests
 from scripts.dev.pytest_completion_attestation import (
@@ -212,15 +214,44 @@ def test_platform_native_lifecycle_tests_keep_separate_process_boundaries() -> N
     assert len(set(path_to_label.values())) == len(native_lifecycle_paths)
 
 
-def _expand_test_paths(paths: tuple[str, ...]) -> set[Path]:
-    expanded: set[Path] = set()
+def test_platform_ci_groups_partition_focused_platform_gate_exactly_once() -> None:
+    grouped_shards = [
+        shard for _command, shards in run_tests.PLATFORM_CI_GROUPS for shard in shards
+    ]
+
+    assert grouped_shards == list(run_tests.PLATFORM_SHARDS)
+    assert len(grouped_shards) == len(set(grouped_shards))
+    assert run_tests.PLATFORM_CI_COMMANDS == (
+        "platform-core-contracts",
+        "platform-product-lifecycle",
+    )
+
+
+def test_platform_gate_does_not_repeat_os_neutral_architecture_suite() -> None:
+    selected_paths = {
+        path for _label, paths in run_tests.PLATFORM_SHARDS for path in paths
+    }
+
+    assert "tests/unit/test_architecture_compliance.py" not in selected_paths
+
+
+def _expand_test_paths(paths: tuple[str, ...]) -> list[Path]:
+    expanded: list[Path] = []
     for value in paths:
         path = Path(value)
         if path.is_dir():
-            expanded.update(path.rglob("test_*.py"))
+            expanded.extend(path.rglob("test_*.py"))
         else:
-            expanded.add(path)
+            expanded.append(path)
     return expanded
+
+
+def test_expand_test_paths_preserves_duplicate_occurrences() -> None:
+    test_path = "tests/unit/scripts/test_run_tests.py"
+
+    expanded = _expand_test_paths((test_path, test_path))
+
+    assert Counter(expanded) == Counter({Path(test_path): 2})
 
 
 def test_linux_ci_groups_partition_the_authoritative_suite_exactly_once() -> None:
@@ -238,8 +269,7 @@ def test_linux_ci_groups_partition_the_authoritative_suite_exactly_once() -> Non
         *Path("tests/integration/mcp").rglob("test_*.py"),
     }
 
-    assert set(grouped_files) == authoritative_files
-    assert len(grouped_files) == len(set(grouped_files))
+    assert Counter(grouped_files) == Counter(authoritative_files)
 
 
 def test_linux_ci_isolates_only_wall_clock_agent_timing_from_coverage() -> None:
@@ -278,6 +308,26 @@ def test_linux_ci_group_preserves_declared_process_boundaries(monkeypatch) -> No
 
     assert observed == {
         "gate_name": f"Linux CI {command}",
+        "shards": shards,
+        "attestation_sink": None,
+    }
+
+
+def test_platform_ci_group_preserves_declared_process_boundaries(monkeypatch) -> None:
+    observed: dict[str, object] = {}
+    command, shards = run_tests.PLATFORM_CI_GROUPS[0]
+
+    monkeypatch.setattr(run_tests, "configure_headless_ui_env", lambda: None)
+
+    def capture_run(**kwargs) -> None:
+        observed.update(kwargs)
+
+    monkeypatch.setattr(run_tests, "_run_shards", capture_run)
+
+    run_tests.run_platform_ci_group(command)
+
+    assert observed == {
+        "gate_name": f"Platform CI {command}",
         "shards": shards,
         "attestation_sink": None,
     }
@@ -628,22 +678,27 @@ def test_main_fails_closed_for_unusable_coverage_data(
 
 
 def test_ci_uses_full_linux_and_focused_cross_platform_runners() -> None:
-    workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+    workflow_text = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+    workflow = yaml.safe_load(workflow_text)
+    jobs = workflow["jobs"]
 
-    assert "max-parallel: 4" in workflow
-    assert 'XBL_SHARED_CI_RUNNER: "1"' in workflow
-    assert "scripts/dev/run_tests.py ${{ matrix.command }}" in workflow
-    for command, _shards in run_tests.LINUX_CI_GROUPS:
-        assert f"- {command}" in workflow
-    assert "python -m scripts.dev.run_tests verify-linux-ci" in workflow
-    assert "python scripts/dev/run_tests.py verify-linux-ci" not in workflow
-    assert workflow.count("scripts/dev/run_tests.py platform") == 1
-    assert "os: [windows-latest, macos-latest]" in workflow
-    assert "os: [ubuntu-latest, windows-latest, macos-latest]" not in workflow
-    assert "fetch-depth: 0" not in workflow
-    assert "coverage combine test-results" in workflow
-    assert workflow.count('XBL_SHARED_CI_RUNNER: "1"') == 2
-    assert "poetry run pytest tests/" not in workflow
+    assert jobs["linux-shard"]["strategy"]["matrix"] == {
+        "command": list(run_tests.LINUX_CI_COMMANDS),
+    }
+    assert jobs["platform-test"]["strategy"]["matrix"] == {
+        "os": ["windows-latest", "macos-latest"],
+        "command": list(run_tests.PLATFORM_CI_COMMANDS),
+    }
+
+    assert jobs["linux-shard"]["strategy"]["max-parallel"] == 8
+    assert jobs["linux-shard"]["env"]["XBL_SHARED_CI_RUNNER"] == "1"
+    assert jobs["platform-test"]["env"]["XBL_SHARED_CI_RUNNER"] == "1"
+    assert workflow_text.count("scripts/dev/run_tests.py ${{ matrix.command }}") == 2
+    assert "python -m scripts.dev.run_tests verify-linux-ci" in workflow_text
+    assert "python scripts/dev/run_tests.py verify-linux-ci" not in workflow_text
+    assert "fetch-depth: 0" not in workflow_text
+    assert "coverage combine test-results" in workflow_text
+    assert "poetry run pytest tests/" not in workflow_text
 
 
 def test_main_attests_aggregate_shard_completion(monkeypatch, tmp_path) -> None:

@@ -25,6 +25,9 @@ from XBrainLab.backend.application.data_interpretation_pairing import (
 from XBrainLab.ui.dialogs.dataset.review_import_presenter import (
     SubmissionFacts,
     SubmissionProjection,
+    ValidationActionItem,
+    ValidationReviewContract,
+    adapt_serialized_validation_decision,
     eeg_data_summary,
     internal_label_placement_summary,
     label_source_summary,
@@ -36,14 +39,10 @@ from XBrainLab.ui.dialogs.dataset.review_import_presenter import (
 )
 from XBrainLab.ui.dialogs.dataset.review_presenter import (
     ReviewRow,
-    action_item_rows,
-    build_primary_review_rows,
-    build_review_rows,
     compact_review_rows,
-    is_metadata_review_row,
+    format_capability_rows,
     merge_review_rows,
-    metadata_required_fields_complete,
-    target_step_for_review_text,
+    recipe_reload_rows,
 )
 
 if TYPE_CHECKING:
@@ -310,9 +309,8 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         label_placement_summary = self._review_label_placement_text()
         if self._should_show_label_table_fallback():
             label_placement_status = "Action required"
-        elif (
-            "need review" in label_placement_summary.lower()
-            or self._has_review_action_for_step("Match Labels")
+        elif self._label_placement_needs_review() or self._has_review_action_for_step(
+            "Match Labels"
         ):
             label_placement_status = "Needs review"
 
@@ -400,11 +398,11 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         )
 
     def _has_review_action_for_step(self, target_step: str) -> bool:
-        if target_step == "Match Labels":
-            return self._label_placement_needs_review()
-        return any(row[0] == target_step for row in self._primary_review_rows())
+        return self._validation_review_contract().requires_action_at(target_step)
 
     def _label_placement_needs_review(self) -> bool:
+        if self._skip_labels:
+            return False
         if self._label_source_mode() == "internal_events":
             return not bool(self._class_map_items or self._event_role_items)
         if self._label_source_mode() == "loaded_label_files":
@@ -420,16 +418,24 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
                     return True
                 if self._is_bids_source():
                     return False
-        summary = self._review_label_placement_text().casefold()
-        return any(
-            marker in summary
-            for marker in (
-                "need review",
-                "needs review",
-                "needs conversion",
-                "no external labels selected",
-            )
-        )
+        if not hasattr(self, "rule_placement_method_combo"):
+            return False
+        label_field = self._combo_current_data(self.rule_label_field_combo)
+        use_as = self._combo_current_data(self.rule_use_as_combo)
+        granularity = self._combo_current_data(self.rule_label_unit_combo)
+        placement_method = self._combo_current_data(self.rule_placement_method_combo)
+        if not all((label_field, use_as, granularity, placement_method)):
+            return True
+        if placement_method == "eeg_event":
+            return not bool(self._event_order_target_codes())
+        anchor = self._combo_current_data(self.rule_alignment_combo)
+        if not anchor:
+            return True
+        if placement_method == "interval":
+            return not bool(self._combo_current_data(self.rule_duration_field_combo))
+        if placement_method == "time_field":
+            return not bool(self._combo_current_data(self.rule_time_model_combo))
+        return placement_method not in {"event_code"}
 
     def _loaded_label_pairing_needs_review(self) -> bool:
         result = self._loaded_label_pairing_result()
@@ -458,9 +464,13 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             return True
         return self._label_placement_needs_review()
 
+    def _validation_review_contract(self) -> ValidationReviewContract:
+        """Adapt the serialized backend decision at the UI boundary."""
+        return adapt_serialized_validation_decision(self.validation_decision)
+
     def _submission_facts(self) -> SubmissionFacts:
         return SubmissionFacts(
-            decision=self.decision,
+            validation=self._validation_review_contract(),
             resource_blocked=self._resource_check_blocks_import(),
             has_unresolved_required_decisions=(
                 self._has_unresolved_required_decisions()
@@ -477,10 +487,18 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
 
     def _edited_choices_can_resolve_blocker(self) -> bool:
         """Only recheck edits that target at least one current blocker."""
-        choices = self._edited_choices()
-        if not choices:
+        edited_targets = self._edited_action_targets()
+        if not edited_targets:
             return False
 
+        review = self._validation_review_contract()
+        if not review.is_valid:
+            return False
+        blocking_targets = review.blocking_action_targets
+        return bool(blocking_targets) and blocking_targets.issubset(edited_targets)
+
+    def _edited_action_targets(self) -> set[str]:
+        choices = self._edited_choices()
         edited_targets: set[str] = set()
         if choices.get("metadata_overrides"):
             edited_targets.add("Review Metadata")
@@ -498,29 +516,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             )
         ):
             edited_targets.add("Match Labels")
-        if not edited_targets:
-            return False
-
-        action_items = self.preview.get("action_items") or self.validation_decision.get(
-            "action_items"
-        )
-        blocking_targets = {
-            str(item.get("target_step") or "Review and Import")
-            for item in action_items or []
-            if isinstance(item, dict)
-            and str(item.get("severity") or "").strip().lower() == "blocked"
-        }
-        if not blocking_targets:
-            blocking_targets = {
-                target_step_for_review_text(str(reason))
-                for reason in (
-                    self.validation_decision.get("blocked_reasons")
-                    or self.preview.get("blocked_reasons")
-                    or []
-                )
-                if str(reason).strip()
-            }
-        return bool(blocking_targets) and blocking_targets.issubset(edited_targets)
+        return edited_targets
 
     def _submission_projection(self) -> SubmissionProjection:
         return project_submission(self._submission_facts())
@@ -589,53 +585,31 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         notes: list[str] = []
         if metadata_row.get("status") == "Ready with notes":
             notes.append(str(metadata_row.get("summary") or "").strip())
-        action_items = self.preview.get("action_items") or self.validation_decision.get(
-            "action_items"
-        )
         notes.extend(
-            str(item.get("issue") or "").strip()
-            for item in action_items or []
-            if isinstance(item, dict)
-            and str(item.get("severity") or "").strip().lower()
-            not in {"blocked", "needs_confirmation"}
-            and str(item.get("issue") or "").strip()
+            item.issue
+            for item in self._validation_review_contract().action_items
+            if item.severity not in {"blocked", "needs_confirmation"}
         )
         return "; ".join(dict.fromkeys(note for note in notes if note)) or "None"
 
     def _import_report_blocking_issues_text(self) -> str:
         """Return only issues that currently block applying the import."""
-        action_items = self.preview.get("action_items") or self.validation_decision.get(
-            "action_items"
-        )
-        blocking_items = [
-            item
-            for item in action_items or []
-            if isinstance(item, dict)
-            and str(item.get("severity") or "").strip().lower() == "blocked"
-        ]
+        review = self._validation_review_contract()
+        if not review.is_valid:
+            return "Import requirements are incomplete"
         issues: list[str] = []
-        for row in action_item_rows(blocking_items):
+        for item in review.items_with_severity("blocked"):
+            row = item.to_review_row()
             current_row = self._current_review_row(row)
             if not self._review_row_is_resolved(current_row):
                 issues.append(current_row[1])
-        if (
-            not issues
-            and self.decision == "blocked"
-            and not self._review_ready_for_recheck()
-        ):
-            issues = [
-                str(reason).strip()
-                for reason in (
-                    self.validation_decision.get("blocked_reasons")
-                    or self.preview.get("blocked_reasons")
-                    or []
-                )
-                if str(reason).strip()
-            ]
         return "; ".join(dict.fromkeys(issues)) if issues else "None"
 
     def _default_review_action_row(self) -> tuple[str, str, str, str]:
-        if self.decision == "blocked" and not self._review_ready_for_recheck():
+        review = self._validation_review_contract()
+        if (not review.is_valid or review.decision == "blocked") and not (
+            self._review_ready_for_recheck()
+        ):
             return (
                 "Review and Import",
                 "Import requirements are incomplete",
@@ -869,48 +843,18 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
 
     def _review_action_group_title(
         self,
-        target_step: str,
-        issue: str,
-        impact: str,
-        next_action: str,
+        _target_step: str,
+        _issue: str,
+        _impact: str,
+        _next_action: str,
     ) -> str:
         submission = self._submission_projection()
         if submission.recheck_kind is not None:
             return ""
-        lowered = " ".join((issue, impact, next_action)).lower()
-        if (
-            self.decision == "blocked"
-            or "cannot import" in lowered
-            or "cannot be applied" in lowered
-            or "blocked" in lowered
-        ):
+        review = self._validation_review_contract()
+        if not review.is_valid or review.decision == "blocked":
             return "Cannot import yet"
-        if target_step == "Review Metadata":
-            return ""
-        if target_step == "Review and Import":
-            return ""
-        if target_step == "Match Labels" and not self._label_placement_needs_review():
-            return ""
-        if target_step == "Match Labels" and any(
-            token in lowered
-            for token in ("alignment", "placement", "event role", "event mapping")
-        ):
-            return "Needs your decision"
-        if any(
-            token in lowered
-            for token in (
-                "ambiguous",
-                "unresolved",
-                "incomplete",
-                "not paired",
-                "cannot tell",
-                "conversion",
-                "choose",
-                "select",
-                "provide",
-                "resolve",
-            )
-        ):
+        if review.decision == "needs_confirmation":
             return "Needs your decision"
         return ""
 
@@ -1315,11 +1259,18 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
                 item.setToolTip(2, detail)
 
     def _review_rows(self) -> list[ReviewRow]:
-        rows = build_review_rows(
-            preview=self.preview,
-            validation_decision=self.validation_decision,
-            scan_result=self.scan_result,
+        review = self._validation_review_contract()
+        rows = self._action_item_review_rows(
+            review.action_items if review.is_valid else ()
         )
+        if not review.is_valid:
+            rows.append(self._default_review_action_row())
+        rows.extend(recipe_reload_rows(self.preview.get("recipe_reload_summary")))
+        format_capabilities = self.preview.get(
+            "format_capabilities"
+        ) or self.scan_result.get("format_capabilities")
+        rows.extend(format_capability_rows(format_capabilities))
+        rows = compact_review_rows(rows)
         return [
             self._current_review_row(row)
             for row in rows
@@ -1327,27 +1278,29 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         ]
 
     def _primary_review_rows(self) -> list[ReviewRow]:
-        action_items = self.preview.get("action_items") or self.validation_decision.get(
-            "action_items"
-        )
-        blocking_items = [
-            item
-            for item in action_items or []
-            if isinstance(item, dict)
-            and str(item.get("severity") or "").strip().lower() == "blocked"
-        ]
-        if self.decision == "blocked" and blocking_items:
-            rows = action_item_rows(blocking_items)
-        else:
-            rows = build_primary_review_rows(
-                preview=self.preview,
-                validation_decision=self.validation_decision,
+        review = self._validation_review_contract()
+        if not review.is_valid:
+            rows = [self._default_review_action_row()]
+        elif review.decision == "blocked":
+            rows = self._action_item_review_rows(review.items_with_severity("blocked"))
+        elif review.decision == "needs_confirmation":
+            rows = self._action_item_review_rows(
+                review.items_with_severity("needs_confirmation")
             )
+        else:
+            rows = []
+        rows = compact_review_rows(rows)
         return [
             self._current_review_row(row)
             for row in rows
             if not self._review_row_is_resolved(row)
         ]
+
+    @staticmethod
+    def _action_item_review_rows(
+        action_items: tuple[ValidationActionItem, ...],
+    ) -> list[ReviewRow]:
+        return [item.to_review_row() for item in action_items]
 
     def _current_review_row(self, row: ReviewRow) -> ReviewRow:
         """Replace stale backend pairing counts with the user's current mapping."""
@@ -1367,14 +1320,13 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         return target_step, issue, impact, next_action
 
     def _review_row_is_resolved(self, row: ReviewRow) -> bool:
-        if self._review_metadata_is_complete() and is_metadata_review_row(row):
-            return True
         if self._review_row_is_resolved_by_remap(row):
             return True
-        return row[0] == "Match Labels" and not self._label_placement_needs_review()
+        return bool(
+            self._review_ready_for_recheck() and row[0] in self._edited_action_targets()
+        )
 
     def _review_row_is_resolved_by_remap(self, row: ReviewRow) -> bool:
-        text = " ".join(row[1:]).casefold()
         eeg_options = self._eeg_file_remap_options()
         label_options = self._label_carrier_remap_options()
         snapshots = getattr(self, "_remap_review_choice_snapshot", None)
@@ -1387,23 +1339,9 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         label_complete = bool(label_options) and len(label_choices) == len(
             label_options
         )
-        if eeg_complete and any(
-            marker in text
-            for marker in (
-                "selected eeg file",
-                "recipe eeg file",
-                "replacement eeg file",
-            )
-        ):
+        if eeg_complete and row[0] == "Choose EEG Data":
             return True
-        return label_complete and any(
-            marker in text
-            for marker in (
-                "label/event carrier",
-                "recipe label file",
-                "replacement label",
-            )
-        )
+        return label_complete and row[0] in {"Load Labels", "Match Labels"}
 
     def _toggle_import_report(self) -> None:
         visible = not self.import_report_card.isVisible()
@@ -1453,14 +1391,6 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         finally:
             del self._remap_review_choice_snapshot
 
-    def _review_metadata_is_complete(self) -> bool:
-        _complete_count, missing_fields = self._metadata_completion_counts()
-        return metadata_required_fields_complete(
-            row_count=len(self._metadata_items),
-            missing_fields=missing_fields,
-            required_fields=({"subject"}),
-        )
-
     @staticmethod
     def _compact_review_rows(rows: list[ReviewRow]) -> list[ReviewRow]:
         return compact_review_rows(rows)
@@ -1468,10 +1398,6 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
     @staticmethod
     def _merged_review_rows(rows: list[ReviewRow]) -> list[ReviewRow]:
         return merge_review_rows(rows)
-
-    @staticmethod
-    def _target_step_for_review_text(text: str) -> str:
-        return target_step_for_review_text(text)
 
     def _recipe_trace_rows(self, values: Any) -> list[tuple[str, str, str, str]]:
         if not isinstance(values, list):

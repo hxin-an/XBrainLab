@@ -639,7 +639,7 @@ def test_training_terminal_delivery_waits_for_canonical_view_acknowledgement(
         deliver_terminal,
     )
 
-    assert service._publish_training_terminal_state() is False
+    assert service.publication_lifecycle.publish_training_terminal_state() is False
     publish_view.assert_called_once()
     deliver_terminal.assert_called_once_with(lifecycle_event)
 
@@ -662,7 +662,7 @@ def test_deferred_view_ack_releases_retained_training_terminal_event() -> None:
         terminal_events.append,
     )
 
-    assert service._publish_training_terminal_state() is False
+    assert service.publication_lifecycle.publish_training_terminal_state() is False
     publication = service.get_view_publication()
     delivery = service.training_publications.training_delivery_state()
 
@@ -695,7 +695,7 @@ def test_saliency_delivery_waits_for_canonical_view_acknowledgement(
         notify_visualization,
     )
 
-    assert service._notify_saliency_publication_changed() is False
+    assert service.publication_lifecycle.notify_saliency_publication_changed() is False
 
     publish_view.assert_called_once()
     notify_visualization.assert_not_called()
@@ -720,7 +720,9 @@ def test_saliency_delivery_does_not_publish_stale_view_during_mutation(
     service._view_coordinator.mark_stale("mutation in progress")
     service._mutation_in_progress = True
     try:
-        assert service._notify_saliency_publication_changed() is False
+        assert (
+            service.publication_lifecycle.notify_saliency_publication_changed() is False
+        )
     finally:
         service._mutation_in_progress = False
 
@@ -758,7 +760,12 @@ def test_training_terminal_event_rejects_mismatched_trainer_identity(
         lambda: replace(publication, state=mismatched_state),
     )
 
-    assert service._terminal_training_publication_event(mismatched_state) is None
+    assert (
+        service.publication_lifecycle.terminal_training_publication_event(
+            mismatched_state
+        )
+        is None
+    )
 
 
 def test_training_terminal_publication_ledger_accepts_each_new_generation_once(
@@ -810,11 +817,11 @@ def test_training_terminal_publication_ledger_accepts_each_new_generation_once(
     )
     service.training.subscribe("training_terminal_published", observe)
 
-    service._publish_training_terminal_state()
-    service._publish_training_terminal_state()
-    service._publish_training_terminal_state()
-    service._publish_training_terminal_state()
-    service._publish_training_terminal_state()
+    service.publication_lifecycle.publish_training_terminal_state()
+    service.publication_lifecycle.publish_training_terminal_state()
+    service.publication_lifecycle.publish_training_terminal_state()
+    service.publication_lifecycle.publish_training_terminal_state()
+    service.publication_lifecycle.publish_training_terminal_state()
 
     assert terminal_events == [first, second]
     delivery_state = service.training_publications.training_delivery_state()
@@ -1199,8 +1206,8 @@ def test_object_query_uses_committed_generation_without_refresh_side_effects(
     )
     monkeypatch.setattr(service.state_snapshot, "build", build)
     monkeypatch.setattr(
-        service,
-        "_reconcile_pending_saliency_terminal",
+        service.publication_lifecycle,
+        "reconcile_pending_saliency_terminal",
         reconcile,
     )
 
@@ -1355,10 +1362,14 @@ def test_shutdown_fence_does_not_wait_for_saliency_terminal_reconciliation() -> 
     release_command_lock = Event()
     shutdown_returned = Event()
     pending_terminal = MagicMock()
-    service._pending_saliency_terminal = MagicMock(return_value=pending_terminal)
+    service.publication_lifecycle.pending_saliency_terminal = MagicMock(
+        return_value=pending_terminal
+    )
     service.post_training_saliency.cancel = MagicMock()
     service.training_runtime.cancel_saliency_job = MagicMock(
-        side_effect=lambda: service._reconcile_pending_saliency_terminal(),
+        side_effect=(
+            lambda: service.publication_lifecycle.reconcile_pending_saliency_terminal()
+        ),
     )
 
     def hold_command_lock() -> None:
@@ -5247,7 +5258,7 @@ def test_wait_for_background_tasks_waits_for_submission_then_saliency_job() -> N
             call_order.append(f"monitor_terminal:{generation}") or True
         ),
     )
-    service._publish_training_terminal_state = MagicMock(
+    service.publication_lifecycle.publish_training_terminal_state = MagicMock(
         side_effect=lambda: call_order.append("terminal_reconcile") or True,
     )
     service.training_publications.wait_for_training_delivery = MagicMock(
@@ -5313,7 +5324,11 @@ def test_wait_for_background_tasks_retries_terminal_reconciliation_after_empty_l
     """A transient monitor refresh failure cannot look like an idle success."""
     service = ApplicationService(Study())
     reconcile = MagicMock(side_effect=[False, True])
-    monkeypatch.setattr(service, "_publish_training_terminal_state", reconcile)
+    monkeypatch.setattr(
+        service.publication_lifecycle,
+        "publish_training_terminal_state",
+        reconcile,
+    )
 
     assert service.wait_for_background_tasks(timeout=1.0) is True
 
@@ -5325,7 +5340,11 @@ def test_wait_for_background_tasks_rejects_persistent_terminal_reconciliation_fa
 ) -> None:
     service = ApplicationService(Study())
     reconcile = MagicMock(return_value=False)
-    monkeypatch.setattr(service, "_publish_training_terminal_state", reconcile)
+    monkeypatch.setattr(
+        service.publication_lifecycle,
+        "publish_training_terminal_state",
+        reconcile,
+    )
 
     assert service.wait_for_background_tasks(timeout=1.0) is False
 

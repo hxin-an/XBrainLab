@@ -14,6 +14,7 @@ from XBrainLab.llm.tools import (
 )
 from XBrainLab.llm.tools.application_surface import (
     ToolCommandResult,
+    authorize_assistant_setting_change,
     normalize_tool_result,
 )
 from XBrainLab.llm.tools.authorized_paths import authorize_existing_path
@@ -254,6 +255,19 @@ _MAPPED_TOOL_CASES = (
 )
 
 
+def _authorize_setting(
+    study: Study,
+    tool_name: str,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    generation = get_application_service(study).get_view_publication().generation
+    return authorize_assistant_setting_change(
+        tool_name,
+        params,
+        publication_generation=generation,
+    )
+
+
 @pytest.mark.parametrize(
     ("module", "tool", "kwargs", "expected_params"),
     _MAPPED_TOOL_CASES,
@@ -290,12 +304,13 @@ def test_mapped_real_tool_execute_is_a_thin_canonical_delegate(
     }
 
 
-def test_direct_real_adapter_preserves_canonical_result_metadata() -> None:
+def test_authorized_direct_adapter_preserves_canonical_result_metadata() -> None:
     study = Study()
 
-    direct_result = training_real.RealSetModelTool().execute(
+    direct_result = execute_real_application_tool(
         study,
-        model_name="EEGNet",
+        "set_model",
+        _authorize_setting(study, "set_model", {"model_name": "EEGNet"}),
     )
     normalized = normalize_tool_result(study, "set_model", direct_result)
 
@@ -323,16 +338,24 @@ def test_direct_real_adapter_preserves_canonical_result_metadata() -> None:
 
 def test_saliency_request_reaches_authoritative_state_with_exact_parameters() -> None:
     study = Study()
-    model_result = training_real.RealSetModelTool().execute(
+    model_result = execute_real_application_tool(
         study,
-        model_name="EEGNet",
+        "set_model",
+        _authorize_setting(study, "set_model", {"model_name": "EEGNet"}),
     )
-    training_result = training_real.RealConfigureTrainingTool().execute(
+    training_result = execute_real_application_tool(
         study,
-        epoch=1,
-        batch_size=2,
-        learning_rate=0.001,
-        device="cpu",
+        "configure_training",
+        _authorize_setting(
+            study,
+            "configure_training",
+            {
+                "epoch": 1,
+                "batch_size": 2,
+                "learning_rate": 0.001,
+                "device": "cpu",
+            },
+        ),
     )
     tool_name, params = normalize_tool_call(
         "saliency",
@@ -383,11 +406,12 @@ def test_direct_adapter_recovers_authoritative_publication_after_post_execute_fa
         classmethod(_fail_after_execute),
     )
     runtime = _Runtime()
+    params = _authorize_setting(study, "set_model", {"model_name": "EEGNet"})
 
     result = execute_real_application_tool(
         bind_real_tool_execution_context(study, runtime),
         "set_model",
-        {"model_name": "EEGNet"},
+        params,
     )
 
     assert result.ok is False
@@ -427,10 +451,11 @@ def test_direct_adapter_marks_state_unknown_when_publication_recovery_fails(
         classmethod(_fail_after_execute),
     )
 
+    params = _authorize_setting(study, "set_model", {"model_name": "EEGNet"})
     result = execute_real_application_tool(
         bind_real_tool_execution_context(study, _Runtime()),
         "set_model",
-        {"model_name": "EEGNet"},
+        params,
     )
 
     assert result.ok is False

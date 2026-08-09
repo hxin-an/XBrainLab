@@ -29,13 +29,59 @@
 - 相同 P300 fixture 的 BIDS full review 由約 `9.15s` 降至 `7.92s`；selected discovery 約
   `3.39s -> 2.87s`，content identity 約 `2.00s -> 1.27s`。這是同機 checkpoint；現有
   one-shot ceiling 不支撐跨機 p95 或效能 closure。
-- Authoritative Linux suite 已分成 8 個互斥 shards，aggregate 會拒絕缺少 attestation 或
-  coverage file 的結果；Windows / macOS 改跑 focused platform contract。Required public
-  multi-dataset gate 未移除。Runner tests、Ruff 與 YAML check 已在本機通過，仍需 exact-head
-  GitHub Actions 證明實際 scheduling、coverage combine 與 native platform 結果。
+- Authoritative Linux suite 分成 8 個互斥 commands，8 個 runner 可同時排程；aggregate 仍會
+  拒絕缺少 attestation 或 coverage file 的結果。Windows / macOS 各自平行執行
+  `platform-core-contracts` 與 `platform-product-lifecycle`，兩組合起來 exactly-once 覆蓋
+  focused platform shards，且每個 Qt / native lifecycle shard 仍是獨立 pytest process。純
+  source/static 的 `test_architecture_compliance.py` 只在 authoritative Linux suite 執行，不再
+  於兩個 native OS 重複。Required public multi-dataset gate 未移除。Runner tests、Ruff 與
+  YAML check 可作 local regression；仍需新 exact-head GitHub Actions 證明實際 scheduling、
+  coverage combine 與 native platform 結果。
 - 移除三組已證明重複或無 assertion 的 tests；保留的 tool/controller/downloader suites
   提供較強 state、failure、shutdown 與 duplicate-start assertions。這是 test hygiene，不是以
   減少 authoritative product inventory 換取 CI 速度。
+- 後續 test-quality cleanup 移除 LLM worker/RAG coverage catch-all、MCP-only automation probes
+  與重複 UI constructor/dialog/component probes；BM25 ranking/corpus policy、RAG failure/lifecycle、
+  ApplicationService automation、AgentManager/runtime、sidebar capability/publication 與 label-dialog
+  result/lifecycle 改由 focused tests 保護。保留的大型 UI workflow tests 仍是 mixed suites，需繼續
+  以 structured result、state transition、real signal/lifecycle 為準逐項審查，不可依 mock 數量刪除。
+
+## Agent Tool-Call 快速檢查
+
+以下入口用來快速查看單一使用者要求如何經過 state/capability、request-scoped schema、
+tool/parameters、verification、confirmation、CommandResult 與使用者可見回饋。預設模式不載入
+LLM，但會走真實 product execution boundary：
+
+```bash
+poetry run -- python scripts/dev/run_agent_toolcall_showcase.py
+poetry run -- python scripts/dev/run_agent_toolcall_showcase.py --list-cases
+poetry run -- python scripts/dev/run_agent_toolcall_showcase.py \
+  --case import.preview_interpretation --details
+```
+
+需要檢查實際本地 2B 模型的 proposal selection 時，必須明確指定已存在的 D 槽 cache；此命令
+離線執行，不會自動下載模型：
+
+```bash
+poetry run -- python scripts/dev/run_agent_toolcall_showcase.py \
+  --real-granite \
+  --model-cache-dir /mnt/d/workspace_v2/.xbrainlab-cache/models
+```
+
+預設報告寫入 `build/dev-artifacts/agent-toolcall-showcase/` 的 JSON 與 Markdown。`--area`、
+`--case` 可縮小範圍。`--resume` 只接受相同 Git commit、目前 product/showcase source
+fingerprint、selector ID/version、prompt/case identity 的 v2 報告；real Granite 另要求 exact
+model ID/revision、offline 與 no-silent-fallback identity 全部相同。identity 不符會拒絕整份
+resume；case terminal semantics 不符則不沿用並重新執行。舊 artifact 的 summary、`pass`、
+terminal 或任意 prose 都不是 authority；新報告只帶 allowlisted structured evidence，並以目前
+contract 重驗 success、blocked、confirmation/cancel、approved confirmation、UI handoff、stale
+revision 與 exact retry sequence。AuthorizedPath 與 host-only confirmation wrapper 只用
+field-aware public projection，不能輸出私人路徑、secret 或 opaque unsupported marker。
+
+`2026-08-09` 本機 checkpoint
+的 deterministic 與 exact Granite 兩種模式皆為 `18/18`，其中包含 success、blocked、
+confirmation/cancel、UI handoff、stale revision 與 runtime retry。這是產品診斷，不是 frozen
+thesis benchmark，也不能作為 Agent accuracy claim。
 
 ## Evidence 原則
 

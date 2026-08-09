@@ -1604,6 +1604,81 @@ def open_surface(self, command_name):
     assert any("open_montage_picker_dialog" in item for item in violations)
 
 
+def test_montage_handoff_guard_accepts_canonical_registry_adapter(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/llm/agent/controller.py",
+        """
+def request_montage(self):
+    return WorkflowUiHandoffRequest.for_decision(
+        CommandName.APPLY_MONTAGE,
+        suggested_values=(),
+    )
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/llm/agent/ui_handoff.py",
+        """
+WorkflowUiHandoffRouteDescriptor(
+    command=CommandName.APPLY_MONTAGE,
+    route_identity=WorkflowUiHandoffRouteIdentity.MONTAGE_SETTINGS_DIALOG,
+)
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/components/workflow_ui_handoff_host.py",
+        """
+surface_openers = {
+    WorkflowUiHandoffRouteIdentity.MONTAGE_SETTINGS_DIALOG: self._open_montage,
+}
+
+def _open_montage(self, request):
+    return self._surface_result(self.sidebar.set_montage())
+""",
+    )
+
+    assert check_typed_montage_ui_handoff_boundary(tmp_path) == []
+
+
+def test_montage_handoff_guard_rejects_registry_without_host_adapter(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/llm/agent/controller.py",
+        """
+def request_montage(self):
+    return WorkflowUiHandoffRequest.for_decision(
+        CommandName.APPLY_MONTAGE,
+        suggested_values=(),
+    )
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/llm/agent/ui_handoff.py",
+        """
+WorkflowUiHandoffRouteDescriptor(
+    command=CommandName.APPLY_MONTAGE,
+    route_identity=WorkflowUiHandoffRouteIdentity.MONTAGE_SETTINGS_DIALOG,
+)
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/components/workflow_ui_handoff_host.py",
+        "def open_other_surface(self): pass\n",
+    )
+
+    violations = check_typed_montage_ui_handoff_boundary(tmp_path)
+
+    assert any("montage surface" in item for item in violations)
+
+
 def test_product_montage_decision_uses_typed_ui_handoff() -> None:
     root = Path(__file__).resolve().parents[2]
 

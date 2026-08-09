@@ -19,7 +19,6 @@ from XBrainLab.backend.application import (
     build_command_from_payload,
     command_specs,
     execute_automation_payload,
-    mcp_tool_specs,
     resource_guard,
 )
 from XBrainLab.backend.application.view_publication import (
@@ -79,6 +78,19 @@ def test_command_specs_cover_primary_application_commands_with_autonomy_policy()
     assert "By Trial" in splitter["properties"]["split_type"]["enum"]
     assert "Ratio" in splitter["properties"]["split_unit"]["enum"]
 
+    train_capability = specs[CommandName.TRAIN.value].capability
+    assert train_capability is not None
+    assert train_capability["long_running"] is True
+    assert train_capability["requires_confirmation"] is True
+    assert train_capability["decision_boundary"] == "long_running"
+    evaluate_capability = specs[CommandName.EVALUATE.value].capability
+    assert evaluate_capability is not None
+    assert evaluate_capability["long_running"] is False
+    assert evaluate_capability["decision_boundary"] is None
+    reset_capability = specs[CommandName.RESET_SESSION.value].capability
+    assert reset_capability is not None
+    assert reset_capability["destructive"] is True
+
 
 def test_command_specs_fail_closed_when_published_state_is_stale() -> None:
     service = ApplicationService(Study())
@@ -128,62 +140,6 @@ def test_preview_command_spec_exposes_recipe_remap_choices():
     assert "run_event_mappings" in choices["properties"]
 
 
-def test_mcp_tool_specs_use_same_command_schema():
-    service = ApplicationService(Study())
-
-    tools = {tool["name"]: tool for tool in mcp_tool_specs(service)}
-
-    assert CommandName.SCAN_SOURCE.value in tools
-    assert tools[CommandName.SCAN_SOURCE.value]["inputSchema"]["required"] == [
-        "source_path"
-    ]
-    assert (
-        tools[CommandName.SCAN_SOURCE.value]["x_xbrainlab"]["taxonomy"]
-        == "data_interpretation"
-    )
-    preview_choices = tools[CommandName.PREVIEW_INTERPRETATION.value]["inputSchema"][
-        "properties"
-    ]["choices"]
-    assert "eeg_file_remap" in preview_choices["properties"]
-    assert "label_carrier_remap" in preview_choices["properties"]
-    evaluate_schema = tools[CommandName.EVALUATE.value]["inputSchema"]
-    assert "include_metrics" not in evaluate_schema["properties"]
-    assert "include_pooled_results" not in evaluate_schema["properties"]
-    assert "include_model_summaries" not in evaluate_schema["properties"]
-    assert "model_summary_plan_index" not in evaluate_schema["properties"]
-    assert "model_summary_run_index" not in evaluate_schema["properties"]
-    assert "summary_identity" not in evaluate_schema["properties"]
-    visualize_schema = tools[CommandName.VISUALIZE.value]["inputSchema"]
-    assert set(visualize_schema["properties"]) == {"view"}
-    query_state_schema = tools[CommandName.QUERY_STATE.value]["inputSchema"]
-    assert set(query_state_schema["properties"]) == {"query", "params"}
-    generate_schema = tools[CommandName.GENERATE_DATASET.value]["inputSchema"]
-    assert "generator" not in generate_schema["properties"]
-
-
-def test_mcp_tool_specs_expose_execution_boundary_metadata():
-    service = ApplicationService(Study())
-
-    tools = {tool["name"]: tool for tool in mcp_tool_specs(service)}
-
-    train_execution = tools[CommandName.TRAIN.value]["x_xbrainlab"]["execution"]
-    assert train_execution["long_running"] is True
-    assert train_execution["requires_http_job"] is True
-    assert train_execution["supported_job_transports"] == ["http"]
-    assert train_execution["requires_confirmation"] is True
-    assert train_execution["decision_boundary"] == "long_running"
-
-    evaluate_execution = tools[CommandName.EVALUATE.value]["x_xbrainlab"]["execution"]
-    assert evaluate_execution["long_running"] is False
-    assert evaluate_execution["requires_http_job"] is False
-    assert evaluate_execution["decision_boundary"] is None
-
-    reset_execution = tools[CommandName.RESET_SESSION.value]["x_xbrainlab"]["execution"]
-    assert reset_execution["destructive"] is True
-    assert reset_execution["requires_confirmation"] is False
-    assert reset_execution["confirmation_required"] is False
-
-
 @pytest.mark.parametrize(
     ("command_name", "field_name"),
     [
@@ -210,29 +166,16 @@ def test_legacy_compatibility_commands_require_explicit_schema_opt_in():
     service = ApplicationService(Study())
 
     specs = {spec.name: spec for spec in command_specs(service)}
-    tools = {tool["name"]: tool for tool in mcp_tool_specs(service)}
 
     assert {
         CommandName.LOAD_DATA.value,
         CommandName.ATTACH_LABELS.value,
         CommandName.IMPORT_LABELS.value,
     }.isdisjoint(specs)
-    assert {
-        CommandName.LOAD_DATA.value,
-        CommandName.ATTACH_LABELS.value,
-        CommandName.IMPORT_LABELS.value,
-    }.isdisjoint(tools)
 
     specs = {
         spec.name: spec
         for spec in command_specs(
-            service,
-            include_legacy_compatibility=True,
-        )
-    }
-    tools = {
-        tool["name"]: tool
-        for tool in mcp_tool_specs(
             service,
             include_legacy_compatibility=True,
         )
@@ -250,11 +193,6 @@ def test_legacy_compatibility_commands_require_explicit_schema_opt_in():
         assert "Legacy compatibility" in spec.description
         assert "review_interpretation" in spec.preferred_commands
         assert "apply_interpretation" in spec.preferred_commands
-
-        metadata = tools[command_name]["x_xbrainlab"]
-        assert metadata["legacy_compatibility"] is True
-        assert metadata["primary_workflow"] is False
-        assert "review_interpretation" in metadata["preferred_commands"]
 
 
 @pytest.mark.parametrize(
@@ -593,36 +531,6 @@ def test_automation_preflight_reads_one_committed_publication():
 
     assert execution.accepted is False
     service.get_view_publication.assert_called_once_with()
-
-
-def test_headless_cli_lists_mcp_tool_specs():
-    completed = subprocess.run(  # noqa: S603
-        [sys.executable, "scripts/dev/run_application_command.py", "--mcp-tools"],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-    tools = json.loads(completed.stdout)
-    assert any(tool["name"] == "scan_source" for tool in tools)
-    assert not any(tool["name"] == "load_data" for tool in tools)
-
-
-def test_headless_cli_legacy_compatibility_requires_explicit_opt_in():
-    completed = subprocess.run(  # noqa: S603
-        [
-            sys.executable,
-            "scripts/dev/run_application_command.py",
-            "--mcp-tools",
-            "--include-legacy-compatibility",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-    tools = json.loads(completed.stdout)
-    assert any(tool["name"] == "load_data" for tool in tools)
 
 
 def test_headless_cli_redacts_hostile_command_text() -> None:

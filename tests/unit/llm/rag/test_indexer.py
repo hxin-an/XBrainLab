@@ -116,6 +116,41 @@ def test_load_gold_set(mock_indexer):
     assert "tool_calls" in docs[0].metadata
 
 
+def test_load_gold_set_missing_file_raises_without_mutating_index(
+    mock_indexer,
+    tmp_path: Path,
+) -> None:
+    mock_indexer.client.reset_mock()
+
+    with pytest.raises(FileNotFoundError):
+        mock_indexer.load_gold_set(str(tmp_path / "missing.json"))
+
+    assert mock_indexer.client.mock_calls == []
+
+
+def test_close_releases_only_an_internally_owned_client() -> None:
+    owned_client = MagicMock()
+    external_client = MagicMock()
+
+    with (
+        patch(
+            "XBrainLab.llm.rag.indexer.RAGConfig.embedding_cache_ready",
+            return_value=True,
+        ),
+        patch("XBrainLab.llm.rag.indexer.HuggingFaceEmbeddings"),
+        patch("XBrainLab.llm.rag.indexer.QdrantClient", return_value=owned_client),
+    ):
+        owned_indexer = RAGIndexer()
+
+    external_indexer = RAGIndexer(client=external_client, embeddings=object())
+
+    owned_indexer.close()
+    external_indexer.close()
+
+    owned_client.close.assert_called_once_with()
+    external_client.close.assert_not_called()
+
+
 def test_index_data_rebuilds_with_deterministic_ids(mock_indexer, tmp_path: Path):
     """A stale or missing collection is rebuilt without random point IDs."""
     docs = [

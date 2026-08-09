@@ -250,6 +250,7 @@ class _ProposalRow(QFrame):
         current: str | None,
         proposed: str,
         setting_change: bool,
+        current_verified: bool,
         parent: QWidget,
     ) -> None:
         super().__init__(parent)
@@ -290,7 +291,11 @@ class _ProposalRow(QFrame):
         )
         current_layout.addWidget(self.current_value)
         proposed_display = _format_display_value(proposed)
-        current_visible = current is not None and current_display != proposed_display
+        current_visible = (
+            current_verified
+            and current is not None
+            and current_display != proposed_display
+        )
         current_group.setVisible(current_visible)
         self.current_caption.setVisible(current_visible)
         self.current_value.setVisible(current_visible)
@@ -302,7 +307,13 @@ class _ProposalRow(QFrame):
         proposed_layout.setContentsMargins(0, 0, 0, 0)
         proposed_layout.setSpacing(1)
         self.proposed_caption = QLabel(
-            "Proposed" if setting_change else "Details",
+            (
+                "Proposed"
+                if setting_change and current_verified
+                else "Proposed value"
+                if setting_change
+                else "Details"
+            ),
             proposed_group,
         )
         self.proposed_caption.setObjectName("AssistantProposalCaption")
@@ -354,6 +365,23 @@ class AssistantConfirmationCard(QFrame):
         )
         layout.addWidget(self.description_label)
 
+        self.impact_title = QLabel("Impact")
+        self.impact_title.setObjectName("AssistantActionCardLabel")
+        self.impact_title.setStyleSheet(ACTION_CARD_LABEL_STYLE)
+        self.impact_title.setVisible(False)
+        layout.addWidget(self.impact_title)
+
+        self.impact_label = QLabel("")
+        self.impact_label.setObjectName("AssistantActionCardImpact")
+        self.impact_label.setStyleSheet(ACTION_CARD_TEXT_STYLE)
+        self.impact_label.setWordWrap(True)
+        self.impact_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Minimum,
+        )
+        self.impact_label.setVisible(False)
+        layout.addWidget(self.impact_label)
+
         self.context_warning = QLabel("")
         self.context_warning.setObjectName("AssistantActionContextWarning")
         self.context_warning.setStyleSheet(ACTION_CARD_CONTEXT_WARNING_STYLE)
@@ -364,6 +392,17 @@ class AssistantConfirmationCard(QFrame):
         )
         self.context_warning.setVisible(False)
         layout.addWidget(self.context_warning)
+
+        self.current_state_warning = QLabel("")
+        self.current_state_warning.setObjectName("AssistantActionContextWarning")
+        self.current_state_warning.setStyleSheet(ACTION_CARD_CONTEXT_WARNING_STYLE)
+        self.current_state_warning.setWordWrap(True)
+        self.current_state_warning.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Minimum,
+        )
+        self.current_state_warning.setVisible(False)
+        layout.addWidget(self.current_state_warning)
 
         self.proposal_rows_widget = QWidget(self)
         self.proposal_rows_widget.setObjectName("AssistantProposalRows")
@@ -484,14 +523,24 @@ class AssistantConfirmationCard(QFrame):
             raise TypeError("Assistant confirmation cards require a typed request.")
         self._request = request
         self.setProperty("destructive", request.destructive)
+        self.setProperty("riskHighImpact", request.high_impact)
+        self.setProperty("riskLongRunning", request.long_running)
+        self.setProperty("decisionBoundary", request.decision_boundary)
         setting_change = request.command_name in _SETTING_CHANGE_COMMANDS
         self.title_label.setText(
             "High-risk confirmation"
             if request.destructive
+            else "Long-running action"
+            if request.long_running
+            else "High-impact confirmation"
+            if request.high_impact and not setting_change
             else ("Suggested change" if setting_change else "Confirmation required")
         )
         self.description_label.setText(request.action_label)
         self.description_label.setVisible(not setting_change)
+        self.impact_label.setText(request.impact_text or "")
+        self.impact_title.setVisible(bool(request.impact_text))
+        self.impact_label.setVisible(bool(request.impact_text))
         self.reason_label.setText(request.description)
         self.context_warning.setText(
             "The workflow changed after this suggestion. XBrainLab will validate "
@@ -500,10 +549,20 @@ class AssistantConfirmationCard(QFrame):
             else ""
         )
         self.context_warning.setVisible(current_context_changed)
+        current_verified = current_values is not None and not current_context_changed
+        self.current_state_warning.setText(
+            "Current training values could not be verified. The values below are "
+            "the assistant's proposal, not a verified comparison. XBrainLab will "
+            "revalidate before applying them."
+            if setting_change and not current_verified
+            else ""
+        )
+        self.current_state_warning.setVisible(setting_change and not current_verified)
         self._render_proposal_rows(
             request,
             current_values=current_values,
             setting_change=setting_change,
+            current_verified=current_verified,
         )
 
         if setting_change:
@@ -539,6 +598,7 @@ class AssistantConfirmationCard(QFrame):
         *,
         current_values: Mapping[str, str] | None,
         setting_change: bool,
+        current_verified: bool,
     ) -> None:
         """Render a human-facing projection without changing the typed request."""
         while self.proposal_rows:
@@ -556,6 +616,7 @@ class AssistantConfirmationCard(QFrame):
                 current.get(label.casefold()),
                 proposed,
                 setting_change,
+                current_verified,
                 self.proposal_rows_widget,
             )
             self.proposal_rows.append(row)

@@ -107,7 +107,6 @@ PLATFORM_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
         "portability-contracts",
         (
             "tests/regression/test_test_temp_location.py",
-            "tests/unit/test_architecture_compliance.py",
             "tests/unit/test_config.py",
             "tests/unit/backend/application/test_import_boundaries.py",
             "tests/unit/backend/application/test_label_resource_admission.py",
@@ -191,6 +190,11 @@ PLATFORM_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("tests/integration/ui/test_preprocess_native_lifecycle.py",),
     ),
 )
+PLATFORM_CI_GROUPS: tuple[tuple[str, tuple[tuple[str, tuple[str, ...]], ...]], ...] = (
+    ("platform-core-contracts", PLATFORM_SHARDS[:2]),
+    ("platform-product-lifecycle", PLATFORM_SHARDS[2:]),
+)
+PLATFORM_CI_COMMANDS = tuple(command for command, _shards in PLATFORM_CI_GROUPS)
 LINUX_CI_GROUPS: tuple[tuple[str, tuple[tuple[str, tuple[str, ...]], ...]], ...] = (
     ("linux-unit-backend", (("backend", ("tests/unit/backend",)),)),
     ("linux-unit-llm-agent", (("llm-agent", ("tests/unit/llm/agent",)),)),
@@ -473,6 +477,24 @@ def run_linux_ci_group(
     )
 
 
+def run_platform_ci_group(
+    command: str,
+    attestation_sink: list[dict[str, Any]] | None = None,
+) -> None:
+    """Run one required platform group without weakening process isolation."""
+    groups = dict(PLATFORM_CI_GROUPS)
+    try:
+        shards = groups[command]
+    except KeyError as error:
+        raise ValueError(f"Unknown platform CI command: {command}") from error
+    configure_headless_ui_env()
+    _run_shards(
+        gate_name=f"Platform CI {command}",
+        shards=shards,
+        attestation_sink=attestation_sink,
+    )
+
+
 def verify_linux_ci_evidence(evidence_dir: Path, result_path: Path) -> int:
     """Fail closed unless every Linux group and coverage file is present."""
     evidence_root = evidence_dir.expanduser().resolve()
@@ -699,6 +721,7 @@ def _parse_cli(argv: Sequence[str]) -> argparse.Namespace:
             "mcp-compatibility",
             "all",
             *LINUX_CI_COMMANDS,
+            *PLATFORM_CI_COMMANDS,
             "verify-linux-ci",
         ),
     )
@@ -717,6 +740,9 @@ def _dispatch(
 ) -> None:
     if command in LINUX_CI_COMMANDS:
         run_linux_ci_group(command, attestation_sink)
+        return
+    if command in PLATFORM_CI_COMMANDS:
+        run_platform_ci_group(command, attestation_sink)
         return
     commands = {
         "backend": backend,

@@ -220,6 +220,27 @@ def _brainvision_integrity_fixture(
     return tmp_path / f"{stem}.vhdr", tmp_path / f"{stem}{dependency_suffix}"
 
 
+def _non_bids_interpretation_source(
+    tmp_path: Path,
+    source_format: str,
+) -> tuple[Path, str]:
+    if source_format == "gdf":
+        source = tmp_path / "A01T.gdf"
+        source.write_bytes(b"GDF header only")
+        return source, "file"
+    if source_format == "edf":
+        source = tmp_path / "S001R04.edf"
+        source.write_bytes(b"EDF header only")
+        return tmp_path, "folder"
+    if source_format == "brainvision":
+        source, _dependency = _brainvision_integrity_fixture(
+            tmp_path,
+            dependency_suffix=".eeg",
+        )
+        return source, "file"
+    raise AssertionError(f"Unsupported non-BIDS source format: {source_format}")
+
+
 def _integrity_fixture(tmp_path: Path, resource_kind: str) -> tuple[Path, Path]:
     if resource_kind == "selected_eeg":
         selected = tmp_path / "subject.fif"
@@ -359,6 +380,46 @@ def test_scan_preview_validate_and_clear_are_owned_by_interpretation_service(
     assert cleared.has_candidate is False
     assert cleared.has_preview is False
     assert cleared.has_validation_decision is False
+
+
+@pytest.mark.parametrize("source_format", ["gdf", "edf", "brainvision"])
+def test_non_bids_scan_preview_validate_has_no_bids_root_warning(
+    tmp_path: Path,
+    source_format: str,
+) -> None:
+    source_path, source_hint = _non_bids_interpretation_source(
+        tmp_path,
+        source_format,
+    )
+    service, _dataset = _service()
+
+    _scan_message, scan_payload = _expect_payload(
+        service.handle_scan_source(
+            ScanSourceCommand(
+                source_path=str(source_path),
+                source_hint=source_hint,
+            ),
+        ),
+    )
+    _preview_message, preview_payload = _expect_payload(
+        service.handle_preview_interpretation(
+            PreviewInterpretationCommand(choices={"skip_labels": True}),
+        ),
+    )
+    _validation_message, validation_payload = _expect_payload(
+        service.handle_validate_interpretation(ValidateInterpretationCommand()),
+    )
+
+    missing_bids_root = (
+        "dataset_description.json is missing from the selected BIDS root."
+    )
+    assert missing_bids_root not in scan_payload["scan_result"]["warnings"]
+    assert preview_payload["candidate"]["bids"]["root_validation_issue"] == ""
+    assert missing_bids_root not in preview_payload["candidate"]["warnings"]
+    assert missing_bids_root not in preview_payload["preview"]["warnings"]
+    assert (
+        missing_bids_root not in validation_payload["validation_decision"]["warnings"]
+    )
 
 
 def test_scan_preview_includes_labels_from_external_folder(

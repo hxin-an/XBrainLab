@@ -481,8 +481,8 @@ def _identity_files(identity: Mapping[str, Any] | None) -> list[dict[str, Any]]:
             "file_bytes": row.get("file_bytes"),
             "sha256": str(row.get("sha256") or ""),
         }
-        identity = _path_key(path)
-        if all(_path_key(item["path"]) != identity for item in result):
+        path_identity = _path_key(path)
+        if all(_path_key(item["path"]) != path_identity for item in result):
             result.append(normalized)
     return sorted(result, key=lambda item: (_path_key(item["path"]), item["path"]))
 

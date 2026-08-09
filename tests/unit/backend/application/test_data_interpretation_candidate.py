@@ -7,6 +7,7 @@ from tests.unit.backend.path_assertions import (
     assert_filesystem_paths_equal,
 )
 from XBrainLab.backend.application import data_interpretation_internal_events
+from XBrainLab.backend.application.data_interpretation import AppliedInterpretation
 from XBrainLab.backend.application.data_interpretation_candidate import (
     InterpretationCandidate,
     build_interpretation_candidate,
@@ -24,6 +25,9 @@ from XBrainLab.backend.application.data_interpretation_review import (
     validate_interpretation_candidate,
 )
 from XBrainLab.backend.application.data_interpretation_scan import ScanResult
+from XBrainLab.backend.application.data_interpretation_state import (
+    DataInterpretationSessionState,
+)
 from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.resource_guard import (
     ResourceChecker,
@@ -1955,3 +1959,76 @@ def test_build_interpretation_candidate_keeps_response_and_comment_events_out_of
     assert not_used["Response/R 1"]["use_as"] == "Response"
     assert not_used["Comment"]["use_as"] == "Ignore"
     assert not_used["New Segment/"]["use_as"] == "Ignore"
+
+
+def test_brainvision_internal_event_spacing_survives_review_and_usable_class_count(
+    monkeypatch,
+):
+    marker_counts = {
+        "Stimulus/S  1": 240,
+        "Stimulus/S  2": 60,
+    }
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                marker: {"count": count, "description": marker}
+                for marker, count in marker_counts.items()
+            }
+        },
+    )
+    class_map = {
+        "Stimulus/S  1": "NonTarget",
+        "Stimulus/S  2": "Target",
+    }
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            source_kind="file",
+            eeg_files=["/data/sub-01_task-ERP_eeg.vhdr"],
+            label_carriers=[],
+            label_carrier_sources={},
+            bids={"is_bids": False, "events_files": []},
+        ),
+        choices={
+            "label_carrier": "embedded_events",
+            "class_map": class_map,
+            "internal_event_selection": {
+                "label_event_codes": list(marker_counts),
+            },
+            "run_event_mappings": {
+                "sub-01_task-ERP_eeg.vhdr": class_map,
+            },
+        },
+    )
+
+    observed_counts = {
+        row["event_code"]: row["event_count"]
+        for bucket in ("candidate_label_events", "not_used_events")
+        for row in candidate.internal_event_preview[bucket]
+    }
+    assert observed_counts == marker_counts
+    assert candidate.internal_event_selection["label_event_counts"] == marker_counts
+
+    applied = AppliedInterpretation(
+        interpretation_id="interpretation-1",
+        candidate_id=candidate.candidate_id,
+        source_path=candidate.source_path,
+        source_kind=candidate.source_kind,
+        loaded_files=list(candidate.selected_eeg_files),
+        event_roles=dict(candidate.event_roles),
+        class_map=dict(candidate.class_map),
+        internal_event_selection=dict(candidate.internal_event_selection),
+        run_event_mappings={
+            key: dict(mapping) for key, mapping in candidate.run_event_mappings.items()
+        },
+    )
+
+    handoff = DataInterpretationSessionState._epoch_handoff(None, applied)
+
+    assert handoff["default_epoch_events"] == list(marker_counts)
+    assert handoff["event_label_aliases"] == class_map
+    assert handoff["usable_class_labels"] == ["NonTarget", "Target"]
+    assert handoff["supervised_ready"] is True

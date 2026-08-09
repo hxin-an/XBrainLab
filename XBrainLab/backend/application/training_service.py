@@ -71,7 +71,10 @@ class TrainingCommandService:
             raise TypeError("Invalid command for configure_training")
 
         option_values = (command.epoch, command.batch_size, command.learning_rate)
-        wants_option = any(value is not None for value in option_values)
+        wants_option = (
+            any(value is not None for value in option_values)
+            or command.seed is not None
+        )
         if wants_option and not all(value is not None for value in option_values):
             raise PreconditionError(
                 "Training epochs, batch size, and learning rate are required.",
@@ -109,6 +112,7 @@ class TrainingCommandService:
                 checkpoint_epoch=save_checkpoints_every,
                 evaluation_option=evaluation_option,
                 repeat_num=repeat,
+                seed=command.seed,
             )
 
         holder: ModelHolder | None = None

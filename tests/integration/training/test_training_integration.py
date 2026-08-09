@@ -171,11 +171,17 @@ class TestApplicationServiceTrainingStateIntegration:
         assert result.state.training.has_model is True
         assert result.state.training.model_name == "EEGNet (XBrainLab)"
         assert result.state.training.has_training_option is True
-        assert result.state.training.training_option == {
+        training_option = result.state.training.training_option
+        seed = training_option["seed"]
+        assert type(seed) is int
+        assert training_option["repeat_seeds"] == [seed]
+        assert training_option == {
             "epoch": 5,
             "batch_size": 4,
             "learning_rate": 0.001,
             "repeat": 1,
+            "seed": seed,
+            "repeat_seeds": [seed],
             "device": "cpu",
             "optimizer": "Adam",
             "optimizer_params": {},

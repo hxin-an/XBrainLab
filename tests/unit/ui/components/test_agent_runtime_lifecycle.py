@@ -15,9 +15,11 @@ from threading import Event, Lock
 from types import SimpleNamespace
 from typing import Any, cast
 
+from PyQt6 import sip
 from PyQt6.QtCore import QEventLoop, QObject, QThread, QTimer, pyqtSignal, pyqtSlot
 from PyQt6.QtTest import QSignalSpy
 from PyQt6.QtWidgets import (
+    QApplication,
     QDialog,
     QDialogButtonBox,
     QMainWindow,
@@ -32,6 +34,7 @@ from XBrainLab.backend.application import (
 )
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.agent.assistant_activity import (
+    AssistantDecisionOwner,
     AssistantTurnActivity,
     AssistantTurnActivityPhase,
 )
@@ -50,7 +53,10 @@ from XBrainLab.llm.agent.tool_attempt_coordinator import (
 )
 from XBrainLab.llm.agent.turn import AssistantTurnCorrelation
 from XBrainLab.llm.agent.ui_handoff import WorkflowUiHandoffRequest
-from XBrainLab.llm.agent.worker import ACTIVE_GENERATION_THREADS
+from XBrainLab.llm.agent.worker import (
+    ACTIVE_GENERATION_THREADS,
+    ACTIVE_RUNTIME_LOAD_THREADS,
+)
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.generation import GenerationProfile
 from XBrainLab.llm.core.runtime_selection import (
@@ -72,6 +78,7 @@ from XBrainLab.ui.dialogs.training import (
 )
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
 from XBrainLab.ui.panels.training.sidebar import TrainingSidebar
+from XBrainLab.ui.qt_runtime import drain_qt_runtime_after_event_loop
 
 WATCHDOG_MS = 5_000
 WATCHDOG_SECONDS = WATCHDOG_MS / 1_000
@@ -111,6 +118,8 @@ class _TestLaunchResolver(AssistantRuntimeLaunchResolver):
 
 class _ControlledEngine:
     """Minimal model backend with deterministic loading/generation barriers."""
+
+    uses_owned_process = True
 
     def __init__(self, config: LLMConfig) -> None:
         self.config = config
@@ -192,10 +201,12 @@ class _ControlledEngine:
             self.generation_release.set()
         return self.cancel_releases_generation
 
-    def close(self) -> None:
+    def close(self, *, wait_timeout: float = 0.0) -> bool:
+        del wait_timeout
         self.close_called.set()
         self.active_backend = None
         self.release_all()
+        return True
 
     def release_all(self) -> None:
         """Release every barrier so teardown cannot strand a native thread."""
@@ -477,7 +488,6 @@ def _runtime_harness(
     main_window.ai_btn = QToolButton(main_window)
     main_window.setCentralWidget(QWidget(main_window))
     main_window.resize(900, 640)
-    qtbot.addWidget(main_window)
 
     study = Study()
     main_window.study = study
@@ -496,6 +506,7 @@ def _runtime_harness(
     finally:
         engine.release_all()
         _close_runtime_harness(qtbot, harness)
+        _dispose_runtime_harness(harness)
 
 
 def _close_runtime_harness(qtbot: Any, harness: _RuntimeHarness) -> None:
@@ -510,6 +521,15 @@ def _close_runtime_harness(qtbot: Any, harness: _RuntimeHarness) -> None:
         timeout=WATCHDOG_MS,
     )
     assert harness.manager.close() is True
+
+
+def _dispose_runtime_harness(harness: _RuntimeHarness) -> None:
+    """Destroy top-level Qt ownership while the application can drain deletes."""
+    app = QApplication.instance()
+    assert app is not None
+    harness.main_window.close()
+    harness.main_window.deleteLater()
+    drain_qt_runtime_after_event_loop(app)
 
 
 def _release_initial_load(qtbot: Any, harness: _RuntimeHarness) -> None:
@@ -1124,11 +1144,21 @@ def test_pending_agent_decision_resolves_through_real_ui_handoff_signal(
             decision_fields=("target_event", "epoch_window"),
         )
         controller = harness.controller
-        _install_host_turn_lease(harness)
+        correlation = _install_host_turn_lease(harness)
         controller.pending_interactions.begin_workflow_handoff(request)
         controller._tool_attempt_session.visible_response_sent = True
         controller.is_processing = True
         outcome_spy = QSignalSpy(controller.interaction_resolved)
+        harness.manager.on_assistant_activity_changed(
+            AssistantTurnActivity(
+                AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+                command_name=request.command_name,
+                request_id=request.request_id,
+                turn_id=correlation.turn_id,
+                generation=correlation.generation,
+                decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
+            )
+        )
 
         controller.workflow_ui_handoff_requested.emit(request)
 
@@ -1192,6 +1222,7 @@ def test_cancelled_confirmation_has_one_terminal_manager_presentation(
                 request_id=request.request_id,
                 turn_id=correlation.turn_id,
                 generation=correlation.generation,
+                decision_owner=AssistantDecisionOwner.CONFIRMATION_CARD,
             )
         )
         harness.manager._show_action_confirmation(request)
@@ -1404,6 +1435,46 @@ def test_close_during_generation_cancels_job_and_stops_threads(
         assert generation_thread not in ACTIVE_GENERATION_THREADS
         assert _thread_has_stopped(worker_thread)
         assert _thread_has_stopped(command_thread)
+
+
+def test_teardown_drains_owned_threads_before_recreating_runtime_in_process(
+    qtbot: Any,
+    monkeypatch: Any,
+) -> None:
+    assert not ACTIVE_GENERATION_THREADS
+    assert not ACTIVE_RUNTIME_LOAD_THREADS
+
+    for cycle in range(2):
+        with _runtime_harness(qtbot, monkeypatch) as harness:
+            _wait_for_event(qtbot, harness.engine.load_started)
+            worker = harness.controller.worker
+            assert worker is not None
+            runtime_load_thread = worker.runtime_load_thread
+            assert runtime_load_thread is not None
+            assert runtime_load_thread in ACTIVE_RUNTIME_LOAD_THREADS
+
+            harness.engine.load_release.set()
+            _wait_for_phase(qtbot, harness, AssistantRuntimePhase.READY)
+            _send_request(harness, f"Inspect lifecycle cycle {cycle + 1}")
+            _wait_for_event(qtbot, harness.engine.generation_started)
+
+            generation_thread = worker.generation_thread
+            assert generation_thread is not None
+            assert generation_thread in ACTIVE_GENERATION_THREADS
+            worker_thread = harness.controller.worker_thread
+            command_thread = harness.runtime.dispatcher.command_thread
+            assert isinstance(command_thread, QThread)
+            window = harness.main_window
+
+        assert _thread_has_stopped(runtime_load_thread)
+        assert _thread_has_stopped(generation_thread)
+        assert _thread_has_stopped(worker_thread)
+        assert _thread_has_stopped(command_thread)
+        assert not ACTIVE_GENERATION_THREADS
+        assert not ACTIVE_RUNTIME_LOAD_THREADS
+        assert sip.isdeleted(runtime_load_thread)
+        assert sip.isdeleted(generation_thread)
+        assert sip.isdeleted(window)
 
 
 def test_worker_traceback_is_sanitized_before_visible_bubble(

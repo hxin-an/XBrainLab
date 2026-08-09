@@ -303,11 +303,15 @@ def test_training_service_configures_model_and_options() -> None:
     assert service.model_name(training.model_holder) == "EEGNet (XBrainLab)"
     assert option_message == "Training configured."
     assert training.training_option is not None
+    generated_seed = training.training_option.seed
+    assert type(generated_seed) is int
     assert option_payload["training_option"] == {
         "epoch": 2,
         "batch_size": 4,
         "learning_rate": 0.001,
         "repeat": 1,
+        "seed": generated_seed,
+        "repeat_seeds": [generated_seed],
         "device": "cpu",
         "optimizer": "SGD",
         "optimizer_params": {},
@@ -400,6 +404,32 @@ def test_training_snapshot_preserves_evaluation_and_optimizer_settings() -> None
     assert snapshot["optimizer_params"] == {"weight_decay": 0.01}
 
 
+def test_training_service_propagates_explicit_seed_and_repeat_snapshot() -> None:
+    service, training = _service()
+
+    result = service.handle_configure_training(
+        ConfigureTrainingCommand(
+            output_dir="./output",
+            device="cpu",
+            epoch=3,
+            batch_size=8,
+            learning_rate=0.001,
+            repeat=3,
+            seed=4294967293,
+        )
+    )
+
+    assert isinstance(result, tuple)
+    assert training.training_option is not None
+    assert training.training_option.seed == 4294967293
+    assert result[1]["training_option"]["seed"] == 4294967293
+    assert result[1]["training_option"]["repeat_seeds"] == [
+        4294967293,
+        4294967294,
+        4294967295,
+    ]
+
+
 def test_incomplete_training_configuration_does_not_mutate_model() -> None:
     service, training = _service()
     existing_model = object()
@@ -414,6 +444,22 @@ def test_incomplete_training_configuration_does_not_mutate_model() -> None:
                 epoch=3,
                 batch_size=8,
             ),
+        )
+
+    assert training.model_holder is existing_model
+    assert training.training_option is existing_option
+
+
+def test_seed_without_complete_training_option_is_not_silently_ignored() -> None:
+    service, training = _service()
+    existing_model = object()
+    existing_option = object()
+    training.model_holder = existing_model
+    training.training_option = existing_option
+
+    with pytest.raises(PreconditionError, match="Training epochs, batch size"):
+        service.handle_configure_training(
+            ConfigureTrainingCommand(model_name="EEGNet", seed=1729),
         )
 
     assert training.model_holder is existing_model
@@ -473,6 +519,8 @@ def test_model_only_configuration_rejects_invalid_option_without_mutation(
             {"save_checkpoints_every": -1},
             "save_checkpoints_every must be a non-negative integer",
         ),
+        ({"seed": True}, "Invalid seed"),
+        ({"seed": 0xFFFF_FFFF, "repeat": 2}, "Invalid seed"),
     ],
 )
 def test_invalid_training_configuration_is_rejected_without_mutation(

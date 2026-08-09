@@ -368,6 +368,26 @@ def test_explicit_standard_preprocess_defaults_are_model_ready() -> None:
     assert decision.command is CommandName.PREPROCESS
 
 
+@pytest.mark.parametrize(
+    "text",
+    (
+        "Use Deep4Net for this training setup.",
+        "EEGConformer",
+        "Use braindecode.atcnet as the model.",
+    ),
+)
+def test_catalog_model_selection_reaches_configuration_not_training(
+    text: str,
+) -> None:
+    decision = UserRequestAdmissionPolicy().evaluate(
+        text,
+        _publication(ApplicationStateSnapshot.empty()),
+    )
+
+    assert decision.action is UserRequestAdmissionAction.GENERATE
+    assert decision.command is CommandName.CONFIGURE_TRAINING
+
+
 def test_state_query_is_admitted_as_deterministic_read_only_execution() -> None:
     decision = UserRequestAdmissionPolicy().evaluate(
         "What is ready now?",

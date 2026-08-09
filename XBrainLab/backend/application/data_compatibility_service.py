@@ -675,11 +675,7 @@ class DataCompatibilityCommandService:
         if values is None:
             return None
         normalized = sorted(
-            {
-                " ".join(str(value).strip().split())
-                for value in values
-                if str(value).strip()
-            },
+            {str(value).strip() for value in values if str(value).strip()},
             key=lambda value: (value.casefold(), value),
         )
         return normalized or None

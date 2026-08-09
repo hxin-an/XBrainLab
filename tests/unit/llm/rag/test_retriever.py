@@ -1,6 +1,7 @@
 import json
 import threading
 import time
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
@@ -130,6 +131,63 @@ def test_bm25_cannot_admit_a_candidate_below_semantic_threshold(mock_retriever):
     assert result == ""
 
 
+def test_bm25_reranks_only_semantically_admitted_candidates():
+    class _Embeddings:
+        @staticmethod
+        def embed_query(_query: str) -> list[float]:
+            return [0.1, 0.2, 0.3]
+
+    metadata = {
+        "tool_calls": [
+            {"tool_name": "query_state", "parameters": {}},
+        ],
+    }
+    semantic_first = SimpleNamespace(
+        id="semantic-first",
+        score=0.9,
+        payload={"page_content": "inspect current state", "metadata": metadata},
+    )
+    keyword_first = SimpleNamespace(
+        id="keyword-first",
+        score=0.8,
+        payload={"page_content": "current workflow status", "metadata": metadata},
+    )
+
+    class _Client:
+        @staticmethod
+        def query_points(**_kwargs):
+            return SimpleNamespace(points=[semantic_first, keyword_first])
+
+    class _BM25:
+        @staticmethod
+        def query(_query: str, *, k: int):
+            assert k >= 2
+            return [(10.0, "keyword-first", "current workflow status", metadata)]
+
+    retriever = RAGRetriever()
+    retriever.is_initialized = True
+    retriever.embeddings = cast(Any, _Embeddings())
+    retriever.client = cast(Any, _Client())
+    retriever.bm25_index = cast(Any, _BM25())
+
+    payload = json.loads(
+        retriever.get_similar_examples(
+            "current workflow status",
+            k=2,
+            allowed_tool_names=frozenset({"query_state"}),
+        )
+    )
+
+    assert [item["data"]["input"] for item in payload["items"]] == [
+        "current workflow status",
+        "inspect current state",
+    ]
+    assert all(
+        item["data"]["expected_action"]["tool_name"] == "query_state"
+        for item in payload["items"]
+    )
+
+
 def test_retriever_filters_examples_to_request_scoped_tools(mock_retriever):
     scan_point = MagicMock(
         id="scan",
@@ -187,6 +245,50 @@ def test_non_action_requests_do_not_retrieve_action_examples(query):
     assert result == ""
     retriever.embeddings.embed_query.assert_not_called()
     retriever.client.query_points.assert_not_called()
+
+
+def test_initialize_failure_remains_unavailable_and_closes_created_client(
+    monkeypatch,
+):
+    retriever = RAGRetriever()
+    client = MagicMock()
+    monkeypatch.setattr(RAGConfig, "embedding_cache_ready", lambda: True)
+    monkeypatch.setattr(
+        retriever, "_create_embeddings", MagicMock(return_value=object())
+    )
+    monkeypatch.setattr(retriever, "_create_client", MagicMock(return_value=client))
+    monkeypatch.setattr(
+        retriever,
+        "_auto_initialize",
+        MagicMock(side_effect=RuntimeError("index inspection failed")),
+    )
+
+    retriever.initialize()
+
+    assert retriever.is_initialized is False
+    assert retriever.client is None
+    assert retriever.vectorstore is None
+    assert retriever.embeddings is None
+    assert retriever.get_similar_examples("inspect the dataset") == ""
+    client.close.assert_called_once_with()
+
+
+def test_retrieval_failure_returns_empty_and_releases_lifecycle_lease():
+    retriever = RAGRetriever()
+    client = MagicMock()
+    embeddings = MagicMock()
+    embeddings.embed_query.side_effect = RuntimeError("embedding failed")
+    retriever.client = client
+    retriever.embeddings = embeddings
+    retriever.is_initialized = True
+
+    result = retriever.get_similar_examples("inspect the dataset")
+
+    assert result == ""
+    assert retriever._active_operations == 0
+    client.query_points.assert_not_called()
+    retriever.close()
+    client.close.assert_called_once_with()
 
 
 def test_close_fences_in_flight_initialize_and_prevents_resource_republish():

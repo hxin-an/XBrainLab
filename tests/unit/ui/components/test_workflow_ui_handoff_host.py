@@ -24,6 +24,8 @@ from XBrainLab.backend.application.view_publication import (
 from XBrainLab.llm.agent.ui_handoff import (
     WorkflowUiHandoffRequest,
     WorkflowUiHandoffResolutionStatus,
+    WorkflowUiHandoffSurfaceKind,
+    workflow_ui_handoff_routes,
 )
 from XBrainLab.ui.components.workflow_surface_router import WorkflowPanel
 from XBrainLab.ui.components.workflow_ui_handoff_host import WorkflowUiHandoffHost
@@ -93,6 +95,19 @@ def _main_window() -> Any:
         ),
     )
     return window
+
+
+def test_host_route_table_is_derived_from_typed_handoff_descriptors() -> None:
+    host = WorkflowUiHandoffHost(_main_window())
+
+    for descriptor in workflow_ui_handoff_routes():
+        route = host._router.route_for(descriptor.command.value)
+
+        assert route is not None
+        assert route.panel.value == descriptor.target_panel.value
+        assert (route.open_surface is not None) is (
+            descriptor.surface_kind is WorkflowUiHandoffSurfaceKind.DIALOG
+        )
 
 
 def _review_identity() -> InterpretationReviewIdentity:

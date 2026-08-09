@@ -1,8 +1,10 @@
 import pytest
 
+from XBrainLab.backend.application.data_interpretation_review import ValidationDecision
 from XBrainLab.ui.dialogs.dataset.review_import_presenter import (
     SubmissionFacts,
     SubmissionProjection,
+    adapt_serialized_validation_decision,
     eeg_data_summary,
     internal_label_placement_summary,
     label_source_summary,
@@ -20,6 +22,8 @@ from XBrainLab.ui.dialogs.dataset.review_presenter import (
 def _submission_facts(
     *,
     decision: str = "safe",
+    action_items: list[dict[str, str]] | None = None,
+    include_action_items: bool = True,
     resource_blocked: bool = False,
     has_unresolved_required_decisions: bool = False,
     has_remap_options: bool = False,
@@ -27,8 +31,33 @@ def _submission_facts(
     event_values_ready_for_recheck: bool = False,
     interpretation_choices_ready_for_recheck: bool = False,
 ) -> SubmissionFacts:
+    if action_items is None:
+        action_items = {
+            "safe": [],
+            "needs_confirmation": [
+                {
+                    "target_step": "Match Labels",
+                    "issue": "Confirm label placement.",
+                    "impact": "Labels may align with the wrong EEG events.",
+                    "next_action": "Review the label placement.",
+                    "severity": "needs_confirmation",
+                }
+            ],
+            "blocked": [
+                {
+                    "target_step": "Match Labels",
+                    "issue": "Label placement is unresolved.",
+                    "impact": "The import cannot be applied.",
+                    "next_action": "Resolve the label placement.",
+                    "severity": "blocked",
+                }
+            ],
+        }.get(decision, [])
+    payload: dict[str, object] = {"decision": decision}
+    if include_action_items:
+        payload["action_items"] = action_items
     return SubmissionFacts(
-        decision=decision,
+        validation=adapt_serialized_validation_decision(payload),
         resource_blocked=resource_blocked,
         has_unresolved_required_decisions=has_unresolved_required_decisions,
         has_remap_options=has_remap_options,
@@ -37,6 +66,77 @@ def _submission_facts(
         interpretation_choices_ready_for_recheck=(
             interpretation_choices_ready_for_recheck
         ),
+    )
+
+
+def test_typed_validation_decision_projects_authoritative_action_targets():
+    decision = ValidationDecision(
+        candidate_id="candidate-1",
+        decision="needs_confirmation",
+        action_items=[
+            {
+                "target_step": "Review Metadata",
+                "issue": "Confirm subject metadata.",
+                "impact": "The recording may be grouped under the wrong subject.",
+                "next_action": "Review the subject value.",
+                "severity": "needs_confirmation",
+            }
+        ],
+    )
+
+    contract = adapt_serialized_validation_decision(decision.to_dict())
+
+    assert contract.is_valid is True
+    assert contract.decision == "needs_confirmation"
+    assert contract.contract_errors == ()
+    assert contract.action_items[0].issue == "Confirm subject metadata."
+    assert contract.action_targets == frozenset({"Review Metadata"})
+    assert contract.blocking_action_targets == frozenset()
+
+
+@pytest.mark.parametrize("decision", ["needs_confirmation", "blocked"])
+def test_actionable_decision_without_typed_action_items_fails_closed(decision: str):
+    facts = _submission_facts(
+        decision=decision,
+        include_action_items=False,
+        interpretation_choices_ready_for_recheck=True,
+    )
+
+    assert facts.validation.is_valid is False
+    assert facts.validation.contract_errors
+    assert project_submission(facts) == SubmissionProjection(
+        can_submit_for_backend_review=False,
+        confirmed_on_accept=False,
+        recheck_kind=None,
+    )
+
+
+def test_needs_confirmation_decision_with_blocked_action_fails_closed():
+    contract = adapt_serialized_validation_decision(
+        {
+            "decision": "needs_confirmation",
+            "action_items": [
+                {
+                    "target_step": "Load Labels",
+                    "issue": "Label source is missing.",
+                    "impact": "The import cannot be applied.",
+                    "next_action": "Load labels.",
+                    "severity": "blocked",
+                },
+                {
+                    "target_step": "Match Labels",
+                    "issue": "Confirm label placement.",
+                    "impact": "The placement needs review.",
+                    "next_action": "Review label placement.",
+                    "severity": "needs_confirmation",
+                },
+            ],
+        }
+    )
+
+    assert contract.is_valid is False
+    assert "needs_confirmation decision contains a blocked action item" in (
+        contract.contract_errors
     )
 
 

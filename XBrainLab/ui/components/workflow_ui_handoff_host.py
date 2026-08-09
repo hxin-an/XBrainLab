@@ -16,13 +16,18 @@ from XBrainLab.backend.application.workflow_projection import (
     build_workflow_projection,
 )
 from XBrainLab.backend.utils.logger import logger
-from XBrainLab.llm.agent.response_presentation import panel_target_for_command
 from XBrainLab.llm.agent.ui_handoff import (
+    WorkflowUiHandoffPanel,
     WorkflowUiHandoffRequest,
     WorkflowUiHandoffResolution,
     WorkflowUiHandoffResolutionStatus,
+    WorkflowUiHandoffRouteDescriptor,
+    WorkflowUiHandoffRouteIdentity,
     WorkflowUiHandoffSession,
+    WorkflowUiHandoffSurfaceKind,
     WorkflowUiHandoffTransitionStatus,
+    workflow_ui_handoff_route_for,
+    workflow_ui_handoff_routes,
 )
 from XBrainLab.ui.components.workflow_surface_router import (
     WorkflowPanel,
@@ -94,16 +99,6 @@ WorkflowUiHandoffTerminalCallback = Callable[
     [WorkflowUiHandoffResolution],
     bool | None,
 ]
-
-_DATA_IMPORT_COMMANDS = frozenset(
-    {
-        CommandName.SCAN_SOURCE,
-        CommandName.REVIEW_INTERPRETATION,
-        CommandName.PREVIEW_INTERPRETATION,
-        CommandName.VALIDATE_INTERPRETATION,
-        CommandName.APPLY_INTERPRETATION,
-    }
-)
 
 
 @dataclass(slots=True)
@@ -192,7 +187,11 @@ class WorkflowUiHandoffHost:
                 fallback_request,
                 "There is no pending Data Import step to open.",
             )
-        if command not in _DATA_IMPORT_COMMANDS:
+        descriptor = workflow_ui_handoff_route_for(command)
+        if (
+            descriptor is None
+            or descriptor.target_panel is not WorkflowUiHandoffPanel.DATASET
+        ):
             return self._standalone_failure(
                 fallback_request,
                 "There is no pending Data Import step to open.",
@@ -465,53 +464,51 @@ class WorkflowUiHandoffHost:
             self._active = None
 
     def _build_routes(self) -> dict[str, WorkflowSurfaceRoute]:
+        surface_openers: dict[
+            WorkflowUiHandoffRouteIdentity,
+            WorkflowSurfaceCallback,
+        ] = {
+            WorkflowUiHandoffRouteIdentity.DATA_IMPORT_DIALOG: (self._open_data_import),
+            WorkflowUiHandoffRouteIdentity.DATA_IMPORT_REVIEW_DIALOG: (
+                self._open_current_import_review
+            ),
+            WorkflowUiHandoffRouteIdentity.EPOCH_SETTINGS_DIALOG: (self._open_epoching),
+            WorkflowUiHandoffRouteIdentity.DATASET_SPLIT_DIALOG: (
+                self._open_data_splitting
+            ),
+            WorkflowUiHandoffRouteIdentity.TRAINING_SETTINGS_DIALOG: (
+                self._open_training_settings
+            ),
+            WorkflowUiHandoffRouteIdentity.SALIENCY_SETTINGS_DIALOG: (
+                self._open_saliency_settings
+            ),
+            WorkflowUiHandoffRouteIdentity.MONTAGE_SETTINGS_DIALOG: (
+                self._open_montage
+            ),
+        }
         return {
-            CommandName.SCAN_SOURCE.value: self._route(
-                CommandName.SCAN_SOURCE, self._open_data_import
-            ),
-            CommandName.REVIEW_INTERPRETATION.value: self._route(
-                CommandName.REVIEW_INTERPRETATION
-            ),
-            CommandName.PREVIEW_INTERPRETATION.value: self._route(
-                CommandName.PREVIEW_INTERPRETATION
-            ),
-            CommandName.VALIDATE_INTERPRETATION.value: self._route(
-                CommandName.VALIDATE_INTERPRETATION
-            ),
-            CommandName.APPLY_INTERPRETATION.value: self._route(
-                CommandName.APPLY_INTERPRETATION,
-                self._open_current_import_review,
-            ),
-            CommandName.PREPROCESS.value: self._route(CommandName.PREPROCESS),
-            CommandName.CREATE_EPOCH.value: self._route(
-                CommandName.CREATE_EPOCH, self._open_epoching
-            ),
-            CommandName.GENERATE_DATASET.value: self._route(
-                CommandName.GENERATE_DATASET, self._open_data_splitting
-            ),
-            CommandName.CONFIGURE_TRAINING.value: self._route(
-                CommandName.CONFIGURE_TRAINING, self._open_training_settings
-            ),
-            CommandName.TRAIN.value: self._route(CommandName.TRAIN),
-            CommandName.EVALUATE.value: self._route(CommandName.EVALUATE),
-            CommandName.VISUALIZE.value: self._route(CommandName.VISUALIZE),
-            CommandName.SALIENCY.value: self._route(
-                CommandName.SALIENCY, self._open_saliency_settings
-            ),
-            CommandName.APPLY_MONTAGE.value: self._route(
-                CommandName.APPLY_MONTAGE, self._open_montage
-            ),
+            descriptor.command.value: self._route(
+                descriptor,
+                surface_openers.get(descriptor.route_identity),
+            )
+            for descriptor in workflow_ui_handoff_routes()
         }
 
     def _route(
         self,
-        command: CommandName,
+        descriptor: WorkflowUiHandoffRouteDescriptor,
         open_surface: WorkflowSurfaceCallback | None = None,
     ) -> WorkflowSurfaceRoute:
-        target = panel_target_for_command(command.value)
-        if target is None:
-            raise ValueError(f"No product surface registered for {command.value}.")
-        panel = WorkflowPanel(target.value)
+        requires_opener = descriptor.surface_kind is WorkflowUiHandoffSurfaceKind.DIALOG
+        if requires_opener and open_surface is None:
+            raise ValueError(
+                f"No dialog adapter registered for {descriptor.command.value}."
+            )
+        if not requires_opener and open_surface is not None:
+            raise ValueError(
+                f"Panel-only route {descriptor.command.value} cannot open a dialog."
+            )
+        panel = WorkflowPanel(descriptor.target_panel.value)
         return WorkflowSurfaceRoute(
             panel=panel,
             open_surface=(

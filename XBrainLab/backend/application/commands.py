@@ -348,6 +348,7 @@ class ConfigureTrainingCommand:
     batch_size: int | None = None
     learning_rate: float | None = None
     repeat: int = 1
+    seed: int | None = None
     device: str = "auto"
     optimizer: str = "adam"
     optimizer_params: dict[str, Any] = field(default_factory=dict)

@@ -5,16 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from XBrainLab.backend.application.commands import CommandName
 from XBrainLab.backend.controller.chat_controller import (
     ChatMessageRecord,
     ChatPanelTarget,
     ChatResponseAction,
 )
 from XBrainLab.llm.agent.assistant_activity import (
+    AssistantDecisionOwner,
     AssistantTurnActivity,
     AssistantTurnActivityPhase,
 )
+from XBrainLab.llm.agent.ui_handoff import workflow_ui_handoff_route_for
 from XBrainLab.product_language import tool_action_label
 
 
@@ -299,26 +300,29 @@ def present_assistant_activity(
             cancelability_text=("You can stop before an XBrainLab action starts."),
         )
     if phase is AssistantTurnActivityPhase.WAITING_FOR_DECISION:
-        import_handoff = activity.command_name == CommandName.APPLY_INTERPRETATION.value
-        step = (
-            (
-                "Continue in Import EEG Data"
-                if import_handoff
-                else tool_action_label(activity.command_name)
-            )
-            if activity.command_name
-            else "Review the open XBrainLab prompt"
-        )
+        owner = activity.decision_owner
+        if owner is AssistantDecisionOwner.CONFIRMATION_CARD:
+            primary_status = "Waiting for your confirmation"
+            step = tool_action_label(activity.command_name)
+            decision_text = "Use the confirmation card to continue or cancel."
+        else:
+            primary_status = "Waiting for your input"
+            route = workflow_ui_handoff_route_for(activity.command_name)
+            if route is not None:
+                step = route.presentation_step
+                decision_text = route.decision_copy
+            elif owner is AssistantDecisionOwner.GUI_DIALOG:
+                step = tool_action_label(activity.command_name)
+                decision_text = "Finish or cancel in the open XBrainLab dialog."
+            else:
+                step = tool_action_label(activity.command_name)
+                decision_text = "Continue in the opened XBrainLab panel."
         return ChatTurnPresentation(
             phase=ChatTurnPresentationPhase.WAITING,
-            primary_status="Waiting for your decision",
+            primary_status=primary_status,
             step=step,
             cancelability=ChatTurnCancelability.NOT_CANCELLABLE,
-            cancelability_text=(
-                "Continue in the open Import EEG Data window."
-                if import_handoff
-                else "Use the confirmation card to continue or cancel."
-            ),
+            cancelability_text=decision_text,
         )
     if phase is AssistantTurnActivityPhase.STOPPING:
         return ChatTurnPresentation.stopping()

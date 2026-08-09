@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-08-09`
+最後更新：`2026-08-10`
 
 這頁只回答三件事：目前在哪一條整合線、現在能相信什麼、離 handoff 還缺什麼。
 短期施工看 [Now](planning/now.md)，驗證規則看
@@ -8,27 +8,27 @@
 
 ## 一句話
 
-XBrainLab 的 Desktop GUI 基線仍是 `main`。尚未合併的
-`integration/eeg-workflow-improvements-v1` 把五個 EEG workflow 改進整合成同一個驗證候選：
-curated Braindecode model catalog、BIDS subject preselection、training test curve、validated
-cross-fold Evaluation summary，以及 cross-fold Saliency summary / display normalization。候選另有
-一個 local-only OpenNeuro P300 多 subject profile（3 subjects、9 runs）與 selected-scope regression，
-並完成一輪 BIDS review latency 與 CI runtime checkpoint。真人手測
-目前仍只支撐 Graz 2a GDF 與 OpenNeuro ds003061 P300 BIDS 各一個資料集；新候選尚未取得
-Windows acceptance 或 exact-head CI success，因此不能宣稱已進入 `main`、product complete、
-Assistant ready 或廣泛資料格式相容。
+XBrainLab 的 product baseline 是 `main`；目前 checkout 是 dirty
+`integration/eeg-workflow-improvements-v1` integration candidate。`ApplicationService / Command API`
+spine 已存在，但 Assistant confirmation / tool-call showcase、test cleanup、首批 3 個
+MOABB dataset journeys、user guide portal 與本輪 20 個 product scenarios gate 仍在收斂，
+尚未形成 clean exact-commit evidence，因此不是 handoff-ready。
+
+數量邊界必須分開解讀：`20` 是近期產品流程 scenario gate；老師要求的長期 `80`
+是約 80 個 MOABB dataset cases。現在 3 個 dataset journeys 只是第一批，不是 MOABB
+campaign 的完成數，也不能因第一輪模型品質未達門檻就停止擴充或調整。
 
 ## Current Integration Context
 
 | 項目 | Current truth |
 | --- | --- |
-| Active worktree | 以 `git rev-parse --show-toplevel` 為準；不要把舊 registered worktree 當成 current product checkout。 |
+| Active worktree | `integration/eeg-workflow-improvements-v1`；目前含多個 worker 的未提交整合改動。 |
 | Product baseline | `main` |
-| Current candidate | `integration/eeg-workflow-improvements-v1`；尚未合併，不是 release。 |
+| Current candidate | `integration/eeg-workflow-improvements-v1@e2a3e0c3263bb70360074d419174ee153ee41b67` 加上 dirty changes；不是 release。 |
 | Baseline | `main@a0e16b400236b687bd2b4c9f58ef4a20929e377b`。 |
-| Active goal | 先關閉五項 EEG workflow integration candidate，再依 [Now](planning/now.md) 推進效能與 Assistant。 |
-| Finding ledger | [Product Quality Audit - 2026-07-30](records/product_quality_audit_2026-07-30.md) |
-| Delivery state | Pushed unmerged integration checkpoint；尚未通過 exact-head CI / Windows acceptance，不是 handoff-ready。 |
+| Active goal | 依 [Now](planning/now.md) 收旂 Assistant、test cleanup、MOABB journeys、user portal 與 20-scenario gate。 |
+| Historical ledger | [Product Quality Audit - 2026-07-30](records/product_quality_audit_2026-07-30.md)；只作 provenance，不是 active queue。 |
+| Delivery state | Dirty integration checkpoint；尚無 combined exact-head CI / Windows acceptance，不是 handoff-ready。 |
 
 其他 registered worktree 不代表 active candidate。需要 inventory 時必須執行
 `git worktree list --porcelain`，不要把數量或 branch 清單手動複製成長期 current truth。
@@ -46,7 +46,7 @@ checkpoint evidence。
 | Assistant | Local-only Assistant、IBM Granite 3.3 2B 選項、tool admission、capability、confirmation、verification 和 structured result 的工程骨架存在；ApplicationService 仍控制最後 command admission，未發現 model-output 直接繞過的 P0。 | Assistant 目前尚未準備好給老師使用。High-impact training settings 尚未統一走 typed confirmation；GUI handoff 與真正 confirmation 仍共用 `WAITING_FOR_DECISION`；同一 request 仍可能向 Granite 2B 暴露多個競爭 tool schemas。現有 RAG/Granite/UI evidence 也不是 current exact-source acceptance。 |
 | Privacy / diagnostics | Centralized public diagnostics 會從 default logs、public command/result projection、assistant feedback 和 UI interaction outcome 移除完整私人路徑、常見 subject identifiers 與不安全 control characters；local file sink 有 bounded retention 與 owner-only policy。 | Native Windows/NTFS ACL、junction/reparse replacement、packaged launcher 與 second-account denial仍是平台 acceptance boundary；exact-commit validation 前不能宣稱完整產品 closure。 |
 | Native UI lifecycle | Preprocess close/cancel work 已建立 quiesce / restore checkpoint；`tests/integration/ui/test_preprocess_native_lifecycle.py` 和 `tests/integration/ui/test_native_render_lifecycle.py` 分別保護 Preprocess 與 Visualization native ownership。 | 兩個 gate 不互相替代，也不取代 Windows/WSLg、DPI、interactive 3D、real training close 和長時間操作 acceptance。 |
-| Packaging | Windows launcher / startup automation 存在。 | 不是 signed installer、release approval 或真人 click-through。 |
+| Packaging | Windows launcher / startup automation 存在。 | 不是 signed installer；release sign-off 與真人 click-through 尚未完成。 |
 | MCP | 既有 code、tests、docs 或 artifacts 只算歷史探索 / compatibility evidence。 | MCP 已退出 active product / thesis roadmap。除非使用者明確要求，不做 MCP hardening、adapter certification 或 handoff gate。 |
 
 ## Main Checkpoint Boundary
@@ -102,7 +102,7 @@ generated evidence；branch、commit 或 dirty state 不吻合時，只能稱為
 - automated UI / launcher evidence 等於 human Windows acceptance。
 - 目前 BIDS latency 數字可跨機重現，或效能工作已完成。
 - MCP 是 product、release 或 thesis prerequisite。
-- signed installer、release approval、scientific model-quality 或 thesis-grade agent accuracy。
+- signed installer、release sign-off、scientific model-quality 或 thesis-grade agent accuracy。
 
 ## 先看哪裡
 

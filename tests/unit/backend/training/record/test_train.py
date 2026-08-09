@@ -85,6 +85,59 @@ def test_train_record_getter(
     assert record.is_finished()
 
 
+def test_train_record_summary_reports_empty_state(train_record):
+    summary = train_record.get_model_output()
+
+    assert "=== Training Summary for Repeat-0 ===" in summary
+    assert "Total Training Epochs: 0" in summary
+    assert "[Best Performance]" in summary
+    assert "No training data available." in summary
+
+
+def test_train_record_summary_reports_latest_and_best_validation_state(train_record):
+    for epoch in range(3):
+        train_record.update_train(
+            {
+                RecordKey.LOSS: 0.5 - epoch * 0.1,
+                RecordKey.ACC: 50.0 + epoch * 10.0,
+            }
+        )
+        train_record.update_validation(
+            {
+                RecordKey.LOSS: 0.6 - epoch * 0.1,
+                RecordKey.ACC: 45.0 + epoch * 10.0,
+            }
+        )
+        train_record.step()
+
+    summary = train_record.get_model_output()
+
+    assert "Total Training Epochs: 3" in summary
+    assert "best_val_loss: 0.4000 (Training epoch 2)" in summary
+    assert "best_val_accuracy: 65.0000 (Training epoch 2)" in summary
+    assert "Train Loss: 0.3000" in summary
+    assert "Train Acc:  70.00%" in summary
+    assert "Val Loss:   0.4000" in summary
+    assert "Val Acc:    65.00%" in summary
+
+
+def test_resume_and_pause_preserve_training_interval_boundaries(train_record):
+    with patch(
+        "XBrainLab.backend.training.record.train.time.time",
+        side_effect=[10.0, 20.0],
+    ):
+        train_record.resume()
+        assert train_record.start_timestamp == 10.0
+        assert train_record.end_timestamp is None
+        train_record.pause()
+        assert train_record.start_timestamp == 10.0
+        assert train_record.end_timestamp == 20.0
+        train_record.resume()
+
+    assert train_record.start_timestamp == 10.0
+    assert train_record.end_timestamp is None
+
+
 @pytest.fixture()
 def cleanup():
     yield
@@ -325,6 +378,23 @@ def test_train_record_test_confusion_figure(train_record, eval_record):
     plt.close("all")
 
 
+def test_train_record_confusion_percentage_normalizes_each_class_row(
+    train_record,
+    eval_record,
+):
+    train_record.set_eval_record(eval_record)
+
+    figure = train_record.get_confusion_figure(show_percentage=True)
+
+    assert figure is not None
+    image_data = np.asarray(figure.axes[0].images[0].get_array())
+    np.testing.assert_allclose(image_data.sum(axis=1), np.ones(CLASS_NUM))
+    annotation_text = [text.get_text() for text in figure.axes[0].texts]
+    assert len(annotation_text) == CLASS_NUM**2
+    assert all(text.endswith("%") for text in annotation_text)
+    plt.close(figure)
+
+
 def test_train_record_empty_figures_do_not_leave_open_matplotlib_handles(
     train_record,
 ):
@@ -378,3 +448,92 @@ def test_export_ignores_legacy_test_selected_checkpoint(train_record):
     assert not os.path.exists(
         os.path.join(train_record.target_path, "best_test_accuracy_model")
     )
+
+
+@pytest.mark.parametrize("target_kind", ["none", "missing"])
+def test_load_without_training_artifact_preserves_current_state(
+    train_record,
+    tmp_path,
+    target_kind,
+):
+    train_record.update_train({RecordKey.LOSS: 0.75})
+    train_record.step()
+    target = None if target_kind == "none" else str(tmp_path / "missing")
+    train_record.target_path = target
+    train_record._artifact_io_path = target
+
+    train_record.load()
+
+    assert train_record.epoch == 1
+    assert train_record.train[RecordKey.LOSS] == [0.75]
+    assert train_record.target_path == target
+
+
+def test_export_without_target_path_has_no_filesystem_side_effect(
+    train_record, tmp_path
+):
+    train_record.target_path = None
+    train_record._artifact_io_path = None
+
+    train_record.export_checkpoint()
+
+    assert train_record.target_path is None
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_split_prediction_records_round_trip_with_primary_split(
+    tmp_path,
+    dataset,  # noqa: F811
+    training_option,  # noqa: F811
+    model_holder,  # noqa: F811
+):
+    seed = set_seed(0)
+    with patch.object(TrainRecord, "init_dir"):
+        record = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            seed,
+        )
+    record.target_path = str(tmp_path)
+    record._artifact_io_path = str(tmp_path)
+    records = {
+        split: EvalRecord(
+            np.array([index]),
+            np.array([[0.9, 0.1]]),
+            {},
+            {},
+            {},
+            {},
+            {},
+            evaluation_split=split,
+        )
+        for index, split in enumerate(("training", "validation", "test"))
+    }
+    record.set_evaluation_records(records, primary_split="test")
+
+    record.export_checkpoint()
+
+    with patch.object(TrainRecord, "init_dir"):
+        restored = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            seed,
+        )
+    restored.target_path = str(tmp_path)
+    restored._artifact_io_path = str(tmp_path)
+    restored.load()
+
+    assert set(restored.evaluation_records) == {
+        "training",
+        "validation",
+        "test",
+    }
+    for index, split in enumerate(("training", "validation", "test")):
+        loaded = restored.evaluation_records[split]
+        assert loaded.evaluation_split == split
+        np.testing.assert_array_equal(loaded.label, np.array([index]))
+    assert restored.eval_record is restored.evaluation_records["test"]
