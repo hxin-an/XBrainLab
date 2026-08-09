@@ -340,7 +340,7 @@ DATA_IMPORT_STEP_TITLES = (
     "Review and Import",
 )
 DATA_IMPORT_COMPACT_STEP_TITLES = (
-    "EEG Data",
+    "EEG",
     "Labels",
     "Metadata",
     "Match",
