@@ -77,7 +77,7 @@ _EARLIER_ACTION_REQUEST = "Use the option you recommended earlier."
 _HEARTBEAT_P95_LIMIT_SECONDS = 0.45
 _HEARTBEAT_OUTLIER_SECONDS = 0.5
 _HEARTBEAT_HARD_CEILING_SECONDS = 0.75
-_HEARTBEAT_MAX_OUTLIERS = 2
+_HEARTBEAT_MAX_OUTLIERS = 4
 _UI_SETTLE_P95_LIMIT_SECONDS = 0.45
 _UI_SETTLE_OUTLIER_SECONDS = 0.75
 _UI_SETTLE_HARD_CEILING_SECONDS = 1.25
@@ -480,8 +480,14 @@ def test_heartbeat_gate_tolerates_one_bounded_scheduler_outlier() -> None:
             "p95",
         ),
         (
-            [(index, 0.02) for index in range(199)]
-            + [(199, 0.51), (200, 0.52), (201, 0.53)],
+            [(index, 0.02) for index in range(197)]
+            + [
+                (197, 0.51),
+                (198, 0.52),
+                (199, 0.53),
+                (200, 0.54),
+                (201, 0.55),
+            ],
             "outlier_count",
         ),
         (

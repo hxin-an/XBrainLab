@@ -736,7 +736,7 @@ def button_visible_text_fits(button: QAbstractButton) -> bool:
     # responsive label is shortened on Windows, so cap only that decoration
     # estimate while continuing to measure the live widget width.
     decoration = min(max(button.sizeHint().width() - required, 0), 28)
-    available = max(button.contentsRect().width() - decoration, 0)
+    available = max(button.width() - decoration, 0)
     return required <= max(available, 0) + 2
 
 

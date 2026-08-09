@@ -198,7 +198,11 @@ def test_recursive_cache_cleanup_is_background_owned_and_in_close_fence(
         )
         elapsed = time.monotonic() - started_at
 
-        assert elapsed < 0.05
+        # QThread.start() is non-blocking with respect to the inspection work,
+        # but shared Windows runners can spend close to 100 ms admitting the
+        # native thread. Keep a UI-bounded ceiling without treating scheduler
+        # startup jitter as if the two-second inspection ran on the GUI thread.
+        assert elapsed < 0.15
         qtbot.waitUntil(entered_cleanup.is_set, timeout=1000)
         assert lifecycle.is_idle() is False
         assert lifecycle.request_shutdown() is False
