@@ -3869,12 +3869,51 @@ def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot
         assert abs(header.length() - viewport.width()) <= 2
         assert horizontal_scrollbar.maximum() == 0, step_title
 
-    for label, text in zip(dialog.step_labels, full_step_labels, strict=True):
-        label.setText(text)
+    for label, full_text in zip(
+        dialog.step_labels,
+        full_step_labels,
+        strict=True,
+    ):
+        label.setText(full_text)
         label.setFixedWidth(126)
     dialog._compact_clipped_step_labels()
 
-    assert [label.text() for label in dialog.step_labels] == compact_step_labels
+    assert [label.toolTip() for label in dialog.step_labels] == dialog._step_titles
+    assert all(
+        label.fontMetrics().horizontalAdvance(label.text())
+        <= label.contentsRect().width() + 1
+        for label in dialog.step_labels
+    )
+
+    for label, full_text, compact_text in zip(
+        dialog.step_labels,
+        full_step_labels,
+        compact_step_labels,
+        strict=True,
+    ):
+        label.setText(full_text)
+        content_insets = label.width() - label.contentsRect().width()
+        metrics = label.fontMetrics()
+        compact_width = metrics.horizontalAdvance(compact_text)
+        label.setFixedWidth(
+            content_insets + compact_width - metrics.horizontalAdvance("m")
+        )
+    dialog._compact_clipped_step_labels()
+
+    fitted_step_labels = [label.text() for label in dialog.step_labels]
+    assert all(
+        text.startswith(f"{index}. ")
+        for index, text in enumerate(fitted_step_labels, start=1)
+    )
+    assert any(
+        text != compact_text
+        for text, compact_text in zip(
+            fitted_step_labels,
+            compact_step_labels,
+            strict=True,
+        )
+    )
+    assert [label.toolTip() for label in dialog.step_labels] == dialog._step_titles
     assert all(
         label.fontMetrics().horizontalAdvance(label.text())
         <= label.contentsRect().width() + 1

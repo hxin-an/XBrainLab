@@ -1929,13 +1929,33 @@ class DataInterpretationPreviewDialog(
             zip(self.step_labels, titles, self._step_titles, strict=True),
             start=1,
         ):
-            label.setText(f"{index}. {title}")
+            text = f"{index}. {title}"
+            if titles is self._compact_step_titles:
+                text = self._elide_step_label_text(label, text)
+            label.setText(text)
             label.setToolTip(full_title if title != full_title else "")
-        if titles is self._step_titles:
-            # Native font metrics can settle after the first layout pass. Check
-            # the allocated cells once more so Windows never paints clipped full
-            # titles before the compact labels are selected.
-            QTimer.singleShot(0, self._compact_clipped_step_labels)
+        # Native font metrics and styled content rectangles can settle after the
+        # first layout pass. Recheck both full and compact renderings then.
+        QTimer.singleShot(0, self._compact_clipped_step_labels)
+
+    @staticmethod
+    def _elide_step_label_text(label: QLabel, text: str) -> str:
+        """Fit one compact step label to its styled native content rectangle."""
+        available_width = label.contentsRect().width()
+        if available_width <= 0:
+            return text
+        metrics = label.fontMetrics()
+        if metrics.horizontalAdvance(text) <= available_width:
+            return text
+        for elide_width in range(available_width, -1, -1):
+            fitted = metrics.elidedText(
+                text,
+                Qt.TextElideMode.ElideRight,
+                elide_width,
+            )
+            if metrics.horizontalAdvance(fitted) <= available_width:
+                return fitted
+        return ""
 
     def _compact_clipped_step_labels(self) -> None:
         """Use compact step titles when native layout allocation clips text."""
@@ -1958,7 +1978,9 @@ class DataInterpretationPreviewDialog(
             ),
             start=1,
         ):
-            label.setText(f"{index}. {compact_title}")
+            label.setText(
+                self._elide_step_label_text(label, f"{index}. {compact_title}")
+            )
             label.setToolTip(full_title)
             label.updateGeometry()
 
