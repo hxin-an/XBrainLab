@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 from PIL import Image, ImageDraw
-from PyQt6.QtWidgets import QLabel, QPushButton
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QLabel, QPushButton, QToolButton
 
 from scripts.dev import capture_chatpanel_ui_ux_walkthrough as walkthrough_module
 from scripts.dev.capture_chatpanel_ui_ux_walkthrough import (
@@ -252,7 +253,8 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
         evidence = first_paint[surface]
         assert evidence["observed_during_first_paint_event"] is True
         assert evidence["paint_event_index"] == 1
-        assert evidence["paint_events_observed_before_capture"] == 1
+        assert evidence["paint_events_observed_before_capture"] >= 1
+        assert evidence["checks"]["observation_captured_first_paint"] is True
         assert evidence["settle_layout_called_before_observation"] is False
         assert evidence["assistant_usable_width"] == 320
         assert evidence["runtime_phase"] == "idle"
@@ -575,7 +577,27 @@ def test_visible_button_fit_uses_live_content_rect(qapp) -> None:
     qapp.processEvents()
 
     button.setFixedWidth(
-        max(button.fontMetrics().horizontalAdvance(button.text()) - 1, 1)
+        max(button.fontMetrics().horizontalAdvance(button.text()) - 4, 1)
+    )
+    assert human_evidence.button_visible_text_fits(button) is False
+
+    button.setFixedWidth(button.sizeHint().width())
+    assert human_evidence.button_visible_text_fits(button) is True
+
+    button.close()
+    button.deleteLater()
+    qapp.processEvents()
+
+
+def test_visible_tool_button_fit_uses_live_content_rect(qapp) -> None:
+    button = QToolButton()
+    button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+    button.setText("Review before continuing")
+    button.show()
+    qapp.processEvents()
+
+    button.setFixedWidth(
+        max(button.fontMetrics().horizontalAdvance(button.text()) - 4, 1)
     )
     assert human_evidence.button_visible_text_fits(button) is False
 

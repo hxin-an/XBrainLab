@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QStyle,
     QStyleOptionButton,
+    QStyleOptionToolButton,
     QToolButton,
     QWidget,
 )
@@ -739,11 +740,27 @@ def button_visible_text_fits(button: QAbstractButton) -> bool:
         option.text = button.text()
         style = button.style()
         if style is not None:
-            available = style.subElementRect(
+            styled_contents = style.subElementRect(
                 QStyle.SubElement.SE_PushButtonContents,
                 option,
                 button,
-            ).width()
+            )
+            if styled_contents.width() > 0:
+                available = styled_contents.width()
+    elif isinstance(button, QToolButton):
+        option = QStyleOptionToolButton()
+        option.initFrom(button)
+        option.rect = button.rect()
+        option.text = button.text()
+        style = button.style()
+        if style is not None:
+            styled_contents = style.subElementRect(
+                QStyle.SubElement.SE_ToolButtonLayoutItem,
+                option,
+                button,
+            )
+            if styled_contents.width() > 0:
+                available = styled_contents.width()
     required = button.fontMetrics().horizontalAdvance(button.text())
     if not button.icon().isNull():
         required += button.iconSize().width() + 4

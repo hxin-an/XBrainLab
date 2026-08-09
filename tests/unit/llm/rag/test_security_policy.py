@@ -35,6 +35,11 @@ def _hold_file_lock(lock_path: str, ready, release) -> None:
     with portalocker.Lock(lock_path, mode="a"):
         ready.set()
         release.wait(5.0)
+    # Spawned Windows test workers can retain third-party interpreter teardown
+    # hooks after the target returns. The lock is already released above; exit
+    # explicitly so the cross-process deadline assertion is not coupled to
+    # unrelated module-finalization latency.
+    os._exit(0)
 
 
 def _wait_for_spawned_holder_ready(
