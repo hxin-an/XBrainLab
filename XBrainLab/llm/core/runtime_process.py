@@ -463,12 +463,19 @@ class LocalRuntimeProcessOwner:
         clean = event is not None and event.kind == "closed"
         remaining = max(0.0, deadline - time.monotonic())
         process.join(timeout=remaining)
+        clean_exit_without_event = bool(
+            event is None
+            and not process.is_alive()
+            and getattr(process, "exitcode", None) == 0
+        )
         if process.is_alive():
             self._terminate_owned_process(restart_required=False)
         self._initialized = False
         self._closed = True
         self._dispose_connections()
-        return not self.is_alive and (clean or self._last_terminated_pid is not None)
+        return not self.is_alive and (
+            clean or clean_exit_without_event or self._last_terminated_pid is not None
+        )
 
     def _create_transport(self) -> None:
         self._dispose_connections()

@@ -280,6 +280,96 @@ def test_runtime_event_wait_drains_terminal_event_after_initial_empty_poll() -> 
     assert owner._event_connection.poll_count == 2
 
 
+def test_clean_zero_exit_is_accepted_when_windows_pipe_terminal_is_late() -> None:
+    class _Process:
+        pid = 123
+        exitcode: int | None = None
+        alive = True
+
+        def is_alive(self) -> bool:
+            return self.alive
+
+        def join(self, timeout: float) -> None:
+            del timeout
+
+    class _CommandConnection:
+        def __init__(self, process: _Process) -> None:
+            self.process = process
+
+        def send(self, command) -> None:
+            assert command.kind == "close"
+            self.process.alive = False
+            self.process.exitcode = 0
+
+        def close(self) -> None:
+            return None
+
+    class _LateEventConnection:
+        def poll(self, timeout: float) -> bool:
+            time.sleep(timeout)
+            return False
+
+        def close(self) -> None:
+            return None
+
+    process = _Process()
+    owner = LocalRuntimeProcessOwner(_config())
+    owner._process = process
+    owner._command_connection = _CommandConnection(process)
+    owner._event_connection = _LateEventConnection()
+    owner._transport_ready.set()
+    owner._initialized = True
+
+    assert owner.close(wait_timeout=0.01) is True
+    assert owner.restart_required is False
+
+
+def test_explicit_close_error_is_not_masked_by_zero_process_exit() -> None:
+    class _Process:
+        pid = 123
+        exitcode: int | None = None
+        alive = True
+
+        def is_alive(self) -> bool:
+            return self.alive
+
+        def join(self, timeout: float) -> None:
+            del timeout
+
+    class _CommandConnection:
+        def __init__(self, process: _Process) -> None:
+            self.process = process
+
+        def send(self, command) -> None:
+            assert command.kind == "close"
+            self.process.alive = False
+            self.process.exitcode = 0
+
+        def close(self) -> None:
+            return None
+
+    class _CloseErrorConnection:
+        def poll(self, timeout: float) -> bool:
+            del timeout
+            return True
+
+        def recv(self) -> _RuntimeEvent:
+            return _RuntimeEvent("close_error")
+
+        def close(self) -> None:
+            return None
+
+    process = _Process()
+    owner = LocalRuntimeProcessOwner(_config())
+    owner._process = process
+    owner._command_connection = _CommandConnection(process)
+    owner._event_connection = _CloseErrorConnection()
+    owner._transport_ready.set()
+    owner._initialized = True
+
+    assert owner.close(wait_timeout=0.01) is False
+
+
 def test_recoverable_load_failure_crosses_process_boundary_without_traceback() -> None:
     owner = LocalRuntimeProcessOwner(
         _config(),
