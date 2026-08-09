@@ -484,6 +484,48 @@ def test_view_publication_keeps_state_and_capabilities_on_one_generation() -> No
     assert after.capabilities == build_capability_policy(after.state)
 
 
+def test_bids_catalog_only_scan_preserves_application_publication(
+    tmp_path: Path,
+) -> None:
+    bids_root = tmp_path / "bids"
+    eeg_dir = bids_root / "sub-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    (bids_root / "dataset_description.json").write_text("{}", encoding="utf-8")
+    (eeg_dir / "sub-01_task-P300_eeg.set").write_bytes(b"catalog only")
+    service = ApplicationService(Study())
+    delivered = []
+    service.subscribe(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, delivered.append)
+    before = service.get_view_publication()
+
+    result = service.execute(
+        ScanSourceCommand(
+            source_path=str(bids_root),
+            source_hint="bids",
+            catalog_only=True,
+        )
+    )
+    after = service.get_view_publication()
+
+    assert result.ok is True
+    assert result.diagnostics["bids_subject_catalog"]["subject_count"] == 1
+    assert result.state == before.state
+    assert after == before
+    assert delivered == [before]
+    assert service.acknowledge_view_publication_delivery(before.revision) is True
+
+    repeated = service.execute(
+        ScanSourceCommand(
+            source_path=str(bids_root),
+            source_hint="bids",
+            catalog_only=True,
+        )
+    )
+
+    assert repeated.ok is True
+    assert service.get_view_publication() == before
+    assert delivered == [before]
+
+
 def test_view_publication_consumers_cannot_mutate_committed_state_or_policy() -> None:
     service = ApplicationService(Study())
     lock_acquired = Event()

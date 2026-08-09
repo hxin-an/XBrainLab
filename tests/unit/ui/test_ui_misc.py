@@ -739,6 +739,85 @@ class TestDatasetActionHandler:
         assert commands[1].choices["selected_bids_subjects"] == ["02"]
         mock_mb.critical.assert_not_called()
 
+    @patch("XBrainLab.ui.panels.dataset.actions.BidsSubjectSelectionDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    def test_import_bids_catalog_and_review_use_async_command_surface(
+        self,
+        mock_fd,
+        mock_preview_dialog,
+        mock_subject_dialog,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ReviewInterpretationCommand,
+            ScanSourceCommand,
+        )
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getExistingDirectory.return_value = "/tmp/bids-root"
+        mock_subject_dialog.return_value.exec.return_value = True
+        mock_subject_dialog.return_value.get_result.return_value = ["02"]
+        mock_preview_dialog.return_value.exec.return_value = False
+        async_commands = []
+
+        def fake_async(_panel, command, *, on_result, **_kwargs):
+            async_commands.append(command)
+            if isinstance(command, ScanSourceCommand):
+                on_result(
+                    _command_result(
+                        bids_subject_catalog={
+                            "eeg_file_count": 1,
+                            "subjects": [
+                                {
+                                    "subject": "02",
+                                    "label": "sub-02",
+                                    "eeg_file_count": 1,
+                                }
+                            ],
+                        }
+                    )
+                )
+            elif isinstance(command, ReviewInterpretationCommand):
+                on_result(
+                    _command_result(
+                        scan_result={"scan_id": "scan-1"},
+                        preview={},
+                        candidate={"candidate_id": "candidate-1"},
+                        validation_decision={
+                            "candidate_id": "candidate-1",
+                            "decision": "needs_confirmation",
+                            "required_confirmations": [],
+                            "blocked_reasons": [],
+                        },
+                    )
+                )
+            else:
+                raise AssertionError(f"unexpected command: {command!r}")
+            return True
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command_async",
+                side_effect=fake_async,
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                side_effect=AssertionError(
+                    "BIDS discovery must not block the UI thread"
+                ),
+            ),
+        ):
+            handler.import_bids_source()
+
+        assert [type(command) for command in async_commands] == [
+            ScanSourceCommand,
+            ReviewInterpretationCommand,
+        ]
+        assert async_commands[0].catalog_only is True
+        assert async_commands[1].choices["selected_bids_subjects"] == ["02"]
+
     def test_import_folder_prefers_backend_scan_capability_over_stale_controller(
         self,
         handler,

@@ -13,6 +13,7 @@ _COUNTED_ROW_COLLECTIONS = {
     "excluded_rows": "excluded_row_count",
 }
 _BOUNDED_COLLECTIONS = {
+    "issues": "issue_count",
     "matched_codes": "matched_code_count",
     "missing_codes": "missing_code_count",
     "conflict_codes": "conflict_code_count",

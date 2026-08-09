@@ -7,6 +7,7 @@ import json
 import os
 import stat
 from collections.abc import Iterable, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,7 @@ from .errors import PreconditionError
 CONTENT_IDENTITY_VERSION = 3
 CONTENT_IDENTITY_ALGORITHM = "sha256"
 CONTENT_HASH_CHUNK_BYTES = 1_048_576
+CONTENT_IDENTITY_HASH_WORKERS = 4
 CONTENT_IDENTITY_SCOPE = (
     "selected_eeg_parser_dependencies_label_carriers_and_local_bids_sidecars"
 )
@@ -78,17 +80,16 @@ def build_review_content_identity(
         admitted_file_identities,
     )
 
-    files: list[dict[str, Any]] = []
+    identity_requests: list[tuple[Path, str, Mapping[str, Any] | None]] = []
     for path_identity in sorted(roles_by_identity):
         path, role = roles_by_identity[path_identity]
-        files.append(
-            _content_file_identity(
-                path=Path(path),
-                role=role,
-                resource_reader=resource_reader,
-                admitted_identity=admitted_identities.get(path_identity),
-            )
+        identity_requests.append(
+            (Path(path), role, admitted_identities.get(path_identity))
         )
+    files = _content_file_identities(
+        identity_requests,
+        resource_reader=resource_reader,
+    )
     interpretation_contract = {
         "selected_eeg_files": selected_paths,
         "parser_dependencies": parser_dependencies,
@@ -269,6 +270,34 @@ def _content_file_identity(
         "file_bytes": file_bytes,
         "sha256": sha256,
     }
+
+
+def _content_file_identities(
+    requests: list[tuple[Path, str, Mapping[str, Any] | None]],
+    *,
+    resource_reader: AdmittedResourceReader | None,
+) -> list[dict[str, Any]]:
+    """Fingerprint independent admitted files with bounded parallel I/O."""
+
+    def _build(
+        request: tuple[Path, str, Mapping[str, Any] | None],
+    ) -> dict[str, Any]:
+        path, role, admitted_identity = request
+        return _content_file_identity(
+            path=path,
+            role=role,
+            resource_reader=resource_reader,
+            admitted_identity=admitted_identity,
+        )
+
+    worker_count = min(CONTENT_IDENTITY_HASH_WORKERS, len(requests))
+    if worker_count <= 1:
+        return [_build(request) for request in requests]
+    with ThreadPoolExecutor(
+        max_workers=worker_count,
+        thread_name_prefix="interpretation-content-identity",
+    ) as executor:
+        return list(executor.map(_build, requests))
 
 
 def _normalized_admitted_file_identities(

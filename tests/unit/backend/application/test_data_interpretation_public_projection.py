@@ -98,6 +98,36 @@ def test_bids_projection_keeps_aggregate_counts_without_full_rows() -> None:
     assert run["placement"]["excluded_row_count"] == 2
 
 
+def test_bids_projection_bounds_row_level_issues_without_losing_issue_count() -> None:
+    count = PUBLIC_EVIDENCE_PREVIEW_LIMIT + 20
+    issues = [
+        {
+            "code": "value_decision_unresolved",
+            "row": index,
+            "message": "selected label has no complete semantic decision",
+        }
+        for index in range(count)
+    ]
+
+    projected = project_bids_review(
+        {
+            "event_validation": {
+                "runs": [
+                    {
+                        "event_count": count,
+                        "issues": issues,
+                    }
+                ]
+            }
+        }
+    )
+
+    [run] = projected["event_validation"]["runs"]
+    assert run["issue_count"] == count
+    assert run["issues"] == issues[:PUBLIC_EVIDENCE_PREVIEW_LIMIT]
+    assert project_bids_review(projected) == projected
+
+
 def test_label_carrier_projection_is_idempotent_for_empty_bounded_evidence() -> None:
     original = [
         {

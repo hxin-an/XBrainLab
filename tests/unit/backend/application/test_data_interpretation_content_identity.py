@@ -1,4 +1,5 @@
 import hashlib
+import threading
 from pathlib import Path
 
 import pytest
@@ -163,6 +164,67 @@ def test_selected_eeg_identity_streams_content_without_materializing_with_read_b
             "file_bytes": len(payload),
             "sha256": hashlib.sha256(payload).hexdigest(),
         }
+    ]
+
+
+def test_review_identity_hashes_independent_files_concurrently_in_stable_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_paths = [tmp_path / f"run-{index}.set" for index in range(3)]
+    for index, path in enumerate(eeg_paths):
+        path.write_bytes(f"payload-{index}".encode())
+
+    monkeypatch.setattr(
+        data_interpretation_content_identity,
+        "CONTENT_IDENTITY_HASH_WORKERS",
+        1,
+    )
+    sequential_identity = build_review_content_identity(
+        label_carrier_plan=[],
+        selected_eeg_files=[str(path) for path in reversed(eeg_paths)],
+    )
+
+    original = data_interpretation_content_identity._stable_stream_sha256
+    lock = threading.Lock()
+    release = threading.Event()
+    active = 0
+    overlap_observed = False
+
+    def _observed_stream(path: Path) -> tuple[int, str]:
+        nonlocal active, overlap_observed
+        with lock:
+            active += 1
+            if active >= 2:
+                overlap_observed = True
+                release.set()
+        release.wait(timeout=1.0)
+        try:
+            return original(path)
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr(
+        data_interpretation_content_identity,
+        "_stable_stream_sha256",
+        _observed_stream,
+    )
+    monkeypatch.setattr(
+        data_interpretation_content_identity,
+        "CONTENT_IDENTITY_HASH_WORKERS",
+        4,
+    )
+
+    identity = build_review_content_identity(
+        label_carrier_plan=[],
+        selected_eeg_files=[str(path) for path in reversed(eeg_paths)],
+    )
+
+    assert overlap_observed is True
+    assert identity == sequential_identity
+    assert [row["path"] for row in identity["files"]] == [
+        str(path.resolve()) for path in eeg_paths
     ]
 
 

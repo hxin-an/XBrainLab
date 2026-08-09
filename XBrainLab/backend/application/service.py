@@ -2590,6 +2590,12 @@ class ApplicationService(Observable):
 
     @staticmethod
     def _is_read_only_command(command: Command, name: CommandName) -> bool:
+        if isinstance(command, ScanSourceCommand) and command.catalog_only:
+            # Subject discovery inspects only bounded directory metadata and does
+            # not enter the Data Interpretation lifecycle. Preserve the current
+            # publication identity so an open review cannot become stale merely
+            # because another catalog was inspected.
+            return True
         if isinstance(command, PreviewLabelImportCommand):
             # Preview materialization only populates an opaque, one-shot backend
             # cache. It does not change published application state, so the

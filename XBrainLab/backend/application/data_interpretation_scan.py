@@ -983,9 +983,12 @@ def _has_supported_suffix(path: Path, suffixes: tuple[str, ...]) -> bool:
 
 
 def _is_raw_bids_eeg_scope_path(path: Path, bids_root: Path) -> bool:
-    """Keep only raw subject-level EEG datatype files for strict BIDS import."""
+    """Keep admitted raw subject-level EEG files in the selected BIDS root."""
     try:
-        parts = path.resolve().relative_to(bids_root.resolve()).parts
+        # Discovery has already rejected substitutions and resolved both paths
+        # inside the retained directory identity. Re-resolving every file here
+        # repeats expensive WSL/NTFS lstat walks without adding an admission check.
+        parts = path.relative_to(bids_root).parts
     except ValueError:
         return False
     if not parts or not parts[0].startswith("sub-") or "derivatives" in parts:

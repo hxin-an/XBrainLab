@@ -134,6 +134,67 @@ def _value_decisions_from_events(path: Path) -> dict[str, dict[str, object]]:
     }
 
 
+def test_strict_bids_keeps_full_issue_evidence_but_bounds_blocker_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_path = "/data/sub-01/eeg/sub-01_task-P300_eeg.set"
+    events_path = "/data/sub-01/eeg/sub-01_task-P300_events.tsv"
+    issues = [
+        {
+            "code": "unresolved_event_value_decisions",
+            "row": None,
+            "message": "selected event values need semantic decisions",
+        },
+        *[
+            {
+                "code": "value_decision_unresolved",
+                "row": row,
+                "message": "selected label has no complete semantic decision",
+            }
+            for row in range(2, 33)
+        ],
+    ]
+
+    monkeypatch.setattr(
+        data_interpretation_bids,
+        "_review_one_run",
+        lambda **_kwargs: (
+            {
+                "event_count": 31,
+                "row_evidence": [],
+                "placement": {
+                    "status": "blocked",
+                    "usable_event_count": 0,
+                    "excluded_event_count": 0,
+                },
+                "bids_schema": {"issues": []},
+                "issues": issues,
+            },
+            {},
+        ),
+    )
+
+    review = data_interpretation_bids.review_strict_bids_event_runs(
+        bids={
+            "is_bids": True,
+            "layout": [
+                {
+                    "file": eeg_path,
+                    "events_file": events_path,
+                }
+            ],
+        },
+        selected_eeg_files=[eeg_path],
+        label_carrier_plan=[{"path": events_path}],
+    )
+
+    assert review.evidence["runs"][0]["issues"] == issues
+    [reason] = review.blocked_reasons
+    assert "row 12 (selected label has no complete semantic decision)" in reason
+    assert "row 13 (selected label has no complete semantic decision)" not in reason
+    assert "20 more issues" in reason
+
+
 def test_bids_preview_blocks_before_events_tsv_materialization(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
