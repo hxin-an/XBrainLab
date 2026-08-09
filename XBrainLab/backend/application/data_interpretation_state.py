@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -34,6 +33,10 @@ from .data_interpretation_event_values import (
     class_targets_from_event_catalog,
     derive_class_views,
     unresolved_values_for_plan,
+)
+from .data_interpretation_path_identity import (
+    deduplicate_resolved_paths,
+    resolved_path_identity,
 )
 from .data_interpretation_placement import (
     annotate_label_carrier_placements,
@@ -458,12 +461,12 @@ class DataInterpretationSessionState:
         applied: AppliedInterpretation,
     ) -> dict[str, Any]:
         """Stage every interpretation projection before committing any of them."""
-        label_carriers = sorted(
-            {
-                self._label_path_key(path)
-                for path in (file_mapping.values() or plan.label_paths)
-            }
+        label_carriers = self._label_path_values(
+            file_mapping.values() or plan.label_paths
         )
+        label_carrier_identities = {
+            self._label_path_key(path) for path in label_carriers
+        }
         label_configs = self._label_configs_for_recipe(plan, label_carriers)
         class_map = self._label_mapping_for_recipe(plan.mapping)
         imported_carrier_plan = self._label_import_carrier_plan(
@@ -499,12 +502,10 @@ class DataInterpretationSessionState:
             )
         replace_skipped_label_truth = bool(applied.skip_labels)
         superseded_carriers = (
-            sorted(
-                {
-                    self._label_path_key(path)
-                    for path in scan.label_carriers
-                    if self._label_path_key(path) not in set(label_carriers)
-                }
+            self._label_path_values(
+                path
+                for path in scan.label_carriers
+                if self._label_path_key(path) not in label_carrier_identities
             )
             if replace_skipped_label_truth and scan is not None
             else []
@@ -530,21 +531,22 @@ class DataInterpretationSessionState:
             label_sources=(
                 label_carriers
                 if replace_skipped_label_truth
-                else sorted({*applied.label_sources, *label_carriers})
+                else self._label_path_values([*applied.label_sources, *label_carriers])
             ),
             label_carriers=(
                 label_carriers
                 if replace_skipped_label_truth
-                else sorted({*applied.label_carriers, *label_carriers})
+                else self._label_path_values([*applied.label_carriers, *label_carriers])
             ),
             label_carrier_plan=updated_carrier_plan,
             label_carrier="external_files",
-            excluded_label_carriers=sorted(
-                {
+            excluded_label_carriers=self._label_path_values(
+                path
+                for path in [
                     *applied.excluded_label_carriers,
                     *superseded_carriers,
-                }
-                - set(label_carriers)
+                ]
+                if self._label_path_key(path) not in label_carrier_identities
             ),
             event_roles=updated_event_roles,
             class_map=updated_class_map,
@@ -1243,7 +1245,14 @@ class DataInterpretationSessionState:
 
     @staticmethod
     def _label_path_key(path: Any) -> str:
-        return os.path.normcase(str(Path(str(path)).expanduser().resolve()))
+        return resolved_path_identity(path)
+
+    @staticmethod
+    def _label_path_values(paths: Iterable[Any]) -> list[str]:
+        return sorted(
+            deduplicate_resolved_paths(paths),
+            key=lambda path: (resolved_path_identity(path), path),
+        )
 
     @staticmethod
     def _label_import_carrier_plan(
@@ -1284,7 +1293,8 @@ class DataInterpretationSessionState:
             targets = sorted(
                 str(target)
                 for target, mapped_carrier in file_mapping.items()
-                if str(mapped_carrier) == carrier
+                if DataInterpretationSessionState._label_path_key(mapped_carrier)
+                == DataInterpretationSessionState._label_path_key(carrier)
             )
             carrier_class_counts = DataInterpretationSessionState._shared_class_counts(
                 targets=targets,
@@ -1615,15 +1625,16 @@ class DataInterpretationSessionState:
     ) -> list[dict[str, Any]]:
         result = [dict(item) for item in existing]
         by_path = {
-            str(item.get("path") or ""): index
+            DataInterpretationSessionState._label_path_key(item.get("path")): index
             for index, item in enumerate(result)
             if str(item.get("path") or "")
         }
         for item in imported:
             path = str(item.get("path") or "")
-            index = by_path.get(path)
+            path_identity = DataInterpretationSessionState._label_path_key(path)
+            index = by_path.get(path_identity)
             if index is None:
-                by_path[path] = len(result)
+                by_path[path_identity] = len(result)
                 result.append(dict(item))
                 continue
             merged = dict(result[index])

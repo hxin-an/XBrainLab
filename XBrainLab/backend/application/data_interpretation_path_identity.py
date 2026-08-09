@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
-from typing import Literal
+from typing import Any, Literal
 
 PathMatchStatus = Literal["exact", "unique_basename", "missing", "ambiguous"]
 
@@ -43,6 +45,30 @@ def normalized_path_identity(value: str) -> str:
     if windows_path.drive or "\\" in text:
         return windows_path.as_posix().casefold()
     return Path(text).expanduser().as_posix()
+
+
+def resolved_path_value(value: Any) -> str:
+    """Resolve a native path while retaining its spelling for product state."""
+    return str(Path(str(value)).expanduser().resolve(strict=False))
+
+
+def resolved_path_identity(value: Any) -> str:
+    """Return a native filesystem comparison key for a resolved path value."""
+    return os.path.normcase(resolved_path_value(value))
+
+
+def deduplicate_resolved_paths(values: Iterable[Any]) -> list[str]:
+    """Deduplicate native paths by identity while preserving the first spelling."""
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        path = resolved_path_value(value)
+        identity = resolved_path_identity(path)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        result.append(path)
+    return result
 
 
 def resolve_scan_path(requested: str, scanned: list[str]) -> ScanPathMatch:

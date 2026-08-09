@@ -18,7 +18,6 @@ import numpy as np
 import pytest
 import torch
 
-from tests.unit.backend.path_assertions import filesystem_path_key
 from XBrainLab.backend.application import (
     APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
     ApplicationService,
@@ -6573,7 +6572,7 @@ def test_import_labels_updates_applied_interpretation_recipe_trace(tmp_path):
     assert import_result.ok is True
     assert import_result.diagnostics["recipe_updated"] is True
     label_import = import_result.diagnostics["label_import"]
-    canonical_label_path = filesystem_path_key(label_path)
+    canonical_label_path = str(label_path.resolve())
     assert label_import["mode"] == "batch"
     assert label_import["label_carriers"] == [canonical_label_path]
     assert label_import["selected_event_names"] == ["cue"]

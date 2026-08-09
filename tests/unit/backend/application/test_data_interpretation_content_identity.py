@@ -5,7 +5,6 @@ import pytest
 
 from tests.unit.backend.path_assertions import (
     assert_filesystem_path_lists_equal,
-    filesystem_path_key,
 )
 from XBrainLab.backend.application import data_interpretation_content_identity
 from XBrainLab.backend.application.data_interpretation_bids_resources import (
@@ -28,6 +27,28 @@ def _plan(path: Path, *, label_field: str = "trial_type") -> dict[str, str]:
         "time_model": "seconds",
         "placement_method": "interval",
     }
+
+
+def test_review_identity_preserves_path_spelling_with_windows_identity_keys(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels = tmp_path / "ExternalLabels" / "A01T.mat"
+    labels.parent.mkdir()
+    labels.write_bytes(b"reviewed labels")
+    resolved = str(labels.resolve())
+    monkeypatch.setattr(
+        data_interpretation_content_identity.os.path,
+        "normcase",
+        lambda value: str(value).casefold(),
+    )
+
+    identity = build_review_content_identity(
+        label_carrier_plan=[{"path": resolved, "format": "MAT"}],
+    )
+
+    assert identity["bindings"][0]["path"] == resolved
+    assert identity["files"][0]["path"] == resolved
 
 
 def test_review_identity_binds_interpretation_choices_not_only_file_bytes(
@@ -101,17 +122,17 @@ def test_review_identity_binds_selected_eeg_and_every_parser_dependency(
     )
     assert identity["parser_dependencies"] == [
         {
-            "path": filesystem_path_key(vhdr_path),
+            "path": str(vhdr_path.resolve()),
             "dependencies": [
-                filesystem_path_key(eeg_path),
-                filesystem_path_key(vmrk_path),
+                str(eeg_path.resolve()),
+                str(vmrk_path.resolve()),
             ],
         }
     ]
     assert {row["path"]: row["role"] for row in identity["files"]} == {
-        filesystem_path_key(vhdr_path): "selected_eeg",
-        filesystem_path_key(eeg_path): "eeg_parser_dependency",
-        filesystem_path_key(vmrk_path): "eeg_parser_dependency",
+        str(vhdr_path.resolve()): "selected_eeg",
+        str(eeg_path.resolve()): "eeg_parser_dependency",
+        str(vmrk_path.resolve()): "eeg_parser_dependency",
     }
 
 
@@ -137,7 +158,7 @@ def test_selected_eeg_identity_streams_content_without_materializing_with_read_b
 
     assert identity["files"] == [
         {
-            "path": filesystem_path_key(eeg_path),
+            "path": str(eeg_path.resolve()),
             "role": "selected_eeg",
             "file_bytes": len(payload),
             "sha256": hashlib.sha256(payload).hexdigest(),
@@ -231,7 +252,7 @@ def test_review_identity_reuses_parser_admitted_bids_sidecar_digest(
 
     assert identity["files"] == [
         {
-            "path": filesystem_path_key(sidecar),
+            "path": str(sidecar.resolve()),
             "role": "bids_events_json",
             "file_bytes": len(payload),
             "sha256": hashlib.sha256(payload).hexdigest(),

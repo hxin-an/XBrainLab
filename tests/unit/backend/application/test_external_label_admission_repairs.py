@@ -13,7 +13,6 @@ import pytest
 
 from tests.unit.backend.path_assertions import (
     assert_filesystem_path_lists_equal,
-    filesystem_path_key,
 )
 from XBrainLab.backend.application import commands as command_contracts
 from XBrainLab.backend.application.automation import command_specs
@@ -450,7 +449,7 @@ def test_preview_rejects_an_overlong_public_label_value(
         "field": "unique_label",
         "observed_length": len(overlong),
         "limit": label_import_preview.MAX_LABEL_PREVIEW_TEXT_LENGTH,
-        "path": filesystem_path_key(label_path),
+        "path": str(label_path.resolve()),
         "suggestions": [
             "select the label field that contains compact class or event codes",
             "convert verbose values to bounded class or event codes",

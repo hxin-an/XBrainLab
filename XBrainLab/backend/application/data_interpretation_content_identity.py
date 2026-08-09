@@ -11,6 +11,11 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
+from .data_interpretation_path_identity import (
+    deduplicate_resolved_paths,
+    resolved_path_identity,
+    resolved_path_value,
+)
 from .data_interpretation_resource_reader import AdmittedResourceReader
 from .errors import PreconditionError
 
@@ -51,31 +56,39 @@ def build_review_content_identity(
     bindings = _normalized_bindings(label_carrier_plan)
     selected_paths = _normalized_paths(selected_eeg_files)
     parser_dependencies = _normalized_parser_dependencies(eeg_parser_dependencies)
-    roles_by_path = dict.fromkeys(selected_paths, "selected_eeg")
+    roles_by_identity = {
+        _path_key(path): (path, "selected_eeg") for path in selected_paths
+    }
     for dependency_binding in parser_dependencies:
         for path in dependency_binding["dependencies"]:
-            roles_by_path.setdefault(path, "eeg_parser_dependency")
+            roles_by_identity.setdefault(
+                _path_key(path),
+                (path, "eeg_parser_dependency"),
+            )
     for binding in bindings:
-        roles_by_path.setdefault(binding["path"], "label_carrier")
+        path = binding["path"]
+        roles_by_identity.setdefault(_path_key(path), (path, "label_carrier"))
     for raw_path in bids_events_json_files:
-        path = _path_key(raw_path)
-        roles_by_path.setdefault(path, "bids_events_json")
+        path = _path_value(raw_path)
+        roles_by_identity.setdefault(_path_key(path), (path, "bids_events_json"))
     for raw_path in bids_channels_files:
-        path = _path_key(raw_path)
-        roles_by_path.setdefault(path, "bids_channels")
+        path = _path_value(raw_path)
+        roles_by_identity.setdefault(_path_key(path), (path, "bids_channels"))
     admitted_identities = _normalized_admitted_file_identities(
         admitted_file_identities,
     )
 
-    files = [
-        _content_file_identity(
-            path=Path(path),
-            role=roles_by_path[path],
-            resource_reader=resource_reader,
-            admitted_identity=admitted_identities.get(path),
+    files: list[dict[str, Any]] = []
+    for path_identity in sorted(roles_by_identity):
+        path, role = roles_by_identity[path_identity]
+        files.append(
+            _content_file_identity(
+                path=Path(path),
+                role=role,
+                resource_reader=resource_reader,
+                admitted_identity=admitted_identities.get(path_identity),
+            )
         )
-        for path in sorted(roles_by_path)
-    ]
     interpretation_contract = {
         "selected_eeg_files": selected_paths,
         "parser_dependencies": parser_dependencies,
@@ -84,13 +97,15 @@ def build_review_content_identity(
         "event_roles": _normalized_string_mapping(event_roles),
         "run_event_mappings": _normalized_nested_mapping(run_event_mappings),
     }
-    content_sha256 = _canonical_sha256(files)
-    review_contract_sha256 = _canonical_sha256(interpretation_contract)
+    identity_files = _files_identity_payload(files)
+    identity_contract = _contract_identity_payload(interpretation_contract)
+    content_sha256 = _canonical_sha256(identity_files)
+    review_contract_sha256 = _canonical_sha256(identity_contract)
     scope_sha256 = _canonical_sha256(
         {
             "version": CONTENT_IDENTITY_VERSION,
-            "files": files,
-            "interpretation_contract": interpretation_contract,
+            "files": identity_files,
+            "interpretation_contract": identity_contract,
         }
     )
     return {
@@ -212,14 +227,15 @@ def _content_file_identity(
     resource_reader: AdmittedResourceReader | None,
     admitted_identity: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    path_key = (
+    path_identity = (
         resource_reader.canonical_key(path)
         if resource_reader is not None and resource_reader.admits(path)
         else _path_key(path)
     )
+    path_value = _path_value(path)
     if admitted_identity is not None:
         return {
-            "path": path_key,
+            "path": path_value,
             "role": role,
             "file_bytes": int(admitted_identity["file_bytes"]),
             "sha256": str(admitted_identity["sha256"]),
@@ -229,7 +245,8 @@ def _content_file_identity(
     # files that belong to its exact admitted scope.
     guard = (
         resource_reader.guard([path], purpose="reviewed label content fingerprint")
-        if resource_reader is not None and path_key in resource_reader.admitted_files
+        if resource_reader is not None
+        and path_identity in resource_reader.admitted_files
         else nullcontext()
     )
     try:
@@ -247,7 +264,7 @@ def _content_file_identity(
             },
         ) from exc
     return {
-        "path": path_key,
+        "path": path_value,
         "role": role,
         "file_bytes": file_bytes,
         "sha256": sha256,
@@ -259,7 +276,8 @@ def _normalized_admitted_file_identities(
 ) -> dict[str, dict[str, int | str]]:
     result: dict[str, dict[str, int | str]] = {}
     for raw_path, identity in (identities or {}).items():
-        path = _path_key(raw_path)
+        path = _path_value(raw_path)
+        path_identity = _path_key(path)
         file_bytes = identity.get("file_bytes")
         sha256 = str(identity.get("sha256") or "").strip().lower()
         if (
@@ -276,7 +294,7 @@ def _normalized_admitted_file_identities(
                     "path": path,
                 },
             )
-        result[path] = {"file_bytes": file_bytes, "sha256": sha256}
+        result[path_identity] = {"file_bytes": file_bytes, "sha256": sha256}
     return result
 
 
@@ -319,20 +337,18 @@ def _normalized_bindings(
         raw_path = str(plan.get("path") or "").strip()
         if not raw_path:
             continue
-        binding: dict[str, Any] = {"path": _path_key(raw_path)}
+        binding: dict[str, Any] = {"path": _path_value(raw_path)}
         for field in _PLAN_BINDING_FIELDS:
             value = str(plan.get(field) or "").strip()
             if not value:
                 continue
             if field == "selected_target_file":
-                value = _path_key(value)
+                value = _path_value(value)
             binding[field] = value
-        target_files = sorted(
-            {
-                _path_key(str(item))
-                for item in plan.get("selected_target_files", []) or []
-                if str(item).strip()
-            }
+        target_files = _normalized_paths(
+            str(item)
+            for item in plan.get("selected_target_files", []) or []
+            if str(item).strip()
         )
         if target_files:
             binding["selected_target_files"] = target_files
@@ -357,7 +373,10 @@ def _normalized_bindings(
 
 def _normalized_paths(paths: Iterable[str]) -> list[str]:
     return sorted(
-        {_path_key(path) for raw_path in paths if (path := str(raw_path).strip())}
+        deduplicate_resolved_paths(
+            path for raw_path in paths if (path := str(raw_path).strip())
+        ),
+        key=lambda path: (_path_key(path), path),
     )
 
 
@@ -374,7 +393,7 @@ def _normalized_parser_dependencies(
             continue
         result.append(
             {
-                "path": _path_key(owner),
+                "path": _path_value(owner),
                 "dependencies": dependency_paths,
             }
         )
@@ -410,7 +429,7 @@ def _identity_parser_dependencies(
             continue
         normalized = _normalized_paths(str(item) for item in raw_dependencies)
         if normalized:
-            result[_path_key(owner)] = normalized
+            result[_path_value(owner)] = normalized
     return result
 
 
@@ -427,27 +446,43 @@ def _identity_files(identity: Mapping[str, Any] | None) -> list[dict[str, Any]]:
         path = str(row.get("path") or "").strip()
         if not path:
             continue
-        result.append(
-            {
-                "path": _path_key(path),
-                "role": str(row.get("role") or "label_carrier"),
-                "file_bytes": row.get("file_bytes"),
-                "sha256": str(row.get("sha256") or ""),
-            }
-        )
-    return sorted(result, key=lambda item: item["path"])
+        normalized = {
+            "path": _path_value(path),
+            "role": str(row.get("role") or "label_carrier"),
+            "file_bytes": row.get("file_bytes"),
+            "sha256": str(row.get("sha256") or ""),
+        }
+        identity = _path_key(path)
+        if all(_path_key(item["path"]) != identity for item in result):
+            result.append(normalized)
+    return sorted(result, key=lambda item: (_path_key(item["path"]), item["path"]))
 
 
 def _changed_paths(
     expected_files: Iterable[Mapping[str, Any]],
     observed_files: Iterable[Mapping[str, Any]],
 ) -> list[str]:
-    expected = {str(row.get("path") or ""): dict(row) for row in expected_files}
-    observed = {str(row.get("path") or ""): dict(row) for row in observed_files}
+    expected_rows = list(expected_files)
+    observed_rows = list(observed_files)
+    expected = {
+        _path_key(str(row.get("path") or "")): _file_identity_payload(row)
+        for row in expected_rows
+        if str(row.get("path") or "").strip()
+    }
+    observed = {
+        _path_key(str(row.get("path") or "")): _file_identity_payload(row)
+        for row in observed_rows
+        if str(row.get("path") or "").strip()
+    }
+    display_paths = {
+        _path_key(str(row.get("path") or "")): _path_value(str(row.get("path") or ""))
+        for row in [*expected_rows, *observed_rows]
+        if str(row.get("path") or "").strip()
+    }
     return sorted(
-        path
-        for path in set(expected) | set(observed)
-        if expected.get(path) != observed.get(path)
+        display_paths[identity]
+        for identity in set(expected) | set(observed)
+        if expected.get(identity) != observed.get(identity)
     )
 
 
@@ -459,7 +494,7 @@ def _size_changed_paths(expected_files: Iterable[Mapping[str, Any]]) -> list[str
         try:
             observed = path.stat()
         except OSError:
-            changed.append(_path_key(path))
+            changed.append(_path_value(path))
             continue
         if (
             not isinstance(expected_bytes, int)
@@ -467,7 +502,7 @@ def _size_changed_paths(expected_files: Iterable[Mapping[str, Any]]) -> list[str
             or not stat.S_ISREG(observed.st_mode)
             or max(int(observed.st_size), 0) != expected_bytes
         ):
-            changed.append(_path_key(path))
+            changed.append(_path_value(path))
     return sorted(set(changed))
 
 
@@ -557,6 +592,57 @@ def _canonical_sha256(payload: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _file_identity_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    payload = dict(row)
+    payload["path"] = _path_key(str(row.get("path") or ""))
+    return payload
+
+
+def _files_identity_payload(files: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        (_file_identity_payload(row) for row in files),
+        key=lambda row: str(row["path"]),
+    )
+
+
+def _contract_identity_payload(contract: Mapping[str, Any]) -> dict[str, Any]:
+    bindings: list[dict[str, Any]] = []
+    for raw_binding in contract.get("bindings", []) or []:
+        binding = dict(raw_binding)
+        binding["path"] = _path_key(str(binding.get("path") or ""))
+        if binding.get("selected_target_file"):
+            binding["selected_target_file"] = _path_key(
+                str(binding["selected_target_file"])
+            )
+        if binding.get("selected_target_files"):
+            binding["selected_target_files"] = sorted(
+                _path_key(str(path)) for path in binding["selected_target_files"]
+            )
+        bindings.append(binding)
+    parser_dependencies = [
+        {
+            **dict(row),
+            "path": _path_key(str(row.get("path") or "")),
+            "dependencies": sorted(
+                _path_key(str(path)) for path in row.get("dependencies", [])
+            ),
+        }
+        for row in contract.get("parser_dependencies", []) or []
+    ]
+    return {
+        **dict(contract),
+        "selected_eeg_files": sorted(
+            _path_key(str(path))
+            for path in contract.get("selected_eeg_files", []) or []
+        ),
+        "parser_dependencies": sorted(
+            parser_dependencies,
+            key=lambda row: str(row["path"]),
+        ),
+        "bindings": sorted(bindings, key=lambda row: str(row["path"])),
+    }
+
+
 def _stat_identity(value: os.stat_result) -> tuple[int, int, int, int, int]:
     return (
         int(value.st_dev),
@@ -568,4 +654,8 @@ def _stat_identity(value: os.stat_result) -> tuple[int, int, int, int, int]:
 
 
 def _path_key(path: str | Path) -> str:
-    return os.path.normcase(str(Path(path).expanduser().resolve(strict=False)))
+    return resolved_path_identity(path)
+
+
+def _path_value(path: str | Path) -> str:
+    return resolved_path_value(path)

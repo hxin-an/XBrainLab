@@ -10,7 +10,12 @@ import pytest
 
 from tests.unit.backend.path_assertions import (
     assert_filesystem_path_lists_equal,
-    filesystem_path_key,
+)
+from XBrainLab.backend.application import (
+    data_interpretation_path_identity as path_identity_module,
+)
+from XBrainLab.backend.application import (
+    label_resource_admission as label_admission_module,
 )
 from XBrainLab.backend.application.commands import (
     AttachLabelsCommand,
@@ -22,6 +27,7 @@ from XBrainLab.backend.application.data_compatibility_service import (
     HandlerResult,
 )
 from XBrainLab.backend.application.errors import PreconditionError
+from XBrainLab.backend.application.label_resource_admission import specs_from_paths
 from XBrainLab.backend.application.resource_guard import (
     ResourceConfirmationRequiredError,
     ResourcePreflightResult,
@@ -95,6 +101,32 @@ def _service(
         dataset,
         interpretation,
     )
+
+
+def test_label_specs_preserve_spelling_while_matching_windows_case_variants(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    label_path = (tmp_path / "ExternalLabels" / "A01T.mat").resolve()
+    config_path = str(label_path).swapcase()
+    windows_path = type(
+        "WindowsPathOps",
+        (),
+        {
+            "normcase": staticmethod(lambda value: str(value).casefold()),
+        },
+    )()
+    windows_os = type("WindowsOs", (), {"path": windows_path})()
+    monkeypatch.setattr(label_admission_module, "os", windows_os)
+    monkeypatch.setattr(path_identity_module, "os", windows_os, raising=False)
+
+    specs = specs_from_paths(
+        [str(label_path)],
+        configs={config_path: {"label_field": "classlabel"}},
+    )
+
+    assert specs[0].path == str(label_path)
+    assert specs[0].label_field == "classlabel"
 
 
 def _payload(result: HandlerResult) -> dict[str, Any]:
@@ -461,11 +493,11 @@ def test_path_import_parses_after_admission_and_preserves_recipe_trace(
     assert payload["success_count"] == 1
     assert payload["resource_preflight"]["risk_level"] == "safe"
     assert payload["label_import"] == {
-        "label_carriers": [filesystem_path_key(label_path)],
+        "label_carriers": [str(label_path.resolve())],
         "mode": "sequence",
     }
     assert len(dataset.batch_calls) == 1
-    canonical_label_path = filesystem_path_key(label_path)
+    canonical_label_path = str(label_path.resolve())
     assert dataset.batch_calls[0][1][canonical_label_path].tolist() == [1, 2]
     assert interpretation.recorded[0]["file_mapping"] == {
         str(raw_path): canonical_label_path
@@ -559,7 +591,7 @@ def test_npy_materialization_uses_bounded_admitted_stream(
 
     assert payload["success_count"] == 1
     assert len(parser_sources) == 1
-    assert dataset.batch_calls[0][1][filesystem_path_key(label_path)].tolist() == [
+    assert dataset.batch_calls[0][1][str(label_path.resolve())].tolist() == [
         1,
         2,
         1,

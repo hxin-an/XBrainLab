@@ -11,7 +11,12 @@ from typing import Any, cast
 import pytest
 
 import XBrainLab.backend.application.data_load_resource_receipt as receipt_module
-from tests.unit.backend.path_assertions import filesystem_path_key
+from XBrainLab.backend.application import (
+    data_compatibility_service as compatibility_module,
+)
+from XBrainLab.backend.application import (
+    data_interpretation_path_identity as path_identity_module,
+)
 from XBrainLab.backend.application import resource_guard
 from XBrainLab.backend.application.commands import (
     AttachLabelsCommand,
@@ -185,6 +190,28 @@ def _service() -> tuple[
         dataset,
         interpretation,
     )
+
+
+def test_label_path_normalization_preserves_spelling_for_windows_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    label_path = (tmp_path / "ExternalLabels" / "A01T.mat").resolve()
+    case_variant = str(label_path).swapcase()
+    native_path = compatibility_module.os.path
+    windows_path = SimpleNamespace(
+        normcase=lambda value: str(value).casefold(),
+        basename=native_path.basename,
+    )
+    windows_os = SimpleNamespace(path=windows_path)
+    monkeypatch.setattr(compatibility_module, "os", windows_os)
+    monkeypatch.setattr(path_identity_module, "os", windows_os, raising=False)
+
+    normalized = DataCompatibilityCommandService._normalized_label_paths(
+        [str(label_path), case_variant]
+    )
+
+    assert normalized == [str(label_path)]
 
 
 def test_load_data_replacement_uses_transaction_and_discards_old_data() -> None:
@@ -697,7 +724,7 @@ def test_data_compatibility_service_attaches_labels_with_default_event_names(
     targets, label_map, file_mapping, event_names, selected_events = (
         dataset.batch_calls[0]
     )
-    canonical_label_path = filesystem_path_key(label_path)
+    canonical_label_path = str(label_path.resolve())
     assert targets == [raw]
     assert label_map[canonical_label_path] == pytest.approx([1, 2, 1])
     assert file_mapping == {"/data/sub-01_raw.fif": canonical_label_path}
@@ -778,7 +805,7 @@ def test_data_compatibility_service_attach_labels_accepts_full_data_path_without
         dataset.batch_calls[0]
     )
     assert targets == [raw]
-    canonical_label_path = filesystem_path_key(label_path)
+    canonical_label_path = str(label_path.resolve())
     assert label_map[canonical_label_path].tolist() == ["left", "right"]
     assert file_mapping == {"/data/sub-01_raw.fif": canonical_label_path}
     assert event_names == {"left": "left", "right": "right"}
@@ -819,8 +846,8 @@ def test_data_compatibility_service_attach_labels_batches_multiple_files_without
         dataset.batch_calls[0]
     )
     assert targets == [raw_1, raw_2]
-    canonical_label_1 = filesystem_path_key(label_1)
-    canonical_label_2 = filesystem_path_key(label_2)
+    canonical_label_1 = str(label_1.resolve())
+    canonical_label_2 = str(label_2.resolve())
     assert label_map[canonical_label_1].tolist() == [1, 2]
     assert label_map[canonical_label_2].tolist() == [2, 1]
     assert file_mapping == {
@@ -886,5 +913,5 @@ def test_data_compatibility_service_imports_labels_and_updates_recipe(
         "selected_event_names": ["cue"],
     }
     assert interpretation.recorded[0]["file_mapping"] == {
-        "/data/sub-01_raw.fif": filesystem_path_key(label_path),
+        "/data/sub-01_raw.fif": str(label_path.resolve()),
     }
