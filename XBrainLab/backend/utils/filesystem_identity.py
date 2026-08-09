@@ -1080,7 +1080,7 @@ def _create_fallback_output_directory(
     exclusive: bool,
     legacy_components: tuple[str, ...],
 ) -> ContainedOutputDirectory:
-    os.makedirs(root, exist_ok=True)
+    root.mkdir(parents=True, exist_ok=True)
     resolved_root = root.resolve(strict=False)
     if legacy_components:
         legacy_candidate = resolved_root.joinpath(*legacy_components)
@@ -1090,7 +1090,7 @@ def _create_fallback_output_directory(
     candidate = resolved_root.joinpath(*components).resolve(strict=False)
     _require_contained(candidate, resolved_root)
     try:
-        os.makedirs(candidate, exist_ok=not exclusive)
+        candidate.mkdir(parents=True, exist_ok=not exclusive)
     except FileExistsError as exc:
         raise FileExistsError(
             "Training output directory already exists; implicit resume is not "

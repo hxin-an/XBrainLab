@@ -320,6 +320,24 @@ def test_fallback_output_identity_rejects_same_path_replacement(
         output.retain_identity()
 
 
+def test_fallback_output_creation_does_not_depend_on_os_makedirs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(os, "makedirs", lambda *_args, **_kwargs: None)
+
+    output = filesystem_identity._create_fallback_output_directory(
+        tmp_path / "authorized",
+        ("dataset", "Model_plan", "Repeat-0"),
+        exclusive=True,
+        legacy_components=(),
+    )
+
+    assert output.path.is_dir()
+    with output.retain_identity() as identity:
+        identity.assert_matches(output.path)
+
+
 def test_pre_sec02_output_namespace_is_rejected_explicitly(tmp_path: Path) -> None:
     authorized_root = tmp_path / "authorized"
     display_name = "Subject-01_0"
