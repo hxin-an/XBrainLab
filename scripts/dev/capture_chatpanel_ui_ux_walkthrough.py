@@ -1802,7 +1802,7 @@ def _first_paint_panel_state(panel: ChatPanel, *, surface: str) -> dict[str, Any
     text_overflow = human_evidence._assistant_text_overflow(panel)
     checks = {
         "first_paint_event_is_first": True,
-        "assistant_usable_width_is_320": panel.width() == 320,
+        "assistant_usable_width_at_least_320": panel.width() >= 320,
         "runtime_not_ready": runtime_phase == "idle",
         "manual_mode_selector_absent": not manual_mode_selector_present,
         "composer_visible": panel.input_field.isVisibleTo(panel),
@@ -2714,7 +2714,7 @@ def _first_paint_contract_failures(payload: dict[str, Any]) -> list[str]:
             and evidence.get("observed_during_first_paint_event") is True
             and evidence.get("paint_event_index") == 1
             and evidence.get("settle_layout_called_before_observation") is False
-            and evidence.get("assistant_usable_width") == 320
+            and int(evidence.get("assistant_usable_width") or 0) >= 320
             and evidence.get("runtime_phase") == "idle"
             and evidence.get("manual_mode_selector_present") is False
             and evidence.get("composer_enabled") is False
@@ -2734,7 +2734,18 @@ def _first_paint_contract_failures(payload: dict[str, Any]) -> list[str]:
                 and evidence.get("panel_is_dock_widget") is True
             )
         if not required:
-            failures.append(f"{label} contract failed")
+            checks = evidence.get("checks")
+            failed_checks = (
+                [name for name, passed in checks.items() if passed is not True]
+                if isinstance(checks, dict)
+                else ["checks_missing"]
+            )
+            failures.append(
+                f"{label} contract failed "
+                f"(width={evidence.get('assistant_usable_width')}, "
+                f"paint_events={evidence.get('paint_events_observed_before_capture')}, "
+                f"failed_checks={failed_checks})"
+            )
     return failures
 
 

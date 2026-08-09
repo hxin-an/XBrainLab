@@ -731,7 +731,11 @@ def button_visible_text_fits(button: QAbstractButton) -> bool:
     required = button.fontMetrics().horizontalAdvance(button.text())
     if not button.icon().isNull():
         required += button.iconSize().width() + 4
-    decoration = max(button.sizeHint().width() - required, 0)
+    # Product button styles reserve at most 12 px per side plus a border.
+    # QStyleSheetStyle can retain a stale, much larger sizeHint after a
+    # responsive label is shortened on Windows, so cap only that decoration
+    # estimate while continuing to measure the live widget width.
+    decoration = min(max(button.sizeHint().width() - required, 0), 28)
     available = max(button.contentsRect().width() - decoration, 0)
     return required <= max(available, 0) + 2
 

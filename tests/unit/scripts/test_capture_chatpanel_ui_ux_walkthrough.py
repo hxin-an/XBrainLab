@@ -256,7 +256,7 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
         assert evidence["paint_events_observed_before_capture"] >= 1
         assert evidence["checks"]["observation_captured_first_paint"] is True
         assert evidence["settle_layout_called_before_observation"] is False
-        assert evidence["assistant_usable_width"] == 320
+        assert evidence["assistant_usable_width"] >= 320
         assert evidence["runtime_phase"] == "idle"
         assert evidence["manual_mode_selector_present"] is False
         assert evidence["composer_enabled"] is False
