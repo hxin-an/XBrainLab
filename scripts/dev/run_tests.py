@@ -484,6 +484,15 @@ def verify_linux_ci_evidence(evidence_dir: Path, result_path: Path) -> int:
         if command not in LINUX_CI_UNCOVERED_COMMANDS
     }
     actual_coverage = {path.name for path in evidence_root.glob(".coverage.linux-*")}
+    missing_coverage = expected_coverage - actual_coverage
+    unknown_coverage = {
+        name
+        for name in actual_coverage
+        if not any(
+            name == base_name or name.startswith(f"{base_name}.")
+            for base_name in expected_coverage
+        )
+    }
     failures: list[str] = []
     attestations: list[dict[str, Any]] = []
 
@@ -492,10 +501,11 @@ def verify_linux_ci_evidence(evidence_dir: Path, result_path: Path) -> int:
             "Linux CI result set mismatch "
             f"(expected {sorted(expected_results)}, got {sorted(actual_results)})."
         )
-    if actual_coverage != expected_coverage:
+    if missing_coverage or unknown_coverage:
         failures.append(
             "Linux CI coverage set mismatch "
-            f"(expected {sorted(expected_coverage)}, got {sorted(actual_coverage)})."
+            f"(missing {sorted(missing_coverage)}, "
+            f"unknown {sorted(unknown_coverage)})."
         )
 
     for command in LINUX_CI_COMMANDS:

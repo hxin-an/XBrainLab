@@ -315,6 +315,27 @@ def test_linux_ci_evidence_verifier_aggregates_every_required_group(tmp_path) ->
     assert payload["counts"]["passed"] == len(run_tests.LINUX_CI_GROUPS)
 
 
+def test_linux_ci_evidence_verifier_accepts_owned_parallel_coverage_fragments(
+    tmp_path,
+) -> None:
+    result_path = tmp_path / "all-regression.json"
+    _write_linux_ci_evidence(tmp_path)
+    fragment = tmp_path / ".coverage.linux-unit-llm-agent.runner.pid123.random-fragment"
+    fragment.write_bytes(b"parallel-coverage-data")
+
+    assert run_tests.verify_linux_ci_evidence(tmp_path, result_path) == 0
+
+
+def test_linux_ci_evidence_verifier_rejects_unknown_coverage_fragments(
+    tmp_path,
+) -> None:
+    result_path = tmp_path / "all-regression.json"
+    _write_linux_ci_evidence(tmp_path)
+    (tmp_path / ".coverage.linux-unknown.pid123").write_bytes(b"unknown")
+
+    assert run_tests.verify_linux_ci_evidence(tmp_path, result_path) == 1
+
+
 def test_linux_ci_evidence_verifier_fails_closed_for_missing_coverage(
     tmp_path,
 ) -> None:
