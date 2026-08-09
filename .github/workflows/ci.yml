@@ -194,7 +194,7 @@ jobs:
 
       - name: Verify complete shard evidence
         run: |
-          python scripts/dev/run_tests.py verify-linux-ci \
+          python -m scripts.dev.run_tests verify-linux-ci \
             --evidence-dir test-results \
             --result-json test-results/all-regression.json
 

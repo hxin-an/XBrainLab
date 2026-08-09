@@ -606,7 +606,8 @@ def test_ci_uses_full_linux_and_focused_cross_platform_runners() -> None:
     assert "scripts/dev/run_tests.py ${{ matrix.command }}" in workflow
     for command, _shards in run_tests.LINUX_CI_GROUPS:
         assert f"- {command}" in workflow
-    assert "scripts/dev/run_tests.py verify-linux-ci" in workflow
+    assert "python -m scripts.dev.run_tests verify-linux-ci" in workflow
+    assert "python scripts/dev/run_tests.py verify-linux-ci" not in workflow
     assert workflow.count("scripts/dev/run_tests.py platform") == 1
     assert "os: [windows-latest, macos-latest]" in workflow
     assert "os: [ubuntu-latest, windows-latest, macos-latest]" not in workflow
