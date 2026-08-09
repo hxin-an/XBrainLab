@@ -6824,3 +6824,9 @@ call sites into explicit legacy/fallback helpers.
   file. It remains in the authoritative Linux suite, while Windows/macOS retain the remaining
   product, layout, launcher, chat, native-render, and preprocess lifecycle contracts without using
   Linux font geometry or OS-thread introspection as a false cross-platform oracle.
+- The next exact-head run exposed a separate CI isolation defect: all `2,594` UI unit tests shared
+  one Qt process, which stalled at the chat/components boundary until the `1,200s` shard timeout,
+  while the isolated components suite completed `475 passed` in `32.28s`. The authoritative
+  `linux-unit-ui` command now reuses the existing ten UI domain shards so Qt/thread state cannot
+  leak across unrelated domains; file coverage, fail-closed attestations, and aggregate coverage
+  remain unchanged.

@@ -256,6 +256,13 @@ def test_linux_ci_isolates_only_wall_clock_agent_timing_from_coverage() -> None:
     )
 
 
+def test_linux_ci_isolates_ui_domains_in_separate_qt_processes() -> None:
+    groups = dict(run_tests.LINUX_CI_GROUPS)
+
+    assert groups["linux-unit-ui"] == run_tests.UI_UNIT_SHARDS
+    assert all(paths != ("tests/unit/ui",) for _label, paths in groups["linux-unit-ui"])
+
+
 def test_linux_ci_group_preserves_declared_process_boundaries(monkeypatch) -> None:
     observed: dict[str, object] = {}
     command, shards = run_tests.LINUX_CI_GROUPS[0]

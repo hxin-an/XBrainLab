@@ -198,7 +198,7 @@ LINUX_CI_GROUPS: tuple[tuple[str, tuple[tuple[str, tuple[str, ...]], ...]], ...]
         "linux-unit-scripts",
         (("developer-scripts", ("tests/unit/scripts",)),),
     ),
-    ("linux-unit-ui", (("ui", ("tests/unit/ui",)),)),
+    ("linux-unit-ui", UI_UNIT_SHARDS),
     (
         "linux-unit-rest",
         (
