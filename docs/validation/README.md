@@ -255,6 +255,12 @@ events。這是 task-branch checkpoint，不是 Windows 真人 acceptance 或 fu
 
 ## Visualization Interaction Performance Checkpoint
 
+- Saliency Map、Spectrogram、Topographic Map、3D Plot 與 `All Folds` 現在共用同一條
+  generation-bound background publication 路徑。GUI thread 只套用仍符合目前 selection / generation
+  的 immutable publication；快速 A -> B -> A 切換不再讓舊 worker 覆蓋新畫面或永久停在 loading。
+- Evaluation `All Folds` 的跨 fold pooling / metrics publication 也移到 serialized worker；切回單一
+  fold 或快速返回原選擇時會拒絕 stale result 並重新排程必要工作。Model Summary callback 以 request
+  sequence、identity 與 application generation 圍住，較晚抵達的舊 run 不可覆蓋目前 run。
 - `All Folds` publication 不再對同一 fold 執行兩輪 provenance/context validation，也不再在
   pooling 後為 immutable DTO 再複製整份 class arrays。代表性 9-fold、5-method、7-class
   workload 的 raw publication 約 `1.756s -> 0.874s`，normalized publication 約
@@ -264,9 +270,27 @@ events。這是 task-branch checkpoint，不是 Windows 真人 acceptance 或 fu
   invalidation 或 cleanup 會清除 cache。代表性 64 MiB payload 的原始四次 toggle publication
   路徑約 `625.8ms`；初次 verified raw 約 `98.8ms`，第一次四次切換（含 normalization）約
   `53.1ms`，warm 四次切換約 `0.011ms`。Matplotlib / 3D 實際繪圖仍是非同步成本。
+- Spectrogram 的 STFT preparation 使用 bounded single-flight cache；相同 publication 的
+  Normalize 切換只改 display normalization，不重算 STFT。因 Spectrogram 顯示的是非負 magnitude，
+  Absolute 不再呈現成可切換但沒有不同語意的控制。Map / Topographic Map 的 trial/time aggregation
+  使用 `float64` accumulator 後再發布，避免大型 `float32` cohort 累加精度流失；3D 的 exact geometry
+  interpolation 與 prepared engine 也使用 bounded cache，並在 publication lifecycle 變更時失效。
+  Prepared-engine entries 只持有 weak publication identity，不會因八筆 LRU 額外保留八份完整 saliency
+  payload。
 - Evaluation Model Summary 改用所選 completed run 的 trained model 與真實 EEG
   `(batch, channels, samples)` input shape；`torchinfo 1.8.0` 是 core dependency。這關閉了舊
-  4D synthetic input 失敗後被誤顯示為 unavailable 的問題，但尚未驗證所有 curated models。
+  4D synthetic input 失敗後被誤顯示為 unavailable 的問題；summary 尚在準備時會顯示 pending，
+  不再先顯示錯誤的 unavailable 文案，但尚未驗證所有 curated models。
+
+本輪同類 Saliency / Evaluation focused suite 為 `431 passed`，publication / architecture / native
+lifecycle suite 為 `334 passed`。Required IO / BIDS / cross-source integration 為 `40 passed`，strict
+public cross-source smoke 為 `4/4`，代表性 pipeline 為 `2 passed`。主 agent 已檢視
+`build/dev-artifacts/saliency-same-class-audit-v3/` 的 Map、Spectrogram、Topographic Map 與 3D
+blocked-state artifact；headless artifact 不能證明原生 Windows / OpenGL 3D 互動，因此該項仍需
+真人 acceptance。獨立 reviewer 退件後的 worker race / retention 修正另通過 focused `274 passed`、
+UI root contracts `919 passed` 與 architecture compliance。Fast dashboard 仍因既有全 repo
+Basedpyright baseline、strict resource calibration metadata 與目前環境缺 xcb 而非全綠，不能據此
+宣稱 release-ready。
 
 ## Current UI Checkpoint
 

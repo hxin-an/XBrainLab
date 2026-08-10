@@ -10,6 +10,7 @@ import pytest
 from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.evaluation_render import (
     EvaluationCrossFoldIdentity,
+    EvaluationModelSummary,
     EvaluationPlanIdentity,
     EvaluationRenderPublisher,
     EvaluationRenderRequest,
@@ -17,6 +18,7 @@ from XBrainLab.backend.application.evaluation_render import (
     EvaluationSummaryIdentity,
     build_evaluation_cross_fold_choices,
     build_evaluation_model_summary,
+    build_evaluation_model_summary_result,
 )
 from XBrainLab.backend.training_state_contract import (
     TrainingReadBoundary,
@@ -724,3 +726,10 @@ def test_model_summary_is_unavailable_when_selected_run_model_is_missing() -> No
     )
 
     assert summary == ""
+    assert build_evaluation_model_summary_result(
+        _Runtime([plan]),
+        EvaluationSummaryIdentity(
+            plan=plan_identity,
+            run=EvaluationRunIdentity(plan=plan_identity, run_index=0),
+        ),
+    ) == EvaluationModelSummary(status="unavailable")

@@ -28,6 +28,12 @@ class _StaticMeshAssets:
     brain_scaled: pv.PolyData
 
 
+@dataclass(frozen=True)
+class _InterpolationWeights:
+    nearest_indices: np.ndarray
+    weights: np.ndarray
+
+
 def inverse_dist_weighted_sum(dist, val):
     """Compute an inverse-distance weighted sum of values.
 
@@ -86,6 +92,11 @@ class Saliency3DEngine:
     _mesh_cache: ClassVar[OrderedDict[tuple[object, ...], _StaticMeshAssets]] = (
         OrderedDict()
     )
+    _MAX_INTERPOLATION_CACHE_ENTRIES: ClassVar[int] = 4
+    _interpolation_cache_lock: ClassVar[threading.RLock] = threading.RLock()
+    _interpolation_cache: ClassVar[
+        OrderedDict[tuple[object, ...], _InterpolationWeights]
+    ] = OrderedDict()
 
     def __init__(self, mesh_scale_scalar=0.8):
         """Initialise the engine and load the required local mesh assets.
@@ -105,6 +116,9 @@ class Saliency3DEngine:
         self.saliency = None
         self.time_axis_seconds = np.array([], dtype=float)
         self.model_error = ""
+        self._prepared_interpolation_key: tuple[object, ...] | None = None
+        self._prepared_interpolation: _InterpolationWeights | None = None
+        self._prepared_interpolation_neighbor_count: int | None = None
 
         self._load_models()
 
@@ -223,6 +237,12 @@ class Saliency3DEngine:
         with cls._mesh_cache_lock:
             cls._mesh_cache.clear()
 
+    @classmethod
+    def _clear_interpolation_cache(cls) -> None:
+        """Release process-local interpolation arrays (used by lifecycle tests)."""
+        with cls._interpolation_cache_lock:
+            cls._interpolation_cache.clear()
+
     def process_data(
         self,
         eval_record,
@@ -292,7 +312,7 @@ class Saliency3DEngine:
                 else None
             ),
         )
-        saliency_raw = np.asarray(saliency_store[label_key], dtype=float)
+        saliency_raw = np.asarray(saliency_store[label_key])
         if not self._has_saliency_data(saliency_raw):
             raise KeyError(
                 "No saliency samples are available for EEG event "
@@ -301,7 +321,9 @@ class Saliency3DEngine:
             )
         if absolute:
             saliency_raw = np.abs(saliency_raw)
-        saliency = saliency_raw.mean(axis=0)
+        # Preserve the previous float64 accumulator without first duplicating
+        # the complete epoch tensor as float64.
+        saliency = saliency_raw.mean(axis=0, dtype=np.float64)
 
         ch_pos = epoch_data.get_montage_position()
         electrode = epoch_data.get_channel_names()
@@ -380,6 +402,10 @@ class Saliency3DEngine:
         )
 
         self.scalar_buffer = np.zeros(self.saliency_cap.n_points)
+        self._prepared_interpolation_key = None
+        self._prepared_interpolation = None
+        self._prepared_interpolation_neighbor_count = None
+        self._prepare_interpolation_weights(neighbor=3)
 
         return self.saliency.shape[0]  # Number of channels
 
@@ -563,9 +589,8 @@ class Saliency3DEngine:
     def update_scalars(self, sample_index, neighbor=3):
         """Update scalar values on the saliency cap for a given time point.
 
-        For each vertex of the cap mesh the *neighbor* nearest channels are
-        found and their saliency values are combined using inverse-distance
-        weighting.
+        Reuses the prepared *neighbor* nearest channels and inverse-distance
+        weights for each cap vertex, then applies the selected time sample.
 
         Args:
             sample_index: Zero-based sample index into the saliency matrix.
@@ -583,23 +608,100 @@ class Saliency3DEngine:
 
         current_saliency = self.saliency[:, t_idx]
 
-        points = self.saliency_cap.points
-        # For each point on the cap mesh, find k-nearest channels and interpolate.
-        # Uses a simple distance matrix approach for vectorized computation.
-
-        scaled_channels = self.pos_on_3d * self.mesh_scale_scalar
-        neighbor_count = min(max(int(neighbor), 1), scaled_channels.shape[0])
-        distances = np.linalg.norm(
-            points[:, None, :] - scaled_channels[None, :, :],
-            axis=2,
+        neighbor_count = min(
+            max(int(neighbor), 1),
+            int(self.pos_on_3d.shape[0]),
         )
-        nearest_indices = np.argpartition(
-            distances,
-            neighbor_count - 1,
-            axis=1,
-        )[:, :neighbor_count]
-        nearest_distances = np.take_along_axis(distances, nearest_indices, axis=1)
-        nearest_values = current_saliency[nearest_indices]
-        weights = 1 / (nearest_distances + 1e-8)
-        weights = weights / weights.sum(axis=1, keepdims=True)
-        return (weights * nearest_values).sum(axis=1)
+        interpolation = self._prepared_interpolation
+        if (
+            interpolation is None
+            or self._prepared_interpolation_neighbor_count != neighbor_count
+        ):
+            interpolation = self._prepare_interpolation_weights(neighbor=neighbor)
+        nearest_values = current_saliency[interpolation.nearest_indices]
+        return (interpolation.weights * nearest_values).sum(axis=1)
+
+    def _prepare_interpolation_weights(self, *, neighbor: int) -> _InterpolationWeights:
+        """Prepare immutable geometry weights before the engine reaches the UI."""
+        if self.saliency_cap is None or self.pos_on_3d is None:
+            raise RuntimeError("3D saliency geometry is not initialized.")
+
+        points = np.ascontiguousarray(np.asarray(self.saliency_cap.points, dtype=float))
+        scaled_channels = np.ascontiguousarray(
+            np.asarray(self.pos_on_3d, dtype=float) * self.mesh_scale_scalar
+        )
+        if points.ndim != 2 or points.shape[1] != 3:
+            raise ValueError("3D saliency cap points must have shape (N, 3).")
+        if scaled_channels.ndim != 2 or scaled_channels.shape[1] != 3:
+            raise ValueError("3D channel positions must have shape (N, 3).")
+        if points.shape[0] == 0 or scaled_channels.shape[0] == 0:
+            raise ValueError("3D interpolation requires cap and channel positions.")
+
+        neighbor_count = min(max(int(neighbor), 1), scaled_channels.shape[0])
+        cache_key = self._interpolation_cache_key(
+            points,
+            scaled_channels,
+            neighbor_count=neighbor_count,
+        )
+        if (
+            self._prepared_interpolation_key == cache_key
+            and self._prepared_interpolation is not None
+        ):
+            return self._prepared_interpolation
+
+        with self._interpolation_cache_lock:
+            prepared = self._interpolation_cache.get(cache_key)
+            if prepared is None:
+                distances = np.linalg.norm(
+                    points[:, None, :] - scaled_channels[None, :, :],
+                    axis=2,
+                )
+                nearest_indices = np.argpartition(
+                    distances,
+                    neighbor_count - 1,
+                    axis=1,
+                )[:, :neighbor_count].copy()
+                nearest_distances = np.take_along_axis(
+                    distances,
+                    nearest_indices,
+                    axis=1,
+                )
+                weights = 1 / (nearest_distances + 1e-8)
+                weights = weights / weights.sum(axis=1, keepdims=True)
+                nearest_indices.setflags(write=False)
+                weights.setflags(write=False)
+                prepared = _InterpolationWeights(
+                    nearest_indices=nearest_indices,
+                    weights=weights,
+                )
+                self._interpolation_cache[cache_key] = prepared
+                while (
+                    len(self._interpolation_cache)
+                    > self._MAX_INTERPOLATION_CACHE_ENTRIES
+                ):
+                    self._interpolation_cache.popitem(last=False)
+            else:
+                self._interpolation_cache.move_to_end(cache_key)
+
+        self._prepared_interpolation_key = cache_key
+        self._prepared_interpolation = prepared
+        self._prepared_interpolation_neighbor_count = neighbor_count
+        return prepared
+
+    @staticmethod
+    def _interpolation_cache_key(
+        points: np.ndarray,
+        scaled_channels: np.ndarray,
+        *,
+        neighbor_count: int,
+    ) -> tuple[object, ...]:
+        """Return an exact geometry key without retaining mutable array aliases."""
+        return (
+            points.shape,
+            points.dtype.str,
+            points.tobytes(order="C"),
+            scaled_channels.shape,
+            scaled_channels.dtype.str,
+            scaled_channels.tobytes(order="C"),
+            neighbor_count,
+        )

@@ -17106,3 +17106,45 @@
   - These are same-machine Linux/WSL checkpoints. Repeat Preview still performs bounded sidecar
     discovery and parser guards, and real plot rendering remains asynchronous work. Windows native
     interaction, required multi-dataset handoff and exact-head CI remain separate gates.
+
+### 2026-08-10 Saliency same-class publication and render audit
+
+- completed:
+  - Moved single-fold and `All Folds` Saliency publication, normalization and render preparation off
+    the Qt GUI thread. Exact request/generation checks reject stale worker results and coalesce rapid
+    selection changes without rebuilding chatty intermediate UI state.
+  - Reused one bounded single-flight STFT preparation for Spectrogram raw/normalized display.
+    Spectrogram magnitude is non-negative, so Absolute is disabled instead of exposing a no-op;
+    Normalize changes display scale without recomputing the transform.
+  - Audited Map, Topographic Map and 3D Plot for the same latency/precision class. Map and topomap
+    aggregate with float64 accumulators, while 3D reuses bounded exact-geometry interpolation and
+    prepared-engine caches that are invalidated with the publication lifecycle.
+  - Made Evaluation Model Summary distinguish pending preparation from terminal unavailable state;
+    it no longer flashes `No model information` while a valid trained model summary is still being
+    published.
+  - Closed reviewer-found out-of-order boundaries: Model Summary callbacks now require the active
+    request sequence/identity/generation, and both Evaluation and Saliency publication workers
+    requeue A after an A -> B -> A transition when A's earlier result was already discarded.
+  - Moved cross-fold Evaluation pooling/publication off the Qt thread without changing metric
+    formulas. Converted 3D prepared-engine cache publication ownership to weak identity references,
+    so bounded reuse no longer retains prior full saliency payloads.
+- validation:
+  - Saliency / Evaluation / Visualization focused suite -> `431 passed`; publication, architecture
+    and native lifecycle suite -> `334 passed`; representative pipeline -> `2 passed`.
+  - Required IO / public BIDS / cross-source integration -> `40 passed`; strict public cross-source
+    smoke -> `4/4` (PhysioNet EDF, BBCI GDF, SCCN EEGLAB and MNE CNT).
+  - Ruff lint/format, touched-source Basedpyright (`0 errors, 0 warnings`) and `git diff --check`
+    passed. Main-agent visual review passed the Map, Spectrogram, Topographic Map and explicit 3D
+    blocked-state artifacts under `build/dev-artifacts/saliency-same-class-audit-v3/`.
+  - Reviewer follow-up -> focused Evaluation/Saliency/Visualization `274 passed`, UI root contracts
+    `919 passed`, architecture compliance PASS. Two stale Spectrogram internal-contract tests and
+    the Data Import unit fixture's missing QApplication/top-level-parent setup were updated to the
+    current product contract.
+- claim boundary:
+  - Headless Qt evidence does not exercise native Windows/OpenGL 3D interaction, and this local
+    checkpoint still requires exact-head CI before merge. `All Folds` remains conditional on backend
+    admission of scientifically comparable folds; no unsafe unconditional `Full` aggregate was
+    added.
+  - The fast dashboard remains non-green because of existing global Basedpyright baseline errors,
+    stale strict resource-calibration evidence and unavailable xcb in the current sandbox. These are
+    not hidden by the focused PASS results.

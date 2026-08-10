@@ -82,6 +82,7 @@ from XBrainLab.ui.application_publication_renderer import (
     ApplicationPublicationRenderLedger,
 )
 from XBrainLab.ui.core.base_panel import BasePanel
+from XBrainLab.ui.core.worker import PythonThreadWorker
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
 from XBrainLab.ui.product_language import fold_display_label, run_display_label
 from XBrainLab.ui.status import show_status_message
@@ -221,6 +222,14 @@ class _VisualizationPublicationSignature:
     visualization_state: VisualizationStateSnapshot
 
 
+@dataclass(frozen=True, slots=True)
+class _SaliencyRenderTask:
+    """One exact saliency publication requested outside the GUI thread."""
+
+    request: SaliencyRenderRequest
+    needs_normalized_variant: bool
+
+
 class VisualizationPanel(BasePanel):
     """Panel for visualizing data and model explanations with unified controls.
     Manages multiple view tabs (Map, Topomap, Spectrogram, 3D) and coordinates updates.
@@ -276,6 +285,10 @@ class VisualizationPanel(BasePanel):
         self._saliency_action_requires_recompute = False
         self._native_render_shutdown_requested = False
         self._native_render_resources_finalized = False
+        self._saliency_render_worker: PythonThreadWorker | None = None
+        self._saliency_render_active_task: _SaliencyRenderTask | None = None
+        self._saliency_render_pending_task: _SaliencyRenderTask | None = None
+        self._saliency_render_result_seen = False
 
         super().__init__(parent=parent, controller=None)
 
@@ -835,6 +848,7 @@ class VisualizationPanel(BasePanel):
         ):
             return
         self._native_render_shutdown_requested = True
+        self._saliency_render_pending_task = None
         for view in self._saliency_views():
             begin_shutdown = getattr(view, "begin_render_shutdown", None)
             if callable(begin_shutdown):
@@ -842,6 +856,8 @@ class VisualizationPanel(BasePanel):
 
     def native_render_work_idle(self) -> bool:
         """Return true after every saliency worker reaches terminal cleanup."""
+        if self._saliency_render_worker is not None:
+            return False
         for view in self._saliency_views():
             is_idle = getattr(view, "native_render_work_idle", None)
             if callable(is_idle) and not bool(is_idle()):
@@ -1096,8 +1112,30 @@ class VisualizationPanel(BasePanel):
             method=method_name,
             normalize=normalize,
         )
+        # Spectrogram normalization is a display-linear transform. Keep its
+        # source publication raw so toggling Normalize can reuse one STFT.
+        publication_request = (
+            replace(request, normalize=False)
+            if current_widget is self.tab_spectro
+            else request
+        )
+        if not self._saliency_render_is_cached(publication_request):
+            task = _SaliencyRenderTask(
+                request=publication_request,
+                needs_normalized_variant=publication_request.normalize,
+            )
+            self._request_saliency_render(task)
+            self._show_widget_message(
+                current_widget,
+                (
+                    "Preparing the All Folds saliency summary..."
+                    if cross_fold_selection
+                    else "Loading saliency visualization..."
+                ),
+            )
+            return
         try:
-            render_publication = self._saliency_render_publication(request)
+            render_publication = self._saliency_render_publication(publication_request)
         except PreconditionError as exc:
             logger.warning(
                 "Saliency render publication became unavailable: %s",
@@ -1134,10 +1172,10 @@ class VisualizationPanel(BasePanel):
             render_publication,
         )
         if (
-            typed_render_publication.request != request
+            typed_render_publication.request != publication_request
             or typed_render_publication.generation != publication.generation
             or typed_render_publication.data.method != method_name
-            or typed_render_publication.data.normalized != normalize
+            or typed_render_publication.data.normalized != publication_request.normalize
         ):
             self._application_summary_dirty = True
             self._clear_application_view_publication(
@@ -1148,40 +1186,262 @@ class VisualizationPanel(BasePanel):
                 "Visualization results changed. Refresh Visualization and try again.",
             )
             return
-        if current_widget and hasattr(current_widget, "update_plot"):
+        if current_widget is self.tab_spectro:
+            self.tab_spectro.update_plot(
+                typed_render_publication,
+                absolute,
+                display_normalized=normalize,
+            )
+        elif current_widget and hasattr(current_widget, "update_plot"):
             current_widget.update_plot(typed_render_publication, absolute)
 
     def _saliency_render_publication(
         self,
         request: SaliencyRenderRequest,
     ) -> SaliencyRenderPublication | None:
-        """Publish one raw DTO per selection and derive display-only variants."""
+        """Return a publication prepared by the background render worker."""
         raw_request = replace(request, normalize=False)
         if self._saliency_render_cache_request != raw_request:
-            self._clear_saliency_render_cache()
-            self._saliency_render_cache_request = raw_request
+            return None
 
         raw_publication = self._saliency_render_cache.get(False)
-        if raw_publication is None:
-            candidate = get_saliency_render_publication(
-                self,
-                raw_request,
-                runtime=cast("ApplicationUiRuntime", self._query_port),
-            )
-            if not self._render_publication_matches_request(candidate, raw_request):
-                return candidate
-            raw_publication = cast(SaliencyRenderPublication, candidate)
-            self._saliency_render_cache[False] = raw_publication
+        if not isinstance(raw_publication, SaliencyRenderPublication):
+            return None
 
         if not request.normalize:
             return raw_publication
         normalized_publication = self._saliency_render_cache.get(True)
-        if normalized_publication is None:
-            normalized_publication = normalized_saliency_render_publication(
-                raw_publication
+        return (
+            normalized_publication
+            if isinstance(normalized_publication, SaliencyRenderPublication)
+            else None
+        )
+
+    def _saliency_render_is_cached(self, request: SaliencyRenderRequest) -> bool:
+        raw_request = replace(request, normalize=False)
+        if self._saliency_render_cache_request != raw_request:
+            return False
+        return False in self._saliency_render_cache and (
+            not request.normalize or True in self._saliency_render_cache
+        )
+
+    def _request_saliency_render(self, task: _SaliencyRenderTask) -> None:
+        if self._native_render_shutdown_requested:
+            return
+        worker = self._saliency_render_worker
+        # Ownership lasts until the queued ``finished`` callback runs.  The
+        # Python thread may already have exited while Qt still has result and
+        # finished signals queued, so replacing it based on ``is_alive`` would
+        # lose the terminal callback and can publish stale work.
+        if worker is not None:
+            if task == self._saliency_render_active_task:
+                self._saliency_render_pending_task = (
+                    task if self._saliency_render_result_seen else None
+                )
+            else:
+                self._saliency_render_pending_task = task
+            return
+        runtime = self._query_port
+        if runtime is None:
+            self._show_widget_error(
+                self.tabs.currentWidget(),
+                _VISUALIZATION_LOAD_FAILED_MESSAGE,
             )
+            return
+        self._saliency_render_active_task = task
+        self._saliency_render_pending_task = None
+        self._saliency_render_result_seen = False
+        raw_request = replace(task.request, normalize=False)
+        cached_raw_publication = (
+            cast(
+                SaliencyRenderPublication,
+                self._saliency_render_cache.get(False),
+            )
+            if self._saliency_render_cache_request == raw_request
+            and isinstance(
+                self._saliency_render_cache.get(False),
+                SaliencyRenderPublication,
+            )
+            else None
+        )
+        worker = PythonThreadWorker(
+            self._load_saliency_render,
+            runtime,
+            task,
+            cached_raw_publication,
+            name="xbrainlab-saliency-publication",
+        )
+        self._saliency_render_worker = worker
+        worker.signals.result.connect(
+            lambda result, owned_worker=worker: self._on_saliency_render_ready(
+                owned_worker,
+                result,
+            )
+        )
+        worker.signals.error.connect(
+            lambda error, owned_worker=worker: self._on_saliency_render_error(
+                owned_worker,
+                error,
+            )
+        )
+        worker.signals.finished.connect(
+            lambda owned_worker=worker: self._on_saliency_render_finished(owned_worker)
+        )
+        worker.start()
+
+    @staticmethod
+    def _load_saliency_render(
+        runtime,
+        task: _SaliencyRenderTask,
+        cached_raw_publication: SaliencyRenderPublication | None,
+    ):
+        raw_request = replace(task.request, normalize=False)
+        raw_publication = cached_raw_publication
+        if not VisualizationPanel._render_publication_matches_request(
+            raw_publication,
+            raw_request,
+        ):
+            raw_publication = get_saliency_render_publication(
+                None,
+                raw_request,
+                runtime=runtime,
+            )
+        if not isinstance(raw_publication, SaliencyRenderPublication):
+            raise RuntimeError("Saliency render publication is unavailable")
+        verified_raw_publication = cast(
+            SaliencyRenderPublication,
+            raw_publication,
+        )
+        normalized_publication = (
+            normalized_saliency_render_publication(verified_raw_publication)
+            if task.needs_normalized_variant
+            else None
+        )
+        return task, verified_raw_publication, normalized_publication
+
+    @staticmethod
+    def _saliency_tasks_share_lineage(
+        first: _SaliencyRenderTask,
+        second: _SaliencyRenderTask,
+    ) -> bool:
+        return replace(first.request, normalize=False) == replace(
+            second.request,
+            normalize=False,
+        )
+
+    def _current_saliency_render_task(self) -> _SaliencyRenderTask | None:
+        publication = self._application_view_publication
+        run = self.run_combo.currentData()
+        if (
+            publication is None
+            or not publication.usable
+            or not isinstance(run, (SaliencyRunIdentity, SaliencyCrossFoldIdentity))
+        ):
+            return None
+        normalize = self.normalize_check.isChecked()
+        request = SaliencyRenderRequest(
+            publication_generation=publication.generation,
+            run=run,
+            method=self.method_combo.currentText(),
+            normalize=(
+                False if self.tabs.currentWidget() is self.tab_spectro else normalize
+            ),
+        )
+        return _SaliencyRenderTask(
+            request=request,
+            needs_normalized_variant=request.normalize,
+        )
+
+    def _on_saliency_render_ready(
+        self,
+        worker: PythonThreadWorker,
+        result: object,
+    ) -> None:
+        if (
+            self._native_render_shutdown_requested
+            or self._saliency_render_worker is not worker
+        ):
+            return
+        self._saliency_render_result_seen = True
+        if (
+            not isinstance(result, tuple)
+            or len(result) != 3
+            or not isinstance(result[0], _SaliencyRenderTask)
+            or not isinstance(result[1], SaliencyRenderPublication)
+        ):
+            self._show_widget_error(
+                self.tabs.currentWidget(),
+                _VISUALIZATION_LOAD_FAILED_MESSAGE,
+            )
+            return
+        task, raw_publication, normalized_publication = result
+        raw_request = replace(task.request, normalize=False)
+        normalized_matches = (
+            not task.needs_normalized_variant
+            or self._render_publication_matches_request(
+                normalized_publication,
+                replace(raw_request, normalize=True),
+            )
+        )
+        if (
+            not self._render_publication_matches_request(
+                raw_publication,
+                raw_request,
+            )
+            or not normalized_matches
+        ):
+            self._application_summary_dirty = True
+            self._clear_application_view_publication(
+                invalidate_render_publications=True,
+            )
+            self._show_widget_message(
+                self.tabs.currentWidget(),
+                "Visualization results changed. Refresh Visualization and try again.",
+            )
+            return
+        current_task = self._current_saliency_render_task()
+        if current_task is None or not self._saliency_tasks_share_lineage(
+            task,
+            current_task,
+        ):
+            return
+        self._clear_saliency_render_cache()
+        self._saliency_render_cache_request = raw_publication.request
+        self._saliency_render_cache[False] = raw_publication
+        if isinstance(normalized_publication, SaliencyRenderPublication):
             self._saliency_render_cache[True] = normalized_publication
-        return normalized_publication
+        self.on_update()
+
+    def _on_saliency_render_error(
+        self,
+        worker: PythonThreadWorker,
+        error: tuple,
+    ) -> None:
+        if (
+            self._native_render_shutdown_requested
+            or self._saliency_render_worker is not worker
+        ):
+            return
+        self._saliency_render_result_seen = True
+        task = self._saliency_render_active_task
+        detail = error[1] if len(error) > 1 else error
+        logger.error("Saliency render publication failed: %s", detail)
+        if task == self._current_saliency_render_task():
+            self._show_widget_error(
+                self.tabs.currentWidget(),
+                _VISUALIZATION_LOAD_FAILED_MESSAGE,
+            )
+
+    def _on_saliency_render_finished(self, worker: PythonThreadWorker) -> None:
+        if self._saliency_render_worker is not worker:
+            return
+        self._saliency_render_worker = None
+        self._saliency_render_active_task = None
+        self._saliency_render_result_seen = False
+        pending = self._saliency_render_pending_task
+        self._saliency_render_pending_task = None
+        if pending is not None and not self._native_render_shutdown_requested:
+            self._request_saliency_render(pending)
 
     @staticmethod
     def _render_publication_matches_request(
@@ -1530,6 +1790,7 @@ class VisualizationPanel(BasePanel):
 
     def cleanup(self) -> None:
         """Cancel queued renders and release the publication subscription."""
+        self.begin_native_render_shutdown()
         self._clear_saliency_render_cache()
         self._application_render_ledger.cleanup()
         super().cleanup()

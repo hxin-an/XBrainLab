@@ -123,14 +123,19 @@ def _saliency_render_publication(
 
 class TestDatasetActionHandler:
     @pytest.fixture
-    def handler(self):
+    def handler(self, qtbot):
         from XBrainLab.ui.panels.dataset.actions import DatasetActionHandler
 
+        del qtbot  # Ensure QApplication exists even when this fixture runs alone.
         panel = MagicMock()
         panel.table = MagicMock()
         panel.table.selectedIndexes.return_value = []
         panel.table.rowCount.return_value = 3
         panel.table.mapToGlobal.return_value = MagicMock()
+        # This unit fixture has no real top-level QWidget. Mirror QWidget.window()
+        # returning the panel itself so the coordinator correctly chooses an
+        # unparented loading dialog instead of passing a MagicMock into Qt.
+        panel.window.return_value = panel
         h = DatasetActionHandler(panel)
         h._data_interpretation._review_state_from_parts = MagicMock(
             side_effect=_mock_interpretation_review_state,
@@ -1335,7 +1340,10 @@ class TestDatasetActionHandler:
             )
 
         assert panel_context.set_busy.call_args_list == [((True,),), ((False,),)]
-        show_status.assert_called_once_with("Loading EEG data...")
+        assert [record.args for record in show_status.call_args_list] == [
+            ("Importing EEG data and labels...", 900000),
+            ("Applied.",),
+        ]
         assert runtime.commands[0].resource_preflight_confirmed is False
         assert runtime.commands[0].resource_preflight_token is None
 
@@ -3064,12 +3072,24 @@ class TestSpectrogramView:
     def test_render_plot_delegates_typed_data(self, mock_vt, widget):
         publication = _saliency_render_publication()
         mock_vt.SaliencySpectrogramMap.value.return_value.get_plt.return_value = None
+        preparation_key = ("test-lineage",)
 
-        assert widget._render_plot(publication.data) is None
+        assert (
+            widget._render_plot(
+                publication.data,
+                widget._preparation_cache,
+                preparation_key,
+                False,
+            )
+            is None
+        )
 
         mock_vt.SaliencySpectrogramMap.value.assert_called_once_with(publication.data)
         mock_vt.SaliencySpectrogramMap.value.return_value.get_plt.assert_called_once_with(
             method="grad",
+            display_normalized=False,
+            preparation_cache=widget._preparation_cache,
+            preparation_key=preparation_key,
         )
 
     @patch(
@@ -3080,4 +3100,9 @@ class TestSpectrogramView:
         mock_vt.SaliencySpectrogramMap.value.side_effect = RuntimeError("fail")
 
         with pytest.raises(RuntimeError, match="fail"):
-            widget._render_plot(publication.data)
+            widget._render_plot(
+                publication.data,
+                widget._preparation_cache,
+                ("test-lineage",),
+                False,
+            )

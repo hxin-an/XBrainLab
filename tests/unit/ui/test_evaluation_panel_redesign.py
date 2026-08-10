@@ -1,10 +1,12 @@
+import threading
+import time
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import numpy as np
 from matplotlib.figure import Figure
-from PyQt6.QtCore import QPoint, QRect, Qt
+from PyQt6.QtCore import QPoint, QRect, Qt, QTimer
 from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -665,6 +667,7 @@ def _serialized_evaluation_result(
     second_run_finished: bool = False,
     second_run_splits: tuple[str, ...] = ("training", "validation", "test"),
     model_summary: tuple[EvaluationSummaryIdentity, str] | None = None,
+    model_summary_status: str | None = None,
     generation: int = 4,
 ) -> CommandResult:
     plans = [
@@ -726,6 +729,7 @@ def _serialized_evaluation_result(
         identity, text = model_summary
         diagnostics["model_summary"] = {
             "identity": identity.to_dict(),
+            "status": model_summary_status or ("ready" if text else "unavailable"),
             "text": text,
         }
     return CommandResult.success_result(
@@ -897,6 +901,17 @@ def test_evaluation_panel_exposes_explicit_cross_fold_summary(
     panel.update_panel()
 
     panel.model_combo.setCurrentIndex(2)
+    qtbot.waitUntil(
+        lambda: bool(requests)
+        and isinstance(requests[-1].selection, EvaluationCrossFoldIdentity),
+    )
+    qtbot.waitUntil(
+        lambda: panel._evaluation_render is not None
+        and isinstance(
+            panel._evaluation_render.request.selection,
+            EvaluationCrossFoldIdentity,
+        ),
+    )
 
     assert panel.model_combo.currentText() == "All Folds"
     assert panel.run_combo.count() == 1
@@ -907,6 +922,133 @@ def test_evaluation_panel_exposes_explicit_cross_fold_summary(
     assert panel.summary_text.toPlainText() == (
         "Model details are available for an individual fold or run."
     )
+
+
+def test_all_folds_preparation_keeps_gui_responsive_and_drops_stale_result(
+    qtbot,
+    monkeypatch,
+):
+    """All Folds preparation must not block or repaint after selection changes."""
+    _install_evaluation_read_side(
+        monkeypatch,
+        lambda *_args, **_kwargs: _serialized_evaluation_result(),
+    )
+    main_thread_id = threading.get_ident()
+    started = threading.Event()
+    release = threading.Event()
+    worker_thread_ids = []
+    preparation_finished_at = []
+
+    def delayed_cross_fold_render(_panel, request, **_kwargs):
+        if isinstance(request.selection, EvaluationCrossFoldIdentity):
+            worker_thread_ids.append(threading.get_ident())
+            started.set()
+            release.wait(timeout=0.3)
+            preparation_finished_at.append(time.monotonic())
+        return _detached_render(request)
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.evaluation.panel.get_evaluation_render_publication",
+        delayed_cross_fold_render,
+    )
+    panel = EvaluationPanel(parent=MockMainWindow())
+    qtbot.addWidget(panel)
+    panel.update_panel()
+
+    rendered_summaries = []
+    original_update_plot = panel.matrix_widget.update_plot
+
+    def record_render(data, *args, **kwargs):
+        if data is not None:
+            rendered_summaries.append(data.summary_identity)
+        return original_update_plot(data, *args, **kwargs)
+
+    panel.matrix_widget.update_plot = record_render
+    switched_at = []
+
+    def switch_back_to_fold() -> None:
+        switched_at.append(time.monotonic())
+        panel.model_combo.setCurrentIndex(0)
+        release.set()
+
+    QTimer.singleShot(30, switch_back_to_fold)
+    panel.model_combo.setCurrentIndex(panel.model_combo.findText("All Folds"))
+
+    qtbot.waitUntil(started.is_set, timeout=1_000)
+    qtbot.waitUntil(
+        lambda: bool(switched_at) and bool(preparation_finished_at),
+        timeout=1_000,
+    )
+    qtbot.wait(50)
+
+    assert len(worker_thread_ids) == 1
+    assert worker_thread_ids[0] != main_thread_id
+    assert switched_at[0] < preparation_finished_at[0]
+    assert panel.model_combo.currentText() == "Fold 1 (Plan A)"
+    assert all(identity is not None for identity in rendered_summaries)
+    assert panel._evaluation_render is not None
+    assert not isinstance(
+        panel._evaluation_render.request.selection,
+        EvaluationCrossFoldIdentity,
+    )
+
+
+def test_all_folds_worker_requeues_active_request_after_discarded_result(
+    qtbot,
+    monkeypatch,
+):
+    _install_evaluation_read_side(
+        monkeypatch,
+        lambda *_args, **_kwargs: _serialized_evaluation_result(),
+    )
+    panel = EvaluationPanel(parent=MockMainWindow())
+    qtbot.addWidget(panel)
+    request = EvaluationRenderRequest(
+        publication_generation=4,
+        selection=EvaluationCrossFoldIdentity(
+            members=(
+                EvaluationRunIdentity(
+                    plan=EvaluationPlanIdentity(plan_index=0),
+                    run_index=0,
+                ),
+                EvaluationRunIdentity(
+                    plan=EvaluationPlanIdentity(plan_index=1),
+                    run_index=0,
+                ),
+            ),
+        ),
+        split="test",
+    )
+    different_request = replace(request, split="validation")
+    worker = MagicMock()
+    panel._evaluation_render_worker = worker
+    panel._evaluation_render_active_request = request
+
+    with monkeypatch.context() as patch_context:
+        patch_context.setattr(
+            panel,
+            "_current_evaluation_render_request",
+            lambda: different_request,
+        )
+        panel._on_evaluation_render_ready((request, _detached_render(request)))
+
+    assert panel._evaluation_render_result_seen is True
+    assert panel._evaluation_render is None
+
+    panel._request_evaluation_render(request)
+
+    assert panel._evaluation_render_pending_request == request
+
+    request_render = MagicMock()
+    monkeypatch.setattr(panel, "_request_evaluation_render", request_render)
+    monkeypatch.setattr(
+        panel,
+        "_current_evaluation_render_request",
+        lambda: request,
+    )
+    panel._on_evaluation_render_finished()
+
+    request_render.assert_called_once_with(request)
 
 
 def test_cross_fold_run_selector_keeps_repeats_separate(qtbot, monkeypatch) -> None:
@@ -936,6 +1078,19 @@ def test_cross_fold_run_selector_keeps_repeats_separate(qtbot, monkeypatch) -> N
     ] == ["Run 1 (Summary)", "Run 2 (Summary)"]
 
     panel.run_combo.setCurrentIndex(1)
+    qtbot.waitUntil(
+        lambda: bool(requests)
+        and isinstance(requests[-1].selection, EvaluationCrossFoldIdentity)
+        and requests[-1].selection.run_index == 1,
+    )
+    qtbot.waitUntil(
+        lambda: panel._evaluation_render is not None
+        and isinstance(
+            panel._evaluation_render.request.selection,
+            EvaluationCrossFoldIdentity,
+        )
+        and panel._evaluation_render.request.selection.run_index == 1,
+    )
 
     selection = requests[-1].selection
     assert isinstance(selection, EvaluationCrossFoldIdentity)
@@ -1269,10 +1424,65 @@ def test_evaluation_panel_requests_identity_bound_model_summary(qtbot, monkeypat
     )
 
 
-def test_evaluation_panel_shows_placeholder_when_service_summary_missing(
-    qtbot, monkeypatch
+def test_evaluation_panel_ignores_reversed_stale_model_summary_callback(
+    qtbot,
+    monkeypatch,
 ):
-    """Service-owned evaluation data should not render a blank Model Summary tab."""
+    """A late A callback must not replace the selected B model summary."""
+
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    _install_evaluation_read_side(
+        monkeypatch,
+        lambda *_args, **_kwargs: _serialized_evaluation_result(),
+    )
+    callbacks = []
+
+    def capture_async(_panel, command, *, on_result, **_kwargs):
+        callbacks.append((command.summary_identity, on_result))
+        return True
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.evaluation.panel.execute_application_command_async",
+        capture_async,
+    )
+    panel = EvaluationPanel(parent=RealMainWindow())
+    qtbot.addWidget(panel)
+    panel.update_panel()
+    panel.bottom_tabs.setCurrentWidget(panel.summary_tab)
+
+    panel.model_combo.setCurrentIndex(1)
+
+    assert len(callbacks) == 2
+    first_identity, first_callback = callbacks[0]
+    second_identity, second_callback = callbacks[1]
+    assert first_identity != second_identity
+
+    second_callback(
+        _serialized_evaluation_result(
+            model_summary=(second_identity, "Selected B model details"),
+        )
+    )
+    assert panel.summary_text.toPlainText() == "Selected B model details"
+
+    first_callback(
+        _serialized_evaluation_result(
+            model_summary=(first_identity, "Stale A model details"),
+        )
+    )
+
+    assert panel.summary_text.toPlainText() == "Selected B model details"
+    assert panel._model_summary_identity == second_identity
+
+
+def test_evaluation_panel_keeps_empty_model_summary_pending_until_artifact_arrives(
+    qtbot,
+    monkeypatch,
+):
+    """An unpublished model artifact is pending, not a terminal load failure."""
 
     class RealMainWindow(QWidget):
         def __init__(self):
@@ -1285,13 +1495,20 @@ def test_evaluation_panel_shows_placeholder_when_service_summary_missing(
             model_summary=(command.summary_identity, "")
             if command.summary_identity is not None
             else None,
+            model_summary_status="pending"
+            if command.summary_identity is not None
+            else None,
         ),
     )
 
+    summaries = iter(("", "Published model details"))
+
     def fake_execute_async(_panel, command, *, on_result, **_kwargs):
+        text = next(summaries)
         on_result(
             _serialized_evaluation_result(
-                model_summary=(command.summary_identity, ""),
+                model_summary=(command.summary_identity, text),
+                model_summary_status="ready" if text else "pending",
             )
         )
         return True
@@ -1303,11 +1520,25 @@ def test_evaluation_panel_shows_placeholder_when_service_summary_missing(
 
     panel = EvaluationPanel(parent=RealMainWindow())
     qtbot.addWidget(panel)
-
     panel.update_panel()
     panel.bottom_tabs.setCurrentWidget(panel.summary_tab)
 
-    assert "Model summary unavailable" in panel.summary_text.toPlainText()
+    visible = panel.summary_text.toPlainText()
+    assert visible == "Model details are still being prepared..."
+    assert "unavailable" not in visible.lower()
+    assert "could not be loaded" not in visible.lower()
+
+    summary_identity = EvaluationSummaryIdentity(
+        plan=EvaluationPlanIdentity(plan_index=0),
+        run=EvaluationRunIdentity(
+            plan=EvaluationPlanIdentity(plan_index=0),
+            run_index=0,
+        ),
+    )
+    panel.mark_refresh_dirty()
+    panel.update_model_summary(summary_identity)
+
+    assert panel.summary_text.toPlainText() == "Published model details"
 
 
 def test_evaluation_panel_does_not_sync_load_model_summary_when_worker_unavailable(

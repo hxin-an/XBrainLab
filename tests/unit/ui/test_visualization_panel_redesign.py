@@ -563,6 +563,47 @@ def test_visualization_panel_disables_absolute_when_view_is_already_nonnegative(
     assert "magnitude" in panel.abs_check.toolTip()
 
 
+def test_spectrogram_normalize_uses_raw_publication_and_display_transform(
+    qtbot,
+    monkeypatch,
+):
+    panel, _ctrl = _make_panel(qtbot)
+    _publish_panel_state(
+        panel,
+        _application_query_with_saliency_state(
+            PostTrainingSaliencyStatus.idle(),
+            _complete_coverage(),
+        ),
+    )
+    requests = []
+
+    def publish(_panel, request, **_kwargs):
+        requests.append(request)
+        return _render_publication_for_request(_panel, request)
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
+        publish,
+    )
+    panel.tabs.setCurrentIndex(1)
+    spectrogram = cast(Any, panel.tab_spectro)
+    spectrogram.update_plot.reset_mock()
+
+    panel.normalize_check.setChecked(True)
+    qtbot.waitUntil(
+        lambda: spectrogram.update_plot.call_count == 1
+        and panel.native_render_work_idle(),
+        timeout=3000,
+    )
+
+    assert requests
+    assert requests[-1].normalize is False
+    publication, absolute = spectrogram.update_plot.call_args.args
+    assert publication.data.normalized is False
+    assert absolute is False
+    assert spectrogram.update_plot.call_args.kwargs == {"display_normalized": True}
+
+
 def test_visualization_controls_stay_in_a_compact_two_row_grid(qtbot):
     panel, _ctrl = _make_panel(qtbot)
     panel.resize(760, 720)
@@ -782,6 +823,11 @@ def test_visualization_panel_dispatches_default_run_when_fold_changes(qtbot):
         side_effect=_render_publication_for_request,
     ):
         panel.plan_combo.setCurrentIndex(2)
+        qtbot.waitUntil(
+            lambda: current_widget.update_plot.call_count >= 1
+            and panel.native_render_work_idle(),
+            timeout=3000,
+        )
 
     current_widget.update_plot.assert_called()
     args, _kwargs = current_widget.update_plot.call_args
@@ -815,6 +861,11 @@ def test_visualization_panel_dispatches_plot_update_to_active_tab(qtbot):
         side_effect=_render_publication_for_request,
     ):
         panel.on_update()
+        qtbot.waitUntil(
+            lambda: current_widget.update_plot.call_count == 1
+            and panel.native_render_work_idle(),
+            timeout=3000,
+        )
 
     current_widget.set_saliency_coverage.assert_called_with(complete)
     current_widget.update_plot.assert_called_once()
@@ -884,6 +935,7 @@ def test_visualization_panel_filters_methods_by_selected_run_coverage(qtbot):
         side_effect=_render_publication_for_request,
     ):
         panel.on_update()
+        qtbot.waitUntil(panel.native_render_work_idle, timeout=3000)
 
     model = cast(Any, panel.method_combo.model())
     gradient_item = model.item(panel.method_combo.findText("Gradient"))
@@ -906,6 +958,11 @@ def test_visualization_panel_filters_methods_by_selected_run_coverage(qtbot):
         current_widget = _current_mock_widget(panel)
         current_widget.update_plot.reset_mock()
         panel.on_update()
+        qtbot.waitUntil(
+            lambda: current_widget.update_plot.call_count == 1
+            and panel.native_render_work_idle(),
+            timeout=3000,
+        )
 
     current_widget.update_plot.assert_called_once()
 
@@ -1174,6 +1231,11 @@ def test_visualization_panel_renders_complete_coverage_after_background_failure(
         side_effect=_render_publication_for_request,
     ):
         panel.on_update()
+        qtbot.waitUntil(
+            lambda: current_widget.update_plot.call_count == 1
+            and panel.native_render_work_idle(),
+            timeout=3000,
+        )
 
     current_widget.update_plot.assert_called_once()
 
@@ -2694,6 +2756,11 @@ def test_visualization_panel_uses_typed_render_boundary(
     current_widget = _current_mock_widget(panel)
     current_widget.update_plot.reset_mock()
     panel.on_update()
+    qtbot.waitUntil(
+        lambda: current_widget.update_plot.call_count == 1
+        and panel.native_render_work_idle(),
+        timeout=3000,
+    )
 
     ctrl.get_trainers.assert_not_called()
     ctrl.get_averaged_record.assert_not_called()
@@ -2914,6 +2981,11 @@ def test_visualization_panel_uses_typed_render_publication_without_live_getters(
     current_widget.update_plot.reset_mock()
 
     panel.refresh_combos()
+    qtbot.waitUntil(
+        lambda: current_widget.update_plot.call_count >= 1
+        and panel.native_render_work_idle(),
+        timeout=3000,
+    )
 
     plan_identity = panel.plan_combo.currentData()
     run_identity = panel.run_combo.currentData()

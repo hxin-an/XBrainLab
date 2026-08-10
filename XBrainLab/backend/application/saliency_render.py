@@ -609,10 +609,21 @@ def _normalize_saliency_store(
     )
     if scale <= np.finfo(np.float64).eps:
         return {key: np.array(values, copy=True) for key, values in arrays.items()}
-    return {
-        key: np.asarray(values, dtype=np.float64) / scale
-        for key, values in arrays.items()
-    }
+    normalized: dict[object, np.ndarray] = {}
+    for key, values in arrays.items():
+        output_dtype = (
+            values.dtype
+            if np.issubdtype(values.dtype, np.floating)
+            else np.dtype(np.float64)
+        )
+        destination = np.empty(values.shape, dtype=output_dtype)
+        np.divide(
+            values,
+            np.asarray(scale, dtype=output_dtype),
+            out=destination,
+        )
+        normalized[key] = destination
+    return normalized
 
 
 def _pool_cross_fold_saliency(
@@ -646,14 +657,24 @@ def _pool_cross_fold_saliency(
     pooled: dict[object, np.ndarray] = {}
     for key, arrays in arrays_by_key.items():
         total_epochs = sum(int(values.shape[0]) for values in arrays)
+        source_dtype = np.result_type(*(values.dtype for values in arrays))
+        output_dtype = (
+            source_dtype
+            if np.issubdtype(source_dtype, np.floating)
+            else np.dtype(np.float64)
+        )
         destination = np.empty(
             (total_epochs, *arrays[0].shape[1:]),
-            dtype=np.float64,
+            dtype=output_dtype,
         )
         offset = 0
         for values in arrays:
             next_offset = offset + int(values.shape[0])
-            np.divide(values, scale, out=destination[offset:next_offset])
+            np.divide(
+                values,
+                np.asarray(scale, dtype=output_dtype),
+                out=destination[offset:next_offset],
+            )
             offset = next_offset
         pooled[key] = destination
     return pooled

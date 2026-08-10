@@ -7,7 +7,7 @@ import numpy as np
 from matplotlib.ticker import MaxNLocator, ScalarFormatter
 
 from .base import Visualizer
-from .saliency_semantics import saliency_color_scale
+from .saliency_semantics import mean_saliency_over_trials, saliency_color_scale
 
 SPARSE_INTERPOLATION_CHANNEL_LIMIT = 8
 TOPOGRAPHIC_COLORBAR_RECT = (0.87, 0.20, 0.018, 0.60)
@@ -76,13 +76,13 @@ class SaliencyTopoMapViz(Visualizer):
 
         display_by_label = []
         for label_key, label_name, raw_saliency in saliency_by_label:
-            if absolute:
-                saliency = np.abs(raw_saliency).mean(axis=0)
-            else:
-                saliency = raw_saliency.mean(axis=0)
+            saliency = mean_saliency_over_trials(
+                raw_saliency,
+                absolute=absolute,
+            )
 
             # average over time
-            data = saliency.mean(axis=1)
+            data = saliency.mean(axis=1, dtype=np.float64)
             data_channel_count = int(data.shape[0]) if data.ndim >= 1 else 0
             if data.ndim != 1 or data_channel_count != len(chs):
                 raise ValueError(

@@ -247,6 +247,9 @@ def test_cross_fold_render_pools_out_of_fold_epochs_and_normalizes_shared() -> N
             normalize=True,
         )
     )
+    assert {values.dtype for values in normalized.data.saliency_by_class.values()} == {
+        np.dtype(np.float64)
+    }
     np.testing.assert_allclose(
         normalized.data.saliency_by_class[0][:, 0, 0],
         [0.05, 0.15, 0.5],
@@ -375,6 +378,19 @@ def test_normalize_saliency_store_keeps_all_zero_values_finite() -> None:
     assert normalized[0] is not source[0]
     assert np.isfinite(normalized[0]).all()
     np.testing.assert_array_equal(normalized[0], source[0])
+
+
+def test_normalize_saliency_store_preserves_float32_storage() -> None:
+    source: dict[object, np.ndarray] = {
+        0: np.array([[[-2.0, 1.0]]], dtype=np.float32),
+        1: np.array([[[4.0, -1.0]]], dtype=np.float32),
+    }
+
+    normalized = _normalize_saliency_store(source)
+
+    assert {values.dtype for values in normalized.values()} == {np.dtype(np.float32)}
+    np.testing.assert_allclose(normalized[0], [[[-0.5, 0.25]]])
+    np.testing.assert_allclose(normalized[1], [[[1.0, -0.25]]])
 
 
 def test_normalized_render_publication_preserves_source_and_global_scale() -> None:

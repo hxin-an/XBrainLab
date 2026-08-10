@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import cast
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QThreadPool, QTimer
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -61,6 +61,7 @@ from XBrainLab.ui.application_publication_renderer import (
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.components.presentation import ElidingComboBox, ResponsiveControlsBar
 from XBrainLab.ui.core.base_panel import BasePanel
+from XBrainLab.ui.core.worker import Worker
 from XBrainLab.ui.panels.evaluation.confusion_matrix import ConfusionMatrixWidget
 from XBrainLab.ui.panels.evaluation.metrics_bar_chart import MetricsBarChartWidget
 from XBrainLab.ui.panels.evaluation.metrics_table import MetricsTableWidget
@@ -76,6 +77,7 @@ MODEL_SUMMARY_UNAVAILABLE_TEXT = (
     "artifact is not available. Train the run again or select another completed run."
 )
 MODEL_SUMMARY_DEFERRED_TEXT = "Open Model Summary to load model details."
+MODEL_SUMMARY_PENDING_TEXT = "Model details are still being prepared..."
 MODEL_SUMMARY_CROSS_FOLD_TEXT = (
     "Model details are available for an individual fold or run."
 )
@@ -161,6 +163,13 @@ class _EvaluationPublicationSignature:
     evaluation_state: EvaluationStateSnapshot
 
 
+@dataclass(frozen=True, slots=True)
+class _ModelSummaryRequest:
+    sequence: int
+    identity: EvaluationSummaryIdentity
+    publication_generation: int | None
+
+
 class _RetryEvaluationPublicationRenderError(RuntimeError):
     """Signal that the current publication was not rendered atomically."""
 
@@ -213,9 +222,17 @@ class EvaluationPanel(BasePanel):
         self._evaluation_render: EvaluationRenderPublication | None = None
         self._model_summary_identity: EvaluationSummaryIdentity | None = None
         self._model_summary_text = ""
+        self._model_summary_status: str | None = None
+        self._model_summary_request_sequence = 0
+        self._active_model_summary_request: _ModelSummaryRequest | None = None
         self._application_summary_dirty = True
         self._evaluation_render_retry_request: EvaluationRenderRequest | None = None
         self._evaluation_render_retry_attempts = 0
+        self._evaluation_render_worker: Worker | None = None
+        self._evaluation_render_active_request: EvaluationRenderRequest | None = None
+        self._evaluation_render_pending_request: EvaluationRenderRequest | None = None
+        self._evaluation_render_result_seen = False
+        self._evaluation_render_shutdown_requested = False
         self._info_in_chart_tabs = False
 
         super().__init__(parent=parent, controller=None)
@@ -367,8 +384,11 @@ class EvaluationPanel(BasePanel):
         """Invalidate the cached ApplicationService evaluation summary."""
         self._application_summary_dirty = True
         self._evaluation_render = None
+        self._evaluation_render_pending_request = None
         self._model_summary_identity = None
         self._model_summary_text = ""
+        self._model_summary_status = None
+        self._invalidate_model_summary_request()
 
     def _application_query_blocks_display(self) -> bool:
         """Return whether ApplicationService says evaluation is not displayable."""
@@ -518,13 +538,23 @@ class EvaluationPanel(BasePanel):
         on_ready=None,
     ) -> bool:
         """Load one model summary off the UI thread."""
+        self._model_summary_request_sequence += 1
+        request = _ModelSummaryRequest(
+            sequence=self._model_summary_request_sequence,
+            identity=summary_identity,
+            publication_generation=self._application_generation,
+        )
+        self._active_model_summary_request = request
 
         def _handle_result(result) -> None:
+            if self._active_model_summary_request != request:
+                return
             if not isinstance(result, CommandResult):
                 logger.error(
                     "Evaluation background query returned an invalid result: %s",
                     type(result).__name__,
                 )
+                self._active_model_summary_request = None
                 self._show_async_query_failure()
                 return
             if result.failed:
@@ -534,15 +564,20 @@ class EvaluationPanel(BasePanel):
                     or getattr(result, "message", "")
                     or "No diagnostic message was provided.",
                 )
+                self._active_model_summary_request = None
                 self._show_async_query_failure()
                 return
             if not self._accept_model_summary(result, summary_identity):
+                self._active_model_summary_request = None
                 self._show_async_query_failure()
                 return
+            self._active_model_summary_request = None
             if callable(on_ready):
                 on_ready()
 
         def _handle_error(error: tuple) -> None:
+            if self._active_model_summary_request != request:
+                return
             value = error[1] if len(error) > 1 else error
             formatted_traceback = error[2] if len(error) > 2 else ""
             logger.error(
@@ -550,18 +585,26 @@ class EvaluationPanel(BasePanel):
                 value,
                 formatted_traceback,
             )
+            self._active_model_summary_request = None
             self._show_async_query_failure()
 
-        return execute_application_command_async(
+        started = execute_application_command_async(
             self,
             EvaluateCommand(summary_identity=summary_identity),
             on_result=_handle_result,
             on_error=_handle_error,
             refresh=False,
             busy_target=self,
-            expected_publication_generation=self._application_generation,
+            expected_publication_generation=request.publication_generation,
             runtime=cast(ApplicationUiRuntime, self._action_port),
         )
+        if not started and self._active_model_summary_request == request:
+            self._active_model_summary_request = None
+        return started
+
+    def _invalidate_model_summary_request(self) -> None:
+        """Make every already-dispatched model-summary callback stale."""
+        self._active_model_summary_request = None
 
     def _show_async_query_failure(self) -> None:
         """Publish a stable terminal state without exposing backend diagnostics."""
@@ -817,14 +860,22 @@ class EvaluationPanel(BasePanel):
         if payload.get("identity") != expected_identity.to_dict():
             return False
         text = payload.get("text")
-        if not isinstance(text, str):
+        status = payload.get("status")
+        if (
+            status not in {"ready", "pending", "unavailable"}
+            or not isinstance(text, str)
+            or (status == "ready" and not text.strip())
+            or (status != "ready" and bool(text))
+        ):
             return False
         self._model_summary_identity = expected_identity
         self._model_summary_text = text
+        self._model_summary_status = status
         return True
 
     def _show_no_data_available(self) -> None:
         message = self._evaluation_empty_state_message()
+        self._invalidate_model_summary_request()
         self.model_combo.blockSignals(True)
         self.model_combo.clear()
         self.model_combo.setEnabled(False)
@@ -1115,6 +1166,15 @@ class EvaluationPanel(BasePanel):
         cached = self._evaluation_render
         if cached is not None and cached.request == request:
             return cached
+        if isinstance(selection, EvaluationCrossFoldIdentity):
+            if self._request_evaluation_render(request):
+                self._show_evaluation_render_loading()
+            else:
+                self._show_evaluation_render_unavailable(
+                    "The All Folds evaluation summary could not start in the "
+                    "background. Refresh Evaluation and try again."
+                )
+            return None
         query_port = self._query_port
         if query_port is None:
             return None
@@ -1165,6 +1225,155 @@ class EvaluationPanel(BasePanel):
         self._evaluation_render = publication
         return publication
 
+    def _request_evaluation_render(self, request: EvaluationRenderRequest) -> bool:
+        """Serialize expensive cross-fold publication reads outside the GUI thread."""
+        if self._evaluation_render_shutdown_requested:
+            return False
+        if self._evaluation_render_worker is not None:
+            if request == self._evaluation_render_active_request:
+                self._evaluation_render_pending_request = (
+                    request if self._evaluation_render_result_seen else None
+                )
+            else:
+                self._evaluation_render_pending_request = request
+            return True
+        runtime = self._query_port
+        if runtime is None:
+            return False
+        thread_pool = QThreadPool.globalInstance()
+        if thread_pool is None:
+            return False
+        worker = Worker(self._load_evaluation_render, runtime, request)
+        worker.signals.result.connect(self._on_evaluation_render_ready)
+        worker.signals.error.connect(self._on_evaluation_render_error)
+        worker.signals.finished.connect(self._on_evaluation_render_finished)
+        self._evaluation_render_worker = worker
+        self._evaluation_render_active_request = request
+        self._evaluation_render_pending_request = None
+        self._evaluation_render_result_seen = False
+        try:
+            thread_pool.start(worker)
+        except Exception:
+            self._evaluation_render_worker = None
+            self._evaluation_render_active_request = None
+            logger.error(
+                "Evaluation render publication worker could not start.",
+                exc_info=True,
+            )
+            return False
+        return True
+
+    @staticmethod
+    def _load_evaluation_render(
+        runtime,
+        request: EvaluationRenderRequest,
+    ) -> tuple[EvaluationRenderRequest, object]:
+        publication = get_evaluation_render_publication(
+            None,
+            request,
+            runtime=runtime,
+        )
+        if publication is None:
+            raise RuntimeError("Evaluation render publication is unavailable")
+        return request, publication
+
+    def _on_evaluation_render_ready(self, result: object) -> None:
+        request = self._evaluation_render_active_request
+        if self._evaluation_render_shutdown_requested or request is None:
+            return
+        self._evaluation_render_result_seen = True
+        if (
+            not isinstance(result, tuple)
+            or len(result) != 2
+            or result[0] != request
+            or getattr(result[1], "request", None) != request
+        ):
+            if request == self._current_evaluation_render_request():
+                self._show_evaluation_render_unavailable(
+                    "The All Folds evaluation summary could not be loaded. "
+                    "Refresh Evaluation and try again."
+                )
+            return
+        if request != self._current_evaluation_render_request():
+            return
+        self._evaluation_render = cast(EvaluationRenderPublication, result[1])
+        self.update_views()
+
+    def _on_evaluation_render_error(self, error: tuple) -> None:
+        request = self._evaluation_render_active_request
+        if self._evaluation_render_shutdown_requested or request is None:
+            return
+        self._evaluation_render_result_seen = True
+        value: object = (
+            error[1]
+            if len(error) > 1
+            else RuntimeError("Evaluation render worker returned an invalid error")
+        )
+        if request != self._current_evaluation_render_request():
+            return
+        if isinstance(value, ApplicationError):
+            application_error = cast(ApplicationError, value)
+            diagnostics = application_error.diagnostics
+            if (
+                diagnostics.get("evaluation_final_unavailable") is True
+                or diagnostics.get("evaluation_split_unavailable") is True
+            ):
+                self._clear_evaluation_render_retry()
+                self._show_evaluation_render_unavailable(str(value))
+                return
+            if (
+                diagnostics.get("evaluation_render_stale") is True
+                and diagnostics.get("retryable") is True
+            ):
+                self._evaluation_render = None
+                self.mark_refresh_dirty()
+                self._schedule_evaluation_render_retry(request)
+                return
+        logger.error("Evaluation render publication failed: %s", value)
+        self.mark_refresh_dirty()
+        self._show_evaluation_render_unavailable(
+            "The All Folds evaluation summary could not be loaded. "
+            "Refresh Evaluation and try again."
+        )
+
+    def _on_evaluation_render_finished(self) -> None:
+        if self._evaluation_render_worker is None:
+            return
+        self._evaluation_render_worker = None
+        self._evaluation_render_active_request = None
+        self._evaluation_render_result_seen = False
+        pending = self._evaluation_render_pending_request
+        self._evaluation_render_pending_request = None
+        if (
+            not self._evaluation_render_shutdown_requested
+            and pending is not None
+            and pending == self._current_evaluation_render_request()
+        ):
+            self._request_evaluation_render(pending)
+
+    def _current_evaluation_render_request(self) -> EvaluationRenderRequest | None:
+        generation = self._application_generation
+        selection = self.run_combo.currentData()
+        split = self.split_combo.currentData()
+        if (
+            generation is None
+            or not isinstance(
+                selection,
+                (
+                    EvaluationPlanIdentity,
+                    EvaluationRunIdentity,
+                    EvaluationCrossFoldIdentity,
+                ),
+            )
+            or not isinstance(split, str)
+        ):
+            return None
+        return EvaluationRenderRequest(
+            publication_generation=generation,
+            selection=selection,
+            split=split,
+        )
+
     def _schedule_evaluation_render_retry(
         self,
         request: EvaluationRenderRequest,
@@ -1210,6 +1419,14 @@ class EvaluationPanel(BasePanel):
         self.plot_stack.setCurrentIndex(1)
         self.bottom_tabs.setVisible(False)
 
+    def _show_evaluation_render_loading(self) -> None:
+        """Replace prior metrics while one All Folds publication is prepared."""
+        self._evaluation_render = None
+        self._clear_metric_views()
+        self.no_data_label.setText("Preparing the All Folds evaluation summary...")
+        self.plot_stack.setCurrentIndex(1)
+        self.bottom_tabs.setVisible(True)
+
     def _on_percentage_toggled(self, _checked: bool) -> None:
         """Redraw only the matrix; summary metrics remain raw values."""
         render = self._evaluation_render
@@ -1222,6 +1439,9 @@ class EvaluationPanel(BasePanel):
 
     def cleanup(self) -> None:
         """Cancel queued renders and release the publication subscription."""
+        self._evaluation_render_shutdown_requested = True
+        self._evaluation_render_pending_request = None
+        self._invalidate_model_summary_request()
         self._clear_evaluation_render_retry()
         self._application_render_ledger.cleanup()
         if hasattr(self, "matrix_widget"):
@@ -1256,12 +1476,17 @@ class EvaluationPanel(BasePanel):
     ) -> None:
         """Load and display one identity-bound model summary."""
         if not isinstance(summary_identity, EvaluationSummaryIdentity):
+            self._invalidate_model_summary_request()
             self.summary_text.setText(MODEL_SUMMARY_UNAVAILABLE_TEXT)
             return
         if self._model_summary_identity == summary_identity:
-            self.summary_text.setText(
-                self._model_summary_text or MODEL_SUMMARY_UNAVAILABLE_TEXT
-            )
+            self._invalidate_model_summary_request()
+            if self._model_summary_status == "ready":
+                self.summary_text.setText(self._model_summary_text)
+            elif self._model_summary_status == "pending":
+                self.summary_text.setText(MODEL_SUMMARY_PENDING_TEXT)
+            else:
+                self.summary_text.setText(MODEL_SUMMARY_UNAVAILABLE_TEXT)
             return
         self.summary_text.setText("Loading model details...")
         if self._refresh_application_query_async(
@@ -1276,9 +1501,11 @@ class EvaluationPanel(BasePanel):
         summary_identity: EvaluationSummaryIdentity | None,
     ) -> None:
         if summary_identity is None:
+            self._invalidate_model_summary_request()
             self.summary_text.setText(MODEL_SUMMARY_CROSS_FOLD_TEXT)
             return
         if not self._summary_tab_visible():
+            self._invalidate_model_summary_request()
             self.summary_text.setText(MODEL_SUMMARY_DEFERRED_TEXT)
             return
         self.update_model_summary(summary_identity)
@@ -1300,6 +1527,7 @@ class EvaluationPanel(BasePanel):
             return
         selection = self.run_combo.currentData()
         if isinstance(selection, EvaluationCrossFoldIdentity):
+            self._invalidate_model_summary_request()
             self.summary_text.setText(MODEL_SUMMARY_CROSS_FOLD_TEXT)
             return
         if not isinstance(
@@ -1310,6 +1538,7 @@ class EvaluationPanel(BasePanel):
                 EvaluationCrossFoldIdentity,
             ),
         ):
+            self._invalidate_model_summary_request()
             self.summary_text.clear()
             return
         self.update_model_summary(self._summary_identity(selection))

@@ -1,6 +1,10 @@
 """Frequency-by-time saliency spectrogram visualiser."""
 
 import logging
+import threading
+from collections import OrderedDict
+from collections.abc import Callable, Hashable
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
@@ -21,6 +25,320 @@ _ROBUST_UPPER_PERCENTILE = 99.0
 _POWER_SCALE_DYNAMIC_RANGE = 1_000.0
 
 
+@dataclass(frozen=True)
+class _PreparedSpectrogramClass:
+    label_key: object
+    label_name: str
+    magnitude: np.ndarray
+    frequencies: np.ndarray
+    time_centers: np.ndarray
+    time_min: float
+    time_max: float
+    raw_shape: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class _PreparedSpectrogram:
+    classes: tuple[_PreparedSpectrogramClass, ...]
+    diagnostics: tuple[dict[str, object], ...]
+
+
+@dataclass
+class _SpectrogramPreparationVariants:
+    raw: _PreparedSpectrogram | None = None
+    normalized: _PreparedSpectrogram | None = None
+
+
+@dataclass
+class _SpectrogramPreparationFlight:
+    generation: int
+    completed: threading.Event = field(default_factory=threading.Event)
+    raw: _PreparedSpectrogram | None = None
+    normalized: _PreparedSpectrogram | None = None
+    error: BaseException | None = None
+    invalidated: bool = False
+    waiter_count: int = 0
+
+
+class SaliencySpectrogramPreparationCache:
+    """Bound repeated STFT work to one preparation per render lineage."""
+
+    def __init__(self, *, max_lineages: int = 2) -> None:
+        if max_lineages < 1:
+            raise ValueError("max_lineages must be positive")
+        self._max_lineages = max_lineages
+        self._lock = threading.RLock()
+        self._generation = 0
+        self._entries: OrderedDict[Hashable, _SpectrogramPreparationVariants] = (
+            OrderedDict()
+        )
+        self._in_flight: dict[Hashable, _SpectrogramPreparationFlight] = {}
+
+    def _store_locked(
+        self,
+        *,
+        key: Hashable,
+        raw: _PreparedSpectrogram,
+        normalized: _PreparedSpectrogram | None,
+    ) -> _SpectrogramPreparationVariants:
+        variants = self._entries.setdefault(
+            key,
+            _SpectrogramPreparationVariants(),
+        )
+        if variants.raw is None:
+            variants.raw = raw
+        if normalized is not None and variants.normalized is None:
+            variants.normalized = normalized
+        self._entries.move_to_end(key)
+        while len(self._entries) > self._max_lineages:
+            self._entries.popitem(last=False)
+        return variants
+
+    def _release_waiter(
+        self,
+        *,
+        key: Hashable,
+        flight: _SpectrogramPreparationFlight,
+    ) -> None:
+        with self._lock:
+            flight.waiter_count -= 1
+            if (
+                flight.waiter_count == 0
+                and flight.completed.is_set()
+                and self._in_flight.get(key) is flight
+            ):
+                del self._in_flight[key]
+
+    def get_or_prepare(
+        self,
+        *,
+        key: Hashable,
+        normalized: bool,
+        raw_sources: tuple[np.ndarray, ...],
+        prepare: Callable[[], _PreparedSpectrogram],
+    ) -> _PreparedSpectrogram:
+        """Return one display variant while preparing the raw STFT at most once."""
+        hash(key)
+        joined_flight: _SpectrogramPreparationFlight | None = None
+        prepared: _PreparedSpectrogram | None = None
+        while True:
+            with self._lock:
+                cache_generation = self._generation
+                variants = self._entries.get(key)
+                cached = (
+                    (variants.normalized if normalized else variants.raw)
+                    if variants is not None
+                    else None
+                )
+                if cached is not None:
+                    self._entries.move_to_end(key)
+                    return cached
+
+                raw_prepared = variants.raw if variants is not None else None
+                if raw_prepared is not None:
+                    break
+
+                flight = self._in_flight.get(key)
+                if flight is None:
+                    owns_flight = True
+                    flight = _SpectrogramPreparationFlight(
+                        generation=cache_generation,
+                    )
+                    self._in_flight[key] = flight
+                else:
+                    owns_flight = False
+                    flight.waiter_count += 1
+
+            if owns_flight:
+                try:
+                    # STFT and diagnostics can be expensive. Keeping this outside
+                    # the lock lets clear() invalidate a generation immediately.
+                    raw_prepared = prepare()
+                    prepared = (
+                        _normalize_prepared_spectrogram(
+                            raw_prepared,
+                            scale=_shared_normalization_scale(raw_sources),
+                        )
+                        if normalized
+                        else raw_prepared
+                    )
+                except BaseException as error:
+                    with self._lock:
+                        flight.error = error
+                        flight.completed.set()
+                        if (
+                            flight.waiter_count == 0
+                            and self._in_flight.get(key) is flight
+                        ):
+                            del self._in_flight[key]
+                    raise
+
+                with self._lock:
+                    flight.raw = raw_prepared
+                    if normalized:
+                        flight.normalized = prepared
+                    if (
+                        not flight.invalidated
+                        and flight.generation == self._generation
+                        and self._in_flight.get(key) is flight
+                    ):
+                        variants = self._store_locked(
+                            key=key,
+                            raw=raw_prepared,
+                            normalized=prepared if normalized else None,
+                        )
+                        cached = variants.normalized if normalized else variants.raw
+                    else:
+                        cached = None
+                    flight.completed.set()
+                    if flight.waiter_count == 0 and self._in_flight.get(key) is flight:
+                        del self._in_flight[key]
+                return cached if cached is not None else prepared
+
+            flight.completed.wait()
+            with self._lock:
+                invalidated = flight.invalidated
+                error = flight.error
+                raw_prepared = flight.raw
+                prepared = flight.normalized if normalized else raw_prepared
+            if invalidated:
+                self._release_waiter(key=key, flight=flight)
+                prepared = None
+                continue
+            if error is not None:
+                self._release_waiter(key=key, flight=flight)
+                raise error
+            if raw_prepared is None:
+                self._release_waiter(key=key, flight=flight)
+                raise RuntimeError("Spectrogram preparation completed without a result")
+            joined_flight = flight
+            break
+
+        try:
+            if prepared is None:
+                prepared = (
+                    _normalize_prepared_spectrogram(
+                        raw_prepared,
+                        scale=_shared_normalization_scale(raw_sources),
+                    )
+                    if normalized
+                    else raw_prepared
+                )
+
+            with self._lock:
+                if cache_generation != self._generation:
+                    return prepared
+                variants = self._store_locked(
+                    key=key,
+                    raw=raw_prepared,
+                    normalized=prepared if normalized else None,
+                )
+                cached = variants.normalized if normalized else variants.raw
+                return cached if cached is not None else prepared
+        finally:
+            if joined_flight is not None:
+                self._release_waiter(key=key, flight=joined_flight)
+
+    def clear(self) -> None:
+        """Release prepared display arrays without waiting for active STFT work."""
+        with self._lock:
+            self._generation += 1
+            self._entries.clear()
+            flights = tuple(self._in_flight.values())
+            self._in_flight.clear()
+            for flight in flights:
+                flight.invalidated = True
+                flight.completed.set()
+
+
+def _describe_values(values: np.ndarray) -> dict[str, float | int]:
+    flat = np.asarray(values).ravel()
+    finite = flat[np.isfinite(flat)]
+    if finite.size:
+        percentiles = np.percentile(finite, [1, 5, 50, 95, 99])
+        minimum = float(np.min(finite))
+        maximum = float(np.max(finite))
+    else:
+        percentiles = np.full(5, np.nan)
+        minimum = maximum = float("nan")
+    return {
+        "min": minimum,
+        "max": maximum,
+        "median": float(percentiles[2]),
+        "p1": float(percentiles[0]),
+        "p5": float(percentiles[1]),
+        "p95": float(percentiles[3]),
+        "p99": float(percentiles[4]),
+        "non_zero_ratio": float(np.count_nonzero(finite) / finite.size)
+        if finite.size
+        else 0.0,
+        "zero_ratio": float(np.count_nonzero(finite == 0) / finite.size)
+        if finite.size
+        else 0.0,
+        "nan_count": int(np.count_nonzero(np.isnan(flat))),
+        "inf_count": int(np.count_nonzero(np.isinf(flat))),
+        "finite_count": int(finite.size),
+    }
+
+
+def _prepared_spectrogram(
+    classes: tuple[_PreparedSpectrogramClass, ...],
+) -> _PreparedSpectrogram:
+    diagnostics: list[dict[str, object]] = []
+    for prepared_class in classes:
+        frequency_stats = [
+            {
+                "frequency_hz": float(frequency),
+                **_describe_values(prepared_class.magnitude[index]),
+            }
+            for index, frequency in enumerate(prepared_class.frequencies)
+        ]
+        diagnostics.append(
+            {
+                "label": prepared_class.label_name,
+                "raw_shape": prepared_class.raw_shape,
+                "matrix_shape": tuple(prepared_class.magnitude.shape),
+                **_describe_values(prepared_class.magnitude),
+                "frequency_bins": frequency_stats,
+            },
+        )
+    return _PreparedSpectrogram(classes=classes, diagnostics=tuple(diagnostics))
+
+
+def _shared_normalization_scale(values: tuple[np.ndarray, ...]) -> float:
+    scale = max(float(np.max(np.abs(array), initial=0.0)) for array in values)
+    return scale
+
+
+def _normalize_prepared_spectrogram(
+    prepared: _PreparedSpectrogram,
+    *,
+    scale: float,
+) -> _PreparedSpectrogram:
+    if scale <= np.finfo(np.float64).eps:
+        return prepared
+
+    normalized_classes = []
+    for prepared_class in prepared.classes:
+        magnitude = prepared_class.magnitude
+        divisor = np.asarray(scale, dtype=magnitude.dtype)
+        normalized = np.divide(magnitude, divisor)
+        normalized.setflags(write=False)
+        normalized_classes.append(
+            _PreparedSpectrogramClass(
+                label_key=prepared_class.label_key,
+                label_name=prepared_class.label_name,
+                magnitude=normalized,
+                frequencies=prepared_class.frequencies,
+                time_centers=prepared_class.time_centers,
+                time_min=prepared_class.time_min,
+                time_max=prepared_class.time_max,
+                raw_shape=prepared_class.raw_shape,
+            ),
+        )
+    return _prepared_spectrogram(tuple(normalized_classes))
+
+
 class SaliencySpectrogramMapViz(Visualizer):
     """Visualizer that generates a frequency-by-time saliency spectrogram.
 
@@ -30,33 +348,7 @@ class SaliencySpectrogramMapViz(Visualizer):
 
     @staticmethod
     def _describe_values(values: np.ndarray) -> dict[str, float | int]:
-        flat = np.asarray(values).ravel()
-        finite = flat[np.isfinite(flat)]
-        if finite.size:
-            percentiles = np.percentile(finite, [1, 5, 50, 95, 99])
-            minimum = float(np.min(finite))
-            maximum = float(np.max(finite))
-        else:
-            percentiles = np.full(5, np.nan)
-            minimum = maximum = float("nan")
-        return {
-            "min": minimum,
-            "max": maximum,
-            "median": float(percentiles[2]),
-            "p1": float(percentiles[0]),
-            "p5": float(percentiles[1]),
-            "p95": float(percentiles[3]),
-            "p99": float(percentiles[4]),
-            "non_zero_ratio": float(np.count_nonzero(finite) / finite.size)
-            if finite.size
-            else 0.0,
-            "zero_ratio": float(np.count_nonzero(finite == 0) / finite.size)
-            if finite.size
-            else 0.0,
-            "nan_count": int(np.count_nonzero(np.isnan(flat))),
-            "inf_count": int(np.count_nonzero(np.isinf(flat))),
-            "finite_count": int(finite.size),
-        }
+        return _describe_values(values)
 
     @classmethod
     def _build_shared_display_scale(
@@ -140,7 +432,90 @@ class SaliencySpectrogramMapViz(Visualizer):
             },
         )
 
-    def _get_plt(self, method, absolute: bool = False) -> Any:
+    def _prepare_spectrogram(
+        self,
+        saliency_by_label: list[tuple[object, str, np.ndarray]],
+        *,
+        sfreq: float,
+    ) -> _PreparedSpectrogram:
+        prepared_classes: list[_PreparedSpectrogramClass] = []
+        for label_key, label_name, raw_values in saliency_by_label:
+            raw_saliency = np.asarray(raw_values)
+            if raw_saliency.ndim != 3:
+                raise ValueError(
+                    "Saliency spectrogram expects epochs x channels x samples; "
+                    f"received shape {raw_saliency.shape!r} for {label_name!r}.",
+                )
+            if not np.all(np.isfinite(raw_saliency)):
+                raise ValueError(
+                    f"Saliency for {label_name!r} contains NaN or infinite values.",
+                )
+            sample_count = int(raw_saliency.shape[-1])
+            if sample_count < 2:
+                raise ValueError(
+                    "At least two epoch samples are required for a spectrogram.",
+                )
+            segment_samples = min(max(2, round(sfreq)), sample_count)
+            overlap_samples = min(segment_samples // 2, segment_samples - 1)
+            boundary_mode: Any = None
+            freqs, timestamps, stft_saliency = signal.stft(
+                raw_saliency,
+                fs=sfreq,
+                axis=-1,
+                nperseg=segment_samples,
+                noverlap=overlap_samples,
+                boundary=boundary_mode,
+                padded=False,
+            )
+            magnitude = np.mean(np.mean(abs(stft_saliency), axis=0), axis=0)
+            if magnitude.ndim != 2:
+                raise ValueError(
+                    f"Spectrogram aggregation produced shape {magnitude.shape!r}; "
+                    "expected frequency x time.",
+                )
+            if magnitude.shape != (freqs.size, timestamps.size):
+                raise ValueError(
+                    "Spectrogram axes do not match the rendered matrix: "
+                    f"matrix={magnitude.shape!r}, frequencies={freqs.size}, "
+                    f"times={timestamps.size}.",
+                )
+            magnitude.setflags(write=False)
+            epoch_start = float(getattr(self.epoch_data, "tmin", 0.0))
+            time_centers = epoch_start + timestamps
+            if time_centers.size == 1:
+                half_bin_width = segment_samples / (2 * sfreq)
+                time_min = float(time_centers[0] - half_bin_width)
+                time_max = float(time_centers[0] + half_bin_width)
+            else:
+                time_min = float(
+                    time_centers[0] - (time_centers[1] - time_centers[0]) / 2,
+                )
+                time_max = float(
+                    time_centers[-1] + (time_centers[-1] - time_centers[-2]) / 2,
+                )
+            prepared_classes.append(
+                _PreparedSpectrogramClass(
+                    label_key=label_key,
+                    label_name=str(label_name),
+                    magnitude=magnitude,
+                    frequencies=freqs,
+                    time_centers=time_centers,
+                    time_min=time_min,
+                    time_max=time_max,
+                    raw_shape=tuple(raw_saliency.shape),
+                ),
+            )
+        return _prepared_spectrogram(tuple(prepared_classes))
+
+    def _get_plt(
+        self,
+        method,
+        absolute: bool = False,
+        *,
+        display_normalized: bool | None = None,
+        preparation_cache: SaliencySpectrogramPreparationCache | None = None,
+        preparation_key: Hashable | None = None,
+    ) -> Any:
         """Render the saliency spectrogram figure.
 
         Args:
@@ -168,100 +543,38 @@ class SaliencySpectrogramMapViz(Visualizer):
         visible_label_number = len(saliency_by_label)
         rows = 1 if visible_label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
         cols = int(np.ceil(visible_label_number / rows))
-        spectrogram_by_label = []
-        diagnostics: list[dict[str, object]] = []
-        for label_key, label_name, raw_values in saliency_by_label:
-            raw_saliency = np.asarray(raw_values)
-            if raw_saliency.ndim != 3:
-                raise ValueError(
-                    "Saliency spectrogram expects epochs x channels x samples; "
-                    f"received shape {raw_saliency.shape!r} for {label_name!r}.",
-                )
-            if not np.all(np.isfinite(raw_saliency)):
-                raise ValueError(
-                    f"Saliency for {label_name!r} contains NaN or infinite values.",
-                )
-            sample_count = int(raw_saliency.shape[-1])
-            if sample_count < 2:
-                raise ValueError(
-                    "At least two epoch samples are required for a spectrogram.",
-                )
-            segment_samples = min(max(2, round(sfreq)), sample_count)
-            overlap_samples = min(segment_samples // 2, segment_samples - 1)
-            # SciPy accepts ``None`` to disable boundary extension, but its
-            # current type stub only advertises string modes.
-            boundary_mode: Any = None
+        raw_sources = tuple(np.asarray(entry[2]) for entry in saliency_by_label)
 
-            freqs, timestamps, stft_saliency = signal.stft(
-                raw_saliency,
-                fs=sfreq,
-                axis=-1,
-                nperseg=segment_samples,
-                noverlap=overlap_samples,
-                boundary=boundary_mode,
-                padded=False,
-            )
-            saliency = np.mean(np.mean(abs(stft_saliency), axis=0), axis=0)
-            if saliency.ndim != 2:
-                raise ValueError(
-                    f"Spectrogram aggregation produced shape {saliency.shape!r}; "
-                    "expected frequency x time.",
-                )
-            if saliency.shape != (freqs.size, timestamps.size):
-                raise ValueError(
-                    "Spectrogram axes do not match the rendered matrix: "
-                    f"matrix={saliency.shape!r}, frequencies={freqs.size}, "
-                    f"times={timestamps.size}.",
-                )
-            epoch_start = float(getattr(self.epoch_data, "tmin", 0.0))
-            time_centers = epoch_start + timestamps
-            if time_centers.size == 1:
-                half_bin_width = segment_samples / (2 * sfreq)
-                time_min = float(time_centers[0] - half_bin_width)
-                time_max = float(time_centers[0] + half_bin_width)
-            else:
-                time_min = float(
-                    time_centers[0] - (time_centers[1] - time_centers[0]) / 2,
-                )
-                time_max = float(
-                    time_centers[-1] + (time_centers[-1] - time_centers[-2]) / 2,
-                )
-            spectrogram_by_label.append(
-                (
-                    label_key,
-                    label_name,
-                    saliency,
-                    freqs,
-                    time_centers,
-                    time_min,
-                    time_max,
-                ),
+        def prepare() -> _PreparedSpectrogram:
+            return self._prepare_spectrogram(
+                saliency_by_label,
+                sfreq=sfreq,
             )
 
-            frequency_stats = [
-                {
-                    "frequency_hz": float(freq),
-                    **self._describe_values(saliency[index]),
-                }
-                for index, freq in enumerate(freqs)
-            ]
-            class_diagnostics: dict[str, object] = {
-                "label": str(label_name),
-                "raw_shape": tuple(raw_saliency.shape),
-                "matrix_shape": tuple(saliency.shape),
-                **self._describe_values(saliency),
-                "frequency_bins": frequency_stats,
-            }
-            diagnostics.append(class_diagnostics)
-            logger.debug("Attribution spectrogram diagnostics: %s", class_diagnostics)
+        normalized = (
+            bool(getattr(self.epoch_data, "normalized", False))
+            if display_normalized is None
+            else bool(display_normalized)
+        )
+        if preparation_cache is not None and preparation_key is not None:
+            prepared = preparation_cache.get_or_prepare(
+                key=preparation_key,
+                normalized=normalized,
+                raw_sources=raw_sources,
+                prepare=prepare,
+            )
+        else:
+            prepared = prepare()
 
-        display_arrays = [entry[2] for entry in spectrogram_by_label]
+        display_arrays = [entry.magnitude for entry in prepared.classes]
         shared_norm, colorbar_label, scale_details = self._build_shared_display_scale(
             display_arrays,
-            normalized=bool(getattr(self.epoch_data, "normalized", False)),
+            normalized=normalized,
         )
-        self.spectrogram_diagnostics = tuple(diagnostics)
+        self.spectrogram_diagnostics = prepared.diagnostics
         self.spectrogram_display_scale = dict(scale_details)
+        for diagnostic in prepared.diagnostics:
+            logger.debug("Attribution spectrogram diagnostics: %s", diagnostic)
         logger.info("Attribution spectrogram shared display scale: %s", scale_details)
         display_cmap = attribution_colormap(SALIENCY_RED_BLUE_CMAP)
         fig.subplots_adjust(
@@ -279,46 +592,41 @@ class SaliencySpectrogramMapViz(Visualizer):
         )
         plot_axes = []
         image = None
-        for plot_index, (
-            _label_key,
-            label_name,
-            saliency,
-            freqs,
-            time_centers,
-            time_min,
-            time_max,
-        ) in enumerate(
-            spectrogram_by_label,
-        ):
+        for plot_index, prepared_class in enumerate(prepared.classes):
             ax = fig.add_subplot(rows, cols, plot_index + 1)
             plot_axes.append(ax)
 
             image = ax.imshow(
-                saliency,
+                prepared_class.magnitude,
                 origin="lower",
                 interpolation="nearest",
                 aspect="auto",
                 cmap=display_cmap,
                 norm=shared_norm,
                 extent=(
-                    time_min,
-                    time_max,
-                    float(freqs[0]),
-                    float(freqs[-1]),
+                    prepared_class.time_min,
+                    prepared_class.time_max,
+                    float(prepared_class.frequencies[0]),
+                    float(prepared_class.frequencies[-1]),
                 ),
             )
-            tick_count = min(5, time_centers.size)
+            tick_count = min(5, prepared_class.time_centers.size)
             tick_label = np.round(
-                np.linspace(time_centers[0], time_centers[-1], tick_count),
+                np.linspace(
+                    prepared_class.time_centers[0],
+                    prepared_class.time_centers[-1],
+                    tick_count,
+                ),
                 2,
             )
             ax.set_xlabel("Time (s)")
             ax.set_ylabel("Frequency (Hz)")
             ax.set_xticks(tick_label)
             ax.tick_params(axis="x", labelsize=6)
+            freqs = prepared_class.frequencies
             ax.set_yticks(freqs[np.where(np.isclose(freqs % 10, 0))])
 
-            ax.set_title(str(label_name))
+            ax.set_title(prepared_class.label_name)
         if image is not None:
             colorbar = fig.colorbar(
                 image,

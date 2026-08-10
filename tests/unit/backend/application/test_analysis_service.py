@@ -22,6 +22,7 @@ from XBrainLab.backend.application.commands import (
 )
 from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.evaluation_render import (
+    EvaluationModelSummary,
     EvaluationPlanIdentity,
     EvaluationRunIdentity,
     EvaluationSummaryIdentity,
@@ -592,9 +593,14 @@ def test_analysis_service_targets_requested_model_summary_only(monkeypatch) -> N
             run_index=0,
         ),
     )
-    summary_builder = MagicMock(return_value="Plan B summary run")
+    summary_builder = MagicMock(
+        return_value=EvaluationModelSummary(
+            status="ready",
+            text="Plan B summary run",
+        )
+    )
     monkeypatch.setattr(
-        "XBrainLab.backend.application.analysis_service.build_evaluation_model_summary",
+        "XBrainLab.backend.application.analysis_service.build_evaluation_model_summary_result",
         summary_builder,
     )
 
@@ -606,6 +612,7 @@ def test_analysis_service_targets_requested_model_summary_only(monkeypatch) -> N
 
     assert diagnostics["model_summary"] == {
         "identity": {"plan_index": 1, "run_index": 0},
+        "status": "ready",
         "text": "Plan B summary run",
     }
     summary_builder.assert_called_once_with(runtime, identity)

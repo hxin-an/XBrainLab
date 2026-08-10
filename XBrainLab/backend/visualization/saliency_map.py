@@ -7,6 +7,7 @@ import numpy as np
 from .base import Visualizer
 from .saliency_semantics import (
     attribution_colormap,
+    mean_saliency_over_trials,
     saliency_color_scale,
     style_attribution_colorbar,
 )
@@ -47,10 +48,10 @@ class SaliencyMapViz(Visualizer):
         cols = int(np.ceil(visible_label_number / rows))
         display_by_label = []
         for label_key, label_name, raw_saliency in saliency_by_label:
-            if absolute:
-                saliency = np.abs(raw_saliency).mean(axis=0)
-            else:
-                saliency = raw_saliency.mean(axis=0)
+            saliency = mean_saliency_over_trials(
+                raw_saliency,
+                absolute=absolute,
+            )
             display_by_label.append((label_key, label_name, saliency))
 
         cmap, color_min, color_max = saliency_color_scale(

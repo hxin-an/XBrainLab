@@ -566,6 +566,29 @@ class TestSaliencySpectrogramWidget:
         w.update_plot(None, False)
         assert "publication is invalid" in w.error_label.text()
 
+    def test_update_plot_binds_preparation_cache_to_publication_lineage(self, qtbot):
+        from XBrainLab.ui.panels.visualization.saliency_views.spectrogram_view import (
+            SaliencySpectrogramWidget,
+        )
+
+        widget = SaliencySpectrogramWidget()
+        qtbot.addWidget(widget)
+        widget.set_saliency_coverage(_published_method_coverage())
+        publication = _render_publication()
+
+        with patch.object(widget, "_render_figure_async") as render_async:
+            widget.update_plot(publication, False)
+
+        render_callable = render_async.call_args.args[0]
+        assert render_callable.args[1] is widget._preparation_cache
+        assert render_callable.args[2] == (
+            publication.generation,
+            publication.training_generation,
+            publication.request.run,
+            publication.data.method,
+        )
+        assert render_callable.args[3] is False
+
 
 # ============ SaliencyTopographicMapWidget ============
 
@@ -952,6 +975,47 @@ class TestSaliency3DPlotWidget:
                 lambda: pyvistaqt.QtInteractor.call_count == 1,
                 timeout=1000,
             )
+            pyvistaqt.QtInteractor.assert_called_once()
+
+    def test_3d_toggle_reuses_existing_qt_interactor(self, qtbot, monkeypatch):
+        monkeypatch.setenv("QT_QPA_PLATFORM", "")
+        monkeypatch.setenv("DISPLAY", ":0")
+        monkeypatch.delenv("PYVISTA_OFF_SCREEN", raising=False)
+
+        with patch(
+            "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
+        ) as pyvistaqt:
+            from PyQt6.QtWidgets import QWidget
+
+            from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
+                Saliency3DPlotWidget,
+            )
+
+            widget = Saliency3DPlotWidget(parent=None)
+            qtbot.addWidget(widget)
+            widget.set_saliency_coverage(_published_method_coverage())
+            interactor_widget = QWidget()
+            cast(Any, interactor_widget).interactor = MagicMock()
+            pyvistaqt.QtInteractor.return_value = interactor_widget
+
+            with (
+                patch.object(
+                    Saliency3DPlotWidget,
+                    "_interactive_3d_runtime_available",
+                    return_value=(True, ""),
+                ),
+                patch(
+                    "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.Saliency3D.prepare_engine",
+                    return_value=(MagicMock(), 1),
+                ),
+                patch.object(widget, "_do_3d_plot_if_alive") as draw,
+            ):
+                publication = _render_publication()
+                widget.update_plot(publication, False)
+                qtbot.waitUntil(lambda: draw.call_count == 1, timeout=1000)
+                widget.update_plot(publication, True)
+                qtbot.waitUntil(lambda: draw.call_count == 2, timeout=1000)
+
             pyvistaqt.QtInteractor.assert_called_once()
 
     def test_update_plot_blocks_wayland_when_runtime_probe_fails(

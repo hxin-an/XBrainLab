@@ -144,6 +144,24 @@ EvaluationSelectionIdentity = (
 
 
 @dataclass(frozen=True, slots=True)
+class EvaluationModelSummary:
+    """Structured readiness for one requested model summary."""
+
+    status: str
+    text: str = ""
+
+    def __post_init__(self) -> None:
+        if self.status not in {"ready", "pending", "unavailable"}:
+            raise ValueError("model summary status is invalid")
+        if not isinstance(self.text, str):
+            raise TypeError("model summary text must be a string")
+        if self.status == "ready" and not self.text.strip():
+            raise ValueError("ready model summary text cannot be empty")
+        if self.status != "ready" and self.text:
+            raise ValueError("non-ready model summary text must be empty")
+
+
+@dataclass(frozen=True, slots=True)
 class EvaluationRenderRequest:
     """Request detached render data from one exact application generation."""
 
@@ -610,6 +628,14 @@ def build_evaluation_model_summary(
     identity: EvaluationSummaryIdentity,
 ) -> str:
     """Build one model summary from a validated backend-only identity."""
+    return build_evaluation_model_summary_result(training_runtime, identity).text
+
+
+def build_evaluation_model_summary_result(
+    training_runtime: TrainingProjectionReadPort,
+    identity: EvaluationSummaryIdentity,
+) -> EvaluationModelSummary:
+    """Build one model summary together with explicit readiness semantics."""
     if not isinstance(identity, EvaluationSummaryIdentity):
         raise TypeError("identity must be an EvaluationSummaryIdentity")
     plans = _iterable_items(
@@ -630,7 +656,7 @@ def build_evaluation_model_summary(
             )
         selected_run = runs[identity.run.run_index]
         if not _run_finished(selected_run):
-            return ""
+            return EvaluationModelSummary(status="pending")
 
     dataset = getattr(selected_run, "dataset", None) or getattr(
         selected_plan,
@@ -640,7 +666,7 @@ def build_evaluation_model_summary(
     if selected_run is not None:
         model_instance = getattr(selected_run, "model", None)
         if model_instance is None:
-            return ""
+            return EvaluationModelSummary(status="unavailable")
     else:
         epoch_getter = getattr(dataset, "get_epoch_data", None)
         if not callable(epoch_getter):
@@ -681,7 +707,7 @@ def build_evaluation_model_summary(
         get_name = getattr(selected_run, "get_name", None)
         run_name = str(get_name()) if callable(get_name) else "Selected run"
         summary_text = f"=== Run: {run_name} ===\n{summary_text}"
-    return summary_text
+    return EvaluationModelSummary(status="ready", text=summary_text)
 
 
 def _model_summary_input_shape(dataset: Any) -> tuple[int, int, int]:
@@ -915,6 +941,7 @@ def _cross_fold_sample_count(
 __all__ = [
     "EvaluationCrossFoldChoice",
     "EvaluationCrossFoldIdentity",
+    "EvaluationModelSummary",
     "EvaluationPlanIdentity",
     "EvaluationRenderData",
     "EvaluationRenderPublication",
@@ -925,4 +952,5 @@ __all__ = [
     "EvaluationSummaryIdentity",
     "build_evaluation_cross_fold_choices",
     "build_evaluation_model_summary",
+    "build_evaluation_model_summary_result",
 ]

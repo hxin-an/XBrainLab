@@ -17,6 +17,16 @@ ATTRIBUTION_COLORBAR_TICK_SIZE = 7
 ATTRIBUTION_COLORBAR_LABEL_SIZE = 8
 
 
+def mean_saliency_over_trials(
+    values: np.ndarray,
+    *,
+    absolute: bool,
+) -> np.ndarray:
+    """Aggregate trials with a stable accumulator without copying the tensor."""
+    source = np.abs(values) if absolute else values
+    return np.mean(source, axis=0, dtype=np.float64)
+
+
 def attribution_colormap(name: str) -> Colormap:
     """Return one isolated attribution palette with shared exceptional colors."""
     cmap = colormaps[name].copy()
