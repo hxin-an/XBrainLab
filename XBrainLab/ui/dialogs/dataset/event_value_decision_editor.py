@@ -185,8 +185,11 @@ class EventValueDecisionEditor(QWidget):
             self._advanced_widgets.extend((row.role_selector, row.evidence_label))
 
         grid.setColumnStretch(0, 5)
-        grid.setColumnStretch(1, 3)
+        grid.setColumnMinimumWidth(1, 110)
+        grid.setColumnStretch(1, 0)
+        grid.setColumnMinimumWidth(2, 115)
         grid.setColumnStretch(2, 3)
+        grid.setColumnMinimumWidth(3, 96)
         grid.setColumnStretch(3, 2)
         grid.setColumnStretch(4, 3)
         grid.setColumnStretch(5, 4)
@@ -290,9 +293,9 @@ class EventValueDecisionEditor(QWidget):
 
         use_selector = QComboBox(self)
         use_selector.setObjectName("EventValueUseSelector")
-        use_selector.setMinimumWidth(90)
+        use_selector.setMinimumWidth(110)
         use_selector.setSizePolicy(
-            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Fixed,
             QSizePolicy.Policy.Fixed,
         )
         use_selector.addItems([display for display, _value in _USE_CHOICES])
@@ -306,7 +309,7 @@ class EventValueDecisionEditor(QWidget):
         class_name_editor = QLineEdit(self)
         class_name_editor.setObjectName("EventValueClassNameEditor")
         class_name_editor.setPlaceholderText("Required for class labels")
-        class_name_editor.setMinimumWidth(135)
+        class_name_editor.setMinimumWidth(115)
         class_name_editor.setSizePolicy(
             QSizePolicy.Policy.Ignored,
             QSizePolicy.Policy.Fixed,

@@ -25,6 +25,7 @@ from .epoch_context import (
     EPOCH_HINT_KEY,
     build_epoch_confirmation_requirement,
     build_epoching_context,
+    require_epoch_context_available,
     validated_epoch_handoff,
 )
 from .errors import ConfirmationRequiredError, PreconditionError
@@ -133,12 +134,16 @@ class PreprocessCommandService:
         if not isinstance(command, CreateEpochCommand):
             raise TypeError("Invalid command for create_epoch")
         handoff = self._epoch_handoff()
-        event_ids = self._event_ids_for_epoch_command(command, handoff=handoff)
         preprocessed_data = self.preprocess.get_preprocessed_data_list()
+        epoch_context = build_epoching_context(
+            preprocessed_data,
+            epoch_handoff=handoff,
+        )
+        require_epoch_context_available(epoch_context)
+        event_ids = self._event_ids_for_epoch_command(command, handoff=handoff)
         self._enforce_epoch_confirmation(
             command,
-            preprocessed_data=preprocessed_data,
-            handoff=handoff,
+            epoch_context=epoch_context,
             effective_event_ids=event_ids,
         )
         resource_check = ResourceChecker.check_epoch_materialization_safe(
@@ -278,16 +283,11 @@ class PreprocessCommandService:
         self,
         command: CreateEpochCommand,
         *,
-        preprocessed_data: list[Any],
-        handoff: dict[str, Any],
+        epoch_context: Mapping[str, Any],
         effective_event_ids: list[str] | dict[str, int] | None,
     ) -> None:
-        context = build_epoching_context(
-            preprocessed_data,
-            epoch_handoff=handoff,
-        )
         requirement = build_epoch_confirmation_requirement(
-            context,
+            epoch_context,
             t_min=command.t_min,
             t_max=command.t_max,
             event_ids=(

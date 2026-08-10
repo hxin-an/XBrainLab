@@ -291,7 +291,7 @@ _WORKFLOW_UI_HANDOFF_ROUTES = (
         decision_copy="Finish or cancel in the open EEG Epoch Settings dialog.",
     ),
     WorkflowUiHandoffRouteDescriptor(
-        command=CommandName.GENERATE_DATASET,
+        command=CommandName.CONFIGURE_DATASET_SPLIT,
         surface_kind=WorkflowUiHandoffSurfaceKind.DIALOG,
         decision_owner=AssistantDecisionOwner.GUI_DIALOG,
         target_panel=WorkflowUiHandoffPanel.TRAINING,

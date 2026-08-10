@@ -37,7 +37,7 @@ def _base_payload():
             "ok": True,
             "commands": [
                 {"command": "scan_source", "ok": True},
-                {"command": "generate_dataset", "ok": True},
+                {"command": "configure_dataset_split", "ok": True},
             ],
         },
         "runtime": {

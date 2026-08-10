@@ -16,6 +16,7 @@ from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ActiveTrainingSnapshot,
     ApplicationStateSnapshot,
+    DatasetStateSnapshot,
     EpochStateSnapshot,
     EvaluationStateSnapshot,
     InterpretationStateSnapshot,
@@ -183,7 +184,7 @@ def test_command_decision_schema_is_available_outside_next_step_projection() -> 
         "target_event",
         "epoch_window",
     )
-    assert decision_fields_for_command("generate_dataset", state) == (
+    assert decision_fields_for_command("configure_dataset_split", state) == (
         "split_strategy",
         "training_mode",
     )
@@ -197,6 +198,13 @@ def test_projection_chooses_train_only_after_configuration_is_complete() -> None
         active_dataset=ActiveDatasetSnapshot(
             has_raw_data=True,
             has_datasets=True,
+            has_saved_split=True,
+        ),
+        dataset=DatasetStateSnapshot(
+            available=True,
+            count=1,
+            names=["Fold 1"],
+            split_spec_saved=True,
         ),
         training=TrainingStateSnapshot(),
     )
@@ -217,8 +225,12 @@ def test_projection_chooses_train_only_after_configuration_is_complete() -> None
 
     assert incomplete.recommended_command == "configure_training"
     assert incomplete.decision_fields == ("model", "training_options")
+    assert incomplete.evidence == ("A generated dataset is available.",)
     assert configured.recommended_command == "train"
     assert configured.decision_fields == ()
+    assert configured.evidence == (
+        "Dataset, model, and training options are configured.",
+    )
 
 
 def test_running_training_is_not_projected_as_an_implicit_stop_action() -> None:
@@ -317,7 +329,7 @@ def test_disabled_dataset_command_is_a_blocker_not_a_recommendation() -> None:
     projection = _projection(state)
 
     assert projection.recommended_command is None
-    assert projection.blocked_command == "generate_dataset"
+    assert projection.blocked_command == "configure_dataset_split"
     assert projection.decision_fields == ()
     assert projection.blocked_reasons == ("Resolve label mapping before training.",)
 
@@ -356,17 +368,67 @@ def _epoch_ready_state_with_missing_import_defaults() -> ApplicationStateSnapsho
     )
 
 
+def test_saved_split_projection_advances_without_claiming_a_generated_dataset() -> None:
+    base = _epoch_ready_state_with_missing_import_defaults()
+    state = replace(
+        base,
+        dataset=DatasetStateSnapshot(
+            available=False,
+            split_spec_saved=True,
+        ),
+        active_dataset=replace(base.active_dataset, has_saved_split=True),
+    )
+
+    projection = _projection(state)
+
+    assert projection.recommended_command == "configure_training"
+    assert projection.decision_fields == ("model", "training_options")
+    assert projection.evidence == (
+        "Data splitting is configured; dataset materialization is deferred until "
+        "training starts.",
+    )
+
+
+def test_configured_saved_split_projects_train_with_deferred_dataset_evidence() -> None:
+    base = _epoch_ready_state_with_missing_import_defaults()
+    state = replace(
+        base,
+        dataset=DatasetStateSnapshot(
+            available=False,
+            split_spec_saved=True,
+        ),
+        active_dataset=replace(base.active_dataset, has_saved_split=True),
+        training=TrainingStateSnapshot(
+            has_model=True,
+            has_training_option=True,
+        ),
+        active_training=ActiveTrainingSnapshot(
+            has_model=True,
+            has_training_option=True,
+        ),
+    )
+
+    projection = _projection(state)
+
+    assert projection.recommended_command == "train"
+    assert projection.decision_fields == ()
+    assert projection.evidence == (
+        "Data splitting, model, and training options are configured; dataset "
+        "materialization is deferred until training starts.",
+    )
+
+
 def test_concrete_multiclass_epoch_contract_supersedes_missing_import_defaults() -> (
     None
 ):
     state = _epoch_ready_state_with_missing_import_defaults()
 
-    capability = build_capability_policy(state).get(CommandName.GENERATE_DATASET)
+    capability = build_capability_policy(state).get(CommandName.CONFIGURE_DATASET_SPLIT)
     projection = _projection(state)
 
     assert capability.enabled is True
     assert capability.reasons == []
-    assert projection.recommended_command == "generate_dataset"
+    assert projection.recommended_command == "configure_dataset_split"
     assert projection.blocked_command is None
     assert projection.decision_fields == ("split_strategy", "training_mode")
 
@@ -384,7 +446,7 @@ def test_epoch_override_uses_typed_blocker_code_not_display_text() -> None:
         ),
     )
 
-    capability = build_capability_policy(state).get(CommandName.GENERATE_DATASET)
+    capability = build_capability_policy(state).get(CommandName.CONFIGURE_DATASET_SPLIT)
 
     assert capability.enabled is True
     assert capability.reasons == []
@@ -409,11 +471,11 @@ def test_concrete_epoch_also_supersedes_missing_reviewed_class_defaults() -> Non
         ),
     )
 
-    capability = build_capability_policy(state).get(CommandName.GENERATE_DATASET)
+    capability = build_capability_policy(state).get(CommandName.CONFIGURE_DATASET_SPLIT)
     projection = _projection(state)
 
     assert capability.enabled is True
-    assert projection.recommended_command == "generate_dataset"
+    assert projection.recommended_command == "configure_dataset_split"
 
 
 @pytest.mark.parametrize(
@@ -439,7 +501,7 @@ def test_concrete_epoch_does_not_override_other_typed_blockers(
         ),
     )
 
-    capability = build_capability_policy(state).get(CommandName.GENERATE_DATASET)
+    capability = build_capability_policy(state).get(CommandName.CONFIGURE_DATASET_SPLIT)
 
     assert capability.enabled is False
     assert capability.reasons == [
@@ -459,7 +521,7 @@ def test_legacy_handoff_without_typed_codes_remains_readable_and_fail_closed() -
         ),
     )
 
-    capability = build_capability_policy(state).get(CommandName.GENERATE_DATASET)
+    capability = build_capability_policy(state).get(CommandName.CONFIGURE_DATASET_SPLIT)
 
     assert capability.enabled is False
     assert capability.reasons == [
@@ -484,13 +546,13 @@ def test_concrete_epoch_does_not_hide_unresolved_external_label_mapping() -> Non
         ),
     )
 
-    capability = build_capability_policy(state).get(CommandName.GENERATE_DATASET)
+    capability = build_capability_policy(state).get(CommandName.CONFIGURE_DATASET_SPLIT)
     projection = _projection(state)
 
     assert capability.enabled is False
     assert capability.reasons == ["External event values remain unresolved: unknown."]
     assert projection.recommended_command is None
-    assert projection.blocked_command == "generate_dataset"
+    assert projection.blocked_command == "configure_dataset_split"
     assert projection.blocked_reasons == (
         "External event values remain unresolved: unknown.",
     )
@@ -505,7 +567,7 @@ def test_import_default_blockers_remain_before_epoch_creation() -> None:
         active_dataset=replace(state.active_dataset, has_epoch_data=False),
     )
 
-    capability = build_capability_policy(state).get(CommandName.GENERATE_DATASET)
+    capability = build_capability_policy(state).get(CommandName.CONFIGURE_DATASET_SPLIT)
     projection = _projection(state)
 
     assert capability.enabled is False
@@ -576,17 +638,21 @@ def test_invalid_epoch_contract_remains_fail_closed_with_exact_reason() -> None:
 
     for epoch, expected_reasons in invalid_epochs:
         state = replace(base, epoch=epoch)
-        capability = build_capability_policy(state).get(CommandName.GENERATE_DATASET)
+        capability = build_capability_policy(state).get(
+            CommandName.CONFIGURE_DATASET_SPLIT
+        )
         projection = _projection(state)
 
         assert capability.enabled is False
         assert capability.reasons == expected_reasons
         assert projection.recommended_command is None
-        assert projection.blocked_command == "generate_dataset"
+        assert projection.blocked_command == "configure_dataset_split"
         assert projection.blocked_reasons == tuple(capability.reasons)
 
 
-def test_zero_epoch_payload_cannot_generate_dataset_without_import_blocker() -> None:
+def test_zero_epoch_payload_cannot_configure_dataset_split_without_import_blocker() -> (
+    None
+):
     base = _epoch_ready_state_with_missing_import_defaults()
     state = replace(
         base,
@@ -594,12 +660,12 @@ def test_zero_epoch_payload_cannot_generate_dataset_without_import_blocker() -> 
         interpretation=InterpretationStateSnapshot(),
     )
 
-    capability = build_capability_policy(state).get(CommandName.GENERATE_DATASET)
+    capability = build_capability_policy(state).get(CommandName.CONFIGURE_DATASET_SPLIT)
     projection = _projection(state)
 
     assert capability.enabled is False
     assert capability.reasons == [
         "Create EEG epochs before building the training dataset."
     ]
-    assert projection.blocked_command == "generate_dataset"
+    assert projection.blocked_command == "configure_dataset_split"
     assert projection.blocked_reasons == tuple(capability.reasons)

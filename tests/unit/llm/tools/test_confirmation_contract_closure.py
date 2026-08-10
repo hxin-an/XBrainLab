@@ -8,11 +8,20 @@ from XBrainLab.backend.application import (
     CommandName,
     CommandResult,
     ConfigureTrainingCommand,
-    GenerateDatasetCommand,
+    SaveDatasetSplitCommand,
     get_application_service,
 )
 from XBrainLab.backend.application.capabilities import build_capability_policy
+from XBrainLab.backend.application.dataset_split_preview import (
+    DatasetSplitPreviewPublication,
+    DatasetSplitPreviewRequest,
+    DatasetSplitPreviewRow,
+    DatasetSplitSpecification,
+)
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
+from XBrainLab.backend.application.training_recommendation import (
+    TrainingRecommendationField,
+)
 from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.tools.application_surface import (
@@ -46,18 +55,232 @@ def _authorize(
     )
 
 
-def test_generate_dataset_builder_forwards_typed_confirmation_boolean() -> None:
+def test_configure_dataset_split_builder_preserves_typed_preview_receipt() -> None:
+    specification = DatasetSplitSpecification(
+        train_type="Full Data",
+        is_cross_validation=False,
+    )
+    receipt = DatasetSplitPreviewPublication(
+        request=DatasetSplitPreviewRequest(
+            request_id="assistant-split-preview",
+            publication_generation=7,
+            specification=specification,
+        ),
+        generation=7,
+        rows=(
+            DatasetSplitPreviewRow(
+                name="Full Data",
+                train_count=8,
+                validation_count=1,
+                test_count=1,
+            ),
+        ),
+    ).receipt
     command = _command_for_tool(
-        "generate_dataset",
+        "configure_dataset_split",
         {
             "split_strategy": "trial",
             "training_mode": "full_data",
-            "confirmed": True,
+            "preview_receipt": receipt,
         },
     )
 
-    assert isinstance(command, GenerateDatasetCommand)
-    assert command.confirmed is True
+    assert isinstance(command, SaveDatasetSplitCommand)
+    assert command.preview_receipt is receipt
+    assert "confirmed" not in vars(command)
+
+
+def test_configure_dataset_split_builder_rejects_untyped_preview_receipt() -> None:
+    command = _command_for_tool(
+        "configure_dataset_split",
+        {
+            "split_strategy": "trial",
+            "training_mode": "full_data",
+            "preview_receipt": {"request_id": "reconstructed-by-caller"},
+        },
+    )
+
+    assert command is None
+
+
+def test_unconfirmed_assistant_dataset_split_fails_before_execution() -> None:
+    state = ApplicationStateSnapshot.empty()
+    publication = ApplicationViewPublication(
+        generation=17,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+
+    class _Runtime:
+        command: Command | None = None
+
+        def get_view_publication(self) -> ApplicationViewPublication:
+            return publication
+
+        def execute(self, command: Command) -> CommandResult:
+            self.command = command
+            raise AssertionError("Unconfirmed split must not execute.")
+
+    runtime = _Runtime()
+    result = execute_application_tool_command(
+        object(),
+        "configure_dataset_split",
+        {"split_strategy": "trial", "training_mode": "individual"},
+        runtime=runtime,
+    )
+
+    assert isinstance(result, ToolCommandResult)
+    assert result.ok is False
+    assert result.error_type == "confirmation_required"
+    assert runtime.command is None
+
+
+def test_stale_assistant_dataset_split_confirmation_fails_before_execution() -> None:
+    state = ApplicationStateSnapshot.empty()
+    publication = ApplicationViewPublication(
+        generation=18,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+
+    class _Runtime:
+        command: Command | None = None
+
+        def get_view_publication(self) -> ApplicationViewPublication:
+            return publication
+
+        def execute(self, command: Command) -> CommandResult:
+            self.command = command
+            raise AssertionError("Stale split confirmation must not execute.")
+
+    runtime = _Runtime()
+    params = authorize_assistant_setting_change(
+        "configure_dataset_split",
+        {"split_strategy": "trial", "training_mode": "individual"},
+        publication_generation=17,
+    )
+    result = execute_application_tool_command(
+        object(),
+        "configure_dataset_split",
+        params,
+        runtime=runtime,
+    )
+
+    assert isinstance(result, ToolCommandResult)
+    assert result.ok is False
+    assert result.error_type == "confirmation_required"
+    assert runtime.command is None
+
+
+def test_exact_assistant_dataset_split_confirmation_preserves_typed_receipt() -> None:
+    specification = DatasetSplitSpecification(
+        train_type="Individual",
+        is_cross_validation=False,
+    )
+    receipt = DatasetSplitPreviewPublication(
+        request=DatasetSplitPreviewRequest(
+            request_id="confirmed-assistant-split",
+            publication_generation=19,
+            specification=specification,
+        ),
+        generation=19,
+        rows=(
+            DatasetSplitPreviewRow(
+                name="Subject 1",
+                train_count=8,
+                validation_count=1,
+                test_count=1,
+            ),
+        ),
+    ).receipt
+    state = ApplicationStateSnapshot.empty()
+    publication = ApplicationViewPublication(
+        generation=19,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+
+    class _Runtime:
+        command: Command | None = None
+
+        def get_view_publication(self) -> ApplicationViewPublication:
+            return publication
+
+        def execute(self, command: Command) -> CommandResult:
+            self.command = command
+            return CommandResult.success_result(
+                command_name=CommandName.CONFIGURE_DATASET_SPLIT.value,
+                message="Split saved.",
+                state=state,
+                changed_state=ChangedState(datasets_changed=True),
+            )
+
+    runtime = _Runtime()
+    params = authorize_assistant_setting_change(
+        "configure_dataset_split",
+        {
+            "split_strategy": "trial",
+            "training_mode": "individual",
+            "preview_receipt": receipt,
+        },
+        publication_generation=publication.generation,
+    )
+
+    assert params["test_ratio"] == 0.2
+    assert params["val_ratio"] == 0.2
+    assert isinstance(params["preview_receipt"], type(receipt))
+
+    result = execute_application_tool_command(
+        object(),
+        "configure_dataset_split",
+        params,
+        runtime=runtime,
+    )
+
+    assert isinstance(result, ToolCommandResult)
+    assert result.ok is True
+    assert isinstance(runtime.command, SaveDatasetSplitCommand)
+    assert runtime.command.preview_receipt is receipt
+    assert "confirmed" not in vars(runtime.command)
+
+
+def test_dataset_split_confirmation_rejects_proposal_mutation() -> None:
+    state = ApplicationStateSnapshot.empty()
+    publication = ApplicationViewPublication(
+        generation=20,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+
+    class _Runtime:
+        command: Command | None = None
+
+        def get_view_publication(self) -> ApplicationViewPublication:
+            return publication
+
+        def execute(self, command: Command) -> CommandResult:
+            self.command = command
+            raise AssertionError("Mutated split proposal must not execute.")
+
+    runtime = _Runtime()
+    params = authorize_assistant_setting_change(
+        "configure_dataset_split",
+        {"split_strategy": "trial", "training_mode": "individual"},
+        publication_generation=publication.generation,
+    )
+    params["test_ratio"] = 0.3
+
+    result = execute_application_tool_command(
+        object(),
+        "configure_dataset_split",
+        params,
+        runtime=runtime,
+    )
+
+    assert isinstance(result, ToolCommandResult)
+    assert result.ok is False
+    assert result.error_type == "confirmation_required"
+    assert runtime.command is None
 
 
 def test_changed_model_setting_fails_closed_without_host_confirmation() -> None:
@@ -159,6 +382,39 @@ def test_training_authorization_normalizes_the_reviewed_proposal() -> None:
     assert params["save_checkpoints_every"] == 0
     evidence = params["assistant_setting_confirmation"]
     assert isinstance(evidence, AssistantSettingConfirmation)
+
+
+def test_agent_defaults_do_not_claim_user_edited_recommendation_fields() -> None:
+    study = Study()
+    params = _authorize(study, "configure_training", _training_params())
+
+    command = _command_for_tool("configure_training", params)
+
+    assert isinstance(command, ConfigureTrainingCommand)
+    assert command.edited_recommendation_fields == frozenset(
+        {
+            TrainingRecommendationField.EPOCHS,
+            TrainingRecommendationField.BATCH_SIZE,
+            TrainingRecommendationField.LEARNING_RATE,
+        }
+    )
+
+
+def test_agent_explicit_optimizer_and_evaluation_are_typed_edits() -> None:
+    study = Study()
+    proposal = _training_params()
+    proposal.update(
+        optimizer="AdamW",
+        evaluation_option="Best validation loss",
+    )
+    params = _authorize(study, "configure_training", proposal)
+
+    command = _command_for_tool("configure_training", params)
+
+    assert isinstance(command, ConfigureTrainingCommand)
+    assert command.edited_recommendation_fields == frozenset(
+        TrainingRecommendationField
+    )
 
 
 def test_setting_confirmation_rejects_parameter_mutation_after_approval() -> None:
@@ -340,6 +596,13 @@ def test_host_confirmation_evidence_is_stripped_before_application_command() -> 
     assert result.ok is True
     assert isinstance(runtime.command, ConfigureTrainingCommand)
     assert "assistant_setting_confirmation" not in vars(runtime.command)
+    assert runtime.command.edited_recommendation_fields == frozenset(
+        {
+            TrainingRecommendationField.EPOCHS,
+            TrainingRecommendationField.BATCH_SIZE,
+            TrainingRecommendationField.LEARNING_RATE,
+        }
+    )
 
 
 def test_incomplete_training_settings_remain_an_input_handoff() -> None:

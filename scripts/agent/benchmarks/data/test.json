@@ -235,12 +235,12 @@
         ]
     },
     {
-        "id": "generate_dataset_06",
+        "id": "configure_dataset_split_06",
         "category": "dataset",
         "input": "Create dataset splits for leave-one-subject-out cross-validation.",
         "expected_tool_calls": [
             {
-                "tool_name": "generate_dataset",
+                "tool_name": "configure_dataset_split",
                 "parameters": {
                     "split_strategy": "subject",
                     "training_mode": "individual"

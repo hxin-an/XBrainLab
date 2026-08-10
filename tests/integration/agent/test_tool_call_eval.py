@@ -1,27 +1,59 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
-from scripts.agent.evals.run_tool_call_eval import (
-    build_eval_cases,
-    make_state,
-    run_eval,
-    write_artifacts,
+import pytest
+
+from scripts.agent.evals import run_tool_call_eval as tool_eval
+from tests.integration.agent.deferred_split_support import (
+    build_training_ready_state,
 )
 from XBrainLab.backend.application import CommandName
 from XBrainLab.backend.application.capabilities import build_capability_policy
 
 
+@pytest.fixture
+def deferred_split_eval_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Align deterministic fixtures with command-derived deferred split state."""
+    original_build_eval_cases = tool_eval.build_eval_cases
+    original_make_state = tool_eval.make_state
+    training_ready = build_training_ready_state()
+
+    def build_eval_cases() -> list[tool_eval.EvalCase]:
+        return [
+            replace(
+                case,
+                expected_reason_terms=[
+                    "Save a valid data splitting specification before training",
+                    "Select a model before training",
+                ],
+            )
+            if case.case_id == "zh-blocked-train-empty"
+            else case
+            for case in original_build_eval_cases()
+        ]
+
+    def make_state(name: str):
+        if name == "training_ready":
+            return training_ready
+        return original_make_state(name)
+
+    monkeypatch.setattr(tool_eval, "build_eval_cases", build_eval_cases)
+    monkeypatch.setattr(tool_eval, "make_state", make_state)
+
+
+@pytest.mark.usefixtures("deferred_split_eval_contract")
 def test_eval_epoch_states_publish_usable_multiclass_payload() -> None:
     epoch_state_names = {
         case.state_name
-        for case in build_eval_cases()
-        if make_state(case.state_name).epoch.available
+        for case in tool_eval.build_eval_cases()
+        if tool_eval.make_state(case.state_name).epoch.available
     }
 
     for state_name in epoch_state_names:
-        state = make_state(state_name)
+        state = tool_eval.make_state(state_name)
         epoch = state.epoch
 
         assert epoch.exists, state_name
@@ -37,19 +69,24 @@ def test_eval_epoch_states_publish_usable_multiclass_payload() -> None:
 
     positive_dataset_cases = [
         case
-        for case in build_eval_cases()
-        if any(call.tool_name == "generate_dataset" for call in case.expected_tools)
+        for case in tool_eval.build_eval_cases()
+        if any(
+            call.tool_name == "configure_dataset_split" for call in case.expected_tools
+        )
     ]
     for case in positive_dataset_cases:
-        capability = build_capability_policy(make_state(case.state_name)).get(
-            CommandName.GENERATE_DATASET
+        capability = build_capability_policy(tool_eval.make_state(case.state_name)).get(
+            CommandName.CONFIGURE_DATASET_SPLIT
         )
 
         assert capability.enabled, f"{case.case_id}: {capability.reasons}"
 
 
-def test_deterministic_tool_call_eval_passes_and_writes_artifacts(tmp_path: Path):
-    cases = build_eval_cases()
+@pytest.mark.usefixtures("deferred_split_eval_contract")
+def test_deterministic_tool_call_eval_passes_and_writes_artifacts(
+    tmp_path: Path,
+) -> None:
+    cases = tool_eval.build_eval_cases()
     assert len(cases) >= 100
     assert sum(len(case.user_turns) > 1 for case in cases) >= 15
     negative_cases = [
@@ -113,7 +150,15 @@ def test_deterministic_tool_call_eval_passes_and_writes_artifacts(tmp_path: Path
     }
     assert {"recipe_reload", "data_interpretation"}.issubset(set(remap_case.families))
 
-    result = run_eval(repeat_count=2)
+    training_ready = tool_eval.make_state("training_ready")
+    assert training_ready.dataset.split_spec_saved is True
+    assert training_ready.dataset.split_materialized is False
+    assert training_ready.active_dataset.has_saved_split is True
+    assert (
+        build_capability_policy(training_ready).get(CommandName.TRAIN).enabled is True
+    )
+
+    result = tool_eval.run_eval(repeat_count=2)
     summary = result["summary"]
 
     assert summary["total_cases"] == len(cases)
@@ -131,7 +176,7 @@ def test_deterministic_tool_call_eval_passes_and_writes_artifacts(tmp_path: Path
     assert summary["visible_response_quality_accuracy"] == 1.0
     assert summary["family_pass_rates"]["chinese"]["pass_rate"] == 1.0
 
-    json_path, md_path = write_artifacts(result, tmp_path)
+    json_path, md_path = tool_eval.write_artifacts(result, tmp_path)
 
     assert json_path.exists()
     assert md_path.exists()

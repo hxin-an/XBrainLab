@@ -50,6 +50,9 @@ if TYPE_CHECKING:
         SaliencyRenderPublication,
         SaliencyRenderRequest,
     )
+    from XBrainLab.backend.application.training_recommendation import (
+        TrainingRecommendation,
+    )
     from XBrainLab.backend.application.view_publication import (
         InterpretationReviewIdentity,
     )
@@ -179,6 +182,16 @@ class TrainingQueryPort(Protocol):
         expected_publication_generation: int | None = None,
     ) -> CommandResult:
         """Return detached Training configuration state."""
+        ...
+
+    def get_training_recommendation(
+        self,
+        *,
+        expected_publication_generation: int | None = None,
+        prospective_model_name: str | None = None,
+        prospective_model_params: dict[str, Any] | None = None,
+    ) -> TrainingRecommendation:
+        """Return the backend-owned starting point for Training Setting."""
         ...
 
 
@@ -427,6 +440,19 @@ class _StudyApplicationUiRuntime:
         return self.execute(
             QueryStateCommand(query="state"),
             expected_publication_generation=expected_publication_generation,
+        )
+
+    def get_training_recommendation(
+        self,
+        *,
+        expected_publication_generation: int | None = None,
+        prospective_model_name: str | None = None,
+        prospective_model_params: dict[str, Any] | None = None,
+    ) -> TrainingRecommendation:
+        return self._service().get_training_recommendation(
+            expected_publication_generation=expected_publication_generation,
+            prospective_model_name=prospective_model_name,
+            prospective_model_params=prospective_model_params,
         )
 
     def subscribe(self, event_name: str, callback: Callable[..., Any]) -> None:

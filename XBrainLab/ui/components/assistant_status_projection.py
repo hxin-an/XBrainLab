@@ -66,7 +66,7 @@ _COMMAND_SURFACES: dict[str, AssistantWorkflowSurface] = {
     ),
     CommandName.PREPROCESS.value: AssistantWorkflowSurface.PREPROCESSING,
     CommandName.CREATE_EPOCH.value: AssistantWorkflowSurface.EPOCH_SETTINGS,
-    CommandName.GENERATE_DATASET.value: AssistantWorkflowSurface.DATASET_SPLIT,
+    CommandName.CONFIGURE_DATASET_SPLIT.value: AssistantWorkflowSurface.DATASET_SPLIT,
     CommandName.CONFIGURE_TRAINING.value: (AssistantWorkflowSurface.TRAINING_SETTINGS),
     CommandName.TRAIN.value: AssistantWorkflowSurface.TRAINING,
     CommandName.EVALUATE.value: AssistantWorkflowSurface.EVALUATION,

@@ -21,6 +21,7 @@ from XBrainLab.llm.tools.application_surface import (
     ToolAvailabilityContext,
     ToolCommandResult,
     application_tool_runtime,
+    assistant_edited_recommendation_fields,
     assistant_setting_change_requires_confirmation,
     get_application_context,
     setting_confirmation_params,
@@ -35,7 +36,7 @@ from XBrainLab.llm.tools.real.dataset_real import (
     RealApplyInterpretationTool,
     RealAttachLabelsTool,
     RealClearDatasetTool,
-    RealGenerateDatasetTool,
+    RealConfigureDatasetSplitTool,
     RealGetDatasetInfoTool,
     RealListFilesTool,
     RealLoadDataTool,
@@ -236,7 +237,7 @@ class ToolExecutor:
         "clear_dataset": RealClearDatasetTool,
         "query_state": RealQueryStateTool,
         "get_dataset_info": RealGetDatasetInfoTool,
-        "generate_dataset": RealGenerateDatasetTool,
+        "configure_dataset_split": RealConfigureDatasetSplitTool,
         # Analysis
         "evaluate": RealEvaluateTool,
         "visualize": RealVisualizeTool,
@@ -470,6 +471,10 @@ class ToolExecutor:
             context.availability,
             tool_requires_confirmation=tool.requires_confirmation,
         )
+        edited_recommendation_fields = assistant_edited_recommendation_fields(
+            tool_name,
+            params,
+        )
         evaluated_params = setting_confirmation_params(tool_name, params)
         requires_setting_confirmation = (
             context.policy_error is None
@@ -507,6 +512,7 @@ class ToolExecutor:
                     if requires_setting_confirmation
                     else None
                 ),
+                edited_recommendation_fields=edited_recommendation_fields,
             )
         return DebugToolAdmission(
             tool_name=tool_name,

@@ -15,8 +15,8 @@ from XBrainLab.backend.application import (
     CommandResult,
     ConfigureTrainingCommand,
     CreateEpochCommand,
+    DatasetSplitPreviewReceipt,
     EvaluateCommand,
-    GenerateDatasetCommand,
     PreprocessCommand,
     PreprocessOperation,
     PreviewInterpretationCommand,
@@ -25,10 +25,12 @@ from XBrainLab.backend.application import (
     ResetPreprocessCommand,
     ResetSessionCommand,
     SaliencyCommand,
+    SaveDatasetSplitCommand,
     SaveInterpretationRecipeCommand,
     ScanSourceCommand,
     StopTrainingCommand,
     TrainCommand,
+    TrainingRecommendationField,
     ValidateInterpretationCommand,
     VisualizeCommand,
     get_application_service,
@@ -38,6 +40,9 @@ from XBrainLab.backend.application.capabilities import (
     CapabilityPolicy,
     CommandCapability,
     build_capability_policy,
+)
+from XBrainLab.backend.application.training_submission import (
+    attach_training_submission_provenance,
 )
 from XBrainLab.backend.application.view_publication import (
     PUBLIC_VIEW_UNAVAILABLE_MESSAGE,
@@ -106,6 +111,7 @@ class AssistantSettingConfirmation:
     tool_name: str
     params_fingerprint: str
     publication_generation: int
+    edited_recommendation_fields: tuple[TrainingRecommendationField, ...] = ()
 
     def __post_init__(self) -> None:
         if type(self.tool_name) is not str or not self.tool_name.strip():
@@ -119,6 +125,11 @@ class AssistantSettingConfirmation:
             raise ValueError(
                 "Setting confirmation publication generation must be non-negative."
             )
+        if any(
+            not isinstance(field, TrainingRecommendationField)
+            for field in self.edited_recommendation_fields
+        ):
+            raise TypeError("Edited recommendation fields must be typed values.")
 
     def matches(
         self,
@@ -137,6 +148,16 @@ class AssistantSettingConfirmation:
 
 SETTING_CHANGE_CONFIRMATION_KIND = "setting_change"
 _ASSISTANT_SETTING_CONFIRMATION_PARAM = "assistant_setting_confirmation"
+_ASSISTANT_HIGH_IMPACT_SETTING_TOOLS = frozenset(
+    {"configure_dataset_split", "configure_training", "set_model"}
+)
+_RECOMMENDATION_PARAM_FIELDS = {
+    "epoch": TrainingRecommendationField.EPOCHS,
+    "batch_size": TrainingRecommendationField.BATCH_SIZE,
+    "learning_rate": TrainingRecommendationField.LEARNING_RATE,
+    "optimizer": TrainingRecommendationField.OPTIMIZER,
+    "evaluation_option": TrainingRecommendationField.EVALUATION_STRATEGY,
+}
 _NON_PROPOSAL_CONFIRMATION_PARAMS = frozenset(
     {
         _ASSISTANT_SETTING_CONFIRMATION_PARAM,
@@ -152,8 +173,14 @@ def authorize_assistant_setting_change(
     params: dict[str, Any],
     *,
     publication_generation: int,
+    edited_recommendation_fields: tuple[TrainingRecommendationField, ...] | None = None,
 ) -> dict[str, Any]:
     """Attach host-only approval evidence without mutating model parameters."""
+    edited_fields = (
+        assistant_edited_recommendation_fields(tool_name, params)
+        if edited_recommendation_fields is None
+        else tuple(edited_recommendation_fields)
+    )
     authorized = setting_confirmation_params(tool_name, params)
     authorized[_ASSISTANT_SETTING_CONFIRMATION_PARAM] = AssistantSettingConfirmation(
         tool_name=tool_name,
@@ -162,8 +189,23 @@ def authorize_assistant_setting_change(
             authorized,
         ),
         publication_generation=publication_generation,
+        edited_recommendation_fields=edited_fields,
     )
     return authorized
+
+
+def assistant_edited_recommendation_fields(
+    tool_name: str,
+    params: dict[str, Any],
+) -> tuple[TrainingRecommendationField, ...]:
+    """Return recommendation fields explicitly present in a tool proposal."""
+    return tuple(
+        field
+        for key, field in _RECOMMENDATION_PARAM_FIELDS.items()
+        if tool_name == "configure_training"
+        and key in params
+        and params[key] is not None
+    )
 
 
 def assistant_setting_params_fingerprint(params: dict[str, Any]) -> str:
@@ -202,6 +244,14 @@ def setting_confirmation_params(
 ) -> dict[str, Any]:
     """Project the complete effective setting proposal shown for approval."""
     projected = dict(params)
+    if tool_name == "configure_dataset_split":
+        if all(
+            field in projected and projected[field] is not None
+            for field in ("split_strategy", "training_mode")
+        ):
+            projected.setdefault("test_ratio", 0.2)
+            projected.setdefault("val_ratio", 0.2)
+        return projected
     if tool_name != "configure_training" or not all(
         field in projected and projected[field] is not None
         for field in REQUIRED_TRAINING_FIELDS
@@ -235,9 +285,15 @@ def assistant_setting_change_requires_confirmation(
     state: dict[str, Any] | None,
 ) -> bool:
     """Return whether a complete proposal changes authoritative settings."""
+    if tool_name == "configure_dataset_split":
+        return all(
+            isinstance(params.get(field), str) and bool(params[field].strip())
+            for field in ("split_strategy", "training_mode")
+        )
+
     training = state.get("training") if isinstance(state, dict) else None
     if not isinstance(training, dict):
-        return tool_name in {"set_model", "configure_training"}
+        return tool_name in _ASSISTANT_HIGH_IMPACT_SETTING_TOOLS
 
     if tool_name == "set_model":
         proposed_model = params.get("model_name")
@@ -1152,7 +1208,7 @@ def execute_application_tool_command(
         None,
     )
     setting_publication: ApplicationViewPublication | None = None
-    if tool_name in {"set_model", "configure_training"}:
+    if tool_name in _ASSISTANT_HIGH_IMPACT_SETTING_TOOLS:
         setting_publication = application_runtime.get_view_publication()
         state = setting_publication.state.to_dict()
         availability = _build_agent_tool_policy_from_publication(
@@ -1236,8 +1292,16 @@ def execute_application_tool_command(
             )
             return ToolCommandResult.failure(
                 tool_name,
-                "Changing training settings requires confirmation.",
-                command_name=CommandName.CONFIGURE_TRAINING.value,
+                (
+                    "Changing data splitting settings requires confirmation."
+                    if tool_name == "configure_dataset_split"
+                    else "Changing training settings requires confirmation."
+                ),
+                command_name=(
+                    contract.capability_command.value
+                    if contract.capability_command is not None
+                    else None
+                ),
                 state=state,
                 capability=(
                     setting_availability.to_dict()
@@ -1248,6 +1312,20 @@ def execute_application_tool_command(
                 recoverable=True,
                 diagnostics={"decision_boundary": "high_impact_setting_change"},
             )
+        if confirmation_matches and tool_name == "configure_training":
+            confirmed_command = _command_for_tool(
+                tool_name,
+                {
+                    **command_params,
+                    _ASSISTANT_SETTING_CONFIRMATION_PARAM: setting_confirmation,
+                },
+                state=state,
+            )
+            if confirmed_command is None:
+                raise RuntimeError(
+                    "Confirmed training settings could not be reconstructed."
+                )
+            command = confirmed_command
 
     if availability is None:
         try:
@@ -1488,17 +1566,23 @@ def _command_for_tool(
             event_ids=params.get("event_id"),
         )
 
-    if tool_name == "generate_dataset":
+    if tool_name == "configure_dataset_split":
         split_strategy = params.get("split_strategy")
         training_mode = params.get("training_mode")
         if not split_strategy or not training_mode:
             return None
-        return GenerateDatasetCommand(
+        preview_receipt = params.get("preview_receipt")
+        if preview_receipt is not None and not isinstance(
+            preview_receipt,
+            DatasetSplitPreviewReceipt,
+        ):
+            return None
+        return SaveDatasetSplitCommand(
             test_ratio=float(params.get("test_ratio", 0.2)),
             val_ratio=float(params.get("val_ratio", 0.2)),
             split_strategy=str(split_strategy),
             training_mode=str(training_mode),
-            confirmed=_boolean_param(params, "confirmed"),
+            preview_receipt=preview_receipt,
         )
 
     if tool_name == "set_model":
@@ -1508,6 +1592,12 @@ def _command_for_tool(
         return ConfigureTrainingCommand(model_name=str(model_name))
 
     if tool_name == "configure_training":
+        confirmation = params.get(_ASSISTANT_SETTING_CONFIRMATION_PARAM)
+        edited_recommendation_fields = (
+            frozenset(confirmation.edited_recommendation_fields)
+            if isinstance(confirmation, AssistantSettingConfirmation)
+            else frozenset()
+        )
         training_input = normalize_training_input(params)
         output_dir_param = params.get("output_dir")
         if output_dir_param is not None and not isinstance(
@@ -1526,7 +1616,7 @@ def _command_for_tool(
                 if current is not None
                 else ConfigureTrainingCommand().output_dir
             )
-        return ConfigureTrainingCommand(
+        command = ConfigureTrainingCommand(
             model_name=_optional_str(params.get("model_name")),
             epoch=training_input.epoch,
             batch_size=training_input.batch_size,
@@ -1540,6 +1630,10 @@ def _command_for_tool(
                 params.get("save_checkpoints_every", 0),
             ),
             output_dir=str(output_dir),
+        )
+        return attach_training_submission_provenance(
+            command,
+            edited_recommendation_fields,
         )
 
     if tool_name == "start_training":

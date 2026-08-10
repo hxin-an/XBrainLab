@@ -368,7 +368,8 @@ _SCENARIOS = (
         title="Cross-source training and persistence",
         scope=(
             "Class-grounded PhysioNet EDF and BBCI GDF training plus SCCN SET and "
-            "MNE CNT epoch-only boundary cases, with safe artifact reload."
+            "MNE CNT import/preprocess-only boundary cases where supervised epoch "
+            "is intentionally blocked, with safe artifact reload for training cases."
         ),
         execution_id="public-cross-source-training",
         artifact_policy=_artifact(
@@ -388,7 +389,8 @@ _SCENARIOS = (
         ),
         claim_boundary=(
             "Only fixtures with protocol-grounded classes count as training "
-            "evidence; epoch-only fixtures are not relabeled as supervised data."
+            "evidence; import/preprocess-only fixtures are not relabeled as "
+            "supervised data."
         ),
         coverage_tags=("real-source-3plus", "epoch", "training", "evaluation"),
     ),

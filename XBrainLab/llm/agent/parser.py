@@ -37,7 +37,7 @@ _BARE_COMMANDS = frozenset(
         "apply_bandpass_filter",
         "epoch_data",
         "create_epoch",
-        "generate_dataset",
+        "configure_dataset_split",
         "configure_training",
         "start_training",
         "train",

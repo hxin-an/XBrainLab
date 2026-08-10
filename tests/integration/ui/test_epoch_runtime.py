@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
@@ -8,8 +9,11 @@ import mne
 import numpy as np
 
 from XBrainLab.backend.application import (
-    LoadDataCommand,
+    ApplyInterpretationCommand,
+    PreviewInterpretationCommand,
     QueryStateCommand,
+    ScanSourceCommand,
+    ValidateInterpretationCommand,
     get_application_service,
     resource_guard,
 )
@@ -42,8 +46,31 @@ def test_real_gdf_epoching_does_not_block_on_success_modal(qtbot, monkeypatch):
         "tests/fixtures/data/A02T.gdf",
         "tests/fixtures/data/A03T.gdf",
     ]
-    load_result = service.execute(LoadDataCommand(paths=paths))
-    assert load_result.ok, load_result.message
+    commands = (
+        ScanSourceCommand(source_path=paths[0], source_hint="file"),
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": paths,
+                "label_carrier": "embedded_events",
+                "class_map": {
+                    event_name: event_name
+                    for event_name in ("769", "770", "771", "772")
+                },
+                "internal_event_selection": {
+                    "label_event_codes": ["769", "770", "771", "772"],
+                    "class_map": {
+                        event_name: event_name
+                        for event_name in ("769", "770", "771", "772")
+                    },
+                },
+            },
+        ),
+        ValidateInterpretationCommand(),
+        ApplyInterpretationCommand(confirmed=True),
+    )
+    for command in commands:
+        result = service.execute(command)
+        assert result.ok, result.message
     monkeypatch.setattr(
         resource_guard.ResourceChecker,
         "get_system_ram_status",
@@ -138,22 +165,53 @@ def test_real_gdf_epoching_does_not_block_on_success_modal(qtbot, monkeypatch):
 def test_epoch_ram_block_is_shown_without_copy_or_materialization(
     qtbot,
     monkeypatch,
+    tmp_path: Path,
 ):
     mne_raw = mne.io.RawArray(
         np.zeros((2, 1_000), dtype=np.float64),
         mne.create_info(["C3", "C4"], sfreq=100.0, ch_types="eeg"),
         verbose=False,
     )
-    raw = Raw("ram-blocked-raw.fif", mne_raw)
-    raw.set_event(np.array([[200, 0, 1]], dtype=int), {"left": 1})
+    events = np.array(
+        [[200, 0, 1], [400, 0, 2], [600, 0, 1], [800, 0, 2]],
+        dtype=int,
+    )
+    mne_raw.set_annotations(
+        mne.annotations_from_events(
+            events,
+            sfreq=100.0,
+            event_desc={1: "left", 2: "right"},
+        ),
+    )
+    fif_path = tmp_path / "ram-blocked-raw.fif"
+    mne_raw.save(fif_path, overwrite=True, verbose=False)
     study = Study()
-    study.data_manager.loaded_data_list = [raw]
-    study.data_manager.preprocessed_data_list = [raw]
+    service = get_application_service(study)
+    commands = (
+        ScanSourceCommand(source_path=str(fif_path), source_hint="file"),
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(fif_path)],
+                "label_carrier": "embedded_events",
+                "class_map": {"left": "left", "right": "right"},
+                "internal_event_selection": {
+                    "label_event_codes": ["left", "right"],
+                    "class_map": {"left": "left", "right": "right"},
+                },
+            },
+        ),
+        ValidateInterpretationCommand(),
+        ApplyInterpretationCommand(confirmed=True),
+    )
+    for command in commands:
+        result = service.execute(command)
+        assert result.ok, result.message
+    raw = study.data_manager.loaded_data_list[0]
+    assert isinstance(raw, Raw)
     window = MainWindow(study)
     qtbot.addWidget(window)
     window.show()
     qtbot.waitExposed(window)
-    service = get_application_service(study)
     preprocess_panel = _switch_and_wait_for_panel(window, 1, qtbot)
 
     class FakeEpochingDialog:
@@ -164,7 +222,7 @@ def test_epoch_ram_block_is_shown_without_copy_or_materialization(
             return True
 
         def get_params(self):
-            return (None, ["left"], -0.2, 1.0)
+            return (None, ["left", "right"], -0.2, 1.0)
 
         def get_confirmation_receipt(self):
             return None

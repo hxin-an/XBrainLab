@@ -298,6 +298,9 @@ def build_interpretation_candidate(
         carrier_sources=scan.label_carrier_sources,
         sidecar_reader=sidecar_reader,
         resource_reader=resource_reader,
+        recommend_bids_label_field=(
+            scan.source_kind == "bids" and bool(bids.get("is_bids"))
+        ),
     )
     warnings.extend(_label_carrier_plan_warnings(label_carrier_plan))
     if use_external_label_carriers:
@@ -905,15 +908,18 @@ def _internal_event_selection(
     if not internal_event_preview:
         return {}
     explicit = payload if isinstance(payload, dict) else {}
+    has_explicit_selected = "label_event_codes" in explicit
+    has_explicit_not_label = "not_label_event_codes" in explicit
+    has_explicit_class_map = "class_map" in explicit
     selected = _string_list(explicit.get("label_event_codes"))
     not_label = _string_list(explicit.get("not_label_event_codes"))
     class_map = _string_mapping(explicit.get("class_map"))
-    if not selected:
+    if not selected and not has_explicit_selected:
         selected = _internal_event_codes(
             internal_event_preview.get("candidate_label_events")
             or internal_event_preview.get("candidate_events")
         )
-    if not not_label:
+    if not not_label and not has_explicit_not_label:
         not_label = _internal_not_label_event_codes(
             internal_event_preview.get("not_used_events")
             or internal_event_preview.get("non_label_events")
@@ -932,7 +938,7 @@ def _internal_event_selection(
             if code_text not in not_label:
                 not_label.append(code_text)
             selected = [item for item in selected if item != code_text]
-    if not class_map:
+    if not class_map and not has_explicit_class_map:
         class_map = _class_map_from_internal_event_rows(
             internal_event_preview.get("candidate_label_events")
             or internal_event_preview.get("candidate_events")

@@ -26,6 +26,7 @@ from XBrainLab.backend.application import (
     ReloadInterpretationRecipeCommand,
     ResetPreprocessCommand,
     SaliencyCommand,
+    SaveDatasetSplitCommand,
     StopTrainingCommand,
     get_application_service,
 )
@@ -33,11 +34,8 @@ from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.dataset import (
-    Dataset,
-    DataSplittingConfig,
     Epochs,
     EpochWindowProvenance,
-    TrainingType,
 )
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.study import Study
@@ -171,7 +169,7 @@ def test_tool_to_command_compatibility_view_does_not_drift_from_registry():
         "reset_preprocess": CommandName.RESET_PREPROCESS,
         "set_montage": CommandName.APPLY_MONTAGE,
         "epoch_data": CommandName.CREATE_EPOCH,
-        "generate_dataset": CommandName.GENERATE_DATASET,
+        "configure_dataset_split": CommandName.CONFIGURE_DATASET_SPLIT,
         "set_model": CommandName.CONFIGURE_TRAINING,
         "configure_training": CommandName.CONFIGURE_TRAINING,
         "start_training": CommandName.TRAIN,
@@ -227,7 +225,7 @@ def test_every_application_tool_builder_matches_its_declared_command():
         "select_channels": {"channels": ["C3", "C4"]},
         "reset_preprocess": {},
         "epoch_data": {"t_min": -0.2, "t_max": 1.0},
-        "generate_dataset": {
+        "configure_dataset_split": {
             "split_strategy": "trial",
             "training_mode": "full_data",
         },
@@ -281,7 +279,10 @@ def test_agent_tool_policy_reuses_application_train_reasons():
     assert start_training.enabled is False
     assert start_training.command_name == CommandName.TRAIN.value
     assert start_training.reasons == tuple(application_train.reasons)
-    assert "Generate datasets before training." in start_training.reasons
+    assert (
+        "Save a valid data splitting specification before training."
+        in start_training.reasons
+    )
 
 
 def test_agent_tool_policy_disables_legacy_direct_file_loading():
@@ -791,7 +792,7 @@ def test_attach_labels_surface_preserves_paths_and_host_resource_receipt() -> No
     assert command.resource_preflight_token == "label-receipt-1"  # noqa: S105
 
 
-def test_generate_dataset_surface_does_not_guess_missing_split_decisions():
+def test_configure_dataset_split_surface_uses_fresh_publication_for_missing_input():
     state = ApplicationStateSnapshot.empty()
     publication = ApplicationViewPublication(
         generation=14,
@@ -800,15 +801,15 @@ def test_generate_dataset_surface_does_not_guess_missing_split_decisions():
     )
     runtime = _ApplicationRuntimeFake(publication=publication)
     availability = ToolAvailability(
-        tool_name="generate_dataset",
+        tool_name="configure_dataset_split",
         enabled=True,
         reasons=(),
-        command_name=CommandName.GENERATE_DATASET.value,
+        command_name=CommandName.CONFIGURE_DATASET_SPLIT.value,
     )
 
     result = execute_application_tool_command(
         object(),
-        "generate_dataset",
+        "configure_dataset_split",
         {"test_ratio": 0.2, "val_ratio": 0.2},
         availability=availability,
         state=state.to_dict(),
@@ -817,8 +818,10 @@ def test_generate_dataset_surface_does_not_guess_missing_split_decisions():
 
     assert isinstance(result, ToolCommandResult)
     assert result.ok is False
-    assert result.error_type == "input"
+    assert result.error_type == "precondition"
     assert result.recoverable is True
+    assert result.capability is not None
+    assert result.capability["enabled"] is False
     assert runtime.commands == []
 
 
@@ -1001,16 +1004,19 @@ def test_start_training_surface_preserves_backend_confirmation_boundary():
         )
         for index in range(12)
     )
-    dataset = Dataset(
-        epoch_data,
-        DataSplittingConfig(TrainingType.FULL, False, [], []),
+    study.data_manager.epoch_data = epoch_data
+    service = get_application_service(study)
+    saved_split = service.execute(
+        SaveDatasetSplitCommand(
+            split_strategy="trial",
+            training_mode="group",
+            test_ratio=0.2,
+            val_ratio=0.2,
+        )
     )
-    dataset.set_name("confirmation-boundary")
-    dataset.train_mask[:8] = True
-    dataset.val_mask[8:10] = True
-    dataset.test_mask[10:] = True
-    dataset.remaining_mask[:] = False
-    cast(Any, study).datasets = [dataset]
+    assert saved_split.ok is True
+    assert saved_split.state.dataset.split_spec_saved is True
+    assert saved_split.state.dataset.split_materialized is False
     configured = execute_application_tool_command(
         study,
         "configure_training",
@@ -1029,7 +1035,17 @@ def test_start_training_surface_preserves_backend_confirmation_boundary():
     assert isinstance(configured, ToolCommandResult)
     assert configured.ok is True
     training = study.training_state_service
-    training.start_training = MagicMock(return_value=1)  # type: ignore[method-assign]
+
+    def _start_training(*, append: bool, interactive: bool) -> int:
+        del append, interactive
+        trainer = Trainer([])
+        trainer.run(interact=False)
+        study.training_manager.trainer = trainer
+        return 1
+
+    training.start_training = MagicMock(  # type: ignore[method-assign]
+        side_effect=_start_training
+    )
 
     unconfirmed = execute_application_tool_command(study, "start_training", {})
 
@@ -1045,9 +1061,6 @@ def test_start_training_surface_preserves_backend_confirmation_boundary():
     assert unconfirmed.raw_result["changed_state"]["error_changed"] is False
     assert unconfirmed.changed_state["error_changed"] is False
 
-    trainer = Trainer([])
-    trainer.run(interact=False)
-    study.training_manager.trainer = trainer
     confirmed = execute_application_tool_command(
         study,
         "start_training",

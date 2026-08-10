@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 
 import pytest
@@ -37,7 +38,22 @@ def test_catalog_exposes_curated_braindecode_and_legacy_models() -> None:
 
 
 def test_catalog_import_does_not_eagerly_import_braindecode_models() -> None:
-    assert "braindecode.models" not in sys.modules
+    process = subprocess.run(  # noqa: S603 - current interpreter, fixed test code
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; "
+                "import XBrainLab.backend.model_base.model_catalog; "
+                "assert 'braindecode.models' not in sys.modules"
+            ),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert process.returncode == 0, process.stderr
 
 
 @pytest.mark.parametrize("model_id", BRAINDECODE_MODEL_IDS)

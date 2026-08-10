@@ -418,7 +418,7 @@ def test_state_gated_command_flow_uses_backend_reason(product_harness):
 
     visible = product_harness.visible_assistant_text
     assert "Start training is not available yet" in visible
-    assert "Generate datasets before training" in visible
+    assert "Save a valid data splitting specification before training" in visible
     assert product_harness.generation_events == []
     _assert_no_raw_tool_language(visible)
 

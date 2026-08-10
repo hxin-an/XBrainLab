@@ -38,7 +38,7 @@ def test_direct_action_tool_names_do_not_drift_from_registry():
         "reset_preprocess": frozenset({"reset_preprocess"}),
         "apply_montage": frozenset({"set_montage"}),
         "create_epoch": frozenset({"epoch_data"}),
-        "generate_dataset": frozenset({"generate_dataset"}),
+        "configure_dataset_split": frozenset({"configure_dataset_split"}),
         "configure_training": frozenset({"set_model", "configure_training"}),
         "train": frozenset({"start_training"}),
         "stop_training": frozenset({"stop_training"}),

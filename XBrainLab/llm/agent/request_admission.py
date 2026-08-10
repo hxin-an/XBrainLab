@@ -242,7 +242,7 @@ class UserRequestAdmissionPolicy:
             if epoch_window is not None:
                 values["t_min"], values["t_max"] = epoch_window
 
-        if command is CommandName.GENERATE_DATASET:
+        if command is CommandName.CONFIGURE_DATASET_SPLIT:
             training_mode = cls._training_mode_value(normalized)
             if training_mode is not None:
                 values["training_mode"] = training_mode

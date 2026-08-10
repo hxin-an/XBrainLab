@@ -12,7 +12,9 @@ from typing import Any
 from PyQt6 import sip
 from PyQt6.QtCore import QModelIndex, QSize, Qt, QTimer
 from PyQt6.QtWidgets import (
+    QWIDGETSIZE_MAX,
     QAbstractItemView,
+    QBoxLayout,
     QComboBox,
     QFrame,
     QGridLayout,
@@ -23,15 +25,18 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
+    QWidget,
 )
 
 from XBrainLab.backend.application.dataset_split_preview import (
     DatasetSplitContext,
     DatasetSplitPreviewPublication,
+    DatasetSplitPreviewReceipt,
     DatasetSplitPreviewRequest,
     DatasetSplitPreviewRow,
     DatasetSplitSpecification,
@@ -48,6 +53,7 @@ from XBrainLab.backend.utils.public_diagnostics import (
 )
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import checkbox_stylesheet
+from XBrainLab.ui.product_language import fold_display_label
 from XBrainLab.ui.styles.theme import Theme
 
 from .manual_split_dialog import ManualSplitDialog
@@ -62,6 +68,7 @@ PREVIEW_STATUS_RUNNING = "running"
 PREVIEW_STATUS_SUCCEEDED = "succeeded"
 PREVIEW_STATUS_FAILED = "failed"
 PREVIEW_STATUS_CANCELLED = "cancelled"
+_NARROW_FLOW_BREAKPOINT = 760
 _PREVIEW_FAILURE_MESSAGE = (
     "The split preview failed. Adjust the split settings and try again."
 )
@@ -105,6 +112,16 @@ _PREVIEW_DIALOG_STYLE = f"""
         color: {Theme.TEXT_SECONDARY};
         background: transparent;
     }}
+    QScrollArea#SplitPreviewContentScroll,
+    QScrollArea#SplitPreviewContentScroll > QWidget > QWidget,
+    QWidget#SplitPreviewContent {{
+        border: none;
+        background: transparent;
+    }}
+    QLabel#SplitPreviewFailureReason {{
+        color: #f5b14c;
+        background: transparent;
+    }}
     QComboBox, QLineEdit {{
         background-color: {Theme.BACKGROUND_DARK};
         color: {Theme.TEXT_PRIMARY};
@@ -135,6 +152,21 @@ _PREVIEW_DIALOG_STYLE = f"""
     }}
     QPushButton#PrimaryConfirmButton:hover {{
         background-color: #0a7fc7;
+    }}
+    QPushButton#PrimaryConfirmButton:disabled {{
+        background-color: #2a2c30;
+        color: #87909b;
+        border-color: #3d454d;
+    }}
+    QPushButton#SplitPreviewRetryButton {{
+        background-color: {Theme.BACKGROUND_MID};
+        color: {Theme.TEXT_PRIMARY};
+        border: 1px solid {Theme.BACKGROUND_LIGHT};
+        border-radius: 4px;
+        padding: 7px 12px;
+    }}
+    QPushButton#SplitPreviewRetryButton:hover {{
+        border-color: #0a7fc7;
     }}
     {checkbox_stylesheet()}
 """
@@ -290,6 +322,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         self._preview_status = PREVIEW_STATUS_IDLE
         self._preview_error = ""
         self._preview_rows: tuple[DatasetSplitPreviewRow, ...] = ()
+        self._preview_receipt: DatasetSplitPreviewReceipt | None = None
         self._active_preview_request: tuple[int, str] | None = None
         self._cancel_requested_generations: set[int] = set()
         self.preview_worker: threading.Thread | None = None
@@ -303,6 +336,11 @@ class DataSplittingPreviewDialog(BaseDialog):
         self.tree: QTreeWidget | None = None
         self.btn_info: QLabel | None = None
         self.btn_confirm: QPushButton | None = None
+        self.btn_retry: QPushButton | None = None
+        self.preview_status_label: QLabel | None = None
+        self.content_scroll: QScrollArea | None = None
+        self.content_layout: QBoxLayout | None = None
+        self.controls_column: QWidget | None = None
         self.val_widgets: list[tuple[QComboBox, QLineEdit]] = []
         self.test_widgets: list[tuple[QComboBox, QLineEdit]] = []
         self.val_splitter_list: list[DataSplitter] = []
@@ -314,6 +352,7 @@ class DataSplittingPreviewDialog(BaseDialog):
 
         super().__init__(parent, title=title)
         self.fit_to_content(minimum_width=920)
+        self._update_content_flow(self.width())
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_table)
@@ -328,14 +367,36 @@ class DataSplittingPreviewDialog(BaseDialog):
     def init_ui(self):
         """Initialize the dialog UI with tree view and split controls."""
         self.setStyleSheet(_PREVIEW_DIALOG_STYLE)
-        self.setMinimumWidth(920)
-        layout = QHBoxLayout(self)
+        self.setMinimumWidth(560)
+        layout = QVBoxLayout(self)
         layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(18)
+        layout.setSpacing(12)
+
+        self.content_scroll = QScrollArea(self)
+        self.content_scroll.setObjectName("SplitPreviewContentScroll")
+        self.content_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.content_scroll.setWidgetResizable(True)
+        self.content_scroll.setMinimumHeight(260)
+        self.content_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.content_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        content = QWidget(self.content_scroll)
+        content.setObjectName("SplitPreviewContent")
+        self.content_layout = QBoxLayout(QBoxLayout.Direction.LeftToRight, content)
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_layout.setSpacing(18)
+        self.content_scroll.setWidget(content)
+
+        results_column = QWidget(content)
+        results_column.setObjectName("SplitPreviewResultsColumn")
 
         # Left: Tree
-        left_layout = QVBoxLayout()
+        left_layout = QVBoxLayout(results_column)
+        left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(10)
         left_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         results_group = QFrame()
@@ -385,10 +446,18 @@ class DataSplittingPreviewDialog(BaseDialog):
         self._resize_tree_to_rows()
         left_layout.addWidget(results_group)
 
-        layout.addLayout(left_layout, stretch=3)
+        self.content_layout.addWidget(results_column, stretch=3)
 
         # Right: Controls
-        right_layout = QVBoxLayout()
+        self.controls_column = QWidget(content)
+        self.controls_column.setObjectName("SplitPreviewControlsColumn")
+        self.controls_column.setMaximumWidth(320)
+        self.controls_column.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Maximum,
+        )
+        right_layout = QVBoxLayout(self.controls_column)
+        right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(12)
         right_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
@@ -546,15 +615,67 @@ class DataSplittingPreviewDialog(BaseDialog):
                 row += 1
         right_layout.addWidget(test_group)
 
-        # Confirm
+        self.content_layout.addWidget(self.controls_column, stretch=0)
+        layout.addWidget(self.content_scroll, stretch=1)
+
+        footer = QHBoxLayout()
+        footer.setContentsMargins(0, 0, 0, 0)
+        footer.setSpacing(8)
+        self.preview_status_label = QLabel("")
+        self.preview_status_label.setObjectName("SplitPreviewFailureReason")
+        self.preview_status_label.setWordWrap(True)
+        self.preview_status_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
+        footer.addWidget(self.preview_status_label, stretch=1)
+
+        self.btn_retry = QPushButton("Retry")
+        self.btn_retry.setObjectName("SplitPreviewRetryButton")
+        self.btn_retry.setAutoDefault(False)
+        self.btn_retry.setDefault(False)
+        self.btn_retry.clicked.connect(self._retry_preview)
+        self.btn_retry.hide()
+        footer.addWidget(self.btn_retry)
+
         self.btn_confirm = QPushButton("Confirm")
         self.btn_confirm.setObjectName("PrimaryConfirmButton")
         self.btn_confirm.setAutoDefault(False)
         self.btn_confirm.setDefault(False)
+        self.btn_confirm.setMinimumWidth(128)
         self.btn_confirm.clicked.connect(self.confirm)
-        right_layout.addWidget(self.btn_confirm)
+        footer.addWidget(self.btn_confirm)
+        layout.addLayout(footer)
 
-        layout.addLayout(right_layout, stretch=0)
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        """Reflow the two Step 2 columns before compact windows can clip them."""
+        self._update_content_flow(event.size().width())
+        super().resizeEvent(event)
+
+    def _update_content_flow(self, width: int) -> None:
+        if self.content_layout is None or self.controls_column is None:
+            return
+        is_narrow = width <= _NARROW_FLOW_BREAKPOINT
+        direction = (
+            QBoxLayout.Direction.TopToBottom
+            if is_narrow
+            else QBoxLayout.Direction.LeftToRight
+        )
+        if self.content_layout.direction() != direction:
+            self.content_layout.setDirection(direction)
+        if is_narrow:
+            self.controls_column.setMaximumWidth(QWIDGETSIZE_MAX)
+            self.controls_column.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Maximum,
+            )
+        else:
+            self.controls_column.setMaximumWidth(320)
+            self.controls_column.setSizePolicy(
+                QSizePolicy.Policy.Fixed,
+                QSizePolicy.Policy.Maximum,
+            )
+        self.content_layout.invalidate()
 
     @staticmethod
     def _panel_grid(title: str) -> tuple[QFrame, QGridLayout]:
@@ -694,6 +815,7 @@ class DataSplittingPreviewDialog(BaseDialog):
             item.setSizeHint(0, QSize(0, 28))
             item.setText(0, "Calculating")
             self._resize_tree_to_rows()
+        self._set_preview_feedback("")
 
         self._preview_generation_id += 1
         generation_id = self._preview_generation_id
@@ -767,6 +889,7 @@ class DataSplittingPreviewDialog(BaseDialog):
                     generation_id,
                     PREVIEW_STATUS_SUCCEEDED,
                     rows=publication.rows,
+                    receipt=publication.receipt,
                 )
 
     @staticmethod
@@ -787,6 +910,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         error: str = "",
         *,
         rows: tuple[DatasetSplitPreviewRow, ...] = (),
+        receipt: DatasetSplitPreviewReceipt | None = None,
     ) -> None:
         """Publish one generation result without letting stale workers overwrite it."""
         with self._preview_state_lock:
@@ -795,6 +919,7 @@ class DataSplittingPreviewDialog(BaseDialog):
             self._preview_status = status
             self._preview_error = error
             self._preview_rows = tuple(rows)
+            self._preview_receipt = receipt
             if status != PREVIEW_STATUS_RUNNING:
                 active = self._active_preview_request
                 if active is not None and active[0] == generation_id:
@@ -818,25 +943,28 @@ class DataSplittingPreviewDialog(BaseDialog):
             return
 
         status, error, rows = self._preview_state()
-        if status == PREVIEW_STATUS_FAILED:
-            self.tree.clear()
-            item = QTreeWidgetItem(self.tree)
-            item.setSizeHint(0, QSize(0, 28))
-            item.setText(0, "Preview failed")
+        if status == PREVIEW_STATUS_IDLE:
+            self._set_tree_message("Updating preview")
+            self._set_preview_feedback("")
+            if self.btn_confirm is not None:
+                self.btn_confirm.setEnabled(False)
+        elif status == PREVIEW_STATUS_FAILED:
+            self._set_tree_message("Preview failed")
+            self._set_preview_feedback(error or _PREVIEW_FAILURE_MESSAGE, retry=True)
             if error:
-                item.setToolTip(0, error)
+                self.tree.topLevelItem(0).setToolTip(0, error)
             if self.btn_confirm is not None:
                 self.btn_confirm.setEnabled(False)
-            self._resize_tree_to_rows()
         elif status == PREVIEW_STATUS_CANCELLED:
-            self.tree.clear()
-            item = QTreeWidgetItem(self.tree)
-            item.setSizeHint(0, QSize(0, 28))
-            item.setText(0, "Preview cancelled")
+            self._set_tree_message("Preview cancelled")
+            self._set_preview_feedback(
+                "The split preview was cancelled. Retry when you are ready.",
+                retry=True,
+            )
             if self.btn_confirm is not None:
                 self.btn_confirm.setEnabled(False)
-            self._resize_tree_to_rows()
         elif rows:
+            self._set_preview_feedback("")
             item0 = self.tree.topLevelItem(0)
             if (
                 self.tree.topLevelItemCount() == 1
@@ -851,8 +979,15 @@ class DataSplittingPreviewDialog(BaseDialog):
                     row = rows[i]
                     item = QTreeWidgetItem(self.tree)
                     item.setSizeHint(0, QSize(0, 28))
+                    row_name = str(row.name)
+                    fold_suffix = row_name.removeprefix("Fold_")
+                    display_name = (
+                        fold_display_label(int(fold_suffix), row_name)
+                        if fold_suffix.isdigit() and row_name.startswith("Fold_")
+                        else row_name
+                    )
                     visible_info = (
-                        row.name,
+                        display_name,
                         row.train_count,
                         row.validation_count,
                         row.test_count,
@@ -867,6 +1002,24 @@ class DataSplittingPreviewDialog(BaseDialog):
                 and self._preview_pending_close_action is None
             ):
                 self.btn_confirm.setEnabled(True)
+
+    def _set_tree_message(self, message: str) -> None:
+        if self.tree is None:
+            return
+        self.tree.clear()
+        item = QTreeWidgetItem(self.tree)
+        item.setSizeHint(0, QSize(0, 28))
+        item.setText(0, message)
+        self._resize_tree_to_rows()
+
+    def _set_preview_feedback(self, message: str, *, retry: bool = False) -> None:
+        if self.preview_status_label is not None:
+            self.preview_status_label.setText(message)
+        if self.btn_retry is not None:
+            self.btn_retry.setVisible(retry)
+
+    def _retry_preview(self) -> None:
+        self.preview()
 
     def _clear_tree_current_item(self) -> None:
         if self.tree is None:
@@ -892,7 +1045,13 @@ class DataSplittingPreviewDialog(BaseDialog):
         row_height_total = 0
         fallback_row_height = max(self.tree.fontMetrics().lineSpacing() + 4, 20)
         for row in range(visible_rows):
-            row_height = self.tree.sizeHintForRow(row)
+            item = self.tree.topLevelItem(row)
+            visual_height = (
+                self.tree.visualItemRect(item).height()
+                if self.tree.isVisible() and item is not None
+                else 0
+            )
+            row_height = visual_height or self.tree.sizeHintForRow(row)
             row_height_total += row_height if row_height > 0 else fallback_row_height
         # The viewport already accounts for native focus metrics. Adding
         # PM_FocusFrameVMargin here creates a second, empty pseudo-row whose
@@ -915,8 +1074,10 @@ class DataSplittingPreviewDialog(BaseDialog):
                 Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
             )
         self.tree.setFixedHeight(target_height)
-        if self.isVisible():
-            self.fit_to_content(minimum_width=920)
+        if self.content_scroll is not None:
+            content = self.content_scroll.widget()
+            if content is not None:
+                content.updateGeometry()
 
     def _fit_tree_columns_to_viewport(self) -> None:
         if self.tree is None:
@@ -966,6 +1127,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         super().showEvent(event)
         self._resize_tree_to_rows()
         QTimer.singleShot(0, self._resize_tree_to_rows)
+        QTimer.singleShot(1, self._resize_tree_to_rows)
 
     def confirm(self):
         """Accept a successful preview; the command later owns final generation."""
@@ -1045,6 +1207,15 @@ class DataSplittingPreviewDialog(BaseDialog):
 
     def schedule_preview(self) -> None:
         """Debounce expensive dataset preview regeneration while editing fields."""
+        self._preview_generation_id += 1
+        self._set_preview_state(
+            self._preview_generation_id,
+            PREVIEW_STATUS_IDLE,
+        )
+        if self.btn_confirm is not None:
+            self.btn_confirm.setEnabled(False)
+        self._set_tree_message("Updating preview")
+        self._set_preview_feedback("")
         if self.preview_debounce_timer:
             self.preview_debounce_timer.start(PREVIEW_DEBOUNCE_MS)
         else:
@@ -1145,7 +1316,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         """Return the finalized split configuration payload.
 
         Returns:
-            A serializable split configuration accepted by GenerateDatasetCommand,
+            A serializable split configuration accepted by SaveDatasetSplitCommand,
             or None when no successful detached preview exists.
 
         """
@@ -1153,6 +1324,23 @@ class DataSplittingPreviewDialog(BaseDialog):
         if status != PREVIEW_STATUS_SUCCEEDED or not rows:
             return None
         return self._split_config_payload()
+
+    def get_preview_receipt(self) -> DatasetSplitPreviewReceipt | None:
+        """Return only preview evidence that still matches the visible controls."""
+        with self._preview_state_lock:
+            status = self._preview_status
+            receipt = self._preview_receipt
+        if status != PREVIEW_STATUS_SUCCEEDED or receipt is None:
+            return None
+        try:
+            current = DatasetSplitSpecification.from_payload(
+                self._split_config_payload()
+            )
+        except (TypeError, ValueError):
+            return None
+        if receipt.specification_fingerprint != current.fingerprint:
+            return None
+        return receipt
 
     def _split_config_payload(self) -> dict[str, Any]:
         return {

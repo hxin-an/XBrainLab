@@ -49,3 +49,35 @@ def test_human_like_capture_script_is_a_real_exit_code_gate(tmp_path) -> None:
     assert payload["pass_fail_summary"]["required_phase_count"] == expected_phase_count
     assert payload["artifact_run"]["source_fingerprint"]
     assert isinstance(payload["artifact_run"]["working_tree_dirty"], bool)
+
+    phases = {phase["phase"]: phase for phase in payload["phases"]}
+    for phase_name in (
+        "data_interpretation_apply",
+        "data_interpretation_reapply_recipe",
+    ):
+        handoff = phases[phase_name]["notes"]["strict_review_handoff"]
+        candidate_id = handoff["candidate_id"]
+        assert candidate_id
+        assert handoff["validation_candidate_id"] == candidate_id
+        assert handoff["applied_candidate_id"] == candidate_id
+        assert handoff["validation_publication_generation"] > 0
+        assert handoff["apply_publication_generation"] > 0
+
+    saved_split = phases["dataset_generation"]["workflow_state"]["dataset"]
+    assert saved_split["available"] is False
+    assert saved_split["count"] == 0
+    assert saved_split["generator_exists"] is False
+    assert saved_split["split_spec_saved"] is True
+    assert saved_split["split_materialized"] is False
+    assert saved_split["split_lifecycle"] == "saved"
+    assert saved_split["split_specification_fingerprint"]
+    assert saved_split["split_epoch_revision"] > 0
+    assert saved_split["split_preview_summary"]["rows"]
+
+    materialized_split = phases["training_readiness"]["workflow_state"]["dataset"]
+    assert materialized_split["available"] is True
+    assert materialized_split["count"] > 0
+    assert materialized_split["generator_exists"] is True
+    assert materialized_split["split_spec_saved"] is True
+    assert materialized_split["split_materialized"] is True
+    assert materialized_split["split_lifecycle"] == "verified"

@@ -258,7 +258,7 @@ TOOL_INTENTS: dict[str, str] = {
     "apply_standard_preprocess": "preprocess",
     "apply_bandpass_filter": "preprocess",
     "epoch_data": "create_epoch",
-    "generate_dataset": "generate_dataset",
+    "configure_dataset_split": "configure_dataset_split",
     "set_model": "configure_training",
     "configure_training": "configure_training",
     "start_training": "train",
@@ -1936,7 +1936,7 @@ def _normalized_prediction_arguments(
     params: dict[str, Any],
 ) -> dict[str, Any]:
     normalized = dict(params)
-    if tool_name == "generate_dataset":
+    if tool_name == "configure_dataset_split":
         normalized.setdefault("val_ratio", 0.2)
     return normalized
 

@@ -309,8 +309,10 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         label_placement_summary = self._review_label_placement_text()
         if self._should_show_label_table_fallback():
             label_placement_status = "Action required"
-        elif self._label_placement_needs_review() or self._has_review_action_for_step(
-            "Match Labels"
+        elif self._label_placement_needs_review() or (
+            self._has_review_action_for_step("Match Labels")
+            and self._submission_projection().recheck_kind
+            not in {"event_values", "interpretation_choices"}
         ):
             label_placement_status = "Needs review"
 
@@ -674,11 +676,18 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             )
         editor = self.event_value_editor
         if editor is not None and editor.has_rows() and self._is_bids_source():
+            field = self.rule_label_field_combo.currentText().strip() or "Label field"
+            method = (
+                self.rule_placement_method_combo.currentText().strip()
+                or "Placement needs review"
+            )
             unresolved = editor.unresolved_values()
             if unresolved:
-                return f"{len(unresolved)} event values need review"
+                return (
+                    f"{field} · {method} · {len(unresolved)} event values need review"
+                )
             return (
-                f"{editor.row_count()} event values reviewed · "
+                f"{field} · {method} · {editor.row_count()} event values reviewed · "
                 "BIDS onset and duration preserved"
             )
         if not hasattr(self, "rule_placement_method_combo"):
@@ -1270,12 +1279,70 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             "format_capabilities"
         ) or self.scan_result.get("format_capabilities")
         rows.extend(format_capability_rows(format_capabilities))
+        rows.extend(self._bids_event_provenance_rows())
         rows = compact_review_rows(rows)
         return [
             self._current_review_row(row)
             for row in rows
             if not self._review_row_is_resolved(row)
         ]
+
+    def _bids_event_provenance_rows(self) -> list[ReviewRow]:
+        if not self._is_bids_source():
+            return []
+        carriers = self.preview.get("label_carrier_preview")
+        if not isinstance(carriers, list):
+            return []
+        rows: list[ReviewRow] = []
+        for index, carrier in enumerate(carriers, start=1):
+            if not isinstance(carrier, dict):
+                continue
+            if str(carrier.get("format") or "") != "BIDS events":
+                continue
+            events_name = Path(str(carrier.get("path") or "")).name
+            eeg_name = Path(
+                str(
+                    carrier.get("selected_target_file")
+                    or carrier.get("bids_expected_target_file")
+                    or ""
+                )
+            ).name
+            field = str(carrier.get("selected_label_field") or "").strip()
+            start = str(carrier.get("selected_anchor") or "").strip()
+            duration = str(carrier.get("selected_duration_field") or "").strip()
+            columns = carrier.get("bids_event_columns")
+            column_text = (
+                ", ".join(str(value) for value in columns if str(value).strip())
+                if isinstance(columns, list)
+                else ""
+            )
+            timing = " + ".join(value for value in (start, duration) if value)
+            sidecar = (
+                "events.json present"
+                if carrier.get("events_json_sidecar_present") is True
+                else "events.json missing"
+                if carrier.get("events_json_sidecar_present") is False
+                else "events.json status unavailable"
+            )
+            details = [
+                f"{events_name} paired with {eeg_name}"
+                if eeg_name
+                else f"{events_name} pairing needs review",
+                f"labels from {field}" if field else "label field needs review",
+                timing or "timing fields need review",
+                sidecar,
+            ]
+            if column_text:
+                details.append(f"columns: {column_text}")
+            rows.append(
+                (
+                    "Match Labels",
+                    f"BIDS event provenance {index}",
+                    "; ".join(details) + ".",
+                    "Recorded in the reviewed import plan.",
+                )
+            )
+        return rows
 
     def _primary_review_rows(self) -> list[ReviewRow]:
         review = self._validation_review_contract()

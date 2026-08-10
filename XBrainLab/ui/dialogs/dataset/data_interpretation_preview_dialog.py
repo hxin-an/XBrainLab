@@ -682,10 +682,6 @@ class DataInterpretationPreviewDialog(
         self._fit_compact_tree_height(self.file_tree, min_height=86, max_height=160)
         complete_count, missing_fields = self._metadata_completion_counts()
         missing_fields = self._metadata_required_missing_fields(missing_fields)
-        if self._is_bids_source():
-            bids_metadata_card, bids_metadata_layout = self._card("BIDS metadata")
-            self._build_bids_metadata_card(bids_metadata_layout)
-            metadata_panel_layout.addWidget(bids_metadata_card)
         metadata_table_card = QFrame()
         metadata_table_card.setObjectName("DataImportCard")
         metadata_table_card.setSizePolicy(
@@ -774,12 +770,6 @@ class DataInterpretationPreviewDialog(
         label_source_card, label_source_layout = self._card("Label source")
         self._build_label_source_mode_card(label_source_layout)
         label_panel_layout.addWidget(label_source_card)
-
-        self.bids_event_review_card, bids_event_review_layout = self._card(
-            "BIDS events.tsv"
-        )
-        self._build_bids_event_review_card(bids_event_review_layout)
-        label_panel_layout.addWidget(self.bids_event_review_card)
 
         self.internal_event_card, internal_event_layout = self._card(
             "Events inside EEG files"
@@ -1212,10 +1202,6 @@ class DataInterpretationPreviewDialog(
         fallback_visible = use_loaded and self._should_show_label_table_fallback()
         if hasattr(self, "pairing_card"):
             self.pairing_card.setVisible(use_loaded and not is_bids_source)
-        if hasattr(self, "bids_event_review_card"):
-            self.bids_event_review_card.setVisible(
-                use_loaded and is_bids_source and bool(self._bids_event_review_rows())
-            )
         if hasattr(self, "label_values_card"):
             self.label_values_card.setVisible(use_loaded and not fallback_visible)
         if self.event_value_editor is not None:
@@ -2119,12 +2105,7 @@ class DataInterpretationPreviewDialog(
         return "Load the label files that will be matched to this EEG data."
 
     def _metadata_panel_detail(self) -> str:
-        if self._is_bids_source():
-            return (
-                "BIDS-style subject, session, task, and run entities are saved "
-                "into the recipe."
-            )
-        return "Subject, session, task, and run choices are saved into the recipe."
+        return "Review subject, session, task, and run."
 
     def _user_label_source_row(self, source: str) -> tuple[str, str]:
         source_path = Path(source)

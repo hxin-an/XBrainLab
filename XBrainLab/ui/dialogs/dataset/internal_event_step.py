@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtWidgets import (
@@ -359,12 +358,6 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
 
     def _build_bids_source_card(self, layout: QVBoxLayout) -> None:
         layout.addWidget(
-            self._inline_notice(
-                "BIDS EEG files and events.tsv were detected. XBrainLab uses "
-                "this as an EEG task import path, not a full BIDS validator."
-            )
-        )
-        layout.addWidget(
             self._event_rules_table(
                 ["Item", "Detected", "Import behavior"],
                 self._bids_source_rows(),
@@ -375,20 +368,6 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
         return self._event_rules_table(
             ["Item", "Detected", "Import behavior"],
             self._bids_label_source_rows(),
-        )
-
-    def _build_bids_metadata_card(self, layout: QVBoxLayout) -> None:
-        layout.addWidget(
-            self._inline_notice(
-                "Subject, session, task, and run were read from BIDS-style "
-                "entities. Participants metadata is shown when available."
-            )
-        )
-        layout.addWidget(
-            self._event_rules_table(
-                ["Item", "Detected", "Recipe behavior"],
-                self._bids_metadata_rows(),
-            )
         )
 
     def _bids_source_rows(self) -> list[tuple[str, str, str]]:
@@ -402,11 +381,6 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
                 "events.tsv",
                 self._bids_event_count_text(),
                 "Used as the default label and timing source.",
-            ),
-            (
-                "Boundary",
-                "Not a full BIDS validator",
-                "Review labels, metadata, and events before applying.",
             ),
         ]
 
@@ -439,31 +413,6 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
                 f"{matched}/{total} EEG files paired",
                 "Adjust only rows that are matched incorrectly.",
             ),
-            (
-                "events.json",
-                self._bids_events_json_text(),
-                "Used for class descriptions when present; otherwise class names "
-                "need confirmation.",
-            ),
-        ]
-
-    def _bids_metadata_rows(self) -> list[tuple[str, str, str]]:
-        return [
-            (
-                "Entities",
-                self._bids_entities_summary_text(),
-                "Saved as subject/session/task/run metadata.",
-            ),
-            (
-                "participants.tsv",
-                self._bids_participants_text(),
-                "Used to supplement participants when available.",
-            ),
-            (
-                "Smart Parse",
-                "Secondary adjustment",
-                "Use only when BIDS-style entities need manual correction.",
-            ),
         ]
 
     def _bids_entities_summary_text(self) -> str:
@@ -486,32 +435,14 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
         file_word = "file" if len(events) == 1 else "files"
         return f"{len(events)} events.tsv {file_word}"
 
-    def _bids_participants_text(self) -> str:
-        bids = self._bids_payload()
-        for key in ("participants_tsv", "participants_file"):
-            value = str(bids.get(key) or "").strip()
-            if value:
-                return Path(value).name
-        if bool(bids.get("has_participants_tsv")):
-            return "Found"
-        return "Not found"
-
     def _bids_events_json_text(self) -> str:
         carriers = self._bids_event_carriers()
-        found = any(
-            carrier.get("events_json")
-            or carrier.get("events_json_path")
-            or carrier.get("has_events_json")
-            for carrier in carriers
-        )
-        if found:
+        sidecar_states = [
+            carrier.get("events_json_sidecar_present") for carrier in carriers
+        ]
+        if any(state is True for state in sidecar_states):
             return "Found"
-        warnings = " ".join(
-            str(item)
-            for carrier in carriers
-            for item in carrier.get("warnings", []) or []
-        ).lower()
-        if "events.json" in warnings:
+        if sidecar_states and all(state is False for state in sidecar_states):
             return "Missing"
         return "Not detected"
 
@@ -602,125 +533,6 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
         )
         layout.addWidget(self.internal_event_status_label)
 
-    def _build_bids_event_review_card(self, layout: QVBoxLayout) -> None:
-        intro = QLabel(self._bids_event_review_intro_text())
-        intro.setObjectName("DataImportSourceDetail")
-        intro.setWordWrap(True)
-        layout.addWidget(intro)
-
-        rows = self._bids_event_review_rows()
-        if rows:
-            layout.addWidget(
-                self._event_rules_table(
-                    ["Item", "Detected", "Review note"],
-                    rows,
-                )
-            )
-        else:
-            layout.addWidget(
-                self._empty_state(
-                    "No BIDS events.tsv carrier is available in this preview."
-                )
-            )
-        self._bids_event_review_intro_label = intro
-
-    def _bids_event_review_intro_text(self) -> str:
-        context = self._bids_context_text()
-        if context:
-            return f"Review BIDS event timing and class fields for {context}."
-        return "Review BIDS event timing and class fields before import."
-
-    def _bids_event_review_rows(self) -> list[tuple[str, str, str]]:
-        rows: list[tuple[str, str, str]] = []
-        carriers = [
-            original
-            for _item, original in self._label_carrier_items
-            if str(original.get("format") or "") == "BIDS events"
-        ]
-        if not carriers:
-            return rows
-        columns = self._unique_values(
-            column
-            for carrier in carriers
-            for column in carrier.get("bids_event_columns", []) or []
-        )
-        label_fields = self._unique_values(
-            str(carrier.get("selected_label_field") or "").strip()
-            for carrier in carriers
-            if str(carrier.get("selected_label_field") or "").strip()
-        )
-        start_fields = self._unique_values(
-            str(carrier.get("selected_anchor") or "").strip()
-            for carrier in carriers
-            if str(carrier.get("selected_anchor") or "").strip()
-        )
-        duration_fields = self._unique_values(
-            str(carrier.get("selected_duration_field") or "").strip()
-            for carrier in carriers
-            if str(carrier.get("selected_duration_field") or "").strip()
-        )
-        warnings = self._unique_values(
-            str(item).strip()
-            for carrier in carriers
-            for item in carrier.get("warnings", []) or []
-            if str(item).strip()
-        )
-        rows.append(
-            (
-                "events.tsv columns",
-                self._list_preview(columns) or "Needs review",
-                "Use onset/duration for timing and trial_type or value for labels.",
-            )
-        )
-        selected_eeg_count = len(self._selected_eeg_file_names())
-        carrier_count = len(carriers)
-        if selected_eeg_count:
-            matched_count = min(carrier_count, selected_eeg_count)
-            rows.append(
-                (
-                    "EEG/event pairing",
-                    f"{matched_count}/{selected_eeg_count} EEG files",
-                    "Matched by BIDS subject/session/task/run entities.",
-                )
-            )
-        label_field_text = self._list_preview(label_fields) or "Choose in Label values"
-        if "trial_type" in label_fields:
-            label_field_text = "trial_type recommended"
-        elif "value" in label_fields:
-            label_field_text = "value"
-        rows.append(
-            (
-                "Label field",
-                label_field_text,
-                "This becomes the class or event label value.",
-            )
-        )
-        rows.append(
-            (
-                "Timing fields",
-                self._bids_timing_fields_text(start_fields, duration_fields),
-                "Saved with the reviewed event mapping.",
-            )
-        )
-        if warnings:
-            rows.append(
-                (
-                    "Needs review",
-                    self._list_preview(warnings, limit=2),
-                    "Resolve or confirm before applying.",
-                )
-            )
-        return rows
-
-    @staticmethod
-    def _unique_values(values: Iterable[str]) -> list[str]:
-        result: list[str] = []
-        for value in values:
-            text = str(value).strip()
-            if text and text not in result:
-                result.append(text)
-        return result
-
     @staticmethod
     def _list_preview(values: Iterable[str], *, limit: int = 5) -> str:
         items = [str(value).strip() for value in values if str(value).strip()]
@@ -729,35 +541,6 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
         if len(items) <= limit:
             return ", ".join(items)
         return ", ".join(items[:limit]) + f" +{len(items) - limit} more"
-
-    def _bids_timing_fields_text(
-        self,
-        start_fields: list[str],
-        duration_fields: list[str],
-    ) -> str:
-        start = self._list_preview(start_fields) or "Missing onset/start"
-        duration = self._list_preview(duration_fields) or "Duration set later"
-        return f"{start} + {duration}"
-
-    def _bids_context_text(self) -> str:
-        bids = self.scan_result.get("bids") or {}
-        if not isinstance(bids, dict):
-            return ""
-        parts: list[str] = []
-        for key, label in (
-            ("subjects", "subject"),
-            ("sessions", "session"),
-            ("tasks", "task"),
-            ("runs", "run"),
-        ):
-            values = bids.get(key) or []
-            if isinstance(values, list) and values:
-                preview = self._list_preview(
-                    (str(item) for item in values),
-                    limit=3,
-                )
-                parts.append(f"{label} {preview}")
-        return ", ".join(parts)
 
     def _internal_event_status_text(self) -> str:
         if self._event_role_items or self._class_map_items:

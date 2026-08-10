@@ -232,7 +232,7 @@ SHOWCASE_CASES: tuple[ShowcaseCase, ...] = (
             "Build an individual training dataset with a trial split, "
             "20 percent validation, and 20 percent test data."
         ),
-        tool_name="generate_dataset",
+        tool_name="configure_dataset_split",
         params={
             "training_mode": "individual",
             "split_strategy": "trial",

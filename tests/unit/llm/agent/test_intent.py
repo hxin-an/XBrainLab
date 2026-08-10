@@ -25,7 +25,7 @@ def test_intent_to_command_compatibility_view_does_not_drift_from_registry():
         "preprocess": CommandName.PREPROCESS,
         "reset_preprocess": CommandName.RESET_PREPROCESS,
         "create_epoch": CommandName.CREATE_EPOCH,
-        "generate_dataset": CommandName.GENERATE_DATASET,
+        "configure_dataset_split": CommandName.CONFIGURE_DATASET_SPLIT,
         "configure_training": CommandName.CONFIGURE_TRAINING,
         "train": CommandName.TRAIN,
         "stop_training": CommandName.STOP_TRAINING,
@@ -91,7 +91,7 @@ def test_infers_product_language_data_import_chain() -> None:
         infer_user_intent(
             "Build an individual training dataset with a trial-based split."
         )
-        == "generate_dataset"
+        == "configure_dataset_split"
     )
 
 
@@ -239,8 +239,8 @@ def test_immediate_information_and_current_workflow_are_not_historical_reference
         ),
         (
             "Why can't I build the training dataset?",
-            "generate_dataset",
-            CommandName.GENERATE_DATASET,
+            "configure_dataset_split",
+            CommandName.CONFIGURE_DATASET_SPLIT,
         ),
         ("為什麼現在不能訓練?", "train", CommandName.TRAIN),
         ("為什麼訓練不能開始?", "train", CommandName.TRAIN),

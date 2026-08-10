@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import torch
@@ -34,6 +34,7 @@ from .resource_guard import (
 )
 from .results import ErrorType
 from .state import ApplicationStateSnapshot
+from .training_recommendation import TrainingRecommendationService
 from .training_resource_receipt import (
     TrainingResourceReceiptAuthority,
 )
@@ -47,6 +48,7 @@ from .training_snapshot import (
 from .training_snapshot import (
     training_option_snapshot as build_training_option_snapshot,
 )
+from .training_submission import training_submission_edited_fields
 
 HandlerResult = str | tuple[str, dict[str, Any]]
 
@@ -60,10 +62,12 @@ class TrainingCommandService:
         training: Any,
         training_runtime: TrainingCommandRuntimePort,
         get_state: Callable[[], ApplicationStateSnapshot],
+        recommendation: TrainingRecommendationService | None = None,
     ) -> None:
         self.training = training
         self.training_runtime = training_runtime
         self._get_state = get_state
+        self._recommendation = recommendation
         self._resource_receipts = TrainingResourceReceiptAuthority()
 
     def handle_configure_training(self, command: Command) -> HandlerResult:
@@ -117,13 +121,10 @@ class TrainingCommandService:
 
         holder: ModelHolder | None = None
         if command.model_name:
-            model_spec = get_model_spec(command.model_name)
-            holder = ModelHolder(
-                model_spec.factory,
-                dict(command.model_params),
-                command.pretrained_weight_path,
-                model_id=model_spec.model_id,
-                display_name=model_spec.display_name,
+            holder = self.build_model_holder(
+                command.model_name,
+                command.model_params,
+                pretrained_weight_path=command.pretrained_weight_path,
             )
 
         self.training.apply_configuration(
@@ -132,6 +133,10 @@ class TrainingCommandService:
             update_model=holder is not None,
             update_option=option is not None,
         )
+        if option is not None and self._recommendation is not None:
+            self._recommendation.note_configuration_submitted(
+                training_submission_edited_fields(command)
+            )
         if option is None:
             return f"Model configured: {command.model_name}."
         diagnostics: dict[str, Any] = {
@@ -149,9 +154,43 @@ class TrainingCommandService:
     ) -> HandlerResult:
         if not isinstance(command, TrainCommand):
             raise TypeError("Invalid command for train")
-        preflight, receipt_reused = self._resolve_resource_preflight(
+        preflight, receipt_reused = self.resolve_train_preflight(command)
+        return self.start_train_after_preflight(
             command,
+            preflight=preflight,
+            receipt_reused=receipt_reused,
+            defer_synchronous_completion=defer_synchronous_completion,
         )
+
+    def resolve_train_preflight(
+        self,
+        command: Command,
+        *,
+        datasets: Sequence[Any] | None = None,
+    ) -> tuple[ResourcePreflightResult, bool]:
+        """Authorize one train command against active or speculative datasets."""
+        if not isinstance(command, TrainCommand):
+            raise TypeError("Invalid command for train")
+        context = self._resource_preflight_context()
+        if datasets is not None:
+            context["datasets"] = list(datasets)
+        preflight = self._build_resource_preflight(command, context)
+        receipt_reused = self._resource_receipts.authorize(command, preflight)
+        return preflight, receipt_reused
+
+    def start_train_after_preflight(
+        self,
+        command: Command,
+        *,
+        preflight: ResourcePreflightResult,
+        receipt_reused: bool,
+        defer_synchronous_completion: bool = False,
+    ) -> HandlerResult:
+        """Start training after the application transaction commits its split."""
+        if not isinstance(command, TrainCommand):
+            raise TypeError("Invalid command for train")
+        if not isinstance(preflight, ResourcePreflightResult):
+            raise TypeError("preflight must be a ResourcePreflightResult")
         handoff_generation = self.training.start_training(
             append=command.append,
             interactive=command.interactive or defer_synchronous_completion,
@@ -192,6 +231,10 @@ class TrainingCommandService:
                 **completion_diagnostics,
             },
         )
+
+    def discard_train_preflight(self, token: str | None) -> None:
+        """Invalidate a pending training-resource confirmation receipt."""
+        self._resource_receipts.discard(token)
 
     def complete_synchronous_training(
         self,
@@ -324,10 +367,7 @@ class TrainingCommandService:
         command: TrainCommand,
     ) -> tuple[ResourcePreflightResult, bool]:
         """Atomically validate and consume one exact warning receipt."""
-        context = self._resource_preflight_context()
-        preflight = self._build_resource_preflight(command, context)
-        receipt_reused = self._resource_receipts.authorize(command, preflight)
-        return preflight, receipt_reused
+        return self.resolve_train_preflight(command)
 
     def handle_stop_training(self, command: Command) -> HandlerResult:
         if not isinstance(command, StopTrainingCommand):
@@ -377,6 +417,23 @@ class TrainingCommandService:
     @staticmethod
     def training_option_snapshot(option: Any) -> dict[str, Any]:
         return build_training_option_snapshot(option)
+
+    @staticmethod
+    def build_model_holder(
+        model_name: str,
+        model_params: dict[str, Any],
+        *,
+        pretrained_weight_path: str | None = None,
+    ) -> ModelHolder:
+        """Build a detached holder through the same catalog used by configure."""
+        model_spec = get_model_spec(model_name)
+        return ModelHolder(
+            model_spec.factory,
+            dict(model_params),
+            pretrained_weight_path,
+            model_id=model_spec.model_id,
+            display_name=model_spec.display_name,
+        )
 
     @staticmethod
     def _resolve_optimizer(name: str) -> type[torch.optim.Optimizer]:

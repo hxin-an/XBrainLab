@@ -15,7 +15,7 @@ from ..definitions.dataset_def import (
     BaseApplyInterpretationTool,
     BaseAttachLabelsTool,
     BaseClearDatasetTool,
-    BaseGenerateDatasetTool,
+    BaseConfigureDatasetSplitTool,
     BaseGetDatasetInfoTool,
     BaseListFilesTool,
     BaseLoadDataTool,
@@ -318,7 +318,7 @@ class MockQueryStateTool(BaseQueryStateTool):
             pipeline_stage_readiness_message,
         )
 
-        if self._state.dataset_generated:
+        if self._state.split_spec_saved:
             stage = PipelineStage.DATASET_READY
         elif self._state.epochs_ready:
             stage = PipelineStage.EPOCH_READY
@@ -335,8 +335,8 @@ class MockQueryStateTool(BaseQueryStateTool):
         )
 
 
-class MockGenerateDatasetTool(BaseGenerateDatasetTool):
-    """Mock implementation of :class:`BaseGenerateDatasetTool`."""
+class MockConfigureDatasetSplitTool(BaseConfigureDatasetSplitTool):
+    """Mock implementation of :class:`BaseConfigureDatasetSplitTool`."""
 
     def __init__(self, state: MockWorkflowState | None = None) -> None:
         self._state = state if state is not None else MockWorkflowState()
@@ -350,7 +350,7 @@ class MockGenerateDatasetTool(BaseGenerateDatasetTool):
         training_mode: str = "individual",
         **kwargs,
     ) -> ToolResult:
-        """Return a simulated dataset-generation result.
+        """Return a simulated split-configuration result.
 
         Args:
             study: The global ``Study`` instance (unused in mock).
@@ -361,19 +361,20 @@ class MockGenerateDatasetTool(BaseGenerateDatasetTool):
             **kwargs: Additional keyword arguments.
 
         Returns:
-            A confirmation message with the split strategy and mode.
+            A confirmation message with the saved split strategy and mode.
 
         """
         if not self._state.epochs_ready:
             return ToolResult(
                 ok=False,
-                message="Create EEG epochs before generating a dataset.",
+                message="Create EEG epochs before saving data splitting settings.",
                 error_type="precondition",
             )
-        self._state.dataset_generated = True
+        self._state.split_spec_saved = True
         return ToolResult(
             ok=True,
             message=(
-                f"Generated dataset (Split: {split_strategy}, Mode: {training_mode})."
+                f"Saved data splitting settings (Split: {split_strategy}, "
+                f"Mode: {training_mode})."
             ),
         )

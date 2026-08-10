@@ -69,11 +69,11 @@ def test_data_splitting_preview_capture_uses_current_worker_lifecycle(qtbot) -> 
     assert semantics["split_unit"] == "K Fold"
     assert semantics["k_fold_count"] == 5
     assert [row["name"] for row in semantics["dataset_rows"]] == [
-        "Fold_0",
-        "Fold_1",
-        "Fold_2",
-        "Fold_3",
-        "Fold_4",
+        "Fold 1",
+        "Fold 2",
+        "Fold 3",
+        "Fold 4",
+        "Fold 5",
     ]
 
 
@@ -121,6 +121,8 @@ def test_epoch_capture_contract_requires_complete_visible_controls(
     assert contract["selected_event_count"] > 0
     assert contract["primary_action"] == "Create EEG Epochs"
     assert contract["cancel_action"] == "Cancel"
+    assert contract["window_mode_valid"] is True
+    assert contract["primary_action_enabled"] is True
     assert "Create EEG Epochs" in contract["verified_controls"]
     assert "Cancel" in contract["verified_controls"]
     if scenario == "internal_events":

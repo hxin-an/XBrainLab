@@ -1,6 +1,7 @@
 """Sidebar widget for the training panel with configuration and execution controls."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from typing import Any, cast
 
 from PyQt6.QtCore import Qt
@@ -19,10 +20,10 @@ from XBrainLab.backend.application import (
     CommandCapability,
     CommandName,
     ConfigureTrainingCommand,
-    DatasetGenerationMode,
+    DiscardTrainingPreparationCommand,
     ErrorType,
-    GenerateDatasetCommand,
     QueryStateCommand,
+    SaveDatasetSplitCommand,
     StopTrainingCommand,
     TrainCommand,
 )
@@ -37,6 +38,14 @@ from XBrainLab.backend.application.resource_preflight import (
     ResourcePreflightContractError,
     ResourcePreflightView,
 )
+from XBrainLab.backend.application.training_recommendation import (
+    TrainingRecommendation,
+    TrainingRecommendationField,
+)
+from XBrainLab.backend.application.training_submission import (
+    attach_training_submission_provenance,
+)
+from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
     ApplicationUiRuntime,
@@ -76,10 +85,19 @@ _TRAINING_SETTING_SUGGESTION_KEYS = frozenset(
         "learning_rate",
         "repeat",
         "optimizer",
+        "evaluation_option",
+        "evaluation_strategy",
         "device",
     }
 )
 _PUBLICATION_UNSET = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _TrainingSettingSelection:
+    option: Any
+    device: str
+    edited_recommendation_fields: frozenset[TrainingRecommendationField]
 
 
 class TrainingSidebar(QWidget):
@@ -649,7 +667,7 @@ class TrainingSidebar(QWidget):
         """
         publication = self._application_publication()
         generate_capability = (
-            self._published_capability(publication, CommandName.GENERATE_DATASET)
+            self._published_capability(publication, CommandName.CONFIGURE_DATASET_SPLIT)
             if publication is not None
             else None
         )
@@ -688,36 +706,15 @@ class TrainingSidebar(QWidget):
         if not win.exec():
             return InteractionOutcome.cancelled("Data splitting was cancelled.")
 
-        replacement_required = self._requires_dataset_replacement_confirmation(
-            generate_capability,
-        )
-        if replacement_required:
-            reply = QMessageBox.question(
-                self,
-                "Reset Training Data",
-                "Applying new data splitting will clear existing datasets "
-                "and training history. Continue?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if reply != QMessageBox.StandardButton.Yes:
-                return InteractionOutcome.cancelled(
-                    "Data splitting was cancelled before replacing training data."
-                )
-
         split_config = win.get_result()
-        if not split_config:
-            return InteractionOutcome.accepted(
-                "The data splitting dialog was accepted without a saved change."
+        preview_receipt = win.get_preview_receipt()
+        if not split_config or preview_receipt is None:
+            return InteractionOutcome.blocked(
+                "The accepted data split no longer matches its preview."
             )
-        command = GenerateDatasetCommand(
+        command = SaveDatasetSplitCommand(
             split_config=dict(split_config),
-            replacement_mode=(
-                DatasetGenerationMode.REPLACE_EXISTING
-                if replacement_required
-                else DatasetGenerationMode.CREATE
-            ),
-            confirmed=replacement_required,
+            preview_receipt=preview_receipt,
         )
 
         def _handle_generate_result(result) -> InteractionOutcome:
@@ -750,12 +747,12 @@ class TrainingSidebar(QWidget):
             command,
             on_result=_handle_generate_result,
             on_error=_handle_generate_error,
-            busy_target=self.panel,
+            busy_target=self,
             expected_publication_generation=(
                 publication.generation if publication is not None else None
             ),
         ):
-            return InteractionOutcome.accepted("Dataset generation was scheduled.")
+            return InteractionOutcome.accepted("Data splitting settings will be saved.")
 
         if self._has_product_publication_context():
             QMessageBox.warning(
@@ -852,7 +849,9 @@ class TrainingSidebar(QWidget):
         capability_resolved: bool = False,
     ) -> bool:
         if not capability_resolved:
-            generate_capability = self._command_capability(CommandName.GENERATE_DATASET)
+            generate_capability = self._command_capability(
+                CommandName.CONFIGURE_DATASET_SPLIT
+            )
         if generate_capability is None or generate_capability.enabled:
             return False
 
@@ -929,23 +928,6 @@ class TrainingSidebar(QWidget):
             return None
         return binding
 
-    def _requires_dataset_replacement_confirmation(
-        self,
-        generate_capability=None,
-    ) -> bool:
-        """Read replacement intent from capability policy, never display text."""
-        if generate_capability is None:
-            generate_capability = self._command_capability(CommandName.GENERATE_DATASET)
-        if generate_capability is None:
-            available, should_clear = self._compatibility_controller_value(
-                lambda: self.controller.has_datasets() or self.controller.get_trainer(),
-            )
-            return bool(should_clear) if available else False
-        return bool(
-            generate_capability.enabled
-            and getattr(generate_capability, "requires_confirmation", False)
-        )
-
     def select_model(
         self,
         suggested_model: str | None = None,
@@ -1017,14 +999,36 @@ class TrainingSidebar(QWidget):
         model_holder = self._collect_model_selection(suggested_model)
         if isinstance(model_holder, InteractionOutcome):
             return model_holder
-        option = self._collect_training_option(initial_option)
-        if isinstance(option, InteractionOutcome):
-            return option
+        prospective_model = self._configure_training_command(
+            model_holder=model_holder,
+        )
+        recommendation = self._training_setting_recommendation(
+            expected_publication_generation=expected_generation,
+            prospective_model_name=prospective_model.model_name,
+            prospective_model_params=dict(prospective_model.model_params),
+        )
+        selection = self._collect_training_option(
+            initial_option,
+            recommendation=recommendation,
+            proposed_values=suggested_values,
+            device_recommendation_provider=lambda device: (
+                self._training_device_recommendation(
+                    device,
+                    expected_publication_generation=expected_generation,
+                    prospective_model_name=prospective_model.model_name,
+                    prospective_model_params=dict(prospective_model.model_params),
+                )
+            ),
+        )
+        if isinstance(selection, InteractionOutcome):
+            return selection
 
         return self._apply_training_configuration(
             self._configure_training_command(
                 model_holder=model_holder,
-                training_option=option,
+                training_option=selection.option,
+                device=selection.device,
+                edited_recommendation_fields=(selection.edited_recommendation_fields),
             ),
             blocked_title="Training Configuration Blocked",
             failed_title="Training Configuration Failed",
@@ -1082,11 +1086,28 @@ class TrainingSidebar(QWidget):
         )
         if isinstance(initial_option, InteractionOutcome):
             return initial_option
-        option = self._collect_training_option(initial_option)
-        if isinstance(option, InteractionOutcome):
-            return option
+        recommendation = self._training_setting_recommendation(
+            expected_publication_generation=expected_generation,
+        )
+        selection = self._collect_training_option(
+            initial_option,
+            recommendation=recommendation,
+            proposed_values=suggested_values,
+            device_recommendation_provider=lambda device: (
+                self._training_device_recommendation(
+                    device,
+                    expected_publication_generation=expected_generation,
+                )
+            ),
+        )
+        if isinstance(selection, InteractionOutcome):
+            return selection
         return self._apply_training_configuration(
-            self._configure_training_command(training_option=option),
+            self._configure_training_command(
+                training_option=selection.option,
+                device=selection.device,
+                edited_recommendation_fields=(selection.edited_recommendation_fields),
+            ),
             blocked_title="Training Settings Blocked",
             failed_title="Training Settings Failed",
             success_status="Training settings saved",
@@ -1123,11 +1144,20 @@ class TrainingSidebar(QWidget):
     def _collect_training_option(
         self,
         initial_option: dict[str, Any],
-    ) -> Any | InteractionOutcome:
+        *,
+        recommendation: TrainingRecommendation | None = None,
+        proposed_values: dict[str, str] | None = None,
+        device_recommendation_provider: (
+            Callable[[str], TrainingRecommendation | None] | None
+        ) = None,
+    ) -> _TrainingSettingSelection | InteractionOutcome:
         win = TrainingSettingDialog(
             self,
             self.controller,
             initial_option=initial_option,
+            recommendation=recommendation,
+            proposed_values=proposed_values,
+            device_recommendation_provider=(device_recommendation_provider),
         )
         if not win.exec():
             return InteractionOutcome.cancelled("Training settings were cancelled.")
@@ -1136,13 +1166,114 @@ class TrainingSidebar(QWidget):
             message = "No training settings were selected."
             QMessageBox.warning(self, "Training Settings", message)
             return InteractionOutcome.failed(message)
-        return option
+        device_getter = getattr(win, "get_device_value", None)
+        device = device_getter() if callable(device_getter) else None
+        if not isinstance(device, str) or not device.strip():
+            use_cpu = bool(getattr(option, "use_cpu", True))
+            gpu_idx = getattr(option, "gpu_idx", None)
+            device = "cpu" if use_cpu else f"cuda:{gpu_idx or 0}"
+
+        edited_getter = getattr(win, "get_edited_recommendation_fields", None)
+        raw_edited = edited_getter() if callable(edited_getter) else ()
+        if isinstance(raw_edited, (str, bytes)) or not isinstance(raw_edited, Iterable):
+            raw_edited = ()
+        try:
+            edited_fields = frozenset(
+                field
+                if isinstance(field, TrainingRecommendationField)
+                else TrainingRecommendationField(str(field))
+                for field in raw_edited
+            )
+        except (TypeError, ValueError):
+            edited_fields = frozenset()
+        return _TrainingSettingSelection(
+            option=option,
+            device=device,
+            edited_recommendation_fields=edited_fields,
+        )
+
+    def _training_setting_recommendation(
+        self,
+        *,
+        expected_publication_generation: int | None,
+        prospective_model_name: str | None = None,
+        prospective_model_params: dict[str, Any] | None = None,
+        prospective_device: str | None = None,
+    ) -> TrainingRecommendation | None:
+        """Query the backend starting point only at the dialog-open boundary."""
+        query_port = self._panel_port("_query_port")
+        if query_port is None:
+            return None
+        getter = getattr(query_port, "get_training_recommendation", None)
+        if not callable(getter):
+            return None
+        try:
+            query_args: dict[str, Any] = {
+                "expected_publication_generation": (expected_publication_generation),
+            }
+            if prospective_model_name is not None:
+                query_args.update(
+                    prospective_model_name=prospective_model_name,
+                    prospective_model_params=dict(prospective_model_params or {}),
+                )
+            if prospective_device is not None:
+                query_args["prospective_device"] = prospective_device
+            recommendation = getter(
+                **query_args,
+            )
+        except ApplicationError as exc:
+            logger.info("Training recommendation unavailable: %s", exc)
+            return None
+        if not isinstance(recommendation, TrainingRecommendation):
+            logger.info("Training recommendation returned an invalid contract.")
+            return None
+        return recommendation
+
+    def _training_device_recommendation(
+        self,
+        device: str,
+        *,
+        expected_publication_generation: int | None,
+        prospective_model_name: str | None = None,
+        prospective_model_params: dict[str, Any] | None = None,
+    ) -> TrainingRecommendation | None:
+        """Query backend-owned device-sensitive defaults for the active context."""
+        return self._training_setting_recommendation(
+            expected_publication_generation=expected_publication_generation,
+            prospective_model_name=prospective_model_name,
+            prospective_model_params=prospective_model_params,
+            prospective_device=device,
+        )
+
+    @staticmethod
+    def _positive_summary_count(
+        summary: Any,
+        key: str,
+        *,
+        allow_zero: bool = False,
+    ) -> int | None:
+        if not isinstance(summary, dict):
+            return None
+        value = summary.get(key)
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            parsed = int(cast(Any, value))
+        except (TypeError, ValueError):
+            return None
+        if parsed > 0 or (allow_zero and parsed == 0):
+            return parsed
+        return None
 
     @staticmethod
     def _configure_training_command(
         *,
         model_holder: Any | None = None,
         training_option: Any | None = None,
+        device: str | None = None,
+        edited_recommendation_fields: frozenset[
+            TrainingRecommendationField
+        ] = frozenset(),
     ) -> ConfigureTrainingCommand:
         fields: dict[str, Any] = {}
         if model_holder is not None:
@@ -1171,7 +1302,11 @@ class TrainingSidebar(QWidget):
                 batch_size=getattr(option, "bs", None),
                 learning_rate=getattr(option, "lr", None),
                 repeat=getattr(option, "repeat_num", 1),
-                device=("cpu" if use_cpu else f"cuda:{gpu_idx or 0}"),
+                device=(
+                    device
+                    if isinstance(device, str) and device.strip()
+                    else ("cpu" if use_cpu else f"cuda:{gpu_idx or 0}")
+                ),
                 optimizer=optimizer_name,
                 optimizer_params=dict(getattr(option, "optim_params", {}) or {}),
                 save_checkpoints_every=getattr(option, "checkpoint_epoch", 0),
@@ -1186,7 +1321,10 @@ class TrainingSidebar(QWidget):
                     None,
                 ),
             )
-        return ConfigureTrainingCommand(**fields)
+        return attach_training_submission_provenance(
+            ConfigureTrainingCommand(**fields),
+            edited_recommendation_fields,
+        )
 
     def _apply_training_configuration(
         self,
@@ -1375,7 +1513,7 @@ class TrainingSidebar(QWidget):
                 message_box=QMessageBox,
             )
 
-        self._show_status("Checking resources and preparing training...")
+        self._show_status("Preparing data split")
         if expected_publication_generation is None:
             started = self._execute_action_async(
                 command,
@@ -1464,7 +1602,28 @@ class TrainingSidebar(QWidget):
                     expected_publication_generation=(expected_publication_generation),
                 )
             else:
-                self._show_status("Training start cancelled")
+                discard = self._execute_action(
+                    DiscardTrainingPreparationCommand(
+                        resource_preflight_token=(
+                            preflight.challenge.challenge_id
+                            if preflight.challenge is not None
+                            else None
+                        ),
+                    ),
+                    **(
+                        {
+                            "expected_publication_generation": (
+                                expected_publication_generation
+                            )
+                        }
+                        if expected_publication_generation is not None
+                        else {}
+                    ),
+                )
+                if discard is not None and not discard.failed:
+                    self._show_status("Training start cancelled")
+                else:
+                    self._show_status("Training cancellation could not be verified")
             return
 
         if risk_level == RISK_BLOCKING and preflight is not None:

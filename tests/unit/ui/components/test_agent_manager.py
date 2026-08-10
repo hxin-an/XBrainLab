@@ -3346,7 +3346,7 @@ class TestAgentManagerMethods:
         agent_mgr._workflow_ui_handoff_host.open = MagicMock()
 
         agent_mgr.handle_workflow_ui_handoff(
-            {"tool_name": "create_epoch", "command": "generate_dataset"}
+            {"tool_name": "create_epoch", "command": "configure_dataset_split"}
         )
 
         agent_mgr._workflow_ui_handoff_host.open.assert_not_called()
@@ -3387,7 +3387,7 @@ class TestAgentManagerMethods:
         params = {
             "panel": "preprocess",
             "tool_name": "create_epoch",
-            "command": "generate_dataset",
+            "command": "configure_dataset_split",
         }
 
         agent_mgr.handle_panel_navigation(params)

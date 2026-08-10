@@ -38,10 +38,16 @@ from XBrainLab.backend.application.state import (
     TrainingStateSnapshot,
     VisualizationStateSnapshot,
 )
+from XBrainLab.backend.application.training_recommendation import (
+    TrainingRecommendationField,
+)
 from XBrainLab.backend.application.training_runtime import TrainingRuntimeContext
 from XBrainLab.backend.application.training_service import (
     HandlerResult,
     TrainingCommandService,
+)
+from XBrainLab.backend.application.training_submission import (
+    attach_training_submission_provenance,
 )
 from XBrainLab.backend.training import option as training_option_module
 from XBrainLab.backend.training_state_contract import (
@@ -325,6 +331,42 @@ def test_configure_training_command_has_no_unvalidated_option_object_path() -> N
     assert "training_option" not in {
         field.name for field in fields(ConfigureTrainingCommand)
     }
+
+
+def test_training_service_forwards_only_typed_edited_recommendation_fields() -> None:
+    training = _TrainingController()
+    recommendation = MagicMock()
+    service = TrainingCommandService(
+        training=training,
+        training_runtime=_TrainingRuntime(training),
+        get_state=_state,
+        recommendation=recommendation,
+    )
+
+    service.handle_configure_training(
+        attach_training_submission_provenance(
+            ConfigureTrainingCommand(
+                epoch=3,
+                batch_size=8,
+                learning_rate=0.001,
+            ),
+            frozenset(
+                {
+                    TrainingRecommendationField.BATCH_SIZE,
+                    TrainingRecommendationField.OPTIMIZER,
+                }
+            ),
+        )
+    )
+
+    recommendation.note_configuration_submitted.assert_called_once_with(
+        frozenset(
+            {
+                TrainingRecommendationField.BATCH_SIZE,
+                TrainingRecommendationField.OPTIMIZER,
+            }
+        )
+    )
 
 
 def test_training_service_maps_case_insensitive_model_without_facade() -> None:

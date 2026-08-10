@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import contextlib
 import csv
+import io
 import math
+import re
 from collections import Counter
 from collections.abc import Iterable
+from itertools import islice
 from numbers import Real
 from pathlib import Path
 from typing import Any
@@ -24,9 +27,35 @@ from .data_interpretation_event_values import (
     derive_class_views,
     review_event_values,
 )
+from .data_interpretation_public_projection import (
+    PUBLIC_BIDS_RECOMMENDATION_RUN_SAMPLE_LIMIT,
+)
 from .data_interpretation_resource_reader import AdmittedResourceReader
 
 NEEDS_CONFIRMATION = "needs_confirmation"
+BIDS_LABEL_RECOMMENDATION_ROW_LIMIT_PER_RUN = 2048
+BIDS_LABEL_RECOMMENDATION_TOTAL_ROW_LIMIT = 8192
+BIDS_LABEL_RECOMMENDATION_BYTE_LIMIT_PER_RUN = 1024 * 1024
+BIDS_LABEL_RECOMMENDATION_TOTAL_BYTE_LIMIT = 4 * 1024 * 1024
+BIDS_LABEL_RECOMMENDATION_MIN_REFINEMENT_ROW_COVERAGE = 1.0
+
+_GENERIC_BIDS_EVENT_ROLES = {
+    "event",
+    "events",
+    "feedback",
+    "fixation",
+    "instruction",
+    "instructions",
+    "response",
+    "responses",
+    "stimuli",
+    "stimulus",
+}
+_IDENTIFIER_DESCRIPTION_PATTERN = re.compile(
+    r"^(?:(?:stimulus|event|marker|trigger|condition|hardware)\s+)?"
+    r"(?:identifier|id|code)(?:\s+\d+)?$",
+    re.IGNORECASE,
+)
 
 
 def build_label_carrier_plan(
@@ -36,10 +65,30 @@ def build_label_carrier_plan(
     carrier_sources: dict[str, str] | None = None,
     sidecar_reader: BidsEventsJsonReader | None = None,
     resource_reader: AdmittedResourceReader | None = None,
+    recommend_bids_label_field: bool = False,
 ) -> list[dict[str, Any]]:
     """Build reviewable label-carrier rows for interpretation preview."""
     choices = normalize_label_carrier_choices(choices_payload)
     carrier_sources = dict(carrier_sources or {})
+    label_field_recommendation: dict[str, Any] = {}
+    if recommend_bids_label_field:
+        recommendation_guard = (
+            resource_reader.guard(
+                label_carriers,
+                purpose="BIDS label-field recommendation preview",
+            )
+            if resource_reader is not None
+            else contextlib.nullcontext()
+        )
+        with recommendation_guard:
+            label_field_recommendation = _bids_label_field_recommendation(
+                label_carriers,
+                choices,
+                sidecar_reader=sidecar_reader,
+            )
+    carrier_recommendation = _label_field_recommendation_summary(
+        label_field_recommendation
+    )
     rows: list[dict[str, Any]] = []
     for carrier in label_carriers:
         path = Path(carrier)
@@ -56,8 +105,19 @@ def build_label_carrier_plan(
                     raw_path=str(carrier),
                     source_location=carrier_sources.get(str(carrier), ""),
                     sidecar_reader=sidecar_reader,
+                    label_field_recommendation=carrier_recommendation,
                 )
             )
+    details = _label_field_recommendation_details(label_field_recommendation)
+    if details:
+        for row in rows:
+            recommendation = row.get("label_field_recommendation")
+            if (
+                isinstance(recommendation, dict)
+                and recommendation.get("source") == "bids_multi_run_evidence"
+            ):
+                row["label_field_recommendation_details"] = details
+                break
     return rows
 
 
@@ -140,6 +200,7 @@ def _label_carrier_plan_for_path(
     raw_path: str | None = None,
     source_location: str = "",
     sidecar_reader: BidsEventsJsonReader | None = None,
+    label_field_recommendation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     source_path = raw_path or str(path)
     carrier_choice = _choice_for_label_carrier(path, choices, source_path)
@@ -152,8 +213,17 @@ def _label_carrier_plan_for_path(
         label_candidates,
     )
     duration_candidates = _duration_candidates_for_carrier(path)
+    recommendation = dict(label_field_recommendation or {})
+    explicit_label = str(carrier_choice.get("label_field") or "").strip()
+    if explicit_label:
+        recommendation = _explicit_label_field_recommendation(explicit_label)
+    recommended_label = str(recommendation.get("field") or "").strip()
     selected_label = carrier_choice.get("label_field") or (
-        label_candidates[0] if label_candidates else ""
+        recommended_label
+        if recommended_label in label_candidates
+        else label_candidates[0]
+        if label_candidates
+        else ""
     )
     time_model = carrier_choice.get("time_model") or _default_time_model(
         path, anchor_candidates
@@ -197,6 +267,7 @@ def _label_carrier_plan_for_path(
         if _is_bids_events_file(path)
         else {}
     )
+    selected_label_field_levels_available = bool(level_suggestions)
     value_review = review_event_values(
         value_counts=label_stats["value_counts"],
         selected_field=selected_label,
@@ -222,12 +293,18 @@ def _label_carrier_plan_for_path(
         limit=3,
     )
     bids_event_columns = _bids_event_columns(path)
+    events_json_sidecar_present = bool(
+        _existing_bids_events_json_candidates(path, sidecar_reader=sidecar_reader)
+    )
     warnings = _label_carrier_warnings(
         path,
         bids_event_columns=bids_event_columns,
         time_field_candidates=time_field_candidates,
         duration_candidates=duration_candidates,
         sidecar_reader=sidecar_reader,
+        events_json_sidecar_present=events_json_sidecar_present,
+        selected_label_field=selected_label,
+        selected_label_field_levels_available=(selected_label_field_levels_available),
     )
     warnings.extend(value_review.warnings)
     plan = {
@@ -258,6 +335,10 @@ def _label_carrier_plan_for_path(
         "event_code_label_counts": event_code_label_counts,
         "time_label_preview": time_label_preview,
         "bids_event_columns": bids_event_columns,
+        "events_json_sidecar_present": events_json_sidecar_present,
+        "selected_label_field_levels_available": (
+            selected_label_field_levels_available
+        ),
         "warnings": warnings,
         "time_model": time_model,
         "sample_index_base": sample_index_base,
@@ -270,6 +351,8 @@ def _label_carrier_plan_for_path(
         "decision": NEEDS_CONFIRMATION,
         "reason": _label_carrier_reason(path, label_candidates, anchor_candidates),
     }
+    if recommendation and _is_bids_events_file(path):
+        plan["label_field_recommendation"] = recommendation
     if run_class_map:
         plan["run_class_map"] = run_class_map
     return plan
@@ -286,6 +369,477 @@ def _choice_for_label_carrier(
             path.as_posix(), choices.get(str(path), choices.get(path.name, {}))
         ),
     )
+
+
+def _bids_label_field_recommendation(
+    label_carriers: list[str],
+    choices: dict[str, dict[str, Any]],
+    *,
+    sidecar_reader: BidsEventsJsonReader | None,
+) -> dict[str, Any]:
+    paths = [Path(carrier) for carrier in label_carriers]
+    paths = [path for path in paths if _is_bids_events_file(path)]
+    if not paths:
+        return {}
+
+    automatic_paths = [
+        path
+        for path in paths
+        if not str(
+            _choice_for_label_carrier(path, choices, str(path)).get("label_field") or ""
+        ).strip()
+    ]
+    if not automatic_paths:
+        return {}
+
+    reader = sidecar_reader or BidsEventsJsonReader.from_paths(
+        bids_events_json_resource_paths(str(path) for path in automatic_paths),
+    )
+    row_limit = min(
+        BIDS_LABEL_RECOMMENDATION_ROW_LIMIT_PER_RUN,
+        BIDS_LABEL_RECOMMENDATION_TOTAL_ROW_LIMIT // len(automatic_paths),
+    )
+    byte_limit = min(
+        BIDS_LABEL_RECOMMENDATION_BYTE_LIMIT_PER_RUN,
+        BIDS_LABEL_RECOMMENDATION_TOTAL_BYTE_LIMIT // len(automatic_paths),
+    )
+    profiles = [
+        _bids_label_field_profile(
+            path,
+            sidecar_reader=reader,
+            row_limit=row_limit,
+            byte_limit=byte_limit,
+        )
+        for path in automatic_paths
+    ]
+    evidence = _aggregate_bids_label_field_evidence(profiles)
+    if evidence["row_truncated_run_count"] or evidence["byte_truncated_run_count"]:
+        return {}
+    trial_column_coverage = evidence["field_column_run_coverage"]["trial_type"]
+    value_column_coverage = evidence["field_column_run_coverage"]["value"]
+    trial_row_coverage = evidence["nonempty_row_coverage"]["trial_type"]
+    value_row_coverage = evidence["nonempty_row_coverage"]["value"]
+    value_is_strong_refinement = bool(
+        evidence["value_refines_trial_type"]
+        and evidence["nonempty_run_coverage"]["value"] == 1.0
+        and value_row_coverage >= BIDS_LABEL_RECOMMENDATION_MIN_REFINEMENT_ROW_COVERAGE
+        and value_row_coverage >= trial_row_coverage
+        and evidence["multi_value_run_coverage"]["value"] == 1.0
+        and evidence["generic_trial_role_run_coverage"] == 1.0
+        and evidence["meaningful_value_refinement_run_coverage"] == 1.0
+        and evidence["sidecar_level_run_coverage"]["trial_type"] == 1.0
+        and evidence["sidecar_level_run_coverage"]["value"] == 1.0
+        and evidence["sidecar_level_cross_run_consistency"]["value"] == 1.0
+        and evidence["sidecar_observed_value_run_coverage"]["value"] == 1.0
+    )
+    if value_is_strong_refinement:
+        return {
+            "field": "value",
+            "source": "bids_multi_run_evidence",
+            "reason_code": "value_has_described_classes",
+            "facts": _label_field_recommendation_facts(evidence),
+            "evidence": evidence,
+        }
+
+    if (
+        trial_column_coverage > 0
+        and value_column_coverage > 0
+        and trial_row_coverage >= BIDS_LABEL_RECOMMENDATION_MIN_REFINEMENT_ROW_COVERAGE
+        and value_row_coverage < trial_row_coverage
+    ):
+        return {
+            "field": "trial_type",
+            "source": "bids_multi_run_evidence",
+            "reason_code": "trial_type_has_more_complete_rows",
+            "facts": _label_field_recommendation_facts(evidence),
+            "evidence": evidence,
+        }
+
+    if (
+        trial_column_coverage > 0
+        and evidence["nonempty_run_coverage"]["trial_type"] == 1.0
+        and evidence["generic_trial_role_run_coverage"] < 1.0
+    ):
+        if evidence["numeric_only"]["value"] and value_column_coverage > 0:
+            reason_code = "trial_type_over_numeric_value"
+        elif evidence["generic_trial_role_run_coverage"] < 1.0:
+            reason_code = "trial_type_has_task_labels"
+        else:
+            reason_code = "trial_type_is_consistent"
+        return {
+            "field": "trial_type",
+            "source": "bids_multi_run_evidence",
+            "reason_code": reason_code,
+            "facts": _label_field_recommendation_facts(evidence),
+            "evidence": evidence,
+        }
+
+    if (
+        value_column_coverage > 0
+        and evidence["nonempty_run_coverage"]["value"] == 1.0
+        and (
+            trial_column_coverage == 0
+            or evidence["nonempty_run_coverage"]["trial_type"] < 1.0
+        )
+    ):
+        return {
+            "field": "value",
+            "source": "bids_multi_run_evidence",
+            "reason_code": "value_is_only_supported_field",
+            "facts": _label_field_recommendation_facts(evidence),
+            "evidence": evidence,
+        }
+    return {}
+
+
+def _explicit_label_field_recommendation(field: str) -> dict[str, Any]:
+    return {
+        "field": str(field).strip(),
+        "source": "explicit_selection",
+        "reason_code": "explicit_selection",
+        "facts": {},
+    }
+
+
+def _label_field_recommendation_summary(
+    recommendation: dict[str, Any],
+) -> dict[str, Any]:
+    if not recommendation:
+        return {}
+    source = str(recommendation.get("source") or "").strip()
+    reason_code = str(recommendation.get("reason_code") or "").strip()
+    if not reason_code:
+        reason_code = (
+            "explicit_selection"
+            if source == "explicit_selection"
+            else "bids_label_field_recommendation"
+        )
+    facts = recommendation.get("facts")
+    return {
+        "field": str(recommendation.get("field") or "").strip(),
+        "source": source,
+        "reason_code": reason_code,
+        "facts": dict(facts) if isinstance(facts, dict) else {},
+    }
+
+
+def _label_field_recommendation_details(
+    recommendation: dict[str, Any],
+) -> dict[str, Any]:
+    evidence = recommendation.get("evidence")
+    if not isinstance(evidence, dict) or not evidence:
+        return {}
+    summary = _label_field_recommendation_summary(recommendation)
+    return {
+        "reason_code": summary["reason_code"],
+        "facts": summary["facts"],
+        "evidence": dict(evidence),
+    }
+
+
+def _label_field_recommendation_facts(
+    evidence: dict[str, Any],
+) -> dict[str, Any]:
+    coverage = evidence.get("nonempty_row_coverage")
+    row_coverage = coverage if isinstance(coverage, dict) else {}
+    return {
+        "selected_run_count": int(evidence.get("selected_run_count") or 0),
+        "total_sampled_row_count": int(evidence.get("total_sampled_row_count") or 0),
+        "row_sample_limit_per_run": int(evidence.get("row_sample_limit_per_run") or 0),
+        "total_row_sample_limit": int(evidence.get("total_row_sample_limit") or 0),
+        "nonempty_row_coverage": {
+            "trial_type": float(row_coverage.get("trial_type") or 0.0),
+            "value": float(row_coverage.get("value") or 0.0),
+        },
+        "minimum_refinement_row_coverage": (
+            BIDS_LABEL_RECOMMENDATION_MIN_REFINEMENT_ROW_COVERAGE
+        ),
+    }
+
+
+def _bids_label_field_profile(
+    path: Path,
+    *,
+    sidecar_reader: BidsEventsJsonReader,
+    row_limit: int = BIDS_LABEL_RECOMMENDATION_ROW_LIMIT_PER_RUN,
+    byte_limit: int = BIDS_LABEL_RECOMMENDATION_BYTE_LIMIT_PER_RUN,
+) -> dict[str, Any]:
+    counts = {"trial_type": Counter(), "value": Counter()}
+    pairings: dict[str, set[str]] = {}
+    sampled_row_count = 0
+    sampled_byte_count = 0
+    byte_truncated = False
+    row_truncated = False
+    try:
+        text, sampled_byte_count, byte_truncated = _bounded_tsv_text(
+            path,
+            byte_limit=max(int(byte_limit), 0),
+        )
+        with io.StringIO(text, newline="") as handle:
+            reader = csv.DictReader(handle, delimiter="\t")
+            columns = {str(column).strip() for column in reader.fieldnames or []}
+            for row in islice(
+                reader,
+                max(int(row_limit), 0),
+            ):
+                sampled_row_count += 1
+                trial_type = _clean_label_value(row.get("trial_type"))
+                value = _clean_label_value(row.get("value"))
+                if trial_type:
+                    counts["trial_type"][trial_type] += 1
+                if value:
+                    counts["value"][value] += 1
+                if trial_type and value:
+                    pairings.setdefault(trial_type, set()).add(value)
+            row_truncated = next(reader, None) is not None
+    except (OSError, UnicodeDecodeError, csv.Error):
+        columns = set()
+    return {
+        "columns": columns,
+        "sampled_row_count": sampled_row_count,
+        "row_sample_limit": max(int(row_limit), 0),
+        "sampled_byte_count": sampled_byte_count,
+        "byte_sample_limit": max(int(byte_limit), 0),
+        "byte_truncated": byte_truncated,
+        "row_truncated": row_truncated,
+        "counts": counts,
+        "pairings": pairings,
+        "levels": {
+            field: _bids_event_level_labels(
+                path,
+                field,
+                sidecar_reader=sidecar_reader,
+            )
+            for field in ("trial_type", "value")
+        },
+    }
+
+
+def _aggregate_bids_label_field_evidence(
+    profiles: list[dict[str, Any]],
+) -> dict[str, Any]:
+    fields = ("trial_type", "value")
+    run_count = len(profiles)
+    nonempty_run_coverage: dict[str, float] = {}
+    nonempty_row_coverage: dict[str, float] = {}
+    categorical_run_coverage: dict[str, float] = {}
+    multi_value_run_coverage: dict[str, float] = {}
+    cross_run_consistency: dict[str, float] = {}
+    sidecar_level_run_coverage: dict[str, float] = {}
+    numeric_only: dict[str, bool] = {}
+    field_column_run_coverage: dict[str, float] = {}
+    sidecar_level_cross_run_consistency: dict[str, float] = {}
+    sidecar_observed_value_run_coverage: dict[str, float] = {}
+
+    for field in fields:
+        field_counts = [profile["counts"][field] for profile in profiles]
+        populated = [counts for counts in field_counts if counts]
+        field_column_run_coverage[field] = _ratio(
+            sum(field in profile["columns"] for profile in profiles),
+            run_count,
+        )
+        nonempty_run_coverage[field] = _ratio(len(populated), run_count)
+        sampled_rows = sum(int(profile["sampled_row_count"]) for profile in profiles)
+        nonempty_rows = sum(sum(counts.values()) for counts in field_counts)
+        nonempty_row_coverage[field] = _ratio(nonempty_rows, sampled_rows)
+        categorical_run_coverage[field] = _ratio(
+            sum(_is_repeated_categorical(counts) for counts in field_counts),
+            run_count,
+        )
+        multi_value_run_coverage[field] = _ratio(
+            sum(len(counts) >= 2 for counts in field_counts),
+            run_count,
+        )
+        cross_run_consistency[field] = _cross_run_category_consistency(populated)
+        sidecar_level_run_coverage[field] = _ratio(
+            sum(bool(profile["levels"][field]) for profile in profiles),
+            run_count,
+        )
+        sidecar_level_cross_run_consistency[field] = _cross_run_set_consistency(
+            [
+                set(profile["levels"][field])
+                for profile in profiles
+                if profile["levels"][field]
+            ]
+        )
+        sidecar_observed_value_run_coverage[field] = _ratio(
+            sum(_sidecar_levels_cover_observed(profile, field) for profile in profiles),
+            run_count,
+        )
+        observed_values = [value for counts in populated for value in counts]
+        numeric_only[field] = bool(observed_values) and all(
+            _numeric_value(value) is not None for value in observed_values
+        )
+
+    generic_trial_role_run_coverage = _ratio(
+        sum(
+            _is_generic_event_role_taxonomy(profile["levels"]["trial_type"])
+            for profile in profiles
+        ),
+        run_count,
+    )
+    meaningful_value_refinement_run_coverage = _ratio(
+        sum(
+            _has_meaningful_value_refinement(
+                profile["levels"]["trial_type"],
+                profile["levels"]["value"],
+            )
+            for profile in profiles
+        ),
+        run_count,
+    )
+    value_refines_trial_type = bool(
+        generic_trial_role_run_coverage == 1.0
+        and meaningful_value_refinement_run_coverage == 1.0
+    )
+    sampled_row_counts = [int(profile["sampled_row_count"]) for profile in profiles]
+    sampled_byte_counts = [int(profile["sampled_byte_count"]) for profile in profiles]
+    sampled_row_count_sample = sampled_row_counts[
+        :PUBLIC_BIDS_RECOMMENDATION_RUN_SAMPLE_LIMIT
+    ]
+    return {
+        "selected_run_count": run_count,
+        "row_sample_limit_per_run": max(
+            (int(profile["row_sample_limit"]) for profile in profiles),
+            default=0,
+        ),
+        "total_row_sample_limit": BIDS_LABEL_RECOMMENDATION_TOTAL_ROW_LIMIT,
+        "byte_sample_limit_per_run": max(
+            (int(profile["byte_sample_limit"]) for profile in profiles),
+            default=0,
+        ),
+        "total_byte_sample_limit": BIDS_LABEL_RECOMMENDATION_TOTAL_BYTE_LIMIT,
+        "total_sampled_byte_count": sum(sampled_byte_counts),
+        "byte_truncated_run_count": sum(
+            bool(profile["byte_truncated"]) for profile in profiles
+        ),
+        "row_truncated_run_count": sum(
+            bool(profile["row_truncated"]) for profile in profiles
+        ),
+        "sampled_row_counts": sampled_row_count_sample,
+        "sampled_row_counts_sample_limit": (
+            PUBLIC_BIDS_RECOMMENDATION_RUN_SAMPLE_LIMIT
+        ),
+        "sampled_row_counts_total": len(sampled_row_counts),
+        "sampled_row_counts_truncated": (
+            len(sampled_row_counts) - len(sampled_row_count_sample)
+        ),
+        "total_sampled_row_count": sum(sampled_row_counts),
+        "nonempty_run_coverage": nonempty_run_coverage,
+        "nonempty_row_coverage": nonempty_row_coverage,
+        "field_column_run_coverage": field_column_run_coverage,
+        "categorical_run_coverage": categorical_run_coverage,
+        "multi_value_run_coverage": multi_value_run_coverage,
+        "cross_run_consistency": cross_run_consistency,
+        "sidecar_level_run_coverage": sidecar_level_run_coverage,
+        "sidecar_level_cross_run_consistency": (sidecar_level_cross_run_consistency),
+        "sidecar_observed_value_run_coverage": (sidecar_observed_value_run_coverage),
+        "numeric_only": numeric_only,
+        "generic_trial_role_run_coverage": generic_trial_role_run_coverage,
+        "meaningful_value_refinement_run_coverage": (
+            meaningful_value_refinement_run_coverage
+        ),
+        "value_refines_trial_type": value_refines_trial_type,
+    }
+
+
+def _is_generic_event_role_taxonomy(levels: dict[str, str]) -> bool:
+    if not levels:
+        return False
+    normalized = {
+        re.sub(r"[\s_-]+", " ", str(value).strip().casefold()) for value in levels
+    }
+    return normalized <= _GENERIC_BIDS_EVENT_ROLES
+
+
+def _has_meaningful_value_refinement(
+    trial_levels: dict[str, str],
+    value_levels: dict[str, str],
+) -> bool:
+    if not _is_generic_event_role_taxonomy(trial_levels):
+        return False
+    if len(value_levels) <= len(trial_levels):
+        return False
+    meaningful_count = sum(
+        _is_meaningful_class_level(code, description)
+        for code, description in value_levels.items()
+    )
+    return meaningful_count >= 2 and meaningful_count / len(value_levels) >= 0.75
+
+
+def _is_meaningful_class_level(code: str, description: str) -> bool:
+    code_text = str(code).strip()
+    description_text = str(description).strip()
+    if not code_text or not description_text:
+        return False
+    normalized_code = re.sub(r"[\s_-]+", " ", code_text.casefold())
+    normalized_description = re.sub(r"[\s_-]+", " ", description_text.casefold())
+    if normalized_description == normalized_code:
+        return False
+    if normalized_description in _GENERIC_BIDS_EVENT_ROLES:
+        return False
+    if _IDENTIFIER_DESCRIPTION_PATTERN.fullmatch(normalized_description):
+        return False
+    return any(character.isalpha() for character in description_text)
+
+
+def _sidecar_levels_cover_observed(
+    profile: dict[str, Any],
+    field: str,
+) -> bool:
+    observed = {str(value).strip() for value in profile["counts"][field]}
+    levels = {str(value).strip() for value in profile["levels"][field]}
+    return bool(observed and levels and observed <= levels)
+
+
+def _bounded_tsv_text(path: Path, *, byte_limit: int) -> tuple[str, int, bool]:
+    """Read complete TSV lines within a fixed byte budget."""
+    if byte_limit <= 0:
+        return "", 0, True
+    with path.open("rb") as handle:
+        payload = handle.read(byte_limit + 1)
+    truncated = len(payload) > byte_limit
+    payload = payload[:byte_limit]
+    if truncated:
+        line_end = max(payload.rfind(b"\n"), payload.rfind(b"\r"))
+        payload = payload[: line_end + 1] if line_end >= 0 else b""
+    return payload.decode("utf-8-sig"), len(payload), truncated
+
+
+def _cross_run_set_consistency(sets: list[set[str]]) -> float:
+    if not sets:
+        return 0.0
+    if len(sets) == 1:
+        return 1.0
+    union = set().union(*sets)
+    return _ratio(len(set.intersection(*sets)), len(union))
+
+
+def _is_repeated_categorical(counts: Counter[str]) -> bool:
+    nonempty_count = sum(counts.values())
+    cardinality = len(counts)
+    if nonempty_count < 2 or cardinality < 2:
+        return False
+    reasonable_cardinality = cardinality <= min(
+        32,
+        max(4, int(math.sqrt(nonempty_count)) * 4),
+    )
+    repeated_count = sum(count for count in counts.values() if count > 1)
+    return reasonable_cardinality and repeated_count / nonempty_count >= 0.5
+
+
+def _cross_run_category_consistency(counts_by_run: list[Counter[str]]) -> float:
+    if not counts_by_run:
+        return 0.0
+    if len(counts_by_run) == 1:
+        return 1.0
+    sets = [set(counts) for counts in counts_by_run]
+    union = set().union(*sets)
+    return _ratio(len(set.intersection(*sets)), len(union))
+
+
+def _ratio(numerator: int, denominator: int) -> float:
+    return round(numerator / denominator, 4) if denominator else 0.0
 
 
 def _label_carrier_format(path: Path) -> str:
@@ -1149,14 +1703,32 @@ def _label_carrier_warnings(
     time_field_candidates: list[str],
     duration_candidates: list[str],
     sidecar_reader: BidsEventsJsonReader | None = None,
+    events_json_sidecar_present: bool | None = None,
+    selected_label_field: str = "",
+    selected_label_field_levels_available: bool | None = None,
 ) -> list[str]:
     if not _is_bids_events_file(path):
         return []
     warnings: list[str] = []
-    if not _existing_bids_events_json_candidates(path, sidecar_reader=sidecar_reader):
+    sidecar_present = (
+        bool(events_json_sidecar_present)
+        if events_json_sidecar_present is not None
+        else bool(
+            _existing_bids_events_json_candidates(
+                path,
+                sidecar_reader=sidecar_reader,
+            )
+        )
+    )
+    if not sidecar_present:
         warnings.append(
             f"{path.name} events.json sidecar is missing; class names and event "
             "semantics need confirmation."
+        )
+    elif selected_label_field and selected_label_field_levels_available is False:
+        warnings.append(
+            f"{path.name} events.json does not define Levels for "
+            f"{selected_label_field}; class names need confirmation."
         )
     normalized_columns = {column.lower() for column in bids_event_columns}
     if "onset" not in normalized_columns and not time_field_candidates:

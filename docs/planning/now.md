@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-08-10`
+最後更新：`2026-08-11`
 
 這頁只保存 active delivery context、近期施工順序和 exit condition。舊
 [Product Quality Audit](../records/product_quality_audit_2026-07-30.md) 保留為此次 main checkpoint
@@ -33,6 +33,32 @@ product scenarios gate 依使用者指示延後，不能被記為通過，也不
 `git worktree list --porcelain`；其他 worktree 不得被誤認成 active candidate，也不得覆寫其
 owner 的 dirty changes。
 
+## Data / Training 目前交付邊界
+
+本輪 BIDS label-field recommendation 必須來自 selected runs 的 bounded evidence：欄位存在與非空
+coverage、觀察值、sidecar `Levels` 和跨 run consistency；若任一 selected table 的 row / byte
+inspection 被截斷，或 evidence 不足，就不自動推薦，使用者明確選擇仍優先。Epoch context 只接受 reviewed import handoff 與對應 recording hints；handoff
+缺少、格式錯誤、讀取失敗、source / placement 不一致，或 selected recordings 的 sampling frequency
+不一致時 fail closed 且不改變既有資料。將所有 recordings resample 到同一 sampling frequency 後，
+`Create Epoch` readiness 會恢復。Duration / event-locked
+mode 也必須從這份 reviewed handoff 綁定的 placement / duration evidence 產生，不能由 UI fallback
+猜測。
+
+Data Splitting preview 會暫時建立 candidate datasets / masks 以計算摘要，然後恢復原狀。Confirm
+先驗證 preview receipt，再只保存 lightweight typed specification、epoch revision、fingerprint 與
+bounded preview summary，不發布 masks 或 training tensors。`Start Training` 才 authoritative
+rematerialize datasets、執行 leakage / coverage audit、發布結果並進入 resource preflight；失敗時保留
+既有 dataset / trainer / training state，不得因確認新設定先做 destructive cleanup。
+
+本輪 Training 只實作當前已選模型的 deterministic recommended defaults，不實作計時
+hyperparameter search、trial orchestration 或自動模型選擇。推薦值更新必須逐欄位處理：只更新未被
+使用者編輯的欄位，並以 trusted host provenance 保留每一個已被使用者修改的值，不得因重新計算
+recommendations 而整組覆寫。Recommendation 是保守 starting point；`Start Training` 的 resource
+preflight 仍是最後 authority。
+
+未來的計時搜尋必須依 [Roadmap](roadmap.md) 的 deferred contract 獨立交付；它不是本輪
+candidate 的完成條件，也不可由現有 recommended-defaults UI 暗示為已有功能。
+
 ## 施工順序
 
 | 順序 | 工作 | Exit signal |
@@ -52,7 +78,7 @@ owner 的 dirty changes。
 
 | Workstream | Required outcome | Exit signal | Status |
 | --- | --- | --- | --- |
-| Assistant confirmation contract | `reset_preprocess`、`generate_dataset` 與影響 training 的 setting change 都使用正確 typed confirmation evidence；不得來自一般 approval 字串。 | capability/confirmation/revision/fingerprint focused tests 與 negative stale-evidence tests 通過。 | Local candidate validated; exact-head CI pending |
+| Assistant confirmation contract | `reset_preprocess`、`configure_dataset_split` 與影響 training 的 setting change 都使用正確 typed confirmation evidence；不得來自一般 approval 字串。 | capability/confirmation/revision/fingerprint focused tests 與 negative stale-evidence tests 通過。 | Local candidate validated; exact-head CI pending |
 | Assistant decision state | GUI navigation handoff 與真正參數/危險操作 confirmation 使用 typed decision owner，不再靠未分類的 waiting presentation 猜測。 | UI presentation 能區分 navigate、confirm、blocked、error、retry，且 correlation 沒有混用。 | Local candidate validated; exact-head CI pending |
 | Granite 2B tool surface | 每回合只暴露當前 intent 需要的 canonical schema，避免 `set_model` / `configure_training` 或多個 generic preprocess tool 競爭。 | representative prompts 的 schema exposure 與 selected-tool oracle 通過，且 blocked tool 無法執行。 | In progress |
 | Assistant failure/retry UX | tool runtime failure 不再全部假裝成 BLOCKED；narrow panel 仍有 correlated retry / cancel 途徑。 | error、blocked、cancel、retry screenshots 與 state-transition tests 通過。 | In progress |
@@ -124,4 +150,5 @@ aggregation 在同一 exact head 的 GitHub Actions 完成；本機 runner tests
 - 不做 MCP hardening、MCP client certification 或 MCP thesis evidence；除非使用者明確要求。
 - 不在產品 closure 完成前 freeze thesis benchmark 或宣稱 raw-model accuracy。
 - 不把 automated dashboard、offscreen screenshots 或 launcher smoke 當成人工 acceptance。
+- 不實作 Training timed hyperparameter search；本輪只交付可保留使用者逐欄位編輯的 deterministic recommended defaults。
 - 不新增 planning 文件；新 current truth 回寫既有 canonical pages。

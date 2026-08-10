@@ -216,6 +216,18 @@ class _TrainingStartAdmission:
     complete: Event = field(default_factory=Event)
 
 
+@dataclass(frozen=True, slots=True)
+class TrainingStartupRollbackSnapshot:
+    """Quiescent trainer and saliency truth retained across deferred startup."""
+
+    trainer: object | None
+    trainer_startup_snapshot: object | None
+    saliency_status: PostTrainingSaliencyStatus
+    saliency_request_sequence: int
+    saliency_cancellation_epoch: int
+    saliency_job_sequence: int
+
+
 class _PostTrainingSaliencyTerminalBoundary:
     """Defer typed terminal statuses until the outer command scope exits."""
 
@@ -2067,6 +2079,88 @@ class TrainingManager:
         """Capture all training truth that a pipeline commit must preserve."""
         with self._training_pipeline_lock, self._saliency_job_lock:
             return self._capture_pipeline_mutation_boundary_locked()
+
+    def capture_startup_rollback_snapshot(self) -> TrainingStartupRollbackSnapshot:
+        """Retain one quiescent trainer, its results, and saliency lifecycle."""
+        with self._training_pipeline_lock, self._saliency_job_lock:
+            boundary = self._capture_pipeline_mutation_boundary_locked()
+            trainer = self.trainer
+            if (
+                not boundary.read_boundary.stable
+                or boundary.saliency_work_active
+                or boundary.training_work_active
+                or (trainer is not None and not boundary.terminal_outcome.is_quiescent)
+            ):
+                raise StaleTrainingPipelineMutationError
+            trainer_snapshot = None
+            if trainer is not None:
+                capture = getattr(trainer, "capture_startup_snapshot", None)
+                if not callable(capture):
+                    raise RuntimeError(
+                        "Trainer does not support startup rollback snapshots"
+                    )
+                # The trainer snapshot retains holder and evaluation-record
+                # identities, including completed saliency results.
+                trainer_snapshot = capture()
+            return TrainingStartupRollbackSnapshot(
+                trainer=trainer,
+                trainer_startup_snapshot=trainer_snapshot,
+                saliency_status=boundary.saliency_status,
+                saliency_request_sequence=self._saliency_request_sequence,
+                saliency_cancellation_epoch=self._saliency_cancellation_epoch,
+                saliency_job_sequence=self._saliency_job_sequence,
+            )
+
+    def restore_startup_rollback_snapshot(
+        self,
+        snapshot: TrainingStartupRollbackSnapshot,
+    ) -> None:
+        """Clean failed startup state before atomically restoring prior truth."""
+        if not isinstance(snapshot, TrainingStartupRollbackSnapshot):
+            raise TypeError("snapshot must be a TrainingStartupRollbackSnapshot")
+        with self._training_pipeline_lock, self._saliency_job_lock:
+            self._require_training_operation_idle_locked()
+            if self._has_active_saliency_work_locked():
+                raise StaleTrainingPipelineMutationError
+            current = self.trainer
+            lease = self._begin_training_operation_locked(
+                kind="restore_failed_training_start",
+                trainer=current,
+            )
+
+        try:
+            if current is not None:
+                clean = getattr(current, "clean", None)
+                if not callable(clean):
+                    raise RuntimeError(
+                        "Failed startup trainer does not support cleanup"
+                    )
+                clean(force_update=True)
+
+            trainer = snapshot.trainer
+            if trainer is not None and snapshot.trainer_startup_snapshot is not None:
+                restore = getattr(trainer, "restore_startup_snapshot", None)
+                if not callable(restore):
+                    raise RuntimeError(
+                        "Trainer does not support startup rollback snapshots"
+                    )
+                restore(snapshot.trainer_startup_snapshot)
+
+            with self._training_pipeline_lock, self._saliency_job_lock:
+                if (
+                    not self._training_operation_is_current_locked(lease)
+                    or self.trainer is not current
+                    or self._has_active_saliency_work_locked()
+                ):
+                    raise StaleTrainingPipelineMutationError
+                self.trainer = cast(Any, trainer)
+                self._saliency_request_sequence = snapshot.saliency_request_sequence
+                self._saliency_cancellation_epoch = snapshot.saliency_cancellation_epoch
+                self._saliency_job_sequence = snapshot.saliency_job_sequence
+                self._post_training_saliency_status = snapshot.saliency_status
+        finally:
+            with self._training_pipeline_lock:
+                self._finish_training_operation_locked(lease)
 
     def _capture_pipeline_mutation_boundary_locked(
         self,

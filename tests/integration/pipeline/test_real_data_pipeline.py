@@ -5,16 +5,19 @@ import pytest
 
 from XBrainLab.backend.application import (
     ApplicationService,
+    ApplyInterpretationCommand,
     CommandName,
     ConfigureTrainingCommand,
     CreateEpochCommand,
     EvaluateCommand,
-    GenerateDatasetCommand,
-    LoadDataCommand,
     PreprocessCommand,
     PreprocessOperation,
+    PreviewInterpretationCommand,
     QueryStateCommand,
+    SaveDatasetSplitCommand,
+    ScanSourceCommand,
     TrainCommand,
+    ValidateInterpretationCommand,
 )
 from XBrainLab.backend.training.record import RecordKey
 
@@ -32,10 +35,15 @@ EXPECTED_A01T_CLASS_EVENT_IDS = {
 }
 EXPECTED_A01T_SPLIT_SUMMARY = {
     "count": 1,
-    "train_count": 185,
-    "val_count": 46,
-    "test_count": 57,
-    "audit": {"ok": True, "dataset_count": 1, "issues": []},
+    "train_count": 176,
+    "val_count": 43,
+    "test_count": 54,
+    "audit": {
+        "ok": True,
+        "dataset_count": 1,
+        "issues": [],
+        "truncated_issue_count": 0,
+    },
 }
 
 
@@ -51,7 +59,34 @@ def test_real_data_pipeline(tmp_path):
     """
     service = ApplicationService()
 
-    load_result = service.execute(LoadDataCommand(paths=[GDF_FILE]))
+    scan_result = service.execute(
+        ScanSourceCommand(source_path=GDF_FILE, source_hint="file")
+    )
+    preview_result = service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [GDF_FILE],
+                "label_carrier": "embedded_events",
+                "class_map": {
+                    event_name: event_name
+                    for event_name in EXPECTED_A01T_CLASS_EVENT_NAMES
+                },
+                "internal_event_selection": {
+                    "label_event_codes": EXPECTED_A01T_CLASS_EVENT_NAMES,
+                    "class_map": {
+                        event_name: event_name
+                        for event_name in EXPECTED_A01T_CLASS_EVENT_NAMES
+                    },
+                },
+            }
+        )
+    )
+    validation_result = service.execute(ValidateInterpretationCommand())
+    load_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert scan_result.ok is True
+    assert preview_result.ok is True
+    assert validation_result.ok is True
     assert load_result.ok is True
     assert load_result.state.raw.count == 1
 
@@ -77,7 +112,8 @@ def test_real_data_pipeline(tmp_path):
     assert epoch_context.epoch_setup is not None
     event_names = {row["name"] for row in epoch_context.epoch_setup["available_events"]}
     assert set(EXPECTED_A01T_CLASS_EVENT_NAMES) <= event_names
-    assert {"768", "1023", "32766"} <= event_names
+    assert {"768", "32766"} <= event_names
+    assert "1023" not in event_names
 
     epoch_result = service.execute(
         CreateEpochCommand(
@@ -89,14 +125,14 @@ def test_real_data_pipeline(tmp_path):
     )
     assert epoch_result.ok is True
     assert epoch_result.state.epoch.exists is True
-    assert epoch_result.state.epoch.epoch_count == 288
+    assert epoch_result.state.epoch.epoch_count == 273
     assert epoch_result.state.epoch.n_channels == 25
     assert epoch_result.state.epoch.n_times == 1001
     assert epoch_result.state.epoch.event_names == EXPECTED_A01T_CLASS_EVENT_NAMES
     assert epoch_result.state.epoch.event_ids == EXPECTED_A01T_CLASS_EVENT_IDS
 
     dataset_result = service.execute(
-        GenerateDatasetCommand(
+        SaveDatasetSplitCommand(
             test_ratio=0.2,
             val_ratio=0.2,
             split_strategy="trial",
@@ -104,10 +140,12 @@ def test_real_data_pipeline(tmp_path):
         ),
     )
     assert dataset_result.ok is True
-    assert dataset_result.diagnostics["split_audit"]["ok"] is True
-    assert dataset_result.state.dataset.available is True
-    assert dataset_result.state.dataset.count == EXPECTED_A01T_SPLIT_SUMMARY["count"]
-    assert dataset_result.state.dataset.split_summary == EXPECTED_A01T_SPLIT_SUMMARY
+    assert dataset_result.diagnostics["materialized"] is False
+    assert dataset_result.state.dataset.available is False
+    assert dataset_result.state.dataset.count == 0
+    assert dataset_result.state.dataset.split_spec_saved is True
+    assert dataset_result.state.dataset.split_materialized is False
+    assert dataset_result.state.dataset.active_split_summary == {}
 
     model_result = service.execute(ConfigureTrainingCommand(model_name="EEGNet"))
     training_result = service.execute(
@@ -138,6 +176,13 @@ def test_real_data_pipeline(tmp_path):
         )
 
     assert train_result.ok is True
+    assert train_result.diagnostics["split_preparation"]["materialized"] is True
+    assert train_result.diagnostics["split_preparation"]["split_audit"]["ok"] is True
+    assert train_result.state.dataset.available is True
+    assert train_result.state.dataset.count == EXPECTED_A01T_SPLIT_SUMMARY["count"]
+    assert train_result.state.dataset.active_split_summary == (
+        EXPECTED_A01T_SPLIT_SUMMARY
+    )
     assert train_result.state.training.has_trainer is True
     assert train_result.state.training.plan_count == 1
     assert train_result.state.training.run_count == 1

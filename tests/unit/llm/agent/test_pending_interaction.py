@@ -278,7 +278,7 @@ def test_terminal_workflow_handoff_callback_consumes_after_pending_update() -> N
 def test_stale_workflow_resolution_does_not_consume_current_request() -> None:
     session = PendingInteractionCoordinator()
     current = WorkflowUiHandoffRequest.for_decision("create_epoch")
-    stale = WorkflowUiHandoffRequest.for_decision("generate_dataset")
+    stale = WorkflowUiHandoffRequest.for_decision("configure_dataset_split")
     session.begin_workflow_handoff(current)
 
     result = session.resolve_workflow_handoff(

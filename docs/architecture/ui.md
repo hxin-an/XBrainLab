@@ -1,6 +1,6 @@
 # UI 目前架構
 
-最後更新：`2026-07-31`
+最後更新：`2026-08-10`
 
 ## 範圍
 
@@ -144,14 +144,24 @@ blocked reason copy、command execution、post-command refresh，以及 mock / c
 
 | UI area | Backend truth | 現況 |
 | --- | --- | --- |
-| Data Import / recipe | `scan_source`、`preview_interpretation`、`validate_interpretation`、`apply_interpretation`、`reload_interpretation_recipe` | real `Study` 走 command sequence；direct file import fallback 只留給 no-service mock / compatibility context。 |
+| Data Import / recipe | `scan_source`、`preview_interpretation`、`validate_interpretation`、`apply_interpretation`、`reload_interpretation_recipe` | real `Study` 走 command sequence；BIDS label-field 建議顯示 selected-run bounded evidence，不從單一 run 或 UI 欄位順序猜測。direct file import fallback 只留給 no-service mock / compatibility context。 |
 | Dataset edit actions | `update_metadata`、`apply_smart_parse`、`remove_files`、`import_labels`、`reset_session` | confirmed mutation 走 command；table render 和 channel dialog 在 real `Study` 讀 `QueryStateCommand(data_lists)`。 |
-| Preprocess / epoch | `preprocess`、`create_epoch` | filter / resample / rereference / normalize / epoch 走 command；epoch dialog 和 preview data 走 query-backed lists。 |
-| Dataset generation / training config | `generate_dataset`、`clear_datasets`、`configure_training` | split replacement、model selection、training settings defaults 不再以 stale controller echo 判定 service success。 |
+| Preprocess / epoch | `preprocess`、`create_epoch` | filter / resample / rereference / normalize / epoch 走 command；epoch dialog 只讀 reviewed import handoff 綁定的 context，missing / malformed / mismatched context 會 blocked，不用 widget fallback 猜 duration / event-locked mode。 |
+| Dataset split / training config | `configure_dataset_split`、`clear_datasets`、`configure_training` | split Confirm 只保存 specification / fingerprint / preview receipt；model selection 與 training settings defaults 不再以 stale controller echo 判定 service success。 |
 | Training | `train`、`stop_training` | enabled capability 直接 dispatch confirmed command；desktop button click is the user confirmation, while agent/headless paths still obey backend confirmation policy。controller running checks 只在 no-capability fallback。 |
 | Evaluation / visualization / saliency | `evaluate`、`visualize`、`saliency` | typed readonly command 先決定 display gate；blocked/unavailable 會清空 stale controller display。 |
 | Montage | `QueryStateCommand(state)`、`apply_montage` | dialog channel defaults 走 state query；confirmed positions 走 `ApplyMontageCommand`；picker/matching 仍是 UI request。 |
 | Chat diagnostics | `ApplicationViewPublication` | assistant status、decision context、tool policy 讀同一 generation 的 state/capability，不把 missing capability 顯示成 debug error。 |
+
+Data Splitting dialog 的 `Confirm` 成功只代表 lightweight specification 已保存；UI 不得顯示成
+datasets、masks 或 training tensors 已建立，也不在此時清除既有 trainer。使用者按下
+`Start Training` 後，application layer 才 materialize / audit split；失敗結果由 Training surface
+顯示並保留原本可用狀態。
+
+Training Setting 的 recommended values 是 backend deterministic starting point。Dialog 對 epochs、
+batch size、learning rate、optimizer、evaluation strategy 分別追蹤 trusted user edit；context 變更
+重新套 recommendation 時，只更新仍屬 recommended provenance 的欄位。UI 沒有 timed
+hyperparameter search、trial progress 或 automatic model-selection contract，也不可用文案暗示已有。
 
 ### Assistant refresh 與 UI request
 

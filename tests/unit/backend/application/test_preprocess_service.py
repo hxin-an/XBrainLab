@@ -90,6 +90,7 @@ class _PreprocessController:
         t_min: float,
         t_max: float,
         allow_boundary_drop: bool = False,
+        **_options: Any,
     ) -> None:
         values: tuple[Any, ...] = (baseline, event_ids, t_min, t_max)
         if allow_boundary_drop:
@@ -122,6 +123,8 @@ class _BidsEpochData:
             "time_field": "onset",
             "duration_field": "duration",
             "duration_stats": {"numeric_count": 2, "min": 0.25, "max": 12.0},
+            "placement_event_count": 2,
+            "unknown_duration_count": 0,
             "class_map": {"left": "left", "right": "right"},
         }
 
@@ -147,6 +150,54 @@ class _BidsEpochData:
         )
 
 
+class _InternalEpochData:
+    def __init__(self, event_names: list[str] | None = None) -> None:
+        names = event_names or ["left", "right", "noise", "oddball", "standard"]
+        self.event_id = {name: index + 1 for index, name in enumerate(names)}
+        self.events = np.asarray(
+            [
+                [1_000 + index * 100, 0, code]
+                for index, code in enumerate(self.event_id.values())
+            ],
+            dtype=np.int32,
+        )
+        self.hint = {
+            "source": "Labels inside EEG files",
+            "placement_method": "internal_events",
+            "class_map": {name: name for name in names},
+            "recommended_events": names,
+        }
+
+    def get_event_list(self):
+        return self.events, self.event_id
+
+    def get_runtime_detail(self, name: str):
+        return self.hint if name == "data_interpretation_epoch_hint" else None
+
+    def get_sfreq(self) -> float:
+        return 250.0
+
+    def get_nchan(self) -> int:
+        return 22
+
+    def get_filename(self) -> str:
+        return "internal-events.gdf"
+
+    def get_mne(self):
+        return SimpleNamespace(info={"sfreq": 250.0}, first_samp=0, last_samp=10_000)
+
+
+def _ready_internal_handoff(event_names: list[str]) -> dict[str, object]:
+    return {
+        "ready": True,
+        "supervised_ready": True,
+        "label_source": "internal_events",
+        "placement_modes": ["internal_events"],
+        "default_epoch_events": event_names,
+        "selected_event_names": event_names,
+    }
+
+
 def _state_with_epoch_handoff(
     epoch_handoff: object,
     *,
@@ -170,12 +221,16 @@ def _service() -> tuple[
     _DatasetController,
 ]:
     preprocess = _PreprocessController()
+    event_names = ["left", "right", "noise", "oddball", "standard"]
+    preprocess.data_list = [_InternalEpochData(event_names)]
     dataset = _DatasetController()
     return (
         PreprocessCommandService(
             preprocess=preprocess,
             dataset=dataset,
-            get_state=lambda: _state_with_epoch_handoff({}),
+            get_state=lambda: _state_with_epoch_handoff(
+                _ready_internal_handoff(event_names)
+            ),
         ),
         preprocess,
         dataset,
@@ -568,6 +623,85 @@ def test_bids_epoch_receipt_is_invalidated_by_scope_or_context_change(
     assert preprocess.events == []
 
 
+@pytest.mark.parametrize(
+    ("hint", "handoff", "expected_code"),
+    [
+        (
+            {},
+            {
+                "ready": True,
+                "supervised_ready": True,
+                "default_epoch_events": ["left", "right"],
+                "label_source": "bids_events",
+                "placement_modes": ["interval"],
+            },
+            "hint_missing",
+        ),
+        (
+            {
+                "source": "Loaded label file",
+                "placement_method": "interval",
+                "duration_field": "duration",
+                "duration_stats": {"numeric_count": 1, "min": 0.5, "max": 0.5},
+                "class_map": {"left": "left", "right": "right"},
+            },
+            {
+                "ready": True,
+                "supervised_ready": True,
+                "default_epoch_events": ["left", "right"],
+                "label_source": "bids_events",
+                "placement_modes": ["interval"],
+            },
+            "handoff_source_mismatch",
+        ),
+        (
+            {
+                "source": "Loaded label file",
+                "placement_method": "interval",
+                "duration_field": "duration",
+                "duration_stats": {"numeric_count": 0, "min": None, "max": None},
+                "class_map": {"left": "left", "right": "right"},
+            },
+            {
+                "ready": True,
+                "supervised_ready": True,
+                "default_epoch_events": ["left", "right"],
+                "label_source": "loaded_label_files",
+                "placement_modes": ["interval"],
+            },
+            "duration_unavailable",
+        ),
+    ],
+    ids=["hint-missing", "source-mismatch", "non-bids-duration-missing"],
+)
+def test_preprocess_service_rejects_semantically_unavailable_epoch_context(
+    hint,
+    handoff,
+    expected_code,
+):
+    data = _BidsEpochData()
+    data.hint = hint
+    preprocess = _PreprocessController()
+    preprocess.data_list = [data]
+    service = PreprocessCommandService(
+        preprocess=preprocess,
+        dataset=_DatasetController(),
+        get_state=lambda: _state_with_epoch_handoff(handoff),
+    )
+
+    with pytest.raises(PreconditionError) as exc_info:
+        service.handle_create_epoch(
+            CreateEpochCommand(
+                t_min=-0.2,
+                t_max=1.0,
+                event_ids=["left", "right"],
+            )
+        )
+
+    assert exc_info.value.diagnostics["epoch_context_error"] == expected_code
+    assert preprocess.events == []
+
+
 def test_preprocess_service_blocks_epoch_ram_before_copy_or_materialization(
     monkeypatch,
 ) -> None:
@@ -590,6 +724,16 @@ def test_preprocess_service_blocks_epoch_ram_before_copy_or_materialization(
         def get_filename(self) -> str:
             return "copy-sensitive.fif"
 
+        def get_runtime_detail(self, name: str):
+            if name != "data_interpretation_epoch_hint":
+                return None
+            return {
+                "source": "Labels inside EEG files",
+                "placement_method": "internal_events",
+                "class_map": {"left": "left", "right": "right"},
+                "recommended_events": ["left", "right"],
+            }
+
         def copy(self):
             self.copy_attempts += 1
             return self
@@ -610,7 +754,9 @@ def test_preprocess_service_blocks_epoch_ram_before_copy_or_materialization(
     service = PreprocessCommandService(
         preprocess=preprocess,
         dataset=_DatasetController(),
-        get_state=lambda: _state_with_epoch_handoff({}),
+        get_state=lambda: _state_with_epoch_handoff(
+            _ready_internal_handoff(["left", "right"])
+        ),
     )
     monkeypatch.setattr(
         "XBrainLab.backend.application.resource_guard.available_ram_bytes",
@@ -629,15 +775,14 @@ def test_preprocess_service_blocks_epoch_ram_before_copy_or_materialization(
 
 def test_preprocess_service_uses_data_import_epoch_defaults() -> None:
     preprocess = _PreprocessController()
+    event_names = ["Left hand", "Right hand"]
+    preprocess.data_list = [_InternalEpochData(event_names)]
     dataset = _DatasetController()
     service = PreprocessCommandService(
         preprocess=preprocess,
         dataset=dataset,
         get_state=lambda: _state_with_epoch_handoff(
-            {
-                "supervised_ready": True,
-                "default_epoch_events": ["Left hand", "Right hand"],
-            }
+            _ready_internal_handoff(event_names)
         ),
     )
 
@@ -650,21 +795,18 @@ def test_preprocess_service_uses_data_import_epoch_defaults() -> None:
 
 def test_preprocess_service_uses_raw_event_defaults_for_internal_labels() -> None:
     preprocess = _PreprocessController()
+    event_names = ["769", "770"]
+    preprocess.data_list = [_InternalEpochData(event_names)]
     dataset = _DatasetController()
+    handoff = _ready_internal_handoff(event_names)
+    handoff["event_label_aliases"] = {
+        "769": "Left hand",
+        "770": "Right hand",
+    }
     service = PreprocessCommandService(
         preprocess=preprocess,
         dataset=dataset,
-        get_state=lambda: _state_with_epoch_handoff(
-            {
-                "supervised_ready": True,
-                "label_source": "internal_events",
-                "default_epoch_events": ["769", "770"],
-                "event_label_aliases": {
-                    "769": "Left hand",
-                    "770": "Right hand",
-                },
-            }
-        ),
+        get_state=lambda: _state_with_epoch_handoff(handoff),
     )
 
     service.handle_create_epoch(CreateEpochCommand(t_min=-0.2, t_max=1.0))
@@ -676,21 +818,18 @@ def test_preprocess_service_uses_raw_event_defaults_for_internal_labels() -> Non
 
 def test_preprocess_service_accepts_display_aliases_for_internal_labels() -> None:
     preprocess = _PreprocessController()
+    event_names = ["769", "770"]
+    preprocess.data_list = [_InternalEpochData(event_names)]
     dataset = _DatasetController()
+    handoff = _ready_internal_handoff(event_names)
+    handoff["event_label_aliases"] = {
+        "769": "Left hand",
+        "770": "Right hand",
+    }
     service = PreprocessCommandService(
         preprocess=preprocess,
         dataset=dataset,
-        get_state=lambda: _state_with_epoch_handoff(
-            {
-                "supervised_ready": True,
-                "label_source": "internal_events",
-                "default_epoch_events": ["769", "770"],
-                "event_label_aliases": {
-                    "769": "Left hand",
-                    "770": "Right hand",
-                },
-            }
-        ),
+        get_state=lambda: _state_with_epoch_handoff(handoff),
     )
 
     service.handle_create_epoch(
@@ -708,15 +847,14 @@ def test_preprocess_service_accepts_display_aliases_for_internal_labels() -> Non
 
 def test_preprocess_service_rejects_epoch_targets_outside_import_handoff() -> None:
     preprocess = _PreprocessController()
+    event_names = ["Left hand", "Right hand", "Artifact"]
+    preprocess.data_list = [_InternalEpochData(event_names)]
     dataset = _DatasetController()
     service = PreprocessCommandService(
         preprocess=preprocess,
         dataset=dataset,
         get_state=lambda: _state_with_epoch_handoff(
-            {
-                "supervised_ready": True,
-                "default_epoch_events": ["Left hand", "Right hand"],
-            }
+            _ready_internal_handoff(["Left hand", "Right hand"])
         ),
     )
 
@@ -728,15 +866,19 @@ def test_preprocess_service_rejects_epoch_targets_outside_import_handoff() -> No
 
 def test_preprocess_service_blocks_handoff_blockers_before_defaults() -> None:
     preprocess = _PreprocessController()
+    preprocess.data_list = [_InternalEpochData(["Left hand", "Right hand"])]
     dataset = _DatasetController()
     service = PreprocessCommandService(
         preprocess=preprocess,
         dataset=dataset,
         get_state=lambda: _state_with_epoch_handoff(
             {
+                "ready": False,
                 "supervised_ready": False,
                 "supervised_blockers": ["No class labels were reviewed."],
                 "default_epoch_events": ["Left hand", "Right hand"],
+                "label_source": "internal_events",
+                "placement_modes": ["internal_events"],
             }
         ),
     )
@@ -749,15 +891,14 @@ def test_preprocess_service_blocks_handoff_blockers_before_defaults() -> None:
 
 def test_preprocess_service_rejects_dict_epoch_targets_outside_import_handoff() -> None:
     preprocess = _PreprocessController()
+    event_names = ["Left hand", "Right hand", "Artifact"]
+    preprocess.data_list = [_InternalEpochData(event_names)]
     dataset = _DatasetController()
     service = PreprocessCommandService(
         preprocess=preprocess,
         dataset=dataset,
         get_state=lambda: _state_with_epoch_handoff(
-            {
-                "supervised_ready": True,
-                "default_epoch_events": ["Left hand", "Right hand"],
-            }
+            _ready_internal_handoff(["Left hand", "Right hand"])
         ),
     )
 
@@ -857,10 +998,14 @@ def test_preprocess_service_fails_closed_for_invalid_epoch_handoff_payload(
 
 def test_preprocess_service_accepts_explicit_ordinary_epoch_settings() -> None:
     preprocess = _PreprocessController()
+    event_names = ["left", "right"]
+    preprocess.data_list = [_InternalEpochData(event_names)]
     service = PreprocessCommandService(
         preprocess=preprocess,
         dataset=_DatasetController(),
-        get_state=lambda: _state_with_epoch_handoff({}),
+        get_state=lambda: _state_with_epoch_handoff(
+            _ready_internal_handoff(event_names)
+        ),
     )
 
     service.handle_create_epoch(

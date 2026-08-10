@@ -4542,7 +4542,7 @@ class TestOnUserConfirmed:
             decision_fields=("epoch_window",),
         )
         current = WorkflowUiHandoffRequest.for_decision(
-            "generate_dataset",
+            "configure_dataset_split",
             decision_fields=("split_strategy",),
         )
         ctrl.pending_interactions.begin_workflow_handoff(current)
@@ -5612,7 +5612,7 @@ class TestTurnScope:
                 state_reliable=True,
                 decision_needed=(),
                 can_auto_continue=True,
-                recommended_next_step=CommandName.GENERATE_DATASET.value,
+                recommended_next_step=CommandName.CONFIGURE_DATASET_SPLIT.value,
             )
         )
 

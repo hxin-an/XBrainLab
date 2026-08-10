@@ -153,14 +153,16 @@ from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
     ConfigureTrainingCommand,
     CreateEpochCommand,
+    DatasetSplitPreviewRequest,
+    DatasetSplitSpecification,
     EvaluateCommand,
-    GenerateDatasetCommand,
     NewSessionCommand,
     PreprocessCommand,
     PreprocessOperation,
     PreviewInterpretationCommand,
     ReloadInterpretationRecipeCommand,
     SaliencyCommand,
+    SaveDatasetSplitCommand,
     SaveInterpretationRecipeCommand,
     ScanSourceCommand,
     TrainCommand,
@@ -318,7 +320,7 @@ VISIBLE_FORBIDDEN = (
     "save_interpretation_recipe",
     "reload_interpretation_recipe",
     "configure_training",
-    "generate_dataset",
+    "configure_dataset_split",
     "create_epoch",
     "reset_session",
     "new_session",
@@ -860,11 +862,11 @@ def _run_walkthrough_steps(
         ScanSourceCommand(source_path=str(source_path), source_hint="file"),
         command_results,
     )
-    preview = execute_recorded(service, PreviewInterpretationCommand(), command_results)
-    validation = execute_recorded(
+    preview = execute_recorded(
         service,
-        ValidateInterpretationCommand(),
+        PreviewInterpretationCommand(),
         command_results,
+        expected_publication_generation=service.get_view_publication().generation,
     )
     scan_payload = _required_command_payload(
         scan,
@@ -874,12 +876,30 @@ def _run_walkthrough_steps(
     preview_payload = _required_command_payload(
         preview,
         expected_payload_type="interpretation_preview",
-        required_fields=("preview",),
+        required_fields=("candidate", "preview"),
+    )
+    preview_candidate_id = _required_payload_id(
+        preview_payload["candidate"],
+        "candidate_id",
+        context="initial interpretation preview",
+    )
+    validation_generation = service.get_view_publication().generation
+    validation = execute_recorded(
+        service,
+        ValidateInterpretationCommand(candidate_id=preview_candidate_id),
+        command_results,
+        expected_publication_generation=validation_generation,
     )
     validation_payload = _required_command_payload(
         validation,
         expected_payload_type="validation_decision",
         required_fields=("validation_decision",),
+    )
+    _require_matching_payload_id(
+        validation_payload["validation_decision"],
+        "candidate_id",
+        expected=preview_candidate_id,
+        context="initial interpretation validation",
     )
     tool_transcript.extend(
         command_summary(item) for item in [scan, preview, validation]
@@ -988,6 +1008,7 @@ def _run_walkthrough_steps(
     blocked_probe_path.write_text("stream placeholder", encoding="utf-8")
     blocked_probe = data_interpretation_decision_probe(str(blocked_probe_path), {})
 
+    reviewed_preview_generation = service.get_view_publication().generation
     reviewed_preview = execute_recorded(
         service,
         PreviewInterpretationCommand(
@@ -995,27 +1016,71 @@ def _run_walkthrough_steps(
             choices=review_choices if isinstance(review_choices, dict) else {},
         ),
         command_results,
+        expected_publication_generation=reviewed_preview_generation,
     )
+    reviewed_preview_payload = _required_command_payload(
+        reviewed_preview,
+        expected_payload_type="interpretation_preview",
+        required_fields=("candidate", "preview"),
+    )
+    reviewed_candidate_id = _required_payload_id(
+        reviewed_preview_payload["candidate"],
+        "candidate_id",
+        context="reviewed interpretation preview",
+    )
+    reviewed_validation_generation = service.get_view_publication().generation
     reviewed_validation = execute_recorded(
         service,
-        ValidateInterpretationCommand(),
+        ValidateInterpretationCommand(candidate_id=reviewed_candidate_id),
         command_results,
+        expected_publication_generation=reviewed_validation_generation,
     )
     reviewed_validation_payload = _required_command_payload(
         reviewed_validation,
         expected_payload_type="validation_decision",
         required_fields=("validation_decision",),
     )
+    reviewed_validation_candidate_id = _require_matching_payload_id(
+        reviewed_validation_payload["validation_decision"],
+        "candidate_id",
+        expected=reviewed_candidate_id,
+        context="reviewed interpretation validation",
+    )
+    unconfirmed_apply_generation = service.get_view_publication().generation
     apply_without_confirmation = execute_recorded(
         service,
-        ApplyInterpretationCommand(),
+        ApplyInterpretationCommand(candidate_id=reviewed_candidate_id),
         command_results,
+        expected_publication_generation=unconfirmed_apply_generation,
     )
+    reviewed_apply_generation = service.get_view_publication().generation
     apply_confirmed = execute_recorded(
         service,
-        ApplyInterpretationCommand(confirmed=True),
+        ApplyInterpretationCommand(
+            candidate_id=reviewed_candidate_id,
+            confirmed=True,
+        ),
         command_results,
+        expected_publication_generation=reviewed_apply_generation,
     )
+    apply_confirmed_payload = _required_command_payload(
+        apply_confirmed,
+        expected_payload_type="applied_interpretation",
+        required_fields=("applied_interpretation",),
+    )
+    reviewed_applied_candidate_id = _require_matching_payload_id(
+        apply_confirmed_payload["applied_interpretation"],
+        "candidate_id",
+        expected=reviewed_candidate_id,
+        context="reviewed interpretation apply",
+    )
+    reviewed_handoff = {
+        "candidate_id": reviewed_candidate_id,
+        "validation_candidate_id": reviewed_validation_candidate_id,
+        "applied_candidate_id": reviewed_applied_candidate_id,
+        "validation_publication_generation": reviewed_validation_generation,
+        "apply_publication_generation": reviewed_apply_generation,
+    }
     save_recipe = (
         execute_recorded(
             service,
@@ -1032,11 +1097,67 @@ def _run_walkthrough_steps(
         ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path)),
         command_results,
     )
+    reload_payload = _required_command_payload(
+        reload_recipe,
+        expected_payload_type="recipe_reload_preview",
+        required_fields=(
+            "scan_result",
+            "candidate",
+            "preview",
+            "validation_decision",
+        ),
+    )
+    reload_candidate_id = _required_payload_id(
+        reload_payload["candidate"],
+        "candidate_id",
+        context="reloaded interpretation preview",
+    )
+    reload_validation_generation = service.get_view_publication().generation
+    reload_validation = execute_recorded(
+        service,
+        ValidateInterpretationCommand(candidate_id=reload_candidate_id),
+        command_results,
+        expected_publication_generation=reload_validation_generation,
+    )
+    reload_validation_payload = _required_command_payload(
+        reload_validation,
+        expected_payload_type="validation_decision",
+        required_fields=("validation_decision",),
+    )
+    reload_validation_candidate_id = _require_matching_payload_id(
+        reload_validation_payload["validation_decision"],
+        "candidate_id",
+        expected=reload_candidate_id,
+        context="reloaded interpretation validation",
+    )
+    reload_apply_generation = service.get_view_publication().generation
     reload_apply = execute_recorded(
         service,
-        ApplyInterpretationCommand(confirmed=True),
+        ApplyInterpretationCommand(
+            candidate_id=reload_candidate_id,
+            confirmed=True,
+        ),
         command_results,
+        expected_publication_generation=reload_apply_generation,
     )
+    reload_apply_payload = _required_command_payload(
+        reload_apply,
+        expected_payload_type="applied_interpretation",
+        required_fields=("applied_interpretation",),
+    )
+    reload_applied_candidate_id = _require_matching_payload_id(
+        reload_apply_payload["applied_interpretation"],
+        "candidate_id",
+        expected=reload_candidate_id,
+        context="reloaded interpretation apply",
+    )
+    reload_handoff = {
+        "candidate_id": reload_candidate_id,
+        "validation_candidate_id": reload_validation_candidate_id,
+        "applied_candidate_id": reload_applied_candidate_id,
+        "validation_publication_generation": reload_validation_generation,
+        "apply_publication_generation": reload_apply_generation,
+    }
     tool_transcript.extend(
         command_summary(item)
         for item in [
@@ -1046,6 +1167,7 @@ def _run_walkthrough_steps(
             apply_confirmed,
             save_recipe,
             reload_recipe,
+            reload_validation,
             reload_apply,
         ]
     )
@@ -1071,8 +1193,10 @@ def _run_walkthrough_steps(
         window,
         service,
         {
+            "validation": command_summary(reviewed_validation),
             "applied": command_summary(apply_confirmed),
             "recipe": command_summary(save_recipe),
+            "strict_review_handoff": reviewed_handoff,
             "ui_geometry": dataset_page_geometry(window),
         },
     )
@@ -1083,11 +1207,6 @@ def _run_walkthrough_steps(
         window,
         service,
         {"recipe": command_summary(save_recipe)},
-    )
-    reload_payload = _required_command_payload(
-        reload_recipe,
-        expected_payload_type="recipe_reload_preview",
-        required_fields=("scan_result", "preview", "validation_decision"),
     )
     reload_dialog = DataInterpretationPreviewDialog(
         window.dataset_panel,
@@ -1104,7 +1223,9 @@ def _run_walkthrough_steps(
         widget=reload_dialog,
         notes=lambda: {
             "reload": command_summary(reload_recipe),
+            "validation": command_summary(reload_validation),
             "reapply": command_summary(reload_apply),
+            "strict_review_handoff": reload_handoff,
             "review_summary_rows": tree_rows(reload_dialog.review_tree),
             "ui_geometry": sanitize(interpretation_dialog_geometry(reload_dialog)),
         },
@@ -1116,7 +1237,9 @@ def _run_walkthrough_steps(
         "data_interpretation_reapply_recipe",
         "recipe_reapplied",
         notes={
+            "validation": command_summary(reload_validation),
             "reapply": command_summary(reload_apply),
+            "strict_review_handoff": reload_handoff,
             "ui_geometry": dataset_page_geometry(window),
         },
     )
@@ -1164,15 +1287,51 @@ def _run_walkthrough_steps(
         CreateEpochCommand(t_min=0.0, t_max=0.51, event_ids=None),
         command_results,
     )
+    if not epoch.ok:
+        raise RuntimeError(f"Epoch creation failed: {epoch.message}")
+    split_specification = DatasetSplitSpecification.from_payload(
+        {
+            "train_type": "Individual",
+            "is_cross_validation": False,
+            "val_splitters": [
+                {
+                    "split_type": "By Trial",
+                    "split_unit": "Ratio",
+                    "value": "0.25",
+                    "is_option": True,
+                }
+            ],
+            "test_splitters": [
+                {
+                    "split_type": "By Trial",
+                    "split_unit": "Ratio",
+                    "value": "0.25",
+                    "is_option": True,
+                }
+            ],
+        }
+    )
+    split_publication_generation = service.get_view_publication().generation
+    split_preview = service.get_dataset_split_preview(
+        DatasetSplitPreviewRequest(
+            request_id="human-like-product-split-preview",
+            publication_generation=split_publication_generation,
+            specification=split_specification,
+        )
+    )
     dataset = execute_recorded(
         service,
-        GenerateDatasetCommand(
-            test_ratio=0.25,
-            val_ratio=0.25,
-            split_strategy="trial",
-            training_mode="individual",
+        SaveDatasetSplitCommand(
+            split_config=split_specification.to_payload(),
+            preview_receipt=split_preview.receipt,
         ),
         command_results,
+        expected_publication_generation=split_publication_generation,
+    )
+    split_handoff = _require_deferred_split_handoff(
+        dataset,
+        specification=split_specification,
+        preview_summary=split_preview.receipt.summary_payload(),
     )
     tool_transcript.extend(command_summary(item) for item in [epoch, dataset])
     open_workflow_panel(window, 1)
@@ -1194,6 +1353,7 @@ def _run_walkthrough_steps(
         notes={
             "epoch": command_summary(epoch),
             "dataset": command_summary(dataset),
+            "split_handoff": split_handoff,
         },
     )
     append_phase_alias(
@@ -1202,7 +1362,10 @@ def _run_walkthrough_steps(
         screenshots["dataset_ready"],
         window.training_panel,
         service,
-        {"dataset": command_summary(dataset)},
+        {
+            "dataset": command_summary(dataset),
+            "split_handoff": split_handoff,
+        },
     )
 
     configure_training = execute_recorded(
@@ -1550,11 +1713,30 @@ def data_interpretation_decision_probe(
     service = get_application_service(Study())
     scan = service.execute(ScanSourceCommand(source_path=source_path))
     preview = service.execute(PreviewInterpretationCommand(choices=choices))
-    validation = service.execute(ValidateInterpretationCommand())
+    preview_payload = _required_command_payload(
+        preview,
+        expected_payload_type="interpretation_preview",
+        required_fields=("candidate", "preview"),
+    )
+    candidate_id = _required_payload_id(
+        preview_payload["candidate"],
+        "candidate_id",
+        context="interpretation decision probe",
+    )
+    validation = service.execute(
+        ValidateInterpretationCommand(candidate_id=candidate_id),
+        expected_publication_generation=service.get_view_publication().generation,
+    )
     validation_payload = _required_command_payload(
         validation,
         expected_payload_type="validation_decision",
         required_fields=("validation_decision",),
+    )
+    _require_matching_payload_id(
+        validation_payload["validation_decision"],
+        "candidate_id",
+        expected=candidate_id,
+        context="interpretation decision probe validation",
     )
     return {
         "scan": command_summary(scan),
@@ -1599,13 +1781,97 @@ def _required_command_payload(
     return payload
 
 
+def _required_payload_id(
+    value: Any,
+    field: str,
+    *,
+    context: str,
+) -> str:
+    """Return one non-empty identity from a detached command payload."""
+    identity = value.get(field) if isinstance(value, Mapping) else None
+    if not isinstance(identity, str) or not identity.strip():
+        raise RuntimeError(f"{context} is missing required identity '{field}'.")
+    return identity
+
+
+def _require_matching_payload_id(
+    value: Any,
+    field: str,
+    *,
+    expected: str,
+    context: str,
+) -> str:
+    """Fail closed when a command result is for a different reviewed identity."""
+    identity = _required_payload_id(value, field, context=context)
+    if identity != expected:
+        raise RuntimeError(
+            f"{context} returned {field}={identity!r}; expected {expected!r}."
+        )
+    return identity
+
+
+def _require_deferred_split_handoff(
+    result: CommandResult,
+    *,
+    specification: DatasetSplitSpecification,
+    preview_summary: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Require split confirmation to save intent without publishing datasets."""
+    if not result.ok:
+        raise RuntimeError(
+            "Dataset split confirmation failed before deferred handoff evidence "
+            f"was available: {result.message}"
+        )
+    state = result.state
+    dataset = getattr(state, "dataset", None)
+    if dataset is None:
+        raise RuntimeError("Dataset split confirmation returned no dataset state.")
+    failures: list[str] = []
+    if not bool(dataset.split_spec_saved):
+        failures.append("split specification was not saved")
+    if bool(dataset.available) or int(dataset.count) != 0:
+        failures.append("training datasets were published during confirmation")
+    if bool(dataset.generator_exists):
+        failures.append("dataset generator was published during confirmation")
+    if bool(dataset.split_materialized):
+        failures.append("split masks were materialized during confirmation")
+    if dataset.split_specification_fingerprint != specification.fingerprint:
+        failures.append("saved split fingerprint does not match the preview")
+    if dict(dataset.split_preview_summary) != dict(preview_summary):
+        failures.append("saved split summary does not match the accepted preview")
+    if (
+        not isinstance(dataset.split_epoch_revision, int)
+        or isinstance(dataset.split_epoch_revision, bool)
+        or dataset.split_epoch_revision < 1
+    ):
+        failures.append("saved split is not bound to an epoch revision")
+    if failures:
+        raise RuntimeError(
+            "Deferred dataset split handoff failed: " + "; ".join(failures)
+        )
+    return {
+        "split_spec_saved": True,
+        "split_materialized": False,
+        "dataset_available": False,
+        "generator_exists": False,
+        "split_specification_fingerprint": specification.fingerprint,
+        "split_epoch_revision": dataset.split_epoch_revision,
+        "split_preview_summary": dict(dataset.split_preview_summary),
+    }
+
+
 def execute_recorded(
     service: ApplicationService,
     command: Any,
     command_results: list[dict[str, Any]],
+    *,
+    expected_publication_generation: int | None = None,
 ) -> CommandResult:
     """Execute a command and append a sanitized CommandResult payload."""
-    result = service.execute(command)
+    result = service.execute(
+        command,
+        expected_publication_generation=expected_publication_generation,
+    )
     command_results.append(sanitize(result.to_dict()))
     return result
 
@@ -2965,6 +3231,15 @@ def compact_state(state: ApplicationStateSnapshot) -> dict[str, Any]:
         "dataset": {
             "available": data["dataset"]["available"],
             "count": data["dataset"]["count"],
+            "generator_exists": data["dataset"]["generator_exists"],
+            "split_spec_saved": data["dataset"]["split_spec_saved"],
+            "split_specification_fingerprint": data["dataset"][
+                "split_specification_fingerprint"
+            ],
+            "split_epoch_revision": data["dataset"]["split_epoch_revision"],
+            "split_preview_summary": data["dataset"]["split_preview_summary"],
+            "split_lifecycle": data["dataset"]["split_lifecycle"],
+            "split_materialized": data["dataset"]["split_materialized"],
         },
         "training": {
             "has_model": data["training"]["has_model"],
@@ -3102,10 +3377,42 @@ def build_workflow_contract_failures(phases: list[dict[str, Any]]) -> list[str]:
         if not value:
             failures.append(f"{phase_name} {message}")
 
+    def require_strict_review_handoff(phase_name: str) -> None:
+        phase = by_name.get(phase_name)
+        if phase is None:
+            return
+        handoff = (phase.get("notes") or {}).get("strict_review_handoff")
+        if not isinstance(handoff, dict):
+            failures.append(f"{phase_name} is missing strict review handoff evidence")
+            return
+        candidate_id = handoff.get("candidate_id")
+        identities_match = bool(candidate_id) and all(
+            handoff.get(field) == candidate_id
+            for field in ("validation_candidate_id", "applied_candidate_id")
+        )
+        generations_valid = all(
+            isinstance(handoff.get(field), int)
+            and not isinstance(handoff.get(field), bool)
+            and handoff[field] > 0
+            for field in (
+                "validation_publication_generation",
+                "apply_publication_generation",
+            )
+        )
+        if not identities_match or not generations_valid:
+            failures.append(
+                f"{phase_name} did not preserve one generation-bound reviewed "
+                "candidate through validate and apply"
+            )
+
     for phase_name, note_names in {
-        "data_interpretation_apply": ("applied", "recipe"),
-        "data_interpretation_reload_recipe": ("reload",),
-        "data_interpretation_reapply_recipe": ("reapply",),
+        "data_interpretation_apply": ("validation", "applied", "recipe"),
+        "data_interpretation_reload_recipe": (
+            "reload",
+            "validation",
+            "reapply",
+        ),
+        "data_interpretation_reapply_recipe": ("validation", "reapply"),
         "preprocessing": ("preprocess",),
         "epoch_creation": ("epoch",),
         "dataset_generation": ("dataset",),
@@ -3127,9 +3434,49 @@ def build_workflow_contract_failures(phases: list[dict[str, Any]]) -> list[str]:
         ("preprocessed", "available"),
         "did not produce preprocessed data",
     )
+    require_strict_review_handoff("data_interpretation_apply")
+    require_strict_review_handoff("data_interpretation_reapply_recipe")
     require_state("epoch_creation", ("epoch", "exists"), "did not produce epochs")
+    split_phase = by_name.get("dataset_generation")
+    split_state = (
+        split_phase.get("workflow_state", {}).get("dataset", {})
+        if split_phase is not None
+        else {}
+    )
+    split_handoff = (
+        (split_phase.get("notes") or {}).get("split_handoff")
+        if split_phase is not None
+        else None
+    )
+    split_saved = (
+        isinstance(split_state, dict)
+        and split_state.get("split_spec_saved") is True
+        and split_state.get("available") is False
+        and split_state.get("count") == 0
+        and split_state.get("generator_exists") is False
+        and split_state.get("split_materialized") is False
+        and split_state.get("split_lifecycle") == "saved"
+        and bool(split_state.get("split_specification_fingerprint"))
+        and isinstance(split_state.get("split_epoch_revision"), int)
+        and not isinstance(split_state.get("split_epoch_revision"), bool)
+        and split_state["split_epoch_revision"] > 0
+        and bool(split_state.get("split_preview_summary", {}).get("rows"))
+        and isinstance(split_handoff, dict)
+    )
+    if not split_saved:
+        failures.append(
+            "dataset_generation did not preserve a previewed, saved, "
+            "unmaterialized split"
+        )
     require_state(
-        "dataset_generation", ("dataset", "available"), "did not produce a dataset"
+        "training_readiness",
+        ("dataset", "available"),
+        "did not materialize training datasets at Start Training",
+    )
+    require_state(
+        "training_readiness",
+        ("dataset", "split_materialized"),
+        "did not publish the materialized split after Start Training",
     )
     require_state(
         "training_readiness",

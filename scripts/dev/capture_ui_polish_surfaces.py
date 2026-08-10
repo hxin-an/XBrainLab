@@ -61,6 +61,16 @@ from XBrainLab.backend.application.dataset_split_preview import (
     DatasetSplitPreviewRequest,
     DatasetSplitPreviewRow,
 )
+from XBrainLab.backend.application.epoch_context import (
+    EpochContextAvailability,
+    EpochWindowMode,
+)
+from XBrainLab.backend.application.training_recommendation import (
+    TrainingRecommendation,
+    TrainingRecommendationField,
+    TrainingRecommendationValues,
+    TrainingSettingProvenance,
+)
 from XBrainLab.backend.dataset import (
     DataSplittingConfig,
     SplitByType,
@@ -277,17 +287,33 @@ def _rereference_dialog() -> QWidget:
 def _training_setting_dialog() -> QWidget:
     controller = MagicMock()
     controller.get_training_option.return_value = None
-    with (
-        patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
-            return_value={"Adam": MagicMock(__name__="Adam")},
-        ),
-        patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog.get_device_count",
-            return_value=0,
-        ),
+    values = TrainingRecommendationValues(
+        epochs=50,
+        batch_size=32,
+        learning_rate=0.001,
+        optimizer="Adam",
+        evaluation_strategy="Best validation loss",
+    )
+    recommendation = TrainingRecommendation(
+        context_fingerprint="ui-polish-training-setting",
+        recommended_values=values,
+        values=values,
+        provenance={
+            field.value: TrainingSettingProvenance.RECOMMENDED
+            for field in TrainingRecommendationField
+        },
+        reasons=(),
+        warnings=(),
+    )
+    with patch(
+        "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
+        return_value={"Adam": MagicMock(__name__="Adam")},
     ):
-        dialog = TrainingSettingDialog(None, controller)
+        dialog = TrainingSettingDialog(
+            None,
+            controller,
+            recommendation=recommendation,
+        )
     dialog.resize(QSize(560, 420))
     return dialog
 
@@ -312,6 +338,19 @@ def _epoching_internal_events_dialog() -> EpochingDialog:
             "placement_label": "Events inside EEG files",
             "window_mode": "event_locked",
             "window_evidence": "Suggested from the import label matching step.",
+            "context_availability": EpochContextAvailability.ready(
+                window_mode=EpochWindowMode.EVENT_LOCKED,
+                window_explanation="Use one fixed event-locked window.",
+            ).to_payload(),
+            "epoch_handoff": {
+                "ready": True,
+                "supervised_ready": True,
+                "label_source": "internal_events",
+                "placement_modes": ["internal_events"],
+                "default_epoch_events": ["769", "770", "771", "772"],
+                "selected_event_names": ["769", "770", "771", "772"],
+                "supervised_blockers": [],
+            },
         },
     )
     _fit_dialog_to_native_layout(dialog, QSize(720, 740))
@@ -341,11 +380,20 @@ def _epoching_bids_interval_duration_dialog() -> EpochingDialog:
             "window_evidence": (
                 "Uses the largest reviewed BIDS duration from Match Labels."
             ),
+            "context_availability": EpochContextAvailability.ready(
+                window_mode=EpochWindowMode.DURATION,
+                window_explanation=(
+                    "Use one fixed window. Its end follows the largest reviewed "
+                    "BIDS duration."
+                ),
+            ).to_payload(),
             "epoch_handoff": {
                 "ready": True,
+                "supervised_ready": True,
                 "label_source": "bids_events",
                 "placement_modes": ["interval"],
                 "default_epoch_events": ["left", "right"],
+                "selected_event_names": ["left", "right"],
                 "supervised_blockers": [],
             },
         },
@@ -1603,13 +1651,15 @@ def _assert_epoching_dialog_contract(
         BIDS_EPOCH_SCREENSHOT: (
             "Create EEG Epochs",
             "BIDS events from import",
-            "BIDS events confirmed in Match Labels.",
-            "Label interval",
             "trial_type",
-            "onset + duration",
-            "Use event duration.",
+            "Epoch anchor",
+            "Event onset",
+            "Window mode",
+            "Fixed to largest duration",
+            "Use one fixed window.",
             "Events",
             "Time Window",
+            "Baseline Correction",
             "Apply baseline correction",
             "Cancel",
         ),
@@ -1650,6 +1700,8 @@ def _assert_epoching_dialog_contract(
     cancel = buttons.get("EpochSecondaryButton")
     if primary is None or primary.text() != "Create EEG Epochs":
         raise RuntimeError(f"{filename} does not expose Create EEG Epochs.")
+    if not primary.isEnabled() or dialog.window_mode is None:
+        raise RuntimeError(f"{filename} does not expose a valid Epoch window mode.")
     if cancel is None or cancel.text() != "Cancel":
         raise RuntimeError(f"{filename} does not expose Cancel.")
 
@@ -1699,7 +1751,7 @@ def _data_splitting_preview_semantics(
                 "total": train + validation + test,
             }
         )
-    expected_names = [f"Fold_{index}" for index in range(fold_count)]
+    expected_names = [f"Fold {index + 1}" for index in range(fold_count)]
     observed_names = [str(row["name"]) for row in rows]
     trial_count = int(dialog.split_context.trial_count)
     if split_unit.currentText() != "K Fold" or fold_count < 2:
@@ -1757,11 +1809,16 @@ def _surface_contract(
                 "placement_label": context.get("placement_label"),
                 "label_field": context.get("label_field"),
                 "window_mode": context.get("window_mode"),
+                "window_mode_valid": widget.window_mode is not None,
                 "time_field": context.get("time_field"),
                 "duration_field": context.get("duration_field"),
                 "window_evidence": context.get("window_evidence"),
                 "selected_event_count": selected_event_count,
                 "primary_action": "Create EEG Epochs",
+                "primary_action_enabled": bool(
+                    widget.create_button is not None
+                    and widget.create_button.isEnabled()
+                ),
                 "cancel_action": "Cancel",
             }
         )

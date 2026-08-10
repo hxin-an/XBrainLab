@@ -25,7 +25,7 @@ from XBrainLab.llm.tools.application_surface import (
     execute_application_tool_command,
 )
 from XBrainLab.llm.tools.real.dataset_real import (
-    RealGenerateDatasetTool,
+    RealConfigureDatasetSplitTool,
     RealLoadDataTool,
 )
 from XBrainLab.llm.tools.real.preprocess_real import (
@@ -202,7 +202,12 @@ EXPECTED_A01T_REAL_TOOL_SPLIT_SUMMARY = {
     "train_count": 176,
     "val_count": 43,
     "test_count": 54,
-    "audit": {"ok": True, "dataset_count": 1, "issues": []},
+    "audit": {
+        "ok": True,
+        "dataset_count": 1,
+        "issues": [],
+        "truncated_issue_count": 0,
+    },
 }
 
 
@@ -253,22 +258,36 @@ class TestRealToolChain:
         assert epoch_state["n_times"] == 501
         assert epoch_state["event_ids"] == EXPECTED_A01T_REAL_TOOL_EPOCH_EVENT_IDS
 
-        # 2.5 Generate Dataset (Required for Training)
-        gen_tool = RealGenerateDatasetTool()
-        res_gen = gen_tool.execute(
-            study, split_strategy="trial"
-        )  # trial strategy default
-        res_gen = _assert_tool_result(res_gen)
-        assert res_gen.message == "Generated 1 dataset(s)."
-        assert res_gen.payload["diagnostics"]["dataset_count"] == 1
+        # 2.5 Save the reviewed split specification for deferred materialization.
+        split_tool = RealConfigureDatasetSplitTool()
+        split_params = {
+            "test_ratio": 0.2,
+            "val_ratio": 0.2,
+            "split_strategy": "trial",
+            "training_mode": "individual",
+        }
+        unconfirmed_split = _assert_tool_result(
+            split_tool.execute(study, **split_params),
+            ok=False,
+        )
+        assert unconfirmed_split.error_type == "confirmation_required"
+        publication = get_application_service(study).get_view_publication()
+        reviewed_split = authorize_assistant_setting_change(
+            "configure_dataset_split",
+            split_params,
+            publication_generation=publication.generation,
+        )
+        saved_split = _assert_tool_result(
+            split_tool.execute(study, **reviewed_split),
+        )
+        assert saved_split.message == "Data splitting specification saved."
+        assert saved_split.diagnostics["materialized"] is False
         state = _state(study)
-        assert (
-            state["dataset"]["count"] == EXPECTED_A01T_REAL_TOOL_SPLIT_SUMMARY["count"]
-        )
-        assert (
-            state["dataset"]["split_summary"] == EXPECTED_A01T_REAL_TOOL_SPLIT_SUMMARY
-        )
-        assert state["active_dataset"]["has_datasets"] is True
+        assert state["dataset"]["split_spec_saved"] is True
+        assert state["dataset"]["count"] == 0
+        assert state["dataset"]["active_split_summary"] == {}
+        assert state["active_dataset"]["has_saved_split"] is True
+        assert state["active_dataset"]["has_datasets"] is False
 
         # 3. Configure & Start Training
         # Set Model (Optional default is often set, but let's be explicit)
@@ -329,6 +348,15 @@ class TestRealToolChain:
         assert training_state["plan_count"] == 1
         assert training_state["run_count"] == 1
         assert training_state["finished_run_count"] == 1
+        state = _state(study)
+        assert (
+            state["dataset"]["count"] == EXPECTED_A01T_REAL_TOOL_SPLIT_SUMMARY["count"]
+        )
+        assert (
+            state["dataset"]["active_split_summary"]
+            == EXPECTED_A01T_REAL_TOOL_SPLIT_SUMMARY
+        )
+        assert state["active_dataset"]["has_datasets"] is True
 
     def test_tool_error_handling(self, study):
         """Verify the retired direct loader fails closed with product guidance."""

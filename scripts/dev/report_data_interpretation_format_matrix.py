@@ -546,7 +546,7 @@ REAL_WORKFLOW_CASES: tuple[RealWorkflowCase, ...] = (
     ),
     RealWorkflowCase(
         case_id="public_sccn_eeglab",
-        title="SCCN EEGLAB IO/epoch-only reviewed-event lifecycle",
+        title="SCCN EEGLAB reviewed-event import lifecycle",
         evidence_scope="public_source",
         dataset_source_id="sccn-eeglab-tutorial",
         source_family="SCCN / EEGLAB",

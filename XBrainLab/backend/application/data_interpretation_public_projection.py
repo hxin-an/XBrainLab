@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 
 PUBLIC_EVIDENCE_PREVIEW_LIMIT = 12
+PUBLIC_BIDS_RECOMMENDATION_RUN_SAMPLE_LIMIT = 12
 
 _COUNTED_ROW_COLLECTIONS = {
     "row_evidence": "row_evidence_count",
@@ -39,7 +40,22 @@ def project_interpretation_candidate(
     payload: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Bound the public form of a complete interpretation candidate."""
-    return _project_mapping(payload)
+    projected = _project_mapping(payload)
+    rows = projected.get("label_carrier_plan")
+    details: dict[str, Any] | None = None
+    if isinstance(rows, list):
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            raw_details = row.pop("label_field_recommendation_details", None)
+            if details is None and isinstance(raw_details, dict):
+                details = raw_details
+    if details is not None:
+        bids = projected.get("bids")
+        projected_bids = dict(bids) if isinstance(bids, dict) else {}
+        projected_bids["label_field_recommendation_details"] = details
+        projected["bids"] = projected_bids
+    return projected
 
 
 def _project_mapping(
@@ -56,6 +72,25 @@ def _project_mapping(
             continue
         if key in _COUNTED_ROW_COLLECTIONS and isinstance(value, list):
             projected[_COUNTED_ROW_COLLECTIONS[key]] = len(value)
+            continue
+        if key == "sampled_row_counts" and isinstance(value, list):
+            total = max(
+                _integer(payload.get("sampled_row_counts_total")),
+                len(value),
+            )
+            sample = [
+                _project_value(item, parent_key=key)
+                for item in value[:PUBLIC_BIDS_RECOMMENDATION_RUN_SAMPLE_LIMIT]
+            ]
+            projected[key] = sample
+            projected["sampled_row_counts_sample_limit"] = (
+                PUBLIC_BIDS_RECOMMENDATION_RUN_SAMPLE_LIMIT
+            )
+            projected["sampled_row_counts_total"] = total
+            projected["sampled_row_counts_truncated"] = max(
+                total - len(sample),
+                0,
+            )
             continue
         if key in _BOUNDED_COLLECTIONS and isinstance(value, list):
             count_key = _BOUNDED_COLLECTIONS[key]

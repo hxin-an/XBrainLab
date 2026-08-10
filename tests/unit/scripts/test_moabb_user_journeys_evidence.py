@@ -452,7 +452,7 @@ def test_showcase_journey_records_actual_product_sequence_and_quality_inputs(
         "preprocess",
         "preprocess",
         "create_epoch",
-        "generate_dataset",
+        "configure_dataset_split",
         "configure_training",
         "saliency",
         "train",

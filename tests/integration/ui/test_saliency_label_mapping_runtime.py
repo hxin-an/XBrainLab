@@ -11,11 +11,11 @@ from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
     ConfigureTrainingCommand,
     CreateEpochCommand,
-    GenerateDatasetCommand,
     PreprocessCommand,
     PreprocessOperation,
     PreviewInterpretationCommand,
     SaliencyCommand,
+    SaveDatasetSplitCommand,
     ScanSourceCommand,
     TrainCommand,
     ValidateInterpretationCommand,
@@ -128,7 +128,7 @@ def test_data_import_label_mapping_renders_saliency_maps(qtbot, tmp_path) -> Non
             baseline=None,
             event_ids=["left hand", "right hand", "feet", "tongue"],
         ),
-        GenerateDatasetCommand(
+        SaveDatasetSplitCommand(
             test_ratio=0.2,
             val_ratio=0.2,
             split_strategy="trial",
@@ -250,7 +250,7 @@ def test_post_training_saliency_configuration_recomputes_metric_only_run(
             baseline=None,
             event_ids=["left hand", "right hand", "feet", "tongue"],
         ),
-        GenerateDatasetCommand(
+        SaveDatasetSplitCommand(
             test_ratio=0.2,
             val_ratio=0.2,
             split_strategy="trial",

@@ -410,7 +410,7 @@ def infer_user_intent(text: str) -> str:
     if "前處理" in normalized or "濾波" in normalized or "帶通" in normalized:
         return "preprocess"
     if _is_dataset_generation_request(normalized):
-        return "generate_dataset"
+        return "configure_dataset_split"
     if (
         "create epoch" in normalized
         or "epochs from" in normalized

@@ -364,10 +364,10 @@ AGENT_ACTION_CONTRACTS = AgentActionContractRegistry(
             direct_action=True,
         ),
         AgentActionContract(
-            "generate_dataset",
-            CommandName.GENERATE_DATASET,
+            "configure_dataset_split",
+            CommandName.CONFIGURE_DATASET_SPLIT,
             taxonomy="Experiment Setup",
-            intent_aliases=("generate_dataset",),
+            intent_aliases=("configure_dataset_split",),
             direct_action=True,
         ),
         AgentActionContract(

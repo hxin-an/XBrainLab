@@ -8,8 +8,9 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QPoint, QRect, QSize, Qt
 from PyQt6.QtWidgets import (
+    QBoxLayout,
     QComboBox,
     QDialog,
     QFrame,
@@ -267,15 +268,18 @@ class TestDataSplittingDialog:
 
     def test_confirm_accepts_preview_result(self, dlg):
         split_config = _split_config_payload()
+        preview_receipt = MagicMock()
         with patch(
             "XBrainLab.ui.dialogs.dataset.data_splitting_dialog.DataSplittingPreviewDialog"
         ) as MockDlg:
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_result.return_value = split_config
+            MockDlg.return_value.get_preview_receipt.return_value = preview_receipt
             dlg.confirm()
 
         MockDlg.assert_called_once()
         assert dlg.get_result() == split_config
+        assert dlg.get_preview_receipt() is preview_receipt
 
     def test_confirm_rejected(self, dlg):
         with patch(
@@ -453,7 +457,7 @@ class TestDataSplittingPreviewDialogSplitters:
         assert worker.is_alive() is False
         dlg.update_table()
         assert dlg._preview_status == "succeeded"
-        assert dlg.tree.topLevelItem(0).text(0) == "Fold_0"
+        assert dlg.tree.topLevelItem(0).text(0) == "Fold 1"
         assert dlg.tree.topLevelItem(0).text(1) == "80"
         assert dlg.tree.topLevelItem(0).text(2) == "10"
         assert dlg.tree.topLevelItem(0).text(3) == "10"
@@ -549,6 +553,28 @@ class TestDataSplittingPreviewDialogSplitters:
             if panel.objectName() == "SplitPreviewPanel"
         ]
         assert QSizePolicy.Policy.Maximum in right_panel_heights
+
+    def test_step2_reflows_and_keeps_actions_reachable_at_672px(
+        self,
+        dlg,
+        qtbot,
+    ):
+        dlg.resize(QSize(672, 620))
+        dlg.show()
+        qtbot.wait(0)
+
+        assert dlg.width() == 672
+        assert dlg.content_layout is not None
+        assert dlg.content_layout.direction() == QBoxLayout.Direction.TopToBottom
+        assert dlg.content_scroll is not None
+        assert dlg.content_scroll.horizontalScrollBar().maximum() == 0
+        assert dlg.btn_confirm is not None
+        confirm_bounds = QRect(
+            dlg.btn_confirm.mapTo(dlg, QPoint(0, 0)),
+            dlg.btn_confirm.size(),
+        )
+        assert dlg.rect().contains(confirm_bounds)
+        assert dlg.btn_confirm.visibleRegion().contains(dlg.btn_confirm.rect())
 
     def test_step2_results_table_keeps_full_headers_with_one_scroll_owner(
         self,
@@ -665,6 +691,57 @@ class TestDataSplittingPreviewDialogSplitters:
         )
         dlg.update_table()
         assert dlg.tree.topLevelItem(0).text(0) == "Preview failed"
+
+    def test_debounce_clears_rows_that_no_longer_match_controls(self, dlg):
+        dlg._set_preview_state(
+            dlg._preview_generation_id,
+            "succeeded",
+            rows=(
+                DatasetSplitPreviewRow(
+                    name="stale split",
+                    train_count=80,
+                    validation_count=10,
+                    test_count=10,
+                ),
+            ),
+        )
+        dlg.update_table()
+        assert dlg.tree.topLevelItem(0).text(0) == "stale split"
+
+        dlg.on_entry_change(dlg.val_splitter_list[0], "0.4")
+
+        visible_rows = [
+            dlg.tree.topLevelItem(index).text(0)
+            for index in range(dlg.tree.topLevelItemCount())
+        ]
+        assert "stale split" not in visible_rows
+        assert visible_rows == ["Updating preview"]
+        assert dlg.preview_debounce_timer.isActive()
+        dlg.preview_debounce_timer.stop()
+
+    def test_preview_failure_shows_reason_and_retry_action(self, dlg, qtbot):
+        dlg._set_preview_state(
+            dlg._preview_generation_id,
+            "failed",
+            "The requested validation ratio leaves no training rows.",
+        )
+        dlg.show()
+        dlg.update_table()
+        qtbot.wait(0)
+
+        assert dlg.preview_status_label is not None
+        assert dlg.preview_status_label.isVisibleTo(dlg)
+        assert dlg.preview_status_label.text() == (
+            "The requested validation ratio leaves no training rows."
+        )
+        assert dlg.btn_retry is not None
+        assert dlg.btn_retry.isVisibleTo(dlg)
+        assert dlg.btn_confirm.isEnabled() is False
+
+        with patch.object(dlg, "preview") as preview:
+            dlg.btn_retry.click()
+
+        preview.assert_called_once_with()
 
     def test_obsolete_show_info_action_is_removed(self, dlg):
         assert not hasattr(dlg, "show_info")

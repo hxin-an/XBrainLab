@@ -236,7 +236,7 @@
         "role": "user",
         "content": "Generate the dataset now.",
         "expected_tool_calls": [
-          {"tool_name": "generate_dataset", "parameters": {}}
+          {"tool_name": "configure_dataset_split", "parameters": {}}
         ]
       }
     ]

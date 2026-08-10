@@ -154,6 +154,92 @@ def test_label_configuration_merge_preserves_reviewed_external_choices_when_unch
     }
 
 
+def test_label_configuration_merge_preserves_untouched_explicit_run_choices():
+    first = "/bids/sub-01_task-p300_run-1_events.tsv"
+    second = "/bids/sub-01_task-p300_run-2_events.tsv"
+    merged = DataInterpretationActionCoordinator._merge_interpretation_choices(
+        {
+            "label_carrier": "loaded_label_files",
+            "label_carrier_choices": {
+                first: {"label_field": "trial_type", "anchor": "onset"},
+                second: {"label_field": "value", "anchor": "onset"},
+            },
+        },
+        {
+            "label_carrier_choices": {
+                first: {
+                    "label_field": "trial_type",
+                    "anchor": "onset",
+                    "value_decisions": {
+                        "target": {
+                            "role": "stimulus",
+                            "keep_event": True,
+                            "use_as_class": True,
+                            "class_name": "Target",
+                        }
+                    },
+                }
+            }
+        },
+    )
+
+    assert merged["label_carrier_choices"][second] == {
+        "label_field": "value",
+        "anchor": "onset",
+    }
+    assert "value_decisions" in merged["label_carrier_choices"][first]
+
+
+def test_label_configuration_merge_deep_merges_sparse_carrier_decision_edit():
+    carrier = "/bids/sub-01_task-condition_events.tsv"
+    untouched_decision = {
+        "role": "stimulus",
+        "keep_event": True,
+        "use_as_class": True,
+        "class_name": "Standard",
+    }
+    edited_decision = {
+        "role": "ignored",
+        "keep_event": True,
+        "use_as_class": False,
+    }
+    merged = DataInterpretationActionCoordinator._merge_interpretation_choices(
+        {
+            "label_carrier": "loaded_label_files",
+            "label_carrier_choices": {
+                carrier: {
+                    "label_field": "value",
+                    "target_file": "/bids/sub-01_task-condition_eeg.set",
+                    "placement_method": "time_field",
+                    "anchor": "onset",
+                    "value_decisions": {
+                        "standard": untouched_decision,
+                        "target": {
+                            "role": "stimulus",
+                            "keep_event": True,
+                            "use_as_class": True,
+                            "class_name": "Target",
+                        },
+                    },
+                }
+            },
+        },
+        {
+            "label_carrier_choices": {
+                carrier: {"value_decisions": {"target": edited_decision}}
+            }
+        },
+    )
+
+    carrier_choice = merged["label_carrier_choices"][carrier]
+    assert carrier_choice["label_field"] == "value"
+    assert carrier_choice["target_file"] == "/bids/sub-01_task-condition_eeg.set"
+    assert carrier_choice["placement_method"] == "time_field"
+    assert carrier_choice["anchor"] == "onset"
+    assert carrier_choice["value_decisions"]["standard"] == untouched_decision
+    assert carrier_choice["value_decisions"]["target"] == edited_decision
+
+
 def test_label_configuration_merge_clears_external_state_for_embedded_events():
     merged = DataInterpretationActionCoordinator._merge_interpretation_choices(
         {

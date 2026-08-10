@@ -224,7 +224,7 @@ def run_dataset_journey(
         stage_started = time.perf_counter()
         split = _execute(
             service,
-            symbols["GenerateDatasetCommand"](**dataset["workflow"]["split"]),
+            symbols["SaveDatasetSplitCommand"](**dataset["workflow"]["split"]),
             stage="split",
             trace=trace,
             confirm_resource_plan=confirm_resource_plan,
@@ -804,7 +804,7 @@ def _product_symbols() -> dict[str, Any]:
         "EvaluateCommand",
         "EvaluationPlanIdentity",
         "EvaluationRenderRequest",
-        "GenerateDatasetCommand",
+        "SaveDatasetSplitCommand",
         "PreprocessCommand",
         "PreviewInterpretationCommand",
         "QueryStateCommand",

@@ -18,13 +18,13 @@ from XBrainLab.backend.application import (
     ConfigureTrainingCommand,
     CreateEpochCommand,
     EvaluateCommand,
-    GenerateDatasetCommand,
     LoadDataCommand,
     PreprocessCommand,
     PreprocessOperation,
     PreviewInterpretationCommand,
     QueryStateCommand,
     ReviewInterpretationCommand,
+    SaveDatasetSplitCommand,
     ScanSourceCommand,
     TrainCommand,
     ValidateInterpretationCommand,
@@ -48,21 +48,36 @@ EXPECTED_SPLIT_SUMMARIES = {
         "train_count": 176,
         "val_count": 43,
         "test_count": 54,
-        "audit": {"ok": True, "dataset_count": 1, "issues": []},
+        "audit": {
+            "ok": True,
+            "dataset_count": 1,
+            "issues": [],
+            "truncated_issue_count": 0,
+        },
     },
     "A02T": {
         "count": 1,
         "train_count": 173,
         "val_count": 43,
         "test_count": 54,
-        "audit": {"ok": True, "dataset_count": 1, "issues": []},
+        "audit": {
+            "ok": True,
+            "dataset_count": 1,
+            "issues": [],
+            "truncated_issue_count": 0,
+        },
     },
     "A03T": {
         "count": 1,
         "train_count": 173,
         "val_count": 43,
         "test_count": 54,
-        "audit": {"ok": True, "dataset_count": 1, "issues": []},
+        "audit": {
+            "ok": True,
+            "dataset_count": 1,
+            "issues": [],
+            "truncated_issue_count": 0,
+        },
     },
 }
 
@@ -195,7 +210,7 @@ def test_real_gdf_internal_labels_apply_the_same_artifact_policy():
     assert epoch_result.state.epoch.epoch_count == 273
 
 
-def _build_label_attached_service(stem: str) -> ApplicationService:
+def _build_reviewed_label_service(stem: str) -> ApplicationService:
     gdf_path, label_path = _checked_in_fixture_pair(stem)
     if not os.path.exists(gdf_path):
         pytest.skip(f"Test data not found at {gdf_path}")
@@ -203,18 +218,37 @@ def _build_label_attached_service(stem: str) -> ApplicationService:
         pytest.skip(f"Label data not found at {label_path}")
 
     service = ApplicationService()
-    load_result = service.execute(LoadDataCommand(paths=[gdf_path]))
-    assert load_result.ok is True
-    assert load_result.diagnostics["success_count"] == 1
-    attach_result = service.execute(
-        AttachLabelsCommand(
-            mapping={f"{stem}.gdf": label_path},
-            label_paths=[label_path],
-            selected_event_names=["769", "770", "771", "772"],
-        ),
+    choices = {
+        "selected_eeg_files": [gdf_path],
+        "label_carrier_choices": {
+            label_path: {
+                "label_field": "classlabel",
+                "target_event_codes": ["769", "770", "771", "772"],
+                "placement_method": "eeg_event",
+                "time_model": "trial_order",
+                "granularity": "trial",
+                "value_decisions": _class_value_decisions(
+                    {event_name: event_name for event_name in EXPECTED_LABEL_EVENT_ID}
+                ),
+            }
+        },
+    }
+    scan_result = service.execute(
+        ScanSourceCommand(
+            source_path=gdf_path,
+            source_hint="file",
+            label_sources=[label_path],
+        )
     )
-    assert attach_result.ok is True
-    assert attach_result.diagnostics["success_count"] == 1
+    preview_result = service.execute(PreviewInterpretationCommand(choices=choices))
+    validation_result = service.execute(ValidateInterpretationCommand())
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert scan_result.ok is True
+    assert preview_result.ok is True
+    assert validation_result.ok is True
+    assert apply_result.ok is True
+    assert apply_result.diagnostics["label_apply"]["mode"] == "sequence"
     return service
 
 
@@ -287,7 +321,7 @@ def _query_epoch_setup(service: ApplicationService) -> dict[str, object]:
     return context.epoch_setup
 
 
-def _generate_trial_split(service: ApplicationService, stem: str):
+def _save_trial_split_specification(service: ApplicationService, stem: str):
     assert (
         service.execute(
             PreprocessCommand(
@@ -316,7 +350,7 @@ def _generate_trial_split(service: ApplicationService, stem: str):
     assert epoch_result.state.epoch.n_times == 1001
     assert epoch_result.state.epoch.event_ids == EXPECTED_EPOCH_EVENT_IDS
     dataset_result = service.execute(
-        GenerateDatasetCommand(
+        SaveDatasetSplitCommand(
             test_ratio=0.2,
             val_ratio=0.2,
             split_strategy="trial",
@@ -324,9 +358,12 @@ def _generate_trial_split(service: ApplicationService, stem: str):
         ),
     )
     assert dataset_result.ok is True
-    assert dataset_result.diagnostics["split_audit"]["ok"] is True
-    assert dataset_result.state.dataset.count == EXPECTED_SPLIT_SUMMARIES[stem]["count"]
-    assert dataset_result.state.dataset.split_summary == EXPECTED_SPLIT_SUMMARIES[stem]
+    assert dataset_result.diagnostics["materialized"] is False
+    assert dataset_result.state.dataset.available is False
+    assert dataset_result.state.dataset.count == 0
+    assert dataset_result.state.dataset.split_spec_saved is True
+    assert dataset_result.state.dataset.split_materialized is False
+    assert dataset_result.state.dataset.active_split_summary == {}
     return dataset_result
 
 
@@ -361,6 +398,9 @@ def _configure_and_train(service: ApplicationService, output_dir: Path):
             TrainCommand(confirmed=True, interactive=False),
         )
     assert train_result.ok is True
+    assert train_result.diagnostics["split_preparation"]["materialized"] is True
+    assert train_result.diagnostics["split_preparation"]["split_audit"]["ok"] is True
+    assert train_result.state.dataset.split_materialized is True
     assert train_result.state.training.plan_count == 1
     assert train_result.state.training.run_count == 1
     assert train_result.state.training.finished_run_count == 1
@@ -381,33 +421,36 @@ def _wait_for_training_stop(service: ApplicationService, timeout: float = 5.0) -
 
 
 @pytest.mark.parametrize("stem", CHECKED_IN_GDF_STEMS)
-def test_checked_in_label_attached_dataset_generation(stem):
-    """Each checked-in GDF+MAT pair should support dataset generation."""
-    service = _build_label_attached_service(stem)
+def test_checked_in_reviewed_labels_save_split_specification(stem):
+    """Each checked-in GDF+MAT pair should accept a deferred split specification."""
+    service = _build_reviewed_label_service(stem)
 
     epoch_setup = _query_epoch_setup(service)
     assert epoch_setup["available_events"] == [
         {"name": event_name, "count": 72} for event_name in EXPECTED_LABEL_EVENT_ID
     ]
 
-    dataset_result = _generate_trial_split(service, stem)
+    dataset_result = _save_trial_split_specification(service, stem)
 
-    assert dataset_result.state.dataset.available is True
-    assert dataset_result.state.dataset.count == EXPECTED_SPLIT_SUMMARIES[stem]["count"]
-    assert dataset_result.state.dataset.split_summary == EXPECTED_SPLIT_SUMMARIES[stem]
+    assert dataset_result.state.dataset.available is False
+    assert dataset_result.state.dataset.count == 0
+    assert dataset_result.state.dataset.split_spec_saved is True
 
 
 @pytest.mark.parametrize("stem", CHECKED_IN_GDF_STEMS)
-def test_checked_in_label_attached_training_smoke(stem, tmp_path):
+def test_checked_in_reviewed_label_training_smoke(stem, tmp_path):
     """Each checked-in GDF+MAT pair should support a one-epoch training smoke."""
-    service = _build_label_attached_service(stem)
-    _generate_trial_split(service, stem)
+    service = _build_reviewed_label_service(stem)
+    _save_trial_split_specification(service, stem)
 
     history_row = _configure_and_train(service, tmp_path / "test-real-output")
     train_metrics = history_row["metrics"]["train"]
+    state = service.get_state()
 
     assert RecordKey.LOSS in train_metrics
     assert RecordKey.ACC in train_metrics
+    assert state.dataset.count == EXPECTED_SPLIT_SUMMARIES[stem]["count"]
+    assert state.dataset.active_split_summary == EXPECTED_SPLIT_SUMMARIES[stem]
 
 
 def test_real_gdf_mat_data_interpretation_product_workflow(tmp_path):
@@ -471,7 +514,7 @@ def test_real_gdf_mat_data_interpretation_product_workflow(tmp_path):
     assert epoch_result.ok
     assert epoch_result.state.epoch.epoch_count == 273
     assert service.execute(
-        GenerateDatasetCommand(
+        SaveDatasetSplitCommand(
             test_ratio=0.2,
             val_ratio=0.2,
             split_strategy="trial",
@@ -490,8 +533,8 @@ def test_real_gdf_mat_data_interpretation_product_workflow(tmp_path):
 def test_cuda_oom_job_failure_is_visible_and_training_can_restart(
     tmp_path, monkeypatch
 ):
-    service = _build_label_attached_service("A01T")
-    _generate_trial_split(service, "A01T")
+    service = _build_reviewed_label_service("A01T")
+    _save_trial_split_specification(service, "A01T")
     _configure_training(service, tmp_path / "oom-recovery-output")
 
     def raise_oom(_holder, _record) -> None:
@@ -500,6 +543,9 @@ def test_cuda_oom_job_failure_is_visible_and_training_can_restart(
     monkeypatch.setattr(TrainingPlanHolder, "train_one_repeat", raise_oom)
     start = service.execute(TrainCommand(confirmed=True, interactive=True))
     assert start.ok
+    assert start.diagnostics["split_preparation"]["materialized"] is True
+    assert start.state.dataset.split_materialized is True
+    assert start.state.dataset.active_split_summary == EXPECTED_SPLIT_SUMMARIES["A01T"]
     _wait_for_training_stop(service)
 
     history = service.execute(QueryStateCommand(query="training_history"))
@@ -521,4 +567,5 @@ def test_cuda_oom_job_failure_is_visible_and_training_can_restart(
             TrainCommand(confirmed=True, interactive=False, append=False)
         )
     assert retry.ok
+    assert retry.diagnostics["split_preparation"]["cache_reused"] is True
     assert retry.state.training.finished_run_count == 1

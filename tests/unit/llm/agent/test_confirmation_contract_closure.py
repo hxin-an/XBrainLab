@@ -7,6 +7,9 @@ from typing import Any
 
 import pytest
 
+from XBrainLab.backend.application.training_recommendation import (
+    TrainingRecommendationField,
+)
 from XBrainLab.llm.agent.assembler import PromptToolPublication
 from XBrainLab.llm.agent.confirmation import (
     AgentConfirmationRequest,
@@ -29,6 +32,7 @@ from XBrainLab.llm.tools.application_surface import (
     ToolAvailability,
     ToolAvailabilityContext,
 )
+from XBrainLab.llm.tools.definitions.dataset_def import BaseConfigureDatasetSplitTool
 from XBrainLab.llm.tools.definitions.training_def import (
     BaseConfigureTrainingTool,
     BaseSetModelTool,
@@ -115,6 +119,7 @@ def _evaluate_setting(
     state: dict[str, Any],
 ) -> tuple[ToolAttemptCoordinator, ToolAttemptDecision]:
     tools = {
+        "configure_dataset_split": BaseConfigureDatasetSplitTool(),
         "set_model": BaseSetModelTool(),
         "configure_training": BaseConfigureTrainingTool(),
     }
@@ -134,33 +139,30 @@ def _evaluate_setting(
             publication=PromptToolPublication(
                 tool_names=frozenset({tool_name}),
                 backend_generation=41,
-                authorized_command="configure_training",
+                authorized_command=(
+                    "configure_training"
+                    if tool_name in {"set_model", "configure_training"}
+                    else tool_name
+                ),
             ),
             latest_user_text=(
                 "Use SCCNet for training."
                 if tool_name == "set_model"
-                else "Configure training for five epochs with batch size four "
-                "and learning rate 0.001."
+                else (
+                    "Split trials for individual training."
+                    if tool_name == "configure_dataset_split"
+                    else "Configure training for five epochs with batch size four "
+                    "and learning rate 0.001."
+                )
             ),
         )
     )
     return coordinator, decision
 
 
-@pytest.mark.parametrize(
-    ("tool_name", "params"),
-    [
-        ("reset_preprocess", {}),
-        (
-            "generate_dataset",
-            {"split_strategy": "trial", "training_mode": "full_data"},
-        ),
-    ],
-)
-def test_capability_confirmed_approval_injects_backend_boolean_without_allowlist(
-    tool_name: str,
-    params: dict[str, Any],
-) -> None:
+def test_capability_confirmed_approval_injects_backend_boolean() -> None:
+    tool_name = "reset_preprocess"
+    params: dict[str, Any] = {}
     context = _context(tool_name, capability_confirmation=True)
     coordinator = ToolAttemptCoordinator(
         registry=_Registry(),
@@ -184,6 +186,10 @@ def test_capability_confirmed_approval_injects_backend_boolean_without_allowlist
     ("tool_name", "params"),
     [
         ("set_model", {"model_name": "SCCNet"}),
+        (
+            "configure_dataset_split",
+            {"split_strategy": "trial", "training_mode": "individual"},
+        ),
         (
             "configure_training",
             {
@@ -219,6 +225,81 @@ def test_changed_complete_setting_requires_typed_host_confirmation(
     assert evidence.tool_name == tool_name
     assert evidence.params_fingerprint == request.params_fingerprint
     assert evidence.publication_generation == request.publication_generation
+
+
+def test_dataset_split_confirmation_defaults_keep_fingerprint_stable() -> None:
+    coordinator, decision = _evaluate_setting(
+        "configure_dataset_split",
+        {"split_strategy": "trial", "training_mode": "individual"},
+        _training_state(),
+    )
+
+    assert decision.action is ToolAttemptAction.CONFIRMATION_REQUIRED
+    assert decision.confirmation_kind == "setting_change"
+    assert decision.params["test_ratio"] == 0.2
+    assert decision.params["val_ratio"] == 0.2
+
+    request = AgentConfirmationRequest.for_action(
+        command_name=decision.command_name,
+        params=decision.params,
+        action_label="Apply change",
+        description="Apply the reviewed split.",
+        destructive=False,
+        publication_generation=41,
+    )
+    approved = coordinator.approved_params(decision)
+
+    evidence = approved["assistant_setting_confirmation"]
+    assert isinstance(evidence, AssistantSettingConfirmation)
+    assert evidence.params_fingerprint == request.params_fingerprint
+    assert "confirmed" not in approved
+
+
+def test_training_confirmation_preserves_only_explicit_field_provenance() -> None:
+    coordinator, decision = _evaluate_setting(
+        "configure_training",
+        {
+            "epoch": 5,
+            "batch_size": 4,
+            "learning_rate": 0.001,
+            "device": "cpu",
+        },
+        _training_state(),
+    )
+
+    assert decision.params["optimizer"] == "adam"
+    assert decision.params["evaluation_option"] == "last_epoch"
+
+    approved = coordinator.approved_params(decision)
+
+    evidence = approved["assistant_setting_confirmation"]
+    assert isinstance(evidence, AssistantSettingConfirmation)
+    assert evidence.edited_recommendation_fields == (
+        TrainingRecommendationField.EPOCHS,
+        TrainingRecommendationField.BATCH_SIZE,
+        TrainingRecommendationField.LEARNING_RATE,
+    )
+
+
+def test_training_confirmation_preserves_explicit_recommendation_edits() -> None:
+    coordinator, decision = _evaluate_setting(
+        "configure_training",
+        {
+            "epoch": 5,
+            "batch_size": 4,
+            "learning_rate": 0.001,
+            "device": "cpu",
+            "optimizer": "adamw",
+            "evaluation_option": "val_loss",
+        },
+        _training_state(),
+    )
+
+    approved = coordinator.approved_params(decision)
+
+    evidence = approved["assistant_setting_confirmation"]
+    assert isinstance(evidence, AssistantSettingConfirmation)
+    assert evidence.edited_recommendation_fields == tuple(TrainingRecommendationField)
 
 
 def test_setting_evidence_fingerprint_excludes_backend_confirmation_boolean() -> None:
@@ -307,8 +388,8 @@ def test_incomplete_training_settings_keep_existing_input_handoff_boundary() -> 
 _AFFECTED_CONFIRMATIONS = (
     ("reset_preprocess", {}),
     (
-        "generate_dataset",
-        {"split_strategy": "trial", "training_mode": "full_data"},
+        "configure_dataset_split",
+        {"split_strategy": "trial", "training_mode": "individual"},
     ),
     ("set_model", {"model_name": "SCCNet"}),
     (
@@ -345,7 +426,7 @@ def test_confirmation_resolution_matrix_is_correlated_for_every_affected_command
         params=params,
         action_label="Apply change",
         description="Apply the reviewed change.",
-        destructive=tool_name in {"reset_preprocess", "generate_dataset"},
+        destructive=tool_name == "reset_preprocess",
         publication_generation=41,
         request_id=f"{tool_name}-request",
     )

@@ -2973,9 +2973,11 @@ def test_single_recording_walkthrough_uses_individual_trial_split() -> None:
     assert len(set(WALKTHROUGH_EVENT_ROWS)) == 10
     assert "t_max=0.51" in source
     assert 'model_name="SCCNet"' in source
-    assert 'split_strategy="trial"' in source
-    assert 'training_mode="individual"' in source
-    assert 'training_mode="group"' not in source
+    assert '"train_type": "Individual"' in source
+    assert '"split_type": "By Trial"' in source
+    assert "DatasetSplitPreviewRequest(" in source
+    assert "SaveDatasetSplitCommand(" in source
+    assert "GenerateDatasetCommand(" not in source
     assert "TrainCommand(confirmed=True, interactive=True)" in source
     assert "TrainCommand(confirmed=True, interactive=False)" not in source
 
@@ -4004,7 +4006,7 @@ def test_workflow_contract_rejects_failed_happy_path_command() -> None:
                     "error_type": "precondition",
                 },
                 "dataset": {
-                    "command": "generate_dataset",
+                    "command": "configure_dataset_split",
                     "ok": False,
                     "error_type": "precondition",
                 },

@@ -168,6 +168,19 @@ def test_immediate_claim_boundary_rejects_statistical_and_moabb_extrapolation() 
     assert "20" in boundary
 
 
+def test_cross_source_scenario_preserves_public_fixture_scientific_boundary() -> None:
+    scenario = PRODUCT_SCENARIOS["data.cross-source-training-persistence"]
+    scope = scenario.scope.casefold()
+    boundary = scenario.claim_boundary.casefold()
+
+    assert "class-grounded physionet edf and bbci gdf training" in scope
+    assert "sccn set and mne cnt import/preprocess-only boundary cases" in scope
+    assert "supervised epoch is intentionally blocked" in scope
+    assert "epoch-only" not in scope
+    assert "import/preprocess-only fixtures" in boundary
+    assert "not relabeled as supervised data" in boundary
+
+
 def test_profile_rejects_moabb_dataset_campaign_conflation() -> None:
     profile = PRODUCT_SCENARIO_PROFILES[IMMEDIATE_PROFILE_ID]
 

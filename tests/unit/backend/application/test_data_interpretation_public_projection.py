@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
+
 from XBrainLab.backend.application.data_interpretation_public_projection import (
     PUBLIC_EVIDENCE_PREVIEW_LIMIT,
     project_bids_review,
+    project_interpretation_candidate,
     project_label_carrier_plan,
 )
 from XBrainLab.backend.application.data_interpretation_recipe import (
@@ -126,6 +129,54 @@ def test_bids_projection_bounds_row_level_issues_without_losing_issue_count() ->
     assert run["issue_count"] == count
     assert run["issues"] == issues[:PUBLIC_EVIDENCE_PREVIEW_LIMIT]
     assert project_bids_review(projected) == projected
+
+
+def test_candidate_projection_publishes_bids_recommendation_details_once() -> None:
+    run_count = 80
+    sampled_counts = list(range(run_count))
+    recommendation = {
+        "field": "value",
+        "source": "bids_multi_run_evidence",
+        "reason_code": "value_has_described_classes",
+        "facts": {"selected_run_count": run_count},
+    }
+    rows = [
+        {
+            "path": f"/data/sub-01_task-P300_run-{run:02d}_events.tsv",
+            "label_field_recommendation": dict(recommendation),
+        }
+        for run in range(run_count)
+    ]
+    rows[0]["label_field_recommendation_details"] = {
+        "reason_code": "value_has_described_classes",
+        "facts": {"selected_run_count": run_count},
+        "evidence": {
+            "sampled_row_counts": sampled_counts,
+            "sampled_row_counts_total": run_count,
+        },
+    }
+
+    projected = project_interpretation_candidate(
+        {
+            "source_kind": "bids",
+            "bids": {"is_bids": True},
+            "label_carrier_plan": rows,
+        }
+    )
+    serialized = json.dumps(projected, sort_keys=True)
+
+    details = projected["bids"]["label_field_recommendation_details"]
+    evidence = details["evidence"]
+    assert evidence["sampled_row_counts_sample_limit"] == 12
+    assert evidence["sampled_row_counts_total"] == run_count
+    assert evidence["sampled_row_counts_truncated"] == run_count - 12
+    assert len(evidence["sampled_row_counts"]) == 12
+    assert all(
+        "label_field_recommendation_details" not in row
+        for row in projected["label_carrier_plan"]
+    )
+    assert serialized.count('"label_field_recommendation_details"') == 1
+    assert len(serialized.encode("utf-8")) < 60_000
 
 
 def test_label_carrier_projection_is_idempotent_for_empty_bounded_evidence() -> None:

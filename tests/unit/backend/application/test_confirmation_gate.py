@@ -21,6 +21,7 @@ from XBrainLab.backend.application import (
     command_specs,
     execute_automation_payload,
 )
+from XBrainLab.backend.application.state import DatasetSplitLifecycle
 from XBrainLab.backend.study import Study
 
 
@@ -300,7 +301,14 @@ def _ready_training_service() -> ApplicationService:
         state,
         pipeline_stage="dataset_ready",
         raw=replace(state.raw, loaded=True, count=1),
-        dataset=replace(state.dataset, available=True, count=1),
+        dataset=replace(
+            state.dataset,
+            available=True,
+            count=1,
+            split_spec_saved=True,
+            split_lifecycle=DatasetSplitLifecycle.VERIFIED,
+            split_materialized=True,
+        ),
         training=replace(
             state.training,
             has_model=True,
@@ -310,6 +318,7 @@ def _ready_training_service() -> ApplicationService:
             state.active_dataset,
             has_raw_data=True,
             has_datasets=True,
+            has_saved_split=True,
         ),
         active_training=replace(
             state.active_training,

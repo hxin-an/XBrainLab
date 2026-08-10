@@ -28,6 +28,20 @@ class PipelineStateSnapshot:
     epoch_trial_selection_evidence_dropped: int | None
 
 
+@dataclass(frozen=True)
+class DatasetPublicationSnapshot:
+    """Bounded references required to restore one dataset publication."""
+
+    datasets: tuple[Any, ...]
+    dataset_generator: Any | None
+    dataset_locked: bool
+    dataset_sequence: int
+    epoch_data: Any | None
+    epoch_trial_selection_evidence_present: bool
+    epoch_trial_selection_evidence: Any
+    epoch_trial_selection_evidence_dropped: int | None
+
+
 class PipelineStateTransaction:
     """Coordinate data rollback with typed training-runtime invalidation."""
 
@@ -48,6 +62,11 @@ class PipelineStateTransaction:
         evidence_present = bool(
             epoch_data is not None and hasattr(epoch_data, "trial_selection_evidence")
         )
+        trial_selection_evidence = (
+            deepcopy(epoch_data_runtime.trial_selection_evidence)
+            if evidence_present
+            else None
+        )
         from XBrainLab.backend.dataset.dataset import Dataset  # noqa: PLC0415
 
         return PipelineStateSnapshot(
@@ -62,11 +81,7 @@ class PipelineStateTransaction:
             dataset_locked=bool(getattr(data_manager, "dataset_locked", False)),
             dataset_sequence=int(Dataset.SEQ),
             epoch_trial_selection_evidence_present=evidence_present,
-            epoch_trial_selection_evidence=(
-                deepcopy(epoch_data_runtime.trial_selection_evidence)
-                if evidence_present
-                else None
-            ),
+            epoch_trial_selection_evidence=trial_selection_evidence,
             epoch_trial_selection_evidence_dropped=(
                 int(getattr(epoch_data, "trial_selection_evidence_dropped", 0))
                 if evidence_present
@@ -112,6 +127,13 @@ class PipelineStateTransaction:
             snapshot.epoch_data.trial_selection_evidence_dropped = int(
                 snapshot.epoch_trial_selection_evidence_dropped or 0
             )
+        elif snapshot.epoch_data is not None:
+            for attribute in (
+                "trial_selection_evidence",
+                "trial_selection_evidence_dropped",
+            ):
+                if hasattr(snapshot.epoch_data, attribute):
+                    delattr(snapshot.epoch_data, attribute)
 
     def publish_datasets(self, datasets: list[Any], generator: Any) -> None:
         """Publish already-generated datasets without touching training runtime."""
@@ -123,18 +145,108 @@ class PipelineStateTransaction:
             data_manager.datasets = list(datasets)
         data_manager.dataset_generator = generator
 
+    def publish_dataset_candidate(
+        self,
+        snapshot: DatasetPublicationSnapshot,
+    ) -> None:
+        """Publish one prepared split with its sequence and epoch evidence."""
+        data_manager = self._study.data_manager
+        if getattr(data_manager, "epoch_data", None) is not snapshot.epoch_data:
+            raise RuntimeError(
+                "Epoch data changed before the prepared dataset split was published."
+            )
+        self.publish_datasets(list(snapshot.datasets), snapshot.dataset_generator)
+        data_manager.dataset_locked = snapshot.dataset_locked
+        self._restore_dataset_provenance(snapshot)
+
+    def capture_dataset_publication(self) -> DatasetPublicationSnapshot:
+        """Capture dataset identities without copying epochs, masks, or history."""
+        data_manager = self._study.data_manager
+        epoch_data = getattr(data_manager, "epoch_data", None)
+        epoch_data_runtime: Any = epoch_data
+        evidence_present = bool(
+            epoch_data is not None and hasattr(epoch_data, "trial_selection_evidence")
+        )
+        trial_selection_evidence = (
+            deepcopy(epoch_data_runtime.trial_selection_evidence)
+            if evidence_present
+            else None
+        )
+        from XBrainLab.backend.dataset.dataset import Dataset  # noqa: PLC0415
+
+        return DatasetPublicationSnapshot(
+            datasets=tuple(getattr(data_manager, "datasets", []) or []),
+            dataset_generator=getattr(data_manager, "dataset_generator", None),
+            dataset_locked=bool(getattr(data_manager, "dataset_locked", False)),
+            dataset_sequence=int(Dataset.SEQ),
+            epoch_data=epoch_data,
+            epoch_trial_selection_evidence_present=evidence_present,
+            epoch_trial_selection_evidence=trial_selection_evidence,
+            epoch_trial_selection_evidence_dropped=(
+                int(getattr(epoch_data, "trial_selection_evidence_dropped", 0))
+                if evidence_present
+                else None
+            ),
+        )
+
+    def restore_dataset_publication(
+        self,
+        snapshot: DatasetPublicationSnapshot,
+    ) -> None:
+        """Restore one failed dataset publish while leaving epochs untouched."""
+        data_manager = self._study.data_manager
+        if getattr(data_manager, "epoch_data", None) is not snapshot.epoch_data:
+            raise RuntimeError(
+                "Epoch data changed before dataset publication could be restored."
+            )
+        data_manager.datasets = list(snapshot.datasets)
+        data_manager.dataset_generator = snapshot.dataset_generator
+        data_manager.dataset_locked = snapshot.dataset_locked
+        self._restore_dataset_provenance(snapshot)
+
+    @staticmethod
+    def _restore_dataset_provenance(snapshot: DatasetPublicationSnapshot) -> None:
+        """Restore dataset sequence and detached trial-selection evidence."""
+        from XBrainLab.backend.dataset.dataset import Dataset  # noqa: PLC0415
+
+        Dataset.SEQ = snapshot.dataset_sequence
+        if snapshot.epoch_trial_selection_evidence_present:
+            epoch_data = snapshot.epoch_data
+            if epoch_data is None:
+                raise RuntimeError("Dataset publication evidence has no epoch data.")
+            epoch_data.trial_selection_evidence = deepcopy(
+                snapshot.epoch_trial_selection_evidence
+            )
+            epoch_data.trial_selection_evidence_dropped = int(
+                snapshot.epoch_trial_selection_evidence_dropped or 0
+            )
+        elif snapshot.epoch_data is not None:
+            for attribute in (
+                "trial_selection_evidence",
+                "trial_selection_evidence_dropped",
+            ):
+                if hasattr(snapshot.epoch_data, attribute):
+                    delattr(snapshot.epoch_data, attribute)
+
     def commit_dataset_replacement(
         self,
-        datasets: list[Any],
-        generator: Any,
+        candidate: DatasetPublicationSnapshot,
         *,
         expected: TrainingPipelineMutationBoundary,
     ) -> bool:
         """Publish datasets and retire dependent training under one runtime lease."""
         return self._training_runtime.commit_pipeline_replacement(
             expected,
-            publish=lambda: self.publish_datasets(datasets, generator),
+            publish=lambda: self.publish_dataset_candidate(candidate),
         )
+
+    def capture_training_startup_snapshot(self) -> Any:
+        """Capture complete quiescent training truth through the runtime port."""
+        return self._training_runtime.capture_startup_rollback_snapshot()
+
+    def restore_training_startup_snapshot(self, snapshot: Any) -> None:
+        """Restore complete training truth after a failed dataset commit."""
+        self._training_runtime.restore_startup_rollback_snapshot(snapshot)
 
     def begin_raw_replacement(self) -> TrainingPipelineMutationBoundary:
         """Capture a typed boundary that requires no trainer."""

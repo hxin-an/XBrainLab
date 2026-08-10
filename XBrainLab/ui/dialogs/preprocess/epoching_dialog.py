@@ -5,6 +5,8 @@ Provides controls for selecting events, specifying the time window
 """
 
 from contextlib import suppress
+from dataclasses import dataclass
+from enum import Enum
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -29,7 +31,13 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.application.epoch_context import (
+    EpochContextAvailability,
+    EpochContextAvailabilityCode,
+    EpochWindowMode,
     build_epoch_confirmation_requirement,
+    epoch_handoff_matches_context,
+    validated_epoch_context_availability,
+    validated_epoch_window_mode,
 )
 from XBrainLab.ui.components.presentation import fit_table_to_all_rows
 from XBrainLab.ui.core.base_dialog import BaseDialog
@@ -48,6 +56,7 @@ def _label_source_display(value: object) -> str:
         "loaded_label_files": "loaded label files",
         "external_files": "loaded label files",
         "embedded_events": "labels inside EEG files",
+        "internal_events": "labels inside EEG files",
     }.get(text, text.replace("_", " ") if text else "import")
 
 
@@ -61,6 +70,125 @@ def _placement_mode_display(values: list[str]) -> str:
     }
     displayed = [labels.get(value, value.replace("_", " ")) for value in values]
     return ", ".join(displayed) if displayed else "Manual event selection"
+
+
+_BASELINE_ORDER_ERROR = "Baseline start must be less than or equal to baseline end."
+_BASELINE_WINDOW_ERROR = "Baseline must stay inside the EEG epoch time window."
+_WINDOW_MODE_REVIEW_TITLE = "Review epoch window"
+_WINDOW_MODE_REVIEW_MESSAGE = (
+    "The epoch window mode needs review before EEG epochs can be created. "
+    "Return to Data Import and review the event timing, then reopen this dialog."
+)
+
+
+def validate_epoch_baseline(
+    *,
+    enabled: bool,
+    baseline_min: float,
+    baseline_max: float,
+    t_min: float,
+    t_max: float,
+) -> str | None:
+    """Return the baseline validation error shared by live and submit paths."""
+    if not enabled:
+        return None
+    if baseline_min > baseline_max:
+        return _BASELINE_ORDER_ERROR
+    if baseline_min < t_min or baseline_max > t_max:
+        return _BASELINE_WINDOW_ERROR
+    return None
+
+
+class EpochSubmissionIssue(str, Enum):
+    """One user-actionable reason the current epoch proposal cannot submit."""
+
+    NONE = "none"
+    CONTEXT_UNAVAILABLE = "context_unavailable"
+    EVENTS_REQUIRED = "events_required"
+    TIME_ORDER = "time_order"
+    MINIMUM_DURATION = "minimum_duration"
+    BASELINE = "baseline"
+    CONFIRMATION_REQUIRED = "confirmation_required"
+
+
+@dataclass(frozen=True)
+class EpochSubmissionValidation:
+    """Pure validation result shared by live enablement and acceptance."""
+
+    issue: EpochSubmissionIssue
+    title: str
+    message: str
+
+    @property
+    def allowed(self) -> bool:
+        return self.issue is EpochSubmissionIssue.NONE
+
+
+def validate_epoch_submission(
+    *,
+    context_available: bool,
+    context_unavailable_reason: str,
+    window_mode: object,
+    selected_events: list[str],
+    t_min: float,
+    t_max: float,
+    baseline_enabled: bool,
+    baseline_min: float,
+    baseline_max: float,
+    confirmation_required: bool,
+    confirmation_accepted: bool,
+    confirmation_title: str,
+    confirmation_message: str,
+) -> EpochSubmissionValidation:
+    """Validate every condition controlling the Create EEG Epochs action."""
+    try:
+        validated_epoch_window_mode(window_mode)
+    except ValueError:
+        context_available = False
+    if not context_available:
+        return EpochSubmissionValidation(
+            EpochSubmissionIssue.CONTEXT_UNAVAILABLE,
+            _WINDOW_MODE_REVIEW_TITLE,
+            str(context_unavailable_reason).strip() or _WINDOW_MODE_REVIEW_MESSAGE,
+        )
+    if not selected_events:
+        return EpochSubmissionValidation(
+            EpochSubmissionIssue.EVENTS_REQUIRED,
+            "Warning",
+            "Please select at least one event.",
+        )
+    if t_min >= t_max:
+        return EpochSubmissionValidation(
+            EpochSubmissionIssue.TIME_ORDER,
+            "Invalid Input",
+            "Start time must be less than End time.",
+        )
+    if (t_max - t_min) < 0.1:
+        return EpochSubmissionValidation(
+            EpochSubmissionIssue.MINIMUM_DURATION,
+            "Invalid Input",
+            "EEG epoch duration is too short (< 0.1s).",
+        )
+    baseline_error = validate_epoch_baseline(
+        enabled=baseline_enabled,
+        baseline_min=baseline_min,
+        baseline_max=baseline_max,
+        t_min=t_min,
+        t_max=t_max,
+    )
+    if baseline_error is not None:
+        return EpochSubmissionValidation(
+            EpochSubmissionIssue.BASELINE,
+            "Invalid Input",
+            baseline_error,
+        )
+    if confirmation_required and not confirmation_accepted:
+        return EpochSubmissionValidation(
+            EpochSubmissionIssue.CONFIRMATION_REQUIRED,
+            confirmation_title,
+            confirmation_message,
+        )
+    return EpochSubmissionValidation(EpochSubmissionIssue.NONE, "", "")
 
 
 class EpochingDialog(BaseDialog):
@@ -97,6 +225,16 @@ class EpochingDialog(BaseDialog):
             epoch_handoff,
             assistant_suggestions,
         )
+        try:
+            self.context_availability = validated_epoch_context_availability(
+                self.epoch_context
+            )
+        except ValueError:
+            self.context_availability = EpochContextAvailability.unavailable(
+                EpochContextAvailabilityCode.INVALID_CONTEXT,
+                _WINDOW_MODE_REVIEW_MESSAGE,
+            )
+        self.window_mode = self.context_availability.window_mode
         self.params: tuple | None = None
         self.confirmation_requirement: dict | None = None
         self.confirmation_receipt: str | None = None
@@ -112,6 +250,8 @@ class EpochingDialog(BaseDialog):
         self.baseline_check: QCheckBox | None = None
         self.b_min_spin: QDoubleSpinBox | None = None
         self.b_max_spin: QDoubleSpinBox | None = None
+        self.baseline_error_label: QLabel | None = None
+        self.create_button: QPushButton | None = None
 
         super().__init__(parent, title="Time Epoching")
         self.resize(700, 740)
@@ -120,14 +260,14 @@ class EpochingDialog(BaseDialog):
     def init_ui(self):
         """Initialize the dialog UI with event list, parameter controls, and buttons."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 15, 18, 13)
-        layout.setSpacing(10)
+        layout.setContentsMargins(16, 12, 16, 10)
+        layout.setSpacing(8)
 
         content = QWidget()
         content.setObjectName("EpochDialogContent")
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(10)
+        content_layout.setSpacing(8)
 
         scroll = QScrollArea()
         scroll.setObjectName("EpochDialogContentScroll")
@@ -156,7 +296,7 @@ class EpochingDialog(BaseDialog):
 
         # 1. Event Selection
         event_group, event_layout = self._build_section_card("Events")
-        event_layout.setSpacing(8)
+        event_layout.setSpacing(6)
         event_hint = QLabel(self._event_hint_text())
         event_hint.setWordWrap(True)
         event_layout.addWidget(event_hint)
@@ -170,8 +310,8 @@ class EpochingDialog(BaseDialog):
         self.event_list.setShowGrid(False)
         event_vertical_header = self.event_list.verticalHeader()
         if event_vertical_header is not None:
-            event_vertical_header.setDefaultSectionSize(27)
-            event_vertical_header.setMinimumSectionSize(26)
+            event_vertical_header.setDefaultSectionSize(25)
+            event_vertical_header.setMinimumSectionSize(24)
 
         available_events = self.epoch_context.get("available_events") or []
 
@@ -308,6 +448,7 @@ class EpochingDialog(BaseDialog):
 
         self.confirmation_check = QCheckBox()
         self.confirmation_check.setObjectName("EpochConfirmationCheck")
+        self.confirmation_check.toggled.connect(self._refresh_submit_validity)
         self.confirmation_check.hide()
         window_grid.addWidget(self.confirmation_check, 4, 0, 1, 4)
         window_grid.setColumnStretch(4, 1)
@@ -317,13 +458,27 @@ class EpochingDialog(BaseDialog):
         self.update_duration_info()
         self._refresh_confirmation_requirement()
 
+        content_layout.addWidget(param_group)
+
         # Baseline
         suggested_baseline = self.epoch_context.get("suggested_baseline")
+        baseline_group, baseline_layout = self._build_section_card(
+            "Baseline Correction"
+        )
+        baseline_group.setObjectName("EpochBaselineSection")
+        baseline_help = QLabel(
+            "The average signal in this interval will be removed from each epoch."
+        )
+        baseline_help.setObjectName("EpochDialogEvidence")
+        baseline_help.setWordWrap(True)
+        baseline_layout.addWidget(baseline_help)
         self.baseline_check = QCheckBox("Apply baseline correction")
         self.baseline_check.setObjectName("EpochBaselineCheck")
-        self.baseline_check.setChecked(suggested_baseline is not None)
+        self.baseline_check.setChecked(
+            self._baseline_is_inside_window(suggested_baseline)
+        )
         self.baseline_check.toggled.connect(self.toggle_baseline)
-        param_layout.addWidget(self.baseline_check)
+        baseline_layout.addWidget(self.baseline_check)
 
         self.b_min_spin = QDoubleSpinBox()
         self.b_min_spin.setRange(-300, 300)
@@ -348,6 +503,8 @@ class EpochingDialog(BaseDialog):
         )
         self.b_max_spin.setValue(float(baseline_max))
         self._configure_compact_spinbox(self.b_max_spin)
+        self.b_min_spin.valueChanged.connect(self._refresh_submit_validity)
+        self.b_max_spin.valueChanged.connect(self._refresh_submit_validity)
 
         baseline_grid = QGridLayout()
         baseline_grid.setContentsMargins(0, 0, 0, 0)
@@ -358,16 +515,17 @@ class EpochingDialog(BaseDialog):
         baseline_grid.addWidget(self._field_label("Baseline Max (s)"), 0, 2)
         baseline_grid.addWidget(self.b_max_spin, 0, 3)
         baseline_grid.setColumnStretch(4, 1)
-        param_layout.addLayout(baseline_grid)
+        baseline_layout.addLayout(baseline_grid)
+        self.baseline_error_label = QLabel()
+        self.baseline_error_label.setObjectName("EpochBaselineError")
+        self.baseline_error_label.setStyleSheet(Stylesheets.DIALOG_WARNING_LABEL)
+        self.baseline_error_label.setWordWrap(True)
+        self.baseline_error_label.hide()
+        baseline_layout.addWidget(self.baseline_error_label)
         self.toggle_baseline(self.baseline_check.isChecked())
 
-        content_layout.addWidget(param_group)
+        content_layout.addWidget(baseline_group)
         layout.addWidget(scroll, stretch=1)
-
-        footer_rule = QFrame()
-        footer_rule.setObjectName("EpochFooterRule")
-        footer_rule.setFrameShape(QFrame.Shape.HLine)
-        layout.addWidget(footer_rule)
 
         footer = QHBoxLayout()
         footer.setContentsMargins(0, 0, 0, 0)
@@ -382,9 +540,11 @@ class EpochingDialog(BaseDialog):
         ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
         if ok_button is not None:
             ok_button.setObjectName("EpochPrimaryButton")
+            self.create_button = ok_button
         buttons.accepted.connect(self.accept)
         footer.addWidget(buttons)
         layout.addLayout(footer)
+        self._refresh_submit_validity()
 
     def _build_section_card(self, title: str) -> tuple[QFrame, QVBoxLayout]:
         card = QFrame()
@@ -392,8 +552,8 @@ class EpochingDialog(BaseDialog):
         card.setFrameShape(QFrame.Shape.StyledPanel)
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(14, 11, 14, 12)
-        card_layout.setSpacing(8)
+        card_layout.setContentsMargins(12, 9, 12, 10)
+        card_layout.setSpacing(6)
         title_label = QLabel(title)
         title_label.setObjectName("EpochSectionTitle")
         card_layout.addWidget(title_label)
@@ -442,8 +602,8 @@ class EpochingDialog(BaseDialog):
             """
         )
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(8)
+        layout.setContentsMargins(11, 8, 11, 8)
+        layout.setSpacing(6)
         title_row = QHBoxLayout()
         title = QLabel(
             "BIDS events from import"
@@ -466,22 +626,36 @@ class EpochingDialog(BaseDialog):
         grid = QGridLayout()
         grid.setHorizontalSpacing(18)
         grid.setVerticalSpacing(6)
-        rows = [
-            ("Source", self.epoch_context.get("source")),
-            ("Placement", self.epoch_context.get("placement_label")),
-            ("Timing", self._timing_summary_text()),
-        ]
         label_field = str(self.epoch_context.get("label_field") or "").strip()
-        if label_field:
-            rows.insert(2, ("Label field", label_field))
+        if self._is_bids_epoch_context():
+            rows = []
+            if label_field:
+                rows.append(("Label field", label_field))
+            rows.extend(
+                [
+                    ("Epoch anchor", "Event onset"),
+                    ("Window mode", self._effective_window_mode_text()),
+                ]
+            )
+        else:
+            rows = [
+                ("Source", self.epoch_context.get("source")),
+                ("Timing", self._timing_summary_text()),
+                ("Placement", self.epoch_context.get("placement_label")),
+            ]
+            if label_field:
+                rows.insert(2, ("Label field", label_field))
+        pairs_per_row = 2
         for row, (label, value) in enumerate(rows):
             key = QLabel(label)
             key.setObjectName("EpochImportHintKey")
             val = QLabel(str(value or "Review manually"))
             val.setObjectName("EpochImportHintValue")
             val.setWordWrap(True)
-            grid.addWidget(key, row // 2, (row % 2) * 2)
-            grid.addWidget(val, row // 2, (row % 2) * 2 + 1)
+            grid_row = row // pairs_per_row
+            grid_column = (row % pairs_per_row) * 2
+            grid.addWidget(key, grid_row, grid_column)
+            grid.addWidget(val, grid_row, grid_column + 1)
         grid.setColumnStretch(1, 1)
         grid.setColumnStretch(3, 1)
         layout.addLayout(grid)
@@ -510,26 +684,23 @@ class EpochingDialog(BaseDialog):
             return time_field
         return "Event onset"
 
+    def _effective_window_mode_text(self) -> str:
+        if self.window_mode is EpochWindowMode.DURATION:
+            return "Fixed to largest duration"
+        if self.window_mode is EpochWindowMode.EVENT_LOCKED:
+            return "Event-locked"
+        return "Needs review"
+
     def _is_bids_epoch_context(self) -> bool:
         source = str(self.epoch_context.get("source") or "").casefold()
         return "bids" in source and "event" in source
 
     def _window_mode_text(self) -> str:
-        mode = str(self.epoch_context.get("window_mode") or "").strip()
+        if not self.context_availability.available:
+            return self.context_availability.reason
         if not self._is_bids_epoch_context():
             return ""
-        if mode == "duration":
-            return (
-                "Use event duration. The EEG epoch starts at onset and ends at the "
-                "largest reviewed duration; adjust only if this dataset needs a "
-                "fixed analysis window."
-            )
-        if mode == "event_locked":
-            return (
-                "Event-locked window. The BIDS duration field is missing or not "
-                "usable, so this starts from the reviewed event onset."
-            )
-        return ""
+        return self.context_availability.window_explanation
 
     @staticmethod
     def _normalized_epoch_context(
@@ -540,6 +711,24 @@ class EpochingDialog(BaseDialog):
         context = dict(epoch_context)
         handoff = dict(epoch_handoff or {})
         if handoff:
+            if not epoch_handoff_matches_context(context, handoff):
+                reason = (
+                    "The import handoff does not match this EEG epoch setup. "
+                    "Reopen Time Epoching from the current dataset."
+                )
+                context["context_availability"] = EpochContextAvailability.unavailable(
+                    EpochContextAvailabilityCode.INVALID_CONTEXT,
+                    reason,
+                ).to_payload()
+                context.update(
+                    {
+                        "recommended_events": [],
+                        "epoch_handoff": handoff,
+                        "handoff_ready": False,
+                        "handoff_blockers": [reason],
+                    }
+                )
+                return context
             blockers = [str(item) for item in handoff.get("supervised_blockers", [])]
             ready = bool(handoff.get("ready")) and not blockers
             placement_modes = [
@@ -585,11 +774,15 @@ class EpochingDialog(BaseDialog):
     def _refresh_confirmation_requirement(self) -> None:
         if self.tmin_spin is None or self.tmax_spin is None or self.event_list is None:
             return
-        requirement = build_epoch_confirmation_requirement(
-            self.epoch_context,
-            t_min=self.tmin_spin.value(),
-            t_max=self.tmax_spin.value(),
-            event_ids=self._selected_event_names(),
+        requirement = (
+            build_epoch_confirmation_requirement(
+                self.epoch_context,
+                t_min=self.tmin_spin.value(),
+                t_max=self.tmax_spin.value(),
+                event_ids=self._selected_event_names(),
+            )
+            if self.context_availability.available
+            else None
         )
         previous_receipt = (
             str(self.confirmation_requirement.get("receipt") or "")
@@ -608,11 +801,13 @@ class EpochingDialog(BaseDialog):
         if requirement is None:
             self.confirmation_check.setChecked(False)
             self.confirmation_check.hide()
+            self._refresh_submit_validity()
             return
         if current_receipt != previous_receipt:
             self.confirmation_check.setChecked(False)
         self.confirmation_check.setText(str(requirement["confirmation_label"]))
         self.confirmation_check.show()
+        self._refresh_submit_validity()
 
     def _handoff_summary_text(self) -> str:
         handoff = self.epoch_context.get("epoch_handoff")
@@ -623,11 +818,11 @@ class EpochingDialog(BaseDialog):
                 blocker_text = "; ".join(str(item) for item in blockers)
                 return f"{source} needs review: {blocker_text}"
             if self._is_bids_epoch_context():
-                return "BIDS events confirmed in Match Labels."
+                return ""
             return f"Suggested from {source}."
         if self.epoch_context.get("has_import_hint"):
             if self._is_bids_epoch_context():
-                return "BIDS events confirmed in Match Labels."
+                return ""
             return "Import choices are available for this EEG epoch setup."
         return ""
 
@@ -661,7 +856,8 @@ class EpochingDialog(BaseDialog):
             background-color: transparent;
             color: #bac2cc;
         }
-        QFrame#EpochSectionCard {
+        QFrame#EpochSectionCard,
+        QFrame#EpochBaselineSection {
             background: #222426;
             border: 1px solid #3b3f45;
             border-radius: 6px;
@@ -726,11 +922,6 @@ class EpochingDialog(BaseDialog):
         """
             + checkbox_stylesheet()
             + """
-        QFrame#EpochFooterRule {
-            color: #343941;
-            background: #343941;
-            max-height: 1px;
-        }
         QPushButton {
             min-width: 128px;
             padding: 6px 12px;
@@ -747,6 +938,11 @@ class EpochingDialog(BaseDialog):
             background: #0069a8;
             border-color: #0a7fc7;
             font-weight: 700;
+        }
+        QPushButton#EpochPrimaryButton:disabled {
+            background: #4b4e53;
+            border-color: #62666c;
+            color: #a9adb3;
         }
         QPushButton#EpochSecondaryButton {
             min-width: 84px;
@@ -765,6 +961,100 @@ class EpochingDialog(BaseDialog):
             self.b_min_spin.setEnabled(checked)
         if self.b_max_spin:
             self.b_max_spin.setEnabled(checked)
+        self._refresh_submit_validity()
+
+    def _baseline_is_inside_window(self, value: object) -> bool:
+        if (
+            not isinstance(value, (list, tuple))
+            or len(value) < 2
+            or value[0] is None
+            or value[1] is None
+            or self.tmin_spin is None
+            or self.tmax_spin is None
+        ):
+            return False
+        try:
+            baseline_min = float(value[0])
+            baseline_max = float(value[1])
+        except (TypeError, ValueError):
+            return False
+        return (
+            validate_epoch_baseline(
+                enabled=True,
+                baseline_min=baseline_min,
+                baseline_max=baseline_max,
+                t_min=self.tmin_spin.value(),
+                t_max=self.tmax_spin.value(),
+            )
+            is None
+        )
+
+    def _current_submission_validation(self) -> EpochSubmissionValidation | None:
+        if (
+            self.event_list is None
+            or self.baseline_check is None
+            or self.b_min_spin is None
+            or self.b_max_spin is None
+            or self.tmin_spin is None
+            or self.tmax_spin is None
+        ):
+            return None
+        requirement = self.confirmation_requirement
+        return validate_epoch_submission(
+            context_available=self.context_availability.available,
+            context_unavailable_reason=self.context_availability.reason,
+            window_mode=self.window_mode,
+            selected_events=self._selected_event_names(),
+            t_min=self.tmin_spin.value(),
+            t_max=self.tmax_spin.value(),
+            baseline_enabled=self.baseline_check.isChecked(),
+            baseline_min=self.b_min_spin.value(),
+            baseline_max=self.b_max_spin.value(),
+            confirmation_required=requirement is not None,
+            confirmation_accepted=(
+                self.confirmation_check is not None
+                and self.confirmation_check.isChecked()
+            ),
+            confirmation_title=(
+                str(requirement.get("title") or "")
+                if isinstance(requirement, dict)
+                else ""
+            ),
+            confirmation_message=(
+                str(requirement.get("message") or "")
+                if isinstance(requirement, dict)
+                else ""
+            ),
+        )
+
+    def _refresh_submit_validity(self, *_args: object) -> None:
+        validation = self._current_submission_validation()
+        if validation is None:
+            return
+        baseline_error = (
+            validation.message
+            if validation.issue is EpochSubmissionIssue.BASELINE
+            else ""
+        )
+        if self.baseline_error_label is not None:
+            self.baseline_error_label.setText(baseline_error)
+            self.baseline_error_label.setVisible(bool(baseline_error))
+        if self.warning_label is not None:
+            window_error = (
+                validation.message
+                if validation.issue
+                not in {
+                    EpochSubmissionIssue.NONE,
+                    EpochSubmissionIssue.BASELINE,
+                    EpochSubmissionIssue.CONFIRMATION_REQUIRED,
+                }
+                else ""
+            )
+            notice = window_error or self._default_window_notice()
+            self.warning_label.setText(notice)
+            self.warning_label.setVisible(bool(notice))
+        if self.create_button is not None:
+            self.create_button.setEnabled(validation.allowed)
 
     def update_duration_info(self):
         """Update duration information and show warning if duration is too short."""
@@ -784,30 +1074,20 @@ class EpochingDialog(BaseDialog):
             f"{duration:.2f} s window ({tmin:.2f} to {tmax:.2f} s)"
         )
 
+        self._refresh_submit_validity()
+
+    def _default_window_notice(self) -> str:
         context_warning = str(self.epoch_context.get("window_warning") or "").strip()
         if context_warning:
-            self.warning_label.setText(context_warning)
-            self.warning_label.show()
-            return
-
-        # Check if duration might be too short for models
-        # Most models need at least 1.0-1.2s at typical sampling rates
-        if duration < 1.0:
-            self.warning_label.setText(
-                "Warning: EEG epoch duration < 1.0s may be too short for some models "
-                "(EEGNet, SCCNet, ShallowConvNet). "
-                "Consider using at least 1.2s to avoid errors during training plan "
-                "generation.",
+            return context_warning
+        if self.tmin_spin is None or self.tmax_spin is None:
+            return ""
+        if self.tmax_spin.value() - self.tmin_spin.value() < 1.0:
+            return (
+                "Short analysis window. Exact compatibility with the selected model "
+                "will be checked before training."
             )
-            self.warning_label.show()
-        elif duration < 1.2:
-            self.warning_label.setText(
-                "Note: EEG epoch duration < 1.2s may cause issues with high "
-                "sampling rates (>250Hz).",
-            )
-            self.warning_label.show()
-        else:
-            self.warning_label.hide()
+        return ""
 
     def accept(self):
         """Validate parameters and accept the dialog.
@@ -827,60 +1107,22 @@ class EpochingDialog(BaseDialog):
         ):
             return
 
+        self._refresh_confirmation_requirement()
         selected_events = self._selected_event_names()
-        if not selected_events:
-            QMessageBox.warning(self, "Warning", "Please select at least one event.")
-            return
-
         tmin = self.tmin_spin.value()
         tmax = self.tmax_spin.value()
-
-        if tmin >= tmax:
-            QMessageBox.warning(
-                self,
-                "Invalid Input",
-                "Start time must be less than End time.",
-            )
+        validation = self._current_submission_validation()
+        if validation is None:
             return
-
-        if (tmax - tmin) < 0.1:
-            QMessageBox.warning(
-                self,
-                "Invalid Input",
-                "EEG epoch duration is too short (< 0.1s).",
-            )
+        if not validation.allowed:
+            QMessageBox.warning(self, validation.title, validation.message)
             return
 
         baseline = None
         if self.baseline_check.isChecked():
             baseline_min = self.b_min_spin.value()
             baseline_max = self.b_max_spin.value()
-            if baseline_min > baseline_max:
-                QMessageBox.warning(
-                    self,
-                    "Invalid Input",
-                    "Baseline start must be less than or equal to baseline end.",
-                )
-                return
-            if baseline_min < tmin or baseline_max > tmax:
-                QMessageBox.warning(
-                    self,
-                    "Invalid Input",
-                    "Baseline must stay inside the EEG epoch time window.",
-                )
-                return
             baseline = (baseline_min, baseline_max)
-
-        self._refresh_confirmation_requirement()
-        if self.confirmation_requirement is not None and (
-            self.confirmation_check is None or not self.confirmation_check.isChecked()
-        ):
-            QMessageBox.warning(
-                self,
-                str(self.confirmation_requirement["title"]),
-                str(self.confirmation_requirement["message"]),
-            )
-            return
         self.confirmation_receipt = (
             str(self.confirmation_requirement["receipt"])
             if self.confirmation_requirement is not None
@@ -893,25 +1135,14 @@ class EpochingDialog(BaseDialog):
         if self.event_list is None:
             return []
         checked_events: list[str] = []
-        has_checkable_items = False
         for row in range(self.event_list.rowCount()):
             check_item = self.event_list.item(row, 0)
             event_item = self.event_list.item(row, 1)
             if check_item is None or event_item is None:
                 continue
-            if check_item.flags() & Qt.ItemFlag.ItemIsUserCheckable:
-                has_checkable_items = True
             if check_item.checkState() == Qt.CheckState.Checked:
                 checked_events.append(event_item.text())
-        if checked_events:
-            return checked_events
-        if has_checkable_items and self.epoch_context.get("recommended_events"):
-            return []
-        return [
-            event_item.text()
-            for row in range(self.event_list.rowCount())
-            if (event_item := self.event_list.item(row, 1)) is not None
-        ]
+        return checked_events
 
     def get_params(self):
         """Return the configured epoching parameters.

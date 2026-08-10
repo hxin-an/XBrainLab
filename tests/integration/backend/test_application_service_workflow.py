@@ -18,11 +18,9 @@ from XBrainLab.backend.application import (
     CommandName,
     ConfigureTrainingCommand,
     CreateEpochCommand,
-    DatasetGenerationMode,
     DatasetSplitContextRequest,
     ErrorType,
     EvaluateCommand,
-    GenerateDatasetCommand,
     ImportRecipe,
     LoadDataCommand,
     PreprocessCommand,
@@ -34,8 +32,10 @@ from XBrainLab.backend.application import (
     ResetSessionCommand,
     ReviewInterpretationCommand,
     SaliencyCommand,
+    SaveDatasetSplitCommand,
     SaveInterpretationRecipeCommand,
     ScanSourceCommand,
+    TrainCommand,
     ValidateInterpretationCommand,
     VisualizeCommand,
     data_interpretation_bids,
@@ -52,7 +52,12 @@ EXPECTED_SYNTHETIC_SPLIT_25_25_SUMMARY = {
     "train_count": 7,
     "val_count": 2,
     "test_count": 3,
-    "audit": {"ok": True, "dataset_count": 1, "issues": []},
+    "audit": {
+        "ok": True,
+        "dataset_count": 1,
+        "issues": [],
+        "truncated_issue_count": 0,
+    },
 }
 
 EXPECTED_SYNTHETIC_SPLIT_20_20_SUMMARY = {
@@ -60,7 +65,12 @@ EXPECTED_SYNTHETIC_SPLIT_20_20_SUMMARY = {
     "train_count": 8,
     "val_count": 2,
     "test_count": 2,
-    "audit": {"ok": True, "dataset_count": 1, "issues": []},
+    "audit": {
+        "ok": True,
+        "dataset_count": 1,
+        "issues": [],
+        "truncated_issue_count": 0,
+    },
 }
 
 
@@ -106,6 +116,37 @@ def _write_synthetic_raw_fif(tmp_path):
     path = tmp_path / "synthetic_raw.fif"
     raw.save(path, overwrite=True)
     return path
+
+
+def _apply_synthetic_internal_event_interpretation(
+    service: ApplicationService,
+    fif_path: Path,
+):
+    """Review embedded event timing before a synthetic FIF success workflow."""
+    scan_result = service.execute(ScanSourceCommand(source_path=str(fif_path)))
+    preview_result = service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(fif_path)],
+                "internal_event_selection": {
+                    "label_event_codes": ["left", "right"],
+                    "class_map": {"left": "left", "right": "right"},
+                },
+                "label_carrier": "embedded_events",
+                "event_roles": {"internal_events": "class cue"},
+                "class_map": {"1": "left", "2": "right"},
+            },
+        )
+    )
+    validation_result = service.execute(ValidateInterpretationCommand())
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert scan_result.ok is True
+    assert preview_result.ok is True
+    assert validation_result.ok is True
+    assert apply_result.ok is True
+    assert apply_result.state.interpretation.epoch_handoff["supervised_ready"] is True
+    return apply_result
 
 
 def _write_bids_eeg_motor_imagery_fixture(tmp_path):
@@ -326,9 +367,7 @@ def test_bids_description_payload_is_parsed_only_after_resource_admission(
             ScanSourceCommand(source_path=str(bids_root), source_hint="bids"),
         )
         assert scan_result.ok is True
-        assert ordering[0] == "resource:admission"
-        assert "description:open" in ordering[1:]
-        assert "description:read" in ordering[1:]
+        assert ordering == ["resource:admission"]
         assert "description:json.loads" not in ordering
         ordering.clear()
         result = service.execute(PreviewInterpretationCommand())
@@ -503,7 +542,7 @@ def test_application_service_bids_scan_metadata_is_admitted_in_source_order(
     assert result.state.interpretation.has_scan_result is False
 
 
-def test_application_service_load_epoch_dataset_workflow(tmp_path):
+def test_application_service_load_epoch_saved_split_workflow(tmp_path):
     service = ApplicationService()
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
@@ -516,6 +555,7 @@ def test_application_service_load_epoch_dataset_workflow(tmp_path):
     assert load_result.state.raw.loaded is True
     assert load_result.state.preprocessed.available is True
     assert service.get_capabilities().get(CommandName.CREATE_EPOCH).available is True
+    _apply_synthetic_internal_event_interpretation(service, fif_path)
 
     preprocess_result = service.execute(
         PreprocessCommand(
@@ -553,7 +593,7 @@ def test_application_service_load_epoch_dataset_workflow(tmp_path):
     )
 
     dataset_result = service.execute(
-        GenerateDatasetCommand(
+        SaveDatasetSplitCommand(
             test_ratio=0.25,
             val_ratio=0.25,
             split_strategy="trial",
@@ -563,14 +603,14 @@ def test_application_service_load_epoch_dataset_workflow(tmp_path):
 
     assert dataset_result.ok is True
     assert dataset_result.changed_state.datasets_changed is True
-    assert dataset_result.state.dataset.available is True
-    assert (
-        dataset_result.state.dataset.count
-        == EXPECTED_SYNTHETIC_SPLIT_25_25_SUMMARY["count"]
-    )
-    assert dataset_result.state.dataset.split_summary == (
-        EXPECTED_SYNTHETIC_SPLIT_25_25_SUMMARY
-    )
+    assert dataset_result.diagnostics["materialized"] is False
+    assert dataset_result.state.dataset.available is False
+    assert dataset_result.state.dataset.count == 0
+    assert dataset_result.state.dataset.generator_exists is False
+    assert dataset_result.state.dataset.split_spec_saved is True
+    assert dataset_result.state.dataset.split_materialized is False
+    assert dataset_result.state.dataset.split_lifecycle.value == "saved"
+    assert dataset_result.state.dataset.active_split_summary == {}
     assert service.get_capabilities().get(CommandName.TRAIN).available is False
 
     model_result = service.execute(ConfigureTrainingCommand(model_name="EEGNet"))
@@ -634,26 +674,21 @@ def test_application_service_load_epoch_dataset_workflow(tmp_path):
     assert service.get_capabilities().get(CommandName.LOAD_DATA).available is True
 
 
-def test_explicit_multiclass_epoch_unlocks_dataset_after_label_free_import(
+def test_reviewed_multiclass_epoch_unlocks_deferred_dataset_split(
     tmp_path,
 ) -> None:
     service = ApplicationService()
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
-    assert service.execute(ScanSourceCommand(source_path=str(fif_path))).ok is True
-    assert service.execute(PreviewInterpretationCommand()).ok is True
-    assert service.execute(ValidateInterpretationCommand()).ok is True
-    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+    apply_result = _apply_synthetic_internal_event_interpretation(service, fif_path)
 
     assert apply_result.ok is True
-    assert apply_result.state.interpretation.class_map == {}
-    assert apply_result.state.interpretation.epoch_handoff["supervised_ready"] is False
-    assert apply_result.state.interpretation.epoch_handoff["supervised_blockers"] == [
-        "No class labels are available for supervised EEG epoch defaults."
-    ]
-    assert apply_result.state.interpretation.epoch_handoff[
-        "supervised_blocker_codes"
-    ] == ["missing_class_labels"]
+    assert apply_result.state.interpretation.class_map == {
+        "1": "left",
+        "2": "right",
+    }
+    assert apply_result.state.interpretation.epoch_handoff["supervised_ready"] is True
+    assert apply_result.state.interpretation.epoch_handoff["supervised_blockers"] == []
     recipe_result = service.execute(
         SaveInterpretationRecipeCommand(
             recipe_path=str(tmp_path / "load-only-recipe.json"),
@@ -668,7 +703,9 @@ def test_explicit_multiclass_epoch_unlocks_dataset_after_label_free_import(
         "epoch_window",
         "baseline",
     }.isdisjoint(recipe_result.diagnostics["recipe"])
-    blocked_before_epoch = service.get_capabilities().get(CommandName.GENERATE_DATASET)
+    blocked_before_epoch = service.get_capabilities().get(
+        CommandName.CONFIGURE_DATASET_SPLIT
+    )
     assert blocked_before_epoch.enabled is False
     assert (
         "Create EEG epochs before building the training dataset."
@@ -695,12 +732,14 @@ def test_explicit_multiclass_epoch_unlocks_dataset_after_label_free_import(
     assert epoch_result.state.epoch.epoch_count == 12
     assert epoch_result.state.epoch.event_names == ["left", "right"]
     assert epoch_result.state.epoch.event_ids == {"left": 0, "right": 1}
-    dataset_capability = service.get_capabilities().get(CommandName.GENERATE_DATASET)
+    dataset_capability = service.get_capabilities().get(
+        CommandName.CONFIGURE_DATASET_SPLIT
+    )
     assert dataset_capability.enabled is True
     assert dataset_capability.reasons == []
 
     dataset_result = service.execute(
-        GenerateDatasetCommand(
+        SaveDatasetSplitCommand(
             test_ratio=0.25,
             val_ratio=0.25,
             split_strategy="trial",
@@ -709,7 +748,9 @@ def test_explicit_multiclass_epoch_unlocks_dataset_after_label_free_import(
     )
 
     assert dataset_result.ok is True
-    assert dataset_result.state.dataset.available is True
+    assert dataset_result.state.dataset.available is False
+    assert dataset_result.state.dataset.split_spec_saved is True
+    assert dataset_result.state.dataset.split_materialized is False
 
 
 def test_montage_reorders_real_epoch_channels_before_dataset_and_locks_afterward(
@@ -719,6 +760,7 @@ def test_montage_reorders_real_epoch_channels_before_dataset_and_locks_afterward
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
     assert service.execute(LoadDataCommand(paths=[str(fif_path)])).ok is True
+    _apply_synthetic_internal_event_interpretation(service, fif_path)
     assert (
         service.execute(
             CreateEpochCommand(
@@ -752,7 +794,7 @@ def test_montage_reorders_real_epoch_channels_before_dataset_and_locks_afterward
         [0.3, 0.4, 0.5],
     ]
     generated = service.execute(
-        GenerateDatasetCommand(
+        SaveDatasetSplitCommand(
             test_ratio=0.25,
             val_ratio=0.25,
             split_strategy="trial",
@@ -760,6 +802,19 @@ def test_montage_reorders_real_epoch_channels_before_dataset_and_locks_afterward
         )
     )
     assert generated.ok is True
+    assert generated.state.dataset.split_materialized is False
+    assert service.execute(
+        ConfigureTrainingCommand(
+            model_name="EEGNet",
+            epoch=1,
+            batch_size=2,
+            learning_rate=0.001,
+            output_dir=str(tmp_path / "montage-lock-training-output"),
+        )
+    ).ok
+    trained = service.execute(TrainCommand(confirmed=True, interactive=False))
+    assert trained.ok is True
+    assert trained.diagnostics["split_preparation"]["materialized"] is True
     blocked = service.execute(
         ApplyMontageCommand(
             channels=["EEG0", "EEG2"],
@@ -775,16 +830,17 @@ def test_montage_reorders_real_epoch_channels_before_dataset_and_locks_afterward
         [0.0, 0.1, 0.2],
         [0.3, 0.4, 0.5],
     ]
-    assert blocked.state.dataset == generated.state.dataset
+    assert blocked.state.dataset == trained.state.dataset
 
 
-def test_application_service_accepts_dialog_generator_split_and_updates_readiness(
+def test_application_service_accepts_dialog_split_specification_and_updates_readiness(
     tmp_path,
 ):
     service = ApplicationService()
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
     assert service.execute(LoadDataCommand(paths=[str(fif_path)])).ok is True
+    _apply_synthetic_internal_event_interpretation(service, fif_path)
     assert (
         service.execute(
             PreprocessCommand(
@@ -824,19 +880,16 @@ def test_application_service_accepts_dialog_generator_split_and_updates_readines
     assert context_result.context.epoch_available is True
     assert context_result.context.trial_count == 12
     dataset_result = service.execute(
-        GenerateDatasetCommand(split_config=dialog_like_config),
+        SaveDatasetSplitCommand(split_config=dialog_like_config),
     )
 
     assert dataset_result.ok is True
-    assert dataset_result.diagnostics["split_audit"]["ok"] is True
-    assert dataset_result.state.dataset.available is True
-    assert (
-        dataset_result.state.dataset.count
-        == EXPECTED_SYNTHETIC_SPLIT_20_20_SUMMARY["count"]
-    )
-    assert dataset_result.state.dataset.split_summary == (
-        EXPECTED_SYNTHETIC_SPLIT_20_20_SUMMARY
-    )
+    assert dataset_result.diagnostics["materialized"] is False
+    assert dataset_result.state.dataset.available is False
+    assert dataset_result.state.dataset.count == 0
+    assert dataset_result.state.dataset.split_spec_saved is True
+    assert dataset_result.state.dataset.split_materialized is False
+    assert dataset_result.state.dataset.active_split_summary == {}
 
     assert service.execute(ConfigureTrainingCommand(model_name="EEGNet")).ok is True
     assert (
@@ -858,6 +911,7 @@ def test_dataset_replacement_rolls_back_real_split_then_can_commit(tmp_path):
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
     assert service.execute(LoadDataCommand(paths=[str(fif_path)])).ok is True
+    _apply_synthetic_internal_event_interpretation(service, fif_path)
     assert service.execute(
         PreprocessCommand(
             operation=PreprocessOperation.NORMALIZE,
@@ -872,7 +926,7 @@ def test_dataset_replacement_rolls_back_real_split_then_can_commit(tmp_path):
         ),
     ).ok
     initial = service.execute(
-        GenerateDatasetCommand(
+        SaveDatasetSplitCommand(
             test_ratio=0.25,
             val_ratio=0.25,
             split_strategy="trial",
@@ -889,52 +943,83 @@ def test_dataset_replacement_rolls_back_real_split_then_can_commit(tmp_path):
             output_dir=str(tmp_path / "replacement-training-output"),
         )
     ).ok
+    initial_train = service.execute(TrainCommand(confirmed=True, interactive=False))
+    assert initial_train.ok is True
+    assert initial_train.diagnostics["split_preparation"]["materialized"] is True
     before_replacement = service.get_state()
-    old_summary = before_replacement.dataset.split_summary
+    old_summary = before_replacement.dataset.active_split_summary
+    old_datasets = list(service.study.datasets)
+    old_trainer = service.study.training_manager.trainer
+    assert old_summary == EXPECTED_SYNTHETIC_SPLIT_25_25_SUMMARY
 
-    invalid_replacement = service.execute(
-        GenerateDatasetCommand(
+    invalid_specification = service.execute(
+        SaveDatasetSplitCommand(
             split_config={
                 "train_type": "Full Data",
                 "is_cross_validation": False,
                 "val_splitters": [],
                 "test_splitters": [],
             },
-            replacement_mode=DatasetGenerationMode.REPLACE_EXISTING,
-            confirmed=True,
         ),
     )
 
+    assert invalid_specification.ok is True
+    assert invalid_specification.state.dataset.split_spec_saved is True
+    assert invalid_specification.state.dataset.split_materialized is False
+    assert invalid_specification.state.dataset.active_split_summary == old_summary
+
+    invalid_replacement = service.execute(
+        TrainCommand(confirmed=True, interactive=False)
+    )
+
     assert invalid_replacement.failed is True
-    assert invalid_replacement.diagnostics["rolled_back"] is True
-    assert invalid_replacement.state.dataset == before_replacement.dataset
-    assert invalid_replacement.state.training == before_replacement.training
+    assert invalid_replacement.diagnostics["state_preserved"] is True
+    assert invalid_replacement.diagnostics["split_summary"]["test_count"] == 0
+    assert any(
+        "test split is empty" in issue["message"].casefold()
+        for issue in invalid_replacement.diagnostics["split_audit"]["issues"]
+    )
+    assert invalid_replacement.state.dataset.split_lifecycle.value == "failed"
+    assert invalid_replacement.state.dataset.active_split_summary == old_summary
     assert invalid_replacement.state.active_dataset == (
         before_replacement.active_dataset
     )
     assert invalid_replacement.state.active_training == (
         before_replacement.active_training
     )
-    assert invalid_replacement.state.dataset.split_summary == old_summary
+    assert service.study.datasets == old_datasets
+    assert service.study.training_manager.trainer is old_trainer
 
-    committed_replacement = service.execute(
-        GenerateDatasetCommand(
+    committed_specification = service.execute(
+        SaveDatasetSplitCommand(
             test_ratio=0.2,
             val_ratio=0.2,
             split_strategy="trial",
             training_mode="individual",
-            replacement_mode=DatasetGenerationMode.REPLACE_EXISTING,
-            confirmed=True,
         ),
     )
 
+    assert committed_specification.ok is True
+    assert committed_specification.state.dataset.split_materialized is False
+    assert committed_specification.state.dataset.active_split_summary == old_summary
+
+    committed_replacement = service.execute(
+        TrainCommand(confirmed=True, interactive=False)
+    )
+
     assert committed_replacement.ok is True
-    assert committed_replacement.diagnostics["replaced_existing"] is True
-    assert committed_replacement.state.dataset.split_summary == (
+    assert (
+        committed_replacement.diagnostics["split_preparation"]["materialized"] is True
+    )
+    assert (
+        committed_replacement.diagnostics["split_preparation"]["trainer_retired"]
+        is True
+    )
+    assert committed_replacement.state.dataset.active_split_summary == (
         EXPECTED_SYNTHETIC_SPLIT_20_20_SUMMARY
     )
     assert committed_replacement.state.dataset.generator_exists is True
-    assert committed_replacement.state.training.has_trainer is False
+    assert committed_replacement.state.training.has_trainer is True
 
 
 def test_dataset_replacement_fences_plan_generation_across_real_publication(
@@ -945,6 +1030,7 @@ def test_dataset_replacement_fences_plan_generation_across_real_publication(
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
     assert service.execute(LoadDataCommand(paths=[str(fif_path)])).ok
+    _apply_synthetic_internal_event_interpretation(service, fif_path)
     assert service.execute(
         PreprocessCommand(
             operation=PreprocessOperation.NORMALIZE,
@@ -959,7 +1045,7 @@ def test_dataset_replacement_fences_plan_generation_across_real_publication(
         ),
     ).ok
     assert service.execute(
-        GenerateDatasetCommand(
+        SaveDatasetSplitCommand(
             test_ratio=0.25,
             val_ratio=0.25,
             split_strategy="trial",
@@ -975,6 +1061,16 @@ def test_dataset_replacement_fences_plan_generation_across_real_publication(
             output_dir=str(tmp_path / "atomic-replacement-output"),
         ),
     ).ok
+    replacement_specification = service.execute(
+        SaveDatasetSplitCommand(
+            test_ratio=0.2,
+            val_ratio=0.2,
+            split_strategy="trial",
+            training_mode="individual",
+        )
+    )
+    assert replacement_specification.ok is True
+    assert replacement_specification.state.dataset.split_materialized is False
 
     manager = service.study.training_manager
     trainer = Trainer([])
@@ -1014,18 +1110,11 @@ def test_dataset_replacement_fences_plan_generation_across_real_publication(
     contender_errors: list[BaseException] = []
     contender_started = Event()
 
-    def replace_datasets() -> None:
+    def train_with_replacement() -> None:
         try:
             command_results.append(
                 service.execute(
-                    GenerateDatasetCommand(
-                        test_ratio=0.2,
-                        val_ratio=0.2,
-                        split_strategy="trial",
-                        training_mode="individual",
-                        replacement_mode=(DatasetGenerationMode.REPLACE_EXISTING),
-                        confirmed=True,
-                    ),
+                    TrainCommand(confirmed=True, interactive=False),
                 ),
             )
         except BaseException as exc:
@@ -1041,7 +1130,7 @@ def test_dataset_replacement_fences_plan_generation_across_real_publication(
         except BaseException as exc:
             contender_errors.append(exc)
 
-    replacement = Thread(target=replace_datasets, daemon=True)
+    replacement = Thread(target=train_with_replacement, daemon=True)
     contender = Thread(target=generate_competing_plan, daemon=True)
     replacement.start()
     try:
@@ -1066,14 +1155,15 @@ def test_dataset_replacement_fences_plan_generation_across_real_publication(
     assert command_errors == []
     assert len(command_results) == 1
     assert command_results[0].ok is True
+    assert command_results[0].diagnostics["split_preparation"]["materialized"] is True
     assert publication_owned == [True]
     assert len(contender_errors) == 1
     assert isinstance(contender_errors[0], RuntimeError)
     assert "Another training lifecycle operation" in str(contender_errors[0])
-    assert manager.trainer is None
+    assert manager.trainer is not trainer
 
 
-def test_data_interpretation_to_dataset_workflow_is_non_mocked(tmp_path):
+def test_data_interpretation_to_deferred_split_workflow_is_non_mocked(tmp_path):
     service = ApplicationService()
     fif_path = _write_synthetic_raw_fif(tmp_path)
     recipe_path = tmp_path / "synthetic_import_recipe.json"
@@ -1193,7 +1283,7 @@ def test_data_interpretation_to_dataset_workflow_is_non_mocked(tmp_path):
         ),
     )
     dataset_result = service.execute(
-        GenerateDatasetCommand(
+        SaveDatasetSplitCommand(
             test_ratio=0.25,
             val_ratio=0.25,
             split_strategy="trial",
@@ -1205,15 +1295,12 @@ def test_data_interpretation_to_dataset_workflow_is_non_mocked(tmp_path):
     assert epoch_result.ok is True
     assert epoch_result.state.epoch.epoch_count == 12
     assert dataset_result.ok is True
-    assert dataset_result.diagnostics["split_audit"]["ok"] is True
-    assert dataset_result.state.dataset.available is True
-    assert (
-        dataset_result.state.dataset.count
-        == EXPECTED_SYNTHETIC_SPLIT_25_25_SUMMARY["count"]
-    )
-    assert dataset_result.state.dataset.split_summary == (
-        EXPECTED_SYNTHETIC_SPLIT_25_25_SUMMARY
-    )
+    assert dataset_result.diagnostics["materialized"] is False
+    assert dataset_result.state.dataset.available is False
+    assert dataset_result.state.dataset.count == 0
+    assert dataset_result.state.dataset.split_spec_saved is True
+    assert dataset_result.state.dataset.split_materialized is False
+    assert dataset_result.state.dataset.active_split_summary == {}
 
 
 def test_product_smoke_bids_import_apply_create_epoch(tmp_path):
@@ -1477,8 +1564,9 @@ def test_application_service_failed_command_sets_and_clears_last_error(tmp_path)
     load_result = service.execute(LoadDataCommand(paths=[str(fif_path)]))
     assert load_result.ok is True
     assert load_result.state.last_error is None
+    _apply_synthetic_internal_event_interpretation(service, fif_path)
 
-    premature_dataset = service.execute(GenerateDatasetCommand())
+    premature_dataset = service.execute(SaveDatasetSplitCommand())
     assert premature_dataset.failed is True
     assert premature_dataset.state.last_error is not None
     assert premature_dataset.state.raw.loaded is True

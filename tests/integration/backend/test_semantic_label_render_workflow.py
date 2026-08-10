@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import MagicMock
 
 import mne
 import numpy as np
@@ -11,20 +12,25 @@ import numpy as np
 from XBrainLab.backend.application import (
     ApplicationService,
     ApplyInterpretationCommand,
+    ConfigureTrainingCommand,
     CreateEpochCommand,
     EvaluationPlanIdentity,
     EvaluationRenderRequest,
     EvaluationRunIdentity,
-    GenerateDatasetCommand,
     PreviewInterpretationCommand,
     SaliencyPlanIdentity,
     SaliencyRenderRequest,
     SaliencyRunIdentity,
+    SaveDatasetSplitCommand,
     ScanSourceCommand,
+    TrainCommand,
     ValidateInterpretationCommand,
+    training_service,
 )
 from XBrainLab.backend.application.evaluation_render import EvaluationRenderPublisher
+from XBrainLab.backend.application.resource_guard import ResourcePreflightResult
 from XBrainLab.backend.application.saliency_render import SaliencyRenderPublisher
+from XBrainLab.backend.training import Trainer
 from XBrainLab.backend.training.record.eval import EvalRecord
 from XBrainLab.backend.training.record.train import TrainRecord
 from XBrainLab.backend.training.saliency_provenance import SaliencyProducerIdentity
@@ -193,6 +199,7 @@ def _publish_final_labels(service: ApplicationService) -> tuple[set[str], set[st
 
 def _run_reviewed_workflow(
     tmp_path,
+    monkeypatch,
     *,
     files: list,
     choices: dict[str, Any],
@@ -215,7 +222,7 @@ def _run_reviewed_workflow(
 
         epoch = service.execute(CreateEpochCommand(t_min=0.0, t_max=0.25))
         generated = service.execute(
-            GenerateDatasetCommand(
+            SaveDatasetSplitCommand(
                 test_ratio=0.2,
                 val_ratio=0.2,
                 split_strategy="trial",
@@ -225,6 +232,43 @@ def _run_reviewed_workflow(
         assert epoch.ok, epoch.message
         assert generated.ok, generated.message
         assert set(epoch.state.epoch.event_ids) == expected_labels
+        assert generated.state.dataset.split_spec_saved is True
+        assert generated.state.dataset.available is False
+        assert service.study.datasets == []
+
+        configured = service.execute(
+            ConfigureTrainingCommand(
+                model_name="EEGNet",
+                epoch=1,
+                batch_size=2,
+                learning_rate=0.001,
+                device="cpu",
+                output_dir=str(tmp_path / "training-output"),
+            )
+        )
+
+        def publish_training_identity(**_kwargs: Any) -> int:
+            trainer = Trainer([])
+            trainer.run(interact=False)
+            service.study.training_manager.trainer = trainer
+            return 1
+
+        service.training.start_training = MagicMock(
+            side_effect=publish_training_identity
+        )
+        monkeypatch.setattr(
+            training_service,
+            "check_training_resource_preflight",
+            lambda *_args, **_kwargs: ResourcePreflightResult(
+                issues=(), diagnostics={"risk_level": "safe"}
+            ),
+        )
+        trained = service.execute(TrainCommand(confirmed=True))
+
+        assert configured.ok, configured.message
+        assert trained.ok, trained.message
+        assert trained.state.dataset.available is True
+        assert trained.diagnostics["split_preparation"]["split_audit"]["ok"] is True
         assert set(service.study.datasets[0].get_epoch_data().label_map.values()) == (
             expected_labels
         )
@@ -236,7 +280,10 @@ def _run_reviewed_workflow(
     return service, handoff
 
 
-def test_ofner_reviewed_aliases_reach_evaluation_and_saliency_labels(tmp_path) -> None:
+def test_ofner_reviewed_aliases_reach_evaluation_and_saliency_labels(
+    tmp_path,
+    monkeypatch,
+) -> None:
     eeg_path = tmp_path / "ofner_run_01_raw.fif"
     _write_internal_event_run(
         eeg_path,
@@ -256,6 +303,7 @@ def test_ofner_reviewed_aliases_reach_evaluation_and_saliency_labels(tmp_path) -
 
     service, handoff = _run_reviewed_workflow(
         tmp_path,
+        monkeypatch,
         files=[eeg_path],
         choices=choices,
         expected_labels=set(OFNER_CLASS_MAP.values()),
@@ -269,7 +317,10 @@ def test_ofner_reviewed_aliases_reach_evaluation_and_saliency_labels(tmp_path) -
         service.close()
 
 
-def test_run_specific_t1_t2_meanings_stay_distinct_in_final_labels(tmp_path) -> None:
+def test_run_specific_t1_t2_meanings_stay_distinct_in_final_labels(
+    tmp_path,
+    monkeypatch,
+) -> None:
     run_04 = tmp_path / "S001R04_raw.fif"
     run_08 = tmp_path / "S001R08_raw.fif"
     _write_internal_event_run(run_04, ["T1", "T2"], repeats=5, seed=4)
@@ -293,6 +344,7 @@ def test_run_specific_t1_t2_meanings_stay_distinct_in_final_labels(tmp_path) -> 
 
     service, handoff = _run_reviewed_workflow(
         tmp_path,
+        monkeypatch,
         files=[run_04, run_08],
         choices=choices,
         expected_labels=expected_labels,

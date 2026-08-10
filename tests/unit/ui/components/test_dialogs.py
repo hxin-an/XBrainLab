@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (
     QAbstractSpinBox,
     QCheckBox,
     QDialogButtonBox,
+    QFrame,
     QLabel,
     QPushButton,
     QRadioButton,
@@ -80,6 +81,11 @@ def test_epoching_dialog_init(qtbot):
     mock_data = MagicMock(spec=Raw)
     mock_data.get_raw_event_list.return_value = (MagicMock(), {"Event1": 1})
     mock_data.get_event_list.return_value = (MagicMock(), {"Event1": 1})
+    mock_data.get_runtime_detail.return_value = {
+        "source": "Labels inside EEG files",
+        "placement_method": "internal_events",
+        "class_map": {"Event1": "Event1", "Event2": "Event2"},
+    }
     mock_data.is_raw.return_value = True
 
     # Patch validate_list_type to bypass strict type checking if spec
@@ -87,7 +93,17 @@ def test_epoching_dialog_init(qtbot):
     with patch("XBrainLab.backend.preprocessor.base.validate_list_type"):
         dialog = EpochingDialog(
             None,
-            epoch_context=build_epoching_context([mock_data]),
+            epoch_context=build_epoching_context(
+                [mock_data],
+                epoch_handoff={
+                    "ready": True,
+                    "supervised_ready": True,
+                    "label_source": "internal_events",
+                    "placement_modes": ["internal_events"],
+                    "default_epoch_events": ["Event1", "Event2"],
+                    "selected_event_names": ["Event1", "Event2"],
+                },
+            ),
         )
         qtbot.addWidget(dialog)
 
@@ -145,6 +161,7 @@ def test_epoching_dialog_baseline_and_primary_button_are_product_styled(qtbot):
     title = dialog.findChild(QLabel, "EpochDialogTitle")
     assert title is not None
     assert title.text() == "Create EEG Epochs"
+    assert dialog.findChild(QFrame, "EpochFooterRule") is None
 
 
 def test_resample_dialog_init(qtbot):

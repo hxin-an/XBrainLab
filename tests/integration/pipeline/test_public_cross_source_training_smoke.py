@@ -1,25 +1,29 @@
-"""Cross-source training and epoch-only smoke for public local-only fixtures."""
+"""Cross-source training and import/preprocess smoke for public fixtures."""
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 import pytest
 
 from scripts.dev.report_data_interpretation_format_matrix import (
     capture_public_fixture_facts,
 )
+from scripts.dev.run_public_cross_source_training_smoke import (
+    PUBLIC_EPOCH_ONLY_FIXTURES,
+    PUBLIC_TRAINING_FIXTURES,
+    _apply_reviewed_internal_event_import,
+)
 from XBrainLab.backend.application import (
     ApplicationService,
     CommandName,
     ConfigureTrainingCommand,
     CreateEpochCommand,
-    GenerateDatasetCommand,
-    LoadDataCommand,
     PreprocessCommand,
     PreprocessOperation,
     QueryStateCommand,
+    SaveDatasetSplitCommand,
     TrainCommand,
 )
 from XBrainLab.backend.training.record import EvalRecord, RecordKey
@@ -34,52 +38,16 @@ PUBLIC_DATA_DIR = ROOT / "fixtures" / "data" / "public"
 class PublicTrainingFixture(TypedDict):
     name: str
     filename: str
-    event_ids: list[str]
+    source_family: str
+    label_event_ids: list[str]
+    epoch_event_ids: list[str]
+    not_label_event_ids: list[str]
+    class_map: dict[str, str]
+    run_event_mappings: dict[str, dict[str, str]]
     tmin: float
     tmax: float
-    split_ratio: float
-
-
-PUBLIC_TRAINING_FIXTURES: tuple[PublicTrainingFixture, ...] = (
-    {
-        "name": "physionet-edf",
-        "filename": "physionet-eegmmidb-S008R04.edf",
-        "event_ids": ["T1", "T2"],
-        "tmin": 0,
-        "tmax": 2,
-        "split_ratio": 0.2,
-    },
-    {
-        "name": "bbci-gdf",
-        "filename": "bbci-competition-iii-O3VR.gdf",
-        "event_ids": ["769", "770"],
-        "tmin": 0,
-        "tmax": 2,
-        "split_ratio": 0.2,
-    },
-)
-
-PUBLIC_EPOCH_ONLY_FIXTURES: tuple[PublicTrainingFixture, ...] = (
-    {
-        "name": "sccn-eeglab",
-        "filename": "sccn-eeglab_data.set",
-        "event_ids": ["rt", "square"],
-        "tmin": 0,
-        "tmax": 1.5,
-        "split_ratio": 0.0,
-    },
-    {
-        "name": "mne-cnt",
-        "filename": "scan41_short.cnt",
-        # Marker 0 is exactly at the recording boundary and 109 has a
-        # near-terminal occurrence. Use the interior task marker so this case
-        # proves CNT epoch support without bypassing epoch-boundary safety.
-        "event_ids": ["7"],
-        "tmin": 0,
-        "tmax": 1.5,
-        "split_ratio": 0.0,
-    },
-)
+    expected_epoch_block: NotRequired[str]
+    split_ratio: NotRequired[float]
 
 
 def _assert_real_training_artifacts(output_root: Path) -> None:
@@ -122,9 +90,7 @@ def _build_public_training_service(
     assert facts["mismatches"] == []
 
     service = ApplicationService()
-    load_result = service.execute(LoadDataCommand(paths=[str(filepath)]))
-    assert load_result.ok is True
-    assert load_result.diagnostics["success_count"] == 1
+    _apply_reviewed_internal_event_import(service, filepath, fixture)
     return service
 
 
@@ -153,12 +119,12 @@ def test_public_cross_source_training_smoke(
         CreateEpochCommand(
             t_min=float(fixture["tmin"]),
             t_max=float(fixture["tmax"]),
-            event_ids=list(fixture["event_ids"]),
+            event_ids=list(fixture["epoch_event_ids"]),
         ),
     )
     split_ratio = float(fixture["split_ratio"])
     dataset_result = service.execute(
-        GenerateDatasetCommand(
+        SaveDatasetSplitCommand(
             test_ratio=split_ratio,
             val_ratio=split_ratio,
             split_strategy="trial",
@@ -176,27 +142,18 @@ def test_public_cross_source_training_smoke(
     assert epoch_result.ok is True
     assert epoch_result.diagnostics["deferred_normalization_applied_count"] == 1
     assert epoch_result.diagnostics["recording_statistics_used"] is False
-    assert epoch_result.state.epoch.event_names == list(fixture["event_ids"])
+    expected_event_names = [
+        fixture["class_map"][event_name] for event_name in fixture["epoch_event_ids"]
+    ]
+    assert epoch_result.state.epoch.event_names == expected_event_names
     assert epoch_result.state.epoch.event_ids == {
-        event_name: index for index, event_name in enumerate(fixture["event_ids"])
+        event_name: index for index, event_name in enumerate(expected_event_names)
     }
     assert epoch_result.state.epoch.epoch_count is not None
     assert epoch_result.state.epoch.epoch_count > 0
     assert dataset_result.ok is True
-    assert dataset_result.diagnostics["split_audit"]["ok"] is True
-    assert dataset_result.state.dataset.available is True
-    assert dataset_result.state.dataset.count == 1
-    split_summary = dataset_result.state.dataset.split_summary
-    assert split_summary["audit"] == {"ok": True, "dataset_count": 1, "issues": []}
-    assert split_summary["train_count"] > 0
-    assert split_summary["val_count"] > 0
-    assert split_summary["test_count"] > 0
-    assert (
-        split_summary["train_count"]
-        + split_summary["val_count"]
-        + split_summary["test_count"]
-        == epoch_result.state.epoch.epoch_count
-    )
+    assert dataset_result.state.dataset.split_spec_saved is True
+    assert dataset_result.state.dataset.available is False
 
     assert service.execute(ConfigureTrainingCommand(model_name="EEGNet")).ok is True
     output_root = tmp_path / "test-public-output"
@@ -221,6 +178,24 @@ def test_public_cross_source_training_smoke(
     )
 
     assert train_result.ok is True
+    assert train_result.diagnostics["split_preparation"]["split_audit"] == {
+        "ok": True,
+        "dataset_count": 1,
+        "issues": [],
+        "truncated_issue_count": 0,
+    }
+    assert train_result.state.dataset.available is True
+    assert train_result.state.dataset.count == 1
+    split_summary = train_result.state.dataset.active_split_summary
+    assert split_summary["train_count"] > 0
+    assert split_summary["val_count"] > 0
+    assert split_summary["test_count"] > 0
+    assert (
+        split_summary["train_count"]
+        + split_summary["val_count"]
+        + split_summary["test_count"]
+        == epoch_result.state.epoch.epoch_count
+    )
     assert train_result.state.training.plan_count == 1
     assert train_result.state.training.run_count == 1
     assert train_result.state.training.finished_run_count == 1
@@ -236,10 +211,10 @@ def test_public_cross_source_training_smoke(
 
 
 @pytest.mark.parametrize("fixture", PUBLIC_EPOCH_ONLY_FIXTURES, ids=lambda f: f["name"])
-def test_public_cross_source_epoch_only_boundary(
+def test_public_cross_source_import_preprocess_boundary(
     fixture: PublicTrainingFixture,
 ) -> None:
-    """Boundary-limited fixtures prove IO/epoch support without training claims."""
+    """Boundary fixtures must not be relabeled to manufacture training evidence."""
     service = _build_public_training_service(fixture)
 
     filter_result = service.execute(
@@ -259,7 +234,7 @@ def test_public_cross_source_epoch_only_boundary(
         CreateEpochCommand(
             t_min=float(fixture["tmin"]),
             t_max=float(fixture["tmax"]),
-            event_ids=list(fixture["event_ids"]),
+            event_ids=list(fixture["epoch_event_ids"]),
         ),
     )
 
@@ -269,8 +244,7 @@ def test_public_cross_source_epoch_only_boundary(
         "per_epoch_per_channel"
     )
     assert normalize_result.diagnostics["raw_requests_deferred"] == 1
-    assert epoch_result.ok is True
-    assert epoch_result.diagnostics["deferred_normalization_applied_count"] == 1
-    assert epoch_result.state.epoch.event_names == list(fixture["event_ids"])
-    assert epoch_result.state.epoch.epoch_count is not None
-    assert epoch_result.state.epoch.epoch_count > 0
+    assert epoch_result.failed is True
+    assert fixture["expected_epoch_block"] in epoch_result.message
+    assert epoch_result.state.epoch.available is False
+    assert epoch_result.state.interpretation.class_map == fixture["class_map"]

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run public local-only cross-source training plus epoch-only smoke evidence."""
+"""Run public local-only training plus import/preprocess boundary evidence."""
 
 from __future__ import annotations
 
@@ -13,6 +13,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, cast
 
+os.environ.setdefault("MNE_DONTWRITE_HOME", "true")
+
 if __package__:
     from scripts.dev.active_checkout import assert_active_checkout_import
 else:
@@ -22,15 +24,18 @@ ROOT = Path(__file__).resolve().parents[2]
 assert_active_checkout_import(ROOT)
 
 from XBrainLab.backend.application import (
+    ApplyInterpretationCommand,
     ConfigureTrainingCommand,
     CreateEpochCommand,
-    GenerateDatasetCommand,
-    LoadDataCommand,
     PreprocessCommand,
     PreprocessOperation,
+    PreviewInterpretationCommand,
     QueryStateCommand,
     SaliencyCommand,
+    SaveDatasetSplitCommand,
+    ScanSourceCommand,
     TrainCommand,
+    ValidateInterpretationCommand,
     get_application_service,
 )
 from XBrainLab.backend.study import Study
@@ -44,7 +49,16 @@ PUBLIC_TRAINING_FIXTURES = (
         "name": "physionet-edf",
         "filename": "physionet-eegmmidb-S008R04.edf",
         "source_family": "PhysioNet",
-        "event_ids": ["T1", "T2"],
+        "label_event_ids": ["T1", "T2"],
+        "epoch_event_ids": ["T1", "T2"],
+        "not_label_event_ids": ["T0"],
+        "class_map": {"T1": "left fist", "T2": "right fist"},
+        "run_event_mappings": {
+            "physionet-eegmmidb-S008R04.edf": {
+                "T1": "left fist",
+                "T2": "right fist",
+            },
+        },
         "tmin": 0,
         "tmax": 2,
         "split_ratio": 0.2,
@@ -53,7 +67,11 @@ PUBLIC_TRAINING_FIXTURES = (
         "name": "bbci-gdf",
         "filename": "bbci-competition-iii-O3VR.gdf",
         "source_family": "BBCI",
-        "event_ids": ["769", "770"],
+        "label_event_ids": ["769", "770"],
+        "epoch_event_ids": ["769", "770"],
+        "not_label_event_ids": ["768", "781", "783", "785"],
+        "class_map": {"769": "769", "770": "770"},
+        "run_event_mappings": {},
         "tmin": 0,
         "tmax": 2,
         "split_ratio": 0.2,
@@ -68,9 +86,14 @@ PUBLIC_EPOCH_ONLY_FIXTURES = (
         # The public tutorial file exposes these annotation values, but the
         # fixture does not carry a protocol ground truth that defines them as
         # supervised classes.
-        "event_ids": ["rt", "square"],
+        "label_event_ids": [],
+        "epoch_event_ids": ["rt", "square"],
+        "not_label_event_ids": ["rt", "square"],
+        "class_map": {},
+        "run_event_mappings": {},
         "tmin": 0,
         "tmax": 1.5,
+        "expected_epoch_block": "does not provide event timing",
         "boundary_reason": (
             "public fixture lacks protocol ground truth for supervised classes"
         ),
@@ -79,12 +102,14 @@ PUBLIC_EPOCH_ONLY_FIXTURES = (
         "name": "mne-cnt",
         "filename": "scan41_short.cnt",
         "source_family": "MNE testing-data",
-        # Marker 0 is exactly at the recording boundary and 109 has a
-        # near-terminal occurrence. The interior task marker proves epoch
-        # support without bypassing the product's boundary protection.
-        "event_ids": ["7"],
+        "label_event_ids": ["7"],
+        "epoch_event_ids": ["7"],
+        "not_label_event_ids": ["0", "109"],
+        "class_map": {"7": "7"},
+        "run_event_mappings": {},
         "tmin": 0,
         "tmax": 1.5,
+        "expected_epoch_block": "at least 2 selected class labels",
         "boundary_reason": (
             "fixture is too small for class-balanced training evidence"
         ),
@@ -94,8 +119,8 @@ PUBLIC_EPOCH_ONLY_FIXTURES = (
 REQUIRED_PUBLIC_SMOKE_PROTOCOLS = {
     "physionet-edf": "training",
     "bbci-gdf": "training",
-    "sccn-eeglab": "epoch-only",
-    "mne-cnt": "epoch-only",
+    "sccn-eeglab": "import-preprocess-only",
+    "mne-cnt": "import-preprocess-only",
 }
 REQUIRED_PUBLIC_SMOKE_CASE_IDS = frozenset(REQUIRED_PUBLIC_SMOKE_PROTOCOLS)
 
@@ -119,9 +144,15 @@ def _raise_if_failed(result) -> None:
         raise RuntimeError(result.message)
 
 
-def _require_epoch_count(epoch_count: int) -> None:
-    if epoch_count <= 0:
-        raise RuntimeError("epoch creation produced no usable epochs")
+def _require_supervised_epoch_block(result, expected_reason: str) -> None:
+    if result.ok:
+        raise RuntimeError(
+            "boundary fixture unexpectedly admitted supervised EEG epoch creation"
+        )
+    if expected_reason not in result.message:
+        raise RuntimeError(
+            f"boundary fixture was blocked for an unexpected reason: {result.message}"
+        )
 
 
 def _reload_real_training_artifacts(output_root: Path) -> None:
@@ -152,6 +183,91 @@ def _reload_real_training_artifacts(output_root: Path) -> None:
         raise RuntimeError("evaluation artifact could not be safely reloaded")
 
 
+def _apply_reviewed_internal_event_import(
+    service: Any,
+    filepath: Path,
+    fixture: dict[str, object],
+) -> None:
+    """Apply one explicit internal-event interpretation through product commands."""
+    source_path = str(filepath.resolve())
+    label_event_ids = [
+        str(item) for item in cast(list[object], fixture["label_event_ids"])
+    ]
+    not_label_event_ids = [
+        str(item) for item in cast(list[object], fixture.get("not_label_event_ids", []))
+    ]
+    class_map = {
+        str(key): str(value)
+        for key, value in cast(dict[object, object], fixture["class_map"]).items()
+    }
+    choices = {
+        "selected_eeg_files": [source_path],
+        "label_carrier": "embedded_events",
+        "class_map": class_map,
+        "internal_event_selection": {
+            "label_event_codes": label_event_ids,
+            "not_label_event_codes": not_label_event_ids,
+            "class_map": class_map,
+        },
+        "run_event_mappings": dict(
+            cast(dict[str, dict[str, str]], fixture["run_event_mappings"])
+        ),
+    }
+    scan_result = service.execute(
+        ScanSourceCommand(source_path=source_path, source_hint="file")
+    )
+    _raise_if_failed(scan_result)
+    scan = scan_result.diagnostics.get("scan_result")
+    scan_id = scan.get("scan_id") if isinstance(scan, dict) else None
+    if not isinstance(scan_id, str) or not scan_id:
+        raise RuntimeError("reviewed import scan did not publish a scan identity")
+    if scan.get("eeg_files") != [source_path]:
+        raise RuntimeError("reviewed import scan changed the selected EEG file")
+    preview_result = service.execute(
+        PreviewInterpretationCommand(scan_id=scan_id, choices=choices)
+    )
+    _raise_if_failed(preview_result)
+    candidate = preview_result.diagnostics.get("candidate")
+    if not isinstance(candidate, dict):
+        raise RuntimeError("reviewed import preview did not publish a candidate")
+    candidate_id = candidate.get("candidate_id")
+    if not isinstance(candidate_id, str) or not candidate_id:
+        raise RuntimeError(
+            "reviewed import preview did not publish a candidate identity"
+        )
+    if candidate.get("selected_eeg_files") != [source_path]:
+        raise RuntimeError("reviewed import preview changed the selected EEG file")
+    selection = candidate.get("internal_event_selection")
+    if not isinstance(selection, dict):
+        raise RuntimeError("reviewed import preview omitted internal event roles")
+    if selection.get("label_event_codes") != label_event_ids:
+        raise RuntimeError("reviewed import preview changed label event roles")
+    if set(selection.get("not_label_event_codes", [])) != set(not_label_event_ids):
+        raise RuntimeError("reviewed import preview changed non-label event roles")
+    if selection.get("class_map", {}) != class_map:
+        raise RuntimeError("reviewed import preview changed the class map")
+    if candidate.get("run_event_mappings") != choices["run_event_mappings"]:
+        raise RuntimeError("reviewed import preview changed run event mappings")
+    validation_result = service.execute(
+        ValidateInterpretationCommand(candidate_id=candidate_id)
+    )
+    _raise_if_failed(validation_result)
+    apply_result = service.execute(
+        ApplyInterpretationCommand(candidate_id=candidate_id, confirmed=True)
+    )
+    _raise_if_failed(apply_result)
+    if apply_result.state.raw.count != 1:
+        raise RuntimeError("reviewed import did not publish exactly one EEG file")
+    if apply_result.state.raw.files != [filepath.name]:
+        raise RuntimeError("reviewed import published an unexpected EEG file")
+    if apply_result.state.interpretation.class_map != class_map:
+        raise RuntimeError("reviewed import published an unexpected class map")
+    if apply_result.state.interpretation.epoch_handoff.get("label_source") != (
+        "internal_events"
+    ):
+        raise RuntimeError("reviewed import omitted the internal-event epoch handoff")
+
+
 def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
     """Execute one public-fixture training smoke and return structured status."""
     filepath = PUBLIC_DATA_DIR / str(fixture["filename"])
@@ -167,15 +283,17 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
 
     study = Study()
     service = get_application_service(study)
-    load_result = service.execute(LoadDataCommand(paths=[str(filepath)]))
-    if load_result.failed or load_result.diagnostics.get("success_count") != 1:
+    try:
+        _apply_reviewed_internal_event_import(service, filepath, fixture)
+    except Exception as exc:
+        service.close()
         return SmokeResult(
             name=str(fixture["name"]),
             filename=str(fixture["filename"]),
             source_family=str(fixture["source_family"]),
             status="failed",
             dataset_count=0,
-            message=f"load failed: {load_result.message}",
+            message=f"reviewed import failed: {type(exc).__name__}: {exc}",
         )
 
     validation_root = ROOT / "build" / "validation" / "public-cross-source"
@@ -202,7 +320,9 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
             ),
         )
         _raise_if_failed(normalize_result)
-        event_ids = [str(item) for item in cast(list[object], fixture["event_ids"])]
+        event_ids = [
+            str(item) for item in cast(list[object], fixture["epoch_event_ids"])
+        ]
         epoch_result = service.execute(
             CreateEpochCommand(
                 t_min=float(cast(float | int | str, fixture["tmin"])),
@@ -213,7 +333,7 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
         _raise_if_failed(epoch_result)
         split_ratio = float(cast(float | int | str, fixture.get("split_ratio", 0.2)))
         dataset_result = service.execute(
-            GenerateDatasetCommand(
+            SaveDatasetSplitCommand(
                 test_ratio=split_ratio,
                 val_ratio=split_ratio,
                 split_strategy="trial",
@@ -222,15 +342,14 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
         )
         _raise_if_failed(dataset_result)
 
-        dataset_count = int(dataset_result.state.dataset.count or 0)
-        if dataset_count <= 0:
+        if not dataset_result.state.dataset.split_spec_saved:
             return SmokeResult(
                 name=str(fixture["name"]),
                 filename=str(fixture["filename"]),
                 source_family=str(fixture["source_family"]),
                 status="failed",
                 dataset_count=0,
-                message="dataset generation produced no datasets",
+                message="data splitting specification was not saved",
             )
 
         configure_model = service.execute(ConfigureTrainingCommand(model_name="EEGNet"))
@@ -262,6 +381,17 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
             TrainCommand(confirmed=True, interactive=False),
         )
         _raise_if_failed(train_result)
+
+        dataset_count = int(train_result.state.dataset.count or 0)
+        if dataset_count <= 0:
+            return SmokeResult(
+                name=str(fixture["name"]),
+                filename=str(fixture["filename"]),
+                source_family=str(fixture["source_family"]),
+                status="failed",
+                dataset_count=0,
+                message="training preparation produced no datasets",
+            )
 
         if train_result.state.training.run_count <= 0:
             return SmokeResult(
@@ -324,8 +454,8 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
         shutil.rmtree(output_root, ignore_errors=True)
 
 
-def run_fixture_epoch_smoke(fixture: dict[str, object]) -> SmokeResult:
-    """Execute load/preprocess/epoch evidence for fixtures too small for training."""
+def run_fixture_boundary_smoke(fixture: dict[str, object]) -> SmokeResult:
+    """Prove import/preprocess support without inventing supervised class semantics."""
     filepath = PUBLIC_DATA_DIR / str(fixture["filename"])
     if not filepath.exists():
         return SmokeResult(
@@ -335,21 +465,23 @@ def run_fixture_epoch_smoke(fixture: dict[str, object]) -> SmokeResult:
             status="missing",
             dataset_count=0,
             message=f"fixture not downloaded: {filepath}",
-            protocol="epoch-only",
+            protocol="import-preprocess-only",
         )
 
     study = Study()
     service = get_application_service(study)
-    load_result = service.execute(LoadDataCommand(paths=[str(filepath)]))
-    if load_result.failed or load_result.diagnostics.get("success_count") != 1:
+    try:
+        _apply_reviewed_internal_event_import(service, filepath, fixture)
+    except Exception as exc:
+        service.close()
         return SmokeResult(
             name=str(fixture["name"]),
             filename=str(fixture["filename"]),
             source_family=str(fixture["source_family"]),
             status="failed",
             dataset_count=0,
-            message=f"load failed: {load_result.message}",
-            protocol="epoch-only",
+            message=f"reviewed import failed: {type(exc).__name__}: {exc}",
+            protocol="import-preprocess-only",
         )
 
     try:
@@ -370,7 +502,9 @@ def run_fixture_epoch_smoke(fixture: dict[str, object]) -> SmokeResult:
                 ),
             )
         )
-        event_ids = [str(item) for item in cast(list[object], fixture["event_ids"])]
+        event_ids = [
+            str(item) for item in cast(list[object], fixture["epoch_event_ids"])
+        ]
         epoch_result = service.execute(
             CreateEpochCommand(
                 t_min=float(cast(float | int | str, fixture["tmin"])),
@@ -378,9 +512,10 @@ def run_fixture_epoch_smoke(fixture: dict[str, object]) -> SmokeResult:
                 event_ids=event_ids,
             ),
         )
-        _raise_if_failed(epoch_result)
-        epoch_count = int(epoch_result.state.epoch.epoch_count or 0)
-        _require_epoch_count(epoch_count)
+        _require_supervised_epoch_block(
+            epoch_result,
+            str(fixture["expected_epoch_block"]),
+        )
         return SmokeResult(
             name=str(fixture["name"]),
             filename=str(fixture["filename"]),
@@ -388,10 +523,11 @@ def run_fixture_epoch_smoke(fixture: dict[str, object]) -> SmokeResult:
             status="passed",
             dataset_count=0,
             message=(
-                f"load/preprocess/epoch smoke passed with {epoch_count} epochs; "
+                "load/preprocess smoke passed and supervised epoch creation was "
+                "blocked without inventing class semantics; "
                 f"{fixture['boundary_reason']}"
             ),
-            protocol="epoch-only",
+            protocol="import-preprocess-only",
         )
     except Exception as exc:
         return SmokeResult(
@@ -401,23 +537,42 @@ def run_fixture_epoch_smoke(fixture: dict[str, object]) -> SmokeResult:
             status="failed",
             dataset_count=0,
             message=f"{type(exc).__name__}: {exc}",
-            protocol="epoch-only",
+            protocol="import-preprocess-only",
         )
+    finally:
+        service.close()
 
 
 def build_snapshot(repo_root: Path = ROOT) -> dict[str, Any]:
     """Run the current public cross-source smoke protocol and summarize it."""
+    configured_case_ids = [
+        str(fixture["name"])
+        for fixture in (*PUBLIC_TRAINING_FIXTURES, *PUBLIC_EPOCH_ONLY_FIXTURES)
+    ]
     results = [
         asdict(run_fixture_smoke(fixture)) for fixture in PUBLIC_TRAINING_FIXTURES
     ]
     results.extend(
-        asdict(run_fixture_epoch_smoke(fixture))
+        asdict(run_fixture_boundary_smoke(fixture))
         for fixture in PUBLIC_EPOCH_ONLY_FIXTURES
     )
     passed = sum(1 for result in results if result["status"] == "passed")
     missing = sum(1 for result in results if result["status"] == "missing")
     failed = sum(1 for result in results if result["status"] == "failed")
-    results_by_id = {str(result["name"]): result for result in results}
+    result_case_ids = [str(result["name"]) for result in results]
+    duplicate_configured_case_ids = sorted(
+        case_id
+        for case_id in set(configured_case_ids)
+        if configured_case_ids.count(case_id) > 1
+    )
+    duplicate_result_case_ids = sorted(
+        case_id
+        for case_id in set(result_case_ids)
+        if result_case_ids.count(case_id) > 1
+    )
+    results_by_id: dict[str, list[dict[str, Any]]] = {}
+    for result in results:
+        results_by_id.setdefault(str(result["name"]), []).append(result)
     missing_required_case_ids = sorted(
         REQUIRED_PUBLIC_SMOKE_CASE_IDS - results_by_id.keys()
     )
@@ -425,35 +580,42 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, Any]:
         case_id
         for case_id, required_protocol in REQUIRED_PUBLIC_SMOKE_PROTOCOLS.items()
         if case_id in results_by_id
-        and results_by_id[case_id]["protocol"] != required_protocol
+        and any(
+            result["protocol"] != required_protocol for result in results_by_id[case_id]
+        )
     )
     failed_required_case_ids = sorted(
         case_id
         for case_id in REQUIRED_PUBLIC_SMOKE_CASE_IDS
-        if case_id in results_by_id and results_by_id[case_id]["status"] == "failed"
+        if case_id in results_by_id
+        and any(result["status"] == "failed" for result in results_by_id[case_id])
     )
     missing_fixture_case_ids = sorted(
         case_id
         for case_id in REQUIRED_PUBLIC_SMOKE_CASE_IDS
-        if case_id in results_by_id and results_by_id[case_id]["status"] == "missing"
+        if case_id in results_by_id
+        and any(result["status"] == "missing" for result in results_by_id[case_id])
     )
     missing_artifact_reload_case_ids = sorted(
         case_id
         for case_id, required_protocol in REQUIRED_PUBLIC_SMOKE_PROTOCOLS.items()
         if required_protocol == "training"
         and case_id in results_by_id
-        and results_by_id[case_id]["status"] == "passed"
-        and not results_by_id[case_id].get("artifacts_reloaded", False)
+        and any(
+            result["status"] == "passed" and not result.get("artifacts_reloaded", False)
+            for result in results_by_id[case_id]
+        )
     )
     passed_required_case_ids = sorted(
         case_id
         for case_id, required_protocol in REQUIRED_PUBLIC_SMOKE_PROTOCOLS.items()
         if case_id in results_by_id
-        and results_by_id[case_id]["status"] == "passed"
-        and results_by_id[case_id]["protocol"] == required_protocol
+        and len(results_by_id[case_id]) == 1
+        and results_by_id[case_id][0]["status"] == "passed"
+        and results_by_id[case_id][0]["protocol"] == required_protocol
         and (
             required_protocol != "training"
-            or results_by_id[case_id].get("artifacts_reloaded", False)
+            or results_by_id[case_id][0].get("artifacts_reloaded", False)
         )
     )
     all_required_passed = (
@@ -463,6 +625,8 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, Any]:
         and not failed_required_case_ids
         and not missing_fixture_case_ids
         and not missing_artifact_reload_case_ids
+        and not duplicate_configured_case_ids
+        and not duplicate_result_case_ids
     )
     return {
         "repo_root": str(repo_root),
@@ -474,6 +638,10 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, Any]:
             "failed": failed,
             "required_case_count": len(REQUIRED_PUBLIC_SMOKE_CASE_IDS),
             "required_case_ids": sorted(REQUIRED_PUBLIC_SMOKE_CASE_IDS),
+            "configured_case_ids": configured_case_ids,
+            "result_case_ids": result_case_ids,
+            "duplicate_configured_case_ids": duplicate_configured_case_ids,
+            "duplicate_result_case_ids": duplicate_result_case_ids,
             "passed_required_case_count": len(passed_required_case_ids),
             "passed_required_case_ids": passed_required_case_ids,
             "missing_required_case_ids": missing_required_case_ids,
@@ -484,8 +652,9 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, Any]:
             "all_required_passed": all_required_passed,
             "message": (
                 "PhysioNet EDF and BBCI GDF provide class-grounded training smoke. "
-                "SCCN EEGLAB and MNE CNT provide load/preprocess/epoch-only evidence; "
-                "their annotation values are not claimed as supervised classes."
+                "SCCN EEGLAB and MNE CNT provide import/preprocess evidence and prove "
+                "that supervised epoch creation remains blocked without two reviewed "
+                "class labels."
             ),
         },
     }

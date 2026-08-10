@@ -286,7 +286,7 @@ def test_enabled_command_reports_no_blocker_from_published_capability() -> None:
         ),
         (
             "Why can't I build a dataset?",
-            CommandName.GENERATE_DATASET,
+            CommandName.CONFIGURE_DATASET_SPLIT,
             "Dataset generation",
             "Create EEG epochs before building the training dataset.",
         ),

@@ -5,8 +5,10 @@ import numpy as np
 
 import XBrainLab.backend.dataset.epochs as epochs_module
 from XBrainLab.backend.application.commands import (
-    GenerateDatasetCommand,
+    ConfigureTrainingCommand,
     LoadDataCommand,
+    SaveDatasetSplitCommand,
+    TrainCommand,
 )
 from XBrainLab.backend.application.results import ErrorType
 from XBrainLab.backend.application.service import ApplicationService
@@ -79,14 +81,32 @@ def test_imported_multiclass_fif_without_provenance_is_backend_blocked(
     service = ApplicationService()
 
     load_result = service.execute(LoadDataCommand(paths=[str(fif_path)]))
-    split_result = service.execute(
-        GenerateDatasetCommand(
+    saved_split = service.execute(
+        SaveDatasetSplitCommand(
             split_strategy="trial",
             training_mode="group",
             test_ratio=0.25,
             val_ratio=0.25,
         ),
     )
+    assert saved_split.ok is True
+    assert saved_split.state.dataset.split_spec_saved is True
+    assert saved_split.state.dataset.split_materialized is False
+    assert service.execute(ConfigureTrainingCommand(model_name="EEGNet")).ok is True
+    assert (
+        service.execute(
+            ConfigureTrainingCommand(
+                output_dir=str(tmp_path / "blocked-training-output"),
+                device="cpu",
+                epoch=1,
+                batch_size=2,
+                learning_rate=0.001,
+            )
+        ).ok
+        is True
+    )
+
+    split_result = service.execute(TrainCommand(confirmed=True, interactive=False))
 
     issue = next(
         item
@@ -97,7 +117,7 @@ def test_imported_multiclass_fif_without_provenance_is_backend_blocked(
     assert load_result.state.epoch.epoch_count == epoch_count
     assert split_result.failed is True
     assert split_result.error_type == ErrorType.DATA_MISMATCH
-    assert split_result.diagnostics["rolled_back"] is True
+    assert split_result.diagnostics["state_preserved"] is True
     assert split_result.diagnostics["blocking_issue_kinds"] == [
         "missing_epoch_window_provenance",
     ]

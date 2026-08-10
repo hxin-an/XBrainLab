@@ -554,15 +554,15 @@ class TestRealGetDatasetInfoEvents:
         runtime_provider.assert_called_once_with(study)
 
 
-class TestRealGenerateDatasetError:
-    def test_generation_failure_preserves_canonical_result(self, monkeypatch):
-        from XBrainLab.llm.tools.real.dataset_real import RealGenerateDatasetTool
+class TestRealConfigureDatasetSplitError:
+    def test_direct_call_stops_at_assistant_confirmation_boundary(self, monkeypatch):
+        from XBrainLab.llm.tools.real.dataset_real import RealConfigureDatasetSplitTool
 
         runtime, get_context, runtime_provider = _install_canonical_runtime(
             monkeypatch,
-            "generate_dataset",
+            "configure_dataset_split",
             _command_result(
-                command_name=CommandName.GENERATE_DATASET.value,
+                command_name=CommandName.CONFIGURE_DATASET_SPLIT.value,
                 failed=True,
                 message="Dataset generation failed.",
                 diagnostics={"reason": "split unavailable"},
@@ -570,24 +570,17 @@ class TestRealGenerateDatasetError:
         )
         study = object()
 
-        result = RealGenerateDatasetTool().execute(study=study)
+        result = RealConfigureDatasetSplitTool().execute(study=study)
 
-        command = runtime.execute.call_args.args[0]
-        assert command.test_ratio == 0.2
-        assert command.val_ratio == 0.2
-        assert command.split_strategy == "trial"
-        assert command.training_mode == "individual"
-        _assert_canonical_result(
-            result,
-            tool_name="generate_dataset",
-            ok=False,
-            message="Dataset generation failed.",
-            payload={"reason": "split unavailable"},
-            error_type="runtime",
-        )
+        assert result.ok is False
+        assert result.error_type == "confirmation_required"
+        assert result.command_name == CommandName.CONFIGURE_DATASET_SPLIT.value
+        assert result.capability is not None
+        assert result.capability["requires_confirmation"] is True
+        runtime.execute.assert_not_called()
         get_context.assert_called_once_with(
             study,
-            "generate_dataset",
+            "configure_dataset_split",
             runtime=runtime,
         )
         runtime_provider.assert_called_once_with(study)

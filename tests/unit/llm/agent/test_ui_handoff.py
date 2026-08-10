@@ -93,7 +93,7 @@ def test_workflow_handoff_route_descriptors_preserve_existing_ui_taxonomy() -> N
             "Finish or cancel in the open EEG Epoch Settings dialog.",
         ),
         (
-            CommandName.GENERATE_DATASET,
+            CommandName.CONFIGURE_DATASET_SPLIT,
             WorkflowUiHandoffSurfaceKind.DIALOG,
             AssistantDecisionOwner.GUI_DIALOG,
             WorkflowUiHandoffPanel.TRAINING,

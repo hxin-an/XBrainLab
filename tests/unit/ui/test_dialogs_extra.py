@@ -254,9 +254,24 @@ class TestEpochingDialog:
             None,
             {"left": 1, "right": 2},
         )
+        data_list[0].get_runtime_detail.return_value = {
+            "source": "Labels inside EEG files",
+            "placement_method": "internal_events",
+            "class_map": {"left": "left", "right": "right"},
+        }
         d = EpochingDialog(
             None,
-            epoch_context=build_epoching_context(data_list),
+            epoch_context=build_epoching_context(
+                data_list,
+                epoch_handoff={
+                    "ready": True,
+                    "supervised_ready": True,
+                    "label_source": "internal_events",
+                    "placement_modes": ["internal_events"],
+                    "default_epoch_events": ["left", "right"],
+                    "selected_event_names": ["left", "right"],
+                },
+            ),
         )
         qtbot.addWidget(d)
         return d
@@ -330,20 +345,33 @@ class TestEpochingDialog:
             None,
             {"Left hand": 1, "Right hand": 2, "Artifact": 99},
         )
+        data.get_runtime_detail.return_value = {
+            "source": "BIDS events.tsv",
+            "placement_method": "interval",
+            "label_field": "trial_type",
+            "time_field": "onset",
+            "duration_field": "duration",
+            "duration_stats": {"numeric_count": 0, "min": None, "max": None},
+            "placement_event_count": 3,
+            "unknown_duration_count": 3,
+            "class_map": {"left": "Left hand", "right": "Right hand"},
+        }
+        handoff = {
+            "ready": True,
+            "supervised_ready": True,
+            "default_epoch_events": ["Left hand", "Right hand"],
+            "selected_event_names": ["Left hand", "Right hand"],
+            "label_source": "bids_events",
+            "placement_modes": ["interval"],
+        }
         dialog = EpochingDialog(
             None,
-            epoch_context=build_epoching_context([data]),
-            epoch_handoff={
-                "ready": True,
-                "default_epoch_events": ["Left hand", "Right hand"],
-                "label_source": "bids_events",
-                "placement_modes": ["interval"],
-            },
+            epoch_context=build_epoching_context([data], epoch_handoff=handoff),
         )
         qtbot.addWidget(dialog)
 
         assert dialog.event_list is not None
-        assert dialog.handoff_label is not None
+        assert dialog.handoff_label is None
         checked = [
             dialog.event_list.item(row, 1).text()
             for row in range(dialog.event_list.rowCount())
@@ -352,7 +380,10 @@ class TestEpochingDialog:
 
         assert checked == ["Left hand", "Right hand"]
         assert not dialog.event_list.selectedItems()
-        assert "BIDS events" in dialog.handoff_label.text()
+        assert any(
+            "BIDS events from import" in label.text()
+            for label in dialog.findChildren(QLabel)
+        )
 
     def test_assistant_handoff_prefills_explicit_event_and_window(self, qtbot):
         from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
@@ -397,12 +428,24 @@ class TestEpochingDialog:
             "time_field": "onset",
             "duration_field": "duration",
             "duration_stats": {"numeric_count": 3, "min": 0.25, "max": 12.0},
+            "placement_event_count": 3,
+            "unknown_duration_count": 0,
             "class_map": {"left": "left", "right": "right"},
         }
 
         dialog = EpochingDialog(
             None,
-            epoch_context=build_epoching_context([data]),
+            epoch_context=build_epoching_context(
+                [data],
+                epoch_handoff={
+                    "ready": True,
+                    "supervised_ready": True,
+                    "label_source": "bids_events",
+                    "placement_modes": ["interval"],
+                    "default_epoch_events": ["left", "right"],
+                    "selected_event_names": ["left", "right"],
+                },
+            ),
         )
         qtbot.addWidget(dialog)
         dialog.show()
@@ -415,8 +458,8 @@ class TestEpochingDialog:
         )
 
         assert "BIDS events from import" in labels_text
-        assert "BIDS events confirmed in Match Labels" in labels_text
-        assert "Use event duration" in labels_text
+        assert "BIDS events confirmed in Match Labels" not in labels_text
+        assert "Use one fixed window" in labels_text
         assert "review the EEG epoch window" in labels_text
         assert dialog.tmin_spin.value() == 0.0
         assert dialog.tmax_spin.value() == 12.0
@@ -430,15 +473,28 @@ class TestEpochingDialog:
             None,
             {"Left hand": 1, "Right hand": 2},
         )
+        data.get_runtime_detail.return_value = {
+            "source": "BIDS events.tsv",
+            "placement_method": "interval",
+            "label_field": "trial_type",
+            "time_field": "onset",
+            "duration_field": "duration",
+            "duration_stats": {"numeric_count": 0, "min": None, "max": None},
+            "placement_event_count": 2,
+            "unknown_duration_count": 2,
+            "class_map": {"left": "Left hand", "right": "Right hand"},
+        }
+        handoff = {
+            "ready": True,
+            "supervised_ready": True,
+            "default_epoch_events": ["Left hand", "Right hand"],
+            "selected_event_names": ["Left hand", "Right hand"],
+            "label_source": "bids_events",
+            "placement_modes": ["interval"],
+        }
         dialog = EpochingDialog(
             None,
-            epoch_context=build_epoching_context([data]),
-            epoch_handoff={
-                "ready": True,
-                "default_epoch_events": ["Left hand", "Right hand"],
-                "label_source": "bids_events",
-                "placement_modes": ["interval"],
-            },
+            epoch_context=build_epoching_context([data], epoch_handoff=handoff),
         )
         qtbot.addWidget(dialog)
 
@@ -492,15 +548,29 @@ class TestEpochingDialog:
             None,
             {"Left hand": 1, "Right hand": 2, "Artifact": 99},
         )
+        data.get_runtime_detail.return_value = {
+            "source": "BIDS events.tsv",
+            "placement_method": "interval",
+            "label_field": "trial_type",
+            "time_field": "onset",
+            "duration_field": "duration",
+            "duration_stats": {"numeric_count": 0, "min": None, "max": None},
+            "placement_event_count": 3,
+            "unknown_duration_count": 3,
+            "class_map": {"left": "Left hand", "right": "Right hand"},
+        }
+        handoff = {
+            "ready": False,
+            "supervised_ready": False,
+            "default_epoch_events": ["Left hand", "Right hand"],
+            "selected_event_names": ["Left hand", "Right hand"],
+            "supervised_blockers": ["No class labels were reviewed."],
+            "label_source": "bids_events",
+            "placement_modes": ["interval"],
+        }
         dialog = EpochingDialog(
             None,
-            epoch_context=build_epoching_context([data]),
-            epoch_handoff={
-                "ready": False,
-                "default_epoch_events": ["Left hand", "Right hand"],
-                "supervised_blockers": ["No class labels were reviewed."],
-                "label_source": "bids_events",
-            },
+            epoch_context=build_epoching_context([data], epoch_handoff=handoff),
         )
         qtbot.addWidget(dialog)
 

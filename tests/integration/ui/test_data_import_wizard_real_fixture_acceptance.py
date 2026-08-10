@@ -138,7 +138,7 @@ PUBLIC_FILE_ACCEPTANCE_CASES = (
         MNE_BRAINVISION,
         0,
         (),
-        "Events not scanned",
+        "No events",
     ),
 )
 
@@ -763,8 +763,8 @@ def _start_wizard_driver(
             elif modal is not driver.dialog:
                 if (
                     driver.resolve_openneuro_values
-                    and driver.awaiting_label_field_refresh
-                ):
+                    or driver.resolve_openneuro_trial_types
+                ) and driver.awaiting_label_field_refresh:
                     driver.dialog = modal
                     driver.dialog_count += 1
                     driver.awaiting_label_field_refresh = False
@@ -819,6 +819,22 @@ def _start_wizard_driver(
 
             if driver.phase == 3:
                 if driver.resolve_openneuro_trial_types:
+                    if (
+                        driver.dialog_count == 1
+                        and not driver.awaiting_label_field_refresh
+                        and modal.rule_label_field_combo.currentData() != "trial_type"
+                    ):
+                        _select_combo_data(
+                            modal.rule_label_field_combo,
+                            "trial_type",
+                        )
+                        driver.awaiting_label_field_refresh = True
+                        driver.trace.append("select label field trial_type")
+                        QTEST.mouseClick(
+                            modal.next_button,
+                            Qt.MouseButton.LeftButton,
+                        )
+                        return
                     _complete_openneuro_trial_types(modal)
                     driver.trace.append("review OpenNeuro trial_type values")
                 if (
@@ -827,7 +843,13 @@ def _start_wizard_driver(
                     and not driver.awaiting_label_field_refresh
                 ):
                     if driver.openneuro_setup_stage == 0:
-                        _select_combo_data(modal.rule_label_field_combo, "value")
+                        if modal.rule_label_field_combo.currentData() != "value":
+                            _fail(
+                                "OpenNeuro value is not the recommended label field.",
+                                modal,
+                            )
+                            return
+                        driver.trace.append("accept recommended label field value")
                         driver.openneuro_setup_stage = 1
                         return
                     if driver.openneuro_setup_stage == 1:
@@ -842,16 +864,6 @@ def _start_wizard_driver(
                         _select_combo_data(modal.time_field_combo, "onset")
                         driver.openneuro_setup_stage = 3
                         return
-                    driver.awaiting_label_field_refresh = True
-                    driver.trace.append("choose label field value")
-                    QTEST.mouseClick(modal.next_button, Qt.MouseButton.LeftButton)
-                    return
-                if (
-                    driver.resolve_openneuro_values
-                    and driver.dialog_count == 1
-                    and driver.awaiting_label_field_refresh
-                ):
-                    return
                 if driver.resolve_openneuro_values:
                     if not _advance_openneuro_event_values(modal, driver):
                         return
@@ -1146,10 +1158,10 @@ def test_public_raw_folders_ignore_context_sidecars_and_apply_selected_eeg(
     assert panel.data_surface.currentWidget() is panel.table
     assert panel.table.rowCount() == 1
     assert _table_text(panel, 0, 0) == case.expected_eeg.name
-    assert _table_text(panel, 0, 6) == "Events not scanned"
+    assert _table_text(panel, 0, 6) == "No events"
 
 
-def test_openneuro_p300_import_bids_repreviews_selected_value_field_and_applies(
+def test_openneuro_p300_import_bids_uses_recommended_value_field_and_applies(
     qtbot: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1192,9 +1204,7 @@ def test_openneuro_p300_import_bids_repreviews_selected_value_field_and_applies(
         "Load Labels",
         "Review Metadata",
         "Match Labels",
-        "choose label field value",
-        "label field preview refreshed",
-        "Match Labels",
+        "accept recommended label field value",
         "review OpenNeuro event values",
         "Review and Import",
         "confirm and import",

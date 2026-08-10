@@ -128,9 +128,23 @@ class TestAllRealTools:
             pytest.skip("Test label data A01T.mat not found")
         before = _query_result(loaded_study, "data_lists")
         source_event = before.diagnostics["raw_rows"][0]["event"]
-        assert source_event["available"] is True
-        assert source_event["count"] == 603
-        assert {"769", "770", "771", "772"} <= set(source_event["labels"])
+        assert source_event == {
+            "available": True,
+            "count": 588,
+            "labels": [
+                "1072",
+                "276",
+                "277",
+                "32766",
+                "768",
+                "769",
+                "770",
+                "771",
+                "772",
+            ],
+            "source": "detected_events",
+            "scanned": True,
+        }
 
         tool = RealAttachLabelsTool()
         mapping = {"A01T.gdf": LABEL_FILE}

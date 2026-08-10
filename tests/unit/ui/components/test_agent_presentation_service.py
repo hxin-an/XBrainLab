@@ -312,7 +312,7 @@ def _publication(
                     has_applied_interpretation=True,
                 ),
             ),
-            "generate_dataset",
+            "configure_dataset_split",
             AssistantWorkflowSurface.DATASET_SPLIT,
             ("split_strategy", "training_mode"),
         ),
@@ -386,7 +386,7 @@ def test_status_projection_uses_recommended_command_blocker_not_train_blocker() 
     projection = build_assistant_status_projection(_publication(state))
 
     assert projection.recommended_command is None
-    assert projection.blocked_command == "generate_dataset"
+    assert projection.blocked_command == "configure_dataset_split"
     assert projection.blocked_reasons == ("Resolve label mapping before training.",)
     assert projection.blocked_reason == "Resolve label mapping before training."
     assert "Select a model before training." not in projection.tooltip

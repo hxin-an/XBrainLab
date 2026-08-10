@@ -48,7 +48,7 @@ TOOL_SCHEMAS: dict[str, dict[str, list[str]]] = {
     "attach_labels": {"required": ["mapping"], "optional": ["label_format"]},
     "clear_dataset": {"required": [], "optional": []},
     "get_dataset_info": {"required": [], "optional": []},
-    "generate_dataset": {
+    "configure_dataset_split": {
         "required": ["split_strategy", "training_mode"],
         "optional": ["test_ratio", "val_ratio"],
     },

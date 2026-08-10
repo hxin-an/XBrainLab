@@ -17,7 +17,7 @@ EXPECTED_AGENT_TOOL_NAMES = {
     "configure_training",
     "epoch_data",
     "evaluate",
-    "generate_dataset",
+    "configure_dataset_split",
     "get_dataset_info",
     "list_files",
     "load_data",
@@ -187,19 +187,41 @@ class TestToolExecutor:
 
     def test_complete_training_debug_call_accepts_learning_rate_one(self):
         from XBrainLab.backend.application import get_application_service
+        from XBrainLab.backend.application.training_recommendation import (
+            TrainingRecommendationField,
+        )
         from XBrainLab.backend.study import Study
-        from XBrainLab.debug.tool_executor import ToolExecutor
-        from XBrainLab.llm.tools.application_surface import ToolCommandResult
+        from XBrainLab.debug.tool_executor import DebugToolAdmission, ToolExecutor
+        from XBrainLab.llm.tools.application_surface import (
+            AssistantSettingConfirmation,
+            ToolCommandResult,
+        )
 
         study = Study()
-        result = ToolExecutor(study).execute(
+        executor = ToolExecutor(study)
+        proposal = {
+            "model_name": "EEGNet",
+            "epoch": 2,
+            "batch_size": 4,
+            "learning_rate": 1,
+        }
+        admission = executor.admit(
             "configure_training",
-            {
-                "model_name": "EEGNet",
-                "epoch": 2,
-                "batch_size": 4,
-                "learning_rate": 1,
-            },
+            proposal,
+            confirmed=True,
+        )
+        assert isinstance(admission, DebugToolAdmission)
+        evidence = admission.params["assistant_setting_confirmation"]
+        assert isinstance(evidence, AssistantSettingConfirmation)
+        assert evidence.edited_recommendation_fields == (
+            TrainingRecommendationField.EPOCHS,
+            TrainingRecommendationField.BATCH_SIZE,
+            TrainingRecommendationField.LEARNING_RATE,
+        )
+
+        result = executor.execute(
+            "configure_training",
+            proposal,
             confirmed=True,
         )
 

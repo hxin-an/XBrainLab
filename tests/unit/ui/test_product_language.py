@@ -94,8 +94,8 @@ def test_eeg_epoch_product_copy_does_not_regress_to_ambiguous_epoch_language() -
         ),
         (
             "XBrainLab/llm/tools/definitions/dataset_def.py",
-            'return "Generate training dataset from epochs."',
             'return "Generate a training dataset from EEG epochs."',
+            'return "Save data splitting settings for EEG training."',
         ),
         (
             "XBrainLab/backend/application/preprocess_service.py",
@@ -132,7 +132,7 @@ def test_user_visible_epoch_copy_names_the_domain(
         ("empty", "No data loaded"),
         ("data_loaded", "Ready for preprocessing"),
         ("preprocessed", "Ready for EEG epoching"),
-        ("epoch_ready", "Ready to build dataset"),
+        ("epoch_ready", "Ready to configure split"),
         ("dataset_ready", "Dataset ready"),
         ("training", "Training running"),
         ("trained", "Results available"),
@@ -168,7 +168,7 @@ def test_workflow_stage_label_does_not_rederive_stage_from_detail_flags() -> Non
     [
         ("empty", "No data loaded · Scan data source"),
         ("data_loaded", "Ready for preprocessing · Preprocess data"),
-        ("epoch_ready", "Ready to build dataset · Build training dataset"),
+        ("epoch_ready", "Ready to configure split · Configure data splitting"),
         ("training", "Training running"),
         ("trained", "Results available · Review results"),
     ],

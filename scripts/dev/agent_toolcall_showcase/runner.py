@@ -280,7 +280,7 @@ class WorkflowHarness:
         if target >= 7 and not state.active_dataset.has_datasets:
             trace.append(
                 self._setup_command(
-                    "generate_dataset",
+                    "configure_dataset_split",
                     {
                         "training_mode": "individual",
                         "split_strategy": "trial",

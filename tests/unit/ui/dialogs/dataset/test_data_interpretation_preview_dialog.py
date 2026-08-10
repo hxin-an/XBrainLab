@@ -4,6 +4,7 @@ import inspect
 import re
 from pathlib import Path
 
+import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -3249,7 +3250,7 @@ def test_data_interpretation_preview_dialog_tables_fit_product_layout(qtbot):
     assert dialog.label_carrier_tree.columnWidth(0) >= 96
 
 
-def test_match_labels_step_surfaces_bids_event_review(qtbot):
+def test_match_labels_step_keeps_bids_decisions_without_duplicate_event_card(qtbot):
     events_path = "/tmp/source/sub-01_task-mi_run-01_events.tsv"
     dialog = DataInterpretationPreviewDialog(
         parent=None,
@@ -3281,6 +3282,16 @@ def test_match_labels_step_surfaces_bids_event_review(qtbot):
                     "time_field_candidates": ["onset"],
                     "duration_candidates": ["duration"],
                     "selected_label_field": "trial_type",
+                    "label_field_recommendation": {
+                        "field": "trial_type",
+                        "source": "bids_multi_run_evidence",
+                        "reason_code": "trial_type_has_task_labels",
+                        "facts": {"selected_run_count": 1},
+                        "reason": (
+                            "trial_type uses a generic event-role taxonomy and the "
+                            "semantic-refinement evaluator kept untouched runs."
+                        ),
+                    },
                     "selected_anchor": "onset",
                     "selected_duration_field": "duration",
                     "label_value_counts": {"left": 3, "right": 3},
@@ -3305,6 +3316,7 @@ def test_match_labels_step_surfaces_bids_event_review(qtbot):
                     "time_model": "seconds",
                     "placement_method": "time_field",
                     "granularity": "trial",
+                    "events_json_sidecar_present": True,
                     "warnings": [
                         "sub-01_task-mi_run-01_events.tsv events.json sidecar is "
                         "missing; class names and event semantics need confirmation."
@@ -3323,19 +3335,16 @@ def test_match_labels_step_surfaces_bids_event_review(qtbot):
     qtbot.wait(0)
     text = _visible_step_text(dialog, "Match Labels")
 
-    assert "BIDS events.tsv" in text
-    assert (
-        "Review BIDS event timing and class fields for subject 01, task mi, run 01"
-        in text
-    )
-    assert "events.tsv columns" in text
-    assert "onset, duration, trial_type" in text
-    assert "EEG/event pairing" in text
-    assert "Matched by BIDS subject/session/task/run entities" in text
-    assert "Label field" in text
-    assert "trial_type recommended" in text
-    assert "Timing fields" in text
-    assert "onset + duration" in text
+    assert not hasattr(dialog, "bids_event_review_card")
+    assert "events.tsv columns" not in text
+    assert "EEG/event pairing" not in text
+    assert "Timing fields" not in text
+    assert "Read labels from" in text
+    assert "Trial type" in text
+    assert "Recommended because Trial type contains the task labels." in text
+    assert "generic event-role taxonomy" not in text
+    assert "semantic-refinement" not in text
+    assert "untouched runs" not in text
     assert "Event value decisions" in text
     assert dialog.event_value_editor is not None
     assert any(
@@ -3343,13 +3352,131 @@ def test_match_labels_step_surfaces_bids_event_review(qtbot):
         for editor in dialog.event_value_editor.findChildren(QLineEdit)
     )
     assert "3 · 1/1" in text
-    assert "events.json sidecar is missing" in text
+    assert "events.json sidecar is missing" not in text
+    assert "Class names need review" not in text
     assert "BIDS label values" in text
     assert "File pairing" not in text
     assert "Place labels by" not in text
     assert dialog.label_values_card.isVisibleTo(dialog)
     assert not dialog.pairing_card.isVisibleTo(dialog)
     assert not dialog.placement_card.isVisibleTo(dialog)
+
+
+def test_bids_value_recommendation_uses_short_product_copy() -> None:
+    text = DataInterpretationPreviewDialog._bids_label_field_recommendation_text(
+        {
+            "field": "value",
+            "source": "bids_multi_run_evidence",
+            "reason_code": "value_has_described_classes",
+            "facts": {"selected_run_count": 3},
+            "reason": (
+                "generic event-role taxonomy; semantic-refinement across untouched runs"
+            ),
+        }
+    )
+
+    assert text == "Recommended from class descriptions across 3 selected runs."
+    assert "taxonomy" not in text
+    assert "refinement" not in text
+    assert "untouched" not in text
+
+
+def test_bids_mixed_explicit_label_fields_require_common_field_review(qtbot):
+    carriers = []
+    eeg_files = []
+    events_files = []
+    for run, field in ((1, "trial_type"), (2, "value")):
+        eeg = f"/tmp/source/sub-01_task-P300_run-{run}_eeg.set"
+        events = f"/tmp/source/sub-01_task-P300_run-{run}_events.tsv"
+        eeg_files.append(eeg)
+        events_files.append(events)
+        carriers.append(
+            {
+                "path": events,
+                "name": Path(events).name,
+                "format": "BIDS events",
+                "selected_target_file": eeg,
+                "label_candidates": ["trial_type", "value"],
+                "selected_label_field": field,
+                "selected_anchor": "onset",
+                "selected_duration_field": "duration",
+                "label_field_recommendation": {
+                    "field": field,
+                    "source": "explicit_selection",
+                    "reason": "Kept the explicit user or recipe selection.",
+                },
+                "value_decisions": {},
+            }
+        )
+
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "source_kind": "bids",
+            "eeg_files": eeg_files,
+            "label_carriers": events_files,
+            "bids": {"is_bids": True, "events_files": events_files},
+        },
+        preview={"label_carrier_preview": carriers},
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    _show_step(dialog, "Match Labels")
+
+    assert dialog.rule_label_field_combo.currentData() == ""
+    assert "Choose the field that contains the label values" in (
+        dialog.label_values_status_label.text()
+    )
+
+
+def test_bids_present_sidecar_without_selected_field_levels_requests_class_review(
+    qtbot,
+):
+    events = "/tmp/source/sub-01_task-mi_events.tsv"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "source_kind": "bids",
+            "eeg_files": ["/tmp/source/sub-01_task-mi_eeg.vhdr"],
+            "label_carriers": [events],
+            "bids": {"is_bids": True, "events_files": [events]},
+        },
+        preview={
+            "label_carrier_preview": [
+                {
+                    "path": events,
+                    "name": Path(events).name,
+                    "format": "BIDS events",
+                    "selected_target_file": "/tmp/source/sub-01_task-mi_eeg.vhdr",
+                    "label_candidates": ["trial_type"],
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "selected_duration_field": "duration",
+                    "events_json_sidecar_present": True,
+                    "selected_label_field_levels_available": False,
+                    "value_decisions": {
+                        "left": {
+                            "decision": "unresolved",
+                            "suggested_name": "left",
+                        },
+                        "right": {
+                            "decision": "unresolved",
+                            "suggested_name": "right",
+                        },
+                    },
+                }
+            ]
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    _show_step(dialog, "Match Labels")
+
+    assert "Class names need review" in dialog.label_values_status_label.text()
 
 
 def test_bids_value_decisions_are_returned_to_backend_choices(qtbot):
@@ -3449,6 +3576,15 @@ def test_bids_value_decisions_are_returned_to_backend_choices(qtbot):
     assert dialog.can_submit_for_backend_review() is True
     assert result["confirmed"] is submission.confirmed_on_accept
     assert submission.confirmed_on_accept is True
+
+    _show_step(dialog, "Review and Import")
+    qtbot.wait(0)
+    review_rows = {row["item"]: row for row in dialog._review_import_status_rows()}
+    assert review_rows["Label placement"]["status"] == "Ready"
+    assert review_rows["Label placement"]["action"] == ""
+    assert "2 event values reviewed" in review_rows["Label placement"]["summary"]
+    assert "Needs review" not in _visible_step_text(dialog, "Review and Import")
+    assert dialog.apply_button.isEnabled() is True
 
 
 def test_event_value_edits_defer_hidden_review_rebuilds(qtbot, monkeypatch):
@@ -3618,7 +3754,7 @@ def test_regular_folder_events_tsv_uses_general_label_flow(qtbot):
 
     _show_step(dialog, "Match Labels")
     qtbot.wait(0)
-    assert not dialog.bids_event_review_card.isVisibleTo(dialog)
+    assert not hasattr(dialog, "bids_event_review_card")
     assert dialog.pairing_card.isVisibleTo(dialog)
     assert dialog.placement_card.isVisibleTo(dialog)
     assert dialog.label_source_mode_combo.currentText() == "Loaded label files"
@@ -3684,11 +3820,11 @@ def test_load_labels_removing_bids_events_refreshes_active_bids_state(qtbot):
     assert "BIDS events.tsv" in _visible_step_text(dialog, "Load Labels")
     _show_step(dialog, "Match Labels")
     qtbot.wait(0)
-    assert not dialog.bids_event_review_card.isVisibleTo(dialog)
+    assert not hasattr(dialog, "bids_event_review_card")
     assert dialog.get_result()["choices"]["excluded_label_carriers"] == [events_path]
 
 
-def test_bids_preset_surfaces_scope_labels_metadata_and_review(qtbot):
+def test_bids_preset_uses_compact_actionable_first_layer(qtbot):
     events_path = "/tmp/source/sub-01_task-mi_run-01_events.tsv"
     dialog = DataInterpretationPreviewDialog(
         parent=None,
@@ -3723,6 +3859,9 @@ def test_bids_preset_surfaces_scope_labels_metadata_and_review(qtbot):
                     "path": events_path,
                     "name": "sub-01_task-mi_run-01_events.tsv",
                     "format": "BIDS events",
+                    "selected_target_file": (
+                        "/tmp/source/sub-01_task-mi_run-01_raw.fif"
+                    ),
                     "bids_event_columns": ["onset", "duration", "trial_type"],
                     "label_candidates": ["trial_type", "value"],
                     "anchor_candidates": ["onset"],
@@ -3733,6 +3872,13 @@ def test_bids_preset_surfaces_scope_labels_metadata_and_review(qtbot):
                     "time_model": "seconds",
                     "placement_method": "interval",
                     "granularity": "trial",
+                    "events_json_sidecar_present": False,
+                    "value_decisions": {
+                        "left": {
+                            "decision": "unresolved",
+                            "suggested_name": "left",
+                        }
+                    },
                     "warnings": ["events.json sidecar is missing."],
                 },
             ],
@@ -3758,24 +3904,33 @@ def test_bids_preset_surfaces_scope_labels_metadata_and_review(qtbot):
     assert "1 subject" in choose_text
     assert "1 task" in choose_text
     assert "1 events.tsv file" in choose_text
-    assert "Not a full BIDS validator" in choose_text
+    assert "Not a full BIDS validator" not in choose_text
+    assert "Boundary" not in choose_text
 
     _show_step(dialog, "Load Labels")
     load_text = _visible_step_text(dialog, "Load Labels")
     assert "BIDS events.tsv" in load_text
     assert "default label and timing source" in load_text
-    assert "events.json" in load_text
-    assert "Missing" in load_text
+    assert "Paired with sub-01_task-mi_run-01_raw.fif" in load_text
+    assert "Detected nearby" not in load_text
+    assert "events.json" not in load_text
     assert not dialog.skip_labels_btn.isVisibleTo(dialog)
     assert not dialog.add_label_file_btn.isVisibleTo(dialog)
     assert not dialog.add_label_folder_btn.isVisibleTo(dialog)
 
     _show_step(dialog, "Review Metadata")
     metadata_text = _visible_step_text(dialog, "Review Metadata")
-    assert "BIDS metadata" in metadata_text
-    assert "participants.tsv" in metadata_text
-    assert "Not found" in metadata_text
+    assert "Review subject, session, task, and run." in metadata_text
+    assert "BIDS metadata" not in metadata_text
+    assert "participants.tsv" not in metadata_text
+    assert "Metadata" in metadata_text
     assert dialog.smart_parse_btn.text() == "Adjust parsing"
+
+    _show_step(dialog, "Match Labels")
+    match_text = _visible_step_text(dialog, "Match Labels")
+    assert not hasattr(dialog, "bids_event_review_card")
+    assert "events.tsv columns" not in match_text
+    assert "Class names need review" in match_text
 
     _show_step(dialog, "Review and Import")
     qtbot.wait(0)
@@ -3798,6 +3953,63 @@ def test_bids_preset_surfaces_scope_labels_metadata_and_review(qtbot):
         button.text() == "Fix Match Labels"
         for button in dialog.review_actions_panel.findChildren(QPushButton)
     )
+    dialog.import_report_toggle.click()
+    report_rows = [
+        " | ".join(
+            dialog.review_tree.topLevelItem(index).text(column)
+            for column in range(dialog.review_tree.columnCount())
+        )
+        for index in range(dialog.review_tree.topLevelItemCount())
+    ]
+    assert any(
+        "BIDS event provenance" in row
+        and "sub-01_task-mi_run-01_events.tsv" in row
+        and "sub-01_task-mi_run-01_raw.fif" in row
+        and "onset + duration" in row
+        for row in report_rows
+    )
+
+
+@pytest.mark.parametrize(
+    ("sidecar_present", "warnings", "expected"),
+    [
+        (True, ["events.json sidecar is missing."], "Found"),
+        (False, [], "Missing"),
+    ],
+)
+def test_bids_events_json_status_uses_structured_preview_field(
+    qtbot,
+    sidecar_present,
+    warnings,
+    expected,
+):
+    events_path = "/tmp/source/sub-01_task-mi_events.tsv"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "source_kind": "bids",
+            "eeg_files": ["/tmp/source/sub-01_task-mi_eeg.vhdr"],
+            "label_carriers": [events_path],
+            "bids": {"is_bids": True, "events_files": [events_path]},
+        },
+        preview={
+            "label_carrier_preview": [
+                {
+                    "path": events_path,
+                    "name": "sub-01_task-mi_events.tsv",
+                    "format": "BIDS events",
+                    "selected_label_field": "trial_type",
+                    "events_json_sidecar_present": sidecar_present,
+                    "warnings": warnings,
+                }
+            ]
+        },
+        validation_decision=_validation_decision("safe"),
+    )
+    qtbot.addWidget(dialog)
+
+    assert dialog._bids_events_json_text() == expected
 
 
 def test_bids_review_blocks_when_one_selected_run_has_no_events_tsv(qtbot):

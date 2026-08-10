@@ -134,6 +134,110 @@ def _value_decisions_from_events(path: Path) -> dict[str, dict[str, object]]:
     }
 
 
+def test_bids_label_field_recommendation_ignores_unselected_run_carriers(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "bids"
+    selected_eeg, selected_events = _write_bids_run(
+        root,
+        run="1",
+        event_rows=[
+            ("0", "0", "stimulus", "standard"),
+            ("1", "0", "stimulus", "oddball"),
+            ("2", "0", "response", "response"),
+        ],
+    )
+    selected_events.with_suffix(".json").write_text(
+        json.dumps(
+            {
+                "trial_type": {
+                    "Levels": {
+                        "stimulus": "Auditory stimulus",
+                        "response": "Behavioral response",
+                    }
+                },
+                "value": {
+                    "Levels": {
+                        "standard": "Standard tone",
+                        "oddball": "Oddball tone",
+                        "response": "Button response",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    unselected_eeg, unselected_events = _write_bids_run(
+        root,
+        run="2",
+        event_rows=[
+            ("0", "0", "left_hand", "769"),
+            ("1", "0", "right_hand", "770"),
+        ],
+    )
+    unselected_events.with_suffix(".json").write_text(
+        json.dumps(
+            {
+                "trial_type": {
+                    "Levels": {
+                        "left_hand": "Left hand",
+                        "right_hand": "Right hand",
+                    }
+                },
+                "value": {"Description": "Hardware trigger code"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    selected_service = ApplicationService()
+    assert selected_service.execute(
+        ScanSourceCommand(source_path=str(root), source_hint="bids")
+    ).ok
+    selected_preview = selected_service.execute(
+        PreviewInterpretationCommand(
+            choices={"selected_eeg_files": [str(selected_eeg)]}
+        )
+    )
+
+    assert selected_preview.ok is True
+    selected_carriers = selected_preview.diagnostics["preview"]["label_carrier_preview"]
+    assert [row["path"] for row in selected_carriers] == [str(selected_events)]
+    assert [row["selected_target_file"] for row in selected_carriers] == [
+        str(selected_eeg)
+    ]
+    assert selected_carriers[0]["selected_label_field"] == "value"
+    recommendation = selected_carriers[0]["label_field_recommendation"]
+    assert recommendation["field"] == "value"
+    assert recommendation["facts"]["selected_run_count"] == 1
+
+    combined_service = ApplicationService()
+    assert combined_service.execute(
+        ScanSourceCommand(source_path=str(root), source_hint="bids")
+    ).ok
+    combined_preview = combined_service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(selected_eeg), str(unselected_eeg)],
+            }
+        )
+    )
+
+    assert combined_preview.ok is True
+    combined_carriers = combined_preview.diagnostics["preview"]["label_carrier_preview"]
+    assert {row["path"] for row in combined_carriers} == {
+        str(selected_events),
+        str(unselected_events),
+    }
+    assert {row["selected_label_field"] for row in combined_carriers} == {"trial_type"}
+    assert (
+        combined_carriers[0]["label_field_recommendation"]["facts"][
+            "selected_run_count"
+        ]
+        == 2
+    )
+
+
 def test_strict_bids_keeps_full_issue_evidence_but_bounds_blocker_text(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1075,6 +1179,24 @@ def test_timestamp_label_apply_uses_per_run_mapping_instead_of_global_mapping(
     assert isinstance(hint_2, dict)
     assert hint_1["class_map"] == {"T1": "left hand"}
     assert hint_2["class_map"] == {"T1": "right hand"}
+    assert hint_1["source"] == "BIDS events.tsv"
+    assert hint_2["source"] == "BIDS events.tsv"
+
+
+def test_bids_shaped_external_table_keeps_external_epoch_source() -> None:
+    candidate = InterpretationCandidate(
+        candidate_id="candidate-1",
+        scan_id="scan-1",
+        source_path="/data/recording.fif",
+        source_kind="file",
+    )
+
+    source = DataInterpretationApplyService._epoch_hint_source(
+        {"format": "BIDS events"},
+        candidate=candidate,
+    )
+
+    assert source == "Loaded label file"
 
 
 def test_internal_event_hints_use_each_run_mapping(tmp_path: Path) -> None:

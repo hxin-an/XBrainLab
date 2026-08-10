@@ -1239,8 +1239,8 @@ def test_workflow_decision_context_uses_backend_state_for_next_step():
             ActiveTrainingSnapshot(),
             TrainingStateSnapshot(),
             EvaluationStateSnapshot(),
-            "Ready to build dataset",
-            "generate_dataset",
+            "Ready to configure split",
+            "configure_dataset_split",
         ),
         (
             "dataset_ready",

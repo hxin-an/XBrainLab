@@ -16,15 +16,18 @@ from PyQt6.QtCore import QCoreApplication, QEvent, Qt
 from PyQt6.QtWidgets import QWidget
 
 from XBrainLab.backend.application import (
+    ApplyInterpretationCommand,
     ChangedState,
     CommandResult,
     ConfigureTrainingCommand,
     CreateEpochCommand,
-    GenerateDatasetCommand,
-    LoadDataCommand,
     PreprocessCommand,
     PreprocessOperation,
+    PreviewInterpretationCommand,
     QueryStateCommand,
+    SaveDatasetSplitCommand,
+    ScanSourceCommand,
+    ValidateInterpretationCommand,
 )
 from XBrainLab.backend.application.runtime import get_application_service
 from XBrainLab.backend.study import Study
@@ -82,7 +85,20 @@ def _prepare_training_runtime(tmp_path: Path):
     assert service is get_application_service(study)
     fif_path = _write_synthetic_raw_fif(tmp_path)
     commands = (
-        LoadDataCommand(paths=[str(fif_path)]),
+        ScanSourceCommand(source_path=str(fif_path), source_hint="file"),
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(fif_path)],
+                "label_carrier": "embedded_events",
+                "class_map": {"left": "left", "right": "right"},
+                "internal_event_selection": {
+                    "label_event_codes": ["left", "right"],
+                    "class_map": {"left": "left", "right": "right"},
+                },
+            },
+        ),
+        ValidateInterpretationCommand(),
+        ApplyInterpretationCommand(confirmed=True),
         PreprocessCommand(
             operation=PreprocessOperation.NORMALIZE,
             method="z-score",
@@ -92,7 +108,7 @@ def _prepare_training_runtime(tmp_path: Path):
             t_max=1.3,
             event_ids=["left", "right"],
         ),
-        GenerateDatasetCommand(
+        SaveDatasetSplitCommand(
             test_ratio=0.25,
             val_ratio=0.25,
             split_strategy="trial",

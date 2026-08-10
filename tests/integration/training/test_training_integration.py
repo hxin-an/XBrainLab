@@ -210,11 +210,7 @@ class TestTrainingSettingDefaultValues:
         mock_controller = MagicMock()
         mock_controller.get_training_option.return_value = None
 
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog.get_device_count",
-            return_value=0,
-        ):
-            window = TrainingSettingDialog(None, mock_controller)
+        window = TrainingSettingDialog(None, mock_controller)
         qtbot.addWidget(window)
 
         # Verify default values are pre-filled

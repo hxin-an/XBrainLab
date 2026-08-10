@@ -14,7 +14,7 @@ from XBrainLab.llm.tools.mock.dataset_mock import (
     MockApplyInterpretationTool,
     MockAttachLabelsTool,
     MockClearDatasetTool,
-    MockGenerateDatasetTool,
+    MockConfigureDatasetSplitTool,
     MockGetDatasetInfoTool,
     MockListFilesTool,
     MockLoadDataTool,
@@ -97,7 +97,7 @@ class TestDatasetMocks:
         state = MockWorkflowState(
             data_loaded=True,
             epochs_ready=True,
-            dataset_generated=True,
+            split_spec_saved=True,
         )
         result = MockLoadDataTool(state).execute(study, paths=["/data/f.gdf"])
         assert isinstance(result, ToolResult)
@@ -110,7 +110,7 @@ class TestDatasetMocks:
         assert result.recoverable is True
         assert state.data_loaded is True
         assert state.epochs_ready is False
-        assert state.dataset_generated is False
+        assert state.split_spec_saved is False
 
         missing_paths = MockLoadDataTool(state).execute(study)
         _assert_tool_result(
@@ -123,7 +123,7 @@ class TestDatasetMocks:
     def test_data_interpretation_tools(self, study):
         state = MockWorkflowState(
             epochs_ready=True,
-            dataset_generated=True,
+            split_spec_saved=True,
         )
         scan_result = MockScanSourceTool().execute(study, source_path="/data")
         assert isinstance(scan_result, ToolResult)
@@ -157,7 +157,7 @@ class TestDatasetMocks:
         )
         assert state.data_loaded is True
         assert state.epochs_ready is False
-        assert state.dataset_generated is False
+        assert state.split_spec_saved is False
         saved = MockSaveInterpretationRecipeTool().execute(
             study,
             recipe_path="/tmp/import.json",
@@ -204,7 +204,7 @@ class TestDatasetMocks:
         state = MockWorkflowState(
             data_loaded=True,
             epochs_ready=True,
-            dataset_generated=True,
+            split_spec_saved=True,
             model_name="EEGNet",
             training_options_configured=True,
         )
@@ -214,13 +214,13 @@ class TestDatasetMocks:
         assert unconfirmed.ok is False
         assert unconfirmed.error_type == "confirmation_required"
         assert state.data_loaded is True
-        assert state.dataset_generated is True
+        assert state.split_spec_saved is True
 
         result = MockClearDatasetTool(state).execute(study, confirmed=True)
         _assert_tool_result(result, ok=True, message="Dataset cleared.")
         assert state.data_loaded is False
         assert state.epochs_ready is False
-        assert state.dataset_generated is False
+        assert state.split_spec_saved is False
         assert state.model_name is None
         assert state.training_options_configured is False
 
@@ -255,27 +255,27 @@ class TestDatasetMocks:
             message="No data loaded. Next: Scan data source.",
         )
 
-    def test_generate_dataset(self, study):
+    def test_configure_dataset_split(self, study):
         state = MockWorkflowState(epochs_ready=True)
-        result = MockGenerateDatasetTool(state).execute(
+        result = MockConfigureDatasetSplitTool(state).execute(
             study, split_strategy="trial", training_mode="group"
         )
         _assert_tool_result(
             result,
             ok=True,
-            message="Generated dataset (Split: trial, Mode: group).",
+            message=("Saved data splitting settings (Split: trial, Mode: group)."),
         )
-        assert state.dataset_generated is True
+        assert state.split_spec_saved is True
 
-    def test_generate_dataset_requires_epochs(self, study):
+    def test_configure_dataset_split_requires_epochs(self, study):
         state = MockWorkflowState(data_loaded=True)
 
-        result = MockGenerateDatasetTool(state).execute(study)
+        result = MockConfigureDatasetSplitTool(state).execute(study)
 
         assert result.ok is False
         assert result.error_type == "precondition"
         assert result.recoverable is True
-        assert state.dataset_generated is False
+        assert state.split_spec_saved is False
 
 
 class TestPreprocessMocks:
@@ -283,7 +283,7 @@ class TestPreprocessMocks:
         state = MockWorkflowState(
             data_loaded=True,
             epochs_ready=True,
-            dataset_generated=True,
+            split_spec_saved=True,
             model_name="EEGNet",
             training_options_configured=True,
         )
@@ -293,7 +293,7 @@ class TestPreprocessMocks:
         assert result.ok is True
         assert state.data_loaded is True
         assert state.epochs_ready is False
-        assert state.dataset_generated is False
+        assert state.split_spec_saved is False
         assert state.model_name is None
         assert state.training_options_configured is False
 
@@ -426,7 +426,7 @@ class TestPreprocessMocks:
         )
 
     def test_epoch_data(self, study):
-        state = MockWorkflowState(data_loaded=True, dataset_generated=True)
+        state = MockWorkflowState(data_loaded=True, split_spec_saved=True)
         result = MockEpochDataTool(state).execute(study, t_min=-0.5, t_max=1.0)
         _assert_tool_result(
             result,
@@ -434,7 +434,7 @@ class TestPreprocessMocks:
             message="Created EEG epochs from -0.5s to 1.0s.",
         )
         assert state.epochs_ready is True
-        assert state.dataset_generated is False
+        assert state.split_spec_saved is False
 
     def test_epoch_data_requires_loaded_data(self, study):
         state = MockWorkflowState()
@@ -602,12 +602,12 @@ class TestTrainingMocks:
         assert blocked.ok is False
         assert blocked.error_type == "precondition"
         assert blocked.recoverable is True
-        assert "dataset" in blocked.message.lower()
+        assert "data splitting" in blocked.message.lower()
         assert "model" in blocked.message.lower()
         assert "training" in blocked.message.lower()
 
         ready_state = MockWorkflowState(
-            dataset_generated=True,
+            split_spec_saved=True,
             model_name="EEGNet",
             training_options_configured=True,
         )
@@ -646,7 +646,7 @@ class TestTrainingMocks:
         assert _require_tool_result(
             tools["epoch_data"].execute(study, t_min=-0.5, t_max=1.0)
         ).ok
-        assert _require_tool_result(tools["generate_dataset"].execute(study)).ok
+        assert _require_tool_result(tools["configure_dataset_split"].execute(study)).ok
         assert _require_tool_result(
             tools["set_model"].execute(study, model_name="EEGNet")
         ).ok

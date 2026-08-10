@@ -6,11 +6,6 @@ import pytest
 
 from XBrainLab.backend.controller.evaluation_controller import EvaluationController
 
-# Ensure torchinfo is mockable even when not installed
-_mock_torchinfo = MagicMock()
-if "torchinfo" not in sys.modules:
-    sys.modules["torchinfo"] = _mock_torchinfo
-
 
 @pytest.fixture
 def mock_study():

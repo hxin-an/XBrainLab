@@ -16,10 +16,14 @@ from XBrainLab.backend.application import (
     PreprocessCommand,
     PreprocessOperation,
     ScanSourceCommand,
+    TrainingRecommendationField,
     build_command_from_payload,
     command_specs,
     execute_automation_payload,
     resource_guard,
+)
+from XBrainLab.backend.application.training_submission import (
+    training_submission_edited_fields,
 )
 from XBrainLab.backend.application.view_publication import (
     PUBLIC_VIEW_UNAVAILABLE_MESSAGE,
@@ -61,7 +65,7 @@ def test_command_specs_cover_primary_application_commands_with_autonomy_policy()
         "nullable": True,
     }
 
-    dataset_spec = specs[CommandName.GENERATE_DATASET.value]
+    dataset_spec = specs[CommandName.CONFIGURE_DATASET_SPLIT.value]
     split_config = dataset_spec.input_schema["properties"]["split_config"]
     assert split_config["additionalProperties"] is False
     assert split_config["required"] == [
@@ -77,6 +81,20 @@ def test_command_specs_cover_primary_application_commands_with_autonomy_policy()
     splitter = split_config["properties"]["test_splitters"]["items"]
     assert "By Trial" in splitter["properties"]["split_type"]["enum"]
     assert "Ratio" in splitter["properties"]["split_unit"]["enum"]
+
+    training_spec = specs[CommandName.CONFIGURE_TRAINING.value]
+    assert (
+        "edited_recommendation_fields" not in training_spec.input_schema["properties"]
+    )
+
+    preview_spec = specs[CommandName.PREVIEW_INTERPRETATION.value]
+    value_decision = preview_spec.input_schema["properties"]["choices"]["properties"][
+        "label_carrier_choices"
+    ]["additionalProperties"]["properties"]["value_decisions"]["additionalProperties"]
+    assert "decision_source" not in value_decision["properties"]
+    assert "provenance" not in value_decision["properties"]
+    assert "decision" not in value_decision["properties"]
+    assert "count" not in value_decision["properties"]
 
     train_capability = specs[CommandName.TRAIN.value].capability
     assert train_capability is not None
@@ -141,6 +159,58 @@ def test_preview_command_spec_exposes_recipe_remap_choices():
 
 
 @pytest.mark.parametrize(
+    "command_name",
+    [
+        CommandName.PREVIEW_INTERPRETATION,
+        CommandName.REVIEW_INTERPRETATION,
+    ],
+)
+@pytest.mark.parametrize(
+    "forged_field",
+    ["decision_source", "provenance", "decision", "count"],
+)
+def test_data_interpretation_automation_rejects_output_owned_decision_fields(
+    command_name: CommandName,
+    forged_field: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = ApplicationService(Study())
+    execute_spy = MagicMock(
+        side_effect=AssertionError("forged provenance must not reach service.execute"),
+    )
+    monkeypatch.setattr(service, "execute", execute_spy)
+    arguments = {
+        "choices": {
+            "label_carrier_choices": {
+                "events.tsv": {
+                    "value_decisions": {
+                        "left": {
+                            "role": "stimulus",
+                            "keep_event": True,
+                            "use_as_class": True,
+                            "class_name": "left hand",
+                            forged_field: "forged",
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if command_name is CommandName.REVIEW_INTERPRETATION:
+        arguments["source_path"] = "/data"
+
+    execution = execute_automation_payload(
+        service,
+        {"command": command_name.value, "arguments": arguments},
+    )
+
+    assert execution.accepted is False
+    assert execution.verification["schema_valid"] is False
+    assert forged_field in execution.verification["error"]
+    execute_spy.assert_not_called()
+
+
+@pytest.mark.parametrize(
     ("command_name", "field_name"),
     [
         (CommandName.EVALUATE, "include_metrics"),
@@ -149,7 +219,7 @@ def test_preview_command_spec_exposes_recipe_remap_choices():
         (CommandName.EVALUATE, "model_summary_plan_index"),
         (CommandName.EVALUATE, "model_summary_run_index"),
         (CommandName.EVALUATE, "summary_identity"),
-        (CommandName.GENERATE_DATASET, "generator"),
+        (CommandName.CONFIGURE_DATASET_SPLIT, "generator"),
     ],
 )
 def test_automation_rejects_ui_only_payload_flags(command_name, field_name):
@@ -264,6 +334,72 @@ def test_build_training_command_rejects_values_outside_published_schema(
                 "arguments": {field_name: invalid_value},
             },
         )
+
+
+def test_configure_training_automation_derives_all_five_recommendation_fields():
+    arguments = {
+        "epoch": 17,
+        "batch_size": 3,
+        "learning_rate": 0.02,
+        "optimizer": "SGD",
+        "evaluation_option": "Best validation loss",
+        "device": "cpu",
+    }
+
+    command = build_command_from_payload(
+        {
+            "command": CommandName.CONFIGURE_TRAINING.value,
+            "arguments": arguments,
+        }
+    )
+
+    assert training_submission_edited_fields(command) == frozenset(
+        TrainingRecommendationField
+    )
+    with pytest.raises(
+        AutomationPayloadError,
+        match="edited_recommendation_fields",
+    ):
+        build_command_from_payload(
+            {
+                "command": CommandName.CONFIGURE_TRAINING.value,
+                "arguments": {
+                    **arguments,
+                    "edited_recommendation_fields": ["epochs"],
+                },
+            }
+        )
+
+
+def test_configure_training_automation_round_trips_all_five_manual_values():
+    service = ApplicationService(Study())
+
+    execution = execute_automation_payload(
+        service,
+        {
+            "command": CommandName.CONFIGURE_TRAINING.value,
+            "arguments": {
+                "epoch": 17,
+                "batch_size": 3,
+                "learning_rate": 0.02,
+                "optimizer": "SGD",
+                "evaluation_option": "Best validation loss",
+                "device": "cpu",
+            },
+        },
+    )
+    recommendation = service.get_training_recommendation()
+
+    assert execution.result is not None
+    assert execution.result["status"] == "ok"
+    assert recommendation.values.to_mapping() == {
+        TrainingRecommendationField.EPOCHS: 17,
+        TrainingRecommendationField.BATCH_SIZE: 3,
+        TrainingRecommendationField.LEARNING_RATE: 0.02,
+        TrainingRecommendationField.OPTIMIZER: "SGD",
+        TrainingRecommendationField.EVALUATION_STRATEGY: "Best validation loss",
+    }
+    assert recommendation.manual_fields == tuple(TrainingRecommendationField)
 
 
 @pytest.mark.parametrize(
@@ -420,8 +556,6 @@ def test_execute_automation_payload_state_contains_interpretation_review_truth(
                                     "keep_event": True,
                                     "use_as_class": True,
                                     "class_name": "left hand",
-                                    "decision_source": "user_choice",
-                                    "provenance": "automation_test",
                                 }
                             },
                         },

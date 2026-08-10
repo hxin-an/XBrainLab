@@ -555,6 +555,47 @@ def test_build_interpretation_candidate_uses_inside_eeg_labels_instead_of_carrie
     assert "choices:label_carriers" not in candidate.recipe_trace
 
 
+def test_explicit_empty_internal_label_selection_does_not_restore_suggestions(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda _path: {
+            "events": {
+                "rt": {"count": 10, "description": "rt"},
+                "square": {"count": 10, "description": "square"},
+            }
+        },
+    )
+
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-empty-labels",
+        scan=_scan(
+            eeg_files=["/data/tutorial.set"],
+            label_carriers=[],
+            label_carrier_sources={},
+            bids={"is_bids": False, "events_files": []},
+        ),
+        choices={
+            "label_carrier": "embedded_events",
+            "internal_event_selection": {
+                "label_event_codes": [],
+                "not_label_event_codes": ["rt", "square"],
+                "class_map": {},
+            },
+        },
+    )
+
+    assert candidate.internal_event_selection["label_event_codes"] == []
+    assert candidate.internal_event_selection["not_label_event_codes"] == [
+        "rt",
+        "square",
+    ]
+    assert "class_map" not in candidate.internal_event_selection
+    assert candidate.class_map == {}
+
+
 def test_build_interpretation_candidate_excludes_removed_label_carrier(tmp_path):
     removed = tmp_path / "A01T.mat"
     kept = tmp_path / "A02T.mat"

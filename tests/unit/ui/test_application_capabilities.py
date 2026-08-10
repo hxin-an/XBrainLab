@@ -1061,7 +1061,7 @@ def test_real_worker_command_mismatch_fails_handoff_once(qtbot) -> None:
     terminal = []
     screen_callback = MagicMock()
     mismatched = CommandResult.success_result(
-        command_name="generate_dataset",
+        command_name="configure_dataset_split",
         message="Unexpected dataset result.",
         state={},
         changed_state=ChangedState(datasets_changed=True),

@@ -83,7 +83,8 @@ walkthrough decision owner、跨平台 Qt teardown，以及 coverage-heavy CI �
   payload，避免同大小內容替換被舊 parse cache 隱藏。
 - Required fixture profile verify-only 通過（`205255918` bytes）；strict matrix 為 `20/20`
   lifecycle、`14/14` formats、`7/7` external placement；公開 wizard walkthrough `11/11`，
-  focused backend `117` tests、IO/BIDS/cross-source `40` tests、strict training `4/4`、real
+  focused backend `117` tests、IO/BIDS/cross-source `40` tests、strict cross-source `4/4`
+  （2 個 training、2 個 import/preprocess boundary）、real
   handoff spine `3/3` 通過。
 - Artifact：`build/dev-artifacts/data-import-label-use-as-v2/04-match-labels-bids-events.png`
   與 `build/dev-artifacts/data-import-wizard-steps/00-updating-label-matches.png`。這些是 Linux/xcb
@@ -202,8 +203,9 @@ artifacts 仍是必須另行檢查的 evidence。
 - `blocked`：需要使用者決策、外部環境或無法自動取得的 evidence；
 - `handoff-ready`：只有全部 gate 從同一 clean pushed commit 完成後才可使用。
 
-目前狀態是已合併到 `main` 的 development `checkpoint`。這個分類只表示後續開發基線已收斂，
-不表示 Assistant、效能、資料格式或 release gate 已完成。
+目前狀態是尚未合併到 `main` 的 integration `checkpoint`。只有目前 candidate 的 exact-head CI
+成功並完成規定 gate 後，才能經 PR 回到 `main`；這不表示 Assistant、效能、資料格式或 release
+gate 已完成。
 
 ## EEG Workflow Improvements Checkpoint
 
@@ -212,10 +214,28 @@ Braindecode model catalog、BIDS scan 前 subject selection、training test accu
 backend-admitted cross-fold Evaluation summary，以及 cross-fold Saliency summary / detached display
 normalization。Local focused backend `74 passed`、focused UI `204 passed`、public IO/BIDS/cross-source
 integration `40 passed`、representative EEGNet pipeline `2 passed`；strict format matrix 為 `20/20`
-lifecycle cases、`14/14` required formats，strict cross-source runner 為 `4/4` required cases。
+lifecycle cases、`14/14` required formats，strict cross-source runner 為 `4/4` required cases
+（PhysioNet EDF / BBCI GDF training；SCCN SET / MNE CNT import/preprocess boundary）。本輪後續 contract closure
+另涵蓋 selected-run BIDS label recommendation、mixed-sampling epoch fail-closed 與 resample recovery、
+deferred split publication / rollback，以及逐欄位 manual provenance 的 deterministic training
+recommendations；這些都有 focused regression，但仍等待 final pushed exact-head CI。
 Independent source review additionally found and closed stable model-ID loss at the Training UI
 boundary and subject-cohort conflation in cross-fold summaries; their red-first regressions and
 expanded adjacent suite passed before this checkpoint was updated.
+
+The final local working-tree closure reran the complete backend unit shard (`4935 passed`) and the
+active non-MCP integration tree (`476 passed`). The latter includes the strict Data Interpretation
+matrix, required public multi-source fixtures, ApplicationService import/preprocess/epoch/split/train
+flows, and the human-like product walkthrough artifact. Focused real-fixture UI acceptance covering
+GDF, SET, CNT, BrainVision, EDF, and OpenNeuro P300 BIDS passed (`22 passed`), as did the final
+walkthrough artifact (`1 passed`). Ruff, Ruff format, architecture compliance, and MkDocs strict also
+passed locally.
+
+Configured full-source Basedpyright is **not clean**: it currently reports `234 errors` and `1 warning`,
+primarily existing PyQt dynamic-widget optionality and Matplotlib canvas typing debt. Therefore this
+checkpoint does not claim the static/quality handoff gate or handoff-ready status. The totals above are
+working-tree evidence until the candidate is committed, pushed, and rerun at the exact head; Windows
+interaction acceptance and the deferred 20-scenario product gate also remain open.
 
 The first exact-head run after fixing the required fixture profile proved the public multi-dataset
 job itself, but its Windows/Linux/macOS general jobs failed on stale display-name assertions, eager
@@ -223,7 +243,8 @@ training imports from Dataset startup, async callback timing, and platform-speci
 The follow-up checkpoint closed those locally with `2577` UI, `2351` LLM/Assistant, `317`
 architecture/read-side, and `441` focused workflow tests. A later native-CI closure pass also ran the
 complete unit-script (`1148`) and unit-UI (`2584`) suites, all integration shards, the strict
-multi-dataset format matrix, and the `4/4` cross-source training smoke. These are development-run
+multi-dataset format matrix, and the `4/4` cross-source smoke (two training plus two import/preprocess
+cases). These are development-run
 observations, not final handoff totals; merge review still requires one completed successful
 exact-head CI run for the final pushed candidate.
 
@@ -394,7 +415,7 @@ runner source，不是用來抵抗能任意修改同一使用者 source/evidence
 | 4. Assistant/local runtime | `assistant-security-suite`、`granite-runtime`、`rag-offline`、五個 `chatpanel-*` gates | Exact Granite、secure RAG、guided/training readiness/completion、recovery、long session 與 bounded shutdown。 |
 | 5. UI artifacts | `human-like-product` through `data-import-wizard-validate` | Exact-source full/narrow/DPI/wizard/visualization artifact set。 |
 | 6. Native lifecycle | `native-lifecycle-tests`、`preprocess-native-stress`、`ui-native-render-stress` | Preprocess and render ownership；不取代 Windows native acceptance。 |
-| 7. Multi-dataset | `fetch-required-ci` through `public-cross-source-training`，包含 `real-data-interpretation-training` | Fixed denominator、verify-only、wizard、IO/BIDS、cross-source diversity，以及 Graz external labels、PhysioNet internal events、public BIDS 從 Data Interpretation 到 epoch/dataset/training 的連續 product spine。 |
+| 7. Multi-dataset | `fetch-required-ci` through `public-cross-source-training`，包含 `real-data-interpretation-training` | Fixed denominator、verify-only、wizard、IO/BIDS、cross-source diversity；Graz external labels 與 PhysioNet internal events 走到 training，public BIDS 依 fixture 能力走到 preview/apply 或 epoch/split readiness。 |
 | 8. Resource/dashboard | `resource-calibration`、`handoff-dashboard` | 在 ignored exact-SHA root 產生 CUDA calibration，dashboard 保留並驗證該輸入後做 final clean-source recheck；dashboard 必須維持最後一個 gate。 |
 
 Section 2 的 WSL/POSIX regression 與 Windows native-opener source/dispatch guard 不能取代真人
@@ -418,10 +439,11 @@ Section 7 的 required denominator 不得用缺 fixture、刪 case、skip、xfai
 `205 MB`，下載與 verify-only 必須先成功，P300 測試不得以缺 fixture skip 通過。
 `real-data-interpretation-training` 必須整檔執行
 `tests/integration/pipeline/test_real_data_handoff_gate.py`，不可只挑一個較容易的 node。它證明
-Graz 2a 外部 MAT labels、PhysioNet EEGMMIDB 內建 events、public MNE-BIDS events.tsv 與
-OpenNeuro P300 `.set + events.tsv`
-都能沿 current `scan -> preview -> validate -> apply` spine 進入後續 workflow；這仍不等於
-full BIDS validator 或任意 EEG source 支援。
+Graz 2a 外部 MAT labels 與 PhysioNet EEGMMIDB 內建 events 可沿 current
+`scan -> preview -> validate -> apply` spine 進入 training；public MNE-BIDS events.tsv 走到 epoch
+與 split-configuration readiness，該 fixture 的 training 仍明確 blocked。OpenNeuro P300
+`.set + events.tsv` 的 preview / apply 由獨立 public-BIDS gate 保護，不屬於該 handoff test 的
+training claim。這些 evidence 仍不等於 full BIDS validator 或任意 EEG source 支援。
 Sleep-EDF 和 CHB-MIT teacher fixture tests 是 optional acceptance evidence，
 不混入 mandatory public IO gate。不同副檔名不等於不同 dataset source；同一 source 的轉檔
 只算 format coverage。這組 gate 不支撐 full BIDS validator、任意 clinical/proprietary format

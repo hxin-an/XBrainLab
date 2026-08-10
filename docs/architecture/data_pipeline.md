@@ -1,6 +1,6 @@
 # Data Pipeline Architecture
 
-最後更新：`2026-05-13`
+最後更新：`2026-08-10`
 
 ## 可信度
 
@@ -182,6 +182,17 @@ recording 的邊界。若只有不超過所選事件 `1%` 的尾端／起始事�
 window 或 event selection。直接呼叫底層 `TimeEpoch` 時仍預設禁止 boundary drop，避免繞過
 Application Service 的安全判定。
 
+Epoch context 是 fail-closed availability contract，不是 dialog defaults。每個 selected recording
+都必須有可讀的 applied timing hint，並且 reviewed import `epoch_handoff` 必須存在、schema 合法、
+`ready=true`，其 label source / placement 也要與 runtime hints 相符；任何缺漏、read failure 或
+mismatch 都會阻擋 epoch setup。Duration / event-locked truth 由這份 handoff 綁定的 reviewed
+placement 與 duration evidence 產生：reviewed interval 有正 duration 時使用 duration mode，跨
+selected BIDS runs 採最長 observed duration；BIDS interval 沒有 positive duration 時回到需人工
+決定 window 的 event-locked mode。非 BIDS interval 缺 duration 則 blocked，不用通用預設掩蓋。
+Raw recordings 可以先以不同 sampling rates 匯入，讓使用者在 Preprocess 明確 resample；在所有
+recordings 尚未共享同一 sampling grid 前，Epoch context 會以 recoverable precondition 阻擋建立
+epochs 並提供 resampling guidance。已 epoched inputs 仍必須在 loader 邊界共享 sampling rate。
+
 它會：
 
 - 要求輸入資料已經是 epoch，不是 continuous raw。
@@ -210,6 +221,15 @@ Application Service 的安全判定。
 
 這表示 dataset split 不複製整份 EEG data；它以 mask 指向同一個 `Epochs`。
 
+Data Splitting 的確認邊界只保存 typed split specification、fingerprint 與對應 preview
+receipt 和 epoch revision，不在 dialog accept 時建立 masks 或 training tensors。`TrainCommand`
+進入 Application Service 後才會依保存的 specification materialize datasets、執行 leakage /
+coverage audit，再進入 resource preflight；同一份 epoch revision 與 specification 的成功結果可
+重用。若 materialization 或 audit 失敗，既有 dataset、trainer 與 training state 必須保留，不能
+在確認設定時先清除。Start Training 會保存 quiescent trainer startup snapshot；即使既有 trainer
+以 `append=True` 原地加入 plans 後才失敗，也只移除本次新增 plans。Rollback 先恢復 trainer 再恢復
+dataset publication，避免 cleanup failure 留下互不相符的 dataset / trainer pair。
+
 ## Training Layer
 
 training flow 目前是：
@@ -233,6 +253,15 @@ Study.train(interact=False/True)
 - training plan queue
 - progress text
 
+Training Setting 的 epochs、batch size、learning rate、optimizer 與 evaluation strategy 目前可由
+backend deterministic recommendation contract 提供起始值。它依目前 epoch shape、split preview /
+materialized summary 與所選 model family 產生保守 starting point。每個欄位都有
+`recommended` / `manual` provenance；只有 trusted host 明確記錄的使用者 edit 會在 context
+重新計算時逐欄位保留。不能從 submitted value 與 recommendation 不同就推測使用者曾編輯；
+未 edited 欄位一律更新 recommendation。它不是 hyperparameter search，也不取代 Start
+Training 前的 resource preflight；timed search 只有 future roadmap contract，沒有現行 service /
+command / tool implementation。
+
 Training completion now writes metric-only evaluation by default. Saliency maps
 are computed only after `saliency` parameters are explicitly configured, so a
 normal training run does not silently run SmoothGrad / VarGrad work at the end.
@@ -246,7 +275,7 @@ normal training run does not silently run SmoothGrad / VarGrad work at the end.
 | Real-data IO integration | `PASS` in fast dashboard | 多格式 real fixtures 可 import。 | 完整 training / thesis reproducibility。 |
 | Checked-in GDF+MAT dataset generation | tests exist | A01T/A02T/A03T 可 attach labels、preprocess、epoch、generate dataset。 | 所有資料集來源都正確。 |
 | Checked-in GDF+MAT training smoke | tests exist | A01T/A02T/A03T 可 one-epoch training smoke。 | accuracy 有意義或 protocol 可發表。 |
-| Public cross-source training / epoch smoke | local-only tests exist | PhysioNet EDF、BBCI GDF、SCCN EEGLAB 可走 training smoke；tiny CNT 保留為 IO/preprocess/epoch-only evidence。 | fixture 一定存在於乾淨 clone，或 thesis-grade reproducibility 完成。 |
+| Public cross-source workflow smoke | local-only tests exist | PhysioNet EDF、BBCI GDF 走 training smoke；SCCN EEGLAB、tiny CNT 保留為 import/preprocess boundary，沒有足夠 reviewed classes 時明確阻止 supervised epoch。 | fixture 一定存在於乾淨 clone，或 thesis-grade reproducibility 完成。 |
 | Tiny E2E pipeline smoke | `2 passed in 7.54s` on 2026-05-01 | synthetic / Study train cycle 有基本閉環。 | real-world data 全面可信。 |
 
 ## 目前可信結論
@@ -280,9 +309,16 @@ Data Import wizard baseline 和仍未完成的產品化差距，不是新增目�
 - label carrier discovery 目前支援 `.mat`、`.csv`、`.tsv`、`.txt` 和 BIDS `events.tsv`。
 - label carrier planner 能從 MAT variables、CSV / TSV headers、BIDS events columns 推出
   label field / anchor candidates，並保存到 candidate / recipe choices。
-- Strict BIDS folder import 會把 selected-scope `events.tsv` 當作 BIDS label/timing source，
-  保留 detected columns，對 missing `events.json` sidecar、missing onset / duration 欄位產生
-  warning 或 blocked placement review；這仍不是 full BIDS inheritance / validator support。
+- Strict BIDS label-field recommendation 不是固定偏好 `trial_type` 或 `value`。Planner 會在
+  bounded row / byte limits 內逐一 profile selected runs，聚合欄位 coverage、non-empty / multi-value
+  coverage、observed values、sidecar `Levels` 和 cross-run consistency；任一 selected table 的
+  row / byte inspection 被截斷，或 evidence 不足時，都不自動推薦，explicit user selection 優先。
+  Public payload 保存 reason code 與 bounded facts，完整 evidence
+  留在 detail review。
+- Strict BIDS folder import 會把 selected-scope `events.tsv` 當作 BIDS label/timing source並保留
+  detected columns。`events.json` 是否存在與 selected label field 是否有可用 `Levels` 是兩個不同的
+  structured facts；缺少 class semantics 會要求 review。missing onset / duration 仍會產生 warning 或
+  blocked placement review；這仍不是 full BIDS inheritance / validator support。
 - label carrier planner 也會為 active label carriers 建立 placement evidence：EEG event order、
   label time、label interval、label event code 四種模式各有可審查 review；目前 active
   `placement_review` 會保存到 candidate，供 UI / agent / recipe 使用。
@@ -312,7 +348,7 @@ Data Import wizard baseline 和仍未完成的產品化差距，不是新增目�
 | --- | --- | --- |
 | Attach label file / folder independent from EEG source | `ScanSourceCommand.label_sources`、dialog `Add label file` / `Add label folder`、service rescan loop、recipe `label_sources` preservation。 | Label source add currently rescans and reopens the wizard with the attached source; later polish can keep the user on the same visual step after rescan. |
 | Selected scope vs scan location | dialog shows selected scope separately from scan location in source summary cards; candidate metadata is filtered by selected EEG files. | More screenshot evidence is still useful for multi-file fixture walkthroughs. |
-| Match Labels task-oriented UI | 第一層分成 label source、file pairing、label values、placement task panel、class names、check；不再把 `Anchor` / `Time` / `Granularity` / `Role` / `Label unit` 當主 UI。Strict BIDS import 另有 `events.tsv` review card 與 class-value summary。 | Advanced event/class diagnostics still live in the same dialog instead of a collapsed details surface. |
+| Match Labels task-oriented UI | 第一層分成 label source、file pairing、label values、placement task panel、class names、check；不再把 `Anchor` / `Time` / `Granularity` / `Role` / `Label unit` 當主 UI。Strict BIDS 顯示實際 EEG / `events.tsv` pairing，並以 selected-run row/sidecar evidence、coverage 與 consistency 提供保守 label-field recommendation；不再重複顯示獨立 BIDS review card。 | Recommendation 仍需 review；advanced event/class diagnostics live in the detailed import report instead of the first-layer task panel. |
 | Mainstream label placement evidence | backend preview 會依資料結構支援 EEG event order、label time、label interval、label event code；UI 讀 `placement_reviews` 顯示 check，而不是靠前端硬猜。Blocked placement review 現在會成為 candidate blocker，不會只變成 confirmation。 | 仍不宣稱 full BIDS；BIDS inheritance、跨 datatype 和更複雜 run-level semantics 需要另外確認。 |
 | Actionable Review and Import checklist | preview / validation emits structured action items; UI renders only blockers / required decisions as first-layer cards with issue、impact、next action and target step. | `View import report` exposes report-only warnings、format capability、recipe trace and remap selectors; it is secondary detail, not the first-layer review layout. |
 | Import without labels / limited mode | `Continue without labels` is saved in choices and produces an authoritative `supervised_ready=false` handoff with structured blockers. Dataset/training capability policy consumes that handoff, so raw inspection/preprocessing can continue while supervised dataset/training remains blocked. | This does not infer missing class semantics or promise supervised readiness for unsupported sidecars. |

@@ -18,6 +18,9 @@ from XBrainLab.backend.application.resource_preflight import (
     ResourcePreflightContractError,
     ResourcePreflightView,
 )
+from XBrainLab.backend.application.training_recommendation import (
+    TrainingRecommendationField,
+)
 from XBrainLab.llm.tools.application_surface import (
     READ_ONLY_TOOLS,
     SETTING_CHANGE_CONFIRMATION_KIND,
@@ -26,6 +29,7 @@ from XBrainLab.llm.tools.application_surface import (
     ToolAvailability,
     ToolAvailabilityContext,
     ToolCommandResult,
+    assistant_edited_recommendation_fields,
     assistant_setting_change_requires_confirmation,
     authorize_assistant_setting_change,
     get_application_context,
@@ -153,6 +157,7 @@ class ToolAttemptDecision:
     tool: BaseTool | None = None
     confirmation_kind: str | None = None
     resource_preflight_receipt: ResourceConfirmationChallenge | None = None
+    edited_recommendation_fields: tuple[TrainingRecommendationField, ...] | None = None
     feedback: ToolAttemptFeedback = ToolAttemptFeedback.SYSTEM_REJECTION
 
 
@@ -361,6 +366,10 @@ class ToolAttemptCoordinator:
             )
 
         tool = self._registry.get_tool(command_name)
+        edited_recommendation_fields = assistant_edited_recommendation_fields(
+            command_name,
+            params,
+        )
         evaluated_params = setting_confirmation_params(command_name, params)
         setting_confirmation = assistant_setting_change_requires_confirmation(
             command_name,
@@ -380,6 +389,7 @@ class ToolAttemptCoordinator:
                 confirmation_kind=(
                     SETTING_CHANGE_CONFIRMATION_KIND if setting_confirmation else None
                 ),
+                edited_recommendation_fields=edited_recommendation_fields,
             )
         return ToolAttemptDecision(
             ToolAttemptAction.EXECUTE,
@@ -387,6 +397,7 @@ class ToolAttemptCoordinator:
             evaluated_params,
             context=context,
             tool=tool,
+            edited_recommendation_fields=edited_recommendation_fields,
         )
 
     def context_for(self, command_name: str) -> ToolAvailabilityContext:
@@ -586,6 +597,8 @@ class ToolAttemptCoordinator:
         publication_generation: int | None = None,
         confirmation_kind: str | None = None,
         resource_preflight_receipt: ResourceConfirmationChallenge | None = None,
+        edited_recommendation_fields: tuple[TrainingRecommendationField, ...]
+        | None = None,
     ) -> dict[str, Any]:
         """Inject backend confirmation fields after explicit user approval."""
         confirmed = dict(params)
@@ -601,6 +614,7 @@ class ToolAttemptCoordinator:
                 command_name,
                 confirmed,
                 publication_generation=publication_generation,
+                edited_recommendation_fields=edited_recommendation_fields,
             )
         if confirmation_kind != "resource_preflight":
             return confirmed
@@ -665,6 +679,7 @@ class ToolAttemptCoordinator:
             ),
             confirmation_kind=decision.confirmation_kind,
             resource_preflight_receipt=receipt,
+            edited_recommendation_fields=decision.edited_recommendation_fields,
         )
 
     @staticmethod

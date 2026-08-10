@@ -66,7 +66,7 @@ EXPECTED_TOOLS = [
     "apply_interpretation",
     "apply_standard_preprocess",
     "epoch_data",
-    "generate_dataset",
+    "configure_dataset_split",
 ]
 
 

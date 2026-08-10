@@ -805,10 +805,10 @@ def test_blocked_requested_direct_tool_is_scored_as_blocked_response():
     assert "Reset the session before changing raw files" in score.visible_response
 
 
-def test_generate_dataset_default_val_ratio_is_counted():
+def test_configure_dataset_split_default_val_ratio_is_counted():
     case = _case("epoched-generate-dataset")
     raw_output = (
-        '{"tool_name":"generate_dataset",'
+        '{"tool_name":"configure_dataset_split",'
         '"parameters":{"split_strategy":"trial",'
         '"training_mode":"individual","test_ratio":0.2}}'
     )
@@ -819,10 +819,10 @@ def test_generate_dataset_default_val_ratio_is_counted():
     assert score.parsed_tool_calls[0]["arguments"]["val_ratio"] == 0.2
 
 
-def test_raw_generate_dataset_accepts_omitted_optional_schema_default():
+def test_raw_configure_dataset_split_accepts_omitted_optional_schema_default():
     case = _case("epoched-generate-dataset")
     raw_output = (
-        '{"tool_name":"generate_dataset",'
+        '{"tool_name":"configure_dataset_split",'
         '"parameters":{"split_strategy":"trial",'
         '"training_mode":"individual","test_ratio":0.2}}'
     )
@@ -851,7 +851,7 @@ def test_unspecified_dataset_split_strategy_requires_named_missing_field():
 def test_unspecified_dataset_split_strategy_rejects_invented_trial_call():
     case = _case("epoched-generate-dataset-missing-strategy")
     invented = (
-        '{"tool_name":"generate_dataset",'
+        '{"tool_name":"configure_dataset_split",'
         '"parameters":{"split_strategy":"trial",'
         '"training_mode":"individual","test_ratio":0.2}}'
     )
@@ -863,10 +863,10 @@ def test_unspecified_dataset_split_strategy_rejects_invented_trial_call():
     assert "tool/no-tool decision mismatch" in score.failures
 
 
-def test_scores_generate_dataset_missing_test_ratio_from_latest_text():
+def test_scores_configure_dataset_split_missing_test_ratio_from_latest_text():
     case = _case("epoched-generate-dataset")
     raw_output = (
-        '{"tool_name":"generate_dataset",'
+        '{"tool_name":"configure_dataset_split",'
         '"parameters":{"split_strategy":"trial",'
         '"training_mode":"individual"}}'
     )

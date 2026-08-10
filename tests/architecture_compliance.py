@@ -479,7 +479,7 @@ CANONICAL_DELEGATING_REAL_TOOL_CLASSES = frozenset(
         "RealConfigureTrainingTool",
         "RealEpochDataTool",
         "RealEvaluateTool",
-        "RealGenerateDatasetTool",
+        "RealConfigureDatasetSplitTool",
         "RealGetDatasetInfoTool",
         "RealLoadDataTool",
         "RealNormalizeTool",
