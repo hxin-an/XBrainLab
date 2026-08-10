@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import torch
 
 from XBrainLab.backend.dataset import Dataset, Epochs
@@ -38,6 +39,7 @@ class TestTrainingFix(unittest.TestCase):
 
         self.mock_epochs = MagicMock(spec=Epochs)
         self.mock_epochs.get_model_args.return_value = {}
+        self.mock_epochs.get_data.return_value = np.zeros((2, 2, 16), dtype=np.float32)
         self.mock_dataset.get_epoch_data.return_value = self.mock_epochs
 
         self.mock_option = MagicMock(spec=TrainingOption)
@@ -45,6 +47,7 @@ class TestTrainingFix(unittest.TestCase):
         self.mock_option.get_output_dir.return_value = self.test_dir
         self.mock_option.validate.return_value = True
         self.mock_option.get_optim.return_value = MagicMock()
+        self.mock_option.get_seed_for_repeat.return_value = 0
         self.mock_option.criterion = MagicMock()
 
         self.mock_model = MagicMock(spec=torch.nn.Module)
@@ -66,12 +69,6 @@ class TestTrainingFix(unittest.TestCase):
             self.saliency_params,
         )
 
-        # Simulate a small delay to ensure timestamp difference if resolution is
-        # high enough
-        # (Though our format is seconds, so we might need to mock datetime if
-        # it runs too fast)
-        # For now, let's just check the structure.
-
         record1 = plan1.get_plans()[0]
         path1 = record1.target_path
 
@@ -79,15 +76,20 @@ class TestTrainingFix(unittest.TestCase):
         # Check for timestamp format roughly (YYYYMMDD-HHMMSS)
         # It should be in the path
 
-        # Create another plan
-        # We can mock datetime to ensure different time if needed, but let's
-        # see if it works naturally
-        # or we can manually inspect the path structure.
+        plan2 = TrainingPlanHolder(
+            self.mock_model_holder,
+            self.mock_dataset,
+            self.mock_option,
+            self.saliency_params,
+        )
+        record2 = plan2.get_plans()[0]
 
         # Verify structure: output / dataset / model_timestamp / repeat
         parts = path1.split(os.sep)
         self.assertEqual(parts[-1], "Repeat-0")
         self.assertTrue("TestModel_" in parts[-2])
+        self.assertNotEqual(plan1.plan_id, plan2.plan_id)
+        self.assertNotEqual(path1, record2.target_path)
 
     def tearDown(self):
         if os.path.exists(self.test_dir):

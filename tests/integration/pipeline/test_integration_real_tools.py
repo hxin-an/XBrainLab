@@ -20,6 +20,9 @@ from XBrainLab.llm.tools import application_surface
 from XBrainLab.llm.tools.application_surface import (
     ToolAvailability,
     ToolAvailabilityContext,
+    ToolCommandResult,
+    authorize_assistant_setting_change,
+    execute_application_tool_command,
 )
 from XBrainLab.llm.tools.real.dataset_real import (
     RealGenerateDatasetTool,
@@ -78,6 +81,19 @@ def _assert_tool_result(result, *, ok: bool = True) -> ToolResult:
         assert result.error_type == ErrorType.NONE.value
     else:
         assert result.error_type != ErrorType.NONE.value
+    return result
+
+
+def _execute_confirmed_setting(study, tool_name: str, params: dict):
+    publication = get_application_service(study).get_view_publication()
+    reviewed = authorize_assistant_setting_change(
+        tool_name,
+        params,
+        publication_generation=publication.generation,
+    )
+    result = execute_application_tool_command(study, tool_name, reviewed)
+    assert isinstance(result, ToolCommandResult)
+    assert result.ok, result.message
     return result
 
 
@@ -176,10 +192,10 @@ TEST_DATA_DIR = os.path.abspath(
 )
 GDF_FILE = os.path.join(TEST_DATA_DIR, "A01T.gdf")
 EXPECTED_A01T_REAL_TOOL_EPOCH_EVENT_IDS = {
-    "769": 0,
-    "770": 1,
-    "771": 2,
-    "772": 3,
+    "left hand": 0,
+    "right hand": 1,
+    "feet": 2,
+    "tongue": 3,
 }
 EXPECTED_A01T_REAL_TOOL_SPLIT_SUMMARY = {
     "count": 1,
@@ -258,7 +274,14 @@ class TestRealToolChain:
         # Set Model (Optional default is often set, but let's be explicit)
         model_tool = RealSetModelTool()
         res_model = model_tool.execute(study, model_name="EEGNet")
-        res_model = _assert_tool_result(res_model)
+        res_model = _assert_tool_result(res_model, ok=False)
+        assert res_model.error_type == "confirmation_required"
+        assert _state(study)["training"]["model_name"] is None
+        res_model = _execute_confirmed_setting(
+            study,
+            "set_model",
+            {"model_name": "EEGNet"},
+        )
         assert res_model.message == "Model configured: EEGNet."
         assert _state(study)["training"]["model_name"] == "EEGNet (XBrainLab)"
 
@@ -270,10 +293,20 @@ class TestRealToolChain:
             batch_size=4,
             learning_rate=0.001,
         )
-        res_config = _assert_tool_result(res_config)
+        res_config = _assert_tool_result(res_config, ok=False)
+        assert res_config.error_type == "confirmation_required"
+        res_config = _execute_confirmed_setting(
+            study,
+            "configure_training",
+            {
+                "epoch": 1,
+                "batch_size": 4,
+                "learning_rate": 0.001,
+            },
+        )
         assert res_config.message == "Training configured."
-        assert res_config.payload["diagnostics"]["training_option"]["epoch"] == 1
-        assert res_config.payload["diagnostics"]["training_option"]["batch_size"] == 4
+        assert res_config.diagnostics["training_option"]["epoch"] == 1
+        assert res_config.diagnostics["training_option"]["batch_size"] == 4
         training_state = _state(study)["training"]
         assert training_state["training_option"]["epoch"] == 1
         assert training_state["training_option"]["batch_size"] == 4

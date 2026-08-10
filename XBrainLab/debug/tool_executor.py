@@ -14,13 +14,16 @@ from XBrainLab.llm.agent.tool_attempt_coordinator import ToolAttemptCoordinator
 from XBrainLab.llm.agent.tool_execution_coordinator import ToolExecutionCoordinator
 from XBrainLab.llm.agent.verifier import PathProvenanceVerifier, VerificationLayer
 from XBrainLab.llm.tools.application_surface import (
+    SETTING_CHANGE_CONFIRMATION_KIND,
     TOOL_TO_COMMAND,
     ApplicationToolRuntime,
     ToolAvailability,
     ToolAvailabilityContext,
     ToolCommandResult,
     application_tool_runtime,
+    assistant_setting_change_requires_confirmation,
     get_application_context,
+    setting_confirmation_params,
 )
 from XBrainLab.llm.tools.base import BaseTool
 from XBrainLab.llm.tools.real.analysis_real import (
@@ -463,9 +466,22 @@ class ToolExecutor:
         if not context.availability.enabled:
             return _DebugBlockPolicy.blocked_result(tool_name, context)
 
-        needs_confirmation = HostExecutionPolicy.needs_confirmation(
+        requires_command_confirmation = HostExecutionPolicy.needs_confirmation(
             context.availability,
             tool_requires_confirmation=tool.requires_confirmation,
+        )
+        evaluated_params = setting_confirmation_params(tool_name, params)
+        requires_setting_confirmation = (
+            context.policy_error is None
+            and type(context.generation) is int
+            and assistant_setting_change_requires_confirmation(
+                tool_name,
+                evaluated_params,
+                context.state,
+            )
+        )
+        needs_confirmation = (
+            requires_command_confirmation or requires_setting_confirmation
         )
         if needs_confirmation and confirmed is not True:
             return ToolCommandResult.failure(
@@ -479,9 +495,19 @@ class ToolExecutor:
                 diagnostics={"policy": "host_confirmation"},
             )
 
-        execution_params = (
-            {**params, "confirmed": True} if needs_confirmation else params
-        )
+        execution_params = evaluated_params
+        if needs_confirmation:
+            execution_params = ToolAttemptCoordinator.confirmed_params(
+                tool_name,
+                evaluated_params,
+                requires_command_confirmation=requires_command_confirmation,
+                publication_generation=context.generation,
+                confirmation_kind=(
+                    SETTING_CHANGE_CONFIRMATION_KIND
+                    if requires_setting_confirmation
+                    else None
+                ),
+            )
         return DebugToolAdmission(
             tool_name=tool_name,
             tool=tool,

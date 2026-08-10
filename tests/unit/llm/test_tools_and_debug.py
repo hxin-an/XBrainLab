@@ -200,6 +200,7 @@ class TestToolExecutor:
                 "batch_size": 4,
                 "learning_rate": 1,
             },
+            confirmed=True,
         )
 
         assert isinstance(result, ToolCommandResult)
@@ -354,7 +355,10 @@ class TestSeed:
         from XBrainLab.backend.utils.seed import get_random_state, set_random_state
 
         state = get_random_state()
-        assert len(state) == 3
+        assert len(state) == 4
+        assert state[0] is not None
+        assert state[1] is not None
+        assert state[2] is not None
         set_random_state(state)
 
 

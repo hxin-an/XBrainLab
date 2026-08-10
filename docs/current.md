@@ -8,13 +8,14 @@
 
 ## 一句話
 
-XBrainLab 的 product baseline 是 `main`；目前 checkout 是 dirty
+XBrainLab 的 product baseline 是 `main`；目前 checkout 是
 `integration/eeg-workflow-improvements-v1` integration candidate。`ApplicationService / Command API`
-spine 已存在，但 Assistant confirmation / tool-call showcase、test cleanup、首批 3 個
-MOABB dataset journeys、user guide portal 與本輪 20 個 product scenarios gate 仍在收斂，
-尚未形成 clean exact-commit evidence，因此不是 handoff-ready。
+spine 已存在，本輪已在本機關閉 CI fixture drift、Assistant typed confirmation parity、
+required multi-dataset 與可見 walkthrough regression；仍須把同一候選 commit 推送並取得
+exact-head CI 成功，才可交給使用者做 Windows 人工驗收。
 
-數量邊界必須分開解讀：`20` 是近期產品流程 scenario gate；老師要求的長期 `80`
+數量邊界必須分開解讀：`20` 是近期產品流程 scenario gate，本次候選依使用者指示延後，
+不是已通過；老師要求的長期 `80`
 是約 80 個 MOABB dataset cases。現在 3 個 dataset journeys 只是第一批，不是 MOABB
 campaign 的完成數，也不能因第一輪模型品質未達門檻就停止擴充或調整。
 
@@ -22,13 +23,13 @@ campaign 的完成數，也不能因第一輪模型品質未達門檻就停止�
 
 | 項目 | Current truth |
 | --- | --- |
-| Active worktree | `integration/eeg-workflow-improvements-v1`；目前含多個 worker 的未提交整合改動。 |
+| Active worktree | `integration/eeg-workflow-improvements-v1`；候選收斂中，repo-root `settings.json` 是不得納入版本控制的使用者本機設定。 |
 | Product baseline | `main` |
-| Current candidate | `integration/eeg-workflow-improvements-v1@e2a3e0c3263bb70360074d419174ee153ee41b67` 加上 dirty changes；不是 release。 |
+| Current candidate | `integration/eeg-workflow-improvements-v1` 的下一個 pushed exact-head commit；不是 release。 |
 | Baseline | `main@a0e16b400236b687bd2b4c9f58ef4a20929e377b`。 |
-| Active goal | 依 [Now](planning/now.md) 收旂 Assistant、test cleanup、MOABB journeys、user portal 與 20-scenario gate。 |
+| Active goal | 依 [Now](planning/now.md) 收斂本候選、取得 exact-head CI，再做 Windows 人工驗收；完整 20-scenario gate 本次延後。 |
 | Historical ledger | [Product Quality Audit - 2026-07-30](records/product_quality_audit_2026-07-30.md)；只作 provenance，不是 active queue。 |
-| Delivery state | Dirty integration checkpoint；尚無 combined exact-head CI / Windows acceptance，不是 handoff-ready。 |
+| Delivery state | Local validation candidate；尚無本輪 pushed exact-head CI / Windows acceptance，不是 release-ready。 |
 
 其他 registered worktree 不代表 active candidate。需要 inventory 時必須執行
 `git worktree list --porcelain`，不要把數量或 branch 清單手動複製成長期 current truth。
@@ -43,7 +44,7 @@ checkpoint evidence。
 | UI | Product state-changing render 以 revisioned application publication 為單一真相；command result 只處理 acknowledgement / error / in-flight feedback，Training progress 只走 transient event。五個 workflow panels 保留舊版固定右側 `Data Summary` 表格，不另設常駐 Readiness 區塊。Assistant header 不顯示額外狀態 badge；狀態保留在 tooltip / accessibility metadata，composer 使用固定 action geometry，訊息 bubble 依 viewport 與內容重排。Source guard 會追蹤 async callback call chain，阻止 command result 重改 Start/Stop、readiness 或 terminal state。 | Dirty integration work 和 focused tests 只是 checkpoint；offscreen 100/125/150% DPI 與窄寬度 artifact 已通過 working-checkpoint review，但在 clean exact-source screenshots、happy path、edge gate 及 reviewer re-gate 完成前，不是 Windows handoff candidate。Standalone compatibility observer path仍是 P2 cleanup。 |
 | Data Interpretation | `scan -> preview -> validate -> apply -> recipe` baseline 存在。Selected EEG scope、label-carrier pairing、reviewed placement 和 BIDS task-import boundary 已有實作。Local-only `p300-multisubject` profile 保存 ds003061 的 `sub-001` 到 `sub-003`、共 9 runs，並保護 exact selected-subject scope；真人手測仍只確認 Graz 2a GDF（A01T/A02T/A03T）與 OpenNeuro ds003061 P300 BIDS。 | 多 subject fixture 與自動化 review 不是三位 subject 的 Windows 真人 acceptance；一個 GDF dataset family 和一個 BIDS dataset 也不能外推為所有 GDF/BIDS、full BIDS validator、任意 P300/SSVEP/clinical/XDF/LSL/MOABB 或 proprietary format 支援。 |
 | EEG workflow candidate | BIDS import 可在正式 scan 前列出 subjects、sessions、tasks、runs，且只掃 selected subjects；Training 提供 curated Braindecode model catalog 並發布 test accuracy curve；Evaluation / Visualization 使用一基索引的 Fold / Run 語言，只有 backend 證明 test masks 與 cohort 相容時才提供 `All Folds` summary；Saliency Normalize 只改 detached render data。 | Candidate 尚未合併；Braindecode catalog 不是「支援 Braindecode 全模型」，cross-fold summary 不是 scientific model comparison，Normalize 不改原始 attribution。 |
-| Assistant | Local-only Assistant、IBM Granite 3.3 2B 選項、tool admission、capability、confirmation、verification 和 structured result 的工程骨架存在；ApplicationService 仍控制最後 command admission，未發現 model-output 直接繞過的 P0。 | Assistant 目前尚未準備好給老師使用。High-impact training settings 尚未統一走 typed confirmation；GUI handoff 與真正 confirmation 仍共用 `WAITING_FOR_DECISION`；同一 request 仍可能向 Granite 2B 暴露多個競爭 tool schemas。現有 RAG/Granite/UI evidence 也不是 current exact-source acceptance。 |
+| Assistant | Local-only Assistant、IBM Granite 3.3 2B 選項、tool admission、capability、typed confirmation、decision owner、verification 和 structured result 的工程骨架存在；ApplicationService 仍控制最後 command admission。Standalone debug host 已和 product runtime 對齊 high-impact setting confirmation，walkthrough 也會區分 confirmation card 與 GUI handoff。 | Assistant 目前尚未準備好給老師使用。同一 request 仍可能向 Granite 2B 暴露多個競爭 tool schemas；現有 deterministic walkthrough 不是 real Granite tool-call accuracy、長時間使用或 Windows acceptance。 |
 | Privacy / diagnostics | Centralized public diagnostics 會從 default logs、public command/result projection、assistant feedback 和 UI interaction outcome 移除完整私人路徑、常見 subject identifiers 與不安全 control characters；local file sink 有 bounded retention 與 owner-only policy。 | Native Windows/NTFS ACL、junction/reparse replacement、packaged launcher 與 second-account denial仍是平台 acceptance boundary；exact-commit validation 前不能宣稱完整產品 closure。 |
 | Native UI lifecycle | Preprocess close/cancel work 已建立 quiesce / restore checkpoint；`tests/integration/ui/test_preprocess_native_lifecycle.py` 和 `tests/integration/ui/test_native_render_lifecycle.py` 分別保護 Preprocess 與 Visualization native ownership。 | 兩個 gate 不互相替代，也不取代 Windows/WSLg、DPI、interactive 3D、real training close 和長時間操作 acceptance。 |
 | Packaging | Windows launcher / startup automation 存在。 | 不是 signed installer；release sign-off 與真人 click-through 尚未完成。 |

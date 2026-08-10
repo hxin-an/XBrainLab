@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-08-09`
+最後更新：`2026-08-10`
 
 這頁定義 current gates、evidence identity 和 claim boundary。Dated checkpoint output 不在這裡
 冒充 current result；歷史結果看 records 或 Git history。
@@ -13,7 +13,7 @@
 | Product baseline | `main` |
 | Current candidate | `integration/eeg-workflow-improvements-v1`；未合併 checkpoint；只有 exact-head push / CI 可以提升證據狀態。 |
 | Baseline | `main@a0e16b400236b687bd2b4c9f58ef4a20929e377b` |
-| Closure state | Merged development checkpoint；not release-ready；Assistant not ready；not product complete |
+| Closure state | Local validation candidate；exact-head CI / Windows acceptance pending；not release-ready；Assistant not ready；not product complete |
 | Data Import artifacts | Tracked folder is a dirty checkpoint；read its manifest for source identity and never treat it as current candidate evidence |
 | Required authority | 本頁與 [Now](../planning/now.md)；舊 product-quality goal / audit 只作歷史 provenance。 |
 
@@ -45,6 +45,20 @@
   ApplicationService automation、AgentManager/runtime、sidebar capability/publication 與 label-dialog
   result/lifecycle 改由 focused tests 保護。保留的大型 UI workflow tests 仍是 mixed suites，需繼續
   以 structured result、state transition、real signal/lifecycle 為準逐項審查，不可依 mock 數量刪除。
+
+## 2026-08-10 Candidate Closure Checkpoint
+
+本輪在同一 working tree 重跑 authoritative backend、LLM/Assistant、scripts、UI 與 integration
+shards，並通過 required public multi-dataset matrix、`4/4` cross-source smoke、teacher dataset
+preflight、41-phase human-like walkthrough 與 Data Import / Assistant 可見 artifact review。
+修正範圍是 stale fixture contracts、standalone debug host 的 typed setting confirmation、
+walkthrough decision owner、跨平台 Qt teardown，以及 coverage-heavy CI 的 bounded test waits；
+沒有放寬 product runtime timeout 或 resource policy。
+
+這些是 local candidate evidence。完整 20 個 product scenarios gate 依使用者指示在本次延後，
+不是通過；Windows 真人操作、real Granite tool-call accuracy、dual-monitor / DPI 和長時間 session
+也仍未驗證。只有把這些變更 commit/push 後，由完全相同 head SHA 的 GitHub CI 全部成功，
+才能把本輪提升為 Windows manual-test candidate。
 
 ## Agent Tool-Call 快速檢查
 

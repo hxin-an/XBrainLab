@@ -28,6 +28,7 @@ def test_openneuro_choices_preserve_three_run_pairing_and_reviewed_classes(
 
     choices = preflight.build_openneuro_p300_choices(tmp_path)
 
+    assert choices["selected_bids_subjects"] == ["001"]
     assert choices["selected_eeg_files"] == [str(path) for path in eeg_files]
     assert set(choices["label_carrier_choices"]) == {str(path) for path in events_files}
     for choice in choices["label_carrier_choices"].values():

@@ -51,7 +51,10 @@ jobs:
             "pytest>=8,<9"
 
       - name: Test documentation portal assembly
-        run: python -m pytest tests/unit/scripts/test_build_docs_portal.py -q
+        run: >-
+          python -m pytest
+          --confcutdir=tests/unit/scripts
+          tests/unit/scripts/test_build_docs_portal.py -q
 
       - name: Build developer and user documentation
         run: python scripts/dev/build_docs_portal.py

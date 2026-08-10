@@ -975,7 +975,9 @@ def test_bounded_command_cleans_child_when_parent_exits_normally(tmp_path):
     completed, timed_out = dashboard._run_bounded_command(
         [sys.executable, "-c", source, str(child_pid_path)],
         env=os.environ.copy(),
-        timeout_seconds=5,
+        # Process startup can be delayed on shared/coverage-heavy CI runners;
+        # this test protects descendant cleanup, not Python startup latency.
+        timeout_seconds=15,
     )
 
     child_pid = int(child_pid_path.read_text(encoding="utf-8"))

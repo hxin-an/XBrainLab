@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import inspect
+import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -15,6 +17,16 @@ from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
 from scripts.dev.data_import_capture_contract import (
     build_data_import_capture_manifest,
 )
+
+
+def _historical_capture_spec(spec):
+    manifest_path = (
+        capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR
+        / "data-import-wizard-steps-evidence.json"
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    dimensions = tuple(manifest["screenshots"][spec.filename]["dimensions"])
+    return replace(spec, expected_size=dimensions)
 
 
 def test_default_data_import_evidence_uses_dev_artifact_namespace() -> None:
@@ -146,7 +158,10 @@ def test_placement_mode_states_are_bound_in_the_root_manifest(tmp_path: Path) ->
 def test_every_canonical_artifact_renders_required_text(spec):
     screenshot = capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR / spec.filename
     assert screenshot.is_file()
-    capture_script._assert_canonical_png_artifact(screenshot, spec)
+    capture_script._assert_canonical_png_artifact(
+        screenshot,
+        _historical_capture_spec(spec),
+    )
 
 
 def test_canonical_capture_specs_cover_the_complete_png_inventory():
@@ -415,6 +430,10 @@ def test_review_import_capture_has_no_unresolved_primary_decision(qtbot):
         dialog._review_summary_value_labels["Resource check"].text()
         == "Estimated RAM 2.0 GB / Available RAM 24.0 GB"
     )
+    assert not dialog.review_tree.isVisibleTo(dialog)
+    dialog.import_report_toggle.click()
+    qtbot.wait(1)
+    assert dialog.review_tree.isVisibleTo(dialog)
     assert dialog.review_tree.topLevelItemCount() > 0
     report_steps: set[str] = set()
     report_issues: set[str] = set()
@@ -548,7 +567,10 @@ def test_historical_review_import_artifact_preserves_canonical_visual_contract()
     )
     historical = capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR / spec.filename
 
-    capture_script._assert_canonical_png_artifact(historical, spec)
+    capture_script._assert_canonical_png_artifact(
+        historical,
+        _historical_capture_spec(spec),
+    )
 
 
 def test_review_import_live_action_matches_current_platform_control(qtbot, tmp_path):

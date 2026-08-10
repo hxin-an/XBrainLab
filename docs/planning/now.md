@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-08-09`
+最後更新：`2026-08-10`
 
 這頁只保存 active delivery context、近期施工順序和 exit condition。舊
 [Product Quality Audit](../records/product_quality_audit_2026-07-30.md) 保留為此次 main checkpoint
@@ -13,6 +13,9 @@
 
 目前不是 release 或 Assistant handoff-ready。真人資料驗收只涵蓋 Graz 2a GDF 與 OpenNeuro
 ds003061 P300 BIDS 各一個資料集；其餘格式、自動化 evidence 與舊 Agent gate 不可外推。
+本次候選先完成 required multi-dataset、可見 walkthrough、push 與 exact-head CI；完整 20 個
+product scenarios gate 依使用者指示延後，不能被記為通過，也不阻止本輪形成 Windows 人工
+手測候選。
 
 ## Active Delivery Context
 
@@ -24,7 +27,7 @@ ds003061 P300 BIDS 各一個資料集；其餘格式、自動化 evidence 與舊
 | Baseline | `main@a0e16b400236b687bd2b4c9f58ef4a20929e377b` |
 | Goal | 老師試用前 GUI/data stabilization；其後是 performance 與 simplified Assistant prototype。 |
 | Historical ledger | [Product Quality Audit - 2026-07-30](../records/product_quality_audit_2026-07-30.md) |
-| Current classification | merged development checkpoint；not release / not Assistant-ready |
+| Current classification | integration candidate；local gates passed，exact-head CI / Windows acceptance pending；not release / not Assistant-ready |
 
 不要從舊文件推論 registered worktree 數量。需要 inventory 時執行
 `git worktree list --porcelain`；其他 worktree 不得被誤認成 active candidate，也不得覆寫其
@@ -49,8 +52,8 @@ owner 的 dirty changes。
 
 | Workstream | Required outcome | Exit signal | Status |
 | --- | --- | --- | --- |
-| Assistant confirmation contract | `reset_preprocess`、`generate_dataset` 與影響 training 的 setting change 都使用正確 typed confirmation evidence；不得來自一般 approval 字串。 | capability/confirmation/revision/fingerprint focused tests 與 negative stale-evidence tests 通過。 | In progress |
-| Assistant decision state | GUI navigation handoff 與真正參數/危險操作 confirmation 不再共用曖昧 `WAITING_FOR_DECISION`。 | UI presentation 能區分 navigate、confirm、blocked、error、retry，且 correlation 沒有混用。 | In progress |
+| Assistant confirmation contract | `reset_preprocess`、`generate_dataset` 與影響 training 的 setting change 都使用正確 typed confirmation evidence；不得來自一般 approval 字串。 | capability/confirmation/revision/fingerprint focused tests 與 negative stale-evidence tests 通過。 | Local candidate validated; exact-head CI pending |
+| Assistant decision state | GUI navigation handoff 與真正參數/危險操作 confirmation 使用 typed decision owner，不再靠未分類的 waiting presentation 猜測。 | UI presentation 能區分 navigate、confirm、blocked、error、retry，且 correlation 沒有混用。 | Local candidate validated; exact-head CI pending |
 | Granite 2B tool surface | 每回合只暴露當前 intent 需要的 canonical schema，避免 `set_model` / `configure_training` 或多個 generic preprocess tool 競爭。 | representative prompts 的 schema exposure 與 selected-tool oracle 通過，且 blocked tool 無法執行。 | In progress |
 | Assistant failure/retry UX | tool runtime failure 不再全部假裝成 BLOCKED；narrow panel 仍有 correlated retry / cancel 途徑。 | error、blocked、cancel、retry screenshots 與 state-transition tests 通過。 | In progress |
 | Assistant handoff route ownership | command、dialog/panel surface、decision owner、target panel 與顯示文案只有一份 typed route descriptor；controller、host、presentation 不各自維護 mapping。 | route coverage/parity、request correlation、dialog/panel terminal-resolution tests 通過，重複 mapping source sweep 為 clean。 | In progress |
@@ -69,11 +72,10 @@ owner 的 dirty changes。
 | Case-study evidence | 每個 dataset 一頁，只顯示實際重跑的 screenshots、training result 與 limitation，不把 format coverage 冒充 dataset diversity。 | manifest 和頁面數字可對應 exact artifacts；主 agent 逐圖檢查。 | Pending pipeline |
 | Integration and review | Agent/runtime 與 user-site/evidence 使用明確的 stacked branches，不污染已綠的 EEG workflow candidate。 | 主 agent 重讀 diff、跑 combined tests、UI/product/architecture reviewers 重審，再 commit/push。 | Pending workers |
 
-分支邊界：`integration/eeg-workflow-improvements-v1@e2a3e0c3` 保留為已驗證 EEG
-workflow baseline。Assistant contract、lifecycle 與 tool-call showcase 組成一條 stacked
-candidate；user-facing site、MOABB runner 與 case evidence 組成另一條 stacked
-candidate。兩條都通過自己的 gate 後，才能依序整合；不得把尚未審查的
-worker commit 直接混入已綠 PR。
+分支邊界：`integration/eeg-workflow-improvements-v1` 是目前唯一整合候選；其 exact identity
+以 PR pushed head 為準。Assistant contract、lifecycle 與 tool-call showcase 不得在本輪收尾時
+繼續擴張；user-facing site、MOABB runner 與 case evidence 也不納入這次 candidate。後續工作
+從更新後的 `main` 建立短分支，不得把未審查 worker commit 混入本 PR。
 
 ## Evidence Rule
 

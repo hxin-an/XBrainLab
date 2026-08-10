@@ -1,15 +1,29 @@
-from PyQt6.QtWidgets import QLabel
+import pytest
+from PyQt6.QtCore import QEvent
+from PyQt6.QtWidgets import QApplication, QLabel
 
 from XBrainLab.ui.panels.preprocess.preview_widget import PreviewWidget
 from XBrainLab.ui.styles.theme import Theme
 
 
-def test_preprocess_plot_axis_titles_use_readable_text_color(qtbot) -> None:
+@pytest.fixture
+def preview_widget(qtbot):
+    """Own PyQtGraph teardown explicitly across Linux, Windows, and macOS."""
     widget = PreviewWidget()
-    qtbot.addWidget(
-        widget,
-        before_close_func=lambda owned: owned.prepare_for_shutdown(),
-    )
+    yield widget
+    widget.prepare_for_shutdown()
+    QApplication.processEvents()
+    widget.close()
+    QApplication.processEvents()
+    widget.deleteLater()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    QApplication.processEvents()
+
+
+def test_preprocess_plot_axis_titles_use_readable_text_color(
+    preview_widget,
+) -> None:
+    widget = preview_widget
 
     for plot in (widget.plot_time, widget.plot_freq):
         for axis_name in ("left", "bottom"):
@@ -18,12 +32,11 @@ def test_preprocess_plot_axis_titles_use_readable_text_color(qtbot) -> None:
             assert axis.textPen().color().name() == Theme.TEXT_MUTED
 
 
-def test_preprocess_event_markers_use_one_compact_legend(qtbot) -> None:
-    widget = PreviewWidget()
-    qtbot.addWidget(
-        widget,
-        before_close_func=lambda owned: owned.prepare_for_shutdown(),
-    )
+def test_preprocess_event_markers_use_one_compact_legend(
+    qtbot,
+    preview_widget,
+) -> None:
+    widget = preview_widget
     widget.show()
     widget._set_preview_interactive(True, state="loaded")
 
@@ -87,12 +100,10 @@ def test_preprocess_event_markers_use_one_compact_legend(qtbot) -> None:
     assert widget.signal_legend.isVisibleTo(widget)
 
 
-def test_preprocess_signal_legend_only_appears_for_loaded_preview(qtbot) -> None:
-    widget = PreviewWidget()
-    qtbot.addWidget(
-        widget,
-        before_close_func=lambda owned: owned.prepare_for_shutdown(),
-    )
+def test_preprocess_signal_legend_only_appears_for_loaded_preview(
+    preview_widget,
+) -> None:
+    widget = preview_widget
     widget.show()
 
     assert not widget.signal_legend.isVisible()
@@ -104,12 +115,11 @@ def test_preprocess_signal_legend_only_appears_for_loaded_preview(qtbot) -> None
     assert not widget.signal_legend.isVisible()
 
 
-def test_preprocess_signal_legend_fits_constrained_preview_width(qtbot) -> None:
-    widget = PreviewWidget()
-    qtbot.addWidget(
-        widget,
-        before_close_func=lambda owned: owned.prepare_for_shutdown(),
-    )
+def test_preprocess_signal_legend_fits_constrained_preview_width(
+    qtbot,
+    preview_widget,
+) -> None:
+    widget = preview_widget
     widget.resize(700, 620)
     widget.show()
     widget._set_preview_interactive(True, state="loaded")
@@ -140,12 +150,9 @@ def test_preprocess_signal_legend_fits_constrained_preview_width(qtbot) -> None:
 
 def test_preprocess_signal_legend_shares_the_control_row_when_space_allows(
     qtbot,
+    preview_widget,
 ) -> None:
-    widget = PreviewWidget()
-    qtbot.addWidget(
-        widget,
-        before_close_func=lambda owned: owned.prepare_for_shutdown(),
-    )
+    widget = preview_widget
     control_width = sum(
         max(control.minimumSizeHint().width(), control.minimumWidth())
         for control in (
@@ -192,12 +199,11 @@ def test_preprocess_signal_legend_shares_the_control_row_when_space_allows(
         assert label.fontMetrics().horizontalAdvance(label.text()) <= label.width()
 
 
-def test_preprocess_psd_hides_time_only_event_legends(qtbot) -> None:
-    widget = PreviewWidget()
-    qtbot.addWidget(
-        widget,
-        before_close_func=lambda owned: owned.prepare_for_shutdown(),
-    )
+def test_preprocess_psd_hides_time_only_event_legends(
+    qtbot,
+    preview_widget,
+) -> None:
+    widget = preview_widget
     widget.show()
     widget._set_preview_interactive(True, state="loaded")
     widget.show_time_event_markers(
@@ -218,12 +224,10 @@ def test_preprocess_psd_hides_time_only_event_legends(qtbot) -> None:
     assert widget.current_signal_legend_text.isVisibleTo(widget)
 
 
-def test_preprocess_preview_resumes_after_cancelled_close(qtbot) -> None:
-    widget = PreviewWidget()
-    qtbot.addWidget(
-        widget,
-        before_close_func=lambda owned: owned.prepare_for_shutdown(),
-    )
+def test_preprocess_preview_resumes_after_cancelled_close(
+    preview_widget,
+) -> None:
+    widget = preview_widget
     widget.show()
     original_time_proxy = widget.proxy_time
     original_freq_proxy = widget.proxy_freq

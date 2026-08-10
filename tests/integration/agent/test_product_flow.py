@@ -21,6 +21,10 @@ from tests.qt_lifecycle import close_controller_and_wait
 from XBrainLab.backend.application import CommandName, get_application_service
 from XBrainLab.backend.controller.chat_controller import ChatController
 from XBrainLab.backend.study import Study
+from XBrainLab.llm.agent.confirmation import (
+    AgentConfirmationResolution,
+    AgentConfirmationResolutionStatus,
+)
 from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.agent.turn import (
     AssistantGenerationDispatchAcknowledgement,
@@ -425,9 +429,32 @@ def test_successful_command_result_summary_flow(product_harness):
         _tool_json("set_model", {"model_name": "eegnet"}),
     )
 
+    request = product_harness.controller.pending_interactions.confirmation_request
+    assert request is not None
+    assert request.command_name == "set_model"
+    assert (
+        get_application_service(product_harness.controller.study)
+        .get_state()
+        .training.has_model
+        is False
+    )
+
+    product_harness.controller.on_user_confirmation_resolved(
+        AgentConfirmationResolution.for_request(
+            request,
+            status=AgentConfirmationResolutionStatus.APPROVED,
+        )
+    )
+
     visible = product_harness.visible_assistant_text
     assert "Model configured" in visible
     assert "eegnet" in visible
+    assert (
+        get_application_service(product_harness.controller.study)
+        .get_state()
+        .training.has_model
+        is True
+    )
     _assert_no_raw_tool_language(visible)
 
 
