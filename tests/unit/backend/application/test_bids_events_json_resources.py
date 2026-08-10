@@ -11,7 +11,11 @@ import pytest
 
 from XBrainLab.backend.application import (
     ApplicationService,
+    PreviewInterpretationCommand,
     ReviewInterpretationCommand,
+    ScanSourceCommand,
+    data_interpretation_content_identity,
+    data_interpretation_resource_reader,
 )
 from XBrainLab.backend.application import (
     data_interpretation_bids_resources as bids_resources,
@@ -24,15 +28,15 @@ from XBrainLab.backend.application.resource_guard import (
 )
 
 
-def _write_bids_run(root: Path) -> tuple[Path, Path]:
-    root.mkdir(parents=True)
+def _write_bids_run(root: Path, *, run: int = 1) -> tuple[Path, Path]:
+    root.mkdir(parents=True, exist_ok=True)
     (root / "dataset_description.json").write_text(
         json.dumps({"Name": "events-sidecar-test", "BIDSVersion": "1.11.1"}),
         encoding="utf-8",
     )
     eeg_dir = root / "sub-01" / "eeg"
-    eeg_dir.mkdir(parents=True)
-    stem = "sub-01_task-mi_run-1"
+    eeg_dir.mkdir(parents=True, exist_ok=True)
+    stem = f"sub-01_task-mi_run-{run}"
     eeg_path = eeg_dir / f"{stem}_eeg.fif"
     events_path = eeg_dir / f"{stem}_events.tsv"
     info = mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg")
@@ -308,7 +312,7 @@ def test_non_bids_events_carrier_limits_sidecars_to_local_directory(
     assert resource_paths == {local_sidecar.resolve()}
 
 
-def test_review_admits_and_verifies_each_materializable_events_json_twice(
+def test_review_admits_parses_and_rechecks_each_materializable_events_json(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -388,6 +392,306 @@ def test_review_admits_and_verifies_each_materializable_events_json_twice(
     }
 
 
+def test_repeated_bids_preview_bounds_canonicalization_and_freshness_calls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "bids"
+    _eeg_path, events_path = _write_bids_run(root)
+    sidecar = events_path.with_suffix(".json")
+    sidecar.write_text(
+        json.dumps({"trial_type": {"Levels": {"left": "Left hand"}}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        ResourceChecker,
+        "get_system_ram_status",
+        staticmethod(
+            lambda: {
+                "available_bytes": 10**12,
+                "total_bytes": 10**12,
+                "used_bytes": 0,
+            }
+        ),
+    )
+    service = ApplicationService()
+    scan = service.execute(ScanSourceCommand(source_path=str(root), source_hint="bids"))
+    scan_id = scan.diagnostics["scan_result"]["scan_id"]
+    command = PreviewInterpretationCommand(scan_id=scan_id)
+    first = service.execute(command)
+    assert first.ok
+
+    root_text = str(root.absolute())
+    original_resolve = Path.resolve
+    original_stat = Path.stat
+    original_identity = data_interpretation_resource_reader._current_identity
+    original_fingerprint = data_interpretation_content_identity._stable_stream_sha256
+    resolve_calls = 0
+    stat_calls = 0
+    identity_calls = 0
+    fingerprint_calls = 0
+    identity_leases = 0
+
+    def _is_fixture_path(path: Path) -> bool:
+        value = str(path.absolute())
+        return value == root_text or value.startswith(root_text + os.sep)
+
+    def _counted_resolve(path: Path, *args, **kwargs):
+        nonlocal resolve_calls
+        if _is_fixture_path(path):
+            resolve_calls += 1
+        return original_resolve(path, *args, **kwargs)
+
+    def _counted_stat(path: Path, *args, **kwargs):
+        nonlocal stat_calls
+        if _is_fixture_path(path):
+            stat_calls += 1
+        return original_stat(path, *args, **kwargs)
+
+    def _counted_identity(path: Path):
+        nonlocal identity_calls
+        identity_calls += 1
+        return original_identity(path)
+
+    def _counted_fingerprint(path: Path):
+        nonlocal fingerprint_calls
+        fingerprint_calls += 1
+        return original_fingerprint(path)
+
+    original_retain = bids_resources.retain_directory_identity
+
+    def _counted_retain(*args, **kwargs):
+        nonlocal identity_leases
+        identity_leases += 1
+        return original_retain(*args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", _counted_resolve)
+    monkeypatch.setattr(Path, "stat", _counted_stat)
+    monkeypatch.setattr(
+        data_interpretation_resource_reader,
+        "_current_identity",
+        _counted_identity,
+    )
+    monkeypatch.setattr(
+        data_interpretation_content_identity,
+        "_stable_stream_sha256",
+        _counted_fingerprint,
+    )
+    monkeypatch.setattr(
+        bids_resources,
+        "retain_directory_identity",
+        _counted_retain,
+    )
+
+    repeated = service.execute(command)
+
+    assert repeated.ok
+    assert repeated.diagnostics["resource_preflight"]["admission_cache_reused"]
+    # Sidecar existence is intentionally rediscovered for each command so a
+    # newly added higher-precedence events.json cannot be hidden by the cache.
+    assert 0 < identity_leases <= 4
+    assert resolve_calls <= 12
+    assert stat_calls <= 120
+    admitted_path_count = repeated.diagnostics["resource_preflight"][
+        "parser_admission"
+    ]["admitted_path_count"]
+    assert identity_calls <= max(24, admitted_path_count * 16)
+    assert fingerprint_calls == 0
+
+
+def test_repeated_subset_preview_reuses_materialized_scan_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "bids"
+    selected_eeg, _selected_events = _write_bids_run(root, run=1)
+    _other_eeg, _other_events = _write_bids_run(root, run=2)
+    monkeypatch.setattr(
+        ResourceChecker,
+        "get_system_ram_status",
+        staticmethod(
+            lambda: {
+                "available_bytes": 10**12,
+                "total_bytes": 10**12,
+                "used_bytes": 0,
+            }
+        ),
+    )
+    service = ApplicationService()
+    scan = service.execute(ScanSourceCommand(source_path=str(root), source_hint="bids"))
+    command = PreviewInterpretationCommand(
+        scan_id=scan.diagnostics["scan_result"]["scan_id"],
+        choices={"selected_eeg_files": [str(selected_eeg)]},
+    )
+
+    first = service.execute(command)
+    assert first.ok
+    original_resolve_scope = service_module.resolve_interpretation_resource_scope
+    scope_resolutions = 0
+
+    def _counted_resolve_scope(*args, **kwargs):
+        nonlocal scope_resolutions
+        scope_resolutions += 1
+        return original_resolve_scope(*args, **kwargs)
+
+    monkeypatch.setattr(
+        service_module,
+        "discover_source_preflight_scope",
+        lambda **_kwargs: pytest.fail("cached subset scope was rediscovered"),
+    )
+    monkeypatch.setattr(
+        service_module,
+        "resolve_interpretation_resource_scope",
+        _counted_resolve_scope,
+    )
+
+    repeated = service.execute(command)
+
+    assert repeated.ok
+    assert repeated.diagnostics["resource_preflight"]["admission_cache_reused"]
+    assert repeated.diagnostics["candidate"]["selected_eeg_files"] == [
+        str(selected_eeg)
+    ]
+    assert scope_resolutions == 2
+
+
+def test_new_run_sidecar_after_scan_is_discovered_before_repeated_preview(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "bids"
+    _eeg_path, events_path = _write_bids_run(root)
+    monkeypatch.setattr(
+        ResourceChecker,
+        "get_system_ram_status",
+        staticmethod(
+            lambda: {
+                "available_bytes": 10**12,
+                "total_bytes": 10**12,
+                "used_bytes": 0,
+            }
+        ),
+    )
+    service = ApplicationService()
+    scan = service.execute(ScanSourceCommand(source_path=str(root), source_hint="bids"))
+    command = PreviewInterpretationCommand(
+        scan_id=scan.diagnostics["scan_result"]["scan_id"]
+    )
+    first = service.execute(command)
+    assert first.ok
+
+    sidecar = events_path.with_suffix(".json")
+    sidecar.write_text(
+        json.dumps({"trial_type": {"Levels": {"left": "Left hand"}}}),
+        encoding="utf-8",
+    )
+
+    repeated = service.execute(command)
+
+    assert repeated.ok
+    assert repeated.diagnostics["resource_preflight"]["admission_cache_reused"] is False
+    [plan] = repeated.diagnostics["candidate"]["label_carrier_plan"]
+    assert plan["value_decisions"]["left"]["suggested_name"] == "Left hand"
+    assert str(sidecar.resolve()) in {
+        row["path"]
+        for row in repeated.diagnostics["candidate"]["content_identity"]["files"]
+    }
+
+
+def test_cached_events_json_rechecks_content_when_stat_identity_is_unchanged(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "bids"
+    _eeg_path, events_path = _write_bids_run(root)
+    sidecar = events_path.with_suffix(".json")
+    sidecar.write_text(
+        json.dumps({"trial_type": {"Levels": {"left": "Left hand"}}}),
+        encoding="utf-8",
+    )
+    reader = bids_resources.BidsEventsJsonReader.from_paths([str(sidecar)])
+    assert reader.read_object(sidecar)["trial_type"]["Levels"]["left"] == ("Left hand")
+    reader = reader.for_command()
+    admitted = reader.admitted_files[str(sidecar.resolve())]
+    changed = sidecar.read_text(encoding="utf-8").replace("Left hand", "Foot hand")
+    sidecar.write_text(changed, encoding="utf-8")
+    monkeypatch.setattr(
+        reader,
+        "_identity_from_stat",
+        lambda **_kwargs: admitted,
+    )
+
+    with pytest.raises(
+        PreconditionError,
+        match="changed after resource admission",
+    ):
+        reader.read_object(sidecar)
+
+
+def test_repeated_preview_rehashes_same_size_carrier_after_stat_identity_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "bids"
+    _eeg_path, events_path = _write_bids_run(root)
+    monkeypatch.setattr(
+        ResourceChecker,
+        "get_system_ram_status",
+        staticmethod(
+            lambda: {
+                "available_bytes": 10**12,
+                "total_bytes": 10**12,
+                "used_bytes": 0,
+            }
+        ),
+    )
+    service = ApplicationService()
+    scan = service.execute(ScanSourceCommand(source_path=str(root), source_hint="bids"))
+    scan_id = scan.diagnostics["scan_result"]["scan_id"]
+    command = PreviewInterpretationCommand(scan_id=scan_id)
+    first = service.execute(command)
+    assert first.ok
+    interpretation = service.interpretation._service()
+    first_candidate = interpretation.state.resolve_candidate(None)
+    first_row = next(
+        row
+        for row in first_candidate.content_identity["files"]
+        if row["path"] == str(events_path)
+    )
+    original_bytes = events_path.read_bytes()
+    changed_bytes = original_bytes.replace(b"left", b"foot")
+    assert len(changed_bytes) == len(original_bytes)
+    events_path.write_bytes(changed_bytes)
+
+    fingerprinted: list[Path] = []
+    from XBrainLab.backend.application import data_interpretation_content_identity
+
+    original_fingerprint = data_interpretation_content_identity._stable_stream_sha256
+
+    def _observed_fingerprint(path: Path) -> tuple[int, str]:
+        fingerprinted.append(path)
+        return original_fingerprint(path)
+
+    monkeypatch.setattr(
+        data_interpretation_content_identity,
+        "_stable_stream_sha256",
+        _observed_fingerprint,
+    )
+
+    repeated = service.execute(command)
+
+    assert repeated.ok
+    assert repeated.diagnostics["resource_preflight"]["admission_cache_reused"] is False
+    second_candidate = interpretation.state.resolve_candidate(None)
+    second_row = next(
+        row
+        for row in second_candidate.content_identity["files"]
+        if row["path"] == str(events_path)
+    )
+    assert events_path in fingerprinted
+    assert second_row["sha256"] != first_row["sha256"]
+
+
 def test_events_json_inheritance_stops_at_dataset_root(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -462,7 +766,7 @@ def test_events_json_inheritance_stops_at_dataset_root(
         "outside_candidates_excluded": candidates.isdisjoint(outside_sidecars),
         "legal_sidecars_admitted": legal_sidecars <= admitted,
         "outside_sidecars_not_admitted": admitted.isdisjoint(outside_sidecars),
-        "legal_sidecars_read_twice": all(opened[path] == 2 for path in legal_sidecars),
+        "legal_sidecars_rechecked": all(opened[path] == 2 for path in legal_sidecars),
         "outside_sidecars_not_read": all(
             opened[path] == 0 for path in outside_sidecars
         ),
@@ -471,7 +775,7 @@ def test_events_json_inheritance_stops_at_dataset_root(
         "outside_candidates_excluded": True,
         "legal_sidecars_admitted": True,
         "outside_sidecars_not_admitted": True,
-        "legal_sidecars_read_twice": True,
+        "legal_sidecars_rechecked": True,
         "outside_sidecars_not_read": True,
     }
 
@@ -703,18 +1007,39 @@ def test_reader_content_hash_rejects_change_even_when_stat_check_is_inconclusive
 
 def test_reader_reads_unchanged_admitted_object_once_within_shared_budget(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sidecar = tmp_path / "task-mi_events.json"
     encoded = b'{"trial_type":{"Description":"Movement class"}}'
     sidecar.write_bytes(encoded)
     reader = bids_resources.BidsEventsJsonReader.from_paths([str(sidecar)])
+    real_open = Path.open
+    opens = 0
+
+    def _counted_open(path: Path, *args, **kwargs):
+        nonlocal opens
+        if path.resolve() == sidecar.resolve():
+            opens += 1
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", _counted_open)
 
     first = reader.read_object(sidecar)
     second = reader.read_object(sidecar)
+    next_command = reader.for_command()
+    third = next_command.read_object(sidecar)
 
     assert first == {"trial_type": {"Description": "Movement class"}}
     assert second is first
+    assert third is first
+    assert opens == 2
     assert reader.diagnostics() == {
+        "read_limit_bytes": bids_resources.BIDS_EVENTS_JSON_READ_BUDGET_BYTES,
+        "bytes_read": len(encoded),
+        "admitted_path_count": 1,
+        "cached_path_count": 1,
+    }
+    assert next_command.diagnostics() == {
         "read_limit_bytes": bids_resources.BIDS_EVENTS_JSON_READ_BUDGET_BYTES,
         "bytes_read": len(encoded),
         "admitted_path_count": 1,

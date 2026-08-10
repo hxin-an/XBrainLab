@@ -179,7 +179,7 @@ def test_public_bids_wizard_completes_through_visible_next_and_apply_buttons(
             editor.set_value_decision(
                 "start_experiment",
                 role="system",
-                use="event",
+                use="ignore",
             )
             assert editor.is_complete()
 

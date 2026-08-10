@@ -451,7 +451,7 @@ validation 需要精確表示。但第一層 UI 應翻譯成使用者任務語�
 | selected label field | Read labels from | label 在哪個欄位、MAT variable 或 event column。 |
 | anchor + time model | mode-specific placement field | label 怎麼對到 EEG：EEG event order、seconds、sample number、event code。 |
 | granularity | inferred label unit | Recipe 內部保存一筆 label 代表 trial、event、interval、recording 或 subject；第一層 UI 不要求使用者填。 |
-| role | Use as | class labels、event markers、metadata、ignore。 |
+| role + class admission | Use as | 第一層只顯示 `Training class` 或 `Do not use`；event role 仍由 backend 保存。 |
 | placement_method | Place labels by | label row 是照 EEG event、time field 或 interval 放到 EEG。 |
 | duration_field | Duration field | duration / end-time 先保存，之後交給 epoch setup 使用。 |
 
@@ -474,6 +474,17 @@ Match Labels 第一層應先問 `Label source`：
   若 `Place labels by` 是 `EEG event order`，第一層 UI 必須顯示 `Target EEG events`
   和 count check：label rows、selected EEG events、matched、unmatched / unlabeled、
   excluded EEG events。
+
+外部 label carrier 的 observed value decision 第一層只提供兩個完成狀態：
+
+- `Training class`：保留 EEG event，將該 value 納入 supervised class，並顯示可編輯的
+  class name。
+- `Do not use`：保留 EEG event 供 timing、epoch anchor、artifact/boundary review 使用，但不納入
+  supervised class；class name editor 必須完全隱藏。
+
+這裡的 `Do not use` 不等於從 EEG event stream 刪除 event。舊 recipe 若曾保存
+`keep_event=false`，在使用者沒有編輯該列前必須原樣 round-trip；使用者重新編輯後才套用新的
+兩狀態語意。
 
 Loaded label files 的 placement 不能只存在於 UI 選單。backend preview 必須為每個 active
 label carrier 產生 method-specific `placement_reviews`，並保存目前使用的 `placement_review`

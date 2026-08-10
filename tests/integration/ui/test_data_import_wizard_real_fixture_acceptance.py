@@ -420,7 +420,7 @@ def _complete_openneuro_trial_types(
             f"uses={len(use_selectors)}, classes={len(class_editors)}."
         )
     decisions = {
-        "response": ("response", "event", ""),
+        "response": ("response", "ignore", ""),
         "stimulus": ("stimulus", "class", "stimulus"),
     }
     for raw_value, role_selector, use_selector, class_editor in zip(

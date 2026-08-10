@@ -3430,7 +3430,7 @@ def test_bids_value_decisions_are_returned_to_backend_choices(qtbot):
     dialog.event_value_editor.set_value_decision(
         "button_press",
         role="response",
-        use="event",
+        use="ignore",
     )
 
     submission = dialog._submission_projection()

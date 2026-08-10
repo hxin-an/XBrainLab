@@ -17002,3 +17002,35 @@
 - claim boundary:
   - Local closure does not replace exact-head Linux/macOS/Windows CI or Windows human acceptance.
     The candidate remains unmerged until the final pushed SHA satisfies the PR merge gate.
+
+### 2026-08-10 External label decisions and visible import wait
+
+- completed:
+  - Reduced external event-value `Use as` to the user-facing decisions `Training class` and
+    `Do not use`. `Do not use` keeps the EEG event for timing/epoch review but excludes it from
+    supervised classes; its class-name editor is removed from layout and restores its draft when
+    the row returns to `Training class`.
+  - Preserved legacy `keep_event=false` recipe rows until a user explicitly edits them.
+  - Added a full Data Import wizard loading/retry/cancel surface before scan and Match Labels
+    re-preview. The dialog is parented outside the disabled Dataset panel and ignores late worker
+    callbacks after cancellation.
+  - Reused canonical paths and BIDS sidecar discovery inside one admitted command without caching
+    sidecar existence across commands. Restored per-parser freshness guards after independent review
+    identified that a broader shortcut weakened replacement detection; added new-sidecar and Windows
+    path-case regressions.
+  - Cached narrowed BIDS previews now retain their bounded scan scope. Native Windows does not reuse
+    prior content digests because `st_ctime` is not a reliable change time there, and cached bounded
+    BIDS JSON is re-read and content-hashed before its parsed object is reused.
+- measured validation:
+  - OpenNeuro ds003061 P300 subject 001 / three runs: catalog `0.46s`, selected scan `4.67s`, first
+    Preview `2.71s`, repeated Preview `1.43s` on the current WSL `/mnt/d` checkout.
+  - Focused backend `117 passed`; focused Data Import UI `187 passed`; real public wizard `11 passed`.
+  - Required fixture profile verified `205255918` bytes; strict matrix `20/20` lifecycle, `14/14`
+    formats and `7/7` external placement; IO/BIDS/cross-source `40 passed`; strict cross-source
+    training `4/4`; real handoff spine `3 passed`.
+  - Reviewed xcb artifacts:
+    `build/dev-artifacts/data-import-label-use-as-v2/04-match-labels-bids-events.png` and
+    `build/dev-artifacts/data-import-wizard-steps/00-updating-label-matches.png`.
+- claim boundary:
+  - This is a local integration checkpoint. It does not claim full BIDS support, arbitrary external
+    label schemas, Windows native acceptance, exact-head CI success, or product release readiness.

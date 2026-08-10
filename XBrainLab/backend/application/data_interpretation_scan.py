@@ -9,7 +9,9 @@ from dataclasses import field as dc_field
 from pathlib import Path
 from typing import Any
 
-from .data_interpretation_bids_resources import bids_events_json_resource_paths
+from .data_interpretation_bids_resources import (
+    bids_events_json_resources_by_carrier,
+)
 from .data_interpretation_formats import (
     LABEL_CARRIER_EXTENSIONS,
     SUPPORTED_EEG_EXTENSIONS,
@@ -82,6 +84,9 @@ class ScanPreflightScope:
     label_carriers: list[str] = dc_field(default_factory=list)
     label_carrier_sources: dict[str, str] = dc_field(default_factory=dict)
     metadata_files: list[str] = dc_field(default_factory=list)
+    bids_events_json_by_carrier: dict[str, tuple[str, ...]] = dc_field(
+        default_factory=dict
+    )
     all_files: list[str] = dc_field(default_factory=list)
     bids: dict[str, Any] = dc_field(default_factory=dict)
     skipped_nested_bids_roots: list[str] = dc_field(default_factory=list)
@@ -450,6 +455,9 @@ def discover_source_preflight_scope(
         for carrier in carriers:
             label_carrier_sources.setdefault(str(carrier), str(source))
     label_carriers = sorted(label_carrier_sources)
+    bids_events_json_by_carrier = bids_events_json_resources_by_carrier(
+        label_carriers,
+    )
     source_label_files = [
         carrier for _, carriers in source_label_carriers for carrier in carriers
     ]
@@ -484,9 +492,14 @@ def discover_source_preflight_scope(
         metadata_files=_dedupe_strings(
             [
                 *_bids_metadata_resource_paths(bids),
-                *bids_events_json_resource_paths(label_carriers),
+                *(
+                    path
+                    for paths in bids_events_json_by_carrier.values()
+                    for path in paths
+                ),
             ]
         ),
+        bids_events_json_by_carrier=bids_events_json_by_carrier,
         all_files=[str(item) for item in all_files],
         bids=bids,
         skipped_nested_bids_roots=[str(item) for item in skipped_nested_bids_roots],
@@ -643,6 +656,7 @@ def discover_explicit_file_preflight_scope(
         label_carriers=label_carriers,
         label_carrier_sources=label_carrier_sources,
         metadata_files=[],
+        bids_events_json_by_carrier={},
         all_files=[
             str(item)
             for item in _dedupe_paths(

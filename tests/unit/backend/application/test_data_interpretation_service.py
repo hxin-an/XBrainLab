@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -3150,3 +3151,82 @@ def test_repeated_preview_discards_admission_when_source_content_changes(
 
     assert checks == 1
     assert payload["resource_preflight"]["admission_cache_reused"] is False
+
+
+def test_reusable_content_identity_matches_windows_paths_case_insensitively(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, _dataset = _service()
+    candidate = SimpleNamespace(
+        scan_id="scan-1",
+        content_identity={
+            "files": [
+                {
+                    "path": r"C:\Data\Subject\Run.set",
+                    "file_bytes": 123,
+                    "sha256": "a" * 64,
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(service.state, "resolve_candidate", lambda _value: candidate)
+    monkeypatch.setattr(
+        service_module,
+        "_stat_change_time_is_reliable",
+        lambda: True,
+    )
+    admission = SimpleNamespace(
+        resource_reader=SimpleNamespace(
+            admitted_files={r"c:\data\subject\run.set": object()}
+        ),
+        bids_events_json_reader=SimpleNamespace(admitted_files={}),
+    )
+
+    reusable = service._latest_admitted_content_identities(
+        admission,
+        expected_scan_id="scan-1",
+    )
+
+    assert reusable == {
+        r"C:\Data\Subject\Run.set": {
+            "file_bytes": 123,
+            "sha256": "a" * 64,
+        }
+    }
+
+
+def test_windows_does_not_reuse_content_identity_without_reliable_change_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, _dataset = _service()
+    candidate = SimpleNamespace(
+        scan_id="scan-1",
+        content_identity={
+            "files": [
+                {
+                    "path": r"C:\Data\Subject\Run.set",
+                    "file_bytes": 123,
+                    "sha256": "a" * 64,
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(service.state, "resolve_candidate", lambda _value: candidate)
+    monkeypatch.setattr(
+        service_module,
+        "_stat_change_time_is_reliable",
+        lambda: False,
+    )
+    admission = SimpleNamespace(
+        resource_reader=SimpleNamespace(
+            admitted_files={r"c:\data\subject\run.set": object()}
+        ),
+        bids_events_json_reader=SimpleNamespace(admitted_files={}),
+    )
+
+    reusable = service._latest_admitted_content_identities(
+        admission,
+        expected_scan_id="scan-1",
+    )
+
+    assert reusable == {}

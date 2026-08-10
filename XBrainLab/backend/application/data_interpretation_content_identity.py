@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .data_interpretation_path_identity import (
+    CanonicalPathIdentityScope,
     deduplicate_resolved_paths,
     resolved_path_identity,
     resolved_path_value,
@@ -55,29 +56,55 @@ def build_review_content_identity(
     resource_reader: AdmittedResourceReader | None = None,
 ) -> dict[str, Any]:
     """Bind every reviewed parser input and the choices interpreting those bytes."""
-    bindings = _normalized_bindings(label_carrier_plan)
-    selected_paths = _normalized_paths(selected_eeg_files)
-    parser_dependencies = _normalized_parser_dependencies(eeg_parser_dependencies)
+    path_identity_scope = (
+        resource_reader.path_identity_scope if resource_reader is not None else None
+    )
+    bindings = _normalized_bindings(
+        label_carrier_plan,
+        path_identity_scope=path_identity_scope,
+    )
+    selected_paths = _normalized_paths(
+        selected_eeg_files,
+        path_identity_scope=path_identity_scope,
+    )
+    parser_dependencies = _normalized_parser_dependencies(
+        eeg_parser_dependencies,
+        path_identity_scope=path_identity_scope,
+    )
     roles_by_identity = {
-        _path_key(path): (path, "selected_eeg") for path in selected_paths
+        _path_key(path, path_identity_scope=path_identity_scope): (
+            path,
+            "selected_eeg",
+        )
+        for path in selected_paths
     }
     for dependency_binding in parser_dependencies:
         for path in dependency_binding["dependencies"]:
             roles_by_identity.setdefault(
-                _path_key(path),
+                _path_key(path, path_identity_scope=path_identity_scope),
                 (path, "eeg_parser_dependency"),
             )
     for binding in bindings:
         path = binding["path"]
-        roles_by_identity.setdefault(_path_key(path), (path, "label_carrier"))
+        roles_by_identity.setdefault(
+            _path_key(path, path_identity_scope=path_identity_scope),
+            (path, "label_carrier"),
+        )
     for raw_path in bids_events_json_files:
-        path = _path_value(raw_path)
-        roles_by_identity.setdefault(_path_key(path), (path, "bids_events_json"))
+        path = _path_value(raw_path, path_identity_scope=path_identity_scope)
+        roles_by_identity.setdefault(
+            _path_key(path, path_identity_scope=path_identity_scope),
+            (path, "bids_events_json"),
+        )
     for raw_path in bids_channels_files:
-        path = _path_value(raw_path)
-        roles_by_identity.setdefault(_path_key(path), (path, "bids_channels"))
+        path = _path_value(raw_path, path_identity_scope=path_identity_scope)
+        roles_by_identity.setdefault(
+            _path_key(path, path_identity_scope=path_identity_scope),
+            (path, "bids_channels"),
+        )
     admitted_identities = _normalized_admitted_file_identities(
         admitted_file_identities,
+        path_identity_scope=path_identity_scope,
     )
 
     identity_requests: list[tuple[Path, str, Mapping[str, Any] | None]] = []
@@ -98,8 +125,14 @@ def build_review_content_identity(
         "event_roles": _normalized_string_mapping(event_roles),
         "run_event_mappings": _normalized_nested_mapping(run_event_mappings),
     }
-    identity_files = _files_identity_payload(files)
-    identity_contract = _contract_identity_payload(interpretation_contract)
+    identity_files = _files_identity_payload(
+        files,
+        path_identity_scope=path_identity_scope,
+    )
+    identity_contract = _contract_identity_payload(
+        interpretation_contract,
+        path_identity_scope=path_identity_scope,
+    )
     content_sha256 = _canonical_sha256(identity_files)
     review_contract_sha256 = _canonical_sha256(identity_contract)
     scope_sha256 = _canonical_sha256(
@@ -233,7 +266,12 @@ def _content_file_identity(
         if resource_reader is not None and resource_reader.admits(path)
         else _path_key(path)
     )
-    path_value = _path_value(path)
+    path_value = _path_value(
+        path,
+        path_identity_scope=(
+            resource_reader.path_identity_scope if resource_reader is not None else None
+        ),
+    )
     if admitted_identity is not None:
         return {
             "path": path_value,
@@ -302,11 +340,16 @@ def _content_file_identities(
 
 def _normalized_admitted_file_identities(
     identities: Mapping[str, Mapping[str, Any]] | None,
+    *,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
 ) -> dict[str, dict[str, int | str]]:
     result: dict[str, dict[str, int | str]] = {}
     for raw_path, identity in (identities or {}).items():
-        path = _path_value(raw_path)
-        path_identity = _path_key(path)
+        path = _path_value(raw_path, path_identity_scope=path_identity_scope)
+        path_identity = _path_key(
+            path,
+            path_identity_scope=path_identity_scope,
+        )
         file_bytes = identity.get("file_bytes")
         sha256 = str(identity.get("sha256") or "").strip().lower()
         if (
@@ -360,24 +403,37 @@ def _stable_stream_sha256(path: Path) -> tuple[int, str]:
 
 def _normalized_bindings(
     plans: Iterable[Mapping[str, Any]],
+    *,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
 ) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for plan in plans:
         raw_path = str(plan.get("path") or "").strip()
         if not raw_path:
             continue
-        binding: dict[str, Any] = {"path": _path_value(raw_path)}
+        binding: dict[str, Any] = {
+            "path": _path_value(
+                raw_path,
+                path_identity_scope=path_identity_scope,
+            )
+        }
         for field in _PLAN_BINDING_FIELDS:
             value = str(plan.get(field) or "").strip()
             if not value:
                 continue
             if field == "selected_target_file":
-                value = _path_value(value)
+                value = _path_value(
+                    value,
+                    path_identity_scope=path_identity_scope,
+                )
             binding[field] = value
         target_files = _normalized_paths(
-            str(item)
-            for item in plan.get("selected_target_files", []) or []
-            if str(item).strip()
+            (
+                str(item)
+                for item in plan.get("selected_target_files", []) or []
+                if str(item).strip()
+            ),
+            path_identity_scope=path_identity_scope,
         )
         if target_files:
             binding["selected_target_files"] = target_files
@@ -400,29 +456,54 @@ def _normalized_bindings(
     return sorted(result, key=lambda item: item["path"])
 
 
-def _normalized_paths(paths: Iterable[str]) -> list[str]:
-    return sorted(
-        deduplicate_resolved_paths(
+def _normalized_paths(
+    paths: Iterable[str],
+    *,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
+) -> list[str]:
+    if path_identity_scope is not None:
+        deduplicated = list(
+            dict.fromkeys(
+                path_identity_scope.value(path)
+                for raw_path in paths
+                if (path := str(raw_path).strip())
+            )
+        )
+    else:
+        deduplicated = deduplicate_resolved_paths(
             path for raw_path in paths if (path := str(raw_path).strip())
+        )
+    return sorted(
+        deduplicated,
+        key=lambda path: (
+            _path_key(path, path_identity_scope=path_identity_scope),
+            path,
         ),
-        key=lambda path: (_path_key(path), path),
     )
 
 
 def _normalized_parser_dependencies(
     dependencies: Mapping[str, Iterable[str]] | None,
+    *,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
 ) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for raw_owner, raw_dependencies in (dependencies or {}).items():
         owner = str(raw_owner).strip()
         if not owner:
             continue
-        dependency_paths = _normalized_paths(raw_dependencies)
+        dependency_paths = _normalized_paths(
+            raw_dependencies,
+            path_identity_scope=path_identity_scope,
+        )
         if not dependency_paths:
             continue
         result.append(
             {
-                "path": _path_value(owner),
+                "path": _path_value(
+                    owner,
+                    path_identity_scope=path_identity_scope,
+                ),
                 "dependencies": dependency_paths,
             }
         )
@@ -621,39 +702,75 @@ def _canonical_sha256(payload: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _file_identity_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+def _file_identity_payload(
+    row: Mapping[str, Any],
+    *,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
+) -> dict[str, Any]:
     payload = dict(row)
-    payload["path"] = _path_key(str(row.get("path") or ""))
+    payload["path"] = _path_key(
+        str(row.get("path") or ""),
+        path_identity_scope=path_identity_scope,
+    )
     return payload
 
 
-def _files_identity_payload(files: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def _files_identity_payload(
+    files: Iterable[Mapping[str, Any]],
+    *,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
+) -> list[dict[str, Any]]:
     return sorted(
-        (_file_identity_payload(row) for row in files),
+        (
+            _file_identity_payload(
+                row,
+                path_identity_scope=path_identity_scope,
+            )
+            for row in files
+        ),
         key=lambda row: str(row["path"]),
     )
 
 
-def _contract_identity_payload(contract: Mapping[str, Any]) -> dict[str, Any]:
+def _contract_identity_payload(
+    contract: Mapping[str, Any],
+    *,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
+) -> dict[str, Any]:
     bindings: list[dict[str, Any]] = []
     for raw_binding in contract.get("bindings", []) or []:
         binding = dict(raw_binding)
-        binding["path"] = _path_key(str(binding.get("path") or ""))
+        binding["path"] = _path_key(
+            str(binding.get("path") or ""),
+            path_identity_scope=path_identity_scope,
+        )
         if binding.get("selected_target_file"):
             binding["selected_target_file"] = _path_key(
-                str(binding["selected_target_file"])
+                str(binding["selected_target_file"]),
+                path_identity_scope=path_identity_scope,
             )
         if binding.get("selected_target_files"):
             binding["selected_target_files"] = sorted(
-                _path_key(str(path)) for path in binding["selected_target_files"]
+                _path_key(
+                    str(path),
+                    path_identity_scope=path_identity_scope,
+                )
+                for path in binding["selected_target_files"]
             )
         bindings.append(binding)
     parser_dependencies = [
         {
             **dict(row),
-            "path": _path_key(str(row.get("path") or "")),
+            "path": _path_key(
+                str(row.get("path") or ""),
+                path_identity_scope=path_identity_scope,
+            ),
             "dependencies": sorted(
-                _path_key(str(path)) for path in row.get("dependencies", [])
+                _path_key(
+                    str(path),
+                    path_identity_scope=path_identity_scope,
+                )
+                for path in row.get("dependencies", [])
             ),
         }
         for row in contract.get("parser_dependencies", []) or []
@@ -661,7 +778,7 @@ def _contract_identity_payload(contract: Mapping[str, Any]) -> dict[str, Any]:
     return {
         **dict(contract),
         "selected_eeg_files": sorted(
-            _path_key(str(path))
+            _path_key(str(path), path_identity_scope=path_identity_scope)
             for path in contract.get("selected_eeg_files", []) or []
         ),
         "parser_dependencies": sorted(
@@ -682,9 +799,21 @@ def _stat_identity(value: os.stat_result) -> tuple[int, int, int, int, int]:
     )
 
 
-def _path_key(path: str | Path) -> str:
+def _path_key(
+    path: str | Path,
+    *,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
+) -> str:
+    if path_identity_scope is not None:
+        return path_identity_scope.identity(path)
     return resolved_path_identity(path)
 
 
-def _path_value(path: str | Path) -> str:
+def _path_value(
+    path: str | Path,
+    *,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
+) -> str:
+    if path_identity_scope is not None:
+        return path_identity_scope.value(path)
     return resolved_path_value(path)

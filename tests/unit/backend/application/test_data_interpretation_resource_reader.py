@@ -11,6 +11,7 @@ from tests.unit.backend.path_assertions import (
     assert_filesystem_path_lists_equal,
     assert_filesystem_paths_equal,
 )
+from XBrainLab.backend.application import data_interpretation_resource_reader
 from XBrainLab.backend.application.data_interpretation_resource_reader import (
     AdmittedResourceReader,
 )
@@ -212,6 +213,84 @@ def test_reader_reuses_an_admitted_canonical_path_without_resolving_again(
     reader.assert_unchanged(path, purpose="BIDS events table")
 
     assert resolve_calls == 0
+
+
+def test_reader_rejects_symlink_replacement_without_opening_its_target(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    path = (tmp_path / "events.tsv").resolve()
+    outside = (tmp_path / "outside.tsv").resolve()
+    path.write_text("onset\tvalue\n0\tleft\n", encoding="utf-8")
+    outside.write_text("onset\tvalue\n0\tEVIL\n", encoding="utf-8")
+    reader = AdmittedResourceReader.from_resource_preflight(
+        [str(path)],
+        _preflight([str(path)], monkeypatch),
+    )
+    path.unlink()
+    try:
+        path.symlink_to(outside)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"symbolic links are unavailable: {exc}")
+
+    opened_replacement: list[Path] = []
+    original_open = Path.open
+
+    def _observed_open(candidate: Path, *args, **kwargs):
+        if candidate == path:
+            opened_replacement.append(candidate)
+        return original_open(candidate, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", _observed_open)
+
+    with pytest.raises(PreconditionError) as raised:
+        reader.assert_unchanged(path, purpose="cached Data Interpretation preview")
+
+    assert raised.value.diagnostics["code"] == (
+        "interpretation_resource_changed_after_admission"
+    )
+    assert opened_replacement == []
+
+
+def test_reader_rejects_open_race_before_reading_replacement_target(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    path = (tmp_path / "events.tsv").resolve()
+    outside = (tmp_path / "outside.tsv").resolve()
+    path.write_text("onset\tvalue\n0\tleft\n", encoding="utf-8")
+    outside.write_text("onset\tvalue\n0\tEVIL\n", encoding="utf-8")
+    reader = AdmittedResourceReader.from_resource_preflight(
+        [str(path)],
+        _preflight([str(path)], monkeypatch),
+    )
+    original_open = os.open
+
+    def _raced_open(candidate, flags, *args, **kwargs):
+        if Path(candidate) == path:
+            return original_open(outside, flags, *args, **kwargs)
+        return original_open(candidate, flags, *args, **kwargs)
+
+    probe_reads: list[bool] = []
+
+    def _observed_probe(handle, file_bytes):
+        probe_reads.append(True)
+        return "unreachable"
+
+    monkeypatch.setattr(os, "open", _raced_open)
+    monkeypatch.setattr(
+        data_interpretation_resource_reader,
+        "_content_probe_sha256",
+        _observed_probe,
+    )
+
+    with pytest.raises(PreconditionError) as raised:
+        reader.assert_unchanged(path, purpose="cached Data Interpretation preview")
+
+    assert raised.value.diagnostics["code"] == (
+        "interpretation_resource_changed_after_admission"
+    )
+    assert probe_reads == []
 
 
 def test_guard_expands_explicit_brainvision_parser_dependencies(

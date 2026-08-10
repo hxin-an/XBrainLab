@@ -7,11 +7,12 @@ import math
 import os
 import stat
 from collections.abc import Iterable, Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from .data_interpretation_path_identity import CanonicalPathIdentityScope
 from .errors import PreconditionError
 
 if TYPE_CHECKING:
@@ -59,12 +60,21 @@ class AdmittedResourceReader:
     dependent_files: dict[str, tuple[str, ...]] = field(default_factory=dict)
     recording_bounds: dict[str, AdmittedRecordingBounds] = field(default_factory=dict)
     canonical_path_aliases: dict[str, str] = field(default_factory=dict)
+    path_identity_scope: CanonicalPathIdentityScope = field(
+        default_factory=lambda: CanonicalPathIdentityScope.from_admitted_paths(()),
+    )
 
     def canonical_key(self, path: str | Path) -> str:
         """Return an admitted canonical path without redundant filesystem walks."""
         resource_path = Path(path)
         lexical_key = _lexical_path_key(resource_path)
-        return self.canonical_path_aliases.get(lexical_key) or _path_key(resource_path)
+        return self.canonical_path_aliases.get(
+            lexical_key
+        ) or self.path_identity_scope.identity(resource_path)
+
+    def canonical_value(self, path: str | Path) -> str:
+        """Return one admitted canonical spelling without another filesystem walk."""
+        return self.path_identity_scope.value(path)
 
     def admits(self, path: str | Path) -> bool:
         """Return whether this exact resolved file belongs to the admitted scope."""
@@ -77,11 +87,28 @@ class AdmittedResourceReader:
         preflight: ResourcePreflightResult,
         *,
         dependent_files: Mapping[str, Iterable[str | Path]] | None = None,
+        path_identity_scope: CanonicalPathIdentityScope | None = None,
     ) -> AdmittedResourceReader:
         requested_paths = [Path(path) for path in paths]
-        canonical_paths = [_path_key(path) for path in requested_paths]
+        canonical_paths = [
+            (
+                path_identity_scope.identity(path)
+                if path_identity_scope is not None
+                and path_identity_scope.contains(path)
+                else _path_key(path)
+            )
+            for path in requested_paths
+        ]
+        retained_scope = (
+            path_identity_scope
+            or CanonicalPathIdentityScope.from_admitted_paths(canonical_paths)
+        )
         expected = set(canonical_paths)
-        admitted_bytes = _preflight_file_bytes(preflight, expected)
+        admitted_bytes = _preflight_file_bytes(
+            preflight,
+            expected,
+            path_identity_scope=retained_scope,
+        )
         missing = sorted(expected - admitted_bytes.keys())
         if missing:
             raise _resource_error(
@@ -107,10 +134,15 @@ class AdmittedResourceReader:
                     purpose="resource admission",
                 )
             admitted[key] = identity
-        preflight_dependencies = _preflight_dependencies(preflight, set(admitted))
+        preflight_dependencies = _preflight_dependencies(
+            preflight,
+            set(admitted),
+            path_identity_scope=retained_scope,
+        )
         explicit_dependencies = _explicit_dependencies(
             dependent_files,
             admitted=set(admitted),
+            path_identity_scope=retained_scope,
         )
         return cls(
             admitted_files=admitted,
@@ -121,11 +153,13 @@ class AdmittedResourceReader:
             recording_bounds=_preflight_recording_bounds(
                 preflight,
                 admitted=set(admitted),
+                path_identity_scope=retained_scope,
             ),
             canonical_path_aliases=_canonical_aliases(
                 requested_paths,
                 canonical_paths,
             ),
+            path_identity_scope=retained_scope,
         )
 
     def with_dependent_files(
@@ -136,6 +170,7 @@ class AdmittedResourceReader:
         explicit_dependencies = _explicit_dependencies(
             dependent_files,
             admitted=set(self.admitted_files),
+            path_identity_scope=self.path_identity_scope,
         )
         return AdmittedResourceReader(
             admitted_files=dict(self.admitted_files),
@@ -145,6 +180,7 @@ class AdmittedResourceReader:
             ),
             recording_bounds=dict(self.recording_bounds),
             canonical_path_aliases=dict(self.canonical_path_aliases),
+            path_identity_scope=self.path_identity_scope,
         )
 
     def recording_bounds_for(
@@ -164,6 +200,22 @@ class AdmittedResourceReader:
         """Fail closed when a parser input was not admitted or has changed."""
         resource_path = Path(path)
         key = self.canonical_key(resource_path)
+        self._assert_unchanged_now(
+            resource_path,
+            key=key,
+            purpose=purpose,
+            parse_started=parse_started,
+        )
+
+    def _assert_unchanged_now(
+        self,
+        resource_path: Path,
+        *,
+        key: str,
+        purpose: str,
+        parse_started: bool,
+    ) -> None:
+        """Perform one non-memoized admitted identity check."""
         admitted = self.admitted_files.get(key)
         if admitted is None:
             raise _resource_error(
@@ -258,6 +310,8 @@ class AdmittedResourceReader:
 def _preflight_file_bytes(
     preflight: ResourcePreflightResult,
     expected: set[str],
+    *,
+    path_identity_scope: CanonicalPathIdentityScope,
 ) -> dict[str, int]:
     admitted: dict[str, int] = {}
     rows = preflight.to_diagnostics().get("files")
@@ -270,7 +324,7 @@ def _preflight_file_bytes(
         file_bytes = row.get("file_bytes")
         if not raw_path or not isinstance(file_bytes, int) or file_bytes < 0:
             continue
-        key = _path_key(Path(raw_path))
+        key = path_identity_scope.identity(raw_path)
         if key in expected:
             admitted[key] = file_bytes
     return admitted
@@ -279,6 +333,8 @@ def _preflight_file_bytes(
 def _preflight_dependencies(
     preflight: ResourcePreflightResult,
     admitted: set[str],
+    *,
+    path_identity_scope: CanonicalPathIdentityScope,
 ) -> dict[str, tuple[str, ...]]:
     dependencies: dict[str, list[str]] = {}
     rows = preflight.to_diagnostics().get("files")
@@ -291,8 +347,8 @@ def _preflight_dependencies(
         dependency_text = str(row.get("associated_data_file") or "").strip()
         if not owner_text or not dependency_text:
             continue
-        owner = _path_key(Path(owner_text))
-        dependency = _path_key(Path(dependency_text))
+        owner = path_identity_scope.identity(owner_text)
+        dependency = path_identity_scope.identity(dependency_text)
         if owner not in admitted or dependency not in admitted:
             continue
         dependencies.setdefault(owner, []).append(dependency)
@@ -303,6 +359,7 @@ def _preflight_recording_bounds(
     preflight: ResourcePreflightResult,
     *,
     admitted: set[str],
+    path_identity_scope: CanonicalPathIdentityScope,
 ) -> dict[str, AdmittedRecordingBounds]:
     bounds: dict[str, AdmittedRecordingBounds] = {}
     rows = preflight.to_diagnostics().get("files")
@@ -326,7 +383,7 @@ def _preflight_recording_bounds(
             or not _is_continuous_recording(row.get("trials"))
         ):
             continue
-        key = _path_key(Path(raw_path))
+        key = path_identity_scope.identity(raw_path)
         if key not in admitted:
             continue
         bounds[key] = AdmittedRecordingBounds(
@@ -348,12 +405,15 @@ def _explicit_dependencies(
     dependencies: Mapping[str, Iterable[str | Path]] | None,
     *,
     admitted: set[str],
+    path_identity_scope: CanonicalPathIdentityScope,
 ) -> dict[str, tuple[str, ...]]:
     result: dict[str, tuple[str, ...]] = {}
     for raw_owner, raw_dependencies in (dependencies or {}).items():
-        owner = _path_key(Path(raw_owner))
+        owner = path_identity_scope.identity(raw_owner)
         dependency_paths = tuple(
-            dict.fromkeys(_path_key(Path(path)) for path in raw_dependencies)
+            dict.fromkeys(
+                path_identity_scope.identity(path) for path in raw_dependencies
+            )
         )
         missing = [path for path in (owner, *dependency_paths) if path not in admitted]
         if missing:
@@ -390,7 +450,44 @@ def _merge_dependencies(
 
 def _current_identity(path: Path) -> AdmittedFileIdentity:
     try:
-        with path.open("rb") as handle:
+        entry_stat = path.lstat()
+    except OSError as exc:
+        raise _resource_error(
+            code="interpretation_resource_unavailable",
+            message=f"A selected Data Interpretation file is unavailable: {path}.",
+            path=path,
+            parse_started=False,
+            details={"os_error": str(exc)},
+        ) from exc
+    file_attributes = int(getattr(entry_stat, "st_file_attributes", 0) or 0)
+    if stat.S_ISLNK(entry_stat.st_mode) or (
+        file_attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x0400)
+    ):
+        raise _resource_error(
+            code="interpretation_resource_unavailable",
+            message=(
+                "A selected Data Interpretation file was replaced by a symbolic "
+                f"link or reparse point: {path}."
+            ),
+            path=path,
+            parse_started=False,
+        )
+    if not stat.S_ISREG(entry_stat.st_mode):
+        raise _resource_error(
+            code="interpretation_resource_unavailable",
+            message=f"A selected Data Interpretation path is not a file: {path}.",
+            path=path,
+            parse_started=False,
+        )
+
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
+        )
+        with os.fdopen(descriptor, "rb") as handle:
+            descriptor = None
             file_stat = os.fstat(handle.fileno())
             if not stat.S_ISREG(file_stat.st_mode):
                 raise _resource_error(
@@ -401,10 +498,14 @@ def _current_identity(path: Path) -> AdmittedFileIdentity:
                     path=path,
                     parse_started=False,
                 )
+            if _filesystem_identity(entry_stat) != _filesystem_identity(file_stat):
+                raise _identity_changed_while_verifying_error(path)
             content_probe_sha256 = _content_probe_sha256(
                 handle,
                 max(int(file_stat.st_size), 0),
             )
+            finished_stat = os.fstat(handle.fileno())
+        final_entry_stat = path.lstat()
     except PreconditionError:
         raise
     except OSError as exc:
@@ -415,6 +516,17 @@ def _current_identity(path: Path) -> AdmittedFileIdentity:
             parse_started=False,
             details={"os_error": str(exc)},
         ) from exc
+    finally:
+        if descriptor is not None:
+            with suppress(OSError):
+                os.close(descriptor)
+    if not (
+        _filesystem_identity(entry_stat)
+        == _filesystem_identity(file_stat)
+        == _filesystem_identity(finished_stat)
+        == _filesystem_identity(final_entry_stat)
+    ):
+        raise _identity_changed_while_verifying_error(path)
     try:
         identity = AdmittedFileIdentity(
             file_bytes=max(int(file_stat.st_size), 0),
@@ -445,6 +557,28 @@ def _current_identity(path: Path) -> AdmittedFileIdentity:
             parse_started=False,
         )
     return identity
+
+
+def _filesystem_identity(value: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        int(value.st_dev),
+        int(value.st_ino),
+        int(value.st_size),
+        int(value.st_mtime_ns),
+        int(value.st_ctime_ns),
+    )
+
+
+def _identity_changed_while_verifying_error(path: Path) -> PreconditionError:
+    return _resource_error(
+        code="interpretation_resource_unavailable",
+        message=(
+            "A selected Data Interpretation file changed while its identity "
+            f"was being verified: {path}."
+        ),
+        path=path,
+        parse_started=False,
+    )
 
 
 def _content_probe_sha256(handle: Any, file_bytes: int) -> str:

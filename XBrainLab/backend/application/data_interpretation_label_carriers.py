@@ -227,6 +227,7 @@ def _label_carrier_plan_for_path(
         bids_event_columns=bids_event_columns,
         time_field_candidates=time_field_candidates,
         duration_candidates=duration_candidates,
+        sidecar_reader=sidecar_reader,
     )
     warnings.extend(value_review.warnings)
     plan = {
@@ -915,7 +916,12 @@ def _bids_event_level_labels(
     reader = sidecar_reader or BidsEventsJsonReader.from_paths(
         bids_events_json_resource_paths([str(path)]),
     )
-    for sidecar in bids_events_json_candidates(path):
+    sidecars = (
+        sidecar_reader.candidate_paths_for(path)
+        if sidecar_reader is not None
+        else bids_events_json_candidates(path)
+    )
+    for sidecar in sidecars:
         payload = reader.read_object(sidecar)
         levels = _levels_for_field(payload, label_field)
         if levels:
@@ -1142,11 +1148,12 @@ def _label_carrier_warnings(
     bids_event_columns: list[str],
     time_field_candidates: list[str],
     duration_candidates: list[str],
+    sidecar_reader: BidsEventsJsonReader | None = None,
 ) -> list[str]:
     if not _is_bids_events_file(path):
         return []
     warnings: list[str] = []
-    if not _existing_bids_events_json_candidates(path):
+    if not _existing_bids_events_json_candidates(path, sidecar_reader=sidecar_reader):
         warnings.append(
             f"{path.name} events.json sidecar is missing; class names and event "
             "semantics need confirmation."
@@ -1165,7 +1172,17 @@ def _label_carrier_warnings(
     return warnings
 
 
-def _existing_bids_events_json_candidates(path: Path) -> list[Path]:
+def _existing_bids_events_json_candidates(
+    path: Path,
+    *,
+    sidecar_reader: BidsEventsJsonReader | None = None,
+) -> list[Path]:
+    if sidecar_reader is not None:
+        return (
+            list(sidecar_reader.candidate_paths_for(path))
+            if sidecar_reader.has_candidate_for(path)
+            else []
+        )
     return [
         candidate
         for candidate in bids_events_json_candidates(path)

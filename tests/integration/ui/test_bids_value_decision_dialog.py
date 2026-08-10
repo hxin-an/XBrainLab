@@ -90,7 +90,7 @@ def test_bids_value_decisions_recheck_and_apply(qtbot, tmp_path: Path) -> None:
     dialog.event_value_editor.set_value_decision(
         "start_experiment",
         role="system",
-        use="event",
+        use="ignore",
     )
     assert dialog.next_button.isEnabled()
     assert dialog.next_button.text() == "Next: Review and Import"

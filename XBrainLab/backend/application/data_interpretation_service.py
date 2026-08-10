@@ -50,7 +50,10 @@ from .data_interpretation_content_identity import (
     assert_review_content_unchanged,
     identity_paths,
 )
-from .data_interpretation_path_identity import normalized_path_identity
+from .data_interpretation_path_identity import (
+    CanonicalPathIdentityScope,
+    normalized_path_identity,
+)
 from .data_interpretation_placement import placement_blocked_reasons
 from .data_interpretation_recipe import (
     IMPORT_RECIPE_MAX_BYTES,
@@ -110,6 +113,14 @@ def _deduplicate_resource_paths(paths: list[str]) -> list[str]:
         seen.add(identity)
         result.append(path)
     return result
+
+
+def _stat_change_time_is_reliable() -> bool:
+    """Return whether ``st_ctime`` tracks content-changing metadata updates."""
+    # Native Windows exposes creation time as st_ctime. A same-size rewrite can
+    # therefore restore mtime and evade a stat-only cache check. In that
+    # environment candidate content digests must be recomputed instead of reused.
+    return os.name != "nt"
 
 
 _ImportPreflightReceipt = ResourceReceiptRecord[ResourcePreflightResult]
@@ -206,9 +217,13 @@ class DataInterpretationCommandService:
             selected_bids_subjects=command.selected_bids_subjects,
         )
         preflight = check_import_resource_preflight(scope.paths)
+        path_identity_scope = CanonicalPathIdentityScope.from_admitted_paths(
+            scope.paths
+        )
         resource_reader = AdmittedResourceReader.from_resource_preflight(
             scope.paths,
             preflight,
+            path_identity_scope=path_identity_scope,
         )
         scan = scan_source_path(
             scan_id=scan_id,
@@ -219,7 +234,11 @@ class DataInterpretationCommandService:
             materialize_metadata=False,
             resource_reader=resource_reader,
         )
-        preview_scope = resolve_interpretation_resource_scope(scan, {})
+        preview_scope = resolve_interpretation_resource_scope(
+            scan,
+            {},
+            bids_events_json_by_carrier=scope.bids_events_json_by_carrier,
+        )
         preview_scope_is_admitted = all(
             resource_reader.admits(path) for path in preview_scope.paths
         )
@@ -234,6 +253,7 @@ class DataInterpretationCommandService:
                 bids_events_json_reader=BidsEventsJsonReader.from_resource_preflight(
                     preview_scope.bids_events_json_files,
                     preflight,
+                    candidates_by_carrier=(preview_scope.bids_events_json_by_carrier),
                 ),
                 resource_scope=preview_scope,
                 scan_preflight_scope=scope,
@@ -646,9 +666,10 @@ class DataInterpretationCommandService:
         configuration_scope: dict[str, Any],
         receipt_candidate_id: str | None = None,
         additional_paths: list[str] | None = None,
+        resource_scope: InterpretationResourceScope | None = None,
     ) -> _PreviewResourceAdmission:
         """Check all payloads before candidate preview may materialize labels."""
-        scope = resolve_interpretation_resource_scope(scan, choices)
+        scope = resource_scope or self._resource_scope_for_scan(scan, choices)
         resource_paths = _deduplicate_resource_paths(
             [*scope.paths, *(additional_paths or [])]
         )
@@ -714,10 +735,14 @@ class DataInterpretationCommandService:
         bids_events_json_reader = BidsEventsJsonReader.from_resource_preflight(
             scope.bids_events_json_files,
             preflight,
+            candidates_by_carrier=scope.bids_events_json_by_carrier,
         )
         sidecar_paths = {
             normalized_path_identity(path) for path in scope.bids_events_json_files
         }
+        path_identity_scope = CanonicalPathIdentityScope.from_admitted_paths(
+            resource_paths
+        )
         resource_reader = AdmittedResourceReader.from_resource_preflight(
             [
                 path
@@ -726,6 +751,7 @@ class DataInterpretationCommandService:
             ],
             preflight,
             dependent_files=scope.eeg_dependencies_by_file,
+            path_identity_scope=path_identity_scope,
         )
         admission = _PreviewResourceAdmission(
             preflight=preflight,
@@ -765,7 +791,7 @@ class DataInterpretationCommandService:
         """Materialize one unchanged BIDS scan without repeating discovery."""
         if not bool(getattr(scan, "bids", {}).get("is_bids")):
             return None
-        scope = resolve_interpretation_resource_scope(scan, choices)
+        scope = self._resource_scope_for_scan(scan, choices)
         cache_key = self._preview_admission_cache_key(
             receipt_authority=self._preview_preflight_receipts,
             scan=scan,
@@ -791,10 +817,25 @@ class DataInterpretationCommandService:
         )
         return materialized_scan, replace(
             admission,
-            resource_scope=resolve_interpretation_resource_scope(
+            resource_scope=self._resource_scope_for_scan(
                 materialized_scan,
                 choices,
+                fallback_catalog=admission.resource_scope.bids_events_json_by_carrier,
             ),
+        )
+
+    def _resource_scope_for_scan(
+        self,
+        scan: Any,
+        choices: dict[str, Any],
+        *,
+        fallback_catalog: dict[str, tuple[str, ...]] | None = None,
+    ) -> InterpretationResourceScope:
+        """Discover sidecars per command or reuse only this command's admission."""
+        return resolve_interpretation_resource_scope(
+            scan,
+            choices,
+            bids_events_json_by_carrier=fallback_catalog,
         )
 
     def _reusable_safe_preview_admission(
@@ -818,15 +859,14 @@ class DataInterpretationCommandService:
         ):
             self._safe_preview_admissions.pop(cache_key, None)
             return None
+        command_bids_reader = cached.bids_events_json_reader.for_command()
         try:
             for path in cached.resource_reader.admitted_files:
                 cached.resource_reader.assert_unchanged(
                     path,
                     purpose="cached Data Interpretation preview",
                 )
-            cached.bids_events_json_reader.content_identities(
-                scope.bids_events_json_files
-            )
+            command_bids_reader.content_identities(scope.bids_events_json_files)
         except (ApplicationError, OSError):
             self._safe_preview_admissions.pop(cache_key, None)
             return None
@@ -846,6 +886,7 @@ class DataInterpretationCommandService:
         return replace(
             cached,
             preflight=replace(cached.preflight, diagnostics=diagnostics),
+            bids_events_json_reader=command_bids_reader,
             resource_scope=scope,
             admission_cache_reused=True,
             reusable_content_identities=reusable_content_identities,
@@ -857,15 +898,20 @@ class DataInterpretationCommandService:
         *,
         expected_scan_id: str,
     ) -> dict[str, dict[str, Any]]:
+        if not _stat_change_time_is_reliable():
+            return {}
         try:
             candidate = self.state.resolve_candidate(None)
         except PreconditionError:
             return {}
         if candidate.scan_id != expected_scan_id:
             return {}
-        admitted_paths = {
-            *admission.resource_reader.admitted_files,
-            *admission.bids_events_json_reader.admitted_files,
+        admitted_path_identities = {
+            normalized_path_identity(path)
+            for path in (
+                *admission.resource_reader.admitted_files,
+                *admission.bids_events_json_reader.admitted_files,
+            )
         }
         identities: dict[str, dict[str, Any]] = {}
         for row in candidate.content_identity.get("files", []) or []:
@@ -875,7 +921,7 @@ class DataInterpretationCommandService:
             file_bytes = row.get("file_bytes")
             sha256 = str(row.get("sha256") or "").strip()
             if (
-                path not in admitted_paths
+                normalized_path_identity(path) not in admitted_path_identities
                 or isinstance(file_bytes, bool)
                 or not isinstance(file_bytes, int)
                 or file_bytes < 0
@@ -928,8 +974,14 @@ class DataInterpretationCommandService:
                 selected_bids_subjects=self._selected_bids_subjects(choices),
             )
         provisional_scan_id = scan_id or "resource-preflight"
+        selection_scan = scope.selection_scan_result(scan_id=provisional_scan_id)
+        selection_resource_scope = resolve_interpretation_resource_scope(
+            selection_scan,
+            choices,
+            bids_events_json_by_carrier=scope.bids_events_json_by_carrier,
+        )
         admission = self._resolve_preview_resource_preflight(
-            scan=scope.selection_scan_result(scan_id=provisional_scan_id),
+            scan=selection_scan,
             choices=choices,
             confirmed=confirmed,
             token=token,
@@ -940,6 +992,7 @@ class DataInterpretationCommandService:
                 *scope.metadata_files,
                 *(additional_admission_paths or []),
             ],
+            resource_scope=selection_resource_scope,
         )
         admitted_scan_id = scan_id or self.state.next_id("scan")
         scan = scan_source_path(
@@ -955,10 +1008,27 @@ class DataInterpretationCommandService:
         # path metadata.  Candidate construction must use the BIDS review that
         # was materialized by the admitted scan, while retaining the same
         # verified readers and resource preflight.
-        return scan, replace(
+        materialized_admission = replace(
             admission,
-            resource_scope=resolve_interpretation_resource_scope(scan, choices),
+            resource_scope=resolve_interpretation_resource_scope(
+                scan,
+                choices,
+                bids_events_json_by_carrier=(
+                    admission.resource_scope.bids_events_json_by_carrier
+                ),
+            ),
+            scan_preflight_scope=scope,
         )
+        if materialized_admission.preflight.risk_level is ResourceRiskLevel.SAFE:
+            self._remember_safe_preview_admission(
+                self._preview_admission_cache_key(
+                    receipt_authority=receipt_authority,
+                    scan=scan,
+                    resource_paths=materialized_admission.resource_scope.paths,
+                ),
+                materialized_admission,
+            )
+        return scan, materialized_admission
 
     @staticmethod
     def _explicit_selected_eeg_files(choices: dict[str, Any]) -> list[str]:
@@ -997,14 +1067,13 @@ class DataInterpretationCommandService:
         """Keep the full discovery scope available when a preview selects a subset."""
         if not cls._explicit_selected_eeg_files(choices):
             return False
-        selected_scope = resolve_interpretation_resource_scope(scan, choices)
         discovered_files = {
             str(Path(path).expanduser().resolve(strict=False))
             for path in list(getattr(scan, "eeg_files", []) or [])
         }
         selected_files = {
             str(Path(path).expanduser().resolve(strict=False))
-            for path in selected_scope.materializable_eeg_files
+            for path in cls._explicit_selected_eeg_files(choices)
         }
         return bool(discovered_files and selected_files != discovered_files)
 

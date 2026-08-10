@@ -60,6 +60,29 @@ walkthrough decision owner、跨平台 Qt teardown，以及 coverage-heavy CI �
 也仍未驗證。只有把這些變更 commit/push 後，由完全相同 head SHA 的 GitHub CI 全部成功，
 才能把本輪提升為 Windows manual-test candidate。
 
+## 2026-08-10 Data Import Label UX / Latency Checkpoint
+
+- 外部 event value 的可見 `Use as` 已限制為 `Training class` / `Do not use`；後者保留 EEG
+  event 但不納入 supervised class，且不顯示 class-name editor。舊 `keep_event=false` recipe
+  row 在未編輯時保持原值。
+- Data Import scan 與 Match Labels re-preview 改由完整 wizard loading surface 立即回饋；Cancel
+  不受 busy Dataset panel 連帶 disabled，late callback 不會重新打開 wizard。
+- OpenNeuro ds003061 P300、subject 001、三 runs 的同機 warm checkpoint：catalog `0.46s`、
+  selected scan `4.67s`、first Preview `2.71s`、repeat Preview `1.43s`。主要改善來自 admission
+  scope 內的 canonical path reuse 與單 command sidecar catalog；sidecar existence 仍逐 command
+  重新發現，parser guards 未因效能最佳化而略過。
+- Narrowed BIDS run selection 會保存並重用已 admission 的 bounded scan scope，不再於每次
+  Match Labels preview 重掃完整 source。Native Windows 因 `st_ctime` 不提供可靠 change-time
+  語意，不重用上一輪 content digest；bounded BIDS JSON cache reuse 也會重新讀取並驗證完整
+  payload，避免同大小內容替換被舊 parse cache 隱藏。
+- Required fixture profile verify-only 通過（`205255918` bytes）；strict matrix 為 `20/20`
+  lifecycle、`14/14` formats、`7/7` external placement；公開 wizard walkthrough `11/11`，
+  focused backend `117` tests、IO/BIDS/cross-source `40` tests、strict training `4/4`、real
+  handoff spine `3/3` 通過。
+- Artifact：`build/dev-artifacts/data-import-label-use-as-v2/04-match-labels-bids-events.png`
+  與 `build/dev-artifacts/data-import-wizard-steps/00-updating-label-matches.png`。這些是 Linux/xcb
+  checkpoint，不取代 Windows native DPI / interaction acceptance，也不支撐 full BIDS claim。
+
 ## Agent Tool-Call 快速檢查
 
 以下入口用來快速查看單一使用者要求如何經過 state/capability、request-scoped schema、

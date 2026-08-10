@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, QObject, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -33,9 +33,24 @@ _ROLE_CHOICES = (
 _USE_CHOICES = (
     ("Choose use", ""),
     ("Training class", "class"),
-    ("Keep as EEG event", "event"),
     ("Do not use", "ignore"),
 )
+
+
+class _ElidingValueEventFilter(QObject):
+    """Keep eliding inside Qt's object lifetime instead of queued Python events."""
+
+    def __init__(self, label: _ElidingValueLabel) -> None:
+        super().__init__(label)
+        self._label = label
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if watched is self._label and event.type() in {
+            QEvent.Type.Resize,
+            QEvent.Type.Show,
+        }:
+            self._label._fit_text()
+        return False
 
 
 class _ElidingValueLabel(QLabel):
@@ -45,14 +60,8 @@ class _ElidingValueLabel(QLabel):
         super().__init__(text, parent)
         self._full_text = text
         self.setAccessibleName(text)
-
-    def resizeEvent(self, event) -> None:  # noqa: N802
-        super().resizeEvent(event)
-        self._fit_text()
-
-    def showEvent(self, event) -> None:  # noqa: N802
-        super().showEvent(event)
-        self._fit_text()
+        self._eliding_filter = _ElidingValueEventFilter(self)
+        self.installEventFilter(self._eliding_filter)
 
     def _fit_text(self) -> None:
         available = max(self.contentsRect().width(), 1)
@@ -81,6 +90,7 @@ class _DecisionRow:
     class_name_editor: QLineEdit
     coverage_label: QLabel
     evidence_label: QLabel
+    edited: bool = False
 
     @property
     def raw_value(self) -> str:
@@ -235,8 +245,12 @@ class EventValueDecisionEditor(QWidget):
                 occurrence.carrier_key == carrier_key for occurrence in row.occurrences
             ):
                 continue
+            row.edited = True
             self._set_combo_data(row.role_selector, role)
-            self._set_combo_data(row.use_selector, use)
+            self._set_combo_data(
+                row.use_selector,
+                "ignore" if use == "event" else use,
+            )
             if class_name:
                 row.class_name_editor.setText(class_name)
                 row.class_name_editor.setCursorPosition(0)
@@ -250,6 +264,8 @@ class EventValueDecisionEditor(QWidget):
         """Return only user-edited semantic choices, keyed by carrier and value."""
         changed: dict[str, dict[str, dict[str, Any]]] = {}
         for row in self._rows:
+            if not row.edited:
+                continue
             current_semantics = self._current_semantics(row)
             for occurrence in row.occurrences:
                 if current_semantics == self._initial_semantics(occurrence.decision):
@@ -338,11 +354,15 @@ class EventValueDecisionEditor(QWidget):
             evidence_label=evidence_label,
         )
         self._sync_class_name_editor(row)
-        role_selector.currentIndexChanged.connect(self._emit_change)
+        role_selector.currentIndexChanged.connect(
+            lambda _index, current=row: self._row_changed(current)
+        )
         use_selector.currentIndexChanged.connect(
             lambda _index, current=row: self._use_changed(current)
         )
-        class_name_editor.textChanged.connect(self._emit_change)
+        class_name_editor.textChanged.connect(
+            lambda _text, current=row: self._row_changed(current)
+        )
         class_name_editor.textChanged.connect(class_name_editor.setToolTip)
         class_name_editor.editingFinished.connect(
             lambda current=class_name_editor: current.setCursorPosition(0)
@@ -353,12 +373,15 @@ class EventValueDecisionEditor(QWidget):
         if not row.role_selector.currentData():
             default_role = {
                 "class": "stimulus",
-                "event": "annotation",
                 "ignore": "unknown",
             }.get(str(row.use_selector.currentData() or ""))
             if default_role:
                 self._set_combo_data(row.role_selector, default_role)
         self._sync_class_name_editor(row)
+        self._row_changed(row)
+
+    def _row_changed(self, row: _DecisionRow) -> None:
+        row.edited = True
         self._emit_change()
 
     def _emit_change(self, *_args: Any) -> None:
@@ -366,7 +389,9 @@ class EventValueDecisionEditor(QWidget):
 
     @staticmethod
     def _sync_class_name_editor(row: _DecisionRow) -> None:
-        row.class_name_editor.setReadOnly(row.use_selector.currentData() != "class")
+        is_class = row.use_selector.currentData() == "class"
+        row.class_name_editor.setReadOnly(not is_class)
+        row.class_name_editor.setVisible(is_class)
 
     @staticmethod
     def _row_complete(row: _DecisionRow) -> bool:
@@ -392,10 +417,8 @@ class EventValueDecisionEditor(QWidget):
                 use_as_class=True,
                 class_name=row.class_name_editor.text().strip(),
             )
-        elif use == "event":
-            semantics.update(keep_event=True, use_as_class=False)
         elif use == "ignore":
-            semantics.update(keep_event=False, use_as_class=False)
+            semantics.update(keep_event=True, use_as_class=False)
         return semantics
 
     def _choice_payload(
@@ -427,16 +450,15 @@ class EventValueDecisionEditor(QWidget):
             "use_as_class": None,
             "class_name": "",
         }
-        if state["use"] == "class":
+        keep_event = decision.get("keep_event")
+        use_as_class = decision.get("use_as_class")
+        if isinstance(keep_event, bool) and isinstance(use_as_class, bool):
             semantics.update(
-                keep_event=True,
-                use_as_class=True,
-                class_name=state["class_name"],
+                keep_event=keep_event,
+                use_as_class=use_as_class,
             )
-        elif state["use"] == "event":
-            semantics.update(keep_event=True, use_as_class=False)
-        elif state["use"] == "ignore":
-            semantics.update(keep_event=False, use_as_class=False)
+            if keep_event and use_as_class:
+                semantics["class_name"] = state["class_name"]
         return semantics
 
     @staticmethod
@@ -451,12 +473,7 @@ class EventValueDecisionEditor(QWidget):
         use_as_class = decision.get("use_as_class")
         use = ""
         if isinstance(keep_event, bool) and isinstance(use_as_class, bool):
-            if not keep_event:
-                use = "ignore"
-            elif use_as_class:
-                use = "class"
-            else:
-                use = "event"
+            use = "class" if keep_event and use_as_class else "ignore"
         class_name = str(
             decision.get("class_name") or decision.get("suggested_name") or ""
         ).strip()

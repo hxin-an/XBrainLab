@@ -659,6 +659,11 @@ def test_blocked_review_closes_without_a_second_error_dialog(monkeypatch) -> Non
 
 def test_choice_repreview_uses_existing_scan_without_rescanning(monkeypatch) -> None:
     handler = DatasetActionHandler(MagicMock())
+    loading = MagicMock()
+    loading.cancelled_by_user = False
+    handler._data_interpretation._loading_dialog_class = lambda: (
+        lambda *_args, **_kwargs: loading
+    )
     execute = MagicMock(
         return_value=InteractionOutcome.accepted("Preview refresh scheduled.")
     )
@@ -1287,7 +1292,40 @@ def test_review_flow_uses_slow_worker_without_blocking_gui(qtbot, monkeypatch):
     qtbot.addWidget(panel)
     cast(Any, panel).study = Study()
     cast(Any, panel).set_busy = lambda _busy: None
+    loading_dialogs: list[Any] = []
+
+    class _LoadingDialog:
+        def __init__(self, _parent, *, initial_step=""):
+            self.initial_step = initial_step
+            self.visible = False
+            self.closed = False
+            self.cancelled_by_user = False
+            self.rejected = SimpleNamespace(connect=lambda _callback: None)
+            self.retry_requested = SimpleNamespace(connect=lambda _callback: None)
+            loading_dialogs.append(self)
+
+        def show(self):
+            self.visible = True
+
+        def close(self):
+            self.visible = False
+            self.closed = True
+
+        def accept(self):
+            self.visible = False
+            self.closed = True
+
+        def deleteLater(self):
+            return None
+
+        def set_stage(self, _title, _detail):
+            return None
+
+        def show_error(self, _message, *, retry_available=True):
+            return None
+
     handler = DatasetActionHandler(panel)
+    handler._data_interpretation._loading_dialog_class = lambda: _LoadingDialog
     statuses: list[str] = []
     monkeypatch.setattr(handler, "_show_status", statuses.append)
     continue_flow = MagicMock()
@@ -1336,13 +1374,131 @@ def test_review_flow_uses_slow_worker_without_blocking_gui(qtbot, monkeypatch):
     assert started.status is InteractionStatus.ACCEPTED
     assert statuses == ["Preparing import review..."]
     assert elapsed < 0.1
+    assert len(loading_dialogs) == 1
+    assert loading_dialogs[0].visible is True
     assert worker_started.wait(timeout=1.0)
     QTimer.singleShot(0, lambda: heartbeat.append(True))
     qtbot.waitUntil(lambda: bool(heartbeat), timeout=1000)
 
     worker_release.set()
     qtbot.waitUntil(lambda: continue_flow.call_count == 1, timeout=1000)
+    assert loading_dialogs[0].closed is True
     assert statuses == ["Preparing import review...", "Import review ready."]
+
+
+def test_loading_dialog_is_not_disabled_with_the_busy_dataset_panel(qtbot):
+    top_level = QWidget()
+    panel = QWidget(top_level)
+    qtbot.addWidget(top_level)
+    top_level.show()
+    handler = DatasetActionHandler(panel)
+
+    token = handler._data_interpretation._open_loading_dialog(
+        initial_step="",
+        retry=lambda: None,
+    )
+    dialog = handler._data_interpretation._active_loading_dialog
+    panel.setEnabled(False)
+
+    assert handler._data_interpretation._loading_dialog_is_active(token)
+    assert dialog.parentWidget() is top_level
+    assert dialog.isEnabled()
+    assert dialog.cancel_button.isEnabled()
+
+    handler._data_interpretation._close_loading_dialog(token)
+
+
+def test_cancelled_review_loading_does_not_reopen_wizard(qtbot, monkeypatch):
+    panel = QWidget()
+    qtbot.addWidget(panel)
+    cast(Any, panel).study = Study()
+    cast(Any, panel).set_busy = lambda _busy: None
+    handler = DatasetActionHandler(panel)
+    continue_flow = MagicMock()
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_continue_data_interpretation_import",
+        continue_flow,
+    )
+    worker_started = threading.Event()
+    worker_release = threading.Event()
+    result = _success_result(
+        "review_interpretation",
+        scan_result={"scan_id": "scan-1"},
+        preview={"summary": "ready"},
+        candidate={"candidate_id": "candidate-1"},
+        validation_decision={"candidate_id": "candidate-1", "decision": "safe"},
+    )
+
+    class _Service:
+        def execute(self, command):
+            assert isinstance(command, ReviewInterpretationCommand)
+            worker_started.set()
+            assert worker_release.wait(timeout=2.0)
+            return result
+
+        def get_view_publication(self):
+            return _review_publication(candidate_id="candidate-1")
+
+    class _Signal:
+        def __init__(self):
+            self.callback = None
+
+        def connect(self, callback):
+            self.callback = callback
+
+        def emit(self):
+            if self.callback is not None:
+                self.callback()
+
+    class _LoadingDialog:
+        def __init__(self, _parent, *, initial_step=""):
+            self.initial_step = initial_step
+            self.cancelled_by_user = False
+            self.rejected = _Signal()
+            self.retry_requested = _Signal()
+
+        def show(self):
+            return None
+
+        def close(self):
+            return None
+
+        def accept(self):
+            return None
+
+        def deleteLater(self):
+            return None
+
+        def set_stage(self, _title, _detail):
+            return None
+
+        def show_error(self, _message, *, retry_available=True):
+            return None
+
+    handler._data_interpretation._loading_dialog_class = lambda: _LoadingDialog
+    monkeypatch.setattr(
+        application_capabilities,
+        "application_ui_runtime",
+        lambda _study: _Service(),
+    )
+
+    outcome = handler._data_interpretation._start_interpretation_review_async(
+        "/tmp/sub-01_raw.fif",
+        "auto",
+        {},
+        [],
+    )
+
+    assert outcome is not None
+    assert worker_started.wait(timeout=1.0)
+    loading = handler._data_interpretation._active_loading_dialog
+    loading.cancelled_by_user = True
+    loading.rejected.emit()
+    worker_release.set()
+    qtbot.waitUntil(lambda: not worker_release.is_set() or True, timeout=100)
+    qtbot.wait(100)
+    assert continue_flow.call_count == 0
 
 
 def test_review_warning_confirmation_retries_before_opening_preview(

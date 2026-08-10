@@ -25,6 +25,40 @@ class ScanPathMatch:
         return self.status in {"exact", "unique_basename"}
 
 
+@dataclass(frozen=True, slots=True)
+class CanonicalPathIdentityScope:
+    """Canonical values retained only for one verified admission scope."""
+
+    values_by_lexical_path: dict[str, str]
+
+    @classmethod
+    def from_admitted_paths(
+        cls,
+        paths: Iterable[Any],
+    ) -> CanonicalPathIdentityScope:
+        """Retain paths already canonicalized by discovery or admission."""
+        values: dict[str, str] = {}
+        for value in paths:
+            text = str(value).strip()
+            if not text:
+                continue
+            canonical = os.path.normpath(
+                os.path.abspath(os.path.expanduser(text)),
+            )
+            values[_lexical_path_identity(canonical)] = canonical
+        return cls(values_by_lexical_path=values)
+
+    def contains(self, value: Any) -> bool:
+        return _lexical_path_identity(value) in self.values_by_lexical_path
+
+    def value(self, value: Any) -> str:
+        lexical = _lexical_path_identity(value)
+        return self.values_by_lexical_path.get(lexical) or resolved_path_value(value)
+
+    def identity(self, value: Any) -> str:
+        return os.path.normcase(self.value(value))
+
+
 def path_basename(value: str) -> str:
     """Return a basename for native or Windows recipe paths."""
     text = str(value).strip()
@@ -45,6 +79,14 @@ def normalized_path_identity(value: str) -> str:
     if windows_path.drive or "\\" in text:
         return windows_path.as_posix().casefold()
     return Path(text).expanduser().as_posix()
+
+
+def _lexical_path_identity(value: Any) -> str:
+    return os.path.normcase(
+        os.path.normpath(
+            os.path.abspath(os.path.expanduser(str(value))),
+        )
+    )
 
 
 def resolved_path_value(value: Any) -> str:

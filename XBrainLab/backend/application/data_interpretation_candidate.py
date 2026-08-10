@@ -29,6 +29,7 @@ from .data_interpretation_metadata import (
 )
 from .data_interpretation_pairing import resolve_label_file_pairing
 from .data_interpretation_path_identity import (
+    normalized_path_identity,
     resolve_scan_path,
     unresolved_scan_path_descriptions,
 )
@@ -101,6 +102,9 @@ class InterpretationResourceScope:
     label_carriers: list[str] = dc_field(default_factory=list)
     bids_events_json_files: list[str] = dc_field(default_factory=list)
     bids_channels_files: list[str] = dc_field(default_factory=list)
+    bids_events_json_by_carrier: dict[str, tuple[str, ...]] = dc_field(
+        default_factory=dict
+    )
     bids: dict[str, Any] = dc_field(default_factory=dict)
 
     @property
@@ -121,6 +125,8 @@ class InterpretationResourceScope:
 def resolve_interpretation_resource_scope(
     scan: ScanResult,
     choices: dict[str, Any] | None = None,
+    *,
+    bids_events_json_by_carrier: dict[str, tuple[str, ...]] | None = None,
 ) -> InterpretationResourceScope:
     """Resolve preview paths without reading EEG or label payloads."""
     choices = dict(choices or {})
@@ -162,18 +168,47 @@ def resolve_interpretation_resource_scope(
         scan.bids,
         bids,
     )
+    sidecars_by_carrier = _bids_events_json_catalog_for_scope(
+        active_label_carriers,
+        bids_events_json_by_carrier,
+    )
     return InterpretationResourceScope(
         selected_eeg_files=selected_files,
         materializable_eeg_files=materializable_files,
         eeg_dependency_files=eeg_dependency_files,
         eeg_dependencies_by_file=eeg_dependencies_by_file,
         label_carriers=active_label_carriers,
-        bids_events_json_files=bids_events_json_resource_paths(
-            active_label_carriers,
+        bids_events_json_files=list(
+            dict.fromkeys(
+                path for paths in sidecars_by_carrier.values() for path in paths
+            )
         ),
         bids_channels_files=_selected_bids_channels_files(bids),
+        bids_events_json_by_carrier=sidecars_by_carrier,
         bids=bids,
     )
+
+
+def _bids_events_json_catalog_for_scope(
+    label_carriers: list[str],
+    catalog: dict[str, tuple[str, ...]] | None,
+) -> dict[str, tuple[str, ...]]:
+    available = dict(catalog or {})
+    available_by_identity = {
+        normalized_path_identity(carrier): tuple(paths)
+        for carrier, paths in available.items()
+    }
+    result: dict[str, tuple[str, ...]] = {}
+    missing: list[str] = []
+    for carrier in label_carriers:
+        paths = available_by_identity.get(normalized_path_identity(carrier))
+        if paths is None:
+            missing.append(carrier)
+        else:
+            result[carrier] = paths
+    for carrier in missing:
+        result[carrier] = tuple(bids_events_json_resource_paths([carrier]))
+    return result
 
 
 def build_interpretation_candidate(

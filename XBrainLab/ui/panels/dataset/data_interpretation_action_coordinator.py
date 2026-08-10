@@ -69,6 +69,14 @@ _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE = (
 )
 
 
+def _default_loading_dialog_class() -> type[Any]:
+    from XBrainLab.ui.dialogs.dataset.data_interpretation_loading_dialog import (  # noqa: PLC0415
+        DataInterpretationLoadingDialog,
+    )
+
+    return DataInterpretationLoadingDialog
+
+
 @dataclass(frozen=True)
 class _InterpretationReviewState:
     scan: dict[str, Any]
@@ -155,17 +163,101 @@ class DataInterpretationActionCoordinator:
         *,
         preview_dialog_class: Callable[[], type[Any]],
         bids_subject_dialog_class: Callable[[], type[Any]],
+        loading_dialog_class: Callable[[], type[Any]] | None = None,
         bindings: DataInterpretationActionBindings | None = None,
     ) -> None:
         self._host = host
         self.panel = host.panel
         self._preview_dialog_class = preview_dialog_class
         self._bids_subject_dialog_class = bids_subject_dialog_class
+        self._loading_dialog_class = (
+            loading_dialog_class or _default_loading_dialog_class
+        )
+        self._active_loading_dialog: Any | None = None
+        self._active_loading_token: object | None = None
         self._bindings = bindings or default_data_interpretation_action_bindings()
         self._recipe_reload = DataInterpretationRecipeReloadCoordinator(
             self,
             preview_dialog_class=self._preview_dialog_class,
             bindings=self._bindings,
+        )
+
+    def _open_loading_dialog(
+        self,
+        *,
+        initial_step: str,
+        retry: Callable[[], Any],
+    ) -> object:
+        self._close_loading_dialog()
+        token = object()
+        dialog_class = self._loading_dialog_class()
+        dialog = dialog_class(
+            self._loading_dialog_parent(),
+            initial_step=initial_step,
+        )
+        self._active_loading_dialog = dialog
+        self._active_loading_token = token
+        dialog.rejected.connect(lambda: self._cancel_loading_dialog(token))
+        dialog.retry_requested.connect(
+            lambda: retry() if self._loading_dialog_is_active(token) else None
+        )
+        dialog.show()
+        return token
+
+    def _loading_dialog_parent(self) -> Any | None:
+        """Keep the modal surface independent from the disabled busy panel."""
+        window_getter = getattr(self.panel, "window", None)
+        if not callable(window_getter):
+            return None
+        try:
+            top_level = window_getter()
+        except RuntimeError:
+            return None
+        return top_level if top_level is not self.panel else None
+
+    def _loading_dialog_is_active(self, token: object) -> bool:
+        dialog = self._active_loading_dialog
+        return bool(
+            self._active_loading_token is token
+            and dialog is not None
+            and not bool(getattr(dialog, "cancelled_by_user", False))
+        )
+
+    def _cancel_loading_dialog(self, token: object) -> None:
+        if self._active_loading_token is not token:
+            return
+        dialog = self._active_loading_dialog
+        self._active_loading_token = None
+        self._active_loading_dialog = None
+        if dialog is not None:
+            dialog.deleteLater()
+
+    def _close_loading_dialog(self, token: object | None = None) -> None:
+        if token is not None and self._active_loading_token is not token:
+            return
+        dialog = self._active_loading_dialog
+        self._active_loading_token = None
+        self._active_loading_dialog = None
+        if dialog is None:
+            return
+        dialog.accept()
+        dialog.deleteLater()
+
+    def _show_loading_error(
+        self,
+        token: object,
+        message: str,
+        *,
+        retry_available: bool = True,
+    ) -> None:
+        if not self._loading_dialog_is_active(token):
+            return
+        dialog = self._active_loading_dialog
+        if dialog is None:
+            return
+        dialog.show_error(
+            message,
+            retry_available=retry_available,
         )
 
     @property
@@ -772,6 +864,7 @@ class DataInterpretationActionCoordinator:
         error_title: str,
         expected_publication_generation: int | None = None,
         blocked_title: str = "Interpretation Blocked",
+        on_error: Callable[[tuple], None] | None = None,
         unexpected_error_context: UnexpectedErrorContext = (
             UnexpectedErrorContext.DATA_INTERPRETATION_REVIEW
         ),
@@ -779,6 +872,9 @@ class DataInterpretationActionCoordinator:
         """Dispatch one wizard command and continue from its Qt result callback."""
 
         def _handle_error(error: tuple) -> None:
+            if on_error is not None:
+                on_error(error)
+                return
             self._bindings.present_unexpected_error(
                 self.panel,
                 unexpected_error_context,
@@ -841,7 +937,18 @@ class DataInterpretationActionCoordinator:
     ) -> InteractionOutcome | None:
         """Run scan/preview/validate off the Qt thread for real Study-backed UI."""
 
+        loading_token: object | None = None
+
+        def _retry_review() -> None:
+            _dispatch()
+
         def _handle_review_result(review_result) -> InteractionOutcome:
+            if loading_token is None or not self._loading_dialog_is_active(
+                loading_token
+            ):
+                return InteractionOutcome.cancelled(
+                    "Data interpretation review was cancelled."
+                )
             resource_outcome = self._preview_resource_preflight_outcome(
                 review_result,
                 retry=lambda token: _dispatch(
@@ -850,11 +957,20 @@ class DataInterpretationActionCoordinator:
                 ),
             )
             if resource_outcome is not None:
+                if resource_outcome.status.value == "cancelled":
+                    self._close_loading_dialog(loading_token)
+                elif resource_outcome.status.value in {"blocked", "failed"}:
+                    self._show_loading_error(
+                        loading_token,
+                        resource_outcome.message,
+                    )
                 return resource_outcome
             if self._result_failed(
                 review_result,
                 "Interpretation review failed",
+                present=False,
             ):
+                self._show_loading_error(loading_token, review_result.message)
                 return self._interaction_failure_outcome(
                     review_result,
                     review_result.message,
@@ -865,12 +981,9 @@ class DataInterpretationActionCoordinator:
                 ApplicationError,
                 ControllerCompatibilityUnavailableError,
             ) as exc:
-                self._bindings.message_box().warning(
-                    self.panel,
-                    "Import review changed",
-                    str(exc),
-                )
+                self._show_loading_error(loading_token, str(exc))
                 return InteractionOutcome.blocked(str(exc))
+            self._close_loading_dialog(loading_token)
             self._show_status("Import review ready.")
             return self._continue_data_interpretation_import(
                 source_path=source_path,
@@ -886,6 +999,15 @@ class DataInterpretationActionCoordinator:
             resource_preflight_confirmed: bool = False,
             resource_preflight_token: str | None = None,
         ) -> InteractionOutcome | None:
+            if loading_token is not None and self._loading_dialog_is_active(
+                loading_token
+            ):
+                dialog = self._active_loading_dialog
+                if dialog is not None:
+                    dialog.set_stage(
+                        "Preparing import review",
+                        "Scanning the selected EEG data and nearby label files.",
+                    )
             self._show_status("Preparing import review...")
             return self._execute_interpretation_command_async(
                 ReviewInterpretationCommand(
@@ -898,11 +1020,21 @@ class DataInterpretationActionCoordinator:
                 ),
                 on_result=_handle_review_result,
                 error_title="Interpretation failed",
+                on_error=lambda error: self._show_loading_error(
+                    loading_token,
+                    str(error[1]) if len(error) > 1 else "The import review failed.",
+                )
+                if loading_token is not None
+                else None,
                 unexpected_error_context=(
                     UnexpectedErrorContext.DATA_INTERPRETATION_REVIEW
                 ),
             )
 
+        loading_token = self._open_loading_dialog(
+            initial_step=initial_step,
+            retry=_retry_review,
+        )
         return _dispatch()
 
     def _preview_and_validate_interpretation_async(
@@ -915,6 +1047,7 @@ class DataInterpretationActionCoordinator:
             InteractionOutcome,
         ],
         error_title: str,
+        loading_token: object | None = None,
     ) -> InteractionOutcome | None:
         """Rebuild choices from the admitted scan, then validate the candidate."""
         scan = dict(review_state.scan)
@@ -924,9 +1057,12 @@ class DataInterpretationActionCoordinator:
                 "The Data Import scan identity is unavailable. Reopen the source "
                 "and try again."
             )
-            self._bindings.message_box().warning(
-                self.panel, "Import review changed", message
-            )
+            if loading_token is not None:
+                self._show_loading_error(loading_token, message)
+            else:
+                self._bindings.message_box().warning(
+                    self.panel, "Import review changed", message
+                )
             return InteractionOutcome.blocked(message)
 
         def _handle_validation(
@@ -938,7 +1074,10 @@ class DataInterpretationActionCoordinator:
             if self._result_failed(
                 validation_result,
                 "Interpretation validation failed",
+                present=loading_token is None,
             ):
+                if loading_token is not None:
+                    self._show_loading_error(loading_token, validation_result.message)
                 return self._interaction_failure_outcome(
                     validation_result,
                     validation_result.message,
@@ -958,11 +1097,14 @@ class DataInterpretationActionCoordinator:
                 ApplicationError,
                 ControllerCompatibilityUnavailableError,
             ) as exc:
-                self._bindings.message_box().warning(
-                    self.panel,
-                    "Import review changed",
-                    str(exc),
-                )
+                if loading_token is not None:
+                    self._show_loading_error(loading_token, str(exc))
+                else:
+                    self._bindings.message_box().warning(
+                        self.panel,
+                        "Import review changed",
+                        str(exc),
+                    )
                 return InteractionOutcome.blocked(str(exc))
             return on_validated(validated_state)
 
@@ -975,8 +1117,22 @@ class DataInterpretationActionCoordinator:
                 ),
             )
             if resource_outcome is not None:
+                if loading_token is not None:
+                    if resource_outcome.status.value == "cancelled":
+                        self._close_loading_dialog(loading_token)
+                    elif resource_outcome.status.value in {"blocked", "failed"}:
+                        self._show_loading_error(
+                            loading_token,
+                            resource_outcome.message,
+                        )
                 return resource_outcome
-            if self._result_failed(preview_result, error_title):
+            if self._result_failed(
+                preview_result,
+                error_title,
+                present=loading_token is None,
+            ):
+                if loading_token is not None:
+                    self._show_loading_error(loading_token, preview_result.message)
                 return self._interaction_failure_outcome(
                     preview_result,
                     preview_result.message,
@@ -995,11 +1151,14 @@ class DataInterpretationActionCoordinator:
                 ApplicationError,
                 ControllerCompatibilityUnavailableError,
             ) as exc:
-                self._bindings.message_box().warning(
-                    self.panel,
-                    "Import review changed",
-                    str(exc),
-                )
+                if loading_token is not None:
+                    self._show_loading_error(loading_token, str(exc))
+                else:
+                    self._bindings.message_box().warning(
+                        self.panel,
+                        "Import review changed",
+                        str(exc),
+                    )
                 return InteractionOutcome.blocked(str(exc))
             started = self._execute_interpretation_command_async(
                 ValidateInterpretationCommand(candidate_id=candidate_id),
@@ -1010,6 +1169,16 @@ class DataInterpretationActionCoordinator:
                 ),
                 error_title="Interpretation validation failed",
                 expected_publication_generation=(preview_state.publication_generation),
+                on_error=(
+                    lambda error: self._show_loading_error(
+                        loading_token,
+                        str(error[1])
+                        if len(error) > 1
+                        else "The import preview could not be validated.",
+                    )
+                    if loading_token is not None
+                    else None
+                ),
                 unexpected_error_context=(
                     UnexpectedErrorContext.DATA_INTERPRETATION_VALIDATION
                 ),
@@ -1039,6 +1208,16 @@ class DataInterpretationActionCoordinator:
                 on_result=_handle_preview_result,
                 error_title=error_title,
                 expected_publication_generation=(review_state.publication_generation),
+                on_error=(
+                    lambda error: self._show_loading_error(
+                        loading_token,
+                        str(error[1])
+                        if len(error) > 1
+                        else "The import preview could not be updated.",
+                    )
+                    if loading_token is not None
+                    else None
+                ),
                 unexpected_error_context=(
                     UnexpectedErrorContext.DATA_INTERPRETATION_PREVIEW
                 ),
@@ -1058,9 +1237,18 @@ class DataInterpretationActionCoordinator:
     ) -> InteractionOutcome | None:
         """Reopen edited choices without rediscovering the admitted source."""
 
+        loading_token: object | None = None
+
         def _open_validated_review(
             validated_state: _InterpretationReviewState,
         ) -> InteractionOutcome:
+            if loading_token is None or not self._loading_dialog_is_active(
+                loading_token
+            ):
+                return InteractionOutcome.cancelled(
+                    "Data interpretation preview was cancelled."
+                )
+            self._close_loading_dialog(loading_token)
             return self._continue_data_interpretation_import(
                 source_path=source_path,
                 source_hint=source_hint,
@@ -1070,12 +1258,29 @@ class DataInterpretationActionCoordinator:
                 initial_step=initial_step,
             )
 
-        return self._preview_and_validate_interpretation_async(
-            choices=choices,
-            review_state=review_state,
-            on_validated=_open_validated_review,
-            error_title="Interpretation preview failed",
+        def _dispatch_preview() -> InteractionOutcome | None:
+            if loading_token is not None and self._loading_dialog_is_active(
+                loading_token
+            ):
+                dialog = self._active_loading_dialog
+                if dialog is not None:
+                    dialog.set_stage(
+                        "Updating label matches",
+                        "Checking the selected label values and EEG events.",
+                    )
+            return self._preview_and_validate_interpretation_async(
+                choices=choices,
+                review_state=review_state,
+                on_validated=_open_validated_review,
+                error_title="Interpretation preview failed",
+                loading_token=loading_token,
+            )
+
+        loading_token = self._open_loading_dialog(
+            initial_step=initial_step,
+            retry=_dispatch_preview,
         )
+        return _dispatch_preview()
 
     def _review_interpretation_for_apply_async(
         self,
@@ -1365,9 +1570,11 @@ class DataInterpretationActionCoordinator:
             publication_generation=identity.publication_generation,
         )
 
-    def _result_failed(self, result, title: str) -> bool:
+    def _result_failed(self, result, title: str, *, present: bool = True) -> bool:
         if not result.failed:
             return False
+        if not present:
+            return True
         if self._bindings.is_stale_publication_result(result):
             self._bindings.message_box().warning(
                 self.panel,
