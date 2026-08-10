@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import replace
+from time import monotonic, sleep
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
@@ -874,7 +875,7 @@ class TestRefreshCombos:
                 request=request,
                 generation=request.publication_generation,
                 training_generation=8,
-                data=replace(_render_data(), normalized=True, fold_count=2),
+                data=replace(_render_data(), fold_count=2),
             )
 
         with patch(
@@ -888,9 +889,12 @@ class TestRefreshCombos:
                 publication_generation=publication.generation,
                 run=identity,
                 method="Gradient",
-                normalize=True,
             )
         ]
+        rendered = _current_widget(panel).update_plot.call_args.args[0]
+        assert rendered.request.normalize is True
+        assert rendered.data.normalized is True
+        assert rendered.data.fold_count == 2
 
     def test_preserves_selection_by_identity_across_publication_generation(
         self,
@@ -1318,6 +1322,127 @@ class TestOnUpdate:
         assert rendered.request == expected_request
         assert rendered.generation == publication.generation
         assert absolute is False
+
+    def test_display_transform_toggles_reuse_one_verified_render_publication(
+        self,
+        panel_and_controller,
+    ):
+        panel, _controller = panel_and_controller
+        publication = _publish_panel_state(
+            panel,
+            _visualization_result(
+                _run_coverage(
+                    plan_index=0,
+                    run_index=0,
+                    model_name="EEGNet",
+                ),
+            ),
+        )
+        source_values = np.array([[[-2.0, 1.0, 0.0]]], dtype=np.float32)
+        source_data = SaliencyRenderData(
+            method="Gradient",
+            saliency_by_class={0: source_values},
+            class_map=((0, "left"),),
+            event_ids={"left": 0},
+            channel_names=("C3",),
+            channel_positions=((-0.04, 0.0, 0.08),),
+            sfreq=128.0,
+            tmin=0.0,
+        )
+        backend_requests: list[SaliencyRenderRequest] = []
+
+        def get_render(_panel, request, **_kwargs):
+            sleep(0.05)
+            backend_requests.append(request)
+            return SaliencyRenderPublication(
+                request=request,
+                generation=request.publication_generation,
+                training_generation=8,
+                data=source_data,
+            )
+
+        current_widget = _current_widget(panel)
+        current_widget.update_plot.reset_mock()
+        with patch(
+            "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
+            side_effect=get_render,
+        ):
+            panel.on_update()
+
+            started = monotonic()
+            for checkbox, checked in (
+                (panel.abs_check, True),
+                (panel.normalize_check, True),
+                (panel.abs_check, False),
+                (panel.normalize_check, False),
+            ):
+                checkbox.blockSignals(True)
+                checkbox.setChecked(checked)
+                checkbox.blockSignals(False)
+                panel.on_update()
+            cached_elapsed = monotonic() - started
+
+        assert backend_requests == [
+            SaliencyRenderRequest(
+                publication_generation=publication.generation,
+                run=panel.run_combo.currentData(),
+                method="Gradient",
+            )
+        ]
+        assert cached_elapsed < 0.15
+        normalized_publication = current_widget.update_plot.call_args_list[2].args[0]
+        assert normalized_publication.request.normalize is True
+        assert normalized_publication.data.normalized is True
+        np.testing.assert_allclose(
+            normalized_publication.data.saliency_by_class[0],
+            [[[-1.0, 0.5, 0.0]]],
+        )
+        np.testing.assert_array_equal(source_values, [[[-2.0, 1.0, 0.0]]])
+
+    def test_render_publication_cache_is_invalidated_by_application_generation(
+        self,
+        panel_and_controller,
+    ):
+        panel, _controller = panel_and_controller
+        publication = _publish_panel_state(
+            panel,
+            _visualization_result(
+                _run_coverage(
+                    plan_index=0,
+                    run_index=0,
+                    model_name="EEGNet",
+                ),
+            ),
+        )
+        backend_requests: list[SaliencyRenderRequest] = []
+
+        def get_render(_panel, request, **_kwargs):
+            backend_requests.append(request)
+            return SaliencyRenderPublication(
+                request=request,
+                generation=request.publication_generation,
+                training_generation=8,
+                data=_render_data(),
+            )
+
+        with patch(
+            "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
+            side_effect=get_render,
+        ):
+            panel.on_update()
+            panel.on_update()
+            next_publication = replace(
+                publication,
+                generation=publication.generation + 1,
+                revision=publication.revision + 1,
+            )
+            assert panel._accept_application_publication(next_publication) is True
+            panel.on_update()
+
+        assert [request.publication_generation for request in backend_requests] == [
+            publication.generation,
+            publication.generation + 1,
+        ]
 
     def test_stale_render_publication_is_rejected(
         self,

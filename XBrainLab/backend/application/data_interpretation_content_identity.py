@@ -54,11 +54,11 @@ def build_review_content_identity(
     event_roles: Mapping[str, Any] | None = None,
     run_event_mappings: Mapping[str, Mapping[str, Any]] | None = None,
     resource_reader: AdmittedResourceReader | None = None,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
 ) -> dict[str, Any]:
     """Bind every reviewed parser input and the choices interpreting those bytes."""
-    path_identity_scope = (
-        resource_reader.path_identity_scope if resource_reader is not None else None
-    )
+    if resource_reader is not None:
+        path_identity_scope = resource_reader.path_identity_scope
     bindings = _normalized_bindings(
         label_carrier_plan,
         path_identity_scope=path_identity_scope,
@@ -116,6 +116,7 @@ def build_review_content_identity(
     files = _content_file_identities(
         identity_requests,
         resource_reader=resource_reader,
+        path_identity_scope=path_identity_scope,
     )
     interpretation_contract = {
         "selected_eeg_files": selected_paths,
@@ -169,12 +170,37 @@ def assert_review_content_unchanged(
 ) -> dict[str, Any]:
     """Rebuild one reviewed identity and fail closed when it no longer matches."""
     expected_identity = dict(expected or {})
-    expected_files = _identity_files(expected_identity)
-    bindings = _normalized_bindings(label_carrier_plan)
+    raw_expected_files = expected_identity.get("files")
+    admitted_paths = (
+        [
+            str(row.get("path") or "").strip()
+            for row in raw_expected_files
+            if isinstance(row, Mapping) and str(row.get("path") or "").strip()
+        ]
+        if isinstance(raw_expected_files, list)
+        else []
+    )
+    path_identity_scope = CanonicalPathIdentityScope.from_admitted_paths(
+        admitted_paths,
+    )
+    expected_files = _identity_files(
+        expected_identity,
+        path_identity_scope=path_identity_scope,
+    )
+    bindings = _normalized_bindings(
+        label_carrier_plan,
+        path_identity_scope=path_identity_scope,
+    )
     selected_paths = (
-        _normalized_paths(selected_eeg_files)
+        _normalized_paths(
+            selected_eeg_files,
+            path_identity_scope=path_identity_scope,
+        )
         if selected_eeg_files is not None
-        else _identity_selected_eeg_files(expected_identity)
+        else _identity_selected_eeg_files(
+            expected_identity,
+            path_identity_scope=path_identity_scope,
+        )
     )
     if not expected_identity:
         if bindings or selected_paths:
@@ -203,7 +229,10 @@ def assert_review_content_unchanged(
         )
 
     selected_eeg_files = selected_paths
-    parser_dependencies = _identity_parser_dependencies(expected_identity)
+    parser_dependencies = _identity_parser_dependencies(
+        expected_identity,
+        path_identity_scope=path_identity_scope,
+    )
 
     sidecar_paths = [
         row["path"] for row in expected_files if row.get("role") == "bids_events_json"
@@ -222,6 +251,7 @@ def assert_review_content_unchanged(
             event_roles=event_roles,
             run_event_mappings=run_event_mappings,
             resource_reader=resource_reader,
+            path_identity_scope=path_identity_scope,
         )
     except PreconditionError as exc:
         changed_path = str(exc.diagnostics.get("path") or "").strip()
@@ -260,16 +290,19 @@ def _content_file_identity(
     role: str,
     resource_reader: AdmittedResourceReader | None,
     admitted_identity: Mapping[str, Any] | None = None,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
 ) -> dict[str, Any]:
     path_identity = (
         resource_reader.canonical_key(path)
         if resource_reader is not None and resource_reader.admits(path)
-        else _path_key(path)
+        else _path_key(path, path_identity_scope=path_identity_scope)
     )
     path_value = _path_value(
         path,
         path_identity_scope=(
-            resource_reader.path_identity_scope if resource_reader is not None else None
+            resource_reader.path_identity_scope
+            if resource_reader is not None
+            else path_identity_scope
         ),
     )
     if admitted_identity is not None:
@@ -314,6 +347,7 @@ def _content_file_identities(
     requests: list[tuple[Path, str, Mapping[str, Any] | None]],
     *,
     resource_reader: AdmittedResourceReader | None,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
 ) -> list[dict[str, Any]]:
     """Fingerprint independent admitted files with bounded parallel I/O."""
 
@@ -326,6 +360,7 @@ def _content_file_identities(
             role=role,
             resource_reader=resource_reader,
             admitted_identity=admitted_identity,
+            path_identity_scope=path_identity_scope,
         )
 
     worker_count = min(CONTENT_IDENTITY_HASH_WORKERS, len(requests))
@@ -510,21 +545,33 @@ def _normalized_parser_dependencies(
     return sorted(result, key=lambda item: item["path"])
 
 
-def _identity_selected_eeg_files(identity: Mapping[str, Any]) -> list[str]:
+def _identity_selected_eeg_files(
+    identity: Mapping[str, Any],
+    *,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
+) -> list[str]:
     rows = identity.get("selected_eeg_files")
     if isinstance(rows, list):
-        selected = _normalized_paths(str(item) for item in rows)
+        selected = _normalized_paths(
+            (str(item) for item in rows),
+            path_identity_scope=path_identity_scope,
+        )
         if selected:
             return selected
     return [
         row["path"]
-        for row in _identity_files(identity)
+        for row in _identity_files(
+            identity,
+            path_identity_scope=path_identity_scope,
+        )
         if row.get("role") == "selected_eeg"
     ]
 
 
 def _identity_parser_dependencies(
     identity: Mapping[str, Any],
+    *,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
 ) -> dict[str, list[str]]:
     rows = identity.get("parser_dependencies")
     if not isinstance(rows, list):
@@ -537,35 +584,60 @@ def _identity_parser_dependencies(
         raw_dependencies = row.get("dependencies")
         if not owner or not isinstance(raw_dependencies, list):
             continue
-        normalized = _normalized_paths(str(item) for item in raw_dependencies)
+        normalized = _normalized_paths(
+            (str(item) for item in raw_dependencies),
+            path_identity_scope=path_identity_scope,
+        )
         if normalized:
-            result[_path_value(owner)] = normalized
+            result[_path_value(owner, path_identity_scope=path_identity_scope)] = (
+                normalized
+            )
     return result
 
 
-def _identity_files(identity: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+def _identity_files(
+    identity: Mapping[str, Any] | None,
+    *,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
+) -> list[dict[str, Any]]:
     if not isinstance(identity, Mapping):
         return []
     rows = identity.get("files")
     if not isinstance(rows, list):
         return []
-    result: list[dict[str, Any]] = []
+    result: list[tuple[str, dict[str, Any]]] = []
+    seen: set[str] = set()
     for row in rows:
         if not isinstance(row, Mapping):
             continue
         path = str(row.get("path") or "").strip()
         if not path:
             continue
+        path_value = _path_value(
+            path,
+            path_identity_scope=path_identity_scope,
+        )
+        path_identity = _path_key(
+            path_value,
+            path_identity_scope=path_identity_scope,
+        )
+        if path_identity in seen:
+            continue
+        seen.add(path_identity)
         normalized = {
-            "path": _path_value(path),
+            "path": path_value,
             "role": str(row.get("role") or "label_carrier"),
             "file_bytes": row.get("file_bytes"),
             "sha256": str(row.get("sha256") or ""),
         }
-        path_identity = _path_key(path)
-        if all(_path_key(item["path"]) != path_identity for item in result):
-            result.append(normalized)
-    return sorted(result, key=lambda item: (_path_key(item["path"]), item["path"]))
+        result.append((path_identity, normalized))
+    return [
+        row
+        for _identity, row in sorted(
+            result,
+            key=lambda item: (item[0], item[1]["path"]),
+        )
+    ]
 
 
 def _changed_paths(

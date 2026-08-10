@@ -265,8 +265,8 @@ class DatasetActionHandler:
         """QMainWindow: The application main window reference."""
         return getattr(self.panel, "main_window", None)
 
-    def _show_status(self, message: str) -> None:
-        show_status_message(self.panel, message)
+    def _show_status(self, message: str, timeout_ms: int = 7000) -> None:
+        show_status_message(self.panel, message, timeout_ms)
 
     def _compatibility_controller_value(
         self,

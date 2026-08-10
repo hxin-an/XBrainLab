@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
+from typing import cast
 
 import numpy as np
 import pytest
@@ -8,12 +10,17 @@ import pytest
 from XBrainLab.backend.application.saliency_render import (
     SaliencyCrossFoldIdentity,
     SaliencyPlanIdentity,
+    SaliencyRenderData,
+    SaliencyRenderPublication,
     SaliencyRenderPublisher,
     SaliencyRenderRequest,
     SaliencyRunIdentity,
     _normalize_saliency_store,
     build_saliency_cross_fold_choices,
+    normalized_saliency_render_publication,
 )
+from XBrainLab.backend.application.training_runtime import TrainingRuntimePort
+from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.training_state_contract import TrainingReadBoundary
 
 
@@ -50,6 +57,7 @@ class _Record:
         self.smoothgrad_sq = {}
         self.vargrad = {}
         self._expected_producer: object | None = None
+        self.validation_calls = 0
 
     def validate_saliency_context(
         self,
@@ -57,6 +65,7 @@ class _Record:
         *,
         producer_identity: object,
     ) -> object:
+        self.validation_calls += 1
         assert producer_identity == self._expected_producer
         return SimpleNamespace(
             class_map=((769, "Left"), (770, "Right")),
@@ -194,14 +203,20 @@ def test_cross_fold_render_pools_out_of_fold_epochs_and_normalizes_shared() -> N
     holders = _fold_holders()
     choice = build_saliency_cross_fold_choices(holders)[0]
     boundary = TrainingReadBoundary.no_trainer()
-    publication = SimpleNamespace(
-        generation=4,
-        usable=True,
-        training_boundary=boundary,
+    publication = cast(
+        ApplicationViewPublication,
+        SimpleNamespace(
+            generation=4,
+            usable=True,
+            training_boundary=boundary,
+        ),
     )
-    runtime = SimpleNamespace(
-        has_trainer=lambda: True,
-        training_plan_holders=lambda: holders,
+    runtime = cast(
+        TrainingRuntimePort,
+        SimpleNamespace(
+            has_trainer=lambda: True,
+            training_plan_holders=lambda: holders,
+        ),
     )
     publisher = SaliencyRenderPublisher(
         training_runtime=runtime,
@@ -244,6 +259,97 @@ def test_cross_fold_render_pools_out_of_fold_epochs_and_normalizes_shared() -> N
     assert float(holders[1]._run.record.gradient[1].max()) == 20.0
 
 
+def test_cross_fold_render_validates_each_selected_fold_once() -> None:
+    holders = _fold_holders()
+    choice = build_saliency_cross_fold_choices(holders)[0]
+    for holder in holders:
+        holder._run.record.validation_calls = 0
+    boundary = TrainingReadBoundary.no_trainer()
+    publication = cast(
+        ApplicationViewPublication,
+        SimpleNamespace(
+            generation=4,
+            usable=True,
+            training_boundary=boundary,
+        ),
+    )
+    publisher = SaliencyRenderPublisher(
+        training_runtime=cast(
+            TrainingRuntimePort,
+            SimpleNamespace(
+                has_trainer=lambda: True,
+                training_plan_holders=lambda: holders,
+            ),
+        ),
+        get_publication=lambda: publication,
+        capture_training_boundary=lambda: boundary,
+    )
+
+    publisher.publish(
+        SaliencyRenderRequest(
+            publication_generation=4,
+            run=choice.identity,
+            method="Gradient",
+        )
+    )
+
+    assert [holder._run.record.validation_calls for holder in holders] == [1, 1]
+
+
+def test_cross_fold_render_does_not_recopy_owned_pooled_arrays(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    holders = _fold_holders()
+    choice = build_saliency_cross_fold_choices(holders)[0]
+    boundary = TrainingReadBoundary.no_trainer()
+    publication = cast(
+        ApplicationViewPublication,
+        SimpleNamespace(
+            generation=4,
+            usable=True,
+            training_boundary=boundary,
+        ),
+    )
+    publisher = SaliencyRenderPublisher(
+        training_runtime=cast(
+            TrainingRuntimePort,
+            SimpleNamespace(
+                has_trainer=lambda: True,
+                training_plan_holders=lambda: holders,
+            ),
+        ),
+        get_publication=lambda: publication,
+        capture_training_boundary=lambda: boundary,
+    )
+    copy_calls = 0
+
+    def _count_copy(value: object) -> np.ndarray:
+        nonlocal copy_calls
+        copy_calls += 1
+        copied = np.array(value, copy=True)
+        copied.setflags(write=False)
+        return copied
+
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.saliency_render._copy_array_readonly",
+        _count_copy,
+    )
+
+    render = publisher.publish(
+        SaliencyRenderRequest(
+            publication_generation=4,
+            run=choice.identity,
+            method="Gradient",
+        )
+    )
+
+    assert copy_calls == 0
+    assert all(
+        values.flags.owndata and not values.flags.writeable
+        for values in render.data.saliency_by_class.values()
+    )
+
+
 def test_cross_fold_request_identity_requires_canonical_distinct_folds() -> None:
     identity = SaliencyCrossFoldIdentity(
         members=(
@@ -262,10 +368,60 @@ def test_cross_fold_request_identity_requires_canonical_distinct_folds() -> None
 
 
 def test_normalize_saliency_store_keeps_all_zero_values_finite() -> None:
-    source = {0: np.zeros((2, 3, 4), dtype=np.float32)}
+    source: dict[object, np.ndarray] = {0: np.zeros((2, 3, 4), dtype=np.float32)}
 
     normalized = _normalize_saliency_store(source)
 
     assert normalized[0] is not source[0]
     assert np.isfinite(normalized[0]).all()
     np.testing.assert_array_equal(normalized[0], source[0])
+
+
+def test_normalized_render_publication_preserves_source_and_global_scale() -> None:
+    request = SaliencyRenderRequest(
+        publication_generation=4,
+        run=SaliencyRunIdentity(SaliencyPlanIdentity(0), 0),
+        method="Gradient",
+    )
+    source = SaliencyRenderPublication(
+        request=request,
+        generation=4,
+        training_generation=9,
+        data=SaliencyRenderData(
+            method="Gradient",
+            saliency_by_class={
+                0: np.array([[[-2.0, 1.0]]], dtype=np.float32),
+                1: np.array([[[4.0, -1.0]]], dtype=np.float32),
+            },
+            class_map=((769, "Left"), (770, "Right")),
+            event_ids={"Left": 769, "Right": 770},
+            channel_names=("C3",),
+            channel_positions=((-0.04, 0.0, 0.08),),
+            sfreq=128.0,
+            tmin=-0.2,
+            source_split="test",
+            aggregation="per-epoch",
+            fold_count=1,
+        ),
+    )
+
+    normalized = normalized_saliency_render_publication(source)
+
+    assert normalized.request == replace(request, normalize=True)
+    assert normalized.generation == source.generation
+    assert normalized.training_generation == source.training_generation
+    assert normalized.data.normalized is True
+    assert normalized.data.source_split == source.data.source_split
+    assert normalized.data.aggregation == source.data.aggregation
+    np.testing.assert_allclose(
+        normalized.data.saliency_by_class[0],
+        [[[-0.5, 0.25]]],
+    )
+    np.testing.assert_allclose(
+        normalized.data.saliency_by_class[1],
+        [[[1.0, -0.25]]],
+    )
+    np.testing.assert_array_equal(
+        source.data.saliency_by_class[0],
+        [[[-2.0, 1.0]]],
+    )

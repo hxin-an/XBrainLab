@@ -582,8 +582,8 @@ def _exercise_product_saliency_tabs(
             previous_plotter_ref = (
                 weakref.ref(previous_plotter) if previous_plotter is not None else None
             )
-            publications_before_3d = runtime.render_publications_served
             _activate_saliency_tab(panel, 3)
+            three_d_tab_updates += 1
             if interactive_3d_probe["status"] == "PASS":
                 _pump_until(
                     app,
@@ -627,9 +627,6 @@ def _exercise_product_saliency_tabs(
                 three_d_block_reason = _visible_3d_message(panel.tab_3d) or str(
                     interactive_3d_probe["reason"]
                 )
-            three_d_tab_updates += (
-                runtime.render_publications_served - publications_before_3d
-            )
         else:
             three_d_block_reason = native_block_reason
         product_memory_samples.append(_sample_process_memory(app=app, process=process))
@@ -638,6 +635,7 @@ def _exercise_product_saliency_tabs(
         "product_saliency_cycles": cycles,
         "native_render_scope": native_render_scope,
         "product_2d_view_names": [name for name, _index, _view in view_specs],
+        "product_saliency_publications_primed": publications_before_cycles,
         "product_saliency_publications_served": (
             runtime.render_publications_served - publications_before_cycles
         ),
@@ -1297,14 +1295,15 @@ def _stress_contract_failures(
         failures.append("product_2d_view_names")
     expected_2d_renders = product_cycles * len(expected_view_names)
     expected_3d_updates = 0 if safe_headless_macos else product_cycles
-    expected_publications = expected_2d_renders + expected_3d_updates
     if result.get("product_saliency_cycles") != product_cycles:
         failures.append("product_saliency_cycles")
     if result.get("product_saliency_warmup_cycles", 0) != warmup_cycles:
         failures.append("product_saliency_warmup_cycles")
     if result.get("product_saliency_measurement_cycles", cycles) != cycles:
         failures.append("product_saliency_measurement_cycles")
-    if result.get("product_saliency_publications_served") != expected_publications:
+    if result.get("product_saliency_publications_primed") != 1:
+        failures.append("product_saliency_publications_primed")
+    if result.get("product_saliency_publications_served") != 0:
         failures.append("product_saliency_publications_served")
     if result.get("product_2d_renders_installed") != expected_2d_renders:
         failures.append("product_2d_renders_installed")

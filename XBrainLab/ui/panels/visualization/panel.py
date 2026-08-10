@@ -1,6 +1,6 @@
 """Visualization panel: saliency maps, topomaps, spectrograms, and 3-D views."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, cast
 
 from PyQt6.QtCore import QEvent, QThread
@@ -41,6 +41,9 @@ from XBrainLab.backend.application.saliency_policy import (
     recommended_saliency_params_for_method,
     saliency_command_params_from_configured,
     selected_saliency_methods_from_params,
+)
+from XBrainLab.backend.application.saliency_render import (
+    normalized_saliency_render_publication,
 )
 from XBrainLab.backend.application.state import (
     EpochStateSnapshot,
@@ -252,6 +255,8 @@ class VisualizationPanel(BasePanel):
         self.last_saliency_query: CommandResult | None = None
         self._last_active_saliency_view: QWidget | None = None
         self._application_view_publication: ApplicationViewPublication | None = None
+        self._saliency_render_cache_request: SaliencyRenderRequest | None = None
+        self._saliency_render_cache: dict[bool, SaliencyRenderPublication] = {}
         self._last_application_revision = 0
         self._last_visualization_publication_signature: (
             _VisualizationPublicationSignature | None
@@ -1092,11 +1097,7 @@ class VisualizationPanel(BasePanel):
             normalize=normalize,
         )
         try:
-            render_publication = get_saliency_render_publication(
-                self,
-                request,
-                runtime=cast("ApplicationUiRuntime", self._query_port),
-            )
+            render_publication = self._saliency_render_publication(request)
         except PreconditionError as exc:
             logger.warning(
                 "Saliency render publication became unavailable: %s",
@@ -1136,6 +1137,7 @@ class VisualizationPanel(BasePanel):
             typed_render_publication.request != request
             or typed_render_publication.generation != publication.generation
             or typed_render_publication.data.method != method_name
+            or typed_render_publication.data.normalized != normalize
         ):
             self._application_summary_dirty = True
             self._clear_application_view_publication(
@@ -1148,6 +1150,58 @@ class VisualizationPanel(BasePanel):
             return
         if current_widget and hasattr(current_widget, "update_plot"):
             current_widget.update_plot(typed_render_publication, absolute)
+
+    def _saliency_render_publication(
+        self,
+        request: SaliencyRenderRequest,
+    ) -> SaliencyRenderPublication | None:
+        """Publish one raw DTO per selection and derive display-only variants."""
+        raw_request = replace(request, normalize=False)
+        if self._saliency_render_cache_request != raw_request:
+            self._clear_saliency_render_cache()
+            self._saliency_render_cache_request = raw_request
+
+        raw_publication = self._saliency_render_cache.get(False)
+        if raw_publication is None:
+            candidate = get_saliency_render_publication(
+                self,
+                raw_request,
+                runtime=cast("ApplicationUiRuntime", self._query_port),
+            )
+            if not self._render_publication_matches_request(candidate, raw_request):
+                return candidate
+            raw_publication = cast(SaliencyRenderPublication, candidate)
+            self._saliency_render_cache[False] = raw_publication
+
+        if not request.normalize:
+            return raw_publication
+        normalized_publication = self._saliency_render_cache.get(True)
+        if normalized_publication is None:
+            normalized_publication = normalized_saliency_render_publication(
+                raw_publication
+            )
+            self._saliency_render_cache[True] = normalized_publication
+        return normalized_publication
+
+    @staticmethod
+    def _render_publication_matches_request(
+        publication: object,
+        request: SaliencyRenderRequest,
+    ) -> bool:
+        if not isinstance(publication, SaliencyRenderPublication):
+            return False
+        typed_publication = cast(SaliencyRenderPublication, publication)
+        return (
+            typed_publication.request == request
+            and typed_publication.generation == request.publication_generation
+            and typed_publication.data.method == request.method
+            and typed_publication.data.normalized == request.normalize
+        )
+
+    def _clear_saliency_render_cache(self) -> None:
+        """Release at most two display variants for the previous selection."""
+        self._saliency_render_cache_request = None
+        self._saliency_render_cache.clear()
 
     @staticmethod
     def _publish_saliency_view_state(
@@ -1476,6 +1530,7 @@ class VisualizationPanel(BasePanel):
 
     def cleanup(self) -> None:
         """Cancel queued renders and release the publication subscription."""
+        self._clear_saliency_render_cache()
         self._application_render_ledger.cleanup()
         super().cleanup()
 
@@ -2270,6 +2325,7 @@ class VisualizationPanel(BasePanel):
         )
 
     def _invalidate_view_render_publications(self) -> None:
+        self._clear_saliency_render_cache()
         for attribute in ("tab_map", "tab_spectro", "tab_topo", "tab_3d"):
             view = getattr(self, attribute, None)
             invalidate = getattr(view, "invalidate_render_publication", None)

@@ -7,7 +7,7 @@ import time
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 from PyQt6 import sip
 from PyQt6.QtCore import QTimer
@@ -729,12 +729,17 @@ def test_apply_uses_the_generation_reviewed_by_the_user(qtbot, monkeypatch):
 def test_apply_shows_loading_status_before_dataset_payload_is_loaded(monkeypatch):
     panel = MagicMock()
     handler = DatasetActionHandler(panel)
-    statuses: list[str] = []
-    monkeypatch.setattr(handler, "_show_status", statuses.append)
+    statuses: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        handler,
+        "_show_status",
+        lambda message, timeout_ms=7000: statuses.append((message, timeout_ms)),
+    )
+    execute = MagicMock(return_value=InteractionOutcome.accepted("scheduled"))
     monkeypatch.setattr(
         handler._data_interpretation,
         "_execute_interpretation_command_async",
-        MagicMock(return_value=InteractionOutcome.accepted("scheduled")),
+        execute,
     )
 
     outcome = handler._data_interpretation._apply_interpretation_async(
@@ -743,7 +748,53 @@ def test_apply_shows_loading_status_before_dataset_payload_is_loaded(monkeypatch
     )
 
     assert outcome.status is InteractionStatus.ACCEPTED
-    assert statuses == ["Loading EEG data..."]
+    assert statuses == [("Importing EEG data and labels...", 900_000)]
+
+    on_result = execute.call_args.kwargs["on_result"]
+    completed = _success_result(
+        "apply_interpretation",
+        applied_interpretation={},
+        success_count=6,
+    )
+    on_result(completed)
+
+    assert statuses[-1] == (completed.message, 7000)
+
+
+def test_apply_replaces_loading_status_when_the_worker_fails(monkeypatch):
+    panel = MagicMock()
+    handler = DatasetActionHandler(panel)
+    statuses: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        handler,
+        "_show_status",
+        lambda message, timeout_ms=7000: statuses.append((message, timeout_ms)),
+    )
+    execute = MagicMock(return_value=InteractionOutcome.accepted("scheduled"))
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_execute_interpretation_command_async",
+        execute,
+    )
+    present_error = MagicMock()
+    handler._data_interpretation._bindings = replace(
+        handler._data_interpretation._bindings,
+        present_unexpected_error=present_error,
+    )
+
+    outcome = handler._data_interpretation._apply_interpretation_async(
+        _review_state(),
+        {"confirmed": True, "save_recipe": False},
+    )
+    error = (RuntimeError, RuntimeError("worker failed"), None)
+    execute.call_args.kwargs["on_error"](error)
+
+    assert outcome.status is InteractionStatus.ACCEPTED
+    assert statuses == [
+        ("Importing EEG data and labels...", 900_000),
+        ("Dataset import failed · Review the import settings", 7000),
+    ]
+    assert present_error.call_args.kwargs["error_info"] == error
 
 
 def test_smart_parse_binds_the_generation_reviewed_before_the_dialog(
@@ -2003,8 +2054,9 @@ def test_apply_warning_confirmation_resubmits_trusted_receipt_async(
     qtbot.waitUntil(lambda: len(commands) == 2, timeout=2000)
     qtbot.wait(50)
     assert status.call_args_list == [
-        (("Loading EEG data...",),),
-        (("Loading EEG data...",),),
+        call("Importing EEG data and labels...", 900_000),
+        call("Importing EEG data and labels...", 900_000),
+        call("ok"),
     ]
     assert commands[0].resource_preflight_confirmed is False
     assert commands[0].resource_preflight_token is None
@@ -2066,8 +2118,9 @@ def test_apply_warning_handoff_ack_completes_without_result_refresh(
     assert outcome.status is InteractionStatus.ACCEPTED
     qtbot.waitUntil(lambda: len(terminal) == 1, timeout=2000)
     assert status.call_args_list == [
-        (("Loading EEG data...",),),
-        (("Loading EEG data...",),),
+        call("Importing EEG data and labels...", 900_000),
+        call("Importing EEG data and labels...", 900_000),
+        call("ok"),
     ]
 
     assert len(commands) == 2

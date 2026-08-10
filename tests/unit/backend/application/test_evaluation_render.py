@@ -16,6 +16,7 @@ from XBrainLab.backend.application.evaluation_render import (
     EvaluationRunIdentity,
     EvaluationSummaryIdentity,
     build_evaluation_cross_fold_choices,
+    build_evaluation_model_summary,
 )
 from XBrainLab.backend.training_state_contract import (
     TrainingReadBoundary,
@@ -31,12 +32,16 @@ def _boundary(generation: int = 7) -> TrainingReadBoundary:
 
 
 class _EpochData:
-    def __init__(self) -> None:
+    def __init__(self, shape: tuple[int, int, int] = (2, 2, 4)) -> None:
         self.label_map = {0: "Left", 1: "Right"}
+        self.data = np.zeros(shape, dtype=np.float32)
 
     @staticmethod
     def get_model_args() -> dict[str, int]:
         return {}
+
+    def get_data(self) -> np.ndarray:
+        return self.data
 
 
 class _Dataset:
@@ -102,18 +107,21 @@ class _Run:
         outputs: np.ndarray,
         *,
         dataset: _Dataset | None = None,
+        model: Any | None = None,
+        repeat: int = 0,
     ) -> None:
         self.dataset = dataset or _Dataset()
         self.eval_record = _EvalRecord(labels, outputs)
         self.evaluation_records = {"test": self.eval_record}
+        self.model = model
+        self.repeat = repeat
 
     @staticmethod
     def is_finished() -> bool:
         return True
 
-    @staticmethod
-    def get_name() -> str:
-        return "Repeat-0"
+    def get_name(self) -> str:
+        return f"Repeat-{self.repeat}"
 
 
 class _Plan:
@@ -125,6 +133,7 @@ class _Plan:
     ) -> None:
         self.dataset = dataset or (runs[0].dataset if runs else _Dataset())
         self._runs = runs
+        self.option = SimpleNamespace(bs=32, get_device=lambda: "cpu")
 
     @staticmethod
     def get_name() -> str:
@@ -641,3 +650,77 @@ def test_summary_identity_rejects_a_run_from_another_plan() -> None:
             plan=first,
             run=EvaluationRunIdentity(plan=second, run_index=0),
         )
+
+
+def test_model_summary_maps_selected_fold_and_run_to_its_trained_model() -> None:
+    from XBrainLab.backend.model_base.model_catalog import get_model_spec
+
+    dataset = _Dataset(epoch_data=_EpochData(shape=(4, 4, 168)))
+    selected_model = get_model_spec("braindecode.eegnet").factory(
+        n_classes=2,
+        channels=4,
+        samples=168,
+        sfreq=128,
+    )
+    plans = [
+        _Plan(
+            [
+                _Run(
+                    np.array([0]),
+                    np.array([[1.0, 0.0]]),
+                    model=object(),
+                )
+            ]
+        ),
+        _Plan(
+            [
+                _Run(
+                    np.array([0]),
+                    np.array([[1.0, 0.0]]),
+                    dataset=dataset,
+                    model=object(),
+                ),
+                _Run(
+                    np.array([1]),
+                    np.array([[0.0, 1.0]]),
+                    dataset=dataset,
+                    model=selected_model,
+                    repeat=1,
+                ),
+            ],
+            dataset=dataset,
+        ),
+    ]
+    plan_identity = EvaluationPlanIdentity(plan_index=1)
+
+    summary = build_evaluation_model_summary(
+        _Runtime(plans),
+        EvaluationSummaryIdentity(
+            plan=plan_identity,
+            run=EvaluationRunIdentity(plan=plan_identity, run_index=1),
+        ),
+    )
+
+    assert "=== Run: Repeat-1 ===" in summary
+    assert "EEGNet" in summary
+    assert "Total params" in summary
+
+
+def test_model_summary_is_unavailable_when_selected_run_model_is_missing() -> None:
+    run = _Run(
+        np.array([0]),
+        np.array([[1.0, 0.0]]),
+        model=None,
+    )
+    plan = _Plan([run])
+    plan_identity = EvaluationPlanIdentity(plan_index=0)
+
+    summary = build_evaluation_model_summary(
+        _Runtime([plan]),
+        EvaluationSummaryIdentity(
+            plan=plan_identity,
+            run=EvaluationRunIdentity(plan=plan_identity, run_index=0),
+        ),
+    )
+
+    assert summary == ""

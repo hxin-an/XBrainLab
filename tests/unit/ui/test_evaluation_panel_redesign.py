@@ -1209,6 +1209,7 @@ def test_evaluation_panel_requests_identity_bound_model_summary(qtbot, monkeypat
     def fake_execute(_panel, command, **_kwargs):
         calls.append(command)
         return _serialized_evaluation_result(
+            second_run_finished=True,
             model_summary=(
                 command.summary_identity,
                 "Service run 1 summary",
@@ -1252,6 +1253,20 @@ def test_evaluation_panel_requests_identity_bound_model_summary(qtbot, monkeypat
         )
     )
     assert panel.summary_text.toPlainText() == "Service run 1 summary"
+
+    panel.model_combo.setCurrentIndex(1)
+    panel.run_combo.setCurrentIndex(1)
+
+    selected_run = EvaluationRunIdentity(
+        plan=EvaluationPlanIdentity(plan_index=1),
+        run_index=1,
+    )
+    assert calls[-1] == EvaluateCommand(
+        summary_identity=EvaluationSummaryIdentity(
+            plan=selected_run.plan,
+            run=selected_run,
+        )
+    )
 
 
 def test_evaluation_panel_shows_placeholder_when_service_summary_missing(

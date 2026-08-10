@@ -17034,3 +17034,75 @@
 - claim boundary:
   - This is a local integration checkpoint. It does not claim full BIDS support, arbitrary external
     label schemas, Windows native acceptance, exact-head CI success, or product release readiness.
+
+### 2026-08-10 Evaluation Model Summary runtime repair
+
+- completed:
+  - Traced the product route from the Evaluation plan/run combo identities through
+    `AnalysisService` to the selected `TrainRecord.model`. Fold and run indexes remain canonical,
+    zero-based backend identities; the UI stores those identities directly rather than deriving them
+    from labels.
+  - Reproduced the failure with a real Braindecode EEGNet: the old synthetic
+    `(batch, 1, channels, samples)` summary input failed while the actual training contract
+    `(batch, channels, samples)` succeeded. Model Summary now reads the selected run dataset's epoch
+    shape without copying the training split and uses a one-sample evaluation-mode input.
+  - A run-level request now returns the explicit unavailable state when the run is incomplete or its
+    trained model object is absent. Detailed introspection failures retain a bounded basic model
+    summary instead of being mislabeled as a missing artifact.
+  - Moved the direct `torchinfo` requirement from the optional LLM group to core dependencies. No new
+    package version was installed: `torchinfo 1.8.0` was already present transitively through
+    Braindecode, and the lockfile only changed its group ownership.
+- validation:
+  - Red-first selected fold/run Braindecode regression: failed with an empty summary before the fix,
+    then passed with the selected `Repeat-1` model and detailed parameter table.
+  - Evaluation backend/application suite: `51 passed`; Evaluation UI suite: `64 passed`; legacy
+    controller regression: `7 passed`; real EEGNet train/evaluate/summary smoke: `1 passed`.
+  - Ruff and `poetry check --lock`: PASS. Built wheel metadata explicitly contains
+    `Requires-Dist: torchinfo (>=1.8.0,<2.0.0)` and both Evaluation runtime modules.
+- claim boundary:
+  - This is a focused local checkpoint. It does not validate every curated model architecture,
+    executable freezing, Windows native rendering, required multi-dataset handoff gates, or
+    exact-head CI. The unused legacy `EvaluationController.get_model_summary_str` retains its older
+    compatibility implementation; the product UI does not call it.
+
+### 2026-08-10 Visualization All Folds aggregation performance
+
+- completed:
+  - Profiled the generation-bound cross-fold publication path with stored Ofner 2017 saliency
+    arrays (`61 x 1537`, seven classes) expanded into a representative nine-fold, five-method
+    cohort. Rendering itself was not the primary delay; repeated artifact validation and pooled
+    array copies dominated the synchronous publication call.
+  - Reused the exact records, contexts and epoch metadata from one targeted admission pass instead
+    of rebuilding every saliency choice and validating every selected fold a second time.
+  - Pooled raw or normalized values directly into one owned final array per class, then froze those
+    arrays in the detached publication without a second DTO copy. Every admitted fold remains in
+    the pooled output and the before/after training-boundary checks are unchanged.
+- measured validation:
+  - Same representative profile: raw publication `1.756s -> 0.874s` (50.2% faster); normalized
+    publication `2.000s -> 0.961s` (52.0% faster). Cross-fold validation calls fell from `18` to `9`.
+  - Focused Analysis/Saliency backend and publication lifecycle: `72 passed`; Visualization UI and
+    label-mapping runtime: `31 passed`; architecture compliance: `1 passed`.
+  - Focused Ruff and Basedpyright: PASS / `0 errors, 0 warnings, 0 notes`.
+- claim boundary:
+  - This is a local performance checkpoint, not a multi-dataset or Windows handoff candidate. The
+    profile uses stored real saliency payloads in a representative repeated cohort; it does not
+    establish latency bounds for every fold count, method set, storage device or available RAM.
+
+### 2026-08-10 BIDS apply and saliency-toggle responsiveness
+
+- completed:
+  - Removed O(n²) reviewed-path deduplication and reused one bounded canonical identity scope across
+    repeated freshness checks. The UI import status now spans raw loading, reviewed-label apply and
+    publication, and is replaced on success, cancellation, blocking, command failure or worker error.
+  - Absolute and Normalize now reuse one verified raw saliency publication for the current
+    generation/run/method. Normalize retains one derived display variant; selection or state changes
+    invalidate both variants.
+- measured validation:
+  - OpenNeuro ds003061 P300, subjects 001-002, six runs: apply approximately `59.5s -> 21.88s`;
+    repeat Match Labels Preview `3.56s`.
+  - Data Interpretation content/status focused suites: `58 passed`; public responsiveness: `2 passed`.
+  - Combined Saliency/Visualization/native lifecycle suite: `96 passed`.
+- claim boundary:
+  - These are same-machine Linux/WSL checkpoints. Repeat Preview still performs bounded sidecar
+    discovery and parser guards, and real plot rendering remains asynchronous work. Windows native
+    interaction, required multi-dataset handoff and exact-head CI remain separate gates.

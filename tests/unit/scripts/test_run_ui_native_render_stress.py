@@ -166,7 +166,8 @@ def _passing_stress_result(
             }
             for index in range(cycles + 1)
         ],
-        "product_saliency_publications_served": expected_2d + expected_3d_updates,
+        "product_saliency_publications_primed": 1,
+        "product_saliency_publications_served": 0,
         "product_2d_renders_installed": expected_2d,
         "product_2d_loading_cleared": expected_2d,
         "product_2d_replaced_resources_released": expected_2d,
@@ -212,7 +213,8 @@ def _passing_headless_macos_result(*, cycles: int = 1) -> dict[str, object]:
         {
             "native_render_scope": "headless_macos_safe_2d",
             "product_2d_view_names": ["map", "spectrogram"],
-            "product_saliency_publications_served": expected_2d,
+            "product_saliency_publications_primed": 1,
+            "product_saliency_publications_served": 0,
             "product_2d_renders_installed": expected_2d,
             "product_2d_loading_cleared": expected_2d,
             "product_2d_replaced_resources_released": expected_2d,
@@ -712,7 +714,8 @@ def test_stress_contract_fails_closed_for_required_resource_metrics(failed_metri
 @pytest.mark.parametrize(
     ("failed_metric", "failed_value"),
     [
-        ("product_saliency_publications_served", 3),
+        ("product_saliency_publications_primed", 0),
+        ("product_saliency_publications_served", 1),
         ("product_2d_replaced_resources_released", 2),
         ("product_map_renders_installed", 0),
         ("product_spectrogram_renders_installed", 0),

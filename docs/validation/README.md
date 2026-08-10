@@ -71,6 +71,12 @@ walkthrough decision owner、跨平台 Qt teardown，以及 coverage-heavy CI �
   selected scan `4.67s`、first Preview `2.71s`、repeat Preview `1.43s`。主要改善來自 admission
   scope 內的 canonical path reuse 與單 command sidecar catalog；sidecar existence 仍逐 command
   重新發現，parser guards 未因效能最佳化而略過。
+- OpenNeuro ds003061 P300、subjects 001-002、六 runs 的同機 checkpoint：scan `10.80s`、
+  first Preview `6.82s`、repeat Preview `3.56s`。Apply 在相同六 runs 與 reviewed `trial_type`
+  mapping 下由本輪 profile 前約 `59.5s`，先降至 `35.7s`，再以 bounded canonical path scope
+  降至 `21.88s`。Freshness/content guards 仍執行；改善移除的是 WSL `/mnt/d` 上同一 admitted
+  path 的 O(n²) 去重與重複 `resolve/lstat`。Dataset status 在完整 raw + label apply 結束前
+  維持 `Importing EEG data and labels...`，成功、阻擋、取消與 worker failure 都會取代它。
 - Narrowed BIDS run selection 會保存並重用已 admission 的 bounded scan scope，不再於每次
   Match Labels preview 重掃完整 source。Native Windows 因 `st_ctime` 不提供可靠 change-time
   語意，不重用上一輪 content digest；bounded BIDS JSON cache reuse 也會重新讀取並驗證完整
@@ -246,6 +252,21 @@ content freshness validation。
 `8-11s`、diagnostics 約 `8.2 MB`。三-run P300 的 `2,245` 個 reviewed class events 與來源
 sample/label 完全一致，`-0.2..0.5s` 建立 `2,243` epochs 並明確排除兩個 recording-boundary
 events。這是 task-branch checkpoint，不是 Windows 真人 acceptance 或 full BIDS compliance claim。
+
+## Visualization Interaction Performance Checkpoint
+
+- `All Folds` publication 不再對同一 fold 執行兩輪 provenance/context validation，也不再在
+  pooling 後為 immutable DTO 再複製整份 class arrays。代表性 9-fold、5-method、7-class
+  workload 的 raw publication 約 `1.756s -> 0.874s`，normalized publication 約
+  `2.000s -> 0.961s`；fold validation 次數由 `18` 降至 `9`。
+- 同一 application generation / run / method 的 Absolute 與 Normalize 互動共用一份 verified
+  raw publication。Normalize 只建立一份 bounded display variant；selection、method、generation、
+  invalidation 或 cleanup 會清除 cache。代表性 64 MiB payload 的原始四次 toggle publication
+  路徑約 `625.8ms`；初次 verified raw 約 `98.8ms`，第一次四次切換（含 normalization）約
+  `53.1ms`，warm 四次切換約 `0.011ms`。Matplotlib / 3D 實際繪圖仍是非同步成本。
+- Evaluation Model Summary 改用所選 completed run 的 trained model 與真實 EEG
+  `(batch, channels, samples)` input shape；`torchinfo 1.8.0` 是 core dependency。這關閉了舊
+  4D synthetic input 失敗後被誤顯示為 unavailable 的問題，但尚未驗證所有 curated models。
 
 ## Current UI Checkpoint
 

@@ -72,8 +72,8 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
 
 MODEL_SUMMARY_UNAVAILABLE_TEXT = (
-    "Model summary unavailable for the selected run. "
-    "Train or refresh the model, then open this tab again."
+    "Model summary unavailable for the selected run because its trained model "
+    "artifact is not available. Train the run again or select another completed run."
 )
 MODEL_SUMMARY_DEFERRED_TEXT = "Open Model Summary to load model details."
 MODEL_SUMMARY_CROSS_FOLD_TEXT = (

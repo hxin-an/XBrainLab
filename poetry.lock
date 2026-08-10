@@ -5899,7 +5899,7 @@ version = "1.8.0"
 description = "Model summary in PyTorch, based off of the original torchsummary."
 optional = false
 python-versions = ">=3.7"
-groups = ["main", "llm"]
+groups = ["main"]
 files = [
     {file = "torchinfo-1.8.0-py3-none-any.whl", hash = "sha256:2e911c2918603f945c26ff21a3a838d12709223dc4ccf243407bce8b6e897b46"},
     {file = "torchinfo-1.8.0.tar.gz", hash = "sha256:72e94b0e9a3e64dc583a8e5b7940b8938a1ac0f033f795457f27e6f4e7afa2e9"},
@@ -6684,4 +6684,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.13"
-content-hash = "738bb45b9360032ebe74c27740f7b99d65d89eff9a5c7c300ada6bd4226b9dd4"
+content-hash = "de463f6ee5561dfb17227751648d6401e0232fdde81b081df274d206ed8f01d6"

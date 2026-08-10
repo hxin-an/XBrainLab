@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass, replace
 from types import MappingProxyType
 from typing import Any
 
@@ -23,6 +23,8 @@ SALIENCY_METHOD_ATTRIBUTES = {
     "SmoothGrad_Squared": "smoothgrad_sq",
     "VarGrad": "vargrad",
 }
+
+_DETACHED_SALIENCY_ARRAYS = object()
 
 
 @dataclass(frozen=True)
@@ -135,6 +137,16 @@ class SaliencyCrossFoldChoice:
         }
 
 
+@dataclass(frozen=True)
+class _ValidatedSaliencyCrossFoldChoice:
+    """One admitted choice and the exact records validated for its render."""
+
+    choice: SaliencyCrossFoldChoice
+    records: tuple[Any, ...]
+    contexts: tuple[Any, ...]
+    epoch_data: tuple[Any, ...]
+
+
 SaliencySelectionIdentity = SaliencyRunIdentity | SaliencyCrossFoldIdentity
 
 
@@ -190,15 +202,22 @@ class SaliencyRenderData:
     aggregation: str = "per-epoch"
     fold_count: int = 1
     normalized: bool = False
+    _detached_arrays: InitVar[object | None] = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, _detached_arrays: object | None) -> None:
         method = str(self.method).strip()
         if not method:
             raise ValueError("render method must be a non-empty string")
-        copied_store = {
-            key: _copy_array_readonly(value)
-            for key, value in self.saliency_by_class.items()
-        }
+        if _detached_arrays is _DETACHED_SALIENCY_ARRAYS:
+            copied_store = {
+                key: self._adopt_detached_array(value)
+                for key, value in self.saliency_by_class.items()
+            }
+        else:
+            copied_store = {
+                key: _copy_array_readonly(value)
+                for key, value in self.saliency_by_class.items()
+            }
         if not copied_store:
             raise ValueError(f"No {method} saliency is available for this run")
         sfreq = float(self.sfreq)
@@ -252,6 +271,18 @@ class SaliencyRenderData:
         object.__setattr__(self, "tmin", tmin)
         object.__setattr__(self, "source_split", source_split)
         object.__setattr__(self, "aggregation", aggregation)
+
+    @staticmethod
+    def _adopt_detached_array(value: Any) -> np.ndarray:
+        """Freeze one private array that was freshly allocated for this DTO."""
+        if (
+            not isinstance(value, np.ndarray)
+            or not value.flags.owndata
+            or value.base is not None
+        ):
+            raise ValueError("Detached saliency arrays must own their storage")
+        value.setflags(write=False)
+        return value
 
     @property
     def expected_class_count(self) -> int | None:
@@ -449,29 +480,34 @@ def build_saliency_cross_fold_choices(
     choices: list[SaliencyCrossFoldChoice] = []
     for evaluation_choice in build_evaluation_cross_fold_choices(indexed_plans):
         try:
-            choice = _build_saliency_cross_fold_choice(
+            validated = _validate_saliency_cross_fold_choice(
                 indexed_plans,
                 evaluation_choice,
             )
         except (AssertionError, TypeError, ValueError):
             continue
-        choices.append(choice)
+        choices.append(validated.choice)
     return tuple(choices)
 
 
-def _build_saliency_cross_fold_choice(
-    indexed_plans: list[Any],
-    evaluation_choice: Any,
-) -> SaliencyCrossFoldChoice:
-    members = tuple(
+def _saliency_members(evaluation_choice: Any) -> tuple[SaliencyRunIdentity, ...]:
+    return tuple(
         SaliencyRunIdentity(
             plan=SaliencyPlanIdentity(member.plan.plan_index),
             run_index=member.run_index,
         )
         for member in evaluation_choice.identity.members
     )
+
+
+def _validate_saliency_cross_fold_choice(
+    indexed_plans: list[Any],
+    evaluation_choice: Any,
+) -> _ValidatedSaliencyCrossFoldChoice:
+    members = _saliency_members(evaluation_choice)
     records: list[Any] = []
     contexts: list[Any] = []
+    epoch_data_items: list[Any] = []
     source_splits: set[str] = set()
     repeats: set[int] = set()
     saliency_params: list[dict[str, Any]] = []
@@ -492,12 +528,14 @@ def _build_saliency_cross_fold_choice(
         validator = getattr(record, "validate_saliency_context", None)
         if producer_identity is None or not callable(validator):
             raise ValueError("saliency provenance is unavailable")
+        epoch_data = _epoch_data_for_holder(holder)
         context = validator(
-            _epoch_data_for_holder(holder),
+            epoch_data,
             producer_identity=producer_identity,
         )
         records.append(record)
         contexts.append(context)
+        epoch_data_items.append(epoch_data)
         params_getter = getattr(holder, "get_saliency_params", None)
         params = (
             params_getter()
@@ -529,21 +567,26 @@ def _build_saliency_cross_fold_choice(
         methods.append(method)
     if not methods or class_store_keys is None:
         raise ValueError("cross-fold methods are incomplete")
-    return SaliencyCrossFoldChoice(
-        identity=SaliencyCrossFoldIdentity(members=members),
-        display_name=evaluation_choice.display_name,
-        run_label=evaluation_choice.run_label,
-        methods=tuple(methods),
-        source_split="test",
-        classes=tuple(
-            SaliencyCrossFoldClass(
-                class_index=index,
-                display_name=str(class_map[index][1]),
-                event_code=class_map[index][0],
-                store_key=store_key,
-            )
-            for index, store_key in enumerate(class_store_keys)
+    return _ValidatedSaliencyCrossFoldChoice(
+        choice=SaliencyCrossFoldChoice(
+            identity=SaliencyCrossFoldIdentity(members=members),
+            display_name=evaluation_choice.display_name,
+            run_label=evaluation_choice.run_label,
+            methods=tuple(methods),
+            source_split="test",
+            classes=tuple(
+                SaliencyCrossFoldClass(
+                    class_index=index,
+                    display_name=str(class_map[index][1]),
+                    event_code=class_map[index][0],
+                    store_key=store_key,
+                )
+                for index, store_key in enumerate(class_store_keys)
+            ),
         ),
+        records=tuple(records),
+        contexts=tuple(contexts),
+        epoch_data=tuple(epoch_data_items),
     )
 
 
@@ -570,6 +613,87 @@ def _normalize_saliency_store(
         key: np.asarray(values, dtype=np.float64) / scale
         for key, values in arrays.items()
     }
+
+
+def _pool_cross_fold_saliency(
+    fold_stores: tuple[Mapping[object, Any], ...],
+    classes: tuple[SaliencyCrossFoldClass, ...],
+    *,
+    normalize: bool,
+) -> dict[object, np.ndarray]:
+    """Pool every admitted fold once into final owned render arrays."""
+    arrays_by_key = {
+        item.store_key: tuple(
+            np.asarray(store[item.store_key]) for store in fold_stores
+        )
+        for item in classes
+    }
+    if not normalize:
+        return {
+            key: np.concatenate(arrays, axis=0) for key, arrays in arrays_by_key.items()
+        }
+
+    scale = max(
+        float(np.max(np.abs(values), initial=0.0))
+        for arrays in arrays_by_key.values()
+        for values in arrays
+    )
+    if scale <= np.finfo(np.float64).eps:
+        return {
+            key: np.concatenate(arrays, axis=0) for key, arrays in arrays_by_key.items()
+        }
+
+    pooled: dict[object, np.ndarray] = {}
+    for key, arrays in arrays_by_key.items():
+        total_epochs = sum(int(values.shape[0]) for values in arrays)
+        destination = np.empty(
+            (total_epochs, *arrays[0].shape[1:]),
+            dtype=np.float64,
+        )
+        offset = 0
+        for values in arrays:
+            next_offset = offset + int(values.shape[0])
+            np.divide(values, scale, out=destination[offset:next_offset])
+            offset = next_offset
+        pooled[key] = destination
+    return pooled
+
+
+def normalized_saliency_render_publication(
+    publication: SaliencyRenderPublication,
+) -> SaliencyRenderPublication:
+    """Derive the existing display normalization from a verified raw DTO."""
+    if not isinstance(publication, SaliencyRenderPublication):
+        raise TypeError("publication must be a SaliencyRenderPublication")
+    if publication.request.normalize:
+        if not publication.data.normalized:
+            raise ValueError("normalized render request contains raw saliency data")
+        return publication
+    if publication.data.normalized:
+        raise ValueError("raw render request contains normalized saliency data")
+
+    source = publication.data
+    normalized_data = SaliencyRenderData(
+        method=source.method,
+        saliency_by_class=_normalize_saliency_store(source.saliency_by_class),
+        class_map=source.class_map,
+        event_ids=source.event_ids,
+        channel_names=source.channel_names,
+        channel_positions=source.channel_positions,
+        sfreq=source.sfreq,
+        tmin=source.tmin,
+        source_split=source.source_split,
+        aggregation=source.aggregation,
+        fold_count=source.fold_count,
+        normalized=True,
+        _detached_arrays=_DETACHED_SALIENCY_ARRAYS,
+    )
+    return SaliencyRenderPublication(
+        request=replace(publication.request, normalize=True),
+        generation=publication.generation,
+        training_generation=publication.training_generation,
+        data=normalized_data,
+    )
 
 
 class SaliencyRenderPublisher:
@@ -721,67 +845,61 @@ class SaliencyRenderPublisher:
     ) -> SaliencyRenderData:
         if not isinstance(request.run, SaliencyCrossFoldIdentity):
             raise TypeError("cross-fold render requires a SaliencyCrossFoldIdentity")
-        choice = next(
+        evaluation_choice = next(
             (
                 candidate
-                for candidate in build_saliency_cross_fold_choices(holders)
-                if candidate.identity == request.run
+                for candidate in build_evaluation_cross_fold_choices(holders)
+                if SaliencyCrossFoldIdentity(
+                    members=_saliency_members(candidate),
+                )
+                == request.run
             ),
             None,
         )
-        if choice is None or request.method not in choice.methods:
+        if evaluation_choice is None:
+            raise self._target_error(
+                "The selected cross-fold saliency summary is no longer available"
+            )
+        try:
+            validated = _validate_saliency_cross_fold_choice(
+                holders,
+                evaluation_choice,
+            )
+        except (AssertionError, TypeError, ValueError):
+            raise self._target_error(
+                "The selected cross-fold saliency summary is no longer available"
+            ) from None
+        choice = validated.choice
+        if choice.identity != request.run or request.method not in choice.methods:
             raise self._target_error(
                 "The selected cross-fold saliency summary is no longer available"
             )
 
-        fold_stores: list[Mapping[object, Any]] = []
-        first_epoch_data: Any | None = None
-        first_class_map: tuple[tuple[object, str], ...] | None = None
-        for member in request.run.members:
-            holder, run = _holder_and_run(holders, member)
-            eval_record = _saliency_eval_record(run)
-            if eval_record is None:
-                raise self._target_error(
-                    "A cross-fold member no longer has saliency results"
-                )
-            epoch_data = _epoch_data_for_holder(holder)
-            class_map = self._validated_class_map(
-                eval_record,
-                epoch_data,
-                producer_identity=_saliency_producer_identity(
-                    holder,
-                    run,
-                    eval_record,
-                ),
-            )
-            if first_epoch_data is None:
-                first_epoch_data = epoch_data
-                first_class_map = class_map
-            elif class_map != first_class_map:
-                raise self._target_error(
-                    "Cross-fold class metadata changed while rendering"
-                )
-            fold_stores.append(self._saliency_store(eval_record, request.method))
-
-        if first_epoch_data is None or first_class_map is None:
+        if not validated.epoch_data or not validated.contexts:
             raise self._target_error("Cross-fold epoch metadata is unavailable")
-        aggregated = {
-            item.store_key: np.concatenate(
-                [np.asarray(store[item.store_key]) for store in fold_stores],
-                axis=0,
-            )
-            for item in choice.classes
-        }
-        if request.normalize:
-            aggregated = _normalize_saliency_store(aggregated)
+        fold_stores = tuple(
+            self._saliency_store(record, request.method) for record in validated.records
+        )
+        aggregated = _pool_cross_fold_saliency(
+            fold_stores,
+            choice.classes,
+            normalize=request.normalize,
+        )
+        first_class_map = tuple(
+            (key, str(name))
+            for key, name in getattr(validated.contexts[0], "class_map", ())
+        )
+        if not first_class_map:
+            raise self._target_error("Cross-fold class metadata is unavailable")
         return self._render_data_from_epoch(
             request=request,
-            epoch_data=first_epoch_data,
+            epoch_data=validated.epoch_data[0],
             saliency_store=aggregated,
             class_map=first_class_map,
             source_split=choice.source_split,
             aggregation="pooled out-of-fold epochs",
             fold_count=len(choice.identity.members),
+            adopt_saliency_store=True,
         )
 
     def _render_data_from_epoch(
@@ -794,6 +912,7 @@ class SaliencyRenderPublisher:
         source_split: str,
         aggregation: str,
         fold_count: int,
+        adopt_saliency_store: bool = False,
     ) -> SaliencyRenderData:
         event_ids = getattr(epoch_data, "event_id", {}) or {}
         if not isinstance(event_ids, Mapping):
@@ -836,6 +955,9 @@ class SaliencyRenderPublisher:
             aggregation=aggregation,
             fold_count=fold_count,
             normalized=request.normalize,
+            _detached_arrays=(
+                _DETACHED_SALIENCY_ARRAYS if adopt_saliency_store else None
+            ),
         )
 
     @staticmethod
@@ -954,4 +1076,5 @@ __all__ = [
     "SaliencyRunIdentity",
     "SaliencySelectionIdentity",
     "build_saliency_cross_fold_choices",
+    "normalized_saliency_render_publication",
 ]

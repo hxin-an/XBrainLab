@@ -52,6 +52,93 @@ def test_review_identity_preserves_path_spelling_with_windows_identity_keys(
     assert identity["files"][0]["path"] == resolved
 
 
+def test_identity_paths_normalizes_each_stored_path_a_bounded_number_of_times(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Large admitted scopes must not resolve every prior row again per file."""
+    paths = [tmp_path / f"run-{index:03d}.set" for index in range(64)]
+    identity = {
+        "files": [
+            {
+                "path": str(path),
+                "role": "selected_eeg",
+                "file_bytes": index,
+                "sha256": f"{index:064x}",
+            }
+            for index, path in enumerate(paths)
+        ]
+    }
+    original_path_key = data_interpretation_content_identity._path_key
+    path_key_calls = 0
+
+    def _counted_path_key(path, *, path_identity_scope=None):
+        nonlocal path_key_calls
+        path_key_calls += 1
+        return original_path_key(
+            path,
+            path_identity_scope=path_identity_scope,
+        )
+
+    monkeypatch.setattr(
+        data_interpretation_content_identity,
+        "_path_key",
+        _counted_path_key,
+    )
+
+    observed = data_interpretation_content_identity.identity_paths(identity)
+
+    assert_filesystem_path_lists_equal(observed, paths)
+    assert path_key_calls <= len(paths) * 2
+
+
+def test_freshness_check_reuses_the_reviewed_canonical_path_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_files = [tmp_path / f"run-{index:02d}.set" for index in range(12)]
+    for index, path in enumerate(eeg_files):
+        path.write_bytes(f"reviewed-eeg-{index}".encode())
+    expected = build_review_content_identity(
+        label_carrier_plan=[],
+        selected_eeg_files=[str(path) for path in eeg_files],
+    )
+    resolved_calls = 0
+    original_value = data_interpretation_content_identity.resolved_path_value
+    original_identity = data_interpretation_content_identity.resolved_path_identity
+
+    def _counted_value(path):
+        nonlocal resolved_calls
+        resolved_calls += 1
+        return original_value(path)
+
+    def _counted_identity(path):
+        nonlocal resolved_calls
+        resolved_calls += 1
+        return original_identity(path)
+
+    monkeypatch.setattr(
+        data_interpretation_content_identity,
+        "resolved_path_value",
+        _counted_value,
+    )
+    monkeypatch.setattr(
+        data_interpretation_content_identity,
+        "resolved_path_identity",
+        _counted_identity,
+    )
+
+    observed = assert_review_content_unchanged(
+        expected=expected,
+        label_carrier_plan=[],
+        selected_eeg_files=[str(path) for path in eeg_files],
+        candidate_id="candidate-bounded-path-scope",
+    )
+
+    assert observed == expected
+    assert resolved_calls == 0
+
+
 def test_review_identity_binds_interpretation_choices_not_only_file_bytes(
     tmp_path: Path,
 ) -> None:

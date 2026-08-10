@@ -67,6 +67,7 @@ from XBrainLab.ui.panels.dataset.data_interpretation_ui_payload import (
 _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE = (
     "Data interpretation availability is unavailable right now."
 )
+_IMPORT_IN_PROGRESS_STATUS_TIMEOUT_MS = 15 * 60 * 1000
 
 
 def _default_loading_dialog_class() -> type[Any]:
@@ -143,7 +144,7 @@ class DataInterpretationActionHost(Protocol):
     @property
     def controller(self) -> Any: ...
 
-    def _show_status(self, message: str) -> None: ...
+    def _show_status(self, message: str, timeout_ms: int = 7000) -> None: ...
 
     def _compatibility_controller_value(
         self,
@@ -264,8 +265,11 @@ class DataInterpretationActionCoordinator:
     def controller(self) -> Any:
         return self._host.controller
 
-    def _show_status(self, message: str) -> None:
-        self._host._show_status(message)
+    def _show_status(self, message: str, timeout_ms: int = 7000) -> None:
+        if timeout_ms == 7000:
+            self._host._show_status(message)
+            return
+        self._host._show_status(message, timeout_ms)
 
     def _compatibility_controller_value(
         self,
@@ -1356,6 +1360,7 @@ class DataInterpretationActionCoordinator:
                         self._bindings.message_box().StandardButton.No,
                     )
                     if reply != self._bindings.message_box().StandardButton.Yes:
+                        self._show_status("Dataset import cancelled")
                         return InteractionOutcome.cancelled(
                             "Dataset import was cancelled during the resource check."
                         )
@@ -1396,6 +1401,7 @@ class DataInterpretationActionCoordinator:
                         "Confirmed dataset import was scheduled."
                     )
                 if risk_level == "blocking":
+                    self._show_status("Dataset import blocked · Check available memory")
                     self._bindings.message_box().critical(
                         self.panel,
                         "Dataset Resource Check",
@@ -1403,10 +1409,13 @@ class DataInterpretationActionCoordinator:
                     )
                     return InteractionOutcome.blocked(apply_result.message)
             if self._result_failed(apply_result, "Interpretation apply failed"):
+                self._show_status("Dataset import failed · Review the import settings")
                 return self._interaction_failure_outcome(
                     apply_result,
                     apply_result.message,
                 )
+
+            self._show_status(apply_result.message)
 
             def _finish(recipe_message: str = "") -> None:
                 del recipe_message
@@ -1423,17 +1432,32 @@ class DataInterpretationActionCoordinator:
             resource_preflight_confirmed: bool = False,
             resource_preflight_token: str | None = None,
         ) -> InteractionOutcome:
-            self._show_status("Loading EEG data...")
+            self._show_status(
+                "Importing EEG data and labels...",
+                _IMPORT_IN_PROGRESS_STATUS_TIMEOUT_MS,
+            )
             apply_command = ApplyInterpretationCommand(
                 candidate_id=candidate_id,
                 confirmed=dialog_result.get("confirmed") is True,
                 resource_preflight_confirmed=resource_preflight_confirmed,
                 resource_preflight_token=resource_preflight_token,
             )
+
+            def _handle_apply_error(error: tuple) -> None:
+                self._show_status("Dataset import failed · Review the import settings")
+                self._bindings.present_unexpected_error(
+                    self.panel,
+                    UnexpectedErrorContext.DATA_INTERPRETATION_APPLY,
+                    error_info=error,
+                    message_box=self._bindings.message_box(),
+                    title="Interpretation apply failed",
+                )
+
             return self._execute_interpretation_command_async(
                 apply_command,
                 on_result=_handle_apply_result,
                 error_title="Interpretation apply failed",
+                on_error=_handle_apply_error,
                 expected_publication_generation=(review_state.publication_generation),
                 unexpected_error_context=(
                     UnexpectedErrorContext.DATA_INTERPRETATION_APPLY

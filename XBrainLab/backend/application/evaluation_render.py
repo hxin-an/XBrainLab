@@ -629,38 +629,79 @@ def build_evaluation_model_summary(
                 "The selected training run is no longer available"
             )
         selected_run = runs[identity.run.run_index]
+        if not _run_finished(selected_run):
+            return ""
 
-    try:
-        if selected_run is not None and hasattr(selected_run, "model"):
-            model_instance = selected_run.model
-        else:
-            epoch_data = selected_plan.dataset.get_epoch_data()
-            model_instance = selected_plan.model_holder.get_model(
-                epoch_data.get_model_args()
-            ).to(selected_plan.option.get_device())
-        training_data, _ = selected_plan.dataset.get_training_data()
-        input_shape = (
-            selected_plan.option.bs,
-            1,
-            *training_data.shape[-2:],
-        )
-        try:
-            from torchinfo import summary  # noqa: PLC0415
-        except ModuleNotFoundError:
-            summary_text = _fallback_model_summary(model_instance, input_shape)
-        else:
-            summary_text = str(
-                summary(model_instance, input_size=input_shape, verbose=0)
-            )
-        if selected_run is not None:
-            get_name = getattr(selected_run, "get_name", None)
-            run_name = str(get_name()) if callable(get_name) else "Selected run"
-            summary_text = f"=== Run: {run_name} ===\n{summary_text}"
-    except Exception:
-        logger.error("Error generating Evaluation model summary", exc_info=True)
-        return ""
+    dataset = getattr(selected_run, "dataset", None) or getattr(
+        selected_plan,
+        "dataset",
+        None,
+    )
+    if selected_run is not None:
+        model_instance = getattr(selected_run, "model", None)
+        if model_instance is None:
+            return ""
     else:
-        return summary_text
+        epoch_getter = getattr(dataset, "get_epoch_data", None)
+        if not callable(epoch_getter):
+            raise ValueError("The selected model input metadata is unavailable")
+        epoch_data = epoch_getter()
+        model_args_getter = getattr(epoch_data, "get_model_args", None)
+        if not callable(model_args_getter):
+            raise ValueError("The selected model input metadata is unavailable")
+        model_args = model_args_getter()
+        if not isinstance(model_args, dict):
+            raise ValueError("The selected model input metadata is unavailable")
+        model_instance = selected_plan.model_holder.get_model(model_args)
+    input_shape = _model_summary_input_shape(dataset)
+    try:
+        from torchinfo import summary  # noqa: PLC0415
+
+        try:
+            summary_text = str(
+                summary(
+                    model_instance,
+                    input_size=input_shape,
+                    mode="eval",
+                    verbose=0,
+                )
+            )
+        except Exception:
+            logger.warning(
+                "Detailed Evaluation model summary failed; using basic model details",
+                exc_info=True,
+            )
+            summary_text = _fallback_model_summary(model_instance, input_shape)
+    except ModuleNotFoundError:
+        logger.warning(
+            "Required torchinfo dependency is unavailable; using basic model details"
+        )
+        summary_text = _fallback_model_summary(model_instance, input_shape)
+    if selected_run is not None:
+        get_name = getattr(selected_run, "get_name", None)
+        run_name = str(get_name()) if callable(get_name) else "Selected run"
+        summary_text = f"=== Run: {run_name} ===\n{summary_text}"
+    return summary_text
+
+
+def _model_summary_input_shape(dataset: Any) -> tuple[int, int, int]:
+    epoch_getter = getattr(dataset, "get_epoch_data", None)
+    if not callable(epoch_getter):
+        raise ValueError("The selected model input metadata is unavailable")
+    data_getter = getattr(epoch_getter(), "get_data", None)
+    if not callable(data_getter):
+        raise ValueError("The selected model input metadata is unavailable")
+    shape = getattr(data_getter(), "shape", None)
+    if (
+        not isinstance(shape, tuple)
+        or len(shape) != 3
+        or any(
+            isinstance(value, bool) or not isinstance(value, int) or value < 1
+            for value in shape
+        )
+    ):
+        raise ValueError("The selected model input shape is unavailable")
+    return (1, shape[1], shape[2])
 
 
 def _fallback_model_summary(model_instance: Any, input_shape: tuple[int, ...]) -> str:
@@ -697,7 +738,7 @@ def _fallback_model_summary(model_instance: Any, input_shape: tuple[int, ...]) -
             lines.append(f"  ... {len(children) - 20} more module(s)")
     else:
         lines.extend(["", str(model_instance)])
-    lines.extend(["", "Detailed layer shapes require optional dependency 'torchinfo'."])
+    lines.extend(["", "Detailed layer shapes are unavailable."])
     return "\n".join(lines)
 
 

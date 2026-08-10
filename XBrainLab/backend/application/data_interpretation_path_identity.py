@@ -105,7 +105,9 @@ def deduplicate_resolved_paths(values: Iterable[Any]) -> list[str]:
     seen: set[str] = set()
     for value in values:
         path = resolved_path_value(value)
-        identity = resolved_path_identity(path)
+        # ``path`` is already canonical. Resolving it again is particularly costly
+        # on WSL-mounted drives and adds no identity information.
+        identity = os.path.normcase(path)
         if identity in seen:
             continue
         seen.add(identity)
