@@ -257,6 +257,9 @@ _QT_MNE_OFFLINE = EnvironmentPolicy(
         ("TRANSFORMERS_OFFLINE", "1"),
     )
 )
+_QT_MNE_OFFLINE_SHARED_RUNNER = EnvironmentPolicy(
+    required=(*_QT_MNE_OFFLINE.required, ("XBL_SHARED_CI_RUNNER", "1"))
+)
 _QT_MNE_LOCAL_RUNTIME = EnvironmentPolicy(
     required=(
         *_QT_MNE_OFFLINE.required,
@@ -521,7 +524,7 @@ _GATE_SPECS = (
             "-q",
         ),
         timeout_seconds=1800,
-        environment=_QT_MNE_OFFLINE,
+        environment=_QT_MNE_OFFLINE_SHARED_RUNNER,
         outcome=_STRICT_PYTEST,
         required_artifact_paths=("pytest-attestations/assistant-security-suite.json",),
         pytest_attestation_path="pytest-attestations/assistant-security-suite.json",

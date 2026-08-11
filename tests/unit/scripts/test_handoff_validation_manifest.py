@@ -214,6 +214,18 @@ def test_guidance_contract_uses_attested_deterministic_contract_tests() -> None:
     )
 
 
+def test_assistant_security_suite_records_shared_runner_timing_policy() -> None:
+    spec = HANDOFF_GATE_SPECS["assistant-security-suite"]
+
+    assert spec.environment.as_dict() == {
+        "QT_QPA_PLATFORM": "offscreen",
+        "MNE_DONTWRITE_HOME": "true",
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1",
+        "XBL_SHARED_CI_RUNNER": "1",
+    }
+
+
 def test_exact_granite_recovery_and_long_session_gates_are_sha_scoped() -> None:
     expected = {
         "chatpanel-local-recovery": (

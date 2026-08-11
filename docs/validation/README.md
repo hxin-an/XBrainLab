@@ -255,6 +255,11 @@ artifacts 仍是必須另行檢查的 evidence。
 | Branch hygiene | Expected branch 有 configured upstream；`HEAD == upstream`、ahead/behind `0/0`；只有 unstaged repo-root `settings.json` 可例外；final report identity 吻合。 |
 | Claim boundary | Windows native DPI/multi-monitor、interactive 3D、teacher datasets、long-session 和 product completion 仍分開。 |
 
+`assistant-security-suite` 在 shared CI runner 上只保護 202-turn workflow、pruning、state、
+security 與 bounded-resource 契約，不把 hosted-runner wall-clock latency 當成產品效能證據。
+實際 UI responsiveness 仍由 `chatpanel-local-long-session` artifact 與真人 Windows acceptance
+判定。
+
 任何 required gate 未完成時，狀態只能是：
 
 - `checkpoint`：局部工作已驗證，但完整 handoff gate 尚未完成；
