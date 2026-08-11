@@ -1,26 +1,14 @@
 # Workflow: Test Audit
 
-## 目的
+Use `test-quality-reviewer` as primary and `validation-runner` for executable evidence.
 
-審視目前測試是否能真的抓問題，找出 mock-heavy 或缺 non-mocked evidence 的區域。
+1. Define the product/backend workflow and defects the suite should catch.
+2. Inventory relevant tests and classify unit contract, integration, UI, real-data, and eval evidence.
+3. Map assertions to observable outcomes; flag production bypasses and mock-only choreography.
+4. Identify duplicated/obsolete tests and missing lower-mock workflow protection.
+5. Use a mutation or bounded source change when practical to confirm strong tests fail correctly.
+6. Propose the smallest stronger replacement before deleting weak tests.
+7. Update validation docs only when the evidence contract changes.
 
-## 使用 Skills
-
-- `test-quality-reviewer`
-- `validation-runner`
-
-## 步驟
-
-1. 選定範圍，例如 backend、agent、UI、data pipeline。
-2. 列出相關 tests。
-3. 分類 unit / integration / smoke / baseline / real-data。
-4. 標記 mock-heavy tests。
-5. 找缺少 non-mocked evidence 的 workflow。
-6. 建議下一個最小補測試 slice。
-7. 更新 `docs/validation/README.md` 或 worklog。
-
-## Done
-
-- 有明確 strong tests / weak tests / missing evidence。
-- 沒有把 test count 當 quality。
-- 有下一個可執行測試建議。
+Report strong, weak, obsolete, missing evidence, next test slice, and claim boundary. Test count is
+inventory, not quality.

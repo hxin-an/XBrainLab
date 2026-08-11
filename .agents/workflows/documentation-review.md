@@ -1,25 +1,14 @@
 # Workflow: Documentation Review
 
-## 目的
+Use `docs-curator` as primary and `validation-runner` for build/claim evidence.
 
-整理文件，保持少數 canonical docs，避免 AI 文件再次膨脹。
+1. Define the disputed topic and list every place that claims authority over it.
+2. Verify current facts from Git, source, runtime evidence, and canonical docs.
+3. Classify content as current, architecture, target, planning, decision, validation, or record.
+4. Merge useful material into its one authority and delete superseded control surfaces.
+5. Remove historical records from active/dispatch labels and repair links/navigation.
+6. Run the guidance audit, `git diff --check`, and MkDocs strict build.
+7. Add a concise implementation/worklog entry when the change is operationally important.
 
-## 使用 Skills
-
-- `docs-curator`
-- `validation-runner`
-
-## 步驟
-
-1. 讀 `docs/index.md`、`docs/current.md`、`docs/planning/now.md`。
-2. 判斷要處理的內容屬於 current、target、architecture、planning、decision、validation 或 record。
-3. 優先更新既有文件。
-4. 刪除已整合的短期文件或重複文件。
-5. 跑 `poetry run -- mkdocs build --strict`。
-6. 更新 `docs/records/worklog.md`。
-
-## Done
-
-- 沒有新增不必要文件。
-- 文件站 build 通過。
-- current / target / records 沒有混在一起。
+Done means no unnecessary new top-level document, no current/target/history mixing, no broken links,
+and no reusable guidance containing mutable branch/gate truth.

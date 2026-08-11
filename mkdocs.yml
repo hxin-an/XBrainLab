@@ -39,7 +39,6 @@ exclude_docs: |
   development/**
   getting-started/**
   reference/**
-  agent_goals/**
   contributing.md
   architecture/overview.md
 
@@ -47,7 +46,7 @@ nav:
   - 首頁: index.md
   - 專案現況:
       - 目前真相: current.md
-      - Active Product Audit: records/product_quality_audit_2026-07-30.md
+      - Historical Product Audit: records/product_quality_audit_2026-07-30.md
       - 操作方式: operations.md
   - 決策:
       - 決策紀錄: decisions/README.md

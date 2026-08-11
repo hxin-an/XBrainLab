@@ -19,13 +19,8 @@
 
 接手後曾透過 agent / vibe coding 修了很長一段時間，因此 repo 內存在大量 AI / agent 產生文件。這些文件不一定錯，但不能直接信。
 
-目前已完成第一輪文件清理：
-
-- `docs/legacy/` 已刪除。
-- `docs/active/` 已刪除。
-- `.agents/legacy/` 已刪除。
-- root `ROADMAP.md` 已刪除。
-- canonical docs 已重新分層。
+第一輪清理已移除 legacy/active document trees、agent legacy layer 和重複 root roadmap；
+canonical docs 已重新分層。需要細節時查 Git history，不恢復被刪路徑。
 
 ## 目前目標
 

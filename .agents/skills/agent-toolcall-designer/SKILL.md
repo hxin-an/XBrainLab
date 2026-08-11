@@ -1,48 +1,32 @@
 ---
 name: agent-toolcall-designer
-description: Use when designing or reviewing XBrainLab agent state snapshots, backend-controlled tool availability, tool-call verification, command contracts, and tool-call scoring/evaluation workflows.
+description: "Use for XBrainLab Assistant snapshots, backend-owned tool exposure, command verification, and tool-call scoring. Do not use for general architecture or thesis evidence."
 ---
 
-# agent-toolcall-designer
+# Agent Tool-call Designer
 
-## 用途
+Design the Assistant tool surface as a projection of product backend truth.
 
-用於設計 XBrainLab agent 的 state、tool call、verification、scoring contract。
+## Workflow
 
-## 先讀
+1. Identify the user intent, owning backend command, observable preconditions, and side effects.
+2. Read only the relevant Assistant/backend architecture and command specification.
+3. Define an immutable state snapshot containing facts the model may rely on.
+4. Derive tool availability and blocked reasons from backend capability policy.
+5. Keep schemas narrow; avoid competing tools that express the same action.
+6. Route state-changing calls through the owning application command and structured result.
+7. Verify postconditions from a fresh snapshot or explicit result evidence.
+8. Add positive, blocked, confirmation, recovery, and ambiguity cases.
 
-1. `docs/target/agent.md`
-2. `docs/architecture/agent.md`
-3. `docs/validation/README.md`
-4. `.agents/context/thesis.md`
+## Contract checks
 
-## 核心原則
+- Never let prompt text, tool descriptions, or UI state become an alternate readiness engine.
+- Separate tool admission, user confirmation, execution, and verification.
+- Include stable identifiers and bounded evidence; do not expose live controller objects.
+- Treat command text parsing as compatibility input, not authoritative state.
+- Preserve exact model/revision and runner identity when producing evaluation evidence.
 
-- agent 是 workflow operator，不是普通 chatbot。
-- target runtime 是 local-only；API / Gemini code path 後續要移除。
-- tool availability 由 backend capability policy 控制。
-- 一次只有一個 active dataset pipeline。
-- epoch / dataset 後，一般 `load_data` / `generate_new_dataset` 應被擋下。
-- `blocked_commands` 不完整塞進 LLM prompt；只摘要和當前 intent 相關的 blocked reason。
-- State Snapshot 不應變成第二份 backend truth。
+## Output
 
-## Contract 外框
-
-設計時至少考慮：
-
-- State Snapshot Contract
-- Tool Call Contract
-- Verification Result Contract
-- Scoring Contract
-
-## Thesis Evidence
-
-tool-call validation 應導向可重跑 scoring system：
-
-- intent accuracy
-- tool selection accuracy
-- parameter accuracy
-- state-transition accuracy
-- error-recovery accuracy
-- invalid / unsafe call rate
-- self-correction success rate
+Report the intent-to-command mapping, snapshot fields, admission owner, schema delta, verification
+rule, cases, and claims the evidence cannot support.

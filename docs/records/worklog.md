@@ -48,8 +48,113 @@
   multi-dataset integration `41 passed`、strict matrix `20/20`、strict cross-source `4/4`。
 - 證據：`build/dev-artifacts/ui-review-fixes/`、`build/dev-artifacts/epoching-dialog/`、
   `build/dev-artifacts/visualization-render/`、`build/dev-artifacts/data-interpretation/`。
-- 接續 / 本輪剩餘：更新 canonical docs、commit/push、整合最新 main、PR exact-head CI；Windows
-  人工 acceptance 與 Assistant readiness 仍不可宣稱。
+- 接續 / 本輪剩餘：checkpoint 已 commit/push，最新 main 正在整合；仍需 merge-resolution
+  validation、PR exact-head CI。Windows 人工 acceptance 與 Assistant readiness 仍不可宣稱。
+
+### 15:43 第五輪 v5 guidance acceptance 與 blind subagent review
+
+- 做了什麼：在 baseline `a0e16b400236b687bd2b4c9f58ef4a20929e377b`、candidate
+  `328cdcf48244b4bcd4debce91aa1867969dae6d1` 使用 variant-specific routing schema 完成第五輪
+  正式 GPT-5.6 Sol/xhigh/read-only A/B；routing `360/360`、authority `84/84`，合計 `444/444`
+  valid executions。
+- 自動結果：candidate routing primary、overlap、authority、explicit MCP 與 forbidden-skill accuracy
+  均為 `100%`，false-positive 與 incidental MCP 均為 `0%`，single-scope average `0.958`；median
+  input `20,489` 對 baseline `21,210`，節省 `721` tokens（`3.40%`），median latency `+4.77%`。
+  九項預註冊 automatic checks 全數 PASS。
+- 盲審：將固定 8 routing + 4 authority 的 12-case pack 交給不繼承主對話、只可讀 candidate
+  canonical guidance/skill/workflow 且不得讀 key、summary、corpus、runner、git diff/history 的獨立
+  subagent。它完成 24 個 boolean 判定與 12 筆 notes；解盲 agreement `23/24 = 95.83%`，高於
+  `90%` 門檻，因此 `overall_pass=true`。
+- 證據：ignored artifact
+  `build/dev-artifacts/agent-guidance-eval-v8/a0e16b400236b687bd2b4c9f58ef4a20929e377b/` 同時保留
+  unreviewed pack、reviewed pack、hidden key 與 scored summary。
+- PR base 同步：合入 `origin/main@a57fbc29dac9da6997dc611e40255f5b79148912`；53 個 PR scope files
+  中只有 `.agents/stack.md`、`docs/current.md`、`docs/index.md` 與兩份 record 同時被 main 改過。
+  resolution 保留 main 的新版 product truth、candidate 的 retired stack deletion，以及雙方 record；
+  同步後 guidance digest 仍為正式 A/B manifest 的
+  `cfd802686608f506c00db98dc938cc234fa3f8192958f87df2ae2ec0ef57678c`。
+- 接續 / 本輪剩餘：重跑 static audit、focused tests、Ruff、MkDocs strict 與 diff hygiene，將記錄
+  commit/push 後建立 PR；只有 exact candidate head 的 CI `completed/success` 才可進入 merge gate。
+  本輪未改產品 API、UI、EEG pipeline、Granite runtime 或產品 handoff 狀態。
+
+### 15:15 第四輪 444-run A/B 與 variant-specific schema
+
+- 做了什麼：在 baseline `a0e16b400236b687bd2b4c9f58ef4a20929e377b`、candidate
+  `fff7cf63ac02df5e7795c60a1f9f0acd1756b6fd` 完成 v4 正式 A/B：routing `360/360`、authority
+  `84/84`，合計 `444/444` valid executions。routing baseline 兩筆 infrastructure timeout 由
+  failed-only resume 補跑，其餘輸入與紀錄未變。
+- 結果：candidate authority `42/42`、primary `99.44%`、overlap `100%`、explicit/incidental MCP
+  `100%/0%`、single-scope average `0.958`、median input savings `687` tokens、latency `+0.87%`；
+  single-purpose authority suite 證明 v4 已排除原 multi-objective oracle。
+- 退件：automatic PASS 仍為 false，因 18 次 no-skill execution 中一筆 `n-branch-rule-r2` 選到
+  已刪除的 `pr-branch-governance`，false positive `5.56%` 略高於 `5%`。逐筆 reason 顯示模型把
+  output enum 中的 retired name 當成可用 repo-local skill；candidate source 已不存在該 skill。
+- 修正：red-first 將 evaluator 升為 v5；baseline 與 candidate routing schema 現在分別從各自
+  worktree 的真實 `.agents/skills/*/SKILL.md` inventory 建立，且 schema digest 納入 fingerprint。
+  這保留 baseline 表達 retired routing 的能力，同時不向 candidate 暴露不存在的選項。
+- 證據：combined guidance contract/evaluator `21 passed`；static audit、Ruff check/format、MkDocs
+  strict 與 `git diff --check` PASS。
+- 接續 / 本輪剩餘：commit/push 後對 v5 exact SHA 跑下一輪 `444` executions；automatic PASS
+  後才由 blind subagent 審查混合 12-case pack。
+
+### 14:42 第三輪 guidance A/B 退件與 evaluator v4 single-purpose suites
+
+- 做了什麼：在 baseline `a0e16b400236b687bd2b4c9f58ef4a20929e377b`、candidate
+  `5479b8e6e7a3ffa55fe52c034330e4a6db9bf679` 完成第三輪 GPT-5.6 Sol/xhigh A/B。三筆 300 秒
+  infrastructure timeout 由 failed-only resume 單獨補跑；prompt、SHA、corpus 與其餘紀錄未變，
+  最終為 `360/360` valid executions。
+- 結果：candidate primary `98.89%`、negative false-positive `0%`、overlap `94.44%`、MCP
+  explicit/incidental `100%/0%`、single-scope average `0.979`、median input savings `687` tokens、
+  latency `-15.04%`；所有 routing/efficiency checks PASS。
+- 退件：authority `62.78%` 未達 `100%`。逐案例分布顯示模型在 specialist method、root/current/
+  architecture、validation 與 workflow 之間合理但不一致地選擇；這是同一 call 同時測兩個目標的
+  evaluator defect，不是可藉調低 threshold 消除的 guidance finding。原始結果保留於 ignored
+  `build/dev-artifacts/agent-guidance-eval-v6/`，不執行 blind review、不回算 PASS。
+- 修正：red-first 將 evaluator 升為 v4。60 個 routing cases 的 schema/prompt 只判 skill；新增
+  `.agents/evals/authority-cases.yaml`，以七類各兩題的 14-case suite 單獨判 authority。下一輪為
+  `(60 + 14) × 3 × 2 = 444` executions；blind pack 為 8 routing + 4 authority，交由不繼承主對話、
+  不讀 key/summary/eval corpus 的 subagent 審查。
+- 證據：combined guidance contract/evaluator `20 passed`；static audit、Ruff check/format、MkDocs
+  strict 與 `git diff --check` PASS。仍需 commit/push 後對新 exact SHA 跑正式 v4 A/B。
+
+### 13:55 第二輪 GPT-5.6 guidance A/B 與 evaluator v3
+
+- 做了什麼：在 baseline `a0e16b400236b687bd2b4c9f58ef4a20929e377b`、candidate
+  `18c92616a4794cfa685a0fea03b28feebbf5ad42` 上完成固定 GPT-5.6 Sol/xhigh/read-only、60 cases、
+  三次重跑的第二輪正式 A/B，共 `360/360` valid executions。
+- 結果：candidate primary `99.44%`、negative false-positive `0%`、overlap `100%`、MCP incidental
+  `0%`、single-scope average selected skills `0.993`、median input savings `687` tokens、latency
+  `+2.81%`；相較 baseline primary `90%`、false-positive `72.22%` 有明顯改善。
+- 退件：automatic PASS 仍為 false。authority `80%` 未達預註冊 `100%`，因 v2 prompt 將 routing
+  authority 與 canonical content/procedure authority 混用；explicit MCP 為 `5/6`，唯一錯誤輸出的
+  reason 明確選中 `mcp-adapter-reviewer`，但 primary 卻為 `null` 並誤稱 schema 不允許該值。原始
+  結果保留在 ignored artifact `build/dev-artifacts/agent-guidance-eval-v5/`，不回算成 PASS。
+- 修正：以 red-first tests 將 evaluator contract 升為 v3；authority 現在明確區分 root、current、
+  architecture、validation、workflow、history 與 skill method，且獨立於 primary skill；output schema
+  明示使用者點名的 `$skill` 是合法 exact value，explicit-only 只限制觸發時機。
+- 證據：focused evaluator `13 passed`；combined guidance contract/evaluator `16 passed`；static
+  guidance audit、Ruff check/format、MkDocs strict 與 `git diff --check` PASS。第三輪完整 A/B 是新的
+  外部模型評估，需另取得使用者同意；通過後仍須完成 12-case blind review，才能提出 overall
+  acceptance。
+
+### GPT-5.6 guidance authority/skill rebaseline
+
+- 做了什麼：以官方 GPT-5.6 lean prompt、Skills progressive disclosure、AGENTS chain 與 subagent
+  guidance 重整 repo 操作層；刪除重複 stack/runbooks/README/goal，將 19 skills 收斂成
+  15 implicit + 1 explicit MCP，並修正 TDD refactor baseline、UI refactor frame、validation
+  completion semantics 與 exact-model fallback 語意。
+- 結果：新增 60-case routing corpus（32 positive / 16 boundary-adversarial / 12 overlap）和
+  baseline/candidate 三次 A/B runner；guard 鎖住 inventory、frontmatter、size budget、stale
+  authority tokens、MCP policy 與 corpus schema。
+- 證據：guidance static audit PASS；focused runner/contract `16 passed`；Ruff check/format、
+  `git diff --check` PASS；16/16 active skills 通過官方 quick validator；MkDocs strict PASS。
+- A/B 退件：第一輪有效 360 executions 的 candidate primary `93.89%`、negative false-positive
+  `38.89%`、overlap `100%`、median input savings `706` tokens、latency `+5.05%`；automatic PASS
+  為 false。執行前另抓到 structured-output schema 與 invalid-resume/fan-out 問題，皆以 red-first
+  tests 修復並保留失敗 evidence。
+- 接續 / 本輪剩餘：以 v2 authority/explicit-MCP/status-only/token-efficiency contract 跑第二輪正式
+  A/B，再做 12-output blind review 與 exact-head PR CI。此前是退件後的 validated checkpoint，
+  不是 final A/B acceptance，也不改變產品 handoff claim。
 
 ## 2026-08-03
 

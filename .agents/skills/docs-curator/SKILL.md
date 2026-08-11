@@ -1,42 +1,31 @@
 ---
 name: docs-curator
-description: Use when organizing, consolidating, or updating XBrainLab documentation so current truth, target design, planning, decisions, validation, and records remain separated and trustworthy.
+description: "Use for XBrainLab doc consolidation, conflicting claims, historical cleanup, and navigation repair. Do not use for visual MkDocs redesign or a read-only status/current-fact summary with no documentation change."
 ---
 
-# docs-curator
+# Docs Curator
 
-## 用途
+Keep one authority for each kind of truth.
 
-用於整理 XBrainLab 文件、合併過期 agent 產物、判斷文件應放在哪裡。
+## Routing
 
-## 先讀
+- Current product fact: `docs/current.md` or `docs/architecture/`.
+- Target requirement: `docs/target/`.
+- Active work: `docs/planning/now.md`; long-term order: `docs/planning/roadmap.md`.
+- Decision: `docs/decisions/README.md`.
+- Evidence and claim contract: `docs/validation/README.md`.
+- Important implementation history: `docs/records/implementation_log.md`.
+- Chronological work note: `docs/records/worklog.md`.
+- Agent method/trigger only: `.agents/`.
 
-1. `docs/index.md`
-2. `docs/current.md`
-3. `docs/target/README.md`
-4. `docs/planning/now.md`
-5. `.agents/stack.md`
+## Workflow
 
-## 判斷規則
+1. Verify disputed statements against Git, source, runtime evidence, and canonical docs.
+2. Classify each statement by the routing table.
+3. Merge useful content into the existing authority; prefer deletion over redirect-only duplicates.
+4. Mark retained records historical and remove them from dispatch/navigation labels.
+5. Repair links, MkDocs navigation, and instruction references.
+6. Run the guidance audit and MkDocs strict build.
 
-- current truth：寫入 `docs/current.md` 或 `docs/architecture/`。
-- 目標態 / 需求：寫入 `docs/target/`。
-- 短期工作：寫入 `docs/planning/now.md`。
-- 長期方向：寫入 `docs/planning/roadmap.md`。
-- 決策：寫入 `docs/decisions/README.md`。
-- 驗證邊界：寫入 `docs/validation/README.md`。
-- 重要工程紀錄：寫入 `docs/records/implementation_log.md`。
-- 流水帳：寫入 `docs/records/worklog.md`。
-
-## 禁止
-
-- 不新增大量一級文件。
-- 不恢復 `docs/legacy/`、`docs/active/`。
-- 不把 `target/` 寫成 current implementation。
-- 不把 records 當作現在真相。
-
-## 完成檢查
-
-- 連結沒有指向已刪除檔案。
-- MkDocs strict build 可通過。
-- 有必要時更新 worklog。
+Do not create a new top-level plan for a one-time cleanup. Do not put branch names, gate argv,
+test totals, or current completion status in reusable skills.

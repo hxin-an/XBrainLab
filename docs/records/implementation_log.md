@@ -34,8 +34,75 @@
 
 ### 不能宣稱完成
 
-- 仍待本 branch commit/push、整合最新 `main`、PR exact-head CI 與 Windows 人工驗收；目前不是
-  release、full BIDS validator、任意 EEG dataset support、AutoML 或 Assistant-ready 證明。
+- 本 branch checkpoint 已 commit/push 並整合最新 `main`；仍待 merge-resolution validation、
+  PR exact-head CI 與 Windows 人工驗收。目前不是 release、full BIDS validator、任意 EEG
+  dataset support、AutoML 或 Assistant-ready 證明。
+
+## 2026-08-11 GPT-5.6 Agent Guidance Rebaseline
+
+### 狀態
+
+- Repo guidance 已改為單一 authority map：根 `AGENTS.md` 保存 safety/delivery invariants，
+  current/plan/validation 回到 canonical docs，skills 只保存 routing 與方法，workflows 保存多步驟程序。
+- Skills 從 19 個收斂為 15 個 implicit skills 加 1 個 explicit-only MCP skill；architecture/design、
+  code/clean-code 與 branch-governance 重疊已合併。
+- 舊 stack、runbooks、skills/workflows README 和 superseded goal 已移除；歷史 audit 保留為
+  provenance，不再標成 active queue。
+- 新增 static guidance audit、60-case routing corpus、固定 GPT-5.6 Sol/xhigh/read-only 的三次 A/B
+  runner，以及 blind 12-output review pack。
+
+### Evidence 入口
+
+- `.agents/evals/skill-routing-cases.yaml`
+- `.agents/evals/authority-cases.yaml`
+- `scripts/dev/audit_agent_guidance.py`
+- `tests/unit/test_agent_guidance_contract.py`
+- `tests/unit/scripts/test_audit_agent_guidance.py`
+
+### 驗收結果與界線
+
+- 第一輪 360 個有效 executions 已完成，但 automatic acceptance 未通過：candidate primary
+  accuracy `93.89%`、negative false-positive `38.89%`、overlap `100%`，且原 authority prompt
+  與 oracle 定義互相矛盾。它是有效的退件 evidence，不是 PASS。
+- 第二輪另有 360 個有效 executions：candidate primary `99.44%`、negative false-positive `0%`、
+  overlap `100%`、single-scope 平均選擇 `0.993` skills、median input savings `687` tokens、latency
+  `+2.81%`。這證明 lean guidance 的主要 routing/boundary 改善，但 automatic acceptance 仍為 false：
+  authority `80%` 未達 `100%`，explicit MCP `5/6`；唯一 MCP 錯誤的 reason 明確選中 skill，輸出卻
+  自相矛盾地回傳 `null` 並誤稱 schema 不允許該值。
+- 第三輪在 candidate `5479b8e6` 完成另 `360/360` 個有效 executions：primary `98.89%`、negative
+  false-positive `0%`、overlap `94.44%`、explicit/incidental MCP `100%/0%`、median input savings
+  `687` tokens、latency `-15.04%`，但 authority 僅 `62.78%`，automatic acceptance 仍為 false。
+  三輪結果共同證明 skill routing 已穩定改善，也證明在同一輸出同時要求 routing 與 content
+  authority 會形成無法可靠評分的 multi-objective oracle；不能靠改標既有答案或降低門檻結案。
+- Evaluator v4 已將 60-case routing suite 與 14-case authority-only suite 分開；authority corpus
+  對七種 canonical layer 各有兩題，完整 A/B 為 `444` executions。12-case blind pack 固定混合
+  8 routing 與 4 authority cases，避免人工抽查只驗證其中一半契約。
+- 第四輪在 candidate `fff7cf63` 完成 `444/444` valid executions；authority `100%`、primary
+  `99.44%`、overlap `100%`、MCP explicit/incidental `100%/0%`、median input savings `687` tokens、
+  latency `+0.87%`。唯一退件是 false-positive `5.56%`：candidate 一次選到已被刪除的
+  `pr-branch-governance`，原因是 evaluator 仍把 baseline 的 retired skill 放進兩邊共用 output enum。
+  v5 改由每個 worktree 的實際 skill inventory 建立 variant-specific schema，並把 schema digest
+  納入 resume fingerprint；沒有降低 `5%` threshold 或改標原始結果。
+- Evaluator 已加入真 API preflight、structured error、invalid-record fail-closed、failed-only resume
+  與 contract version。
+- 第五輪在 candidate `328cdcf48244b4bcd4debce91aa1867969dae6d1` 以 v5 完成
+  `444/444` valid executions；candidate routing primary、overlap、authority、explicit MCP 與
+  forbidden-skill accuracy 均為 `100%`，false-positive 與 incidental MCP 均為 `0%`，single-scope
+  平均選擇 `0.958` skills。median input 為 `20,489` tokens，相對 baseline `21,210` 節省 `721`
+  tokens（`3.40%`）；median latency `+4.77%`，低於預註冊 `+10%` 上限。全部 automatic checks PASS。
+- 不繼承主對話且不得讀 key、summary、corpus、runner 或 git diff/history 的 blind subagent 完成
+  12-case 混合抽查；24 個 A/B 判定與 hidden key 的 agreement 為 `95.83%`，高於 `90%` 門檻。
+  v5 `overall_pass` 為 true；ignored evidence 位於
+  `build/dev-artifacts/agent-guidance-eval-v8/a0e16b400236b687bd2b4c9f58ef4a20929e377b/`。
+- PR exact-head CI 仍是合併 gate；它不改變本輪 guidance/evaluator 本身已通過預註冊 acceptance
+  的結論。
+- PR 前已同步 `origin/main@a57fbc29dac9da6997dc611e40255f5b79148912`；conflict resolution
+  保留新版 product current truth，並維持 `.agents/stack.md` 退役刪除。同步後 AGENTS / `.agents/`
+  的 content digest 仍精確等於正式 A/B manifest 的
+  `cfd802686608f506c00db98dc938cc234fa3f8192958f87df2ae2ec0ef57678c`，沒有拿不同 guidance
+  surface 外推原 acceptance。
+- 本改動只校準 repo coding-agent guidance；不改 XBrainLab 產品 API、Granite runtime、EEG
+  workflow 或 product handoff status。
 
 ## 2026-08-04 Main Development Checkpoint
 

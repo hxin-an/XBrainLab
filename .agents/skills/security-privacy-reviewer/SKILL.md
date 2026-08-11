@@ -1,65 +1,26 @@
 ---
 name: security-privacy-reviewer
-description: Use when reviewing XBrainLab local LLM, MCP, file access, remote/headless server, dataset privacy, prompt injection, excessive agency, secret leakage, logging, and clinical or personal EEG data handling risks.
+description: "Use for XBrainLab data privacy, LLM/file access, prompt injection, agency, secrets, diagnostics, remote exposure, and EEG risks. Do not use for code quality."
 ---
 
-# security-privacy-reviewer
+# Security and Privacy Reviewer
 
-## 用途
+Review trust boundaries around local data and agent actions.
 
-用於檢查 XBrainLab 的安全、隱私和 agent 權限邊界，特別是 MCP / local LLM / file system / EEG
-dataset 相關工作。
+## Workflow
 
-## 設計來源
+1. Identify assets, actors, entry points, data flows, persistence, and external boundaries.
+2. Trace user-controlled text, paths, metadata, model output, commands, logs, and artifacts.
+3. Check path containment, symlink/reparse behavior, permissions, secret handling, and bounded storage.
+4. Verify untrusted content cannot grant tools, bypass confirmation, alter policy, or fabricate state.
+5. Require least privilege, backend admission, explicit destructive-action confirmation, and safe
+   cancellation/recovery.
+6. Check diagnostics for full paths, subject identifiers, control characters, prompts, tokens, and
+   unintended retention.
+7. Add adversarial tests at the real boundary, not only sanitized helpers.
 
-已消化參考：
+## Risk output
 
-- OWASP Top 10 for LLM Applications：prompt injection、sensitive information disclosure、
-  excessive agency、insecure output handling、unbounded consumption 等是 LLM app 主要風險。
-- OWASP MCP Top 10：MCP 工具可能帶來 command injection、工具權限過大、供應鏈和資料外洩風險。
-- MCP authorization spec：HTTP-based transport 才需要明確 auth flow；stdio 應避免把 credentials
-  混在不受控輸出裡。
-
-## 先讀
-
-1. `docs/target/agent.md`
-2. `docs/architecture/agent.md`
-3. `docs/architecture/backend.md`
-4. MCP / agent / file access / logging code touched by the change
-
-## Review Gate
-
-檢查：
-
-- local-first 是否保持；不把 EEG data、prompt、recipe、log 送到 remote API。
-- MCP tools 是否最小權限；destructive / long-running / file-writing command 是否 confirmation。
-- external prompt / dataset metadata / README / events.tsv 是否可能含 prompt injection；不得把資料文字當 instruction。
-- file path tools 是否限制在使用者明確選擇或允許範圍，不任意掃全碟。
-- logs / artifacts 是否避免保存敏感 subject id、完整私人路徑、clinical labels，或有清楚 redaction policy。
-- HTTP MCP 是否有 auth、localhost/default deny、CORS/session/token story。
-- agent tool output 是否經 verifier / formatter；不直接執行模型生成的 shell/code。
-- no-China model policy、cache location、license / download source 是否可審查。
-
-## 打回條件
-
-- MCP / agent 可以在未確認下 destructive 操作。
-- HTTP server 開遠端卻沒有 auth/session/permission model。
-- prompt injection 文字能影響 tool policy 或 bypass capability。
-- raw logs/artifacts 外洩敏感資料。
-- model/API path 繞過 local-only policy。
-
-## 輸出格式
-
-```md
-## Security Verdict
-
-- verdict: acceptable / needs guardrails / unsafe
-
-## Data Exposure
-
-## Tool Permission Risks
-
-## Prompt Injection Surface
-
-## Required Mitigations
-```
+For each risk report severity, asset, attacker/input, path, impact, existing control, missing
+evidence, and mitigation. Separate local single-user assumptions from remote, multi-user, clinical,
+or regulated deployment claims. Do not turn a general review into an unrelated transport audit.
