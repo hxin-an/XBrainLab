@@ -213,3 +213,11 @@ def test_final_verdict_runs_on_failed_dependencies_but_not_cancelled_workflows()
     assert workflow["jobs"]["ci-capability-verdict"]["if"] == (
         "always() && !cancelled()"
     )
+
+
+def test_workflow_uses_the_v2_cancellation_protocol_group() -> None:
+    _text, workflow = _workflow()
+
+    assert workflow["concurrency"]["group"] == (
+        "${{ github.workflow }}-validation-plan-v2-${{ github.ref }}"
+    )
