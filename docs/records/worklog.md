@@ -37,6 +37,27 @@
 
 ## 2026-08-11
 
+### 15:43 第五輪 v5 guidance acceptance 與 blind subagent review
+
+- 做了什麼：在 baseline `a0e16b400236b687bd2b4c9f58ef4a20929e377b`、candidate
+  `328cdcf48244b4bcd4debce91aa1867969dae6d1` 使用 variant-specific routing schema 完成第五輪
+  正式 GPT-5.6 Sol/xhigh/read-only A/B；routing `360/360`、authority `84/84`，合計 `444/444`
+  valid executions。
+- 自動結果：candidate routing primary、overlap、authority、explicit MCP 與 forbidden-skill accuracy
+  均為 `100%`，false-positive 與 incidental MCP 均為 `0%`，single-scope average `0.958`；median
+  input `20,489` 對 baseline `21,210`，節省 `721` tokens（`3.40%`），median latency `+4.77%`。
+  九項預註冊 automatic checks 全數 PASS。
+- 盲審：將固定 8 routing + 4 authority 的 12-case pack 交給不繼承主對話、只可讀 candidate
+  canonical guidance/skill/workflow 且不得讀 key、summary、corpus、runner、git diff/history 的獨立
+  subagent。它完成 24 個 boolean 判定與 12 筆 notes；解盲 agreement `23/24 = 95.83%`，高於
+  `90%` 門檻，因此 `overall_pass=true`。
+- 證據：ignored artifact
+  `build/dev-artifacts/agent-guidance-eval-v8/a0e16b400236b687bd2b4c9f58ef4a20929e377b/` 同時保留
+  unreviewed pack、reviewed pack、hidden key 與 scored summary。
+- 接續 / 本輪剩餘：重跑 static audit、focused tests、Ruff、MkDocs strict 與 diff hygiene，將記錄
+  commit/push 後建立 PR；只有 exact candidate head 的 CI `completed/success` 才可進入 merge gate。
+  本輪未改產品 API、UI、EEG pipeline、Granite runtime 或產品 handoff 狀態。
+
 ### 15:15 第四輪 444-run A/B 與 variant-specific schema
 
 - 做了什麼：在 baseline `a0e16b400236b687bd2b4c9f58ef4a20929e377b`、candidate

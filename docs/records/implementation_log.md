@@ -36,7 +36,7 @@
 - `tests/unit/test_agent_guidance_contract.py`
 - `tests/unit/scripts/test_audit_agent_guidance.py`
 
-### 不能宣稱完成
+### 驗收結果與界線
 
 - 第一輪 360 個有效 executions 已完成，但 automatic acceptance 未通過：candidate primary
   accuracy `93.89%`、negative false-positive `38.89%`、overlap `100%`，且原 authority prompt
@@ -61,7 +61,18 @@
   v5 改由每個 worktree 的實際 skill inventory 建立 variant-specific schema，並把 schema digest
   納入 resume fingerprint；沒有降低 `5%` threshold 或改標原始結果。
 - Evaluator 已加入真 API preflight、structured error、invalid-record fail-closed、failed-only resume
-  與 contract version。v5 正式 A/B、blind subagent review 與 PR exact-head CI 尚未完成。
+  與 contract version。
+- 第五輪在 candidate `328cdcf48244b4bcd4debce91aa1867969dae6d1` 以 v5 完成
+  `444/444` valid executions；candidate routing primary、overlap、authority、explicit MCP 與
+  forbidden-skill accuracy 均為 `100%`，false-positive 與 incidental MCP 均為 `0%`，single-scope
+  平均選擇 `0.958` skills。median input 為 `20,489` tokens，相對 baseline `21,210` 節省 `721`
+  tokens（`3.40%`）；median latency `+4.77%`，低於預註冊 `+10%` 上限。全部 automatic checks PASS。
+- 不繼承主對話且不得讀 key、summary、corpus、runner 或 git diff/history 的 blind subagent 完成
+  12-case 混合抽查；24 個 A/B 判定與 hidden key 的 agreement 為 `95.83%`，高於 `90%` 門檻。
+  v5 `overall_pass` 為 true；ignored evidence 位於
+  `build/dev-artifacts/agent-guidance-eval-v8/a0e16b400236b687bd2b4c9f58ef4a20929e377b/`。
+- PR exact-head CI 仍是合併 gate；它不改變本輪 guidance/evaluator 本身已通過預註冊 acceptance
+  的結論。
 - 本改動只校準 repo coding-agent guidance；不改 XBrainLab 產品 API、Granite runtime、EEG
   workflow 或 product handoff status。
 
