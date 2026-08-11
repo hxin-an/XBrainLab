@@ -37,6 +37,26 @@
 
 ## 2026-08-11
 
+### 13:55 第二輪 GPT-5.6 guidance A/B 與 evaluator v3
+
+- 做了什麼：在 baseline `a0e16b400236b687bd2b4c9f58ef4a20929e377b`、candidate
+  `18c92616a4794cfa685a0fea03b28feebbf5ad42` 上完成固定 GPT-5.6 Sol/xhigh/read-only、60 cases、
+  三次重跑的第二輪正式 A/B，共 `360/360` valid executions。
+- 結果：candidate primary `99.44%`、negative false-positive `0%`、overlap `100%`、MCP incidental
+  `0%`、single-scope average selected skills `0.993`、median input savings `687` tokens、latency
+  `+2.81%`；相較 baseline primary `90%`、false-positive `72.22%` 有明顯改善。
+- 退件：automatic PASS 仍為 false。authority `80%` 未達預註冊 `100%`，因 v2 prompt 將 routing
+  authority 與 canonical content/procedure authority 混用；explicit MCP 為 `5/6`，唯一錯誤輸出的
+  reason 明確選中 `mcp-adapter-reviewer`，但 primary 卻為 `null` 並誤稱 schema 不允許該值。原始
+  結果保留在 ignored artifact `build/dev-artifacts/agent-guidance-eval-v5/`，不回算成 PASS。
+- 修正：以 red-first tests 將 evaluator contract 升為 v3；authority 現在明確區分 root、current、
+  architecture、validation、workflow、history 與 skill method，且獨立於 primary skill；output schema
+  明示使用者點名的 `$skill` 是合法 exact value，explicit-only 只限制觸發時機。
+- 證據：focused evaluator `13 passed`；combined guidance contract/evaluator `16 passed`；static
+  guidance audit、Ruff check/format、MkDocs strict 與 `git diff --check` PASS。第三輪完整 A/B 是新的
+  外部模型評估，需另取得使用者同意；通過後仍須完成 12-case blind review，才能提出 overall
+  acceptance。
+
 ### GPT-5.6 guidance authority/skill rebaseline
 
 - 做了什麼：以官方 GPT-5.6 lean prompt、Skills progressive disclosure、AGENTS chain 與 subagent

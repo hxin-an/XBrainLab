@@ -78,7 +78,7 @@ MAX_SKILL_LINES = 120
 MAX_TOTAL_SKILL_LINES = 1_000
 MAX_DESCRIPTION_CHARS = 220
 MAX_TOTAL_DESCRIPTION_CHARS = 2_920
-EVALUATOR_CONTRACT_VERSION = 2
+EVALUATOR_CONTRACT_VERSION = 3
 INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
 
 
@@ -124,6 +124,11 @@ ROUTING_OUTPUT_SCHEMA: dict[str, Any] = {
         "primary_skill": {
             "type": ["string", "null"],
             "enum": [None, *EXPECTED_SKILLS, *RETIRED_SKILLS],
+            "description": (
+                "Exact repo-local primary skill, or null. When the user explicitly "
+                "names a skill in this enum, return that exact skill; explicit-only "
+                "controls invocation, not schema availability."
+            ),
         },
         "secondary_skills": {
             "type": "array",
@@ -135,6 +140,10 @@ ROUTING_OUTPUT_SCHEMA: dict[str, Any] = {
         "authority_class": {
             "type": "string",
             "enum": list(AUTHORITY_CLASSES),
+            "description": (
+                "Canonical repo layer that owns the task facts, contract, or procedure; "
+                "classify independently of skill routing using the prompt definitions."
+            ),
         },
         "reason": {"type": "string", "maxLength": 240},
     },
@@ -445,12 +454,21 @@ def _routing_prompt(case: RoutingCase) -> str:
         "Use only repo-local instructions and skill metadata already supplied to you. "
         "Do not inspect .agents/evals, audit scripts, tests, artifacts, or expected answers. "
         "Do not solve the request and do not call tools. Select one primary repo-local skill, "
-        "zero or more genuinely necessary secondary skills. The authority class means the "
-        "instruction source that controls routing and execution, not the implementation evidence "
-        "or factual source you may inspect later. Use skill_trigger when SKILL.md metadata owns "
-        "the routing decision, workflow for a multi-step workflow, and the matching canonical "
-        "authority for root/current/target/validation/history requests. Use null when no "
+        "zero or more genuinely necessary secondary skills. If the user explicitly names a "
+        "repo-local $skill, select that exact skill when it exists; explicit-only controls when "
+        "a skill may be selected, not whether the output schema permits it. Use null when no "
         "repo-local skill is warranted.\n\n"
+        "authority_class is independent of primary_skill: choose the canonical repo "
+        "layer that owns the task's required facts, contract, or procedure. Do not use "
+        "skill_trigger merely because a skill routes the task. Definitions: root_invariants = "
+        "root AGENTS.md safety, authorization, branch rules, or the no-repo boundary; "
+        "current_truth = docs/current plus docs/planning status, priorities, and current product "
+        "decisions; target_architecture = docs/target plus docs/architecture current/target "
+        "system boundaries and ownership contracts; validation_registry = docs/validation plus "
+        "the executable handoff-gate registry and evidence claims; workflow = a matching "
+        ".agents/workflows procedure; historical_provenance = dated records or Git history when "
+        "resolving historical authority; skill_trigger = the matching SKILL.md method or boundary "
+        "when none of the preceding canonical sources owns the task content.\n\n"
         f"User request:\n{case.prompt}"
     )
 

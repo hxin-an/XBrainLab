@@ -40,9 +40,16 @@
 - 第一輪 360 個有效 executions 已完成，但 automatic acceptance 未通過：candidate primary
   accuracy `93.89%`、negative false-positive `38.89%`、overlap `100%`，且原 authority prompt
   與 oracle 定義互相矛盾。它是有效的退件 evidence，不是 PASS。
+- 第二輪另有 360 個有效 executions：candidate primary `99.44%`、negative false-positive `0%`、
+  overlap `100%`、single-scope 平均選擇 `0.993` skills、median input savings `687` tokens、latency
+  `+2.81%`。這證明 lean guidance 的主要 routing/boundary 改善，但 automatic acceptance 仍為 false：
+  authority `80%` 未達 `100%`，explicit MCP `5/6`；唯一 MCP 錯誤的 reason 明確選中 skill，輸出卻
+  自相矛盾地回傳 `null` 並誤稱 schema 不允許該值。
+- 第二輪同時證明 evaluator v2 仍把 skill routing authority 和 canonical task-content authority 混為
+  一談。v3 已將七種 canonical layer 定義成獨立於 primary skill 的分類，並在 structured schema
+  明示 explicit `$skill` 的合法性；需以新的完整 A/B 驗證，不能回算或改標第二輪結果。
 - Evaluator 已加入真 API preflight、structured error、invalid-record fail-closed、failed-only resume
-  與 contract version；authority dispatch 定義、explicit MCP cases、status-only skill boundary 和
-  token-efficiency denominator 已校正。正式第二輪與 blind review 尚未完成。
+  與 contract version。第三輪正式 A/B、blind review 與 PR exact-head CI 尚未完成。
 - 本改動只校準 repo coding-agent guidance；不改 XBrainLab 產品 API、Granite runtime、EEG
   workflow 或 product handoff status。
 

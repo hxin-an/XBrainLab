@@ -58,15 +58,21 @@ def test_response_schema_uses_only_supported_array_contract() -> None:
     secondary = ROUTING_OUTPUT_SCHEMA["properties"]["secondary_skills"]
 
     assert "uniqueItems" not in secondary
+    assert (
+        "explicitly names"
+        in ROUTING_OUTPUT_SCHEMA["properties"]["primary_skill"]["description"]
+    )
 
 
-def test_routing_prompt_defines_authority_as_dispatch_instruction_source() -> None:
+def test_routing_prompt_separates_skill_routing_from_canonical_authority() -> None:
     case = RoutingCase("case", "review code", "positive", None, (), (), "current_truth")
 
     prompt = _routing_prompt(case)
 
-    assert "instruction source that controls routing and execution" in prompt
-    assert "not the implementation evidence" in prompt
+    assert "independent of primary_skill" in prompt
+    assert "target_architecture = docs/target plus docs/architecture" in prompt
+    assert "workflow = a matching .agents/workflows procedure" in prompt
+    assert "explicit-only controls when a skill may be selected" in prompt
 
 
 def test_jsonl_error_parser_reports_api_failure_instead_of_stderr_notice() -> None:
