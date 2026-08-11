@@ -32,8 +32,12 @@ recurrence. Fix blocking matches or report `blocked`.
 ## 4. Happy path and edges
 
 Exercise one user-like path and the adjacent failures/cancellation/repeat behavior for the changed
-area. Select commands from `docs/validation/README.md`; executable handoff gates come only from
-`scripts/dev/handoff_gate_spec.py` via its canonical runner.
+area. Declare the intended claim and scope, generate the source-bound validation plan, execute it,
+persist its receipt, then run the independent `verify` subcommand through
+`scripts/dev/run_validation_control_plane.py`. Reuse the same authorized target SHA at plan, run,
+and verify. A receipt-level result from `run` alone is not a handoff verdict. Executable gate policy
+comes only from `scripts/dev/handoff_gate_spec.py`; do not select or copy leaf commands from
+documentation.
 
 - Visible UI: behavior test plus screenshot/walkthrough.
 - Data/import/label/epoch/training/evaluation/visualization: required source-diverse dataset gate.
@@ -43,6 +47,12 @@ area. Select commands from `docs/validation/README.md`; executable handoff gates
 - MCP: only when the user explicitly requested MCP scope.
 
 If a required gate is too slow or unavailable, return a checkpoint; do not silently reduce it.
+The legacy-named `run_handoff_validation_manifest.py` entrypoint may be used for the full handoff
+inventory only because it delegates to the same plan/receipt/dossier/verdict path.
+Its `--target-sha` must be the immutable authorized target tip, normally the `origin/main` SHA after
+an explicit fetch from the reviewed remote; a mutable or merely local ref name alone cannot
+authorize a claim-bearing comparison base. Pass the current candidate branch explicitly with
+`--expected-branch`; no historical branch default is valid.
 
 ## 5. Artifact review
 

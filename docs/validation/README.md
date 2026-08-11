@@ -1,9 +1,67 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-08-10`
+最後更新：`2026-08-11`
 
 這頁定義 current gates、evidence identity 和 claim boundary。Dated checkpoint output 不在這裡
 冒充 current result；歷史結果看 records 或 Git history。
+
+## Machine Validation Control Plane
+
+驗證選擇現在由 machine plan 決定，不再由 agent 從聊天或文件中的 command 清單手工拼接。
+輸入是四個互相獨立、只可升級不可降級的維度：change intent、affected layer、risk floor 與
+intended claim。Agent 提供 semantic descriptor；工具從 committed、staged、dirty 與 untracked
+paths 推論 scope。兩者取聯集，未知 path 會升為 critical 並保持 blocked，不能默認成 docs-only。
+
+Authority 分工如下：
+
+| Authority | 唯一責任 |
+| --- | --- |
+| `scripts/dev/handoff_gate_spec.py` | gate argv、timeout、environment、artifact 與 outcome policy。 |
+| `scripts/dev/validation_gate_catalog.py` | gate coverage tags、dependency DAG 與昂貴 gate 邊界。 |
+| `scripts/dev/validation_control_plane.py` | descriptor/path union、risk floor、claim rules、DAG selection、plan/receipt/verdict schema。 |
+| `scripts/dev/run_validation_control_plane.py` | changed-path discovery、registry execution、exact-source dossier verification。 |
+| `scripts/dev/ci_gate_ownership.py` | Product-PR selected gate 到 CI execution owner 的完整映射；沒有 owner 就拒絕展開。 |
+| `scripts/dev/validation_ci_evidence.py` | per-owner receipt coverage、CI-native artifact rehash 與 CI capability-only verdict；不產生 product claim。 |
+| plan / receipt / dossier | 本次要跑什麼、實際跑了什麼，以及 evidence 是否仍對應 exact source。 |
+
+基本流程是：
+
+```text
+semantic descriptor + changed paths
+               |
+               v
+     immutable validation plan
+               |
+               v
+   registered deterministic gates
+               |
+               v
+     receipt + evidence dossier
+               |
+               v
+       one claim verdict
+```
+
+Product-code PR 會選一次完整 traditional deterministic suite；data diversity、visible UI artifact、
+native lifecycle、resource 與 platform gates 只在相應 layer/risk 被選入。Exact Granite/RAG 是
+local-only handoff inventory，不由 ephemeral CI runner 冒充；model-runtime PR 先跑可自動化的
+Assistant/runtime contract，完整 handoff 再要求 exact pinned cache/runtime evidence。純 backend
+或 EEG training change 不會因字串含有 `training` / `model` 而誤跑 Granite QA。混合變更取規則
+聯集，shared dependency 只執行一次。Model/agent 不作一般 test oracle；高風險 visual 或
+exploratory QA 的 driver/claim contract 另行處理，不能把模擬操作冒充 human acceptance。
+
+入口提供 `describe`、`plan`、`run`、`verify` 與 structural-only `report` subcommands。`plan` 預設會把 base 到
+HEAD、staged、dirty 與 untracked paths 合併；`run` 只能使用 canonical registry 重新驗證後的
+plan；`verify` 會比對 plan digest、source SHA、實際 diff、dossier 與每個 gate record digest。
+`report` 未讀 dossier 時固定輸出 blocked。PR body 的 `Validation-Intent` 是必填 reviewed
+declaration；layers、risk 與 extra rules 只能提高 path inference 的 scope。CI 先產生 exact-head
+plan，再從 `scripts/dev/run_tests.py` 的既有 Linux/platform command registry 展開 matrix；
+public/UI/native 與 CPU-safe resource-contract owners 直接由 registered gate argv 執行，workflow
+不再複製 public leaf commands 或 shard node 清單。GPU `resource-calibration` 保留在 handoff，
+不在無 GPU runner 假裝通過。最後的 `CI Capability Verdict` 不只數 receipt：registry owner 的
+下載 dossier 會重新驗 command/source/log/artifact/record digest，plan/product 兩個 CI-native
+equivalent owner 則重新雜湊下載檔案 manifest。Receipt 與 evidence 分開上傳，避免 artifact
+共同根目錄改變 receipt discovery。這仍不是 product、handoff 或 release claim。
 
 ## Current Validation Status
 
@@ -11,8 +69,8 @@
 | --- | --- |
 | Candidate checkout | 由 `git rev-parse --show-toplevel` 和 generated evidence 記錄，不在 canonical docs 寫死本機 path。 |
 | Product baseline | `main` |
-| Current candidate | `integration/eeg-workflow-improvements-v1`；未合併 checkpoint；只有 exact-head push / CI 可以提升證據狀態。 |
-| Baseline | `main@a0e16b400236b687bd2b4c9f58ef4a20929e377b` |
+| Current candidate | 不在 canonical docs 寫死 branch；只有目前 task PR 的 pushed exact head 可成為候選。 |
+| Baseline | `main@b3a87e3996585ebb09ae46335da82d234ae70249` |
 | Closure state | Local validation candidate；exact-head CI / Windows acceptance pending；not release-ready；Assistant not ready；not product complete |
 | Data Import artifacts | Tracked folder is a dirty checkpoint；read its manifest for source identity and never treat it as current candidate evidence |
 | Required authority | 本頁與 [Now](../planning/now.md)；舊 product-quality goal / audit 只作歷史 provenance。 |
@@ -203,13 +261,15 @@ artifacts 仍是必須另行檢查的 evidence。
 - `blocked`：需要使用者決策、外部環境或無法自動取得的 evidence；
 - `handoff-ready`：只有全部 gate 從同一 clean pushed commit 完成後才可使用。
 
-目前狀態是尚未合併到 `main` 的 integration `checkpoint`。只有目前 candidate 的 exact-head CI
-成功並完成規定 gate 後，才能經 PR 回到 `main`；這不表示 Assistant、效能、資料格式或 release
-gate 已完成。
+目前狀態是 validation control plane 的 local PR `checkpoint`。只有目前 task candidate 的
+exact-head CI 成功並完成規定 gate 後，才能經 PR 回到 `main`；這不表示產品、Assistant、效能、
+資料格式、Windows acceptance 或 release gate 已完成。
 
-## EEG Workflow Improvements Checkpoint
+## Historical EEG Workflow Improvements Checkpoint
 
-`integration/eeg-workflow-improvements-v1` 整合五個尚未進入 `main` 的改進：curated
+下列數字是 PR #12 合併前的 provenance；該 PR 已進入 `main`，舊
+`integration/eeg-workflow-improvements-v1` 不是 current candidate，也不能把這些舊 local totals
+當作目前 task evidence。當時整合的五項改進是：curated
 Braindecode model catalog、BIDS scan 前 subject selection、training test accuracy curve、
 backend-admitted cross-fold Evaluation summary，以及 cross-fold Saliency summary / detached display
 normalization。Local focused backend `74 passed`、focused UI `204 passed`、public IO/BIDS/cross-source
@@ -218,7 +278,7 @@ lifecycle cases、`14/14` required formats，strict cross-source runner 為 `4/4
 （PhysioNet EDF / BBCI GDF training；SCCN SET / MNE CNT import/preprocess boundary）。本輪後續 contract closure
 另涵蓋 selected-run BIDS label recommendation、mixed-sampling epoch fail-closed 與 resample recovery、
 deferred split publication / rollback，以及逐欄位 manual provenance 的 deterministic training
-recommendations；這些都有 focused regression，但仍等待 final pushed exact-head CI。
+recommendations；這些 focused regression 只描述該歷史 checkpoint。
 Independent source review additionally found and closed stable model-ID loss at the Training UI
 boundary and subject-cohort conflation in cross-fold summaries; their red-first regressions and
 expanded adjacent suite passed before this checkpoint was updated.
@@ -351,22 +411,28 @@ checks；不得使用 `gh pr merge --auto` 代替檢查，因未受保護的 bra
 完整報告欄位和 task-slice 規則看 repo-root
 `.agents/workflows/handoff-candidate.md`。
 
-## Canonical Handoff Runner
+## Full-Handoff Compatibility Entrypoint
 
 `scripts/dev/handoff_gate_spec.py` 是 required gate ID、argv、timeout、environment、pytest outcome
-和 artifact policy 的唯一 executable manifest。`scripts/dev/run_handoff_validation_manifest.py`
-依 registry 順序把所有 required gates 交給 `scripts/dev/handoff_evidence_recorder.py`，任一 gate
-失敗即停止；全部成功後，再用完整 required ID set 驗證 dossier。不要從這頁複製個別 command
-重組 final handoff，也不要用 dashboard 取代 runner。
+和 artifact policy 的唯一 executable manifest。`scripts/dev/run_validation_control_plane.py` 是
+plan / execute / receipt / dossier / verdict 的唯一流程。舊名稱的
+`scripts/dev/run_handoff_validation_manifest.py` 僅是 full-handoff 相容入口：它先建立
+`claim=handoff` 的 source-bound plan，再委派同一 control plane 執行與驗證，不再維護第二套
+gate loop。不要從這頁複製個別 command 重組 final handoff，也不要用 dashboard 取代 verifier。
 
 Canonical invocation：
 
 ```bash
 MODEL_CACHE_DIR="$(realpath XBrainLab/llm/core/models)"
 RAG_CACHE_DIR=/mnt/d/XBrainLabCache/rag
+CANDIDATE_BRANCH="$(git branch --show-current)"
+git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+TARGET_SHA="$(git rev-parse refs/remotes/origin/main)"
 poetry run -- python scripts/dev/run_handoff_validation_manifest.py \
   --model-cache-dir "$MODEL_CACHE_DIR" \
-  --rag-cache-dir "$RAG_CACHE_DIR"
+  --rag-cache-dir "$RAG_CACHE_DIR" \
+  --expected-branch "$CANDIDATE_BRANCH" \
+  --target-sha "$TARGET_SHA"
 ```
 
 兩個 cache argument 都是必填，必須解析為 `/mnt/d/...` 的 absolute D-mounted path。Recorder
@@ -386,9 +452,14 @@ absolute SHA-scoped path，並明確 opt in：
 
 ```bash
 HANDOFF_SHA="$(git rev-parse HEAD)"
+CANDIDATE_BRANCH="$(git branch --show-current)"
+git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+TARGET_SHA="$(git rev-parse refs/remotes/origin/main)"
 poetry run -- python scripts/dev/run_handoff_validation_manifest.py \
   --model-cache-dir "$(realpath XBrainLab/llm/core/models)" \
   --rag-cache-dir /mnt/d/XBrainLabCache/rag \
+  --expected-branch "$CANDIDATE_BRANCH" \
+  --target-sha "$TARGET_SHA" \
   --evidence-root "/mnt/d/XBrainLabHandoff/$HANDOFF_SHA" \
   --allow-external-evidence-root
 ```
@@ -403,20 +474,26 @@ Required pytest gates 只能透過 source-controlled wrapper 執行。Wrapper �
 log 或偽造 terminal summary 被誤判為 PASS。它信任同一 candidate SHA 內受 review 的測試與
 runner source，不是用來抵抗能任意修改同一使用者 source/evidence 的惡意程式碼。
 
-## Registered Gate Inventory
+`--target-sha` 是 claim authority，不是把 mutable ref 轉成 SHA 的裝飾。Canonical local flow
+先刷新 configured `origin` 的 main tip，再把該 reviewed identity 傳入；若 PR/event 指定另一個
+正式 target，必須直接使用其 exact SHA。未刷新、被本機重指或來源未經授權的 tracking ref
+不能縮小 claim-bearing diff。`--expected-branch` 同樣必填，避免舊 branch 名成為隱性 policy。
 
-下表用來說明 gate 意圖；exact argv 只讀 checked-in registry，不在文件維護第二份 shell manifest。
+## Registered Gate Sections
 
-| Section | Registered IDs | Evidence boundary |
-| --- | --- | --- |
-| 1. Identity/static/docs | `git-status` through `mkdocs-strict` | Branch/upstream/source identity、Ruff、Basedpyright、MkDocs。 |
-| 2. Architecture/security | `architecture-compliance`、`architecture-unit`、`persistence-path-stop-barrier`、`complete-regression` | Command spine、read-side boundary、safe persistence/path、Stop barrier，以及隔離 subprocess 的完整 unit/integration/regression suite。 |
-| 3. Real command spine | `command-spine` | Real ApplicationService FIF workflow plus deterministic oracle；不支撐 scientific accuracy。 |
-| 4. Assistant/local runtime | `assistant-security-suite`、`granite-runtime`、`rag-offline`、五個 `chatpanel-*` gates | Exact Granite、secure RAG、guided/training readiness/completion、recovery、long session 與 bounded shutdown。 |
-| 5. UI artifacts | `human-like-product` through `data-import-wizard-validate` | Exact-source full/narrow/DPI/wizard/visualization artifact set。 |
-| 6. Native lifecycle | `native-lifecycle-tests`、`preprocess-native-stress`、`ui-native-render-stress` | Preprocess and render ownership；不取代 Windows native acceptance。 |
-| 7. Multi-dataset | `fetch-required-ci` through `public-cross-source-training`，包含 `real-data-interpretation-training` | Fixed denominator、verify-only、wizard、IO/BIDS、cross-source diversity；Graz external labels 與 PhysioNet internal events 走到 training，public BIDS 依 fixture 能力走到 preview/apply 或 epoch/split readiness。 |
-| 8. Resource/dashboard | `resource-calibration`、`handoff-dashboard` | 在 ignored exact-SHA root 產生 CUDA calibration，dashboard 保留並驗證該輸入後做 final clean-source recheck；dashboard 必須維持最後一個 gate。 |
+下表只說明 section 意圖；ID、順序、dependency 與 exact argv 全部直接讀 checked-in registry，
+不在文件維護第二份 gate inventory 或 shell manifest。
+
+| Section | Evidence boundary |
+| --- | --- |
+| 1. Identity/static/docs | Branch/upstream/source identity、Ruff、Basedpyright、MkDocs。 |
+| 2. Architecture/security/regression | Guidance/architecture contracts、safe persistence/path、Stop barrier，以及隔離 subprocess 的 product regression。 |
+| 3. Real command spine | Real ApplicationService FIF workflow plus deterministic oracle；不支撐 scientific accuracy。 |
+| 4. Assistant/local runtime | Exact Granite、secure RAG、guided/training readiness/completion、recovery、long session 與 bounded shutdown。 |
+| 5. UI artifacts | Exact-source full/narrow/DPI/wizard/visualization artifact set。 |
+| 6. Native lifecycle | Preprocess and render ownership；不取代 Windows native acceptance。 |
+| 7. Multi-dataset | Fixed denominator、verify-only、wizard、IO/BIDS、cross-source diversity與能力相符的 training/readiness。 |
+| 8. Resource/dashboard | CPU resource contract、handoff CUDA calibration，以及保留校準輸入後的 final dashboard/source recheck。 |
 
 Section 2 的 WSL/POSIX regression 與 Windows native-opener source/dispatch guard 不能取代真人
 NTFS junction/reparse acceptance。Section 3 的 real command-spine smoke 和 deterministic oracle

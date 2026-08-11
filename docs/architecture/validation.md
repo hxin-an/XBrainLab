@@ -1,10 +1,56 @@
 # Validation Architecture
 
-最後更新：`2026-07-31`
+最後更新：`2026-08-11`
 
 ## 範圍
 
 這份文件描述 XBrainLab 的驗證架構：哪些測試、dashboard、artifact 可以支撐哪些工程或論文主張。
+
+## Control-plane topology
+
+```text
+reviewed semantic descriptor -+
+                              +--> planner --> source-bound DAG --> executor
+git/path inference -----------+                           |             |
+                                                          |             v
+                                                canonical gate registry  receipt
+                                                          |             |
+                                                          v             v
+                                                     exact argv ---> dossier verifier
+                                                                        |
+                                                                        v
+                                                                 claim verdict
+
+source-bound DAG --> CI owner map --> per-owner receipts --> CI capability verdict
+```
+
+Planner 只讀 coverage/dependency/cost metadata，不持有 argv。Executable command、timeout、
+environment、artifact 和 outcome policy 仍只存在 handoff gate registry；CI matrix 只展開
+`run_tests.py` 已註冊的 logical commands，不複製 test node 清單。Path inference 與 agent
+semantic declaration只能做 scope/risk 聯集。未知 path、unresolved rule、stale plan、不同 source
+SHA、缺 receipt、失敗 gate 或 evidence digest 漂移都 fail closed。
+
+Claim-bearing plan 的 comparison base 不能只靠 mutable ref 名稱。CI 使用 PR/push event 提供的
+target SHA；local handoff 先從 reviewed remote 刷新 target，再把同一 immutable SHA 傳給 plan、
+run 與 verify。Candidate branch 也由當次執行明確提供，不存在歷史 branch default。First-push
+事件沒有 predecessor target 時直接 fail closed，不以 root commit 縮窄 changed-path scope。
+
+CI capability verdict 與 product/handoff claim verdict 是不同型別。前者逐一要求 selected gate
+具有 execution owner、exact plan/source receipt 與 evidence。Registry owner 會在 final job 從
+下載的 dossier 重新驗 command、timeout、source identity、log、artifact 與 record digest；只有
+plan diff 與 Linux aggregate 這類 CI-native equivalent 可用檔案 manifest，且 final job 仍須重新
+雜湊每個檔案。Receipt 本身不能替自己的 digest 作證。CI 另檢查 platform matrix；
+它只說明 exact-head 自動化能力已完整執行，不宣稱人工 Windows acceptance、local-only exact
+Granite/RAG 或完整 handoff 已完成。後者只能由 dossier-aware `verify` 產生；`report` 只做結構
+檢查，永遠不能把未驗 dossier 的 receipt 升為 PASS。
+
+這個拓撲把「選哪些驗證」、「如何執行」與「證據能支撐什麼」分開：deterministic tools 負責
+scope、execution 與 oracle；model 只可在 deterministic gates 已通過後承擔 risk-selected visual /
+exploratory review。Automated UI、agent review 與 human acceptance 是不同 claim，不能互相冒充。
+
+Performance/resource 也分成兩層：CPU-safe `resource-contract` 可在一般 CI 保護 strict source/
+publication contract；需要 GPU、非空 branch 與實機環境的 `resource-calibration` 只屬 handoff
+registry，不會在 `ubuntu-latest` 假裝完成硬體校準。
 
 核心原則：
 

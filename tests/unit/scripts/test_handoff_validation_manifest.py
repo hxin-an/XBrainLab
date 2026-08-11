@@ -8,6 +8,7 @@ import pytest
 
 from scripts.dev.handoff_gate_spec import (
     EVIDENCE_ROOT_TOKEN,
+    EXPECTED_BRANCH_TOKEN,
     HANDOFF_GATE_SPECS,
     MODEL_CACHE_DIR_TOKEN,
     RAG_CACHE_DIR_TOKEN,
@@ -34,6 +35,7 @@ EXPECTED_HANDOFF_CHECK_IDS = (
     "mkdocs-strict",
     "architecture-compliance",
     "architecture-unit",
+    "guidance-contract",
     "persistence-path-stop-barrier",
     "complete-regression",
     "command-spine",
@@ -63,6 +65,7 @@ EXPECTED_HANDOFF_CHECK_IDS = (
     "wizard-format-matrix",
     "required-public-io",
     "public-cross-source-training",
+    "resource-contract",
     "resource-calibration",
     "handoff-dashboard",
 )
@@ -155,6 +158,15 @@ def test_complete_regression_uses_the_bounded_fail_closed_full_runner() -> None:
     )
 
 
+def test_guidance_contract_uses_attested_deterministic_contract_tests() -> None:
+    spec = HANDOFF_GATE_SPECS["guidance-contract"]
+
+    assert spec.outcome.require_pytest_attestation
+    assert spec.pytest_attestation_path == "pytest-attestations/guidance-contract.json"
+    assert "tests/unit/test_agent_guidance_contract.py" in spec.argv
+    assert "tests/unit/scripts/test_audit_agent_guidance.py" in spec.argv
+
+
 def test_exact_granite_recovery_and_long_session_gates_are_sha_scoped() -> None:
     expected = {
         "chatpanel-local-recovery": (
@@ -222,6 +234,9 @@ def test_resource_calibration_is_generated_then_preserved_for_dashboard() -> Non
     assert dashboard.argv[-2:] == (
         "--resource-calibration-path",
         f"{EVIDENCE_ROOT_TOKEN}/resource-calibration.json",
+    )
+    assert ("--expected-branch", EXPECTED_BRANCH_TOKEN) in tuple(
+        zip(dashboard.argv, dashboard.argv[1:], strict=False)
     )
     assert dashboard.required_artifact_paths == (
         "resource-calibration.json",
@@ -384,6 +399,10 @@ def test_docs_name_the_runner_as_the_canonical_manifest() -> None:
     assert "唯一 command manifest" not in text
     assert "--model-cache-dir" in text
     assert "--rag-cache-dir" in text
+    assert "--target-sha" in text
+    assert "git rev-parse refs/remotes/origin/main" in text
+    assert "git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main" in text
+    assert "--expected-branch" in text
     assert "--allow-external-evidence-root" in text
     assert 'git check-ignore -q "$HANDOFF_EVIDENCE_ROOT/.gitignore-probe"' not in text
 

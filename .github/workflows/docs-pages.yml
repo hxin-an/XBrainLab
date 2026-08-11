@@ -3,20 +3,6 @@ name: Documentation Site
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
-    paths:
-      - ".agents/skills/docs-site-product-designer/**"
-      - ".agents/workflows/docs-site-redesign.md"
-      - ".github/workflows/docs-pages.yml"
-      - "artifacts/README.md"
-      - "artifacts/docs-site/**"
-      - "docs/**"
-      - "mkdocs.yml"
-      - "mkdocs.user.yml"
-      - "scripts/dev/build_docs_portal.py"
-      - "tests/unit/scripts/test_build_docs_portal.py"
-      - "user_docs/**"
   workflow_dispatch:
 
 permissions:
@@ -34,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
 
       - name: Install Python
         uses: actions/setup-python@v5

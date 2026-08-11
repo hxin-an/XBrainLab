@@ -1,6 +1,6 @@
 # XBrainLab 操作筆記
 
-最後更新：`2026-08-02`
+最後更新：`2026-08-11`
 
 ## 工作路徑
 
@@ -12,9 +12,9 @@ cd /mnt/d/workspace_v2/projects/lab/xbrainlab
 
 上面的 root checkout 是 launcher 的預設 canonical merge target，不代表每個驗證中的 worktree。
 啟動或產生 handoff evidence 前，先用 `git rev-parse --show-toplevel`、
-`git branch --show-current` 與 `git status --short` 確認實際 source identity。產品品質收斂分支目前
-在獨立 worktree 驗證；尚未 merge 回 root checkout 前，不可把 Desktop launcher 的 root startup
-當成該 candidate 的證據。
+`git branch --show-current` 與 `git status --short` 確認實際 source identity。每項工作使用從最新
+`main` 建立的短 task branch；尚未 merge 回 root checkout 前，不可把 Desktop launcher 的 root
+startup 當成該 task candidate 的證據。
 
 ## 環境狀態
 
@@ -168,19 +168,28 @@ rm -rf \
 
 ## Handoff Evidence
 
-Final handoff 的唯一執行入口是 checked-in manifest runner：
+Final handoff 的相容入口會建立 full-handoff plan，再委派唯一 control plane 執行與驗證：
 
 ```bash
 MODEL_CACHE_DIR="$(realpath XBrainLab/llm/core/models)"
 RAG_CACHE_DIR=/mnt/d/XBrainLabCache/rag
+CANDIDATE_BRANCH="$(git branch --show-current)"
+git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+TARGET_SHA="$(git rev-parse refs/remotes/origin/main)"
 poetry run -- python scripts/dev/run_handoff_validation_manifest.py \
   --model-cache-dir "$MODEL_CACHE_DIR" \
-  --rag-cache-dir "$RAG_CACHE_DIR"
+  --rag-cache-dir "$RAG_CACHE_DIR" \
+  --expected-branch "$CANDIDATE_BRANCH" \
+  --target-sha "$TARGET_SHA"
 ```
 
-Runner 從 `scripts/dev/handoff_gate_spec.py` 讀取全部 required IDs，逐一交給 recorder，最後驗證
-完整 dossier。不要手動複製 validation 頁中的 individual commands 拼成 final result。兩個 cache
+Runner 從 `scripts/dev/handoff_gate_spec.py` 讀取全部 required IDs，產生綁定 immutable target
+SHA 的 plan，逐一交給 recorder，最後驗證完整 dossier。不要手動複製 validation 頁中的
+individual commands 拼成 final result。兩個 cache
 argument 都必須是 `/mnt/d/...` absolute path；runner 不接受 C 槽、WSL home 或 implicit default。
+`TARGET_SHA` 是使用者授權的比較 target；canonical flow 先刷新 configured `origin` 的 main tip，
+不能從未刷新或任意重指的 tracking ref 自行宣稱授權。若 PR 的正式 target 不是該 tip，改傳
+reviewed PR/event 提供的 exact target SHA。
 
 預設 evidence root 是 repo 內 gitignored 的 `build/handoff-evidence/<full-SHA>/`。若 evidence
 必須放在 checkout 外，使用 absolute SHA-scoped root 並明確加入

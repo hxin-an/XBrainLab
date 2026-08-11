@@ -16,6 +16,7 @@ from scripts.dev.pytest_completion_attestation import (
 EVIDENCE_ROOT_TOKEN: Final = "{evidence_root}"  # noqa: S105 - path placeholder
 MODEL_CACHE_DIR_TOKEN: Final = "{model_cache_dir}"  # noqa: S105 - path placeholder
 RAG_CACHE_DIR_TOKEN: Final = "{rag_cache_dir}"  # noqa: S105 - path placeholder
+EXPECTED_BRANCH_TOKEN: Final = "{expected_branch}"  # noqa: S105 - argv placeholder
 _SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,79}$")
 _SAFE_ENV_NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 _PYTEST_FORBIDDEN = (
@@ -143,9 +144,25 @@ class GateSpec:
                     "attestation path."
                 )
 
-    def resolve_argv(self, evidence_root: Path) -> tuple[str, ...]:
+    def resolve_argv(
+        self,
+        evidence_root: Path,
+        *,
+        expected_branch: str | None = None,
+    ) -> tuple[str, ...]:
         root = str(evidence_root.expanduser().resolve())
-        return tuple(part.replace(EVIDENCE_ROOT_TOKEN, root) for part in self.argv)
+        branch = (expected_branch or "").strip()
+        if any(EXPECTED_BRANCH_TOKEN in part for part in self.argv) and not branch:
+            raise ValueError(
+                f"Gate {self.check_id!r} requires an explicit expected branch."
+            )
+        return tuple(
+            part.replace(EVIDENCE_ROOT_TOKEN, root).replace(
+                EXPECTED_BRANCH_TOKEN,
+                branch,
+            )
+            for part in self.argv
+        )
 
     def pytest_attestation_contract(self) -> tuple[str, tuple[str, ...]] | None:
         """Return the trusted runner identity and its exact logical arguments."""
@@ -350,6 +367,27 @@ _GATE_SPECS = (
         outcome=_STRICT_PYTEST,
         required_artifact_paths=("pytest-attestations/architecture-unit.json",),
         pytest_attestation_path="pytest-attestations/architecture-unit.json",
+    ),
+    GateSpec(
+        check_id="guidance-contract",
+        section="2",
+        argv=(
+            *_POETRY_EXEC,
+            "python",
+            "-m",
+            "scripts.dev.run_required_pytest_gate",
+            "--result-json",
+            f"{EVIDENCE_ROOT_TOKEN}/pytest-attestations/guidance-contract.json",
+            "--",
+            "--capture=sys",
+            "tests/unit/test_agent_guidance_contract.py",
+            "tests/unit/scripts/test_audit_agent_guidance.py",
+            "-q",
+        ),
+        timeout_seconds=1200,
+        outcome=_STRICT_PYTEST,
+        required_artifact_paths=("pytest-attestations/guidance-contract.json",),
+        pytest_attestation_path="pytest-attestations/guidance-contract.json",
     ),
     GateSpec(
         check_id="persistence-path-stop-barrier",
@@ -925,6 +963,29 @@ _GATE_SPECS = (
         stdout_artifact_path="public-cross-source-training-smoke.json",
     ),
     GateSpec(
+        check_id="resource-contract",
+        section="8",
+        argv=(
+            *_PRLIMIT,
+            *_POETRY_EXEC,
+            "python",
+            "-m",
+            "scripts.dev.run_required_pytest_gate",
+            "--result-json",
+            f"{EVIDENCE_ROOT_TOKEN}/pytest-attestations/resource-contract.json",
+            "--",
+            "--capture=sys",
+            "tests/unit/scripts/test_calibrate_resource_guard.py",
+            "tests/integration/backend/test_resource_confirmation_publication.py",
+            "-q",
+        ),
+        timeout_seconds=1200,
+        environment=_MNE,
+        outcome=_STRICT_PYTEST,
+        required_artifact_paths=("pytest-attestations/resource-contract.json",),
+        pytest_attestation_path="pytest-attestations/resource-contract.json",
+    ),
+    GateSpec(
         check_id="resource-calibration",
         section="8",
         argv=(
@@ -948,6 +1009,8 @@ _GATE_SPECS = (
             "python",
             "scripts/dev/update_quality_dashboard.py",
             "--handoff",
+            "--expected-branch",
+            EXPECTED_BRANCH_TOKEN,
             "--output-dir",
             f"{EVIDENCE_ROOT_TOKEN}/dashboard",
             "--resource-calibration-path",

@@ -17,6 +17,7 @@ from scripts.dev.handoff_evidence_recorder import (
     HandoffEvidenceError,
     record_handoff_command,
     validate_handoff_dossier,
+    validate_portable_ci_owner_dossier,
 )
 from scripts.dev.handoff_gate_spec import (
     EVIDENCE_ROOT_TOKEN,
@@ -142,6 +143,72 @@ def test_recorded_command_is_bound_to_clean_sha_and_hashed_logs(tmp_path) -> Non
         expected_branch=branch,
         require_upstream=False,
     ) == (True, "")
+
+
+def test_portable_ci_owner_dossier_rehashes_downloaded_command_evidence(
+    tmp_path,
+) -> None:
+    repo, sha, _branch = _repo(tmp_path)
+    _git(repo, "checkout", "--detach", "-q")
+    evidence_root = repo / "build" / "ci-evidence" / sha / "lint"
+    metadata = {
+        "owner": "lint",
+        "plan_digest": "a" * 64,
+        "ci_plan_digest": "b" * 64,
+        "full_plan_gate_ids": ["git-diff-check"],
+    }
+    record = record_handoff_command(
+        repo_root=repo,
+        evidence_root=evidence_root,
+        section="1",
+        check_id="git-diff-check",
+        command=("git", "diff", "--check"),
+        timeout_seconds=30,
+        expected_branch="",
+        require_upstream=False,
+        evidence_profile="ci-owner",
+        profile_metadata=metadata,
+    )
+    downloaded = tmp_path / "downloaded" / "lint-artifact"
+    shutil.copytree(evidence_root, downloaded)
+    record_digest = hashlib.sha256(
+        json.dumps(
+            record,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    assert validate_portable_ci_owner_dossier(
+        repo_root=repo,
+        evidence_root=downloaded,
+        owner="lint",
+        plan_digest="a" * 64,
+        ci_plan_digest="b" * 64,
+        source_sha=sha,
+        full_plan_gate_ids=("git-diff-check",),
+        required_check_ids=("git-diff-check",),
+        expected_evidence_digests={"git-diff-check": record_digest},
+    ) == (True, "")
+
+    stdout_log = downloaded / "logs" / "section-1-git-diff-check.stdout.log"
+    stdout_log.write_text("forged\n", encoding="utf-8")
+    ok, reason = validate_portable_ci_owner_dossier(
+        repo_root=repo,
+        evidence_root=downloaded,
+        owner="lint",
+        plan_digest="a" * 64,
+        ci_plan_digest="b" * 64,
+        source_sha=sha,
+        full_plan_gate_ids=("git-diff-check",),
+        required_check_ids=("git-diff-check",),
+        expected_evidence_digests={"git-diff-check": record_digest},
+    )
+
+    assert ok is False
+    assert "identity is stale" in reason
 
 
 def test_rerunning_an_earlier_gate_invalidates_later_dossier_records(

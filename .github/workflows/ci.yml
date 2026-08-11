@@ -1,6 +1,5 @@
-# CI Pipeline — Lint, Format Check, Test, and Coverage
-# Runs product checks when product-relevant files change.
-# Documentation-only changes are validated by Documentation Site instead.
+# CI Pipeline — machine-planned lint, test, platform, and data validation.
+# The validation control plane selects capabilities from the exact PR head.
 #
 # Cross-platform notes:
 # - Coverage only on Linux (pytest-cov conflicts with PyTorch on Windows;
@@ -16,91 +15,274 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, edited]
 
 concurrency:
-  group: ${{ github.workflow }}-product-scope-${{ github.ref }}
+  group: ${{ github.workflow }}-validation-plan-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  changes:
-    name: Detect Change Scope
+  validation_plan:
+    name: Build Validation Plan
     runs-on: ubuntu-latest
     outputs:
-      product: ${{ steps.scope.outputs.product }}
+      plan_digest: ${{ steps.matrix.outputs.plan_digest }}
+      source_sha: ${{ steps.matrix.outputs.source_sha }}
+      target_sha: ${{ steps.base.outputs.target_sha }}
+      run_lint: ${{ steps.matrix.outputs.run_lint }}
+      run_product: ${{ steps.matrix.outputs.run_product }}
+      run_docs: ${{ steps.matrix.outputs.run_docs }}
+      run_focused: ${{ steps.matrix.outputs.run_focused }}
+      run_ui: ${{ steps.matrix.outputs.run_ui }}
+      run_native: ${{ steps.matrix.outputs.run_native }}
+      run_public_data: ${{ steps.matrix.outputs.run_public_data }}
+      run_platform: ${{ steps.matrix.outputs.run_platform }}
+      risk_owners: ${{ steps.matrix.outputs.risk_owners }}
+      linux_commands: ${{ steps.matrix.outputs.linux_commands }}
+      platform_commands: ${{ steps.matrix.outputs.platform_commands }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Detect product-relevant changes
-        id: scope
-        shell: bash
-        run: |
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            base_sha="${{ github.event.pull_request.base.sha }}"
-            git fetch --no-tags origin "$base_sha" --depth=1
-            changed_files="$(git diff --name-only "$base_sha" HEAD)"
-          else
-            base_sha="${{ github.event.before }}"
-            if [[ "$base_sha" == "0000000000000000000000000000000000000000" ]]; then
-              echo "product=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            git fetch --no-tags origin "$base_sha" --depth=1
-            changed_files="$(git diff --name-only "$base_sha" "${{ github.sha }}")"
-          fi
-
-          if [[ -z "$changed_files" ]]; then
-            echo "product=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          product=false
-          while IFS= read -r file; do
-            case "$file" in
-              XBrainLab/*|tests/*|scripts/*|.github/workflows/ci.yml|pyproject.toml|poetry.lock)
-                product=true
-                ;;
-            esac
-          done <<< "$changed_files"
-
-          echo "Changed files:"
-          printf '%s\n' "$changed_files"
-          echo "product=$product" >> "$GITHUB_OUTPUT"
-
-  docs-only:
-    name: Docs-only CI Scope
-    needs: changes
-    if: needs.changes.outputs.product != 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Skip product checks
-        run: echo "No product code, tests, dependency, script, or CI pipeline files changed."
-
-  lint:
-    name: Lint & Format
-    needs: changes
-    if: needs.changes.outputs.product == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Install Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      - name: Resolve exact comparison base
+        id: base
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+          else
+            base_sha="${{ github.event.before }}"
+            if [[ "$base_sha" == "0000000000000000000000000000000000000000" ]]; then
+              echo "First-push events have no authorized comparison target." >&2
+              exit 1
+            fi
+          fi
+          git fetch --no-tags origin "$base_sha" --depth=1
+          git update-ref refs/remotes/origin/main "$base_sha"
+          echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
+          echo "target_sha=$base_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Generate descriptor and risk-selected plan
+        run: |
+          mkdir -p build/ci-validation
+          python scripts/dev/validation_pr_declaration.py \
+            --event-name "${{ github.event_name }}" \
+            --event-path "$GITHUB_EVENT_PATH" \
+            --output build/ci-validation/change-descriptor.json
+          python scripts/dev/run_validation_control_plane.py plan \
+            --repo-root . \
+            --descriptor build/ci-validation/change-descriptor.json \
+            --base-ref origin/main \
+            --target-sha "${{ steps.base.outputs.target_sha }}" \
+            --output build/ci-validation/validation-plan.json
+
+      - name: Expand plan into CI capabilities
+        id: matrix
+        run: |
+          python -m scripts.dev.validation_ci_plan \
+            --plan build/ci-validation/validation-plan.json \
+            --source-sha "$(git rev-parse HEAD)" \
+            --output build/ci-validation/ci-plan.json \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Attest exact comparison diff and plan owner
+        run: |
+          git diff --check "${{ steps.base.outputs.base_sha }}...HEAD" \
+            > build/ci-validation/git-diff-check.log 2>&1
+          python scripts/dev/run_validation_ci_owner.py record \
+            --repo-root . \
+            --plan build/ci-validation/validation-plan.json \
+            --ci-plan build/ci-validation/ci-plan.json \
+            --owner plan \
+            --evidence build/ci-validation/git-diff-check.log \
+            --evidence build/ci-validation/validation-plan.json \
+            --evidence build/ci-validation/ci-plan.json \
+            --output build/ci-validation/owner-plan.json
+
+      - name: Upload validation plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-plan-${{ steps.matrix.outputs.source_sha }}
+          path: build/ci-validation
+
+  registered-gates:
+    name: Registered Static and Focused Gates
+    needs: validation_plan
+    if: >-
+      needs.validation_plan.outputs.run_lint == 'true' ||
+      needs.validation_plan.outputs.run_focused == 'true'
+    runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validation_plan.outputs.source_sha }}
+          fetch-depth: 0
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgl1 libegl1 libxkbcommon0 libdbus-1-3 libxcb-cursor0
+
+      - name: Install Poetry
+        run: |
+          pip install poetry
+          poetry config virtualenvs.create true
+          poetry config virtualenvs.in-project true
+
+      - name: Cache Poetry venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: registered-venv-${{ runner.os }}-3.11-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            registered-venv-${{ runner.os }}-3.11-
+
       - name: Install dependencies
-        run: pip install "ruff>=0.14.0,<0.15"
+        run: poetry install --no-interaction
 
-      - name: Ruff check
-        run: ruff check XBrainLab/ tests/
+      - name: Download exact validation plan
+        uses: actions/download-artifact@v4
+        with:
+          name: validation-plan-${{ needs.validation_plan.outputs.source_sha }}
+          path: build/ci-validation
 
-      - name: Ruff format check
-        run: ruff format --check XBrainLab/ tests/
+      - name: Run registered lint owner
+        if: needs.validation_plan.outputs.run_lint == 'true'
+        run: |
+          poetry run -- python scripts/dev/run_validation_ci_owner.py run \
+            --repo-root . \
+            --plan build/ci-validation/validation-plan.json \
+            --ci-plan build/ci-validation/ci-plan.json \
+            --owner lint \
+            --target-sha "${{ needs.validation_plan.outputs.target_sha }}" \
+            --evidence-root build/ci-evidence/${{ needs.validation_plan.outputs.source_sha }}/lint \
+            --output build/ci-owner-receipts/lint.json
+
+      - name: Run registered focused owner
+        if: needs.validation_plan.outputs.run_focused == 'true'
+        run: |
+          poetry run -- python scripts/dev/run_validation_ci_owner.py run \
+            --repo-root . \
+            --plan build/ci-validation/validation-plan.json \
+            --ci-plan build/ci-validation/ci-plan.json \
+            --owner focused \
+            --target-sha "${{ needs.validation_plan.outputs.target_sha }}" \
+            --evidence-root build/ci-evidence/${{ needs.validation_plan.outputs.source_sha }}/focused \
+            --output build/ci-owner-receipts/focused.json
+
+      - name: Upload registered owner receipts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ci-owner-registered-${{ needs.validation_plan.outputs.source_sha }}
+          path: build/ci-owner-receipts/*.json
+          if-no-files-found: warn
+
+      - name: Upload registered gate evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ci-registry-evidence-registered-${{ needs.validation_plan.outputs.source_sha }}
+          path: build/ci-evidence/${{ needs.validation_plan.outputs.source_sha }}
+          if-no-files-found: warn
+
+  docs-validation:
+    name: Documentation Contracts
+    needs: validation_plan
+    if: needs.validation_plan.outputs.run_docs == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validation_plan.outputs.source_sha }}
+          fetch-depth: 0
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: |
+          pip install poetry
+          poetry config virtualenvs.create true
+          poetry config virtualenvs.in-project true
+
+      - name: Cache bounded documentation venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: docs-venv-${{ runner.os }}-3.12-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            docs-venv-${{ runner.os }}-3.12-
+
+      - name: Install bounded documentation dependencies
+        run: poetry install --only docs,test,dev --no-root --no-interaction
+
+      - name: Download exact validation plan
+        uses: actions/download-artifact@v4
+        with:
+          name: validation-plan-${{ needs.validation_plan.outputs.source_sha }}
+          path: build/ci-validation
+
+      - name: Run registered documentation owner
+        run: |
+          poetry run -- python scripts/dev/run_validation_ci_owner.py run \
+            --repo-root . \
+            --plan build/ci-validation/validation-plan.json \
+            --ci-plan build/ci-validation/ci-plan.json \
+            --owner docs \
+            --target-sha "${{ needs.validation_plan.outputs.target_sha }}" \
+            --evidence-root build/ci-evidence/${{ needs.validation_plan.outputs.source_sha }}/docs \
+            --output build/ci-owner-receipts/docs.json
+
+      - name: Test and build both documentation portals
+        run: |
+          poetry run -- python -m pytest --confcutdir=tests/unit/scripts \
+            tests/unit/scripts/test_build_docs_portal.py -q
+          poetry run -- python scripts/dev/build_docs_portal.py
+
+      - name: Upload documentation owner receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-owner-docs-${{ needs.validation_plan.outputs.source_sha }}
+          path: build/ci-owner-receipts/docs.json
+
+      - name: Upload documentation registry evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ci-registry-evidence-docs-${{ needs.validation_plan.outputs.source_sha }}
+          path: build/ci-evidence/${{ needs.validation_plan.outputs.source_sha }}/docs
+          if-no-files-found: warn
+
+      - name: Upload documentation portal review
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docs-validation-evidence-${{ needs.validation_plan.outputs.source_sha }}
+          path: build/dev-artifacts/docs-portal-review
+          if-no-files-found: warn
 
   linux-shard:
     name: Linux Shard (${{ matrix.command }})
-    needs: changes
-    if: needs.changes.outputs.product == 'true'
+    needs: [validation_plan, registered-gates]
+    if: needs.validation_plan.outputs.run_product == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -109,21 +291,15 @@ jobs:
       fail-fast: false
       max-parallel: 8
       matrix:
-        command:
-          - linux-unit-backend
-          - linux-unit-llm-agent
-          - linux-unit-scripts
-          - linux-unit-ui
-          - linux-unit-rest
-          - linux-integration-agent-timing
-          - linux-integration-ui
-          - linux-integration-rest
+        command: ${{ fromJSON(needs.validation_plan.outputs.linux_commands) }}
     env:
       QT_QPA_PLATFORM: offscreen
       XBL_SHARED_CI_RUNNER: "1"
-      COVERAGE_FILE: test-results/.coverage.${{ matrix.command }}
+      COVERAGE_FILE: build/test-results/.coverage.${{ matrix.command }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validation_plan.outputs.source_sha }}
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -155,28 +331,30 @@ jobs:
 
       - name: Run authoritative Linux shard
         env:
-          XBL_TEST_JUNIT_DIR: test-results
+          XBL_TEST_JUNIT_DIR: build/test-results
           XBL_TEST_SHARD_TIMEOUT_SECONDS: "1200"
         run: |
-          mkdir -p test-results
+          mkdir -p build/test-results
           poetry run -- python scripts/dev/run_tests.py ${{ matrix.command }} \
-            --result-json test-results/${{ matrix.command }}.json
+            --result-json build/test-results/${{ matrix.command }}.json
 
       - name: Upload shard evidence
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: linux-shard-${{ matrix.command }}
-          path: test-results
+          path: build/test-results
           include-hidden-files: true
 
   linux-test:
     name: Full Test Suite (Linux, py3.11)
-    needs: [changes, linux-shard]
-    if: always() && needs.changes.outputs.product == 'true'
+    needs: [validation_plan, linux-shard]
+    if: always() && needs.validation_plan.outputs.run_product == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validation_plan.outputs.source_sha }}
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -190,37 +368,57 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: linux-shard-*
-          path: test-results
+          path: build/test-results
           merge-multiple: true
+
+      - name: Download exact validation plan
+        uses: actions/download-artifact@v4
+        with:
+          name: validation-plan-${{ needs.validation_plan.outputs.source_sha }}
+          path: build/ci-validation
 
       - name: Verify complete shard evidence
         run: |
           python -m scripts.dev.run_tests verify-linux-ci \
-            --evidence-dir test-results \
-            --result-json test-results/all-regression.json
+            --evidence-dir build/test-results \
+            --result-json build/ci-native-product/all-regression.json
 
       - name: Combine coverage
         env:
-          COVERAGE_FILE: test-results/.coverage
+          COVERAGE_FILE: build/test-results/.coverage
         run: |
-          coverage combine test-results
-          coverage xml -o coverage.xml
+          coverage combine build/test-results
+          coverage xml -o build/ci-native-product/coverage.xml
           coverage report
+
+      - name: Attest product regression owner
+        run: |
+          python scripts/dev/run_validation_ci_owner.py record \
+            --repo-root . \
+            --plan build/ci-validation/validation-plan.json \
+            --ci-plan build/ci-validation/ci-plan.json \
+            --owner product \
+            --evidence build/ci-native-product/all-regression.json \
+            --evidence build/ci-native-product/coverage.xml \
+            --output build/ci-owner-receipts/product.json
+
+      - name: Upload product owner receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-owner-product-${{ needs.validation_plan.outputs.source_sha }}
+          path: build/ci-owner-receipts/product.json
 
       - name: Upload aggregate Linux evidence
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-results-ubuntu-latest-py3.11
-          path: |
-            test-results/all-regression.json
-            test-results/*.xml
-            coverage.xml
+          path: build/ci-native-product
 
   platform-test:
     name: Platform Tests (${{ matrix.os }}, ${{ matrix.command }}, py3.11)
-    needs: changes
-    if: needs.changes.outputs.product == 'true'
+    needs: validation_plan
+    if: needs.validation_plan.outputs.run_platform == 'true'
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -229,14 +427,14 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
-        command:
-          - platform-core-contracts
-          - platform-product-lifecycle
+        command: ${{ fromJSON(needs.validation_plan.outputs.platform_commands) }}
     env:
       QT_QPA_PLATFORM: offscreen
       XBL_SHARED_CI_RUNNER: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validation_plan.outputs.source_sha }}
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -278,16 +476,33 @@ jobs:
             test-results/*.json
             test-results/*.xml
 
-  public-dataset-gate:
-    name: Required Public Multi-Dataset Gate
-    needs: [changes, lint]
-    if: needs.changes.outputs.product == 'true'
+  risk-gates:
+    name: Registered Risk Gate (${{ matrix.owner }})
+    needs: [validation_plan, registered-gates, docs-validation, linux-test]
+    if: >-
+      always() &&
+      needs.validation_plan.result == 'success' &&
+      ((needs.validation_plan.outputs.run_lint != 'true' &&
+        needs.validation_plan.outputs.run_focused != 'true') ||
+       needs.registered-gates.result == 'success') &&
+      (needs.validation_plan.outputs.run_docs != 'true' ||
+       needs.docs-validation.result == 'success') &&
+      (needs.validation_plan.outputs.run_product != 'true' ||
+       needs.linux-test.result == 'success') &&
+      needs.validation_plan.outputs.risk_owners != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        owner: ${{ fromJSON(needs.validation_plan.outputs.risk_owners) }}
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validation_plan.outputs.source_sha }}
+          fetch-depth: 0
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -310,17 +525,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .venv
-          key: public-dataset-venv-${{ runner.os }}-3.11-${{ hashFiles('poetry.lock') }}
+          key: risk-gate-venv-${{ runner.os }}-3.11-${{ hashFiles('poetry.lock') }}
           restore-keys: |
-            public-dataset-venv-${{ runner.os }}-3.11-
+            risk-gate-venv-${{ runner.os }}-3.11-
 
       - name: Install dependencies
         run: poetry install --no-interaction
 
-      - name: Prepare public gate evidence directory
-        run: mkdir -p test-results
-
       - name: Cache pinned public EEG fixtures
+        if: matrix.owner == 'public-data'
         uses: actions/cache@v4
         with:
           path: tests/fixtures/data/public
@@ -328,56 +541,164 @@ jobs:
           restore-keys: |
             public-eeg-required-ci-
 
-      - name: Fetch pinned size-bounded public fixtures
-        run: poetry run -- python scripts/dev/fetch_public_eeg_fixtures.py --profile required-ci
+      - name: Download exact validation plan
+        uses: actions/download-artifact@v4
+        with:
+          name: validation-plan-${{ needs.validation_plan.outputs.source_sha }}
+          path: build/ci-validation
 
-      - name: Verify public fixture manifest
-        run: poetry run -- python scripts/dev/fetch_public_eeg_fixtures.py --profile required-ci --verify-only
-
-      - name: Verify required dataset matrix
+      - name: Run registry-backed risk owner
         run: |
-          set -o pipefail
-          poetry run -- python scripts/dev/report_dataset_validation_matrix.py --strict --format json | tee dataset-validation-matrix.json
+          poetry run -- python scripts/dev/run_validation_ci_owner.py run \
+            --repo-root . \
+            --plan build/ci-validation/validation-plan.json \
+            --ci-plan build/ci-validation/ci-plan.json \
+            --owner "${{ matrix.owner }}" \
+            --target-sha "${{ needs.validation_plan.outputs.target_sha }}" \
+            --evidence-root build/ci-evidence/${{ needs.validation_plan.outputs.source_sha }}/${{ matrix.owner }} \
+            --output build/ci-owner-receipts/${{ matrix.owner }}.json
 
-      - name: Verify Data Interpretation format and lifecycle matrix
-        run: |
-          set -o pipefail
-          poetry run -- python scripts/dev/report_data_interpretation_format_matrix.py --strict --format json | tee data-interpretation-format-matrix.json
-
-      - name: Run public BIDS visible UI wizard format matrix
-        run: QT_QPA_PLATFORM=offscreen poetry run -- python -m scripts.dev.run_required_pytest_gate --result-json test-results/public-bids-visible-ui.json -- --capture=sys tests/integration/ui/test_data_import_wizard_format_matrix.py -q
-
-      - name: Run required public dataset integration tests
-        run: |
-          poetry run -- python -m scripts.dev.run_required_pytest_gate \
-            --result-json test-results/required-public-io.json \
-            -- --capture=sys \
-            tests/integration/io/test_io_integration.py::TestIOIntegration::test_load_gdf_file_success \
-            tests/integration/io/test_io_integration.py::TestIOIntegration::test_load_gdf_file_restores_known_graz_channel_names \
-            tests/integration/io/test_io_integration.py::TestIOIntegration::test_load_supported_real_formats \
-            tests/integration/io/test_io_integration.py::TestIOIntegration::test_application_service_import_supported_real_formats \
-            tests/integration/io/test_io_integration.py::TestIOIntegration::test_application_service_summary_excludes_resolved_gdf_channel_normalization \
-            tests/integration/io/test_io_integration.py::TestIOIntegration::test_load_public_real_formats \
-            tests/integration/io/test_io_integration.py::TestIOIntegration::test_application_service_import_public_real_formats \
-            tests/integration/io/test_io_integration.py::TestIOIntegration::test_load_non_existent_file \
-            tests/integration/io/test_io_integration.py::TestIOIntegration::test_load_invalid_extension \
-            tests/integration/io/test_public_bids_fixture.py \
-            tests/integration/pipeline/test_public_cross_source_training_smoke.py \
-            -q
-
-      - name: Run strict public cross-source training smoke
-        run: |
-          set -o pipefail
-          poetry run -- python scripts/dev/run_public_cross_source_training_smoke.py --format json --strict | tee public-cross-source-smoke.json
-
-      - name: Upload public dataset gate reports
+      - name: Upload risk owner receipt
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: public-dataset-gate-reports
-          path: |
-            dataset-validation-matrix.json
-            data-interpretation-format-matrix.json
-            public-cross-source-smoke.json
-            test-results/*.json
+          name: ci-owner-${{ matrix.owner }}-${{ needs.validation_plan.outputs.source_sha }}
+          path: build/ci-owner-receipts/${{ matrix.owner }}.json
           if-no-files-found: warn
+
+      - name: Upload risk registry evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ci-registry-evidence-${{ matrix.owner }}-${{ needs.validation_plan.outputs.source_sha }}
+          path: build/ci-evidence/${{ needs.validation_plan.outputs.source_sha }}/${{ matrix.owner }}
+          if-no-files-found: warn
+
+  ci-capability-verdict:
+    name: CI Capability Verdict
+    needs:
+      - validation_plan
+      - registered-gates
+      - docs-validation
+      - linux-shard
+      - linux-test
+      - platform-test
+      - risk-gates
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validation_plan.outputs.source_sha }}
+          fetch-depth: 0
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Fail closed on malformed lineage or missing platform capability
+        shell: bash
+        env:
+          PLAN_RESULT: ${{ needs.validation_plan.result }}
+          RUN_LINT: ${{ needs.validation_plan.outputs.run_lint }}
+          RUN_FOCUSED: ${{ needs.validation_plan.outputs.run_focused }}
+          REGISTERED_RESULT: ${{ needs.registered-gates.result }}
+          RUN_DOCS: ${{ needs.validation_plan.outputs.run_docs }}
+          DOCS_RESULT: ${{ needs.docs-validation.result }}
+          RUN_PRODUCT: ${{ needs.validation_plan.outputs.run_product }}
+          LINUX_SHARD_RESULT: ${{ needs.linux-shard.result }}
+          LINUX_TEST_RESULT: ${{ needs.linux-test.result }}
+          RUN_PLATFORM: ${{ needs.validation_plan.outputs.run_platform }}
+          PLATFORM_RESULT: ${{ needs.platform-test.result }}
+          RISK_OWNERS: ${{ needs.validation_plan.outputs.risk_owners }}
+          RISK_RESULT: ${{ needs.risk-gates.result }}
+          PLAN_DIGEST: ${{ needs.validation_plan.outputs.plan_digest }}
+          SOURCE_SHA: ${{ needs.validation_plan.outputs.source_sha }}
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          TARGET_SHA: ${{ needs.validation_plan.outputs.target_sha }}
+          EXPECTED_TARGET_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          failures=()
+          [[ "$PLAN_RESULT" == "success" ]] || failures+=("validation-plan:$PLAN_RESULT")
+          [[ "$PLAN_DIGEST" =~ ^[0-9a-f]{64}$ ]] || failures+=("plan-digest:invalid")
+          [[ "$SOURCE_SHA" == "$EXPECTED_SHA" ]] || failures+=("source-sha:mismatch")
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || failures+=("target-sha:invalid")
+          if [[ "$EXPECTED_TARGET_SHA" == "0000000000000000000000000000000000000000" ]]; then
+            failures+=("first-push-target:unavailable")
+          elif [[ "$TARGET_SHA" != "$EXPECTED_TARGET_SHA" ]]; then
+            failures+=("target-sha:mismatch")
+          fi
+          for flag in "$RUN_LINT" "$RUN_FOCUSED" "$RUN_DOCS" "$RUN_PRODUCT" "$RUN_PLATFORM"; do
+            [[ "$flag" == "true" || "$flag" == "false" ]] || failures+=("capability-flag:invalid")
+          done
+          if { [[ "$RUN_LINT" == "true" ]] || [[ "$RUN_FOCUSED" == "true" ]]; } && \
+            [[ "$REGISTERED_RESULT" != "success" ]]; then
+            failures+=("registered-gates:$REGISTERED_RESULT")
+          fi
+          if [[ "$RUN_DOCS" == "true" && "$DOCS_RESULT" != "success" ]]; then
+            failures+=("docs:$DOCS_RESULT")
+          fi
+          if [[ "$RUN_PRODUCT" == "true" ]]; then
+            [[ "$LINUX_SHARD_RESULT" == "success" ]] || failures+=("linux-shard:$LINUX_SHARD_RESULT")
+            [[ "$LINUX_TEST_RESULT" == "success" ]] || failures+=("linux-test:$LINUX_TEST_RESULT")
+          fi
+          if [[ "$RUN_PLATFORM" == "true" && "$PLATFORM_RESULT" != "success" ]]; then
+            failures+=("platform:$PLATFORM_RESULT")
+          fi
+          if [[ "$RISK_OWNERS" != "[]" && "$RISK_RESULT" != "success" ]]; then
+            failures+=("risk-gates:$RISK_RESULT")
+          fi
+          if (( ${#failures[@]} )); then
+            printf 'CI capability verification blocked: %s\n' "${failures[*]}"
+            exit 1
+          fi
+
+      - name: Download exact validation plan
+        uses: actions/download-artifact@v4
+        with:
+          name: validation-plan-${{ needs.validation_plan.outputs.source_sha }}
+          path: build/ci-validation
+
+      - name: Download CI owner receipts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ci-owner-*-${{ needs.validation_plan.outputs.source_sha }}
+          path: build/ci-owner-receipts
+          merge-multiple: true
+
+      - name: Download registry command evidence
+        if: >-
+          needs.validation_plan.outputs.run_lint == 'true' ||
+          needs.validation_plan.outputs.run_focused == 'true' ||
+          needs.validation_plan.outputs.run_docs == 'true' ||
+          needs.validation_plan.outputs.risk_owners != '[]'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ci-registry-evidence-*-${{ needs.validation_plan.outputs.source_sha }}
+          path: build/downloaded-ci-registry-evidence
+
+      - name: Download product regression evidence
+        if: needs.validation_plan.outputs.run_product == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: test-results-ubuntu-latest-py3.11
+          path: build/ci-native-product
+
+      - name: Verify exact selected-gate owner coverage
+        run: |
+          python scripts/dev/run_validation_ci_owner.py verify \
+            --plan build/ci-validation/validation-plan.json \
+            --ci-plan build/ci-validation/ci-plan.json \
+            --receipt build/ci-validation/owner-plan.json \
+            --receipt-dir build/ci-owner-receipts \
+            --registry-evidence-dir build/downloaded-ci-registry-evidence \
+            --repo-root . \
+            --target-sha "${{ needs.validation_plan.outputs.target_sha }}" \
+            --output build/ci-validation/ci-capability-verdict.json
+
+      - name: Upload CI capability verdict
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-capability-verdict-${{ needs.validation_plan.outputs.source_sha }}
+          path: build/ci-validation/ci-capability-verdict.json

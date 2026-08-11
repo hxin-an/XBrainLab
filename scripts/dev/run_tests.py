@@ -17,6 +17,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from scripts.dev.ci_test_command_catalog import (
+    LINUX_CI_COMMANDS,
+    PLATFORM_CI_COMMANDS,
+)
 from scripts.dev.owned_process_group import spawn_owned_process, terminate_and_collect
 from scripts.dev.pytest_completion_attestation import (
     REQUIRED_PYTEST_RUNNER_ID,
@@ -194,7 +198,8 @@ PLATFORM_CI_GROUPS: tuple[tuple[str, tuple[tuple[str, tuple[str, ...]], ...]], .
     ("platform-core-contracts", PLATFORM_SHARDS[:2]),
     ("platform-product-lifecycle", PLATFORM_SHARDS[2:]),
 )
-PLATFORM_CI_COMMANDS = tuple(command for command, _shards in PLATFORM_CI_GROUPS)
+if tuple(command for command, _shards in PLATFORM_CI_GROUPS) != PLATFORM_CI_COMMANDS:
+    raise RuntimeError("Platform CI command catalog drifted from runner groups.")
 LINUX_CI_GROUPS: tuple[tuple[str, tuple[tuple[str, tuple[str, ...]], ...]], ...] = (
     ("linux-unit-backend", (("backend", ("tests/unit/backend",)),)),
     ("linux-unit-llm-agent", (("llm-agent", ("tests/unit/llm/agent",)),)),
@@ -234,7 +239,8 @@ LINUX_CI_GROUPS: tuple[tuple[str, tuple[tuple[str, tuple[str, ...]], ...]], ...]
         ),
     ),
 )
-LINUX_CI_COMMANDS = tuple(command for command, _shards in LINUX_CI_GROUPS)
+if tuple(command for command, _shards in LINUX_CI_GROUPS) != LINUX_CI_COMMANDS:
+    raise RuntimeError("Linux CI command catalog drifted from runner groups.")
 LINUX_CI_UNCOVERED_COMMANDS = frozenset({"linux-integration-agent-timing"})
 DEFAULT_SHARD_TIMEOUT_SECONDS = 1200
 ROOT = Path(__file__).resolve().parents[2]

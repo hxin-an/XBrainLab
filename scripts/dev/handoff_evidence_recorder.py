@@ -20,6 +20,7 @@ from typing import Any
 
 from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
     collect_source_identity,
+    source_identity_digest,
 )
 from scripts.dev.handoff_gate_spec import (
     HANDOFF_GATE_SPECS,
@@ -40,7 +41,6 @@ from scripts.dev.sensitive_path_redaction import (
 ROOT = Path(__file__).resolve().parents[2]
 DOSSIER_NAME = "handoff-evidence.json"
 SCHEMA_VERSION = 5
-DEFAULT_BRANCH = "stabilize/product-quality-closure"
 _PROTECTED_LOCAL_PATHS = frozenset({"settings.json"})
 _SANITIZED_INHERITED_ENVIRONMENT = (
     "COVERAGE_PROCESS_START",
@@ -69,16 +69,20 @@ def record_handoff_command(
     check_id: str,
     command: Sequence[str],
     timeout_seconds: float,
-    expected_branch: str = DEFAULT_BRANCH,
+    expected_branch: str,
     require_upstream: bool = True,
     enforce_pytest_outcomes: bool | None = None,
     stdout_artifact: str | None = None,
     model_cache_dir: Path | None = None,
     rag_cache_dir: Path | None = None,
     allow_external_evidence_root: bool = False,
+    evidence_profile: str = "handoff",
+    profile_metadata: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Execute one gate and atomically append its exact-source evidence."""
     root = repo_root.expanduser().resolve(strict=True)
+    profile = _validated_evidence_profile(evidence_profile)
+    metadata = dict(profile_metadata or {})
     check_name = _validated_id(check_id, field="check id")
     section_name = _validated_id(str(section), field="section")
     spec = _registered_gate(check_name)
@@ -116,7 +120,10 @@ def record_handoff_command(
         commit_sha=str(checkout["commit_sha"]),
         allow_external=allow_external_evidence_root,
     )
-    expected_argv = spec.resolve_argv(output_root)
+    expected_argv = spec.resolve_argv(
+        output_root,
+        expected_branch=expected_branch,
+    )
     if argv != expected_argv:
         raise HandoffEvidenceError(
             f"Gate {check_name!r} argv does not match its exact registered argv."
@@ -236,6 +243,8 @@ def record_handoff_command(
         )
     _update_dossier(
         output_root,
+        profile=profile,
+        profile_metadata=metadata,
         checkout=checkout,
         evidence_root_policy=evidence_root_policy,
         source_identity=source_before,
@@ -249,15 +258,19 @@ def validate_handoff_dossier(
     repo_root: Path,
     evidence_root: Path,
     required_check_ids: Sequence[str],
-    expected_branch: str = DEFAULT_BRANCH,
+    expected_branch: str,
     require_upstream: bool = True,
     model_cache_dir: Path | None = None,
     rag_cache_dir: Path | None = None,
     allow_external_evidence_root: bool = False,
+    expected_profile: str = "handoff",
+    expected_profile_metadata: Mapping[str, Any] | None = None,
 ) -> tuple[bool, str]:
     """Validate one complete dossier against the current clean checkout."""
     try:
         required = _validated_required_check_ids(required_check_ids)
+        profile = _validated_evidence_profile(expected_profile)
+        profile_metadata = dict(expected_profile_metadata or {})
         root = repo_root.expanduser().resolve(strict=True)
         checkout = _checkout_identity(
             root,
@@ -277,8 +290,10 @@ def validate_handoff_dossier(
 
     if payload.get("schema_version") != SCHEMA_VERSION:
         return False, "Handoff dossier schema is unsupported."
-    if payload.get("profile") != "handoff":
+    if payload.get("profile") != profile:
         return False, "Handoff dossier profile is invalid."
+    if payload.get("profile_metadata") != profile_metadata:
+        return False, "Handoff dossier profile metadata is stale."
     if payload.get("evidence_root_policy") != evidence_root_policy:
         return False, "Handoff dossier evidence-root policy is stale."
     recorded_checkout = payload.get("checkout")
@@ -334,9 +349,152 @@ def validate_handoff_dossier(
     return True, ""
 
 
+def validate_portable_ci_owner_dossier(
+    *,
+    repo_root: Path,
+    evidence_root: Path,
+    owner: str,
+    plan_digest: str,
+    ci_plan_digest: str,
+    source_sha: str,
+    full_plan_gate_ids: Sequence[str],
+    required_check_ids: Sequence[str],
+    expected_evidence_digests: Mapping[str, str],
+) -> tuple[bool, str]:
+    """Revalidate downloaded registry evidence in a separate CI job.
+
+    The artifact is portable, but the recorded command remains bound to the
+    original runner path stored in the dossier.  Source bytes are compared to
+    the final verifier checkout without trusting the receipt's digest claims.
+    """
+
+    try:
+        required = _validated_required_check_ids(required_check_ids)
+        root = repo_root.expanduser().resolve(strict=True)
+        output_root = evidence_root.expanduser().resolve(strict=True)
+        payload = json.loads((output_root / DOSSIER_NAME).read_text(encoding="utf-8"))
+        checkout = _checkout_identity(
+            root,
+            expected_branch="",
+            require_upstream=False,
+        )
+        current_source = collect_source_identity(root, refresh=True)
+        _require_clean_source(current_source)
+    except (HandoffEvidenceError, OSError, ValueError, json.JSONDecodeError) as error:
+        return False, str(error)
+
+    expected_metadata = {
+        "owner": owner,
+        "plan_digest": plan_digest,
+        "ci_plan_digest": ci_plan_digest,
+        "full_plan_gate_ids": list(full_plan_gate_ids),
+    }
+    if payload.get("schema_version") != SCHEMA_VERSION:
+        return False, "CI owner dossier schema is unsupported."
+    if payload.get("profile") != "ci-owner":
+        return False, "CI owner dossier profile is invalid."
+    if payload.get("profile_metadata") != expected_metadata:
+        return False, "CI owner dossier profile metadata is stale."
+
+    expected_policy = {
+        "kind": "repo-ignored",
+        "relative_path": f"build/ci-evidence/{source_sha}/{owner}",
+    }
+    if payload.get("evidence_root_policy") != expected_policy:
+        return False, "CI owner dossier evidence-root policy is stale."
+
+    recorded_checkout = payload.get("checkout")
+    if not isinstance(recorded_checkout, dict):
+        return False, "CI owner dossier checkout identity is missing."
+    if recorded_checkout.get("branch") != "" or recorded_checkout.get("upstream") != "":
+        return False, "CI owner dossier was not recorded from detached CI source."
+    for key in ("commit_sha", "head_tree_sha", "protected_dirty_paths"):
+        if recorded_checkout.get(key) != checkout.get(key):
+            return False, f"CI owner dossier checkout is stale ({key})."
+    if recorded_checkout.get("commit_sha") != source_sha:
+        return False, "CI owner dossier source SHA is stale."
+
+    recorded_source = payload.get("source_identity")
+    if not isinstance(recorded_source, dict):
+        return False, "CI owner dossier source identity is missing."
+    try:
+        _require_clean_source(recorded_source)
+    except HandoffEvidenceError as error:
+        return False, str(error)
+    if source_identity_digest(recorded_source) != recorded_source.get("source_digest"):
+        return False, "CI owner dossier source identity digest is inconsistent."
+    portable_source_fields = (
+        "version",
+        "branch",
+        "commit_sha",
+        "head_tree_sha",
+        "dirty",
+        "dirty_digest",
+        "source_content_digest",
+        "untracked_source_count",
+        "excluded_generated_prefixes",
+        "excluded_local_paths",
+        "included_file_policy",
+        "error",
+    )
+    for key in portable_source_fields:
+        if recorded_source.get(key) != current_source.get(key):
+            return False, f"CI owner dossier source identity is stale ({key})."
+
+    checks = payload.get("checks")
+    if not isinstance(checks, dict):
+        return False, "CI owner dossier contains no command checks."
+    if set(checks) != set(required):
+        return False, "CI owner dossier check coverage is stale."
+    expected_order = [
+        check_id for check_id in HANDOFF_GATE_SPECS if check_id in required
+    ]
+    if payload.get("execution_order") != expected_order:
+        return False, "CI owner dossier execution order is stale."
+    if set(expected_evidence_digests) != set(required):
+        return False, "CI owner receipt evidence coverage is stale."
+
+    recorded_worktree = recorded_checkout.get("worktree")
+    if (
+        not isinstance(recorded_worktree, str)
+        or not Path(recorded_worktree).is_absolute()
+    ):
+        return False, "CI owner dossier recorded worktree is invalid."
+    command_output_root = Path(recorded_worktree) / expected_policy["relative_path"]
+    for check_id in required:
+        record = checks.get(check_id)
+        ok, reason = _validate_check_record(
+            output_root=output_root,
+            command_output_root=command_output_root,
+            checkout=recorded_checkout,
+            current_source=recorded_source,
+            check_id=check_id,
+            raw_record=record,
+            model_cache_dir=None,
+            rag_cache_dir=None,
+        )
+        if not ok:
+            return False, reason
+        if _command_record_digest(record) != expected_evidence_digests.get(check_id):
+            return False, f"CI owner receipt evidence digest is stale: {check_id}."
+    return True, ""
+
+
+def _command_record_digest(record: object) -> str:
+    encoded = json.dumps(
+        record,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _validate_check_record(
     *,
     output_root: Path,
+    command_output_root: Path | None = None,
     checkout: dict[str, Any],
     current_source: dict[str, Any],
     check_id: str,
@@ -351,7 +509,14 @@ def _validate_check_record(
         return False, f"Handoff check id was edited: {check_id}."
     if raw_record.get("section") != spec.section:
         return False, f"Handoff check section was edited: {check_id}."
-    if raw_record.get("command") != list(spec.resolve_argv(output_root)):
+    expected_command_root = command_output_root or output_root
+    expected_branch = str(checkout.get("branch") or "")
+    if raw_record.get("command") != list(
+        spec.resolve_argv(
+            expected_command_root,
+            expected_branch=expected_branch,
+        )
+    ):
         return False, f"Handoff check argv was edited: {check_id}."
     timeout_seconds = raw_record.get("timeout_seconds")
     if (
@@ -824,6 +989,13 @@ def _validated_id(value: str, *, field: str) -> str:
     return normalized
 
 
+def _validated_evidence_profile(value: str) -> str:
+    profile = _validated_id(value, field="evidence profile")
+    if profile not in {"handoff", "validation-plan", "ci-owner"}:
+        raise HandoffEvidenceError(f"Unsupported evidence profile: {profile!r}.")
+    return profile
+
+
 def _registered_gate(check_id: str) -> GateSpec:
     spec = HANDOFF_GATE_SPECS.get(check_id)
     if spec is None:
@@ -1093,6 +1265,8 @@ def _validate_file_record(
 def _update_dossier(
     output_root: Path,
     *,
+    profile: str,
+    profile_metadata: dict[str, Any],
     checkout: dict[str, Any],
     evidence_root_policy: dict[str, str],
     source_identity: dict[str, Any],
@@ -1101,7 +1275,8 @@ def _update_dossier(
     dossier_path = output_root / DOSSIER_NAME
     payload: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
-        "profile": "handoff",
+        "profile": profile,
+        "profile_metadata": profile_metadata,
         "generated_at": datetime.now(UTC).isoformat(),
         "checkout": checkout,
         "evidence_root_policy": evidence_root_policy,
@@ -1117,6 +1292,8 @@ def _update_dossier(
             ) from error
         if (
             existing.get("schema_version") != SCHEMA_VERSION
+            or existing.get("profile") != profile
+            or existing.get("profile_metadata") != profile_metadata
             or existing.get("checkout", {}).get("commit_sha")
             != checkout.get("commit_sha")
             or existing.get("evidence_root_policy") != evidence_root_policy
@@ -1209,7 +1386,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--section", required=True)
     run.add_argument("--check-id", required=True)
     run.add_argument("--timeout-seconds", type=float, required=True)
-    run.add_argument("--expected-branch", default=DEFAULT_BRANCH)
+    run.add_argument("--expected-branch", required=True)
     run.add_argument("--no-upstream-check", action="store_true")
     run.add_argument("--model-cache-dir", type=Path)
     run.add_argument("--rag-cache-dir", type=Path)
@@ -1226,7 +1403,7 @@ def _build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--repo-root", type=Path, default=ROOT)
     verify.add_argument("--evidence-root", type=Path, required=True)
     verify.add_argument("--required-check", action="append", default=[])
-    verify.add_argument("--expected-branch", default=DEFAULT_BRANCH)
+    verify.add_argument("--expected-branch", required=True)
     verify.add_argument("--no-upstream-check", action="store_true")
     verify.add_argument("--model-cache-dir", type=Path)
     verify.add_argument("--rag-cache-dir", type=Path)

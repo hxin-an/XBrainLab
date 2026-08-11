@@ -683,11 +683,11 @@ def test_ci_uses_full_linux_and_focused_cross_platform_runners() -> None:
     jobs = workflow["jobs"]
 
     assert jobs["linux-shard"]["strategy"]["matrix"] == {
-        "command": list(run_tests.LINUX_CI_COMMANDS),
+        "command": "${{ fromJSON(needs.validation_plan.outputs.linux_commands) }}",
     }
     assert jobs["platform-test"]["strategy"]["matrix"] == {
         "os": ["windows-latest", "macos-latest"],
-        "command": list(run_tests.PLATFORM_CI_COMMANDS),
+        "command": "${{ fromJSON(needs.validation_plan.outputs.platform_commands) }}",
     }
 
     assert jobs["linux-shard"]["strategy"]["max-parallel"] == 8
@@ -696,8 +696,12 @@ def test_ci_uses_full_linux_and_focused_cross_platform_runners() -> None:
     assert workflow_text.count("scripts/dev/run_tests.py ${{ matrix.command }}") == 2
     assert "python -m scripts.dev.run_tests verify-linux-ci" in workflow_text
     assert "python scripts/dev/run_tests.py verify-linux-ci" not in workflow_text
-    assert "fetch-depth: 0" not in workflow_text
-    assert "coverage combine test-results" in workflow_text
+    assert "fetch-depth: 0" in workflow_text
+    assert "run_validation_control_plane.py plan" in workflow_text
+    assert "python -m scripts.dev.validation_ci_plan" in workflow_text
+    assert "CI Capability Verdict" in workflow_text
+    assert "Validation Claim Verdict" not in workflow_text
+    assert "coverage combine build/test-results" in workflow_text
     assert "poetry run pytest tests/" not in workflow_text
 
 

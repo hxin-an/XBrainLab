@@ -33,6 +33,8 @@ from scripts.dev.update_quality_dashboard import (
     workspace_traceability_check,
 )
 
+EXPECTED_HANDOFF_BRANCH = "task/handoff"
+
 
 def _pytest_attestation(
     tmp_path: Path,
@@ -165,6 +167,8 @@ def test_dashboard_handoff_profile_is_explicit() -> None:
     args = dashboard.parse_args(
         [
             "--handoff",
+            "--expected-branch",
+            EXPECTED_HANDOFF_BRANCH,
             "--output-dir",
             "build/handoff-evidence/deadbeef/dashboard",
             "--resource-calibration-path",
@@ -173,6 +177,7 @@ def test_dashboard_handoff_profile_is_explicit() -> None:
     )
 
     assert args.handoff is True
+    assert args.expected_branch == EXPECTED_HANDOFF_BRANCH
     assert args.include_slow_checks is False
     assert args.output_dir == Path("build/handoff-evidence/deadbeef/dashboard")
     assert args.resource_calibration_path == calibration_path
@@ -1166,7 +1171,9 @@ def test_handoff_main_returns_nonzero_for_unprotected_dirty_tree(monkeypatch):
         lambda report, **_kwargs: reports.append(report),
     )
 
-    exit_code = dashboard.main(["--handoff"])
+    exit_code = dashboard.main(
+        ["--handoff", "--expected-branch", EXPECTED_HANDOFF_BRANCH]
+    )
 
     assert exit_code == 1
     assert reports[0]["overall_status"] == "fail"
@@ -1196,7 +1203,15 @@ def _assert_invalid_handoff_cannot_reuse_fresh_report(
     )
     monkeypatch.setattr(dashboard, "write_report", reports.append)
 
-    exit_code = dashboard.main(["--handoff", "--skip-if-fresh-minutes", "60"])
+    exit_code = dashboard.main(
+        [
+            "--handoff",
+            "--expected-branch",
+            EXPECTED_HANDOFF_BRANCH,
+            "--skip-if-fresh-minutes",
+            "60",
+        ]
+    )
 
     assert exit_code == 1
     assert freshness_calls == 0
@@ -1292,11 +1307,11 @@ def test_handoff_traceability_rejects_vscode_settings_as_unprotected():
 
 def _clean_synced_handoff_state(**overrides: object) -> GitState:
     values: dict[str, object] = {
-        "branch": dashboard.EXPECTED_HANDOFF_BRANCH,
+        "branch": EXPECTED_HANDOFF_BRANCH,
         "commit": "a" * 40,
         "dirty": False,
         "status_summary": [],
-        "upstream": f"origin/{dashboard.EXPECTED_HANDOFF_BRANCH}",
+        "upstream": f"origin/{EXPECTED_HANDOFF_BRANCH}",
         "upstream_commit": "a" * 40,
         "ahead_count": 0,
         "behind_count": 0,
@@ -1309,7 +1324,7 @@ def test_handoff_branch_hygiene_accepts_expected_synced_upstream():
     result = workspace_traceability_check(
         _clean_synced_handoff_state(),
         fail_on_unprotected_dirty=True,
-        expected_branch=dashboard.EXPECTED_HANDOFF_BRANCH,
+        expected_branch=EXPECTED_HANDOFF_BRANCH,
         require_upstream_sync=True,
     )
 
@@ -1334,7 +1349,7 @@ def test_handoff_branch_hygiene_fails_closed(
     result = workspace_traceability_check(
         _clean_synced_handoff_state(**overrides),
         fail_on_unprotected_dirty=True,
-        expected_branch=dashboard.EXPECTED_HANDOFF_BRANCH,
+        expected_branch=EXPECTED_HANDOFF_BRANCH,
         require_upstream_sync=True,
     )
 
@@ -1389,7 +1404,15 @@ def test_handoff_invalid_tracked_output_never_receives_failure_report(monkeypatc
         lambda report, **kwargs: reports.append((report, kwargs)),
     )
 
-    exit_code = dashboard.main(["--handoff", "--output-dir", str(invalid_output)])
+    exit_code = dashboard.main(
+        [
+            "--handoff",
+            "--expected-branch",
+            EXPECTED_HANDOFF_BRANCH,
+            "--output-dir",
+            str(invalid_output),
+        ]
+    )
 
     assert exit_code == 1
     assert reports[0][1] == {}
@@ -1449,6 +1472,8 @@ def test_handoff_report_requires_external_manifest_sections_3_to_6(monkeypatch):
     exit_code = dashboard.main(
         [
             "--handoff",
+            "--expected-branch",
+            EXPECTED_HANDOFF_BRANCH,
             "--output-dir",
             str(output_dir),
             "--resource-calibration-path",
@@ -1473,7 +1498,7 @@ def test_handoff_report_requires_external_manifest_sections_3_to_6(monkeypatch):
         "externally_required_sections": [3, 4, 5, 6],
         "ordered_sections": [1, 2, 3, 4, 5, 6, 7, 8],
         "dashboard_clean_last": True,
-        "expected_branch": dashboard.EXPECTED_HANDOFF_BRANCH,
+        "expected_branch": EXPECTED_HANDOFF_BRANCH,
         "requires_upstream_sync": True,
     }
     rendered = render_markdown(reports[0])

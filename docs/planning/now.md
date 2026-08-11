@@ -8,26 +8,27 @@
 
 ## 目前焦點
 
-**以已合併的 `main` GUI checkpoint 為產品基線，先關閉五項 EEG workflow 改進的整合候選，
-再繼續效能與簡化 Assistant prototype。**
+**以 `main@b3a87e3996585ebb09ae46335da82d234ae70249` 為產品基線，先交付 validation
+control plane；EEG workflow PR #12 與 guidance PR #13 已合併，不再是 active candidate。**
 
 目前不是 release 或 Assistant handoff-ready。真人資料驗收只涵蓋 Graz 2a GDF 與 OpenNeuro
 ds003061 P300 BIDS 各一個資料集；其餘格式、自動化 evidence 與舊 Agent gate 不可外推。
-本次候選先完成 required multi-dataset、可見 walkthrough、push 與 exact-head CI；完整 20 個
-product scenarios gate 依使用者指示延後，不能被記為通過，也不阻止本輪形成 Windows 人工
-手測候選。
+目前 task 只改驗證基建與 canonical guidance，不改產品 runtime 或 UI，因此本輪不要求使用者
+重跑 EEG/UI 手測。它必須先以 focused validation、same-class review、strict docs、push 與
+exact-head CI 證明控制面可排程且 fail closed；完整 20 個 product scenarios gate 仍依使用者
+指示延後，不能被記為通過。
 
 ## Active Delivery Context
 
 | 項目 | Current value |
 | --- | --- |
-| Worktree | 以目前 `main` checkout 的 `git rev-parse --show-toplevel` 為準。 |
+| Worktree | 由 `git rev-parse --show-toplevel` 與 `git branch --show-current` 現場取得；不在文件寫死本機 path。 |
 | Product baseline | `main` |
-| Candidate branch | `integration/eeg-workflow-improvements-v1`；五項 EEG workflow 改進的未合併整合候選。 |
-| Baseline | `main@a0e16b400236b687bd2b4c9f58ef4a20929e377b` |
-| Goal | 老師試用前 GUI/data stabilization；其後是 performance 與 simplified Assistant prototype。 |
+| Candidate branch | 不寫死長期 branch；只有目前 task PR 的 pushed exact head 可成為候選。 |
+| Baseline | `main@b3a87e3996585ebb09ae46335da82d234ae70249` |
+| Goal | 先關閉 validation control plane，再以新控制面推進 UI QA 與 guidance closure。 |
 | Historical ledger | [Product Quality Audit - 2026-07-30](../records/product_quality_audit_2026-07-30.md) |
-| Current classification | integration candidate；local gates passed，exact-head CI / Windows acceptance pending；not release / not Assistant-ready |
+| Current classification | Local validation PR candidate；exact-head CI pending；not release / not Assistant-ready。 |
 
 不要從舊文件推論 registered worktree 數量。需要 inventory 時執行
 `git worktree list --porcelain`；其他 worktree 不得被誤認成 active candidate，也不得覆寫其
@@ -64,7 +65,7 @@ candidate 的完成條件，也不可由現有 recommended-defaults UI 暗示為
 | 順序 | 工作 | Exit signal |
 | --- | --- | --- |
 | 1 | Stabilize teacher-facing GUI/data flow | 針對 GDF、BIDS 與老師新增資料逐一走 import -> preprocess -> epoch -> training；發現 blocker 就用 focused regression 修正。 |
-| 1a | Review EEG workflow improvements candidate | 檢查 Braindecode catalog、BIDS subject preselection、test curve、Evaluation / Saliency cross-fold summary 與 Normalize 的 exact-head CI、Windows UI 與資料語意；3-subject / 9-run P300 profile 只算 local regression，通過前不合併。 |
+| 1a | Preserve merged EEG workflow baseline | PR #12 已合併；後續 bug fix 以 main 上的 Braindecode catalog、BIDS subject preselection、test curve、Evaluation / Saliency cross-fold 與 Normalize contract 為 regression baseline，不重啟舊 integration branch。 |
 | 2 | Measure and polish performance | 保留目前 BIDS review latency checkpoint，補 phase timing、fixture manifest、環境、至少 3 samples 的 median/p95；wall-clock ceiling 不和 semantic CI gate 混在一起。再量 load、publication refresh、plots、preprocess 與 training startup。 |
 | 3 | Simplify Assistant prototype | 先建立 typed confirmation risk，讓 high-impact setting change 真的顯示 current/proposed card；再拆開 GUI handoff 與 confirmation，並把每回合 Granite 2B tool exposure 收斂成單一 canonical action contract。 |
 | 4 | Recalibrate Agent gates | 盤點並修改舊 prompt/tool/gate assumptions；建立與目前 Assistant UX、Granite 2B、真實 GUI state 一致的可重跑 gate。 |
@@ -78,6 +79,7 @@ candidate 的完成條件，也不可由現有 recommended-defaults UI 暗示為
 
 | Workstream | Required outcome | Exit signal | Status |
 | --- | --- | --- | --- |
+| Validation control plane | Change intent、affected layer、risk 與 claim stage 產生 source-bound immutable plan；traditional tools 執行與判定，昂貴 data/UI/native/resource gate 只按風險加入，local-only Granite/RAG 留在 handoff。 | Descriptor/registry/plan/receipt lineage、complete CI owner coverage、dynamic matrix、docs-only real gate 與 exact-head capability-only verdict 通過。 | Local PR candidate；exact-head CI pending |
 | Assistant confirmation contract | `reset_preprocess`、`configure_dataset_split` 與影響 training 的 setting change 都使用正確 typed confirmation evidence；不得來自一般 approval 字串。 | capability/confirmation/revision/fingerprint focused tests 與 negative stale-evidence tests 通過。 | Local candidate validated; exact-head CI pending |
 | Assistant decision state | GUI navigation handoff 與真正參數/危險操作 confirmation 使用 typed decision owner，不再靠未分類的 waiting presentation 猜測。 | UI presentation 能區分 navigate、confirm、blocked、error、retry，且 correlation 沒有混用。 | Local candidate validated; exact-head CI pending |
 | Granite 2B tool surface | 每回合只暴露當前 intent 需要的 canonical schema，避免 `set_model` / `configure_training` 或多個 generic preprocess tool 競爭。 | representative prompts 的 schema exposure 與 selected-tool oracle 通過，且 blocked tool 無法執行。 | In progress |
@@ -98,16 +100,18 @@ candidate 的完成條件，也不可由現有 recommended-defaults UI 暗示為
 | Case-study evidence | 每個 dataset 一頁，只顯示實際重跑的 screenshots、training result 與 limitation，不把 format coverage 冒充 dataset diversity。 | manifest 和頁面數字可對應 exact artifacts；主 agent 逐圖檢查。 | Pending pipeline |
 | Integration and review | Agent/runtime 與 user-site/evidence 使用明確的 stacked branches，不污染已綠的 EEG workflow candidate。 | 主 agent 重讀 diff、跑 combined tests、UI/product/architecture reviewers 重審，再 commit/push。 | Pending workers |
 
-分支邊界：`integration/eeg-workflow-improvements-v1` 是目前唯一整合候選；其 exact identity
-以 PR pushed head 為準。Assistant contract、lifecycle 與 tool-call showcase 不得在本輪收尾時
-繼續擴張；user-facing site、MOABB runner 與 case evidence 也不納入這次 candidate。後續工作
-從更新後的 `main` 建立短分支，不得把未審查 worker commit 混入本 PR。
+分支邊界：`main` 是唯一產品基線。每項工作從最新 `main` 建立短 task branch；只有 pushed PR
+exact head 才是該 task candidate。Assistant contract、lifecycle、tool-call showcase、user-facing
+site、MOABB runner 與 case evidence 不納入本次 validation PR，也不得把未審查 worker commit
+混入其中。
 
 ## Evidence Rule
 
-本候選的 immediate exit signal 是：五項 focused suites、populated `All Folds` Evaluation / Saliency
-artifact、exact-source manifest、required multi-dataset、strict docs/static、configured upstream 與
-exact-head CI 全部可追溯到同一 commit。現有 tracked screenshots 只能支撐 layout checkpoint。
+本次 validation candidate 的 immediate exit signal 是：descriptor/path monotonic selection、
+source/base/plan/receipt lineage、CI owner schedulability、native/registry evidence re-verification、
+same-class adversarial review、strict docs/static、configured upstream 與 exact-head CI 全部可追溯
+到同一 commit。因沒有產品或 UI runtime diff，本輪不以新 screenshot 或 multi-dataset gate 作為
+此 task 的完成條件，也不因此提升既有產品 handoff 狀態。
 
 Final totals 不能從本頁、聊天、checkpoint notes 或多次局部 pytest output 手動加總。
 唯一可用的 final totals 是同一 clean exact commit 產生的 handoff evidence，且至少要記錄：
@@ -137,7 +141,7 @@ checkpoint evidence。
 6. Final report 明確列出 Windows DPI/multi-monitor、interactive 3D、teacher datasets 和
    long-session 等剩餘人工風險。
 
-本候選另需讓新的 Linux parallel shards、focused Windows/macOS platform gate 與 coverage
+未來產品候選仍需讓 Linux parallel shards、focused Windows/macOS platform gate 與 coverage
 aggregation 在同一 exact head 的 GitHub Actions 完成；本機 runner tests 不能替代該結果。
 
 達成以上條件後，狀態才能提升為下一個 **Windows handoff candidate**。目前 `main` 只是已接受

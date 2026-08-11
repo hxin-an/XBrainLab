@@ -13,8 +13,6 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
-
 ROOT = Path(__file__).resolve().parents[3]
 SOURCE_IDENTITY_VERSION = 3
 _GENERATED_PREFIXES = (
@@ -86,6 +84,8 @@ def inspect_screenshot_artifact(value: object) -> dict[str, Any]:
         return artifact
     artifact["exists"] = True
     try:
+        from PIL import Image
+
         content = path.read_bytes()
         artifact["byte_size"] = len(content)
         artifact["sha256"] = hashlib.sha256(content).hexdigest()
