@@ -725,6 +725,90 @@ class TestTrainingSetting:
 
         assert dialog.get_applied_resource_preview_receipt() is None
 
+    @pytest.mark.parametrize("font_scale", [1.0, 1.25, 1.5])
+    def test_async_resource_preview_reveals_adjustment_in_current_viewport(
+        self,
+        qtbot,
+        font_scale,
+    ):
+        app = QApplication.instance()
+        assert isinstance(app, QApplication)
+        original_font = QFont(app.font())
+        scaled_font = QFont(original_font)
+        scaled_font.setPointSizeF(original_font.pointSizeF() * font_scale)
+        app.setFont(scaled_font)
+        dispatched = []
+        request_template = TrainingResourcePreviewRequest(
+            request_generation=0,
+            publication_generation=27,
+            model_name="EEGNet",
+            model_params={},
+            device="cuda:0",
+            batch_size=32,
+            optimizer="Adam",
+        )
+        try:
+            with patch(
+                "XBrainLab.ui.dialogs.training.training_setting_dialog."
+                "get_optimizer_classes",
+                return_value={"Adam": torch.optim.Adam},
+            ):
+                dialog = TrainingSettingDialog(
+                    None,
+                    None,
+                    initial_option={"device": "cuda:0", "batch_size": 32},
+                    resource_preview_request=request_template,
+                    resource_preview_dispatcher=(
+                        lambda request, callback: dispatched.append((request, callback))
+                    ),
+                )
+                qtbot.addWidget(dialog)
+
+            dialog.setMaximumHeight(480)
+            dialog.resize(QSize(640, 480))
+            dialog.show()
+            qtbot.waitUntil(lambda: len(dispatched) == 1)
+
+            assert dialog.bs_entry is not None
+            assert dialog.resource_preview_note is not None
+            assert dialog.content_scroll is not None
+            assert dialog.bs_entry.text() == "32"
+            assert dialog.resource_preview_note.isHidden()
+
+            scroll_bar = dialog.content_scroll.verticalScrollBar()
+            assert scroll_bar.maximum() > 0
+            # Native style/focus settling can leave a legal non-zero initial offset.
+            scroll_bar.setValue(scroll_bar.maximum())
+            request, callback = dispatched[0]
+            result = TrainingResourcePreviewResult(
+                request_generation=request.request_generation,
+                publication_generation=request.publication_generation,
+                requested_batch_size=32,
+                suggested_batch_size=8,
+                estimated_vram_bytes=128 * 1024**2,
+                available_vram_bytes=512 * 1024**2,
+                risk_level=RISK_WARNING,
+                vram_known=True,
+                warning=("Batch size was adjusted to 8 for the available GPU memory."),
+            )
+            assert callback(result) is True
+
+            viewport = dialog.content_scroll.viewport()
+            note_rect = QRect(
+                dialog.resource_preview_note.mapTo(viewport, QPoint(0, 0)),
+                dialog.resource_preview_note.size(),
+            )
+            batch_rect = QRect(
+                dialog.bs_entry.mapTo(viewport, QPoint(0, 0)),
+                dialog.bs_entry.size(),
+            )
+            assert dialog.bs_entry.text() == "8"
+            assert "adjusted to 8" in dialog.resource_preview_note.text()
+            assert viewport.rect().contains(note_rect)
+            assert viewport.rect().contains(batch_rect)
+        finally:
+            app.setFont(original_font)
+
     def test_resource_preview_never_overwrites_manual_batch_or_stale_generation(
         self,
         qtbot,

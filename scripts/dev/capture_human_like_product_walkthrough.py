@@ -1513,6 +1513,8 @@ def _run_walkthrough_steps(
         },
     )
 
+    # MainWindow shutdown closes the service and intentionally fences later reads.
+    final_state = compact_state(service.get_state())
     resource_notes.append(resource_snapshot("before_close"))
     if not settle_window_close_for_capture(app, window):
         raise RuntimeError(
@@ -1547,7 +1549,7 @@ def _run_walkthrough_steps(
         "tool_transcript": tool_transcript,
         "user_facing_message_transcript": user_transcript,
         "chatpanel": chat_payload,
-        "final_state": compact_state(service.get_state()),
+        "final_state": final_state,
         "resource_notes": resource_notes,
         "ui_quality_review": ui_quality_review,
         "pass_fail_summary": pass_fail_summary,

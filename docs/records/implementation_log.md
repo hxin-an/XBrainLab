@@ -6944,3 +6944,33 @@ call sites into explicit legacy/fallback helpers.
 - Focused Ruff lint/format, product-source Basedpyright, and `git diff --check`: PASS.
 - The repair still requires a new exact-head GitHub Actions run. Results from the superseded commit
   do not certify this candidate.
+
+## 2026-08-11 Exact-head lifecycle closure candidate
+
+### 實作
+
+- Kept terminal training delivery coupled to the matching visible Application publication while
+  avoiding a new view obligation when no terminal outcome exists. A terminal state without a
+  valid terminal identity remains fail closed.
+- Reordered normal and recovery shutdown so application-owned publication/render work becomes idle
+  before the desktop renderer is paused or Qt-native plot resources are finalized.
+- Reworked the native render stress probe around a deterministic blocked product publication. The
+  probe invalidates the shared Map/Spectrogram cache, releases both controlled workers from one
+  outer `finally`, and uses the real headless-macOS versus full-native request transition contract.
+- Captured human-like walkthrough state before closing its `MainWindow`, made Preprocess lifecycle
+  evidence require explicit plot finalization, and made Training resource-preview visibility
+  deterministic at 100%, 125%, and 150% scale.
+
+### 驗證與邊界
+
+- Application publication focused suite: `201 passed`; MainWindow/native focused suite:
+  `139 passed`; complete Linux integration UI shard: `132 passed, 26 warnings`.
+- Required source-diverse evidence: `42 passed` IO/BIDS/cross-source tests, strict public smoke
+  `4/4`, interpretation lifecycle `20/20`, format coverage `14/14`, and five public source
+  families.
+- Full product-source Basedpyright: `0 errors, 0 warnings`; Ruff, Ruff format, and
+  `git diff --check`: PASS. Independent follow-up review found no remaining actionable blocker.
+- The visible Training Setting artifacts at `/tmp/xbl-ui-review-final` are offscreen checkpoints.
+  Native Windows/macOS, interactive OpenGL/3D, GPU-driver, DPI/multi-monitor, and human click-through
+  acceptance remain outside this local claim. The candidate still requires successful exact-head
+  CI before merge.

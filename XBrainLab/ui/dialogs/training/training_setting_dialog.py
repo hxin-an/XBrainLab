@@ -960,6 +960,7 @@ class TrainingSettingDialog(BaseDialog):
             self.resource_preview_note.show()
             self.resource_preview_note.updateGeometry()
             self._fit_dialog_to_content()
+            self._reveal_resource_preview_note()
             QTimer.singleShot(0, self._reveal_resource_preview_note)
         return True
 
@@ -972,6 +973,9 @@ class TrainingSettingDialog(BaseDialog):
         layout = self.layout()
         if layout is not None:
             layout.activate()
+        content_layout = self.content_widget.layout() if self.content_widget else None
+        if content_layout is not None:
+            content_layout.activate()
         scroll.ensureWidgetVisible(note, 0, 8)
 
     def set_output_dir(self):

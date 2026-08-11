@@ -8,6 +8,7 @@ import hashlib
 import json
 import sys
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
@@ -574,9 +575,8 @@ def _capture_training_setting_surfaces(
                 dialog,
                 filename,
                 output_dir=output_dir,
-                # The geometry audit above is the authoritative DPI check for
-                # these scrollable forms. Per-child grabs can race the queued
-                # ensure-visible scroll after a resource warning is revealed.
+                # The geometry audit above owns scroll-viewport containment;
+                # clipped child grabs are not stable references for that check.
                 compare_child_references=False,
             )
             dialog = None
@@ -614,15 +614,21 @@ def _training_setting_dialog() -> TrainingSettingDialog:
         None,
         initial_option={"device": "cuda:0"},
         resource_preview_request=preview_template,
+        resource_preview_dispatcher=_dispatch_training_setting_resource_preview,
     )
-    request = dialog.build_training_resource_preview_request()
-    if request is None:
-        raise RuntimeError("Training Setting capture cannot build resource preview.")
-    applied = dialog.apply_training_resource_preview(
+    return dialog
+
+
+def _dispatch_training_setting_resource_preview(
+    request: TrainingResourcePreviewRequest,
+    callback: Callable[[TrainingResourcePreviewResult], object],
+) -> object:
+    """Deliver the capture result through the dialog's async preview boundary."""
+    return callback(
         TrainingResourcePreviewResult(
             request_generation=request.request_generation,
             publication_generation=request.publication_generation,
-            requested_batch_size=32,
+            requested_batch_size=request.batch_size,
             suggested_batch_size=8,
             estimated_vram_bytes=384 * 1024**2,
             available_vram_bytes=512 * 1024**2,
@@ -631,9 +637,6 @@ def _training_setting_dialog() -> TrainingSettingDialog:
             warning=("Batch size was adjusted to 8 for the available GPU memory."),
         )
     )
-    if not applied:
-        raise RuntimeError("Training Setting capture did not apply resource preview.")
-    return dialog
 
 
 def _apply_training_setting_font_scale(

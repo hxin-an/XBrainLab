@@ -17285,3 +17285,19 @@
   - focused static checks: PASS
 - Next gate: commit and push the repair, then require all checks for the new exact PR head to finish
   with success before merge or handoff claims.
+
+## 2026-08-11 - Publication and native shutdown closure
+
+- Closed the exact-head lifecycle failures without bypassing visible publication acknowledgement:
+  no-terminal reconciliation creates no synthetic view delivery, while real terminal events remain
+  retained until the matching revision is visible.
+- Moved publication/background idleness ahead of renderer pause and native resource finalization in
+  both normal and force-close paths.
+- Replaced timing-dependent native close coverage with a deterministic blocked render, cache
+  invalidation, fail-safe worker release, explicit Preprocess plot finalization, and platform-aware
+  publication-count assertions.
+- Local evidence: Application publication `201 passed`; focused MainWindow/native `139 passed`;
+  complete Linux integration UI `132 passed`; required IO/BIDS/cross-source `42 passed`; strict
+  public smoke `4/4`; interpretation `20/20`; formats `14/14`; static checks PASS.
+- Independent re-review found no actionable blocker. Exact-head CI and native Windows/macOS human
+  acceptance remain required; `/tmp/xbl-ui-review-final` is offscreen UI evidence only.

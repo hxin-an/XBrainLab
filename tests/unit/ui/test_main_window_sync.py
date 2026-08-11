@@ -419,12 +419,16 @@ def test_close_waits_for_owned_ui_background_work(
         ),
         patch.object(main_window, "_stop_training_for_close", return_value=True),
         patch.object(main_window, "_close_assistant_for_shutdown") as close_assistant,
+        patch.object(
+            main_window, "_begin_desktop_render_shutdown"
+        ) as begin_render_shutdown,
         patch.object(main_window, "_schedule_close_retry") as retry,
     ):
         main_window.closeEvent(event)
 
     assert event.isAccepted() is False
     close_assistant.assert_not_called()
+    begin_render_shutdown.assert_not_called()
     retry.assert_called_once_with()
     assert "background interface work" in main_window.statusBar().currentMessage()
 
@@ -460,7 +464,16 @@ def test_close_finalizes_application_runtime_before_qt_close(main_window) -> Non
             main_window, "_ensure_shutdown_fence_for_close", return_value=True
         ),
         patch.object(main_window, "_stop_training_for_close", return_value=True),
-        patch.object(main_window, "_owned_ui_background_work_idle", return_value=True),
+        patch.object(
+            main_window,
+            "_owned_ui_background_work_idle",
+            side_effect=lambda: call_order.append("background") or True,
+        ),
+        patch.object(
+            main_window,
+            "_begin_desktop_render_shutdown",
+            side_effect=lambda: call_order.append("begin-render-shutdown"),
+        ),
         patch.object(
             main_window,
             "_finalize_visualization_native_render_resources",
@@ -496,6 +509,8 @@ def test_close_finalizes_application_runtime_before_qt_close(main_window) -> Non
         main_window.closeEvent(event)
 
     assert call_order == [
+        "background",
+        "begin-render-shutdown",
         "preprocess",
         "renderer",
         "application",
@@ -522,7 +537,7 @@ def test_close_waits_for_active_visualization_native_render(main_window):
         main_window.closeEvent(event)
 
     assert event.isAccepted() is False
-    visualization_panel.begin_native_render_shutdown.assert_called_once_with()
+    visualization_panel.begin_native_render_shutdown.assert_not_called()
     visualization_panel.native_render_work_idle.assert_called()
     close_assistant.assert_not_called()
     retry.assert_called_once_with()
@@ -705,6 +720,27 @@ def test_force_close_still_waits_for_owned_ui_background_work(main_window):
     assert event.isAccepted() is False
     close_assistant.assert_not_called()
     delegate.assert_not_called()
+    retry.assert_called_once_with()
+
+
+def test_force_close_does_not_pause_publications_before_application_work_is_idle(
+    main_window,
+):
+    main_window._force_shutdown_requested = True
+    event = QCloseEvent()
+
+    with (
+        patch(
+            "XBrainLab.ui.main_window.application_background_tasks_idle",
+            return_value=False,
+        ),
+        patch.object(main_window, "_begin_desktop_render_shutdown") as begin_shutdown,
+        patch.object(main_window, "_schedule_close_retry") as retry,
+    ):
+        main_window.closeEvent(event)
+
+    assert event.isAccepted() is False
+    begin_shutdown.assert_not_called()
     retry.assert_called_once_with()
 
 

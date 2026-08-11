@@ -1091,6 +1091,58 @@ def test_training_terminal_delivery_waits_for_canonical_view_acknowledgement(
     deliver_terminal.assert_called_once_with(lifecycle_event)
 
 
+def test_nonterminal_training_reconciliation_does_not_republish_application_view(
+    monkeypatch,
+) -> None:
+    service = ApplicationService(Study())
+    state = service.get_state()
+    publish_view = MagicMock(return_value=False)
+    monkeypatch.setattr(
+        service.publication_lifecycle,
+        "_refresh_training_publication",
+        MagicMock(return_value=state),
+    )
+    monkeypatch.setattr(
+        service.publication_lifecycle,
+        "_publish_view_changed",
+        publish_view,
+    )
+
+    assert state.training.terminal_outcome.is_terminal is False
+    assert service.publication_lifecycle.publish_training_terminal_state() is True
+    publish_view.assert_not_called()
+
+
+def test_terminal_training_reconciliation_fails_when_identity_cannot_be_built(
+    monkeypatch,
+) -> None:
+    service = ApplicationService(Study())
+    trainer = Trainer([])
+    service.study.training_manager.trainer = trainer
+    trainer.run(interact=False)
+    state = service.get_state()
+    publish_view = MagicMock(return_value=True)
+    monkeypatch.setattr(
+        service.publication_lifecycle,
+        "_refresh_training_publication",
+        MagicMock(return_value=state),
+    )
+    monkeypatch.setattr(
+        service.publication_lifecycle,
+        "terminal_training_publication_event",
+        MagicMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        service.publication_lifecycle,
+        "_publish_view_changed",
+        publish_view,
+    )
+
+    assert state.training.terminal_outcome.is_terminal is True
+    assert service.publication_lifecycle.publish_training_terminal_state() is False
+    publish_view.assert_not_called()
+
+
 def test_deferred_view_ack_releases_retained_training_terminal_event() -> None:
     service = ApplicationService(Study())
     trainer = Trainer([])

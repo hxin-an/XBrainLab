@@ -306,6 +306,10 @@ def test_training_setting_geometry_is_observed_at_supported_font_scales(
     try:
         app.setStyleSheet(capture_script.Stylesheets.MAIN_WINDOW)
         dialog = capture_script._training_setting_dialog()
+        assert dialog.bs_entry is not None
+        assert dialog.resource_preview_note is not None
+        assert dialog.bs_entry.text() == "32"
+        assert dialog.resource_preview_note.isHidden()
         capture_script._apply_training_setting_font_scale(dialog, font_scale)
         _settle(app, dialog)
 

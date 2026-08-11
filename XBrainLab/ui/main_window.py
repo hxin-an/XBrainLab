@@ -1461,7 +1461,6 @@ class MainWindow(QMainWindow):
         if self._force_shutdown_requested:
             if not self._closing_in_progress:
                 self._begin_close_attempt()
-            self._begin_desktop_render_shutdown()
             if not self._owned_ui_background_work_idle():
                 event.ignore()
                 self._schedule_close_retry()
@@ -1472,6 +1471,7 @@ class MainWindow(QMainWindow):
                         3000,
                     )
                 return
+            self._begin_desktop_render_shutdown()
             if not self._finalize_visualization_native_render_resources():
                 event.ignore()
                 self._schedule_close_retry()
@@ -1513,7 +1513,6 @@ class MainWindow(QMainWindow):
                     3000,
                 )
             return
-        self._begin_desktop_render_shutdown()
         if not self._owned_ui_background_work_idle():
             event.ignore()
             self._schedule_close_retry()
@@ -1524,6 +1523,7 @@ class MainWindow(QMainWindow):
                     3000,
                 )
             return
+        self._begin_desktop_render_shutdown()
         if not self._finalize_visualization_native_render_resources():
             event.ignore()
             self._schedule_close_retry()
@@ -1578,7 +1578,7 @@ class MainWindow(QMainWindow):
         self._set_close_interaction_enabled(False)
 
     def _begin_desktop_render_shutdown(self) -> None:
-        """Quiesce visible native surfaces after terminal state is published."""
+        """Quiesce visible native surfaces after final publications are delivered."""
         if self._desktop_render_shutdown_started:
             return
         self._desktop_render_shutdown_started = True
