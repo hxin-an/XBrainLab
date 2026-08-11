@@ -37,6 +37,20 @@
 
 ## 2026-08-11
 
+### 17:45 Import / Training / Montage integration closure
+
+- 做了什麼：收斂 Training resource preview、BIDS montage background publication、Epoch baseline
+  interaction、optimizer parsing、Visualization capability UI，以及 application/PyQtGraph shutdown
+  ownership；同步更新過時的 Epoch screenshot contract。
+- 結果：Backend full unit `5007 passed`、UI full unit `2586 passed`、script suite 除三個過時
+  contract 外 `1314 passed`，更新後 focused capture `40 passed`；architecture compliance PASS、
+  architecture unit `291 passed`、focused integration `38 passed`、pipeline `2 passed`、required
+  multi-dataset integration `41 passed`、strict matrix `20/20`、strict cross-source `4/4`。
+- 證據：`build/dev-artifacts/ui-review-fixes/`、`build/dev-artifacts/epoching-dialog/`、
+  `build/dev-artifacts/visualization-render/`、`build/dev-artifacts/data-interpretation/`。
+- 接續 / 本輪剩餘：checkpoint 已 commit/push，最新 main 正在整合；仍需 merge-resolution
+  validation、PR exact-head CI。Windows 人工 acceptance 與 Assistant readiness 仍不可宣稱。
+
 ### 15:43 第五輪 v5 guidance acceptance 與 blind subagent review
 
 - 做了什麼：在 baseline `a0e16b400236b687bd2b4c9f58ef4a20929e377b`、candidate
@@ -17255,3 +17269,49 @@
   - The fast dashboard remains non-green because of existing global Basedpyright baseline errors,
     stale strict resource-calibration evidence and unavailable xcb in the current sandbox. These are
     not hidden by the focused PASS results.
+
+## 2026-08-11 - Required public gate publication race
+
+- PR `#14` exact-head CI failed two immediate `LoadDataCommand -> data_summary` cases while an
+  optional montage worker was publishing its result.
+- Preserved the intended concurrency boundary: immutable `data_summary` now reads the committed
+  publication without waiting; mutable `data_lists` continues to return recoverable busy.
+- Added deterministic worker-event coverage, publication generation checks, unusable-publication
+  failure coverage, and full summary schema parity.
+- Local evidence after the repair:
+  - application/state unit: `261 passed`
+  - IO/public-BIDS/cross-source: `42 passed`
+  - adjacent workflow/agent-tool: `68 passed`
+  - focused static checks: PASS
+- Next gate: commit and push the repair, then require all checks for the new exact PR head to finish
+  with success before merge or handoff claims.
+
+## 2026-08-11 - Publication and native shutdown closure
+
+- Closed the exact-head lifecycle failures without bypassing visible publication acknowledgement:
+  no-terminal reconciliation creates no synthetic view delivery, while real terminal events remain
+  retained until the matching revision is visible.
+- Moved publication/background idleness ahead of renderer pause and native resource finalization in
+  both normal and force-close paths.
+- Replaced timing-dependent native close coverage with a deterministic blocked render, cache
+  invalidation, fail-safe worker release, explicit Preprocess plot finalization, and platform-aware
+  publication-count assertions.
+- Local evidence: Application publication `201 passed`; focused MainWindow/native `139 passed`;
+  complete Linux integration UI `132 passed`; required IO/BIDS/cross-source `42 passed`; strict
+  public smoke `4/4`; interpretation `20/20`; formats `14/14`; static checks PASS.
+- Independent re-review found no actionable blocker. Exact-head CI and native Windows/macOS human
+  acceptance remain required; `/tmp/xbl-ui-review-final` is offscreen UI evidence only.
+- Exact-head CI then found two public BIDS montage tests missing the canonical optional-fixture
+  marker. Added the module marker; required public coverage remains owned by the separate strict
+  multi-dataset job, which passed on that same SHA.
+
+## 2026-08-11 - Exact-head test isolation follow-up
+
+- The next PR-head run passed the required public dataset gate and platform/UI shards but exposed
+  two full-shard-only test defects: a resource-confirmation fixture did not quiesce/close its
+  application-owned montage worker, and a legacy loader test used a probabilistic first-batch
+  inequality assertion.
+- Added explicit montage idleness plus service cleanup to the control-flow fixture. Replaced the
+  probabilistic loader check with exact mask-index and Random/Sequential sampler assertions.
+- Local evidence: focused regression `9 passed`; adjacent integration backend and training-plan
+  suite `171 passed`; no product command or metric semantics were relaxed.

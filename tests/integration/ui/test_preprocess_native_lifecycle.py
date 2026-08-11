@@ -54,7 +54,7 @@ def test_real_gdf_time_psd_cancelled_close_and_final_close_are_native_safe():
     assert result["detached_shutdown_cycles"] == 8
     assert result["restored_ownership_cycles"] == 8
     assert result["destroy_recreate_cycles"] == 8
-    assert result["parent_owned_plot_teardown_cycles"] == 8
+    assert result["explicit_plot_finalization_cycles"] == 8
     assert result["minimum_owned_items_checked"] >= 20
     assert result["plot_update_callbacks"] >= 8
     assert result["minimum_time_samples"] > 0

@@ -43,6 +43,7 @@ from XBrainLab.backend.application.saliency_policy import (
     selected_saliency_methods_from_params,
 )
 from XBrainLab.backend.application.saliency_render import (
+    SaliencyRenderView,
     normalized_saliency_render_publication,
 )
 from XBrainLab.backend.application.state import (
@@ -397,6 +398,9 @@ class VisualizationPanel(BasePanel):
         self.abs_check = QCheckBox("Absolute")
         self.abs_check.setToolTip("Use absolute saliency values")
         self.abs_check.setStyleSheet(Stylesheets.CHECKBOX_MUTED)
+        absolute_policy = self.abs_check.sizePolicy()
+        absolute_policy.setRetainSizeWhenHidden(True)
+        self.abs_check.setSizePolicy(absolute_policy)
         self.abs_check.stateChanged.connect(self.on_update)
 
         self.normalize_check = QCheckBox("Normalize")
@@ -556,9 +560,8 @@ class VisualizationPanel(BasePanel):
             self.ctrl_layout.addWidget(self.run_combo, 0, 3)
             self.ctrl_layout.addWidget(self.method_label, 0, 4)
             self.ctrl_layout.addWidget(self.method_combo, 0, 5)
-            self.ctrl_layout.addWidget(self.abs_check, 0, 6)
-            self.ctrl_layout.addWidget(self.normalize_check, 0, 7)
             self.ctrl_layout.setColumnStretch(8, 1)
+            self._position_transform_controls()
             return
 
         self.plan_combo.setMinimumWidth(150)
@@ -574,9 +577,32 @@ class VisualizationPanel(BasePanel):
         self.ctrl_layout.addWidget(self.run_combo, 0, 3)
         self.ctrl_layout.addWidget(self.method_label, 1, 0)
         self.ctrl_layout.addWidget(self.method_combo, 1, 1)
-        self.ctrl_layout.addWidget(self.abs_check, 1, 3)
-        self.ctrl_layout.addWidget(self.normalize_check, 1, 4)
         self.ctrl_layout.setColumnStretch(5, 1)
+        self._position_transform_controls()
+
+    def _position_transform_controls(self) -> None:
+        """Hide Absolute without changing any responsive control grid slots."""
+        self.ctrl_layout.removeWidget(self.abs_check)
+        self.ctrl_layout.removeWidget(self.normalize_check)
+
+        spectrogram_active = hasattr(
+            self, "tabs"
+        ) and self.tabs.currentWidget() is getattr(self, "tab_spectro", None)
+        show_absolute = not spectrogram_active
+        self.abs_check.setVisible(show_absolute)
+        self.normalize_check.setVisible(True)
+
+        if self._controls_single_row:
+            row = 0
+            absolute_column = 6
+            normalize_column = 7
+        else:
+            row = 1
+            absolute_column = 3
+            normalize_column = 4
+
+        self.ctrl_layout.addWidget(self.abs_check, row, absolute_column)
+        self.ctrl_layout.addWidget(self.normalize_check, row, normalize_column)
 
     def _cross_fold_choices_from_query(
         self,
@@ -927,9 +953,10 @@ class VisualizationPanel(BasePanel):
         self.on_update()
 
     def _refresh_absolute_control(self) -> None:
-        """Disable an irrelevant transform without discarding its saved choice."""
+        """Hide or disable an irrelevant transform while preserving its choice."""
         if not hasattr(self, "abs_check") or not hasattr(self, "tabs"):
             return
+        self._position_transform_controls()
         method = self.method_combo.currentText()
         if self.tabs.currentIndex() == 1:
             self.abs_check.setEnabled(False)
@@ -1006,11 +1033,16 @@ class VisualizationPanel(BasePanel):
                 self._show_widget_error(current_widget, message)
             return
 
+        blocked_view_message = self._selected_view_blocked_message()
+        if blocked_view_message:
+            self._show_widget_message(current_widget, blocked_view_message)
+            return
+
         automatic_status = self._post_training_saliency_status()
 
         plan_identity = self.plan_combo.currentData()
         run_identity = self.run_combo.currentData()
-        absolute = self.abs_check.isChecked()
+        absolute = self.abs_check.isChecked() and current_widget is not self.tab_spectro
         normalize = self.normalize_check.isChecked()
 
         single_selection = isinstance(
@@ -1111,6 +1143,7 @@ class VisualizationPanel(BasePanel):
             run=run_identity,
             method=method_name,
             normalize=normalize,
+            view=self._saliency_render_view(current_widget),
         )
         # Spectrogram normalization is a display-linear transform. Keep its
         # source publication raw so toggling Normalize can reuse one STFT.
@@ -1346,11 +1379,19 @@ class VisualizationPanel(BasePanel):
             normalize=(
                 False if self.tabs.currentWidget() is self.tab_spectro else normalize
             ),
+            view=self._saliency_render_view(self.tabs.currentWidget()),
         )
         return _SaliencyRenderTask(
             request=request,
             needs_normalized_variant=request.normalize,
         )
+
+    def _saliency_render_view(self, widget: QWidget | None) -> SaliencyRenderView:
+        if widget is self.tab_topo:
+            return "topographic_map"
+        if widget is self.tab_3d:
+            return "three_dimensional"
+        return "channel_time"
 
     def _on_saliency_render_ready(
         self,
@@ -2497,6 +2538,26 @@ class VisualizationPanel(BasePanel):
         if diagnostics.get("payload_type") != "visualization_summary":
             return None
         return dict(diagnostics)
+
+    def _selected_view_blocked_message(self) -> str | None:
+        payload = self._visualization_query_payload()
+        if payload is None or not hasattr(self, "tabs"):
+            return None
+        blocked = payload.get("blocked_views")
+        if not isinstance(blocked, dict):
+            return None
+        view_name = self.tabs.tabText(self.tabs.currentIndex()).strip().casefold()
+        reasons = next(
+            (
+                value
+                for key, value in blocked.items()
+                if str(key).strip().casefold() == view_name
+            ),
+            None,
+        )
+        if isinstance(reasons, list) and reasons:
+            return str(reasons[0])
+        return None
 
     def _accept_application_publication(
         self,

@@ -170,10 +170,14 @@ class VisualizationStateSnapshot:
     saliency_available: bool = False
     montage_available: bool = False
     channel_positions_available: bool = False
+    three_dimensional_positions_available: bool = False
     channel_count: int = 0
     saliency_params: dict[str, Any] = field(default_factory=dict)
     montage_channels: list[str] = field(default_factory=list)
     montage_positions: list[list[float]] = field(default_factory=list)
+    montage_source: str | None = None
+    montage_preparation_state: str = "not_applicable"
+    montage_preparation_reason: str | None = None
     saliency_coverage: list[SaliencyRunCoverageSnapshot] = field(
         default_factory=list,
     )

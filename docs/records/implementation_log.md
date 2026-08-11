@@ -15,6 +15,29 @@
 - 還不能宣稱完成的是什麼
 - 下一手 owner 應該看哪裡
 
+## 2026-08-11 Import / Training / Montage Polish Candidate
+
+### 狀態
+
+- Application-owned Training resource preview、generation-bound BIDS montage preparation、Epoch
+  baseline On/Off、optimizer parameter parsing 與 Visualization capability presentation 已整合到
+  `integration/import-training-montage-polish-v1`。
+- Application background workers 與 PyQtGraph plot roots 已納入 bounded desktop shutdown；取消
+  close 仍保留可恢復狀態。
+
+### 已可宣稱
+
+- Local gates 通過 20/20 required import lifecycles、14/14 required formats、5 個 public source
+  families、4/4 strict cross-source cases，以及 focused BIDS / Epoch / product walkthrough。
+- Offscreen UI evidence 已重新產生並人工檢查 Training resource adjustment、Import review、Smart
+  Parser、Epoch baseline、Saliency / Spectrogram 與 3D blocked state。
+
+### 不能宣稱完成
+
+- 本 branch checkpoint 已 commit/push 並整合最新 `main`；仍待 merge-resolution validation、
+  PR exact-head CI 與 Windows 人工驗收。目前不是 release、full BIDS validator、任意 EEG
+  dataset support、AutoML 或 Assistant-ready 證明。
+
 ## 2026-08-11 GPT-5.6 Agent Guidance Rebaseline
 
 ### 狀態
@@ -6896,3 +6919,69 @@ call sites into explicit legacy/fallback helpers.
   `linux-unit-ui` command now reuses the existing ten UI domain shards so Qt/thread state cannot
   leak across unrelated domains; file coverage, fail-closed attestations, and aggregate coverage
   remain unchanged.
+
+## 2026-08-11 Publication-backed dataset summary race repair
+
+### 實作
+
+- Exact-head GitHub CI exposed a real race after `LoadDataCommand`: optional BIDS montage
+  publication could own the application command lock while the required public-data tests
+  immediately queried `data_summary`, producing a recoverable `application_busy` failure.
+- Routed `data_summary` through the last verified immutable `ApplicationViewPublication` instead of
+  re-reading mutable EEG objects. `data_lists` remains lock-guarded and fail-closed because it still
+  exposes object-derived rows.
+- Added a pure published-state summary projection and schema-parity coverage for inventory, formats,
+  channels, metadata, events, runtime signals, and GDF diagnostics.
+- Added a deterministic real-GDF lifecycle regression that event-blocks the actual optional montage
+  commit: the committed summary stays readable, mutable lists report busy, stale generations are
+  rejected, and the final publication advances after the worker is released.
+
+### 驗證與邊界
+
+- ApplicationService / StateSnapshot unit suites: `261 passed`.
+- Required IO / public BIDS / cross-source integration group: `42 passed`.
+- Adjacent application workflow and agent dataset-summary tool tests: `68 passed`.
+- Focused Ruff lint/format, product-source Basedpyright, and `git diff --check`: PASS.
+- The repair still requires a new exact-head GitHub Actions run. Results from the superseded commit
+  do not certify this candidate.
+
+## 2026-08-11 Exact-head lifecycle closure candidate
+
+### 實作
+
+- Kept terminal training delivery coupled to the matching visible Application publication while
+  avoiding a new view obligation when no terminal outcome exists. A terminal state without a
+  valid terminal identity remains fail closed.
+- Reordered normal and recovery shutdown so application-owned publication/render work becomes idle
+  before the desktop renderer is paused or Qt-native plot resources are finalized.
+- Reworked the native render stress probe around a deterministic blocked product publication. The
+  probe invalidates the shared Map/Spectrogram cache, releases both controlled workers from one
+  outer `finally`, and uses the real headless-macOS versus full-native request transition contract.
+- Captured human-like walkthrough state before closing its `MainWindow`, made Preprocess lifecycle
+  evidence require explicit plot finalization, and made Training resource-preview visibility
+  deterministic at 100%, 125%, and 150% scale.
+
+### 驗證與邊界
+
+- Application publication focused suite: `201 passed`; MainWindow/native focused suite:
+  `139 passed`; complete Linux integration UI shard: `132 passed, 26 warnings`.
+- Required source-diverse evidence: `42 passed` IO/BIDS/cross-source tests, strict public smoke
+  `4/4`, interpretation lifecycle `20/20`, format coverage `14/14`, and five public source
+  families.
+- Full product-source Basedpyright: `0 errors, 0 warnings`; Ruff, Ruff format, and
+  `git diff --check`: PASS. Independent follow-up review found no remaining actionable blocker.
+- The visible Training Setting artifacts at `/tmp/xbl-ui-review-final` are offscreen checkpoints.
+  Native Windows/macOS, interactive OpenGL/3D, GPU-driver, DPI/multi-monitor, and human click-through
+  acceptance remain outside this local claim. The candidate still requires successful exact-head
+  CI before merge.
+- The first exact-head rerun proved the dedicated public multi-dataset gate but exposed two BIDS
+  montage tests whose public-fixture dependency lacked the canonical `optional_public_fixture`
+  marker. The module now declares that ownership so an unpopulated general CI cache may skip it,
+  while the dedicated required-public gate continues to download and execute the tests.
+- The following exact-head run exposed two test-isolation defects rather than product regressions.
+  Resource-confirmation scenarios now wait for optional montage publication and close each
+  `ApplicationService`, so an unrelated background generation cannot race a generation-preserving
+  assertion. The training loader test now verifies exact split indices and sampler contracts instead
+  of assuming a shuffled first batch can never coincidentally equal another split.
+- Focused fixes passed `9` tests; the complete adjacent integration-backend and training-plan group
+  passed `171` tests. A new exact-head run remains required before merge.

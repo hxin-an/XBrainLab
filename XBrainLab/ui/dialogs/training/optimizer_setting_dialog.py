@@ -4,8 +4,6 @@ Dynamically loads available PyTorch optimizers and their parameters,
 allowing users to configure training optimization settings.
 """
 
-from typing import Any
-
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -21,9 +19,11 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.training.utils import (
+    OptimizerParameterError,
     get_optimizer_classes,
     get_optimizer_params,
     instantiate_optimizer,
+    parse_optimizer_param,
 )
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
@@ -48,9 +48,17 @@ class OptimizerSettingDialog(BaseDialog):
 
     """
 
-    def __init__(self, parent):
+    def __init__(
+        self,
+        parent,
+        *,
+        optimizer=None,
+        optimizer_params: dict | None = None,
+    ):
         self.optim = None
         self.optim_params = None
+        self._initial_optimizer = optimizer
+        self._initial_optimizer_params = dict(optimizer_params or {})
 
         self.algo_map = get_optimizer_classes()
 
@@ -61,9 +69,15 @@ class OptimizerSettingDialog(BaseDialog):
         super().__init__(parent, title="Optimizer Setting")
         self.resize(400, 500)
 
-        # Init with first algo
+        # Restore the current training choice instead of silently selecting the
+        # first algorithm whenever the nested dialog is opened.
         if self.algo_map and self.algo_combo:
-            self.on_algo_select(next(iter(self.algo_map.keys())))
+            initial_name = str(getattr(optimizer, "__name__", optimizer) or "")
+            if initial_name not in self.algo_map:
+                initial_name = next(iter(self.algo_map.keys()))
+            self.algo_combo.setCurrentText(initial_name)
+            self.on_algo_select(initial_name)
+            self._restore_initial_parameters(initial_name)
 
     def init_ui(self):
         """Initialize dialog UI: algorithm combo, parameter table, buttons."""
@@ -121,6 +135,20 @@ class OptimizerSettingDialog(BaseDialog):
                 self.params_table.setItem(i, 0, item_param)
                 self.params_table.setItem(i, 1, QTableWidgetItem(val))
 
+    def _restore_initial_parameters(self, algo_name: str) -> None:
+        if self.params_table is None or algo_name != str(
+            getattr(self._initial_optimizer, "__name__", "") or ""
+        ):
+            return
+        for row in range(self.params_table.rowCount()):
+            name_item = self.params_table.item(row, 0)
+            value_item = self.params_table.item(row, 1)
+            if name_item is None or value_item is None:
+                continue
+            name = name_item.text()
+            if name in self._initial_optimizer_params:
+                value_item.setText(repr(self._initial_optimizer_params[name]))
+
     def accept(self):
         """Parse and validate optimizer parameters, then accept the dialog.
 
@@ -142,17 +170,12 @@ class OptimizerSettingDialog(BaseDialog):
                 item1 = self.params_table.item(row, 1)
                 value_text = item1.text() if item1 else ""
 
-                value: Any = None
                 if value_text:
-                    if len(value_text.split()) > 1:
-                        value = [float(v) for v in value_text.split()]
-                    elif value_text == "True":
-                        value = True
-                    elif value_text == "False":
-                        value = False
-                    else:
-                        value = float(value_text)
-                    optim_params[param] = value
+                    optim_params[param] = parse_optimizer_param(
+                        target,
+                        param,
+                        value_text,
+                    )
 
             # Test instantiation
             instantiate_optimizer(target, optim_params)
@@ -161,11 +184,17 @@ class OptimizerSettingDialog(BaseDialog):
             self.optim = target
             super().accept()
 
-        except (TypeError, ValueError):
+        except OptimizerParameterError as exc:
             QMessageBox.warning(
                 self,
                 "Validation Error",
-                "Review the optimizer parameter values and try again.",
+                str(exc),
+            )
+        except (TypeError, ValueError) as exc:
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                f"Optimizer configuration: {exc}",
             )
         except Exception:
             present_unexpected_error(

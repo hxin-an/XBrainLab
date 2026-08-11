@@ -50,8 +50,10 @@ from XBrainLab.backend.application.view_publication import ApplicationViewPublic
 from XBrainLab.backend.training_state_contract import TrainingOutcomeState
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
+    application_background_tasks_idle,
     application_runtime_initialized,
     application_ui_runtime,
+    close_application_runtime,
     execute_application_command,
     execute_application_command_async,
     has_real_application_context,
@@ -1089,9 +1091,11 @@ class MainWindow(QMainWindow):
             raise RuntimeError(f"No typed product bootstrap for {spec.class_name}")
         if not isinstance(panel, QWidget):
             if isinstance(panel, QObject) and not sip.isdeleted(panel):
-                panel.setParent(None)
-                sip.delete(panel)
+                qt_object = cast(QObject, panel)
+                qt_object.setParent(None)
+                sip.delete(qt_object)
             raise TypeError(f"{spec.class_name} did not create a QWidget")
+        panel_widget = cast(QWidget, panel)
 
         old_widget = self.stack.widget(index)
         was_current = self.stack.currentIndex() == index
@@ -1099,18 +1103,18 @@ class MainWindow(QMainWindow):
             if old_widget is not None:
                 self.stack.removeWidget(old_widget)
                 old_widget.setParent(None)
-            self.stack.insertWidget(index, panel)
+            self.stack.insertWidget(index, panel_widget)
             if was_current:
                 self.stack.setCurrentIndex(index)
-            setattr(self, spec.attr, panel)
+            setattr(self, spec.attr, panel_widget)
             self._loaded_panel_indices.add(index)
             self._prepared_panel_classes.pop(index, None)
             self._panel_materialization_pending.discard(index)
         except Exception:
-            if self.stack.indexOf(panel) >= 0:
-                self.stack.removeWidget(panel)
-            panel.setParent(None)
-            panel.deleteLater()
+            if self.stack.indexOf(panel_widget) >= 0:
+                self.stack.removeWidget(panel_widget)
+            panel_widget.setParent(None)
+            panel_widget.deleteLater()
             if old_widget is not None and self.stack.indexOf(old_widget) < 0:
                 self.stack.insertWidget(index, old_widget)
                 if was_current:
@@ -1123,7 +1127,7 @@ class MainWindow(QMainWindow):
 
         if spec.attr == "visualization_panel":
             self._connect_agent_visualization_monitor()
-        return panel
+        return panel_widget
 
     def init_agent(self):
         """Initialize the AI agent system via AgentManager.
@@ -1457,7 +1461,6 @@ class MainWindow(QMainWindow):
         if self._force_shutdown_requested:
             if not self._closing_in_progress:
                 self._begin_close_attempt()
-            self._begin_desktop_render_shutdown()
             if not self._owned_ui_background_work_idle():
                 event.ignore()
                 self._schedule_close_retry()
@@ -1468,7 +1471,12 @@ class MainWindow(QMainWindow):
                         3000,
                     )
                 return
+            self._begin_desktop_render_shutdown()
             if not self._finalize_visualization_native_render_resources():
+                event.ignore()
+                self._schedule_close_retry()
+                return
+            if not self._finalize_preprocess_native_plots_for_shutdown():
                 event.ignore()
                 self._schedule_close_retry()
                 return
@@ -1476,6 +1484,10 @@ class MainWindow(QMainWindow):
                 self._handle_assistant_shutdown_failure(event)
                 return
             if not self._finalize_application_publication_renderer_for_shutdown():
+                event.ignore()
+                self._schedule_close_retry()
+                return
+            if not close_application_runtime(self):
                 event.ignore()
                 self._schedule_close_retry()
                 return
@@ -1501,7 +1513,6 @@ class MainWindow(QMainWindow):
                     3000,
                 )
             return
-        self._begin_desktop_render_shutdown()
         if not self._owned_ui_background_work_idle():
             event.ignore()
             self._schedule_close_retry()
@@ -1512,7 +1523,12 @@ class MainWindow(QMainWindow):
                     3000,
                 )
             return
+        self._begin_desktop_render_shutdown()
         if not self._finalize_visualization_native_render_resources():
+            event.ignore()
+            self._schedule_close_retry()
+            return
+        if not self._finalize_preprocess_native_plots_for_shutdown():
             event.ignore()
             self._schedule_close_retry()
             return
@@ -1520,6 +1536,10 @@ class MainWindow(QMainWindow):
             self._handle_assistant_shutdown_failure(event)
             return
         if not self._finalize_application_publication_renderer_for_shutdown():
+            event.ignore()
+            self._schedule_close_retry()
+            return
+        if not close_application_runtime(self):
             event.ignore()
             self._schedule_close_retry()
             return
@@ -1558,7 +1578,7 @@ class MainWindow(QMainWindow):
         self._set_close_interaction_enabled(False)
 
     def _begin_desktop_render_shutdown(self) -> None:
-        """Quiesce visible native surfaces after terminal state is published."""
+        """Quiesce visible native surfaces after final publications are delivered."""
         if self._desktop_render_shutdown_started:
             return
         self._desktop_render_shutdown_started = True
@@ -1596,6 +1616,19 @@ class MainWindow(QMainWindow):
         if callable(prepare):
             prepare()
 
+    def _finalize_preprocess_native_plots_for_shutdown(self) -> bool:
+        """Close loaded PyQtGraph roots before Qt destroys their scene items."""
+        panel = getattr(self, "preprocess_panel", None)
+        preview = getattr(panel, "preview_widget", None)
+        finalize = getattr(preview, "finalize_native_plot_shutdown", None)
+        if not callable(finalize):
+            return True
+        try:
+            return bool(finalize())
+        except Exception:
+            logger.exception("Could not finalize Preprocess native plot resources.")
+            return False
+
     def _resume_preprocess_native_plots_after_cancelled_shutdown(self) -> None:
         """Reconnect Preprocess plot callbacks after a cancelled close."""
         panel = getattr(self, "preprocess_panel", None)
@@ -1611,6 +1644,7 @@ class MainWindow(QMainWindow):
             and not self._panel_prepare_workers
             and self._panel_prepare_active_index is None
             and self._visualization_native_render_idle()
+            and application_background_tasks_idle(self, timeout=0.0)
         )
 
     def _begin_visualization_render_shutdown(self) -> None:

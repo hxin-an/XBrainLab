@@ -40,7 +40,7 @@ from scripts.dev.sensitive_path_redaction import (
 ROOT = Path(__file__).resolve().parents[2]
 DOSSIER_NAME = "handoff-evidence.json"
 SCHEMA_VERSION = 5
-DEFAULT_BRANCH = "stabilize/product-quality-closure"
+DEFAULT_BRANCH = "main"
 _PROTECTED_LOCAL_PATHS = frozenset({"settings.json"})
 _SANITIZED_INHERITED_ENVIRONMENT = (
     "COVERAGE_PROCESS_START",

@@ -202,9 +202,11 @@ class ConfusionMatrixWidget(QWidget):
         self.plot_layout.setContentsMargins(0, 0, 0, 0)
 
         # Initial Placeholder
-        self.fig: Figure | None = Figure(figsize=(5, 4), dpi=100)
-        self.canvas: FigureCanvas | None = _ResponsiveFigureCanvas(self.fig)
-        self.ax = self.fig.add_subplot(111)
+        figure = Figure(figsize=(5, 4), dpi=100)
+        canvas = _ResponsiveFigureCanvas(figure)
+        self.fig: Figure | None = figure
+        self.canvas: FigureCanvas | None = canvas
+        self.ax = figure.add_subplot(111)
 
         Theme.apply_matplotlib_dark_theme(self.fig, ax=self.ax)
 
@@ -218,7 +220,7 @@ class ConfusionMatrixWidget(QWidget):
         )
         self.ax.axis("off")
 
-        self.plot_layout.addWidget(self.canvas)
+        self.plot_layout.addWidget(canvas)
         layout.addWidget(self.plot_container)
 
     def update_plot(

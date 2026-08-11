@@ -26,6 +26,10 @@ from .epoch_context import (
     validated_epoch_context_availability,
 )
 from .errors import PreconditionError
+from .montage_capability import (
+    MontageCoordinateDimension,
+    project_montage_geometry,
+)
 from .pipeline_stage import pipeline_stage_from_snapshots
 from .query_state_service import HandlerResult, QueryStateCommandService
 from .saliency_coverage import (
@@ -90,6 +94,8 @@ class StateSnapshotService:
         training_state: Any | None = None,
         evaluation_state: Any | None = None,
         training_recommendation: TrainingRecommendationService | None = None,
+        montage_snapshot_provider: Callable[[], Any] | None = None,
+        effective_montage_provider: Callable[[], Any] | None = None,
     ) -> None:
         self.study = study
         self.dataset = dataset
@@ -105,6 +111,8 @@ class StateSnapshotService:
         self.interpretation = interpretation
         self.saliency_coverage_projector = saliency_coverage_projector
         self.training_recommendation = training_recommendation
+        self.montage_snapshot_provider = montage_snapshot_provider
+        self.effective_montage_provider = effective_montage_provider
 
     def build(
         self,
@@ -356,16 +364,57 @@ class StateSnapshotService:
         )
 
         saliency_params = training_configuration.saliency_params
+        montage_channels = list(epoch.channel_names)
+        montage_positions = self._epoch_montage_positions(
+            epoch_data,
+            epoch.channel_names,
+        )
+        montage_source: str | None = "manual" if montage_positions else None
+        effective = None
+        if not montage_positions and epoch.channel_names:
+            effective = self._effective_montage()
+            montage_channels, montage_positions = self._positioned_channels(
+                effective,
+                epoch.channel_names,
+            )
+            if montage_positions:
+                montage_source = str(getattr(effective, "source", "bids"))
+        raw_coordinate_dimension = getattr(effective, "coordinate_dimension", 3)
+        coordinate_dimension: MontageCoordinateDimension = (
+            2 if raw_coordinate_dimension == 2 else 3
+        )
+        geometry = project_montage_geometry(
+            montage_positions,
+            coordinate_dimension=coordinate_dimension,
+        )
+        supports_topographic = geometry.supports_topographic
+        supports_three_dimensional = geometry.supports_three_dimensional
+        if effective is not None and montage_source == "bids":
+            supports_topographic = supports_topographic and bool(
+                getattr(effective, "supports_topographic", supports_topographic)
+            )
+            supports_three_dimensional = supports_three_dimensional and bool(
+                getattr(
+                    effective,
+                    "supports_three_dimensional",
+                    supports_three_dimensional,
+                )
+            )
+        preparation_state, preparation_reason = self._montage_preparation_status()
         visualization = VisualizationStateSnapshot(
             saliency_configured=bool(saliency_params),
             saliency_available=evaluation.finished_runs > 0
             and saliency_output_available,
-            montage_available=self._montage_available(epoch_data),
-            channel_positions_available=self._channel_positions_available(epoch_data),
+            montage_available=bool(montage_positions),
+            channel_positions_available=supports_topographic,
+            three_dimensional_positions_available=supports_three_dimensional,
             channel_count=len(epoch.channel_names),
             saliency_params=self._json_mapping(saliency_params),
-            montage_channels=list(epoch.channel_names),
-            montage_positions=self._montage_positions(epoch_data),
+            montage_channels=(montage_channels if montage_positions else []),
+            montage_positions=montage_positions,
+            montage_source=montage_source,
+            montage_preparation_state=preparation_state,
+            montage_preparation_reason=preparation_reason,
             saliency_coverage=saliency_coverage,
             post_training_saliency=post_training_saliency,
         )
@@ -610,33 +659,49 @@ class StateSnapshotService:
             self.dataset.get_loaded_data_list,
             label="dataset.loaded_data_summary",
         )
-        summary: dict[str, Any] = {
-            "count": len(data_list) if data_list else state.raw.count,
-            "files": [self.data_filename(item) for item in data_list]
-            if data_list
-            else state.raw.files,
-            "formats": (
-                self._raw_formats(data_list) if data_list else state.raw.formats
-            ),
-            "channels": (
-                self._raw_channels(data_list) if data_list else state.raw.channels
-            ),
-            "metadata": self._raw_metadata(data_list)
-            if data_list
-            else state.raw.metadata,
-            "total": state.raw.event_total,
-            "unique_count": len(state.raw.unique_events),
-            "unique_labels": state.raw.unique_events,
-            "runtime_signals": [],
-            "gdf_duplicate_channel_files": [],
-            "gdf_duplicate_channel_details": [],
-        }
+        summary = self.data_summary_from_published_state(state)
+        if data_list:
+            summary.update(
+                {
+                    "count": len(data_list),
+                    "files": [self.data_filename(item) for item in data_list],
+                    "formats": self._raw_formats(data_list),
+                    "channels": self._raw_channels(data_list),
+                    "metadata": self._raw_metadata(data_list),
+                }
+            )
         summary.update(
             self._read_optional_dict(
                 self.dataset.get_event_info,
                 label="dataset.event_summary",
             )
         )
+        summary.update(state.raw.diagnostics)
+        return summary
+
+    @staticmethod
+    def data_summary_from_published_state(
+        state: ApplicationStateSnapshot,
+    ) -> dict[str, Any]:
+        """Project one dataset summary from already verified publication truth.
+
+        Unlike ``data_summary_from_state``, this path never re-reads mutable EEG
+        objects. It is therefore safe while an advisory background publication
+        (for example BIDS montage preparation) owns the command lock.
+        """
+        summary: dict[str, Any] = {
+            "count": state.raw.count,
+            "files": list(state.raw.files),
+            "formats": list(state.raw.formats),
+            "channels": list(state.raw.channels),
+            "metadata": [dict(item) for item in state.raw.metadata],
+            "total": state.raw.event_total,
+            "unique_count": len(state.raw.unique_events),
+            "unique_labels": list(state.raw.unique_events),
+            "runtime_signals": [],
+            "gdf_duplicate_channel_files": [],
+            "gdf_duplicate_channel_details": [],
+        }
         summary.update(state.raw.diagnostics)
         return summary
 
@@ -1045,6 +1110,74 @@ class StateSnapshotService:
             if normalized is not None:
                 result.append(normalized)
         return result
+
+    @classmethod
+    def _epoch_montage_positions(
+        cls,
+        epoch_data: Any,
+        channel_names: Iterable[str],
+    ) -> list[list[float]]:
+        names = tuple(str(name) for name in channel_names)
+        if epoch_data is None or not names:
+            return []
+        positions = getattr(epoch_data, "channel_position", None)
+        if isinstance(positions, dict):
+            ordered: list[list[float]] = []
+            for name in names:
+                normalized = cls._float_position(positions.get(name))
+                if normalized is None:
+                    return []
+                ordered.append(normalized)
+            return ordered
+        values = cls._montage_positions(epoch_data)
+        return values if len(values) == len(names) else []
+
+    def _effective_montage(self) -> Any | None:
+        provider = self.effective_montage_provider
+        if provider is None:
+            return None
+        try:
+            return provider()
+        except Exception:
+            logger.debug("Automatic montage lookup failed", exc_info=True)
+            return None
+
+    def _montage_preparation_status(self) -> tuple[str, str | None]:
+        provider = self.montage_snapshot_provider
+        if provider is None:
+            return "not_applicable", None
+        try:
+            snapshot = provider()
+            state = str(getattr(snapshot, "state", "not_applicable"))
+            reason = getattr(snapshot, "reason", None)
+            return state, str(reason) if reason else None
+        except Exception:
+            logger.debug("Montage preparation status lookup failed", exc_info=True)
+            return "failed", "Electrode-position preparation status is unavailable."
+
+    @classmethod
+    def _positioned_channels(
+        cls,
+        montage: Any | None,
+        channel_names: Iterable[str],
+    ) -> tuple[list[str], list[list[float]]]:
+        if montage is None:
+            return [], []
+        names = tuple(str(name) for name in getattr(montage, "channel_names", ()))
+        positions = tuple(getattr(montage, "positions_m", ()))
+        if len(names) != len(positions) or len(set(names)) != len(names):
+            return [], []
+        by_name = dict(zip(names, positions, strict=True))
+        selected_names: list[str] = []
+        result: list[list[float]] = []
+        for channel_name in channel_names:
+            name = str(channel_name)
+            normalized = cls._float_position(by_name.get(name))
+            if normalized is None:
+                continue
+            selected_names.append(name)
+            result.append(normalized)
+        return selected_names, result
 
     @staticmethod
     def _float_position(position: Any) -> list[float] | None:

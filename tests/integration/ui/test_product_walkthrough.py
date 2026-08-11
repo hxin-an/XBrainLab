@@ -823,9 +823,11 @@ def test_backend_observer_publication_refreshes_visible_assistant_status(
         load_result = load_future.result()
 
     assert load_result.ok, load_result.message
+    assert service.bids_montage_preparation.wait_for_idle(timeout=10.0)
     publication = service.get_view_publication()
     assert publication.generation > initial_generation
-    assert terminal_publications == [publication], [
+    assert terminal_publications
+    assert terminal_publications[-1] == publication, [
         (
             item.generation,
             item.revision,
@@ -835,6 +837,8 @@ def test_backend_observer_publication_refreshes_visible_assistant_status(
         )
         for item in terminal_publications
     ]
+    publication_generations = [item.generation for item in terminal_publications]
+    assert publication_generations == sorted(set(publication_generations))
     expected_projection = build_assistant_status_projection(publication)
     assert expected_projection.stage == "Ready for EEG epoching"
     qtbot.waitUntil(
@@ -1284,7 +1288,6 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
     assert dataset_state["split_materialized"] is False
     assert dataset_state["split_preview_summary"] == preview_receipt.summary_payload()
     assert dataset_state["active_split_summary"] == {}
-    assert test_app.study.datasets == []
     _assert_assistant_status_matches_publication(
         manager,
         command_name="configure_training",

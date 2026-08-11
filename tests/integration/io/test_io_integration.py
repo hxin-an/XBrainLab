@@ -1,4 +1,5 @@
 import os
+from threading import Event
 from typing import Any
 
 import pytest
@@ -13,6 +14,7 @@ from XBrainLab.backend.application.data_interpretation_bids_channels import (
     apply_bids_channel_review,
     review_bids_channel_sidecars,
 )
+from XBrainLab.backend.application.results import ErrorType
 from XBrainLab.backend.exceptions import FileCorruptedError
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.load_data.raw_data_loader import (
@@ -215,6 +217,68 @@ class TestIOIntegration:
         summary = summary_result.diagnostics
         assert summary["gdf_duplicate_channel_files"] == []
         assert summary["gdf_duplicate_channel_details"] == []
+
+    def test_data_summary_stays_available_during_optional_montage_commit(self):
+        """A background montage publication must not hide committed inventory."""
+        if not os.path.exists(GDF_FILE):
+            pytest.skip(f"Test data not found at {GDF_FILE}")
+
+        service = ApplicationService()
+        commit_entered = Event()
+        release_commit = Event()
+        original_commit = service.bids_montage_preparation._commit_publication
+        assert original_commit is not None
+
+        def block_optional_commit(work, snapshot) -> None:
+            with service._command_lock:
+                commit_entered.set()
+                assert release_commit.wait(timeout=5.0)
+            original_commit(work, snapshot)
+
+        service.bids_montage_preparation._commit_publication = block_optional_commit
+        try:
+            load_result = service.execute(LoadDataCommand(paths=[GDF_FILE]))
+
+            assert load_result.ok is True
+            assert commit_entered.wait(timeout=5.0)
+            committed_during_load = service.get_view_publication()
+
+            summary_result = service.execute(QueryStateCommand(query="data_summary"))
+            mutable_result = service.execute(QueryStateCommand(query="data_lists"))
+
+            assert summary_result.ok is True
+            assert summary_result.state == committed_during_load.state
+            assert "application_busy" not in summary_result.diagnostics
+            assert summary_result.diagnostics["count"] == 1
+            assert summary_result.diagnostics["files"] == ["A01T.gdf"]
+            assert mutable_result.failed is True
+            assert mutable_result.error_type is ErrorType.PRECONDITION
+            assert mutable_result.recoverable is True
+            assert mutable_result.diagnostics["application_busy"] is True
+
+            release_commit.set()
+            assert service.bids_montage_preparation.wait_for_idle(timeout=5.0)
+
+            final_publication = service.get_view_publication()
+            assert final_publication.usable is True
+            assert final_publication.revision > committed_during_load.revision
+            stale_result = service.execute(
+                QueryStateCommand(query="data_summary"),
+                expected_publication_generation=committed_during_load.generation,
+            )
+            current_result = service.execute(
+                QueryStateCommand(query="data_summary"),
+                expected_publication_generation=final_publication.generation,
+            )
+            assert stale_result.failed is True
+            assert stale_result.diagnostics["stale_publication"] is True
+            assert current_result.ok is True
+            assert current_result.diagnostics["count"] == 1
+            assert current_result.diagnostics["files"] == ["A01T.gdf"]
+        finally:
+            release_commit.set()
+            service.bids_montage_preparation.wait_for_idle(timeout=5.0)
+            service.close()
 
     @pytest.mark.optional_public_fixture
     @pytest.mark.parametrize("filepath", PUBLIC_REAL_DATA_FIXTURES)

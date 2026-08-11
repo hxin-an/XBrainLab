@@ -30,7 +30,12 @@ from .commands import (
 from .errors import ApplicationError, PreconditionError
 from .resource_guard import (
     ResourcePreflightResult,
+    TrainingResourcePreviewContext,
+    TrainingResourcePreviewRequest,
+    TrainingResourcePreviewResult,
+    TrainingResourceRefinement,
     check_training_resource_preflight,
+    preview_training_resources,
 )
 from .results import ErrorType
 from .state import ApplicationStateSnapshot
@@ -63,11 +68,16 @@ class TrainingCommandService:
         training_runtime: TrainingCommandRuntimePort,
         get_state: Callable[[], ApplicationStateSnapshot],
         recommendation: TrainingRecommendationService | None = None,
+        resource_refinement_provider: (
+            Callable[[ConfigureTrainingCommand], tuple[TrainingResourceRefinement, ...]]
+            | None
+        ) = None,
     ) -> None:
         self.training = training
         self.training_runtime = training_runtime
         self._get_state = get_state
         self._recommendation = recommendation
+        self._resource_refinement_provider = resource_refinement_provider
         self._resource_receipts = TrainingResourceReceiptAuthority()
 
     def handle_configure_training(self, command: Command) -> HandlerResult:
@@ -134,9 +144,19 @@ class TrainingCommandService:
             update_option=option is not None,
         )
         if option is not None and self._recommendation is not None:
-            self._recommendation.note_configuration_submitted(
-                training_submission_edited_fields(command)
+            refinements = (
+                self._resource_refinement_provider(command)
+                if self._resource_refinement_provider is not None
+                else ()
             )
+            edited_fields = training_submission_edited_fields(command)
+            if refinements:
+                self._recommendation.note_configuration_submitted(
+                    edited_fields,
+                    refinements=refinements,
+                )
+            else:
+                self._recommendation.note_configuration_submitted(edited_fields)
         if option is None:
             return f"Model configured: {command.model_name}."
         diagnostics: dict[str, Any] = {
@@ -329,6 +349,27 @@ class TrainingCommandService:
         """Check the current application-owned training configuration."""
         context = self._resource_preflight_context()
         return self._build_resource_preflight(TrainCommand(), context)
+
+    def get_resource_preview(
+        self,
+        request: TrainingResourcePreviewRequest,
+        context: TrainingResourcePreviewContext,
+    ) -> TrainingResourcePreviewResult:
+        """Estimate detached draft settings without committing configuration."""
+        if not isinstance(request, TrainingResourcePreviewRequest):
+            raise TypeError("request must be a TrainingResourcePreviewRequest")
+        if not isinstance(context, TrainingResourcePreviewContext):
+            raise TypeError("context must be a TrainingResourcePreviewContext")
+        model_holder = (
+            self.build_model_holder(request.model_name, dict(request.model_params))
+            if request.model_name is not None
+            else None
+        )
+        return preview_training_resources(
+            request,
+            context,
+            model_holder=model_holder,
+        )
 
     def _build_resource_preflight(
         self,

@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from importlib.metadata import PackageNotFoundError, version
-from typing import Final, NoReturn, cast
+from typing import Any, Final, NoReturn, cast
 
 import numpy as np
 import torch
@@ -336,7 +336,10 @@ def _class_payloads(
                 SaliencyIntegrityReason.TARGET_MISMATCH,
                 f"{method} class keys must be zero-based integer targets.",
             )
-        class_index = int(raw_key)
+        if isinstance(raw_key, int):
+            class_index = raw_key
+        else:
+            class_index = int(cast(np.integer[Any], raw_key).item())
         if class_index in normalized_store:
             _fail(
                 SaliencyIntegrityReason.AMBIGUOUS_IDENTITY,

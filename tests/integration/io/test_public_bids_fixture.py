@@ -167,6 +167,11 @@ def test_public_mne_bids_import_apply_recipe_and_epoch(tmp_path: Path) -> None:
         }
     ]
     assert apply_result.ok is True
+    assert apply_result.diagnostics["montage_preparation"]["state"] == "pending"
+    assert service.bids_montage_preparation.wait_for_idle(timeout=5.0)
+    montage_snapshot = service.bids_montage_preparation.snapshot()
+    assert montage_snapshot.state == "ready"
+    assert montage_snapshot.aggregate.compatible is True
     assert apply_result.diagnostics["channels_apply"][0]["bad_channels"] == ["PO10"]
     assert service.study.loaded_data_list[0].get_mne().info["bads"] == ["PO10"]
     assert apply_result.diagnostics["label_apply"]["bids_placement"] == [
@@ -226,10 +231,18 @@ def test_public_mne_bids_import_apply_recipe_and_epoch(tmp_path: Path) -> None:
     assert epoch_result.ok is True
     assert epoch_result.state.epoch.available is True
     assert epoch_result.state.epoch.epoch_count == 2
+    assert epoch_result.state.visualization.montage_source == "bids"
+    assert epoch_result.state.visualization.channel_positions_available is True
+    assert epoch_result.state.visualization.montage_channels
+    assert len(epoch_result.state.visualization.montage_channels) < (
+        epoch_result.state.visualization.channel_count
+    )
     assert set(epoch_result.state.epoch.event_ids) == {
         "show_stimulus",
         "start_experiment",
     }
+    reload_service.close()
+    service.close()
 
 
 def test_openneuro_p300_trial_type_excludes_missing_rows_and_imports() -> None:

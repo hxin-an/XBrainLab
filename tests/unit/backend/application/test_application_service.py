@@ -60,11 +60,24 @@ from XBrainLab.backend.application import (
     data_interpretation_internal_events,
     get_application_service,
 )
+from XBrainLab.backend.application.bids_montage_preparation import (
+    AggregateMontageCompatibility,
+    BidsMontageRecordingRequest,
+    BidsMontageResourceReceipt,
+    MontagePreparationSnapshot,
+    RecordingMontagePreparation,
+)
 from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.errors import ApplicationError
+from XBrainLab.backend.application.montage_preparation_lifecycle import (
+    ManualMontageOverride,
+)
 from XBrainLab.backend.application.resource_guard import (
     ResourceChecker,
     ResourcePreflightResult,
+    TrainingResourcePreviewRequest,
+    TrainingResourcePreviewResult,
+    TrainingResourceRefinement,
 )
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
@@ -72,6 +85,9 @@ from XBrainLab.backend.application.state import (
     ApplicationStateSnapshot,
     EvaluationStateSnapshot,
     TrainingStateSnapshot,
+)
+from XBrainLab.backend.application.training_submission import (
+    attach_training_submission_provenance,
 )
 from XBrainLab.backend.application.view_publication import ApplicationViewStore
 from XBrainLab.backend.dataset import (
@@ -353,8 +369,236 @@ def test_training_recommendation_previews_device_in_backend_owned_context():
     assert gpu.recommended_values.batch_size == 8
     assert cpu.context_fingerprint != gpu.context_fingerprint
     assert not any("GPU memory" in warning for warning in cpu.warnings)
-    assert any("GPU memory" in warning for warning in gpu.warnings)
+    assert not any("GPU memory" in warning for warning in gpu.warnings)
     assert service.get_state().training.model_name is None
+
+
+def test_training_resource_preview_is_typed_generation_bound_and_non_mutating():
+    service = ApplicationService(Study())
+    publication = service.get_view_publication()
+    request = TrainingResourcePreviewRequest(
+        request_generation=1,
+        publication_generation=publication.generation,
+        model_name=None,
+        model_params={},
+        device="cpu",
+        batch_size=16,
+        optimizer="Adam",
+    )
+
+    with pytest.raises(ApplicationError, match="requires prepared EEG epochs"):
+        service.get_training_resource_preview(request)
+    assert service.get_view_publication() == publication
+
+    stale = replace(request, request_generation=2, publication_generation=999)
+    with pytest.raises(ApplicationError, match="Training context changed"):
+        service.get_training_resource_preview(stale)
+
+
+def test_lazy_training_service_import_configures_after_epoch_preparation() -> None:
+    service = ApplicationService(Study())
+    service.study.data_manager.epoch_data = _positive_epoch_data()
+    service.get_state()
+    publication = service.get_view_publication()
+
+    assert service.training_commands._service_instance is None
+
+    configured = service.execute(
+        ConfigureTrainingCommand(
+            model_name="EEGNet",
+            model_params={"f1": 2, "f2": 4, "d": 1},
+            epoch=2,
+            batch_size=2,
+            learning_rate=0.001,
+            optimizer="Adam",
+            device="cpu",
+        ),
+        expected_publication_generation=publication.generation,
+    )
+
+    assert configured.ok is True
+    assert configured.state.training.model_name == "EEGNet (XBrainLab)"
+    assert configured.state.training.training_option is not None
+    assert configured.state.training.training_option["batch_size"] == 2
+    assert service.training_commands._service_instance is not None
+    service.close()
+
+
+def test_training_resource_preview_rejects_epoch_mutation_after_estimation() -> None:
+    estimate_started = Event()
+    release_estimate = Event()
+    failures: list[BaseException] = []
+    service = ApplicationService(Study())
+    service.study.data_manager.loaded_data_list = [
+        _minimal_raw(Path("/tmp/training-preview-stale.fif"))
+    ]
+    service.study.data_manager.epoch_data = _positive_epoch_data()
+    service.get_state()
+    publication = service.get_view_publication()
+    request = TrainingResourcePreviewRequest(
+        request_generation=1,
+        publication_generation=publication.generation,
+        model_name=None,
+        model_params={},
+        device="cpu",
+        batch_size=16,
+        optimizer="Adam",
+    )
+
+    def estimate(draft, _context):
+        estimate_started.set()
+        assert release_estimate.wait(timeout=2.0)
+        return TrainingResourcePreviewResult(
+            request_generation=draft.request_generation,
+            publication_generation=draft.publication_generation,
+            requested_batch_size=draft.batch_size,
+            suggested_batch_size=draft.batch_size,
+            estimated_vram_bytes=1024,
+            available_vram_bytes=None,
+            risk_level="unknown",
+            vram_known=False,
+        )
+
+    service.training_resource_preview._estimate = estimate
+
+    def query_preview() -> None:
+        try:
+            service.get_training_resource_preview(request)
+        except BaseException as exc:
+            failures.append(exc)
+
+    query = Thread(target=query_preview, name="test-training-preview-client")
+    query.start()
+    assert estimate_started.wait(timeout=2.0)
+
+    reset = service.execute(ResetPreprocessCommand(confirmed=True))
+    assert reset.ok is True
+    assert reset.state.epoch.available is False
+    release_estimate.set()
+    query.join(timeout=2.0)
+
+    assert not query.is_alive()
+    assert len(failures) == 1
+    assert isinstance(failures[0], ApplicationError)
+    assert "Training context changed" in str(failures[0])
+    service.close()
+
+
+def test_resource_adjusted_batch_provenance_survives_configure_snapshot_and_reopen() -> (
+    None
+):
+    service = ApplicationService(Study())
+    service.study.data_manager.epoch_data = _positive_epoch_data()
+    service.get_state()
+    publication = service.get_view_publication()
+    request = TrainingResourcePreviewRequest(
+        request_generation=1,
+        publication_generation=publication.generation,
+        model_name=None,
+        model_params={},
+        device="cpu",
+        batch_size=16,
+        optimizer="Adam",
+    )
+    refinement = TrainingResourceRefinement.batch_size(
+        requested=16,
+        refined=4,
+    )
+    service.training_resource_preview._estimate = lambda draft, _context: (
+        TrainingResourcePreviewResult(
+            request_generation=draft.request_generation,
+            publication_generation=draft.publication_generation,
+            requested_batch_size=draft.batch_size,
+            suggested_batch_size=4,
+            estimated_vram_bytes=1024,
+            available_vram_bytes=2048,
+            risk_level="warning",
+            vram_known=True,
+            warning="Batch size was resource-adjusted.",
+            refinement=refinement,
+        )
+    )
+
+    preview = service.get_training_resource_preview(request)
+    assert preview.refinement == refinement
+    assert preview.receipt is not None
+    configured = service.execute(
+        attach_training_submission_provenance(
+            ConfigureTrainingCommand(
+                epoch=3,
+                batch_size=4,
+                learning_rate=0.001,
+                optimizer="Adam",
+                device="cpu",
+            ),
+            frozenset(),
+            resource_preview_receipt=preview.receipt,
+        ),
+        expected_publication_generation=publication.generation,
+    )
+
+    assert configured.ok is True
+    recommendation = configured.state.training.recommendation
+    assert recommendation is not None
+    assert recommendation.values.batch_size == 4
+    assert recommendation.provenance["batch_size"].value == "resource_adjusted"
+    reopened = service.get_training_recommendation()
+    assert reopened.values.batch_size == 4
+    assert reopened.provenance["batch_size"].value == "resource_adjusted"
+    service.close()
+
+
+def test_matching_configuration_without_preview_receipt_is_not_resource_adjusted() -> (
+    None
+):
+    service = ApplicationService(Study())
+    service.study.data_manager.epoch_data = _positive_epoch_data()
+    service.get_state()
+    publication = service.get_view_publication()
+    request = TrainingResourcePreviewRequest(
+        request_generation=1,
+        publication_generation=publication.generation,
+        model_name=None,
+        model_params={},
+        device="cpu",
+        batch_size=16,
+        optimizer="Adam",
+    )
+    service.training_resource_preview._estimate = lambda draft, _context: (
+        TrainingResourcePreviewResult(
+            request_generation=draft.request_generation,
+            publication_generation=draft.publication_generation,
+            requested_batch_size=draft.batch_size,
+            suggested_batch_size=4,
+            estimated_vram_bytes=1024,
+            available_vram_bytes=2048,
+            risk_level="warning",
+            vram_known=True,
+            refinement=TrainingResourceRefinement.batch_size(
+                requested=16,
+                refined=4,
+            ),
+        )
+    )
+    preview = service.get_training_resource_preview(request)
+    assert preview.receipt is not None
+
+    configured = service.execute(
+        ConfigureTrainingCommand(
+            epoch=3,
+            batch_size=4,
+            learning_rate=0.001,
+            optimizer="Adam",
+            device="cpu",
+        ),
+        expected_publication_generation=publication.generation,
+    )
+
+    assert configured.ok is True
+    recommendation = configured.state.training.recommendation
+    assert recommendation is not None
+    assert recommendation.provenance["batch_size"].value != "resource_adjusted"
+    service.close()
 
 
 def test_get_training_recommendation_does_not_touch_payload_or_resource_queries():
@@ -601,6 +845,79 @@ def test_detached_data_query_fails_fast_instead_of_waiting_for_mutation_lock() -
     assert result.diagnostics["application_busy"] is True
 
 
+def test_data_summary_query_uses_committed_publication_while_command_lock_is_busy(
+    monkeypatch,
+) -> None:
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    service.study.data_manager.loaded_data_list = [raw]
+    service.study.data_manager.preprocessed_data_list = [raw]
+    service.get_state()
+    live_read = MagicMock(
+        side_effect=AssertionError(
+            "published summary must not read mutable EEG objects"
+        )
+    )
+    monkeypatch.setattr(service.dataset, "get_loaded_data_list", live_read)
+    lock_acquired = Event()
+    release_lock = Event()
+
+    def hold_mutation_lock() -> None:
+        with service._command_lock:
+            lock_acquired.set()
+            release_lock.wait(timeout=THREAD_WATCHDOG_SECONDS)
+
+    holder = Thread(target=hold_mutation_lock)
+    holder.start()
+    assert lock_acquired.wait(timeout=THREAD_WATCHDOG_SECONDS)
+
+    try:
+        result = service.execute(QueryStateCommand(query="data_summary"))
+    finally:
+        release_lock.set()
+        holder.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not holder.is_alive()
+    assert result.ok is True
+    assert result.message == "Dataset summary ready."
+    assert result.diagnostics["count"] == 1
+    assert result.diagnostics["files"] == [raw.get_filename()]
+    live_read.assert_not_called()
+
+
+def test_data_summary_query_rejects_stale_expected_publication_generation() -> None:
+    service = ApplicationService(Study())
+    publication = service.get_view_publication()
+
+    result = service.execute(
+        QueryStateCommand(query="data_summary"),
+        expected_publication_generation=publication.generation + 1,
+    )
+
+    assert result.failed is True
+    assert result.error_type is ErrorType.PRECONDITION
+    assert result.diagnostics["stale_publication"] is True
+    assert result.diagnostics["expected_publication_generation"] == (
+        publication.generation + 1
+    )
+    assert result.diagnostics["current_publication_generation"] == (
+        publication.generation
+    )
+
+
+def test_data_summary_query_fails_closed_for_unusable_publication() -> None:
+    service = ApplicationService(Study())
+    service._view_coordinator.mark_stale("forced summary publication failure")
+
+    result = service.execute(QueryStateCommand(query="data_summary"))
+
+    assert result.failed is True
+    assert result.error_type is ErrorType.PRECONDITION
+    assert result.recoverable is True
+    assert result.diagnostics["view_stale"] is True
+    assert result.diagnostics["view_verified"] is False
+
+
 def test_view_publication_keeps_state_and_capabilities_on_one_generation() -> None:
     service = ApplicationService(Study())
 
@@ -772,6 +1089,58 @@ def test_training_terminal_delivery_waits_for_canonical_view_acknowledgement(
     assert service.publication_lifecycle.publish_training_terminal_state() is False
     publish_view.assert_called_once()
     deliver_terminal.assert_called_once_with(lifecycle_event)
+
+
+def test_nonterminal_training_reconciliation_does_not_republish_application_view(
+    monkeypatch,
+) -> None:
+    service = ApplicationService(Study())
+    state = service.get_state()
+    publish_view = MagicMock(return_value=False)
+    monkeypatch.setattr(
+        service.publication_lifecycle,
+        "_refresh_training_publication",
+        MagicMock(return_value=state),
+    )
+    monkeypatch.setattr(
+        service.publication_lifecycle,
+        "_publish_view_changed",
+        publish_view,
+    )
+
+    assert state.training.terminal_outcome.is_terminal is False
+    assert service.publication_lifecycle.publish_training_terminal_state() is True
+    publish_view.assert_not_called()
+
+
+def test_terminal_training_reconciliation_fails_when_identity_cannot_be_built(
+    monkeypatch,
+) -> None:
+    service = ApplicationService(Study())
+    trainer = Trainer([])
+    service.study.training_manager.trainer = trainer
+    trainer.run(interact=False)
+    state = service.get_state()
+    publish_view = MagicMock(return_value=True)
+    monkeypatch.setattr(
+        service.publication_lifecycle,
+        "_refresh_training_publication",
+        MagicMock(return_value=state),
+    )
+    monkeypatch.setattr(
+        service.publication_lifecycle,
+        "terminal_training_publication_event",
+        MagicMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        service.publication_lifecycle,
+        "_publish_view_changed",
+        publish_view,
+    )
+
+    assert state.training.terminal_outcome.is_terminal is True
+    assert service.publication_lifecycle.publish_training_terminal_state() is False
+    publish_view.assert_not_called()
 
 
 def test_deferred_view_ack_releases_retained_training_terminal_event() -> None:
@@ -6837,6 +7206,143 @@ def test_apply_montage_command_routes_confirmed_positions():
     )
 
 
+@pytest.mark.parametrize(
+    ("command", "name"),
+    [
+        (LoadDataCommand(paths=["/tmp/sample.fif"]), CommandName.LOAD_DATA),
+        (RemoveFilesCommand(indices=[0]), CommandName.REMOVE_FILES),
+    ],
+)
+def test_data_inventory_changes_refresh_optional_montage_preparation(
+    command,
+    name,
+) -> None:
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    raw.get_mne.return_value.get_channel_types.return_value = ["eeg", "eeg"]
+    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    coordinator = MagicMock()
+    coordinator.synchronize_loaded_recordings.return_value = (
+        MontagePreparationSnapshot.pending(
+            generation=1,
+            recording_paths=("/tmp/sample.fif",),
+        )
+    )
+    service.bids_montage_preparation = coordinator
+
+    diagnostics = service._update_montage_preparation_after_command(
+        command=command,
+        name=name,
+        diagnostics={},
+    )
+
+    coordinator.synchronize_loaded_recordings.assert_called_once_with([raw])
+    assert diagnostics["montage_preparation"]["state"] == "pending"
+
+
+def test_clear_datasets_preserves_epoch_scoped_manual_montage() -> None:
+    service = ApplicationService(Study())
+    service.study.data_manager.epoch_data = _positive_epoch_data()
+    service.study.data_manager.datasets = [MagicMock()]
+    service.bids_montage_preparation.select_manual(
+        ManualMontageOverride(
+            name="manual",
+            channel_names=("C3", "C4"),
+            positions_m=((0.0, 0.1, 0.0), (0.0, -0.1, 0.0)),
+            coordinate_frame="head",
+        )
+    )
+    service.get_state()
+
+    result = service.execute(ClearDatasetsCommand(confirmed=True))
+
+    assert result.ok is True
+    assert result.state.dataset.available is False
+    assert result.state.epoch.available is True
+    assert result.state.visualization.montage_source == "manual"
+    effective = service.bids_montage_preparation.effective_montage()
+    assert effective is not None
+    assert effective.source == "manual"
+    service.close()
+
+
+def test_bids_montage_refresh_failure_retains_candidate_until_view_recovers() -> None:
+    service = ApplicationService(Study())
+    service.study.data_manager.epoch_data = _positive_epoch_data()
+    service.get_state()
+    request = BidsMontageRecordingRequest(
+        recording_path="/tmp/sub-01_task-rest_eeg.fif",
+        channel_names=("C3", "C4"),
+        channel_types=("eeg", "eeg"),
+    )
+
+    def admit(recordings) -> BidsMontageResourceReceipt:
+        return BidsMontageResourceReceipt(
+            recording_resources=tuple((item.recording_path, ()) for item in recordings)
+        )
+
+    def prepare(recordings, *, generation, **_kwargs):
+        paths = tuple(item.recording_path for item in recordings)
+        return MontagePreparationSnapshot(
+            state="ready",
+            generation=generation,
+            requested_recording_paths=paths,
+            recordings=tuple(
+                RecordingMontagePreparation(
+                    recording_path=item.recording_path,
+                    state="ready",
+                    recording_channel_names=item.channel_names,
+                    channel_names=item.channel_names,
+                    positions_m=((0.1, 0.0, 0.0), (-0.1, 0.0, 0.0)),
+                    coordinate_system="CapTrak",
+                    coordinate_frame="head",
+                    coordinate_units="m",
+                    source_coordinate_units="m",
+                )
+                for item in recordings
+            ),
+            aggregate=AggregateMontageCompatibility(
+                compatible=True,
+                channel_names=("C3", "C4"),
+                positions_m=((0.1, 0.0, 0.0), (-0.1, 0.0, 0.0)),
+                coordinate_frame="head",
+                coordinate_units="m",
+            ),
+        )
+
+    service.bids_montage_preparation._admit = admit
+    service.bids_montage_preparation._prepare = prepare
+    build_state = service.state_snapshot.build
+    refresh_attempted = Event()
+    attempt_count = 0
+
+    def fail_once(*args, **kwargs):
+        nonlocal attempt_count
+        attempt_count += 1
+        if attempt_count == 1:
+            refresh_attempted.set()
+            raise RuntimeError("forced montage refresh failure")
+        return build_state(*args, **kwargs)
+
+    service.state_snapshot.build = fail_once
+    pending = service.bids_montage_preparation.start((request,))
+    assert pending.state == "pending"
+    assert refresh_attempted.wait(timeout=2.0)
+    assert service.bids_montage_preparation.wait_for_idle(timeout=2.0)
+
+    failed_view = service._committed_view_publication()
+    assert failed_view.usable is False
+    assert service.bids_montage_preparation.snapshot().state == "pending"
+
+    recovered = service.get_view_publication()
+
+    assert recovered.usable is True
+    assert recovered.state.visualization.montage_preparation_state == "ready"
+    assert recovered.state.visualization.montage_source == "bids"
+    assert service.bids_montage_preparation.snapshot().state == "ready"
+    service.close()
+
+
 def test_apply_montage_rejects_channel_subset_after_dataset_generation():
     class EpochWithChannels:
         def __init__(self) -> None:
@@ -6867,10 +7373,11 @@ def test_apply_montage_rejects_channel_subset_after_dataset_generation():
 
 
 def test_query_state_returns_typed_dataset_summary():
-    service = ApplicationService(Study())
     raw = _raw_mock()
-    service.study.data_manager.loaded_data_list = [raw]
-    service.study.data_manager.preprocessed_data_list = [raw]
+    study = Study()
+    study.data_manager.loaded_data_list = [raw]
+    study.data_manager.preprocessed_data_list = [raw]
+    service = ApplicationService(study)
 
     result = service.execute(QueryStateCommand(query="data_summary"))
 

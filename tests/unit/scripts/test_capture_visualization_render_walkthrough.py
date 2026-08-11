@@ -39,6 +39,9 @@ from scripts.dev.capture_visualization_render_walkthrough import (
     stable_artifact_payload,
     validate_visualization_render_payload,
 )
+from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
+    source_identity_digest,
+)
 from XBrainLab.backend.application import SaliencyCommand, TrainCommand
 from XBrainLab.backend.application.results import ErrorType
 
@@ -268,6 +271,46 @@ def test_matplotlib_window_capture_composes_canvas_without_losing_shell(
         assert image.getpixel((20, 15)) != (180, 70, 45)
 
 
+def test_matplotlib_window_capture_falls_back_to_visible_qt_canvas(
+    qapp,
+    tmp_path,
+) -> None:
+    class QtOnlyCanvas(QWidget):
+        def draw(self) -> None:
+            return None
+
+        def buffer_rgba(self) -> np.ndarray:
+            raise RuntimeError("renderer was released")
+
+    window = QMainWindow()
+    content = QWidget()
+    layout = QVBoxLayout(content)
+    canvas = QtOnlyCanvas()
+    canvas.setStyleSheet("background: rgb(180, 70, 45);")
+    canvas.setMinimumSize(160, 160)
+    layout.addWidget(canvas)
+    window.setCentralWidget(content)
+    window.resize(240, 240)
+    window.show()
+    qapp.processEvents()
+    geometry = capture_script._widget_geometry(canvas, window)
+    screenshot = tmp_path / "qt-canvas-fallback.png"
+
+    capture_code = _capture_matplotlib_window(
+        window,
+        canvas,
+        screenshot,
+        canvas_geometry=geometry,
+        validate_complete=False,
+    )
+
+    assert capture_code == 0
+    assert canvas.isVisible()
+    with Image.open(screenshot) as image:
+        red, green, blue = image.getpixel((120, 120))
+        assert red > green > blue
+
+
 def test_three_d_artifact_claims_follow_the_actual_runtime() -> None:
     blocked = _three_d_runtime_contract(
         platform_name="offscreen",
@@ -370,10 +413,68 @@ def test_wait_for_3d_capture_does_not_accept_plotter_creation_before_render(
     assert terminal["render_evidence"]["render_window_rendered"] is True
 
 
+def _source_identity() -> dict[str, object]:
+    identity: dict[str, object] = {
+        "version": 3,
+        "repo_root": str(ROOT),
+        "branch": "test-branch",
+        "commit_sha": "a" * 40,
+        "head_tree_sha": "b" * 40,
+        "dirty": True,
+        "dirty_digest": "c" * 64,
+        "source_content_digest": "d" * 64,
+        "untracked_source_count": 1,
+        "excluded_generated_prefixes": ["artifacts/"],
+        "excluded_local_paths": ["settings.json"],
+        "included_file_policy": "all-non-generated-tracked-and-untracked-files",
+        "error": "",
+    }
+    identity["source_digest"] = source_identity_digest(identity)
+    return identity
+
+
+def _transform_controls(tab: str, *, absolute_visible: bool) -> dict[str, object]:
+    return {
+        "ok": True,
+        "tab": tab,
+        "absolute": {
+            "visible": absolute_visible,
+            "enabled": absolute_visible,
+            "checked": True,
+            "grid_position": [0, 6, 1, 1],
+        },
+        "normalize": {
+            "visible": True,
+            "enabled": True,
+            "checked": True,
+            "grid_position": [0, 7, 1, 1],
+        },
+        "selector_geometry": {
+            "plan": [10, 12, 160, 28],
+            "run": [190, 12, 120, 28],
+            "method": [330, 12, 170, 28],
+        },
+    }
+
+
 def _base_payload():
+    source_identity = _source_identity()
     return {
         "status": "passed",
         "failure_reason": "",
+        "source_identity_at_start": source_identity,
+        "source_identity_at_completion": source_identity.copy(),
+        "source_identity": source_identity.copy(),
+        "source_capture": {
+            "branch": "test-branch",
+            "commit_sha": "a" * 40,
+            "head_tree_sha": "b" * 40,
+            "dirty": True,
+            "dirty_digest": "c" * 64,
+            "source_content_digest": "d" * 64,
+            "source_digest_at_start": source_identity["source_digest"],
+            "source_digest_at_completion": source_identity["source_digest"],
+        },
         "source_path": "/tmp/source.fif",
         "training_output_dir": "/tmp/xbrainlab-viz-output",
         "dataset_preparation": {"ok": True, "commands": []},
@@ -409,6 +510,9 @@ def _base_payload():
         "renders": [
             {
                 "tab": "Saliency Map",
+                "transform_controls": _transform_controls(
+                    "Saliency Map", absolute_visible=True
+                ),
                 "explanation_context": (
                     "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · "
                     "True class · Mean over EEG epochs"
@@ -425,6 +529,9 @@ def _base_payload():
             },
             {
                 "tab": "Spectrogram",
+                "transform_controls": _transform_controls(
+                    "Spectrogram", absolute_visible=False
+                ),
                 "explanation_context": (
                     "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · "
                     "True class · Mean magnitude over EEG epochs and channels"
@@ -441,6 +548,9 @@ def _base_payload():
             },
             {
                 "tab": "Topographic Map",
+                "transform_controls": _transform_controls(
+                    "Topographic Map", absolute_visible=True
+                ),
                 "explanation_context": (
                     "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · "
                     "True class · Mean over EEG epochs and time"
@@ -461,11 +571,7 @@ def _base_payload():
                 "tab": "3D Plot",
                 "screenshot": "3d-blocked.png",
                 "ok": True,
-                "blocked_reason": (
-                    "3D rendering requires an interactive OpenGL desktop session. "
-                    "Use the desktop launcher, or switch to Saliency Map, "
-                    "Spectrogram, or Topographic Map in this headless environment."
-                ),
+                "blocked_reason": "Set a 3D montage before opening the 3D plot.",
                 "message_evidence": {"ok": True},
                 "screenshot_region": {"ok": True},
                 "terminal_settled": True,
@@ -592,7 +698,7 @@ def test_capture_script_uses_product_qt_runtime_bootstrap() -> None:
     source = Path(capture_script.__file__).read_text(encoding="utf-8")
 
     configure_index = source.index("configure_qt_platform_for_runtime()")
-    qt_import_index = source.index("from PyQt6.QtCore import QTimer")
+    qt_import_index = source.index("from PyQt6.QtCore import")
 
     assert configure_index < qt_import_index
 
@@ -661,6 +767,68 @@ def test_validate_visualization_payload_accepts_rendered_tabs(tmp_path):
 
     assert ok is True, reason
     assert reason == ""
+
+
+def test_validate_visualization_payload_requires_exact_source_identity(tmp_path):
+    payload = _payload_with_screenshots(tmp_path)
+    payload.pop("source_identity", None)
+
+    ok, reason = validate_visualization_render_payload(payload)
+
+    assert ok is False
+    assert "source identity" in reason.lower()
+
+
+def test_validate_visualization_payload_rejects_source_change_during_capture(tmp_path):
+    payload = _payload_with_screenshots(tmp_path)
+    changed = dict(payload["source_identity_at_completion"])
+    changed["dirty_digest"] = "f" * 64
+    changed["source_digest"] = source_identity_digest(changed)
+    payload["source_identity_at_completion"] = changed
+    payload["source_identity"] = changed
+
+    ok, reason = validate_visualization_render_payload(payload)
+
+    assert ok is False
+    assert "source" in reason.lower()
+    assert "changed" in reason.lower() or "stale" in reason.lower()
+
+
+def test_validate_visualization_payload_requires_tab_transform_state(tmp_path):
+    payload = _payload_with_screenshots(tmp_path)
+    payload["renders"][1]["transform_controls"]["absolute"]["visible"] = True
+
+    ok, reason = validate_visualization_render_payload(payload)
+
+    assert ok is False
+    assert "Spectrogram" in reason
+    assert "Absolute" in reason
+
+
+def test_validate_visualization_payload_requires_absolute_restoration(tmp_path):
+    payload = _payload_with_screenshots(tmp_path)
+    payload["renders"][2]["transform_controls"]["absolute"]["visible"] = False
+
+    ok, reason = validate_visualization_render_payload(payload)
+
+    assert ok is False
+    assert "Topographic Map" in reason
+    assert "restored" in reason
+
+
+def test_validate_visualization_payload_rejects_selector_jump(tmp_path):
+    payload = _payload_with_screenshots(tmp_path)
+    payload["renders"][1]["transform_controls"]["selector_geometry"]["method"] = [
+        345,
+        12,
+        170,
+        28,
+    ]
+
+    ok, reason = validate_visualization_render_payload(payload)
+
+    assert ok is False
+    assert "selector geometry" in reason.lower()
 
 
 def test_validate_visualization_payload_requires_each_render_tab(tmp_path):
@@ -1024,6 +1192,26 @@ def test_screenshot_region_evidence_accepts_rendered_canvas(tmp_path):
     assert evidence["ok"] is True
     assert evidence["unique_color_count"] > 32
     assert evidence["chromatic_fraction"] > 0.01
+
+
+def test_screenshot_region_evidence_accepts_sparse_blocked_message(tmp_path):
+    path = tmp_path / "blocked-message.png"
+    image = Image.new("RGB", (400, 300), (45, 45, 45))
+    for x in range(160, 240):
+        for y in range(145, 150):
+            image.putpixel((x, y), (255, 170, 0))
+    image.save(path)
+
+    evidence = _screenshot_region_evidence(
+        path,
+        {"x": 40, "y": 30, "width": 300, "height": 220},
+        window_size={"width": 400, "height": 300},
+        require_chromatic_content=True,
+        allow_sparse_foreground=True,
+    )
+
+    assert evidence["ok"] is True
+    assert evidence["dominant_color_fraction"] > 0.98
 
 
 def test_matplotlib_layout_evidence_detects_clipped_axis_label():

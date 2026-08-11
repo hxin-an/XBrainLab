@@ -176,13 +176,28 @@ class AnalysisCommandService:
         if state.evaluation.finished_runs:
             available_views.extend(["confusion matrix", "metrics", "saliency setup"])
         if state.visualization.saliency_available:
-            available_views.extend(
-                ["saliency map", "spectrogram", "topographic map"],
-            )
+            available_views.extend(["saliency map", "spectrogram"])
             if state.visualization.channel_positions_available:
+                available_views.append("topographic map")
+            if state.visualization.three_dimensional_positions_available:
                 available_views.append("3D plot")
-            else:
-                blocked_views["3D plot"] = ["Set Montage before opening the 3D plot."]
+            if not state.visualization.channel_positions_available:
+                preparation_state = state.visualization.montage_preparation_state
+                reason = (
+                    "Preparing electrode positions..."
+                    if preparation_state == "pending"
+                    else "Set Montage before opening the topographic map."
+                )
+                blocked_views["topographic map"] = [reason]
+            if not state.visualization.three_dimensional_positions_available:
+                preparation_state = state.visualization.montage_preparation_state
+                blocked_views["3D plot"] = [
+                    (
+                        "Preparing electrode positions..."
+                        if preparation_state == "pending"
+                        else "Set a 3D montage before opening the 3D plot."
+                    )
+                ]
         plot_views_available = bool(
             state.evaluation.finished_runs or state.visualization.saliency_available
         )
@@ -201,6 +216,13 @@ class AnalysisCommandService:
             "trainer_count": len(trainers),
             "channel_count": state.visualization.channel_count,
             "montage_available": state.visualization.montage_available,
+            "montage_source": state.visualization.montage_source,
+            "montage_preparation_state": (
+                state.visualization.montage_preparation_state
+            ),
+            "montage_preparation_reason": (
+                state.visualization.montage_preparation_reason
+            ),
             "saliency_configured": state.visualization.saliency_configured,
             "saliency_available": state.visualization.saliency_available,
             "saliency_cross_fold_choices": [

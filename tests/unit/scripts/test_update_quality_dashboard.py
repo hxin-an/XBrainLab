@@ -174,6 +174,7 @@ def test_dashboard_handoff_profile_is_explicit() -> None:
 
     assert args.handoff is True
     assert args.include_slow_checks is False
+    assert args.expected_branch is None
     assert args.output_dir == Path("build/handoff-evidence/deadbeef/dashboard")
     assert args.resource_calibration_path == calibration_path
 
@@ -1292,11 +1293,11 @@ def test_handoff_traceability_rejects_vscode_settings_as_unprotected():
 
 def _clean_synced_handoff_state(**overrides: object) -> GitState:
     values: dict[str, object] = {
-        "branch": dashboard.EXPECTED_HANDOFF_BRANCH,
+        "branch": dashboard.DEFAULT_HANDOFF_BRANCH,
         "commit": "a" * 40,
         "dirty": False,
         "status_summary": [],
-        "upstream": f"origin/{dashboard.EXPECTED_HANDOFF_BRANCH}",
+        "upstream": f"origin/{dashboard.DEFAULT_HANDOFF_BRANCH}",
         "upstream_commit": "a" * 40,
         "ahead_count": 0,
         "behind_count": 0,
@@ -1309,7 +1310,7 @@ def test_handoff_branch_hygiene_accepts_expected_synced_upstream():
     result = workspace_traceability_check(
         _clean_synced_handoff_state(),
         fail_on_unprotected_dirty=True,
-        expected_branch=dashboard.EXPECTED_HANDOFF_BRANCH,
+        expected_branch=dashboard.DEFAULT_HANDOFF_BRANCH,
         require_upstream_sync=True,
     )
 
@@ -1334,7 +1335,7 @@ def test_handoff_branch_hygiene_fails_closed(
     result = workspace_traceability_check(
         _clean_synced_handoff_state(**overrides),
         fail_on_unprotected_dirty=True,
-        expected_branch=dashboard.EXPECTED_HANDOFF_BRANCH,
+        expected_branch=dashboard.DEFAULT_HANDOFF_BRANCH,
         require_upstream_sync=True,
     )
 
@@ -1473,7 +1474,7 @@ def test_handoff_report_requires_external_manifest_sections_3_to_6(monkeypatch):
         "externally_required_sections": [3, 4, 5, 6],
         "ordered_sections": [1, 2, 3, 4, 5, 6, 7, 8],
         "dashboard_clean_last": True,
-        "expected_branch": dashboard.EXPECTED_HANDOFF_BRANCH,
+        "expected_branch": dashboard.DEFAULT_HANDOFF_BRANCH,
         "requires_upstream_sync": True,
     }
     rendered = render_markdown(reports[0])

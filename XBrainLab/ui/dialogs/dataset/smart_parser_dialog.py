@@ -6,7 +6,13 @@ position) with a live preview table showing extracted metadata for each file.
 
 import os
 import re
+import sys
 from typing import cast
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 from PyQt6.QtCore import QSettings, Qt
 from PyQt6.QtGui import QColor, QShowEvent
@@ -31,7 +37,6 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from typing_extensions import override
 
 from XBrainLab.backend.utils.filename_parser import FilenameParser
 from XBrainLab.backend.utils.logger import logger

@@ -54,13 +54,14 @@ def _dispose_figure(figure: Figure | None) -> None:
         return
     canvas = getattr(figure, "canvas", None)
     if isinstance(canvas, QWidget):
-        if hasattr(canvas, "_draw_pending"):
-            cast(Any, canvas)._draw_pending = False
+        widget_canvas = cast(QWidget, canvas)
+        if hasattr(widget_canvas, "_draw_pending"):
+            cast(Any, widget_canvas)._draw_pending = False
         with suppress(RuntimeError):
-            canvas.hide()
-            canvas.close()
-            canvas.setParent(None)
-            canvas.deleteLater()
+            widget_canvas.hide()
+            widget_canvas.close()
+            widget_canvas.setParent(None)
+            widget_canvas.deleteLater()
     with suppress(Exception):
         plt.close(figure)
     with suppress(Exception):
@@ -1008,17 +1009,19 @@ class BaseSaliencyView(QWidget):
 
         old_figure = self.fig
         old_canvas = self.canvas
+        installed_canvas = cast(FigureCanvas, candidate_canvas)
         self.fig = figure
-        self.canvas = candidate_canvas
+        self.canvas = installed_canvas
         try:
-            self.main_layout.insertWidget(0, candidate_canvas)
+            self.main_layout.insertWidget(0, installed_canvas)
+            installed_canvas.show()
             self.main_layout.activate()
             self._fit_current_figure()
         except Exception as exc:
             logger.error("Could not install the saliency Qt canvas: %s", exc)
             self.fig = old_figure
             self.canvas = old_canvas
-            self._dispose_candidate_canvas(candidate_canvas, figure)
+            self._dispose_candidate_canvas(installed_canvas, figure)
             self._display_error(SALIENCY_RENDER_FAILED_TEXT)
             return False
 

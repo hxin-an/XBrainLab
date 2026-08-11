@@ -47,9 +47,11 @@ class MetricsBarChartWidget(QWidget):
         self.plot_layout.setContentsMargins(0, 0, 0, 0)
 
         # Initial Placeholder
-        self.fig: Figure | None = Figure(figsize=(5, 4), dpi=100)
-        self.canvas: FigureCanvas | None = FigureCanvas(self.fig)
-        self.ax: Any = self.fig.add_subplot(111)
+        figure = Figure(figsize=(5, 4), dpi=100)
+        canvas = FigureCanvas(figure)
+        self.fig: Figure | None = figure
+        self.canvas: FigureCanvas | None = canvas
+        self.ax: Any = figure.add_subplot(111)
 
         Theme.apply_matplotlib_dark_theme(self.fig, ax=self.ax)
 
@@ -63,7 +65,7 @@ class MetricsBarChartWidget(QWidget):
         )
         self.ax.axis("off")
 
-        self.plot_layout.addWidget(self.canvas)
+        self.plot_layout.addWidget(canvas)
         layout.addWidget(self.plot_container)
 
     def update_plot(self, metrics, *, class_names: dict[int, str] | None = None):

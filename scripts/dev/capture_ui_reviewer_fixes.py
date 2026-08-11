@@ -8,6 +8,7 @@ import hashlib
 import json
 import sys
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
@@ -31,6 +32,7 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QComboBox,
+    QDialogButtonBox,
     QHeaderView,
     QLabel,
     QLineEdit,
@@ -61,6 +63,11 @@ from XBrainLab.backend.application.preprocess_render import (
     PreprocessRenderPublication,
     PreprocessRenderPublisher,
     PreprocessRenderRequest,
+)
+from XBrainLab.backend.application.resource_guard import (
+    RISK_WARNING,
+    TrainingResourcePreviewRequest,
+    TrainingResourcePreviewResult,
 )
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.application.view_publication import (
@@ -568,6 +575,9 @@ def _capture_training_setting_surfaces(
                 dialog,
                 filename,
                 output_dir=output_dir,
+                # The geometry audit above owns scroll-viewport containment;
+                # clipped child grabs are not stable references for that check.
+                compare_child_references=False,
             )
             dialog = None
     finally:
@@ -590,10 +600,42 @@ def _font_at_scale(font: QFont, scale: float) -> QFont:
 
 
 def _training_setting_dialog() -> TrainingSettingDialog:
-    return TrainingSettingDialog(
+    preview_template = TrainingResourcePreviewRequest(
+        request_generation=0,
+        publication_generation=22,
+        model_name="EEGNet",
+        model_params={},
+        device="cuda:0",
+        batch_size=32,
+        optimizer="Adam",
+    )
+    dialog = TrainingSettingDialog(
         None,
         None,
-        initial_option={"device": "cpu"},
+        initial_option={"device": "cuda:0"},
+        resource_preview_request=preview_template,
+        resource_preview_dispatcher=_dispatch_training_setting_resource_preview,
+    )
+    return dialog
+
+
+def _dispatch_training_setting_resource_preview(
+    request: TrainingResourcePreviewRequest,
+    callback: Callable[[TrainingResourcePreviewResult], object],
+) -> object:
+    """Deliver the capture result through the dialog's async preview boundary."""
+    return callback(
+        TrainingResourcePreviewResult(
+            request_generation=request.request_generation,
+            publication_generation=request.publication_generation,
+            requested_batch_size=request.batch_size,
+            suggested_batch_size=8,
+            estimated_vram_bytes=384 * 1024**2,
+            available_vram_bytes=512 * 1024**2,
+            risk_level=RISK_WARNING,
+            vram_known=True,
+            warning=("Batch size was adjusted to 8 for the available GPU memory."),
+        )
     )
 
 
@@ -628,12 +670,15 @@ def _observe_training_setting_geometry(
     font_scale: float,
 ) -> dict[str, Any]:
     form_layout = dialog.form_layout
+    content_ancestor = dialog.content_widget or dialog
     rows: list[dict[str, Any]] = []
     for row_index in range(form_layout.rowCount()):
         label_item = form_layout.itemAtPosition(row_index, 0)
         input_item = form_layout.itemAtPosition(row_index, 1)
+        button_item = form_layout.itemAtPosition(row_index, 2)
         label = label_item.widget() if label_item is not None else None
         input_widget = input_item.widget() if input_item is not None else None
+        set_button = button_item.widget() if button_item is not None else None
         if not isinstance(label, QLabel) or input_widget is None:
             raise RuntimeError(
                 f"Training Setting row {row_index} has incomplete form geometry."
@@ -644,10 +689,43 @@ def _observe_training_setting_geometry(
         overlap = label_rect.intersects(input_rect)
         label_text_clipped = _control_text_is_clipped(label)
         input_text_clipped = _control_text_is_clipped(input_widget)
-        contained = dialog.rect().contains(label_rect) and dialog.rect().contains(
-            input_rect
+        contained = content_ancestor.rect().contains(
+            _widget_rect_in(content_ancestor, label)
+        ) and content_ancestor.rect().contains(
+            _widget_rect_in(content_ancestor, input_widget)
         )
         horizontal_gap = input_rect.left() - label_rect.right() - 1
+        set_button_evidence: dict[str, Any] = {}
+        if set_button is not None:
+            if not isinstance(set_button, QAbstractButton):
+                raise RuntimeError(
+                    f"Training Setting row {row_index} has an invalid Set control."
+                )
+            set_rect = _widget_rect_in(dialog, set_button)
+            set_overlap = input_rect.intersects(set_rect)
+            set_gap = set_rect.left() - input_rect.right() - 1
+            set_contained = content_ancestor.rect().contains(
+                _widget_rect_in(content_ancestor, set_button)
+            )
+            set_text_clipped = _control_text_is_clipped(set_button)
+            set_button_evidence = {
+                "text": set_button.text(),
+                "geometry": _rect_payload(set_rect),
+                "horizontal_gap_px": int(set_gap),
+                "overlap": set_overlap,
+                "text_clipped": set_text_clipped,
+                "contained_in_dialog": set_contained,
+                "visible": set_button.isVisibleTo(dialog),
+                "passed": bool(
+                    set_button.text() == "Set"
+                    and not set_overlap
+                    and set_gap >= 0
+                    and not set_text_clipped
+                    and set_contained
+                    and set_button.isVisibleTo(dialog)
+                ),
+            }
+            contained = contained and set_contained
         rows.append(
             {
                 "row": row_index,
@@ -660,12 +738,14 @@ def _observe_training_setting_geometry(
                 "label_text_clipped": label_text_clipped,
                 "input_text_clipped": input_text_clipped,
                 "contained_in_dialog": contained,
+                "set_button": set_button_evidence,
                 "passed": (
                     not overlap
                     and not label_text_clipped
                     and not input_text_clipped
                     and contained
                     and horizontal_gap >= 0
+                    and (not set_button_evidence or bool(set_button_evidence["passed"]))
                 ),
             }
         )
@@ -677,6 +757,97 @@ def _observe_training_setting_geometry(
         row for row in rows if row["label_text_clipped"] or row["input_text_clipped"]
     ]
     outside_rows = [row for row in rows if not row["contained_in_dialog"]]
+    failed_set_buttons = [
+        row for row in rows if row["set_button"] and not row["set_button"]["passed"]
+    ]
+    button_box = dialog.findChild(QDialogButtonBox)
+    if button_box is None:
+        raise RuntimeError("Training Setting footer button box is missing.")
+    footer_rect = _widget_rect_in(dialog, button_box)
+    footer_buttons = button_box.buttons()
+    footer_button_rects = [_widget_rect_in(dialog, button) for button in footer_buttons]
+    footer_contained = dialog.rect().contains(footer_rect) and all(
+        dialog.rect().contains(rect) for rect in footer_button_rects
+    )
+    footer_visible = button_box.isVisibleTo(dialog) and all(
+        button.isVisibleTo(dialog) for button in footer_buttons
+    )
+    footer_text_complete = all(
+        not _control_text_is_clipped(button) for button in footer_buttons
+    )
+    footer_buttons_overlap = any(
+        left.intersects(right)
+        for index, left in enumerate(footer_button_rects)
+        for right in footer_button_rects[index + 1 :]
+    )
+    scroll_rect = (
+        _widget_rect_in(dialog, dialog.content_scroll)
+        if dialog.content_scroll is not None
+        else QRect()
+    )
+    footer_below_content = (
+        dialog.content_scroll is not None and footer_rect.top() >= scroll_rect.bottom()
+    )
+    footer = {
+        "geometry": _rect_payload(footer_rect),
+        "button_geometries": [_rect_payload(rect) for rect in footer_button_rects],
+        "button_texts": [button.text() for button in footer_buttons],
+        "contained_in_dialog": footer_contained,
+        "visible": footer_visible,
+        "text_complete": footer_text_complete,
+        "buttons_overlap": footer_buttons_overlap,
+        "below_content": footer_below_content,
+        "passed": bool(
+            len(footer_buttons) == 2
+            and footer_contained
+            and footer_visible
+            and footer_text_complete
+            and not footer_buttons_overlap
+            and footer_below_content
+        ),
+    }
+    resource_preview_note = dialog.resource_preview_note
+    content_scroll = dialog.content_scroll
+    if resource_preview_note is None or content_scroll is None:
+        raise RuntimeError("Training Setting resource preview UI is unavailable.")
+    resource_viewport = content_scroll.viewport()
+    resource_note_top_left = resource_preview_note.mapTo(
+        resource_viewport,
+        QPoint(0, 0),
+    )
+    resource_note_rect = QRect(
+        resource_note_top_left,
+        resource_preview_note.size(),
+    )
+    resource_note_visible = resource_preview_note.isVisibleTo(resource_viewport)
+    resource_note_contained = resource_viewport.rect().contains(resource_note_rect)
+    resource_note_text_complete = not _control_text_is_clipped(resource_preview_note)
+    batch_entry = dialog.bs_entry
+    if batch_entry is None:
+        raise RuntimeError("Training Setting batch field is unavailable.")
+    batch_top_left = batch_entry.mapTo(resource_viewport, QPoint(0, 0))
+    batch_rect = QRect(batch_top_left, batch_entry.size())
+    batch_visible_with_note = bool(
+        batch_entry.isVisibleTo(resource_viewport)
+        and resource_viewport.rect().contains(batch_rect)
+    )
+    resource_preview = {
+        "text": " ".join(resource_preview_note.text().split()),
+        "geometry_in_viewport": _rect_payload(resource_note_rect),
+        "viewport_geometry": _rect_payload(resource_viewport.rect()),
+        "visible": resource_note_visible,
+        "contained_in_viewport": resource_note_contained,
+        "text_complete": resource_note_text_complete,
+        "batch_geometry_in_viewport": _rect_payload(batch_rect),
+        "batch_visible_with_note": batch_visible_with_note,
+        "passed": bool(
+            resource_note_visible
+            and resource_note_contained
+            and resource_note_text_complete
+            and batch_visible_with_note
+            and "adjusted to 8" in resource_preview_note.text()
+        ),
+    }
     if overlap_rows:
         raise RuntimeError(
             "Training Setting overlap at "
@@ -692,6 +863,21 @@ def _observe_training_setting_geometry(
             "Training Setting control outside dialog at "
             f"{round(font_scale * 100)}%: {outside_rows[0]['label']}."
         )
+    if failed_set_buttons:
+        raise RuntimeError(
+            "Training Setting Set-button column failed at "
+            f"{round(font_scale * 100)}%: {failed_set_buttons[0]['label']}."
+        )
+    if not footer["passed"]:
+        raise RuntimeError(
+            "Training Setting footer geometry failed at "
+            f"{round(font_scale * 100)}%: {footer}."
+        )
+    if not resource_preview["passed"]:
+        raise RuntimeError(
+            "Training Setting resource preview is not fully visible at "
+            f"{round(font_scale * 100)}%: {resource_preview}."
+        )
 
     return {
         "font_scale": float(font_scale),
@@ -706,8 +892,15 @@ def _observe_training_setting_geometry(
         "overlap_count": len(overlap_rows),
         "clipped_text_count": len(clipped_rows),
         "outside_dialog_count": len(outside_rows),
+        "set_button_count": sum(bool(row["set_button"]) for row in rows),
+        "failed_set_button_count": len(failed_set_buttons),
+        "footer": footer,
+        "resource_preview": resource_preview,
         "rows": rows,
-        "passed": bool(rows) and all(bool(row["passed"]) for row in rows),
+        "passed": bool(rows)
+        and all(bool(row["passed"]) for row in rows)
+        and bool(footer["passed"])
+        and bool(resource_preview["passed"]),
     }
 
 
@@ -731,8 +924,10 @@ def _control_text_is_clipped(widget: QWidget) -> bool:
         available_width = max(contents.width() - 2 * margin, 0)
         available_height = max(contents.height() - 2 * margin, 0)
         if widget.wordWrap():
-            required_height = widget.heightForWidth(available_width)
-            return required_height < 0 or required_height > available_height
+            # QLabel.heightForWidth() includes stylesheet padding, while
+            # contentsRect() excludes it. Compare like-for-like outer geometry.
+            required_height = widget.heightForWidth(widget.width())
+            return required_height < 0 or required_height > widget.height()
         return (
             metrics.horizontalAdvance(text) > available_width
             or metrics.lineSpacing() > available_height
@@ -1189,8 +1384,13 @@ def _settle_widget(app: QApplication, widget: QWidget) -> None:
 def _dispose_widget(app: QApplication, widget: QWidget) -> None:
     # PreviewWidget.closeEvent quiesces timers/proxies; Qt's parent tree owns
     # native PlotWidget and scene destruction.
-    widget.close()
-    widget.deleteLater()
+    try:
+        widget.close()
+        widget.deleteLater()
+    except RuntimeError as exc:
+        if "has been deleted" not in str(exc):
+            raise
+        return
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     app.processEvents()
 
@@ -1284,7 +1484,7 @@ def _assert_reviewer_surface_pixels(
         *widget.findChildren(QAbstractItemView),
     ]
     for index, control in enumerate(controls):
-        if not control.isVisibleTo(widget):
+        if not control.isVisibleTo(widget) or control.visibleRegion().isEmpty():
             continue
         if isinstance(control, QHeaderView):
             # A scrollable table header can be wider than its clipped viewport;

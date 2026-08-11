@@ -1,6 +1,6 @@
 # Backend 目前架構
 
-最後更新：`2026-08-10`
+最後更新：`2026-08-11`
 
 ## 快速讀法
 
@@ -21,8 +21,8 @@
 | Area | 已接近 target | 剩餘距離 |
 | --- | --- | --- |
 | Command spine | load / preprocess / epoch / split specification / training-time materialization / train / evaluate / visualize / saliency / reset / Data Interpretation 都有 command or query truth。 | 要持續防止新 wrapper、direct manager mutation、direct service bypass 回流；retained optional adapters 不是 active roadmap。 |
-| Focused services | Data Interpretation、analysis、training、dataset generation、lifecycle、compatibility、data table、preprocess、state/query 都已從 `ApplicationService` 拆出；saliency method policy 由 `backend.application.saliency_policy` 共用，training resource guard 只吃明確 dataset / option context。 | focused service 間仍要靠 tests/guard 維持邊界，避免把 orchestration、UI policy 或 controller/context 探測塞回單一檔。 |
-| State truth | `StateSnapshotService` 建立 snapshot；`ApplicationViewPublication` 原子綁定 snapshot 與 capability policy。一般 `QueryStateCommand(state)`、product UI readers、assistant、headless preflight 共用這個 view。 | Refresh single-truth 仍需獨立 exact-commit source guard與 product workflow evidence；少數 lower-level tests 的 direct `Study` access也不能當 product smoke。 |
+| Focused services | Data Interpretation、analysis、training、dataset generation、lifecycle、compatibility、data table、preprocess、state/query 都已從 `ApplicationService` 拆出；training resource preview 與 BIDS montage preparation 各有 application-owned coordinator，saliency method policy 由 `backend.application.saliency_policy` 共用。 | focused service 間仍要靠 tests/guard 維持邊界，避免把 orchestration、UI policy 或 controller/context 探測塞回單一檔。 |
+| State truth | `StateSnapshotService` 建立 snapshot；`ApplicationViewPublication` 原子綁定 snapshot 與 capability policy。一般 `QueryStateCommand(state)`、product UI readers、assistant、headless preflight 共用這個 view。背景 resource / montage 結果只有在 generation 仍 current 時才可更新 publication。 | Refresh single-truth 仍需獨立 exact-commit source guard與 product workflow evidence；少數 lower-level tests 的 direct `Study` access也不能當 product smoke。 |
 | Result boundary | Product `CommandResult` 只包含 detached state、changed-state、typed error 與 JSON-safe diagnostics；`runtime` / `local_payload` fields 和 command `include_objects` opt-in 已物理移除。Dataset、Preprocess、training history、Evaluation 與 Visualization 使用 generation-bound detached rows/publications。 | 少數 lower-level presentation utilities 仍直接接收 domain objects；它們不能重新接回 product command result，也不能當 ApplicationService workflow evidence。 |
 | UI boundary | Product action method 不可直接呼叫 controller compatibility helper；MainWindow 以 typed ports materialize 五個 panels，Training progress 由 narrow transient port 傳遞。 | Standalone/mock compatibility signatures 仍存在；不是 repo-wide controller removal，refresh exact closure 也需獨立驗證。 |
 | Evidence | exact-evidence stack 已替換多個 generic non-empty product smokes。 | human Windows desktop acceptance 和長時間 local-model session 仍缺人工 evidence。 |

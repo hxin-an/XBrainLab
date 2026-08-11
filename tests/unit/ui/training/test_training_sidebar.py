@@ -1,4 +1,5 @@
 import inspect
+import threading
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
@@ -23,12 +24,18 @@ from XBrainLab.backend.application.resource_guard import (
     RISK_UNKNOWN,
     RISK_WARNING,
     ResourcePreflightResult,
+    TrainingResourcePreviewReceipt,
+    TrainingResourcePreviewRequest,
+    TrainingResourcePreviewResult,
 )
 from XBrainLab.backend.application.training_recommendation import (
     TrainingRecommendation,
     TrainingRecommendationField,
     TrainingRecommendationValues,
     TrainingSettingProvenance,
+)
+from XBrainLab.backend.application.training_submission import (
+    training_submission_resource_preview_receipt,
 )
 from XBrainLab.backend.model_base.model_catalog import get_model_spec
 from XBrainLab.backend.study import Study
@@ -134,6 +141,130 @@ def _training_preflight(
     )
 
 
+def _resource_preview_request(
+    request_generation: int,
+) -> TrainingResourcePreviewRequest:
+    return TrainingResourcePreviewRequest(
+        request_generation=request_generation,
+        publication_generation=41,
+        model_name="EEGNet",
+        model_params={},
+        device="cuda:0",
+        batch_size=32,
+        optimizer="Adam",
+    )
+
+
+def _resource_preview_result(
+    request: TrainingResourcePreviewRequest,
+) -> TrainingResourcePreviewResult:
+    return TrainingResourcePreviewResult(
+        request_generation=request.request_generation,
+        publication_generation=request.publication_generation,
+        requested_batch_size=request.batch_size,
+        suggested_batch_size=8,
+        estimated_vram_bytes=128 * 1024**2,
+        available_vram_bytes=512 * 1024**2,
+        risk_level=RISK_WARNING,
+        vram_known=True,
+        warning="Batch size was reduced for available GPU memory.",
+    )
+
+
+def test_training_resource_preview_is_single_flight_and_delivers_only_latest(
+    sidebar,
+    qtbot,
+):
+    first_started = threading.Event()
+    release_first = threading.Event()
+    requests: list[TrainingResourcePreviewRequest] = []
+
+    def get_preview(
+        request: TrainingResourcePreviewRequest,
+    ) -> TrainingResourcePreviewResult:
+        requests.append(request)
+        if len(requests) == 1:
+            first_started.set()
+            assert release_first.wait(timeout=2.0)
+        return _resource_preview_result(request)
+
+    sidebar.panel._query_port = SimpleNamespace(
+        get_training_resource_preview=get_preview,
+    )
+    delivered: list[list[TrainingResourcePreviewResult]] = [[], [], []]
+    drafts = [_resource_preview_request(generation) for generation in (1, 2, 3)]
+
+    assert sidebar._dispatch_training_resource_preview(drafts[0], delivered[0].append)
+    qtbot.waitUntil(first_started.is_set, timeout=1000)
+    assert sidebar._dispatch_training_resource_preview(drafts[1], delivered[1].append)
+    assert sidebar._dispatch_training_resource_preview(drafts[2], delivered[2].append)
+    assert [request.request_generation for request in requests] == [1]
+
+    release_first.set()
+    qtbot.waitUntil(lambda: len(delivered[2]) == 1, timeout=2000)
+
+    assert [request.request_generation for request in requests] == [1, 3]
+    assert delivered[0] == []
+    assert delivered[1] == []
+    assert delivered[2][0].request_generation == 3
+
+
+def test_panel_close_abandons_preview_without_waiting_or_late_delivery(qtbot):
+    panel = QMainWindow()
+    cast(Any, panel).controller = MagicMock()
+    cast(Any, panel).main_window = None
+    qtbot.addWidget(panel)
+
+    worker_started = threading.Event()
+    release_worker = threading.Event()
+    worker_finished = threading.Event()
+
+    def get_preview(
+        request: TrainingResourcePreviewRequest,
+    ) -> TrainingResourcePreviewResult:
+        worker_started.set()
+        try:
+            assert release_worker.wait(timeout=2.0)
+            return _resource_preview_result(request)
+        finally:
+            worker_finished.set()
+
+    cast(Any, panel)._query_port = SimpleNamespace(
+        get_training_resource_preview=get_preview,
+    )
+    sidebar = TrainingSidebar(panel, parent=None)
+    qtbot.addWidget(sidebar)
+    delivered: list[TrainingResourcePreviewResult] = []
+
+    assert sidebar._dispatch_training_resource_preview(
+        _resource_preview_request(1),
+        delivered.append,
+    )
+    qtbot.waitUntil(worker_started.is_set, timeout=1000)
+    worker = sidebar._training_resource_preview_worker
+    assert worker is not None
+    assert worker.daemon is True
+
+    panel.show()
+    assert panel.close() is True
+    assert worker.is_alive() is True
+    assert (
+        sidebar._dispatch_training_resource_preview(
+            _resource_preview_request(2),
+            delivered.append,
+        )
+        is False
+    )
+
+    release_worker.set()
+    qtbot.waitUntil(worker_finished.is_set, timeout=1000)
+    worker.join(timeout=1.0)
+    qtbot.wait(20)
+
+    assert worker.is_alive() is False
+    assert delivered == []
+
+
 def test_configure_training_command_preserves_catalog_model_id() -> None:
     spec = get_model_spec("braindecode.eegnet")
     holder = ModelHolder(
@@ -182,6 +313,37 @@ def test_configure_training_command_preserves_auto_and_exact_edited_fields() -> 
             TrainingRecommendationField.OPTIMIZER,
         }
     )
+
+
+def test_configure_training_command_carries_exact_applied_preview_receipt() -> None:
+    option = SimpleNamespace(
+        epoch=50,
+        bs=8,
+        lr=0.001,
+        repeat_num=1,
+        optim=SimpleNamespace(__name__="Adam"),
+        optim_params={},
+        checkpoint_epoch=0,
+        output_dir="./output",
+        evaluation_option=SimpleNamespace(value="Best validation loss"),
+        use_cpu=False,
+        gpu_idx=0,
+    )
+    receipt = TrainingResourcePreviewReceipt(
+        token="accepted-preview",  # noqa: S106 - opaque test receipt, not a secret
+        request_generation=3,
+        publication_generation=22,
+        requested_batch_size=32,
+        suggested_batch_size=8,
+    )
+
+    command = TrainingSidebar._configure_training_command(
+        training_option=option,
+        device="cuda:0",
+        resource_preview_receipt=receipt,
+    )
+
+    assert training_submission_resource_preview_receipt(command) == receipt
 
 
 def test_init_ui(sidebar):

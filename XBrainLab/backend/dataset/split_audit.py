@@ -8,7 +8,7 @@ from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -395,7 +395,12 @@ def _trial_selection_evidence_artifact(dataset: Dataset) -> dict[str, Any]:
         None,
     )
     raw_dropped = dropped_getter() if callable(dropped_getter) else 0
-    dropped = int(raw_dropped) if isinstance(raw_dropped, (int, np.integer)) else 0
+    if isinstance(raw_dropped, int):
+        dropped = raw_dropped
+    elif isinstance(raw_dropped, np.integer):
+        dropped = int(cast(np.integer[Any], raw_dropped).item())
+    else:
+        dropped = 0
     records = all_records[-MAX_SELECTION_EVIDENCE_RECORDS:]
     record_count = dropped + len(all_records)
     return {

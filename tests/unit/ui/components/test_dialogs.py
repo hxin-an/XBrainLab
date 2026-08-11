@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, patch
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QAbstractSpinBox,
-    QCheckBox,
     QDialogButtonBox,
     QFrame,
     QLabel,
@@ -147,10 +146,11 @@ def test_epoching_dialog_baseline_and_primary_button_are_product_styled(qtbot):
     )
     qtbot.addWidget(dialog)
 
-    baseline = dialog.findChild(QCheckBox, "EpochBaselineCheck")
+    baseline = dialog.findChild(QPushButton, "PreprocessToggle")
     assert baseline is not None
-    assert "QCheckBox" in dialog.styleSheet()
-    assert "background-color: transparent" in dialog.styleSheet()
+    assert baseline.isCheckable()
+    assert baseline.text() in {"On", "Off"}
+    assert "QPushButton#PreprocessToggle" in dialog.styleSheet()
 
     create_button = dialog.findChild(QPushButton, "EpochPrimaryButton")
     assert create_button is not None

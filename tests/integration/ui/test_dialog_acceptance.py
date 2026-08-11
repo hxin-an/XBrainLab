@@ -261,8 +261,8 @@ def test_epoching_dialog_shows_effective_event_locked_timing_and_separate_baseli
     assert "Timing\nonset + duration" not in visible_text
     assert "Baseline Correction" in visible_text
     assert (
-        "The average signal in this interval will be removed from each epoch."
-        in visible_text
+        "When enabled, the average signal in this interval will be removed "
+        "from each epoch." in visible_text
     )
 
 

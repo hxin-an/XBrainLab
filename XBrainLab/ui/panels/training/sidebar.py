@@ -1,11 +1,13 @@
 """Sidebar widget for the training panel with configuration and execution controls."""
 
 from collections.abc import Callable, Iterable
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, cast
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QEvent, Qt
 from PyQt6.QtWidgets import (
+    QApplication,
     QFrame,
     QGroupBox,
     QMessageBox,
@@ -33,6 +35,9 @@ from XBrainLab.backend.application.resource_guard import (
     RISK_UNKNOWN,
     RISK_WARNING,
     ResourceChecker,
+    TrainingResourcePreviewReceipt,
+    TrainingResourcePreviewRequest,
+    TrainingResourcePreviewResult,
 )
 from XBrainLab.backend.application.resource_preflight import (
     ResourcePreflightContractError,
@@ -67,6 +72,7 @@ from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
 )
+from XBrainLab.ui.core.worker import PythonThreadWorker
 
 # Dialog imports will be local to avoid circular deps if needed,
 # or top level if no circular dep.
@@ -98,6 +104,14 @@ class _TrainingSettingSelection:
     option: Any
     device: str
     edited_recommendation_fields: frozenset[TrainingRecommendationField]
+    resource_preview_receipt: TrainingResourcePreviewReceipt | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _TrainingResourcePreviewTask:
+    request: TrainingResourcePreviewRequest
+    callback: Callable[[TrainingResourcePreviewResult], object]
+    token: int
 
 
 class TrainingSidebar(QWidget):
@@ -129,8 +143,39 @@ class TrainingSidebar(QWidget):
         """
         super().__init__()
         self.panel = panel
+        self._training_resource_preview_worker: PythonThreadWorker | None = None
+        self._training_resource_preview_active_task: (
+            _TrainingResourcePreviewTask | None
+        ) = None
+        self._training_resource_preview_pending_task: (
+            _TrainingResourcePreviewTask | None
+        ) = None
+        self._training_resource_preview_token = 0
+        self._training_resource_preview_shutdown_requested = False
+        if isinstance(panel, QWidget):
+            panel.installEventFilter(self)
+        application = QApplication.instance()
+        if application is not None:
+            application.aboutToQuit.connect(
+                self._shutdown_training_resource_previews,
+            )
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.init_ui()
+
+    def eventFilter(self, watched, event):  # noqa: N802
+        """Stop advisory preview delivery when the owning panel closes."""
+        if (
+            watched is self.panel
+            and event is not None
+            and event.type() == QEvent.Type.Close
+        ):
+            self._shutdown_training_resource_previews()
+        return super().eventFilter(watched, event)
+
+    def closeEvent(self, event):  # noqa: N802
+        """Abandon advisory preview work without delaying widget close."""
+        self._shutdown_training_resource_previews()
+        super().closeEvent(event)
 
     @property
     def controller(self):
@@ -1007,6 +1052,14 @@ class TrainingSidebar(QWidget):
             prospective_model_name=prospective_model.model_name,
             prospective_model_params=dict(prospective_model.model_params),
         )
+        resource_preview_request = self._training_resource_preview_request(
+            initial_option,
+            recommendation=recommendation,
+            proposed_values=suggested_values,
+            expected_publication_generation=expected_generation,
+            prospective_model_name=prospective_model.model_name,
+            prospective_model_params=dict(prospective_model.model_params),
+        )
         selection = self._collect_training_option(
             initial_option,
             recommendation=recommendation,
@@ -1019,6 +1072,7 @@ class TrainingSidebar(QWidget):
                     prospective_model_params=dict(prospective_model.model_params),
                 )
             ),
+            resource_preview_request=resource_preview_request,
         )
         if isinstance(selection, InteractionOutcome):
             return selection
@@ -1029,6 +1083,7 @@ class TrainingSidebar(QWidget):
                 training_option=selection.option,
                 device=selection.device,
                 edited_recommendation_fields=(selection.edited_recommendation_fields),
+                resource_preview_receipt=selection.resource_preview_receipt,
             ),
             blocked_title="Training Configuration Blocked",
             failed_title="Training Configuration Failed",
@@ -1089,6 +1144,12 @@ class TrainingSidebar(QWidget):
         recommendation = self._training_setting_recommendation(
             expected_publication_generation=expected_generation,
         )
+        resource_preview_request = self._training_resource_preview_request(
+            initial_option,
+            recommendation=recommendation,
+            proposed_values=suggested_values,
+            expected_publication_generation=expected_generation,
+        )
         selection = self._collect_training_option(
             initial_option,
             recommendation=recommendation,
@@ -1099,6 +1160,7 @@ class TrainingSidebar(QWidget):
                     expected_publication_generation=expected_generation,
                 )
             ),
+            resource_preview_request=resource_preview_request,
         )
         if isinstance(selection, InteractionOutcome):
             return selection
@@ -1150,6 +1212,7 @@ class TrainingSidebar(QWidget):
         device_recommendation_provider: (
             Callable[[str], TrainingRecommendation | None] | None
         ) = None,
+        resource_preview_request: TrainingResourcePreviewRequest | None = None,
     ) -> _TrainingSettingSelection | InteractionOutcome:
         win = TrainingSettingDialog(
             self,
@@ -1158,6 +1221,12 @@ class TrainingSidebar(QWidget):
             recommendation=recommendation,
             proposed_values=proposed_values,
             device_recommendation_provider=(device_recommendation_provider),
+            resource_preview_request=resource_preview_request,
+            resource_preview_dispatcher=(
+                self._dispatch_training_resource_preview
+                if resource_preview_request is not None
+                else None
+            ),
         )
         if not win.exec():
             return InteractionOutcome.cancelled("Training settings were cancelled.")
@@ -1186,10 +1255,17 @@ class TrainingSidebar(QWidget):
             )
         except (TypeError, ValueError):
             edited_fields = frozenset()
+        receipt_getter = getattr(win, "get_applied_resource_preview_receipt", None)
+        resource_preview_receipt = (
+            receipt_getter() if callable(receipt_getter) else None
+        )
+        if not isinstance(resource_preview_receipt, TrainingResourcePreviewReceipt):
+            resource_preview_receipt = None
         return _TrainingSettingSelection(
             option=option,
             device=device,
             edited_recommendation_fields=edited_fields,
+            resource_preview_receipt=resource_preview_receipt,
         )
 
     def _training_setting_recommendation(
@@ -1245,6 +1321,231 @@ class TrainingSidebar(QWidget):
             prospective_device=device,
         )
 
+    def _training_resource_preview_request(
+        self,
+        initial_option: dict[str, Any],
+        *,
+        recommendation: TrainingRecommendation | None,
+        proposed_values: dict[str, str] | None,
+        expected_publication_generation: int | None,
+        prospective_model_name: str | None = None,
+        prospective_model_params: dict[str, Any] | None = None,
+    ) -> TrainingResourcePreviewRequest | None:
+        """Bind visible draft fields to one detached publication input shape."""
+        publication = self._application_publication()
+        if (
+            publication is None
+            or expected_publication_generation is None
+            or publication.generation != expected_publication_generation
+        ):
+            return None
+        state = publication.state
+        epoch = state.epoch
+        training = state.training
+        if not epoch.available:
+            return None
+
+        recommended = recommendation.values if recommendation is not None else None
+        batch_value: Any = (
+            recommended.batch_size
+            if recommended is not None
+            else initial_option.get("batch_size")
+        )
+        optimizer_value: Any = (
+            recommended.optimizer
+            if recommended is not None
+            else initial_option.get("optimizer") or "Adam"
+        )
+        device_value: Any = initial_option.get("device") or "auto"
+        if proposed_values:
+            batch_value = proposed_values.get("batch_size", batch_value)
+            optimizer_value = proposed_values.get("optimizer", optimizer_value)
+            device_value = proposed_values.get("device", device_value)
+        try:
+            batch_size = int(batch_value)
+        except (TypeError, ValueError):
+            return None
+        if batch_size <= 0:
+            return None
+
+        model_name = prospective_model_name or training.model_name
+        model_params = (
+            dict(prospective_model_params or {})
+            if prospective_model_name is not None
+            else dict(training.model_params or {})
+        )
+        return TrainingResourcePreviewRequest(
+            request_generation=0,
+            publication_generation=expected_publication_generation,
+            model_name=model_name,
+            model_params=model_params,
+            device=str(device_value),
+            batch_size=batch_size,
+            optimizer=str(optimizer_value),
+        )
+
+    def _dispatch_training_resource_preview(
+        self,
+        request: TrainingResourcePreviewRequest,
+        callback: Callable[[TrainingResourcePreviewResult], object],
+    ) -> bool:
+        """Coalesce draft previews while one backend query is in flight."""
+        query_port = self._panel_port("_query_port")
+        if query_port is None or self._training_resource_preview_shutdown_requested:
+            return False
+
+        self._training_resource_preview_token += 1
+        task = _TrainingResourcePreviewTask(
+            request=request,
+            callback=callback,
+            token=self._training_resource_preview_token,
+        )
+        if self._training_resource_preview_worker is not None:
+            self._training_resource_preview_pending_task = task
+            return True
+        return self._start_training_resource_preview(query_port, task)
+
+    def _start_training_resource_preview(
+        self,
+        query_port: Any,
+        task: _TrainingResourcePreviewTask,
+    ) -> bool:
+        """Start one detached advisory query and retain terminal ownership."""
+        if (
+            self._training_resource_preview_shutdown_requested
+            or task.token != self._training_resource_preview_token
+        ):
+            return False
+
+        def query() -> TrainingResourcePreviewResult:
+            getter = getattr(query_port, "get_training_resource_preview", None)
+            if not callable(getter):
+                raise RuntimeError("Training resource preview query is unavailable.")
+            result = getter(task.request)
+            if not isinstance(result, TrainingResourcePreviewResult):
+                raise TypeError(
+                    "Training resource preview returned an invalid contract."
+                )
+            return result
+
+        worker = PythonThreadWorker(
+            query,
+            name="xbrainlab-training-resource-preview",
+            daemon=True,
+        )
+        self._training_resource_preview_worker = worker
+        self._training_resource_preview_active_task = task
+        worker.signals.result.connect(
+            lambda result, owned=worker, owned_task=task: (
+                self._deliver_training_resource_preview(
+                    owned,
+                    owned_task,
+                    result,
+                )
+            )
+        )
+        worker.signals.error.connect(
+            lambda error, owned=worker, owned_task=task: (
+                self._report_training_resource_preview_error(
+                    owned,
+                    owned_task,
+                    error,
+                )
+            )
+        )
+        worker.signals.finished.connect(
+            lambda owned=worker: self._finish_training_resource_preview(owned)
+        )
+        try:
+            worker.start()
+        except RuntimeError:
+            self._disconnect_training_resource_preview_worker(worker)
+            self._training_resource_preview_worker = None
+            self._training_resource_preview_active_task = None
+            logger.info("Training resource preview worker could not start.")
+            return False
+        return True
+
+    def _deliver_training_resource_preview(
+        self,
+        worker: PythonThreadWorker,
+        task: _TrainingResourcePreviewTask,
+        result: TrainingResourcePreviewResult,
+    ) -> None:
+        """Deliver a result only while its task is still the newest draft."""
+        if (
+            self._training_resource_preview_shutdown_requested
+            or worker is not self._training_resource_preview_worker
+            or task is not self._training_resource_preview_active_task
+            or task.token != self._training_resource_preview_token
+        ):
+            return
+        try:
+            task.callback(result)
+        except RuntimeError:
+            logger.info("Training resource preview receiver is no longer available.")
+
+    def _report_training_resource_preview_error(
+        self,
+        worker: PythonThreadWorker,
+        task: _TrainingResourcePreviewTask,
+        error: tuple,
+    ) -> None:
+        if (
+            self._training_resource_preview_shutdown_requested
+            or worker is not self._training_resource_preview_worker
+            or task is not self._training_resource_preview_active_task
+            or task.token != self._training_resource_preview_token
+        ):
+            return
+        logger.info(
+            "Training resource preview unavailable: %s",
+            error[1] if len(error) > 1 else "unknown error",
+        )
+
+    def _finish_training_resource_preview(
+        self,
+        worker: PythonThreadWorker,
+    ) -> None:
+        """Release the active task and start only the newest queued draft."""
+        if worker is not self._training_resource_preview_worker:
+            return
+        self._disconnect_training_resource_preview_worker(worker)
+        self._training_resource_preview_worker = None
+        self._training_resource_preview_active_task = None
+        pending = self._training_resource_preview_pending_task
+        self._training_resource_preview_pending_task = None
+        if self._training_resource_preview_shutdown_requested or pending is None:
+            return
+        query_port = self._panel_port("_query_port")
+        if query_port is not None:
+            self._start_training_resource_preview(query_port, pending)
+
+    @staticmethod
+    def _disconnect_training_resource_preview_worker(
+        worker: PythonThreadWorker,
+    ) -> None:
+        for signal in (
+            worker.signals.result,
+            worker.signals.error,
+            worker.signals.finished,
+        ):
+            with suppress(TypeError, RuntimeError):
+                signal.disconnect()
+
+    def _shutdown_training_resource_previews(self, *_args: Any) -> None:
+        """Invalidate callbacks and abandon daemon preview work during close."""
+        if self._training_resource_preview_shutdown_requested:
+            return
+        self._training_resource_preview_shutdown_requested = True
+        self._training_resource_preview_token += 1
+        self._training_resource_preview_pending_task = None
+        worker = self._training_resource_preview_worker
+        self._training_resource_preview_worker = None
+        self._training_resource_preview_active_task = None
+        if worker is not None:
+            self._disconnect_training_resource_preview_worker(worker)
+
     @staticmethod
     def _positive_summary_count(
         summary: Any,
@@ -1274,6 +1575,7 @@ class TrainingSidebar(QWidget):
         edited_recommendation_fields: frozenset[
             TrainingRecommendationField
         ] = frozenset(),
+        resource_preview_receipt: TrainingResourcePreviewReceipt | None = None,
     ) -> ConfigureTrainingCommand:
         fields: dict[str, Any] = {}
         if model_holder is not None:
@@ -1324,6 +1626,7 @@ class TrainingSidebar(QWidget):
         return attach_training_submission_provenance(
             ConfigureTrainingCommand(**fields),
             edited_recommendation_fields,
+            resource_preview_receipt=resource_preview_receipt,
         )
 
     def _apply_training_configuration(

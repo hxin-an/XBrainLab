@@ -1,6 +1,6 @@
 """Unit tests for Worker and WorkerSignals."""
 
-from XBrainLab.ui.core.worker import Worker, WorkerSignals
+from XBrainLab.ui.core.worker import PythonThreadWorker, Worker, WorkerSignals
 
 
 class TestWorkerSignals:
@@ -21,6 +21,18 @@ class TestWorkerSignals:
     def test_has_progress_signal(self):
         ws = WorkerSignals()
         assert callable(ws.progress.connect)
+
+
+def test_python_thread_worker_daemon_is_explicit_and_opt_in():
+    regular = PythonThreadWorker(lambda: None, name="regular-worker")
+    detached = PythonThreadWorker(
+        lambda: None,
+        name="detached-preview-worker",
+        daemon=True,
+    )
+
+    assert regular.daemon is False
+    assert detached.daemon is True
 
 
 class TestWorker:

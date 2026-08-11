@@ -286,3 +286,15 @@ def test_preprocess_preview_resumes_after_cancelled_close(
     widget.prepare_for_shutdown()
     assert widget._native_plot_shutdown is True
     assert not widget.plot_timer.isActive()
+
+
+def test_preprocess_preview_finalizes_pyqtgraph_roots_before_qt_destruction(
+    preview_widget,
+) -> None:
+    widget = preview_widget
+
+    assert widget.finalize_native_plot_shutdown() is True
+    assert widget._native_plot_finalized is True
+    assert widget.plot_time.plotItem is None
+    assert widget.plot_freq.plotItem is None
+    assert widget.finalize_native_plot_shutdown() is True

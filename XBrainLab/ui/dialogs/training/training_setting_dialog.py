@@ -5,9 +5,10 @@ device, output directory, evaluation strategy, and repeat count.
 """
 
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any, ClassVar
 
-from PyQt6.QtCore import QEvent, QRect, QSize, Qt
+from PyQt6.QtCore import QEvent, QRect, QSize, Qt, QTimer
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialogButtonBox,
@@ -27,6 +28,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application.resource_guard import (
+    TrainingResourcePreviewReceipt,
+    TrainingResourcePreviewRequest,
+    TrainingResourcePreviewResult,
+)
 from XBrainLab.backend.application.training_recommendation import (
     TrainingRecommendation,
     TrainingRecommendationField,
@@ -90,13 +96,6 @@ class TrainingSettingDialog(BaseDialog):
         TrainingEvaluation.VAL_ACC: "Validation accuracy",
         TrainingEvaluation.LAST_EPOCH: "Last epoch",
     }
-    _RECOMMENDATION_FIELD_LABELS: ClassVar[dict[TrainingRecommendationField, str]] = {
-        TrainingRecommendationField.EPOCHS: "training epochs",
-        TrainingRecommendationField.BATCH_SIZE: "batch size",
-        TrainingRecommendationField.LEARNING_RATE: "learning rate",
-        TrainingRecommendationField.OPTIMIZER: "optimizer",
-        TrainingRecommendationField.EVALUATION_STRATEGY: "evaluation",
-    }
 
     def __init__(
         self,
@@ -108,6 +107,17 @@ class TrainingSettingDialog(BaseDialog):
         proposed_values: dict[str, Any] | None = None,
         device_recommendation_provider: (
             Callable[[str], TrainingRecommendation | None] | None
+        ) = None,
+        resource_preview_request: TrainingResourcePreviewRequest | None = None,
+        resource_preview_dispatcher: (
+            Callable[
+                [
+                    TrainingResourcePreviewRequest,
+                    Callable[[TrainingResourcePreviewResult], object],
+                ],
+                object,
+            ]
+            | None
         ) = None,
     ):
         # self.controller is handled by BaseDialog
@@ -126,6 +136,17 @@ class TrainingSettingDialog(BaseDialog):
         self._edited_recommendation_fields: set[TrainingRecommendationField] = set()
         self._device_recommendation_provider = device_recommendation_provider
         self._device_recommendation_refresh_failed = False
+        self._resource_preview_request_template = resource_preview_request
+        self._resource_preview_dispatcher = resource_preview_dispatcher
+        self._resource_preview_generation = (
+            resource_preview_request.request_generation
+            if resource_preview_request is not None
+            else 0
+        )
+        self._resource_preview_timer: QTimer | None = None
+        self._accepted_resource_preview_receipt: (
+            TrainingResourcePreviewReceipt | None
+        ) = None
 
         # UI Elements (Init them to None)
         self.epoch_entry: QLineEdit | None = None
@@ -138,6 +159,7 @@ class TrainingSettingDialog(BaseDialog):
         self.output_dir_label: QLabel | None = None
         self.evaluation_combo: QComboBox | None = None
         self.recommendation_note: QLabel | None = None
+        self.resource_preview_note: QLabel | None = None
         self.content_scroll: QScrollArea | None = None
         self.content_widget: QWidget | None = None
 
@@ -161,6 +183,7 @@ class TrainingSettingDialog(BaseDialog):
         if proposed_values:
             self.apply_proposed_values(proposed_values)
         self._connect_recommendation_tracking()
+        self._initialize_resource_preview()
         self._fit_dialog_to_content()
 
     def changeEvent(self, event: QEvent | None) -> None:  # noqa: N802
@@ -269,6 +292,19 @@ class TrainingSettingDialog(BaseDialog):
             520,
             36 + label_column_width + 12 + input_column_width + 12 + 72,
         )
+        resource_preview_note = self.resource_preview_note
+        if resource_preview_note is not None and not resource_preview_note.isHidden():
+            resource_preview_note.ensurePolished()
+            note_width = max(target_width - 36, 1)
+            wrapped_height = resource_preview_note.heightForWidth(note_width)
+            resource_preview_note.setMinimumHeight(
+                max(
+                    resource_preview_note.sizeHint().height(),
+                    wrapped_height if wrapped_height >= 0 else 0,
+                    resource_preview_note.fontMetrics().lineSpacing(),
+                )
+                + 4
+            )
         layout = self.layout()
         if layout is not None:
             layout.activate()
@@ -325,7 +361,10 @@ class TrainingSettingDialog(BaseDialog):
                 )
 
             # Restore device
-            self.use_cpu = opt.use_cpu
+            restored_use_cpu = getattr(opt, "use_cpu", True)
+            self.use_cpu = (
+                restored_use_cpu if isinstance(restored_use_cpu, bool) else True
+            )
             self.gpu_idx = opt.gpu_idx
             self.device = (
                 "cpu"
@@ -438,6 +477,12 @@ class TrainingSettingDialog(BaseDialog):
         """Return the detached device choice without resolving local hardware."""
         return self.device
 
+    def get_applied_resource_preview_receipt(
+        self,
+    ) -> TrainingResourcePreviewReceipt | None:
+        """Return proof for the resource refinement visible in this dialog."""
+        return self._accepted_resource_preview_receipt
+
     def apply_proposed_values(self, values: dict[str, Any]) -> None:
         """Apply an explicit user/agent proposal after recommendation defaults."""
         snapshot_values = dict(values)
@@ -487,6 +532,16 @@ class TrainingSettingDialog(BaseDialog):
     ) -> None:
         value = self._recommendation_field_value(field)
         self._edited_recommendation_fields.add(field)
+        if field in {
+            TrainingRecommendationField.BATCH_SIZE,
+            TrainingRecommendationField.OPTIMIZER,
+        }:
+            self._accepted_resource_preview_receipt = None
+        if field is TrainingRecommendationField.BATCH_SIZE:
+            self._resource_preview_generation += 1
+            if self.resource_preview_note is not None:
+                self.resource_preview_note.clear()
+                self.resource_preview_note.hide()
         if value is None:
             self._recommendation_invalid_fields.add(field)
             self._update_recommendation_note()
@@ -500,26 +555,7 @@ class TrainingSettingDialog(BaseDialog):
         self._update_recommendation_note()
 
     def _update_recommendation_note(self) -> None:
-        note = self.recommendation_note
-        recommendation = self._recommendation
-        if note is None:
-            return
-        note.setVisible(recommendation is not None)
-        if recommendation is None:
-            return
-        manual_fields = set(recommendation.manual_fields)
-        manual_fields.update(self._edited_recommendation_fields)
-        manual_labels = [
-            self._RECOMMENDATION_FIELD_LABELS[field]
-            for field in TrainingRecommendationField
-            if field in manual_fields
-        ]
-        manual_summary = ", ".join(manual_labels) if manual_labels else "none"
-        note.setText(
-            "Recommended starting points; fields you edit are retained. "
-            f"Manual fields: {manual_summary}."
-        )
-        note.updateGeometry()
+        """Keep provenance internal; first-layer UI has no persistent note."""
 
     def _recommendation_field_value(
         self,
@@ -628,25 +664,25 @@ class TrainingSettingDialog(BaseDialog):
         layout.setContentsMargins(18, 16, 18, 14)
         layout.setSpacing(12)
 
-        self.content_scroll = QScrollArea(self)
-        self.content_scroll.setObjectName("TrainingSettingContentScroll")
-        self.content_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.content_scroll.setWidgetResizable(True)
-        self.content_scroll.setHorizontalScrollBarPolicy(
+        content_scroll = QScrollArea(self)
+        self.content_scroll = content_scroll
+        content_scroll.setObjectName("TrainingSettingContentScroll")
+        content_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        content_scroll.setWidgetResizable(True)
+        content_scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
-        self.content_scroll.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
-        self.content_scroll.setStyleSheet(
+        content_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        content_scroll.setStyleSheet(
             "QScrollArea#TrainingSettingContentScroll, "
             "QScrollArea#TrainingSettingContentScroll > QWidget > QWidget {"
             "border: none; background: transparent;"
             "}"
         )
-        self.content_widget = QWidget(self.content_scroll)
-        self.content_widget.setObjectName("TrainingSettingContent")
-        content_layout = QVBoxLayout(self.content_widget)
+        content_widget = QWidget(content_scroll)
+        self.content_widget = content_widget
+        content_widget.setObjectName("TrainingSettingContent")
+        content_layout = QVBoxLayout(content_widget)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(12)
 
@@ -711,13 +747,14 @@ class TrainingSettingDialog(BaseDialog):
         add_set_row(4, "Device", self.dev_label, self.dev_btn)
 
         # Output Directory
-        self.output_dir_label = QLabel("")
-        self.output_dir_label.setTextInteractionFlags(
-            self.output_dir_label.textInteractionFlags()
+        output_dir_label = QLabel("")
+        self.output_dir_label = output_dir_label
+        output_dir_label.setTextInteractionFlags(
+            output_dir_label.textInteractionFlags()
         )
         self.out_btn = QPushButton("Set")
         self.out_btn.clicked.connect(self.set_output_dir)
-        add_set_row(5, "Output directory", self.output_dir_label, self.out_btn)
+        add_set_row(5, "Output directory", output_dir_label, self.out_btn)
 
         self.checkpoint_entry = QLineEdit("0")
         add_simple_row(
@@ -727,35 +764,39 @@ class TrainingSettingDialog(BaseDialog):
         )
 
         # Evaluation
-        self.evaluation_combo = QComboBox()
+        evaluation_combo = QComboBox()
+        self.evaluation_combo = evaluation_combo
         self.evaluation_list = [
             self._EVALUATION_DISPLAY_LABELS[option] for option in TrainingEvaluation
         ]
         for option in TrainingEvaluation:
-            self.evaluation_combo.addItem(
+            evaluation_combo.addItem(
                 self._EVALUATION_DISPLAY_LABELS[option],
                 option,
             )
         self._set_evaluation_option(TrainingEvaluation.VAL_LOSS)
-        add_simple_row(7, "Evaluation", self.evaluation_combo)
+        add_simple_row(7, "Evaluation", evaluation_combo)
 
         self.repeat_entry = QLineEdit("1")
         add_simple_row(8, "Repeat number", self.repeat_entry)
 
+        resource_preview_note = QLabel("")
+        self.resource_preview_note = resource_preview_note
+        resource_preview_note.setObjectName("TrainingResourcePreviewNote")
+        resource_preview_note.setWordWrap(True)
+        resource_preview_note.setStyleSheet(
+            "QLabel#TrainingResourcePreviewNote {"
+            "color: #b9c6d4; background: transparent; padding: 2px 0;"
+            "}"
+        )
+        resource_preview_note.hide()
+        content_layout.addWidget(resource_preview_note)
+
         content_layout.addLayout(form_layout)
 
-        self.recommendation_note = QLabel()
-        self.recommendation_note.setObjectName("TrainingRecommendationNote")
-        self.recommendation_note.setWordWrap(True)
-        self.recommendation_note.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Preferred,
-        )
-        self.recommendation_note.hide()
-        content_layout.addWidget(self.recommendation_note)
         content_layout.addStretch(1)
-        self.content_scroll.setWidget(self.content_widget)
-        layout.addWidget(self.content_scroll, stretch=1)
+        content_scroll.setWidget(content_widget)
+        layout.addWidget(content_scroll, stretch=1)
 
         # Buttons
         footer = QHBoxLayout()
@@ -771,10 +812,15 @@ class TrainingSettingDialog(BaseDialog):
 
     def set_optimizer(self):
         """Open the optimizer setting dialog and apply the result."""
-        setter = OptimizerSettingDialog(self)
+        setter = OptimizerSettingDialog(
+            self,
+            optimizer=self.optim,
+            optimizer_params=self.optim_params,
+        )
         if setter.exec():
             optim, optim_params = setter.get_result()
             if optim:  # Params can be empty
+                self._resource_preview_generation += 1
                 self.optim = optim
                 self.optim_params = dict(optim_params or {})
                 if self.opt_label:
@@ -782,13 +828,15 @@ class TrainingSettingDialog(BaseDialog):
                         self._optimizer_summary(optim, self.optim_params)
                     )
                 self._track_recommendation_edit(TrainingRecommendationField.OPTIMIZER)
+                self._schedule_resource_preview()
 
     def set_device(self):
         """Open the device setting dialog and apply the result."""
         setter = DeviceSettingDialog(self)
         if setter.exec():
             previous_device = self.device
-            self.use_cpu, self.gpu_idx = setter.get_result()
+            use_cpu, self.gpu_idx = setter.get_result()
+            self.use_cpu = bool(use_cpu)
             self.device = (
                 "cpu"
                 if self.use_cpu
@@ -797,6 +845,8 @@ class TrainingSettingDialog(BaseDialog):
             if self.dev_label:
                 self.dev_label.setText(self._device_display_name(self.device))
             if self.device != previous_device:
+                self._accepted_resource_preview_receipt = None
+                self._resource_preview_generation += 1
                 self._refresh_recommendation_for_device()
 
     def _refresh_recommendation_for_device(self) -> None:
@@ -816,6 +866,117 @@ class TrainingSettingDialog(BaseDialog):
             return
         self.apply_recommendation(recommendation)
         self._device_recommendation_refresh_failed = False
+        self._schedule_resource_preview()
+
+    def _initialize_resource_preview(self) -> None:
+        """Start advisory refinement after deterministic fields are visible."""
+        preview_timer = QTimer(self)
+        self._resource_preview_timer = preview_timer
+        preview_timer.setSingleShot(True)
+        preview_timer.setInterval(150)
+        preview_timer.timeout.connect(self._dispatch_resource_preview)
+        if (
+            self._resource_preview_request_template is not None
+            and self._resource_preview_dispatcher is not None
+        ):
+            preview_timer.start(0)
+
+    def _schedule_resource_preview(self) -> None:
+        timer = self._resource_preview_timer
+        if (
+            timer is not None
+            and self._resource_preview_request_template is not None
+            and self._resource_preview_dispatcher is not None
+        ):
+            timer.start()
+
+    def build_training_resource_preview_request(
+        self,
+    ) -> TrainingResourcePreviewRequest | None:
+        """Snapshot current draft fields and advance the dialog generation."""
+        template = self._resource_preview_request_template
+        if template is None or self.bs_entry is None:
+            return None
+        try:
+            batch_size = int(self.bs_entry.text())
+        except ValueError:
+            return None
+        if batch_size <= 0:
+            return None
+        self._resource_preview_generation += 1
+        return replace(
+            template,
+            request_generation=self._resource_preview_generation,
+            device=self.device,
+            batch_size=batch_size,
+            optimizer=str(getattr(self.optim, "__name__", self.optim) or "Adam"),
+        )
+
+    def _dispatch_resource_preview(self) -> None:
+        request = self.build_training_resource_preview_request()
+        dispatcher = self._resource_preview_dispatcher
+        if request is None or dispatcher is None:
+            return
+        try:
+            dispatcher(request, self.apply_training_resource_preview)
+        except Exception:
+            return
+
+    def apply_training_resource_preview(
+        self,
+        result: TrainingResourcePreviewResult,
+    ) -> bool:
+        """Apply only the newest reduction to a still-untouched batch field."""
+        template = self._resource_preview_request_template
+        if not isinstance(result, TrainingResourcePreviewResult) or template is None:
+            return False
+        if (
+            result.request_generation != self._resource_preview_generation
+            or result.publication_generation != template.publication_generation
+            or TrainingRecommendationField.BATCH_SIZE
+            in self._edited_recommendation_fields
+            or self.bs_entry is None
+        ):
+            return False
+        try:
+            current_batch = int(self.bs_entry.text())
+        except ValueError:
+            return False
+        if (
+            current_batch != result.requested_batch_size
+            or result.suggested_batch_size >= current_batch
+        ):
+            return False
+        self.bs_entry.setText(str(result.suggested_batch_size))
+        self._accepted_resource_preview_receipt = result.receipt
+        if self.resource_preview_note is not None:
+            self.resource_preview_note.setText(
+                result.warning
+                or (
+                    f"Batch size was adjusted to {result.suggested_batch_size} "
+                    "for the available GPU memory."
+                )
+            )
+            self.resource_preview_note.show()
+            self.resource_preview_note.updateGeometry()
+            self._fit_dialog_to_content()
+            self._reveal_resource_preview_note()
+            QTimer.singleShot(0, self._reveal_resource_preview_note)
+        return True
+
+    def _reveal_resource_preview_note(self) -> None:
+        """Keep an automatic draft change and its explanation visible together."""
+        note = self.resource_preview_note
+        scroll = self.content_scroll
+        if note is None or scroll is None or note.isHidden():
+            return
+        layout = self.layout()
+        if layout is not None:
+            layout.activate()
+        content_layout = self.content_widget.layout() if self.content_widget else None
+        if content_layout is not None:
+            content_layout.activate()
+        scroll.ensureWidgetVisible(note, 0, 8)
 
     def set_output_dir(self):
         """Open a directory picker for the training output path."""
