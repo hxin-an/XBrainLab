@@ -17269,3 +17269,19 @@
   - The fast dashboard remains non-green because of existing global Basedpyright baseline errors,
     stale strict resource-calibration evidence and unavailable xcb in the current sandbox. These are
     not hidden by the focused PASS results.
+
+## 2026-08-11 - Required public gate publication race
+
+- PR `#14` exact-head CI failed two immediate `LoadDataCommand -> data_summary` cases while an
+  optional montage worker was publishing its result.
+- Preserved the intended concurrency boundary: immutable `data_summary` now reads the committed
+  publication without waiting; mutable `data_lists` continues to return recoverable busy.
+- Added deterministic worker-event coverage, publication generation checks, unusable-publication
+  failure coverage, and full summary schema parity.
+- Local evidence after the repair:
+  - application/state unit: `261 passed`
+  - IO/public-BIDS/cross-source: `42 passed`
+  - adjacent workflow/agent-tool: `68 passed`
+  - focused static checks: PASS
+- Next gate: commit and push the repair, then require all checks for the new exact PR head to finish
+  with success before merge or handoff claims.

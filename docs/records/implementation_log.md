@@ -6919,3 +6919,28 @@ call sites into explicit legacy/fallback helpers.
   `linux-unit-ui` command now reuses the existing ten UI domain shards so Qt/thread state cannot
   leak across unrelated domains; file coverage, fail-closed attestations, and aggregate coverage
   remain unchanged.
+
+## 2026-08-11 Publication-backed dataset summary race repair
+
+### 實作
+
+- Exact-head GitHub CI exposed a real race after `LoadDataCommand`: optional BIDS montage
+  publication could own the application command lock while the required public-data tests
+  immediately queried `data_summary`, producing a recoverable `application_busy` failure.
+- Routed `data_summary` through the last verified immutable `ApplicationViewPublication` instead of
+  re-reading mutable EEG objects. `data_lists` remains lock-guarded and fail-closed because it still
+  exposes object-derived rows.
+- Added a pure published-state summary projection and schema-parity coverage for inventory, formats,
+  channels, metadata, events, runtime signals, and GDF diagnostics.
+- Added a deterministic real-GDF lifecycle regression that event-blocks the actual optional montage
+  commit: the committed summary stays readable, mutable lists report busy, stale generations are
+  rejected, and the final publication advances after the worker is released.
+
+### 驗證與邊界
+
+- ApplicationService / StateSnapshot unit suites: `261 passed`.
+- Required IO / public BIDS / cross-source integration group: `42 passed`.
+- Adjacent application workflow and agent dataset-summary tool tests: `68 passed`.
+- Focused Ruff lint/format, product-source Basedpyright, and `git diff --check`: PASS.
+- The repair still requires a new exact-head GitHub Actions run. Results from the superseded commit
+  do not certify this candidate.

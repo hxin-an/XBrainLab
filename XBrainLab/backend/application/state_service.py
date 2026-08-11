@@ -659,33 +659,49 @@ class StateSnapshotService:
             self.dataset.get_loaded_data_list,
             label="dataset.loaded_data_summary",
         )
-        summary: dict[str, Any] = {
-            "count": len(data_list) if data_list else state.raw.count,
-            "files": [self.data_filename(item) for item in data_list]
-            if data_list
-            else state.raw.files,
-            "formats": (
-                self._raw_formats(data_list) if data_list else state.raw.formats
-            ),
-            "channels": (
-                self._raw_channels(data_list) if data_list else state.raw.channels
-            ),
-            "metadata": self._raw_metadata(data_list)
-            if data_list
-            else state.raw.metadata,
-            "total": state.raw.event_total,
-            "unique_count": len(state.raw.unique_events),
-            "unique_labels": state.raw.unique_events,
-            "runtime_signals": [],
-            "gdf_duplicate_channel_files": [],
-            "gdf_duplicate_channel_details": [],
-        }
+        summary = self.data_summary_from_published_state(state)
+        if data_list:
+            summary.update(
+                {
+                    "count": len(data_list),
+                    "files": [self.data_filename(item) for item in data_list],
+                    "formats": self._raw_formats(data_list),
+                    "channels": self._raw_channels(data_list),
+                    "metadata": self._raw_metadata(data_list),
+                }
+            )
         summary.update(
             self._read_optional_dict(
                 self.dataset.get_event_info,
                 label="dataset.event_summary",
             )
         )
+        summary.update(state.raw.diagnostics)
+        return summary
+
+    @staticmethod
+    def data_summary_from_published_state(
+        state: ApplicationStateSnapshot,
+    ) -> dict[str, Any]:
+        """Project one dataset summary from already verified publication truth.
+
+        Unlike ``data_summary_from_state``, this path never re-reads mutable EEG
+        objects. It is therefore safe while an advisory background publication
+        (for example BIDS montage preparation) owns the command lock.
+        """
+        summary: dict[str, Any] = {
+            "count": state.raw.count,
+            "files": list(state.raw.files),
+            "formats": list(state.raw.formats),
+            "channels": list(state.raw.channels),
+            "metadata": [dict(item) for item in state.raw.metadata],
+            "total": state.raw.event_total,
+            "unique_count": len(state.raw.unique_events),
+            "unique_labels": list(state.raw.unique_events),
+            "runtime_signals": [],
+            "gdf_duplicate_channel_files": [],
+            "gdf_duplicate_channel_details": [],
+        }
         summary.update(state.raw.diagnostics)
         return summary
 

@@ -845,6 +845,79 @@ def test_detached_data_query_fails_fast_instead_of_waiting_for_mutation_lock() -
     assert result.diagnostics["application_busy"] is True
 
 
+def test_data_summary_query_uses_committed_publication_while_command_lock_is_busy(
+    monkeypatch,
+) -> None:
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    service.study.data_manager.loaded_data_list = [raw]
+    service.study.data_manager.preprocessed_data_list = [raw]
+    service.get_state()
+    live_read = MagicMock(
+        side_effect=AssertionError(
+            "published summary must not read mutable EEG objects"
+        )
+    )
+    monkeypatch.setattr(service.dataset, "get_loaded_data_list", live_read)
+    lock_acquired = Event()
+    release_lock = Event()
+
+    def hold_mutation_lock() -> None:
+        with service._command_lock:
+            lock_acquired.set()
+            release_lock.wait(timeout=THREAD_WATCHDOG_SECONDS)
+
+    holder = Thread(target=hold_mutation_lock)
+    holder.start()
+    assert lock_acquired.wait(timeout=THREAD_WATCHDOG_SECONDS)
+
+    try:
+        result = service.execute(QueryStateCommand(query="data_summary"))
+    finally:
+        release_lock.set()
+        holder.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not holder.is_alive()
+    assert result.ok is True
+    assert result.message == "Dataset summary ready."
+    assert result.diagnostics["count"] == 1
+    assert result.diagnostics["files"] == [raw.get_filename()]
+    live_read.assert_not_called()
+
+
+def test_data_summary_query_rejects_stale_expected_publication_generation() -> None:
+    service = ApplicationService(Study())
+    publication = service.get_view_publication()
+
+    result = service.execute(
+        QueryStateCommand(query="data_summary"),
+        expected_publication_generation=publication.generation + 1,
+    )
+
+    assert result.failed is True
+    assert result.error_type is ErrorType.PRECONDITION
+    assert result.diagnostics["stale_publication"] is True
+    assert result.diagnostics["expected_publication_generation"] == (
+        publication.generation + 1
+    )
+    assert result.diagnostics["current_publication_generation"] == (
+        publication.generation
+    )
+
+
+def test_data_summary_query_fails_closed_for_unusable_publication() -> None:
+    service = ApplicationService(Study())
+    service._view_coordinator.mark_stale("forced summary publication failure")
+
+    result = service.execute(QueryStateCommand(query="data_summary"))
+
+    assert result.failed is True
+    assert result.error_type is ErrorType.PRECONDITION
+    assert result.recoverable is True
+    assert result.diagnostics["view_stale"] is True
+    assert result.diagnostics["view_verified"] is False
+
+
 def test_view_publication_keeps_state_and_capabilities_on_one_generation() -> None:
     service = ApplicationService(Study())
 
@@ -7248,10 +7321,11 @@ def test_apply_montage_rejects_channel_subset_after_dataset_generation():
 
 
 def test_query_state_returns_typed_dataset_summary():
-    service = ApplicationService(Study())
     raw = _raw_mock()
-    service.study.data_manager.loaded_data_list = [raw]
-    service.study.data_manager.preprocessed_data_list = [raw]
+    study = Study()
+    study.data_manager.loaded_data_list = [raw]
+    study.data_manager.preprocessed_data_list = [raw]
+    service = ApplicationService(study)
 
     result = service.execute(QueryStateCommand(query="data_summary"))
 

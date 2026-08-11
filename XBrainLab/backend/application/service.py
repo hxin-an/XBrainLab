@@ -1623,6 +1623,55 @@ class ApplicationService(Observable):
             diagnostics=diagnostics,
         )
 
+    def query_published_data_summary(
+        self,
+        *,
+        expected_publication_generation: int | None = None,
+    ) -> CommandResult:
+        """Return the detached dataset summary without waiting on mutable state."""
+        command = QueryStateCommand(query="data_summary")
+        closed = self._closed_command_result_if_any(command)
+        if closed is not None:
+            return closed
+        publication = self._committed_view_publication()
+        if expected_publication_generation is not None:
+            rejection = self._expected_publication_rejection_for_publication(
+                command,
+                expected_publication_generation,
+                publication,
+            )
+            if rejection is not None:
+                return rejection
+        if not publication.usable:
+            message = publication.unavailable_reason or (
+                "Dataset summary is temporarily unavailable. Retry shortly."
+            )
+            return CommandResult.failure_result(
+                command_name=CommandName.QUERY_STATE.value,
+                message=message,
+                state=publication.state,
+                changed_state=ChangedState(state_unknown=True),
+                error_type=ErrorType.PRECONDITION,
+                recoverable=True,
+                error_message=message,
+                diagnostics={
+                    "query": command.query,
+                    "publication_generation": publication.generation,
+                    "publication_revision": publication.revision,
+                    "view_verified": publication.verified,
+                    "view_stale": publication.stale,
+                },
+            )
+        return CommandResult.success_result(
+            command_name=CommandName.QUERY_STATE.value,
+            message="Dataset summary ready.",
+            state=publication.state,
+            changed_state=ChangedState(),
+            diagnostics=self.state_snapshot.data_summary_from_published_state(
+                publication.state,
+            ),
+        )
+
     def execute(
         self,
         command: Command | Any,
@@ -1780,6 +1829,13 @@ class ApplicationService(Observable):
         if self._is_published_state_query(command):
             return (
                 self.query_published_state(
+                    expected_publication_generation=expected_publication_generation,
+                ),
+                None,
+            )
+        if self._is_published_data_summary_query(command):
+            return (
+                self.query_published_data_summary(
                     expected_publication_generation=expected_publication_generation,
                 ),
                 None,
@@ -2004,6 +2060,13 @@ class ApplicationService(Observable):
         return (
             isinstance(command, QueryStateCommand)
             and str(command.query or "state").lower() == "state"
+        )
+
+    @staticmethod
+    def _is_published_data_summary_query(command: Command | Any) -> bool:
+        """Whether a dataset summary is already detached in the publication."""
+        return isinstance(command, QueryStateCommand) and (
+            str(command.query or "").lower() == "data_summary"
         )
 
     def _execute_query_without_wait(

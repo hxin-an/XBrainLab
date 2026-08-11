@@ -1758,6 +1758,44 @@ def test_data_summary_query_falls_back_to_state_when_loaded_list_query_fails() -
     assert summary["unique_labels"] == ["left"]
 
 
+def test_published_data_summary_preserves_live_summary_schema() -> None:
+    state_builder = _snapshot_service()
+    state = state_builder.build()
+
+    published = state_builder.data_summary_from_published_state(state)
+    live = state_builder.data_summary_from_state(state)
+
+    assert published == live
+    assert published == {
+        "count": 1,
+        "files": ["subject01.fif"],
+        "formats": [".fif"],
+        "channels": ["C3", "C4"],
+        "metadata": [
+            {
+                "index": "0",
+                "file": "subject01.fif",
+                "subject": "S01",
+                "session": "session-01",
+            }
+        ],
+        "total": 2,
+        "unique_count": 1,
+        "unique_labels": ["left"],
+        "runtime_signals": ["signal one"],
+        "gdf_duplicate_channel_files": ["sub01.gdf"],
+        "gdf_duplicate_channel_details": [
+            {
+                "file": "sub01.gdf",
+                "generated_bases": ["EEG"],
+                "generated_channels": ["EEG-0", "EEG-1"],
+                "message": "detail message",
+            }
+        ],
+        "source": "runtime",
+    }
+
+
 def test_query_state_service_returns_readonly_summaries() -> None:
     state_builder = _snapshot_service()
     query = QueryStateCommandService(
