@@ -108,6 +108,7 @@ class StableDirectoryIdentity:
 
     __slots__ = (
         "_closed",
+        "_descriptor_bound",
         "_directory_fd",
         "_retained_handles",
         "_windows",
@@ -120,12 +121,14 @@ class StableDirectoryIdentity:
         path: str,
         entries: tuple[FilesystemEntryIdentity, ...],
         *,
+        descriptor_bound: bool = False,
         directory_fd: int | None = None,
         retained_handles: tuple[Any, ...] = (),
         windows: bool,
     ) -> None:
         self.path = path
         self.entries = entries
+        self._descriptor_bound = descriptor_bound
         self._directory_fd = directory_fd
         self._retained_handles = retained_handles
         self._windows = windows
@@ -150,11 +153,37 @@ class StableDirectoryIdentity:
         """Fail unless the path still resolves to this full identity chain."""
         if self._closed:
             raise FilesystemIdentityError("Directory identity lease is closed.")
-        candidate = _canonical_directory(directory or self.path)
+        candidate = (
+            _absolute_directory(directory or self.path)
+            if self._descriptor_bound
+            else _canonical_directory(directory or self.path)
+        )
         if _path_key(candidate) != _path_key(self.path):
             raise FilesystemIdentityError(
                 "Directory path no longer resolves to the admitted location."
             )
+        if self._descriptor_bound:
+            directory_fd = self._directory_fd
+            if directory_fd is None:
+                raise FilesystemIdentityError(
+                    "POSIX artifact access is missing its retained directory "
+                    "descriptor."
+                )
+            try:
+                observed = os.fstat(directory_fd)
+            except OSError as exc:
+                raise FilesystemIdentityError(
+                    "Directory descriptor changed before filesystem use."
+                ) from exc
+            expected = self.entries[-1]
+            if (int(observed.st_dev), int(observed.st_ino)) != (
+                expected.device,
+                expected.file_id,
+            ):
+                raise FilesystemIdentityError(
+                    "Directory descriptor changed before filesystem use."
+                )
+            return
         try:
             observed = (
                 _capture_windows_identity_chain(candidate)
@@ -391,6 +420,10 @@ def _is_windows() -> bool:
 
 def _canonical_directory(path: str | os.PathLike[str]) -> str:
     return os.path.normpath(os.path.realpath(os.path.abspath(os.fspath(path))))
+
+
+def _absolute_directory(path: str | os.PathLike[str]) -> str:
+    return os.path.normpath(os.path.abspath(os.fspath(path)))
 
 
 def _path_key(path: str) -> str:
@@ -711,8 +744,13 @@ def retain_directory_identity(
     directory_fd: int | None = None,
 ) -> StableDirectoryIdentity:
     """Retain one operation-scoped identity, denying Windows replacement."""
-    canonical = _canonical_directory(directory)
     windows = _is_windows()
+    descriptor_bound = not windows and directory_fd is not None
+    canonical = (
+        _absolute_directory(directory)
+        if descriptor_bound
+        else _canonical_directory(directory)
+    )
     if windows:
         if directory_fd is not None:
             raise FilesystemIdentityError(
@@ -720,14 +758,21 @@ def retain_directory_identity(
             )
         entries, handles = _retain_windows_identity_chain(canonical)
         retained_directory_fd = None
+    elif descriptor_bound:
+        handles = ()
+        retained_directory_fd = os.dup(cast(int, directory_fd))
+        retained_status = os.fstat(retained_directory_fd)
+        entries = (
+            FilesystemEntryIdentity(
+                path=_path_key(canonical),
+                device=int(retained_status.st_dev),
+                file_id=int(retained_status.st_ino),
+            ),
+        )
     else:
         entries = _capture_stat_identity_chain(canonical)
         handles = ()
-        retained_directory_fd = (
-            os.dup(directory_fd)
-            if directory_fd is not None
-            else os.open(canonical, _directory_open_flags())
-        )
+        retained_directory_fd = os.open(canonical, _directory_open_flags())
         retained_status = os.fstat(retained_directory_fd)
         final_identity = entries[-1]
         if (
@@ -741,6 +786,7 @@ def retain_directory_identity(
     identity = StableDirectoryIdentity(
         canonical,
         entries,
+        descriptor_bound=descriptor_bound,
         directory_fd=retained_directory_fd,
         retained_handles=handles,
         windows=windows,
@@ -975,21 +1021,6 @@ def _legacy_namespace_exists_at(
         os.close(current_fd)
 
 
-def _fd_access_path(directory_fd: int) -> Path:
-    identity = os.fstat(directory_fd)
-    for base in (Path("/proc/self/fd"), Path("/dev/fd")):
-        candidate = base / str(directory_fd)
-        try:
-            observed = os.stat(candidate)
-        except OSError:
-            continue
-        if (observed.st_dev, observed.st_ino) == (identity.st_dev, identity.st_ino):
-            return candidate
-    raise RuntimeError(
-        "This POSIX runtime has no stable directory-fd path for artifact writers."
-    )
-
-
 def _raise_legacy_namespace_error() -> None:
     raise LegacyOutputNamespaceError(
         "A pre-SEC-02 training output namespace exists under the selected output "
@@ -1007,7 +1038,6 @@ def _create_posix_output_directory(
 ) -> ContainedOutputDirectory:
     current_fd = _open_or_create_posix_root(root)
     try:
-        _fd_access_path(current_fd)
         if _legacy_namespace_exists_at(current_fd, legacy_components):
             _raise_legacy_namespace_error()
 
@@ -1029,10 +1059,10 @@ def _create_posix_output_directory(
             os.close(current_fd)
             current_fd = next_fd
 
-        io_path = _fd_access_path(current_fd)
+        output_path = root.joinpath(*components)
         output_directory = ContainedOutputDirectory(
-            path=root.joinpath(*components),
-            io_path=io_path,
+            path=output_path,
+            io_path=output_path,
             directory_fd=current_fd,
             identity_snapshot=None,
         )
@@ -1050,7 +1080,7 @@ def _create_fallback_output_directory(
     exclusive: bool,
     legacy_components: tuple[str, ...],
 ) -> ContainedOutputDirectory:
-    os.makedirs(root, exist_ok=True)
+    root.mkdir(parents=True, exist_ok=True)
     resolved_root = root.resolve(strict=False)
     if legacy_components:
         legacy_candidate = resolved_root.joinpath(*legacy_components)
@@ -1060,7 +1090,7 @@ def _create_fallback_output_directory(
     candidate = resolved_root.joinpath(*components).resolve(strict=False)
     _require_contained(candidate, resolved_root)
     try:
-        os.makedirs(candidate, exist_ok=not exclusive)
+        candidate.mkdir(parents=True, exist_ok=not exclusive)
     except FileExistsError as exc:
         raise FileExistsError(
             "Training output directory already exists; implicit resume is not "

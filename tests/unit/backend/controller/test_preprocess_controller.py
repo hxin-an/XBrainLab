@@ -255,7 +255,7 @@ def test_apply_epoching_and_locking(controller, mock_study):
         result = controller.apply_epoching(None, ["Event1"], -0.2, 0.5)
 
         assert result is True
-        instance.data_preprocess.assert_called_with(None, ["Event1"], -0.2, 0.5)
+        instance.data_preprocess.assert_called_with(None, ["Event1"], -0.2, 0.5, False)
         # Verify dataset is locked
         mock_study.lock_dataset.assert_called_once()
 

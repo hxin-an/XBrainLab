@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from copy import deepcopy
 from typing import Any
 
 import torch
+
+ModelFactory = Callable[..., torch.nn.Module]
 
 
 class ModelHolder:
@@ -14,7 +17,7 @@ class ModelHolder:
     Holds the model class, model parameters, and pretrained weight path.
 
     Attributes:
-        target_model (type): Model class, inherited from `torch.nn.Module`
+        target_model: Model class or factory returning a `torch.nn.Module`.
         model_params_map (dict): Model parameters
         pretrained_weight_path (str): Path to pretrained weight
 
@@ -22,13 +25,22 @@ class ModelHolder:
 
     def __init__(
         self,
-        target_model: type,
-        model_params_map: dict,
+        target_model: ModelFactory,
+        model_params_map: dict[str, Any],
         pretrained_weight_path: str | None = None,
+        *,
+        model_id: str | None = None,
+        display_name: str | None = None,
     ):
         self.target_model = target_model
         self._model_params_map = deepcopy(model_params_map)
         self.pretrained_weight_path = pretrained_weight_path
+        self.model_id = model_id or getattr(target_model, "__name__", str(target_model))
+        self.display_name = display_name or getattr(
+            target_model,
+            "__name__",
+            str(target_model),
+        )
 
     @property
     def model_params_map(self) -> dict[str, Any]:
@@ -49,7 +61,9 @@ class ModelHolder:
             if value is not None
         ]
         options = ", ".join(option_list)
-        return f"{self.target_model.__name__} ({options})"
+        if not options:
+            return self.display_name
+        return f"{self.display_name} ({options})"
 
     def get_model(self, args) -> torch.nn.Module:
         """Instantiate the model with stored and additional parameters.

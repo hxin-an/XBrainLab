@@ -12,11 +12,11 @@ from XBrainLab.backend.application import (
     CommandName,
     ConfigureTrainingCommand,
     CreateEpochCommand,
-    GenerateDatasetCommand,
     PreprocessCommand,
     PreprocessOperation,
     PreviewInterpretationCommand,
     QueryStateCommand,
+    SaveDatasetSplitCommand,
     ScanSourceCommand,
     TrainCommand,
     ValidateInterpretationCommand,
@@ -148,7 +148,7 @@ def test_graz_external_labels_reach_real_training_through_interpretation_spine(
             )
         )
         generated = service.execute(
-            GenerateDatasetCommand(
+            SaveDatasetSplitCommand(
                 test_ratio=0.2,
                 val_ratio=0.2,
                 split_strategy="trial",
@@ -160,8 +160,10 @@ def test_graz_external_labels_reach_real_training_through_interpretation_spine(
         assert epoch.ok, epoch.message
         assert epoch.state.epoch.epoch_count == 273
         assert generated.ok, generated.message
-        assert generated.diagnostics["split_audit"]["ok"] is True
-        assert generated.state.dataset.available is True
+        assert generated.diagnostics["materialized"] is False
+        assert generated.state.dataset.available is False
+        assert generated.state.dataset.split_spec_saved is True
+        assert generated.state.dataset.split_materialized is False
 
         model = service.execute(ConfigureTrainingCommand(model_name="EEGNet"))
         options = service.execute(
@@ -189,6 +191,10 @@ def test_graz_external_labels_reach_real_training_through_interpretation_spine(
         )
 
         assert trained.ok, trained.message
+        assert trained.diagnostics["split_preparation"]["materialized"] is True
+        assert trained.diagnostics["split_preparation"]["split_audit"]["ok"] is True
+        assert trained.state.dataset.available is True
+        assert trained.state.dataset.split_materialized is True
         assert trained.state.training.run_count == 1
         assert trained.state.training.finished_run_count == 1
         assert history.ok, history.message
@@ -200,7 +206,8 @@ def test_graz_external_labels_reach_real_training_through_interpretation_spine(
         _close_service(service)
 
 
-def test_public_bids_reaches_epoch_and_dataset_generation_readiness() -> None:
+@pytest.mark.optional_public_fixture
+def test_public_bids_reaches_epoch_and_split_configuration_readiness() -> None:
     """A different public source must materialize BIDS timing into real epochs."""
     if not PUBLIC_BIDS_EEG.exists() or not PUBLIC_BIDS_EVENTS.exists():
         pytest.skip(
@@ -286,16 +293,20 @@ def test_public_bids_reaches_epoch_and_dataset_generation_readiness() -> None:
             "start_experiment",
         }
         dataset_capability = service.get_capabilities().get(
-            CommandName.GENERATE_DATASET
+            CommandName.CONFIGURE_DATASET_SPLIT
         )
         train_capability = service.get_capabilities().get(CommandName.TRAIN)
         assert dataset_capability.available is True
         assert train_capability.available is False
-        assert "Generate datasets before training." in train_capability.reasons
+        assert (
+            "Save a valid data splitting specification before training."
+            in train_capability.reasons
+        )
     finally:
         _close_service(service)
 
 
+@pytest.mark.optional_public_fixture
 def test_physionet_internal_events_reach_real_training_through_interpretation_spine(
     tmp_path: Path,
 ) -> None:
@@ -368,7 +379,7 @@ def test_physionet_internal_events_reach_real_training_through_interpretation_sp
             )
         )
         generated = service.execute(
-            GenerateDatasetCommand(
+            SaveDatasetSplitCommand(
                 test_ratio=0.2,
                 val_ratio=0.2,
                 split_strategy="trial",
@@ -379,10 +390,12 @@ def test_physionet_internal_events_reach_real_training_through_interpretation_sp
         assert filtered.ok, filtered.message
         assert epoch.ok, epoch.message
         assert epoch.state.epoch.epoch_count == 15
-        assert set(epoch.state.epoch.event_ids) == set(class_map)
+        assert set(epoch.state.epoch.event_ids) == set(class_map.values())
         assert generated.ok, generated.message
-        assert generated.diagnostics["split_audit"]["ok"] is True
-        assert generated.state.dataset.available is True
+        assert generated.diagnostics["materialized"] is False
+        assert generated.state.dataset.available is False
+        assert generated.state.dataset.split_spec_saved is True
+        assert generated.state.dataset.split_materialized is False
 
         model = service.execute(ConfigureTrainingCommand(model_name="EEGNet"))
         options = service.execute(
@@ -406,6 +419,13 @@ def test_physionet_internal_events_reach_real_training_through_interpretation_sp
         history = service.execute(QueryStateCommand(query="training_history"))
 
         assert trained.ok, trained.message
+        assert trained.diagnostics["split_preparation"]["materialized"] is True
+        assert trained.diagnostics["split_preparation"]["split_audit"]["ok"] is True
+        assert trained.state.dataset.available is True
+        assert trained.state.dataset.split_materialized is True
+        assert set(
+            service.study.datasets[0].get_epoch_data().label_map.values()
+        ) == set(class_map.values())
         assert trained.state.training.run_count == 1
         assert trained.state.training.finished_run_count == 1
         assert history.ok, history.message
@@ -413,5 +433,11 @@ def test_physionet_internal_events_reach_real_training_through_interpretation_sp
         train_metrics = history.diagnostics["rows"][0]["metrics"]["train"]
         assert RecordKey.LOSS in train_metrics
         assert RecordKey.ACC in train_metrics
+        training_record = service.training_runtime.training_plan_holders()[
+            0
+        ].get_plans()[0]
+        assert set(training_record.dataset.get_epoch_data().label_map.values()) == set(
+            class_map.values()
+        )
     finally:
         _close_service(service)

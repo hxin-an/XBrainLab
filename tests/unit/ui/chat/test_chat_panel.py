@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtCore import QEvent, QMimeData, QPoint, QRect, QSize, Qt
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QApplication,
     QBoxLayout,
@@ -33,6 +34,7 @@ from XBrainLab.backend.controller.chat_controller import (
 )
 from XBrainLab.chat_contract import MAX_CHAT_MESSAGE_CONTENT_LENGTH
 from XBrainLab.llm.agent.assistant_activity import (
+    AssistantDecisionOwner,
     AssistantTurnActivity,
     AssistantTurnActivityPhase,
 )
@@ -245,9 +247,7 @@ class TestChatPanelInit:
         assert not hasattr(chat_panel, "mode_selector_widget")
         assert not hasattr(chat_panel, "mode_section_label")
         assert 52 <= chat_panel.input_field.height() <= 58
-        assert chat_panel.input_field.placeholderText() == (
-            "Ask about the current EEG workflow..."
-        )
+        assert chat_panel.input_field.placeholderText() == "Ask about EEG..."
         assert chat_panel.input_field.accessibleName() == "Assistant message"
         assert "EEG workflow" in chat_panel.input_field.accessibleDescription()
         assert chat_panel.send_btn.isEnabled() is False
@@ -415,7 +415,7 @@ class TestChatPanelInit:
             text_width = button.fontMetrics().horizontalAdvance(button.text()) + 24
             assert text_width <= button.contentsRect().width()
 
-    def test_confirmation_card_keeps_compact_actions_inline_at_420px(
+    def test_confirmation_card_uses_a_readable_native_layout_at_420px(
         self,
         chat_panel,
         qtbot,
@@ -437,10 +437,17 @@ class TestChatPanelInit:
         qtbot.wait(20)
 
         card = chat_panel.confirmation_card_widget
-        assert card.button_layout.direction() == QBoxLayout.Direction.LeftToRight
         for button in (card.secondary_button, card.primary_button):
-            required_width = button.fontMetrics().horizontalAdvance(button.text()) + 24
-            assert required_width <= button.contentsRect().width()
+            assert button.sizeHint().width() <= button.width()
+            assert card.rect().contains(button.geometry())
+        if card.button_layout.direction() == QBoxLayout.Direction.LeftToRight:
+            assert not card.secondary_button.geometry().intersects(
+                card.primary_button.geometry()
+            )
+        else:
+            assert card.primary_button.geometry().top() > (
+                card.secondary_button.geometry().bottom()
+            )
 
     def test_confirmation_card_shows_stale_context_warning(self, chat_panel) -> None:
         request = AgentConfirmationRequest.for_action(
@@ -666,9 +673,7 @@ class TestChatPanelInit:
         panel.set_runtime_state("ready")
         assert panel.input_field.isEnabled() is True
         assert panel.send_btn.isEnabled() is False
-        assert panel.input_field.placeholderText() == (
-            "Ask about the current EEG workflow..."
-        )
+        assert panel.input_field.placeholderText() == "Ask about EEG..."
         assert panel.setup_btn.isHidden()
         assert panel.retry_runtime_btn.isHidden()
         assert panel.runtime_progress.isHidden()
@@ -871,7 +876,9 @@ class TestChatPanelInit:
         assert emissions == []
 
         panel.set_runtime_state("failed", "The selected model did not start.")
-        assert panel.retry_runtime_btn.text() == "Retry local assistant"
+        assert panel.retry_runtime_btn.accessibleName() == "Retry local assistant"
+        assert panel.retry_runtime_btn.text().startswith("Retry local")
+        assert panel.retry_runtime_btn.toolTip()
         assert panel.retry_runtime_btn.isVisible()
         assert panel.retry_runtime_btn.isEnabled()
         assert panel.setup_btn.isVisible()
@@ -925,10 +932,95 @@ class TestChatPanelInit:
             panel.retry_runtime_btn.geometry().bottom()
         )
         for control in (panel.retry_runtime_btn, panel.setup_btn):
+            assert control.sizeHint().width() <= control.width()
+            assert control.accessibleName()
+            full_label = control.property("assistantFullLabel")
+            assert isinstance(full_label, str)
+            if control.text() != full_label:
+                assert "…" in control.text()
+                assert control.toolTip()
+
+    def test_failed_runtime_actions_keep_full_labels_at_standard_dock_width(
+        self,
+        qtbot,
+    ) -> None:
+        with patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None):
+            from XBrainLab.ui.chat.panel import ChatPanel
+
+            panel = ChatPanel()
+            qtbot.addWidget(panel)
+            panel.resize(420, 760)
+            panel.set_runtime_state("failed")
+            panel.show()
+            qtbot.wait(20)
+            panel._reflow_chat_content()
+
+        assert panel.retry_runtime_btn.text() == "Retry local assistant"
+        assert panel.setup_btn.text() == "Settings"
+
+    def test_standard_dock_stacks_recovery_actions_when_native_hints_do_not_fit(
+        self,
+        qtbot,
+    ) -> None:
+        with patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None):
+            from XBrainLab.ui.chat.panel import ChatPanel
+
+            panel = ChatPanel()
+            qtbot.addWidget(panel)
+            panel.retry_runtime_btn.sizeHint = lambda: QSize(240, 42)
+            panel.setup_btn.sizeHint = lambda: QSize(240, 42)
+            panel.resize(420, 760)
+            panel.set_runtime_state("failed")
+            panel.show()
+            qtbot.wait(20)
+            panel._reflow_chat_content()
+
+        assert (
+            panel.runtime_action_layout.direction() == QBoxLayout.Direction.TopToBottom
+        )
+        assert panel.retry_runtime_btn.text() == "Retry local assistant"
+        assert panel.setup_btn.text() == "Settings"
+
+    def test_runtime_and_workflow_copy_refit_after_font_metrics_change(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        chat_panel.resize(320, 650)
+        chat_panel.set_runtime_state("failed")
+        chat_panel.set_processing_state(True)
+        chat_panel.set_workflow_status("Waiting for a reviewed decision")
+        chat_panel.show()
+        qtbot.wait(20)
+
+        enlarged = QFont(chat_panel.font())
+        enlarged.setPointSize(max(enlarged.pointSize() + 8, 20))
+        for control in (chat_panel.retry_runtime_btn, chat_panel.setup_btn):
+            control.setStyleSheet("padding: 4px 12px;")
+            control.setFont(enlarged)
+        chat_panel.turn_activity_step.setStyleSheet("")
+        chat_panel.turn_activity_step.setFont(enlarged)
+        chat_panel._reflow_chat_content()
+        qtbot.wait(20)
+
+        for control in (chat_panel.retry_runtime_btn, chat_panel.setup_btn):
             required_width = (
                 control.fontMetrics().horizontalAdvance(control.text()) + 24
             )
             assert required_width <= control.contentsRect().width()
+            if "…" in control.text():
+                assert control.toolTip()
+        status = chat_panel.turn_activity_step
+        required_height = (
+            status.fontMetrics()
+            .boundingRect(
+                QRect(0, 0, max(status.contentsRect().width(), 1), 10_000),
+                int(Qt.TextFlag.TextWordWrap),
+                status.text(),
+            )
+            .height()
+        )
+        assert status.height() >= required_height
 
     @pytest.mark.parametrize("width", [420, 760, 1280])
     def test_runtime_actions_are_fully_inside_state_surface(
@@ -983,6 +1075,26 @@ class TestChatPanelInit:
         assert panel.setup_btn.geometry().top() > (
             panel.retry_runtime_btn.geometry().bottom()
         )
+
+    def test_runtime_recovery_actions_ignore_inflated_native_size_hints(
+        self,
+        qtbot,
+    ) -> None:
+        with patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None):
+            from XBrainLab.ui.chat.panel import ChatPanel
+
+            panel = ChatPanel()
+            qtbot.addWidget(panel)
+            for control in (panel.retry_runtime_btn, panel.setup_btn):
+                control.sizeHint = lambda: QSize(520, 42)
+            panel.resize(280, 620)
+            panel.set_runtime_state("failed")
+            panel.show()
+            qtbot.wait(20)
+
+        for control in (panel.retry_runtime_btn, panel.setup_btn):
+            _assert_inside_panel_on_all_sides(panel, control)
+            assert control.minimumWidth() == 0
 
     def test_runtime_notice_strips_markdown_emphasis(self, qtbot):
         with patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None):
@@ -1092,13 +1204,19 @@ class TestChatPanelInit:
                 ),
             ),
         )
-        qtbot.waitUntil(
-            lambda: chat_panel.response_actions_widget.isHidden() is False,
-            timeout=3_000,
-        )
+        while chat_panel.response_actions_widget.isHidden():
+            assert chat_panel._history_rebuild_active is True
+            chat_panel._history_rebuild_timer.stop()
+            chat_panel._apply_history_rebuild_chunk()
+            chat_panel._history_rebuild_timer.stop()
+
+        assert chat_panel._history_rebuild_active is True
+        assert chat_panel.response_actions_widget.isHidden() is False
 
         assert controller.consume_response_actions(live_record.presentation_id) is True
         assert chat_panel.response_actions_widget.isHidden()
+
+        chat_panel._history_rebuild_timer.start(0)
 
         qtbot.waitUntil(
             lambda: len(chat_panel.chat_content_widget.findChildren(MessageBubble))
@@ -1589,9 +1707,9 @@ class TestChatPanelInit:
         assert viewport is not None
         assert button.toolTip() == full_label
         assert button.accessibleName() == full_label
-        assert button.text() != full_label
-        assert "…" in button.text()
-        assert button.text().startswith("Review the unresolved label")
+        assert button.text() == full_label or (
+            "…" in button.text() and button.text().startswith("Review")
+        )
         _assert_inside_panel_on_all_sides(chat_panel, button)
         assert chat_panel.scroll_area.isAncestorOf(chat_panel.response_actions_widget)
 
@@ -1642,11 +1760,6 @@ class TestChatPanelInit:
         ).y()
         assert prompt_bottom < chat_panel.empty_state_widget.height()
 
-        if width == 320:
-            assert all(
-                button.height() <= 68 for button in chat_panel.suggestion_prompt_buttons
-            )
-
     def test_narrow_empty_state_starts_at_the_title_instead_of_the_tail(
         self,
         chat_panel,
@@ -1687,7 +1800,7 @@ class TestChatPanelInit:
             placeholder
         )
 
-        assert placeholder == "Ask about the current EEG workflow..."
+        assert placeholder == "Ask about EEG..."
         assert chat_panel.input_field.horizontalScrollBarPolicy() == (
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
@@ -1765,7 +1878,7 @@ class TestChatPanelInit:
         assert abs(send_rect.bottom() - chat_panel.input_field.geometry().bottom()) <= 2
         assert chat_panel.input_widget.rect().contains(send_rect)
 
-    def test_suggestions_use_compact_rows_at_normal_dock_width(
+    def test_suggestions_keep_readable_rows_at_normal_dock_width(
         self,
         chat_panel,
         qtbot,
@@ -1774,9 +1887,18 @@ class TestChatPanelInit:
         chat_panel.show()
         qtbot.wait(20)
 
-        assert all(
-            button.height() <= 54 for button in chat_panel.suggestion_prompt_buttons
-        )
+        for button in chat_panel.suggestion_prompt_buttons:
+            title_rect = QRect(
+                button.title_label.mapTo(button, QPoint()),
+                button.title_label.size(),
+            )
+            subtitle_rect = QRect(
+                button.subtitle_label.mapTo(button, QPoint()),
+                button.subtitle_label.size(),
+            )
+            assert button.rect().contains(title_rect)
+            assert button.rect().contains(subtitle_rect)
+            assert not title_rect.intersects(subtitle_rect)
 
     def test_long_history_runtime_failure_keeps_recovery_actions_visible_at_tail(
         self,
@@ -1954,6 +2076,8 @@ class TestChatPanelInit:
             AssistantTurnActivity(
                 AssistantTurnActivityPhase.WAITING_FOR_DECISION,
                 command_name="apply_interpretation",
+                request_id="import-review-1",
+                decision_owner=AssistantDecisionOwner.GUI_DIALOG,
             )
         )
 
@@ -1965,14 +2089,14 @@ class TestChatPanelInit:
         assert chat_panel.send_btn.accessibleName() == "Waiting for your decision"
         assert chat_panel.send_btn.isEnabled() is False
         assert chat_panel.send_btn.toolTip() == (
-            "Continue in the open Import EEG Data window."
+            "Finish or cancel in the open Import EEG Data dialog."
         )
         assert chat_panel.header_status_text == "Local · Waiting"
         assert chat_panel.turn_activity_step.text() == (
             "Current step: Continue in Import EEG Data"
         )
         assert chat_panel.turn_activity_cancelability.text() == (
-            "Continue in the open Import EEG Data window."
+            "Finish or cancel in the open Import EEG Data dialog."
         )
 
     def test_inline_confirmation_waiting_copy_names_the_visible_card(
@@ -1983,6 +2107,8 @@ class TestChatPanelInit:
             AssistantTurnActivity(
                 AssistantTurnActivityPhase.WAITING_FOR_DECISION,
                 command_name="new_session",
+                request_id="confirmation-1",
+                decision_owner=AssistantDecisionOwner.CONFIRMATION_CARD,
             )
         )
 
@@ -2783,6 +2909,11 @@ class TestChatPanelCallbacks:
 
         action = chat_panel.response_actions_widget.findChild(QToolButton)
         assert action is not None
+        wide_font = QFont(action.font())
+        wide_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 3.0)
+        action.setFont(wide_font)
+        chat_panel._reflow_chat_content()
+        qtbot.wait(0)
         assert chat_panel.size().width() == 320
         assert chat_panel.size().height() == height
         assert chat_panel.scroll_area.verticalScrollBar().maximum() > 0

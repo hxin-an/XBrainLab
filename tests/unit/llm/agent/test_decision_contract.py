@@ -99,3 +99,11 @@ def test_prompt_policy_makes_the_action_root_shape_unambiguous() -> None:
         assert 'root object must be exactly {"tool_name":' in prompt
         assert "never wrap it in tool-call, tool_call, action, or function" in prompt
         assert "tool-call branch" not in prompt
+
+
+def test_prompt_policy_preserves_explicit_supported_optional_values() -> None:
+    prompt = StrictToolResponsePromptPolicy().decision_instructions().lower()
+
+    assert "copy every supported value explicitly stated" in prompt
+    assert "even when the schema marks it optional" in prompt
+    assert "never omit an explicitly requested supported value" in prompt

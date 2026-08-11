@@ -53,10 +53,11 @@ def test_guard_rejects_integrity_policy_in_ui_and_state_service(
     )
 
     violations = check_saliency_artifact_integrity_ownership(tmp_path)
+    normalized = [item.replace("\\", "/") for item in violations]
 
     assert len(violations) == 3
-    assert any("visualization/panel.py" in item for item in violations)
-    assert any("state_service.py" in item for item in violations)
+    assert any("visualization/panel.py" in item for item in normalized)
+    assert any("state_service.py" in item for item in normalized)
 
 
 def test_guard_rejects_non_persistence_imports(tmp_path: Path) -> None:

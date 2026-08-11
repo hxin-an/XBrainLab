@@ -73,6 +73,11 @@
   `build/dev-artifacts/agent-guidance-eval-v8/a0e16b400236b687bd2b4c9f58ef4a20929e377b/`。
 - PR exact-head CI 仍是合併 gate；它不改變本輪 guidance/evaluator 本身已通過預註冊 acceptance
   的結論。
+- PR 前已同步 `origin/main@a57fbc29dac9da6997dc611e40255f5b79148912`；conflict resolution
+  保留新版 product current truth，並維持 `.agents/stack.md` 退役刪除。同步後 AGENTS / `.agents/`
+  的 content digest 仍精確等於正式 A/B manifest 的
+  `cfd802686608f506c00db98dc938cc234fa3f8192958f87df2ae2ec0ef57678c`，沒有拿不同 guidance
+  surface 外推原 acceptance。
 - 本改動只校準 repo coding-agent guidance；不改 XBrainLab 產品 API、Granite runtime、EEG
   workflow 或 product handoff status。
 
@@ -6844,3 +6849,50 @@ call sites into explicit legacy/fallback helpers.
 - This is an automated handoff candidate, not product completion or a benchmark result.
 - Windows native click-through, DPI/multi-monitor behavior, interactive 3D, long local-model
   sessions, and the frozen XBrainLab benchmark still require separate acceptance.
+
+## 2026-08-09 Multi-subject BIDS, CI runtime, and Assistant contract audit
+
+### 實作
+
+- Added a local-only OpenNeuro ds003061 P300 profile with 3 subjects and 9 runs, plus exact selected
+  scope catalog/scan/ApplicationService regressions and a reviewed subject-selector artifact.
+- Reduced selected BIDS review latency with bounded content hashing, admitted-path filtering, and
+  bounded public issue projection while preserving full apply freshness validation.
+- Partitioned the authoritative Linux suite into eight fail-closed evidence shards and retained a
+  focused Windows/macOS platform gate plus the required public multi-dataset gate.
+- Removed duplicated mock tool/controller coverage and a no-assertion downloader test only after
+  stronger retained behavior tests were identified and rerun.
+
+### 驗證與邊界
+
+- Multi-subject scope regression: `6 passed`; CI runner/workflow tests: `30 passed`; retained mock
+  tools: `47 passed`; downloader/misc: `46 passed`; retained controller partitions: `273 passed`.
+- BIDS performance review found no correctness/security blocker, but requested repeated phase
+  benchmarks with environment and fixture identity before a reproducible latency claim.
+- Assistant audit found no P0 execution bypass, but identified three P1 product gaps: typed
+  confirmation for high-impact setting changes, separate GUI-handoff versus confirmation states,
+  and narrower per-turn tool schemas for Granite 2B. Assistant remains not handoff-ready.
+- Exact-head GitHub Actions and Windows human acceptance remain required; this is a candidate
+  preparation checkpoint, not product or performance completion.
+
+## 2026-08-09 Shared-runner responsiveness gate correction
+
+- The first exact-head parallel CI run completed the long-session product semantics but rejected a
+  one-shot Qt UI-settle `p95=0.5529s` against a `0.5s` local timing budget on a shared GitHub runner.
+- Shared CI now keeps all long-session state, pruning, history, confirmation, publication, request
+  bounds, per-phase liveness deadlines, and complete-turn assertions, while machine-sensitive
+  absolute/p95/tail/average budgets remain for controlled timing runs rather than masquerading as a
+  cross-machine performance benchmark.
+- A workflow source guard requires the explicit shared-runner policy, and the full 202-turn Qt
+  long-session test passed locally under that policy. This does not establish a reproducible p95;
+  the repeated benchmark work in `docs/planning/now.md` remains open.
+- The Linux-authored 41-phase screenshot/resource artifact gate now has its own integration test
+  file. It remains in the authoritative Linux suite, while Windows/macOS retain the remaining
+  product, layout, launcher, chat, native-render, and preprocess lifecycle contracts without using
+  Linux font geometry or OS-thread introspection as a false cross-platform oracle.
+- The next exact-head run exposed a separate CI isolation defect: all `2,594` UI unit tests shared
+  one Qt process, which stalled at the chat/components boundary until the `1,200s` shard timeout,
+  while the isolated components suite completed `475 passed` in `32.28s`. The authoritative
+  `linux-unit-ui` command now reuses the existing ten UI domain shards so Qt/thread state cannot
+  leak across unrelated domains; file coverage, fail-closed attestations, and aggregate coverage
+  remain unchanged.

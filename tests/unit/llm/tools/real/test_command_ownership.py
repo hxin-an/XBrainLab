@@ -9,7 +9,11 @@ from XBrainLab.backend.application import (
     get_application_service,
 )
 from XBrainLab.backend.study import Study
-from XBrainLab.llm.tools.application_surface import build_load_data_command
+from XBrainLab.llm.tools import execute_real_application_tool
+from XBrainLab.llm.tools.application_surface import (
+    authorize_assistant_setting_change,
+    build_load_data_command,
+)
 from XBrainLab.llm.tools.real import (
     analysis_real,
     dataset_real,
@@ -144,11 +148,19 @@ def test_real_configure_training_preserves_backend_output_directory(
     )
     assert configured.ok is True
 
-    result = training_real.RealConfigureTrainingTool().execute(
+    params = authorize_assistant_setting_change(
+        "configure_training",
+        {
+            "epoch": 5,
+            "batch_size": 8,
+            "learning_rate": 0.002,
+        },
+        publication_generation=service.get_view_publication().generation,
+    )
+    result = execute_real_application_tool(
         study,
-        epoch=5,
-        batch_size=8,
-        learning_rate=0.002,
+        "configure_training",
+        params,
     )
 
     assert result.ok is True

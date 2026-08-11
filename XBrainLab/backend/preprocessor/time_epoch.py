@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -142,7 +143,7 @@ class TimeEpoch(PreprocessBase):
     def get_preprocess_desc(
         self,
         baseline: list | tuple | None,
-        selected_event_names: list | None,
+        selected_event_names: Mapping[str, int] | Sequence[str] | None,
         tmin: float,
         tmax: float,
         allow_boundary_drop: bool = False,
@@ -170,19 +171,37 @@ class TimeEpoch(PreprocessBase):
     def data_preprocess(
         self,
         baseline: list | tuple | None,
-        selected_event_names: list | None,
+        selected_event_names: Mapping[str, int] | Sequence[str] | None,
         tmin: float,
         tmax: float,
         allow_boundary_drop: bool = False,
+        *,
+        event_label_aliases_by_source: Sequence[Mapping[str, str]] | None = None,
     ) -> list[Raw]:
         """Create epochs, then apply any leakage-safe normalization request."""
-        result = super().data_preprocess(
-            baseline,
-            selected_event_names,
-            tmin,
-            tmax,
-            allow_boundary_drop,
+        aliases_by_source = self._validated_aliases_by_source(
+            event_label_aliases_by_source
         )
+        for index, preprocessed_data in enumerate(self.preprocessed_data_list):
+            self._data_preprocess(
+                preprocessed_data,
+                baseline,
+                selected_event_names,
+                tmin,
+                tmax,
+                allow_boundary_drop,
+                event_label_aliases=aliases_by_source[index],
+            )
+            preprocessed_data.add_preprocess(
+                self.get_preprocess_desc(
+                    baseline,
+                    selected_event_names,
+                    tmin,
+                    tmax,
+                    allow_boundary_drop,
+                )
+            )
+        result = self.preprocessed_data_list
         for preprocessed_data in result:
             Normalize.apply_pending_epoch_normalization(preprocessed_data)
         return result
@@ -191,10 +210,12 @@ class TimeEpoch(PreprocessBase):
         self,
         preprocessed_data: Raw,
         baseline: list | tuple | None,
-        selected_event_names: list | None,
+        selected_event_names: Mapping[str, int] | Sequence[str] | None,
         tmin: float,
         tmax: float,
         allow_boundary_drop: bool = False,
+        *,
+        event_label_aliases: Mapping[str, str] | None = None,
     ):
         """Segments a single raw data instance into time-locked epochs.
 
@@ -242,6 +263,12 @@ class TimeEpoch(PreprocessBase):
                 "Data is already epoched. Cannot perform TimeEpoch on epoched data.",
             )
 
+        selected_events, selected_event_id = self._apply_event_label_aliases(
+            selected_events,
+            selected_event_id,
+            event_label_aliases,
+        )
+
         mne_raw = preprocessed_data.get_mne()
         boundary_drop_count = self._boundary_drop_count(
             mne_raw,
@@ -280,6 +307,58 @@ class TimeEpoch(PreprocessBase):
         preprocessed_data.raw_event_id = None
 
         preprocessed_data.set_mne(data)
+
+    def _validated_aliases_by_source(
+        self,
+        value: Sequence[Mapping[str, str]] | None,
+    ) -> list[dict[str, str]]:
+        if value is None:
+            return [{} for _data in self.preprocessed_data_list]
+        if isinstance(value, (str, bytes)) or len(value) != len(
+            self.preprocessed_data_list
+        ):
+            raise ValueError(
+                "Event label aliases must contain one mapping per EEG recording."
+            )
+        return [self._normalized_event_label_aliases(mapping) for mapping in value]
+
+    @staticmethod
+    def _normalized_event_label_aliases(
+        value: Mapping[str, str] | None,
+    ) -> dict[str, str]:
+        if value is None:
+            return {}
+        if not isinstance(value, Mapping):
+            raise ValueError("Event label aliases must be mappings.")
+        aliases: dict[str, str] = {}
+        for raw_event, display_label in value.items():
+            if not isinstance(raw_event, str) or not isinstance(display_label, str):
+                raise ValueError("Event label aliases must map strings to strings.")
+            event_name = raw_event.strip()
+            label_name = display_label.strip()
+            if not event_name or not label_name:
+                raise ValueError("Event label aliases cannot contain empty names.")
+            aliases[event_name] = label_name
+        return aliases
+
+    @classmethod
+    def _apply_event_label_aliases(
+        cls,
+        selected_events: np.ndarray,
+        selected_event_id: Mapping[str, int],
+        event_label_aliases: Mapping[str, str] | None,
+    ) -> tuple[np.ndarray, dict[str, int]]:
+        aliases = cls._normalized_event_label_aliases(event_label_aliases)
+        if not aliases:
+            return selected_events, dict(selected_event_id)
+
+        semantic_events = selected_events.copy()
+        semantic_event_id: dict[str, int] = {}
+        for raw_name, raw_code in selected_event_id.items():
+            display_name = aliases.get(str(raw_name), str(raw_name))
+            semantic_code = semantic_event_id.setdefault(display_name, int(raw_code))
+            semantic_events[semantic_events[:, -1] == raw_code, -1] = semantic_code
+        return semantic_events, semantic_event_id
 
     @staticmethod
     def _boundary_drop_count(

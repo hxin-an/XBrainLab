@@ -193,7 +193,8 @@ class TestTrainingPanelRealUsage:
         assert cell_text(6) == "0.80%"
         assert cell_text(7) == "0.6000"
         assert cell_text(8) == "0.75%"
-        assert cell_text(9) == "0.001"
+        assert cell_text(9) == "—"
+        assert cell_text(10) == "0.001"
 
 
 class TestEvaluationPanelIntegration:
@@ -296,7 +297,7 @@ class TestVisualizationPanelIntegration:
             != "PreconditionError"
         )
         assert panel.plan_combo.count() == 1
-        assert panel.plan_combo.itemText(0) == "Select a plan"
+        assert panel.plan_combo.itemText(0) == "Select a fold"
         assert panel.run_combo.count() == 0
         current_widget = cast(Any, panel.tabs.currentWidget())
         assert current_widget.error_label.isHidden() is False

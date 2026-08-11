@@ -91,7 +91,7 @@ def normalize_tool_call(
     if normalized_name == "epoch_data":
         _normalize_epoch_args(normalized_params, latest_user_text)
 
-    if normalized_name == "generate_dataset":
+    if normalized_name == "configure_dataset_split":
         _normalize_dataset_args(normalized_params, latest_user_text)
 
     if normalized_name == "save_interpretation_recipe":

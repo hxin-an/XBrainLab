@@ -723,7 +723,7 @@ def test_terminal_queue_handoff_failure_retries_once_after_shutdown_fence(
     assert application_events == []
     assert saliency_events == []
 
-    boundary = service._saliency_notification_boundary
+    boundary = service.publication_lifecycle.saliency_notification_boundary
     original_enqueue = boundary._enqueue_deliveries
 
     def fail_first_handoff(notifications):
@@ -748,14 +748,14 @@ def test_terminal_queue_handoff_failure_retries_once_after_shutdown_fence(
     )
     assert application_events == []
     assert saliency_events == []
-    assert service._pending_saliency_terminal() == terminal_status
+    assert service.publication_lifecycle.pending_saliency_terminal() == terminal_status
     assert boundary._reservations == {}
 
     service.request_shutdown_fence()
     fenced = service.execute(QueryStateCommand())
 
     assert fenced.ok is True
-    assert service._pending_saliency_terminal() == terminal_status
+    assert service.publication_lifecycle.pending_saliency_terminal() == terminal_status
     assert application_events == []
     assert saliency_events == []
 
@@ -766,7 +766,7 @@ def test_terminal_queue_handoff_failure_retries_once_after_shutdown_fence(
     assert recovered.ok is True
     assert recovered.state == publication.state
     assert publication.generation > pending.generation
-    assert service._pending_saliency_terminal() is None
+    assert service.publication_lifecycle.pending_saliency_terminal() is None
     assert boundary._reservations == {}
     assert len(application_events) == 1
     assert application_events[0].publication_generation == publication.generation
@@ -819,7 +819,7 @@ def test_terminal_queue_handoff_failure_retries_without_public_state_read(
             publication_delivered.set(),
         ),
     )
-    boundary = service._saliency_notification_boundary
+    boundary = service.publication_lifecycle.saliency_notification_boundary
     original_enqueue = boundary._enqueue_deliveries
     handoff_attempts = 0
 
@@ -838,7 +838,7 @@ def test_terminal_queue_handoff_failure_retries_without_public_state_read(
     assert publication_delivered.wait(timeout=_THREAD_WATCHDOG_SECONDS)
     publication = service.get_view_publication()
     assert publication.state.visualization.post_training_saliency == terminal_status
-    assert service._pending_saliency_terminal() is None
+    assert service.publication_lifecycle.pending_saliency_terminal() is None
     assert handoff_attempts == 2
     assert len(application_events) == 1
     assert application_events[0].publication_generation == publication.generation
@@ -917,7 +917,7 @@ def test_nested_public_observer_failures_retry_each_event_to_one_success() -> No
     assert saliency_attempts == 2
     assert analysis_successes == [publication.generation]
     assert saliency_successes == [terminal_status.generation]
-    assert service._pending_saliency_terminal() is None
+    assert service.publication_lifecycle.pending_saliency_terminal() is None
 
     Event().wait(0.1)
     assert analysis_attempts == 2
@@ -977,14 +977,14 @@ def test_newer_terminal_generation_supersedes_failed_old_public_delivery() -> No
     with manager._saliency_job_lock:
         manager._saliency_job_sequence = first.generation
         manager._post_training_saliency_status = first
-    service._publish_post_training_saliency_terminal_state(first)
+    service.publication_lifecycle.publish_post_training_saliency_terminal_state(first)
     with manager._saliency_job_lock:
         manager._saliency_job_sequence = second.generation
         manager._post_training_saliency_status = second
-    service._publish_post_training_saliency_terminal_state(second)
+    service.publication_lifecycle.publish_post_training_saliency_terminal_state(second)
 
     assert second_delivered.wait(timeout=_THREAD_WATCHDOG_SECONDS)
-    assert service._saliency_notification_boundary.wait_for_idle(
+    assert service.publication_lifecycle.saliency_notification_boundary.wait_for_idle(
         timeout=_THREAD_WATCHDOG_SECONDS
     )
     publication = service.get_view_publication()
@@ -992,7 +992,7 @@ def test_newer_terminal_generation_supersedes_failed_old_public_delivery() -> No
     assert len(analysis_attempts) == 2
     assert analysis_successes == [publication.generation]
     assert saliency_generations == [second.generation]
-    assert service._pending_saliency_terminal() is None
+    assert service.publication_lifecycle.pending_saliency_terminal() is None
 
 
 def test_shutdown_release_retries_real_ui_adapter_handoff_before_reopening(
@@ -1032,10 +1032,12 @@ def test_shutdown_release_retries_real_ui_adapter_handoff_before_reopening(
         lambda: saliency_events.append("saliency_changed"),
     )
     service.request_shutdown_fence()
-    service._publish_post_training_saliency_terminal_state(terminal_status)
-    assert service._pending_saliency_terminal() == terminal_status
+    service.publication_lifecycle.publish_post_training_saliency_terminal_state(
+        terminal_status
+    )
+    assert service.publication_lifecycle.pending_saliency_terminal() == terminal_status
 
-    boundary = service._saliency_notification_boundary
+    boundary = service.publication_lifecycle.saliency_notification_boundary
     original_enqueue = boundary._enqueue_deliveries
     handoff_attempts = 0
 
@@ -1055,7 +1057,7 @@ def test_shutdown_release_retries_real_ui_adapter_handoff_before_reopening(
 
     assert release_application_shutdown_fence(ui_context) is False
     assert service.shutdown_lifecycle.is_shutdown_fenced is True
-    assert service._pending_saliency_terminal() == terminal_status
+    assert service.publication_lifecycle.pending_saliency_terminal() == terminal_status
     assert application_events == []
     assert saliency_events == []
     blocked = service.execute(ResetSessionCommand(confirmed=True))
@@ -1065,7 +1067,7 @@ def test_shutdown_release_retries_real_ui_adapter_handoff_before_reopening(
     assert release_application_shutdown_fence(ui_context) is False
     publication = service.get_view_publication()
     assert service.shutdown_lifecycle.is_shutdown_fenced is True
-    assert service._pending_saliency_terminal() is None
+    assert service.publication_lifecycle.pending_saliency_terminal() is None
     assert publication.state.visualization.post_training_saliency == terminal_status
     assert handoff_attempts == 2
     assert len(application_events) == 1
@@ -1112,9 +1114,8 @@ def test_shutdown_release_waits_for_manager_terminal_ledger_commit(
 
     def notify_then_try_release(event: str, status: PostTrainingSaliencyStatus):
         delivered = original_notify(event, status)
-        assert service._saliency_notification_boundary.has_delivered_generation(
-            status.generation
-        )
+        boundary = service.publication_lifecycle.saliency_notification_boundary
+        assert boundary.has_delivered_generation(status.generation)
         service.request_shutdown_fence()
         race_ledgers.append(
             manager.get_post_training_saliency_terminal_delivery_state()
@@ -1201,7 +1202,7 @@ def test_shutdown_release_retries_unowned_manager_terminal_after_primitive_failu
     assert failed_owner.active_generation is None
     assert failed_owner.retry_owner_active is False
     assert failed_owner.retry_unavailable is True
-    assert service._pending_saliency_terminal() == terminal_status
+    assert service.publication_lifecycle.pending_saliency_terminal() == terminal_status
 
     assert service.release_shutdown_fence() is True
 
@@ -1210,7 +1211,7 @@ def test_shutdown_release_retries_unowned_manager_terminal_after_primitive_failu
     assert committed.delivered_generation == terminal_status.generation
     assert committed.retry_unavailable is False
     assert service.shutdown_lifecycle.is_shutdown_fenced is False
-    assert service._pending_saliency_terminal() is None
+    assert service.publication_lifecycle.pending_saliency_terminal() is None
     assert len(application_events) == 1
     assert saliency_events == ["saliency_changed"]
 
@@ -1269,7 +1270,7 @@ def test_shutdown_release_stays_fenced_when_refresh_fails_before_pending_exists(
 
     assert service.release_shutdown_fence() is False
     assert service.shutdown_lifecycle.is_shutdown_fenced is True
-    assert service._pending_saliency_terminal() == terminal_status
+    assert service.publication_lifecycle.pending_saliency_terminal() == terminal_status
     assert application_events == []
     assert saliency_events == []
     blocked = service.execute(ResetSessionCommand(confirmed=True))
@@ -1283,7 +1284,7 @@ def test_shutdown_release_stays_fenced_when_refresh_fails_before_pending_exists(
     assert len(application_events) == 1
     assert application_events[0].publication_generation == publication.generation
     assert saliency_events == ["saliency_changed"]
-    assert service._pending_saliency_terminal() is None
+    assert service.publication_lifecycle.pending_saliency_terminal() is None
 
     manager._notify_post_training_saliency_terminal(terminal_status)
 
@@ -1337,7 +1338,7 @@ def test_close_discards_retryable_terminal_after_queue_handoff_failure(
         "saliency_changed",
         lambda: saliency_events.append("saliency_changed"),
     )
-    boundary = service._saliency_notification_boundary
+    boundary = service.publication_lifecycle.saliency_notification_boundary
 
     def fail_handoff(_notifications) -> None:
         raise RuntimeError("terminal queue unavailable during close")
@@ -1347,15 +1348,17 @@ def test_close_discards_retryable_terminal_after_queue_handoff_failure(
         RuntimeError,
         match="terminal queue unavailable during close",
     ):
-        service._publish_post_training_saliency_terminal_state(terminal_status)
+        service.publication_lifecycle.publish_post_training_saliency_terminal_state(
+            terminal_status
+        )
 
-    assert service._pending_saliency_terminal() == terminal_status
+    assert service.publication_lifecycle.pending_saliency_terminal() == terminal_status
     assert boundary._reservations == {}
 
     service.close()
     service.close()
 
-    assert service._pending_saliency_terminal() is None
+    assert service.publication_lifecycle.pending_saliency_terminal() is None
     assert application_events == []
     assert saliency_events == []
     assert boundary._reservations == {}
@@ -1397,15 +1400,19 @@ def test_close_discards_committed_terminal_after_public_observer_failure() -> No
         lambda: saliency_events.append("saliency_changed"),
     )
 
-    service._publish_post_training_saliency_terminal_state(terminal_status)
+    service.publication_lifecycle.publish_post_training_saliency_terminal_state(
+        terminal_status
+    )
 
     assert analysis_attempted.is_set()
-    assert service._pending_saliency_terminal() == terminal_status
+    assert service.publication_lifecycle.pending_saliency_terminal() == terminal_status
     service.close()
     service.close()
 
-    assert service._pending_saliency_terminal() is None
-    assert service._saliency_notification_boundary.wait_for_idle(timeout=0.1)
+    assert service.publication_lifecycle.pending_saliency_terminal() is None
+    assert service.publication_lifecycle.saliency_notification_boundary.wait_for_idle(
+        timeout=0.1
+    )
     assert saliency_events == []
 
 

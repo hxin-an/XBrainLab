@@ -24,6 +24,7 @@ from XBrainLab.backend.application.view_publication import (
 from XBrainLab.chat_contract import MAX_CHAT_PRESENTATION_ROWS_PER_TURN
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantAttentionKind,
+    AssistantDecisionOwner,
     AssistantTurnActivityPhase,
 )
 from XBrainLab.llm.agent.confirmation import (
@@ -40,6 +41,7 @@ from XBrainLab.llm.agent.pending_interaction import (
     PendingInteractionCoordinator,
 )
 from XBrainLab.llm.agent.product_turn_policy import ProductTurnPolicy
+from XBrainLab.llm.agent.prompt_policy import prompt_action_authorization
 from XBrainLab.llm.agent.request_admission import (
     UserRequestAdmission,
     UserRequestAdmissionAction,
@@ -89,6 +91,7 @@ from XBrainLab.llm.core.runtime_selection import (
 from XBrainLab.llm.tools.application_surface import (
     ToolAvailabilityContext,
     ToolCommandResult,
+    authorize_assistant_setting_change,
 )
 from XBrainLab.llm.tools.result_contract import (
     SAFE_UNEXPECTED_FAILURE_MESSAGE,
@@ -228,6 +231,9 @@ def _assert_confirmation_prompt(
     )
     ctrl.status_update.emit.assert_any_call(f"Waiting for confirmation: {tool_name}")
     ctrl.confirmation_requested.emit.assert_called_once_with(request)
+    activity = ctrl.activity_changed.emit.call_args.args[0]
+    assert activity.decision_owner is AssistantDecisionOwner.CONFIRMATION_CARD
+    assert activity.request_id == request.request_id
     return pending
 
 
@@ -333,11 +339,13 @@ def _enabled_tool_context(
     *,
     generation: int = 1,
     destructive: bool = False,
+    confirmation: bool = False,
 ):
     return _tool_context_with_generation(
         tool_name,
         generation,
         destructive=destructive,
+        confirmation=confirmation,
     )
 
 
@@ -346,6 +354,7 @@ def _tool_context_with_generation(
     generation: int,
     *,
     destructive: bool = False,
+    confirmation: bool = False,
 ):
     from XBrainLab.llm.tools.application_surface import (
         ToolAvailability,
@@ -357,6 +366,9 @@ def _tool_context_with_generation(
             tool_name=tool_name,
             enabled=True,
             destructive=destructive,
+            confirmation_required=confirmation,
+            requires_confirmation=confirmation,
+            can_auto_execute=not confirmation,
         ),
         state={"pipeline_stage": "empty", "generation_marker": generation},
         generation=generation,
@@ -368,6 +380,7 @@ def _pending_decision(
     params: dict[str, Any],
     *,
     context: Any | None = None,
+    command_confirmation: bool = True,
     confirmation_kind: str | None = None,
     resource_preflight_receipt: ResourcePreflightReceipt | None = None,
 ) -> ToolAttemptDecision:
@@ -376,7 +389,10 @@ def _pending_decision(
         command_name=tool_name,
         params=params,
         context=context or _enabled_tool_context(tool_name),
-        tool=MagicMock(description=tool_name),
+        tool=MagicMock(
+            description=tool_name,
+            requires_confirmation=command_confirmation,
+        ),
         confirmation_kind=confirmation_kind,
         resource_preflight_receipt=resource_preflight_receipt,
     )
@@ -411,7 +427,11 @@ def _pending_training_resource_confirmation(
     params: dict[str, Any] | None = None,
     preflight: dict[str, Any] | None = None,
 ) -> ToolAttemptDecision:
-    context = _enabled_tool_context("start_training", generation=91)
+    context = _enabled_tool_context(
+        "start_training",
+        generation=91,
+        confirmation=True,
+    )
     initial = ToolAttemptDecision(
         action=ToolAttemptAction.EXECUTE,
         command_name="start_training",
@@ -660,7 +680,7 @@ def test_blocked_request_is_presented_before_rag_or_model_generation(ctrl):
         return_value=UserRequestAdmission(
             UserRequestAdmissionAction.BLOCKED,
             command=CommandName.TRAIN,
-            message="Generate datasets before training.",
+            message="Save a valid data splitting specification before training.",
         )
     )
     rag = _use_rag_probe(ctrl)
@@ -681,7 +701,9 @@ def test_blocked_request_is_presented_before_rag_or_model_generation(ctrl):
     ctrl._generate_response.assert_not_called()
     presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
     assert presentation.kind is AssistantResponseKind.BLOCKED
-    assert "Generate datasets before training" in presentation.text
+    assert "Save a valid data splitting specification before training" in (
+        presentation.text
+    )
     assert ctrl.is_processing is False
 
 
@@ -702,6 +724,125 @@ def test_generated_request_preserves_admitted_command_for_prompt_scope(ctrl):
     ctrl.assembler.set_turn_authorized_command.assert_called_once_with(
         CommandName.SCAN_SOURCE.value
     )
+
+
+@pytest.mark.parametrize(
+    ("text", "command", "expected_tool"),
+    [
+        ("Deep4Net", CommandName.CONFIGURE_TRAINING, "set_model"),
+        (
+            "Configure training for 20 epochs with batch size 16.",
+            CommandName.CONFIGURE_TRAINING,
+            "configure_training",
+        ),
+        (
+            "Apply only a 4 to 40 Hz bandpass filter.",
+            CommandName.PREPROCESS,
+            "apply_bandpass_filter",
+        ),
+        (
+            "Run standard preprocessing with a 4 to 40 Hz bandpass.",
+            CommandName.PREPROCESS,
+            "apply_standard_preprocess",
+        ),
+    ],
+)
+def test_host_admission_exposes_one_canonical_prompt_action(
+    ctrl,
+    text,
+    command,
+    expected_tool,
+):
+    ctrl._request_admission.evaluate = MagicMock(
+        return_value=UserRequestAdmission(
+            UserRequestAdmissionAction.GENERATE,
+            command=command,
+        )
+    )
+    publication = MagicMock(generation=17)
+
+    with patch("XBrainLab.llm.agent.controller.get_application_service") as service:
+        service.return_value.get_view_publication.return_value = publication
+        handled = ctrl._handle_request_admission(text)
+
+    assert handled is False
+    ctrl.assembler.set_turn_authorized_command.assert_called_once_with(
+        prompt_action_authorization(
+            command_name=command.value,
+            tool_name=expected_tool,
+        )
+    )
+
+
+def test_ambiguous_preprocess_request_finishes_with_clarification(ctrl) -> None:
+    ctrl._request_admission.evaluate = MagicMock(
+        return_value=UserRequestAdmission(
+            UserRequestAdmissionAction.GENERATE,
+            command=CommandName.PREPROCESS,
+        )
+    )
+    publication = MagicMock(generation=18)
+    ctrl.is_processing = True
+
+    with patch("XBrainLab.llm.agent.controller.get_application_service") as service:
+        service.return_value.get_view_publication.return_value = publication
+        handled = ctrl._handle_request_admission(
+            "Band-pass filter and resample the recordings."
+        )
+
+    assert handled is True
+    ctrl.assembler.set_turn_authorized_command.assert_not_called()
+    presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
+    assert presentation.kind is AssistantResponseKind.CLARIFICATION
+    assert "one specific operation" in presentation.text
+    assert ctrl.is_processing is False
+
+
+def test_explicit_navigation_admission_publishes_only_switch_panel(ctrl) -> None:
+    ctrl._request_admission.evaluate = MagicMock(
+        return_value=UserRequestAdmission(UserRequestAdmissionAction.GENERATE)
+    )
+    publication = MagicMock(generation=19)
+
+    with patch("XBrainLab.llm.agent.controller.get_application_service") as service:
+        service.return_value.get_view_publication.return_value = publication
+        handled = ctrl._handle_request_admission(
+            "Go to the next workflow workspace panel."
+        )
+
+    assert handled is False
+    ctrl.assembler.set_turn_authorized_command.assert_called_once_with(
+        prompt_action_authorization(
+            command_name="navigate",
+            tool_name="switch_panel",
+        )
+    )
+
+
+def test_exact_host_navigation_authorization_passes_intent_gate(ctrl) -> None:
+    from XBrainLab.llm.agent.assembler import PromptToolPublication
+
+    ctrl.history = [
+        {
+            "role": "user",
+            "content": "Go to the next workflow workspace panel.",
+        }
+    ]
+    ctrl._turn_orchestrator.active_publication = PromptToolPublication(
+        tool_names=frozenset({"switch_panel"}),
+        backend_generation=1,
+        authorized_command="navigate",
+    )
+    _set_context_reader(ctrl, return_value=_enabled_tool_context("switch_panel"))
+    ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+    ctrl.registry.get_tool.return_value = MagicMock(requires_confirmation=False)
+
+    decision = ctrl._evaluate_tool_proposal(
+        ("switch_panel", {"panel": "preprocess"}),
+        '{"tool_name":"switch_panel","parameters":{"panel":"preprocess"}}',
+    )
+
+    assert decision.action is ToolAttemptAction.EXECUTE
 
 
 def test_missing_decision_opens_existing_ui_before_rag_or_model(ctrl):
@@ -731,6 +872,30 @@ def test_missing_decision_opens_existing_ui_before_rag_or_model(ctrl):
     assert request.suggestions == {"target_event": "769"}
     assert ctrl.pending_interactions.workflow_handoff == request
     assert ctrl.is_processing is True
+    activity = ctrl.activity_changed.emit.call_args.args[0]
+    assert activity.decision_owner is AssistantDecisionOwner.GUI_DIALOG
+    assert activity.request_id == request.request_id
+
+
+def test_panel_handoff_publishes_panel_as_the_decision_owner(ctrl) -> None:
+    ctrl._request_admission.evaluate = MagicMock(
+        return_value=UserRequestAdmission(
+            UserRequestAdmissionAction.UI_HANDOFF,
+            command=CommandName.EVALUATE,
+            message="Continue in Evaluation.",
+        )
+    )
+    publication = MagicMock()
+
+    with patch("XBrainLab.llm.agent.controller.get_application_service") as get_service:
+        get_service.return_value.get_view_publication.return_value = publication
+        handled = ctrl._handle_request_admission("Show evaluation results.")
+
+    assert handled is True
+    request = ctrl.workflow_ui_handoff_requested.emit.call_args.args[0]
+    activity = ctrl.activity_changed.emit.call_args.args[0]
+    assert activity.decision_owner is AssistantDecisionOwner.PANEL_HANDOFF
+    assert activity.request_id == request.request_id
 
 
 def test_import_review_handoff_binds_publication_and_candidate_identity(ctrl):
@@ -1011,7 +1176,9 @@ class TestHandleUserInput:
                     CommandName.TRAIN.value: CommandCapability(
                         command_name=CommandName.TRAIN.value,
                         enabled=False,
-                        reasons=["Generate datasets before training."],
+                        reasons=[
+                            "Save a valid data splitting specification before training."
+                        ],
                     )
                 }
             ),
@@ -1027,7 +1194,8 @@ class TestHandleUserInput:
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
         assert (
             presentation.text
-            == "Training is not ready yet: Generate datasets before training."
+            == "Training is not ready yet: Save a valid data splitting "
+            "specification before training."
         )
         assert ctrl.history == [
             {"role": "user", "content": "Why can't I train?"},
@@ -1176,6 +1344,87 @@ class TestHandleUserInput:
         assert presentation.actions[0].label == "Open Training"
         assert presentation.actions[0].panel is AssistantPanelTarget.TRAINING
         ctrl._finalize_turn_after_tool.assert_called_once_with()
+
+    @pytest.mark.parametrize("error_type", ["runtime", "contract", "internal"])
+    def test_runtime_and_contract_failures_are_errors(
+        self,
+        ctrl,
+        error_type,
+    ) -> None:
+        ctrl._finalize_turn_after_tool = MagicMock()
+        result = ToolCommandResult.failure(
+            "configure_training",
+            "The action failed before completion.",
+            error_type=error_type,
+            recoverable=False,
+        )
+
+        ctrl._handle_tool_attempt_blocked("configure_training", result)
+
+        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
+        assert presentation.kind is AssistantResponseKind.ERROR
+        assert presentation.actions == ()
+        activity = ctrl.activity_changed.emit.call_args.args[0]
+        assert activity.attention_kind is AssistantAttentionKind.ERROR
+
+    @pytest.mark.parametrize("stop_reason", ["ask_tool_limit", "retry_cap"])
+    def test_terminal_recoverable_runtime_failure_offers_correlated_retry(
+        self,
+        ctrl,
+        stop_reason,
+    ) -> None:
+        ctrl.history = [
+            {"role": "user", "content": "Configure training for 20 epochs."}
+        ]
+        ctrl._tool_attempt_session.record_summary(
+            "Training configuration failed.",
+            AssistantResponseKind.ERROR,
+        )
+        ctrl._tool_attempt_coordinator.after_failure = MagicMock(
+            return_value=MagicMock(
+                continue_workflow=False,
+                reason=stop_reason,
+            )
+        )
+        ctrl._finalize_turn_after_tool = MagicMock()
+        result = ToolCommandResult.failure(
+            "configure_training",
+            "Training configuration failed.",
+            error_type="runtime",
+            recoverable=True,
+        )
+
+        ctrl._handle_tool_failure(None, result)
+
+        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
+        assert presentation.kind is AssistantResponseKind.ERROR
+        assert len(presentation.actions) == 1
+        retry = presentation.actions[0]
+        assert retry.kind is AssistantResponseActionKind.SEND_MESSAGE
+        assert retry.label == "Try again"
+        assert retry.prompt == "Configure training for 20 epochs."
+        assert presentation.correlation == AssistantTurnCorrelation(1, 1)
+        ctrl._finalize_turn_after_tool.assert_called_once_with()
+
+    @pytest.mark.parametrize(
+        "error_type",
+        ["precondition", "confirmation_required", "stale_confirmation"],
+    )
+    def test_policy_and_precondition_failures_remain_blocked(
+        self,
+        ctrl,
+        error_type,
+    ) -> None:
+        result = ToolCommandResult.failure(
+            "configure_training",
+            "Review the current workflow before continuing.",
+            error_type=error_type,
+        )
+
+        assert (
+            ctrl._tool_result_response_kind(False, result)
+            is AssistantResponseKind.BLOCKED
+        )
 
     @pytest.mark.parametrize(
         ("changed_state", "expected_kind"),
@@ -1764,6 +2013,8 @@ class TestHandleToolResultLogic:
         }
         assert ctrl.pending_interactions.workflow_handoff is request
         ctrl.panel_navigation_requested.emit.assert_not_called()
+        activity = ctrl.activity_changed.emit.call_args.args[0]
+        assert activity.decision_owner is AssistantDecisionOwner.GUI_DIALOG
 
     def test_failure_waits_for_host_retry_policy_before_becoming_visible(self, ctrl):
         result = ctrl._handle_tool_result_logic(
@@ -2101,6 +2352,8 @@ class TestProcessToolCalls:
         ctrl._generate_response.assert_not_called()
         assert ctrl.pending_interactions.workflow_handoff is emitted_request
         ctrl._finalize_turn_after_tool.assert_not_called()
+        activity = ctrl.activity_changed.emit.call_args.args[0]
+        assert activity.decision_owner is AssistantDecisionOwner.GUI_DIALOG
 
     def test_workflow_decision_publishes_concrete_tool_summary_before_handoff(
         self,
@@ -2313,6 +2566,7 @@ class TestProcessToolCalls:
                 [("set_model", {"model_name": "EEGNet"})],
                 '{"tool_name":"set_model","parameters":{"model_name":"EEGNet"}}',
             )
+            _resolve_confirmation(ctrl, approved=True)
 
         service.execute.assert_called_once()
         execute_surface.assert_called_once()
@@ -2459,7 +2713,7 @@ class TestProcessToolCalls:
         capability = CommandCapability(
             command_name=CommandName.TRAIN.value,
             enabled=False,
-            reasons=["Generate datasets before training"],
+            reasons=["Save a valid data splitting specification before training"],
         )
         policy = MagicMock()
         policy.get.return_value = capability
@@ -2496,7 +2750,7 @@ class TestProcessToolCalls:
         capability = CommandCapability(
             command_name=CommandName.TRAIN.value,
             enabled=False,
-            reasons=["Generate datasets before training"],
+            reasons=["Save a valid data splitting specification before training"],
         )
         policy = MagicMock()
         policy.get.return_value = capability
@@ -2518,10 +2772,10 @@ class TestProcessToolCalls:
             result,
             tool_name="set_model",
             command_name=CommandName.TRAIN,
-            blocked_reason="Generate datasets before training",
+            blocked_reason="Save a valid data splitting specification before training",
             message=(
                 "Requested workflow step 'train' is not available: "
-                "Generate datasets before training"
+                "Save a valid data splitting specification before training"
             ),
         )
         assert result.capability == capability.to_dict()
@@ -2619,7 +2873,12 @@ class TestProcessToolCalls:
         ctrl._turn_orchestrator.active_publication = PromptToolPublication(
             tool_names=frozenset({"scan_source"}),
             backend_generation=13,
-            blocked_reasons=(("train", "Generate datasets before training"),),
+            blocked_reasons=(
+                (
+                    "train",
+                    "Save a valid data splitting specification before training",
+                ),
+            ),
         )
 
         matching = _evaluate_policy(
@@ -2635,7 +2894,9 @@ class TestProcessToolCalls:
 
         assert isinstance(matching, ToolCommandResult)
         assert matching.error_type == "precondition"
-        assert matching.blocked_reason == "Generate datasets before training"
+        assert matching.blocked_reason == (
+            "Save a valid data splitting specification before training"
+        )
         assert isinstance(unrelated, ToolCommandResult)
         assert unrelated.error_type == "tool_not_published"
 
@@ -3636,6 +3897,7 @@ class TestOnUserConfirmed:
                 command_name,
                 params,
                 context=context,
+                command_confirmation=False,
                 confirmation_kind="resource_preflight",
                 resource_preflight_receipt=ResourcePreflightReceipt(
                     challenge_id=token,
@@ -3855,6 +4117,7 @@ class TestOnUserConfirmed:
     ):
         from XBrainLab.backend.application import (
             ConfigureTrainingCommand,
+            SaveDatasetSplitCommand,
             get_application_service,
         )
         from XBrainLab.backend.study import Study
@@ -3862,10 +4125,20 @@ class TestOnUserConfirmed:
         from XBrainLab.llm.tools.application_surface import ToolAvailabilityContext
 
         study = Study()
-        service = get_application_service(study)
         runtime_study = cast(Any, study)
         runtime_study.loaded_data_list = [object()]
-        runtime_study.datasets = [object()]
+        epoch_data = MagicMock()
+        epoch_data.__len__.return_value = 2
+        epoch_data.data = None
+        epoch_data.event_id = {"Left": 0, "Right": 1}
+        epoch_data.sfreq = None
+        runtime_study.data_manager.epoch_data = epoch_data
+        service = get_application_service(study)
+        saved = service.execute(SaveDatasetSplitCommand(split_strategy="trial"))
+        assert saved.ok is True
+        assert saved.state.dataset.split_spec_saved is True
+        assert saved.state.dataset.split_materialized is False
+        assert runtime_study.datasets == []
         configured = service.execute(
             ConfigureTrainingCommand(
                 model_name="EEGNet",
@@ -3886,7 +4159,9 @@ class TestOnUserConfirmed:
         assert prompt_context.availability.command_name == CommandName.TRAIN.value
         assert prompt_context.state is not None
         assert prompt_context.availability.enabled is True
-        assert service.get_view_publication().state.pipeline_stage == "dataset_ready"
+        state = service.get_view_publication().state
+        assert state.dataset.split_spec_saved is True
+        assert state.dataset.split_materialized is False
         _begin_confirmation(
             ctrl,
             _pending_decision("start_training", {}, context=prompt_context),
@@ -4292,7 +4567,7 @@ class TestOnUserConfirmed:
             decision_fields=("epoch_window",),
         )
         current = WorkflowUiHandoffRequest.for_decision(
-            "generate_dataset",
+            "configure_dataset_split",
             decision_fields=("split_strategy",),
         )
         ctrl.pending_interactions.begin_workflow_handoff(current)
@@ -4785,7 +5060,10 @@ class TestProcessToolCallsConfirmation:
         assert isinstance(result, ToolCommandResult)
         assert result.ok is False
         assert result.error_type == "precondition"
-        assert "Generate datasets before training." in result.message
+        assert (
+            "Save a valid data splitting specification before training."
+            in result.message
+        )
         assert result.capability is not None
         assert result.capability["enabled"] is False
         ctrl._generate_response.assert_not_called()
@@ -4801,7 +5079,7 @@ class TestProcessToolCallsConfirmation:
             availability=ToolAvailability(
                 tool_name="start_training",
                 enabled=False,
-                reasons=("Generate datasets before training.",),
+                reasons=("Save a valid data splitting specification before training.",),
                 command_name="train",
             ),
             state=state,
@@ -4925,13 +5203,18 @@ class TestPipelineGate:
         service._command_handlers[CommandName.CONFIGURE_TRAINING] = handler
         started = threading.Event()
         outcomes: list[ToolExecutionOutcome] = []
+        reviewed_params = authorize_assistant_setting_change(
+            "set_model",
+            {"model_name": "EEGNet"},
+            publication_generation=publication_a.generation,
+        )
 
         def _execute_reviewed_mutation() -> None:
             started.set()
             outcomes.append(
                 ctrl._execute_tool_no_loop(
                     "set_model",
-                    {"model_name": "EEGNet"},
+                    reviewed_params,
                     context=context,
                 )
             )
@@ -5257,7 +5540,7 @@ class TestPipelineGate:
         assert "load_data" not in summary
 
     def test_train_blocked_until_backend_ready(self, ctrl):
-        """Train is blocked until dataset/model/training options exist."""
+        """Train is blocked until raw data, split, model, and options exist."""
         from XBrainLab.backend.study import Study
 
         ctrl.study = Study()
@@ -5270,20 +5553,30 @@ class TestPipelineGate:
         assert not outcome.success
         assert result.ok is False
         assert result.command_name == "train"
-        assert "Generate datasets before training" in result.message
+        assert (
+            "Save a valid data splitting specification before training"
+            in result.message
+        )
 
     def test_mapped_tool_uses_application_command_result(self, ctrl):
         """Mapped agent tools can bypass legacy string results."""
+        from XBrainLab.backend.application import get_application_service
         from XBrainLab.backend.study import Study
 
-        ctrl.study = Study()
+        study = Study()
+        ctrl.study = study
         mock_tool = MagicMock()
         mock_tool.execute.side_effect = AssertionError("legacy path should not run")
         ctrl.registry.get_tool.return_value = mock_tool
+        generation = get_application_service(study).get_view_publication().generation
 
         outcome = ctrl._execute_tool_no_loop(
             "set_model",
-            {"model_name": "EEGNet"},
+            authorize_assistant_setting_change(
+                "set_model",
+                {"model_name": "EEGNet"},
+                publication_generation=generation,
+            ),
         )
         result = outcome.result
 
@@ -5350,7 +5643,7 @@ class TestTurnScope:
                 state_reliable=True,
                 decision_needed=(),
                 can_auto_continue=True,
-                recommended_next_step=CommandName.GENERATE_DATASET.value,
+                recommended_next_step=CommandName.CONFIGURE_DATASET_SPLIT.value,
             )
         )
 

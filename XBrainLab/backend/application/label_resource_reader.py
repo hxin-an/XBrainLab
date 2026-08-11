@@ -12,6 +12,10 @@ from typing import Any
 from XBrainLab.backend.exceptions import FileCorruptedError
 from XBrainLab.backend.load_data import label_loader
 
+from .data_interpretation_path_identity import (
+    resolved_path_identity,
+    resolved_path_value,
+)
 from .data_interpretation_resource_reader import (
     AdmittedFileIdentity,
     AdmittedResourceReader,
@@ -116,25 +120,30 @@ class AdmittedLabelResourceReader:
     ) -> Any:
         """Load one exact admitted path/config through the bounded stream."""
         key = _path_key(path)
+        admitted = self._admitted_specs.get(key)
+        admitted_path = (
+            str(admitted.get("path") or "")
+            if isinstance(admitted, dict)
+            else _path_value(path)
+        )
         requested = {
-            "path": key,
+            "path": admitted_path,
             "label_field": _optional_text(label_field),
             "anchor": _optional_text(anchor),
             "duration_field": _optional_text(duration_field),
             "sequence_only": bool(sequence_only),
         }
-        admitted = self._admitted_specs.get(key)
         if admitted != requested:
             raise PreconditionError(
                 "Label parser configuration was not admitted by resource preflight.",
                 diagnostics={
                     "code": "label_resource_configuration_not_admitted",
-                    "path": key,
+                    "path": admitted_path,
                 },
             )
         try:
             return label_loader.load_label_file(
-                key,
+                admitted_path,
                 label_field=label_field,
                 anchor=anchor,
                 duration_field=duration_field,
@@ -144,26 +153,27 @@ class AdmittedLabelResourceReader:
         except (PreconditionError, FileCorruptedError):
             raise
         except (EOFError, OSError, TypeError, ValueError) as exc:
-            raise FileCorruptedError(key, str(exc)) from exc
+            raise FileCorruptedError(admitted_path, str(exc)) from exc
 
     @contextmanager
     def open_binary(self, path: str, *, purpose: str) -> Iterator[_BoundedBinaryReader]:
         """Open a stable file descriptor capped at its admitted byte length."""
-        key = _path_key(path)
+        path_value = _path_value(path)
+        key = self._resource_reader.canonical_key(path_value)
         identity = self._resource_reader.admitted_files.get(key)
         if identity is None:
             raise PreconditionError(
                 f"Label resource was not admitted: {path}.",
                 diagnostics={
                     "code": "label_resource_not_admitted",
-                    "path": key,
+                    "path": path_value,
                     "parse_started": False,
                 },
             )
-        with self._resource_reader.guard([key], purpose=purpose):
+        with self._resource_reader.guard([path_value], purpose=purpose):
             try:
-                with open(key, "rb") as handle:
-                    _assert_open_identity(handle, identity, path=key)
+                with open(path_value, "rb") as handle:
+                    _assert_open_identity(handle, identity, path=path_value)
                     yield _BoundedBinaryReader(
                         handle,
                         limit_bytes=identity.file_bytes,
@@ -173,7 +183,7 @@ class AdmittedLabelResourceReader:
                     f"Admitted label resource is no longer available: {path}.",
                     diagnostics={
                         "code": "label_resource_changed_after_admission",
-                        "path": key,
+                        "path": path_value,
                         "parse_started": False,
                     },
                 ) from exc
@@ -217,7 +227,11 @@ def _assert_open_identity(
 
 
 def _path_key(path: str | Path) -> str:
-    return os.path.normcase(str(Path(path).expanduser().resolve()))
+    return resolved_path_identity(path)
+
+
+def _path_value(path: str | Path) -> str:
+    return resolved_path_value(path)
 
 
 def _optional_text(value: Any) -> str | None:

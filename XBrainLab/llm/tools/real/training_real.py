@@ -15,6 +15,18 @@ from ..definitions.training_def import (
 )
 from ..result_contract import ToolResult
 
+_HOST_SETTING_CONFIRMATION_PARAM = "assistant_setting_confirmation"
+
+
+def _preserve_host_setting_confirmation(
+    params: dict[str, Any],
+    kwargs: dict[str, Any],
+) -> None:
+    if _HOST_SETTING_CONFIRMATION_PARAM in kwargs:
+        params[_HOST_SETTING_CONFIRMATION_PARAM] = kwargs[
+            _HOST_SETTING_CONFIRMATION_PARAM
+        ]
+
 
 class RealSetModelTool(BaseSetModelTool):
     """Real implementation of :class:`BaseSetModelTool`."""
@@ -37,11 +49,9 @@ class RealSetModelTool(BaseSetModelTool):
             A success message or an error description.
 
         """
-        return execute_real_application_tool(
-            study,
-            self.name,
-            {"model_name": model_name},
-        )
+        params = {"model_name": model_name}
+        _preserve_host_setting_confirmation(params, kwargs)
+        return execute_real_application_tool(study, self.name, params)
 
 
 class RealConfigureTrainingTool(BaseConfigureTrainingTool):
@@ -83,7 +93,6 @@ class RealConfigureTrainingTool(BaseConfigureTrainingTool):
 
         """
         params: dict[str, Any] = {
-            "model_name": model_name,
             "epoch": epoch,
             "batch_size": batch_size,
             "learning_rate": learning_rate,
@@ -93,8 +102,11 @@ class RealConfigureTrainingTool(BaseConfigureTrainingTool):
             "evaluation_option": evaluation_option,
             "save_checkpoints_every": save_checkpoints_every,
         }
+        if model_name is not None:
+            params["model_name"] = model_name
         if output_dir is not None:
             params["output_dir"] = output_dir
+        _preserve_host_setting_confirmation(params, kwargs)
         return execute_real_application_tool(
             study,
             self.name,

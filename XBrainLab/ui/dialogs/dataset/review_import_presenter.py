@@ -2,17 +2,190 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 
 SubmissionRecheckKind = Literal["remap", "event_values", "interpretation_choices"]
+ValidationDecisionKind = Literal["safe", "needs_confirmation", "blocked"]
+ValidationActionSeverity = Literal[
+    "blocked",
+    "needs_confirmation",
+    "warning",
+    "limited",
+]
+ValidationActionTarget = Literal[
+    "Choose EEG Data",
+    "Load Labels",
+    "Review Metadata",
+    "Match Labels",
+    "Review and Import",
+]
+
+_VALIDATION_DECISIONS = frozenset({"safe", "needs_confirmation", "blocked"})
+_ACTION_SEVERITIES = frozenset({"blocked", "needs_confirmation", "warning", "limited"})
+_ACTION_TARGETS = frozenset(
+    {
+        "Choose EEG Data",
+        "Load Labels",
+        "Review Metadata",
+        "Match Labels",
+        "Review and Import",
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ValidationActionItem:
+    """One backend-owned review action rendered by the import UI."""
+
+    target_step: ValidationActionTarget
+    issue: str
+    impact: str
+    next_action: str
+    severity: ValidationActionSeverity
+
+    def to_review_row(self) -> tuple[str, str, str, str]:
+        return self.target_step, self.issue, self.impact, self.next_action
+
+
+@dataclass(frozen=True, slots=True)
+class ValidationReviewContract:
+    """Validated backend decision consumed by the review/import product path."""
+
+    decision: ValidationDecisionKind | None
+    action_items: tuple[ValidationActionItem, ...]
+    contract_errors: tuple[str, ...]
+
+    @property
+    def is_valid(self) -> bool:
+        return not self.contract_errors and self.decision is not None
+
+    @property
+    def action_targets(self) -> frozenset[str]:
+        return frozenset(item.target_step for item in self.action_items)
+
+    @property
+    def blocking_action_targets(self) -> frozenset[str]:
+        return frozenset(
+            item.target_step for item in self.action_items if item.severity == "blocked"
+        )
+
+    @property
+    def actionable_items(self) -> tuple[ValidationActionItem, ...]:
+        return self.items_with_severity("blocked", "needs_confirmation")
+
+    def requires_action_at(self, target_step: str) -> bool:
+        return any(item.target_step == target_step for item in self.actionable_items)
+
+    def items_with_severity(
+        self,
+        *severities: ValidationActionSeverity,
+    ) -> tuple[ValidationActionItem, ...]:
+        admitted = frozenset(severities)
+        return tuple(item for item in self.action_items if item.severity in admitted)
+
+
+def adapt_serialized_validation_decision(
+    payload: Mapping[str, object],
+) -> ValidationReviewContract:
+    """Validate the serialized backend ``ValidationDecision`` without fallback."""
+    errors: list[str] = []
+    raw_decision = payload.get("decision")
+    decision_text = str(raw_decision or "").strip().lower()
+    decision: ValidationDecisionKind | None = None
+    if decision_text in _VALIDATION_DECISIONS:
+        decision = cast(ValidationDecisionKind, decision_text)
+    else:
+        errors.append("validation decision is missing or unsupported")
+
+    action_items: list[ValidationActionItem] = []
+    raw_action_items = payload.get("action_items")
+    if raw_action_items is None:
+        if decision in {"needs_confirmation", "blocked"}:
+            errors.append(f"{decision} decision is missing typed action_items")
+    elif not isinstance(raw_action_items, list):
+        errors.append("validation action_items must be a list")
+    else:
+        for index, raw_item in enumerate(raw_action_items):
+            item = _adapt_validation_action_item(raw_item, index=index, errors=errors)
+            if item is not None:
+                action_items.append(item)
+
+    if decision == "blocked" and not any(
+        item.severity == "blocked" for item in action_items
+    ):
+        errors.append("blocked decision requires a blocked action item")
+    if decision == "needs_confirmation" and not any(
+        item.severity == "needs_confirmation" for item in action_items
+    ):
+        errors.append(
+            "needs_confirmation decision requires a needs_confirmation action item"
+        )
+    if decision == "needs_confirmation" and any(
+        item.severity == "blocked" for item in action_items
+    ):
+        errors.append("needs_confirmation decision contains a blocked action item")
+    if decision == "safe" and any(
+        item.severity in {"blocked", "needs_confirmation"} for item in action_items
+    ):
+        errors.append("safe decision contains an actionable blocker")
+
+    return ValidationReviewContract(
+        decision=decision,
+        action_items=tuple(action_items),
+        contract_errors=tuple(dict.fromkeys(errors)),
+    )
+
+
+def _adapt_validation_action_item(
+    value: object,
+    *,
+    index: int,
+    errors: list[str],
+) -> ValidationActionItem | None:
+    if not isinstance(value, Mapping):
+        errors.append(f"validation action_items[{index}] must be an object")
+        return None
+
+    fields = {
+        field: raw.strip() if isinstance(raw, str) else ""
+        for field in ("target_step", "issue", "impact", "next_action", "severity")
+        if (raw := value.get(field)) is not None
+    }
+    missing = [
+        field
+        for field in ("target_step", "issue", "impact", "next_action", "severity")
+        if not fields.get(field)
+    ]
+    if missing:
+        errors.append(
+            f"validation action_items[{index}] is missing: {', '.join(missing)}"
+        )
+        return None
+
+    target_step = fields["target_step"]
+    severity = fields["severity"].lower()
+    if target_step not in _ACTION_TARGETS:
+        errors.append(f"validation action_items[{index}] has unsupported target_step")
+        return None
+    if severity not in _ACTION_SEVERITIES:
+        errors.append(f"validation action_items[{index}] has unsupported severity")
+        return None
+    return ValidationActionItem(
+        target_step=cast(ValidationActionTarget, target_step),
+        issue=fields["issue"],
+        impact=fields["impact"],
+        next_action=fields["next_action"],
+        severity=cast(ValidationActionSeverity, severity),
+    )
 
 
 @dataclass(frozen=True, slots=True)
 class SubmissionFacts:
     """Current UI facts that affect whether a review may be submitted."""
 
-    decision: str
+    validation: ValidationReviewContract
     resource_blocked: bool
     has_unresolved_required_decisions: bool
     has_remap_options: bool
@@ -32,22 +205,30 @@ class SubmissionProjection:
 
 def project_submission(facts: SubmissionFacts) -> SubmissionProjection:
     """Project UI facts without claiming authority over backend apply."""
+    if not facts.validation.is_valid:
+        return SubmissionProjection(
+            can_submit_for_backend_review=False,
+            confirmed_on_accept=False,
+            recheck_kind=None,
+        )
+
+    decision = facts.validation.decision
     recheck_kind: SubmissionRecheckKind | None = None
     if not facts.resource_blocked:
         if (
-            facts.decision == "blocked"
+            decision == "blocked"
             and facts.has_remap_options
             and facts.has_complete_remap_choices
         ):
             recheck_kind = "remap"
         elif (
-            facts.decision == "blocked"
+            decision == "blocked"
             and facts.event_values_ready_for_recheck
             and not facts.has_unresolved_required_decisions
         ):
             recheck_kind = "event_values"
         elif (
-            facts.decision == "blocked"
+            decision == "blocked"
             and facts.interpretation_choices_ready_for_recheck
             and not facts.has_unresolved_required_decisions
         ):
@@ -57,7 +238,7 @@ def project_submission(facts: SubmissionFacts) -> SubmissionProjection:
         not facts.resource_blocked
         and (
             (
-                facts.decision in {"safe", "needs_confirmation"}
+                decision in {"safe", "needs_confirmation"}
                 and not facts.has_unresolved_required_decisions
             )
             or recheck_kind is not None

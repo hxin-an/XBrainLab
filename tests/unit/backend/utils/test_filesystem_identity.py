@@ -35,12 +35,9 @@ def test_directory_snapshot_rejects_same_path_replacement(tmp_path: Path) -> Non
         retain_directory_identity(target, expected=snapshot)
 
 
-def test_non_windows_directory_identity_revalidates_normally(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(filesystem_identity, "_is_windows", lambda: False)
-
+@pytest.mark.platform_contract
+@pytest.mark.skipif(os.name != "posix", reason="POSIX directory identity contract")
+def test_non_windows_directory_identity_revalidates_normally(tmp_path: Path) -> None:
     with retain_directory_identity(tmp_path) as identity:
         identity.assert_matches(tmp_path)
 

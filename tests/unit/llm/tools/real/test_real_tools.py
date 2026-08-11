@@ -6,6 +6,12 @@ from typing import Any
 import pytest
 
 from XBrainLab.backend.application import get_application_service
+from XBrainLab.backend.application.dataset_split_preview import (
+    DatasetSplitPreviewPublication,
+    DatasetSplitPreviewRequest,
+    DatasetSplitPreviewRow,
+    DatasetSplitSpecification,
+)
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.agent.tool_call_normalizer import normalize_tool_call
 from XBrainLab.llm.tools import (
@@ -14,6 +20,8 @@ from XBrainLab.llm.tools import (
 )
 from XBrainLab.llm.tools.application_surface import (
     ToolCommandResult,
+    UserProvidedTrainingOutputDir,
+    authorize_assistant_setting_change,
     normalize_tool_result,
 )
 from XBrainLab.llm.tools.authorized_paths import authorize_existing_path
@@ -118,7 +126,7 @@ _MAPPED_TOOL_CASES = (
     ),
     (
         dataset_real,
-        dataset_real.RealGenerateDatasetTool(),
+        dataset_real.RealConfigureDatasetSplitTool(),
         {},
         {
             "test_ratio": 0.2,
@@ -222,7 +230,6 @@ _MAPPED_TOOL_CASES = (
         training_real.RealConfigureTrainingTool(),
         {"epoch": 3, "batch_size": 4, "learning_rate": 0.001},
         {
-            "model_name": None,
             "epoch": 3,
             "batch_size": 4,
             "learning_rate": 0.001,
@@ -252,6 +259,19 @@ _MAPPED_TOOL_CASES = (
         {},
     ),
 )
+
+
+def _authorize_setting(
+    study: Study,
+    tool_name: str,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    generation = get_application_service(study).get_view_publication().generation
+    return authorize_assistant_setting_change(
+        tool_name,
+        params,
+        publication_generation=generation,
+    )
 
 
 @pytest.mark.parametrize(
@@ -290,24 +310,169 @@ def test_mapped_real_tool_execute_is_a_thin_canonical_delegate(
     }
 
 
-def test_direct_real_adapter_preserves_canonical_result_metadata() -> None:
+def test_dataset_split_adapter_preserves_host_confirmation_and_preview_receipt(
+    monkeypatch,
+) -> None:
+    receipt = DatasetSplitPreviewPublication(
+        request=DatasetSplitPreviewRequest(
+            request_id="direct-real-tool-preview",
+            publication_generation=7,
+            specification=DatasetSplitSpecification(
+                train_type="Individual",
+                is_cross_validation=False,
+            ),
+        ),
+        generation=7,
+        rows=(
+            DatasetSplitPreviewRow(
+                name="Subject 1",
+                train_count=8,
+                validation_count=1,
+                test_count=1,
+            ),
+        ),
+    ).receipt
+    authorized = authorize_assistant_setting_change(
+        "configure_dataset_split",
+        {
+            "test_ratio": 0.2,
+            "val_ratio": 0.2,
+            "split_strategy": "trial",
+            "training_mode": "individual",
+            "preview_receipt": receipt,
+        },
+        publication_generation=7,
+    )
+    confirmation = authorized["assistant_setting_confirmation"]
+    captured: dict[str, Any] = {}
+
+    def _delegate(study: Any, tool_name: str, params: dict[str, Any]) -> ToolResult:
+        captured.update({"study": study, "tool_name": tool_name, "params": params})
+        return ToolResult(True, "Split saved.")
+
+    monkeypatch.setattr(dataset_real, "execute_real_application_tool", _delegate)
+    study = object()
+
+    result = dataset_real.RealConfigureDatasetSplitTool().execute(study, **authorized)
+
+    assert result.ok is True
+    assert captured["study"] is study
+    assert captured["tool_name"] == "configure_dataset_split"
+    assert captured["params"]["preview_receipt"] is receipt
+    assert captured["params"]["assistant_setting_confirmation"] is confirmation
+
+
+def test_training_adapters_preserve_host_confirmation_and_provenance(
+    monkeypatch,
+) -> None:
+    output_dir = UserProvidedTrainingOutputDir("/host/reviewed-output")
+    proposals = (
+        (
+            training_real.RealSetModelTool(),
+            authorize_assistant_setting_change(
+                "set_model",
+                {"model_name": "EEGNet"},
+                publication_generation=11,
+            ),
+        ),
+        (
+            training_real.RealConfigureTrainingTool(),
+            authorize_assistant_setting_change(
+                "configure_training",
+                {
+                    "model_name": "EEGNet",
+                    "epoch": 3,
+                    "batch_size": 4,
+                    "learning_rate": 0.001,
+                    "output_dir": output_dir,
+                },
+                publication_generation=11,
+            ),
+        ),
+    )
+    captured: list[tuple[str, dict[str, Any]]] = []
+
+    def _delegate(_study: Any, tool_name: str, params: dict[str, Any]) -> ToolResult:
+        captured.append((tool_name, params))
+        return ToolResult(True, "Training setting saved.")
+
+    monkeypatch.setattr(training_real, "execute_real_application_tool", _delegate)
+
+    for tool, authorized in proposals:
+        confirmation = authorized["assistant_setting_confirmation"]
+
+        result = tool.execute(object(), **authorized)
+
+        assert result.ok is True
+        assert captured[-1][0] == tool.name
+        assert captured[-1][1]["assistant_setting_confirmation"] is confirmation
+
+    assert captured[-1][1]["output_dir"] is output_dir
+
+
+def test_training_host_only_adapter_values_are_not_model_facing() -> None:
+    for tool in (
+        training_real.RealSetModelTool(),
+        training_real.RealConfigureTrainingTool(),
+    ):
+        properties = tool.parameters["properties"]
+
+        assert "assistant_setting_confirmation" not in properties
+        assert "output_dir" not in properties
+
+
+def test_authorized_training_direct_adapters_execute_reviewed_proposals() -> None:
+    study = Study()
+    model_params = _authorize_setting(
+        study,
+        "set_model",
+        {"model_name": "EEGNet"},
+    )
+
+    model_result = training_real.RealSetModelTool().execute(study, **model_params)
+
+    assert model_result.ok is True
+    training_params = _authorize_setting(
+        study,
+        "configure_training",
+        {
+            "epoch": 3,
+            "batch_size": 4,
+            "learning_rate": 0.001,
+        },
+    )
+
+    training_result = training_real.RealConfigureTrainingTool().execute(
+        study,
+        **training_params,
+    )
+
+    assert training_result.ok is True
+    assert training_result.state is not None
+    assert training_result.state["training"]["training_option"]["epoch"] == 3
+
+
+def test_authorized_direct_adapter_preserves_canonical_result_metadata() -> None:
     study = Study()
 
-    direct_result = training_real.RealSetModelTool().execute(
+    direct_result = execute_real_application_tool(
         study,
-        model_name="EEGNet",
+        "set_model",
+        _authorize_setting(study, "set_model", {"model_name": "EEGNet"}),
     )
     normalized = normalize_tool_result(study, "set_model", direct_result)
 
     assert direct_result.command_name == "configure_training"
     assert direct_result.state is not None
-    assert direct_result.state["training"]["model_name"] == "EEGNet"
+    assert direct_result.state["training"]["model_name"] == "EEGNet (XBrainLab)"
     assert direct_result.capability is not None
     assert direct_result.changed_state["training_changed"] is True
     assert isinstance(direct_result.payload, dict)
     assert direct_result.payload["status"] == "ok"
     assert direct_result.payload["command_name"] == "configure_training"
-    assert direct_result.payload["state"]["training"]["model_name"] == "EEGNet"
+    assert (
+        direct_result.payload["state"]["training"]["model_name"] == "EEGNet (XBrainLab)"
+    )
     assert direct_result.payload["changed_state"]["training_changed"] is True
     assert isinstance(normalized, ToolCommandResult)
     assert normalized.command_name == direct_result.command_name
@@ -321,16 +486,24 @@ def test_direct_real_adapter_preserves_canonical_result_metadata() -> None:
 
 def test_saliency_request_reaches_authoritative_state_with_exact_parameters() -> None:
     study = Study()
-    model_result = training_real.RealSetModelTool().execute(
+    model_result = execute_real_application_tool(
         study,
-        model_name="EEGNet",
+        "set_model",
+        _authorize_setting(study, "set_model", {"model_name": "EEGNet"}),
     )
-    training_result = training_real.RealConfigureTrainingTool().execute(
+    training_result = execute_real_application_tool(
         study,
-        epoch=1,
-        batch_size=2,
-        learning_rate=0.001,
-        device="cpu",
+        "configure_training",
+        _authorize_setting(
+            study,
+            "configure_training",
+            {
+                "epoch": 1,
+                "batch_size": 2,
+                "learning_rate": 0.001,
+                "device": "cpu",
+            },
+        ),
     )
     tool_name, params = normalize_tool_call(
         "saliency",
@@ -381,17 +554,18 @@ def test_direct_adapter_recovers_authoritative_publication_after_post_execute_fa
         classmethod(_fail_after_execute),
     )
     runtime = _Runtime()
+    params = _authorize_setting(study, "set_model", {"model_name": "EEGNet"})
 
     result = execute_real_application_tool(
         bind_real_tool_execution_context(study, runtime),
         "set_model",
-        {"model_name": "EEGNet"},
+        params,
     )
 
     assert result.ok is False
     assert len(execute_calls) == 1
     assert result.state is not None
-    assert result.state["training"]["model_name"] == "EEGNet"
+    assert result.state["training"]["model_name"] == "EEGNet (XBrainLab)"
     assert result.changed_state["state_unknown"] is False
     assert result.diagnostics["state_source"] == "authoritative_publication"
     assert result.diagnostics["publication_generation"] >= 1
@@ -425,10 +599,11 @@ def test_direct_adapter_marks_state_unknown_when_publication_recovery_fails(
         classmethod(_fail_after_execute),
     )
 
+    params = _authorize_setting(study, "set_model", {"model_name": "EEGNet"})
     result = execute_real_application_tool(
         bind_real_tool_execution_context(study, _Runtime()),
         "set_model",
-        {"model_name": "EEGNet"},
+        params,
     )
 
     assert result.ok is False

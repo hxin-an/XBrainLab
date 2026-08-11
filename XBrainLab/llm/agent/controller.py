@@ -41,6 +41,7 @@ from XBrainLab.product_language import ASSISTANT_CANCELLED_MESSAGE, tool_action_
 from .assembler import ContextAssembler, PromptToolPublication
 from .assistant_activity import (
     AssistantAttentionKind,
+    AssistantDecisionOwner,
     AssistantTurnActivity,
     AssistantTurnActivityPhase,
 )
@@ -49,6 +50,7 @@ from .confirmation import (
     AgentConfirmationRequest,
     AgentConfirmationResolution,
     AgentConfirmationResolutionStatus,
+    AgentConfirmationRisk,
 )
 from .conversation import ConversationHistory
 from .decision_context import build_workflow_decision_context
@@ -62,6 +64,12 @@ from .pending_interaction import (
     PendingWorkflowHandoffDecision,
 )
 from .product_turn_policy import ProductTurnKind, ProductTurnPolicy
+from .prompt_policy import (
+    DIRECT_ACTION_TOOL_NAMES,
+    backend_command_from_prompt_authorization,
+    classify_prompt_action,
+    prompt_action_authorization,
+)
 from .rag_lifecycle import RAGLifecycleRetriever, RAGRetrieverLifecycle
 from .rag_process_lifecycle import ProcessRAGRetrieverLifecycle
 from .request_admission import (
@@ -133,6 +141,7 @@ from .ui_handoff import (
     WorkflowUiHandoffRequest,
     WorkflowUiHandoffResolution,
     WorkflowUiHandoffResolutionStatus,
+    workflow_ui_handoff_route_for,
 )
 from .verifier import VerificationLayer
 from .worker import AgentWorker
@@ -144,6 +153,18 @@ WORKER_GENERATION_SHUTDOWN_WAIT_MS = 2000
 WORKER_SHUTDOWN_RETRY_INTERVAL_MS = 100
 WORKER_SHUTDOWN_TIMEOUT_MS = 5000
 _QT_THREAD_TYPE = QThread
+
+_BLOCKED_TOOL_ERROR_TYPES = frozenset(
+    {
+        "confirmation_required",
+        "input",
+        "intent_mismatch",
+        "precondition",
+        "stale_confirmation",
+        "stale_publication",
+        "tool_not_published",
+    }
+)
 
 
 class _ControllerShutdownPhase(str, Enum):
@@ -428,6 +449,7 @@ class LLMController(QObject):
         request_id: str = "",
         message: str = "",
         attention_kind: AssistantAttentionKind = AssistantAttentionKind.ATTENTION,
+        decision_owner: AssistantDecisionOwner | None = None,
     ) -> None:
         """Publish transient assistant activity without duplicating workflow truth."""
         self.activity_changed.emit(
@@ -439,6 +461,7 @@ class LLMController(QObject):
                 turn_id=self._turn_orchestrator.host_turn_id,
                 generation=self._turn_orchestrator.host_turn_generation,
                 attention_kind=attention_kind,
+                decision_owner=decision_owner,
             )
         )
 
@@ -472,6 +495,18 @@ class LLMController(QObject):
         if active_scope is not None:
             return active_scope.policy_mode
         return AssistantTurnScope.SINGLE_ACTION.policy_mode
+
+    @staticmethod
+    def _workflow_handoff_decision_owner(
+        command_name: CommandName | str,
+    ) -> AssistantDecisionOwner:
+        """Identify the existing product surface that owns one UI handoff."""
+        route = workflow_ui_handoff_route_for(command_name)
+        return (
+            route.decision_owner
+            if route is not None
+            else AssistantDecisionOwner.PANEL_HANDOFF
+        )
 
     def initialize(self, launch_spec: AssistantRuntimeLaunchSpec):
         """Initializes the underlying worker engine and RAG retriever.
@@ -822,13 +857,28 @@ class LLMController(QObject):
         ):
             return True
         if decision.action is UserRequestAdmissionAction.GENERATE:
+            command_name = (
+                decision.command.value if decision.command is not None else ""
+            )
             self._turn_orchestrator.record_admission(
-                decision.command.value if decision.command is not None else None,
+                command_name or None,
                 publication.generation if publication is not None else None,
             )
-            self.assembler.set_turn_authorized_command(
-                self._turn_orchestrator.admitted_command_name
-            )
+            prompt_action = classify_prompt_action(text, command_name)
+            if prompt_action.requires_clarification:
+                self._finish_request_clarification(
+                    prompt_action.clarification_message,
+                )
+                return True
+            authorized_command = command_name or None
+            if prompt_action.tool_name is not None:
+                if prompt_action.action_name is None:
+                    raise RuntimeError("Prompt action selection omitted its identity.")
+                authorized_command = prompt_action_authorization(
+                    command_name=prompt_action.action_name,
+                    tool_name=prompt_action.tool_name,
+                )
+            self.assembler.set_turn_authorized_command(authorized_command)
             return False
         if decision.command is None:
             logger.error(
@@ -884,9 +934,23 @@ class LLMController(QObject):
             command_name=request.command_name,
             request_id=request.request_id,
             message=decision.message,
+            decision_owner=self._workflow_handoff_decision_owner(request.command),
         )
         self.workflow_ui_handoff_requested.emit(request)
         return True
+
+    def _finish_request_clarification(self, message: str) -> None:
+        """Finish an admitted turn that needs semantic request detail."""
+        self._append_history("assistant", message)
+        self._publish_response(
+            message,
+            kind=AssistantResponseKind.CLARIFICATION,
+        )
+        self.metrics.finish_turn()
+        self.status_update.emit("Ready")
+        self._publish_activity(AssistantTurnActivityPhase.IDLE)
+        self.is_processing = False
+        self._emit_processing_finished("clarification")
 
     def _workflow_ui_handoff_request(
         self,
@@ -1080,6 +1144,15 @@ class LLMController(QObject):
                 "latest_tool_publication",
                 None,
             )
+            if isinstance(publication, PromptToolPublication):
+                backend_authorization = backend_command_from_prompt_authorization(
+                    publication.authorized_command
+                )
+                if backend_authorization != publication.authorized_command:
+                    publication = replace(
+                        publication,
+                        authorized_command=backend_authorization,
+                    )
             self._turn_orchestrator.set_active_publication(
                 publication
                 if isinstance(publication, PromptToolPublication)
@@ -1409,15 +1482,34 @@ class LLMController(QObject):
 
         cmd, params = command
         repeated = self._tool_attempt_session.record_tool_proposal(cmd, params)
+        latest_user_text = self._latest_user_request_text()
+        publication = self._turn_orchestrator.active_publication
+        if self._publication_authorizes_direct_ui_action(publication, cmd):
+            latest_user_text = ""
         return self._tool_attempt_coordinator.evaluate(
             ToolAttemptRequest(
                 command_name=cmd,
                 params=params,
                 confidence=confidence,
-                publication=self._turn_orchestrator.active_publication,
-                latest_user_text=self._latest_user_request_text(),
+                publication=publication,
+                latest_user_text=latest_user_text,
                 repeated=repeated,
             )
+        )
+
+    @staticmethod
+    def _publication_authorizes_direct_ui_action(
+        publication: PromptToolPublication,
+        tool_name: str,
+    ) -> bool:
+        """Recognize one exact host-classified UI action for intent verification."""
+        action_name = publication.authorized_command or ""
+        contract = AGENT_ACTION_CONTRACTS.contract_for(tool_name)
+        return (
+            contract is not None
+            and contract.command is None
+            and publication.tool_names == frozenset({tool_name})
+            and tool_name in DIRECT_ACTION_TOOL_NAMES.get(action_name, frozenset())
         )
 
     def _present_tool_attempt_boundary(self, decision: ToolAttemptDecision) -> bool:
@@ -1504,6 +1596,7 @@ class LLMController(QObject):
             AssistantTurnActivityPhase.WAITING_FOR_DECISION,
             command_name=cmd,
             request_id=request.request_id,
+            decision_owner=AssistantDecisionOwner.CONFIRMATION_CARD,
         )
         self.confirmation_requested.emit(request)
 
@@ -1523,15 +1616,27 @@ class LLMController(QObject):
         ):
             tool_context = decision.context
         label = tool_action_label(cmd)
+        availability = tool_context.availability if tool_context is not None else None
+        high_impact = decision.confirmation_kind == "setting_change"
+        risk = AgentConfirmationRisk.from_policy(
+            command_name=cmd,
+            destructive=bool(availability and availability.destructive),
+            high_impact=high_impact,
+            long_running=bool(availability and availability.long_running),
+            decision_boundary=(
+                availability.decision_boundary if availability is not None else None
+            ),
+        )
         return AgentConfirmationRequest.for_action(
             command_name=cmd,
             params=decision.params,
             action_label=label,
             description=decision.message
             or (decision.tool.description if decision.tool else label),
-            destructive=bool(tool_context and tool_context.availability.destructive),
+            destructive=risk.destructive,
             publication_generation=(tool_context.generation if tool_context else None),
             confirmation_kind=decision.confirmation_kind,
+            risk=risk,
         )
 
     def _execute_tool_attempt(
@@ -1651,35 +1756,46 @@ class LLMController(QObject):
         *,
         feedback: ToolAttemptFeedback = ToolAttemptFeedback.SYSTEM_REJECTION,
     ) -> None:
-        """Present one typed policy/intent rejection and finish the turn."""
+        """Present one typed blocked or failed attempt and finish the turn."""
         user_message = self._summarize_tool_result(command_name, False, result)
+        response_kind = self._tool_result_response_kind(False, result)
+        blocked = response_kind is AssistantResponseKind.BLOCKED
         logger.warning(
-            "Tool attempt blocked: %s",
+            "Tool attempt %s: %s",
+            "blocked" if blocked else "failed",
             redact_public_text(result.message),
         )
-        self.status_update.emit(f"Blocked: {user_message}")
+        self.status_update.emit(f"{'Blocked' if blocked else 'Error'}: {user_message}")
         self._publish_activity(
             AssistantTurnActivityPhase.NEEDS_ATTENTION,
             command_name=command_name,
             message=user_message,
+            attention_kind=(
+                AssistantAttentionKind.ATTENTION
+                if blocked
+                else AssistantAttentionKind.ERROR
+            ),
         )
-        panel_target = panel_target_for_blocked_command(
-            command_name,
-            result.blocked_reason or result.message,
+        panel_target = (
+            panel_target_for_blocked_command(
+                command_name,
+                result.blocked_reason or result.message,
+            )
+            if blocked
+            else None
         )
-        actions = (
-            (
+        if panel_target is not None:
+            actions = (
                 AssistantResponseAction.open_panel(
                     f"Open {panel_target.value.title()}",
                     panel_target,
                 ),
             )
-            if panel_target is not None
-            else ()
-        )
+        else:
+            actions = self._retry_actions_for_result(result)
         self._publish_response(
             user_message,
-            kind=AssistantResponseKind.BLOCKED,
+            kind=response_kind,
             actions=actions,
         )
         history_message = (
@@ -1690,7 +1806,7 @@ class LLMController(QObject):
         self._append_history("user", history_message)
         self._tool_attempt_session.record_summary(
             user_message,
-            AssistantResponseKind.BLOCKED,
+            response_kind,
         )
         self._finalize_turn_after_tool()
 
@@ -1708,7 +1824,12 @@ class LLMController(QObject):
     ) -> AssistantResponseKind:
         """Distinguish an informational read from a completed state change."""
         if not success:
-            return AssistantResponseKind.BLOCKED
+            if (
+                isinstance(result, ToolCommandResult)
+                and result.error_type in _BLOCKED_TOOL_ERROR_TYPES
+            ):
+                return AssistantResponseKind.BLOCKED
+            return AssistantResponseKind.ERROR
         if isinstance(result, ToolCommandResult) and any(
             changed is True for changed in result.changed_state.values()
         ):
@@ -1754,7 +1875,40 @@ class LLMController(QObject):
                 "System: Tool execution retry limit reached. Stopping.",
             )
             self.status_update.emit("Retry limit reached, stopping.")
+        response_kind = self._tool_result_response_kind(False, result)
+        retry_actions = self._retry_actions_for_result(result)
+        if (
+            decision.reason != "cancelled"
+            and response_kind is AssistantResponseKind.ERROR
+            and retry_actions
+        ):
+            self._publish_response(
+                self._summarize_tool_result(
+                    getattr(result, "tool_name", "") or "unknown_tool",
+                    False,
+                    result,
+                ),
+                kind=response_kind,
+                actions=retry_actions,
+            )
         self._finalize_turn_after_tool()
+
+    def _retry_actions_for_result(
+        self,
+        result: ToolCommandResult | UiRequest,
+    ) -> tuple[AssistantResponseAction, ...]:
+        """Offer one correlated retry only for recoverable runtime failures."""
+        if (
+            not isinstance(result, ToolCommandResult)
+            or not result.recoverable
+            or self._tool_result_response_kind(False, result)
+            is not AssistantResponseKind.ERROR
+        ):
+            return ()
+        prompt = self._latest_user_request_text()
+        if not prompt:
+            return ()
+        return (AssistantResponseAction.send_message("Try again", prompt),)
 
     def _handle_tool_success(
         self,
@@ -1850,6 +2004,9 @@ class LLMController(QObject):
                     AssistantTurnActivityPhase.WAITING_FOR_DECISION,
                     command_name=request.command_name,
                     request_id=request.request_id,
+                    decision_owner=self._workflow_handoff_decision_owner(
+                        request.command
+                    ),
                 )
                 self.workflow_ui_handoff_requested.emit(request)
                 logger.info(
@@ -2470,6 +2627,9 @@ class LLMController(QObject):
                     AssistantTurnActivityPhase.WAITING_FOR_DECISION,
                     command_name=workflow_request.command_name,
                     request_id=workflow_request.request_id,
+                    decision_owner=self._workflow_handoff_decision_owner(
+                        workflow_request.command
+                    ),
                 )
                 self.workflow_ui_handoff_requested.emit(workflow_request)
                 return True

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import os
-from pathlib import Path
 from typing import Any
 
 from XBrainLab.backend.services.dataset_state_service import DatasetInterpretationPort
@@ -17,6 +16,11 @@ from .commands import (
     LabelImportPlan,
     LoadDataCommand,
     PreviewLabelImportCommand,
+)
+from .data_interpretation_path_identity import (
+    deduplicate_resolved_paths,
+    resolved_path_identity,
+    resolved_path_value,
 )
 from .data_load_resource_receipt import DataLoadResourceReceiptAuthority
 from .errors import ApplicationError, PreconditionError
@@ -173,6 +177,7 @@ class DataCompatibilityCommandService:
         target_files, file_mapping = self._resolve_requested_label_attachments(
             list(self.dataset.get_loaded_data_list() or []),
             command.mapping,
+            label_paths=label_paths,
         )
 
         session = self._attach_label_resources.admit(
@@ -250,7 +255,7 @@ class DataCompatibilityCommandService:
         file_mapping: dict[str, str] = {}
         if mode in {"batch", "timestamp", "sequence"}:
             file_mapping = {
-                str(data_path): self._path_key(label_path)
+                str(data_path): self._admitted_label_path(label_path, label_paths)
                 for data_path, label_path in plan.file_mapping.items()
             }
             if not file_mapping and len(label_paths) == 1:
@@ -477,7 +482,9 @@ class DataCompatibilityCommandService:
         mapped = cls._normalized_label_paths(command.mapping.values())
         if not declared:
             raise PreconditionError("label_paths is required for label attachment.")
-        if set(declared) != set(mapped):
+        if {cls._path_key(path) for path in declared} != {
+            cls._path_key(path) for path in mapped
+        }:
             raise PreconditionError(
                 "label_paths must exactly match the paths in attachment mapping.",
                 diagnostics={
@@ -495,14 +502,17 @@ class DataCompatibilityCommandService:
             raise PreconditionError("label_paths is required for label import.")
         return paths
 
-    @staticmethod
+    @classmethod
     def _ensure_file_mapping_uses_admitted_paths(
+        cls,
         file_mapping: dict[str, str],
         *,
         label_paths: list[str],
     ) -> None:
-        mapped_paths = set(file_mapping.values())
-        if mapped_paths != set(label_paths):
+        mapped_paths = list(file_mapping.values())
+        mapped_identities = {cls._path_key(path) for path in mapped_paths}
+        declared_identities = {cls._path_key(path) for path in label_paths}
+        if mapped_identities != declared_identities:
             raise PreconditionError(
                 "file_mapping must use every and only the admitted label_paths.",
                 diagnostics={
@@ -534,11 +544,23 @@ class DataCompatibilityCommandService:
 
     @classmethod
     def _normalized_label_paths(cls, paths: Any) -> list[str]:
-        return list(dict.fromkeys(cls._path_key(path) for path in paths))
+        return deduplicate_resolved_paths(paths)
 
     @staticmethod
     def _path_key(path: Any) -> str:
-        return os.path.normcase(str(Path(str(path)).expanduser().resolve()))
+        return resolved_path_identity(path)
+
+    @staticmethod
+    def _path_value(path: Any) -> str:
+        return resolved_path_value(path)
+
+    @classmethod
+    def _admitted_label_path(cls, path: Any, label_paths: list[str]) -> str:
+        identity = cls._path_key(path)
+        for admitted_path in label_paths:
+            if cls._path_key(admitted_path) == identity:
+                return admitted_path
+        return cls._path_value(path)
 
     @staticmethod
     def _ensure_complete_label_batch(
@@ -603,6 +625,8 @@ class DataCompatibilityCommandService:
         cls,
         data_list: list[Any],
         mapping: dict[str, str],
+        *,
+        label_paths: list[str],
     ) -> tuple[list[Any], dict[str, str]]:
         requested = {str(key): value for key, value in mapping.items()}
         consumed: set[str] = set()
@@ -624,7 +648,10 @@ class DataCompatibilityCommandService:
             key = matched_keys[0]
             consumed.add(key)
             targets.append(raw)
-            file_mapping[filepath] = cls._path_key(requested[key])
+            file_mapping[filepath] = cls._admitted_label_path(
+                requested[key],
+                label_paths,
+            )
         missing = sorted(set(requested) - consumed)
         if missing:
             raise PreconditionError(
@@ -648,11 +675,7 @@ class DataCompatibilityCommandService:
         if values is None:
             return None
         normalized = sorted(
-            {
-                " ".join(str(value).strip().split())
-                for value in values
-                if str(value).strip()
-            },
+            {str(value).strip() for value in values if str(value).strip()},
             key=lambda value: (value.casefold(), value),
         )
         return normalized or None

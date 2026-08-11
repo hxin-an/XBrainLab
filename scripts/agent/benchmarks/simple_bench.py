@@ -95,7 +95,7 @@ TOOL_TYPE_MAP = {
     "attach_labels": "dataset",
     "clear_dataset": "dataset",
     "get_dataset_info": "dataset",
-    "generate_dataset": "dataset",
+    "configure_dataset_split": "dataset",
     # Preprocess (9)
     "apply_standard_preprocess": "preprocess",
     "apply_bandpass_filter": "preprocess",
@@ -151,7 +151,7 @@ def simulate_stage_transition(
         return PipelineStage.DATA_LOADED
     if tool_name in ("epoch_data", "apply_standard_preprocess"):
         return PipelineStage.PREPROCESSED
-    if tool_name == "generate_dataset":
+    if tool_name == "configure_dataset_split":
         return PipelineStage.DATASET_READY
     if tool_name == "start_training":
         return PipelineStage.TRAINED

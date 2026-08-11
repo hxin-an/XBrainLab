@@ -20,9 +20,12 @@ from XBrainLab.llm.tools import application_surface
 from XBrainLab.llm.tools.application_surface import (
     ToolAvailability,
     ToolAvailabilityContext,
+    ToolCommandResult,
+    authorize_assistant_setting_change,
+    execute_application_tool_command,
 )
 from XBrainLab.llm.tools.real.dataset_real import (
-    RealGenerateDatasetTool,
+    RealConfigureDatasetSplitTool,
     RealLoadDataTool,
 )
 from XBrainLab.llm.tools.real.preprocess_real import (
@@ -78,6 +81,19 @@ def _assert_tool_result(result, *, ok: bool = True) -> ToolResult:
         assert result.error_type == ErrorType.NONE.value
     else:
         assert result.error_type != ErrorType.NONE.value
+    return result
+
+
+def _execute_confirmed_setting(study, tool_name: str, params: dict):
+    publication = get_application_service(study).get_view_publication()
+    reviewed = authorize_assistant_setting_change(
+        tool_name,
+        params,
+        publication_generation=publication.generation,
+    )
+    result = execute_application_tool_command(study, tool_name, reviewed)
+    assert isinstance(result, ToolCommandResult)
+    assert result.ok, result.message
     return result
 
 
@@ -176,17 +192,22 @@ TEST_DATA_DIR = os.path.abspath(
 )
 GDF_FILE = os.path.join(TEST_DATA_DIR, "A01T.gdf")
 EXPECTED_A01T_REAL_TOOL_EPOCH_EVENT_IDS = {
-    "769": 0,
-    "770": 1,
-    "771": 2,
-    "772": 3,
+    "left hand": 0,
+    "right hand": 1,
+    "feet": 2,
+    "tongue": 3,
 }
 EXPECTED_A01T_REAL_TOOL_SPLIT_SUMMARY = {
     "count": 1,
     "train_count": 176,
     "val_count": 43,
     "test_count": 54,
-    "audit": {"ok": True, "dataset_count": 1, "issues": []},
+    "audit": {
+        "ok": True,
+        "dataset_count": 1,
+        "issues": [],
+        "truncated_issue_count": 0,
+    },
 }
 
 
@@ -237,30 +258,51 @@ class TestRealToolChain:
         assert epoch_state["n_times"] == 501
         assert epoch_state["event_ids"] == EXPECTED_A01T_REAL_TOOL_EPOCH_EVENT_IDS
 
-        # 2.5 Generate Dataset (Required for Training)
-        gen_tool = RealGenerateDatasetTool()
-        res_gen = gen_tool.execute(
-            study, split_strategy="trial"
-        )  # trial strategy default
-        res_gen = _assert_tool_result(res_gen)
-        assert res_gen.message == "Generated 1 dataset(s)."
-        assert res_gen.payload["diagnostics"]["dataset_count"] == 1
+        # 2.5 Save the reviewed split specification for deferred materialization.
+        split_tool = RealConfigureDatasetSplitTool()
+        split_params = {
+            "test_ratio": 0.2,
+            "val_ratio": 0.2,
+            "split_strategy": "trial",
+            "training_mode": "individual",
+        }
+        unconfirmed_split = _assert_tool_result(
+            split_tool.execute(study, **split_params),
+            ok=False,
+        )
+        assert unconfirmed_split.error_type == "confirmation_required"
+        publication = get_application_service(study).get_view_publication()
+        reviewed_split = authorize_assistant_setting_change(
+            "configure_dataset_split",
+            split_params,
+            publication_generation=publication.generation,
+        )
+        saved_split = _assert_tool_result(
+            split_tool.execute(study, **reviewed_split),
+        )
+        assert saved_split.message == "Data splitting specification saved."
+        assert saved_split.diagnostics["materialized"] is False
         state = _state(study)
-        assert (
-            state["dataset"]["count"] == EXPECTED_A01T_REAL_TOOL_SPLIT_SUMMARY["count"]
-        )
-        assert (
-            state["dataset"]["split_summary"] == EXPECTED_A01T_REAL_TOOL_SPLIT_SUMMARY
-        )
-        assert state["active_dataset"]["has_datasets"] is True
+        assert state["dataset"]["split_spec_saved"] is True
+        assert state["dataset"]["count"] == 0
+        assert state["dataset"]["active_split_summary"] == {}
+        assert state["active_dataset"]["has_saved_split"] is True
+        assert state["active_dataset"]["has_datasets"] is False
 
         # 3. Configure & Start Training
         # Set Model (Optional default is often set, but let's be explicit)
         model_tool = RealSetModelTool()
         res_model = model_tool.execute(study, model_name="EEGNet")
-        res_model = _assert_tool_result(res_model)
+        res_model = _assert_tool_result(res_model, ok=False)
+        assert res_model.error_type == "confirmation_required"
+        assert _state(study)["training"]["model_name"] is None
+        res_model = _execute_confirmed_setting(
+            study,
+            "set_model",
+            {"model_name": "EEGNet"},
+        )
         assert res_model.message == "Model configured: EEGNet."
-        assert _state(study)["training"]["model_name"] == "EEGNet"
+        assert _state(study)["training"]["model_name"] == "EEGNet (XBrainLab)"
 
         # Configure
         config_tool = RealConfigureTrainingTool()
@@ -270,10 +312,20 @@ class TestRealToolChain:
             batch_size=4,
             learning_rate=0.001,
         )
-        res_config = _assert_tool_result(res_config)
+        res_config = _assert_tool_result(res_config, ok=False)
+        assert res_config.error_type == "confirmation_required"
+        res_config = _execute_confirmed_setting(
+            study,
+            "configure_training",
+            {
+                "epoch": 1,
+                "batch_size": 4,
+                "learning_rate": 0.001,
+            },
+        )
         assert res_config.message == "Training configured."
-        assert res_config.payload["diagnostics"]["training_option"]["epoch"] == 1
-        assert res_config.payload["diagnostics"]["training_option"]["batch_size"] == 4
+        assert res_config.diagnostics["training_option"]["epoch"] == 1
+        assert res_config.diagnostics["training_option"]["batch_size"] == 4
         training_state = _state(study)["training"]
         assert training_state["training_option"]["epoch"] == 1
         assert training_state["training_option"]["batch_size"] == 4
@@ -296,6 +348,15 @@ class TestRealToolChain:
         assert training_state["plan_count"] == 1
         assert training_state["run_count"] == 1
         assert training_state["finished_run_count"] == 1
+        state = _state(study)
+        assert (
+            state["dataset"]["count"] == EXPECTED_A01T_REAL_TOOL_SPLIT_SUMMARY["count"]
+        )
+        assert (
+            state["dataset"]["active_split_summary"]
+            == EXPECTED_A01T_REAL_TOOL_SPLIT_SUMMARY
+        )
+        assert state["active_dataset"]["has_datasets"] is True
 
     def test_tool_error_handling(self, study):
         """Verify the retired direct loader fails closed with product guidance."""

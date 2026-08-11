@@ -134,12 +134,14 @@ def test_bids_epoch_duration_stats_include_only_class_rows() -> None:
         "bids_event_review": {
             "row_evidence": [
                 {
+                    "row": 0,
                     "placement_status": "usable",
                     "duration_provenance": "known",
                     "raw_duration": 1.5,
                     "value_decision": {"use_as_class": True},
                 },
                 {
+                    "row": 1,
                     "placement_status": "usable",
                     "duration_provenance": "known",
                     "raw_duration": 20.0,
@@ -157,6 +159,60 @@ def test_bids_epoch_duration_stats_include_only_class_rows() -> None:
         "numeric_count": 1,
         "min": 1.5,
         "max": 1.5,
+    }
+
+    evidence = DataInterpretationApplyService._bids_duration_epoch_evidence(plan)
+
+    assert evidence == {
+        "duration_stats": stats,
+        "placement_event_count": 1,
+        "unknown_duration_count": 0,
+        "unknown_duration_rows": [],
+    }
+
+
+def test_bids_epoch_duration_evidence_counts_only_selected_class_rows() -> None:
+    plan = {
+        "bids_event_review": {
+            "row_evidence": [
+                {
+                    "row": 0,
+                    "placement_status": "usable",
+                    "duration_provenance": "known",
+                    "raw_duration": 0.0,
+                    "value_decision": {"use_as_class": True},
+                },
+                {
+                    "row": 1,
+                    "placement_status": "usable",
+                    "duration_provenance": "unknown",
+                    "raw_duration": None,
+                    "value_decision": {"use_as_class": True},
+                },
+                {
+                    "row": 2,
+                    "placement_status": "usable",
+                    "duration_provenance": "known",
+                    "raw_duration": 2.0,
+                    "value_decision": {"use_as_class": False},
+                },
+            ],
+        },
+    }
+
+    evidence = DataInterpretationApplyService._bids_duration_epoch_evidence(plan)
+
+    assert evidence == {
+        "duration_stats": {
+            "row_count": 1,
+            "value_counts": {"0": 1},
+            "numeric_count": 1,
+            "min": 0.0,
+            "max": 0.0,
+        },
+        "placement_event_count": 2,
+        "unknown_duration_count": 1,
+        "unknown_duration_rows": [1],
     }
 
 

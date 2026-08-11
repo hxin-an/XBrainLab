@@ -285,17 +285,22 @@ def test_qt_teardown_drops_late_result_and_releases_figure(qtbot):
         assert figure_created.wait(timeout=1.0)
         owner = getattr(view, "_render_cleanup_owner", None)
         owner_thread = owner.thread() if owner is not None else None
+        owner_thread_id = int(QThread.currentThreadId())
         worker = next(iter(view._render_workers.values()))
         worker_ref = weakref.ref(worker)
         signals_ref = weakref.ref(worker.signals)
-        cleanup_threads: list[QThread | None] = []
+        cleanup_thread_ids: list[int] = []
         worker_probe = weakref.ref(
             worker,
-            lambda _reference: cleanup_threads.append(QThread.currentThread()),
+            lambda _reference: cleanup_thread_ids.append(
+                int(QThread.currentThreadId())
+            ),
         )
         signals_probe = weakref.ref(
             worker.signals,
-            lambda _reference: cleanup_threads.append(QThread.currentThread()),
+            lambda _reference: cleanup_thread_ids.append(
+                int(QThread.currentThreadId())
+            ),
         )
         del worker
 
@@ -327,8 +332,9 @@ def test_qt_teardown_drops_late_result_and_releases_figure(qtbot):
     assert late_figure_released
     assert published == []
     assert view._render_workers == {}
-    assert cleanup_threads
-    assert all(thread is owner_thread for thread in cleanup_threads)
+    assert owner_thread is not None
+    assert cleanup_thread_ids
+    assert all(thread_id == owner_thread_id for thread_id in cleanup_thread_ids)
     assert worker_probe() is None
     assert signals_probe() is None
 

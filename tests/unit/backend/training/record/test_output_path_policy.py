@@ -148,6 +148,39 @@ def test_training_path_hash_distinguishes_equal_slugs(tmp_path: Path) -> None:
     assert first_component != second_component
 
 
+@pytest.mark.platform_contract
+@pytest.mark.skipif(os.name != "posix", reason="POSIX dir-fd security contract")
+def test_training_output_does_not_require_a_directory_fd_pseudo_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_stat = os.stat
+
+    def stat_without_fd_pseudo_paths(path, *args, **kwargs):
+        candidate = os.fspath(path)
+        if candidate.startswith(("/proc/self/fd/", "/dev/fd/")):
+            raise FileNotFoundError(candidate)
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "stat", stat_without_fd_pseudo_paths)
+    output = create_contained_output_directory(
+        tmp_path / "authorized",
+        "dataset",
+        "Model_plan",
+        "Repeat-0",
+        exclusive=True,
+    )
+
+    assert output.io_path == output.path
+    with (
+        output.retain_identity() as identity,
+        identity.create_exclusive_binary(output.path / "artifact.bin") as stream,
+    ):
+        stream.write(b"artifact")
+
+    assert (output.path / "artifact.bin").read_bytes() == b"artifact"
+
+
 def test_training_identity_normalizes_canonical_unicode_but_hashes_distinct_values() -> (
     None
 ):
@@ -287,6 +320,24 @@ def test_fallback_output_identity_rejects_same_path_replacement(
         output.retain_identity()
 
 
+def test_fallback_output_creation_does_not_depend_on_os_makedirs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(os, "makedirs", lambda *_args, **_kwargs: None)
+
+    output = filesystem_identity._create_fallback_output_directory(
+        tmp_path / "authorized",
+        ("dataset", "Model_plan", "Repeat-0"),
+        exclusive=True,
+        legacy_components=(),
+    )
+
+    assert output.path.is_dir()
+    with output.retain_identity() as identity:
+        identity.assert_matches(output.path)
+
+
 def test_pre_sec02_output_namespace_is_rejected_explicitly(tmp_path: Path) -> None:
     authorized_root = tmp_path / "authorized"
     display_name = "Subject-01_0"
@@ -352,6 +403,7 @@ def test_individual_generation_rolls_back_when_later_subject_handling_fails() ->
         generator.generate()
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name != "posix", reason="POSIX dir-fd security contract")
 def test_directory_creation_rejects_symlink_swap_between_mkdir_and_open(
     tmp_path: Path,
@@ -397,6 +449,7 @@ def test_directory_creation_rejects_symlink_swap_between_mkdir_and_open(
     assert (authorized_root / "held-dataset").is_dir()
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name != "posix", reason="POSIX dir-fd security contract")
 def test_authorized_output_root_symlink_is_rejected(tmp_path: Path) -> None:
     real_root = tmp_path / "real-root"
@@ -416,6 +469,7 @@ def test_authorized_output_root_symlink_is_rejected(tmp_path: Path) -> None:
     assert list(real_root.iterdir()) == []
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name != "posix", reason="POSIX dir-fd security contract")
 def test_artifact_writes_remain_bound_to_open_directory_after_symlink_swap(
     tmp_path: Path,

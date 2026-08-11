@@ -291,14 +291,14 @@ class TestStageConfig:
     def test_preprocessed_has_epoching_but_not_dataset_generation(self):
         tools = STAGE_CONFIG[PipelineStage.PREPROCESSED]["tools"]
         assert "epoch_data" in tools
-        assert "generate_dataset" not in tools
+        assert "configure_dataset_split" not in tools
         assert "validate_interpretation" in tools
         assert "attach_labels" not in tools
         assert "apply_standard_preprocess" in tools
 
-    def test_epoch_ready_has_generate_dataset(self):
+    def test_epoch_ready_has_configure_dataset_split(self):
         tools = STAGE_CONFIG[PipelineStage.EPOCH_READY]["tools"]
-        assert "generate_dataset" in tools
+        assert "configure_dataset_split" in tools
         assert "epoch_data" not in tools
         assert "validate_interpretation" in tools
 

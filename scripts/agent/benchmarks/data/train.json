@@ -60,7 +60,7 @@
         "input": "Generate dataset with trial split, set ShallowConvNet, and start training.",
         "expected_tool_calls": [
             {
-                "tool_name": "generate_dataset",
+                "tool_name": "configure_dataset_split",
                 "parameters": {
                     "split_strategy": "trial"
                 }
@@ -197,7 +197,7 @@
                 "parameters": {}
             },
             {
-                "tool_name": "generate_dataset",
+                "tool_name": "configure_dataset_split",
                 "parameters": {}
             },
             {
@@ -318,12 +318,12 @@
         ]
     },
     {
-        "id": "generate_dataset_03",
+        "id": "configure_dataset_split_03",
         "category": "dataset",
         "input": "Split dataset by session for individual training with 20% test set.",
         "expected_tool_calls": [
             {
-                "tool_name": "generate_dataset",
+                "tool_name": "configure_dataset_split",
                 "parameters": {
                     "split_strategy": "session",
                     "training_mode": "individual",
@@ -346,12 +346,12 @@
         ]
     },
     {
-        "id": "generate_dataset_02",
+        "id": "configure_dataset_split_02",
         "category": "dataset",
         "input": "Create individual training datasets with trial splitting.",
         "expected_tool_calls": [
             {
-                "tool_name": "generate_dataset",
+                "tool_name": "configure_dataset_split",
                 "parameters": {
                     "training_mode": "individual",
                     "split_strategy": "trial"
@@ -360,12 +360,12 @@
         ]
     },
     {
-        "id": "generate_dataset_05",
+        "id": "configure_dataset_split_05",
         "category": "dataset",
         "input": "Perform group training with trial-based 5-fold split.",
         "expected_tool_calls": [
             {
-                "tool_name": "generate_dataset",
+                "tool_name": "configure_dataset_split",
                 "parameters": {
                     "training_mode": "group",
                     "split_strategy": "trial"
@@ -413,12 +413,12 @@
         ]
     },
     {
-        "id": "generate_dataset_04",
+        "id": "configure_dataset_split_04",
         "category": "dataset",
         "input": "Make a training-test split with 40% holdout at the subject level.",
         "expected_tool_calls": [
             {
-                "tool_name": "generate_dataset",
+                "tool_name": "configure_dataset_split",
                 "parameters": {
                     "test_ratio": 0.4,
                     "split_strategy": "subject"
@@ -440,12 +440,12 @@
         ]
     },
     {
-        "id": "generate_dataset_01",
+        "id": "configure_dataset_split_01",
         "category": "dataset",
         "input": "Generate dataset with 30% test ratio using subject split.",
         "expected_tool_calls": [
             {
-                "tool_name": "generate_dataset",
+                "tool_name": "configure_dataset_split",
                 "parameters": {
                     "test_ratio": 0.3,
                     "split_strategy": "subject",
@@ -477,12 +477,12 @@
         ]
     },
     {
-        "id": "generate_dataset_07",
+        "id": "configure_dataset_split_07",
         "category": "dataset",
         "input": "Build a 10% test set using session-based splitting in group mode.",
         "expected_tool_calls": [
             {
-                "tool_name": "generate_dataset",
+                "tool_name": "configure_dataset_split",
                 "parameters": {
                     "test_ratio": 0.1,
                     "split_strategy": "session",
@@ -552,12 +552,12 @@
         ]
     },
     {
-        "id": "generate_dataset_08",
+        "id": "configure_dataset_split_08",
         "category": "dataset",
         "input": "Set up the data for per-subject training with trial split and 25% test.",
         "expected_tool_calls": [
             {
-                "tool_name": "generate_dataset",
+                "tool_name": "configure_dataset_split",
                 "parameters": {
                     "training_mode": "individual",
                     "split_strategy": "trial",
@@ -671,12 +671,12 @@
         ]
     },
     {
-        "id": "generate_dataset_09",
+        "id": "configure_dataset_split_09",
         "category": "dataset",
         "input": "Randomly partition 15% of trials as test data.",
         "expected_tool_calls": [
             {
-                "tool_name": "generate_dataset",
+                "tool_name": "configure_dataset_split",
                 "parameters": {
                     "test_ratio": 0.15,
                     "split_strategy": "trial"
@@ -754,12 +754,12 @@
         ]
     },
     {
-        "id": "generate_dataset_10",
+        "id": "configure_dataset_split_10",
         "category": "dataset",
         "input": "Generate dataset for group training with default settings.",
         "expected_tool_calls": [
             {
-                "tool_name": "generate_dataset",
+                "tool_name": "configure_dataset_split",
                 "parameters": {
                     "training_mode": "group"
                 }

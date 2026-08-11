@@ -9,6 +9,9 @@ from dataclasses import field as dc_field
 from pathlib import Path
 from typing import Any
 
+from .data_interpretation_bids_resources import (
+    bids_events_json_resources_by_carrier,
+)
 from .data_interpretation_formats import (
     LABEL_CARRIER_EXTENSIONS,
     SUPPORTED_EEG_EXTENSIONS,
@@ -81,6 +84,9 @@ class ScanPreflightScope:
     label_carriers: list[str] = dc_field(default_factory=list)
     label_carrier_sources: dict[str, str] = dc_field(default_factory=dict)
     metadata_files: list[str] = dc_field(default_factory=list)
+    bids_events_json_by_carrier: dict[str, tuple[str, ...]] = dc_field(
+        default_factory=dict
+    )
     all_files: list[str] = dc_field(default_factory=list)
     bids: dict[str, Any] = dc_field(default_factory=dict)
     skipped_nested_bids_roots: list[str] = dc_field(default_factory=list)
@@ -383,6 +389,7 @@ def discover_source_preflight_scope(
     source_path: str,
     source_hint: str = "auto",
     label_sources: list[str] | None = None,
+    selected_bids_subjects: list[str] | tuple[str, ...] | None = None,
 ) -> ScanPreflightScope:
     """Discover an exact bounded scan scope without parsing BIDS TSV rows."""
     if not str(source_path).strip():
@@ -405,12 +412,19 @@ def discover_source_preflight_scope(
         looks_like_bids=looks_like_bids,
     )
     skipped_nested_bids_roots: list[Path] = []
-    files = _candidate_files(
-        resolved,
-        skip_nested_bids_roots=source_kind != "bids",
-        skipped_bids_roots=skipped_nested_bids_roots,
-        budget=scan_budget,
-    )
+    if source_kind == "bids" and selected_bids_subjects:
+        files = _selected_bids_subject_files(
+            scan_root,
+            selected_bids_subjects,
+            budget=scan_budget,
+        )
+    else:
+        files = _candidate_files(
+            resolved,
+            skip_nested_bids_roots=source_kind != "bids",
+            skipped_bids_roots=skipped_nested_bids_roots,
+            budget=scan_budget,
+        )
     strict_bids_files = (
         [item for item in files if _is_raw_bids_eeg_scope_path(item, scan_root)]
         if source_kind == "bids" and looks_like_bids
@@ -441,6 +455,9 @@ def discover_source_preflight_scope(
         for carrier in carriers:
             label_carrier_sources.setdefault(str(carrier), str(source))
     label_carriers = sorted(label_carrier_sources)
+    bids_events_json_by_carrier = bids_events_json_resources_by_carrier(
+        label_carriers,
+    )
     source_label_files = [
         carrier for _, carriers in source_label_carriers for carrier in carriers
     ]
@@ -472,12 +489,69 @@ def discover_source_preflight_scope(
         label_sources=[str(item) for item in normalized_label_sources],
         label_carriers=label_carriers,
         label_carrier_sources=label_carrier_sources,
-        metadata_files=_bids_metadata_resource_paths(bids),
+        metadata_files=_dedupe_strings(
+            [
+                *_bids_metadata_resource_paths(bids),
+                *(
+                    path
+                    for paths in bids_events_json_by_carrier.values()
+                    for path in paths
+                ),
+            ]
+        ),
+        bids_events_json_by_carrier=bids_events_json_by_carrier,
         all_files=[str(item) for item in all_files],
         bids=bids,
         skipped_nested_bids_roots=[str(item) for item in skipped_nested_bids_roots],
         discovery_warnings=[*scan_budget.warnings, *source_warnings],
     )
+
+
+def _selected_bids_subject_files(
+    bids_root: Path,
+    selected_subjects: list[str] | tuple[str, ...],
+    *,
+    budget: _ScanBudget,
+) -> list[Path]:
+    """Discover root metadata and only explicitly selected BIDS subjects."""
+    normalized_subjects = _dedupe_strings(
+        [
+            value[4:] if value.casefold().startswith("sub-") else value
+            for raw_value in selected_subjects
+            if (value := str(raw_value).strip())
+        ]
+    )
+    if not normalized_subjects:
+        raise ValueError("Select at least one BIDS subject before continuing.")
+
+    files: list[Path] = []
+    for item in budget.directory_entries(bids_root):
+        admitted = _admit_discovered_child(
+            item,
+            scan_root=bids_root,
+            budget=budget,
+        )
+        if admitted is not None and admitted.is_file() and budget.claim_file(admitted):
+            files.append(admitted)
+
+    missing: list[str] = []
+    for subject in normalized_subjects:
+        subject_dir = bids_root / f"sub-{subject}"
+        if not subject_dir.is_dir():
+            missing.append(f"sub-{subject}")
+            continue
+        files.extend(
+            _candidate_files(
+                subject_dir,
+                budget=budget,
+                scan_root=bids_root,
+            )
+        )
+    if missing:
+        raise ValueError(
+            "Selected BIDS subject folder was not found: " + ", ".join(missing)
+        )
+    return _dedupe_paths(files)
 
 
 def discover_explicit_file_preflight_scope(
@@ -582,6 +656,7 @@ def discover_explicit_file_preflight_scope(
         label_carriers=label_carriers,
         label_carrier_sources=label_carrier_sources,
         metadata_files=[],
+        bids_events_json_by_carrier={},
         all_files=[
             str(item)
             for item in _dedupe_paths(
@@ -922,9 +997,12 @@ def _has_supported_suffix(path: Path, suffixes: tuple[str, ...]) -> bool:
 
 
 def _is_raw_bids_eeg_scope_path(path: Path, bids_root: Path) -> bool:
-    """Keep only raw subject-level EEG datatype files for strict BIDS import."""
+    """Keep admitted raw subject-level EEG files in the selected BIDS root."""
     try:
-        parts = path.resolve().relative_to(bids_root.resolve()).parts
+        # Discovery has already rejected substitutions and resolved both paths
+        # inside the retained directory identity. Re-resolving every file here
+        # repeats expensive WSL/NTFS lstat walks without adding an admission check.
+        parts = path.relative_to(bids_root).parts
     except ValueError:
         return False
     if not parts or not parts[0].startswith("sub-") or "derivatives" in parts:

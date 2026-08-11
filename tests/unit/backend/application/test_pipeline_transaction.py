@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
+
+import pytest
 
 from XBrainLab.backend.application.pipeline_transaction import PipelineStateTransaction
 from XBrainLab.backend.training_state_contract import (
@@ -25,6 +28,7 @@ class _TrainingRuntime:
             saliency_work_active=False,
         )
         self.calls: list[tuple[str, Any]] = []
+        self.startup_snapshot = object()
 
     def begin_raw_replacement(self) -> TrainingPipelineMutationBoundary:
         self.calls.append(("begin_raw", None))
@@ -50,6 +54,13 @@ class _TrainingRuntime:
         self.calls.append(("commit_replacement", expected))
         publish()
         return False
+
+    def capture_startup_rollback_snapshot(self) -> Any:
+        self.calls.append(("capture_startup", None))
+        return self.startup_snapshot
+
+    def restore_startup_rollback_snapshot(self, snapshot: Any) -> None:
+        self.calls.append(("restore_startup", snapshot))
 
 
 def _study() -> SimpleNamespace:
@@ -124,9 +135,13 @@ def test_pipeline_transaction_commits_dataset_publication_through_runtime() -> N
     replacement = [object(), object()]
     generator = object()
 
+    candidate = replace(
+        transaction.capture_dataset_publication(),
+        datasets=tuple(replacement),
+        dataset_generator=generator,
+    )
     retired = transaction.commit_dataset_replacement(
-        replacement,
-        generator,
+        candidate,
         expected=runtime.boundary,
     )
 
@@ -134,3 +149,39 @@ def test_pipeline_transaction_commits_dataset_publication_through_runtime() -> N
     assert study.data_manager.datasets == replacement
     assert study.data_manager.dataset_generator is generator
     assert runtime.calls == [("commit_replacement", runtime.boundary)]
+
+
+def test_pipeline_transaction_delegates_complete_training_startup_rollback() -> None:
+    runtime = _TrainingRuntime()
+    transaction = PipelineStateTransaction(_study(), training_runtime=runtime)
+
+    snapshot = transaction.capture_training_startup_snapshot()
+    transaction.restore_training_startup_snapshot(snapshot)
+
+    assert snapshot is runtime.startup_snapshot
+    assert runtime.calls == [
+        ("capture_startup", None),
+        ("restore_startup", runtime.startup_snapshot),
+    ]
+
+
+def test_dataset_publication_restore_rejects_stale_epoch_before_any_mutation() -> None:
+    study = _study()
+    runtime = _TrainingRuntime()
+    transaction = PipelineStateTransaction(study, training_runtime=runtime)
+    snapshot = transaction.capture_dataset_publication()
+    newer_dataset = object()
+    newer_generator = object()
+    newer_epoch = object()
+    study.data_manager.datasets = [newer_dataset]
+    study.data_manager.dataset_generator = newer_generator
+    study.data_manager.dataset_locked = False
+    study.data_manager.epoch_data = newer_epoch
+
+    with pytest.raises(RuntimeError, match="Epoch data changed"):
+        transaction.restore_dataset_publication(snapshot)
+
+    assert study.data_manager.datasets == [newer_dataset]
+    assert study.data_manager.dataset_generator is newer_generator
+    assert study.data_manager.dataset_locked is False
+    assert study.data_manager.epoch_data is newer_epoch

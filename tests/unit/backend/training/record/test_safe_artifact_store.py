@@ -64,6 +64,7 @@ def test_artifact_write_revalidates_before_opening_replaced_directory(
     assert list(tmp_path.iterdir()) == []
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow artifact contract")
 def test_artifact_manifest_symlink_is_rejected(tmp_path: Path) -> None:
     store = tmp_path / "store"
@@ -86,6 +87,7 @@ def test_artifact_manifest_symlink_is_rejected(tmp_path: Path) -> None:
         )
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow artifact contract")
 def test_artifact_numeric_payload_symlink_is_rejected(tmp_path: Path) -> None:
     store = tmp_path / "store"
@@ -110,6 +112,7 @@ def test_artifact_numeric_payload_symlink_is_rejected(tmp_path: Path) -> None:
         )
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow artifact contract")
 def test_artifact_manifest_hardlink_is_rejected(tmp_path: Path) -> None:
     manifest = tmp_path / "record"
@@ -128,6 +131,7 @@ def test_artifact_manifest_hardlink_is_rejected(tmp_path: Path) -> None:
         )
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow artifact contract")
 def test_artifact_numeric_payload_hardlink_is_rejected(tmp_path: Path) -> None:
     manifest = tmp_path / "record"
@@ -148,6 +152,7 @@ def test_artifact_numeric_payload_hardlink_is_rejected(tmp_path: Path) -> None:
         )
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow artifact contract")
 def test_artifact_write_does_not_follow_existing_temporary_symlink(
     tmp_path: Path,
@@ -175,6 +180,7 @@ def test_artifact_write_does_not_follow_existing_temporary_symlink(
     assert outside.read_bytes() == b"must remain unchanged"
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow artifact contract")
 def test_model_checkpoint_symlink_is_rejected(tmp_path: Path) -> None:
     store = tmp_path / "store"
@@ -188,6 +194,7 @@ def test_model_checkpoint_symlink_is_rejected(tmp_path: Path) -> None:
         load_model_state_dict(checkpoint)
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow artifact contract")
 def test_model_checkpoint_hardlink_is_rejected(tmp_path: Path) -> None:
     store = tmp_path / "store"
@@ -201,6 +208,7 @@ def test_model_checkpoint_hardlink_is_rejected(tmp_path: Path) -> None:
         load_model_state_dict(checkpoint)
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow artifact contract")
 def test_model_checkpoint_non_regular_file_is_rejected(tmp_path: Path) -> None:
     checkpoint = tmp_path / "model"

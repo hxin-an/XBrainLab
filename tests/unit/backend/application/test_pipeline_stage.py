@@ -55,8 +55,8 @@ STAGE_CASES = [
             "has_epoch_data": True,
         },
         PipelineStage.EPOCH_READY,
-        "Ready to build dataset",
-        "generate_dataset",
+        "Ready to configure split",
+        "configure_dataset_split",
     ),
     (
         "dataset",
@@ -148,6 +148,19 @@ def test_trainer_without_finished_runs_is_not_a_trained_stage() -> None:
             finished_run_count=0,
         )
         is PipelineStage.DATASET_READY
+    )
+
+
+def test_saved_split_without_generated_dataset_remains_epoch_ready() -> None:
+    assert (
+        derive_pipeline_stage(
+            has_raw_data=True,
+            has_preprocessed_data=True,
+            has_epoch_data=True,
+            has_datasets=False,
+            has_saved_split=True,
+        )
+        is PipelineStage.EPOCH_READY
     )
 
 

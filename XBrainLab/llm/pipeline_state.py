@@ -146,7 +146,7 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
         "tools": [
             *_DATA_INTERPRETATION_TOOLS,
             "reset_preprocess",
-            "generate_dataset",
+            "configure_dataset_split",
             "get_dataset_info",
             "clear_dataset",
             "switch_panel",

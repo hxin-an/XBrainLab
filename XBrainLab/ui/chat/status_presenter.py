@@ -40,8 +40,8 @@ _EMPTY_STATE_COPY: dict[str, tuple[str, str]] = {
         "Define the analysis windows",
         "Ask me to explain event anchors or prepare the EEG epoch settings.",
     ),
-    "Ready to build dataset": (
-        "Build the training dataset",
+    "Ready to configure split": (
+        "Configure data splitting",
         "Ask me to review the EEG epochs or prepare the dataset split.",
     ),
     "Dataset ready": (
@@ -139,11 +139,11 @@ _STAGE_SUGGESTIONS: dict[str, tuple[AssistantPromptSuggestion, ...]] = {
             required_command="create_epoch",
         ),
     ),
-    "Ready to build dataset": (
+    "Ready to configure split": (
         AssistantPromptSuggestion(
             "Review EEG epochs",
             "Check the available EEG epochs before creating a split.",
-            "Explain whether the current EEG epochs are ready for dataset creation",
+            "Explain whether the current EEG epochs are ready for data splitting",
         ),
         AssistantPromptSuggestion(
             "Explain data splitting",
@@ -151,7 +151,7 @@ _STAGE_SUGGESTIONS: dict[str, tuple[AssistantPromptSuggestion, ...]] = {
             "Explain the available data splitting options",
         ),
         AssistantPromptSuggestion(
-            "Prepare dataset setup",
+            "Prepare split setup",
             "Get one recommendation for the next dataset step.",
             "Explain how to prepare the next dataset setup",
         ),

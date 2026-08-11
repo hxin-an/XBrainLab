@@ -8,6 +8,7 @@ from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
+from weakref import ref
 
 import pytest
 from PyQt6 import sip
@@ -30,6 +31,7 @@ from XBrainLab.backend.application import (
 from XBrainLab.backend.application.epoch_context import EpochDialogContext
 from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.view_publication import (
+    APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
     PUBLIC_VIEW_UNAVAILABLE_MESSAGE,
 )
 from XBrainLab.backend.study import Study
@@ -170,6 +172,54 @@ def test_application_runtime_does_not_follow_dynamic_mock_parent_chain():
 
     assert runtime is not None
     context.parent.assert_not_called()
+
+
+def test_application_runtime_unsubscribe_is_safe_after_shutdown_owner_is_gone(
+    monkeypatch,
+) -> None:
+    class _DesktopHost:
+        _closing_in_progress = True
+
+    study = Study()
+    host = _DesktopHost()
+    runtime = application_capabilities._StudyApplicationUiRuntime(study, ref(host))
+
+    def callback() -> None:
+        return None
+
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.runtime.get_initialized_application_service",
+        lambda _study: None,
+    )
+
+    runtime.unsubscribe(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, callback)
+
+
+def test_application_runtime_unsubscribe_uses_existing_service_during_shutdown(
+    monkeypatch,
+) -> None:
+    class _DesktopHost:
+        _closing_in_progress = True
+
+    study = Study()
+    host = _DesktopHost()
+    service = MagicMock()
+    runtime = application_capabilities._StudyApplicationUiRuntime(study, ref(host))
+
+    def callback() -> None:
+        return None
+
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.runtime.get_initialized_application_service",
+        lambda _study: service,
+    )
+
+    runtime.unsubscribe(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, callback)
+
+    service.unsubscribe.assert_called_once_with(
+        APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+        callback,
+    )
 
 
 def test_ui_publication_helper_returns_one_full_application_publication(qtbot):
@@ -1011,7 +1061,7 @@ def test_real_worker_command_mismatch_fails_handoff_once(qtbot) -> None:
     terminal = []
     screen_callback = MagicMock()
     mismatched = CommandResult.success_result(
-        command_name="generate_dataset",
+        command_name="configure_dataset_split",
         message="Unexpected dataset result.",
         state={},
         changed_state=ChangedState(datasets_changed=True),

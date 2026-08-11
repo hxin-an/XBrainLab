@@ -17,7 +17,7 @@ EXPECTED_AGENT_TOOL_NAMES = {
     "configure_training",
     "epoch_data",
     "evaluate",
-    "generate_dataset",
+    "configure_dataset_split",
     "get_dataset_info",
     "list_files",
     "load_data",
@@ -187,25 +187,48 @@ class TestToolExecutor:
 
     def test_complete_training_debug_call_accepts_learning_rate_one(self):
         from XBrainLab.backend.application import get_application_service
+        from XBrainLab.backend.application.training_recommendation import (
+            TrainingRecommendationField,
+        )
         from XBrainLab.backend.study import Study
-        from XBrainLab.debug.tool_executor import ToolExecutor
-        from XBrainLab.llm.tools.application_surface import ToolCommandResult
+        from XBrainLab.debug.tool_executor import DebugToolAdmission, ToolExecutor
+        from XBrainLab.llm.tools.application_surface import (
+            AssistantSettingConfirmation,
+            ToolCommandResult,
+        )
 
         study = Study()
-        result = ToolExecutor(study).execute(
+        executor = ToolExecutor(study)
+        proposal = {
+            "model_name": "EEGNet",
+            "epoch": 2,
+            "batch_size": 4,
+            "learning_rate": 1,
+        }
+        admission = executor.admit(
             "configure_training",
-            {
-                "model_name": "EEGNet",
-                "epoch": 2,
-                "batch_size": 4,
-                "learning_rate": 1,
-            },
+            proposal,
+            confirmed=True,
+        )
+        assert isinstance(admission, DebugToolAdmission)
+        evidence = admission.params["assistant_setting_confirmation"]
+        assert isinstance(evidence, AssistantSettingConfirmation)
+        assert evidence.edited_recommendation_fields == (
+            TrainingRecommendationField.EPOCHS,
+            TrainingRecommendationField.BATCH_SIZE,
+            TrainingRecommendationField.LEARNING_RATE,
+        )
+
+        result = executor.execute(
+            "configure_training",
+            proposal,
+            confirmed=True,
         )
 
         assert isinstance(result, ToolCommandResult)
         assert result.ok is True
         training = get_application_service(study).get_state().training
-        assert training.model_name == "EEGNet"
+        assert training.model_name == "EEGNet (XBrainLab)"
         assert training.training_option["epoch"] == 2
         assert training.training_option["batch_size"] == 4
         assert training.training_option["learning_rate"] == 1.0
@@ -354,7 +377,10 @@ class TestSeed:
         from XBrainLab.backend.utils.seed import get_random_state, set_random_state
 
         state = get_random_state()
-        assert len(state) == 3
+        assert len(state) == 4
+        assert state[0] is not None
+        assert state[1] is not None
+        assert state[2] is not None
         set_random_state(state)
 
 

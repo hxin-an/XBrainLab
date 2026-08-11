@@ -7,9 +7,10 @@ import pytest
 from PIL import Image
 
 import scripts.dev.capture_data_import_wizard_steps as capture_script
-from scripts.dev.app_polish_capture_contract import (
-    SCHEMA_VERSION,
-    collect_source_identity,
+from scripts.dev.app_polish_capture_contract import SCHEMA_VERSION
+from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
+    ROOT,
+    source_identity_digest,
 )
 from scripts.dev.data_import_capture_contract import (
     MANIFEST_NAME,
@@ -20,11 +21,31 @@ from scripts.dev.data_import_capture_contract import (
 )
 
 
+def _source_identity():
+    identity = {
+        "version": 3,
+        "repo_root": str(ROOT.resolve()),
+        "branch": "test/data-import-capture-contract",
+        "commit_sha": "1" * 40,
+        "head_tree_sha": "2" * 40,
+        "dirty": False,
+        "dirty_digest": "3" * 64,
+        "source_content_digest": "4" * 64,
+        "untracked_source_count": 0,
+        "excluded_generated_prefixes": ["artifacts/", "build/"],
+        "excluded_local_paths": ["settings.json"],
+        "included_file_policy": "all-non-generated-tracked-and-untracked-files",
+        "error": "",
+    }
+    identity["source_digest"] = source_identity_digest(identity)
+    return identity
+
+
 def _payload(tmp_path):
     filenames = ("01-choose-eeg-data.png", "05-review-and-import.png")
     for index, filename in enumerate(filenames):
         Image.new("RGB", (80 + index, 60), (35, 70, 105)).save(tmp_path / filename)
-    identity = collect_source_identity()
+    identity = _source_identity()
     payload = build_data_import_capture_manifest(
         tmp_path,
         expected_surfaces=filenames,

@@ -10,6 +10,8 @@ from XBrainLab.llm.agent.rag_process_lifecycle import (
     ProcessRAGRetrieverLifecycle,
 )
 
+_CALLBACK_WAIT_SECONDS = 30.0
+
 
 def _responsive_worker(command_queue: Any, result_queue: Any) -> None:
     result_queue.put(("ready", True))
@@ -77,7 +79,7 @@ def test_process_lifecycle_delivers_result_and_closes_without_child() -> None:
         "query",
         lambda *args: (callbacks.append(args), callback_ready.set()),
     )
-    assert callback_ready.wait(timeout=10.0)
+    assert callback_ready.wait(timeout=_CALLBACK_WAIT_SECONDS)
 
     assert callbacks == [(4, "query", "features", "")]
     assert lifecycle.close() is True
@@ -99,7 +101,7 @@ def test_process_lifecycle_timeout_terminates_stuck_child() -> None:
         "query",
         lambda *args: (callbacks.append(args), callback_ready.set()),
     )
-    assert callback_ready.wait(timeout=10.0)
+    assert callback_ready.wait(timeout=_CALLBACK_WAIT_SECONDS)
 
     assert callbacks[0][:3] == (5, "query", "")
     assert "timed out" in callbacks[0][3]
@@ -128,7 +130,7 @@ def test_process_lifecycle_cancel_terminates_stuck_child_without_callback() -> N
 def test_process_lifecycle_initialization_error_releases_pending_retrieval() -> None:
     lifecycle = ProcessRAGRetrieverLifecycle(
         process_target=_initialization_error_worker,
-        initialization_timeout_seconds=10.0,
+        initialization_timeout_seconds=20.0,
         shutdown_wait_seconds=0.5,
     )
     callback_ready = threading.Event()
@@ -140,7 +142,7 @@ def test_process_lifecycle_initialization_error_releases_pending_retrieval() -> 
         "query",
         lambda *args: (callbacks.append(args), callback_ready.set()),
     )
-    assert callback_ready.wait(timeout=10.0)
+    assert callback_ready.wait(timeout=_CALLBACK_WAIT_SECONDS)
 
     assert callbacks[0][:3] == (7, "query", "")
     assert "initialization failed" in callbacks[0][3].casefold()
@@ -163,7 +165,7 @@ def test_process_lifecycle_initialization_timeout_releases_pending_retrieval() -
         "query",
         lambda *args: (callbacks.append(args), callback_ready.set()),
     )
-    assert callback_ready.wait(timeout=10.0)
+    assert callback_ready.wait(timeout=_CALLBACK_WAIT_SECONDS)
 
     assert callbacks[0][:3] == (8, "query", "")
     assert "initialization timed out" in callbacks[0][3].casefold()

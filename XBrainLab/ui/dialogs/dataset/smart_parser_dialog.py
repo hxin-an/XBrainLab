@@ -105,6 +105,7 @@ class SmartParserDialog(BaseDialog):
     @override
     def showEvent(self, event: QShowEvent | None) -> None:
         """Center the parser over the import dialog when it is shown."""
+        self._refresh_compact_control_widths()
         self._fit_settings_stack(self.settings_stack.currentIndex())
         layout = self.layout()
         if layout is not None:
@@ -453,9 +454,33 @@ class SmartParserDialog(BaseDialog):
         maximum: int,
     ) -> None:
         """Keep text-bearing controls readable without making forms full-width."""
-        target_width = min(max(minimum, control.sizeHint().width()), maximum)
+        target_width = max(minimum, control.sizeHint().width())
         control.setMinimumWidth(target_width)
-        control.setMaximumWidth(maximum)
+        control.setMaximumWidth(max(maximum, target_width))
+
+    def _refresh_compact_control_widths(self) -> None:
+        """Resolve styled control widths after platform font metrics settle."""
+        self._configure_mode_radios(
+            (
+                self.radio_split,
+                self.radio_regex,
+                self.radio_fixed,
+                self.radio_folder,
+            )
+        )
+        for control, minimum, maximum in (
+            (self.split_sep_combo, 150, 220),
+            (self.split_sub_idx, 82, 120),
+            (self.split_sess_idx, 82, 120),
+            (self.regex_preset_combo, 280, 460),
+            (self.regex_sub_idx, 82, 120),
+            (self.regex_sess_idx, 82, 120),
+        ):
+            self._fit_control_width(
+                control,
+                minimum=minimum,
+                maximum=maximum,
+            )
 
     @staticmethod
     def _add_settings_row(

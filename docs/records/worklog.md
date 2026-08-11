@@ -54,6 +54,11 @@
 - 證據：ignored artifact
   `build/dev-artifacts/agent-guidance-eval-v8/a0e16b400236b687bd2b4c9f58ef4a20929e377b/` 同時保留
   unreviewed pack、reviewed pack、hidden key 與 scored summary。
+- PR base 同步：合入 `origin/main@a57fbc29dac9da6997dc611e40255f5b79148912`；53 個 PR scope files
+  中只有 `.agents/stack.md`、`docs/current.md`、`docs/index.md` 與兩份 record 同時被 main 改過。
+  resolution 保留 main 的新版 product truth、candidate 的 retired stack deletion，以及雙方 record；
+  同步後 guidance digest 仍為正式 A/B manifest 的
+  `cfd802686608f506c00db98dc938cc234fa3f8192958f87df2ae2ec0ef57678c`。
 - 接續 / 本輪剩餘：重跑 static audit、focused tests、Ruff、MkDocs strict 與 diff hygiene，將記錄
   commit/push 後建立 PR；只有 exact candidate head 的 CI `completed/success` 才可進入 merge gate。
   本輪未改產品 API、UI、EEG pipeline、Granite runtime 或產品 handoff 狀態。
@@ -16968,3 +16973,285 @@
 - claim boundary：
   - This is a focused UI checkpoint; final status-bar timing and text remain part of Windows human
     acceptance during the next real dataset import.
+
+### 2026-08-06 BIDS Match Labels latency and payload bounds
+
+- completed：
+  - Traced the three-run OpenNeuro P300 delay to repeated BIDS directory discovery on WSL `/mnt/d`
+    and multi-megabyte duplicate per-event evidence in diagnostics and application publications.
+  - Reused only unchanged, safe, exact-scope BIDS scan admissions; warning, unknown, blocking,
+    changed-file and changed-scope paths still perform the full resource preflight.
+  - Added bounded public Data Interpretation projections while retaining exact aggregate counts and
+    the full internal candidate required by apply, recipe and epoch semantics.
+- validation：
+  - Data Interpretation backend regression -> `350 passed`; public BIDS/runtime/format wizard ->
+    `14 passed`; real-fixture visible wizard -> `11 passed`; focused review/dialog/external-label UI
+    -> `135 passed`.
+  - Strict dataset matrix -> `20/20` lifecycle cases, `14/14` required formats and `7/7` external
+    label-placement contracts; cross-source IO/pipeline -> `40 passed`; strict cross-source runner
+    -> `4/4` required cases.
+  - Real three-run P300 -> exact `2,245` imported class events and `2,243` epochs after two explicit
+    boundary exclusions. Scan measured `5.99s`, first Preview `4.39s`, and repeat Preview
+    `1.99-2.12s`.
+  - The same-class UI sweep repaired stale Qt file-dialog test doubles and confirmed that edits must
+    cover every blocking target; unrelated metadata edits no longer enable a BIDS import whose
+    `events.tsv` is missing.
+  - Reviewed xcb artifact:
+    `build/dev-artifacts/bids-match-label-performance/04-match-labels-bids-events.png`.
+- claim boundary：
+  - This is a validated task-branch checkpoint. It does not claim arbitrary BIDS compatibility or
+    Windows-native usability acceptance; those remain separate handoff evidence.
+
+### 2026-08-08 EEG workflow improvements integration candidate
+
+- completed：
+  - Integrated a curated Braindecode model catalog, BIDS subject preselection, published training
+    test accuracy, backend-admitted cross-fold Evaluation summaries, and cross-fold Saliency with
+    detached display normalization on `integration/eeg-workflow-improvements-v1`.
+  - Kept cross-fold summaries fail-closed: the backend admits exact test-only cohort members and
+    compatible Saliency provenance rather than letting the UI infer fold membership.
+  - Corrected the shared model-holder contract so both model classes and adapter factories are
+    typed as callables returning `torch.nn.Module`.
+  - Closed two independent-review P1 findings: Training now preserves the stable catalog model ID
+    through the UI command boundary, and generated CV datasets carry an explicit cohort identity so
+    subject-specific folds cannot be pooled into one Evaluation or Saliency summary.
+- validation：
+  - Focused backend -> `74 passed`; focused Qt UI -> `204 passed`; model/BIDS follow-up ->
+    `67 passed`; representative EEGNet pipeline -> `2 passed`.
+  - Public IO/BIDS/cross-source integration -> `40 passed`; strict format matrix -> `20/20`
+    lifecycle cases and `14/14` required formats; strict training runner -> `4/4` required cases.
+  - Ruff and targeted Basedpyright for all changed product Python files -> PASS / `0 errors`.
+  - Red-first model-ID / CV-cohort regressions -> `4 failed`, then `4 passed`; expanded Dataset,
+    ApplicationService, Evaluation, Saliency and Training UI regression -> `316 passed`.
+  - Closed an exact-head CI fixture-contract failure by adding the three-run OpenNeuro P300 dataset
+    to the pinned `required-ci` profile instead of permitting its mandatory integration test to skip;
+    the local mandatory public suite then completed with `37 passed / 0 skipped`.
+  - Followed the resulting three-platform CI run through completion. Its required public
+    multi-dataset job passed, while the general jobs exposed stale model-display assertions, an
+    eager Torch import on the Dataset startup path, asynchronous Data Interpretation timing
+    assertions, and small cross-platform Qt geometry differences. The product boundary now keeps
+    command constants in a lightweight training contract, preserves stable catalog IDs at the UI
+    command boundary, and sizes responsive Assistant/Training surfaces from live content.
+  - Updated obsolete UI expectations only where the product contract had intentionally changed:
+    blocked import decisions stay inside the wizard instead of reopening a duplicate error dialog,
+    responsive wizard step labels may use either full or compact copy with a tooltip, and a Training
+    History horizontal scrollbar is required only when the final metric column is otherwise
+    unreachable.
+  - Main-agent artifact review covered BIDS selection, model settings, test curve, Evaluation
+    cross-fold controls and normalized Saliency Map / Spectrogram.
+  - Integration follow-up regression completed with `2577` UI tests, `2351` LLM/Assistant tests,
+    `317` architecture/read-side guards, and `441` focused EEG-workflow tests passing locally.
+    Ruff and targeted Basedpyright remained clean after the follow-up changes.
+- claim boundary：
+  - This remains an unmerged integration checkpoint. The old exact-head run is not reusable because
+    its general jobs failed, and the follow-up commit still requires its own completed successful CI
+    plus Windows human acceptance. The candidate does not prove scientific accuracy, full BIDS
+    compliance, every Braindecode model, or Assistant readiness.
+
+### 2026-08-08 Cross-platform candidate closure
+
+- completed:
+  - Repaired native Qt sizing and text-fit differences without shortening product terminology or
+    weakening the Review and Import geometry contract.
+  - Made Data Interpretation path identity, local-model disk accounting, public-fixture tests and
+    handoff evidence portable across Linux, macOS and Windows.
+  - Added an explicit `platform_contract` marker so the required pytest gate admits only reviewed
+    operating-system-specific skips; ordinary skip, xfail, xpass and deselection still fail closed.
+  - Replaced CUDA-hardware-only unit assumptions with CPU-backed fake-CUDA contract tests while
+    preserving device, tensor and hashing behavior.
+- validation:
+  - Product-source Basedpyright: `0 errors, 0 warnings, 0 notes`.
+  - Focused backend/LLM: `169 passed`; scoped UI: `589 passed`; script/evidence suite:
+    `513 passed`.
+  - Full Ruff lint/format checks and `git diff --check`: PASS.
+- claim boundary:
+  - These are pre-commit closure results. Merge review still requires the final clean pushed commit
+    to complete its own exact-head CI and does not replace Windows human acceptance.
+
+### 2026-08-08 Exact-CI portability follow-up
+
+- completed:
+  - Followed exact-head CI through all jobs instead of stopping after local PASS. The public
+    multi-dataset job passed; Linux, macOS and Windows exposed native Qt geometry, Windows hardlink
+    metadata, POSIX-only signal tests and per-shard coverage-threshold assumptions.
+  - Recomputed Qt text and table geometry after native style polish, preserved semantic action text
+    through accessibility metadata, and kept screenshot gates strict after bounded layout settling.
+  - Made model-cache hardlink sizing exact on Windows and marked reviewed POSIX-only tests with the
+    explicit platform contract.
+  - Changed coverage orchestration so isolated shards collect coverage without enforcing the global
+    threshold; one final report enforces the configured 50% requirement.
+- validation:
+  - Main-agent combined developer-script, UI and model-catalog suite: `3763 passed`.
+  - Full Ruff lint/format, product-source Basedpyright and `git diff --check`: PASS.
+- claim boundary:
+  - The failed CI run is diagnostic evidence, not merge evidence. The resulting follow-up commit
+    still requires a new successful exact-head run on Linux, macOS and Windows.
+
+### 2026-08-08 Native-CI closure candidate
+
+- completed:
+  - Repaired construction-time Qt event delivery, live-DPI text measurement, Review and Import
+    viewport sizing, Training Setting native-width sizing, and standard-dock Assistant action text.
+  - Kept saved Data Interpretation recipes complete for audit/reload while exposing a separate
+    bounded public diagnostic projection that preserves replay choices, exact aggregate counts,
+    label mappings and content identity.
+  - Replaced a clean-CI BIDS test dependency on ignored public fixtures with a generated real FIF
+    BIDS fixture, and taught the real-fixture walkthrough to drive BIDS subject selection.
+  - Kept local host context-boundary tests offline and deterministic; exact Granite tokenizer and
+    runtime evidence remain separate gates rather than implicit model downloads in ordinary tests.
+- validation:
+  - Complete unit-script suite -> `1148 passed`; complete unit-UI suite -> `2584 passed`.
+  - Integration shards passed after the focused BIDS subject-selection repair; the affected
+    real-fixture wizard module completed with `11 passed`.
+  - Strict dataset and interpretation matrices passed, and strict cross-source training completed
+    `4/4` required cases.
+  - Ruff lint/format, changed-source Basedpyright, MkDocs strict build and `git diff --check` passed.
+- claim boundary:
+  - Local closure does not replace exact-head Linux/macOS/Windows CI or Windows human acceptance.
+    The candidate remains unmerged until the final pushed SHA satisfies the PR merge gate.
+
+### 2026-08-10 External label decisions and visible import wait
+
+- completed:
+  - Reduced external event-value `Use as` to the user-facing decisions `Training class` and
+    `Do not use`. `Do not use` keeps the EEG event for timing/epoch review but excludes it from
+    supervised classes; its class-name editor is removed from layout and restores its draft when
+    the row returns to `Training class`.
+  - Preserved legacy `keep_event=false` recipe rows until a user explicitly edits them.
+  - Added a full Data Import wizard loading/retry/cancel surface before scan and Match Labels
+    re-preview. The dialog is parented outside the disabled Dataset panel and ignores late worker
+    callbacks after cancellation.
+  - Reused canonical paths and BIDS sidecar discovery inside one admitted command without caching
+    sidecar existence across commands. Restored per-parser freshness guards after independent review
+    identified that a broader shortcut weakened replacement detection; added new-sidecar and Windows
+    path-case regressions.
+  - Cached narrowed BIDS previews now retain their bounded scan scope. Native Windows does not reuse
+    prior content digests because `st_ctime` is not a reliable change time there, and cached bounded
+    BIDS JSON is re-read and content-hashed before its parsed object is reused.
+- measured validation:
+  - OpenNeuro ds003061 P300 subject 001 / three runs: catalog `0.46s`, selected scan `4.67s`, first
+    Preview `2.71s`, repeated Preview `1.43s` on the current WSL `/mnt/d` checkout.
+  - Focused backend `117 passed`; focused Data Import UI `187 passed`; real public wizard `11 passed`.
+  - Required fixture profile verified `205255918` bytes; strict matrix `20/20` lifecycle, `14/14`
+    formats and `7/7` external placement; IO/BIDS/cross-source `40 passed`; strict cross-source
+    training `4/4`; real handoff spine `3 passed`.
+  - Reviewed xcb artifacts:
+    `build/dev-artifacts/data-import-label-use-as-v2/04-match-labels-bids-events.png` and
+    `build/dev-artifacts/data-import-wizard-steps/00-updating-label-matches.png`.
+- claim boundary:
+  - This is a local integration checkpoint. It does not claim full BIDS support, arbitrary external
+    label schemas, Windows native acceptance, exact-head CI success, or product release readiness.
+
+### 2026-08-10 Evaluation Model Summary runtime repair
+
+- completed:
+  - Traced the product route from the Evaluation plan/run combo identities through
+    `AnalysisService` to the selected `TrainRecord.model`. Fold and run indexes remain canonical,
+    zero-based backend identities; the UI stores those identities directly rather than deriving them
+    from labels.
+  - Reproduced the failure with a real Braindecode EEGNet: the old synthetic
+    `(batch, 1, channels, samples)` summary input failed while the actual training contract
+    `(batch, channels, samples)` succeeded. Model Summary now reads the selected run dataset's epoch
+    shape without copying the training split and uses a one-sample evaluation-mode input.
+  - A run-level request now returns the explicit unavailable state when the run is incomplete or its
+    trained model object is absent. Detailed introspection failures retain a bounded basic model
+    summary instead of being mislabeled as a missing artifact.
+  - Moved the direct `torchinfo` requirement from the optional LLM group to core dependencies. No new
+    package version was installed: `torchinfo 1.8.0` was already present transitively through
+    Braindecode, and the lockfile only changed its group ownership.
+- validation:
+  - Red-first selected fold/run Braindecode regression: failed with an empty summary before the fix,
+    then passed with the selected `Repeat-1` model and detailed parameter table.
+  - Evaluation backend/application suite: `51 passed`; Evaluation UI suite: `64 passed`; legacy
+    controller regression: `7 passed`; real EEGNet train/evaluate/summary smoke: `1 passed`.
+  - Ruff and `poetry check --lock`: PASS. Built wheel metadata explicitly contains
+    `Requires-Dist: torchinfo (>=1.8.0,<2.0.0)` and both Evaluation runtime modules.
+- claim boundary:
+  - This is a focused local checkpoint. It does not validate every curated model architecture,
+    executable freezing, Windows native rendering, required multi-dataset handoff gates, or
+    exact-head CI. The unused legacy `EvaluationController.get_model_summary_str` retains its older
+    compatibility implementation; the product UI does not call it.
+
+### 2026-08-10 Visualization All Folds aggregation performance
+
+- completed:
+  - Profiled the generation-bound cross-fold publication path with stored Ofner 2017 saliency
+    arrays (`61 x 1537`, seven classes) expanded into a representative nine-fold, five-method
+    cohort. Rendering itself was not the primary delay; repeated artifact validation and pooled
+    array copies dominated the synchronous publication call.
+  - Reused the exact records, contexts and epoch metadata from one targeted admission pass instead
+    of rebuilding every saliency choice and validating every selected fold a second time.
+  - Pooled raw or normalized values directly into one owned final array per class, then froze those
+    arrays in the detached publication without a second DTO copy. Every admitted fold remains in
+    the pooled output and the before/after training-boundary checks are unchanged.
+- measured validation:
+  - Same representative profile: raw publication `1.756s -> 0.874s` (50.2% faster); normalized
+    publication `2.000s -> 0.961s` (52.0% faster). Cross-fold validation calls fell from `18` to `9`.
+  - Focused Analysis/Saliency backend and publication lifecycle: `72 passed`; Visualization UI and
+    label-mapping runtime: `31 passed`; architecture compliance: `1 passed`.
+  - Focused Ruff and Basedpyright: PASS / `0 errors, 0 warnings, 0 notes`.
+- claim boundary:
+  - This is a local performance checkpoint, not a multi-dataset or Windows handoff candidate. The
+    profile uses stored real saliency payloads in a representative repeated cohort; it does not
+    establish latency bounds for every fold count, method set, storage device or available RAM.
+
+### 2026-08-10 BIDS apply and saliency-toggle responsiveness
+
+- completed:
+  - Removed O(n²) reviewed-path deduplication and reused one bounded canonical identity scope across
+    repeated freshness checks. The UI import status now spans raw loading, reviewed-label apply and
+    publication, and is replaced on success, cancellation, blocking, command failure or worker error.
+  - Absolute and Normalize now reuse one verified raw saliency publication for the current
+    generation/run/method. Normalize retains one derived display variant; selection or state changes
+    invalidate both variants.
+- measured validation:
+  - OpenNeuro ds003061 P300, subjects 001-002, six runs: apply approximately `59.5s -> 21.88s`;
+    repeat Match Labels Preview `3.56s`.
+  - Data Interpretation content/status focused suites: `58 passed`; public responsiveness: `2 passed`.
+  - Combined Saliency/Visualization/native lifecycle suite: `96 passed`.
+- claim boundary:
+  - These are same-machine Linux/WSL checkpoints. Repeat Preview still performs bounded sidecar
+    discovery and parser guards, and real plot rendering remains asynchronous work. Windows native
+    interaction, required multi-dataset handoff and exact-head CI remain separate gates.
+
+### 2026-08-10 Saliency same-class publication and render audit
+
+- completed:
+  - Moved single-fold and `All Folds` Saliency publication, normalization and render preparation off
+    the Qt GUI thread. Exact request/generation checks reject stale worker results and coalesce rapid
+    selection changes without rebuilding chatty intermediate UI state.
+  - Reused one bounded single-flight STFT preparation for Spectrogram raw/normalized display.
+    Spectrogram magnitude is non-negative, so Absolute is disabled instead of exposing a no-op;
+    Normalize changes display scale without recomputing the transform.
+  - Audited Map, Topographic Map and 3D Plot for the same latency/precision class. Map and topomap
+    aggregate with float64 accumulators, while 3D reuses bounded exact-geometry interpolation and
+    prepared-engine caches that are invalidated with the publication lifecycle.
+  - Made Evaluation Model Summary distinguish pending preparation from terminal unavailable state;
+    it no longer flashes `No model information` while a valid trained model summary is still being
+    published.
+  - Closed reviewer-found out-of-order boundaries: Model Summary callbacks now require the active
+    request sequence/identity/generation, and both Evaluation and Saliency publication workers
+    requeue A after an A -> B -> A transition when A's earlier result was already discarded.
+  - Moved cross-fold Evaluation pooling/publication off the Qt thread without changing metric
+    formulas. Converted 3D prepared-engine cache publication ownership to weak identity references,
+    so bounded reuse no longer retains prior full saliency payloads.
+- validation:
+  - Saliency / Evaluation / Visualization focused suite -> `431 passed`; publication, architecture
+    and native lifecycle suite -> `334 passed`; representative pipeline -> `2 passed`.
+  - Required IO / public BIDS / cross-source integration -> `40 passed`; strict public cross-source
+    smoke -> `4/4` (PhysioNet EDF, BBCI GDF, SCCN EEGLAB and MNE CNT).
+  - Ruff lint/format, touched-source Basedpyright (`0 errors, 0 warnings`) and `git diff --check`
+    passed. Main-agent visual review passed the Map, Spectrogram, Topographic Map and explicit 3D
+    blocked-state artifacts under `build/dev-artifacts/saliency-same-class-audit-v3/`.
+  - Reviewer follow-up -> focused Evaluation/Saliency/Visualization `274 passed`, UI root contracts
+    `919 passed`, architecture compliance PASS. Two stale Spectrogram internal-contract tests and
+    the Data Import unit fixture's missing QApplication/top-level-parent setup were updated to the
+    current product contract.
+- claim boundary:
+  - Headless Qt evidence does not exercise native Windows/OpenGL 3D interaction, and this local
+    checkpoint still requires exact-head CI before merge. `All Folds` remains conditional on backend
+    admission of scientifically comparable folds; no unsafe unconditional `Full` aggregate was
+    added.
+  - The fast dashboard remains non-green because of existing global Basedpyright baseline errors,
+    stale strict resource-calibration evidence and unavailable xcb in the current sandbox. These are
+    not hidden by the focused PASS results.

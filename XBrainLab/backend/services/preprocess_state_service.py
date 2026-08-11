@@ -74,6 +74,8 @@ class PreprocessProductPort(PreprocessStateReadPort, Protocol):
         tmin: float,
         tmax: float,
         allow_boundary_drop: bool = False,
+        *,
+        event_label_aliases_by_source: Sequence[Mapping[str, str]] | None = None,
     ) -> bool: ...
 
     def apply_montage(
@@ -230,7 +232,14 @@ class PreprocessStateService(Observable):
         tmin: float,
         tmax: float,
         allow_boundary_drop: bool = False,
+        *,
+        event_label_aliases_by_source: Sequence[Mapping[str, str]] | None = None,
     ) -> bool:
+        epoch_options: dict[str, Any] = {}
+        if event_label_aliases_by_source is not None:
+            epoch_options["event_label_aliases_by_source"] = (
+                event_label_aliases_by_source
+            )
         result = self._apply_processor(
             self._processor("TimeEpoch"),
             baseline,
@@ -238,6 +247,7 @@ class PreprocessStateService(Observable):
             tmin,
             tmax,
             allow_boundary_drop,
+            **epoch_options,
         )
         if result:
             self.study.lock_dataset()

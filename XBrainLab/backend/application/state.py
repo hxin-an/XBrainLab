@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from enum import Enum
+from typing import TYPE_CHECKING, Any
 
 from XBrainLab.backend.training_state_contract import (
     PostTrainingSaliencyStatus,
     TrainingOutcomeState,
     TrainingTerminalOutcome,
 )
+
+if TYPE_CHECKING:
+    from .training_recommendation import TrainingRecommendation
 
 from .serialization import serialize_json_value
 
@@ -58,16 +62,34 @@ class EpochStateSnapshot:
     channel_names: list[str] = field(default_factory=list)
 
 
+class DatasetSplitLifecycle(str, Enum):
+    """Authoritative lifecycle for one saved dataset split specification."""
+
+    UNCONFIGURED = "unconfigured"
+    SAVED = "saved"
+    MATERIALIZING = "materializing"
+    VERIFIED = "verified"
+    FAILED = "failed"
+
+
 @dataclass(frozen=True)
 class DatasetStateSnapshot:
-    """Snapshot of generated training datasets."""
+    """Snapshot of saved split intent and generated training datasets."""
 
     available: bool = False
     count: int = 0
     names: list[str] = field(default_factory=list)
     locked: bool = False
     generator_exists: bool = False
-    split_summary: dict[str, Any] = field(default_factory=dict)
+    split_spec_saved: bool = False
+    split_specification: dict[str, Any] = field(default_factory=dict)
+    split_specification_fingerprint: str | None = None
+    split_epoch_revision: int | None = None
+    split_preview_summary: dict[str, Any] = field(default_factory=dict)
+    split_lifecycle: DatasetSplitLifecycle = DatasetSplitLifecycle.UNCONFIGURED
+    split_materialized: bool = False
+    active_split_summary: dict[str, Any] = field(default_factory=dict)
+    last_split_attempt: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -79,6 +101,7 @@ class TrainingStateSnapshot:
     model_params: dict[str, Any] = field(default_factory=dict)
     has_training_option: bool = False
     training_option: dict[str, Any] = field(default_factory=dict)
+    recommendation: TrainingRecommendation | None = None
     has_trainer: bool = False
     is_running: bool = False
     plan_count: int = 0
@@ -205,6 +228,7 @@ class ActiveDatasetSnapshot:
     has_preprocessed_data: bool = False
     has_epoch_data: bool = False
     has_datasets: bool = False
+    has_saved_split: bool = False
     is_locked: bool = False
 
 

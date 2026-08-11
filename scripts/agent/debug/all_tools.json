@@ -284,7 +284,7 @@
             }
         },
         {
-            "tool": "generate_dataset",
+            "tool": "configure_dataset_split",
             "params": {
                 "split_strategy": "trial",
                 "training_mode": "individual",
@@ -292,7 +292,7 @@
             },
             "expected": {
                 "ok": true,
-                "command_name": "generate_dataset",
+                "command_name": "configure_dataset_split",
                 "changed_state": {
                     "datasets_changed": true,
                     "training_changed": true,

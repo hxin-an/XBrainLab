@@ -24,6 +24,7 @@ import uuid
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from io import BytesIO
+from math import ceil
 from pathlib import Path
 from typing import Any, cast
 
@@ -152,14 +153,16 @@ from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
     ConfigureTrainingCommand,
     CreateEpochCommand,
+    DatasetSplitPreviewRequest,
+    DatasetSplitSpecification,
     EvaluateCommand,
-    GenerateDatasetCommand,
     NewSessionCommand,
     PreprocessCommand,
     PreprocessOperation,
     PreviewInterpretationCommand,
     ReloadInterpretationRecipeCommand,
     SaliencyCommand,
+    SaveDatasetSplitCommand,
     SaveInterpretationRecipeCommand,
     ScanSourceCommand,
     TrainCommand,
@@ -317,7 +320,7 @@ VISIBLE_FORBIDDEN = (
     "save_interpretation_recipe",
     "reload_interpretation_recipe",
     "configure_training",
-    "generate_dataset",
+    "configure_dataset_split",
     "create_epoch",
     "reset_session",
     "new_session",
@@ -339,9 +342,9 @@ DATA_IMPORT_STEP_TITLES = (
     "Review and Import",
 )
 DATA_IMPORT_COMPACT_STEP_TITLES = (
-    "EEG Data",
+    "EEG",
     "Labels",
-    "Metadata",
+    "Details",
     "Match",
     "Review",
 )
@@ -355,7 +358,17 @@ MAIN_NAVIGATION_TITLES = (
 
 RESOURCE_THREAD_TOLERANCE = 1
 RESOURCE_RSS_SMOKE_LIMIT_KB = 1_200_000
+# The product caps Qt's global pool at 16 workers. Linux exposes enough native
+# identity and wait-channel evidence to distinguish those dormant workers from
+# active or unrelated threads, so use the product ceiling rather than a
+# machine-specific count observed in one CI run.
+MAX_LINUX_DORMANT_QT_THREADS = 16
+MAX_DARWIN_UNINSPECTABLE_IDLE_THREADS = 12
 MAX_PERSISTENT_CUDA_RUNTIME_THREADS = 32
+LINUX_DORMANT_QT_WAIT_CHANNELS = frozenset(
+    {"futex_do_wait", "futex_wait", "futex_wait_queue"}
+)
+LINUX_PYTHON_THREAD_NAME_PATTERN = re.compile(r"python(?:\d+(?:\.\d+)*)?")
 GEOMETRY_WIDTH_TOLERANCE_PX = 8
 WALKTHROUGH_EVENT_ROWS = tuple(
     f"{0.1 + index * 0.55:.2f}\t0.2\t{'left' if index % 2 == 0 else 'right'}"
@@ -849,11 +862,11 @@ def _run_walkthrough_steps(
         ScanSourceCommand(source_path=str(source_path), source_hint="file"),
         command_results,
     )
-    preview = execute_recorded(service, PreviewInterpretationCommand(), command_results)
-    validation = execute_recorded(
+    preview = execute_recorded(
         service,
-        ValidateInterpretationCommand(),
+        PreviewInterpretationCommand(),
         command_results,
+        expected_publication_generation=service.get_view_publication().generation,
     )
     scan_payload = _required_command_payload(
         scan,
@@ -863,12 +876,30 @@ def _run_walkthrough_steps(
     preview_payload = _required_command_payload(
         preview,
         expected_payload_type="interpretation_preview",
-        required_fields=("preview",),
+        required_fields=("candidate", "preview"),
+    )
+    preview_candidate_id = _required_payload_id(
+        preview_payload["candidate"],
+        "candidate_id",
+        context="initial interpretation preview",
+    )
+    validation_generation = service.get_view_publication().generation
+    validation = execute_recorded(
+        service,
+        ValidateInterpretationCommand(candidate_id=preview_candidate_id),
+        command_results,
+        expected_publication_generation=validation_generation,
     )
     validation_payload = _required_command_payload(
         validation,
         expected_payload_type="validation_decision",
         required_fields=("validation_decision",),
+    )
+    _require_matching_payload_id(
+        validation_payload["validation_decision"],
+        "candidate_id",
+        expected=preview_candidate_id,
+        context="initial interpretation validation",
     )
     tool_transcript.extend(
         command_summary(item) for item in [scan, preview, validation]
@@ -977,6 +1008,7 @@ def _run_walkthrough_steps(
     blocked_probe_path.write_text("stream placeholder", encoding="utf-8")
     blocked_probe = data_interpretation_decision_probe(str(blocked_probe_path), {})
 
+    reviewed_preview_generation = service.get_view_publication().generation
     reviewed_preview = execute_recorded(
         service,
         PreviewInterpretationCommand(
@@ -984,27 +1016,71 @@ def _run_walkthrough_steps(
             choices=review_choices if isinstance(review_choices, dict) else {},
         ),
         command_results,
+        expected_publication_generation=reviewed_preview_generation,
     )
+    reviewed_preview_payload = _required_command_payload(
+        reviewed_preview,
+        expected_payload_type="interpretation_preview",
+        required_fields=("candidate", "preview"),
+    )
+    reviewed_candidate_id = _required_payload_id(
+        reviewed_preview_payload["candidate"],
+        "candidate_id",
+        context="reviewed interpretation preview",
+    )
+    reviewed_validation_generation = service.get_view_publication().generation
     reviewed_validation = execute_recorded(
         service,
-        ValidateInterpretationCommand(),
+        ValidateInterpretationCommand(candidate_id=reviewed_candidate_id),
         command_results,
+        expected_publication_generation=reviewed_validation_generation,
     )
     reviewed_validation_payload = _required_command_payload(
         reviewed_validation,
         expected_payload_type="validation_decision",
         required_fields=("validation_decision",),
     )
+    reviewed_validation_candidate_id = _require_matching_payload_id(
+        reviewed_validation_payload["validation_decision"],
+        "candidate_id",
+        expected=reviewed_candidate_id,
+        context="reviewed interpretation validation",
+    )
+    unconfirmed_apply_generation = service.get_view_publication().generation
     apply_without_confirmation = execute_recorded(
         service,
-        ApplyInterpretationCommand(),
+        ApplyInterpretationCommand(candidate_id=reviewed_candidate_id),
         command_results,
+        expected_publication_generation=unconfirmed_apply_generation,
     )
+    reviewed_apply_generation = service.get_view_publication().generation
     apply_confirmed = execute_recorded(
         service,
-        ApplyInterpretationCommand(confirmed=True),
+        ApplyInterpretationCommand(
+            candidate_id=reviewed_candidate_id,
+            confirmed=True,
+        ),
         command_results,
+        expected_publication_generation=reviewed_apply_generation,
     )
+    apply_confirmed_payload = _required_command_payload(
+        apply_confirmed,
+        expected_payload_type="applied_interpretation",
+        required_fields=("applied_interpretation",),
+    )
+    reviewed_applied_candidate_id = _require_matching_payload_id(
+        apply_confirmed_payload["applied_interpretation"],
+        "candidate_id",
+        expected=reviewed_candidate_id,
+        context="reviewed interpretation apply",
+    )
+    reviewed_handoff = {
+        "candidate_id": reviewed_candidate_id,
+        "validation_candidate_id": reviewed_validation_candidate_id,
+        "applied_candidate_id": reviewed_applied_candidate_id,
+        "validation_publication_generation": reviewed_validation_generation,
+        "apply_publication_generation": reviewed_apply_generation,
+    }
     save_recipe = (
         execute_recorded(
             service,
@@ -1021,11 +1097,67 @@ def _run_walkthrough_steps(
         ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path)),
         command_results,
     )
+    reload_payload = _required_command_payload(
+        reload_recipe,
+        expected_payload_type="recipe_reload_preview",
+        required_fields=(
+            "scan_result",
+            "candidate",
+            "preview",
+            "validation_decision",
+        ),
+    )
+    reload_candidate_id = _required_payload_id(
+        reload_payload["candidate"],
+        "candidate_id",
+        context="reloaded interpretation preview",
+    )
+    reload_validation_generation = service.get_view_publication().generation
+    reload_validation = execute_recorded(
+        service,
+        ValidateInterpretationCommand(candidate_id=reload_candidate_id),
+        command_results,
+        expected_publication_generation=reload_validation_generation,
+    )
+    reload_validation_payload = _required_command_payload(
+        reload_validation,
+        expected_payload_type="validation_decision",
+        required_fields=("validation_decision",),
+    )
+    reload_validation_candidate_id = _require_matching_payload_id(
+        reload_validation_payload["validation_decision"],
+        "candidate_id",
+        expected=reload_candidate_id,
+        context="reloaded interpretation validation",
+    )
+    reload_apply_generation = service.get_view_publication().generation
     reload_apply = execute_recorded(
         service,
-        ApplyInterpretationCommand(confirmed=True),
+        ApplyInterpretationCommand(
+            candidate_id=reload_candidate_id,
+            confirmed=True,
+        ),
         command_results,
+        expected_publication_generation=reload_apply_generation,
     )
+    reload_apply_payload = _required_command_payload(
+        reload_apply,
+        expected_payload_type="applied_interpretation",
+        required_fields=("applied_interpretation",),
+    )
+    reload_applied_candidate_id = _require_matching_payload_id(
+        reload_apply_payload["applied_interpretation"],
+        "candidate_id",
+        expected=reload_candidate_id,
+        context="reloaded interpretation apply",
+    )
+    reload_handoff = {
+        "candidate_id": reload_candidate_id,
+        "validation_candidate_id": reload_validation_candidate_id,
+        "applied_candidate_id": reload_applied_candidate_id,
+        "validation_publication_generation": reload_validation_generation,
+        "apply_publication_generation": reload_apply_generation,
+    }
     tool_transcript.extend(
         command_summary(item)
         for item in [
@@ -1035,6 +1167,7 @@ def _run_walkthrough_steps(
             apply_confirmed,
             save_recipe,
             reload_recipe,
+            reload_validation,
             reload_apply,
         ]
     )
@@ -1060,8 +1193,10 @@ def _run_walkthrough_steps(
         window,
         service,
         {
+            "validation": command_summary(reviewed_validation),
             "applied": command_summary(apply_confirmed),
             "recipe": command_summary(save_recipe),
+            "strict_review_handoff": reviewed_handoff,
             "ui_geometry": dataset_page_geometry(window),
         },
     )
@@ -1072,11 +1207,6 @@ def _run_walkthrough_steps(
         window,
         service,
         {"recipe": command_summary(save_recipe)},
-    )
-    reload_payload = _required_command_payload(
-        reload_recipe,
-        expected_payload_type="recipe_reload_preview",
-        required_fields=("scan_result", "preview", "validation_decision"),
     )
     reload_dialog = DataInterpretationPreviewDialog(
         window.dataset_panel,
@@ -1093,7 +1223,9 @@ def _run_walkthrough_steps(
         widget=reload_dialog,
         notes=lambda: {
             "reload": command_summary(reload_recipe),
+            "validation": command_summary(reload_validation),
             "reapply": command_summary(reload_apply),
+            "strict_review_handoff": reload_handoff,
             "review_summary_rows": tree_rows(reload_dialog.review_tree),
             "ui_geometry": sanitize(interpretation_dialog_geometry(reload_dialog)),
         },
@@ -1105,7 +1237,9 @@ def _run_walkthrough_steps(
         "data_interpretation_reapply_recipe",
         "recipe_reapplied",
         notes={
+            "validation": command_summary(reload_validation),
             "reapply": command_summary(reload_apply),
+            "strict_review_handoff": reload_handoff,
             "ui_geometry": dataset_page_geometry(window),
         },
     )
@@ -1153,15 +1287,51 @@ def _run_walkthrough_steps(
         CreateEpochCommand(t_min=0.0, t_max=0.51, event_ids=None),
         command_results,
     )
+    if not epoch.ok:
+        raise RuntimeError(f"Epoch creation failed: {epoch.message}")
+    split_specification = DatasetSplitSpecification.from_payload(
+        {
+            "train_type": "Individual",
+            "is_cross_validation": False,
+            "val_splitters": [
+                {
+                    "split_type": "By Trial",
+                    "split_unit": "Ratio",
+                    "value": "0.25",
+                    "is_option": True,
+                }
+            ],
+            "test_splitters": [
+                {
+                    "split_type": "By Trial",
+                    "split_unit": "Ratio",
+                    "value": "0.25",
+                    "is_option": True,
+                }
+            ],
+        }
+    )
+    split_publication_generation = service.get_view_publication().generation
+    split_preview = service.get_dataset_split_preview(
+        DatasetSplitPreviewRequest(
+            request_id="human-like-product-split-preview",
+            publication_generation=split_publication_generation,
+            specification=split_specification,
+        )
+    )
     dataset = execute_recorded(
         service,
-        GenerateDatasetCommand(
-            test_ratio=0.25,
-            val_ratio=0.25,
-            split_strategy="trial",
-            training_mode="individual",
+        SaveDatasetSplitCommand(
+            split_config=split_specification.to_payload(),
+            preview_receipt=split_preview.receipt,
         ),
         command_results,
+        expected_publication_generation=split_publication_generation,
+    )
+    split_handoff = _require_deferred_split_handoff(
+        dataset,
+        specification=split_specification,
+        preview_summary=split_preview.receipt.summary_payload(),
     )
     tool_transcript.extend(command_summary(item) for item in [epoch, dataset])
     open_workflow_panel(window, 1)
@@ -1183,6 +1353,7 @@ def _run_walkthrough_steps(
         notes={
             "epoch": command_summary(epoch),
             "dataset": command_summary(dataset),
+            "split_handoff": split_handoff,
         },
     )
     append_phase_alias(
@@ -1191,7 +1362,10 @@ def _run_walkthrough_steps(
         screenshots["dataset_ready"],
         window.training_panel,
         service,
-        {"dataset": command_summary(dataset)},
+        {
+            "dataset": command_summary(dataset),
+            "split_handoff": split_handoff,
+        },
     )
 
     configure_training = execute_recorded(
@@ -1539,11 +1713,30 @@ def data_interpretation_decision_probe(
     service = get_application_service(Study())
     scan = service.execute(ScanSourceCommand(source_path=source_path))
     preview = service.execute(PreviewInterpretationCommand(choices=choices))
-    validation = service.execute(ValidateInterpretationCommand())
+    preview_payload = _required_command_payload(
+        preview,
+        expected_payload_type="interpretation_preview",
+        required_fields=("candidate", "preview"),
+    )
+    candidate_id = _required_payload_id(
+        preview_payload["candidate"],
+        "candidate_id",
+        context="interpretation decision probe",
+    )
+    validation = service.execute(
+        ValidateInterpretationCommand(candidate_id=candidate_id),
+        expected_publication_generation=service.get_view_publication().generation,
+    )
     validation_payload = _required_command_payload(
         validation,
         expected_payload_type="validation_decision",
         required_fields=("validation_decision",),
+    )
+    _require_matching_payload_id(
+        validation_payload["validation_decision"],
+        "candidate_id",
+        expected=candidate_id,
+        context="interpretation decision probe validation",
     )
     return {
         "scan": command_summary(scan),
@@ -1588,13 +1781,97 @@ def _required_command_payload(
     return payload
 
 
+def _required_payload_id(
+    value: Any,
+    field: str,
+    *,
+    context: str,
+) -> str:
+    """Return one non-empty identity from a detached command payload."""
+    identity = value.get(field) if isinstance(value, Mapping) else None
+    if not isinstance(identity, str) or not identity.strip():
+        raise RuntimeError(f"{context} is missing required identity '{field}'.")
+    return identity
+
+
+def _require_matching_payload_id(
+    value: Any,
+    field: str,
+    *,
+    expected: str,
+    context: str,
+) -> str:
+    """Fail closed when a command result is for a different reviewed identity."""
+    identity = _required_payload_id(value, field, context=context)
+    if identity != expected:
+        raise RuntimeError(
+            f"{context} returned {field}={identity!r}; expected {expected!r}."
+        )
+    return identity
+
+
+def _require_deferred_split_handoff(
+    result: CommandResult,
+    *,
+    specification: DatasetSplitSpecification,
+    preview_summary: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Require split confirmation to save intent without publishing datasets."""
+    if not result.ok:
+        raise RuntimeError(
+            "Dataset split confirmation failed before deferred handoff evidence "
+            f"was available: {result.message}"
+        )
+    state = result.state
+    dataset = getattr(state, "dataset", None)
+    if dataset is None:
+        raise RuntimeError("Dataset split confirmation returned no dataset state.")
+    failures: list[str] = []
+    if not bool(dataset.split_spec_saved):
+        failures.append("split specification was not saved")
+    if bool(dataset.available) or int(dataset.count) != 0:
+        failures.append("training datasets were published during confirmation")
+    if bool(dataset.generator_exists):
+        failures.append("dataset generator was published during confirmation")
+    if bool(dataset.split_materialized):
+        failures.append("split masks were materialized during confirmation")
+    if dataset.split_specification_fingerprint != specification.fingerprint:
+        failures.append("saved split fingerprint does not match the preview")
+    if dict(dataset.split_preview_summary) != dict(preview_summary):
+        failures.append("saved split summary does not match the accepted preview")
+    if (
+        not isinstance(dataset.split_epoch_revision, int)
+        or isinstance(dataset.split_epoch_revision, bool)
+        or dataset.split_epoch_revision < 1
+    ):
+        failures.append("saved split is not bound to an epoch revision")
+    if failures:
+        raise RuntimeError(
+            "Deferred dataset split handoff failed: " + "; ".join(failures)
+        )
+    return {
+        "split_spec_saved": True,
+        "split_materialized": False,
+        "dataset_available": False,
+        "generator_exists": False,
+        "split_specification_fingerprint": specification.fingerprint,
+        "split_epoch_revision": dataset.split_epoch_revision,
+        "split_preview_summary": dict(dataset.split_preview_summary),
+    }
+
+
 def execute_recorded(
     service: ApplicationService,
     command: Any,
     command_results: list[dict[str, Any]],
+    *,
+    expected_publication_generation: int | None = None,
 ) -> CommandResult:
     """Execute a command and append a sanitized CommandResult payload."""
-    result = service.execute(command)
+    result = service.execute(
+        command,
+        expected_publication_generation=expected_publication_generation,
+    )
     command_results.append(sanitize(result.to_dict()))
     return result
 
@@ -2225,13 +2502,41 @@ def _label_text_line_probes(
     if content_rect.width() <= 0 or content_rect.height() <= 0:
         raise RuntimeError(f"{surface_name} label has no usable contents rectangle.")
 
+    metrics = label.fontMetrics()
+    horizontal_alignment = label.alignment() & Qt.AlignmentFlag.AlignHorizontal_Mask
+    vertical_alignment = label.alignment() & Qt.AlignmentFlag.AlignVertical_Mask
+    if not label.wordWrap():
+        text_width = max(metrics.horizontalAdvance(text), 1)
+        line_height = max(metrics.height(), 1)
+        name = label.objectName() or f"QLabel({text!r})"
+        if text_width > content_rect.width():
+            raise RuntimeError(
+                f"{surface_name} label text is horizontally clipped: {name} "
+                f"needs {text_width}px, has {content_rect.width()}px."
+            )
+        if line_height > content_rect.height():
+            raise RuntimeError(
+                f"{surface_name} label text is vertically clipped: {name} "
+                f"needs {line_height}px, has {content_rect.height()}px."
+            )
+        if horizontal_alignment == Qt.AlignmentFlag.AlignRight:
+            local_x = content_rect.x() + content_rect.width() - text_width
+        elif horizontal_alignment == Qt.AlignmentFlag.AlignHCenter:
+            local_x = content_rect.x() + (content_rect.width() - text_width) // 2
+        else:
+            local_x = content_rect.x()
+        if vertical_alignment == Qt.AlignmentFlag.AlignBottom:
+            local_y = content_rect.y() + content_rect.height() - line_height
+        elif vertical_alignment == Qt.AlignmentFlag.AlignTop:
+            local_y = content_rect.y()
+        else:
+            local_y = content_rect.y() + (content_rect.height() - line_height) // 2
+        probe = QRect(local_x - 3, local_y - 3, text_width + 6, line_height + 6)
+        return [(probe.intersected(content_rect), text_width)]
+
     layout = QTextLayout(text, label.font())
     options = QTextOption()
-    options.setWrapMode(
-        QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere
-        if label.wordWrap()
-        else QTextOption.WrapMode.NoWrap
-    )
+    options.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
     layout.setTextOption(options)
     layout.beginLayout()
     lines = []
@@ -2247,8 +2552,7 @@ def _label_text_line_probes(
     if not lines:
         raise RuntimeError(f"{surface_name} label has no text layout lines.")
 
-    metrics = label.fontMetrics()
-    line_heights = [max(round(line.height()), metrics.height()) for line in lines]
+    line_heights = [max(ceil(line.height()), metrics.height()) for line in lines]
     required_height = sum(line_heights)
     if label.wordWrap() and required_height > content_rect.height():
         name = label.objectName() or f"QLabel({text!r})"
@@ -2257,8 +2561,6 @@ def _label_text_line_probes(
             f"needs {required_height}px, has {content_rect.height()}px."
         )
 
-    horizontal_alignment = label.alignment() & Qt.AlignmentFlag.AlignHorizontal_Mask
-    vertical_alignment = label.alignment() & Qt.AlignmentFlag.AlignVertical_Mask
     if vertical_alignment == Qt.AlignmentFlag.AlignBottom:
         local_y = content_rect.y() + content_rect.height() - required_height
     elif vertical_alignment == Qt.AlignmentFlag.AlignTop:
@@ -2268,9 +2570,8 @@ def _label_text_line_probes(
 
     probes: list[tuple[QRect, int]] = []
     for line, line_height in zip(lines, line_heights, strict=True):
-        text_width = max(round(line.naturalTextWidth()), 1)
-        if not label.wordWrap() and text_width > content_rect.width():
-            raise RuntimeError(f"{surface_name} label text is horizontally clipped.")
+        natural_width = line.naturalTextWidth()
+        text_width = max(ceil(natural_width), 1)
         if horizontal_alignment == Qt.AlignmentFlag.AlignRight:
             local_x = content_rect.x() + content_rect.width() - text_width
         elif horizontal_alignment == Qt.AlignmentFlag.AlignHCenter:
@@ -2930,6 +3231,15 @@ def compact_state(state: ApplicationStateSnapshot) -> dict[str, Any]:
         "dataset": {
             "available": data["dataset"]["available"],
             "count": data["dataset"]["count"],
+            "generator_exists": data["dataset"]["generator_exists"],
+            "split_spec_saved": data["dataset"]["split_spec_saved"],
+            "split_specification_fingerprint": data["dataset"][
+                "split_specification_fingerprint"
+            ],
+            "split_epoch_revision": data["dataset"]["split_epoch_revision"],
+            "split_preview_summary": data["dataset"]["split_preview_summary"],
+            "split_lifecycle": data["dataset"]["split_lifecycle"],
+            "split_materialized": data["dataset"]["split_materialized"],
         },
         "training": {
             "has_model": data["training"]["has_model"],
@@ -3067,10 +3377,42 @@ def build_workflow_contract_failures(phases: list[dict[str, Any]]) -> list[str]:
         if not value:
             failures.append(f"{phase_name} {message}")
 
+    def require_strict_review_handoff(phase_name: str) -> None:
+        phase = by_name.get(phase_name)
+        if phase is None:
+            return
+        handoff = (phase.get("notes") or {}).get("strict_review_handoff")
+        if not isinstance(handoff, dict):
+            failures.append(f"{phase_name} is missing strict review handoff evidence")
+            return
+        candidate_id = handoff.get("candidate_id")
+        identities_match = bool(candidate_id) and all(
+            handoff.get(field) == candidate_id
+            for field in ("validation_candidate_id", "applied_candidate_id")
+        )
+        generations_valid = all(
+            isinstance(handoff.get(field), int)
+            and not isinstance(handoff.get(field), bool)
+            and handoff[field] > 0
+            for field in (
+                "validation_publication_generation",
+                "apply_publication_generation",
+            )
+        )
+        if not identities_match or not generations_valid:
+            failures.append(
+                f"{phase_name} did not preserve one generation-bound reviewed "
+                "candidate through validate and apply"
+            )
+
     for phase_name, note_names in {
-        "data_interpretation_apply": ("applied", "recipe"),
-        "data_interpretation_reload_recipe": ("reload",),
-        "data_interpretation_reapply_recipe": ("reapply",),
+        "data_interpretation_apply": ("validation", "applied", "recipe"),
+        "data_interpretation_reload_recipe": (
+            "reload",
+            "validation",
+            "reapply",
+        ),
+        "data_interpretation_reapply_recipe": ("validation", "reapply"),
         "preprocessing": ("preprocess",),
         "epoch_creation": ("epoch",),
         "dataset_generation": ("dataset",),
@@ -3092,9 +3434,49 @@ def build_workflow_contract_failures(phases: list[dict[str, Any]]) -> list[str]:
         ("preprocessed", "available"),
         "did not produce preprocessed data",
     )
+    require_strict_review_handoff("data_interpretation_apply")
+    require_strict_review_handoff("data_interpretation_reapply_recipe")
     require_state("epoch_creation", ("epoch", "exists"), "did not produce epochs")
+    split_phase = by_name.get("dataset_generation")
+    split_state = (
+        split_phase.get("workflow_state", {}).get("dataset", {})
+        if split_phase is not None
+        else {}
+    )
+    split_handoff = (
+        (split_phase.get("notes") or {}).get("split_handoff")
+        if split_phase is not None
+        else None
+    )
+    split_saved = (
+        isinstance(split_state, dict)
+        and split_state.get("split_spec_saved") is True
+        and split_state.get("available") is False
+        and split_state.get("count") == 0
+        and split_state.get("generator_exists") is False
+        and split_state.get("split_materialized") is False
+        and split_state.get("split_lifecycle") == "saved"
+        and bool(split_state.get("split_specification_fingerprint"))
+        and isinstance(split_state.get("split_epoch_revision"), int)
+        and not isinstance(split_state.get("split_epoch_revision"), bool)
+        and split_state["split_epoch_revision"] > 0
+        and bool(split_state.get("split_preview_summary", {}).get("rows"))
+        and isinstance(split_handoff, dict)
+    )
+    if not split_saved:
+        failures.append(
+            "dataset_generation did not preserve a previewed, saved, "
+            "unmaterialized split"
+        )
     require_state(
-        "dataset_generation", ("dataset", "available"), "did not produce a dataset"
+        "training_readiness",
+        ("dataset", "available"),
+        "did not materialize training datasets at Start Training",
+    )
+    require_state(
+        "training_readiness",
+        ("dataset", "split_materialized"),
+        "did not publish the materialized split after Start Training",
     )
     require_state(
         "training_readiness",
@@ -3180,7 +3562,9 @@ def build_resource_smoke_summary(
     boundary = (
         "Coarse process smoke only: current RSS catches large retained-memory "
         "regressions, while max RSS is recorded as a high-water diagnostic and "
-        "does not prove the absence of leaks."
+        "does not prove the absence of leaks. On macOS, bounded anonymous OS "
+        "threads are reported as limited-introspection evidence only when Qt "
+        "and Python report no active work."
     )
     if resource_notes is None:
         return {
@@ -3218,11 +3602,12 @@ def build_resource_smoke_summary(
         failed.append("resource thread identity evidence is incomplete")
     extra_live_ids = after_live_ids - start_live_ids
     extra_os_ids = after_os_ids - start_os_ids
-    persistent_runtime_ids, unexpected_extra_os_ids = (
+    persistent_runtime_ids, unexpected_extra_os_ids, limited_introspection_ids = (
         _classify_persistent_runtime_threads(
             after_close,
             extra_os_ids,
             qt_active_threads=after_qt_threads,
+            known_live_python_ids=extra_live_ids,
         )
     )
     unexpected_extra_live_ids = extra_live_ids - persistent_runtime_ids
@@ -3257,9 +3642,15 @@ def build_resource_smoke_summary(
             f"start {start_os_threads}, after_close {after_os_threads}."
         )
     if unexpected_extra_os_ids:
+        unexpected_records = [
+            record
+            for record in after_close.get("os_thread_records", [])
+            if isinstance(record, Mapping)
+            and record.get("native_id") in unexpected_extra_os_ids
+        ]
         failed.append(
             "OS thread identities remained after close: "
-            f"{sorted(unexpected_extra_os_ids)}."
+            f"{sorted(unexpected_extra_os_ids)}; records={unexpected_records}."
         )
     if after_qt_threads > 0:
         failed.append(f"Qt thread pool still active after close: {after_qt_threads}.")
@@ -3281,6 +3672,11 @@ def build_resource_smoke_summary(
         "extra_os_thread_ids": sorted(extra_os_ids),
         "persistent_runtime_os_thread_ids": sorted(persistent_runtime_ids),
         "unexpected_extra_os_thread_ids": sorted(unexpected_extra_os_ids),
+        "limited_introspection_os_thread_ids": sorted(limited_introspection_ids),
+        "limited_introspection_os_thread_limit": (
+            MAX_DARWIN_UNINSPECTABLE_IDLE_THREADS
+        ),
+        "linux_dormant_qt_thread_limit": MAX_LINUX_DORMANT_QT_THREADS,
         "python_thread_tolerance": RESOURCE_THREAD_TOLERANCE,
         "after_close_qt_active_threads": after_qt_threads,
         "rss_growth_kb": current_rss_growth_kb,
@@ -3296,7 +3692,8 @@ def _classify_persistent_runtime_threads(
     extra_os_ids: set[int],
     *,
     qt_active_threads: int,
-) -> tuple[set[int], set[int]]:
+    known_live_python_ids: set[int],
+) -> tuple[set[int], set[int], set[int]]:
     """Separate bounded idle runtime pools from unknown post-close workers."""
     raw_records = after_close.get("os_thread_records", [])
     records = {
@@ -3304,13 +3701,39 @@ def _classify_persistent_runtime_threads(
         for record in raw_records
         if isinstance(record, Mapping) and isinstance(record.get("native_id"), int)
     }
-    qt_max_threads = max(_resource_int(after_close, "qt_max_threads"), 0)
     cuda_initialized = bool(after_close.get("cuda_runtime_initialized", False))
+    platform_name = str(after_close.get("platform_name", "")).strip().lower()
     idle_qt_ids: set[int] = set()
     cuda_runtime_ids: set[int] = set()
     unexpected_ids: set[int] = set()
 
+    # macOS does not expose Linux /proc thread names or wait channels. The
+    # collector still emits one blank record per OS thread because /proc is
+    # absent, so treat records with no identity evidence as anonymous. Qt's
+    # global pool may retain a bounded inactive worker set after a burst. The
+    # current maxThreadCount can be lower than the already-created worker set,
+    # so use a narrow observed-platform cap while requiring zero active work
+    # and rejecting any thread that Python can still prove is live.
+    darwin_records_are_anonymous = platform_name == "darwin" and all(
+        not str(records.get(native_id, {}).get("name", "")).strip()
+        and not str(records.get(native_id, {}).get("wait_channel", "")).strip()
+        for native_id in extra_os_ids
+    )
+    anonymous_idle_qt_ids = (
+        set(extra_os_ids)
+        if (
+            darwin_records_are_anonymous
+            and qt_active_threads == 0
+            and not (extra_os_ids & known_live_python_ids)
+            and len(extra_os_ids) <= MAX_DARWIN_UNINSPECTABLE_IDLE_THREADS
+        )
+        else set()
+    )
+
     for native_id in extra_os_ids:
+        if native_id in anonymous_idle_qt_ids:
+            idle_qt_ids.add(native_id)
+            continue
         record = records.get(native_id)
         if record is None:
             unexpected_ids.add(native_id)
@@ -3318,10 +3741,19 @@ def _classify_persistent_runtime_threads(
         name = str(record.get("name", ""))
         wait_channel = str(record.get("wait_channel", ""))
         if (
-            name == "Thread (pooled)"
+            platform_name == "linux"
+            and (
+                name == "Thread (pooled)"
+                or LINUX_PYTHON_THREAD_NAME_PATTERN.fullmatch(name) is not None
+            )
             and qt_active_threads == 0
-            and wait_channel.startswith("futex_wait")
+            and wait_channel in LINUX_DORMANT_QT_WAIT_CHANNELS
         ):
+            # Some Linux CI builds preserve Qt's native thread name, while
+            # others expose the process name ("python") for the same inactive
+            # QThreadPool workers. Identity records plus a futex wait prove the
+            # worker is dormant; the product-level cap below still rejects an
+            # unbounded retained pool.
             idle_qt_ids.add(native_id)
             continue
         if cuda_initialized and name.startswith(("cuda", "pt_autograd_")):
@@ -3340,14 +3772,22 @@ def _classify_persistent_runtime_threads(
             continue
         unexpected_ids.add(native_id)
 
-    if len(idle_qt_ids) > qt_max_threads:
+    # QThreadPool may lower maxThreadCount after a burst without immediately
+    # destroying already-created idle workers. Bound the retained pool by a
+    # product-level ceiling instead of comparing it with the *current*
+    # concurrency setting, while still requiring zero active workers above.
+    if (
+        not darwin_records_are_anonymous
+        and len(idle_qt_ids) > MAX_LINUX_DORMANT_QT_THREADS
+    ):
         unexpected_ids.update(idle_qt_ids)
         idle_qt_ids.clear()
     if len(cuda_runtime_ids) > MAX_PERSISTENT_CUDA_RUNTIME_THREADS:
         unexpected_ids.update(cuda_runtime_ids)
         cuda_runtime_ids.clear()
     persistent_ids = idle_qt_ids | cuda_runtime_ids
-    return persistent_ids, unexpected_ids
+    limited_introspection_ids = idle_qt_ids if darwin_records_are_anonymous else set()
+    return persistent_ids, unexpected_ids, limited_introspection_ids
 
 
 def merge_ui_quality_into_pass_fail_summary(
@@ -4035,10 +4475,11 @@ def resource_snapshot(label: str) -> dict[str, Any]:
         for record in thread_records
         if record["kind"] == "_DummyThread" and not record["backed_by_os_thread"]
     ]
-    max_rss_kb = (
+    max_rss_kb = _ru_maxrss_kb(
         resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         if resource is not None
-        else 0
+        else 0,
+        platform_name=sys.platform,
     )
     current_rss_kb = (
         int(process.memory_info().rss / 1024) if process is not None else max_rss_kb
@@ -4057,6 +4498,7 @@ def resource_snapshot(label: str) -> dict[str, Any]:
         cuda_runtime_initialized = False
     return {
         "label": label,
+        "platform_name": sys.platform,
         "pid": os.getpid(),
         "python_threads": len(thread_records),
         "thread_names": [str(record["name"]) for record in thread_records[:12]],
@@ -4079,6 +4521,14 @@ def resource_snapshot(label: str) -> dict[str, Any]:
         "max_rss_kb": max_rss_kb,
         "current_rss_kb": current_rss_kb,
     }
+
+
+def _ru_maxrss_kb(reported_value: int | float, *, platform_name: str) -> int:
+    """Normalize getrusage's platform-specific high-water unit to KiB."""
+    value = max(int(reported_value), 0)
+    if platform_name == "darwin":
+        return value // 1024
+    return value
 
 
 def _linux_thread_record(native_id: int) -> dict[str, Any]:
@@ -4339,6 +4789,9 @@ def render_markdown(payload: dict[str, Any]) -> str:
             [
                 f"- smoke checked: `{resource_smoke.get('checked')}`",
                 f"- smoke passed: `{resource_smoke.get('passed')}`",
+                "- limited-introspection OS threads: "
+                f"`{resource_smoke.get('limited_introspection_os_thread_ids', [])}` "
+                f"/ cap `{resource_smoke.get('limited_introspection_os_thread_limit', 'n/a')}`",
                 f"- boundary: {resource_smoke.get('boundary', '')}",
             ]
         )

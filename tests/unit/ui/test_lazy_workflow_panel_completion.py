@@ -324,7 +324,7 @@ def test_abandon_and_new_handoff_invalidate_stale_first_open_callback() -> None:
     host.open(WorkflowUiHandoffRequest.for_decision("create_epoch"))
     stale_callback = window.callbacks[1][0]
     host.abandon_active()
-    host.open(WorkflowUiHandoffRequest.for_decision("generate_dataset"))
+    host.open(WorkflowUiHandoffRequest.for_decision("configure_dataset_split"))
     current_callback = window.callbacks[2][0]
 
     assert window.navigation_calls == [1, 2]

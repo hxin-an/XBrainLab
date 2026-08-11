@@ -169,13 +169,19 @@ class TestApplicationServiceTrainingStateIntegration:
 
         assert result.ok is True
         assert result.state.training.has_model is True
-        assert result.state.training.model_name == "EEGNet"
+        assert result.state.training.model_name == "EEGNet (XBrainLab)"
         assert result.state.training.has_training_option is True
-        assert result.state.training.training_option == {
+        training_option = result.state.training.training_option
+        seed = training_option["seed"]
+        assert type(seed) is int
+        assert training_option["repeat_seeds"] == [seed]
+        assert training_option == {
             "epoch": 5,
             "batch_size": 4,
             "learning_rate": 0.001,
             "repeat": 1,
+            "seed": seed,
+            "repeat_seeds": [seed],
             "device": "cpu",
             "optimizer": "Adam",
             "optimizer_params": {},
@@ -204,11 +210,7 @@ class TestTrainingSettingDefaultValues:
         mock_controller = MagicMock()
         mock_controller.get_training_option.return_value = None
 
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog.get_device_count",
-            return_value=0,
-        ):
-            window = TrainingSettingDialog(None, mock_controller)
+        window = TrainingSettingDialog(None, mock_controller)
         qtbot.addWidget(window)
 
         # Verify default values are pre-filled

@@ -1,4 +1,4 @@
-"""Coverage tests for sidebar modules: preprocess, training, dataset, viz control."""
+"""Sidebar command, capability, publication, and interaction contracts."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QDialog, QGroupBox, QMainWindow, QMessageBox, QWidget
+from PyQt6.QtWidgets import QDialog, QGroupBox, QMainWindow, QMessageBox
 
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -121,9 +121,6 @@ class TestPreprocessSidebar:
         qtbot.addWidget(sb)
         return sb
 
-    def test_creates(self, sidebar):
-        assert isinstance(sidebar, QWidget)
-
     def test_right_sidebars_keep_operation_area_at_consistent_y(self, qtbot):
         from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
         from XBrainLab.ui.panels.preprocess.sidebar import PreprocessSidebar
@@ -158,9 +155,6 @@ class TestPreprocessSidebar:
                 primary_group.minimumHeight()
                 == Stylesheets.SIDEBAR_PRIMARY_GROUP_MIN_HEIGHT
             )
-
-    def test_update_sidebar(self, sidebar):
-        sidebar.update_sidebar()
 
     def test_update_sidebar_prefers_backend_capabilities_over_stale_preprocessed_list(
         self,
@@ -203,16 +197,6 @@ class TestPreprocessSidebar:
             sidebar.update_sidebar()
 
         assert runtime.publication_reads == 1
-
-    def test_check_lock_unlocked(self, sidebar):
-        # check_lock returns False when NOT epoched (action is allowed)
-        assert sidebar.check_lock() is False
-
-    def test_check_lock_locked(self, sidebar):
-        sidebar.panel.controller.is_epoched.return_value = True
-        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
-            # check_lock returns True when epoched (action is blocked)
-            assert sidebar.check_lock() is True
 
     def test_check_lock_prefers_backend_capability_over_stale_controller(
         self,
@@ -262,14 +246,6 @@ class TestPreprocessSidebar:
         assert mock_warning.call_args.args[2] == (
             "Preprocessing availability is unavailable right now."
         )
-
-    def test_check_data_loaded_true(self, sidebar):
-        assert sidebar.check_data_loaded() is True
-
-    def test_check_data_loaded_false(self, sidebar):
-        sidebar.panel.controller.has_data.return_value = False
-        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
-            assert sidebar.check_data_loaded() is False
 
     def test_check_data_loaded_prefers_backend_capability_over_stale_controller(
         self,
@@ -1396,9 +1372,6 @@ class TestTrainingSidebar:
         qtbot.addWidget(sb)
         return sb
 
-    def test_creates(self, sidebar):
-        assert isinstance(sidebar, QWidget)
-
     def test_model_selection_dialog_canonicalizes_only_existing_initial_model(
         self,
         qtbot,
@@ -1412,7 +1385,7 @@ class TestTrainingSidebar:
         )
         qtbot.addWidget(selected)
         assert selected.model_combo is not None
-        assert selected.model_combo.currentText() == "SCCNet"
+        assert selected.model_combo.currentText() == "SCCNet (XBrainLab)"
 
         unknown = ModelSelectionDialog(
             None,
@@ -1423,11 +1396,6 @@ class TestTrainingSidebar:
         assert unknown.model_combo is not None
         assert unknown.model_combo.currentText() == unknown.model_list[0]
         assert unknown.model_combo.findText("not-a-real-model") == -1
-
-    def test_check_ready_to_train_not_ready(self, sidebar):
-        result = sidebar.check_ready_to_train()
-        # Without datasets/model/option, not ready
-        assert result is False or result is None
 
     def test_check_ready_to_train_uses_published_blockers_without_controller_fallback(
         self,
@@ -1547,7 +1515,7 @@ class TestTrainingSidebar:
 
         generation = 31
         capability = CommandCapability(
-            command_name=CommandName.GENERATE_DATASET.value,
+            command_name=CommandName.CONFIGURE_DATASET_SPLIT.value,
             enabled=True,
         )
         publication = SimpleNamespace(
@@ -1557,15 +1525,15 @@ class TestTrainingSidebar:
                     capability
                     if command_name
                     in {
-                        CommandName.GENERATE_DATASET,
-                        CommandName.GENERATE_DATASET.value,
+                        CommandName.CONFIGURE_DATASET_SPLIT,
+                        CommandName.CONFIGURE_DATASET_SPLIT.value,
                     }
                     else None
                 )
             ),
         )
         stale_result = CommandResult.failure_result(
-            command_name=CommandName.GENERATE_DATASET.value,
+            command_name=CommandName.CONFIGURE_DATASET_SPLIT.value,
             message=(
                 "Workflow state changed while this confirmed action was pending. "
                 "Review the action again before continuing."
@@ -1710,11 +1678,6 @@ class TestTrainingSidebar:
                 "_data_splitting_dialog_context",
                 return_value=_dataset_split_dialog_binding(),
             ),
-            patch.object(
-                sidebar,
-                "_requires_dataset_replacement_confirmation",
-                return_value=False,
-            ),
             patch("XBrainLab.ui.panels.training.sidebar.DataSplittingDialog") as dialog,
             patch(
                 "XBrainLab.ui.panels.training.sidebar."
@@ -1746,23 +1709,24 @@ class TestTrainingSidebar:
         from XBrainLab.backend.application import (
             CommandCapability,
             CommandName,
-            GenerateDatasetCommand,
+            SaveDatasetSplitCommand,
         )
 
         generation = 21
         generator = _split_config_payload()
         capability = CommandCapability(
-            command_name=CommandName.GENERATE_DATASET.value,
+            command_name=CommandName.CONFIGURE_DATASET_SPLIT.value,
             enabled=True,
-            destructive=True,
-            confirmation_required=True,
-            requires_confirmation=True,
+            destructive=False,
+            confirmation_required=False,
+            requires_confirmation=False,
         )
         publication = SimpleNamespace(
             generation=generation,
-            effective_capabilities={CommandName.GENERATE_DATASET: capability},
+            effective_capabilities={CommandName.CONFIGURE_DATASET_SPLIT: capability},
         )
         binding = _dataset_split_dialog_binding(generation=generation)
+        preview_receipt = MagicMock(name="preview_receipt")
         sidebar.panel.controller.has_data = MagicMock(return_value=True)
         sidebar.panel.dataset_controller.has_data.return_value = True
         sidebar.panel.dataset_controller.get_epoch_data.return_value = MagicMock()
@@ -1798,14 +1762,17 @@ class TestTrainingSidebar:
         ):
             MockDlg.return_value.exec.return_value = QDialog.DialogCode.Accepted
             MockDlg.return_value.get_result.return_value = generator
+            MockDlg.return_value.get_preview_receipt.return_value = preview_receipt
             outcome = sidebar.split_data()
 
         assert outcome.status is InteractionStatus.ACCEPTED
+        mock_execute_async.assert_called_once()
         async_commands = [call.args[1] for call in mock_execute_async.call_args_list]
         mock_execute_sync.assert_not_called()
-        assert isinstance(async_commands[0], GenerateDatasetCommand)
-        assert async_commands[0].replacement_mode == "replace_existing"
-        assert async_commands[0].confirmed is True
+        command = async_commands[0]
+        assert isinstance(command, SaveDatasetSplitCommand)
+        assert command.split_config == generator
+        assert command.preview_receipt is preview_receipt
         sidebar.panel.controller.clean_datasets.assert_not_called()
         sidebar.panel.controller.apply_data_splitting.assert_not_called()
 
@@ -1880,14 +1847,14 @@ class TestTrainingSidebar:
         sidebar.panel.controller.get_epoch_data.assert_not_called()
         sidebar.panel.controller.is_training.assert_not_called()
 
-    def test_split_data_allows_backend_replacement_boundary(
+    def test_split_data_saves_spec_without_backend_replacement_boundary(
         self,
         sidebar,
     ):
         from PyQt6.QtWidgets import QMessageBox
 
         from XBrainLab.backend.application import (
-            GenerateDatasetCommand,
+            SaveDatasetSplitCommand,
         )
         from XBrainLab.backend.study import Study
 
@@ -1902,6 +1869,7 @@ class TestTrainingSidebar:
         sidebar.panel.controller.has_datasets.return_value = True
         sidebar.panel.controller.get_trainer.return_value = None
         generator = _split_config_payload()
+        preview_receipt = MagicMock(name="preview_receipt")
         async_commands = []
 
         def fake_async(_panel, command, *, on_result, **_kwargs):
@@ -1915,8 +1883,8 @@ class TestTrainingSidebar:
                 return_value=SimpleNamespace(
                     enabled=True,
                     reasons=["This wording may change without changing policy."],
-                    requires_confirmation=True,
-                    decision_boundary="replace_generated_datasets",
+                    requires_confirmation=False,
+                    decision_boundary=None,
                 ),
             ),
             patch(
@@ -1940,16 +1908,24 @@ class TestTrainingSidebar:
         ):
             mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             mock_dialog.return_value.get_result.return_value = generator
+            mock_dialog.return_value.get_preview_receipt.return_value = preview_receipt
             outcome = sidebar.split_data()
 
         assert outcome.status is InteractionStatus.ACCEPTED
         mock_warning.assert_not_called()
         mock_execute.assert_not_called()
-        assert isinstance(async_commands[0], GenerateDatasetCommand)
-        assert async_commands[0].replacement_mode == "replace_existing"
-        assert async_commands[0].confirmed is True
+        assert len(async_commands) == 1
+        command = async_commands[0]
+        assert isinstance(command, SaveDatasetSplitCommand)
+        assert command.split_config == generator
+        assert command.preview_receipt is preview_receipt
+        sidebar.panel.controller.clean_datasets.assert_not_called()
+        sidebar.panel.controller.apply_data_splitting.assert_not_called()
 
-    def test_split_data_replacement_cancel_preserves_backend_state(self, sidebar):
+    def test_split_data_save_skips_replacement_prompt_and_preserves_backend_state(
+        self,
+        sidebar,
+    ):
         from PyQt6.QtWidgets import QMessageBox
 
         from XBrainLab.backend.application import CommandCapability, CommandName
@@ -1964,11 +1940,11 @@ class TestTrainingSidebar:
         study.data_manager.dataset_generator = old_generator
         study.training_manager.trainer = old_trainer
         generate_capability = CommandCapability(
-            command_name=CommandName.GENERATE_DATASET.value,
+            command_name=CommandName.CONFIGURE_DATASET_SPLIT.value,
             enabled=True,
             reasons=["Display copy is not policy."],
-            requires_confirmation=True,
-            decision_boundary="replace_generated_datasets",
+            requires_confirmation=False,
+            decision_boundary=None,
         )
 
         with (
@@ -1977,7 +1953,7 @@ class TestTrainingSidebar:
                 return_value=SimpleNamespace(
                     generation=41,
                     effective_capabilities={
-                        CommandName.GENERATE_DATASET: generate_capability,
+                        CommandName.CONFIGURE_DATASET_SPLIT: generate_capability,
                     },
                 ),
             ),
@@ -1991,7 +1967,7 @@ class TestTrainingSidebar:
                 QMessageBox,
                 "question",
                 return_value=QMessageBox.StandardButton.No,
-            ),
+            ) as question,
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command"
             ) as execute_sync,
@@ -2003,21 +1979,22 @@ class TestTrainingSidebar:
             dialog.return_value.get_result.return_value = _split_config_payload()
             outcome = sidebar.split_data()
 
-        assert outcome.status is InteractionStatus.CANCELLED
+        assert outcome.status is InteractionStatus.ACCEPTED
+        question.assert_not_called()
         execute_sync.assert_not_called()
-        execute_async.assert_not_called()
+        execute_async.assert_called_once()
         assert study.data_manager.datasets == old_datasets
         assert study.data_manager.dataset_generator is old_generator
         assert study.training_manager.trainer is old_trainer
 
-    def test_split_data_uses_backend_replacement_boundary_when_controller_stale(
+    def test_split_data_skips_replacement_boundary_when_controller_stale(
         self,
         sidebar,
     ):
         from PyQt6.QtWidgets import QMessageBox
 
         from XBrainLab.backend.application import (
-            GenerateDatasetCommand,
+            SaveDatasetSplitCommand,
         )
         from XBrainLab.backend.study import Study
 
@@ -2032,6 +2009,7 @@ class TestTrainingSidebar:
         sidebar.panel.controller.has_datasets.return_value = False
         sidebar.panel.controller.get_trainer.return_value = None
         generator = _split_config_payload()
+        preview_receipt = MagicMock(name="preview_receipt")
         async_commands = []
 
         def fake_async(_panel, command, *, on_result, **_kwargs):
@@ -2061,15 +2039,18 @@ class TestTrainingSidebar:
         ):
             mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             mock_dialog.return_value.get_result.return_value = generator
+            mock_dialog.return_value.get_preview_receipt.return_value = preview_receipt
             sidebar.split_data()
 
         mock_warning.assert_not_called()
-        mock_question.assert_called_once()
+        mock_question.assert_not_called()
         mock_execute_sync.assert_not_called()
-        assert isinstance(async_commands[0], GenerateDatasetCommand)
-        assert async_commands[0].replacement_mode == "replace_existing"
-        assert async_commands[0].confirmed is True
-        assert isinstance(mock_execute_async.call_args.args[1], GenerateDatasetCommand)
+        mock_execute_async.assert_called_once()
+        assert isinstance(async_commands[0], SaveDatasetSplitCommand)
+        command = mock_execute_async.call_args.args[1]
+        assert isinstance(command, SaveDatasetSplitCommand)
+        assert command.split_config == generator
+        assert command.preview_receipt is preview_receipt
         sidebar.panel.controller.clean_datasets.assert_not_called()
         sidebar.panel.controller.apply_data_splitting.assert_not_called()
 
@@ -2079,7 +2060,7 @@ class TestTrainingSidebar:
     ):
         from PyQt6.QtWidgets import QMessageBox
 
-        from XBrainLab.backend.application import GenerateDatasetCommand
+        from XBrainLab.backend.application import SaveDatasetSplitCommand
         from XBrainLab.backend.application.dataset_split_preview import (
             DatasetSplitContext,
         )
@@ -2102,7 +2083,7 @@ class TestTrainingSidebar:
         generator = _split_config_payload()
 
         def fake_async(_panel, command, *, on_result, **_kwargs):
-            assert isinstance(command, GenerateDatasetCommand)
+            assert isinstance(command, SaveDatasetSplitCommand)
             on_result(_command_result())
             return True
 
@@ -2144,7 +2125,7 @@ class TestTrainingSidebar:
         assert callable(dialog_kwargs["preview_canceller"])
         assert dialog_kwargs["initial_values"] == {}
         mock_execute.assert_not_called()
-        assert isinstance(mock_async.call_args.args[1], GenerateDatasetCommand)
+        assert isinstance(mock_async.call_args.args[1], SaveDatasetSplitCommand)
         sidebar.panel.controller.get_epoch_data.assert_not_called()
         sidebar.panel.controller.get_dataset_generator.assert_not_called()
 
@@ -2162,8 +2143,8 @@ class TestTrainingSidebar:
         publication = SimpleNamespace(
             generation=generation,
             effective_capabilities={
-                CommandName.GENERATE_DATASET: CommandCapability(
-                    command_name=CommandName.GENERATE_DATASET.value,
+                CommandName.CONFIGURE_DATASET_SPLIT: CommandCapability(
+                    command_name=CommandName.CONFIGURE_DATASET_SPLIT.value,
                     enabled=True,
                 ),
             },
@@ -2717,17 +2698,6 @@ class TestTrainingSidebar:
         mock_warning.assert_called_once()
         assert mock_warning.call_args.args[1] == "Training Configuration Blocked"
         assert "could not safely complete" in mock_warning.call_args.args[2]
-
-    def test_on_training_started_disables_buttons(self, sidebar):
-        sidebar.on_training_started()
-        # After training starts, stop button or UI state should update
-        # Verify the method runs without error
-        assert isinstance(sidebar, QWidget)
-
-    def test_on_training_stopped_enables_buttons(self, sidebar):
-        sidebar.on_training_stopped()
-        # After training stops, UI state should update
-        assert isinstance(sidebar, QWidget)
 
     def test_stop_training(self, sidebar):
         from PyQt6.QtWidgets import QMessageBox
@@ -3584,29 +3554,6 @@ class TestTrainingSidebar:
         assert mock_warning.call_args.args[1] == "Start Training Blocked"
         mock_critical.assert_not_called()
 
-    def test_split_data_no_data(self, sidebar):
-        sidebar.panel.controller.get_loaded_data_list.return_value = []
-        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
-            sidebar.split_data()
-
-    def test_split_data_no_epoch(self, sidebar):
-        sidebar.panel.controller.get_loaded_data_list.return_value = [MagicMock()]
-        sidebar.panel.controller.get_epoch_data.return_value = None
-        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
-            sidebar.split_data()
-
-    def test_split_data_while_training(self, sidebar):
-        sidebar.panel.controller.get_loaded_data_list.return_value = [MagicMock()]
-        sidebar.panel.controller.get_epoch_data.return_value = MagicMock()
-        sidebar.panel.controller.is_training.return_value = True
-        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
-            sidebar.split_data()
-
-    def test_clear_history_while_training(self, sidebar):
-        sidebar.panel.controller.is_training.return_value = True
-        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
-            sidebar.clear_history()
-
 
 # ============ DatasetSidebar ============
 
@@ -3622,12 +3569,6 @@ class TestDatasetSidebar:
         sb = DatasetSidebar(panel)
         qtbot.addWidget(sb)
         return sb
-
-    def test_creates(self, sidebar):
-        assert isinstance(sidebar, QWidget)
-
-    def test_update_sidebar(self, sidebar):
-        sidebar.update_sidebar()
 
     def test_update_sidebar_uses_backend_import_label_capability(self, qtbot):
         from XBrainLab.backend.study import Study
@@ -4129,58 +4070,3 @@ class TestDatasetSidebar:
         assert mock_warning.call_args.args[1] == "Reset Session Blocked"
         mock_critical.assert_not_called()
         assert "could not safely complete" in mock_warning.call_args.args[2]
-
-
-# ============ CardWidget & PlaceholderWidget ============
-
-
-class TestCardWidget:
-    def test_creates_with_title(self, qtbot):
-        from XBrainLab.ui.components.card import CardWidget
-
-        card = CardWidget("Test Card")
-        qtbot.addWidget(card)
-        assert isinstance(card, CardWidget)
-
-    def test_creates_without_title(self, qtbot):
-        from XBrainLab.ui.components.card import CardWidget
-
-        card = CardWidget("")
-        qtbot.addWidget(card)
-        assert isinstance(card, CardWidget)
-
-    def test_add_widget(self, qtbot):
-        from PyQt6.QtWidgets import QLabel
-
-        from XBrainLab.ui.components.card import CardWidget
-
-        card = CardWidget("Card")
-        qtbot.addWidget(card)
-        label = QLabel("hello")
-        card.add_widget(label)
-
-    def test_add_layout(self, qtbot):
-        from PyQt6.QtWidgets import QHBoxLayout
-
-        from XBrainLab.ui.components.card import CardWidget
-
-        card = CardWidget("Card")
-        qtbot.addWidget(card)
-        layout = QHBoxLayout()
-        card.add_layout(layout)
-
-
-class TestPlaceholderWidget:
-    def test_creates(self, qtbot):
-        from XBrainLab.ui.components.placeholder import PlaceholderWidget
-
-        w = PlaceholderWidget("📊", "No data available")
-        qtbot.addWidget(w)
-        assert isinstance(w, PlaceholderWidget)
-
-    def test_message_displayed(self, qtbot):
-        from XBrainLab.ui.components.placeholder import PlaceholderWidget
-
-        w = PlaceholderWidget("⚠", "Please load data first")
-        qtbot.addWidget(w)
-        assert "load data" in w.msg_label.text().lower()

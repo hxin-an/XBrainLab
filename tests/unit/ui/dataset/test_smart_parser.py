@@ -62,8 +62,13 @@ def test_smart_parser_preview_exposes_complete_filename_in_tooltip(qtbot):
     assert file_item.toolTip() == filepath
 
 
-def test_smart_parser_regex_controls_are_compact(dialog):
+def test_smart_parser_regex_controls_are_readable_after_native_layout(
+    dialog,
+    qtbot,
+):
     dialog.radio_regex.setChecked(True)
+    dialog.show()
+    qtbot.wait(0)
 
     assert dialog.settings_stack.currentIndex() == 1
     assert dialog.regex_input.minimumWidth() == 320
@@ -75,8 +80,12 @@ def test_smart_parser_regex_controls_are_compact(dialog):
     )
     assert dialog.regex_sub_idx.width() >= dialog.regex_sub_idx.sizeHint().width()
     assert dialog.regex_sess_idx.width() >= dialog.regex_sess_idx.sizeHint().width()
-    assert dialog.regex_sub_idx.maximumWidth() == 120
-    assert dialog.regex_sess_idx.maximumWidth() == 120
+    assert (
+        dialog.regex_sub_idx.maximumWidth() >= dialog.regex_sub_idx.sizeHint().width()
+    )
+    assert (
+        dialog.regex_sess_idx.maximumWidth() >= dialog.regex_sess_idx.sizeHint().width()
+    )
     assert isinstance(dialog.settings_stack.currentWidget().layout(), QGridLayout)
     labels = dialog.settings_stack.currentWidget().findChildren(
         QLabel,
@@ -105,6 +114,7 @@ def test_smart_parser_method_labels_do_not_overlap_with_large_ui_font(
     original_font = QFont(qapp.font())
     enlarged_font = QFont(original_font)
     enlarged_font.setPointSize(max(original_font.pointSize() + 5, 14))
+    enlarged_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 2.0)
     qapp.setFont(enlarged_font)
     try:
         parser = SmartParserDialog(["sub-01_ses-01_task-mi_run-01_eeg.gdf"])

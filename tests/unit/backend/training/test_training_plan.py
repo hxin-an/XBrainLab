@@ -76,6 +76,12 @@ def _bind_selected_evaluation_checkpoint(base_holder, record) -> None:
         setattr(record, attribute, state)
 
 
+def _mark_process_local_evaluation_pause(record) -> None:
+    """Represent completed in-memory training that still needs evaluation."""
+    record.start_timestamp = 1.0
+    record.end_timestamp = 2.0
+
+
 class FakeModel(torch.nn.Module):
     def __init__(self, **kwargs):
         super().__init__()
@@ -89,6 +95,28 @@ class FakeModel(torch.nn.Module):
         x = self.fc(x)
         x = x.squeeze(1)
         return x
+
+
+class _FakeCudaTensor(torch.Tensor):
+    """CPU-backed optimizer tensor that records a logical CUDA-to-CPU move."""
+
+    @staticmethod
+    def __new__(cls, value: torch.Tensor) -> "_FakeCudaTensor":
+        return torch.Tensor._make_subclass(  # pyright: ignore[reportPrivateUsage]
+            cls,
+            value,
+            value.requires_grad,
+        )
+
+    @property
+    def device(self) -> torch.device:
+        return torch.device("cuda")
+
+    def to(self, *args, **kwargs) -> torch.Tensor:
+        device = kwargs.get("device", args[0] if args else None)
+        if device is not None and torch.device(device).type == "cpu":
+            return self.as_subclass(torch.Tensor)
+        return super().to(*args, **kwargs)
 
 
 @pytest.fixture
@@ -178,8 +206,8 @@ def training_option(tmp_path):
 
 @pytest.fixture
 def export_mocker():
-    with patch("torch.save") as mock_save, patch("os.makedirs") as mock_makedirs:
-        yield mock_save, mock_makedirs
+    with patch("torch.save") as mock_save:
+        yield mock_save
 
 
 @pytest.fixture
@@ -219,9 +247,274 @@ def test_training_plan_holder_check_data(
                 TrainingPlanHolder(**args)
 
 
+def test_training_plan_holder_rejects_nonfinite_epoch_data(
+    export_mocker,
+    model_holder,
+    dataset,
+    training_option,
+):
+    dataset.get_epoch_data().data[0, 0, 0] = np.nan
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Training dataset contains NaN or infinite values at epoch 0, "
+            "channel 0, sample 0"
+        ),
+    ):
+        TrainingPlanHolder(
+            model_holder=model_holder,
+            dataset=dataset,
+            option=training_option,
+            saliency_params={},
+        )
+
+
+def test_training_plan_fails_if_epoch_data_becomes_nonfinite_after_configuration(
+    base_holder,
+):
+    base_holder.dataset.get_epoch_data().data[0, 0, 0] = np.inf
+
+    base_holder.train()
+
+    assert base_holder.error == (
+        "Training dataset contains NaN or infinite values at epoch 0, channel 0, "
+        "sample 0. Review channel selection and preprocessing before training."
+    )
+    assert all(not record.is_finished() for record in base_holder.get_plans())
+
+
+def test_explicit_seed_derives_repeat_seeds_before_model_creation(
+    export_mocker,
+    model_holder,
+    dataset,
+    training_option,
+):
+    training_option.repeat_num = 3
+    training_option.seed = 8128
+    training_option.validate()
+
+    first = TrainingPlanHolder(model_holder, dataset, training_option, {})
+    second = TrainingPlanHolder(model_holder, dataset, training_option, {})
+
+    assert [record.seed for record in first.get_plans()] == [8128, 8129, 8130]
+    assert [record.seed for record in second.get_plans()] == [8128, 8129, 8130]
+    for first_record, second_record in zip(
+        first.get_plans(),
+        second.get_plans(),
+        strict=True,
+    ):
+        assert all(
+            first_weight.equal(second_weight)
+            for first_weight, second_weight in zip(
+                first_record.model.state_dict().values(),
+                second_record.model.state_dict().values(),
+                strict=True,
+            )
+        )
+
+    training_option.seed = 8129
+    different = TrainingPlanHolder(model_holder, dataset, training_option, {})
+    assert any(
+        not first_weight.equal(different_weight)
+        for first_weight, different_weight in zip(
+            first.get_plans()[0].model.state_dict().values(),
+            different.get_plans()[0].model.state_dict().values(),
+            strict=True,
+        )
+    )
+
+
+def test_explicit_repeat_seed_owns_each_data_loader_rng(
+    export_mocker,
+    model_holder,
+    dataset,
+    training_option,
+):
+    training_option.repeat_num = 2
+    training_option.seed = 8128
+    training_option.validate()
+    holder = TrainingPlanHolder(model_holder, dataset, training_option, {})
+
+    for repeat_index, record in enumerate(holder.get_plans()):
+        expected_seed = 8128 + repeat_index
+        train_loader, val_loader, test_loader = holder.get_loader(record)
+
+        for loader in (train_loader, val_loader, test_loader):
+            assert loader is not None
+            assert loader.generator is not None
+            assert loader.generator.initial_seed() == expected_seed
+
+        expected_order = torch.randperm(
+            len(train_loader.dataset),
+            generator=torch.Generator().manual_seed(expected_seed),
+        ).tolist()
+        assert list(train_loader.sampler) == expected_order
+
+
+def test_each_fresh_repeat_reapplies_seed_before_stochastic_training(
+    export_mocker,
+    model_holder,
+    dataset,
+    training_option,
+):
+    training_option.repeat_num = 2
+    training_option.seed = 8128
+    training_option.validate()
+    holder = TrainingPlanHolder(model_holder, dataset, training_option, {})
+    events = []
+    expected_draws = {
+        seed: torch.rand((), generator=torch.Generator().manual_seed(seed)).item()
+        for seed in (8128, 8129)
+    }
+
+    def apply_seed(*, seed):
+        events.append(("seed", seed))
+        return set_seed(seed=seed)
+
+    original_get_loader = holder.get_loader
+
+    def observe_loader_creation(train_record):
+        events.append(("loaders", train_record.repeat, torch.initial_seed()))
+        return original_get_loader(train_record)
+
+    def observe_training_start(*args):
+        train_record = args[-1]
+        events.append(
+            (
+                "train",
+                train_record.repeat,
+                torch.initial_seed(),
+                torch.rand(()).item(),
+            )
+        )
+        holder.set_interrupt()
+
+    with (
+        patch(
+            "XBrainLab.backend.training.training_plan.set_seed",
+            side_effect=apply_seed,
+        ),
+        patch.object(
+            holder,
+            "get_loader",
+            side_effect=observe_loader_creation,
+        ),
+        patch.object(
+            holder,
+            "train_one_epoch",
+            side_effect=observe_training_start,
+        ),
+    ):
+        for record in reversed(holder.get_plans()):
+            holder.clear_interrupt()
+            holder.train_one_repeat(record)
+
+    assert events == [
+        ("seed", 8129),
+        ("loaders", 1, 8129),
+        ("train", 1, 8129, expected_draws[8129]),
+        ("seed", 8128),
+        ("loaders", 0, 8128),
+        ("train", 0, 8128, expected_draws[8128]),
+    ]
+
+
+def test_process_local_partial_repeat_fails_closed_without_loader_rng_state(
+    export_mocker,
+    model_holder,
+    dataset,
+    training_option,
+):
+    training_option.repeat_num = 1
+    training_option.seed = 8128
+    training_option.validate()
+    holder = TrainingPlanHolder(model_holder, dataset, training_option, {})
+    record = holder.get_plans()[0]
+    record.epoch = 1
+    record.start_timestamp = 1.0
+    record.end_timestamp = 2.0
+
+    with (
+        patch(
+            "XBrainLab.backend.training.training_plan.set_seed",
+            wraps=set_seed,
+        ) as apply_seed,
+        patch.object(record, "resume") as resume,
+        patch.object(holder, "get_loader") as get_loader,
+        patch.object(
+            holder,
+            "train_one_epoch",
+            side_effect=AssertionError("stochastic training started"),
+        ),
+        pytest.raises(RuntimeError, match="cannot be resumed reproducibly"),
+    ):
+        holder.train_one_repeat(record)
+
+    apply_seed.assert_not_called()
+    resume.assert_not_called()
+    get_loader.assert_not_called()
+    assert record.end_timestamp == 2.0
+
+
+def test_persisted_partial_repeat_fails_closed_without_optimizer_and_rng_state(
+    export_mocker,
+    model_holder,
+    dataset,
+    training_option,
+):
+    training_option.repeat_num = 1
+    training_option.seed = 8128
+    training_option.validate()
+    holder = TrainingPlanHolder(model_holder, dataset, training_option, {})
+    record = holder.get_plans()[0]
+    record.epoch = 1
+    record.start_timestamp = None
+    record.end_timestamp = None
+
+    with (
+        patch.object(holder, "get_loader") as get_loader,
+        patch.object(
+            holder,
+            "train_one_epoch",
+            side_effect=AssertionError("stochastic training started"),
+        ),
+        pytest.raises(RuntimeError, match="cannot be resumed reproducibly"),
+    ):
+        holder.train_one_repeat(record)
+
+    get_loader.assert_not_called()
+
+
+def test_default_training_seed_resolves_one_base_for_all_repeats(
+    export_mocker,
+    model_holder,
+    dataset,
+    training_option,
+):
+    training_option.repeat_num = 2
+
+    with patch(
+        "XBrainLab.backend.training.training_plan.set_seed",
+        wraps=set_seed,
+    ) as apply_seed:
+        holder = TrainingPlanHolder(model_holder, dataset, training_option, {})
+
+    assert type(training_option.seed) is int
+    assert len(holder.get_plans()) == 2
+    assert [record.seed for record in holder.get_plans()] == [
+        training_option.seed,
+        training_option.seed + 1,
+    ]
+    assert [item.kwargs["seed"] for item in apply_seed.call_args_list] == [
+        training_option.seed,
+        training_option.seed + 1,
+    ]
+
+
 def test_training_plan_holder_get_loader(base_holder):
-    set_seed(0)
-    trainHolder, valHolder, testHolder = base_holder.get_loader()
+    train_record = base_holder.get_plans()[0]
+    trainHolder, valHolder, testHolder = base_holder.get_loader(train_record)
     assert isinstance(trainHolder, torch.utils.data.DataLoader)
     assert isinstance(valHolder, torch.utils.data.DataLoader)
     assert isinstance(testHolder, torch.utils.data.DataLoader)
@@ -420,6 +713,7 @@ def test_train_one_repeat_does_not_evaluate_without_validation_checkpoint(
     base_holder.option.evaluation_option = TrainingEvaluation.VAL_LOSS
     record = base_holder.get_plans()[0]
     record.epoch = base_holder.option.epoch
+    _mark_process_local_evaluation_pause(record)
     record.eval_record = None
     record.best_val_loss_model = None
 
@@ -442,6 +736,7 @@ def test_train_one_repeat_does_not_use_training_loader_for_final_evaluation(
     base_holder.option.evaluation_option = TrainingEvaluation.LAST_EPOCH
     record = base_holder.get_plans()[0]
     record.epoch = base_holder.option.epoch
+    _mark_process_local_evaluation_pause(record)
     record.eval_record = None
     base_holder.dataset.val_mask[:] = False
     base_holder.dataset.test_mask[:] = False
@@ -464,6 +759,7 @@ def test_training_plan_records_unavailable_final_evaluation_as_failure(base_hold
     base_holder.option.evaluation_option = TrainingEvaluation.LAST_EPOCH
     record = base_holder.get_plans()[0]
     record.epoch = base_holder.option.epoch
+    _mark_process_local_evaluation_pause(record)
     base_holder.dataset.val_mask[:] = False
     base_holder.dataset.test_mask[:] = False
 
@@ -588,8 +884,8 @@ def test_training_plan_ids_do_not_collide_within_one_second(
 @pytest.mark.parametrize("interrupt", [True, False])
 def test_training_plan_holder_one_epoch(base_holder, interrupt):
     model = base_holder.model_holder.get_model({})
-    trainLoader, valLoader, _ = base_holder.get_loader()
     train_record = base_holder.train_record_list[0]
+    trainLoader, valLoader, _ = base_holder.get_loader(train_record)
     optimizer = train_record.optim
     criterion = train_record.criterion
 
@@ -672,12 +968,12 @@ def test_training_plan_holder_train_one_repeat(base_holder):
 def test_training_saves_predictions_for_each_available_split_after_selection(
     base_holder,
 ):
-    train_loader, val_loader, test_loader = base_holder.get_loader()
+    record = base_holder.train_record_list[0]
+    train_loader, val_loader, test_loader = base_holder.get_loader(record)
     assert train_loader is not None
     assert val_loader is not None
     assert test_loader is not None
     base_holder.option.epoch = 2
-    record = base_holder.train_record_list[0]
     timeline: list[str] = []
 
     original_evaluate_metrics = Evaluator.evaluate_metrics
@@ -952,6 +1248,7 @@ def test_train_one_repeat_uses_basic_evaluation_without_saliency(base_holder):
     base_holder.option.evaluation_option = TrainingEvaluation.LAST_EPOCH
     record = base_holder.get_plans()[0]
     record.epoch = base_holder.option.epoch
+    _mark_process_local_evaluation_pause(record)
     record.eval_record = None
 
     sentinel = object()
@@ -986,6 +1283,7 @@ def test_train_one_repeat_keeps_saliency_out_of_training_thread_when_configured(
     )
     record = base_holder.get_plans()[0]
     record.epoch = base_holder.option.epoch
+    _mark_process_local_evaluation_pause(record)
     record.eval_record = None
 
     sentinel = object()
@@ -1025,22 +1323,19 @@ def test_safe_move_to_cpu_preserves_optimizer_and_moves_nested_state(base_holder
     assert state["nested"][1]["value"].device.type == "cpu"
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is unavailable")
 def test_safe_move_to_cpu_releases_model_and_optimizer_gpu_state(base_holder):
     record = base_holder.get_plans()[0]
-    record.model.to("cuda:0")
     optimizer = record.optim
     parameter = next(record.model.parameters())
     optimizer.state[parameter] = {
-        "exp_avg": torch.ones_like(parameter, device="cuda:0"),
-        "exp_avg_sq": torch.ones_like(parameter, device="cuda:0"),
+        "exp_avg": _FakeCudaTensor(torch.ones_like(parameter)),
+        "exp_avg_sq": _FakeCudaTensor(torch.ones_like(parameter)),
     }
 
-    base_holder._safe_move_to_cpu(record)
+    with patch.object(record.model, "cpu", wraps=record.model.cpu) as move_model:
+        base_holder._safe_move_to_cpu(record)
 
-    assert all(
-        parameter.device.type == "cpu" for parameter in record.model.parameters()
-    )
+    move_model.assert_called_once_with()
     assert all(
         value.device.type == "cpu"
         for state in optimizer.state.values()

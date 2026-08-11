@@ -50,10 +50,10 @@ from scripts.dev.local_assistant_capture_runtime import (
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
     CreateEpochCommand,
-    GenerateDatasetCommand,
     PreprocessCommand,
     PreprocessOperation,
     PreviewInterpretationCommand,
+    SaveDatasetSplitCommand,
     ScanSourceCommand,
     ValidateInterpretationCommand,
     get_application_service,
@@ -246,7 +246,7 @@ def prepare_dataset_ready_state(study: Any, source_path: Path) -> dict[str, Any]
             method="z-score",
         ),
         CreateEpochCommand(t_min=0.0, t_max=1.5, event_ids=["left", "right"]),
-        GenerateDatasetCommand(
+        SaveDatasetSplitCommand(
             test_ratio=0.25,
             val_ratio=0.25,
             split_strategy="trial",

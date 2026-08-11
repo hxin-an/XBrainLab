@@ -1,6 +1,6 @@
 # Backend 目前架構
 
-最後更新：`2026-07-31`
+最後更新：`2026-08-10`
 
 ## 快速讀法
 
@@ -20,7 +20,7 @@
 
 | Area | 已接近 target | 剩餘距離 |
 | --- | --- | --- |
-| Command spine | load / preprocess / epoch / split / train / evaluate / visualize / saliency / reset / Data Interpretation 都有 command or query truth。 | 要持續防止新 wrapper、direct manager mutation、direct service bypass 回流；retained optional adapters 不是 active roadmap。 |
+| Command spine | load / preprocess / epoch / split specification / training-time materialization / train / evaluate / visualize / saliency / reset / Data Interpretation 都有 command or query truth。 | 要持續防止新 wrapper、direct manager mutation、direct service bypass 回流；retained optional adapters 不是 active roadmap。 |
 | Focused services | Data Interpretation、analysis、training、dataset generation、lifecycle、compatibility、data table、preprocess、state/query 都已從 `ApplicationService` 拆出；saliency method policy 由 `backend.application.saliency_policy` 共用，training resource guard 只吃明確 dataset / option context。 | focused service 間仍要靠 tests/guard 維持邊界，避免把 orchestration、UI policy 或 controller/context 探測塞回單一檔。 |
 | State truth | `StateSnapshotService` 建立 snapshot；`ApplicationViewPublication` 原子綁定 snapshot 與 capability policy。一般 `QueryStateCommand(state)`、product UI readers、assistant、headless preflight 共用這個 view。 | Refresh single-truth 仍需獨立 exact-commit source guard與 product workflow evidence；少數 lower-level tests 的 direct `Study` access也不能當 product smoke。 |
 | Result boundary | Product `CommandResult` 只包含 detached state、changed-state、typed error 與 JSON-safe diagnostics；`runtime` / `local_payload` fields 和 command `include_objects` opt-in 已物理移除。Dataset、Preprocess、training history、Evaluation 與 Visualization 使用 generation-bound detached rows/publications。 | 少數 lower-level presentation utilities 仍直接接收 domain objects；它們不能重新接回 product command result，也不能當 ApplicationService workflow evidence。 |
@@ -72,7 +72,7 @@ confirmed `apply_montage` 拆到 `AnalysisCommandService`；analysis / visualiza
 現在也有 focused handler boundary。最新 cleanup slice 又把 `configure_training`、`train`、
 `stop_training`、`clear_training_history` 和 reset-time training config clear 拆到
 `TrainingCommandService`；model / optimizer / device / training-option snapshot 不再直接留在
-`ApplicationService`。最新 dataset cleanup slice 又把 `generate_dataset`、`clear_datasets`、
+`ApplicationService`。最新 dataset cleanup slice 又把 `configure_dataset_split`、`clear_datasets`、
 split config、split audit、rollback 和 split summary 拆到 `DatasetGenerationCommandService`。
 最新 lifecycle cleanup slice 又把 `reset_preprocess`、`reset_session`、`new_session`、
 downstream rollback 和 reset-time dependent-state clear 拆到 `LifecycleCommandService`。
@@ -258,7 +258,7 @@ ApplicationService / Command API
   |       +--> model config / training option config / train-stop lifecycle / history cleanup
   |
   +--> DatasetGenerationCommandService
-  |       +--> split config / dataset generation / split audit / rollback / dataset cleanup
+  |       +--> saved split specification / deferred materialization / split audit / rollback / dataset cleanup
   |
   +--> LifecycleCommandService
   |       +--> reset preprocess / reset session / new session / dependent-state cleanup
@@ -333,7 +333,7 @@ controller tree。這些殘留是後續 P2 cleanup，不是 product action、rea
   落回 `PreprocessController.reset_preprocess()`。
 - Channel selection 使用 `PreprocessCommand(SELECT_CHANNELS)`。
 - Epoching 使用 `CreateEpochCommand`。
-- Split / model / training setting dialog submit 使用 `GenerateDatasetCommand` /
+- Split / model / training setting dialog submit 使用 `SaveDatasetSplitCommand` /
   `ConfigureTrainingCommand`。
 - Re-split 前清 datasets 使用 `ClearDatasetsCommand(confirmed=True)`；Clear History 會先做
   user confirmation，再使用 `ClearTrainingHistoryCommand(confirmed=True)`。
@@ -437,6 +437,28 @@ Data Interpretation commands 的 `can_auto_execute`、`requires_confirmation`、
 `blocks_downstream_until_confirmed` 等 autonomy 欄位。UI import wizard 與 agent tool
 taxonomy 都以這套 Data Interpretation command sequence 作為產品資料入口。
 
+### Reviewed data / training decision contracts
+
+目前 working candidate 把下游設定綁回 reviewed import 與 backend-owned provenance：
+
+- BIDS label-field recommendation 由 `data_interpretation_label_carriers.py` 聚合 selected
+  `events.tsv` runs 的 bounded row profiles、欄位 coverage、sidecar `Levels`、observed values 與
+  cross-run consistency。任一 selected table 的 row / byte inspection 被截斷，或 evidence 不足時，
+  都不產生自動推薦；explicit selection 優先，recommendation 仍須由使用者 review。
+- `epoch_context.py` 只在每段 recording timing hint 可讀、reviewed `epoch_handoff` 可用，且 label
+  source / placement 相符時發布 available context。任何缺漏、malformed payload、hint read failure
+  或 mismatch 都 fail closed。Duration / event-locked mode 來自 handoff 綁定的 applied timing
+  evidence；dialog 不建立第二套 fallback truth。
+- `SaveDatasetSplitCommand` 只保存 typed specification、epoch revision、fingerprint 與 preview
+  receipt。`TrainCommand` 才要求 `DatasetGenerationCommandService` materialize masks、執行 leakage /
+  coverage audit，再進 resource preflight；失敗時保留先前 dataset / trainer / training state。
+- `TrainingRecommendationService` 依 detached epoch shape、split summary、selected model family 和
+  device metadata 產生 deterministic conservative defaults。`training_submission.py` 只接受 trusted
+  host 附加 per-field edited provenance，重新推薦時只保留這些 manual fields。
+- Timed hyperparameter search、trial orchestration、pruning 和 automatic model selection 沒有
+  command / service / tool contract；它們只在 roadmap，不能從 recommended-defaults surface 推論
+  已實作。
+
 ### Agent command surface
 
 Agent 現在不再只靠 `pipeline_state.py` 的 stage table 決定工具可用性。
@@ -451,7 +473,7 @@ ApplicationService command names：
 | `apply_standard_preprocess` / `apply_bandpass_filter` / `apply_notch_filter` / `resample_data` / `normalize_data` / `set_reference` / `select_channels` | `preprocess` |
 | `set_montage` | `apply_montage` capability + UI confirmation request |
 | `epoch_data` | `create_epoch` |
-| `generate_dataset` | `generate_dataset` |
+| `configure_dataset_split` | `configure_dataset_split` |
 | `set_model` / `configure_training` | `configure_training` |
 | `start_training` | `train` |
 | `clear_dataset` | `reset_session` |
@@ -475,7 +497,7 @@ snake_case command 只留在 history / diagnostics / logs。
 
 Mapped agent workflow tools 會優先直接執行 ApplicationService command，包含
 Data Interpretation、`attach_labels`、preprocess tools、`epoch_data`、
-`generate_dataset`、`set_model`、`configure_training`、`start_training`、`clear_dataset`。
+`configure_dataset_split`、`set_model`、`configure_training`、`start_training`、`clear_dataset`。
 舊 `load_data` tool definition 只保留 compatibility identity；產品 policy 與 executor
 一律 fail closed，要求改走 `scan_source -> preview_interpretation ->
 validate_interpretation -> apply_interpretation`。這避免把 identity-bound 授權目錄重新
@@ -537,7 +559,7 @@ readiness 判斷；需要狀態或 blocked reason 時使用 `ApplicationService.
   `scan_source`、`preview_interpretation`、`validate_interpretation`、
   `apply_interpretation`、`save_interpretation_recipe`、`reload_interpretation_recipe`、
   `load_data`、`attach_labels`、`import_labels`、`update_metadata`、`apply_smart_parse`、
-  `remove_files`、preprocess operations、`create_epoch`、`generate_dataset`、
+  `remove_files`、preprocess operations、`create_epoch`、`configure_dataset_split`、
   `clear_datasets`、`configure_training`、`train`、`stop_training`、
   `clear_training_history`、`apply_montage`、`reset_preprocess`、`reset_session`、
   `new_session`。
@@ -559,8 +581,9 @@ readiness 判斷；需要狀態或 blocked reason 時使用 `ApplicationService.
   前檢查；UI / agent / headless adapter 只有在人類確認後才傳 `TrainCommand(confirmed=True)`。
 - UI Training sidebar 的 Clear History action 會透過 `ClearTrainingHistoryCommand` 進入
   `TrainingCommandService`；只有 mock / compatibility `None` adapter 情境才回到 controller fallback。
-- `generate_dataset`、`clear_datasets`、split config、split audit、rollback 和
-  `DatasetStateSnapshot.split_summary` 的實作位置現在是 `DatasetGenerationCommandService`。
+- `configure_dataset_split`、deferred split materialization、`clear_datasets`、split audit、rollback
+  和 `DatasetStateSnapshot` 的 split lifecycle / summary 實作位置現在是
+  `DatasetGenerationCommandService`。Confirm 只保存 specification；`train` 才準備並驗證 candidate。
   `ApplicationService` 的 reset preprocess rollback 只委派到這個 service 的 state restore
   helper，不再自己操作 dataset generator / trainer rollback 細節。
 - UI Training sidebar 重新 split 前的 destructive dataset cleanup 會透過
@@ -627,8 +650,8 @@ readiness 判斷；需要狀態或 blocked reason 時使用 `ApplicationService.
   result；完整 interactive evaluation / visualization workflow 仍要由 UI walkthrough 驗收。
 - `evaluate` / `clear_training_history` capability 以 actual training plan history 為準；
   trainer object 存在但 history 已清空時不再啟用這兩個 command。
-- `generate_dataset` 的 split apply 和 audit 共用 rollback boundary；audit blocking issue
-  或 apply 中途例外都不應留下新 datasets / dataset generator / trainer。
+- training-time split materialization 和 audit 共用 rollback boundary；audit blocking issue
+  或 apply 中途例外都不應覆寫既有 datasets / dataset generator / trainer。
 - error boundary 對 command result 已足夠支撐 UI 顯示 blocked reason；UI / agent 必須把它
   轉成 visible user feedback，而不是只記在 diagnostics。
 
@@ -831,21 +854,21 @@ UI PreprocessPanel or agent real tool
 ### Dataset / Training
 
 ```text
-ApplicationService.execute(GenerateDatasetCommand(...))
+ApplicationService.execute(SaveDatasetSplitCommand(...))
   -> DatasetGenerationCommandService
-  -> Study.get_datasets_generator(config)
-  -> TrainingController.apply_data_splitting(generator)
-  -> generator.apply(study)
-  -> Study/DataManager datasets
+  -> validate preview receipt and epoch revision
+  -> save typed split specification / fingerprint
+  -> no dataset masks or training tensors materialized
 
-TrainingController.start_training()
-  -> Study.generate_plan(...)
-  -> TrainingManager.generate_plan(...)
-  -> Study.train(interact=True)
-  -> TrainingManager.train(...)
+ApplicationService.execute(TrainCommand(...))
+  -> DatasetGenerationCommandService.prepare_saved_split_candidate()
+  -> materialize masks and audit leakage / coverage without publishing partial state
+  -> TrainingCommandService resource preflight
+  -> commit verified split and start training
 ```
 
-UI 也會透過 `TrainingController` 設定 model / option / data splitting。
+UI 透過 typed application actions 保存 split / model / training options；lower-level training
+execution 仍可委派既有 controller / manager，但不以 controller state 建立第二份 product truth。
 
 ## Runtime Truth
 
@@ -935,7 +958,7 @@ Infrastructure
 - `load_data(files)`
 - `attach_labels(mapping)`
 - `apply_preprocess(config)`
-- `generate_dataset(config)`
+- `configure_dataset_split(config)`
 - `configure_training(config)`
 - `start_training()`
 - `stop_training()`

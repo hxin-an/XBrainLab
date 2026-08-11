@@ -35,9 +35,19 @@ def _hold_file_lock(lock_path: str, ready, release) -> None:
     with portalocker.Lock(lock_path, mode="a"):
         ready.set()
         release.wait(5.0)
+    # Spawned Windows test workers can retain third-party interpreter teardown
+    # hooks after the target returns. The lock is already released above; exit
+    # explicitly so the cross-process deadline assertion is not coupled to
+    # unrelated module-finalization latency.
+    os._exit(0)
 
 
-def _wait_for_spawned_holder_ready(holder, ready, *, timeout: float = 15.0) -> None:
+def _wait_for_spawned_holder_ready(
+    holder,
+    ready,
+    *,
+    timeout: float = 60.0 if os.name == "nt" else 15.0,
+) -> None:
     """Wait for spawn/import overhead without weakening the lock deadline."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -559,6 +569,7 @@ def test_embedding_publication_lock_is_bounded_across_processes(
     assert not list(cache_dir.glob(f"{rag_downloader._ATTEMPT_PREFIX}*"))
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name == "nt", reason="POSIX permission-bit assertion")
 @pytest.mark.parametrize("link_kind", ("symlink", "hardlink"))
 def test_publication_lock_rejects_links_without_touching_external_target(

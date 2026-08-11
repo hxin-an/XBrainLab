@@ -78,7 +78,9 @@ def _command_selection(
             CommandName.VISUALIZE.value,
             CommandName.SALIENCY.value,
         ]
-    elif stage is PipelineStage.DATASET_READY:
+    elif stage in {PipelineStage.EPOCH_READY, PipelineStage.DATASET_READY} and (
+        _has_available_generated_dataset(state) or _has_saved_split_specification(state)
+    ):
         candidates = [
             CommandName.TRAIN.value
             if state.training.has_model and state.training.has_training_option
@@ -141,7 +143,7 @@ def decision_fields_for_command(
         return _interpretation_apply_decision_fields(state)
     if normalized == CommandName.CREATE_EPOCH.value:
         return ("target_event", "epoch_window")
-    if normalized == CommandName.GENERATE_DATASET.value:
+    if normalized == CommandName.CONFIGURE_DATASET_SPLIT.value:
         return ("split_strategy", "training_mode")
     if normalized == CommandName.CONFIGURE_TRAINING.value:
         missing: list[str] = []
@@ -226,15 +228,37 @@ def _evidence(
         return (f"{state.raw.count} raw EEG file(s) are loaded.",)
     if command_name == CommandName.CREATE_EPOCH.value:
         return (f"{state.preprocessed.count} preprocessed item(s) are available.",)
-    if command_name == CommandName.GENERATE_DATASET.value:
+    if command_name == CommandName.CONFIGURE_DATASET_SPLIT.value:
         return ("EEG epoch data is available.",)
     if command_name == CommandName.CONFIGURE_TRAINING.value:
-        return ("A generated dataset is available.",)
+        if _has_available_generated_dataset(state):
+            return ("A generated dataset is available.",)
+        if _has_saved_split_specification(state):
+            return (
+                "Data splitting is configured; dataset materialization is deferred "
+                "until training starts.",
+            )
+        return ()
     if command_name == CommandName.TRAIN.value:
-        return ("Dataset, model, and training options are configured.",)
-    if state.active_dataset.has_datasets:
+        if _has_available_generated_dataset(state):
+            return ("Dataset, model, and training options are configured.",)
+        if _has_saved_split_specification(state):
+            return (
+                "Data splitting, model, and training options are configured; dataset "
+                "materialization is deferred until training starts.",
+            )
+        return ()
+    if _has_available_generated_dataset(state):
         return ("A generated dataset is available.",)
     return ()
+
+
+def _has_available_generated_dataset(state: ApplicationStateSnapshot) -> bool:
+    return bool(state.dataset.available and state.active_dataset.has_datasets)
+
+
+def _has_saved_split_specification(state: ApplicationStateSnapshot) -> bool:
+    return bool(state.dataset.split_spec_saved and state.active_dataset.has_saved_split)
 
 
 def _interpretation_reference(interpretation: Any) -> str:
@@ -253,7 +277,7 @@ def _interpretation_reference(interpretation: Any) -> str:
 def _top_blocked_reasons(capabilities: CapabilityPolicy) -> tuple[str, ...]:
     for command_name in (
         CommandName.TRAIN.value,
-        CommandName.GENERATE_DATASET.value,
+        CommandName.CONFIGURE_DATASET_SPLIT.value,
         CommandName.CREATE_EPOCH.value,
         CommandName.PREPROCESS.value,
     ):

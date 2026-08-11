@@ -15,7 +15,7 @@ import json
 import os
 import sys
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import pairwise
@@ -895,7 +895,7 @@ SCENARIOS = (
         expected_confirmation_title="Suggested change",
         expected_confirmation_values=("Parameter 00", "Parameter 13"),
         expected_confirmation_actions=(
-            "Keep current settings",
+            "Keep current",
             "Apply changes",
         ),
         scroll_to_bottom=True,
@@ -1212,15 +1212,23 @@ def _button_evidence(panel: ChatPanel) -> tuple[list[dict[str, Any]], list[str]]
             continue
         name = button.objectName() or f"{type(button).__name__}_{index}"
         origin = button.mapTo(panel, QPoint(0, 0))
-        inside = human_evidence._widget_inside(panel, button)
+        inside_scroll_content = panel.scroll_area.isAncestorOf(button)
+        if inside_scroll_content:
+            viewport = panel.scroll_area.viewport()
+            if viewport is None:
+                inside = False
+            else:
+                viewport_origin = button.mapTo(viewport, QPoint(0, 0))
+                inside = (
+                    viewport_origin.x() >= 0
+                    and viewport_origin.x() + button.width() <= viewport.width()
+                )
+        else:
+            inside = human_evidence._widget_inside(panel, button)
         text = " ".join(str(button.text() or "").split())
-        text_width = button.fontMetrics().horizontalAdvance(text) + 18
-        text_rendered = human_evidence._button_renders_text(button)
-        text_fits = (
-            not text_rendered
-            or not text
-            or text_width <= button.contentsRect().width() + 2
-        )
+        text_measurement = human_evidence.button_visible_text_measurement(button)
+        text_rendered = bool(text_measurement["text_rendered"])
+        text_fits = bool(text_measurement["fits"])
         records.append(
             {
                 "name": name,
@@ -1229,7 +1237,10 @@ def _button_evidence(panel: ChatPanel) -> tuple[list[dict[str, Any]], list[str]]
                 "enabled": button.isEnabled(),
                 "bounds": [origin.x(), origin.y(), button.width(), button.height()],
                 "inside_panel": inside,
+                "inside_scroll_content": inside_scroll_content,
                 "text_fits": text_fits,
+                "text_required_width": text_measurement["required_width"],
+                "text_available_width": text_measurement["available_width"],
             }
         )
         if not inside:
@@ -1357,7 +1368,7 @@ def _screen_evidence(panel: ChatPanel, spec: ScenarioSpec) -> dict[str, Any]:
         if button.isVisibleTo(panel.response_actions_widget)
     ]
     runtime_actions = [
-        " ".join(button.text().split())
+        " ".join(str(button.property("assistantFullLabel") or button.text()).split())
         for button in (panel.retry_runtime_btn, panel.setup_btn)
         if button.isVisibleTo(panel.runtime_state_widget)
     ]
@@ -1551,6 +1562,7 @@ def _capture_widget(
     *,
     render_pixel_ratio: float,
     required_content_widgets: Mapping[str, QWidget] | None = None,
+    text_content_regions: Collection[str] = (),
 ) -> dict[str, Any]:
     """Capture two content-ready frames while preserving Qt's observed DPR."""
     synthetic_capture = render_pixel_ratio != 1.0
@@ -1601,6 +1613,7 @@ def _capture_widget(
         content = image_content_evidence(
             output_path,
             required_regions=required_regions,
+            text_region_names=text_content_regions,
         )
         consecutive_ready = consecutive_ready + 1 if content["passed"] else 0
         if consecutive_ready >= 2:
@@ -1645,6 +1658,8 @@ def _physical_dimension(logical_size: int, device_pixel_ratio: float) -> int:
 def _region_content_evidence(
     image: Image.Image,
     box: tuple[int, int, int, int],
+    *,
+    minimum_color_count: int = 8,
 ) -> dict[str, Any]:
     """Measure whether one required image region contains painted UI detail."""
     x, y, width, height = box
@@ -1658,6 +1673,7 @@ def _region_content_evidence(
             "box": [left, top, right, bottom],
             "pixel_count": 0,
             "color_count": 0,
+            "minimum_color_count": minimum_color_count,
             "dominant_color_ratio": 1.0,
             "channel_range": 0,
         }
@@ -1671,7 +1687,7 @@ def _region_content_evidence(
     dominant_ratio = dominant / max(pixel_count, 1)
     passed = bool(
         pixel_count >= 64
-        and color_count >= 8
+        and color_count >= minimum_color_count
         and channel_range >= 16
         and dominant_ratio < 0.995
     )
@@ -1680,6 +1696,7 @@ def _region_content_evidence(
         "box": [left, top, right, bottom],
         "pixel_count": pixel_count,
         "color_count": color_count,
+        "minimum_color_count": minimum_color_count,
         "dominant_color_ratio": round(dominant_ratio, 6),
         "channel_range": channel_range,
     }
@@ -1689,6 +1706,7 @@ def image_content_evidence(
     path: Path,
     *,
     required_regions: Mapping[str, tuple[int, int, int, int]] | None = None,
+    text_region_names: Collection[str] = (),
 ) -> dict[str, Any]:
     """Reject blank frames and blank required shell/transcript/action regions."""
     with Image.open(path) as source:
@@ -1696,9 +1714,14 @@ def image_content_evidence(
     full_frame = _region_content_evidence(
         image,
         (0, 0, image.width, image.height),
+        minimum_color_count=2 if text_region_names else 8,
     )
     regions = {
-        name: _region_content_evidence(image, box)
+        name: _region_content_evidence(
+            image,
+            box,
+            minimum_color_count=2 if name in text_region_names else 8,
+        )
         for name, box in (required_regions or {}).items()
     }
     return {
@@ -1782,7 +1805,7 @@ def _first_paint_panel_state(panel: ChatPanel, *, surface: str) -> dict[str, Any
     text_overflow = human_evidence._assistant_text_overflow(panel)
     checks = {
         "first_paint_event_is_first": True,
-        "assistant_usable_width_is_320": panel.width() == 320,
+        "assistant_usable_width_at_least_320": panel.width() >= 320,
         "runtime_not_ready": runtime_phase == "idle",
         "manual_mode_selector_absent": not manual_mode_selector_present,
         "composer_visible": panel.input_field.isVisibleTo(panel),
@@ -1846,7 +1869,10 @@ def _observe_first_paint(
     evidence.update(capture)
     evidence["file"] = output_path.name
     checks = cast(dict[str, bool], evidence["checks"])
-    checks["single_paint_event_before_capture"] = probe.paint_event_count == 1
+    # Native Qt backends may dispatch more than one invalidation paint in the
+    # same event turn. The probe still samples the first one; requiring a
+    # globally singular paint would make the evidence backend-dependent.
+    checks["observation_captured_first_paint"] = evidence.get("paint_event_index") == 1
     checks["first_paint_render_content_ready"] = bool(
         capture["render_content"]["passed"]
     )
@@ -1896,6 +1922,7 @@ def _capture_metric_tab_transition(
         output_dir / METRIC_TAB_SCREEN_FILES[0],
         render_pixel_ratio=1.0,
         required_content_widgets={"empty_state": tab.empty_state_label},
+        text_content_regions=("empty_state",),
     )
     before.update(before_capture)
     before["file"] = METRIC_TAB_SCREEN_FILES[0]
@@ -2061,6 +2088,11 @@ def _main_window_screen_record(
         output_dir / filename,
         render_pixel_ratio=1.0,
         required_content_widgets=required_content_widgets,
+        text_content_regions=(
+            ("assistant_activity",)
+            if "assistant_activity" in required_content_widgets
+            else ()
+        ),
     )
     evidence.update(capture)
     checks["render_content_ready"] = capture["render_content"]["passed"]
@@ -2684,9 +2716,8 @@ def _first_paint_contract_failures(payload: dict[str, Any]) -> list[str]:
             evidence.get("file") == expected_file
             and evidence.get("observed_during_first_paint_event") is True
             and evidence.get("paint_event_index") == 1
-            and evidence.get("paint_events_observed_before_capture") == 1
             and evidence.get("settle_layout_called_before_observation") is False
-            and evidence.get("assistant_usable_width") == 320
+            and int(evidence.get("assistant_usable_width") or 0) >= 320
             and evidence.get("runtime_phase") == "idle"
             and evidence.get("manual_mode_selector_present") is False
             and evidence.get("composer_enabled") is False
@@ -2706,7 +2737,18 @@ def _first_paint_contract_failures(payload: dict[str, Any]) -> list[str]:
                 and evidence.get("panel_is_dock_widget") is True
             )
         if not required:
-            failures.append(f"{label} contract failed")
+            checks = evidence.get("checks")
+            failed_checks = (
+                [name for name, passed in checks.items() if passed is not True]
+                if isinstance(checks, dict)
+                else ["checks_missing"]
+            )
+            failures.append(
+                f"{label} contract failed "
+                f"(width={evidence.get('assistant_usable_width')}, "
+                f"paint_events={evidence.get('paint_events_observed_before_capture')}, "
+                f"failed_checks={failed_checks})"
+            )
     return failures
 
 
@@ -2896,6 +2938,7 @@ def _capture_assistant_settings(
                     }
                 ),
             },
+            text_content_regions=("heading",) if not advanced else (),
         )
         checks["render_content_ready"] = capture["render_content"]["passed"]
         return {

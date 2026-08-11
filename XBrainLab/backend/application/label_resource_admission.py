@@ -10,6 +10,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .data_interpretation_path_identity import (
+    resolved_path_identity,
+    resolved_path_value,
+)
 from .data_interpretation_resource_reader import AdmittedResourceReader
 from .errors import PreconditionError
 from .label_import_policy import enforce_label_file_count
@@ -39,7 +43,7 @@ class LabelResourceSpec:
 
     def normalized(self) -> LabelResourceSpec:
         return LabelResourceSpec(
-            path=_path_key(self.path),
+            path=_path_value(self.path),
             label_field=_optional_text(self.label_field),
             anchor=_optional_text(self.anchor),
             duration_field=_optional_text(self.duration_field),
@@ -69,7 +73,7 @@ class AdmittedLabelResourceSession:
     def load(self, path: str) -> Any:
         key = _path_key(path)
         for spec in self.specs:
-            if spec.path == key:
+            if _path_key(spec.path) == key:
                 return self.reader.load(
                     spec.path,
                     label_field=spec.label_field,
@@ -121,7 +125,9 @@ class LabelResourceAdmissionService:
         )
         admitted_reader = AdmittedLabelResourceReader(
             resource_reader,
-            admitted_specs={spec.path: spec.to_scope() for spec in normalized_specs},
+            admitted_specs={
+                _path_key(spec.path): spec.to_scope() for spec in normalized_specs
+            },
         )
         content_identities = [
             _content_identity(path, reader=admitted_reader) for path in paths
@@ -179,7 +185,9 @@ def session_from_resource_preflight(
     )
     admitted_reader = AdmittedLabelResourceReader(
         resource_reader,
-        admitted_specs={spec.path: spec.to_scope() for spec in normalized_specs},
+        admitted_specs={
+            _path_key(spec.path): spec.to_scope() for spec in normalized_specs
+        },
     )
     content_identities = tuple(
         _content_identity(path, reader=admitted_reader) for path in paths
@@ -213,7 +221,7 @@ def specs_from_paths(
         config = normalized_configs.get(key, {})
         result.append(
             LabelResourceSpec(
-                path=key,
+                path=_path_value(path),
                 label_field=_optional_text(config.get("label_field")),
                 anchor=_optional_text(config.get("anchor")),
                 duration_field=_optional_text(config.get("duration_field")),
@@ -232,7 +240,8 @@ def _normalized_specs(
         if not isinstance(raw_spec, LabelResourceSpec):
             raise PreconditionError("Label resource specs must be path-based.")
         spec = raw_spec.normalized()
-        existing = by_path.get(spec.path)
+        path_identity = _path_key(spec.path)
+        existing = by_path.get(path_identity)
         if existing is not None and existing != spec:
             raise PreconditionError(
                 "One label path cannot use conflicting parser configurations.",
@@ -242,7 +251,7 @@ def _normalized_specs(
                 },
             )
         if existing is None:
-            by_path[spec.path] = spec
+            by_path[path_identity] = spec
             result.append(spec)
     if not result:
         raise PreconditionError("At least one label path is required.")
@@ -316,7 +325,7 @@ def _content_identity(
             digest.update(chunk)
             total += len(chunk)
     return {
-        "path": _path_key(path),
+        "path": _path_value(path),
         "file_bytes": total,
         "sha256": digest.hexdigest(),
     }
@@ -328,7 +337,7 @@ def _assert_content_identities_current(
     purpose: str,
 ) -> None:
     for expected in expected_identities:
-        path = _path_key(str(expected.get("path") or ""))
+        path = _path_value(str(expected.get("path") or ""))
         expected_bytes = int(expected.get("file_bytes") or 0)
         observed = _current_content_identity(path, expected_bytes=expected_bytes)
         if observed["file_bytes"] == expected_bytes and observed[
@@ -393,14 +402,18 @@ def _current_content_identity(
             },
         ) from exc
     return {
-        "path": _path_key(path),
+        "path": _path_value(path),
         "file_bytes": observed_bytes,
         "sha256": digest.hexdigest() if total == observed_bytes else "",
     }
 
 
 def _path_key(path: str | Path) -> str:
-    return os.path.normcase(str(Path(path).expanduser().resolve()))
+    return resolved_path_identity(path)
+
+
+def _path_value(path: str | Path) -> str:
+    return resolved_path_value(path)
 
 
 def _optional_text(value: Any) -> str | None:

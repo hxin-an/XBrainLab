@@ -62,6 +62,58 @@ class EvaluationRunIdentity:
 
 
 @dataclass(frozen=True, slots=True)
+class EvaluationCrossFoldIdentity:
+    """One exact repeat represented across a validated fold cohort."""
+
+    members: tuple[EvaluationRunIdentity, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.members, tuple) or len(self.members) < 2:
+            raise ValueError("cross-fold identity requires at least two run members")
+        if any(
+            not isinstance(member, EvaluationRunIdentity) for member in self.members
+        ):
+            raise TypeError("cross-fold members must be EvaluationRunIdentity values")
+        plan_indexes = tuple(member.plan.plan_index for member in self.members)
+        if len(set(plan_indexes)) != len(plan_indexes):
+            raise ValueError("cross-fold members must reference unique folds")
+        if plan_indexes != tuple(sorted(plan_indexes)):
+            raise ValueError("cross-fold members must use canonical fold order")
+        run_indexes = {member.run_index for member in self.members}
+        if len(run_indexes) != 1:
+            raise ValueError("cross-fold members must reference the same run index")
+
+    @property
+    def run_index(self) -> int:
+        return self.members[0].run_index
+
+    def to_dict(self) -> dict[str, list[dict[str, int]]]:
+        return {"members": [member.to_dict() for member in self.members]}
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationCrossFoldChoice:
+    """Backend-admitted cross-fold result available to product consumers."""
+
+    identity: EvaluationCrossFoldIdentity
+    display_name: str
+    run_label: str
+    evaluation_splits: tuple[str, ...]
+    fold_count: int
+    sample_count: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "identity": self.identity.to_dict(),
+            "display_name": self.display_name,
+            "run_label": self.run_label,
+            "evaluation_splits": list(self.evaluation_splits),
+            "fold_count": self.fold_count,
+            "sample_count": self.sample_count,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class EvaluationSummaryIdentity:
     """Plan or exact run whose model summary may be requested."""
 
@@ -86,7 +138,27 @@ class EvaluationSummaryIdentity:
         }
 
 
-EvaluationSelectionIdentity = EvaluationPlanIdentity | EvaluationRunIdentity
+EvaluationSelectionIdentity = (
+    EvaluationPlanIdentity | EvaluationRunIdentity | EvaluationCrossFoldIdentity
+)
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationModelSummary:
+    """Structured readiness for one requested model summary."""
+
+    status: str
+    text: str = ""
+
+    def __post_init__(self) -> None:
+        if self.status not in {"ready", "pending", "unavailable"}:
+            raise ValueError("model summary status is invalid")
+        if not isinstance(self.text, str):
+            raise TypeError("model summary text must be a string")
+        if self.status == "ready" and not self.text.strip():
+            raise ValueError("ready model summary text cannot be empty")
+        if self.status != "ready" and self.text:
+            raise ValueError("non-ready model summary text must be empty")
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,9 +178,15 @@ class EvaluationRenderRequest:
             raise ValueError("publication_generation must be a positive integer")
         if not isinstance(
             self.selection,
-            (EvaluationPlanIdentity, EvaluationRunIdentity),
+            (
+                EvaluationPlanIdentity,
+                EvaluationRunIdentity,
+                EvaluationCrossFoldIdentity,
+            ),
         ):
-            raise TypeError("selection must be an Evaluation plan or run identity")
+            raise TypeError(
+                "selection must be an Evaluation plan, run, or cross-fold identity"
+            )
         normalized_split = str(self.split or "").strip().casefold()
         if normalized_split not in AVAILABLE_EVALUATION_SPLITS:
             raise ValueError("split must be training, validation, or test")
@@ -176,7 +254,7 @@ class EvaluationRenderData:
     outputs: np.ndarray
     metrics: EvaluationMetrics
     class_labels: Mapping[int, str]
-    summary_identity: EvaluationSummaryIdentity
+    summary_identity: EvaluationSummaryIdentity | None
     evaluation_split: str
 
     def __post_init__(self) -> None:
@@ -188,8 +266,13 @@ class EvaluationRenderData:
             raise ValueError("Evaluation outputs must be two-dimensional")
         if labels.shape[0] != outputs.shape[0] or labels.shape[0] == 0:
             raise ValueError("Evaluation labels and outputs must have matching samples")
-        if not isinstance(self.summary_identity, EvaluationSummaryIdentity):
-            raise TypeError("summary_identity must be an EvaluationSummaryIdentity")
+        if self.summary_identity is not None and not isinstance(
+            self.summary_identity,
+            EvaluationSummaryIdentity,
+        ):
+            raise TypeError(
+                "summary_identity must be an EvaluationSummaryIdentity or None"
+            )
         evaluation_split = str(self.evaluation_split or "unknown").strip() or "unknown"
         object.__setattr__(self, "labels", labels)
         object.__setattr__(self, "outputs", outputs)
@@ -313,6 +396,12 @@ class EvaluationRenderPublisher:
             self._training_runtime.training_plan_holders(),
             "Training plan collection",
         )
+        if isinstance(selection, EvaluationCrossFoldIdentity):
+            return self._copy_cross_fold_render_data(
+                plans,
+                selection=selection,
+                split=split,
+            )
         plan_identity = (
             selection.plan
             if isinstance(selection, EvaluationRunIdentity)
@@ -368,17 +457,7 @@ class EvaluationRenderPublisher:
                 "for one or more finished runs"
             )
         selected_records = [record for record in eval_records if record is not None]
-        try:
-            labels = np.concatenate([record.label for record in selected_records])
-            outputs = np.concatenate([record.output for record in selected_records])
-            from XBrainLab.backend.training.record import EvalRecord  # noqa: PLC0415
-
-            pooled_record = EvalRecord(labels, outputs, {}, {}, {}, {}, {})
-            metrics = pooled_record.get_per_class_metrics()
-        except Exception as exc:
-            raise self._target_error(
-                "The selected evaluation results could not be combined"
-            ) from exc
+        labels, outputs, metrics = self._pool_evaluation_records(selected_records)
         return EvaluationRenderData(
             labels=labels,
             outputs=outputs,
@@ -387,6 +466,80 @@ class EvaluationRenderPublisher:
             summary_identity=EvaluationSummaryIdentity(plan=selection),
             evaluation_split=split,
         )
+
+    def _copy_cross_fold_render_data(
+        self,
+        plans: list[Any],
+        *,
+        selection: EvaluationCrossFoldIdentity,
+        split: str,
+    ) -> EvaluationRenderData:
+        if split != "test":
+            raise self._split_unavailable_error(
+                "Cross-fold summaries are available only for saved test predictions"
+            )
+        choices = {
+            choice.identity: choice
+            for choice in build_evaluation_cross_fold_choices(plans)
+        }
+        if selection not in choices:
+            raise self._target_error(
+                "The selected cross-fold result is no longer available"
+            )
+        selected_records: list[Any] = []
+        label_sources: list[tuple[Any, Any]] = []
+        for member in selection.members:
+            plan = plans[member.plan.plan_index]
+            run = _plan_runs(plan)[member.run_index]
+            record = self._record_for_split(run, split)
+            if record is None:
+                raise self._split_unavailable_error(
+                    "The cross-fold summary is missing saved test predictions"
+                )
+            selected_records.append(record)
+            label_sources.append((run, plan))
+
+        labels, outputs, metrics = self._pool_evaluation_records(selected_records)
+        return EvaluationRenderData(
+            labels=labels,
+            outputs=outputs,
+            metrics=metrics,
+            class_labels=self._consistent_class_labels(label_sources),
+            summary_identity=None,
+            evaluation_split=split,
+        )
+
+    def _pool_evaluation_records(
+        self,
+        records: list[Any],
+    ) -> tuple[np.ndarray, np.ndarray, Mapping[Any, Any]]:
+        try:
+            labels = np.concatenate([record.label for record in records])
+            outputs = np.concatenate([record.output for record in records])
+            from XBrainLab.backend.training.record import EvalRecord  # noqa: PLC0415
+
+            pooled_record = EvalRecord(labels, outputs, {}, {}, {}, {}, {})
+            metrics = pooled_record.get_per_class_metrics()
+        except Exception as exc:
+            raise self._target_error(
+                "The selected evaluation results could not be combined"
+            ) from exc
+        return labels, outputs, metrics
+
+    def _consistent_class_labels(
+        self,
+        sources: list[tuple[Any, Any]],
+    ) -> Mapping[Any, Any]:
+        mappings = [dict(_class_labels(run, plan)) for run, plan in sources]
+        non_empty = [mapping for mapping in mappings if mapping]
+        if not non_empty:
+            return {}
+        expected = non_empty[0]
+        if any(mapping != expected for mapping in non_empty[1:]):
+            raise self._target_error(
+                "Class label mappings differ across training folds"
+            )
+        return expected
 
     @staticmethod
     def _record_for_split(run: Any, split: str) -> Any | None:
@@ -475,6 +628,14 @@ def build_evaluation_model_summary(
     identity: EvaluationSummaryIdentity,
 ) -> str:
     """Build one model summary from a validated backend-only identity."""
+    return build_evaluation_model_summary_result(training_runtime, identity).text
+
+
+def build_evaluation_model_summary_result(
+    training_runtime: TrainingProjectionReadPort,
+    identity: EvaluationSummaryIdentity,
+) -> EvaluationModelSummary:
+    """Build one model summary together with explicit readiness semantics."""
     if not isinstance(identity, EvaluationSummaryIdentity):
         raise TypeError("identity must be an EvaluationSummaryIdentity")
     plans = _iterable_items(
@@ -494,38 +655,79 @@ def build_evaluation_model_summary(
                 "The selected training run is no longer available"
             )
         selected_run = runs[identity.run.run_index]
+        if not _run_finished(selected_run):
+            return EvaluationModelSummary(status="pending")
 
-    try:
-        if selected_run is not None and hasattr(selected_run, "model"):
-            model_instance = selected_run.model
-        else:
-            epoch_data = selected_plan.dataset.get_epoch_data()
-            model_instance = selected_plan.model_holder.get_model(
-                epoch_data.get_model_args()
-            ).to(selected_plan.option.get_device())
-        training_data, _ = selected_plan.dataset.get_training_data()
-        input_shape = (
-            selected_plan.option.bs,
-            1,
-            *training_data.shape[-2:],
-        )
-        try:
-            from torchinfo import summary  # noqa: PLC0415
-        except ModuleNotFoundError:
-            summary_text = _fallback_model_summary(model_instance, input_shape)
-        else:
-            summary_text = str(
-                summary(model_instance, input_size=input_shape, verbose=0)
-            )
-        if selected_run is not None:
-            get_name = getattr(selected_run, "get_name", None)
-            run_name = str(get_name()) if callable(get_name) else "Selected run"
-            summary_text = f"=== Run: {run_name} ===\n{summary_text}"
-    except Exception:
-        logger.error("Error generating Evaluation model summary", exc_info=True)
-        return ""
+    dataset = getattr(selected_run, "dataset", None) or getattr(
+        selected_plan,
+        "dataset",
+        None,
+    )
+    if selected_run is not None:
+        model_instance = getattr(selected_run, "model", None)
+        if model_instance is None:
+            return EvaluationModelSummary(status="unavailable")
     else:
-        return summary_text
+        epoch_getter = getattr(dataset, "get_epoch_data", None)
+        if not callable(epoch_getter):
+            raise ValueError("The selected model input metadata is unavailable")
+        epoch_data = epoch_getter()
+        model_args_getter = getattr(epoch_data, "get_model_args", None)
+        if not callable(model_args_getter):
+            raise ValueError("The selected model input metadata is unavailable")
+        model_args = model_args_getter()
+        if not isinstance(model_args, dict):
+            raise ValueError("The selected model input metadata is unavailable")
+        model_instance = selected_plan.model_holder.get_model(model_args)
+    input_shape = _model_summary_input_shape(dataset)
+    try:
+        from torchinfo import summary  # noqa: PLC0415
+
+        try:
+            summary_text = str(
+                summary(
+                    model_instance,
+                    input_size=input_shape,
+                    mode="eval",
+                    verbose=0,
+                )
+            )
+        except Exception:
+            logger.warning(
+                "Detailed Evaluation model summary failed; using basic model details",
+                exc_info=True,
+            )
+            summary_text = _fallback_model_summary(model_instance, input_shape)
+    except ModuleNotFoundError:
+        logger.warning(
+            "Required torchinfo dependency is unavailable; using basic model details"
+        )
+        summary_text = _fallback_model_summary(model_instance, input_shape)
+    if selected_run is not None:
+        get_name = getattr(selected_run, "get_name", None)
+        run_name = str(get_name()) if callable(get_name) else "Selected run"
+        summary_text = f"=== Run: {run_name} ===\n{summary_text}"
+    return EvaluationModelSummary(status="ready", text=summary_text)
+
+
+def _model_summary_input_shape(dataset: Any) -> tuple[int, int, int]:
+    epoch_getter = getattr(dataset, "get_epoch_data", None)
+    if not callable(epoch_getter):
+        raise ValueError("The selected model input metadata is unavailable")
+    data_getter = getattr(epoch_getter(), "get_data", None)
+    if not callable(data_getter):
+        raise ValueError("The selected model input metadata is unavailable")
+    shape = getattr(data_getter(), "shape", None)
+    if (
+        not isinstance(shape, tuple)
+        or len(shape) != 3
+        or any(
+            isinstance(value, bool) or not isinstance(value, int) or value < 1
+            for value in shape
+        )
+    ):
+        raise ValueError("The selected model input shape is unavailable")
+    return (1, shape[1], shape[2])
 
 
 def _fallback_model_summary(model_instance: Any, input_shape: tuple[int, ...]) -> str:
@@ -562,7 +764,7 @@ def _fallback_model_summary(model_instance: Any, input_shape: tuple[int, ...]) -
             lines.append(f"  ... {len(children) - 20} more module(s)")
     else:
         lines.extend(["", str(model_instance)])
-    lines.extend(["", "Detailed layer shapes require optional dependency 'torchinfo'."])
+    lines.extend(["", "Detailed layer shapes are unavailable."])
     return "\n".join(lines)
 
 
@@ -615,7 +817,131 @@ def _class_labels(run: Any, plan: Any) -> Mapping[Any, Any]:
     return labels if isinstance(labels, Mapping) else {}
 
 
+def build_evaluation_cross_fold_choices(
+    plans: Iterable[Any],
+) -> tuple[EvaluationCrossFoldChoice, ...]:
+    """Return exact test-only cross-fold runs admitted by backend evidence."""
+    indexed_plans = list(enumerate(plans))
+    cohorts: dict[tuple[int, int, str], list[tuple[int, Any]]] = {}
+    for plan_index, plan in indexed_plans:
+        dataset = getattr(plan, "dataset", None)
+        epoch_data = getattr(dataset, "epoch_data", None)
+        config = getattr(dataset, "config", None)
+        cohort_id = getattr(dataset, "cross_validation_cohort_id", None)
+        if (
+            dataset is None
+            or epoch_data is None
+            or config is None
+            or not isinstance(cohort_id, str)
+            or not cohort_id
+            or getattr(config, "is_cross_validation", False) is not True
+        ):
+            continue
+        cohorts.setdefault((id(epoch_data), id(config), cohort_id), []).append(
+            (plan_index, plan)
+        )
+
+    admitted_cohorts = [
+        cohort
+        for cohort in sorted(cohorts.values(), key=lambda value: value[0][0])
+        if len(cohort) >= 2
+    ]
+    choices: list[EvaluationCrossFoldChoice] = []
+    for cohort_position, cohort in enumerate(admitted_cohorts, start=1):
+        run_lists = [_plan_runs(plan) for _plan_index, plan in cohort]
+        common_run_count = min((len(runs) for runs in run_lists), default=0)
+        display_name = (
+            "All Folds" if len(admitted_cohorts) == 1 else f"Fold Set {cohort_position}"
+        )
+        for run_index in range(common_run_count):
+            members = tuple(
+                EvaluationRunIdentity(
+                    plan=EvaluationPlanIdentity(plan_index=plan_index),
+                    run_index=run_index,
+                )
+                for plan_index, _plan in cohort
+            )
+            sample_count = _cross_fold_sample_count(
+                cohort,
+                run_lists,
+                run_index=run_index,
+            )
+            if sample_count is None:
+                continue
+            choices.append(
+                EvaluationCrossFoldChoice(
+                    identity=EvaluationCrossFoldIdentity(members=members),
+                    display_name=display_name,
+                    run_label=f"Run {run_index + 1} (Summary)",
+                    evaluation_splits=("test",),
+                    fold_count=len(members),
+                    sample_count=sample_count,
+                )
+            )
+    return tuple(choices)
+
+
+def _cross_fold_sample_count(
+    cohort: list[tuple[int, Any]],
+    run_lists: list[list[Any]],
+    *,
+    run_index: int,
+) -> int | None:
+    masks: list[np.ndarray] = []
+    output_width: int | None = None
+    class_labels: dict[Any, Any] | None = None
+    mask_shape: tuple[int, ...] | None = None
+    sample_count = 0
+    for (_plan_index, plan), runs in zip(cohort, run_lists, strict=True):
+        run = runs[run_index]
+        if not _run_finished(run):
+            return None
+        plan_dataset = getattr(plan, "dataset", None)
+        dataset = getattr(run, "dataset", None) or plan_dataset
+        if dataset is not plan_dataset:
+            return None
+        mask = np.asarray(getattr(dataset, "test_mask", None))
+        if mask.ndim != 1 or mask.dtype.kind != "b" or not mask.any():
+            return None
+        if mask_shape is None:
+            mask_shape = mask.shape
+        elif mask.shape != mask_shape:
+            return None
+        record = EvaluationRenderPublisher._record_for_split(run, "test")
+        if record is None:
+            return None
+        labels = np.asarray(getattr(record, "label", None))
+        outputs = np.asarray(getattr(record, "output", None))
+        expected_count = int(np.count_nonzero(mask))
+        if (
+            labels.ndim != 1
+            or outputs.ndim != 2
+            or labels.shape[0] != expected_count
+            or outputs.shape[0] != expected_count
+        ):
+            return None
+        if output_width is None:
+            output_width = int(outputs.shape[1])
+        elif outputs.shape[1] != output_width:
+            return None
+        current_labels = dict(_class_labels(run, plan))
+        if not current_labels or len(current_labels) != output_width:
+            return None
+        if class_labels is None:
+            class_labels = current_labels
+        elif current_labels != class_labels:
+            return None
+        if any(np.any(mask & previous) for previous in masks):
+            return None
+        masks.append(mask)
+        sample_count += expected_count
+    return sample_count if sample_count > 0 else None
+
+
 __all__ = [
+    "EvaluationCrossFoldChoice",
+    "EvaluationCrossFoldIdentity",
+    "EvaluationModelSummary",
     "EvaluationPlanIdentity",
     "EvaluationRenderData",
     "EvaluationRenderPublication",
@@ -624,5 +950,7 @@ __all__ = [
     "EvaluationRunIdentity",
     "EvaluationSelectionIdentity",
     "EvaluationSummaryIdentity",
+    "build_evaluation_cross_fold_choices",
     "build_evaluation_model_summary",
+    "build_evaluation_model_summary_result",
 ]

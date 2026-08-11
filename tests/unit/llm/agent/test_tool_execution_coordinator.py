@@ -27,6 +27,7 @@ from XBrainLab.llm.tools.application_surface import (
     ToolAvailability,
     ToolAvailabilityContext,
     ToolCommandResult,
+    authorize_assistant_setting_change,
     get_application_context,
 )
 from XBrainLab.llm.tools.real.dataset_real import RealGetDatasetInfoTool
@@ -210,7 +211,11 @@ def test_normalization_failure_still_completes_application_command(
 
     outcome = coordinator.execute(
         "set_model",
-        {"model_name": "EEGNet"},
+        authorize_assistant_setting_change(
+            "set_model",
+            {"model_name": "EEGNet"},
+            publication_generation=context.generation,
+        ),
         context=context,
     )
 
@@ -224,7 +229,7 @@ def test_normalization_failure_still_completes_application_command(
     assert outcome.result.raw_result is None
     assert outcome.result.state is not pre_execution_state
     assert outcome.result.state is not None
-    assert outcome.result.state["training"]["model_name"] == "EEGNet"
+    assert outcome.result.state["training"]["model_name"] == "EEGNet (XBrainLab)"
     assert outcome.result.diagnostics["state_source"] == ("authoritative_publication")
     assert outcome.result.diagnostics["incident_id"]
     assert len(runtime.commands) == 1
@@ -465,7 +470,7 @@ def test_post_execution_failure_without_publication_marks_state_unknown_once(
 
         def get_view_publication(self) -> ApplicationViewPublication:
             self.publication_reads += 1
-            if self.publication_reads > 1:
+            if self.publication_reads > 2:
                 raise RuntimeError(
                     "/home/alice/private/subject-17/events.tsv token=hf_super_secret"
                 )
@@ -499,7 +504,11 @@ def test_post_execution_failure_without_publication_marks_state_unknown_once(
 
     outcome = coordinator.execute(
         "set_model",
-        {"model_name": "EEGNet"},
+        authorize_assistant_setting_change(
+            "set_model",
+            {"model_name": "EEGNet"},
+            publication_generation=context.generation,
+        ),
         context=context,
     )
 

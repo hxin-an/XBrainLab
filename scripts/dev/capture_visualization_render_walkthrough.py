@@ -317,12 +317,15 @@ def run_visualization_render_walkthrough(
         open_workflow_panel(window, 4, timeout_ms=int(timeout_seconds * 1_000)),
     )
     _process_events(app, 800)
+    panel.normalize_check.setChecked(True)
+    _process_events(app, 150)
 
     payload["ui_state"] = {
         "current_panel": "Visualization",
         "plan": panel.plan_combo.currentText(),
         "run": panel.run_combo.currentText(),
         "method": panel.method_combo.currentText(),
+        "normalize": panel.normalize_check.isChecked(),
         "control_layout": _control_layout_evidence(panel),
     }
     payload["application_evaluate"] = _command_payload(
@@ -1134,6 +1137,7 @@ def _control_layout_evidence(panel: Any) -> dict[str, Any]:
         "run": getattr(panel, "run_combo", None),
         "method": getattr(panel, "method_combo", None),
         "absolute": getattr(panel, "abs_check", None),
+        "normalize": getattr(panel, "normalize_check", None),
     }
     rects = {
         name: _global_widget_rect(widget) for name, widget in widgets.items() if widget
@@ -1157,7 +1161,7 @@ def _control_layout_evidence(panel: Any) -> dict[str, Any]:
         rects,
         label_rects,
         {
-            "plan": "Plan:",
+            "plan": "Fold:",
             "run": "Run:",
             "method": "Method:",
         },
@@ -1165,7 +1169,7 @@ def _control_layout_evidence(panel: Any) -> dict[str, Any]:
     missing_labels = [
         f"{name}_label"
         for name, label_text in {
-            "plan": "Plan:",
+            "plan": "Fold:",
             "run": "Run:",
             "method": "Method:",
         }.items()
@@ -1206,7 +1210,7 @@ def _control_label_rects(panel: Any) -> dict[str, dict[str, int]]:
     labels = {}
     for label in panel.findChildren(QLabel):
         text = label.text().strip()
-        if text in {"Plan:", "Run:", "Method:"} and label.isVisible():
+        if text in {"Fold:", "Run:", "Method:"} and label.isVisible():
             labels[text] = _global_widget_rect(label)
     return labels
 

@@ -18,6 +18,7 @@ def test_init(metric_tab):
     assert len(metric_tab.epochs) == 0
     assert len(metric_tab.train_vals) == 0
     assert len(metric_tab.val_vals) == 0
+    assert len(metric_tab.test_vals) == 0
     assert metric_tab.empty_state_label.text() == (
         "Training metrics will appear after the first training epoch."
     )
@@ -51,6 +52,23 @@ def test_set_series_draws_full_history_once(metric_tab, monkeypatch):
     assert len(draw_calls) == 1
 
 
+def test_set_series_draws_final_test_value_at_last_training_epoch(metric_tab):
+    metric_tab.set_series(
+        [1, 2, 3],
+        [0.4, 0.5, 0.6],
+        [0.3, 0.4, 0.5],
+        [0.55],
+    )
+
+    assert metric_tab.test_vals == [0.55]
+    assert len(metric_tab.ax.lines) == 3
+    test_line = next(
+        line for line in metric_tab.ax.lines if line.get_label() == "Test Test Metric"
+    )
+    assert list(test_line.get_xdata()) == [3]
+    assert list(test_line.get_ydata()) == [0.55]
+
+
 def test_empty_plot_uses_dark_theme_text(metric_tab):
     assert metric_tab.ax.title.get_color() == Theme.TEXT_MUTED
     assert metric_tab.ax.xaxis.label.get_color() == Theme.TEXT_MUTED
@@ -64,6 +82,7 @@ def test_clear(metric_tab):
     assert len(metric_tab.epochs) == 0
     assert len(metric_tab.train_vals) == 0
     assert len(metric_tab.val_vals) == 0
+    assert len(metric_tab.test_vals) == 0
     assert len(metric_tab.ax.lines) == 0
     assert metric_tab.ax.title.get_color() == Theme.TEXT_MUTED
     assert metric_tab.ax.xaxis.label.get_color() == Theme.TEXT_MUTED

@@ -524,6 +524,7 @@ class SafeRotatingFileHandler(RotatingFileHandler):
                     self.mode,
                     encoding=self.encoding,
                     errors=self.errors,
+                    newline="",
                 ),
             )
         except Exception:

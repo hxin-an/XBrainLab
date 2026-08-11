@@ -407,6 +407,15 @@ def test_build_interpretation_preview_dedupes_bids_no_events_action_item_to_load
     assert matching[0]["target_step"] == "Load Labels"
 
 
+def test_missing_bids_events_file_blocker_routes_to_load_labels():
+    blocker = (
+        "BIDS events.tsv was not found for the selected EEG file(s). "
+        "Choose a BIDS run with events.tsv."
+    )
+
+    assert target_step_for_interpretation_text(blocker) == "Load Labels"
+
+
 def test_build_interpretation_preview_routes_empty_label_source_to_load_labels():
     warning = "Label source did not contain a supported label/event file: /tmp/empty"
     preview = build_interpretation_preview(

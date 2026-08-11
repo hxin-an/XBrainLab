@@ -19,10 +19,16 @@ import contextlib
 import os
 import sys
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePath
 
 _UNRESOLVED_CALLABLE_ORIGIN = "<unresolved-callable-construction>"
 _DYNAMIC_CALLABLE_CONTAINER_KEY = object()
+
+
+def _repo_relative_posix(path: PurePath, root_dir: PurePath) -> str:
+    """Render a repository path consistently in guard diagnostics."""
+    return path.relative_to(root_dir).as_posix()
+
 
 FORBIDDEN_PRODUCT_LLM_TOKENS = (
     "APIBackend",
@@ -473,7 +479,7 @@ CANONICAL_DELEGATING_REAL_TOOL_CLASSES = frozenset(
         "RealConfigureTrainingTool",
         "RealEpochDataTool",
         "RealEvaluateTool",
-        "RealGenerateDatasetTool",
+        "RealConfigureDatasetSplitTool",
         "RealGetDatasetInfoTool",
         "RealLoadDataTool",
         "RealNormalizeTool",
@@ -2322,6 +2328,7 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
             continue
         for path in package.rglob("*.py"):
             relative = path.relative_to(root_dir)
+            relative_posix = _repo_relative_posix(path, root_dir)
             tree = _parse_python_file(path)
             if tree is None:
                 continue
@@ -2347,7 +2354,7 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
             if direct_loader_lines and relative not in allowed_loader_owners:
                 violations.extend(
                     (
-                        f"{relative}:{line} calls label_loader outside an admitted "
+                        f"{relative_posix}:{line} calls label_loader outside an admitted "
                         "parser owner"
                     )
                     for line in sorted(direct_loader_lines)
@@ -2369,7 +2376,7 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
                     )
                 }
                 violations.extend(
-                    f"{relative}:{line} uses direct file IO for label apply; "
+                    f"{relative_posix}:{line} uses direct file IO for label apply; "
                     "external labels must use the admitted bounded reader."
                     for line in sorted(direct_file_io_lines)
                 )
@@ -2399,7 +2406,7 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
                 )
                 if imports_admission_owner:
                     violations.append(
-                        f"{relative} imports LabelResourceAdmissionService or its "
+                        f"{relative_posix} imports LabelResourceAdmissionService or its "
                         "materialized session; UI must use an ApplicationService "
                         "preview command."
                     )
@@ -2424,7 +2431,7 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
                         and node.func.value.id in admitted_session_names
                     ):
                         violations.append(
-                            f"{relative}:{node.lineno} calls session.load(); UI must "
+                            f"{relative_posix}:{node.lineno} calls session.load(); UI must "
                             "not materialize external label payloads."
                         )
                     if (
@@ -2432,7 +2439,7 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
                         and node.attr == "label_data_map"
                     ):
                         violations.append(
-                            f"{relative}:{node.lineno} retains a materialized label "
+                            f"{relative_posix}:{node.lineno} retains a materialized label "
                             "payload cache; UI state must remain path/config/summary based."
                         )
 
@@ -2539,6 +2546,7 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
             if tree is None:
                 continue
             relative = path.relative_to(root_dir)
+            relative_posix = _repo_relative_posix(path, root_dir)
             module_aliases, symbol_aliases = _label_import_bindings(tree)
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call):
@@ -2559,14 +2567,14 @@ def check_label_resource_admission_boundary(root_dir: Path) -> list[str]:
                     missing = sorted(required - keywords)
                     if missing:
                         violations.append(
-                            f"{relative}:{node.lineno} AttachLabelsCommand is "
+                            f"{relative_posix}:{node.lineno} AttachLabelsCommand is "
                             f"missing {', '.join(missing)}"
                         )
                 if command_name == "LabelImportPlan" and any(
                     keyword.arg == "label_map" for keyword in node.keywords
                 ):
                     violations.append(
-                        f"{relative}:{node.lineno} public label import cannot pass "
+                        f"{relative_posix}:{node.lineno} public label import cannot pass "
                         "a pre-materialized label_map"
                     )
     return violations
@@ -2638,7 +2646,7 @@ def _check_public_label_import_schemas(root_dir: Path) -> list[str]:
                     )
                 ):
                     violations.append(
-                        f"{current_relative}:{statement.lineno} public label schema "
+                        f"{current_relative.as_posix()}:{statement.lineno} public label schema "
                         f"{root.name} reaches {current.name}.{field_name}, which "
                         "cannot expose materialized label maps, arrays, values, "
                         "or payloads."
@@ -2873,6 +2881,7 @@ def _check_label_ui_owner_boundary(
 ) -> list[str]:
     module_aliases, symbol_aliases = _label_import_bindings(tree)
     violations: list[str] = []
+    relative_posix = relative.as_posix()
     label_context = _is_label_product_context(relative, tree)
     label_read_context = label_context or any(
         "label" in argument.arg.casefold()
@@ -2895,12 +2904,12 @@ def _check_label_ui_owner_boundary(
             for origin in _label_import_origins(node):
                 if _is_label_parser_origin(origin):
                     violations.append(
-                        f"{relative}:{node.lineno} imports a backend label parser; "
+                        f"{relative_posix}:{node.lineno} imports a backend label parser; "
                         "label UI must pass paths/config to ApplicationService."
                     )
                 if _is_label_admission_origin(origin):
                     violations.append(
-                        f"{relative}:{node.lineno} imports label resource admission; "
+                        f"{relative_posix}:{node.lineno} imports label resource admission; "
                         "label UI must use the public preview command."
                     )
             continue
@@ -2912,7 +2921,7 @@ def _check_label_ui_owner_boundary(
             )
             if label_read_context and qualified in {"open", "builtins.open"}:
                 violations.append(
-                    f"{relative}:{node.lineno} uses builtins.open for label UI; "
+                    f"{relative_posix}:{node.lineno} uses builtins.open for label UI; "
                     "file reads belong to the admitted backend parser."
                 )
             if (
@@ -2927,7 +2936,7 @@ def _check_label_ui_owner_boundary(
                 )
             ):
                 violations.append(
-                    f"{relative}:{node.lineno} uses Path.{node.func.attr} for label "
+                    f"{relative_posix}:{node.lineno} uses Path.{node.func.attr} for label "
                     "UI; file reads belong to the admitted backend parser."
                 )
         if isinstance(node, (ast.Assign, ast.AnnAssign)):
@@ -2943,7 +2952,7 @@ def _check_label_ui_owner_boundary(
                     )
                     if label_context and _is_materialized_label_ui_name(name):
                         violations.append(
-                            f"{relative}:{node.lineno} stores a materialized label "
+                            f"{relative_posix}:{node.lineno} stores a materialized label "
                             "payload; UI state must remain path/config/summary based."
                         )
                         break
@@ -7062,11 +7071,29 @@ def check_typed_montage_ui_handoff_boundary(root_dir: Path) -> list[str]:
         host_source = (
             host_path.read_text(encoding="utf-8") if host_path.exists() else ""
         )
-        if not all(
+        route_source = root_dir / "XBrainLab/llm/agent/ui_handoff.py"
+        route_registry_source = (
+            route_source.read_text(encoding="utf-8") if route_source.exists() else ""
+        )
+        registry_has_montage_route = all(
+            token in route_registry_source
+            for token in (
+                "CommandName.APPLY_MONTAGE",
+                "WorkflowUiHandoffRouteIdentity.MONTAGE_SETTINGS_DIALOG",
+            )
+        )
+        host_has_montage_adapter = all(
             token in host_source
-            for token in ("CommandName.APPLY_MONTAGE", "set_montage")
-        ):
+            for token in (
+                "WorkflowUiHandoffRouteIdentity.MONTAGE_SETTINGS_DIALOG",
+                "self._open_montage",
+                "set_montage",
+                "self._surface_result",
+            )
+        )
+        if not all((registry_has_montage_route, host_has_montage_adapter)):
             violations.append(
+                "The canonical Workflow UI route registry and "
                 f"{MONTAGE_HANDOFF_HOST} must route APPLY_MONTAGE to the existing "
                 "montage surface and return its typed outcome."
             )
@@ -7187,7 +7214,8 @@ def check_product_runtime_backend_facade_usage(root_dir: Path) -> list[str]:
             visitor = _BackendFacadeRuntimeUsageVisitor()
             visitor.visit(tree)
             violations.extend(
-                f"{py_file.relative_to(root_dir)}:{getattr(node, 'lineno', 0)} uses "
+                f"{_repo_relative_posix(py_file, root_dir)}:"
+                f"{getattr(node, 'lineno', 0)} uses "
                 "BackendFacade in product runtime; route through "
                 "ApplicationService / Command API directly."
                 for node in visitor.violations
@@ -7280,7 +7308,8 @@ def check_product_success_backend_facade_tests(root_dir: Path) -> list[str]:
             visitor = _BackendFacadeRuntimeUsageVisitor()
             visitor.visit(tree)
             violations.extend(
-                f"{py_file.relative_to(root_dir)}:{getattr(node, 'lineno', 0)} uses "
+                f"{_repo_relative_posix(py_file, root_dir)}:"
+                f"{getattr(node, 'lineno', 0)} uses "
                 "BackendFacade in product-success evidence; rewrite the test to "
                 "exercise ApplicationService / Command API, or move compatibility "
                 "coverage into explicit facade-only unit tests."
@@ -7299,7 +7328,7 @@ def check_backend_facade_test_usage(root_dir: Path) -> list[str]:
     for py_file in tests_dir.rglob("*.py"):
         if py_file.name == "__init__.py":
             continue
-        relative_path = py_file.relative_to(root_dir)
+        relative_path = _repo_relative_posix(py_file, root_dir)
 
         source = py_file.read_text(encoding="utf-8")
         try:
@@ -7337,7 +7366,8 @@ def check_product_success_legacy_fallback_tests(root_dir: Path) -> list[str]:
             visitor = _LegacyFallbackTestUsageVisitor()
             visitor.visit(tree)
             violations.extend(
-                f"{py_file.relative_to(root_dir)}:{getattr(node, 'lineno', 0)} uses "
+                f"{_repo_relative_posix(py_file, root_dir)}:"
+                f"{getattr(node, 'lineno', 0)} uses "
                 f"{_legacy_fallback_symbol_name(node)} as controller compatibility "
                 "product-success evidence; rewrite the test to exercise "
                 "ApplicationService / Command API, or move compatibility "
@@ -7393,7 +7423,7 @@ def check_headless_verifier_direct_study_state(root_dir: Path) -> list[str]:
         state_visitor = _DirectStudyStateReadVisitor()
         state_visitor.visit(tree)
         violations.extend(
-            f"{relative_file}:{attr.lineno} reads "
+            f"{relative_file.as_posix()}:{attr.lineno} reads "
             f"{_study_state_expression(source, attr)}; headless product "
             "verifiers must query state through ApplicationService / "
             "QueryStateCommand."
@@ -7405,7 +7435,7 @@ def check_headless_verifier_direct_study_state(root_dir: Path) -> list[str]:
         )
         method_visitor.visit(tree)
         violations.extend(
-            f"{relative_file}:{call.lineno} calls "
+            f"{relative_file.as_posix()}:{call.lineno} calls "
             f"{_study_state_expression(source, call.func)}; headless product "
             "verifiers must use QueryStateCommand for readiness/status, "
             "TrainCommand for training, and StopTrainingCommand for cancellation."
@@ -8746,7 +8776,7 @@ def _parse_product_guard_tree(
         line = int(exc.lineno or 1)
         return (
             None,
-            f"{py_file.relative_to(root_dir)}:{line} has invalid Python syntax "
+            f"{_repo_relative_posix(py_file, root_dir)}:{line} has invalid Python syntax "
             f"({exc.msg}); {guard_name} cannot inspect this product file and "
             "fails closed.",
         )
@@ -10618,7 +10648,7 @@ def check_ui_direct_study_get_controller_lookups(root_dir: Path) -> list[str]:
             visitor = _DirectStudyGetControllerLookupVisitor()
             visitor.visit(node)
             violations.extend(
-                f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
+                f"{_repo_relative_posix(py_file, root_dir)}:{call.lineno} calls "
                 "study.get_controller(); product UI controller lookup must be "
                 "limited to the central bootstrap quarantine for panel "
                 "constructor adapters."

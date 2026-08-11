@@ -278,17 +278,14 @@ def _review_explicit_decision(
         and isinstance(use_as_class, bool)
         and (not use_as_class or bool(class_name))
     )
-    source = str(payload.get("decision_source") or "").strip()
-    provenance = str(payload.get("provenance") or "").strip()
     decision: dict[str, Any] = {
         "role": role,
         "keep_event": keep_event if isinstance(keep_event, bool) else None,
         "use_as_class": use_as_class if isinstance(use_as_class, bool) else None,
         "suggested_name": suggested_name,
         "decision": RESOLVED if complete else UNRESOLVED,
-        "decision_source": source
-        or ("user_choice" if complete else "user_choice_incomplete"),
-        "provenance": provenance or "label_carrier_choice",
+        "decision_source": "user_choice" if complete else "user_choice_incomplete",
+        "provenance": "label_carrier_choice",
         "count": count,
     }
     if complete and use_as_class:

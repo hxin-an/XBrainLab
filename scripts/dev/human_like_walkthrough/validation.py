@@ -397,24 +397,42 @@ def build_assistant_runtime_contract_review(
             findings.append(
                 f"assistant {runtime_phase} state uses incorrect recovery copy"
             )
-        expected_setup_text = (
-            "Settings" if runtime_phase == "failed" else "Open Assistant Settings"
+        rendered_setup_text = str(evidence.get("setup_action_text") or "").strip()
+        setup_semantic_text = evidence.get(
+            "setup_action_semantic_text",
+            evidence.get("setup_action_text"),
         )
         if (
             not bool(evidence.get("setup_action_visible"))
             or not bool(evidence.get("setup_action_enabled"))
-            or evidence.get("setup_action_text") != expected_setup_text
+            or setup_semantic_text != "Open Assistant Settings"
+            or not _rendered_action_matches(
+                rendered_setup_text,
+                "Open Assistant Settings",
+                compact_aliases=("Settings",) if runtime_phase == "failed" else (),
+            )
         ):
             findings.append(
                 f"assistant {runtime_phase} state has an incorrect settings action"
             )
         retry_expected = runtime_phase == "failed"
+        retry_semantic_text = evidence.get(
+            "retry_action_semantic_text",
+            evidence.get("retry_action_text"),
+        )
+        rendered_retry_text = str(evidence.get("retry_action_text") or "").strip()
         if (
             bool(evidence.get("retry_action_visible")) != retry_expected
             or bool(evidence.get("retry_action_enabled")) != retry_expected
             or (
                 retry_expected
-                and evidence.get("retry_action_text") != "Retry local assistant"
+                and (
+                    retry_semantic_text != "Retry local assistant"
+                    or not _rendered_action_matches(
+                        rendered_retry_text,
+                        "Retry local assistant",
+                    )
+                )
             )
         ):
             findings.append(
@@ -500,6 +518,25 @@ def build_assistant_runtime_contract_review(
         "findings": findings,
         "evidence": evidence_by_phase,
     }
+
+
+def _rendered_action_matches(
+    rendered: str,
+    semantic: str,
+    *,
+    compact_aliases: tuple[str, ...] = (),
+) -> bool:
+    """Accept full, intentional compact, or native prefix-elided action text."""
+    normalized = " ".join(rendered.split())
+    if normalized == semantic or normalized in compact_aliases:
+        return True
+    if normalized.endswith("..."):
+        prefix = normalized[:-3].rstrip()
+    elif normalized.endswith("…"):
+        prefix = normalized[:-1].rstrip()
+    else:
+        return False
+    return len(prefix) >= 4 and semantic.startswith(prefix)
 
 
 def build_assistant_signal_path_review(

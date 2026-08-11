@@ -45,17 +45,6 @@ _VALUE_DECISION_SCHEMA: dict[str, Any] = {
             "type": "string",
             "description": "Required non-empty class name when use_as_class is true.",
         },
-        "suggested_name": {
-            "type": "string",
-            "description": "Non-authoritative display suggestion for the raw value.",
-        },
-        "decision": {
-            "type": "string",
-            "enum": ["resolved", "unresolved"],
-        },
-        "decision_source": {"type": "string"},
-        "provenance": {"type": "string"},
-        "count": {"type": "integer", "minimum": 0},
     },
 }
 

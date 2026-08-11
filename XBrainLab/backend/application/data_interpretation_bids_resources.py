@@ -62,8 +62,22 @@ def _bids_events_json_candidates_in_directories(
 
 def bids_events_json_resource_paths(label_carriers: Iterable[str]) -> list[str]:
     """Return every existing events JSON candidate that preview may read."""
+    catalog = bids_events_json_resources_by_carrier(label_carriers)
     result: list[str] = []
     seen: set[str] = set()
+    for paths in catalog.values():
+        for path in paths:
+            if path not in seen:
+                seen.add(path)
+                result.append(path)
+    return result
+
+
+def bids_events_json_resources_by_carrier(
+    label_carriers: Iterable[str],
+) -> dict[str, tuple[str, ...]]:
+    """Discover contained existing sidecars once for an admitted scan scope."""
+    result: dict[str, tuple[str, ...]] = {}
     for carrier in label_carriers:
         carrier_path = Path(carrier)
         if not is_bids_events_file(carrier_path):
@@ -74,6 +88,7 @@ def bids_events_json_resource_paths(label_carriers: Iterable[str]) -> list[str]:
             if dataset_root is not None
             else None
         )
+        carrier_sidecars: list[str] = []
         try:
             if root_identity is not None:
                 _canonical_bids_resource_path(
@@ -111,13 +126,13 @@ def bids_events_json_resource_paths(label_carriers: Iterable[str]) -> list[str]:
                     else candidate.expanduser().resolve(strict=False)
                 )
                 key = str(canonical_candidate)
-                if key in seen:
+                if key in carrier_sidecars:
                     continue
-                seen.add(key)
-                result.append(key)
+                carrier_sidecars.append(key)
         finally:
             if root_identity is not None:
                 root_identity.close()
+        result[str(carrier_path)] = tuple(carrier_sidecars)
     return result
 
 
@@ -182,7 +197,10 @@ class BidsEventsJsonReader:
 
     admitted_files: dict[str, _AdmittedFileIdentity]
     budget: BidsEventsJsonReadBudget = field(default_factory=BidsEventsJsonReadBudget)
+    candidates_by_carrier: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    canonical_path_aliases: dict[str, str] = field(default_factory=dict)
     _cache: dict[str, dict[str, Any]] = field(default_factory=dict, init=False)
+    _verified_cache_keys: set[str] = field(default_factory=set, init=False)
 
     @property
     def admitted_file_bytes(self) -> dict[str, int]:
@@ -199,7 +217,7 @@ class BidsEventsJsonReader:
         expected = (
             sorted(self.admitted_files)
             if paths is None
-            else sorted({_path_key(Path(path)) for path in paths})
+            else sorted({self._path_key(Path(path)) for path in paths})
         )
         missing = [path for path in expected if path not in self.admitted_files]
         if missing:
@@ -226,6 +244,17 @@ class BidsEventsJsonReader:
             }
             for path in expected
         }
+
+    def for_command(self) -> BidsEventsJsonReader:
+        """Start one bounded freshness round while retaining parsed objects."""
+        reader = BidsEventsJsonReader(
+            admitted_files=dict(self.admitted_files),
+            budget=BidsEventsJsonReadBudget(limit_bytes=self.budget.limit_bytes),
+            candidates_by_carrier=dict(self.candidates_by_carrier),
+            canonical_path_aliases=dict(self.canonical_path_aliases),
+        )
+        reader._cache = dict(self._cache)
+        return reader
 
     def __post_init__(self) -> None:
         admitted_total = sum(
@@ -274,13 +303,18 @@ class BidsEventsJsonReader:
         for raw_path in paths:
             path = Path(raw_path)
             admitted[_path_key(path)] = _admit_file_identity(path)
-        return cls(admitted_files=admitted)
+        return cls(
+            admitted_files=admitted,
+            canonical_path_aliases=_canonical_path_aliases(admitted),
+        )
 
     @classmethod
     def from_resource_preflight(
         cls,
         paths: Iterable[str],
         preflight: ResourcePreflightResult,
+        *,
+        candidates_by_carrier: dict[str, tuple[str, ...]] | None = None,
     ) -> BidsEventsJsonReader:
         """Build a reader only from files recorded by authoritative preflight."""
         expected = {_path_key(Path(path)) for path in paths}
@@ -337,11 +371,34 @@ class BidsEventsJsonReader:
                     },
                 )
             admitted[key] = identity
-        return cls(admitted_files=admitted)
+        candidate_catalog = _normalize_candidate_catalog(
+            candidates_by_carrier,
+            admitted=set(admitted),
+        )
+        return cls(
+            admitted_files=admitted,
+            candidates_by_carrier=candidate_catalog,
+            canonical_path_aliases=_canonical_path_aliases(admitted),
+        )
+
+    def candidate_paths_for(self, carrier: Path) -> tuple[Path, ...]:
+        """Return the admitted inheritance order captured during discovery."""
+        carrier_key = _lexical_path_key(carrier)
+        cached = self.candidates_by_carrier.get(carrier_key)
+        if cached is not None:
+            return tuple(Path(path) for path in cached)
+        return tuple(bids_events_json_candidates(carrier))
+
+    def has_candidate_for(self, carrier: Path) -> bool:
+        """Return whether discovery admitted any existing sidecar for a carrier."""
+        return any(
+            self._path_key(path) in self.admitted_files
+            for path in self.candidate_paths_for(carrier)
+        )
 
     def read_object(self, path: Path) -> dict[str, Any]:
         """Return one stable admitted JSON object, reusing the parsed object."""
-        key = _path_key(path)
+        key = self._path_key(path)
         admitted_identity = self.admitted_files.get(key)
         try:
             current_stat = path.stat()
@@ -401,9 +458,8 @@ class BidsEventsJsonReader:
             observed=current_identity,
         )
         cached = self._cache.get(key)
-        if cached is not None:
+        if cached is not None and key in self._verified_cache_keys:
             return cached
-
         try:
             with path.open("rb") as handle:
                 opened_stat = os.fstat(handle.fileno())
@@ -468,6 +524,9 @@ class BidsEventsJsonReader:
                 },
             )
         self.budget.record(len(encoded))
+        self._verified_cache_keys.add(key)
+        if cached is not None:
+            return cached
         try:
             payload = json.loads(encoded.decode("utf-8-sig"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -487,6 +546,10 @@ class BidsEventsJsonReader:
             )
         self._cache[key] = payload
         return payload
+
+    def _path_key(self, path: Path) -> str:
+        lexical = _lexical_path_key(path)
+        return self.canonical_path_aliases.get(lexical) or _path_key(path)
 
     def diagnostics(self) -> dict[str, Any]:
         return {
@@ -752,6 +815,28 @@ def _file_identity(
 
 def _path_key(path: Path) -> str:
     return str(path.expanduser().resolve(strict=False))
+
+
+def _lexical_path_key(path: Path) -> str:
+    return os.path.normcase(os.path.abspath(os.path.expanduser(str(path))))
+
+
+def _canonical_path_aliases(paths: Iterable[str]) -> dict[str, str]:
+    return {_lexical_path_key(Path(path)): path for path in paths}
+
+
+def _normalize_candidate_catalog(
+    candidates_by_carrier: dict[str, tuple[str, ...]] | None,
+    *,
+    admitted: set[str],
+) -> dict[str, tuple[str, ...]]:
+    result: dict[str, tuple[str, ...]] = {}
+    for carrier, candidates in (candidates_by_carrier or {}).items():
+        normalized = tuple(
+            candidate for candidate in candidates if candidate in admitted
+        )
+        result[_lexical_path_key(Path(carrier))] = normalized
+    return result
 
 
 def _resource_error(

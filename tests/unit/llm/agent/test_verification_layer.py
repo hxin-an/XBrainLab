@@ -357,7 +357,7 @@ class TestToolSchemaValidator:
     def test_enum_mismatch_rejected(self):
         v = ToolSchemaValidator(
             {
-                "generate_dataset": {
+                "configure_dataset_split": {
                     "type": "object",
                     "properties": {
                         "split_strategy": {
@@ -368,7 +368,7 @@ class TestToolSchemaValidator:
                 }
             }
         )
-        r = v.validate("generate_dataset", {"split_strategy": "individual"})
+        r = v.validate("configure_dataset_split", {"split_strategy": "individual"})
         assert not r.is_valid
         assert "split_strategy must be one of" in _error_message(r)
 

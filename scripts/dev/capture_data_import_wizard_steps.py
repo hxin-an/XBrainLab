@@ -80,7 +80,7 @@ DEFAULT_OUTPUT_DIR = Path(
     )
 )
 WINDOW_SIZE = QSize(1220, 1320)
-REVIEW_COMPACT_SIZE = (1220, 530)
+REVIEW_COMPACT_SIZE = (1220, 560)
 REVIEW_REPORT_SIZE = (1220, 926)
 WIZARD_STEP_TEXT = (
     "1. Choose EEG Data",
@@ -1057,7 +1057,8 @@ def _assert_canonical_png_artifact(
         if captured.mode != "RGB" or captured.size != spec.expected_size:
             raise RuntimeError(
                 f"Canonical artifact must be a {spec.expected_size[0]}x"
-                f"{spec.expected_size[1]} RGB PNG: {screenshot.name}"
+                f"{spec.expected_size[1]} RGB PNG; got {captured.size[0]}x"
+                f"{captured.size[1]} {captured.mode}: {screenshot.name}"
             )
         if "dpi" in captured.info:
             raise RuntimeError(
@@ -1717,6 +1718,9 @@ def _bids_events_dialog() -> DataInterpretationPreviewDialog:
                     ],
                 },
             ],
+        },
+        validation_decision={
+            "decision": "needs_confirmation",
             "action_items": [
                 {
                     "target_step": "Match Labels",
@@ -1726,10 +1730,10 @@ def _bids_events_dialog() -> DataInterpretationPreviewDialog:
                         "from raw trial_type values."
                     ),
                     "next_action": "Confirm class names in Match Labels.",
+                    "severity": "needs_confirmation",
                 }
             ],
         },
-        validation_decision={"decision": "needs_confirmation"},
     )
 
 
@@ -1792,6 +1796,9 @@ def _review_import_dialog() -> DataInterpretationPreviewDialog:
                 "required_memory_bytes": 2 * 1024**3,
                 "available_memory_bytes": 24 * 1024**3,
             },
+        },
+        validation_decision={
+            "decision": "safe",
             "action_items": [
                 {
                     "target_step": "Review and Import",
@@ -1807,7 +1814,6 @@ def _review_import_dialog() -> DataInterpretationPreviewDialog:
                 },
             ],
         },
-        validation_decision={"decision": "safe"},
     )
 
 
@@ -1820,40 +1826,51 @@ def _review_import_state_dialog(state: str) -> DataInterpretationPreviewDialog:
     }
     validation_decision: dict[str, Any] = {"decision": "safe"}
     if state == "confirm":
-        preview["action_items"] = [
-            {
-                "target_step": "Review Metadata",
-                "issue": "Confirm subject metadata.",
-                "impact": "Subject was inferred from filenames for 3 files.",
-                "next_action": "Review metadata if the subject is wrong.",
-            }
-        ]
-        validation_decision = {"decision": "needs_confirmation"}
+        validation_decision = {
+            "decision": "needs_confirmation",
+            "action_items": [
+                {
+                    "target_step": "Review Metadata",
+                    "issue": "Confirm subject metadata.",
+                    "impact": "Subject was inferred from filenames for 3 files.",
+                    "next_action": "Review metadata if the subject is wrong.",
+                    "severity": "needs_confirmation",
+                }
+            ],
+        }
     elif state == "review":
-        preview["action_items"] = [
-            {
-                "target_step": "Match Labels",
-                "issue": "Label count needs review.",
-                "impact": "A03T.mat has 282 labels and 288 selected EEG events.",
-                "next_action": "Check target EEG events in Match Labels.",
-            }
-        ]
+        validation_decision = {
+            "decision": "safe",
+            "action_items": [
+                {
+                    "target_step": "Match Labels",
+                    "issue": "Label count needs review.",
+                    "impact": "A03T.mat has 282 labels and 288 selected EEG events.",
+                    "next_action": "Check target EEG events in Match Labels.",
+                    "severity": "warning",
+                }
+            ],
+        }
     elif state == "both":
-        preview["action_items"] = [
-            {
-                "target_step": "Review Metadata",
-                "issue": "Confirm subject metadata.",
-                "impact": "Subject was inferred from filenames for 3 files.",
-                "next_action": "Review metadata if the subject is wrong.",
-            },
-            {
-                "target_step": "Match Labels",
-                "issue": "Label count needs review.",
-                "impact": "A03T.mat has 282 labels and 288 selected EEG events.",
-                "next_action": "Check target EEG events in Match Labels.",
-            },
-        ]
-        validation_decision = {"decision": "needs_confirmation"}
+        validation_decision = {
+            "decision": "needs_confirmation",
+            "action_items": [
+                {
+                    "target_step": "Review Metadata",
+                    "issue": "Confirm subject metadata.",
+                    "impact": "Subject was inferred from filenames for 3 files.",
+                    "next_action": "Review metadata if the subject is wrong.",
+                    "severity": "needs_confirmation",
+                },
+                {
+                    "target_step": "Match Labels",
+                    "issue": "Label count needs review.",
+                    "impact": "A03T.mat has 282 labels and 288 selected EEG events.",
+                    "next_action": "Check target EEG events in Match Labels.",
+                    "severity": "warning",
+                },
+            ],
+        }
 
     return DataInterpretationPreviewDialog(
         parent=None,

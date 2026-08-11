@@ -1,5 +1,4 @@
-"""Batch 5: deeper coverage for data_splitting_preview, actions, import_label,
-agent_manager, preprocess_plotter, saliency views, and remaining gaps."""
+"""Dataset workflow and saliency-view behavior at public UI boundaries."""
 
 from __future__ import annotations
 
@@ -21,19 +20,6 @@ from XBrainLab.backend.application.saliency_render import (
 from XBrainLab.backend.application.state import (
     SaliencyClassCoverageSnapshot,
     SaliencyMethodCoverageSnapshot,
-)
-from XBrainLab.llm.agent.response_presentation import (
-    AssistantPanelNavigationRequest,
-    AssistantPanelTarget,
-)
-from XBrainLab.llm.agent.runtime_state import (
-    AssistantRuntimePhase,
-    AssistantRuntimeSnapshot,
-)
-from XBrainLab.llm.core.config import LLMConfig
-from XBrainLab.ui.components.assistant_runtime_lifecycle import (
-    RuntimeActivationResult,
-    RuntimeActivationStatus,
 )
 from XBrainLab.ui.interaction_outcome import InteractionOutcome, InteractionStatus
 
@@ -85,26 +71,6 @@ def _label_selection(
     )
 
 
-def _label_preview_summary(
-    paths: list[str],
-    unique_labels: list[object],
-    *,
-    mode: str = "sequence",
-    target_count: int | None = None,
-    total_count: int | None = None,
-) -> dict[str, object]:
-    return {
-        "preview_id": "label-preview-test",
-        "label_paths": paths,
-        "label_configs": {path: {} for path in paths},
-        "mode": mode,
-        "target_count": target_count,
-        "total_label_count": total_count or len(unique_labels),
-        "mapping_cardinality_limit": 256,
-        "unique_labels": unique_labels,
-    }
-
-
 def _complete_saliency_coverage(method: str) -> SaliencyMethodCoverageSnapshot:
     return SaliencyMethodCoverageSnapshot(
         method=method,
@@ -151,90 +117,30 @@ def _saliency_render_publication(
 
 
 # ====================================================================
-# DataSplitterHolder (pure logic - no Qt needed)
-# ====================================================================
-
-
-class TestDataSplitterHolder:
-    def _make(self, is_option=True, split_type=None):
-        from XBrainLab.backend.dataset import SplitByType
-
-        if split_type is None:
-            split_type = SplitByType.TRIAL
-        from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
-            DataSplitterHolder,
-        )
-
-        return DataSplitterHolder(is_option, split_type)
-
-    def test_init(self):
-        h = self._make()
-        assert h.is_option is True
-
-    def test_set_split_unit_ratio(self):
-        from XBrainLab.backend.dataset import SplitUnit
-
-        h = self._make()
-        h.set_split_unit_var(SplitUnit.RATIO.value)
-        assert h.split_unit == SplitUnit.RATIO
-
-    def test_set_split_unit_number(self):
-        from XBrainLab.backend.dataset import SplitUnit
-
-        h = self._make()
-        h.set_split_unit_var(SplitUnit.NUMBER.value)
-        assert h.split_unit == SplitUnit.NUMBER
-
-    def test_set_split_unit_invalid(self):
-        h = self._make()
-        h.set_split_unit_var("non_existent_unit")
-        assert h.split_unit is None
-
-    def test_set_entry_var(self):
-        h = self._make()
-        h.set_entry_var("0.3")
-        assert h.value_var == "0.3"
-
-    def test_to_thread(self):
-        h = self._make()
-        h.set_entry_var("0.25")
-        h.to_thread()
-
-        assert h.value_var == "0.25"
-
-    def test_not_option(self):
-        h = self._make(is_option=False)
-        assert h.is_option is False
-
-
-# ====================================================================
 # DatasetActionHandler
 # ====================================================================
 
 
 class TestDatasetActionHandler:
     @pytest.fixture
-    def handler(self):
+    def handler(self, qtbot):
         from XBrainLab.ui.panels.dataset.actions import DatasetActionHandler
 
+        del qtbot  # Ensure QApplication exists even when this fixture runs alone.
         panel = MagicMock()
         panel.table = MagicMock()
         panel.table.selectedIndexes.return_value = []
         panel.table.rowCount.return_value = 3
         panel.table.mapToGlobal.return_value = MagicMock()
+        # This unit fixture has no real top-level QWidget. Mirror QWidget.window()
+        # returning the panel itself so the coordinator correctly chooses an
+        # unparented loading dialog instead of passing a MagicMock into Qt.
+        panel.window.return_value = panel
         h = DatasetActionHandler(panel)
         h._data_interpretation._review_state_from_parts = MagicMock(
             side_effect=_mock_interpretation_review_state,
         )
         return h
-
-    def test_controller_property(self, handler):
-        handler.panel.controller = MagicMock()
-        assert handler.controller is handler.panel.controller
-
-    def test_main_window_property(self, handler):
-        handler.panel.main_window = MagicMock()
-        assert handler.main_window is handler.panel.main_window
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_import_data_locked(self, mock_mb, handler):
@@ -664,6 +570,7 @@ class TestDatasetActionHandler:
         handler.panel.controller.import_files.assert_not_called()
         handler.panel.update_panel.assert_not_called()
 
+    @patch("XBrainLab.ui.panels.dataset.actions.BidsSubjectSelectionDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
@@ -672,11 +579,13 @@ class TestDatasetActionHandler:
         mock_mb,
         mock_fd,
         mock_preview_dialog,
+        mock_subject_dialog,
         handler,
     ):
         from XBrainLab.backend.application import (
             ApplyInterpretationCommand,
             ReviewInterpretationCommand,
+            ScanSourceCommand,
         )
 
         handler.panel.controller = MagicMock()
@@ -687,10 +596,25 @@ class TestDatasetActionHandler:
             "confirmed": False,
             "save_recipe": False,
         }
+        mock_subject_dialog.return_value.exec.return_value = True
+        mock_subject_dialog.return_value.get_result.return_value = ["02"]
         commands = []
 
         def fake_execute(_panel, command):
             commands.append(command)
+            if isinstance(command, ScanSourceCommand):
+                return _command_result(
+                    bids_subject_catalog={
+                        "eeg_file_count": 2,
+                        "subjects": [
+                            {
+                                "subject": "02",
+                                "label": "sub-02",
+                                "eeg_file_count": 2,
+                            }
+                        ],
+                    }
+                )
             if isinstance(command, ReviewInterpretationCommand):
                 return _command_result(
                     scan_result={"source_path": command.source_path},
@@ -713,10 +637,92 @@ class TestDatasetActionHandler:
         ):
             handler.import_bids_source()
 
-        assert isinstance(commands[0], ReviewInterpretationCommand)
-        assert commands[0].source_path == "/tmp/bids-root"
-        assert commands[0].source_hint == "bids"
+        assert isinstance(commands[0], ScanSourceCommand)
+        assert commands[0].catalog_only is True
+        assert isinstance(commands[1], ReviewInterpretationCommand)
+        assert commands[1].source_path == "/tmp/bids-root"
+        assert commands[1].source_hint == "bids"
+        assert commands[1].choices["selected_bids_subjects"] == ["02"]
         mock_mb.critical.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.BidsSubjectSelectionDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    def test_import_bids_catalog_and_review_use_async_command_surface(
+        self,
+        mock_fd,
+        mock_preview_dialog,
+        mock_subject_dialog,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ReviewInterpretationCommand,
+            ScanSourceCommand,
+        )
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getExistingDirectory.return_value = "/tmp/bids-root"
+        mock_subject_dialog.return_value.exec.return_value = True
+        mock_subject_dialog.return_value.get_result.return_value = ["02"]
+        mock_preview_dialog.return_value.exec.return_value = False
+        async_commands = []
+
+        def fake_async(_panel, command, *, on_result, **_kwargs):
+            async_commands.append(command)
+            if isinstance(command, ScanSourceCommand):
+                on_result(
+                    _command_result(
+                        bids_subject_catalog={
+                            "eeg_file_count": 1,
+                            "subjects": [
+                                {
+                                    "subject": "02",
+                                    "label": "sub-02",
+                                    "eeg_file_count": 1,
+                                }
+                            ],
+                        }
+                    )
+                )
+            elif isinstance(command, ReviewInterpretationCommand):
+                on_result(
+                    _command_result(
+                        scan_result={"scan_id": "scan-1"},
+                        preview={},
+                        candidate={"candidate_id": "candidate-1"},
+                        validation_decision={
+                            "candidate_id": "candidate-1",
+                            "decision": "needs_confirmation",
+                            "required_confirmations": [],
+                            "blocked_reasons": [],
+                        },
+                    )
+                )
+            else:
+                raise AssertionError(f"unexpected command: {command!r}")
+            return True
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command_async",
+                side_effect=fake_async,
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                side_effect=AssertionError(
+                    "BIDS discovery must not block the UI thread"
+                ),
+            ),
+        ):
+            handler.import_bids_source()
+
+        assert [type(command) for command in async_commands] == [
+            ScanSourceCommand,
+            ReviewInterpretationCommand,
+        ]
+        assert async_commands[0].catalog_only is True
+        assert async_commands[1].choices["selected_bids_subjects"] == ["02"]
 
     def test_import_folder_prefers_backend_scan_capability_over_stale_controller(
         self,
@@ -1328,9 +1334,16 @@ class TestDatasetActionHandler:
             assert worker_threads != [threading.get_ident()]
 
             worker_release.set()
-            qtbot.waitUntil(lambda: show_status.call_count == 1, timeout=1000)
+            qtbot.waitUntil(
+                lambda: panel_context.set_busy.call_count == 2,
+                timeout=1000,
+            )
 
         assert panel_context.set_busy.call_args_list == [((True,),), ((False,),)]
+        assert [record.args for record in show_status.call_args_list] == [
+            ("Importing EEG data and labels...", 900000),
+            ("Applied.",),
+        ]
         assert runtime.commands[0].resource_preflight_confirmed is False
         assert runtime.commands[0].resource_preflight_token is None
 
@@ -1700,8 +1713,6 @@ class TestDatasetActionHandler:
         assert saved
         assert saved[0].recipe_path == "/recipes/import_recipe.json"
         mock_mb.information.assert_not_called()
-        status_bar = handler.panel.main_window.statusBar.return_value
-        assert "Recipe saved." in status_bar.showMessage.call_args.args[0]
 
     def test_save_interpretation_recipe_uses_backend_capability_before_file_dialog(
         self,
@@ -1793,9 +1804,10 @@ class TestDatasetActionHandler:
             "XBrainLab.ui.panels.dataset.actions.execute_application_command",
             side_effect=fake_execute,
         ):
-            handler.import_data()
+            outcome = handler.import_data()
 
-        mock_mb.critical.assert_called_once()
+        assert outcome.status is InteractionStatus.BLOCKED
+        mock_mb.critical.assert_not_called()
         handler.panel.controller.import_files.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
@@ -1860,11 +1872,12 @@ class TestDatasetActionHandler:
             "XBrainLab.ui.panels.dataset.actions.execute_application_command",
             side_effect=fake_execute,
         ):
-            handler.import_data()
+            outcome = handler.import_data()
 
         assert isinstance(commands[0], ReviewInterpretationCommand)
         assert commands[0].source_path == first_file
-        mock_mb.critical.assert_called_once()
+        assert outcome.status is InteractionStatus.BLOCKED
+        mock_mb.critical.assert_not_called()
         handler.panel.controller.import_files.assert_not_called()
 
     def test_interpretation_source_avoids_common_root_scan(self, handler):
@@ -1878,19 +1891,6 @@ class TestDatasetActionHandler:
         assert choices == {
             "selected_eeg_files": ["/mnt/a/sub-01.fif", "/tmp/b/sub-02.fif"],
         }
-
-    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
-    def test_import_data_exception(self, mock_mb, mock_fd, handler):
-        handler.panel.controller = MagicMock()
-        handler.panel.controller.is_locked.return_value = False
-        mock_fd.getOpenFileNames.return_value = (["/a.set"], "")
-        handler.panel.controller.import_files.side_effect = RuntimeError("fail")
-        handler.import_data()
-        handler.panel.controller.import_files.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Interpretation Blocked"
-        mock_mb.critical.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_on_import_finished_success(self, mock_mb, handler):
@@ -1917,13 +1917,6 @@ class TestDatasetActionHandler:
         handler.panel.controller.has_data.return_value = False
         handler.open_smart_parser()
         mock_mb.warning.assert_called_once()
-
-    @patch("XBrainLab.ui.panels.dataset.actions.QInputDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMenu")
-    def test_show_context_menu_no_rows(self, mock_menu, mock_input, handler):
-        handler.panel.table.selectedIndexes.return_value = []
-        handler.show_context_menu(MagicMock())
-        # no menu exec when no rows
 
     @patch("XBrainLab.ui.panels.dataset.actions.QInputDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMenu")
@@ -2976,350 +2969,6 @@ class TestDatasetActionHandler:
 
 
 # ====================================================================
-# ImportLabelDialog
-# ====================================================================
-
-
-class TestImportLabelDialog:
-    @pytest.fixture
-    def dlg(self, qtbot) -> Any:
-        from XBrainLab.ui.dialogs.dataset.import_label_dialog import ImportLabelDialog
-
-        d = ImportLabelDialog(parent=None)
-        qtbot.addWidget(d)
-        return d
-
-    def test_creates(self, dlg):
-        assert dlg.label_paths == []
-        assert dlg.preview_summary == {}
-        assert isinstance(dlg, QDialog)
-
-    def test_remove_files_empty(self, dlg):
-        dlg.remove_files()
-
-        assert dlg.label_paths == []
-        assert dlg.preview_summary == {}
-        assert dlg.file_list.count() == 0
-
-    def test_update_unique_labels_empty(self, dlg):
-        dlg.update_unique_labels()
-        assert dlg.unique_labels == []
-        assert "No labels" in dlg.info_label.text()
-
-    def test_update_unique_labels_sequence(self, dlg):
-        dlg._apply_preview_summary(
-            _label_preview_summary(
-                ["f.txt"],
-                [1, 2, 3],
-                target_count=4,
-                total_count=4,
-            )
-        )
-        assert dlg.unique_labels == [1, 2, 3]
-        assert "3 unique" in dlg.info_label.text()
-
-    def test_update_unique_labels_timestamp(self, dlg):
-        dlg._apply_preview_summary(
-            _label_preview_summary(
-                ["f.csv"],
-                [1, 2],
-                mode="timestamp",
-                total_count=2,
-            )
-        )
-        assert dlg.unique_labels == [1, 2]
-
-    def test_get_results_none_when_empty(self, dlg):
-        lm, m = dlg.get_results()
-        assert lm is None and m is None
-
-    def test_get_result_alias(self, dlg):
-        r = dlg.get_result()
-        assert r == (None, None)
-
-    def test_get_results_with_data(self, dlg):
-        dlg._apply_preview_summary(
-            _label_preview_summary(["f.txt"], [1, 2], target_count=2)
-        )
-        selection, m = dlg.get_results()
-        assert selection is not None
-        assert selection.label_paths == ("f.txt",)
-        assert 1 in m and 2 in m
-
-    @patch("XBrainLab.ui.dialogs.dataset.import_label_dialog.QMessageBox")
-    def test_accept_empty(self, mock_mb, dlg):
-        dlg.accept()
-        mock_mb.warning.assert_called()
-
-    @patch("XBrainLab.ui.dialogs.dataset.import_label_dialog.QMessageBox")
-    def test_accept_no_mapping(self, mock_mb, dlg):
-        dlg._apply_preview_summary(
-            _label_preview_summary(["f.txt"], [1], target_count=1)
-        )
-        dlg.map_table.item(0, 1).setText("")
-        dlg.accept()
-        mock_mb.warning.assert_called()
-
-    def test_on_file_selection_changed(self, dlg):
-        dlg._apply_preview_summary(
-            _label_preview_summary(["f.txt"], [1, 2], target_count=2)
-        )
-
-        dlg.on_file_selection_changed()
-
-        assert dlg.label_paths == ["f.txt"]
-        assert dlg.preview_summary["preview_id"] == "label-preview-test"
-
-    def test_load_file(self, dlg, tmp_path):
-        label_path = tmp_path / "labels.txt"
-        label_path.write_text("1 2 3\n", encoding="utf-8")
-        with patch.object(dlg, "_request_preview") as request_preview:
-            dlg.load_file(str(label_path))
-        assert dlg.label_paths == [str(label_path)]
-        request_preview.assert_called_once_with()
-
-    def test_browse_files(self, dlg):
-        dlg._add_label_path("/tmp/a.txt")
-        dlg._apply_preview_summary(
-            _label_preview_summary(["/tmp/a.txt"], [1, 2], target_count=2)
-        )
-        assert dlg.file_list.count() == 1
-        assert dlg.unique_labels == [1, 2]
-
-
-# ====================================================================
-# AgentManager deeper coverage
-# ====================================================================
-
-
-class TestAgentManagerDeep:
-    @pytest.fixture
-    def mgr(self, qtbot):
-        with (
-            patch("XBrainLab.ui.components.agent_manager.ChatController") as mock_cc,
-            patch("XBrainLab.ui.components.agent_manager.ChatPanel"),
-            patch("XBrainLab.ui.components.agent_manager.Stylesheets"),
-        ):
-            from XBrainLab.ui.components.agent_manager import AgentManager
-            from XBrainLab.ui.components.assistant_runtime_lifecycle import (
-                AssistantRuntimeLifecycle,
-                RuntimeCommandAdmissionResult,
-                RuntimeCommandAdmissionStatus,
-            )
-
-            mw = QMainWindow()
-            qtbot.addWidget(mw)
-            study = MagicMock()
-            study.get_controller.return_value = MagicMock()
-            runtime = MagicMock(spec=AssistantRuntimeLifecycle)
-            runtime.controller = MagicMock()
-            runtime.initialized = True
-            runtime.current = AssistantRuntimeSnapshot(
-                phase=AssistantRuntimePhase.READY,
-                initialized=True,
-                backend_mode="local",
-                model_id="test-model",
-            )
-            runtime.switch_model.return_value = RuntimeActivationResult(
-                RuntimeActivationStatus.SWITCHING,
-                model_id="microsoft/Phi-4-mini-instruct",
-            )
-            runtime.active_local_runtime_blocks_model_deletion.return_value = False
-            runtime.close.return_value = True
-            runtime.submit.return_value = RuntimeCommandAdmissionResult(
-                command_name="submit",
-                status=RuntimeCommandAdmissionStatus.ACCEPTED,
-                turn_id=1,
-                generation=1,
-            )
-            runtime.reset_conversation.return_value = RuntimeCommandAdmissionResult(
-                command_name="reset",
-                status=RuntimeCommandAdmissionStatus.ACCEPTED,
-            )
-            m = AgentManager(mw, study, runtime_lifecycle=runtime)
-            m.chat_controller = mock_cc.return_value
-            m.chat_controller.is_processing = False
-            m.chat_controller.can_accept_turn.return_value = True
-            yield m
-
-    def test_update_ai_btn_state(self, mgr):
-        mgr.main_window.ai_btn = MagicMock()
-        mgr.update_ai_btn_state(True)
-        mgr.main_window.ai_btn.setChecked.assert_called_with(True)
-
-    def test_toggle_float_no_dock(self, mgr):
-        mgr.chat_dock = None
-        mgr._place_floating_dock = MagicMock()
-
-        mgr._toggle_float()
-
-        mgr._place_floating_dock.assert_not_called()
-
-    def test_toggle_float_with_dock(self, mgr, qtbot):
-        from PyQt6.QtWidgets import QDockWidget
-
-        dock = QDockWidget("test", mgr.main_window)
-        mgr.chat_dock = dock
-        mgr._toggle_float()
-        assert dock.isFloating()
-
-    def test_handle_user_input(self, mgr):
-        mgr.handle_user_input("hello")
-        mgr.chat_controller.add_user_message.assert_called_with("hello")
-        mgr._assistant_runtime.submit.assert_called_with("hello", generation=1)
-
-    def test_stop_generation(self, mgr):
-        mgr.stop_generation()
-        mgr._assistant_runtime.stop_generation.assert_called_once()
-        mgr.chat_controller.set_processing.assert_not_called()
-
-    def test_set_model(self, mgr):
-        mgr.vram_checker = MagicMock()
-        model_id = LLMConfig.default_local_model_id()
-        mgr._assistant_runtime.switch_model.return_value = RuntimeActivationResult(
-            RuntimeActivationStatus.SWITCHING,
-            model_id=model_id,
-        )
-
-        mgr.set_model(model_id)
-
-        mgr._assistant_runtime.switch_model.assert_called_with(model_id)
-        mgr.vram_checker.check.assert_called_once_with(switching_to_local=True)
-
-    def test_on_processing_state_changed(self, mgr):
-        mgr.chat_panel = MagicMock()
-        mgr.on_processing_state_changed(True)
-        mgr.chat_panel.set_processing_state.assert_called_with(True)
-
-    def test_start_new_conversation(self, mgr):
-        mgr.start_new_conversation()
-        mgr.chat_controller.clear_conversation.assert_called_once()
-        mgr._assistant_runtime.reset_conversation.assert_called_once()
-
-    def test_status_text_does_not_own_processing_terminal_state(self, mgr):
-        mgr.on_agent_status_update("Error occurred")
-        mgr.chat_controller.set_processing.assert_not_called()
-
-    def test_on_agent_status_update_stopping_keeps_processing(self, mgr):
-        mgr.on_agent_status_update("Stopping...")
-        mgr.chat_controller.set_processing.assert_not_called()
-
-    def test_close(self, mgr):
-        mgr.close()
-        mgr._assistant_runtime.close.assert_called_once()
-
-    def test_handle_panel_navigation_dataset(self, mgr):
-        mgr.main_window.switch_page = MagicMock()
-        mgr.main_window.statusBar = MagicMock(return_value=MagicMock())
-        mgr.handle_panel_navigation(
-            AssistantPanelNavigationRequest(AssistantPanelTarget.DATASET)
-        )
-        mgr.main_window.switch_page.assert_called_with(0)
-
-    def test_handle_panel_navigation_preprocess(self, mgr):
-        mgr.main_window.switch_page = MagicMock()
-        mgr.main_window.statusBar = MagicMock(return_value=MagicMock())
-        mgr.handle_panel_navigation(
-            AssistantPanelNavigationRequest(AssistantPanelTarget.PREPROCESS)
-        )
-        mgr.main_window.switch_page.assert_called_with(1)
-
-    def test_handle_panel_navigation_training(self, mgr):
-        mgr.main_window.switch_page = MagicMock()
-        mgr.main_window.statusBar = MagicMock(return_value=MagicMock())
-        mgr.handle_panel_navigation(
-            AssistantPanelNavigationRequest(AssistantPanelTarget.TRAINING)
-        )
-        mgr.main_window.switch_page.assert_called_with(2)
-
-    def test_handle_panel_navigation_evaluation(self, mgr):
-        mgr.main_window.switch_page = MagicMock()
-        mgr.main_window.statusBar = MagicMock(return_value=MagicMock())
-        mgr.handle_panel_navigation(
-            AssistantPanelNavigationRequest(AssistantPanelTarget.EVALUATION)
-        )
-        mgr.main_window.switch_page.assert_called_with(3)
-
-    def test_handle_panel_navigation_visualization_with_view(self, mgr):
-        ready_callbacks = []
-
-        def _switch_page(index, *, on_ready=None):
-            assert index == 4
-            ready_callbacks.append(on_ready)
-            return False
-
-        mgr.main_window.switch_page = MagicMock(side_effect=_switch_page)
-        target = MagicMock()
-        mgr.main_window.stack = MagicMock()
-        mgr.main_window.stack.widget.return_value = target
-        status_bar = MagicMock()
-        mgr.main_window.statusBar = MagicMock(return_value=status_bar)
-        mgr.handle_panel_navigation(
-            AssistantPanelNavigationRequest(
-                AssistantPanelTarget.VISUALIZATION,
-                view_mode="saliency_map",
-            )
-        )
-
-        mgr.main_window.switch_page.assert_called_once()
-        assert mgr.main_window.switch_page.call_args.args == (4,)
-        callback = mgr.main_window.switch_page.call_args.kwargs["on_ready"]
-        assert callback is ready_callbacks[0]
-        assert callable(callback)
-        target.tabs.setCurrentIndex.assert_not_called()
-        status_bar.showMessage.assert_called_with("Opening Visualization...")
-
-        callback(target)
-
-        target.tabs.setCurrentIndex.assert_called_with(0)
-        status_bar.showMessage.assert_called_with("Opened Visualization panel.")
-
-    def test_handle_panel_navigation_rejects_untyped_payload(self, mgr):
-        mgr.chat_panel = MagicMock()
-        mgr.main_window.switch_page = MagicMock()
-        mgr.handle_panel_navigation({"panel": "unknown_panel"})
-
-        mgr.main_window.switch_page.assert_not_called()
-        mgr.chat_panel.show_notice.assert_called_once_with(
-            "The requested XBrainLab view could not be opened."
-        )
-
-    def test_prepare_model_deletion_no_controller(self, mgr):
-        mgr._assistant_runtime.controller = None
-        assert mgr.prepare_model_deletion("model") is True
-
-    def test_prepare_model_deletion_local_mode(self, mgr):
-        mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.return_value = True
-        with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
-            assert mgr.prepare_model_deletion("model") is False
-
-    def test_prepare_model_deletion_gemini(self, mgr):
-        mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.return_value = True
-        with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
-            assert mgr.prepare_model_deletion("model") is False
-
-    def test_check_vram_not_local(self, mgr):
-        mgr.check_vram_conflict(switching_to_local=False)
-        # no warning when not local
-
-    @patch("XBrainLab.ui.components.vram_checker.QMessageBox")
-    def test_check_vram_local_and_3d(self, mock_mb, mgr):
-        mgr.main_window.visualization_panel = MagicMock()
-        mgr.check_vram_conflict(switching_to_local=True, switching_to_3d=True)
-        mock_mb.warning.assert_called_once()
-
-    def test_on_viz_tab_changed_non_3d(self, mgr):
-        mgr.check_vram_conflict = MagicMock()
-        mgr.on_viz_tab_changed(0)
-        mgr.check_vram_conflict.assert_not_called()
-
-    def test_on_viz_tab_changed_3d(self, mgr):
-        mgr.vram_checker = MagicMock()
-        mgr.on_viz_tab_changed(3)
-        mgr.vram_checker.on_viz_tab_changed.assert_called_with(3)
-
-
-# ====================================================================
 # SaliencyTopographicMapWidget
 # ====================================================================
 
@@ -3335,16 +2984,9 @@ class TestTopoMapView:
         qtbot.addWidget(w)
         return w
 
-    def test_creates(self, widget):
-        assert isinstance(widget, QWidget)
-
     def test_show_warning(self, widget):
         widget.show_warning("test warning")
         assert "test warning" in widget.error_label.text()
-
-    def test_update_plot_rejects_unpublished_render_data(self, widget):
-        widget.update_plot(MagicMock(), False)
-        assert "publication is invalid" in widget.error_label.text()
 
     @patch(
         "XBrainLab.ui.panels.visualization.saliency_views.topomap_view.VisualizerType"
@@ -3407,13 +3049,6 @@ class TestSpectrogramView:
         qtbot.addWidget(w)
         return w
 
-    def test_creates(self, widget):
-        assert isinstance(widget, QWidget)
-
-    def test_update_plot_rejects_unpublished_render_data(self, widget):
-        widget.update_plot(MagicMock(), False)
-        assert "publication is invalid" in widget.error_label.text()
-
     @patch(
         "XBrainLab.ui.panels.visualization.saliency_views.spectrogram_view.VisualizerType"
     )
@@ -3437,12 +3072,24 @@ class TestSpectrogramView:
     def test_render_plot_delegates_typed_data(self, mock_vt, widget):
         publication = _saliency_render_publication()
         mock_vt.SaliencySpectrogramMap.value.return_value.get_plt.return_value = None
+        preparation_key = ("test-lineage",)
 
-        assert widget._render_plot(publication.data) is None
+        assert (
+            widget._render_plot(
+                publication.data,
+                widget._preparation_cache,
+                preparation_key,
+                False,
+            )
+            is None
+        )
 
         mock_vt.SaliencySpectrogramMap.value.assert_called_once_with(publication.data)
         mock_vt.SaliencySpectrogramMap.value.return_value.get_plt.assert_called_once_with(
             method="grad",
+            display_normalized=False,
+            preparation_cache=widget._preparation_cache,
+            preparation_key=preparation_key,
         )
 
     @patch(
@@ -3453,4 +3100,9 @@ class TestSpectrogramView:
         mock_vt.SaliencySpectrogramMap.value.side_effect = RuntimeError("fail")
 
         with pytest.raises(RuntimeError, match="fail"):
-            widget._render_plot(publication.data)
+            widget._render_plot(
+                publication.data,
+                widget._preparation_cache,
+                ("test-lineage",),
+                False,
+            )

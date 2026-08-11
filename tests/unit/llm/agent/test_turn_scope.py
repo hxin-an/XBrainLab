@@ -195,7 +195,7 @@ def test_explicit_continuation_uses_bounded_guided_scope(text: str) -> None:
         ),
         (
             "Prepare this EEG dataset for training.",
-            CommandName.GENERATE_DATASET.value,
+            CommandName.CONFIGURE_DATASET_SPLIT.value,
         ),
         (
             "載入資料、完成前處理並建立 epochs",
@@ -211,7 +211,7 @@ def test_explicit_continuation_uses_bounded_guided_scope(text: str) -> None:
         ),
         (
             "幫我把這份 EEG 資料準備到可以訓練",
-            CommandName.GENERATE_DATASET.value,
+            CommandName.CONFIGURE_DATASET_SPLIT.value,
         ),
         (
             "There are no external labels; load this recording, preprocess it, "

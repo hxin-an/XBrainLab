@@ -50,6 +50,9 @@ if TYPE_CHECKING:
         SaliencyRenderPublication,
         SaliencyRenderRequest,
     )
+    from XBrainLab.backend.application.training_recommendation import (
+        TrainingRecommendation,
+    )
     from XBrainLab.backend.application.view_publication import (
         InterpretationReviewIdentity,
     )
@@ -179,6 +182,16 @@ class TrainingQueryPort(Protocol):
         expected_publication_generation: int | None = None,
     ) -> CommandResult:
         """Return detached Training configuration state."""
+        ...
+
+    def get_training_recommendation(
+        self,
+        *,
+        expected_publication_generation: int | None = None,
+        prospective_model_name: str | None = None,
+        prospective_model_params: dict[str, Any] | None = None,
+    ) -> TrainingRecommendation:
+        """Return the backend-owned starting point for Training Setting."""
         ...
 
 
@@ -429,6 +442,19 @@ class _StudyApplicationUiRuntime:
             expected_publication_generation=expected_publication_generation,
         )
 
+    def get_training_recommendation(
+        self,
+        *,
+        expected_publication_generation: int | None = None,
+        prospective_model_name: str | None = None,
+        prospective_model_params: dict[str, Any] | None = None,
+    ) -> TrainingRecommendation:
+        return self._service().get_training_recommendation(
+            expected_publication_generation=expected_publication_generation,
+            prospective_model_name=prospective_model_name,
+            prospective_model_params=prospective_model_params,
+        )
+
     def subscribe(self, event_name: str, callback: Callable[..., Any]) -> None:
         from XBrainLab.backend.application.view_publication import (  # noqa: PLC0415
             APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
@@ -460,6 +486,16 @@ class _StudyApplicationUiRuntime:
             None,
         )
         if callable(cancel_deferred) and cancel_deferred(event_name, callback):
+            return
+        if bool(getattr(host, "_closing_in_progress", False)):
+            from XBrainLab.backend.application.runtime import (  # noqa: PLC0415
+                get_initialized_application_service,
+            )
+
+            service = get_initialized_application_service(self.study)
+            if service is None:
+                return
+            service.unsubscribe(event_name, callback)
             return
         self._service().unsubscribe(event_name, callback)
 

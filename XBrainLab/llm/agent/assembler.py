@@ -21,6 +21,7 @@ from ..tools.application_surface import (
     ApplicationToolRuntime,
     application_tool_runtime,
 )
+from ..tools.base import BaseTool
 from ..tools.schema_contract import LEGACY_COMPATIBILITY_TOOLS, tool_contract_for_llm
 from ..tools.tool_registry import ToolRegistry
 from .context_encoding import (
@@ -267,7 +268,57 @@ instead of inventing a workflow fact.
                 json.dumps(model_response_tool_contract(), indent=2),
             )
         )
+        sections.extend(
+            self._final_output_reminder(active_tools, backend_default_tools)
+        )
         return "\n".join(sections)
+
+    @staticmethod
+    def _final_output_reminder(
+        active_tools: list[BaseTool],
+        backend_default_tools: frozenset[str],
+    ) -> tuple[str, ...]:
+        """Place the current turn's strict shape after the longer schema catalog."""
+        if len(active_tools) != 1:
+            return (
+                "Final output reminder:",
+                "Return one bare JSON object, never an array or a wrapped object.",
+            )
+
+        tool = active_tools[0]
+        tool_def = tool_contract_for_llm(
+            tool,
+            use_backend_defaults=tool.name in backend_default_tools,
+        )
+        parameters = tool_def.get("parameters")
+        properties = (
+            parameters.get("properties") if isinstance(parameters, dict) else None
+        )
+        if properties == {}:
+            exact = json.dumps(
+                {"tool_name": tool.name, "parameters": {}},
+                separators=(",", ":"),
+            )
+            return (
+                "Final output reminder:",
+                "Return one bare JSON object, never an array or a wrapped object: "
+                f"{exact}",
+            )
+
+        supported_names = (
+            ", ".join(sorted(str(name) for name in properties))
+            if isinstance(properties, dict) and properties
+            else "none"
+        )
+        return (
+            "Final output reminder:",
+            "Return one bare JSON object, never an array or a wrapped object. "
+            f'For a direct action, tool_name must be "{tool.name}" and parameters '
+            "must be an object. Copy every supported value explicitly stated in "
+            "the latest user request into parameters, even when it is optional. "
+            f"Supported parameter names: {supported_names}. Omit an optional "
+            "parameter only when the request does not state it.",
+        )
 
     @staticmethod
     def _is_zero_parameter_contract(tool_def: dict[str, Any]) -> bool:

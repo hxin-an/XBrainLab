@@ -1,6 +1,6 @@
 # XBrainLab Roadmap
 
-最後更新：`2026-07-03`
+最後更新：`2026-08-10`
 
 這份 roadmap 是產品主線，不是施工日誌。它用來決定：**現在先做什麼、做到什麼程度才可交給使用者測、哪些 claim 不能先講。**
 
@@ -50,7 +50,7 @@ Choose EEG data
 -> Review metadata and epoch hints
 -> Preprocess
 -> Create epochs
--> Generate dataset / split
+-> Configure data split
 -> Configure and run training
 -> Review evaluation
 -> Open visualization / saliency
@@ -71,6 +71,19 @@ Assistant 是產品主線，但不應早於 Desktop MVP。
 - Desktop workflow 不穩時，assistant 只會把不穩定流程自動化，反而放大 bug。
 - Assistant MVP 先追求 reliable workflow operation，不追求 thesis score。
 - Thesis Evidence 最後才做 formal benchmark、AutoResearch-style case generation、repeat runs 和 statistical report。
+
+## Deferred Training Timed Hyperparameter Search
+
+目前 Training 交付只提供 deterministic recommended defaults，不是計時搜尋、AutoML 或模型選擇。
+計時 hyperparameter search 是未來 Product Polish 之後的獨立工作，開始實作前必須維持以下產品與驗證邊界：
+
+- 只搜尋當前已選模型的 hyperparameters；不跨模型比較，不暗中切換模型。
+- 唯一最佳化目標是 validation balanced accuracy。test split 只能用於最後一次評估，不得作為 trial 選擇、pruning、early stopping 或結果排名的依據。
+- 使用 phased CV：先用低成本階段篩選，只讓候選設定進入後續較完整的 cross-validation；每個階段的 fold、seed、進級與終止規則都要可重跑。
+- 搜尋必須有明確 wall-clock 與 trial 上限。使用者可安全停止，中斷時保留當前設定與已完成的最佳 trial，不產生半套設定或損壞 history。
+- 支援 early stopping、無望 trial pruning 與 OOM recovery。OOM 可用明確的低資源策略重試或將該 trial 標記失敗，不可令整個搜尋崩潰或 silent 改寫使用者設定。
+- Training History 只新增一個可展開的 search group，集中顯示階段、trials、best validation score、停止原因與 recovery；不把每個 trial 散落成多筆頂層 training runs。
+- 搜尋完成後必須明確提供 `Apply settings` 與 `Keep current`；未經使用者選擇不得自動覆寫現有 Training 設定。
 
 ## MCP 決策
 
@@ -93,3 +106,4 @@ client matrix 和 validation cost；不能從舊 roadmap 自動復活。
 - Expert Workflow Mode。
 - Workflow Recipe DSL。
 - Training Model Registry / Model Node Visualization。
+- Training timed hyperparameter search（當前只交付 deterministic recommended defaults）。

@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from tests.unit.backend.path_assertions import filesystem_path_key
 from XBrainLab.backend.application import (
     ApplicationService,
     AutomationPayloadError,
@@ -15,11 +16,14 @@ from XBrainLab.backend.application import (
     PreprocessCommand,
     PreprocessOperation,
     ScanSourceCommand,
+    TrainingRecommendationField,
     build_command_from_payload,
     command_specs,
     execute_automation_payload,
-    mcp_tool_specs,
     resource_guard,
+)
+from XBrainLab.backend.application.training_submission import (
+    training_submission_edited_fields,
 )
 from XBrainLab.backend.application.view_publication import (
     PUBLIC_VIEW_UNAVAILABLE_MESSAGE,
@@ -61,7 +65,7 @@ def test_command_specs_cover_primary_application_commands_with_autonomy_policy()
         "nullable": True,
     }
 
-    dataset_spec = specs[CommandName.GENERATE_DATASET.value]
+    dataset_spec = specs[CommandName.CONFIGURE_DATASET_SPLIT.value]
     split_config = dataset_spec.input_schema["properties"]["split_config"]
     assert split_config["additionalProperties"] is False
     assert split_config["required"] == [
@@ -77,6 +81,33 @@ def test_command_specs_cover_primary_application_commands_with_autonomy_policy()
     splitter = split_config["properties"]["test_splitters"]["items"]
     assert "By Trial" in splitter["properties"]["split_type"]["enum"]
     assert "Ratio" in splitter["properties"]["split_unit"]["enum"]
+
+    training_spec = specs[CommandName.CONFIGURE_TRAINING.value]
+    assert (
+        "edited_recommendation_fields" not in training_spec.input_schema["properties"]
+    )
+
+    preview_spec = specs[CommandName.PREVIEW_INTERPRETATION.value]
+    value_decision = preview_spec.input_schema["properties"]["choices"]["properties"][
+        "label_carrier_choices"
+    ]["additionalProperties"]["properties"]["value_decisions"]["additionalProperties"]
+    assert "decision_source" not in value_decision["properties"]
+    assert "provenance" not in value_decision["properties"]
+    assert "decision" not in value_decision["properties"]
+    assert "count" not in value_decision["properties"]
+
+    train_capability = specs[CommandName.TRAIN.value].capability
+    assert train_capability is not None
+    assert train_capability["long_running"] is True
+    assert train_capability["requires_confirmation"] is True
+    assert train_capability["decision_boundary"] == "long_running"
+    evaluate_capability = specs[CommandName.EVALUATE.value].capability
+    assert evaluate_capability is not None
+    assert evaluate_capability["long_running"] is False
+    assert evaluate_capability["decision_boundary"] is None
+    reset_capability = specs[CommandName.RESET_SESSION.value].capability
+    assert reset_capability is not None
+    assert reset_capability["destructive"] is True
 
 
 def test_command_specs_fail_closed_when_published_state_is_stale() -> None:
@@ -127,60 +158,56 @@ def test_preview_command_spec_exposes_recipe_remap_choices():
     assert "run_event_mappings" in choices["properties"]
 
 
-def test_mcp_tool_specs_use_same_command_schema():
+@pytest.mark.parametrize(
+    "command_name",
+    [
+        CommandName.PREVIEW_INTERPRETATION,
+        CommandName.REVIEW_INTERPRETATION,
+    ],
+)
+@pytest.mark.parametrize(
+    "forged_field",
+    ["decision_source", "provenance", "decision", "count"],
+)
+def test_data_interpretation_automation_rejects_output_owned_decision_fields(
+    command_name: CommandName,
+    forged_field: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     service = ApplicationService(Study())
-
-    tools = {tool["name"]: tool for tool in mcp_tool_specs(service)}
-
-    assert CommandName.SCAN_SOURCE.value in tools
-    assert tools[CommandName.SCAN_SOURCE.value]["inputSchema"]["required"] == [
-        "source_path"
-    ]
-    assert (
-        tools[CommandName.SCAN_SOURCE.value]["x_xbrainlab"]["taxonomy"]
-        == "data_interpretation"
+    execute_spy = MagicMock(
+        side_effect=AssertionError("forged provenance must not reach service.execute"),
     )
-    preview_choices = tools[CommandName.PREVIEW_INTERPRETATION.value]["inputSchema"][
-        "properties"
-    ]["choices"]
-    assert "eeg_file_remap" in preview_choices["properties"]
-    assert "label_carrier_remap" in preview_choices["properties"]
-    evaluate_schema = tools[CommandName.EVALUATE.value]["inputSchema"]
-    assert "include_metrics" not in evaluate_schema["properties"]
-    assert "include_pooled_results" not in evaluate_schema["properties"]
-    assert "include_model_summaries" not in evaluate_schema["properties"]
-    assert "model_summary_plan_index" not in evaluate_schema["properties"]
-    assert "model_summary_run_index" not in evaluate_schema["properties"]
-    assert "summary_identity" not in evaluate_schema["properties"]
-    visualize_schema = tools[CommandName.VISUALIZE.value]["inputSchema"]
-    assert set(visualize_schema["properties"]) == {"view"}
-    query_state_schema = tools[CommandName.QUERY_STATE.value]["inputSchema"]
-    assert set(query_state_schema["properties"]) == {"query", "params"}
-    generate_schema = tools[CommandName.GENERATE_DATASET.value]["inputSchema"]
-    assert "generator" not in generate_schema["properties"]
+    monkeypatch.setattr(service, "execute", execute_spy)
+    arguments = {
+        "choices": {
+            "label_carrier_choices": {
+                "events.tsv": {
+                    "value_decisions": {
+                        "left": {
+                            "role": "stimulus",
+                            "keep_event": True,
+                            "use_as_class": True,
+                            "class_name": "left hand",
+                            forged_field: "forged",
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if command_name is CommandName.REVIEW_INTERPRETATION:
+        arguments["source_path"] = "/data"
 
+    execution = execute_automation_payload(
+        service,
+        {"command": command_name.value, "arguments": arguments},
+    )
 
-def test_mcp_tool_specs_expose_execution_boundary_metadata():
-    service = ApplicationService(Study())
-
-    tools = {tool["name"]: tool for tool in mcp_tool_specs(service)}
-
-    train_execution = tools[CommandName.TRAIN.value]["x_xbrainlab"]["execution"]
-    assert train_execution["long_running"] is True
-    assert train_execution["requires_http_job"] is True
-    assert train_execution["supported_job_transports"] == ["http"]
-    assert train_execution["requires_confirmation"] is True
-    assert train_execution["decision_boundary"] == "long_running"
-
-    evaluate_execution = tools[CommandName.EVALUATE.value]["x_xbrainlab"]["execution"]
-    assert evaluate_execution["long_running"] is False
-    assert evaluate_execution["requires_http_job"] is False
-    assert evaluate_execution["decision_boundary"] is None
-
-    reset_execution = tools[CommandName.RESET_SESSION.value]["x_xbrainlab"]["execution"]
-    assert reset_execution["destructive"] is True
-    assert reset_execution["requires_confirmation"] is False
-    assert reset_execution["confirmation_required"] is False
+    assert execution.accepted is False
+    assert execution.verification["schema_valid"] is False
+    assert forged_field in execution.verification["error"]
+    execute_spy.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -192,7 +219,7 @@ def test_mcp_tool_specs_expose_execution_boundary_metadata():
         (CommandName.EVALUATE, "model_summary_plan_index"),
         (CommandName.EVALUATE, "model_summary_run_index"),
         (CommandName.EVALUATE, "summary_identity"),
-        (CommandName.GENERATE_DATASET, "generator"),
+        (CommandName.CONFIGURE_DATASET_SPLIT, "generator"),
     ],
 )
 def test_automation_rejects_ui_only_payload_flags(command_name, field_name):
@@ -209,29 +236,16 @@ def test_legacy_compatibility_commands_require_explicit_schema_opt_in():
     service = ApplicationService(Study())
 
     specs = {spec.name: spec for spec in command_specs(service)}
-    tools = {tool["name"]: tool for tool in mcp_tool_specs(service)}
 
     assert {
         CommandName.LOAD_DATA.value,
         CommandName.ATTACH_LABELS.value,
         CommandName.IMPORT_LABELS.value,
     }.isdisjoint(specs)
-    assert {
-        CommandName.LOAD_DATA.value,
-        CommandName.ATTACH_LABELS.value,
-        CommandName.IMPORT_LABELS.value,
-    }.isdisjoint(tools)
 
     specs = {
         spec.name: spec
         for spec in command_specs(
-            service,
-            include_legacy_compatibility=True,
-        )
-    }
-    tools = {
-        tool["name"]: tool
-        for tool in mcp_tool_specs(
             service,
             include_legacy_compatibility=True,
         )
@@ -249,11 +263,6 @@ def test_legacy_compatibility_commands_require_explicit_schema_opt_in():
         assert "Legacy compatibility" in spec.description
         assert "review_interpretation" in spec.preferred_commands
         assert "apply_interpretation" in spec.preferred_commands
-
-        metadata = tools[command_name]["x_xbrainlab"]
-        assert metadata["legacy_compatibility"] is True
-        assert metadata["primary_workflow"] is False
-        assert "review_interpretation" in metadata["preferred_commands"]
 
 
 @pytest.mark.parametrize(
@@ -325,6 +334,72 @@ def test_build_training_command_rejects_values_outside_published_schema(
                 "arguments": {field_name: invalid_value},
             },
         )
+
+
+def test_configure_training_automation_derives_all_five_recommendation_fields():
+    arguments = {
+        "epoch": 17,
+        "batch_size": 3,
+        "learning_rate": 0.02,
+        "optimizer": "SGD",
+        "evaluation_option": "Best validation loss",
+        "device": "cpu",
+    }
+
+    command = build_command_from_payload(
+        {
+            "command": CommandName.CONFIGURE_TRAINING.value,
+            "arguments": arguments,
+        }
+    )
+
+    assert training_submission_edited_fields(command) == frozenset(
+        TrainingRecommendationField
+    )
+    with pytest.raises(
+        AutomationPayloadError,
+        match="edited_recommendation_fields",
+    ):
+        build_command_from_payload(
+            {
+                "command": CommandName.CONFIGURE_TRAINING.value,
+                "arguments": {
+                    **arguments,
+                    "edited_recommendation_fields": ["epochs"],
+                },
+            }
+        )
+
+
+def test_configure_training_automation_round_trips_all_five_manual_values():
+    service = ApplicationService(Study())
+
+    execution = execute_automation_payload(
+        service,
+        {
+            "command": CommandName.CONFIGURE_TRAINING.value,
+            "arguments": {
+                "epoch": 17,
+                "batch_size": 3,
+                "learning_rate": 0.02,
+                "optimizer": "SGD",
+                "evaluation_option": "Best validation loss",
+                "device": "cpu",
+            },
+        },
+    )
+    recommendation = service.get_training_recommendation()
+
+    assert execution.result is not None
+    assert execution.result["status"] == "ok"
+    assert recommendation.values.to_mapping() == {
+        TrainingRecommendationField.EPOCHS: 17,
+        TrainingRecommendationField.BATCH_SIZE: 3,
+        TrainingRecommendationField.LEARNING_RATE: 0.02,
+        TrainingRecommendationField.OPTIMIZER: "SGD",
+        TrainingRecommendationField.EVALUATION_STRATEGY: "Best validation loss",
+    }
+    assert recommendation.manual_fields == tuple(TrainingRecommendationField)
 
 
 @pytest.mark.parametrize(
@@ -432,12 +507,18 @@ def test_automation_public_serializer_redacts_internal_result_and_state(
 
     internal = execution.to_internal_dict()
     public = execution.to_public_dict()
+    internal_text = json.dumps(internal)
+    public_text = json.dumps(public)
+    canonical_source = filesystem_path_key(source)
+    encoded_source = json.dumps(str(source))[1:-1]
+    encoded_canonical_source = json.dumps(canonical_source)[1:-1]
 
-    assert str(source) in json.dumps(internal)
-    assert str(source) not in json.dumps(public)
-    assert "Clinical Records" not in json.dumps(public)
-    assert "Mary Example" not in json.dumps(public)
-    assert "[REDACTED_PATH]" in json.dumps(public)
+    assert encoded_source in internal_text
+    assert encoded_source not in public_text
+    assert encoded_canonical_source not in public_text.casefold()
+    assert "Clinical Records" not in public_text
+    assert "Mary Example" not in public_text
+    assert "[REDACTED_PATH]" in public_text
     assert execution.to_dict() == public
 
 
@@ -475,8 +556,6 @@ def test_execute_automation_payload_state_contains_interpretation_review_truth(
                                     "keep_event": True,
                                     "use_as_class": True,
                                     "class_name": "left hand",
-                                    "decision_source": "user_choice",
-                                    "provenance": "automation_test",
                                 }
                             },
                         },
@@ -586,36 +665,6 @@ def test_automation_preflight_reads_one_committed_publication():
 
     assert execution.accepted is False
     service.get_view_publication.assert_called_once_with()
-
-
-def test_headless_cli_lists_mcp_tool_specs():
-    completed = subprocess.run(  # noqa: S603
-        [sys.executable, "scripts/dev/run_application_command.py", "--mcp-tools"],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-    tools = json.loads(completed.stdout)
-    assert any(tool["name"] == "scan_source" for tool in tools)
-    assert not any(tool["name"] == "load_data" for tool in tools)
-
-
-def test_headless_cli_legacy_compatibility_requires_explicit_opt_in():
-    completed = subprocess.run(  # noqa: S603
-        [
-            sys.executable,
-            "scripts/dev/run_application_command.py",
-            "--mcp-tools",
-            "--include-legacy-compatibility",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-    tools = json.loads(completed.stdout)
-    assert any(tool["name"] == "load_data" for tool in tools)
 
 
 def test_headless_cli_redacts_hostile_command_text() -> None:

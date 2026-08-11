@@ -66,6 +66,114 @@ def test_editor_requires_explicit_role_and_use_before_complete(qtbot) -> None:
     }
 
 
+def test_use_as_only_offers_training_class_and_do_not_use(qtbot) -> None:
+    editor = EventValueDecisionEditor(
+        [_carrier("/data/run-01_events.tsv", {"left": _unresolved("left")})]
+    )
+    qtbot.addWidget(editor)
+
+    use_selector = editor.findChildren(QComboBox, "EventValueUseSelector")[0]
+
+    assert [
+        (use_selector.itemText(index), use_selector.itemData(index))
+        for index in range(use_selector.count())
+    ] == [
+        ("Choose use", ""),
+        ("Training class", "class"),
+        ("Do not use", "ignore"),
+    ]
+
+
+def test_do_not_use_keeps_event_without_serializing_a_class_name(qtbot) -> None:
+    editor = EventValueDecisionEditor(
+        [
+            _carrier(
+                "/data/run-01_events.tsv", {"button_press": _unresolved("button_press")}
+            )
+        ]
+    )
+    qtbot.addWidget(editor)
+
+    editor.set_value_decision(
+        "button_press",
+        role="response",
+        use="ignore",
+    )
+
+    assert editor.changed_decisions_by_carrier() == {
+        "/data/run-01_events.tsv": {
+            "button_press": {
+                "role": "response",
+                "keep_event": True,
+                "use_as_class": False,
+                "suggested_name": "Button Press",
+                "decision_source": "user_choice",
+                "provenance": "ui_event_value_editor",
+            }
+        }
+    }
+
+
+def test_class_name_editor_hides_without_retaining_space_and_restores_text(
+    qtbot,
+) -> None:
+    editor = EventValueDecisionEditor(
+        [_carrier("/data/run-01_events.tsv", {"left": _unresolved("left")})]
+    )
+    qtbot.addWidget(editor)
+    editor.show()
+    class_editor = editor.findChildren(QLineEdit, "EventValueClassNameEditor")[0]
+
+    assert class_editor.isHidden()
+    assert class_editor.sizePolicy().retainSizeWhenHidden() is False
+
+    editor.set_value_decision(
+        "left",
+        role="stimulus",
+        use="class",
+        class_name="Left hand",
+    )
+
+    assert class_editor.isHidden() is False
+    assert class_editor.text() == "Left hand"
+
+    editor.set_value_decision("left", role="stimulus", use="ignore")
+
+    assert class_editor.isHidden()
+    assert (
+        "class_name"
+        not in editor.changed_decisions_by_carrier()["/data/run-01_events.tsv"]["left"]
+    )
+
+    editor.set_value_decision("left", role="stimulus", use="class")
+
+    assert class_editor.isHidden() is False
+    assert class_editor.text() == "Left hand"
+
+
+def test_legacy_discarded_event_is_displayed_without_being_rewritten(qtbot) -> None:
+    legacy_decision = {
+        "role": "artifact",
+        "keep_event": False,
+        "use_as_class": False,
+        "suggested_name": "Noise",
+        "decision": "resolved",
+        "decision_source": "user_choice",
+        "count": 2,
+    }
+    editor = EventValueDecisionEditor(
+        [_carrier("/data/run-01_events.tsv", {"noise": legacy_decision})]
+    )
+    qtbot.addWidget(editor)
+
+    use_selector = editor.findChildren(QComboBox, "EventValueUseSelector")[0]
+    class_editor = editor.findChildren(QLineEdit, "EventValueClassNameEditor")[0]
+
+    assert use_selector.currentText() == "Do not use"
+    assert class_editor.isHidden()
+    assert editor.changed_decisions_by_carrier() == {}
+
+
 def test_editor_round_trips_boundary_and_system_as_distinct_roles(qtbot) -> None:
     editor = EventValueDecisionEditor(
         [
@@ -89,8 +197,8 @@ def test_editor_round_trips_boundary_and_system_as_distinct_roles(qtbot) -> None
     assert role_choices["System"] == "system"
     assert role_choices["Stimulus"] == "stimulus"
 
-    editor.set_value_decision("boundary", role="boundary", use="event")
-    editor.set_value_decision("start_experiment", role="system", use="event")
+    editor.set_value_decision("boundary", role="boundary", use="ignore")
+    editor.set_value_decision("start_experiment", role="system", use="ignore")
 
     decisions = editor.changed_decisions_by_carrier()["/data/run-01_events.tsv"]
     assert decisions["boundary"]["role"] == "boundary"
@@ -299,18 +407,14 @@ def test_editor_fits_a_narrow_wizard_viewport_without_horizontal_clipping(
             *editor.findChildren(QLineEdit),
         )
     )
-    value_widths = [
-        (
-            label.text(),
-            label.width(),
-            label.fontMetrics().horizontalAdvance(label.text()),
-        )
-        for label in editor.findChildren(QLabel, "DataImportValueDecisionValue")
-    ]
+    value_labels = editor.findChildren(QLabel, "DataImportValueDecisionValue")
     assert all(
-        label.fontMetrics().horizontalAdvance(label.text()) <= label.width()
-        for label in editor.findChildren(QLabel, "DataImportValueDecisionValue")
-    ), value_widths
+        label.fontMetrics().horizontalAdvance(label.text())
+        <= label.contentsRect().width()
+        for label in value_labels
+    )
+    assert {label.accessibleName() for label in value_labels} == set(values)
+    assert all("Value:" in label.toolTip() for label in value_labels)
     assert all(
         label.fontMetrics().horizontalAdvance(label.text()) <= label.width()
         for label in editor.findChildren(QLabel, "DataImportValueDecisionCoverage")

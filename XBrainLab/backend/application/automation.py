@@ -36,8 +36,8 @@ from .commands import (
     CommandName,
     ConfigureTrainingCommand,
     CreateEpochCommand,
+    DiscardTrainingPreparationCommand,
     EvaluateCommand,
-    GenerateDatasetCommand,
     ImportLabelsCommand,
     LabelImportPlan,
     LoadDataCommand,
@@ -52,6 +52,7 @@ from .commands import (
     ResetSessionCommand,
     ReviewInterpretationCommand,
     SaliencyCommand,
+    SaveDatasetSplitCommand,
     SaveInterpretationRecipeCommand,
     ScanSourceCommand,
     StopTrainingCommand,
@@ -63,6 +64,8 @@ from .commands import (
 from .data_interpretation_choice_schema import data_interpretation_choices_schema
 from .serialization import serialize_json_value
 from .service import ApplicationService
+from .training_recommendation import TrainingRecommendationField
+from .training_submission import attach_training_submission_provenance
 
 
 @dataclass(frozen=True)
@@ -157,10 +160,11 @@ COMMAND_TYPES: dict[CommandName, type[Any]] = {
     CommandName.REMOVE_FILES: RemoveFilesCommand,
     CommandName.PREPROCESS: PreprocessCommand,
     CommandName.CREATE_EPOCH: CreateEpochCommand,
-    CommandName.GENERATE_DATASET: GenerateDatasetCommand,
+    CommandName.CONFIGURE_DATASET_SPLIT: SaveDatasetSplitCommand,
     CommandName.CLEAR_DATASETS: ClearDatasetsCommand,
     CommandName.CONFIGURE_TRAINING: ConfigureTrainingCommand,
     CommandName.TRAIN: TrainCommand,
+    CommandName.DISCARD_TRAINING_PREPARATION: DiscardTrainingPreparationCommand,
     CommandName.STOP_TRAINING: StopTrainingCommand,
     CommandName.CLEAR_TRAINING_HISTORY: ClearTrainingHistoryCommand,
     CommandName.EVALUATE: EvaluateCommand,
@@ -189,10 +193,11 @@ COMMAND_TAXONOMY: dict[CommandName, str] = {
     CommandName.REMOVE_FILES: "metadata_resolution",
     CommandName.PREPROCESS: "data_transform",
     CommandName.CREATE_EPOCH: "data_transform",
-    CommandName.GENERATE_DATASET: "experiment_setup",
+    CommandName.CONFIGURE_DATASET_SPLIT: "experiment_setup",
     CommandName.CLEAR_DATASETS: "lifecycle_destructive",
     CommandName.CONFIGURE_TRAINING: "experiment_setup",
     CommandName.TRAIN: "execution",
+    CommandName.DISCARD_TRAINING_PREPARATION: "execution_control",
     CommandName.STOP_TRAINING: "execution_control",
     CommandName.CLEAR_TRAINING_HISTORY: "lifecycle_destructive",
     CommandName.EVALUATE: "query",
@@ -203,6 +208,17 @@ COMMAND_TAXONOMY: dict[CommandName, str] = {
     CommandName.RESET_PREPROCESS: "lifecycle_destructive",
     CommandName.RESET_SESSION: "lifecycle_destructive",
     CommandName.NEW_SESSION: "lifecycle_destructive",
+}
+
+_TRAINING_RECOMMENDATION_ARGUMENT_FIELDS = {
+    "epoch": TrainingRecommendationField.EPOCHS,
+    "batch_size": TrainingRecommendationField.BATCH_SIZE,
+    "learning_rate": TrainingRecommendationField.LEARNING_RATE,
+    "optimizer": TrainingRecommendationField.OPTIMIZER,
+    "evaluation_option": TrainingRecommendationField.EVALUATION_STRATEGY,
+}
+_AUTOMATION_DERIVED_ARGUMENT_FIELDS: dict[CommandName, frozenset[str]] = {
+    CommandName.CONFIGURE_TRAINING: frozenset({"edited_recommendation_fields"}),
 }
 
 LEGACY_COMPATIBILITY_COMMANDS: frozenset[CommandName] = frozenset(
@@ -393,6 +409,15 @@ def execute_automation_payload(
 def _construct_command(command_name: CommandName, arguments: dict[str, Any]) -> Command:
     if any(type(key) is not str for key in dict.keys(arguments)):
         raise AutomationPayloadError("Payload argument names must be strings.")
+    requested_derived = sorted(
+        set(arguments)
+        & _AUTOMATION_DERIVED_ARGUMENT_FIELDS.get(command_name, frozenset())
+    )
+    if requested_derived:
+        raise AutomationPayloadError(
+            f"{command_name.value} received automation-derived arguments: "
+            f"{', '.join(requested_derived)}"
+        )
     command_type = COMMAND_TYPES[command_name]
     ui_only = _ui_only_command_fields(command_name)
     requested_ui_only = sorted(set(arguments) & ui_only)
@@ -443,8 +468,39 @@ def _construct_command(command_name: CommandName, arguments: dict[str, Any]) -> 
                 value,
                 training_properties[name],
             )
+        if (
+            command_name
+            in {
+                CommandName.PREVIEW_INTERPRETATION,
+                CommandName.REVIEW_INTERPRETATION,
+            }
+            and name == "choices"
+        ):
+            _validate_json_schema_boundary(
+                command_name,
+                value,
+                data_interpretation_choices_schema(),
+                path="choices",
+            )
         values[name] = _coerce_value(name, value)
-    return command_type(**values)
+    command = command_type(**values)
+    if isinstance(command, ConfigureTrainingCommand):
+        command = attach_training_submission_provenance(
+            command,
+            _training_recommendation_fields_from_arguments(arguments),
+        )
+    return command
+
+
+def _training_recommendation_fields_from_arguments(
+    arguments: dict[str, Any],
+) -> frozenset[TrainingRecommendationField]:
+    """Derive trusted provenance only from explicit public automation keys."""
+    return frozenset(
+        field
+        for key, field in _TRAINING_RECOMMENDATION_ARGUMENT_FIELDS.items()
+        if key in arguments
+    )
 
 
 def _is_confirmation_field(name: str) -> bool:
@@ -562,6 +618,57 @@ def _matches_json_type(value: Any, expected_type: str) -> bool:
     return True
 
 
+def _validate_json_schema_boundary(
+    command_name: CommandName,
+    value: Any,
+    schema: dict[str, Any],
+    *,
+    path: str,
+) -> None:
+    """Reject values that cross an object or array boundary in a public schema."""
+    expected_type = schema.get("type")
+    if type(expected_type) is str and not _matches_json_type(value, expected_type):
+        _raise_schema_type_error(command_name, path, expected_type, value)
+
+    if expected_type == "array":
+        item_schema = schema.get("items")
+        if type(value) is list and type(item_schema) is dict:
+            for index, item in enumerate(value):
+                _validate_json_schema_boundary(
+                    command_name,
+                    item,
+                    item_schema,
+                    path=f"{path}[{index}]",
+                )
+        return
+    if expected_type != "object" or type(value) is not dict:
+        return
+
+    properties = schema.get("properties")
+    known_properties = properties if type(properties) is dict else {}
+    additional = schema.get("additionalProperties", True)
+    for key, item in value.items():
+        if type(key) is not str:
+            raise AutomationPayloadError(
+                f"{command_name.value} argument {path} keys must be strings."
+            )
+        item_schema = known_properties.get(key)
+        if type(item_schema) is not dict:
+            if additional is False:
+                raise AutomationPayloadError(
+                    f"{command_name.value} argument {path}.{key} is not allowed "
+                    "by the public schema."
+                )
+            item_schema = additional if type(additional) is dict else None
+        if type(item_schema) is dict:
+            _validate_json_schema_boundary(
+                command_name,
+                item,
+                item_schema,
+                path=f"{path}.{key}",
+            )
+
+
 def _raise_schema_type_error(
     command_name: CommandName,
     path: str,
@@ -591,6 +698,12 @@ def _command_input_schema(command_type: type[Any]) -> dict[str, Any]:
         from .evaluation_render import EvaluationSummaryIdentity  # noqa: PLC0415
 
         localns["EvaluationSummaryIdentity"] = EvaluationSummaryIdentity
+    if command_type is SaveDatasetSplitCommand:
+        from .dataset_split_preview import (  # noqa: PLC0415
+            DatasetSplitPreviewReceipt,
+        )
+
+        localns["DatasetSplitPreviewReceipt"] = DatasetSplitPreviewReceipt
     type_hints = get_type_hints(command_type, localns=localns)
     for field_info in fields(command_type):
         if _field_hidden_from_automation(command_type, field_info.name):
@@ -616,17 +729,25 @@ def _command_input_schema(command_type: type[Any]) -> dict[str, Any]:
 def _ui_only_command_fields(command_name: CommandName) -> frozenset[str]:
     if command_name == CommandName.EVALUATE:
         return frozenset({"summary_identity"})
+    if command_name == CommandName.CONFIGURE_DATASET_SPLIT:
+        return frozenset({"preview_receipt"})
     return frozenset()
 
 
 def _field_hidden_from_automation(command_type: type[Any], field_name: str) -> bool:
+    if (
+        command_type is ConfigureTrainingCommand
+        and field_name
+        in _AUTOMATION_DERIVED_ARGUMENT_FIELDS[CommandName.CONFIGURE_TRAINING]
+    ):
+        return True
     if command_type is EvaluateCommand:
         return field_name in _ui_only_command_fields(CommandName.EVALUATE)
     return (
-        command_type is GenerateDatasetCommand
+        command_type is SaveDatasetSplitCommand
         and field_name
         in _ui_only_command_fields(
-            CommandName.GENERATE_DATASET,
+            CommandName.CONFIGURE_DATASET_SPLIT,
         )
     )
 
@@ -636,9 +757,16 @@ def _command_field_schema(
     field_name: str,
     annotation: Any,
 ) -> dict[str, Any]:
-    if command_type is PreviewInterpretationCommand and field_name == "choices":
+    if (
+        command_type
+        in {
+            PreviewInterpretationCommand,
+            ReviewInterpretationCommand,
+        }
+        and field_name == "choices"
+    ):
         return data_interpretation_choices_schema()
-    if command_type is GenerateDatasetCommand and field_name == "split_config":
+    if command_type is SaveDatasetSplitCommand and field_name == "split_config":
         return _dataset_split_config_schema()
     return _json_schema_for_type(annotation)
 

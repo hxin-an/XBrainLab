@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
-from typing import Literal
+from typing import Any, Literal
 
 PathMatchStatus = Literal["exact", "unique_basename", "missing", "ambiguous"]
 
@@ -21,6 +23,40 @@ class ScanPathMatch:
     @property
     def accepted(self) -> bool:
         return self.status in {"exact", "unique_basename"}
+
+
+@dataclass(frozen=True, slots=True)
+class CanonicalPathIdentityScope:
+    """Canonical values retained only for one verified admission scope."""
+
+    values_by_lexical_path: dict[str, str]
+
+    @classmethod
+    def from_admitted_paths(
+        cls,
+        paths: Iterable[Any],
+    ) -> CanonicalPathIdentityScope:
+        """Retain paths already canonicalized by discovery or admission."""
+        values: dict[str, str] = {}
+        for value in paths:
+            text = str(value).strip()
+            if not text:
+                continue
+            canonical = os.path.normpath(
+                os.path.abspath(os.path.expanduser(text)),
+            )
+            values[_lexical_path_identity(canonical)] = canonical
+        return cls(values_by_lexical_path=values)
+
+    def contains(self, value: Any) -> bool:
+        return _lexical_path_identity(value) in self.values_by_lexical_path
+
+    def value(self, value: Any) -> str:
+        lexical = _lexical_path_identity(value)
+        return self.values_by_lexical_path.get(lexical) or resolved_path_value(value)
+
+    def identity(self, value: Any) -> str:
+        return os.path.normcase(self.value(value))
 
 
 def path_basename(value: str) -> str:
@@ -43,6 +79,40 @@ def normalized_path_identity(value: str) -> str:
     if windows_path.drive or "\\" in text:
         return windows_path.as_posix().casefold()
     return Path(text).expanduser().as_posix()
+
+
+def _lexical_path_identity(value: Any) -> str:
+    return os.path.normcase(
+        os.path.normpath(
+            os.path.abspath(os.path.expanduser(str(value))),
+        )
+    )
+
+
+def resolved_path_value(value: Any) -> str:
+    """Resolve a native path while retaining its spelling for product state."""
+    return str(Path(str(value)).expanduser().resolve(strict=False))
+
+
+def resolved_path_identity(value: Any) -> str:
+    """Return a native filesystem comparison key for a resolved path value."""
+    return os.path.normcase(resolved_path_value(value))
+
+
+def deduplicate_resolved_paths(values: Iterable[Any]) -> list[str]:
+    """Deduplicate native paths by identity while preserving the first spelling."""
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        path = resolved_path_value(value)
+        # ``path`` is already canonical. Resolving it again is particularly costly
+        # on WSL-mounted drives and adds no identity information.
+        identity = os.path.normcase(path)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        result.append(path)
+    return result
 
 
 def resolve_scan_path(requested: str, scanned: list[str]) -> ScanPathMatch:

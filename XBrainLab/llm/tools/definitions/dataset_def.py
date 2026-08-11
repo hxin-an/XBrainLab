@@ -417,8 +417,8 @@ class BaseQueryStateTool(BaseTool):
         raise NotImplementedError
 
 
-class BaseGenerateDatasetTool(BaseTool):
-    """Generate a training/validation/test dataset from epoched data.
+class BaseConfigureDatasetSplitTool(BaseTool):
+    """Save training/validation/test split settings for epoched data.
 
     Supports multiple split strategies (trial, session, subject) and
     training modes (individual, group).
@@ -426,11 +426,11 @@ class BaseGenerateDatasetTool(BaseTool):
 
     @property
     def name(self) -> str:
-        return "generate_dataset"
+        return "configure_dataset_split"
 
     @property
     def description(self) -> str:
-        return "Generate a training dataset from EEG epochs."
+        return "Save data splitting settings for EEG training."
 
     @property
     def parameters(self) -> dict[str, Any]:

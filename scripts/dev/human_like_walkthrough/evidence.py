@@ -715,10 +715,43 @@ def _label_text_exceeds_bounds(label: QLabel) -> bool:
 
 def _button_renders_text(button: QAbstractButton) -> bool:
     """Return whether Qt paints the button text in its current presentation."""
+    if button.property("assistantCustomContent") is True:
+        return False
     return not (
         isinstance(button, QToolButton)
         and button.toolButtonStyle() is Qt.ToolButtonStyle.ToolButtonIconOnly
     )
+
+
+def button_visible_text_fits(button: QAbstractButton) -> bool:
+    """Measure rendered text and icon width against the live button width."""
+    if not _button_renders_text(button) or not button.text().strip():
+        return True
+    button.ensurePolished()
+    required = button.fontMetrics().tightBoundingRect(button.text()).width()
+    if not button.icon().isNull():
+        required += button.iconSize().width() + 4
+    # Qt's stylesheet proxy reports platform-dependent content rectangles and
+    # size hints that can be stale after responsive labels change. The capture
+    # gate already reviews padding visually, so this guard focuses on literal
+    # clipping against the live widget geometry.
+    return required <= max(button.width(), 0) + 2
+
+
+def button_visible_text_measurement(button: QAbstractButton) -> dict[str, int | bool]:
+    """Return portable button-fit diagnostics for walkthrough artifacts."""
+    text_rendered = _button_renders_text(button)
+    required = 0
+    if text_rendered and button.text().strip():
+        required = button.fontMetrics().tightBoundingRect(button.text()).width()
+        if not button.icon().isNull():
+            required += button.iconSize().width() + 4
+    return {
+        "text_rendered": text_rendered,
+        "required_width": required,
+        "available_width": max(button.width(), 0),
+        "fits": not text_rendered or required <= max(button.width(), 0) + 2,
+    }
 
 
 def icon_only_control_contrast_evidence(
@@ -787,9 +820,12 @@ def _assistant_text_overflow(panel: Any) -> list[str]:
             continue
         if isinstance(widget, QAbstractButton) and not _button_renders_text(widget):
             continue
+        if isinstance(widget, QAbstractButton):
+            if not button_visible_text_fits(widget):
+                overflows.append(name)
+            continue
         available = max(widget.contentsRect().width(), 1)
-        padding = 18 if isinstance(widget, QAbstractButton) else 0
-        if widget.fontMetrics().horizontalAdvance(text) + padding > available + 2:
+        if widget.fontMetrics().horizontalAdvance(text) > available + 2:
             overflows.append(name)
 
     for name in (
@@ -1180,10 +1216,23 @@ def assistant_runtime_evidence(panel: Any) -> dict[str, Any]:
         "setup_action_visible": setup_action.isVisible(),
         "setup_action_enabled": setup_action.isEnabled(),
         "setup_action_text": setup_action.text(),
+        "setup_action_semantic_text": _semantic_action_text(setup_action),
         "retry_action_visible": retry_action.isVisible(),
         "retry_action_enabled": retry_action.isEnabled(),
         "retry_action_text": retry_action.text(),
+        "retry_action_semantic_text": _semantic_action_text(retry_action),
     }
+
+
+def _semantic_action_text(button: QAbstractButton) -> str:
+    """Read stable action identity without depending on native text elision."""
+    accessible_name = " ".join(button.accessibleName().split())
+    if accessible_name:
+        return accessible_name
+    full_label = button.property("assistantFullLabel")
+    if isinstance(full_label, str) and full_label.strip():
+        return " ".join(full_label.split())
+    return " ".join(button.text().split())
 
 
 def assistant_restored_state(

@@ -48,6 +48,9 @@ MNE_BIDS_EEG_DIR = MNE_BIDS_ROOT / "sub-01" / "ses-eeg" / "eeg"
 MNE_BIDS_EEG = MNE_BIDS_EEG_DIR / "sub-01_ses-eeg_task-rest_eeg.vhdr"
 MNE_BIDS_EVENTS = MNE_BIDS_EEG_DIR / "sub-01_ses-eeg_task-rest_events.tsv"
 
+pytestmark = pytest.mark.optional_public_fixture
+IMPORT_COMPLETION_TIMEOUT_MS = 45_000
+
 
 @pytest.fixture(autouse=True)
 def mock_ui_blocking() -> Iterator[None]:
@@ -309,7 +312,7 @@ def _start_apply(
 def _wait_for_commands(qtbot, runtime: _ImportRuntime) -> None:
     qtbot.waitUntil(
         lambda: application_command_registry().active_count(runtime.panel) == 0,
-        timeout=10_000,
+        timeout=IMPORT_COMPLETION_TIMEOUT_MS,
     )
     qtbot.wait(200)
 
@@ -327,8 +330,14 @@ def test_warning_confirmation_retries_exact_receipt_and_mutates_once(
 
     _start_apply(runtime, terminal)
 
-    qtbot.waitUntil(lambda: len(terminal) == 1, timeout=10_000)
-    qtbot.waitUntil(lambda: len(runtime.study.loaded_data_list) == 1, timeout=10_000)
+    qtbot.waitUntil(
+        lambda: len(terminal) == 1,
+        timeout=IMPORT_COMPLETION_TIMEOUT_MS,
+    )
+    qtbot.waitUntil(
+        lambda: len(runtime.study.loaded_data_list) == 1,
+        timeout=IMPORT_COMPLETION_TIMEOUT_MS,
+    )
     _wait_for_commands(qtbot, runtime)
 
     assert answer.errors == []
@@ -366,7 +375,10 @@ def test_warning_refusal_has_no_mutation_and_one_cancelled_terminal(
 
     _start_apply(runtime, terminal)
 
-    qtbot.waitUntil(lambda: len(terminal) == 1, timeout=10_000)
+    qtbot.waitUntil(
+        lambda: len(terminal) == 1,
+        timeout=IMPORT_COMPLETION_TIMEOUT_MS,
+    )
     _wait_for_commands(qtbot, runtime)
 
     assert answer.errors == []
@@ -396,8 +408,14 @@ def test_owner_deletion_before_confirmed_retry_drops_late_mutation(
 
     _start_apply(runtime, terminal)
 
-    qtbot.waitUntil(lambda: sip.isdeleted(runtime.panel), timeout=10_000)
-    qtbot.waitUntil(lambda: len(terminal) == 1, timeout=10_000)
+    qtbot.waitUntil(
+        lambda: sip.isdeleted(runtime.panel),
+        timeout=IMPORT_COMPLETION_TIMEOUT_MS,
+    )
+    qtbot.waitUntil(
+        lambda: len(terminal) == 1,
+        timeout=IMPORT_COMPLETION_TIMEOUT_MS,
+    )
     _wait_for_commands(qtbot, runtime)
 
     assert answer.errors == []

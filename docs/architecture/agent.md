@@ -1,6 +1,6 @@
 # Agent 目前架構
 
-最後更新：`2026-08-01`
+最後更新：`2026-08-10`
 
 ## 範圍
 
@@ -191,6 +191,20 @@ applied         -> loaded raw data / preprocess
 
 這讓 agent 在使用者說「繼續」時從目前 import recipe / candidate 狀態前進，而不是因為
 聊天裡曾經提過資料夾就重複 scan。
+
+### Data / training decision boundary
+
+- BIDS label-field recommendation 和其 selected-run evidence 來自 Data Interpretation command
+  result。Assistant 可以解釋 evidence 或開啟既有 review surface，但不能自行把 `trial_type` /
+  `value` 規則、第一個 run 或聊天文字升格成 confirmed truth。
+- `epoch_data` 只在 backend 發布的 reviewed epoch handoff、timing hints、source 與 placement
+  一致時可執行；缺少或不一致會回 blocked。Duration / event-locked mode 不是 agent policy。
+- `configure_dataset_split` 只保存 typed split specification 與 preview receipt。Tool success 不代表
+  masks / training tensors 已建立；`start_training` 才觸發 materialization、audit 與 resource
+  preflight。
+- Deterministic training recommendation 由 backend contract 產生。只有 trusted UI host 可附加
+  per-field user-edit provenance；Assistant 不可從自然語言或 tool payload 偽造 manual ownership。
+  Timed hyperparameter search 尚無 tool schema，也不是可執行能力。
 
 ### 4. Worker / Engine / Backend
 
@@ -391,7 +405,7 @@ ApplicationService command name 的對映層。`ContextAssembler` 用它決定�
   Data Interpretation tools（`scan_source`、`preview_interpretation`、
   `validate_interpretation`、`apply_interpretation`、`save_interpretation_recipe`、
   `reload_interpretation_recipe`）、`attach_labels`、preprocess tools、
-  `epoch_data`、`generate_dataset`、`set_model`、`configure_training`、`start_training`、
+  `epoch_data`、`configure_dataset_split`、`set_model`、`configure_training`、`start_training`、
   `evaluate`、`visualize`、`saliency`、`clear_dataset`。
 - Data Interpretation tools 仍只透過 `ApplicationService.execute()` 進入 backend；實際
   scan / preview / validate / apply / recipe lifecycle 已在 backend
@@ -492,6 +506,12 @@ pipeline，不足以完整描述同一 dataset 上多個 training run、已完�
 - agent 操作完整資料 pipeline 的端到端正確性。
 - 真 Windows launcher / human desktop acceptance。
 - 長時間真人桌面 session、跨重啟 cache lifecycle 與 frozen Granite benchmark。
+- `set_model` / `configure_training` 等 high-impact setting change 尚未統一要求 typed
+  confirmation；現有 current/proposed setting card 因此不是每條產品路徑都可達。
+- GUI workflow handoff 與真正 confirmation 仍投影成同一個 `WAITING_FOR_DECISION` activity；
+  presenter 只對部分 import 路徑特判，其他 handoff 可能顯示不存在的 confirmation card 指示。
+- 一個 admitted request 仍可能向 Granite 2B 暴露多個相近 tool schemas；現有 RAG verification
+  只用單一 expected tool，不能證明真實競爭 schema 下的 selection quality。
 
 Historical Phi evaluation artifacts are not current product or thesis evidence. The strict raw slice
 recorded `50.00%`, the anti-overfit slice `14.29%`, and a host-assisted safety workflow `100.00%`;
@@ -526,6 +546,8 @@ accuracy percentage exists yet.
 - `AgentManager` 已抽出 presentation、runtime lifecycle、workflow handoff 與 montage coordinator，
   但仍是偏大的 Qt orchestrator，後續應按責任切片而不是新增 fallback。
 - RAG 已接入 controller，但本輪尚未驗證資料來源和品質。
+- Confirmation risk 仍以 `destructive` 布林值和文字種類描述，尚未成為 setting change、costly
+  operation、irreversible action 等 typed semantic policy。
 
 ## 目標架構
 

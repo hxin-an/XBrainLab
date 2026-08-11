@@ -49,6 +49,32 @@ class _NoWholeArrayMaterialization(np.ndarray):
         raise AssertionError("fingerprinting copied the complete NumPy array")
 
 
+class _FakeCudaTensor(torch.Tensor):
+    """CPU-backed tensor that exercises CUDA transfer logic without a GPU."""
+
+    transferred_bytes: list[int] | None = None
+
+    @staticmethod
+    def __new__(cls, value: torch.Tensor) -> _FakeCudaTensor:
+        return torch.Tensor._make_subclass(  # pyright: ignore[reportPrivateUsage]
+            cls,
+            value,
+            value.requires_grad,
+        )
+
+    @property
+    def device(self) -> torch.device:
+        return torch.device("cuda")
+
+    def to(self, *args: Any, **kwargs: Any) -> torch.Tensor:
+        device = kwargs.get("device", args[0] if args else None)
+        if device is not None and torch.device(device).type == "cpu":
+            if self.transferred_bytes is not None:
+                self.transferred_bytes.append(self.numel() * self.element_size())
+            return self.as_subclass(torch.Tensor)
+        return super().to(*args, **kwargs)
+
+
 def _producer_identity() -> SaliencyProducerIdentity:
     return SaliencyProducerIdentity.from_components(
         dataset={"name": "exact-content"},
@@ -127,43 +153,33 @@ def test_noncontiguous_cpu_tensor_matches_same_logical_content() -> None:
     assert fingerprint_saliency_model_state({"weight": noncontiguous}) != expected
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is unavailable")
 def test_noncontiguous_cuda_tensor_matches_cpu_logical_content() -> None:
     cpu_source = _torch_arange(1200, dtype_name="float32").reshape(30, 40)
     cpu_noncontiguous = cpu_source.transpose(0, 1)
-    gpu_source = cpu_source.to("cuda")
-    gpu_noncontiguous = gpu_source.transpose(0, 1)
-    assert not gpu_noncontiguous.is_contiguous()
+    fake_cuda_noncontiguous = _FakeCudaTensor(cpu_noncontiguous)
+    assert not fake_cuda_noncontiguous.is_contiguous()
 
     expected = fingerprint_saliency_model_state({"weight": cpu_noncontiguous})
 
-    assert fingerprint_saliency_model_state({"weight": gpu_noncontiguous}) == expected
-    gpu_noncontiguous[1, 1] += 1.0
-    assert fingerprint_saliency_model_state({"weight": gpu_noncontiguous}) != expected
+    assert (
+        fingerprint_saliency_model_state({"weight": fake_cuda_noncontiguous})
+        == expected
+    )
+    fake_cuda_noncontiguous[1, 1] += 1.0
+    assert (
+        fingerprint_saliency_model_state({"weight": fake_cuda_noncontiguous})
+        != expected
+    )
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is unavailable")
 def test_cuda_hashing_transfers_only_bounded_chunks(monkeypatch) -> None:
     chunk_bytes = 64
     source = _torch_arange(4096, dtype_name="float32").reshape(64, 64)
-    source = source.to("cuda").transpose(0, 1)
     seen_transfer_bytes: list[int] = []
-    original_to = torch.Tensor.to
-
-    def guarded_to(
-        tensor: torch.Tensor,
-        *args: Any,
-        **kwargs: Any,
-    ) -> torch.Tensor:
-        result = original_to(tensor, *args, **kwargs)
-        if tensor.device.type == "cuda" and result.device.type == "cpu":
-            transfer_bytes = tensor.numel() * tensor.element_size()
-            seen_transfer_bytes.append(transfer_bytes)
-            assert transfer_bytes <= chunk_bytes
-        return result
+    source = _FakeCudaTensor(source.transpose(0, 1))
 
     monkeypatch.setattr(provenance, "_ARRAY_HASH_CHUNK_BYTES", chunk_bytes)
-    monkeypatch.setattr(torch.Tensor, "to", guarded_to)
+    monkeypatch.setattr(_FakeCudaTensor, "transferred_bytes", seen_transfer_bytes)
 
     fingerprint_saliency_model_state({"weight": source})
 

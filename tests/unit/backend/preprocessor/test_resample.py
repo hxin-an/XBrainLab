@@ -94,3 +94,46 @@ class TestResample:
 
         # Verify set_event was NOT called
         raw.set_event.assert_not_called()
+
+    def test_resample_rejects_tail_nonfinite_before_fft_spreads_it(self, mock_raw):
+        raw, _, _ = mock_raw
+        original = raw.get_mne().get_data().copy()
+        raw.get_mne()._data[0, -127:] = np.nan
+
+        expected_message = (
+            "Resampling requires finite EEG data. Remove the resampling step and "
+            "keep this recording at its native sampling rate so BAD_nonfinite "
+            "segments can be excluded during epoching, or select a recording "
+            "without NaN or infinite samples. Raw FFT resampling can contaminate "
+            "the complete recording."
+        )
+        with pytest.raises(ValueError) as exc_info:
+            Resample([raw])._data_preprocess(raw, sfreq=100.0)
+
+        assert str(exc_info.value) == expected_message
+        assert raw.get_mne().info["sfreq"] == 1000.0
+        np.testing.assert_array_equal(
+            raw.get_mne().get_data()[:, :-127],
+            original[:, :-127],
+        )
+        assert np.isnan(raw.get_mne().get_data()[:, -127:]).all()
+        raw.set_mne.assert_not_called()
+        raw.set_event.assert_not_called()
+
+    def test_finite_guard_reads_large_raw_in_bounded_chunks(self, mock_raw):
+        raw, _, _ = mock_raw
+        mne_raw = raw.get_mne()
+        real_get_data = mne_raw.get_data
+        calls: list[tuple[int, int | None]] = []
+
+        def tracked_get_data(*args, **kwargs):
+            calls.append((kwargs.get("start", 0), kwargs.get("stop")))
+            return real_get_data(*args, **kwargs)
+
+        mne_raw.get_data = tracked_get_data
+
+        Resample._require_finite_input(raw)
+
+        assert calls
+        assert all(stop is not None for _, stop in calls)
+        assert max(stop - start for start, stop in calls if stop is not None) <= 10000

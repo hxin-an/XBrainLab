@@ -10,15 +10,201 @@ from XBrainLab.backend.application.commands import CommandName
 from XBrainLab.backend.application.view_publication import (
     InterpretationReviewIdentity,
 )
+from XBrainLab.llm.agent.assistant_activity import AssistantDecisionOwner
 from XBrainLab.llm.agent.ui_handoff import (
     WorkflowUiHandoffKind,
+    WorkflowUiHandoffPanel,
     WorkflowUiHandoffRequest,
     WorkflowUiHandoffResolution,
     WorkflowUiHandoffResolutionStatus,
+    WorkflowUiHandoffRouteIdentity,
     WorkflowUiHandoffSession,
     WorkflowUiHandoffSessionStatus,
+    WorkflowUiHandoffSurfaceKind,
     WorkflowUiHandoffTransitionStatus,
+    workflow_ui_handoff_route_for,
+    workflow_ui_handoff_routes,
 )
+
+
+def test_workflow_handoff_route_descriptors_preserve_existing_ui_taxonomy() -> None:
+    expected = (
+        (
+            CommandName.SCAN_SOURCE,
+            WorkflowUiHandoffSurfaceKind.DIALOG,
+            AssistantDecisionOwner.GUI_DIALOG,
+            WorkflowUiHandoffPanel.DATASET,
+            WorkflowUiHandoffRouteIdentity.DATA_IMPORT_DIALOG,
+            "Continue in Import EEG Data",
+            "Finish or cancel in the open Import EEG Data dialog.",
+        ),
+        (
+            CommandName.REVIEW_INTERPRETATION,
+            WorkflowUiHandoffSurfaceKind.PANEL,
+            AssistantDecisionOwner.PANEL_HANDOFF,
+            WorkflowUiHandoffPanel.DATASET,
+            WorkflowUiHandoffRouteIdentity.DATA_IMPORT_PANEL,
+            "Continue in Import EEG Data",
+            "Continue in the opened XBrainLab panel.",
+        ),
+        (
+            CommandName.PREVIEW_INTERPRETATION,
+            WorkflowUiHandoffSurfaceKind.PANEL,
+            AssistantDecisionOwner.PANEL_HANDOFF,
+            WorkflowUiHandoffPanel.DATASET,
+            WorkflowUiHandoffRouteIdentity.DATA_IMPORT_PANEL,
+            "Continue in Import EEG Data",
+            "Continue in the opened XBrainLab panel.",
+        ),
+        (
+            CommandName.VALIDATE_INTERPRETATION,
+            WorkflowUiHandoffSurfaceKind.PANEL,
+            AssistantDecisionOwner.PANEL_HANDOFF,
+            WorkflowUiHandoffPanel.DATASET,
+            WorkflowUiHandoffRouteIdentity.DATA_IMPORT_PANEL,
+            "Continue in Import EEG Data",
+            "Continue in the opened XBrainLab panel.",
+        ),
+        (
+            CommandName.APPLY_INTERPRETATION,
+            WorkflowUiHandoffSurfaceKind.DIALOG,
+            AssistantDecisionOwner.GUI_DIALOG,
+            WorkflowUiHandoffPanel.DATASET,
+            WorkflowUiHandoffRouteIdentity.DATA_IMPORT_REVIEW_DIALOG,
+            "Continue in Import EEG Data",
+            "Finish or cancel in the open Import EEG Data dialog.",
+        ),
+        (
+            CommandName.PREPROCESS,
+            WorkflowUiHandoffSurfaceKind.PANEL,
+            AssistantDecisionOwner.PANEL_HANDOFF,
+            WorkflowUiHandoffPanel.PREPROCESS,
+            WorkflowUiHandoffRouteIdentity.PREPROCESS_PANEL,
+            "Continue in Preprocess",
+            "Continue in the opened XBrainLab panel.",
+        ),
+        (
+            CommandName.CREATE_EPOCH,
+            WorkflowUiHandoffSurfaceKind.DIALOG,
+            AssistantDecisionOwner.GUI_DIALOG,
+            WorkflowUiHandoffPanel.PREPROCESS,
+            WorkflowUiHandoffRouteIdentity.EPOCH_SETTINGS_DIALOG,
+            "Continue in EEG Epoch Settings",
+            "Finish or cancel in the open EEG Epoch Settings dialog.",
+        ),
+        (
+            CommandName.CONFIGURE_DATASET_SPLIT,
+            WorkflowUiHandoffSurfaceKind.DIALOG,
+            AssistantDecisionOwner.GUI_DIALOG,
+            WorkflowUiHandoffPanel.TRAINING,
+            WorkflowUiHandoffRouteIdentity.DATASET_SPLIT_DIALOG,
+            "Continue in Dataset Split Settings",
+            "Finish or cancel in the open Dataset Split Settings dialog.",
+        ),
+        (
+            CommandName.CONFIGURE_TRAINING,
+            WorkflowUiHandoffSurfaceKind.DIALOG,
+            AssistantDecisionOwner.GUI_DIALOG,
+            WorkflowUiHandoffPanel.TRAINING,
+            WorkflowUiHandoffRouteIdentity.TRAINING_SETTINGS_DIALOG,
+            "Continue in Training Settings",
+            "Finish or cancel in the open Training Settings dialog.",
+        ),
+        (
+            CommandName.TRAIN,
+            WorkflowUiHandoffSurfaceKind.PANEL,
+            AssistantDecisionOwner.PANEL_HANDOFF,
+            WorkflowUiHandoffPanel.TRAINING,
+            WorkflowUiHandoffRouteIdentity.TRAINING_PANEL,
+            "Continue in Training",
+            "Continue in the opened XBrainLab panel.",
+        ),
+        (
+            CommandName.EVALUATE,
+            WorkflowUiHandoffSurfaceKind.PANEL,
+            AssistantDecisionOwner.PANEL_HANDOFF,
+            WorkflowUiHandoffPanel.EVALUATION,
+            WorkflowUiHandoffRouteIdentity.EVALUATION_PANEL,
+            "Continue in Evaluation",
+            "Continue in the opened XBrainLab panel.",
+        ),
+        (
+            CommandName.VISUALIZE,
+            WorkflowUiHandoffSurfaceKind.PANEL,
+            AssistantDecisionOwner.PANEL_HANDOFF,
+            WorkflowUiHandoffPanel.VISUALIZATION,
+            WorkflowUiHandoffRouteIdentity.VISUALIZATION_PANEL,
+            "Continue in Visualization",
+            "Continue in the opened XBrainLab panel.",
+        ),
+        (
+            CommandName.SALIENCY,
+            WorkflowUiHandoffSurfaceKind.DIALOG,
+            AssistantDecisionOwner.GUI_DIALOG,
+            WorkflowUiHandoffPanel.VISUALIZATION,
+            WorkflowUiHandoffRouteIdentity.SALIENCY_SETTINGS_DIALOG,
+            "Continue in Saliency Settings",
+            "Finish or cancel in the open Saliency Settings dialog.",
+        ),
+        (
+            CommandName.APPLY_MONTAGE,
+            WorkflowUiHandoffSurfaceKind.DIALOG,
+            AssistantDecisionOwner.GUI_DIALOG,
+            WorkflowUiHandoffPanel.VISUALIZATION,
+            WorkflowUiHandoffRouteIdentity.MONTAGE_SETTINGS_DIALOG,
+            "Continue in Montage Settings",
+            "Finish or cancel in the open Montage Settings dialog.",
+        ),
+    )
+
+    actual = tuple(
+        (
+            route.command,
+            route.surface_kind,
+            route.decision_owner,
+            route.target_panel,
+            route.route_identity,
+            route.presentation_step,
+            route.decision_copy,
+        )
+        for route in workflow_ui_handoff_routes()
+    )
+
+    assert actual == expected
+
+
+def test_workflow_handoff_route_lookup_preserves_typed_command_identity() -> None:
+    route = workflow_ui_handoff_route_for(" CREATE_EPOCH ")
+
+    assert route is workflow_ui_handoff_route_for(CommandName.CREATE_EPOCH)
+    assert route is not None
+    assert route.command is CommandName.CREATE_EPOCH
+    assert workflow_ui_handoff_route_for("not_a_command") is None
+
+
+def test_workflow_handoff_consumers_do_not_redeclare_route_taxonomy() -> None:
+    sources = {
+        path: Path(path).read_text(encoding="utf-8")
+        for path in (
+            "XBrainLab/llm/agent/controller.py",
+            "XBrainLab/ui/components/workflow_ui_handoff_host.py",
+            "XBrainLab/ui/chat/presentation.py",
+        )
+    }
+
+    assert (
+        "_DIALOG_HANDOFF_COMMANDS" not in sources["XBrainLab/llm/agent/controller.py"]
+    )
+    assert (
+        "_DATA_IMPORT_COMMANDS"
+        not in sources["XBrainLab/ui/components/workflow_ui_handoff_host.py"]
+    )
+    assert (
+        "panel_target_for_command"
+        not in sources["XBrainLab/ui/components/workflow_ui_handoff_host.py"]
+    )
+    assert "_DIALOG_DECISION_COPY" not in sources["XBrainLab/ui/chat/presentation.py"]
+    assert "_PANEL_DECISION_STEPS" not in sources["XBrainLab/ui/chat/presentation.py"]
 
 
 def test_decision_handoff_normalizes_backend_command_and_fields() -> None:

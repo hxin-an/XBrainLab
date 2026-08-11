@@ -148,7 +148,7 @@ def trace_execution_gate():
             "tools": [
                 "load_data",
                 "apply_standard_preprocess",
-                "generate_dataset",
+                "configure_dataset_split",
                 "set_model",
                 "start_training",
             ],
@@ -311,8 +311,8 @@ def trace_multi_mode():
 
   Round 3: stage=PREPROCESSED
     → System prompt REBUILT with PREPROCESSED tools
-    → Now visible: [preprocessing tools, generate_dataset, ...]
-    → LLM generates: generate_dataset
+    → Now visible: [preprocessing tools, configure_dataset_split, ...]
+    → LLM generates: configure_dataset_split
     → Execute: ✓ → state becomes DATASET_READY
     → _successful_tool_count=3 < 5 → auto-continue
 

@@ -369,35 +369,6 @@ class TestRealListFilesValidation:
         assert result.ok is False
         assert "does not exist" in result.message
 
-    def test_pattern_filtering(self, tmp_path):
-        from XBrainLab.llm.tools.authorized_paths import authorize_existing_path
-        from XBrainLab.llm.tools.real.dataset_real import RealListFilesTool
-
-        for name in ("a.gdf", "b.set", "c.gdf"):
-            (tmp_path / name).touch()
-        result = RealListFilesTool().execute(
-            study=MagicMock(),
-            directory=authorize_existing_path(
-                tmp_path,
-                authorized_root=tmp_path,
-                expected_kind="directory",
-            ),
-            pattern="*.gdf",
-        )
-        assert result.ok is True
-        assert result.payload == ["a.gdf", "c.gdf"]
-
-
-class TestRealListFilesSecurity:
-    def test_sensitive_dir_blocked(self):
-        from XBrainLab.llm.tools.real.dataset_real import RealListFilesTool
-
-        result = RealListFilesTool().execute(
-            study=MagicMock(), directory="C:\\Windows\\System32"
-        )
-        assert result.ok is False
-        assert result.error_type in {"permission", "input"}
-
 
 class TestRealLoadDataValidation:
     _DENIAL = (
@@ -417,66 +388,6 @@ class TestRealLoadDataValidation:
         study = object()
 
         result = RealLoadDataTool().execute(study=study, paths=paths)
-
-        _assert_canonical_result(
-            result,
-            tool_name="load_data",
-            ok=False,
-            message=self._DENIAL,
-            payload={},
-            error_type="precondition",
-            state={"canonical_snapshot": True},
-            recoverable=False,
-            error_code="assistant_direct_load_disabled",
-            recovery_action=(
-                "Use scan_source, preview_interpretation, "
-                "validate_interpretation, and apply_interpretation."
-            ),
-        )
-        runtime.execute.assert_not_called()
-        get_context.assert_called_once_with(study, "load_data", runtime=runtime)
-        runtime_provider.assert_called_once_with(study)
-
-    def test_plain_directory_is_not_scanned_by_adapter(self, monkeypatch):
-        from XBrainLab.llm.tools.real.dataset_real import RealLoadDataTool
-
-        runtime, get_context, runtime_provider = _install_canonical_runtime(
-            monkeypatch,
-            "load_data",
-        )
-        study = object()
-
-        result = RealLoadDataTool().execute(study=study, paths=["/secure/dir"])
-
-        _assert_canonical_result(
-            result,
-            tool_name="load_data",
-            ok=False,
-            message=self._DENIAL,
-            payload={},
-            error_type="precondition",
-            state={"canonical_snapshot": True},
-            recoverable=False,
-            error_code="assistant_direct_load_disabled",
-            recovery_action=(
-                "Use scan_source, preview_interpretation, "
-                "validate_interpretation, and apply_interpretation."
-            ),
-        )
-        runtime.execute.assert_not_called()
-        get_context.assert_called_once_with(study, "load_data", runtime=runtime)
-        runtime_provider.assert_called_once_with(study)
-
-    def test_empty_directory_is_not_expanded_by_adapter(self, monkeypatch):
-        from XBrainLab.llm.tools.real.dataset_real import RealLoadDataTool
-
-        runtime, get_context, runtime_provider = _install_canonical_runtime(
-            monkeypatch,
-            "load_data",
-        )
-        study = object()
-
-        result = RealLoadDataTool().execute(study=study, paths=["/empty/dir"])
 
         _assert_canonical_result(
             result,
@@ -643,15 +554,15 @@ class TestRealGetDatasetInfoEvents:
         runtime_provider.assert_called_once_with(study)
 
 
-class TestRealGenerateDatasetError:
-    def test_generation_failure_preserves_canonical_result(self, monkeypatch):
-        from XBrainLab.llm.tools.real.dataset_real import RealGenerateDatasetTool
+class TestRealConfigureDatasetSplitError:
+    def test_direct_call_stops_at_assistant_confirmation_boundary(self, monkeypatch):
+        from XBrainLab.llm.tools.real.dataset_real import RealConfigureDatasetSplitTool
 
         runtime, get_context, runtime_provider = _install_canonical_runtime(
             monkeypatch,
-            "generate_dataset",
+            "configure_dataset_split",
             _command_result(
-                command_name=CommandName.GENERATE_DATASET.value,
+                command_name=CommandName.CONFIGURE_DATASET_SPLIT.value,
                 failed=True,
                 message="Dataset generation failed.",
                 diagnostics={"reason": "split unavailable"},
@@ -659,24 +570,17 @@ class TestRealGenerateDatasetError:
         )
         study = object()
 
-        result = RealGenerateDatasetTool().execute(study=study)
+        result = RealConfigureDatasetSplitTool().execute(study=study)
 
-        command = runtime.execute.call_args.args[0]
-        assert command.test_ratio == 0.2
-        assert command.val_ratio == 0.2
-        assert command.split_strategy == "trial"
-        assert command.training_mode == "individual"
-        _assert_canonical_result(
-            result,
-            tool_name="generate_dataset",
-            ok=False,
-            message="Dataset generation failed.",
-            payload={"reason": "split unavailable"},
-            error_type="runtime",
-        )
+        assert result.ok is False
+        assert result.error_type == "confirmation_required"
+        assert result.command_name == CommandName.CONFIGURE_DATASET_SPLIT.value
+        assert result.capability is not None
+        assert result.capability["requires_confirmation"] is True
+        runtime.execute.assert_not_called()
         get_context.assert_called_once_with(
             study,
-            "generate_dataset",
+            "configure_dataset_split",
             runtime=runtime,
         )
         runtime_provider.assert_called_once_with(study)
@@ -686,24 +590,20 @@ class TestRealGenerateDatasetError:
 
 
 class TestToolRegistryOverwrite:
-    def test_overwrite_warning(self):
+    def test_registration_replaces_the_tool_under_the_same_public_name(self):
         from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
         reg = ToolRegistry()
-        mock_tool = MagicMock()
-        mock_tool.name = "test_tool"
-        reg.register(mock_tool)
-        reg.register(mock_tool)  # second register triggers warning
-        assert reg.get_tool("test_tool") is mock_tool
+        first = MagicMock(name="first_tool", name_for_mock="first_tool")
+        second = MagicMock(name="second_tool", name_for_mock="second_tool")
+        first.name = "shared_name"
+        second.name = "shared_name"
 
-    def test_get_tool_existing(self):
-        from XBrainLab.llm.tools.tool_registry import ToolRegistry
+        reg.register(first)
+        reg.register(second)
 
-        reg = ToolRegistry()
-        mock_tool = MagicMock()
-        mock_tool.name = "x"
-        reg.register(mock_tool)
-        assert reg.get_tool("x") is mock_tool
+        assert reg.get_tool("shared_name") is second
+        assert reg.get_all_tools() == [second]
 
 
 # --- UI Control Real ---

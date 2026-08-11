@@ -329,10 +329,10 @@ def build_eval_cases() -> list[EvalCase]:
             "Epoched data can generate dataset",
             "epoched",
             ["Generate an individual trial-wise training dataset with 20% test split."],
-            "generate_dataset",
+            "configure_dataset_split",
             [
                 ExpectedToolCall(
-                    "generate_dataset",
+                    "configure_dataset_split",
                     {
                         "test_ratio": 0.2,
                         "training_mode": "individual",
@@ -346,7 +346,7 @@ def build_eval_cases() -> list[EvalCase]:
             "Dataset generation before epoch is blocked",
             "loaded",
             ["Generate the training dataset."],
-            "generate_dataset",
+            "configure_dataset_split",
             expected_blocked=True,
             expected_reason_terms=[
                 "Create EEG epochs before building the training dataset"
@@ -430,7 +430,7 @@ def build_eval_cases() -> list[EvalCase]:
             "Dataset generation waits for an explicit split strategy",
             "epoched",
             ["Generate an individual training dataset with 20% test split."],
-            "generate_dataset",
+            "configure_dataset_split",
             expected_verification_result="missing_input",
             expected_blocked=True,
             expected_reason_terms=["split strategy"],
@@ -443,7 +443,7 @@ def build_eval_cases() -> list[EvalCase]:
             "Dataset paraphrase does not substitute preprocessing",
             "loaded",
             ["Generate train/test dataset splits from the loaded EEG now."],
-            "generate_dataset",
+            "configure_dataset_split",
             expected_blocked=True,
             expected_reason_terms=[
                 "Create EEG epochs before building the training dataset"
@@ -1337,10 +1337,10 @@ def build_eval_cases() -> list[EvalCase]:
             "Group dataset request preserves training mode",
             "epoched",
             ["Generate a group trial-wise training dataset with 20% test split."],
-            "generate_dataset",
+            "configure_dataset_split",
             [
                 ExpectedToolCall(
-                    "generate_dataset",
+                    "configure_dataset_split",
                     {
                         "training_mode": "group",
                         "split_strategy": "trial",
@@ -1355,10 +1355,10 @@ def build_eval_cases() -> list[EvalCase]:
             "Subject split dataset request preserves split strategy",
             "epoched",
             ["Generate an individual dataset with subject split."],
-            "generate_dataset",
+            "configure_dataset_split",
             [
                 ExpectedToolCall(
-                    "generate_dataset",
+                    "configure_dataset_split",
                     {"training_mode": "individual", "split_strategy": "subject"},
                 )
             ],
@@ -1369,10 +1369,10 @@ def build_eval_cases() -> list[EvalCase]:
             "Session split dataset request preserves split strategy",
             "epoched",
             ["Generate an individual dataset with session split."],
-            "generate_dataset",
+            "configure_dataset_split",
             [
                 ExpectedToolCall(
-                    "generate_dataset",
+                    "configure_dataset_split",
                     {"training_mode": "individual", "split_strategy": "session"},
                 )
             ],
@@ -1492,10 +1492,10 @@ def build_eval_cases() -> list[EvalCase]:
             "Epoched state generates session-split dataset in second turn",
             "epoched",
             ["Epochs are ready.", "Generate an individual dataset with session split."],
-            "generate_dataset",
+            "configure_dataset_split",
             [
                 ExpectedToolCall(
-                    "generate_dataset",
+                    "configure_dataset_split",
                     {"training_mode": "individual", "split_strategy": "session"},
                 )
             ],
@@ -2257,8 +2257,8 @@ def predict_case(case: EvalCase) -> Prediction:
             state_delta=state_delta_for(case),
         )
 
-    if intent == "generate_dataset":
-        blocked = block_from_policy(policy, CommandName.GENERATE_DATASET)
+    if intent == "configure_dataset_split":
+        blocked = block_from_policy(policy, CommandName.CONFIGURE_DATASET_SPLIT)
         if blocked:
             return blocked_prediction(intent, [], blocked)
         args = dataset_tool_args(text)
@@ -2281,7 +2281,7 @@ def predict_case(case: EvalCase) -> Prediction:
             )
         return Prediction(
             intent=intent,
-            tool_calls=[PredictedToolCall("generate_dataset", args)],
+            tool_calls=[PredictedToolCall("configure_dataset_split", args)],
             state_delta=state_delta_for(case),
         )
 

@@ -36,6 +36,9 @@ from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.application_capabilities import application_ui_runtime
 from XBrainLab.ui.async_command_runner import application_command_registry
+from XBrainLab.ui.dialogs.dataset.bids_subject_selection_dialog import (
+    BidsSubjectSelectionDialog,
+)
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
 )
@@ -74,6 +77,8 @@ QTEST: Any = QTest
 REQUIRE_REAL_FIXTURES = (
     os.environ.get("XBRAINLAB_REQUIRE_REAL_FIXTURES", "").strip() == "1"
 )
+
+pytestmark = pytest.mark.optional_public_fixture
 
 
 @dataclass(frozen=True)
@@ -133,7 +138,7 @@ PUBLIC_FILE_ACCEPTANCE_CASES = (
         MNE_BRAINVISION,
         0,
         (),
-        "Events not scanned",
+        "No events",
     ),
 )
 
@@ -303,6 +308,11 @@ def _replace_line_edit_text(editor: QLineEdit, value: str) -> None:
     QTEST.keyClicks(editor, value)
 
 
+def _decision_value_text(label: QLabel) -> str:
+    """Read the semantic value even when the visible label is safely elided."""
+    return str(label.accessibleName() or label.text())
+
+
 def _capture_teacher_ui(
     dialog: DataInterpretationPreviewDialog,
     filename: str,
@@ -338,7 +348,7 @@ def _complete_bids_event_values(dialog: DataInterpretationPreviewDialog) -> None
     if editor is None or not editor.isVisibleTo(dialog):
         raise AssertionError("BIDS Match Labels did not expose event-value decisions.")
     values = [
-        label.text()
+        _decision_value_text(label)
         for label in editor.findChildren(QLabel)
         if label.objectName() == "DataImportValueDecisionValue"
     ]
@@ -389,7 +399,7 @@ def _complete_openneuro_trial_types(
     if editor is None or not editor.isVisibleTo(dialog):
         raise AssertionError("OpenNeuro trial_type decisions are not visible.")
     values = [
-        label.text()
+        _decision_value_text(label)
         for label in editor.findChildren(QLabel)
         if label.objectName() == "DataImportValueDecisionValue"
     ]
@@ -410,7 +420,7 @@ def _complete_openneuro_trial_types(
             f"uses={len(use_selectors)}, classes={len(class_editors)}."
         )
     decisions = {
-        "response": ("response", "event", ""),
+        "response": ("response", "ignore", ""),
         "stimulus": ("stimulus", "class", "stimulus"),
     }
     for raw_value, role_selector, use_selector, class_editor in zip(
@@ -463,7 +473,7 @@ def _advance_openneuro_event_values(
         )
     driver.openneuro_values_started = True
     values = [
-        label.text()
+        _decision_value_text(label)
         for label in editor.findChildren(QLabel)
         if label.objectName() == "DataImportValueDecisionValue"
     ]
@@ -710,6 +720,26 @@ def _start_wizard_driver(
             f"openneuro_stage={driver.openneuro_value_stage}"
         )
         try:
+            if isinstance(modal, BidsSubjectSelectionDialog):
+                selected_subjects = modal.get_result()
+                if not selected_subjects:
+                    _fail("BIDS subject selection has no default subject.", modal)
+                    return
+                if (
+                    modal.continue_button is None
+                    or not modal.continue_button.isEnabled()
+                ):
+                    _fail("BIDS subject selection cannot continue.", modal)
+                    return
+                driver.trace.append(
+                    "select BIDS subjects: " + ", ".join(selected_subjects)
+                )
+                QTEST.mouseClick(
+                    modal.continue_button,
+                    Qt.MouseButton.LeftButton,
+                )
+                return
+
             if isinstance(modal, QMessageBox):
                 if modal.windowTitle() != "Dataset Resource Check":
                     _fail(
@@ -733,8 +763,8 @@ def _start_wizard_driver(
             elif modal is not driver.dialog:
                 if (
                     driver.resolve_openneuro_values
-                    and driver.awaiting_label_field_refresh
-                ):
+                    or driver.resolve_openneuro_trial_types
+                ) and driver.awaiting_label_field_refresh:
                     driver.dialog = modal
                     driver.dialog_count += 1
                     driver.awaiting_label_field_refresh = False
@@ -789,6 +819,22 @@ def _start_wizard_driver(
 
             if driver.phase == 3:
                 if driver.resolve_openneuro_trial_types:
+                    if (
+                        driver.dialog_count == 1
+                        and not driver.awaiting_label_field_refresh
+                        and modal.rule_label_field_combo.currentData() != "trial_type"
+                    ):
+                        _select_combo_data(
+                            modal.rule_label_field_combo,
+                            "trial_type",
+                        )
+                        driver.awaiting_label_field_refresh = True
+                        driver.trace.append("select label field trial_type")
+                        QTEST.mouseClick(
+                            modal.next_button,
+                            Qt.MouseButton.LeftButton,
+                        )
+                        return
                     _complete_openneuro_trial_types(modal)
                     driver.trace.append("review OpenNeuro trial_type values")
                 if (
@@ -797,7 +843,13 @@ def _start_wizard_driver(
                     and not driver.awaiting_label_field_refresh
                 ):
                     if driver.openneuro_setup_stage == 0:
-                        _select_combo_data(modal.rule_label_field_combo, "value")
+                        if modal.rule_label_field_combo.currentData() != "value":
+                            _fail(
+                                "OpenNeuro value is not the recommended label field.",
+                                modal,
+                            )
+                            return
+                        driver.trace.append("accept recommended label field value")
                         driver.openneuro_setup_stage = 1
                         return
                     if driver.openneuro_setup_stage == 1:
@@ -812,16 +864,6 @@ def _start_wizard_driver(
                         _select_combo_data(modal.time_field_combo, "onset")
                         driver.openneuro_setup_stage = 3
                         return
-                    driver.awaiting_label_field_refresh = True
-                    driver.trace.append("choose label field value")
-                    QTEST.mouseClick(modal.next_button, Qt.MouseButton.LeftButton)
-                    return
-                if (
-                    driver.resolve_openneuro_values
-                    and driver.dialog_count == 1
-                    and driver.awaiting_label_field_refresh
-                ):
-                    return
                 if driver.resolve_openneuro_values:
                     if not _advance_openneuro_event_values(modal, driver):
                         return
@@ -835,7 +877,13 @@ def _start_wizard_driver(
 
             if driver.expect_blocked:
                 if modal.apply_button.isEnabled():
-                    _fail("Blocked BIDS review unexpectedly enabled Apply.", modal)
+                    _fail(
+                        "Blocked BIDS review unexpectedly enabled Apply: "
+                        f"facts={modal._submission_facts()!r}, "
+                        f"choices={modal._edited_choices()!r}, "
+                        f"actions={modal.preview.get('action_items')!r}.",
+                        modal,
+                    )
                     return
                 driver.blocked_reasons = [
                     str(reason)
@@ -989,6 +1037,7 @@ def test_public_file_formats_run_five_steps_and_apply_without_labels(
         title: str,
         _directory: str,
         _filter_text: str,
+        **_kwargs: Any,
     ) -> tuple[list[str], str]:
         chooser_calls.append(title)
         return [str(case.source)], ""
@@ -1057,6 +1106,7 @@ def test_public_raw_folders_ignore_context_sidecars_and_apply_selected_eeg(
         _parent: QWidget,
         title: str,
         _directory: str,
+        **_kwargs: Any,
     ) -> str:
         chooser_calls.append(title)
         return str(case.source)
@@ -1108,10 +1158,10 @@ def test_public_raw_folders_ignore_context_sidecars_and_apply_selected_eeg(
     assert panel.data_surface.currentWidget() is panel.table
     assert panel.table.rowCount() == 1
     assert _table_text(panel, 0, 0) == case.expected_eeg.name
-    assert _table_text(panel, 0, 6) == "Events not scanned"
+    assert _table_text(panel, 0, 6) == "No events"
 
 
-def test_openneuro_p300_import_bids_repreviews_selected_value_field_and_applies(
+def test_openneuro_p300_import_bids_uses_recommended_value_field_and_applies(
     qtbot: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1149,13 +1199,12 @@ def test_openneuro_p300_import_bids_repreviews_selected_value_field_and_applies(
     assert chooser_calls == ["Choose BIDS Folder for Import"]
     assert driver.phase == 5
     assert driver.trace == [
+        "select BIDS subjects: 001",
         "Choose EEG Data",
         "Load Labels",
         "Review Metadata",
         "Match Labels",
-        "choose label field value",
-        "label field preview refreshed",
-        "Match Labels",
+        "accept recommended label field value",
         "review OpenNeuro event values",
         "Review and Import",
         "confirm and import",
@@ -1254,6 +1303,7 @@ def test_bids_missing_events_preserves_data_state_then_valid_root_recovers(
         _parent: QWidget,
         title: str,
         _directory: str,
+        **_kwargs: Any,
     ) -> str:
         chooser_calls.append(title)
         return next(chooser_paths)
@@ -1274,6 +1324,7 @@ def test_bids_missing_events_preserves_data_state_then_valid_root_recovers(
     blocked_state = runtime.get_view_publication().state
     assert blocked_driver.phase == 5
     assert blocked_driver.trace == [
+        "select BIDS subjects: 01",
         "Choose EEG Data",
         "Load Labels",
         "Review Metadata",
@@ -1295,6 +1346,7 @@ def test_bids_missing_events_preserves_data_state_then_valid_root_recovers(
     ]
     assert recovery_driver.phase == 5
     assert recovery_driver.trace == [
+        "select BIDS subjects: 01",
         "Choose EEG Data",
         "Load Labels",
         "Review Metadata",

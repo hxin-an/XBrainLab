@@ -2,6 +2,7 @@
 
 from unittest.mock import Mock
 
+import numpy as np
 import pytest
 import torch
 
@@ -25,6 +26,7 @@ def test_epoch_duration_too_short(tmp_path):
         "samples": 1,  # Way too short!
         "sfreq": 250.0,
     }
+    mock_epoch.get_data.return_value = np.zeros((2, 16, 1), dtype=np.float32)
 
     # Create a mock dataset
     mock_dataset = Mock(spec=Dataset)

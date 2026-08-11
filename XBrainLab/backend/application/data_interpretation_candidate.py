@@ -29,6 +29,7 @@ from .data_interpretation_metadata import (
 )
 from .data_interpretation_pairing import resolve_label_file_pairing
 from .data_interpretation_path_identity import (
+    normalized_path_identity,
     resolve_scan_path,
     unresolved_scan_path_descriptions,
 )
@@ -40,6 +41,9 @@ from .data_interpretation_placement import (
 )
 from .data_interpretation_placement import (
     placement_confirmation_items as _placement_confirmation_items,
+)
+from .data_interpretation_public_projection import (
+    project_interpretation_candidate,
 )
 from .data_interpretation_resource_reader import AdmittedResourceReader
 from .data_interpretation_scan import ScanResult
@@ -82,6 +86,10 @@ class InterpretationCandidate:
     def to_dict(self) -> dict[str, Any]:
         return _serialize(self)
 
+    def to_public_dict(self) -> dict[str, Any]:
+        """Return a bounded projection for UI, agent, and diagnostics clients."""
+        return project_interpretation_candidate(_serialize(self))
+
 
 @dataclass(frozen=True)
 class InterpretationResourceScope:
@@ -94,6 +102,10 @@ class InterpretationResourceScope:
     label_carriers: list[str] = dc_field(default_factory=list)
     bids_events_json_files: list[str] = dc_field(default_factory=list)
     bids_channels_files: list[str] = dc_field(default_factory=list)
+    bids_events_json_by_carrier: dict[str, tuple[str, ...]] = dc_field(
+        default_factory=dict
+    )
+    bids: dict[str, Any] = dc_field(default_factory=dict)
 
     @property
     def paths(self) -> list[str]:
@@ -113,6 +125,8 @@ class InterpretationResourceScope:
 def resolve_interpretation_resource_scope(
     scan: ScanResult,
     choices: dict[str, Any] | None = None,
+    *,
+    bids_events_json_by_carrier: dict[str, tuple[str, ...]] | None = None,
 ) -> InterpretationResourceScope:
     """Resolve preview paths without reading EEG or label payloads."""
     choices = dict(choices or {})
@@ -154,17 +168,47 @@ def resolve_interpretation_resource_scope(
         scan.bids,
         bids,
     )
+    sidecars_by_carrier = _bids_events_json_catalog_for_scope(
+        active_label_carriers,
+        bids_events_json_by_carrier,
+    )
     return InterpretationResourceScope(
         selected_eeg_files=selected_files,
         materializable_eeg_files=materializable_files,
         eeg_dependency_files=eeg_dependency_files,
         eeg_dependencies_by_file=eeg_dependencies_by_file,
         label_carriers=active_label_carriers,
-        bids_events_json_files=bids_events_json_resource_paths(
-            active_label_carriers,
+        bids_events_json_files=list(
+            dict.fromkeys(
+                path for paths in sidecars_by_carrier.values() for path in paths
+            )
         ),
         bids_channels_files=_selected_bids_channels_files(bids),
+        bids_events_json_by_carrier=sidecars_by_carrier,
+        bids=bids,
     )
+
+
+def _bids_events_json_catalog_for_scope(
+    label_carriers: list[str],
+    catalog: dict[str, tuple[str, ...]] | None,
+) -> dict[str, tuple[str, ...]]:
+    available = dict(catalog or {})
+    available_by_identity = {
+        normalized_path_identity(carrier): tuple(paths)
+        for carrier, paths in available.items()
+    }
+    result: dict[str, tuple[str, ...]] = {}
+    missing: list[str] = []
+    for carrier in label_carriers:
+        paths = available_by_identity.get(normalized_path_identity(carrier))
+        if paths is None:
+            missing.append(carrier)
+        else:
+            result[carrier] = paths
+    for carrier in missing:
+        result[carrier] = tuple(bids_events_json_resource_paths([carrier]))
+    return result
 
 
 def build_interpretation_candidate(
@@ -174,10 +218,15 @@ def build_interpretation_candidate(
     choices: dict[str, Any] | None = None,
     bids_events_json_reader: BidsEventsJsonReader | None = None,
     resource_reader: AdmittedResourceReader | None = None,
+    resource_scope: InterpretationResourceScope | None = None,
+    admitted_content_identities: dict[str, dict[str, Any]] | None = None,
 ) -> InterpretationCandidate:
     """Build a candidate interpretation from a scan result and user choices."""
     choices = dict(choices or {})
-    resource_scope = resolve_interpretation_resource_scope(scan, choices)
+    resource_scope = resource_scope or resolve_interpretation_resource_scope(
+        scan,
+        choices,
+    )
     if resource_reader is not None:
         resource_reader = resource_reader.with_dependent_files(
             resource_scope.eeg_dependencies_by_file,
@@ -223,7 +272,7 @@ def build_interpretation_candidate(
         label_carrier_source != "embedded_events" and not skip_labels
     )
     active_label_carriers = list(resource_scope.label_carriers)
-    bids = _bids_for_selected_scope(scan.bids, selected_files)
+    bids = dict(resource_scope.bids)
     if (
         scan.source_kind == "bids"
         and scan.bids.get("is_bids")
@@ -249,6 +298,9 @@ def build_interpretation_candidate(
         carrier_sources=scan.label_carrier_sources,
         sidecar_reader=sidecar_reader,
         resource_reader=resource_reader,
+        recommend_bids_label_field=(
+            scan.source_kind == "bids" and bool(bids.get("is_bids"))
+        ),
     )
     warnings.extend(_label_carrier_plan_warnings(label_carrier_plan))
     if use_external_label_carriers:
@@ -448,9 +500,12 @@ def build_interpretation_candidate(
         eeg_parser_dependencies=resource_scope.eeg_dependencies_by_file,
         bids_events_json_files=resource_scope.bids_events_json_files,
         bids_channels_files=resource_scope.bids_channels_files,
-        admitted_file_identities=sidecar_reader.content_identities(
-            resource_scope.bids_events_json_files,
-        ),
+        admitted_file_identities={
+            **dict(admitted_content_identities or {}),
+            **sidecar_reader.content_identities(
+                resource_scope.bids_events_json_files,
+            ),
+        },
         class_map=class_map,
         event_roles=event_roles,
         run_event_mappings=run_event_mappings,
@@ -853,15 +908,18 @@ def _internal_event_selection(
     if not internal_event_preview:
         return {}
     explicit = payload if isinstance(payload, dict) else {}
+    has_explicit_selected = "label_event_codes" in explicit
+    has_explicit_not_label = "not_label_event_codes" in explicit
+    has_explicit_class_map = "class_map" in explicit
     selected = _string_list(explicit.get("label_event_codes"))
     not_label = _string_list(explicit.get("not_label_event_codes"))
     class_map = _string_mapping(explicit.get("class_map"))
-    if not selected:
+    if not selected and not has_explicit_selected:
         selected = _internal_event_codes(
             internal_event_preview.get("candidate_label_events")
             or internal_event_preview.get("candidate_events")
         )
-    if not not_label:
+    if not not_label and not has_explicit_not_label:
         not_label = _internal_not_label_event_codes(
             internal_event_preview.get("not_used_events")
             or internal_event_preview.get("non_label_events")
@@ -880,7 +938,7 @@ def _internal_event_selection(
             if code_text not in not_label:
                 not_label.append(code_text)
             selected = [item for item in selected if item != code_text]
-    if not class_map:
+    if not class_map and not has_explicit_class_map:
         class_map = _class_map_from_internal_event_rows(
             internal_event_preview.get("candidate_label_events")
             or internal_event_preview.get("candidate_events")

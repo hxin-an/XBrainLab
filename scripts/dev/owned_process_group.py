@@ -290,6 +290,11 @@ def signal_owned_group(process: OwnedProcess, *, force: bool) -> None:
             os.killpg(process.pid, signal.SIGKILL if force else signal.SIGTERM)
         except ProcessLookupError:
             return
+        except PermissionError:
+            # macOS can report EPERM for an orphaned process group after its
+            # session leader exits. The group is still the only safe target;
+            # do not widen cleanup to unrelated processes.
+            return
         return
     if platform == "nt":
         if _taskkill_exact_pid_tree(process.pid, force=force):

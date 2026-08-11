@@ -124,6 +124,10 @@ class TrainingPipelineMutationPort(Protocol):
         publish: Callable[[], None],
     ) -> bool: ...
 
+    def capture_startup_rollback_snapshot(self) -> Any: ...
+
+    def restore_startup_rollback_snapshot(self, snapshot: Any) -> None: ...
+
 
 class PostTrainingSaliencyRuntimePort(Protocol):
     """Post-training saliency lifecycle operations owned by the runtime."""
@@ -162,6 +166,8 @@ class PostTrainingSaliencyRuntimePort(Protocol):
     def wait_for_saliency_delivery(self, *, timeout: float | None = None) -> bool: ...
 
     def retry_saliency_delivery(self) -> None: ...
+
+    def discard_saliency_delivery(self) -> None: ...
 
 
 class TrainingRuntimePort(
@@ -225,6 +231,10 @@ class _TrainingManagerRuntimePort(Protocol):
         publish: Callable[[], None],
     ) -> bool: ...
 
+    def capture_startup_rollback_snapshot(self) -> Any: ...
+
+    def restore_startup_rollback_snapshot(self, snapshot: Any) -> None: ...
+
     def get_post_training_saliency_status(self) -> PostTrainingSaliencyStatus: ...
 
     def get_post_training_saliency_terminal_delivery_state(
@@ -262,6 +272,8 @@ class _TrainingManagerRuntimePort(Protocol):
     ) -> bool: ...
 
     def retry_post_training_saliency_terminal_delivery(self) -> None: ...
+
+    def discard_post_training_saliency_terminal_delivery(self) -> None: ...
 
 
 class _TrainingRuntimeStudy(Protocol):
@@ -424,6 +436,14 @@ class StudyTrainingRuntime:
                 },
             ) from exc
 
+    def capture_startup_rollback_snapshot(self) -> Any:
+        """Capture trainer, results, and saliency truth under the manager lock."""
+        return self._manager.capture_startup_rollback_snapshot()
+
+    def restore_startup_rollback_snapshot(self, snapshot: Any) -> None:
+        """Restore the complete training publication after a failed commit."""
+        self._manager.restore_startup_rollback_snapshot(snapshot)
+
     @staticmethod
     def _ensure_pipeline_mutation_safe(
         boundary: TrainingPipelineMutationBoundary,
@@ -547,6 +567,9 @@ class StudyTrainingRuntime:
 
     def retry_saliency_delivery(self) -> None:
         self._manager.retry_post_training_saliency_terminal_delivery()
+
+    def discard_saliency_delivery(self) -> None:
+        self._manager.discard_post_training_saliency_terminal_delivery()
 
 
 __all__ = [

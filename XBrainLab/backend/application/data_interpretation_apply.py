@@ -972,9 +972,14 @@ class DataInterpretationApplyService:
         labels: Any,
         mode: str,
     ) -> dict[str, Any]:
-        bids_duration_stats = self._duration_stats_from_bids_review(plan)
+        bids_duration_evidence = self._bids_duration_epoch_evidence(plan)
+        bids_duration_stats = (
+            None
+            if bids_duration_evidence is None
+            else bids_duration_evidence["duration_stats"]
+        )
         hint: dict[str, Any] = {
-            "source": self._epoch_hint_source(plan),
+            "source": self._epoch_hint_source(plan, candidate=candidate),
             "placement_method": str(plan.get("placement_method") or "").strip(),
             "label_field": str(plan.get("selected_label_field") or "").strip(),
             "time_field": str(plan.get("selected_anchor") or "").strip(),
@@ -998,25 +1003,21 @@ class DataInterpretationApplyService:
         placement = bids_review.get("placement")
         if not isinstance(placement, dict):
             return hint
-        hint.update(
-            {
-                "placement_event_count": int(placement.get("usable_event_count", 0)),
-                "excluded_event_count": int(placement.get("excluded_event_count", 0)),
-                "unknown_duration_count": int(
-                    placement.get("unknown_duration_count", 0)
-                ),
-                "unknown_duration_rows": [
-                    int(row["row"])
-                    for row in placement.get("unknown_duration_rows", [])
-                    if isinstance(row, dict) and row.get("row") is not None
-                ],
-            }
-        )
+        if bids_duration_evidence is not None:
+            hint.update(bids_duration_evidence)
+        hint["excluded_event_count"] = int(placement.get("excluded_event_count", 0))
         return hint
 
     @staticmethod
-    def _epoch_hint_source(plan: dict[str, Any]) -> str:
-        if str(plan.get("format") or "") == "BIDS events":
+    def _epoch_hint_source(
+        plan: dict[str, Any],
+        *,
+        candidate: InterpretationCandidate,
+    ) -> str:
+        if (
+            candidate.source_kind == "bids"
+            and str(plan.get("format") or "") == "BIDS events"
+        ):
             return "BIDS events.tsv"
         return "Loaded label file"
 
@@ -1039,13 +1040,28 @@ class DataInterpretationApplyService:
     def _duration_stats_from_bids_review(
         plan: dict[str, Any],
     ) -> dict[str, Any] | None:
+        evidence = DataInterpretationApplyService._bids_duration_epoch_evidence(plan)
+        return None if evidence is None else evidence["duration_stats"]
+
+    @staticmethod
+    def _bids_duration_epoch_evidence(
+        plan: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Build internally consistent duration evidence for selected class rows."""
         review = plan.get("bids_event_review")
         if not isinstance(review, dict):
             return None
         row_evidence = review.get("row_evidence")
         if not isinstance(row_evidence, list):
-            return {}
+            return {
+                "duration_stats": {},
+                "placement_event_count": 0,
+                "unknown_duration_count": 0,
+                "unknown_duration_rows": [],
+            }
         values: list[float] = []
+        selected_rows: list[dict[str, Any]] = []
+        unknown_rows: list[int] = []
         for row in row_evidence:
             if not isinstance(row, dict) or row.get("placement_status") != "usable":
                 continue
@@ -1055,18 +1071,34 @@ class DataInterpretationApplyService:
                 or value_decision.get("use_as_class") is not True
             ):
                 continue
+            selected_rows.append(row)
             if row.get("duration_provenance") != "known":
+                if row.get("row") is not None:
+                    unknown_rows.append(int(row["row"]))
                 continue
             raw_duration = row.get("raw_duration")
             if raw_duration is None:
+                if row.get("row") is not None:
+                    unknown_rows.append(int(row["row"]))
                 continue
             try:
                 value = float(cast(Any, raw_duration))
             except (TypeError, ValueError):
+                if row.get("row") is not None:
+                    unknown_rows.append(int(row["row"]))
                 continue
             if np.isfinite(value):
                 values.append(value)
-        return DataInterpretationApplyService._duration_stats_from_values(values)
+            elif row.get("row") is not None:
+                unknown_rows.append(int(row["row"]))
+        return {
+            "duration_stats": (
+                DataInterpretationApplyService._duration_stats_from_values(values)
+            ),
+            "placement_event_count": len(selected_rows),
+            "unknown_duration_count": len(selected_rows) - len(values),
+            "unknown_duration_rows": unknown_rows,
+        }
 
     @staticmethod
     def _duration_stats_from_values(values: list[float]) -> dict[str, Any]:

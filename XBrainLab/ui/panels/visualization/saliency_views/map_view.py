@@ -30,7 +30,7 @@ class SaliencyMapWidget(BaseSaliencyView):
         axis.text(
             0.5,
             0.5,
-            "Select a plan and method to visualize",
+            "Select a fold and method to visualize",
             color=Theme.TEXT_MUTED,
             ha="center",
             va="center",

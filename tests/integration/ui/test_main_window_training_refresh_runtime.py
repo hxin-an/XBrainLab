@@ -12,19 +12,22 @@ import numpy as np
 import pytest
 import torch
 from PyQt6 import sip
-from PyQt6.QtCore import QCoreApplication, Qt
+from PyQt6.QtCore import QCoreApplication, QEvent, Qt
 from PyQt6.QtWidgets import QWidget
 
 from XBrainLab.backend.application import (
+    ApplyInterpretationCommand,
     ChangedState,
     CommandResult,
     ConfigureTrainingCommand,
     CreateEpochCommand,
-    GenerateDatasetCommand,
-    LoadDataCommand,
     PreprocessCommand,
     PreprocessOperation,
+    PreviewInterpretationCommand,
     QueryStateCommand,
+    SaveDatasetSplitCommand,
+    ScanSourceCommand,
+    ValidateInterpretationCommand,
 )
 from XBrainLab.backend.application.runtime import get_application_service
 from XBrainLab.backend.study import Study
@@ -82,7 +85,20 @@ def _prepare_training_runtime(tmp_path: Path):
     assert service is get_application_service(study)
     fif_path = _write_synthetic_raw_fif(tmp_path)
     commands = (
-        LoadDataCommand(paths=[str(fif_path)]),
+        ScanSourceCommand(source_path=str(fif_path), source_hint="file"),
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(fif_path)],
+                "label_carrier": "embedded_events",
+                "class_map": {"left": "left", "right": "right"},
+                "internal_event_selection": {
+                    "label_event_codes": ["left", "right"],
+                    "class_map": {"left": "left", "right": "right"},
+                },
+            },
+        ),
+        ValidateInterpretationCommand(),
+        ApplyInterpretationCommand(confirmed=True),
         PreprocessCommand(
             operation=PreprocessOperation.NORMALIZE,
             method="z-score",
@@ -92,7 +108,7 @@ def _prepare_training_runtime(tmp_path: Path):
             t_max=1.3,
             event_ids=["left", "right"],
         ),
-        GenerateDatasetCommand(
+        SaveDatasetSplitCommand(
             test_ratio=0.25,
             val_ratio=0.25,
             split_strategy="trial",
@@ -115,9 +131,62 @@ def _prepare_training_runtime(tmp_path: Path):
     return study, service
 
 
-def _open_runtime_panels(qtbot, study: Study) -> Any:
+@pytest.fixture
+def runtime_lifecycle(request, qtbot):
+    """Keep backend delivery owners alive until their Qt consumers are closed."""
+
+    def own(window: Any, service: Any) -> None:
+        def close_runtime() -> None:
+            service.wait_for_background_tasks(timeout=10.0)
+            if not sip.isdeleted(window):
+                window.close()
+                qtbot.waitUntil(
+                    lambda: sip.isdeleted(window) or not window.isVisible(),
+                    timeout=10_000,
+                )
+            service.close()
+            assert service.is_closed
+
+            def assert_delivery_owners_released() -> None:
+                training = service.training_publications.training_delivery_state()
+                application_saliency = (
+                    service.training_publications.saliency_delivery_state()
+                )
+                runtime_saliency = service.training_runtime.saliency_delivery_state()
+                assert (
+                    training.active_count == 0
+                    and training.pending_count == 0
+                    and not training.retry_owner_active
+                    and not application_saliency.pending_generations
+                    and application_saliency.active_generation is None
+                    and not application_saliency.retry_owner_active
+                    and not runtime_saliency.pending_generations
+                    and runtime_saliency.active_generation is None
+                    and not runtime_saliency.retry_owner_active
+                ), (
+                    f"training={training!r}; "
+                    f"application_saliency={application_saliency!r}; "
+                    f"runtime_saliency={runtime_saliency!r}"
+                )
+
+            qtbot.waitUntil(assert_delivery_owners_released, timeout=10_000)
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
+            QCoreApplication.processEvents()
+
+        request.addfinalizer(close_runtime)
+
+    return own
+
+
+def _open_runtime_panels(
+    qtbot,
+    study: Study,
+    service: Any,
+    own_runtime: Any,
+) -> Any:
     window = cast(Any, MainWindow(study))
     qtbot.addWidget(window)
+    own_runtime(window, service)
     window.resize(1220, 820)
     window.show()
     qtbot.waitExposed(window)
@@ -269,9 +338,10 @@ def test_start_training_click_refreshes_all_runtime_panels_and_saliency(
     qtbot,
     tmp_path: Path,
     monkeypatch,
+    runtime_lifecycle,
 ) -> None:
     study, service = _prepare_training_runtime(tmp_path)
-    window = _open_runtime_panels(qtbot, study)
+    window = _open_runtime_panels(qtbot, study, service, runtime_lifecycle)
     training = window.training_panel
     evaluation = window.evaluation_panel
     visualization = window.visualization_panel
@@ -335,6 +405,13 @@ def test_start_training_click_refreshes_all_runtime_panels_and_saliency(
     try:
         qtbot.waitUntil(training_terminal_rendered, timeout=10_000)
         assert analysis_publications == []
+        qtbot.waitUntil(
+            lambda: _analysis_panels_show_training_state(
+                window,
+                TrainingOutcomeState.COMPLETED,
+            ),
+            timeout=10_000,
+        )
         _deliver_pending_qt_events()
         terminal_evaluation_query = evaluation._application_generation
         terminal_visualization_query = visualization.last_application_query
@@ -395,7 +472,7 @@ def test_start_training_click_refreshes_all_runtime_panels_and_saliency(
         == 1
     )
     assert evaluation.model_combo.count() == 1
-    assert evaluation.run_combo.currentText() == "Repeat 1 (Finished)"
+    assert evaluation.run_combo.currentText() == "Run 1 (Finished)"
 
     visualization_query = visualization.last_application_query
     assert visualization_query.diagnostics["trainer_count"] == 1
@@ -428,9 +505,10 @@ def test_saliency_completion_publishes_once_during_unrelated_nested_commands(
     qtbot,
     tmp_path: Path,
     monkeypatch,
+    runtime_lifecycle,
 ) -> None:
     study, service = _prepare_training_runtime(tmp_path)
-    window = _open_runtime_panels(qtbot, study)
+    window = _open_runtime_panels(qtbot, study, service, runtime_lifecycle)
     training = window.training_panel
     evaluation = window.evaluation_panel
     visualization = window.visualization_panel
@@ -590,9 +668,10 @@ def test_start_training_click_publishes_oom_failure_to_all_runtime_panels(
     qtbot,
     tmp_path: Path,
     monkeypatch,
+    runtime_lifecycle,
 ) -> None:
     study, service = _prepare_training_runtime(tmp_path)
-    window = _open_runtime_panels(qtbot, study)
+    window = _open_runtime_panels(qtbot, study, service, runtime_lifecycle)
     training = window.training_panel
     evaluation = window.evaluation_panel
     visualization = window.visualization_panel
@@ -674,9 +753,10 @@ def test_delayed_oom_refreshes_every_running_panel_once_at_terminal(
     qtbot,
     tmp_path: Path,
     monkeypatch,
+    runtime_lifecycle,
 ) -> None:
     study, service = _prepare_training_runtime(tmp_path)
-    window = _open_runtime_panels(qtbot, study)
+    window = _open_runtime_panels(qtbot, study, service, runtime_lifecycle)
     training = window.training_panel
     entered_training = Event()
     release_training = Event()
@@ -766,9 +846,10 @@ def test_delayed_cancellation_refreshes_every_preterminal_panel_once(
     qtbot,
     tmp_path: Path,
     monkeypatch,
+    runtime_lifecycle,
 ) -> None:
     study, service = _prepare_training_runtime(tmp_path)
-    window = _open_runtime_panels(qtbot, study)
+    window = _open_runtime_panels(qtbot, study, service, runtime_lifecycle)
     training = window.training_panel
     entered_training = Event()
     release_training = Event()
@@ -861,10 +942,11 @@ def test_cross_sender_legacy_events_cannot_override_typed_terminal(
     qtbot,
     tmp_path: Path,
     monkeypatch,
+    runtime_lifecycle,
     terminal_first: bool,
 ) -> None:
     study, service = _prepare_training_runtime(tmp_path)
-    window = _open_runtime_panels(qtbot, study)
+    window = _open_runtime_panels(qtbot, study, service, runtime_lifecycle)
     training = window.training_panel
     terminal_publications: list[TrainingLifecycleEvent] = []
     service.training.subscribe(

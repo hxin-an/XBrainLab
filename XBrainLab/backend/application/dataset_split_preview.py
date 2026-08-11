@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Callable, Mapping, Sequence
+from copy import copy, deepcopy
 from dataclasses import dataclass
 from threading import Lock
 from typing import Any
 
 from .errors import PreconditionError
 from .view_publication import ApplicationViewPublication
+
+DATASET_SPLIT_PREVIEW_ROW_LIMIT = 50
+_MISSING = object()
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,6 +197,17 @@ class DatasetSplitSpecification:
             "test_splitters": [rule.to_payload() for rule in self.test_splitters],
         }
 
+    @property
+    def fingerprint(self) -> str:
+        """Return a stable identity without reading EEG or generated masks."""
+        payload = json.dumps(
+            self.to_payload(),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("ascii")
+        return hashlib.sha256(payload).hexdigest()
+
 
 @dataclass(frozen=True, slots=True)
 class DatasetSplitPreviewRequest:
@@ -237,22 +254,153 @@ class DatasetSplitPreviewPublication:
     request: DatasetSplitPreviewRequest
     generation: int
     rows: tuple[DatasetSplitPreviewRow, ...]
+    epoch_token: int = 1
+    total_count: int | None = None
+    truncated_count: int = 0
+    train_count: int | None = None
+    validation_count: int | None = None
+    test_count: int | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.request, DatasetSplitPreviewRequest):
             raise TypeError("request must be a DatasetSplitPreviewRequest")
         if self.generation != self.request.publication_generation:
             raise ValueError("preview generation must match its request")
+        if isinstance(self.epoch_token, bool) or not isinstance(self.epoch_token, int):
+            raise TypeError("epoch_token must be an integer")
+        if self.epoch_token < 1:
+            raise ValueError("epoch_token must be positive")
         if not self.rows:
             raise ValueError("A dataset split preview must contain at least one row")
         if any(not isinstance(row, DatasetSplitPreviewRow) for row in self.rows):
             raise TypeError("rows must contain DatasetSplitPreviewRow values")
+        if len(self.rows) > DATASET_SPLIT_PREVIEW_ROW_LIMIT:
+            raise ValueError("Dataset split preview rows exceed the fixed row limit")
+        _normalize_preview_totals(self)
+
+    @property
+    def receipt(self) -> DatasetSplitPreviewReceipt:
+        """Detach the exact preview evidence that may accompany split saving."""
+        return DatasetSplitPreviewReceipt(
+            request_id=self.request.request_id,
+            publication_generation=self.generation,
+            epoch_token=self.epoch_token,
+            specification=self.request.specification,
+            specification_fingerprint=self.request.specification.fingerprint,
+            rows=self.rows,
+            total_count=self.total_count,
+            truncated_count=self.truncated_count,
+            train_count=self.train_count,
+            validation_count=self.validation_count,
+            test_count=self.test_count,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class DatasetSplitPreviewReceipt:
+    """Generation-bound detached evidence from one completed split preview."""
+
+    request_id: str
+    publication_generation: int
+    epoch_token: int
+    specification: DatasetSplitSpecification
+    specification_fingerprint: str
+    rows: tuple[DatasetSplitPreviewRow, ...]
+    total_count: int | None = None
+    truncated_count: int = 0
+    train_count: int | None = None
+    validation_count: int | None = None
+    test_count: int | None = None
+
+    def __post_init__(self) -> None:
+        request_id = str(self.request_id).strip()
+        if not request_id:
+            raise ValueError("request_id cannot be empty")
+        _validate_generation(self.publication_generation)
+        if isinstance(self.epoch_token, bool) or not isinstance(self.epoch_token, int):
+            raise TypeError("epoch_token must be an integer")
+        if self.epoch_token < 1:
+            raise ValueError("epoch_token must be positive")
+        if not isinstance(self.specification, DatasetSplitSpecification):
+            raise TypeError("specification must be DatasetSplitSpecification")
+        if self.specification_fingerprint != self.specification.fingerprint:
+            raise ValueError("specification_fingerprint does not match specification")
+        if not self.rows or any(
+            not isinstance(row, DatasetSplitPreviewRow) for row in self.rows
+        ):
+            raise TypeError("rows must contain DatasetSplitPreviewRow values")
+        if len(self.rows) > DATASET_SPLIT_PREVIEW_ROW_LIMIT:
+            raise ValueError("Dataset split preview rows exceed the fixed row limit")
+        _normalize_preview_totals(self)
+        object.__setattr__(self, "request_id", request_id)
+
+    def summary_payload(self) -> dict[str, Any]:
+        """Return JSON-safe aggregate counts plus detached per-dataset rows."""
+        rows = [
+            {
+                "name": row.name,
+                "train_count": row.train_count,
+                "validation_count": row.validation_count,
+                "test_count": row.test_count,
+            }
+            for row in self.rows
+        ]
+        return {
+            "dataset_count": self.total_count,
+            "total_count": self.total_count,
+            "truncated_count": self.truncated_count,
+            "train_count": self.train_count,
+            "validation_count": self.validation_count,
+            "test_count": self.test_count,
+            "rows": rows,
+        }
+
+
+def _normalize_preview_totals(publication: Any) -> None:
+    rows = publication.rows
+    total_count = publication.total_count
+    if total_count is None:
+        total_count = len(rows)
+    if (
+        isinstance(total_count, bool)
+        or not isinstance(total_count, int)
+        or total_count < len(rows)
+    ):
+        raise ValueError("total_count must include every published preview row")
+    expected_truncated = total_count - len(rows)
+    if publication.truncated_count != expected_truncated:
+        raise ValueError("truncated_count must equal total_count minus row count")
+
+    for field_name, row_field in (
+        ("train_count", "train_count"),
+        ("validation_count", "validation_count"),
+        ("test_count", "test_count"),
+    ):
+        value = getattr(publication, field_name)
+        if value is None:
+            if expected_truncated:
+                raise ValueError(
+                    f"{field_name} is required when preview rows are truncated"
+                )
+            value = sum(getattr(row, row_field) for row in rows)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"{field_name} must be a non-negative integer")
+        object.__setattr__(publication, field_name, value)
+    object.__setattr__(publication, "total_count", total_count)
 
 
 @dataclass(slots=True)
 class _ActivePreview:
     generator: Any
     cancelled: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class _PreviewStateSnapshot:
+    dataset_sequence: int
+    evidence_reference: Any
+    evidence_value: Any
+    evidence_dropped: Any
 
 
 class DatasetSplitPreviewPublisher:
@@ -271,6 +419,7 @@ class DatasetSplitPreviewPublisher:
         self._get_publication = get_publication
         self._config_factory = config_factory or _canonical_config_from_payload
         self._active_lock = Lock()
+        self._generation_lock = Lock()
         self._active: dict[str, _ActivePreview] = {}
 
     def publish_context(
@@ -305,7 +454,8 @@ class DatasetSplitPreviewPublisher:
             raise TypeError("request must be a DatasetSplitPreviewRequest")
         before = self._get_publication()
         self._validate_generation(request.publication_generation, before)
-        if self._dataset.get_epoch_data() is None:
+        epoch_data = self._dataset.get_epoch_data()
+        if epoch_data is None:
             raise PreconditionError(
                 "Create EEG epochs before previewing training-data splits."
             )
@@ -315,13 +465,31 @@ class DatasetSplitPreviewPublisher:
         active = _ActivePreview(generator=generator)
         self._register(request.request_id, active)
         try:
-            generated = generator.generate()
-            datasets = (
-                list(generated)
-                if isinstance(generated, Sequence)
-                else list(getattr(generator, "datasets", []) or [])
-            )
-            rows = tuple(self._copy_row(dataset) for dataset in datasets)
+            with self._generation_lock:
+                if active.cancelled:
+                    raise PreconditionError(
+                        "Dataset split preview was cancelled.",
+                        diagnostics={"request_id": request.request_id},
+                    )
+                snapshot = _capture_preview_state(epoch_data)
+                try:
+                    _detach_generator_epoch_evidence(generator, epoch_data)
+                    generated = generator.generate()
+                    datasets = (
+                        list(generated)
+                        if isinstance(generated, Sequence)
+                        else list(getattr(generator, "datasets", []) or [])
+                    )
+                    detached_rows = [self._copy_row(dataset) for dataset in datasets]
+                    rows = tuple(detached_rows[:DATASET_SPLIT_PREVIEW_ROW_LIMIT])
+                    total_count = len(detached_rows)
+                    train_count = sum(row.train_count for row in detached_rows)
+                    validation_count = sum(
+                        row.validation_count for row in detached_rows
+                    )
+                    test_count = sum(row.test_count for row in detached_rows)
+                finally:
+                    _restore_preview_state(epoch_data, snapshot)
         except KeyboardInterrupt as exc:
             if active.cancelled:
                 raise PreconditionError(
@@ -341,7 +509,13 @@ class DatasetSplitPreviewPublisher:
         return DatasetSplitPreviewPublication(
             request=request,
             generation=after.generation,
+            epoch_token=id(epoch_data),
             rows=rows,
+            total_count=total_count,
+            truncated_count=total_count - len(rows),
+            train_count=train_count,
+            validation_count=validation_count,
+            test_count=test_count,
         )
 
     def cancel_preview(self, request_id: str) -> bool:
@@ -454,6 +628,69 @@ class DatasetSplitPreviewPublisher:
 def _validate_generation(value: int) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise ValueError("publication_generation must be a positive integer")
+
+
+def _capture_preview_state(epoch_data: Any) -> _PreviewStateSnapshot:
+    from XBrainLab.backend.dataset.dataset import Dataset  # noqa: PLC0415
+
+    evidence_reference = getattr(epoch_data, "trial_selection_evidence", _MISSING)
+    evidence_value = (
+        _MISSING if evidence_reference is _MISSING else deepcopy(evidence_reference)
+    )
+    return _PreviewStateSnapshot(
+        dataset_sequence=int(Dataset.SEQ),
+        evidence_reference=evidence_reference,
+        evidence_value=evidence_value,
+        evidence_dropped=getattr(
+            epoch_data,
+            "trial_selection_evidence_dropped",
+            _MISSING,
+        ),
+    )
+
+
+def _restore_preview_state(
+    epoch_data: Any,
+    snapshot: _PreviewStateSnapshot,
+) -> None:
+    from XBrainLab.backend.dataset.dataset import Dataset  # noqa: PLC0415
+
+    Dataset.SEQ = snapshot.dataset_sequence
+    if snapshot.evidence_reference is _MISSING:
+        if hasattr(epoch_data, "trial_selection_evidence"):
+            delattr(epoch_data, "trial_selection_evidence")
+    else:
+        evidence_reference = snapshot.evidence_reference
+        if isinstance(evidence_reference, list):
+            evidence_reference[:] = deepcopy(snapshot.evidence_value)
+        epoch_data.trial_selection_evidence = evidence_reference
+
+    if snapshot.evidence_dropped is _MISSING:
+        if hasattr(epoch_data, "trial_selection_evidence_dropped"):
+            delattr(epoch_data, "trial_selection_evidence_dropped")
+    else:
+        epoch_data.trial_selection_evidence_dropped = snapshot.evidence_dropped
+
+
+def _detach_generator_epoch_evidence(generator: Any, epoch_data: Any) -> None:
+    if getattr(generator, "epoch_data", None) is not epoch_data:
+        return
+    try:
+        detached_epoch_data = copy(epoch_data)
+        evidence = getattr(epoch_data, "trial_selection_evidence", _MISSING)
+        if evidence is not _MISSING:
+            detached_epoch_data.trial_selection_evidence = deepcopy(evidence)
+        evidence_dropped = getattr(
+            epoch_data,
+            "trial_selection_evidence_dropped",
+            _MISSING,
+        )
+        if evidence_dropped is not _MISSING:
+            detached_epoch_data.trial_selection_evidence_dropped = evidence_dropped
+        generator.epoch_data = detached_epoch_data
+    except (AttributeError, TypeError):
+        # The state snapshot still protects custom generators that cannot be rebound.
+        return
 
 
 def _canonical_config_from_payload(payload: dict[str, Any]) -> Any:

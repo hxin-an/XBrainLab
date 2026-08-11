@@ -5,6 +5,8 @@
 XBrainLab 是本地優先的 EEG / BCI 桌面分析工具。目前可執行的 Desktop GUI checkpoint 已
 收斂到 `main`；這個入口用來快速判斷現況、缺口和證據。
 
+桌面操作與資料集流程請前往 <a href="guide/">User Guide</a>；本頁保留工程現況、架構與驗證入口。
+
 !!! warning "目前邊界"
     真人資料手測目前只支撐 Graz 2a GDF 與 OpenNeuro ds003061 P300 BIDS 各一個資料集。
     Assistant 尚未準備好，效能與舊 Agent gate 仍需重整；這不是 release 或 product complete。

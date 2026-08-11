@@ -1,6 +1,5 @@
 """Coverage tests for seed utility, parser, __init__, and small modules."""
 
-import contextlib
 from unittest.mock import MagicMock, patch
 
 # ── Seed Utility ──────────────────────────────────────────────
@@ -116,13 +115,3 @@ class TestModelDownloaderCoverage:
         assert outcome.status is ModelDownloadStatus.FAILED
         assert outcome.target.repo_id == "repo/id"
         d.failed.emit.assert_called_once_with(outcome)
-
-    def test_start_download_when_already_running(self):
-        from XBrainLab.llm.core.downloader import ModelDownloader
-
-        d = ModelDownloader()
-        d._thread = MagicMock()
-        # Should detect existing thread and handle gracefully
-        with contextlib.suppress(RuntimeError, AttributeError):
-            d.start_download("test/model", "/tmp/cache")
-            # Expected when thread is mock

@@ -77,14 +77,20 @@ class TestDefaults:
         tmp_path,
     ):
         xdg_data_home = tmp_path / "user-data"
+        user_home = tmp_path / "home"
         frozen_config = tmp_path / "read-only-bundle" / "XBrainLab" / "config.py"
 
         with (
             patch.dict(
                 os.environ,
-                {"XDG_DATA_HOME": str(xdg_data_home)},
+                {
+                    "HOME": str(user_home),
+                    "USERPROFILE": str(user_home),
+                    "XDG_DATA_HOME": str(xdg_data_home),
+                },
                 clear=True,
             ),
+            patch("XBrainLab.platform_paths.platform.system", return_value="Linux"),
             patch.object(config_module, "__file__", str(frozen_config)),
         ):
             cfg = LLMConfig(device="cpu")

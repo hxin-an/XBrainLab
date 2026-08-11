@@ -433,6 +433,11 @@ def model_cache_exists(cache_dir: str, repo_id: str) -> bool:
     return model_cache_complete(cache_dir, repo_id)
 
 
+def _requires_samefile_hardlink_fallback() -> bool:
+    """Return whether file metadata needs a same-file identity fallback."""
+    return os.name == "nt"
+
+
 def _directory_size_bytes(
     path: Path,
     *,
@@ -492,6 +497,7 @@ def _directory_size_bytes(
     total = 0
     entry_count = 0
     seen: set[tuple[int, int]] = set()
+    linked_files_by_size: dict[int, list[Path]] = {}
     pending: list[tuple[Path, int]] = [(path, 0)]
     try:
         while pending:
@@ -519,6 +525,20 @@ def _directory_size_bytes(
                     inode_key = (entry_stat.st_dev, entry_stat.st_ino)
                     if entry_stat.st_ino and inode_key in seen:
                         continue
+                    if (
+                        entry_stat.st_nlink > 1
+                        or _requires_samefile_hardlink_fallback()
+                    ):
+                        linked_files = linked_files_by_size.setdefault(
+                            entry_stat.st_size,
+                            [],
+                        )
+                        if any(
+                            os.path.samefile(entry_path, linked_path)
+                            for linked_path in linked_files
+                        ):
+                            continue
+                        linked_files.append(entry_path)
                     if entry_stat.st_ino:
                         seen.add(inode_key)
                     total += entry_stat.st_size

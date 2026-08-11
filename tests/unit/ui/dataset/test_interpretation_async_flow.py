@@ -7,7 +7,7 @@ import time
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 from PyQt6 import sip
 from PyQt6.QtCore import QTimer
@@ -152,6 +152,92 @@ def test_label_configuration_merge_preserves_reviewed_external_choices_when_unch
     assert merged["metadata_overrides"] == {
         "sub-01_task-p300_eeg.set": {"task": "p300"}
     }
+
+
+def test_label_configuration_merge_preserves_untouched_explicit_run_choices():
+    first = "/bids/sub-01_task-p300_run-1_events.tsv"
+    second = "/bids/sub-01_task-p300_run-2_events.tsv"
+    merged = DataInterpretationActionCoordinator._merge_interpretation_choices(
+        {
+            "label_carrier": "loaded_label_files",
+            "label_carrier_choices": {
+                first: {"label_field": "trial_type", "anchor": "onset"},
+                second: {"label_field": "value", "anchor": "onset"},
+            },
+        },
+        {
+            "label_carrier_choices": {
+                first: {
+                    "label_field": "trial_type",
+                    "anchor": "onset",
+                    "value_decisions": {
+                        "target": {
+                            "role": "stimulus",
+                            "keep_event": True,
+                            "use_as_class": True,
+                            "class_name": "Target",
+                        }
+                    },
+                }
+            }
+        },
+    )
+
+    assert merged["label_carrier_choices"][second] == {
+        "label_field": "value",
+        "anchor": "onset",
+    }
+    assert "value_decisions" in merged["label_carrier_choices"][first]
+
+
+def test_label_configuration_merge_deep_merges_sparse_carrier_decision_edit():
+    carrier = "/bids/sub-01_task-condition_events.tsv"
+    untouched_decision = {
+        "role": "stimulus",
+        "keep_event": True,
+        "use_as_class": True,
+        "class_name": "Standard",
+    }
+    edited_decision = {
+        "role": "ignored",
+        "keep_event": True,
+        "use_as_class": False,
+    }
+    merged = DataInterpretationActionCoordinator._merge_interpretation_choices(
+        {
+            "label_carrier": "loaded_label_files",
+            "label_carrier_choices": {
+                carrier: {
+                    "label_field": "value",
+                    "target_file": "/bids/sub-01_task-condition_eeg.set",
+                    "placement_method": "time_field",
+                    "anchor": "onset",
+                    "value_decisions": {
+                        "standard": untouched_decision,
+                        "target": {
+                            "role": "stimulus",
+                            "keep_event": True,
+                            "use_as_class": True,
+                            "class_name": "Target",
+                        },
+                    },
+                }
+            },
+        },
+        {
+            "label_carrier_choices": {
+                carrier: {"value_decisions": {"target": edited_decision}}
+            }
+        },
+    )
+
+    carrier_choice = merged["label_carrier_choices"][carrier]
+    assert carrier_choice["label_field"] == "value"
+    assert carrier_choice["target_file"] == "/bids/sub-01_task-condition_eeg.set"
+    assert carrier_choice["placement_method"] == "time_field"
+    assert carrier_choice["anchor"] == "onset"
+    assert carrier_choice["value_decisions"]["standard"] == untouched_decision
+    assert carrier_choice["value_decisions"]["target"] == edited_decision
 
 
 def test_label_configuration_merge_clears_external_state_for_embedded_events():
@@ -659,6 +745,11 @@ def test_blocked_review_closes_without_a_second_error_dialog(monkeypatch) -> Non
 
 def test_choice_repreview_uses_existing_scan_without_rescanning(monkeypatch) -> None:
     handler = DatasetActionHandler(MagicMock())
+    loading = MagicMock()
+    loading.cancelled_by_user = False
+    handler._data_interpretation._loading_dialog_class = lambda: (
+        lambda *_args, **_kwargs: loading
+    )
     execute = MagicMock(
         return_value=InteractionOutcome.accepted("Preview refresh scheduled.")
     )
@@ -724,12 +815,17 @@ def test_apply_uses_the_generation_reviewed_by_the_user(qtbot, monkeypatch):
 def test_apply_shows_loading_status_before_dataset_payload_is_loaded(monkeypatch):
     panel = MagicMock()
     handler = DatasetActionHandler(panel)
-    statuses: list[str] = []
-    monkeypatch.setattr(handler, "_show_status", statuses.append)
+    statuses: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        handler,
+        "_show_status",
+        lambda message, timeout_ms=7000: statuses.append((message, timeout_ms)),
+    )
+    execute = MagicMock(return_value=InteractionOutcome.accepted("scheduled"))
     monkeypatch.setattr(
         handler._data_interpretation,
         "_execute_interpretation_command_async",
-        MagicMock(return_value=InteractionOutcome.accepted("scheduled")),
+        execute,
     )
 
     outcome = handler._data_interpretation._apply_interpretation_async(
@@ -738,7 +834,53 @@ def test_apply_shows_loading_status_before_dataset_payload_is_loaded(monkeypatch
     )
 
     assert outcome.status is InteractionStatus.ACCEPTED
-    assert statuses == ["Loading EEG data..."]
+    assert statuses == [("Importing EEG data and labels...", 900_000)]
+
+    on_result = execute.call_args.kwargs["on_result"]
+    completed = _success_result(
+        "apply_interpretation",
+        applied_interpretation={},
+        success_count=6,
+    )
+    on_result(completed)
+
+    assert statuses[-1] == (completed.message, 7000)
+
+
+def test_apply_replaces_loading_status_when_the_worker_fails(monkeypatch):
+    panel = MagicMock()
+    handler = DatasetActionHandler(panel)
+    statuses: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        handler,
+        "_show_status",
+        lambda message, timeout_ms=7000: statuses.append((message, timeout_ms)),
+    )
+    execute = MagicMock(return_value=InteractionOutcome.accepted("scheduled"))
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_execute_interpretation_command_async",
+        execute,
+    )
+    present_error = MagicMock()
+    handler._data_interpretation._bindings = replace(
+        handler._data_interpretation._bindings,
+        present_unexpected_error=present_error,
+    )
+
+    outcome = handler._data_interpretation._apply_interpretation_async(
+        _review_state(),
+        {"confirmed": True, "save_recipe": False},
+    )
+    error = (RuntimeError, RuntimeError("worker failed"), None)
+    execute.call_args.kwargs["on_error"](error)
+
+    assert outcome.status is InteractionStatus.ACCEPTED
+    assert statuses == [
+        ("Importing EEG data and labels...", 900_000),
+        ("Dataset import failed · Review the import settings", 7000),
+    ]
+    assert present_error.call_args.kwargs["error_info"] == error
 
 
 def test_smart_parse_binds_the_generation_reviewed_before_the_dialog(
@@ -1287,7 +1429,40 @@ def test_review_flow_uses_slow_worker_without_blocking_gui(qtbot, monkeypatch):
     qtbot.addWidget(panel)
     cast(Any, panel).study = Study()
     cast(Any, panel).set_busy = lambda _busy: None
+    loading_dialogs: list[Any] = []
+
+    class _LoadingDialog:
+        def __init__(self, _parent, *, initial_step=""):
+            self.initial_step = initial_step
+            self.visible = False
+            self.closed = False
+            self.cancelled_by_user = False
+            self.rejected = SimpleNamespace(connect=lambda _callback: None)
+            self.retry_requested = SimpleNamespace(connect=lambda _callback: None)
+            loading_dialogs.append(self)
+
+        def show(self):
+            self.visible = True
+
+        def close(self):
+            self.visible = False
+            self.closed = True
+
+        def accept(self):
+            self.visible = False
+            self.closed = True
+
+        def deleteLater(self):
+            return None
+
+        def set_stage(self, _title, _detail):
+            return None
+
+        def show_error(self, _message, *, retry_available=True):
+            return None
+
     handler = DatasetActionHandler(panel)
+    handler._data_interpretation._loading_dialog_class = lambda: _LoadingDialog
     statuses: list[str] = []
     monkeypatch.setattr(handler, "_show_status", statuses.append)
     continue_flow = MagicMock()
@@ -1336,13 +1511,131 @@ def test_review_flow_uses_slow_worker_without_blocking_gui(qtbot, monkeypatch):
     assert started.status is InteractionStatus.ACCEPTED
     assert statuses == ["Preparing import review..."]
     assert elapsed < 0.1
+    assert len(loading_dialogs) == 1
+    assert loading_dialogs[0].visible is True
     assert worker_started.wait(timeout=1.0)
     QTimer.singleShot(0, lambda: heartbeat.append(True))
     qtbot.waitUntil(lambda: bool(heartbeat), timeout=1000)
 
     worker_release.set()
     qtbot.waitUntil(lambda: continue_flow.call_count == 1, timeout=1000)
+    assert loading_dialogs[0].closed is True
     assert statuses == ["Preparing import review...", "Import review ready."]
+
+
+def test_loading_dialog_is_not_disabled_with_the_busy_dataset_panel(qtbot):
+    top_level = QWidget()
+    panel = QWidget(top_level)
+    qtbot.addWidget(top_level)
+    top_level.show()
+    handler = DatasetActionHandler(panel)
+
+    token = handler._data_interpretation._open_loading_dialog(
+        initial_step="",
+        retry=lambda: None,
+    )
+    dialog = handler._data_interpretation._active_loading_dialog
+    panel.setEnabled(False)
+
+    assert handler._data_interpretation._loading_dialog_is_active(token)
+    assert dialog.parentWidget() is top_level
+    assert dialog.isEnabled()
+    assert dialog.cancel_button.isEnabled()
+
+    handler._data_interpretation._close_loading_dialog(token)
+
+
+def test_cancelled_review_loading_does_not_reopen_wizard(qtbot, monkeypatch):
+    panel = QWidget()
+    qtbot.addWidget(panel)
+    cast(Any, panel).study = Study()
+    cast(Any, panel).set_busy = lambda _busy: None
+    handler = DatasetActionHandler(panel)
+    continue_flow = MagicMock()
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_continue_data_interpretation_import",
+        continue_flow,
+    )
+    worker_started = threading.Event()
+    worker_release = threading.Event()
+    result = _success_result(
+        "review_interpretation",
+        scan_result={"scan_id": "scan-1"},
+        preview={"summary": "ready"},
+        candidate={"candidate_id": "candidate-1"},
+        validation_decision={"candidate_id": "candidate-1", "decision": "safe"},
+    )
+
+    class _Service:
+        def execute(self, command):
+            assert isinstance(command, ReviewInterpretationCommand)
+            worker_started.set()
+            assert worker_release.wait(timeout=2.0)
+            return result
+
+        def get_view_publication(self):
+            return _review_publication(candidate_id="candidate-1")
+
+    class _Signal:
+        def __init__(self):
+            self.callback = None
+
+        def connect(self, callback):
+            self.callback = callback
+
+        def emit(self):
+            if self.callback is not None:
+                self.callback()
+
+    class _LoadingDialog:
+        def __init__(self, _parent, *, initial_step=""):
+            self.initial_step = initial_step
+            self.cancelled_by_user = False
+            self.rejected = _Signal()
+            self.retry_requested = _Signal()
+
+        def show(self):
+            return None
+
+        def close(self):
+            return None
+
+        def accept(self):
+            return None
+
+        def deleteLater(self):
+            return None
+
+        def set_stage(self, _title, _detail):
+            return None
+
+        def show_error(self, _message, *, retry_available=True):
+            return None
+
+    handler._data_interpretation._loading_dialog_class = lambda: _LoadingDialog
+    monkeypatch.setattr(
+        application_capabilities,
+        "application_ui_runtime",
+        lambda _study: _Service(),
+    )
+
+    outcome = handler._data_interpretation._start_interpretation_review_async(
+        "/tmp/sub-01_raw.fif",
+        "auto",
+        {},
+        [],
+    )
+
+    assert outcome is not None
+    assert worker_started.wait(timeout=1.0)
+    loading = handler._data_interpretation._active_loading_dialog
+    loading.cancelled_by_user = True
+    loading.rejected.emit()
+    worker_release.set()
+    qtbot.waitUntil(lambda: not worker_release.is_set() or True, timeout=100)
+    qtbot.wait(100)
+    assert continue_flow.call_count == 0
 
 
 def test_review_warning_confirmation_retries_before_opening_preview(
@@ -1847,8 +2140,9 @@ def test_apply_warning_confirmation_resubmits_trusted_receipt_async(
     qtbot.waitUntil(lambda: len(commands) == 2, timeout=2000)
     qtbot.wait(50)
     assert status.call_args_list == [
-        (("Loading EEG data...",),),
-        (("Loading EEG data...",),),
+        call("Importing EEG data and labels...", 900_000),
+        call("Importing EEG data and labels...", 900_000),
+        call("ok"),
     ]
     assert commands[0].resource_preflight_confirmed is False
     assert commands[0].resource_preflight_token is None
@@ -1910,8 +2204,9 @@ def test_apply_warning_handoff_ack_completes_without_result_refresh(
     assert outcome.status is InteractionStatus.ACCEPTED
     qtbot.waitUntil(lambda: len(terminal) == 1, timeout=2000)
     assert status.call_args_list == [
-        (("Loading EEG data...",),),
-        (("Loading EEG data...",),),
+        call("Importing EEG data and labels...", 900_000),
+        call("Importing EEG data and labels...", 900_000),
+        call("ok"),
     ]
 
     assert len(commands) == 2

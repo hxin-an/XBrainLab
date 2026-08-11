@@ -61,7 +61,7 @@ _COMMAND_SUBJECTS: dict[CommandName, str] = {
     CommandName.PREPROCESS: "Preprocessing",
     CommandName.RESET_PREPROCESS: "Resetting preprocessing",
     CommandName.CREATE_EPOCH: "EEG epoch creation",
-    CommandName.GENERATE_DATASET: "Dataset generation",
+    CommandName.CONFIGURE_DATASET_SPLIT: "Dataset generation",
     CommandName.CONFIGURE_TRAINING: "Training configuration",
     CommandName.TRAIN: "Training",
     CommandName.STOP_TRAINING: "Stopping training",

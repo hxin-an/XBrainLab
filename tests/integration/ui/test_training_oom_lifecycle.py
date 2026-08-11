@@ -14,10 +14,10 @@ from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
     ConfigureTrainingCommand,
     CreateEpochCommand,
-    GenerateDatasetCommand,
     PreprocessCommand,
     PreprocessOperation,
     PreviewInterpretationCommand,
+    SaveDatasetSplitCommand,
     ScanSourceCommand,
     ValidateInterpretationCommand,
 )
@@ -92,7 +92,7 @@ def _prepare_real_training_service(tmp_path: Path) -> ApplicationService:
         CreateEpochCommand(0, 4, event_ids=list(class_names.values()))
     ).ok
     assert service.execute(
-        GenerateDatasetCommand(
+        SaveDatasetSplitCommand(
             test_ratio=0.2,
             val_ratio=0.2,
             split_strategy="trial",

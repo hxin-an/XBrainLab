@@ -66,6 +66,22 @@ def test_raw_data_loader_append():
     assert raw_data_loader.get_loaded_raw("tests/2.fif") == raw_2
 
 
+def test_raw_data_loader_allows_mixed_sampling_rates_before_resampling() -> None:
+    raw_100_hz = Raw(
+        "tests/raw-100.fif",
+        _generate_mne(100, ["Fp1", "Fp2", "F3", "F4"], "eeg"),
+    )
+    raw_256_hz = Raw(
+        "tests/raw-256.fif",
+        _generate_mne(256, ["Fp1", "Fp2", "F3", "F4"], "eeg"),
+    )
+
+    loader = RawDataLoader([raw_100_hz])
+    loader.append(raw_256_hz)
+
+    assert [item.get_sfreq() for item in loader] == [100.0, 256.0]
+
+
 def test_raw_data_loader_append_error():
     raw_mne = _generate_mne(500, ["Fp1", "Fp2", "F3", "F4"], "eeg")
     raw_1 = _generate_epoch("1", raw_mne, 0.1)

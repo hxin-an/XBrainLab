@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
 
@@ -21,6 +22,7 @@ from XBrainLab.backend.application.commands import (
 )
 from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.evaluation_render import (
+    EvaluationModelSummary,
     EvaluationPlanIdentity,
     EvaluationRunIdentity,
     EvaluationSummaryIdentity,
@@ -369,6 +371,7 @@ def test_analysis_service_summarizes_finished_evaluation_runs() -> None:
     assert diagnostics["finished_run_count"] == 1
     assert diagnostics["evaluation_splits"] == ["test"]
     assert diagnostics["training_active"] is False
+    assert diagnostics["cross_fold_choices"] == []
     assert diagnostics["plans"][0] == {
         "identity": {"plan_index": 0},
         "name": "Plan A",
@@ -392,6 +395,67 @@ def test_analysis_service_summarizes_finished_evaluation_runs() -> None:
             },
         ],
     }
+
+
+def test_analysis_service_publishes_only_admitted_cross_fold_runs() -> None:
+    epoch_data = SimpleNamespace(label_map={0: "Left", 1: "Right"})
+    config = SimpleNamespace(is_cross_validation=True)
+
+    class Dataset:
+        def __init__(self, mask: list[bool]) -> None:
+            self.epoch_data = epoch_data
+            self.config = config
+            self.cross_validation_cohort_id = "cohort-1"
+            self.test_mask = np.asarray(mask, dtype=bool)
+
+        def get_epoch_data(self):
+            return self.epoch_data
+
+    def make_plan(mask: list[bool], labels: list[int], outputs: list[list[float]]):
+        dataset = Dataset(mask)
+        record = SimpleNamespace(
+            label=np.asarray(labels),
+            output=np.asarray(outputs),
+            evaluation_split="test",
+        )
+        run = SimpleNamespace(
+            dataset=dataset,
+            eval_record=record,
+            evaluation_records={"test": record},
+            is_finished=lambda: True,
+            get_name=lambda: "Repeat-0",
+        )
+        return SimpleNamespace(
+            dataset=dataset,
+            get_plans=lambda: [run],
+            get_name=lambda: "Fold",
+        )
+
+    plans = [
+        make_plan([True, False], [0], [[0.8, 0.2]]),
+        make_plan([False, True], [1], [[0.1, 0.9]]),
+    ]
+    service, _visualization = _service(plans=plans)
+
+    _message, diagnostics = _expect_payload(
+        service.handle_evaluate(EvaluateCommand()),
+    )
+
+    assert diagnostics["cross_fold_choices"] == [
+        {
+            "identity": {
+                "members": [
+                    {"plan_index": 0, "run_index": 0},
+                    {"plan_index": 1, "run_index": 0},
+                ]
+            },
+            "display_name": "All Folds",
+            "run_label": "Run 1 (Summary)",
+            "evaluation_splits": ["test"],
+            "fold_count": 2,
+            "sample_count": 2,
+        }
+    ]
 
 
 def test_analysis_service_reports_validation_fallback_provenance() -> None:
@@ -529,9 +593,14 @@ def test_analysis_service_targets_requested_model_summary_only(monkeypatch) -> N
             run_index=0,
         ),
     )
-    summary_builder = MagicMock(return_value="Plan B summary run")
+    summary_builder = MagicMock(
+        return_value=EvaluationModelSummary(
+            status="ready",
+            text="Plan B summary run",
+        )
+    )
     monkeypatch.setattr(
-        "XBrainLab.backend.application.analysis_service.build_evaluation_model_summary",
+        "XBrainLab.backend.application.analysis_service.build_evaluation_model_summary_result",
         summary_builder,
     )
 
@@ -543,6 +612,7 @@ def test_analysis_service_targets_requested_model_summary_only(monkeypatch) -> N
 
     assert diagnostics["model_summary"] == {
         "identity": {"plan_index": 1, "run_index": 0},
+        "status": "ready",
         "text": "Plan B summary run",
     }
     summary_builder.assert_called_once_with(runtime, identity)
@@ -576,6 +646,7 @@ def test_analysis_service_visualize_and_saliency_handlers() -> None:
     )
     assert visualize["payload_type"] == "visualization_summary"
     assert "saliency map" in visualize["available_views"]
+    assert visualize["saliency_cross_fold_choices"] == []
     assert saliency["payload_type"] == "saliency_configuration"
     assert saliency["requested_method"] == "SmoothGrad"
     assert saliency["params"]["_methods"] == ["SmoothGrad"]

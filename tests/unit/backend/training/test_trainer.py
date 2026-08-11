@@ -503,6 +503,31 @@ def test_trainer_job(training_plan_holders):
             p.stop()
 
 
+def test_trainer_job_publishes_uncaught_plan_exception_and_stops_queue(
+    training_plan_holders,
+):
+    trainer = Trainer(training_plan_holders)
+    failed_holder, queued_holder = training_plan_holders
+
+    with (
+        patch.object(
+            failed_holder, "train", side_effect=RuntimeError("boom")
+        ) as failed,
+        patch.object(queued_holder, "train") as queued,
+    ):
+        trainer.job()
+
+    failed.assert_called_once_with()
+    queued.assert_not_called()
+    assert trainer.get_progress_text() == "Error: boom"
+    outcome = trainer.get_terminal_outcome()
+    assert outcome.state is TrainingOutcomeState.FAILED
+    assert outcome.detail == "boom"
+    assert outcome.run is not None
+    assert trainer.is_running() is False
+    assert trainer.job_thread is None
+
+
 def test_trainer_preserves_plan_failure_and_stops_remaining_queue(
     training_plan_holders,
 ):
@@ -710,6 +735,57 @@ def test_trainer_stop_sets_interrupt_and_waits(training_plan_holders):
     thread.join.assert_called_once_with(timeout=0.5)
     assert trainer.job_thread is None
     assert trainer.interrupt is True
+
+
+def test_trainer_clear_history_resets_collection_and_terminal_state(
+    training_plan_holders,
+):
+    trainer = Trainer(training_plan_holders)
+    initial_generation = trainer.get_state_generation()
+
+    trainer.clear_history()
+
+    assert trainer.get_training_plan_holders() == []
+    assert trainer.get_current_index() == 0
+    assert trainer.get_progress_text() == "Pending"
+    outcome = trainer.get_terminal_outcome()
+    assert outcome.state is TrainingOutcomeState.NOT_STARTED
+    assert outcome.run is None
+    assert trainer.get_state_generation() > initial_generation
+
+
+def test_trainer_clear_history_rejects_running_worker_without_mutation(
+    training_plan_holders,
+):
+    trainer = Trainer(training_plan_holders)
+    running_thread = MagicMock()
+    running_thread.is_alive.return_value = True
+    trainer.job_thread = running_thread
+    initial_holders = trainer.get_training_plan_holders()
+    initial_generation = trainer.get_state_generation()
+
+    with pytest.raises(RuntimeError, match=r"Cannot clear history while training"):
+        trainer.clear_history()
+
+    assert trainer.get_training_plan_holders() == initial_holders
+    assert trainer.get_current_index() == 0
+    assert trainer.get_terminal_outcome().state is TrainingOutcomeState.NOT_STARTED
+    assert trainer.get_state_generation() == initial_generation
+
+
+def test_trainer_clean_when_idle_preserves_quiescent_state(training_plan_holders):
+    trainer = Trainer(training_plan_holders)
+    initial_holders = trainer.get_training_plan_holders()
+    initial_outcome = trainer.get_terminal_outcome()
+    initial_generation = trainer.get_state_generation()
+
+    trainer.clean(force_update=False)
+
+    assert trainer.get_training_plan_holders() == initial_holders
+    assert trainer.get_terminal_outcome() == initial_outcome
+    assert trainer.get_state_generation() == initial_generation
+    assert trainer.is_running() is False
+    assert trainer.job_thread is None
 
 
 def test_trainer_force_clean_raises_when_job_stays_running(training_plan_holders):

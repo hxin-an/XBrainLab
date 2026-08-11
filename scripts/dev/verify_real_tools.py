@@ -28,7 +28,7 @@ RawDataLoaderFactory.register_loader(".gdf", load_gdf_file)
 from XBrainLab.llm.tools.real.dataset_real import (
     RealAttachLabelsTool,
     RealClearDatasetTool,
-    RealGenerateDatasetTool,
+    RealConfigureDatasetSplitTool,
     RealGetDatasetInfoTool,
     RealListFilesTool,
     RealLoadDataTool,
@@ -252,7 +252,7 @@ def run_verification():
 
     # 4.3 Generate Datasets
     logger.info("Generating Datasets")
-    split_tool = RealGenerateDatasetTool()
+    split_tool = RealConfigureDatasetSplitTool()
     res_split = split_tool.execute(
         study,
         test_ratio=0.2,

@@ -28,6 +28,8 @@ MNE_BIDS_CHANNELS = MNE_BIDS_EEG_DIR / "sub-01_ses-eeg_task-rest_channels.tsv"
 OPENNEURO_P300_ROOT = PUBLIC_DATA_DIR / "openneuro-ds003061-p300"
 OPENNEURO_P300_EEG_DIR = OPENNEURO_P300_ROOT / "sub-001" / "eeg"
 
+pytestmark = pytest.mark.optional_public_fixture
+
 
 def test_public_mne_bids_import_apply_recipe_and_epoch(tmp_path: Path) -> None:
     """Downloaded MNE-BIDS fixture should exercise folder-level import."""
@@ -147,7 +149,23 @@ def test_public_mne_bids_import_apply_recipe_and_epoch(tmp_path: Path) -> None:
     assert validation_decision["decision"] == "safe"
     assert validation_decision["blocked_reasons"] == []
     assert validation_decision["required_confirmations"] == []
-    assert validation_decision["action_items"] == []
+    assert validation_decision["action_items"] == [
+        {
+            "issue": (
+                "sub-01_ses-eeg_task-rest_events.tsv events.json does not define "
+                "Levels for trial_type; class names need confirmation."
+            ),
+            "impact": (
+                "Import may still be usable, but downstream labels or metadata may "
+                "need review."
+            ),
+            "next_action": (
+                "Open the target step and resolve or confirm this item before import."
+            ),
+            "target_step": "Match Labels",
+            "severity": "warning",
+        }
+    ]
     assert apply_result.ok is True
     assert apply_result.diagnostics["channels_apply"][0]["bad_channels"] == ["PO10"]
     assert service.study.loaded_data_list[0].get_mne().info["bads"] == ["PO10"]
@@ -291,3 +309,44 @@ def test_openneuro_p300_trial_type_excludes_missing_rows_and_imports() -> None:
         {},
         {"selected_label_missing": 2},
     ]
+
+
+def test_openneuro_p300_preview_recommends_value_across_all_selected_runs() -> None:
+    eeg_files = sorted(OPENNEURO_P300_EEG_DIR.glob("*_eeg.set"))
+    if len(eeg_files) != 3:
+        pytest.skip(
+            "OpenNeuro P300 fixture not downloaded; run "
+            "scripts/dev/fetch_public_eeg_fixtures.py first."
+        )
+
+    service = ApplicationService()
+    scan = service.execute(
+        ScanSourceCommand(source_path=str(OPENNEURO_P300_ROOT), source_hint="bids")
+    )
+    preview = service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(path.resolve()) for path in eeg_files],
+            }
+        )
+    )
+
+    assert scan.ok is True
+    assert preview.ok is True
+    carriers = preview.diagnostics["preview"]["label_carrier_preview"]
+    assert len(carriers) == 3
+    assert {carrier["selected_label_field"] for carrier in carriers} == {"value"}
+    assert all(carrier["events_json_sidecar_present"] is True for carrier in carriers)
+    assert all(
+        carrier["label_field_recommendation"]["field"] == "value"
+        for carrier in carriers
+    )
+    recommendation = carriers[0]["label_field_recommendation"]
+    assert recommendation["reason_code"] == "value_has_described_classes"
+    assert recommendation["facts"]["selected_run_count"] == 3
+    assert "reason" not in recommendation
+    details = carriers[0]["label_field_recommendation_details"]
+    assert details["evidence"]["value_refines_trial_type"] is True
+    assert {Path(carrier["selected_target_file"]).name for carrier in carriers} == {
+        path.name for path in eeg_files
+    }

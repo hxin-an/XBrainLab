@@ -27,7 +27,7 @@ TOOL_ACTION_LABELS: dict[str, str] = {
     "set_montage": "Set montage",
     "create_epochs": "Create EEG epochs",
     "epoch_data": "Create EEG epochs",
-    "generate_dataset": "Build training dataset",
+    "configure_dataset_split": "Configure data splitting",
     "set_model": "Configure model",
     "configure_training": "Configure training",
     "start_training": "Start training",

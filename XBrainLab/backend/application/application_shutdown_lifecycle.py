@@ -192,6 +192,20 @@ class ApplicationShutdownLifecycleCoordinator:
                 "Could not cancel post-training saliency automation during close",
                 exc_info=True,
             )
+        try:
+            self._training_runtime.cancel_saliency_job()
+        except Exception:
+            logger.debug(
+                "Could not cancel the saliency runtime during close",
+                exc_info=True,
+            )
+        try:
+            self._training_runtime.discard_saliency_delivery()
+        except Exception:
+            logger.debug(
+                "Could not release saliency delivery ownership during close",
+                exc_info=True,
+            )
 
     def request_fence(self) -> None:
         """Reject new mutations and stop background work without waiting."""

@@ -12,6 +12,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from tests.integration.agent.deferred_split_support import (
+    build_saved_split_runtime,
+    install_materialized_candidate,
+)
 from XBrainLab.backend.application import (
     ChangedState,
     Command,
@@ -775,10 +779,8 @@ def _training_receipt_runtime(
     _TrainingProbe,
 ]:
     study = Study()
-    service = get_application_service(study)
-    runtime_study: Any = study
-    runtime_study.loaded_data_list = [object()]
-    runtime_study.datasets = [object()]
+    service, epoch = build_saved_split_runtime(study)
+    install_materialized_candidate(study, epoch)
     configured = service.execute(
         ConfigureTrainingCommand(
             model_name="EEGNet",
@@ -829,6 +831,10 @@ def _training_receipt_runtime(
     )
     assert isinstance(first, ToolCommandResult)
     assert first.error_type == "confirmation_required", first
+    state_after_preflight = service.get_state()
+    assert state_after_preflight.dataset.split_spec_saved is True
+    assert state_after_preflight.dataset.split_materialized is False
+    assert study.datasets == []
     preflight = ResourcePreflightView.from_diagnostics(first.diagnostics)
     assert preflight is not None
     assert preflight.schema_version == RESOURCE_PREFLIGHT_SCHEMA_VERSION

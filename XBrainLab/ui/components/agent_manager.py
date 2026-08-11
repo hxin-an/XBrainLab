@@ -49,6 +49,7 @@ from XBrainLab.backend.training_state_contract import (
 )
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.agent.assistant_activity import (
+    AssistantDecisionOwner,
     AssistantTurnActivity,
     AssistantTurnActivityPhase,
 )
@@ -196,6 +197,8 @@ _ASSISTANT_TERMINAL_RENDER_RETRY_INTERVAL_MS = 500
 class AssistantDockTitleBar(QWidget):
     """Product header for the assistant dock with native drag behavior."""
 
+    MINIMUM_DOCK_WIDTH = 320
+
     def __init__(self, on_float_toggle, parent=None):
         super().__init__(parent)
         self._on_float_toggle = on_float_toggle
@@ -218,6 +221,11 @@ class AssistantDockTitleBar(QWidget):
         if self.title_label is not None:
             self.title_label.setToolTip(normalized)
             self.title_label.setAccessibleDescription(f"Assistant status: {normalized}")
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        """Do not let platform font hints widen the dock past its product floor."""
+        hint = super().minimumSizeHint()
+        return QSize(min(hint.width(), self.MINIMUM_DOCK_WIDTH), hint.height())
 
     def resizeEvent(self, event):  # noqa: N802
         """Keep essential title actions readable at narrow dock widths."""
@@ -481,6 +489,10 @@ class AgentManager(QObject):
         chat_dock = QDockWidget("XBrainLab", self.main_window)
         self.chat_dock = chat_dock
         chat_dock.setWidget(chat_panel)
+        # QDockWidget's native frame consumes platform-dependent horizontal
+        # chrome. Keep the supported 320 px floor on the actual assistant
+        # surface so Windows does not receive a narrower first layout.
+        chat_panel.setMinimumWidth(320)
         chat_dock.setAllowedAreas(
             Qt.DockWidgetArea.RightDockWidgetArea
             | Qt.DockWidgetArea.LeftDockWidgetArea,
@@ -1183,19 +1195,9 @@ class AgentManager(QObject):
         ):
             self.chat_panel.show_notice("")
         kind = self._chat_presentation_kind(presentation)
-        typed_actions = presentation.actions
-        if (
-            presentation.kind is AssistantResponseKind.ERROR
-            and not typed_actions
-            and self._last_user_input
-        ):
-            typed_actions = (
-                AssistantResponseAction.send_message(
-                    "Try again",
-                    self._last_user_input,
-                ),
-            )
-        actions = tuple(self._chat_response_action(action) for action in typed_actions)
+        actions = tuple(
+            self._chat_response_action(action) for action in presentation.actions
+        )
         visible_text = self._presentation.assistant_transcript_message(
             presentation.text
         )
@@ -2159,6 +2161,12 @@ class AgentManager(QObject):
             return
         if self._defer_provisional_controller_event("workflow_handoff", payload):
             return
+        if not self._workflow_handoff_identity_matches_active_turn(payload):
+            logger.warning(
+                "Ignored workflow UI handoff outside its active turn: %s",
+                redact_public_text(payload.request_id),
+            )
+            return
         try:
             resolution = self._workflow_ui_handoff_host.open(
                 payload,
@@ -2301,15 +2309,37 @@ class AgentManager(QObject):
             lease is not None
             and isinstance(activity, AssistantTurnActivity)
             and activity.phase is AssistantTurnActivityPhase.WAITING_FOR_DECISION
+            and activity.decision_owner is AssistantDecisionOwner.CONFIRMATION_CARD
             and activity.correlation == lease
             and activity.request_id == request_id
             and activity.command_name == command_name
         )
 
+    def _workflow_handoff_identity_matches_active_turn(
+        self,
+        request: WorkflowUiHandoffRequest,
+    ) -> bool:
+        """Bind one product-UI request to its exact active waiting lease."""
+        activity = self._last_assistant_activity
+        lease = self._assistant_turn_state.lease
+        return bool(
+            lease is not None
+            and isinstance(activity, AssistantTurnActivity)
+            and activity.phase is AssistantTurnActivityPhase.WAITING_FOR_DECISION
+            and activity.decision_owner
+            in {
+                AssistantDecisionOwner.GUI_DIALOG,
+                AssistantDecisionOwner.PANEL_HANDOFF,
+            }
+            and activity.correlation == lease
+            and activity.request_id == request.request_id
+            and activity.command_name == request.command_name
+        )
+
     def _confirmation_current_values(
         self,
         request: AgentConfirmationRequest,
-    ) -> tuple[dict[str, str], bool]:
+    ) -> tuple[dict[str, str] | None, bool]:
         """Read display-only current values from one matching publication."""
         try:
             publication = self.application_service.get_view_publication()
@@ -2318,37 +2348,41 @@ class AgentManager(QObject):
                 "Could not read confirmation comparison values: %s",
                 redact_public_text(exc),
             )
-            return {}, False
+            return None, False
 
         request_generation = request.publication_generation
         if not getattr(publication, "usable", False) or not getattr(
             publication.state, "state_reliable", False
         ):
-            return {}, False
+            return None, False
         if (
             request_generation is not None
             and publication.generation != request_generation
         ):
             return {}, True
         if request_generation is None:
-            return {}, False
+            return None, False
 
         training = publication.state.training
         candidates: dict[str, object] = {}
         if training.has_training_option:
             candidates.update(training.training_option)
+            if "checkpoint_epoch" in candidates:
+                candidates["save_checkpoints_every"] = candidates["checkpoint_epoch"]
         if training.has_model:
             candidates.update(training.model_params)
             if training.model_name:
-                candidates["model"] = training.model_name
+                candidates["model_name"] = training.model_name
 
         display_values = {
-            str(key).replace("_", " ").strip().capitalize(): self._display_ui_value(
-                value
+            str(key).replace("_", " ").strip().capitalize(): (
+                AgentManager._confirmation_display_value(str(key), value)
             )
             for key, value in candidates.items()
         }
         requested_labels = {label for label, _value in request.parameter_rows}
+        if not requested_labels.issubset(display_values):
+            return None, False
         return (
             {
                 label: value
@@ -2357,6 +2391,25 @@ class AgentManager(QObject):
             },
             False,
         )
+
+    @classmethod
+    def _confirmation_display_value(cls, key: str, value: object) -> str:
+        """Normalize authoritative display aliases for proposal comparison."""
+        normalized_key = key.strip().casefold()
+        if isinstance(value, str):
+            normalized_value = " ".join(value.strip().casefold().split())
+            if normalized_key == "optimizer":
+                value = normalized_value
+            elif normalized_key == "device" and normalized_value.startswith("cuda:"):
+                value = "cuda"
+            elif normalized_key == "evaluation_option":
+                value = {
+                    "best validation loss": "val_loss",
+                    "best validation auc": "val_auc",
+                    "best validation performance": "val_acc",
+                    "last epoch": "last_epoch",
+                }.get(normalized_value, normalized_value)
+        return cls._display_ui_value(value)
 
     @staticmethod
     def _display_ui_value(value: object) -> str:

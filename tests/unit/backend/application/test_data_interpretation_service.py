@@ -5,10 +5,15 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 
+from tests.unit.backend.path_assertions import (
+    assert_filesystem_path_lists_equal,
+    assert_filesystem_paths_equal,
+)
 from XBrainLab.backend.application import (
     data_interpretation_internal_events,
     resource_guard,
@@ -216,6 +221,27 @@ def _brainvision_integrity_fixture(
     return tmp_path / f"{stem}.vhdr", tmp_path / f"{stem}{dependency_suffix}"
 
 
+def _non_bids_interpretation_source(
+    tmp_path: Path,
+    source_format: str,
+) -> tuple[Path, str]:
+    if source_format == "gdf":
+        source = tmp_path / "A01T.gdf"
+        source.write_bytes(b"GDF header only")
+        return source, "file"
+    if source_format == "edf":
+        source = tmp_path / "S001R04.edf"
+        source.write_bytes(b"EDF header only")
+        return tmp_path, "folder"
+    if source_format == "brainvision":
+        source, _dependency = _brainvision_integrity_fixture(
+            tmp_path,
+            dependency_suffix=".eeg",
+        )
+        return source, "file"
+    raise AssertionError(f"Unsupported non-BIDS source format: {source_format}")
+
+
 def _integrity_fixture(tmp_path: Path, resource_kind: str) -> tuple[Path, Path]:
     if resource_kind == "selected_eeg":
         selected = tmp_path / "subject.fif"
@@ -283,6 +309,18 @@ def _review_integrity_candidate(
     return candidate_id
 
 
+def test_resource_admission_deduplicates_cross_host_path_aliases() -> None:
+    first_spelling = r"C:\EEG Data\Subject.fif"
+
+    assert service_module._deduplicate_resource_paths(
+        [
+            first_spelling,
+            r"c:\eeg data\subject.fif",
+            r"C:\EEG Data\labels.tsv",
+        ]
+    ) == [first_spelling, r"C:\EEG Data\labels.tsv"]
+
+
 def test_scan_preview_validate_and_clear_are_owned_by_interpretation_service(
     tmp_path: Path,
 ) -> None:
@@ -343,6 +381,46 @@ def test_scan_preview_validate_and_clear_are_owned_by_interpretation_service(
     assert cleared.has_candidate is False
     assert cleared.has_preview is False
     assert cleared.has_validation_decision is False
+
+
+@pytest.mark.parametrize("source_format", ["gdf", "edf", "brainvision"])
+def test_non_bids_scan_preview_validate_has_no_bids_root_warning(
+    tmp_path: Path,
+    source_format: str,
+) -> None:
+    source_path, source_hint = _non_bids_interpretation_source(
+        tmp_path,
+        source_format,
+    )
+    service, _dataset = _service()
+
+    _scan_message, scan_payload = _expect_payload(
+        service.handle_scan_source(
+            ScanSourceCommand(
+                source_path=str(source_path),
+                source_hint=source_hint,
+            ),
+        ),
+    )
+    _preview_message, preview_payload = _expect_payload(
+        service.handle_preview_interpretation(
+            PreviewInterpretationCommand(choices={"skip_labels": True}),
+        ),
+    )
+    _validation_message, validation_payload = _expect_payload(
+        service.handle_validate_interpretation(ValidateInterpretationCommand()),
+    )
+
+    missing_bids_root = (
+        "dataset_description.json is missing from the selected BIDS root."
+    )
+    assert missing_bids_root not in scan_payload["scan_result"]["warnings"]
+    assert preview_payload["candidate"]["bids"]["root_validation_issue"] == ""
+    assert missing_bids_root not in preview_payload["candidate"]["warnings"]
+    assert missing_bids_root not in preview_payload["preview"]["warnings"]
+    assert (
+        missing_bids_root not in validation_payload["validation_decision"]["warnings"]
+    )
 
 
 def test_scan_preview_includes_labels_from_external_folder(
@@ -862,7 +940,11 @@ def test_review_warning_requires_confirmation_before_materializing_deduped_label
         )
 
     assert materialized == 0
-    assert checked_scopes == [(str(eeg_path.resolve()), str(label_path.resolve()))]
+    assert len(checked_scopes) == 1
+    assert_filesystem_path_lists_equal(
+        checked_scopes[0],
+        [eeg_path, label_path],
+    )
     challenge = _resource_challenge(raised.value)
     assert challenge["command_name"] == "review_interpretation"
 
@@ -2213,7 +2295,11 @@ def test_apply_resource_preflight_includes_external_label_carriers(
             ApplyInterpretationCommand(confirmed=True),
         )
 
-    assert checked_scopes == [(str(eeg_path.resolve()), str(label_path.resolve()))]
+    assert len(checked_scopes) == 1
+    assert_filesystem_path_lists_equal(
+        checked_scopes[0],
+        [eeg_path, label_path],
+    )
     assert dataset.imported_paths == []
 
 
@@ -2259,7 +2345,10 @@ def test_apply_blocks_exact_candidate_when_reviewed_eeg_or_parser_dependency_cha
         )
 
     assert raised.value.diagnostics["candidate_id"] == candidate_id
-    assert raised.value.diagnostics["changed_paths"] == [str(mutation_target.resolve())]
+    assert_filesystem_path_lists_equal(
+        raised.value.diagnostics["changed_paths"],
+        [mutation_target],
+    )
     assert import_calls == 0
     assert dataset.imported_paths == []
     assert dataset.clean_count == 0
@@ -2308,7 +2397,10 @@ def test_apply_rolls_back_exact_candidate_when_reviewed_eeg_or_parser_dependency
         )
 
     assert raised.value.diagnostics["candidate_id"] == candidate_id
-    assert raised.value.diagnostics["changed_paths"] == [str(mutation_target.resolve())]
+    assert_filesystem_path_lists_equal(
+        raised.value.diagnostics["changed_paths"],
+        [mutation_target],
+    )
     assert import_calls == 1
     assert dataset.imported_paths == []
     assert dataset.loaded == []
@@ -2357,7 +2449,7 @@ def test_apply_fails_closed_when_reviewed_external_label_content_changes(
     assert identity["algorithm"] == "sha256"
     assert identity["scope_sha256"]
     [binding] = identity["bindings"]
-    assert binding["path"] == str(label_path.resolve())
+    assert_filesystem_paths_equal(binding["path"], label_path)
     assert binding["format"] == "CSV"
     assert binding["selected_label_field"] == "label"
     assert binding["selected_anchor"] == "event_code"
@@ -2365,10 +2457,13 @@ def test_apply_fails_closed_when_reviewed_external_label_content_changes(
     assert binding["run_class_map"] == {"left": "left"}
     assert binding["value_decisions"]["left"]["decision"] == "resolved"
     files_by_role = {row["role"]: row for row in identity["files"]}
-    assert files_by_role["selected_eeg"]["path"] == str(eeg_path.resolve())
+    assert_filesystem_paths_equal(files_by_role["selected_eeg"]["path"], eeg_path)
     assert files_by_role["selected_eeg"]["file_bytes"] == eeg_path.stat().st_size
     assert files_by_role["selected_eeg"]["sha256"]
-    assert files_by_role["label_carrier"]["path"] == str(label_path.resolve())
+    assert_filesystem_paths_equal(
+        files_by_role["label_carrier"]["path"],
+        label_path,
+    )
     assert files_by_role["label_carrier"]["file_bytes"] == reviewed_size
     assert files_by_role["label_carrier"]["sha256"]
 
@@ -2386,7 +2481,10 @@ def test_apply_fails_closed_when_reviewed_external_label_content_changes(
     assert raised.value.diagnostics["code"] == (
         "interpretation_content_changed_after_review"
     )
-    assert raised.value.diagnostics["changed_paths"] == [str(label_path.resolve())]
+    assert_filesystem_path_lists_equal(
+        raised.value.diagnostics["changed_paths"],
+        [label_path],
+    )
     assert raised.value.diagnostics["next_action"] == "preview_and_review_again"
     assert dataset.imported_paths == []
     assert dataset.clean_count == 0
@@ -2901,3 +2999,234 @@ def test_apply_metadata_and_label_import_recipe_state_stay_together(
     assert snapshot.has_recipe is True
     assert snapshot.label_import_count == 1
     assert snapshot.label_imports[0]["class_map"] == {"left": "left hand"}
+
+
+def test_repeated_safe_preview_reuses_admission_after_identity_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
+    eeg_path.write_bytes(b"stable EEG header")
+    service, _dataset = _service()
+    service.handle_scan_source(ScanSourceCommand(source_path=str(eeg_path)))
+    choices = {"selected_eeg_files": [str(eeg_path.resolve())]}
+    service.handle_preview_interpretation(PreviewInterpretationCommand(choices=choices))
+    original_check = service_module.check_import_resource_preflight
+    checks = 0
+
+    def _counted_check(paths: list[str]) -> ResourcePreflightResult:
+        nonlocal checks
+        checks += 1
+        return original_check(paths)
+
+    monkeypatch.setattr(
+        service_module,
+        "check_import_resource_preflight",
+        _counted_check,
+    )
+    _message, payload = _expect_payload(
+        service.handle_preview_interpretation(
+            PreviewInterpretationCommand(choices=choices)
+        )
+    )
+
+    assert checks == 0
+    assert payload["resource_preflight"]["admission_cache_reused"] is True
+
+
+def test_first_safe_preview_reuses_matching_scan_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bids_root = tmp_path / "bids"
+    eeg_dir = bids_root / "sub-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    (bids_root / "dataset_description.json").write_text(
+        json.dumps({"Name": "Preview cache", "BIDSVersion": "1.9.0"}),
+        encoding="utf-8",
+    )
+    eeg_path = eeg_dir / "sub-01_task-mi_eeg.fif"
+    events_path = eeg_dir / "sub-01_task-mi_events.tsv"
+    eeg_path.write_bytes(b"stable EEG header")
+    events_path.write_text(
+        "onset\tduration\ttrial_type\n0\t1\tleft\n",
+        encoding="utf-8",
+    )
+    service, _dataset = _service()
+    service.handle_scan_source(
+        ScanSourceCommand(source_path=str(bids_root), source_hint="bids")
+    )
+    original_check = service_module.check_import_resource_preflight
+    checks = 0
+
+    def _counted_check(paths: list[str]) -> ResourcePreflightResult:
+        nonlocal checks
+        checks += 1
+        return original_check(paths)
+
+    monkeypatch.setattr(
+        service_module,
+        "check_import_resource_preflight",
+        _counted_check,
+    )
+    monkeypatch.setattr(
+        service_module,
+        "discover_source_preflight_scope",
+        lambda **_kwargs: pytest.fail("matching BIDS scan scope was rediscovered"),
+    )
+
+    _message, payload = _expect_payload(
+        service.handle_preview_interpretation(
+            PreviewInterpretationCommand(
+                choices={"selected_eeg_files": [str(eeg_path.resolve())]}
+            )
+        )
+    )
+
+    assert checks == 0
+    assert payload["resource_preflight"]["admission_cache_reused"] is True
+
+
+def test_scan_does_not_cache_warning_resource_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
+    eeg_path.write_bytes(b"stable EEG header")
+    service, _dataset = _service()
+    checks = 0
+
+    def _warning_check(paths: list[str]) -> ResourcePreflightResult:
+        nonlocal checks
+        checks += 1
+        return _resource_preflight("warning", paths)
+
+    monkeypatch.setattr(
+        service_module,
+        "check_import_resource_preflight",
+        _warning_check,
+    )
+    service.handle_scan_source(ScanSourceCommand(source_path=str(eeg_path)))
+
+    with pytest.raises(resource_guard.ResourceConfirmationRequiredError):
+        service.handle_preview_interpretation(
+            PreviewInterpretationCommand(
+                choices={"selected_eeg_files": [str(eeg_path.resolve())]}
+            )
+        )
+
+    assert checks == 2
+
+
+def test_repeated_preview_discards_admission_when_source_content_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
+    eeg_path.write_bytes(b"first EEG header")
+    service, _dataset = _service()
+    service.handle_scan_source(ScanSourceCommand(source_path=str(eeg_path)))
+    choices = {"selected_eeg_files": [str(eeg_path.resolve())]}
+    service.handle_preview_interpretation(PreviewInterpretationCommand(choices=choices))
+    original_check = service_module.check_import_resource_preflight
+    checks = 0
+
+    def _counted_check(paths: list[str]) -> ResourcePreflightResult:
+        nonlocal checks
+        checks += 1
+        return original_check(paths)
+
+    monkeypatch.setattr(
+        service_module,
+        "check_import_resource_preflight",
+        _counted_check,
+    )
+    eeg_path.write_bytes(b"other EEG header")
+
+    _message, payload = _expect_payload(
+        service.handle_preview_interpretation(
+            PreviewInterpretationCommand(choices=choices)
+        )
+    )
+
+    assert checks == 1
+    assert payload["resource_preflight"]["admission_cache_reused"] is False
+
+
+def test_reusable_content_identity_matches_windows_paths_case_insensitively(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, _dataset = _service()
+    candidate = SimpleNamespace(
+        scan_id="scan-1",
+        content_identity={
+            "files": [
+                {
+                    "path": r"C:\Data\Subject\Run.set",
+                    "file_bytes": 123,
+                    "sha256": "a" * 64,
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(service.state, "resolve_candidate", lambda _value: candidate)
+    monkeypatch.setattr(
+        service_module,
+        "_stat_change_time_is_reliable",
+        lambda: True,
+    )
+    admission = SimpleNamespace(
+        resource_reader=SimpleNamespace(
+            admitted_files={r"c:\data\subject\run.set": object()}
+        ),
+        bids_events_json_reader=SimpleNamespace(admitted_files={}),
+    )
+
+    reusable = service._latest_admitted_content_identities(
+        admission,
+        expected_scan_id="scan-1",
+    )
+
+    assert reusable == {
+        r"C:\Data\Subject\Run.set": {
+            "file_bytes": 123,
+            "sha256": "a" * 64,
+        }
+    }
+
+
+def test_windows_does_not_reuse_content_identity_without_reliable_change_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, _dataset = _service()
+    candidate = SimpleNamespace(
+        scan_id="scan-1",
+        content_identity={
+            "files": [
+                {
+                    "path": r"C:\Data\Subject\Run.set",
+                    "file_bytes": 123,
+                    "sha256": "a" * 64,
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(service.state, "resolve_candidate", lambda _value: candidate)
+    monkeypatch.setattr(
+        service_module,
+        "_stat_change_time_is_reliable",
+        lambda: False,
+    )
+    admission = SimpleNamespace(
+        resource_reader=SimpleNamespace(
+            admitted_files={r"c:\data\subject\run.set": object()}
+        ),
+        bids_events_json_reader=SimpleNamespace(admitted_files={}),
+    )
+
+    reusable = service._latest_admitted_content_identities(
+        admission,
+        expected_scan_id="scan-1",
+    )
+
+    assert reusable == {}

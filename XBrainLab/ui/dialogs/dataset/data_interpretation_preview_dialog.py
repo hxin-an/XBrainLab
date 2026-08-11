@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLayout,
     QPushButton,
     QRadioButton,
     QScrollArea,
@@ -36,6 +37,7 @@ from XBrainLab.backend.application.data_interpretation_pairing import (
 from XBrainLab.backend.application.data_interpretation_path_identity import (
     normalized_path_identity,
 )
+from XBrainLab.ui.components.presentation import ElidingComboBox
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import icon_path
 from XBrainLab.ui.dialogs.dataset.event_value_decision_editor import (
@@ -405,9 +407,9 @@ class DataInterpretationPreviewDialog(
             "Review and Import",
         ]
         self._compact_step_titles = [
-            "EEG Data",
+            "EEG",
             "Labels",
-            "Metadata",
+            "Details",
             "Match",
             "Review",
         ]
@@ -492,6 +494,7 @@ class DataInterpretationPreviewDialog(
         self._apply_product_tree_style()
         self.setObjectName("DataImportWizardDialog")
         root_layout = QVBoxLayout(self)
+        root_layout.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         root_layout.setContentsMargins(20, 18, 20, 16)
         root_layout.setSpacing(14)
 
@@ -679,10 +682,6 @@ class DataInterpretationPreviewDialog(
         self._fit_compact_tree_height(self.file_tree, min_height=86, max_height=160)
         complete_count, missing_fields = self._metadata_completion_counts()
         missing_fields = self._metadata_required_missing_fields(missing_fields)
-        if self._is_bids_source():
-            bids_metadata_card, bids_metadata_layout = self._card("BIDS metadata")
-            self._build_bids_metadata_card(bids_metadata_layout)
-            metadata_panel_layout.addWidget(bids_metadata_card)
         metadata_table_card = QFrame()
         metadata_table_card.setObjectName("DataImportCard")
         metadata_table_card.setSizePolicy(
@@ -771,12 +770,6 @@ class DataInterpretationPreviewDialog(
         label_source_card, label_source_layout = self._card("Label source")
         self._build_label_source_mode_card(label_source_layout)
         label_panel_layout.addWidget(label_source_card)
-
-        self.bids_event_review_card, bids_event_review_layout = self._card(
-            "BIDS events.tsv"
-        )
-        self._build_bids_event_review_card(bids_event_review_layout)
-        label_panel_layout.addWidget(self.bids_event_review_card)
 
         self.internal_event_card, internal_event_layout = self._card(
             "Events inside EEG files"
@@ -1209,10 +1202,6 @@ class DataInterpretationPreviewDialog(
         fallback_visible = use_loaded and self._should_show_label_table_fallback()
         if hasattr(self, "pairing_card"):
             self.pairing_card.setVisible(use_loaded and not is_bids_source)
-        if hasattr(self, "bids_event_review_card"):
-            self.bids_event_review_card.setVisible(
-                use_loaded and is_bids_source and bool(self._bids_event_review_rows())
-            )
         if hasattr(self, "label_values_card"):
             self.label_values_card.setVisible(use_loaded and not fallback_visible)
         if self.event_value_editor is not None:
@@ -1817,6 +1806,8 @@ class DataInterpretationPreviewDialog(
         viewport = self.scroll_area.viewport()
         if current_page is None or viewport is None or viewport.height() <= 0:
             return
+        original_height = self.height()
+        original_viewport_height = viewport.height()
         page_layout = current_page.layout()
         if page_layout is not None:
             page_layout.activate()
@@ -1826,9 +1817,38 @@ class DataInterpretationPreviewDialog(
         # wrapped review rows by a few pixels; using that transient height makes
         # the text look compressed until the report is expanded and collapsed.
         desired_height = max(content_height + chrome_height + 8, 560)
-        target_height = min(desired_height, self._review_restore_size.height())
+        restore_height = self._review_restore_size.height()
+        collapsed_ceiling = max(560, restore_height - 48)
+        if self.import_report_card.isHidden():
+            # Native title bars can clamp the working dialog to the screen's
+            # available height. Keep the collapsed review observably compact
+            # even when its transient size hint matches that clamped height.
+            target_height = min(desired_height, collapsed_ceiling)
+        else:
+            target_height = min(desired_height, restore_height)
+        if self.import_report_card.isHidden():
+            projected_viewport_height = max(
+                original_viewport_height + target_height - original_height,
+                1,
+            )
+            overflow = content_height - projected_viewport_height + 4
+            if overflow > 0:
+                target_height = min(target_height + overflow, collapsed_ceiling)
+            projected_viewport_height = max(
+                original_viewport_height + target_height - original_height,
+                1,
+            )
+            # The previous step leaves the stack at its working-page fixed
+            # height. Release that constraint before resizing the top-level
+            # dialog so native Windows geometry cannot clamp the compact step.
+            self._sync_scroll_policy_for_height(projected_viewport_height)
         if target_height != self.height():
             self.resize_preserving_center(QSize(self.width(), target_height))
+        if self.import_report_card.isHidden():
+            # Native Windows geometry notifications can arrive after this
+            # method returns. Apply the policy to the projected viewport now so
+            # the final step never paints one stale, scrollable frame.
+            self._sync_scroll_policy_for_height(projected_viewport_height)
 
     def _step_content_height(self, current_page: QWidget) -> int:
         """Return the settled content height for scroll and window sizing."""
@@ -1878,13 +1898,14 @@ class DataInterpretationPreviewDialog(
             return
         spacing = 8 * max(len(self._step_titles) - 1, 0)
         available_width = max(self.width() - 40 - spacing, 0)
-        full_width = sum(
+        full_cell_widths = [
             label.fontMetrics().horizontalAdvance(f"{index}. {title}") + 20
             for index, (label, title) in enumerate(
                 zip(self.step_labels, self._step_titles, strict=True),
                 start=1,
             )
-        )
+        ]
+        full_width = max(full_cell_widths, default=0) * len(full_cell_widths)
         titles = (
             self._compact_step_titles
             if full_width > available_width
@@ -1894,8 +1915,60 @@ class DataInterpretationPreviewDialog(
             zip(self.step_labels, titles, self._step_titles, strict=True),
             start=1,
         ):
-            label.setText(f"{index}. {title}")
+            text = f"{index}. {title}"
+            if titles is self._compact_step_titles:
+                text = self._elide_step_label_text(label, text)
+            label.setText(text)
             label.setToolTip(full_title if title != full_title else "")
+        # Native font metrics and styled content rectangles can settle after the
+        # first layout pass. Recheck both full and compact renderings then.
+        QTimer.singleShot(0, self._compact_clipped_step_labels)
+
+    @staticmethod
+    def _elide_step_label_text(label: QLabel, text: str) -> str:
+        """Fit one compact step label to its styled native content rectangle."""
+        available_width = label.contentsRect().width()
+        if available_width <= 0:
+            return text
+        metrics = label.fontMetrics()
+        if metrics.horizontalAdvance(text) <= available_width:
+            return text
+        for elide_width in range(available_width, -1, -1):
+            fitted = metrics.elidedText(
+                text,
+                Qt.TextElideMode.ElideRight,
+                elide_width,
+            )
+            if metrics.horizontalAdvance(fitted) <= available_width:
+                return fitted
+        return ""
+
+    def _compact_clipped_step_labels(self) -> None:
+        """Use compact step titles when native layout allocation clips text."""
+        if not hasattr(self, "step_labels"):
+            return
+        clipped = any(
+            label.contentsRect().width() > 0
+            and label.fontMetrics().horizontalAdvance(label.text())
+            > label.contentsRect().width() + 1
+            for label in self.step_labels
+        )
+        if not clipped:
+            return
+        for index, (label, compact_title, full_title) in enumerate(
+            zip(
+                self.step_labels,
+                self._compact_step_titles,
+                self._step_titles,
+                strict=True,
+            ),
+            start=1,
+        ):
+            label.setText(
+                self._elide_step_label_text(label, f"{index}. {compact_title}")
+            )
+            label.setToolTip(full_title)
+            label.updateGeometry()
 
     def resizeEvent(self, event):  # noqa: N802
         super().resizeEvent(event)
@@ -1930,6 +2003,15 @@ class DataInterpretationPreviewDialog(
             return
         viewport_height = viewport.height()
         if viewport_height <= 0:
+            return
+        self._sync_scroll_policy_for_height(viewport_height)
+
+    def _sync_scroll_policy_for_height(self, viewport_height: int) -> None:
+        """Apply scrolling against an actual or projected viewport height."""
+        if not hasattr(self, "scroll_area") or not hasattr(self, "step_stack"):
+            return
+        current = self.step_stack.currentWidget()
+        if current is None or viewport_height <= 0:
             return
         content_height = self._step_content_height(current)
         needs_scroll = content_height > viewport_height + 4
@@ -2023,12 +2105,7 @@ class DataInterpretationPreviewDialog(
         return "Load the label files that will be matched to this EEG data."
 
     def _metadata_panel_detail(self) -> str:
-        if self._is_bids_source():
-            return (
-                "BIDS-style subject, session, task, and run entities are saved "
-                "into the recipe."
-            )
-        return "Subject, session, task, and run choices are saved into the recipe."
+        return "Review subject, session, task, and run."
 
     def _user_label_source_row(self, source: str) -> tuple[str, str]:
         source_path = Path(source)
@@ -4307,7 +4384,7 @@ class DataInterpretationPreviewDialog(
     ) -> None:
         if not choices and not current_value:
             return
-        selector = QComboBox(self.label_carrier_tree)
+        selector = ElidingComboBox(self.label_carrier_tree)
         self._prepare_table_combo(selector)
         selector.setToolTip(tooltip)
         if not current_value:
@@ -4385,7 +4462,7 @@ class DataInterpretationPreviewDialog(
         return DataInterpretationPreviewDialog._label_choice_display(value)
 
     def _label_target_selector(self, current_value: str = "") -> QComboBox:
-        selector = QComboBox(self.label_carrier_tree)
+        selector = ElidingComboBox(self.label_carrier_tree)
         self._prepare_table_combo(selector)
         selector.addItem("Choose EEG file", "")
         for file_name in self._selected_eeg_file_names():

@@ -6,13 +6,17 @@ import threading
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, ClassVar, cast
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
 from XBrainLab.backend.application.capabilities import build_capability_policy
-from XBrainLab.backend.application.commands import CommandName, QueryStateCommand
+from XBrainLab.backend.application.commands import (
+    CommandName,
+    ConfigureTrainingCommand,
+    QueryStateCommand,
+)
 from XBrainLab.backend.application.dataset_generation_service import (
     DatasetGenerationCommandService,
 )
@@ -24,18 +28,30 @@ from XBrainLab.backend.application.query_state_service import (
 from XBrainLab.backend.application.saliency_coverage import (
     SaliencyCoverageProjector,
 )
+from XBrainLab.backend.application.service import ApplicationService
 from XBrainLab.backend.application.state import (
     ApplicationStateSnapshot,
+    DatasetSplitLifecycle,
+    DatasetStateSnapshot,
+    EpochStateSnapshot,
     InterpretationStateSnapshot,
     SaliencyMethodCoverageSnapshot,
     SaliencyRunCoverageSnapshot,
 )
 from XBrainLab.backend.application.state_service import StateSnapshotService
+from XBrainLab.backend.application.training_recommendation import (
+    TrainingRecommendationField,
+    TrainingRecommendationService,
+    TrainingSettingProvenance,
+)
 from XBrainLab.backend.application.training_runtime import (
     TrainingConfigurationSnapshot,
     TrainingRuntimeContext,
 )
 from XBrainLab.backend.application.training_service import TrainingCommandService
+from XBrainLab.backend.application.training_submission import (
+    attach_training_submission_provenance,
+)
 from XBrainLab.backend.application.view_publication import (
     ApplicationViewCoordinator,
     ApplicationViewStore,
@@ -521,6 +537,194 @@ def test_state_snapshot_service_builds_workflow_snapshot() -> None:
     assert state.visualization.saliency_configured is True
     assert state.interpretation.has_scan_result is True
     assert state.active_dataset.has_epoch_data is True
+
+
+def test_state_and_explicit_recommendation_do_not_read_dataset_payload() -> None:
+    get_epoch_data = MagicMock(
+        side_effect=AssertionError("recommendation read dataset epoch payload")
+    )
+    state_builder = _snapshot_service()
+    state_builder.study.datasets = [
+        SimpleNamespace(name="detached-summary-only", get_epoch_data=get_epoch_data)
+    ]
+    state_builder.dataset_generation = SimpleNamespace(
+        dataset_split_state=lambda _datasets: {
+            "split_spec_saved": True,
+            "split_specification": {},
+            "split_specification_fingerprint": "test-split",
+            "split_epoch_revision": 1,
+            "split_preview_summary": {},
+            "split_lifecycle": DatasetSplitLifecycle.VERIFIED,
+            "split_materialized": True,
+            "active_split_summary": {
+                "count": 1,
+                "train_count": 32,
+                "val_count": 8,
+                "test_count": 8,
+            },
+            "last_split_attempt": {},
+        },
+    )
+    state_builder.training_recommendation = TrainingRecommendationService()
+
+    recommendation_service = state_builder.training_recommendation
+    assert recommendation_service is not None
+    with patch.object(
+        recommendation_service,
+        "_build_recommendation",
+        wraps=recommendation_service._build_recommendation,
+    ) as build_recommendation:
+        first = state_builder.build()
+        second = state_builder.build()
+
+        assert first.training.recommendation == second.training.recommendation
+        assert second.training.recommendation is None
+        build_recommendation.assert_not_called()
+
+        explicit = state_builder.refresh_training_recommendation(second)
+        build_recommendation.assert_called_once()
+        third = state_builder.build()
+        fourth = state_builder.build()
+        assert explicit == third.training.recommendation
+        assert explicit == fourth.training.recommendation
+        build_recommendation.assert_called_once()
+
+    get_epoch_data.assert_not_called()
+
+
+def test_pending_training_submission_publishes_coherent_recommendation_once() -> None:
+    state_builder = _snapshot_service()
+    recommendation_service = TrainingRecommendationService()
+    state_builder.training_recommendation = recommendation_service
+    saved_option = SimpleNamespace(
+        epoch=30,
+        bs=1,
+        lr=0.0005,
+        optim=type("Adam", (), {}),
+        optim_params={},
+        evaluation_option=SimpleNamespace(value="Last Epoch"),
+        repeat_num=1,
+        seed=1729,
+        checkpoint_epoch=0,
+        output_dir="./output",
+        get_device=lambda: "cpu",
+        get_optim_name=lambda: "Adam",
+        get_configured_repeat_seeds=lambda: [1729],
+    )
+    state_builder.training_runtime._configuration = replace(
+        state_builder.training_runtime.configuration_snapshot(),
+        training_option=saved_option,
+    )
+    recommendation_service.note_configuration_submitted(
+        {TrainingRecommendationField.EPOCHS}
+    )
+
+    with patch.object(
+        recommendation_service,
+        "_build_recommendation",
+        wraps=recommendation_service._build_recommendation,
+    ) as build_recommendation:
+        published = state_builder.build()
+        reread = state_builder.build()
+
+    recommendation = published.training.recommendation
+    assert recommendation is not None
+    assert published.training.training_option == {
+        "epoch": 30,
+        "batch_size": 1,
+        "learning_rate": 0.0005,
+        "repeat": 1,
+        "seed": 1729,
+        "repeat_seeds": [1729],
+        "device": "cpu",
+        "optimizer": "Adam",
+        "optimizer_params": {},
+        "checkpoint_epoch": 0,
+        "output_dir": "./output",
+        "evaluation_option": "Last Epoch",
+    }
+    assert recommendation.values.to_mapping() == {
+        TrainingRecommendationField.EPOCHS: 30,
+        TrainingRecommendationField.BATCH_SIZE: 1,
+        TrainingRecommendationField.LEARNING_RATE: 0.0005,
+        TrainingRecommendationField.OPTIMIZER: "Adam",
+        TrainingRecommendationField.EVALUATION_STRATEGY: "Last Epoch",
+    }
+    assert recommendation.provenance["epochs"] is TrainingSettingProvenance.MANUAL
+    assert reread.training.recommendation == recommendation
+    build_recommendation.assert_called_once()
+
+
+def test_configure_training_publishes_saved_recommendation_provenance() -> None:
+    service = ApplicationService()
+    try:
+        starting_point = service.get_training_recommendation()
+        values = starting_point.values
+        command = attach_training_submission_provenance(
+            ConfigureTrainingCommand(
+                epoch=values.epochs,
+                batch_size=values.batch_size,
+                learning_rate=values.learning_rate,
+                device="cpu",
+                optimizer=values.optimizer,
+                evaluation_option=values.evaluation_strategy,
+            ),
+            frozenset({TrainingRecommendationField.EPOCHS}),
+        )
+
+        result = service.execute(command)
+
+        assert result.ok is True
+        recommendation = result.state.training.recommendation
+        assert recommendation is not None
+        option = result.state.training.training_option
+        assert recommendation.values.to_mapping() == {
+            TrainingRecommendationField.EPOCHS: option["epoch"],
+            TrainingRecommendationField.BATCH_SIZE: option["batch_size"],
+            TrainingRecommendationField.LEARNING_RATE: option["learning_rate"],
+            TrainingRecommendationField.OPTIMIZER: option["optimizer"],
+            TrainingRecommendationField.EVALUATION_STRATEGY: option[
+                "evaluation_option"
+            ],
+        }
+        assert recommendation.manual_fields == (TrainingRecommendationField.EPOCHS,)
+        assert "device" not in recommendation.provenance
+        assert set(recommendation.provenance) == {
+            field.value for field in TrainingRecommendationField
+        }
+    finally:
+        service.close()
+
+
+def test_training_recommendation_context_uses_saved_split_preview_counts() -> None:
+    context = StateSnapshotService._training_recommendation_context(
+        epoch=EpochStateSnapshot(
+            available=True,
+            exists=True,
+            epoch_count=12,
+            n_channels=22,
+            n_times=1_000,
+        ),
+        dataset=DatasetStateSnapshot(
+            split_spec_saved=True,
+            split_preview_summary={
+                "dataset_count": 1,
+                "train_count": 8,
+                "validation_count": 2,
+                "test_count": 2,
+            },
+            split_materialized=False,
+            active_split_summary={},
+        ),
+        model_name="braindecode.eegnet",
+        model_params={},
+        training_option_values={},
+    )
+
+    assert context.training_sample_count == 8
+    assert context.validation_sample_count == 2
+    assert context.dataset_count == 1
+    assert context.device == "auto"
 
 
 def test_state_snapshot_does_not_read_study_training_aliases() -> None:
@@ -1537,6 +1741,7 @@ def test_query_state_service_returns_readonly_summaries() -> None:
                 "accuracy": [],
                 "auc": [],
             },
+            "test": {"accuracy": []},
         },
     }
 

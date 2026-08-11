@@ -1,0 +1,87 @@
+site_name: XBrainLab User Guide
+site_description: "Practical guidance for reviewing and running local EEG workflows in XBrainLab"
+# Deliberately omit site_url. This isolated build is path-relocatable and does not
+# claim the current GitHub Pages root; deployment must provide its final base URL.
+
+docs_dir: user_docs
+site_dir: build/user-site
+use_directory_urls: true
+strict: true
+
+theme:
+  name: material
+  language: en
+  font: false
+  icon:
+    logo: material/chart-bell-curve-cumulative
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: xbrainlab-light
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Use dark theme
+    - media: "(prefers-color-scheme: dark)"
+      scheme: xbrainlab-dark
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Use light theme
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.highlight
+    - search.suggest
+    - content.tabs.link
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Start Here: getting-started.md
+  - Workflow: workflow.md
+  - Dataset Guides:
+      - Choose a Dataset: case-studies/index.md
+      - Graz 2a GDF + MAT: case-studies/graz-2a.md
+      - OpenNeuro ds003061 P300: case-studies/openneuro-ds003061.md
+      - Ofner2017 Motor Imagery: case-studies/moabb-ofner2017.md
+      - PhysionetMI Run Semantics: case-studies/moabb-physionetmi.md
+      - Lee2021Mobile ERP: case-studies/moabb-lee2021mobile-erp.md
+  - Limits & FAQ: faq-limits.md
+
+exclude_docs: |
+  case-studies/_template.md
+  case-studies/manifests/**
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+      toc_depth: 3
+
+extra_css:
+  - stylesheets/user-site.css
+
+extra:
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/hxin-an/XBrainLab
+      name: XBrainLab on GitHub
+
+copyright: XBrainLab user documentation

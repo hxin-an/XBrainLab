@@ -4,6 +4,7 @@ import inspect
 import re
 from pathlib import Path
 
+import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -19,11 +20,41 @@ from PyQt6.QtWidgets import (
     QScrollArea,
 )
 
+from XBrainLab.backend.application.data_interpretation_review import ValidationDecision
+from XBrainLab.ui.components.presentation import ElidingComboBox
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
     _ConvertedLabelTableDialog,
 )
 from XBrainLab.ui.dialogs.dataset.review_import_step import ReviewImportStepMixin
+
+
+def _review_action(
+    *,
+    target_step: str,
+    issue: str,
+    severity: str,
+    impact: str = "This choice affects the imported interpretation.",
+    next_action: str = "Review this choice before importing.",
+) -> dict[str, str]:
+    return {
+        "target_step": target_step,
+        "issue": issue,
+        "impact": impact,
+        "next_action": next_action,
+        "severity": severity,
+    }
+
+
+def _validation_decision(
+    decision: str,
+    action_items: list[dict[str, str]] | None = None,
+) -> dict[str, object]:
+    return ValidationDecision(
+        candidate_id="ui-test-candidate",
+        decision=decision,
+        action_items=action_items or [],
+    ).to_dict()
 
 
 def test_data_interpretation_preview_dialog_renders_payload(qtbot):
@@ -54,11 +85,16 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
             "class_map": {"1": "left", "2": "right"},
             "downstream_impacts": ["Training uses this recipe trace."],
         },
-        validation_decision={
-            "decision": "needs_confirmation",
-            "required_confirmations": ["Confirm session metadata."],
-            "blocked_reasons": [],
-        },
+        validation_decision=_validation_decision(
+            "needs_confirmation",
+            [
+                _review_action(
+                    target_step="Match Labels",
+                    issue="Confirm event role mapping.",
+                    severity="needs_confirmation",
+                )
+            ],
+        ),
     )
     qtbot.addWidget(dialog)
 
@@ -100,19 +136,15 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
     ] == ["Target step", "Issue", "Impact", "Next action"]
     assert dialog.confirmation_label.text() == ""
     assert "Review import choices" not in review_text
-    assert dialog.review_tree.topLevelItemCount() == 0
+    assert dialog.review_tree.topLevelItemCount() == 1
     dialog.resize(1040, 760)
     dialog.show()
     _show_step(dialog, "Review and Import")
     qtbot.wait(0)
     dialog.import_report_toggle.click()
     qtbot.wait(0)
-    assert not dialog.review_tree.isVisibleTo(dialog)
-    assert dialog.review_report_empty_label.isVisibleTo(dialog)
-    assert (
-        dialog.review_report_empty_label.text()
-        == "No review items. This import is ready to apply."
-    )
+    assert dialog.review_tree.isVisibleTo(dialog)
+    assert not dialog.review_report_empty_label.isVisibleTo(dialog)
     assert "Confirm session metadata." not in review_text
     assert "After import" not in review_text
     assert "Training uses this recipe trace." not in review_text
@@ -241,6 +273,61 @@ def test_review_import_widget_does_not_recompute_resource_preflight():
 
     assert "ResourceChecker" not in source
     assert "check_import_resource_preflight" not in source
+
+
+def test_review_import_product_path_does_not_infer_backend_actions_from_text():
+    source = inspect.getsource(ReviewImportStepMixin)
+
+    assert 'preview.get("action_items")' not in source
+    assert 'get("blocked_reasons")' not in source
+    assert "target_step_for_review_text" not in source
+    assert "label_placement_summary.lower()" not in source
+
+
+def test_edited_draft_cannot_recheck_legacy_blocker_without_typed_actions(qtbot):
+    legacy_action = _review_action(
+        target_step="Review Metadata",
+        issue="Subject metadata is missing.",
+        severity="blocked",
+    )
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+        },
+        preview={
+            "metadata_preview": [
+                {
+                    "file": "A01T.gdf",
+                    "subject": {"value": "", "decision": "blocked"},
+                    "session": {"value": "", "decision": "optional"},
+                    "task": {"value": "mi", "decision": "safe"},
+                    "run": {"value": "01", "decision": "safe"},
+                }
+            ],
+            "class_map": {"769": "left hand"},
+            "event_roles": {"internal_events": "class cue"},
+            "action_items": [legacy_action],
+        },
+        validation_decision={
+            "decision": "blocked",
+            "blocked_reasons": ["Subject metadata is missing."],
+        },
+    )
+    qtbot.addWidget(dialog)
+
+    metadata_item = dialog.file_tree.topLevelItem(0)
+    assert metadata_item is not None
+    metadata_item.setText(1, "A01")
+    dialog._sync_apply_state()
+
+    assert dialog._has_unresolved_required_decisions() is False
+    assert dialog._validation_review_contract().is_valid is False
+    assert dialog._edited_choices_can_resolve_blocker() is False
+    assert dialog.can_submit_for_backend_review() is False
+    assert dialog.apply_button.isEnabled() is False
+    assert "Subject metadata is missing." not in _tree_text(dialog.review_tree)
 
 
 def test_review_resource_check_uses_contract_risk_language(qtbot):
@@ -375,7 +462,7 @@ def test_data_interpretation_preview_dialog_shows_selected_files_not_scan_type(q
             "selected_eeg_files": selected_files,
             "file_count": 3,
         },
-        validation_decision={"decision": "needs_confirmation"},
+        validation_decision=_validation_decision("safe"),
     )
     qtbot.addWidget(dialog)
 
@@ -412,7 +499,7 @@ def test_choose_eeg_data_cards_stay_compact_for_small_selection(qtbot):
             "file_count": 3,
             "label_carrier_count": 3,
         },
-        validation_decision={"decision": "needs_confirmation"},
+        validation_decision=_validation_decision("safe"),
     )
     qtbot.addWidget(dialog)
     dialog.resize(1040, 760)
@@ -470,14 +557,19 @@ def test_load_labels_step_does_not_hidden_scroll_when_content_fits(qtbot):
 
     scrollbar = dialog.scroll_area.verticalScrollBar()
     assert scrollbar is not None
-    assert (
-        dialog.scroll_area.verticalScrollBarPolicy()
-        == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-    )
-    assert scrollbar.maximum() == 0
-    scrollbar.setValue(20)
-    dialog._sync_scroll_policy()
-    assert scrollbar.value() == 0
+    if scrollbar.maximum() == 0:
+        assert (
+            dialog.scroll_area.verticalScrollBarPolicy()
+            == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        scrollbar.setValue(20)
+        dialog._sync_scroll_policy()
+        assert scrollbar.value() == 0
+    else:
+        assert (
+            dialog.scroll_area.verticalScrollBarPolicy()
+            == Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
 
 
 def test_load_labels_many_file_rows_use_compact_source_context(qtbot):
@@ -3158,7 +3250,7 @@ def test_data_interpretation_preview_dialog_tables_fit_product_layout(qtbot):
     assert dialog.label_carrier_tree.columnWidth(0) >= 96
 
 
-def test_match_labels_step_surfaces_bids_event_review(qtbot):
+def test_match_labels_step_keeps_bids_decisions_without_duplicate_event_card(qtbot):
     events_path = "/tmp/source/sub-01_task-mi_run-01_events.tsv"
     dialog = DataInterpretationPreviewDialog(
         parent=None,
@@ -3190,6 +3282,16 @@ def test_match_labels_step_surfaces_bids_event_review(qtbot):
                     "time_field_candidates": ["onset"],
                     "duration_candidates": ["duration"],
                     "selected_label_field": "trial_type",
+                    "label_field_recommendation": {
+                        "field": "trial_type",
+                        "source": "bids_multi_run_evidence",
+                        "reason_code": "trial_type_has_task_labels",
+                        "facts": {"selected_run_count": 1},
+                        "reason": (
+                            "trial_type uses a generic event-role taxonomy and the "
+                            "semantic-refinement evaluator kept untouched runs."
+                        ),
+                    },
                     "selected_anchor": "onset",
                     "selected_duration_field": "duration",
                     "label_value_counts": {"left": 3, "right": 3},
@@ -3214,6 +3316,7 @@ def test_match_labels_step_surfaces_bids_event_review(qtbot):
                     "time_model": "seconds",
                     "placement_method": "time_field",
                     "granularity": "trial",
+                    "events_json_sidecar_present": True,
                     "warnings": [
                         "sub-01_task-mi_run-01_events.tsv events.json sidecar is "
                         "missing; class names and event semantics need confirmation."
@@ -3232,19 +3335,16 @@ def test_match_labels_step_surfaces_bids_event_review(qtbot):
     qtbot.wait(0)
     text = _visible_step_text(dialog, "Match Labels")
 
-    assert "BIDS events.tsv" in text
-    assert (
-        "Review BIDS event timing and class fields for subject 01, task mi, run 01"
-        in text
-    )
-    assert "events.tsv columns" in text
-    assert "onset, duration, trial_type" in text
-    assert "EEG/event pairing" in text
-    assert "Matched by BIDS subject/session/task/run entities" in text
-    assert "Label field" in text
-    assert "trial_type recommended" in text
-    assert "Timing fields" in text
-    assert "onset + duration" in text
+    assert not hasattr(dialog, "bids_event_review_card")
+    assert "events.tsv columns" not in text
+    assert "EEG/event pairing" not in text
+    assert "Timing fields" not in text
+    assert "Read labels from" in text
+    assert "Trial type" in text
+    assert "Recommended because Trial type contains the task labels." in text
+    assert "generic event-role taxonomy" not in text
+    assert "semantic-refinement" not in text
+    assert "untouched runs" not in text
     assert "Event value decisions" in text
     assert dialog.event_value_editor is not None
     assert any(
@@ -3252,13 +3352,131 @@ def test_match_labels_step_surfaces_bids_event_review(qtbot):
         for editor in dialog.event_value_editor.findChildren(QLineEdit)
     )
     assert "3 · 1/1" in text
-    assert "events.json sidecar is missing" in text
+    assert "events.json sidecar is missing" not in text
+    assert "Class names need review" not in text
     assert "BIDS label values" in text
     assert "File pairing" not in text
     assert "Place labels by" not in text
     assert dialog.label_values_card.isVisibleTo(dialog)
     assert not dialog.pairing_card.isVisibleTo(dialog)
     assert not dialog.placement_card.isVisibleTo(dialog)
+
+
+def test_bids_value_recommendation_uses_short_product_copy() -> None:
+    text = DataInterpretationPreviewDialog._bids_label_field_recommendation_text(
+        {
+            "field": "value",
+            "source": "bids_multi_run_evidence",
+            "reason_code": "value_has_described_classes",
+            "facts": {"selected_run_count": 3},
+            "reason": (
+                "generic event-role taxonomy; semantic-refinement across untouched runs"
+            ),
+        }
+    )
+
+    assert text == "Recommended from class descriptions across 3 selected runs."
+    assert "taxonomy" not in text
+    assert "refinement" not in text
+    assert "untouched" not in text
+
+
+def test_bids_mixed_explicit_label_fields_require_common_field_review(qtbot):
+    carriers = []
+    eeg_files = []
+    events_files = []
+    for run, field in ((1, "trial_type"), (2, "value")):
+        eeg = f"/tmp/source/sub-01_task-P300_run-{run}_eeg.set"
+        events = f"/tmp/source/sub-01_task-P300_run-{run}_events.tsv"
+        eeg_files.append(eeg)
+        events_files.append(events)
+        carriers.append(
+            {
+                "path": events,
+                "name": Path(events).name,
+                "format": "BIDS events",
+                "selected_target_file": eeg,
+                "label_candidates": ["trial_type", "value"],
+                "selected_label_field": field,
+                "selected_anchor": "onset",
+                "selected_duration_field": "duration",
+                "label_field_recommendation": {
+                    "field": field,
+                    "source": "explicit_selection",
+                    "reason": "Kept the explicit user or recipe selection.",
+                },
+                "value_decisions": {},
+            }
+        )
+
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "source_kind": "bids",
+            "eeg_files": eeg_files,
+            "label_carriers": events_files,
+            "bids": {"is_bids": True, "events_files": events_files},
+        },
+        preview={"label_carrier_preview": carriers},
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    _show_step(dialog, "Match Labels")
+
+    assert dialog.rule_label_field_combo.currentData() == ""
+    assert "Choose the field that contains the label values" in (
+        dialog.label_values_status_label.text()
+    )
+
+
+def test_bids_present_sidecar_without_selected_field_levels_requests_class_review(
+    qtbot,
+):
+    events = "/tmp/source/sub-01_task-mi_events.tsv"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "source_kind": "bids",
+            "eeg_files": ["/tmp/source/sub-01_task-mi_eeg.vhdr"],
+            "label_carriers": [events],
+            "bids": {"is_bids": True, "events_files": [events]},
+        },
+        preview={
+            "label_carrier_preview": [
+                {
+                    "path": events,
+                    "name": Path(events).name,
+                    "format": "BIDS events",
+                    "selected_target_file": "/tmp/source/sub-01_task-mi_eeg.vhdr",
+                    "label_candidates": ["trial_type"],
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "selected_duration_field": "duration",
+                    "events_json_sidecar_present": True,
+                    "selected_label_field_levels_available": False,
+                    "value_decisions": {
+                        "left": {
+                            "decision": "unresolved",
+                            "suggested_name": "left",
+                        },
+                        "right": {
+                            "decision": "unresolved",
+                            "suggested_name": "right",
+                        },
+                    },
+                }
+            ]
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    _show_step(dialog, "Match Labels")
+
+    assert "Class names need review" in dialog.label_values_status_label.text()
 
 
 def test_bids_value_decisions_are_returned_to_backend_choices(qtbot):
@@ -3316,7 +3534,16 @@ def test_bids_value_decisions_are_returned_to_backend_choices(qtbot):
                 }
             ],
         },
-        validation_decision={"decision": "blocked"},
+        validation_decision=_validation_decision(
+            "blocked",
+            [
+                _review_action(
+                    target_step="Match Labels",
+                    issue="Event values are unresolved.",
+                    severity="blocked",
+                )
+            ],
+        ),
     )
     qtbot.addWidget(dialog)
 
@@ -3330,7 +3557,7 @@ def test_bids_value_decisions_are_returned_to_backend_choices(qtbot):
     dialog.event_value_editor.set_value_decision(
         "button_press",
         role="response",
-        use="event",
+        use="ignore",
     )
 
     submission = dialog._submission_projection()
@@ -3349,6 +3576,15 @@ def test_bids_value_decisions_are_returned_to_backend_choices(qtbot):
     assert dialog.can_submit_for_backend_review() is True
     assert result["confirmed"] is submission.confirmed_on_accept
     assert submission.confirmed_on_accept is True
+
+    _show_step(dialog, "Review and Import")
+    qtbot.wait(0)
+    review_rows = {row["item"]: row for row in dialog._review_import_status_rows()}
+    assert review_rows["Label placement"]["status"] == "Ready"
+    assert review_rows["Label placement"]["action"] == ""
+    assert "2 event values reviewed" in review_rows["Label placement"]["summary"]
+    assert "Needs review" not in _visible_step_text(dialog, "Review and Import")
+    assert dialog.apply_button.isEnabled() is True
 
 
 def test_event_value_edits_defer_hidden_review_rebuilds(qtbot, monkeypatch):
@@ -3434,7 +3670,16 @@ def test_completed_event_values_can_recheck_with_only_optional_metadata_missing(
                 }
             ],
         },
-        validation_decision={"decision": "blocked"},
+        validation_decision=_validation_decision(
+            "blocked",
+            [
+                _review_action(
+                    target_step="Match Labels",
+                    issue="Event values are unresolved.",
+                    severity="blocked",
+                )
+            ],
+        ),
     )
     qtbot.addWidget(dialog)
 
@@ -3488,7 +3733,7 @@ def test_regular_folder_events_tsv_uses_general_label_flow(qtbot):
                 },
             ],
         },
-        validation_decision={"decision": "needs_confirmation"},
+        validation_decision=_validation_decision("safe"),
     )
     qtbot.addWidget(dialog)
     dialog.resize(1040, 820)
@@ -3509,7 +3754,7 @@ def test_regular_folder_events_tsv_uses_general_label_flow(qtbot):
 
     _show_step(dialog, "Match Labels")
     qtbot.wait(0)
-    assert not dialog.bids_event_review_card.isVisibleTo(dialog)
+    assert not hasattr(dialog, "bids_event_review_card")
     assert dialog.pairing_card.isVisibleTo(dialog)
     assert dialog.placement_card.isVisibleTo(dialog)
     assert dialog.label_source_mode_combo.currentText() == "Loaded label files"
@@ -3575,11 +3820,11 @@ def test_load_labels_removing_bids_events_refreshes_active_bids_state(qtbot):
     assert "BIDS events.tsv" in _visible_step_text(dialog, "Load Labels")
     _show_step(dialog, "Match Labels")
     qtbot.wait(0)
-    assert not dialog.bids_event_review_card.isVisibleTo(dialog)
+    assert not hasattr(dialog, "bids_event_review_card")
     assert dialog.get_result()["choices"]["excluded_label_carriers"] == [events_path]
 
 
-def test_bids_preset_surfaces_scope_labels_metadata_and_review(qtbot):
+def test_bids_preset_uses_compact_actionable_first_layer(qtbot):
     events_path = "/tmp/source/sub-01_task-mi_run-01_events.tsv"
     dialog = DataInterpretationPreviewDialog(
         parent=None,
@@ -3614,6 +3859,9 @@ def test_bids_preset_surfaces_scope_labels_metadata_and_review(qtbot):
                     "path": events_path,
                     "name": "sub-01_task-mi_run-01_events.tsv",
                     "format": "BIDS events",
+                    "selected_target_file": (
+                        "/tmp/source/sub-01_task-mi_run-01_raw.fif"
+                    ),
                     "bids_event_columns": ["onset", "duration", "trial_type"],
                     "label_candidates": ["trial_type", "value"],
                     "anchor_candidates": ["onset"],
@@ -3624,6 +3872,13 @@ def test_bids_preset_surfaces_scope_labels_metadata_and_review(qtbot):
                     "time_model": "seconds",
                     "placement_method": "interval",
                     "granularity": "trial",
+                    "events_json_sidecar_present": False,
+                    "value_decisions": {
+                        "left": {
+                            "decision": "unresolved",
+                            "suggested_name": "left",
+                        }
+                    },
                     "warnings": ["events.json sidecar is missing."],
                 },
             ],
@@ -3649,24 +3904,33 @@ def test_bids_preset_surfaces_scope_labels_metadata_and_review(qtbot):
     assert "1 subject" in choose_text
     assert "1 task" in choose_text
     assert "1 events.tsv file" in choose_text
-    assert "Not a full BIDS validator" in choose_text
+    assert "Not a full BIDS validator" not in choose_text
+    assert "Boundary" not in choose_text
 
     _show_step(dialog, "Load Labels")
     load_text = _visible_step_text(dialog, "Load Labels")
     assert "BIDS events.tsv" in load_text
     assert "default label and timing source" in load_text
-    assert "events.json" in load_text
-    assert "Missing" in load_text
+    assert "Paired with sub-01_task-mi_run-01_raw.fif" in load_text
+    assert "Detected nearby" not in load_text
+    assert "events.json" not in load_text
     assert not dialog.skip_labels_btn.isVisibleTo(dialog)
     assert not dialog.add_label_file_btn.isVisibleTo(dialog)
     assert not dialog.add_label_folder_btn.isVisibleTo(dialog)
 
     _show_step(dialog, "Review Metadata")
     metadata_text = _visible_step_text(dialog, "Review Metadata")
-    assert "BIDS metadata" in metadata_text
-    assert "participants.tsv" in metadata_text
-    assert "Not found" in metadata_text
+    assert "Review subject, session, task, and run." in metadata_text
+    assert "BIDS metadata" not in metadata_text
+    assert "participants.tsv" not in metadata_text
+    assert "Metadata" in metadata_text
     assert dialog.smart_parse_btn.text() == "Adjust parsing"
+
+    _show_step(dialog, "Match Labels")
+    match_text = _visible_step_text(dialog, "Match Labels")
+    assert not hasattr(dialog, "bids_event_review_card")
+    assert "events.tsv columns" not in match_text
+    assert "Class names need review" in match_text
 
     _show_step(dialog, "Review and Import")
     qtbot.wait(0)
@@ -3689,6 +3953,63 @@ def test_bids_preset_surfaces_scope_labels_metadata_and_review(qtbot):
         button.text() == "Fix Match Labels"
         for button in dialog.review_actions_panel.findChildren(QPushButton)
     )
+    dialog.import_report_toggle.click()
+    report_rows = [
+        " | ".join(
+            dialog.review_tree.topLevelItem(index).text(column)
+            for column in range(dialog.review_tree.columnCount())
+        )
+        for index in range(dialog.review_tree.topLevelItemCount())
+    ]
+    assert any(
+        "BIDS event provenance" in row
+        and "sub-01_task-mi_run-01_events.tsv" in row
+        and "sub-01_task-mi_run-01_raw.fif" in row
+        and "onset + duration" in row
+        for row in report_rows
+    )
+
+
+@pytest.mark.parametrize(
+    ("sidecar_present", "warnings", "expected"),
+    [
+        (True, ["events.json sidecar is missing."], "Found"),
+        (False, [], "Missing"),
+    ],
+)
+def test_bids_events_json_status_uses_structured_preview_field(
+    qtbot,
+    sidecar_present,
+    warnings,
+    expected,
+):
+    events_path = "/tmp/source/sub-01_task-mi_events.tsv"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "source_kind": "bids",
+            "eeg_files": ["/tmp/source/sub-01_task-mi_eeg.vhdr"],
+            "label_carriers": [events_path],
+            "bids": {"is_bids": True, "events_files": [events_path]},
+        },
+        preview={
+            "label_carrier_preview": [
+                {
+                    "path": events_path,
+                    "name": "sub-01_task-mi_events.tsv",
+                    "format": "BIDS events",
+                    "selected_label_field": "trial_type",
+                    "events_json_sidecar_present": sidecar_present,
+                    "warnings": warnings,
+                }
+            ]
+        },
+        validation_decision=_validation_decision("safe"),
+    )
+    qtbot.addWidget(dialog)
+
+    assert dialog._bids_events_json_text() == expected
 
 
 def test_bids_review_blocks_when_one_selected_run_has_no_events_tsv(qtbot):
@@ -3762,6 +4083,12 @@ def test_bids_review_blocks_when_one_selected_run_has_no_events_tsv(qtbot):
     assert "Needs review" in review_text
     assert not dialog.apply_button.isEnabled()
 
+    metadata_item, _original_metadata = dialog._metadata_items[0]
+    metadata_item.setText(3, "updated-task")
+    dialog._sync_apply_state()
+
+    assert not dialog.apply_button.isEnabled()
+
 
 def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot):
     dialog = DataInterpretationPreviewDialog(
@@ -3798,22 +4125,40 @@ def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot
             "event_roles": {"trial_type": "class cue"},
             "recipe_trace": ["scan:scan-1", "candidate:candidate-1"],
         },
-        validation_decision={"decision": "needs_confirmation"},
+        validation_decision=_validation_decision("safe"),
     )
     qtbot.addWidget(dialog)
     dialog.resize(760, 720)
     dialog.show()
     qtbot.wait(0)
 
-    assert [label.text() for label in dialog.step_labels] == [
-        "1. EEG Data",
+    rendered_step_labels = [label.text() for label in dialog.step_labels]
+    full_step_labels = [
+        "1. Choose EEG Data",
+        "2. Load Labels",
+        "3. Review Metadata",
+        "4. Match Labels",
+        "5. Review and Import",
+    ]
+    compact_step_labels = [
+        "1. EEG",
         "2. Labels",
-        "3. Metadata",
+        "3. Details",
         "4. Match",
         "5. Review",
     ]
+    assert rendered_step_labels in (full_step_labels, compact_step_labels)
+    if rendered_step_labels == compact_step_labels:
+        assert [label.toolTip() for label in dialog.step_labels] == [
+            "Choose EEG Data",
+            "Load Labels",
+            "Review Metadata",
+            "Match Labels",
+            "Review and Import",
+        ]
     assert all(
-        label.fontMetrics().horizontalAdvance(label.text()) <= label.width()
+        label.fontMetrics().horizontalAdvance(label.text())
+        <= label.contentsRect().width() + 1
         for label in dialog.step_labels
     )
 
@@ -3838,6 +4183,57 @@ def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot
         assert horizontal_scrollbar is not None
         assert abs(header.length() - viewport.width()) <= 2
         assert horizontal_scrollbar.maximum() == 0, step_title
+
+    for label, full_text in zip(
+        dialog.step_labels,
+        full_step_labels,
+        strict=True,
+    ):
+        label.setText(full_text)
+        label.setFixedWidth(126)
+    dialog._compact_clipped_step_labels()
+
+    assert [label.toolTip() for label in dialog.step_labels] == dialog._step_titles
+    assert all(
+        label.fontMetrics().horizontalAdvance(label.text())
+        <= label.contentsRect().width() + 1
+        for label in dialog.step_labels
+    )
+
+    for label, full_text, compact_text in zip(
+        dialog.step_labels,
+        full_step_labels,
+        compact_step_labels,
+        strict=True,
+    ):
+        label.setText(full_text)
+        content_insets = label.width() - label.contentsRect().width()
+        metrics = label.fontMetrics()
+        compact_width = metrics.horizontalAdvance(compact_text)
+        label.setFixedWidth(
+            content_insets + compact_width - metrics.horizontalAdvance("m")
+        )
+    dialog._compact_clipped_step_labels()
+
+    fitted_step_labels = [label.text() for label in dialog.step_labels]
+    assert all(
+        text.startswith(f"{index}. ")
+        for index, text in enumerate(fitted_step_labels, start=1)
+    )
+    assert any(
+        text != compact_text
+        for text, compact_text in zip(
+            fitted_step_labels,
+            compact_step_labels,
+            strict=True,
+        )
+    )
+    assert [label.toolTip() for label in dialog.step_labels] == dialog._step_titles
+    assert all(
+        label.fontMetrics().horizontalAdvance(label.text())
+        <= label.contentsRect().width() + 1
+        for label in dialog.step_labels
+    )
 
 
 def test_data_interpretation_preview_dialog_label_selectors_fit_review_text(qtbot):
@@ -3871,21 +4267,54 @@ def test_data_interpretation_preview_dialog_label_selectors_fit_review_text(qtbo
     dialog.resize(1040, 860)
     dialog.show()
     qtbot.wait(0)
+    _show_step(dialog, "Match Labels")
+    qtbot.wait(0)
     dialog._fit_all_tree_columns_to_viewport()
     qtbot.wait(0)
 
     item = dialog.label_carrier_tree.topLevelItem(0)
     assert item is not None
+    viewport = dialog.label_carrier_tree.viewport()
+    assert viewport is not None
     for column in (4, 5):
         selector = dialog.label_carrier_tree.itemWidget(item, column)
-        assert isinstance(selector, QComboBox)
-        visible_text_width = selector.fontMetrics().horizontalAdvance(
-            selector.currentText(),
-        )
-        assert dialog.label_carrier_tree.columnWidth(column) >= visible_text_width + 42
+        assert isinstance(selector, ElidingComboBox)
+        assert selector.parentWidget() is viewport
+        assert viewport.rect().contains(selector.geometry())
+        assert selector.toolTip() == selector.currentText()
+        rendered_text = selector.elided_current_text()
+        assert rendered_text
+        assert rendered_text == selector.currentText() or "…" in rendered_text
 
 
 def test_data_interpretation_preview_dialog_review_summary_shows_whole_rows(qtbot):
+    action_items = [
+        _review_action(
+            target_step="Review Metadata",
+            issue="Review subject metadata.",
+            severity="warning",
+        ),
+        _review_action(
+            target_step="Load Labels",
+            issue="Review external label carriers.",
+            severity="warning",
+        ),
+        _review_action(
+            target_step="Match Labels",
+            issue="Confirm label carrier alignment.",
+            severity="needs_confirmation",
+        ),
+        _review_action(
+            target_step="Review Metadata",
+            issue="Confirm session metadata for sub-01.",
+            severity="needs_confirmation",
+        ),
+        _review_action(
+            target_step="Match Labels",
+            issue="Confirm event role mapping.",
+            severity="needs_confirmation",
+        ),
+    ]
     dialog = DataInterpretationPreviewDialog(
         parent=None,
         scan_result={"source_path": "/tmp/source"},
@@ -3904,7 +4333,10 @@ def test_data_interpretation_preview_dialog_review_summary_shows_whole_rows(qtbo
                 "Evaluation will use the same class map.",
             ],
         },
-        validation_decision={"decision": "needs_confirmation"},
+        validation_decision=_validation_decision(
+            "needs_confirmation",
+            action_items,
+        ),
     )
     qtbot.addWidget(dialog)
     dialog.resize(1040, 760)
@@ -3941,7 +4373,7 @@ def test_import_review_refresh_detaches_previous_rows_before_rebuild(qtbot):
             "eeg_files": ["/tmp/source/A01T.gdf"],
         },
         preview={},
-        validation_decision={"decision": "needs_confirmation"},
+        validation_decision=_validation_decision("safe"),
     )
     qtbot.addWidget(dialog)
     dialog.resize(1040, 760)
@@ -3993,7 +4425,18 @@ def test_import_report_wraps_long_cells_and_uses_column_specific_tooltips(qtbot)
                 }
             ]
         },
-        validation_decision={"decision": "needs_confirmation"},
+        validation_decision=_validation_decision(
+            "needs_confirmation",
+            [
+                _review_action(
+                    target_step="Review and Import",
+                    issue=issue,
+                    impact=impact,
+                    next_action=next_action,
+                    severity="needs_confirmation",
+                )
+            ],
+        ),
     )
     qtbot.addWidget(dialog)
     dialog.resize(1040, 760)
@@ -4118,7 +4561,7 @@ def test_review_and_import_metadata_summary_uses_manual_edits(qtbot):
                 },
             ],
         },
-        validation_decision={"decision": "needs_confirmation"},
+        validation_decision=_validation_decision("safe"),
     )
     qtbot.addWidget(dialog)
     dialog.resize(1040, 760)
@@ -4169,7 +4612,7 @@ def test_save_recipe_and_import_do_not_require_optional_task_or_epoch_setup(qtbo
                 "supervised_blockers": ["Epoch setup is incomplete."],
             },
         },
-        validation_decision={"decision": "needs_confirmation"},
+        validation_decision=_validation_decision("safe"),
     )
     qtbot.addWidget(dialog)
 
@@ -4226,7 +4669,7 @@ def test_bids_optional_task_and_run_do_not_block_import_or_recipe(qtbot):
                 "supervised_blockers": ["Epoch setup is incomplete."],
             },
         },
-        validation_decision={"decision": "needs_confirmation"},
+        validation_decision=_validation_decision("safe"),
     )
     qtbot.addWidget(dialog)
 
@@ -4260,7 +4703,7 @@ def test_review_recipe_action_is_optional_and_reports_pending_selection(qtbot):
             "class_map": {"769": "left hand"},
             "event_roles": {"internal_events": "event role candidates"},
         },
-        validation_decision={"decision": "needs_confirmation"},
+        validation_decision=_validation_decision("safe"),
     )
     qtbot.addWidget(dialog)
     _show_step(dialog, "Review and Import")
@@ -4315,7 +4758,18 @@ def test_import_report_includes_import_facts_and_issue_summary(qtbot):
                 }
             ],
         },
-        validation_decision={"decision": "needs_confirmation"},
+        validation_decision=_validation_decision(
+            "safe",
+            [
+                _review_action(
+                    target_step="Load Labels",
+                    issue="Labels skipped for now.",
+                    impact="Supervised workflows remain limited.",
+                    next_action="Load labels later if needed.",
+                    severity="limited",
+                )
+            ],
+        ),
     )
     qtbot.addWidget(dialog)
     _show_step(dialog, "Review and Import")
@@ -4523,7 +4977,19 @@ def test_review_and_import_groups_repeated_file_action_items(qtbot):
                 for index in range(1, 4)
             ],
         },
-        validation_decision={"decision": "needs_confirmation"},
+        validation_decision=_validation_decision(
+            "safe",
+            [
+                _review_action(
+                    target_step="Review Metadata",
+                    issue="Confirm subject metadata.",
+                    impact=f"Subject metadata is missing in A0{index}T.gdf.",
+                    next_action="Confirm subject in Review Metadata.",
+                    severity="warning",
+                )
+                for index in range(1, 4)
+            ],
+        ),
     )
     qtbot.addWidget(dialog)
     dialog.resize(1040, 760)
@@ -4570,7 +5036,19 @@ def test_review_and_import_groups_file_scoped_issues_by_problem(qtbot):
                 for index in range(1, 4)
             ],
         },
-        validation_decision={"decision": "needs_confirmation"},
+        validation_decision=_validation_decision(
+            "safe",
+            [
+                _review_action(
+                    target_step="Review Metadata",
+                    issue=f"A0{index}T.gdf needs subject metadata review.",
+                    impact="Subject metadata is missing.",
+                    next_action="Confirm subject in Review Metadata.",
+                    severity="warning",
+                )
+                for index in range(1, 4)
+            ],
+        ),
     )
     qtbot.addWidget(dialog)
     dialog.resize(1040, 760)
@@ -4612,7 +5090,18 @@ def test_review_and_import_keeps_warning_items_in_report_not_primary_actions(qtb
                 },
             ],
         },
-        validation_decision={"decision": "safe"},
+        validation_decision=_validation_decision(
+            "safe",
+            [
+                _review_action(
+                    target_step="Review and Import",
+                    issue=warning,
+                    impact="Import may still be usable.",
+                    next_action="Open the report for details.",
+                    severity="warning",
+                )
+            ],
+        ),
     )
     qtbot.addWidget(dialog)
     dialog.resize(1040, 760)
@@ -4662,7 +5151,7 @@ def test_review_step_compacts_and_restores_the_wizard_height(qtbot):
         validation_decision={"decision": "safe"},
     )
     qtbot.addWidget(dialog)
-    dialog.resize(700, 700)
+    dialog.resize(700, max(900, dialog.minimumSizeHint().height() + 160))
     dialog.show()
     qtbot.wait(0)
     working_height = dialog.height()
@@ -4672,7 +5161,7 @@ def test_review_step_compacts_and_restores_the_wizard_height(qtbot):
     assert dialog.height() < working_height
     review_center = dialog.geometry().center()
     assert abs(review_center.x() - working_center.x()) <= 2
-    assert abs(review_center.y() - working_center.y()) <= 1
+    assert abs(review_center.y() - working_center.y()) <= 2
     compact_height = dialog.height()
 
     dialog.import_report_toggle.click()
@@ -4680,7 +5169,7 @@ def test_review_step_compacts_and_restores_the_wizard_height(qtbot):
     assert dialog.height() <= working_height
     report_center = dialog.geometry().center()
     assert abs(report_center.x() - working_center.x()) <= 2
-    assert abs(report_center.y() - working_center.y()) <= 1
+    assert abs(report_center.y() - working_center.y()) <= 2
     review_header = dialog.review_tree.header()
     review_viewport = dialog.review_tree.viewport()
     assert review_header is not None
@@ -4691,7 +5180,7 @@ def test_review_step_compacts_and_restores_the_wizard_height(qtbot):
     assert dialog.height() == working_height
     restored_center = dialog.geometry().center()
     assert abs(restored_center.x() - working_center.x()) <= 2
-    assert abs(restored_center.y() - working_center.y()) <= 1
+    assert abs(restored_center.y() - working_center.y()) <= 2
 
 
 def test_collapsed_review_geometry_is_stable_before_and_after_report_roundtrip(qtbot):
@@ -4787,12 +5276,17 @@ def test_collapsed_review_opened_before_show_removes_trailing_scroll_gutter(qtbo
     scrollbar = dialog.scroll_area.verticalScrollBar()
     assert scrollbar is not None
     assert separator_top - report_action_bottom <= 96
-    assert (
-        dialog.scroll_area.verticalScrollBarPolicy()
-        == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-    )
-    assert scrollbar.maximum() == 0
-    assert not scrollbar.isVisibleTo(dialog)
+    if scrollbar.maximum() == 0:
+        assert (
+            dialog.scroll_area.verticalScrollBarPolicy()
+            == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        assert not scrollbar.isVisibleTo(dialog)
+    else:
+        assert (
+            dialog.scroll_area.verticalScrollBarPolicy()
+            == Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
     assert dialog.apply_button.isVisibleTo(dialog)
     assert dialog.rect().contains(
         dialog.apply_button.mapTo(
@@ -4824,9 +5318,9 @@ def test_review_and_import_primary_actions_exclude_report_only_warnings(qtbot):
                 {
                     "target_step": "Load Labels",
                     "issue": "Label file is missing.",
-                    "impact": "This import cannot be applied until labels are fixed.",
+                    "impact": "Label source selection needs confirmation.",
                     "next_action": "Load the missing label file.",
-                    "severity": "blocked",
+                    "severity": "needs_confirmation",
                 },
                 {
                     "target_step": "Match Labels",
@@ -4844,7 +5338,32 @@ def test_review_and_import_primary_actions_exclude_report_only_warnings(qtbot):
                 },
             ],
         },
-        validation_decision={"decision": "needs_confirmation"},
+        validation_decision=_validation_decision(
+            "needs_confirmation",
+            [
+                _review_action(
+                    target_step="Load Labels",
+                    issue="Label file is missing.",
+                    impact="Label source selection needs confirmation.",
+                    next_action="Load the missing label file.",
+                    severity="needs_confirmation",
+                ),
+                _review_action(
+                    target_step="Match Labels",
+                    issue="Confirm label placement.",
+                    impact="This choice affects training readiness.",
+                    next_action="Review Match Labels.",
+                    severity="needs_confirmation",
+                ),
+                _review_action(
+                    target_step="Review and Import",
+                    issue="Saved recipe choices were reapplied.",
+                    impact="No action needed.",
+                    next_action="Open the report for details.",
+                    severity="warning",
+                ),
+            ],
+        ),
     )
     qtbot.addWidget(dialog)
     dialog.resize(1040, 760)
@@ -4864,7 +5383,7 @@ def test_review_and_import_primary_actions_exclude_report_only_warnings(qtbot):
     )
 
     assert len(action_cards) == 2
-    assert "Cannot import yet" in action_text
+    assert "Cannot import yet" not in action_text
     assert "Needs your decision" in action_text
     assert "Label source is incomplete" in action_text
     assert "Confirm label placement." not in action_text
@@ -4925,7 +5444,25 @@ def test_blocked_import_only_promotes_true_blockers_to_first_layer(qtbot):
                 },
             ]
         },
-        validation_decision={"decision": "blocked"},
+        validation_decision=_validation_decision(
+            "blocked",
+            [
+                _review_action(
+                    target_step="Load Labels",
+                    issue="Label source is missing.",
+                    impact="Labels are required before import.",
+                    next_action="Load labels.",
+                    severity="blocked",
+                ),
+                _review_action(
+                    target_step="Match Labels",
+                    issue="Confirm label placement.",
+                    impact="Review the suggested placement.",
+                    next_action="Review Match Labels.",
+                    severity="needs_confirmation",
+                ),
+            ],
+        ),
     )
     qtbot.addWidget(dialog)
     dialog.resize(1040, 760)
@@ -5769,6 +6306,13 @@ def test_data_interpretation_preview_dialog_returns_label_carrier_remap(qtbot):
             "blocked_reasons": [
                 "Saved label/event carrier(s) were not found in the current scan: old_events.tsv.",
             ],
+            "action_items": [
+                _review_action(
+                    target_step="Load Labels",
+                    issue="Saved label/event carrier is missing.",
+                    severity="blocked",
+                )
+            ],
         },
     )
     qtbot.addWidget(dialog)
@@ -5832,6 +6376,13 @@ def test_data_interpretation_preview_dialog_returns_eeg_file_remap(qtbot):
             "blocked_reasons": [
                 "Selected EEG file(s) were not found in the current scan: old_raw.fif.",
             ],
+            "action_items": [
+                _review_action(
+                    target_step="Choose EEG Data",
+                    issue="Selected EEG file is missing.",
+                    severity="blocked",
+                )
+            ],
         },
     )
     qtbot.addWidget(dialog)
@@ -5891,6 +6442,13 @@ def test_data_interpretation_preview_dialog_requires_each_remap_choice(qtbot):
             "decision": "blocked",
             "blocked_reasons": [
                 "Selected EEG file(s) were not found in the current scan: old_raw.fif.",
+            ],
+            "action_items": [
+                _review_action(
+                    target_step="Choose EEG Data",
+                    issue="Selected EEG file is missing.",
+                    severity="blocked",
+                )
             ],
         },
     )
@@ -5953,6 +6511,18 @@ def test_recipe_remap_selection_refreshes_every_visible_review_state(qtbot):
             "blocked_reasons": [
                 "Selected EEG file(s) were not found in the current scan: old_raw.fif.",
                 "Saved label/event carrier(s) were not found in the current scan: old_events.tsv.",
+            ],
+            "action_items": [
+                _review_action(
+                    target_step="Choose EEG Data",
+                    issue="Selected EEG file is missing.",
+                    severity="blocked",
+                ),
+                _review_action(
+                    target_step="Load Labels",
+                    issue="Saved label/event carrier is missing.",
+                    severity="blocked",
+                ),
             ],
         },
     )

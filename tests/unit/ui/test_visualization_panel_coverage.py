@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import replace
+from time import monotonic, sleep
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
@@ -15,6 +16,7 @@ from PyQt6.QtWidgets import QLabel, QWidget
 
 from XBrainLab.backend.application import (
     ApplicationViewPublication,
+    SaliencyCrossFoldIdentity,
     SaliencyPlanIdentity,
     SaliencyRenderData,
     SaliencyRenderPublication,
@@ -52,6 +54,7 @@ def _complete_coverage(method: str = "Gradient") -> SaliencyMethodCoverageSnapsh
 
 def _visualization_result(
     *run_coverages: SaliencyRunCoverageSnapshot,
+    cross_fold_choices: tuple[dict[str, object], ...] = (),
 ) -> CommandResult:
     state = replace(
         ApplicationStateSnapshot.empty(),
@@ -67,6 +70,12 @@ def _visualization_result(
         message="Visualization ready.",
         state=state,
         changed_state=ChangedState(),
+        diagnostics={
+            "payload_type": "visualization_summary",
+            "available": True,
+            "plot_views_available": True,
+            "saliency_cross_fold_choices": list(cross_fold_choices),
+        },
     )
 
 
@@ -484,6 +493,139 @@ def test_panel_shutdown_fences_all_saliency_views(panel_and_controller):
         cast(Any, view).cancel_render_shutdown.assert_called_once_with()
 
 
+def test_panel_cleanup_fences_late_saliency_worker_callbacks(panel_and_controller):
+    panel, _controller = panel_and_controller
+    views = (panel.tab_map, panel.tab_spectro, panel.tab_topo, panel.tab_3d)
+
+    panel.cleanup()
+
+    assert panel._native_render_shutdown_requested is True
+    assert panel._saliency_render_pending_task is None
+    for view in views:
+        cast(Any, view).begin_render_shutdown.assert_called_once_with()
+
+
+def test_saliency_worker_ownership_lasts_until_finished_callback(
+    panel_and_controller,
+):
+    from XBrainLab.ui.panels.visualization.panel import _SaliencyRenderTask
+
+    panel, _controller = panel_and_controller
+    run = SaliencyRunIdentity(
+        plan=SaliencyPlanIdentity(plan_index=0),
+        run_index=0,
+    )
+    active = _SaliencyRenderTask(
+        request=SaliencyRenderRequest(
+            publication_generation=1,
+            run=run,
+            method="Gradient",
+        ),
+        needs_normalized_variant=False,
+    )
+    stale_pending = replace(
+        active,
+        request=replace(active.request, method="SmoothGrad"),
+    )
+    worker = MagicMock()
+    worker.is_alive.return_value = False
+    panel._saliency_render_worker = worker
+    panel._saliency_render_active_task = active
+    panel._saliency_render_pending_task = stale_pending
+
+    assert panel.native_render_work_idle() is False
+
+    # Returning A while A's Qt callbacks are queued must clear stale B rather
+    # than replace the still-owned worker or launch B after A finishes.
+    panel._request_saliency_render(active)
+
+    assert panel._saliency_render_worker is worker
+    assert panel._saliency_render_pending_task is None
+    worker.start.assert_not_called()
+
+    panel._on_saliency_render_finished(worker)
+
+    assert panel._saliency_render_worker is None
+    assert panel.native_render_work_idle() is True
+
+
+def test_saliency_worker_requeues_active_task_after_its_result_was_discarded(
+    panel_and_controller,
+):
+    from XBrainLab.ui.panels.visualization.panel import _SaliencyRenderTask
+
+    panel, _controller = panel_and_controller
+    run = SaliencyRunIdentity(
+        plan=SaliencyPlanIdentity(plan_index=0),
+        run_index=0,
+    )
+    active = _SaliencyRenderTask(
+        request=SaliencyRenderRequest(
+            publication_generation=1,
+            run=run,
+            method="Gradient",
+        ),
+        needs_normalized_variant=False,
+    )
+    worker = MagicMock()
+    panel._saliency_render_worker = worker
+    panel._saliency_render_active_task = active
+    different_selection = replace(
+        active,
+        request=replace(active.request, method="SmoothGrad"),
+    )
+    publication = SaliencyRenderPublication(
+        request=active.request,
+        generation=active.request.publication_generation,
+        training_generation=1,
+        data=_render_data(),
+    )
+
+    with patch.object(
+        panel,
+        "_current_saliency_render_task",
+        return_value=different_selection,
+    ):
+        panel._on_saliency_render_ready(worker, (active, publication, None))
+
+    assert panel._saliency_render_result_seen is True
+    assert not panel._saliency_render_cache
+
+    # A completed while B was selected, so A's result was intentionally
+    # discarded. Returning to A before its finished signal must queue a fresh
+    # A request instead of leaving the view on a permanent loading message.
+    panel._request_saliency_render(active)
+
+    assert panel._saliency_render_pending_task == active
+
+    with patch.object(panel, "_request_saliency_render") as request_render:
+        panel._on_saliency_render_finished(worker)
+
+    request_render.assert_called_once_with(active)
+
+
+def test_saliency_cache_miss_never_queries_backend_on_gui_thread(
+    panel_and_controller,
+):
+    panel, _controller = panel_and_controller
+    request = SaliencyRenderRequest(
+        publication_generation=1,
+        run=SaliencyRunIdentity(
+            plan=SaliencyPlanIdentity(plan_index=0),
+            run_index=0,
+        ),
+        method="Gradient",
+    )
+
+    with patch(
+        "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
+    ) as get_render:
+        publication = panel._saliency_render_publication(request)
+
+    assert publication is None
+    get_render.assert_not_called()
+
+
 def test_panel_native_resource_finalizer_is_idempotent(panel_and_controller):
     panel, _controller = panel_and_controller
     views = (panel.tab_map, panel.tab_spectro, panel.tab_topo, panel.tab_3d)
@@ -615,7 +757,7 @@ def test_cancelled_shutdown_resubmits_2d_publication_to_true_worker(
         return_value=render_publication,
     ):
         panel.on_update()
-        assert first_started.wait(timeout=1.0)
+        qtbot.waitUntil(first_started.is_set, timeout=2000)
         panel.begin_native_render_shutdown()
         release_first.set()
         qtbot.waitUntil(panel.native_render_work_idle, timeout=3000)
@@ -699,7 +841,7 @@ def test_cancelled_shutdown_resubmits_3d_publication_to_true_worker(
         return_value=render_publication,
     ):
         panel.on_update()
-        assert first_started.wait(timeout=1.0)
+        qtbot.waitUntil(first_started.is_set, timeout=2000)
         panel.begin_native_render_shutdown()
         release_first.set()
         qtbot.waitUntil(panel.native_render_work_idle, timeout=3000)
@@ -735,7 +877,7 @@ class TestRefreshCombos:
 
         assert publication.usable is True
         assert panel.plan_combo.count() == 1
-        assert panel.plan_combo.itemText(0) == "Select a plan"
+        assert panel.plan_combo.itemText(0) == "Select a fold"
         assert panel.plan_combo.itemData(0) is None
         assert panel.run_combo.count() == 0
         assert panel._runs_by_plan == {}
@@ -779,7 +921,7 @@ class TestRefreshCombos:
         assert [
             panel.plan_combo.itemText(index)
             for index in range(panel.plan_combo.count())
-        ] == ["Select a plan", "Fold 1 (EEGNet)", "Fold 2 (SCCNet)"]
+        ] == ["Select a fold", "Fold 1 (EEGNet)", "Fold 2 (SCCNet)"]
         assert panel.plan_combo.itemData(1) == plan_zero
         assert panel.plan_combo.itemData(2) == plan_one
         assert isinstance(panel.plan_combo.itemData(1), SaliencyPlanIdentity)
@@ -791,7 +933,7 @@ class TestRefreshCombos:
         ]
         assert [
             panel.run_combo.itemText(index) for index in range(panel.run_combo.count())
-        ] == ["Repeat A", "Repeat B"]
+        ] == ["Run 1", "Run 2"]
 
         _select_run(
             panel,
@@ -805,6 +947,184 @@ class TestRefreshCombos:
             SaliencyRunIdentity(plan=plan_one, run_index=1),
         ]
         assert panel.run_combo.findText("Average") == -1
+
+    def test_backend_admitted_cross_fold_summary_preserves_exact_identity(
+        self,
+        panel_and_controller,
+        qtbot,
+    ):
+        panel, _controller = panel_and_controller
+        cross_choice = {
+            "identity": {
+                "members": [
+                    {"plan_index": 0, "run_index": 0},
+                    {"plan_index": 1, "run_index": 0},
+                ]
+            },
+            "display_name": "All Folds",
+            "run_label": "Run 1 (Summary)",
+            "methods": ["Gradient"],
+            "source_split": "test",
+            "fold_count": 2,
+            "classes": [
+                {
+                    "class_index": 0,
+                    "display_name": "left",
+                    "event_code": 769,
+                    "store_key": 0,
+                }
+            ],
+        }
+        result = _visualization_result(
+            _run_coverage(plan_index=0, run_index=0, model_name="EEGNet"),
+            _run_coverage(plan_index=1, run_index=0, model_name="EEGNet"),
+            cross_fold_choices=(cross_choice,),
+        )
+        publication = _publish_panel_state(panel, result)
+
+        all_folds_index = panel.plan_combo.findText("All Folds")
+        assert all_folds_index > 0
+        panel.plan_combo.blockSignals(True)
+        panel.plan_combo.setCurrentIndex(all_folds_index)
+        panel.plan_combo.blockSignals(False)
+        with patch.object(panel, "on_update"):
+            panel.on_plan_changed(panel.plan_combo.currentText())
+
+        identity = panel.run_combo.currentData()
+        assert isinstance(identity, SaliencyCrossFoldIdentity)
+        assert panel.run_combo.currentText() == "Run 1 (Summary)"
+        assert [member.plan.plan_index for member in identity.members] == [0, 1]
+        coverage = panel._published_coverage_for_selection()
+        assert coverage is not None
+        assert coverage["Gradient"].complete is True
+
+        panel.normalize_check.blockSignals(True)
+        panel.normalize_check.setChecked(True)
+        panel.normalize_check.blockSignals(False)
+        requests: list[SaliencyRenderRequest] = []
+        render_thread_ids: list[int] = []
+        gui_thread_id = threading.get_ident()
+
+        def get_render(_panel, request, **_kwargs):
+            requests.append(request)
+            render_thread_ids.append(threading.get_ident())
+            return SaliencyRenderPublication(
+                request=request,
+                generation=request.publication_generation,
+                training_generation=8,
+                data=replace(_render_data(), fold_count=2),
+            )
+
+        current_widget = _current_widget(panel)
+        current_widget.update_plot.reset_mock()
+        with patch(
+            "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
+            side_effect=get_render,
+        ):
+            panel.on_update()
+            qtbot.waitUntil(
+                lambda: current_widget.update_plot.call_count == 1,
+                timeout=2000,
+            )
+
+        assert requests == [
+            SaliencyRenderRequest(
+                publication_generation=publication.generation,
+                run=identity,
+                method="Gradient",
+            )
+        ]
+        assert render_thread_ids and render_thread_ids[0] != gui_thread_id
+        rendered = current_widget.update_plot.call_args.args[0]
+        assert rendered.request.normalize is True
+        assert rendered.data.normalized is True
+        assert rendered.data.fold_count == 2
+
+    def test_cross_fold_normalize_during_first_load_reuses_raw_pooling(
+        self,
+        panel_and_controller,
+        qtbot,
+    ):
+        panel, _controller = panel_and_controller
+        cross_choice = {
+            "identity": {
+                "members": [
+                    {"plan_index": 0, "run_index": 0},
+                    {"plan_index": 1, "run_index": 0},
+                ]
+            },
+            "display_name": "All Folds",
+            "run_label": "Run 1 (Summary)",
+            "methods": ["Gradient"],
+            "source_split": "test",
+            "fold_count": 2,
+            "classes": [
+                {
+                    "class_index": 0,
+                    "display_name": "left",
+                    "event_code": 769,
+                    "store_key": 0,
+                }
+            ],
+        }
+        result = _visualization_result(
+            _run_coverage(plan_index=0, run_index=0, model_name="EEGNet"),
+            _run_coverage(plan_index=1, run_index=0, model_name="EEGNet"),
+            cross_fold_choices=(cross_choice,),
+        )
+        publication = _publish_panel_state(panel, result)
+        panel.plan_combo.blockSignals(True)
+        panel.plan_combo.setCurrentIndex(panel.plan_combo.findText("All Folds"))
+        panel.plan_combo.blockSignals(False)
+        with patch.object(panel, "on_update"):
+            panel.on_plan_changed(panel.plan_combo.currentText())
+
+        identity = panel.run_combo.currentData()
+        assert isinstance(identity, SaliencyCrossFoldIdentity)
+        render_started = threading.Event()
+        release_render = threading.Event()
+        requests: list[SaliencyRenderRequest] = []
+
+        def get_render(_panel, request, **_kwargs):
+            requests.append(request)
+            render_started.set()
+            assert release_render.wait(timeout=2.0)
+            return SaliencyRenderPublication(
+                request=request,
+                generation=request.publication_generation,
+                training_generation=8,
+                data=replace(_render_data(), fold_count=2),
+            )
+
+        current_widget = _current_widget(panel)
+        current_widget.update_plot.reset_mock()
+        try:
+            with patch(
+                "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
+                side_effect=get_render,
+            ):
+                panel.on_update()
+                assert render_started.wait(timeout=2.0)
+                panel.normalize_check.setChecked(True)
+                release_render.set()
+                qtbot.waitUntil(
+                    lambda: current_widget.update_plot.call_count == 1
+                    and panel.native_render_work_idle(),
+                    timeout=3000,
+                )
+        finally:
+            release_render.set()
+
+        assert requests == [
+            SaliencyRenderRequest(
+                publication_generation=publication.generation,
+                run=identity,
+                method="Gradient",
+            )
+        ]
+        rendered = current_widget.update_plot.call_args.args[0]
+        assert rendered.request.normalize is True
+        assert rendered.data.normalized is True
 
     def test_preserves_selection_by_identity_across_publication_generation(
         self,
@@ -884,7 +1204,7 @@ class TestRefreshCombos:
         assert panel.plan_combo.currentData() == selected_run.plan
         assert panel.plan_combo.currentText() == "Fold 2 (SCCNet v2)"
         assert panel.run_combo.currentData() == selected_run
-        assert panel.run_combo.currentText() == "Updated 2"
+        assert panel.run_combo.currentText() == "Run 2"
 
     @pytest.mark.parametrize(
         ("verified", "stale"),
@@ -915,7 +1235,7 @@ class TestRefreshCombos:
 
         assert panel._application_view_publication is None
         assert panel.plan_combo.count() == 1
-        assert panel.plan_combo.itemText(0) == "Select a plan"
+        assert panel.plan_combo.itemText(0) == "Select a fold"
         assert panel.run_combo.count() == 0
         assert panel._runs_by_plan == {}
         for view in (panel.tab_map, panel.tab_spectro, panel.tab_topo, panel.tab_3d):
@@ -1021,7 +1341,7 @@ class TestOnUpdate:
         current_widget.update_plot.assert_not_called()
         current_widget.show_error.assert_not_called()
         current_widget.show_message.assert_called_once_with(
-            "Select a plan and run to continue."
+            "Select a fold and run to continue."
         )
 
     def test_without_run_identity_shows_placeholder(
@@ -1052,7 +1372,7 @@ class TestOnUpdate:
         assert panel.run_combo.currentData() is None
         current_widget.update_plot.assert_not_called()
         current_widget.show_message.assert_called_once_with(
-            "Select a plan and run to continue."
+            "Select a fold and run to continue."
         )
 
     def test_missing_publication_with_typed_selection_fails_closed(
@@ -1178,6 +1498,7 @@ class TestOnUpdate:
     def test_render_request_uses_exact_publication_and_run_identity(
         self,
         panel_and_controller,
+        qtbot,
     ):
         panel, _controller = panel_and_controller
         coverage = _complete_coverage()
@@ -1206,9 +1527,12 @@ class TestOnUpdate:
             method="Gradient",
         )
         requests: list[SaliencyRenderRequest] = []
+        render_thread_ids: list[int] = []
+        gui_thread_id = threading.get_ident()
 
         def get_render(_panel, request, **_kwargs):
             requests.append(request)
+            render_thread_ids.append(threading.get_ident())
             return SaliencyRenderPublication(
                 request=request,
                 generation=request.publication_generation,
@@ -1223,8 +1547,14 @@ class TestOnUpdate:
             side_effect=get_render,
         ):
             panel.on_update()
+            qtbot.waitUntil(
+                lambda: current_widget.update_plot.call_count == 1
+                and panel.native_render_work_idle(),
+                timeout=3000,
+            )
 
         assert requests == [expected_request]
+        assert render_thread_ids and render_thread_ids[0] != gui_thread_id
         current_widget.set_saliency_coverage.assert_called_with(coverage)
         current_widget.update_plot.assert_called_once()
         rendered, absolute = current_widget.update_plot.call_args.args
@@ -1233,9 +1563,154 @@ class TestOnUpdate:
         assert rendered.generation == publication.generation
         assert absolute is False
 
+    def test_display_transform_toggles_reuse_one_verified_render_publication(
+        self,
+        panel_and_controller,
+        qtbot,
+    ):
+        panel, _controller = panel_and_controller
+        publication = _publish_panel_state(
+            panel,
+            _visualization_result(
+                _run_coverage(
+                    plan_index=0,
+                    run_index=0,
+                    model_name="EEGNet",
+                ),
+            ),
+        )
+        source_values = np.array([[[-2.0, 1.0, 0.0]]], dtype=np.float32)
+        source_data = SaliencyRenderData(
+            method="Gradient",
+            saliency_by_class={0: source_values},
+            class_map=((0, "left"),),
+            event_ids={"left": 0},
+            channel_names=("C3",),
+            channel_positions=((-0.04, 0.0, 0.08),),
+            sfreq=128.0,
+            tmin=0.0,
+        )
+        backend_requests: list[SaliencyRenderRequest] = []
+
+        def get_render(_panel, request, **_kwargs):
+            sleep(0.05)
+            backend_requests.append(request)
+            return SaliencyRenderPublication(
+                request=request,
+                generation=request.publication_generation,
+                training_generation=8,
+                data=source_data,
+            )
+
+        current_widget = _current_widget(panel)
+        current_widget.update_plot.reset_mock()
+        with patch(
+            "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
+            side_effect=get_render,
+        ):
+            panel.on_update()
+            qtbot.waitUntil(
+                lambda: current_widget.update_plot.call_count == 1
+                and panel.native_render_work_idle(),
+                timeout=3000,
+            )
+
+            started = monotonic()
+            for checkbox, checked in (
+                (panel.abs_check, True),
+                (panel.normalize_check, True),
+                (panel.abs_check, False),
+                (panel.normalize_check, False),
+            ):
+                checkbox.blockSignals(True)
+                checkbox.setChecked(checked)
+                checkbox.blockSignals(False)
+                panel.on_update()
+                qtbot.waitUntil(
+                    lambda: panel.native_render_work_idle(),
+                    timeout=3000,
+                )
+            cached_elapsed = monotonic() - started
+
+        assert backend_requests == [
+            SaliencyRenderRequest(
+                publication_generation=publication.generation,
+                run=panel.run_combo.currentData(),
+                method="Gradient",
+            )
+        ]
+        assert cached_elapsed < 0.15
+        normalized_publication = next(
+            call.args[0]
+            for call in current_widget.update_plot.call_args_list
+            if call.args[0].request.normalize
+        )
+        assert normalized_publication.request.normalize is True
+        assert normalized_publication.data.normalized is True
+        np.testing.assert_allclose(
+            normalized_publication.data.saliency_by_class[0],
+            [[[-1.0, 0.5, 0.0]]],
+        )
+        np.testing.assert_array_equal(source_values, [[[-2.0, 1.0, 0.0]]])
+
+    def test_render_publication_cache_is_invalidated_by_application_generation(
+        self,
+        panel_and_controller,
+        qtbot,
+    ):
+        panel, _controller = panel_and_controller
+        publication = _publish_panel_state(
+            panel,
+            _visualization_result(
+                _run_coverage(
+                    plan_index=0,
+                    run_index=0,
+                    model_name="EEGNet",
+                ),
+            ),
+        )
+        backend_requests: list[SaliencyRenderRequest] = []
+
+        def get_render(_panel, request, **_kwargs):
+            backend_requests.append(request)
+            return SaliencyRenderPublication(
+                request=request,
+                generation=request.publication_generation,
+                training_generation=8,
+                data=_render_data(),
+            )
+
+        with patch(
+            "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
+            side_effect=get_render,
+        ):
+            panel.on_update()
+            qtbot.waitUntil(
+                lambda: len(backend_requests) == 1 and panel.native_render_work_idle(),
+                timeout=3000,
+            )
+            panel.on_update()
+            next_publication = replace(
+                publication,
+                generation=publication.generation + 1,
+                revision=publication.revision + 1,
+            )
+            assert panel._accept_application_publication(next_publication) is True
+            panel.on_update()
+            qtbot.waitUntil(
+                lambda: len(backend_requests) == 2 and panel.native_render_work_idle(),
+                timeout=3000,
+            )
+
+        assert [request.publication_generation for request in backend_requests] == [
+            publication.generation,
+            publication.generation + 1,
+        ]
+
     def test_stale_render_publication_is_rejected(
         self,
         panel_and_controller,
+        qtbot,
     ):
         panel, _controller = panel_and_controller
         publication = _publish_panel_state(
@@ -1272,9 +1747,14 @@ class TestOnUpdate:
             return_value=stale_render,
         ):
             panel.on_update()
+            qtbot.waitUntil(
+                lambda: panel._application_view_publication is None
+                and panel.native_render_work_idle(),
+                timeout=3000,
+            )
 
         current_widget.update_plot.assert_not_called()
-        current_widget.show_message.assert_called_once_with(
+        current_widget.show_message.assert_called_with(
             "Visualization results changed. Refresh Visualization and try again."
         )
         assert panel._application_view_publication is None

@@ -812,17 +812,136 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             return "Choose the field that contains the label values."
         value_summary = self._label_value_count_summary()
         if self._is_bids_source():
+            details: list[str] = []
+            recommendation = self._common_label_field_recommendation(field_value)
+            recommendation_text = self._bids_label_field_recommendation_text(
+                recommendation
+            )
+            if recommendation_text:
+                details.append(recommendation_text)
+            if self._bids_class_names_need_review():
+                details.append("Class names need review.")
+            detail_text = " " + " ".join(details) if details else ""
             if value_summary:
                 return (
                     f"{field}: {value_summary}. BIDS timing is saved for import "
-                    "and EEG epoch setup."
+                    f"and EEG epoch setup.{detail_text}"
                 )
-            return f"{field} values will be imported from BIDS events.tsv."
+            return f"{field} values will be imported from BIDS events.tsv.{detail_text}"
         if value_summary:
             return (
                 f"{field}: {value_summary}. Use the preview below to verify placement."
             )
         return f"{field} values will be imported as {use_as.lower()}."
+
+    def _common_label_field_recommendation(
+        self,
+        selected_field: str,
+    ) -> dict[str, Any]:
+        recommendations: list[dict[str, Any]] = []
+        for item, original in self._label_carrier_items:
+            carrier_key = self._label_carrier_key(item, original)
+            if carrier_key and self._is_label_carrier_excluded(carrier_key):
+                continue
+            raw = original.get("label_field_recommendation")
+            if not isinstance(raw, dict):
+                continue
+            if str(raw.get("field") or "").strip() != selected_field:
+                continue
+            recommendations.append(raw)
+        if not recommendations:
+            return {}
+        first = recommendations[0]
+        identity = (
+            str(first.get("field") or ""),
+            str(first.get("source") or ""),
+            str(first.get("reason_code") or ""),
+        )
+        if all(
+            (
+                str(item.get("field") or ""),
+                str(item.get("source") or ""),
+                str(item.get("reason_code") or ""),
+            )
+            == identity
+            for item in recommendations
+        ):
+            return first
+        return {}
+
+    @staticmethod
+    def _bids_label_field_recommendation_text(
+        recommendation: dict[str, Any],
+    ) -> str:
+        source = str(recommendation.get("source") or "").strip()
+        if source == "explicit_selection":
+            return "Kept from your selection or saved recipe."
+        if source != "bids_multi_run_evidence":
+            return ""
+
+        reason_code = str(recommendation.get("reason_code") or "").strip()
+        copy = {
+            "trial_type_over_numeric_value": (
+                "Recommended because Trial type contains the class names."
+            ),
+            "trial_type_has_task_labels": (
+                "Recommended because Trial type contains the task labels."
+            ),
+            "trial_type_is_consistent": (
+                "Recommended because Trial type is consistent across the selected runs."
+            ),
+            "value_is_only_supported_field": (
+                "Recommended because Value is the available label field."
+            ),
+        }
+        if reason_code == "value_has_described_classes":
+            facts = recommendation.get("facts")
+            selected_run_count = 0
+            if isinstance(facts, dict):
+                try:
+                    selected_run_count = max(
+                        int(facts.get("selected_run_count") or 0),
+                        0,
+                    )
+                except (TypeError, ValueError):
+                    selected_run_count = 0
+            if selected_run_count:
+                run_word = "run" if selected_run_count == 1 else "runs"
+                return (
+                    "Recommended from class descriptions across "
+                    f"{selected_run_count} selected {run_word}."
+                )
+            return "Recommended from the BIDS class descriptions."
+        return copy.get(reason_code, "Recommended from the selected BIDS data.")
+
+    def _bids_class_names_need_review(self) -> bool:
+        for item, original in self._label_carrier_items:
+            carrier_key = self._label_carrier_key(item, original)
+            if carrier_key and self._is_label_carrier_excluded(carrier_key):
+                continue
+            if "selected_label_field_levels_available" in original:
+                semantics_available = (
+                    original.get("selected_label_field_levels_available") is True
+                )
+            else:
+                semantics_available = (
+                    original.get("events_json_sidecar_present") is not False
+                )
+            if semantics_available:
+                continue
+            decisions = original.get("value_decisions")
+            if not isinstance(decisions, dict):
+                continue
+            for raw_value, raw_decision in decisions.items():
+                if not isinstance(raw_decision, dict):
+                    continue
+                if str(raw_decision.get("decision") or "") == "resolved":
+                    continue
+                suggested_name = str(raw_decision.get("suggested_name") or "").strip()
+                class_name = str(raw_decision.get("class_name") or "").strip()
+                if not class_name and suggested_name in {"", str(raw_value).strip()}:
+                    return True
+        return False
 
     def _target_event_status_text(self) -> str:
         if not self._label_carrier_items:
@@ -1018,6 +1137,9 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             "duration_numeric_rows",
             "label_code_count",
             "matched_code_count",
+            "missing_code_count",
+            "code_mapping_count",
+            "unlabeled_eeg_event_count",
         ):
             values = [
                 value
@@ -1105,6 +1227,7 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
         )
         code_count = self._int_value(review.get("label_code_count"))
         matched_count = self._int_value(review.get("matched_code_count"))
+        missing_count = self._int_value(review.get("missing_code_count"))
         matched_codes = [
             str(item).strip()
             for item in review.get("matched_codes", []) or []
@@ -1115,6 +1238,13 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             for item in review.get("missing_codes", []) or []
             if str(item).strip()
         ]
+        missing_count_text = (
+            str(missing_count)
+            if missing_count is not None
+            else str(len(missing_codes))
+            if missing_codes
+            else "None"
+        )
         return [
             (
                 "Code field",
@@ -1128,7 +1258,7 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             ),
             (
                 "Missing codes",
-                str(len(missing_codes)) if missing_codes else "None",
+                missing_count_text,
                 self._list_preview(missing_codes, limit=6)
                 or "Every label code is present in EEG events.",
             ),
@@ -1488,6 +1618,16 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             "selected_label_field",
             "label_candidates",
         )
+        selected_fields = {
+            str(original.get("selected_label_field") or "").strip()
+            for item, original in self._label_carrier_items
+            if not self._is_label_carrier_excluded(
+                self._label_carrier_key(item, original)
+            )
+            and str(original.get("selected_label_field") or "").strip()
+        }
+        if len(selected_fields) > 1:
+            return [("Mixed selections - review", ""), *choices]
         return choices or [("Needs review", "")]
 
     def _default_alignment_value(self, placement_method: str) -> str:

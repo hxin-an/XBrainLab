@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import weakref
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, TypeVar, cast
@@ -123,6 +124,13 @@ class _NativeInteractorCleanupState:
     failure: str = ""
 
 
+@dataclass(frozen=True)
+class _PreparedEngineCacheEntry:
+    publication_ref: weakref.ReferenceType[SaliencyRenderPublication]
+    engine: object
+    channel_count: int
+
+
 class _Saliency3DWorkerPoolOwner(QObject):
     """Retain one view's engine/probe workers independently of its QWidget."""
 
@@ -186,6 +194,8 @@ class Saliency3DPlotWidget(QWidget):
     Embeds a QtInteractor for interactive 3D rendering.
     """
 
+    _MAX_PREPARED_ENGINE_CACHE_ENTRIES = 8
+
     def __init__(self, parent):
         super().__init__(parent)
         self._closed = False
@@ -205,6 +215,10 @@ class Saliency3DPlotWidget(QWidget):
         self._engine_request_id = 0
         self._current_publication_generation: int | None = None
         self._current_plot_request: tuple[SaliencyRenderPublication, bool] | None = None
+        self._prepared_engine_cache: OrderedDict[
+            tuple[object, ...],
+            _PreparedEngineCacheEntry,
+        ] = OrderedDict()
         self._class_coverage: dict[str, SaliencyClassCoverageSnapshot] = {}
         self._saliency_coverage: SaliencyMethodCoverageSnapshot | None = None
         self._post_training_saliency_status = PostTrainingSaliencyStatus.idle()
@@ -265,7 +279,7 @@ class Saliency3DPlotWidget(QWidget):
         self.plot_layout.setContentsMargins(0, 0, 0, 0)
 
         # Initial Placeholder
-        lbl = QLabel("Select a plan and method to visualize")
+        lbl = QLabel("Select a fold and method to visualize")
         lbl.setWordWrap(True)
         lbl.setStyleSheet(f"color: {Theme.TEXT_MUTED}; font-size: 14px;")
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -317,6 +331,7 @@ class Saliency3DPlotWidget(QWidget):
 
     def clear_plot(self):
         self._invalidate_async_requests()
+        self._clear_prepared_engine_cache()
         self._clear_plot_widgets()
 
     @staticmethod
@@ -420,6 +435,66 @@ class Saliency3DPlotWidget(QWidget):
     def invalidate_render_publication(self) -> None:
         """Reject every callback owned by an older application publication."""
         self._invalidate_async_requests()
+        self._clear_prepared_engine_cache()
+
+    def _prepared_engine_cache_key(
+        self,
+        publication: SaliencyRenderPublication,
+        selected_event: object,
+        *,
+        absolute: bool,
+    ) -> tuple[object, ...]:
+        return (
+            id(publication),
+            publication.request,
+            publication.generation,
+            publication.training_generation,
+            str(selected_event),
+            bool(absolute),
+        )
+
+    def _cached_prepared_engine(
+        self,
+        cache_key: tuple[object, ...],
+        publication: SaliencyRenderPublication,
+    ) -> tuple[object, int] | None:
+        self._prune_dead_prepared_engine_cache_entries()
+        entry = self._prepared_engine_cache.get(cache_key)
+        if entry is None or entry.publication_ref() is not publication:
+            return None
+        self._prepared_engine_cache.move_to_end(cache_key)
+        return entry.engine, entry.channel_count
+
+    def _cache_prepared_engine(
+        self,
+        cache_key: tuple[object, ...],
+        publication: SaliencyRenderPublication,
+        result: tuple[object, int],
+    ) -> None:
+        self._prune_dead_prepared_engine_cache_entries()
+        engine, channel_count = result
+        self._prepared_engine_cache[cache_key] = _PreparedEngineCacheEntry(
+            publication_ref=weakref.ref(publication),
+            engine=engine,
+            channel_count=int(channel_count),
+        )
+        self._prepared_engine_cache.move_to_end(cache_key)
+        while (
+            len(self._prepared_engine_cache) > self._MAX_PREPARED_ENGINE_CACHE_ENTRIES
+        ):
+            self._prepared_engine_cache.popitem(last=False)
+
+    def _prune_dead_prepared_engine_cache_entries(self) -> None:
+        dead_keys = [
+            key
+            for key, entry in self._prepared_engine_cache.items()
+            if entry.publication_ref() is None
+        ]
+        for key in dead_keys:
+            self._prepared_engine_cache.pop(key, None)
+
+    def _clear_prepared_engine_cache(self) -> None:
+        self._prepared_engine_cache.clear()
 
     @staticmethod
     def _disconnect_worker_callbacks(worker: Worker | None) -> None:
@@ -465,8 +540,6 @@ class Saliency3DPlotWidget(QWidget):
         try:
             request_id = self._invalidate_async_requests()
             self._current_publication_generation = publication.generation
-            if not self._clear_plot_widgets():
-                return
             data = publication.data
             method = data.method
             self._current_plot_request = (publication, absolute)
@@ -525,6 +598,24 @@ class Saliency3DPlotWidget(QWidget):
                 self.show_message(reason)
                 return
 
+            cache_key = self._prepared_engine_cache_key(
+                publication,
+                selected_event,
+                absolute=absolute,
+            )
+            prepared = self._cached_prepared_engine(cache_key, publication)
+            if prepared is not None:
+                self._show_prepared_engine(
+                    request_id,
+                    prepared,
+                    data,
+                    selected_event,
+                    method=method,
+                    absolute=absolute,
+                    publication_generation=publication.generation,
+                )
+                return
+
             self._start_3d_engine_worker(
                 data,
                 selected_event,
@@ -532,6 +623,8 @@ class Saliency3DPlotWidget(QWidget):
                 absolute=absolute,
                 request_id=request_id,
                 publication_generation=publication.generation,
+                publication=publication,
+                prepared_cache_key=cache_key,
             )
 
         except Exception as e:
@@ -643,6 +736,8 @@ class Saliency3DPlotWidget(QWidget):
         absolute=False,
         request_id=None,
         publication_generation: int | None = None,
+        publication: SaliencyRenderPublication | None = None,
+        prepared_cache_key: tuple[object, ...] | None = None,
     ) -> None:
         if self._closed or self._shutdown_requested:
             return
@@ -650,7 +745,8 @@ class Saliency3DPlotWidget(QWidget):
             request_id = self._invalidate_async_requests()
         elif not self._is_current_request(request_id, publication_generation):
             return
-        self._display_message("Preparing 3D view...")
+        if self.plotter_widget is None or self._qt_object_deleted(self.plotter_widget):
+            self._display_message("Preparing 3D view...")
         if self._has_active_background_worker():
             self._pending_worker_start = lambda: self._start_3d_engine_worker(
                 render_data,
@@ -659,6 +755,8 @@ class Saliency3DPlotWidget(QWidget):
                 absolute=absolute,
                 request_id=request_id,
                 publication_generation=publication_generation,
+                publication=publication,
+                prepared_cache_key=prepared_cache_key,
             )
             return
         start_error = _start_worker_atomically(
@@ -677,6 +775,8 @@ class Saliency3DPlotWidget(QWidget):
                 method=method,
                 absolute=absolute,
                 publication_generation=publication_generation,
+                publication=publication,
+                prepared_cache_key=prepared_cache_key,
             ),
             thread_pool_factory=lambda: self._worker_pool_owner.thread_pool,
             retain_worker=self._retain_engine_worker,
@@ -704,6 +804,8 @@ class Saliency3DPlotWidget(QWidget):
         method: str,
         absolute: bool,
         publication_generation: int | None,
+        publication: SaliencyRenderPublication | None,
+        prepared_cache_key: tuple[object, ...] | None,
     ) -> None:
         self._worker_pool_owner.retain(worker)
         receiver_ref = weakref.ref(self)
@@ -721,6 +823,8 @@ class Saliency3DPlotWidget(QWidget):
                 method=method,
                 absolute=absolute,
                 publication_generation=publication_generation,
+                publication=publication,
+                prepared_cache_key=prepared_cache_key,
             )
 
         def on_error(error, owned_worker=worker, rid=request_id) -> None:
@@ -770,26 +874,64 @@ class Saliency3DPlotWidget(QWidget):
         method="Gradient",
         absolute=False,
         publication_generation: int | None = None,
+        publication: SaliencyRenderPublication | None = None,
+        prepared_cache_key: tuple[object, ...] | None = None,
     ) -> None:
         if not self._claim_worker_callback(worker, kind="engine"):
             return
         if not self._is_current_request(request_id, publication_generation):
             return
+        self._show_prepared_engine(
+            request_id,
+            result,
+            render_data,
+            selected_event,
+            method=method,
+            absolute=absolute,
+            publication_generation=publication_generation,
+            publication=publication,
+            prepared_cache_key=prepared_cache_key,
+        )
+
+    def _show_prepared_engine(
+        self,
+        request_id: int,
+        result: tuple[object, int],
+        render_data: SaliencyRenderData,
+        selected_event: object,
+        *,
+        method: str,
+        absolute: bool,
+        publication_generation: int | None,
+        publication: SaliencyRenderPublication | None = None,
+        prepared_cache_key: tuple[object, ...] | None = None,
+    ) -> None:
+        if not self._is_current_request(request_id, publication_generation):
+            return
         try:
             prepared_engine, prepared_channel_count = result
-            if not self._clear_plot_widgets():
-                return
-            self.plotter_widget = cast(
-                QWidget,
-                pyvistaqt.QtInteractor(self.plot_container),
-            )
-            self.plot_layout.addWidget(self.plotter_widget)
-            self.plot_layout.activate()
-            self.plot_container.updateGeometry()
+            if publication is not None and prepared_cache_key is not None:
+                self._cache_prepared_engine(
+                    prepared_cache_key,
+                    publication,
+                    (prepared_engine, prepared_channel_count),
+                )
+            if self.plotter_widget is None or self._qt_object_deleted(
+                self.plotter_widget
+            ):
+                if not self._clear_plot_widgets():
+                    return
+                self.plotter_widget = cast(
+                    QWidget,
+                    pyvistaqt.QtInteractor(self.plot_container),
+                )
+                self.plot_layout.addWidget(self.plotter_widget)
+                self.plot_layout.activate()
+                self.plot_container.updateGeometry()
+                interactor = getattr(self.plotter_widget, "interactor", None)
+                if interactor is not None:
+                    interactor.Initialize()
             plotter_widget = self.plotter_widget
-            interactor = getattr(self.plotter_widget, "interactor", None)
-            if interactor is not None:
-                interactor.Initialize()
             self._do_3d_plot_if_alive(
                 request_id,
                 plotter_widget,
@@ -1142,6 +1284,7 @@ class Saliency3DPlotWidget(QWidget):
             return
         self._shutdown_requested = True
         self._invalidate_async_requests()
+        self._clear_prepared_engine_cache()
 
     def cancel_render_shutdown(self) -> None:
         """Allow new 3D requests after an application close is cancelled."""
@@ -1179,6 +1322,7 @@ class Saliency3DPlotWidget(QWidget):
         self._shutdown_requested = True
         self._invalidate_async_requests()
         self._current_plot_request = None
+        self._clear_prepared_engine_cache()
         self._worker_pool_owner.request_shutdown()
         if not self._clear_plot_widgets():
             self._native_resources_finalized = False

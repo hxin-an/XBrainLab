@@ -260,6 +260,7 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         epoch_reasons.append(
             "Reset the session before recreating EEG epochs for the active dataset."
         )
+    epoch_reasons.extend(_epoch_context_blockers(state))
     capabilities[CommandName.CREATE_EPOCH.value] = _cap(
         CommandName.CREATE_EPOCH,
         epoch_reasons,
@@ -273,23 +274,14 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     dataset_reasons.extend(_supervised_label_blockers(state))
     if active_training.is_running:
         dataset_reasons.append("Stop training before changing data splitting.")
-    dataset_replacement = (
-        active_dataset.has_datasets
-        or state.dataset.generator_exists
-        or active_training.has_trainer
-    )
-    dataset_replacement_confirmation = not dataset_reasons and dataset_replacement
-    capabilities[CommandName.GENERATE_DATASET.value] = CommandCapability(
-        command_name=CommandName.GENERATE_DATASET.value,
+    capabilities[CommandName.CONFIGURE_DATASET_SPLIT.value] = CommandCapability(
+        command_name=CommandName.CONFIGURE_DATASET_SPLIT.value,
         enabled=not dataset_reasons,
         reasons=dataset_reasons,
-        destructive=dataset_replacement,
-        confirmation_required=dataset_replacement_confirmation,
-        requires_confirmation=dataset_replacement_confirmation,
-        can_auto_execute=not dataset_replacement_confirmation,
-        decision_boundary=(
-            "replace_generated_datasets" if dataset_replacement_confirmation else None
-        ),
+        destructive=False,
+        confirmation_required=False,
+        requires_confirmation=False,
+        can_auto_execute=True,
     )
 
     clear_dataset_reasons = []
@@ -299,6 +291,7 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         )
     if (
         not active_dataset.has_datasets
+        and not active_dataset.has_saved_split
         and not state.dataset.generator_exists
         and not active_training.has_trainer
     ):
@@ -334,8 +327,10 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         train_reasons.append("Training is already running.")
     if not active_dataset.has_raw_data:
         train_reasons.append("Load raw data before training.")
-    if not active_dataset.has_datasets:
-        train_reasons.append("Generate datasets before training.")
+    if not active_dataset.has_saved_split:
+        train_reasons.append(
+            "Save a valid data splitting specification before training."
+        )
     train_reasons.extend(_supervised_label_blockers(state))
     if not active_training.has_model:
         train_reasons.append("Select a model before training.")
@@ -353,6 +348,20 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         continue_allowed_after_success=False,
         retry_limit=0,
         stop_after_success=True,
+    )
+
+    discard_preparation_reasons = []
+    if active_training.is_running:
+        discard_preparation_reasons.append(
+            "Stop training before discarding training preparation."
+        )
+    if not active_dataset.has_saved_split:
+        discard_preparation_reasons.append(
+            "No saved data splitting specification is being prepared."
+        )
+    capabilities[CommandName.DISCARD_TRAINING_PREPARATION.value] = _cap(
+        CommandName.DISCARD_TRAINING_PREPARATION,
+        discard_preparation_reasons,
     )
 
     stop_reasons = []
@@ -621,7 +630,7 @@ def _has_preprocess_operations(state: ApplicationStateSnapshot) -> bool:
 
 
 def _dataset_split_blockers(state: ApplicationStateSnapshot) -> list[str]:
-    audit = state.dataset.split_summary.get("audit")
+    audit = state.dataset.last_split_attempt.get("audit")
     if not isinstance(audit, dict):
         return []
     issues = audit.get("issues")
@@ -631,18 +640,47 @@ def _dataset_split_blockers(state: ApplicationStateSnapshot) -> list[str]:
     for issue in issues:
         if not isinstance(issue, dict):
             continue
-        if str(issue.get("severity", "")).lower() != "error":
-            continue
         message = str(issue.get("message", "")).strip()
+        if (
+            str(issue.get("severity", "")).lower() != "error"
+            and " split is empty" not in message
+        ):
+            continue
         if message:
             reasons.append(f"Resolve dataset split audit before training: {message}")
     return reasons
 
 
+def _epoch_context_blockers(state: ApplicationStateSnapshot) -> list[str]:
+    from .epoch_context import (  # noqa: PLC0415
+        EPOCH_CONTEXT_AVAILABILITY_KEY,
+        EpochContextAvailabilityCode,
+        validated_epoch_context_availability,
+    )
+
+    availability_payload = state.preprocessed.diagnostics.get(
+        EPOCH_CONTEXT_AVAILABILITY_KEY
+    )
+    if not isinstance(availability_payload, dict):
+        return []
+    try:
+        availability = validated_epoch_context_availability(
+            {EPOCH_CONTEXT_AVAILABILITY_KEY: availability_payload}
+        )
+    except ValueError:
+        return []
+    if (
+        availability.code
+        is not EpochContextAvailabilityCode.SAMPLING_FREQUENCY_MISMATCH
+    ):
+        return []
+    return [availability.reason]
+
+
 def _model_epoch_blockers(state: ApplicationStateSnapshot) -> list[str]:
     if not (
         state.active_dataset.has_epoch_data
-        and state.active_dataset.has_datasets
+        and state.active_dataset.has_saved_split
         and state.active_training.has_model
         and state.active_training.has_training_option
     ):

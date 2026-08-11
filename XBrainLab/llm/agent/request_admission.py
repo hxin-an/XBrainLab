@@ -32,6 +32,7 @@ from .intent import (
 )
 from .training_request import (
     contains_explicit_training_options,
+    extract_explicit_training_model,
     extract_explicit_training_options,
 )
 from .turn import AssistantTurnScope
@@ -241,7 +242,7 @@ class UserRequestAdmissionPolicy:
             if epoch_window is not None:
                 values["t_min"], values["t_max"] = epoch_window
 
-        if command is CommandName.GENERATE_DATASET:
+        if command is CommandName.CONFIGURE_DATASET_SPLIT:
             training_mode = cls._training_mode_value(normalized)
             if training_mode is not None:
                 values["training_mode"] = training_mode
@@ -341,11 +342,7 @@ class UserRequestAdmissionPolicy:
 
     @staticmethod
     def _model_value(text: str) -> str | None:
-        match = re.search(
-            r"\b(eegnet|sccnet|shallowconvnet)\b",
-            text.casefold(),
-        )
-        return match.group(1) if match is not None else None
+        return extract_explicit_training_model(text)
 
     @staticmethod
     def _training_option_values(text: str) -> dict[str, str]:
