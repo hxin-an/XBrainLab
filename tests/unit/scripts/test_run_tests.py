@@ -696,7 +696,8 @@ def test_ci_uses_full_linux_and_focused_cross_platform_runners() -> None:
     assert workflow_text.count("scripts/dev/run_tests.py ${{ matrix.command }}") == 2
     assert "python -m scripts.dev.run_tests verify-linux-ci" in workflow_text
     assert "python scripts/dev/run_tests.py verify-linux-ci" not in workflow_text
-    assert "fetch-depth: 0" in workflow_text
+    assert "fetch-depth: 0" not in workflow_text
+    assert jobs["validation_plan"]["steps"][0]["with"]["fetch-depth"] == 64
     assert "run_validation_control_plane.py plan" in workflow_text
     assert "python -m scripts.dev.validation_ci_plan" in workflow_text
     assert "CI Capability Verdict" in workflow_text
