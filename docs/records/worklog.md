@@ -17301,3 +17301,6 @@
   public smoke `4/4`; interpretation `20/20`; formats `14/14`; static checks PASS.
 - Independent re-review found no actionable blocker. Exact-head CI and native Windows/macOS human
   acceptance remain required; `/tmp/xbl-ui-review-final` is offscreen UI evidence only.
+- Exact-head CI then found two public BIDS montage tests missing the canonical optional-fixture
+  marker. Added the module marker; required public coverage remains owned by the separate strict
+  multi-dataset job, which passed on that same SHA.

@@ -6974,3 +6974,7 @@ call sites into explicit legacy/fallback helpers.
   Native Windows/macOS, interactive OpenGL/3D, GPU-driver, DPI/multi-monitor, and human click-through
   acceptance remain outside this local claim. The candidate still requires successful exact-head
   CI before merge.
+- The first exact-head rerun proved the dedicated public multi-dataset gate but exposed two BIDS
+  montage tests whose public-fixture dependency lacked the canonical `optional_public_fixture`
+  marker. The module now declares that ownership so an unpopulated general CI cache may skip it,
+  while the dedicated required-public gate continues to download and execute the tests.

@@ -14,6 +14,7 @@ from XBrainLab.backend.application.bids_montage_preparation import (
 )
 
 PUBLIC_FIXTURES = Path("tests/fixtures/data/public")
+pytestmark = pytest.mark.optional_public_fixture
 
 
 def _channel_info(path: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
