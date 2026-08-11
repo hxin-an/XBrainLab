@@ -1,6 +1,6 @@
 # UI 目前架構
 
-最後更新：`2026-08-10`
+最後更新：`2026-08-11`
 
 ## 範圍
 
@@ -22,6 +22,10 @@ compatibility constructors，不能把這些殘留誤寫成 repo-wide zero-contr
 | 產品路徑還能偷走 legacy mutation 嗎？ | 已被 architecture guard 大幅限制；product UI method 不能直接呼叫 controller compatibility helper，也不能用 controller echo 判定 service success。 |
 | 是否 full zero-controller UI？ | Product MainWindow wiring 已不使用 controller bundle；但 standalone/test compatibility constructors 與 outer controller adapters 尚未物理移除。 |
 | 讀者應看哪裡？ | 先看本頁的例外地圖，再看 [validation](../validation/README.md) 的 checkpoint 摘要；不要從長串歷史紀錄倒推現況。 |
+
+Preprocess plot lifecycle 是明確的 native-widget 例外：一般取消 close 只暫停並恢復 callbacks；
+真正接受 application close 或 panel destruction 時，會關閉 PyQtGraph roots，避免 Qt 已刪除
+axis text 後仍收到 resize callback 而 native abort。
 
 閱讀順序建議：先用「剩餘 UI controller 例外地圖」判斷某個 controller hit 是否仍是
 product runtime risk；再看「已接上的高價值 path」確認 action / readiness 是否已走

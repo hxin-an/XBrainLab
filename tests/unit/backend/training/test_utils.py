@@ -9,6 +9,7 @@ from XBrainLab.backend.training.utils import (
     get_optimizer_classes,
     get_optimizer_params,
     instantiate_optimizer,
+    parse_optimizer_param,
 )
 
 
@@ -62,6 +63,23 @@ class TestInstantiateOptimizer:
     def test_with_custom_params(self):
         opt = instantiate_optimizer(torch.optim.SGD, {"momentum": 0.9}, lr=0.01)
         assert isinstance(opt, torch.optim.SGD)
+
+
+@pytest.mark.parametrize(
+    ("optimizer", "parameter", "value", "expected"),
+    [
+        (torch.optim.SGD, "momentum", "0.9", 0.9),
+        (torch.optim.SGD, "weight_decay", "0.0001", 0.0001),
+        (torch.optim.Adam, "weight_decay", "0.0001", 0.0001),
+    ],
+)
+def test_parse_optimizer_param_accepts_fractional_values_with_integer_defaults(
+    optimizer,
+    parameter,
+    value,
+    expected,
+) -> None:
+    assert parse_optimizer_param(optimizer, parameter, value) == pytest.approx(expected)
 
 
 class TestGetDeviceCount:

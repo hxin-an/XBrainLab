@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import time
 from contextlib import nullcontext
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import torch
@@ -49,7 +49,7 @@ def _prepare_figure(
 ) -> tuple[Figure, bool]:
     """Return a cleared figure and whether this call created it."""
     if fig is None:
-        fig = plt.figure(figsize=figsize, dpi=dpi)
+        fig = cast(Figure, plt.figure(figsize=figsize, dpi=dpi))
         return fig, True
     fig.clf()
     return fig, False
@@ -815,7 +815,7 @@ class TrainRecord:
             if no loss data is available.
 
         """
-        fig, created_figure = _prepare_figure(fig, figsize, dpi)
+        figure, created_figure = _prepare_figure(fig, figsize, dpi)
 
         training_loss_list = self.train[RecordKey.LOSS]
         val_loss_list = self.val[RecordKey.LOSS]
@@ -826,10 +826,10 @@ class TrainRecord:
             and len(test_loss_list) == 0
         ):
             if created_figure:
-                plt.close(fig)
+                plt.close(figure)
             return None
 
-        ax = fig.add_subplot(111)
+        ax = figure.add_subplot(111)
         if len(training_loss_list) > 0:
             ax.plot(_numeric_series(training_loss_list), "g", label="Training loss")
         if len(val_loss_list) > 0:
@@ -841,7 +841,7 @@ class TrainRecord:
         ax.set_ylabel("Loss")
         _ = ax.legend(loc="center left")
 
-        return fig
+        return figure
 
     def get_acc_figure(
         self,
@@ -861,7 +861,7 @@ class TrainRecord:
             if no accuracy data is available.
 
         """
-        fig, created_figure = _prepare_figure(fig, figsize, dpi)
+        figure, created_figure = _prepare_figure(fig, figsize, dpi)
 
         training_acc_list = self.train[RecordKey.ACC]
         val_acc_list = self.val[RecordKey.ACC]
@@ -872,10 +872,10 @@ class TrainRecord:
             and len(test_acc_list) == 0
         ):
             if created_figure:
-                plt.close(fig)
+                plt.close(figure)
             return None
 
-        ax = fig.add_subplot(111)
+        ax = figure.add_subplot(111)
         if len(training_acc_list) > 0:
             ax.plot(_numeric_series(training_acc_list), "g", label="Training accuracy")
         if len(val_acc_list) > 0:
@@ -887,7 +887,7 @@ class TrainRecord:
         ax.set_ylabel("Accuracy (%)")
         _ = ax.legend(loc="upper left")
 
-        return fig
+        return figure
 
     def get_auc_figure(
         self,
@@ -907,7 +907,7 @@ class TrainRecord:
             if no AUC data is available.
 
         """
-        fig, created_figure = _prepare_figure(fig, figsize, dpi)
+        figure, created_figure = _prepare_figure(fig, figsize, dpi)
 
         training_auc_list = self.train[RecordKey.AUC]
         val_auc_list = self.val[RecordKey.AUC]
@@ -918,10 +918,10 @@ class TrainRecord:
             and len(test_auc_list) == 0
         ):
             if created_figure:
-                plt.close(fig)
+                plt.close(figure)
             return None
 
-        ax = fig.add_subplot(111)
+        ax = figure.add_subplot(111)
         if len(training_auc_list) > 0:
             ax.plot(_numeric_series(training_auc_list), "g", label="Training AUC")
         if len(val_auc_list) > 0:
@@ -933,7 +933,7 @@ class TrainRecord:
         ax.set_ylabel("AUC")
         _ = ax.legend(loc="upper left")
 
-        return fig
+        return figure
 
     def get_lr_figure(
         self,
@@ -953,20 +953,20 @@ class TrainRecord:
             if no learning rate data is available.
 
         """
-        fig, created_figure = _prepare_figure(fig, figsize, dpi)
+        figure, created_figure = _prepare_figure(fig, figsize, dpi)
 
         lr_list = self.train[TrainRecordKey.LR]
         if len(lr_list) == 0:
             if created_figure:
-                plt.close(fig)
+                plt.close(figure)
             return None
 
-        ax = fig.add_subplot(111)
+        ax = figure.add_subplot(111)
         ax.plot(_numeric_series(lr_list), "g")
         ax.set_title("Learning Rate")
         ax.set_xlabel("Training epochs")
         ax.set_ylabel("lr")
-        return fig
+        return figure
 
     def get_confusion_figure(
         self,
@@ -989,10 +989,10 @@ class TrainRecord:
             if no evaluation record is available.
 
         """
-        fig, created_figure = _prepare_figure(fig, figsize, dpi)
+        figure, created_figure = _prepare_figure(fig, figsize, dpi)
         if not self.eval_record:
             if created_figure:
-                plt.close(fig)
+                plt.close(figure)
             return None
         output = self.eval_record.output
         label = self.eval_record.label
@@ -1007,7 +1007,7 @@ class TrainRecord:
         else:
             plot_data = confusion
 
-        ax = fig.add_subplot(111)
+        ax = figure.add_subplot(111)
         ax.set_title("Confusion matrix", color="#cccccc", pad=20)
 
         # Improved Labels
@@ -1035,7 +1035,7 @@ class TrainRecord:
                 )
 
         # Colorbar
-        cbar = fig.colorbar(res)
+        cbar = figure.colorbar(res)
         cbar.ax.yaxis.set_tick_params(color="#cccccc")
         plt.setp(cbar.ax.get_yticklabels(), color="#cccccc")
 
@@ -1051,9 +1051,9 @@ class TrainRecord:
             spine.set_edgecolor("#444444")
 
         # Ensure tight layout handles labels correctly
-        fig.tight_layout()
+        figure.tight_layout()
 
-        return fig
+        return figure
 
     # get evaluate
     def get_acc(self) -> float | None:

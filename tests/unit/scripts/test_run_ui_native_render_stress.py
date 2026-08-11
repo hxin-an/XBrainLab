@@ -126,6 +126,8 @@ def _passing_stress_result(
         "qt_qpa_platform": "offscreen",
         "core_dump_limit_supported": True,
         "core_dumps_disabled": True,
+        "active_render_owned_before_close": True,
+        "active_render_owner": "publication_preparation",
         "active_render_close_fenced": True,
         "active_render_close_completed": True,
         "pool_drained_before_close": True,
@@ -167,7 +169,7 @@ def _passing_stress_result(
             for index in range(cycles + 1)
         ],
         "product_saliency_publications_primed": 1,
-        "product_saliency_publications_served": 0,
+        "product_saliency_publications_served": max(expected_2d - 1, 0),
         "product_2d_renders_installed": expected_2d,
         "product_2d_loading_cleared": expected_2d,
         "product_2d_replaced_resources_released": expected_2d,
@@ -734,6 +736,58 @@ def test_stress_contract_fails_closed_for_measured_product_counts(
     result[failed_metric] = failed_value
 
     assert failed_metric in contract_failures(result, cycles=1)
+
+
+def test_active_render_close_invalidates_cache_before_arming_product_worker():
+    function = _named_function("_exercise_active_render_close")
+    calls = [node for node in ast.walk(function) if isinstance(node, ast.Call)]
+    clear_cache = next(
+        node
+        for node in calls
+        if isinstance(node.func, ast.Attribute)
+        and node.func.attr == "_clear_saliency_render_cache"
+    )
+    activate = next(
+        node
+        for node in calls
+        if isinstance(node.func, ast.Name) and node.func.id == "_activate_saliency_tab"
+    )
+
+    assert clear_cache.lineno < activate.lineno
+
+
+def test_active_render_close_releases_both_workers_for_setup_and_close_failures():
+    function = _named_function("_exercise_active_render_close")
+    release_try = next(
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Try)
+        and any(
+            isinstance(child, ast.Call)
+            and isinstance(child.func, ast.Attribute)
+            and child.func.attr == "block_next_render"
+            for statement in node.body
+            for child in ast.walk(statement)
+        )
+    )
+    protected_calls = {
+        child.func.attr
+        for statement in release_try.body
+        for child in ast.walk(statement)
+        if isinstance(child, ast.Call) and isinstance(child.func, ast.Attribute)
+    }
+    released_names = {
+        child.func.value.id
+        for statement in release_try.finalbody
+        for child in ast.walk(statement)
+        if isinstance(child, ast.Call)
+        and isinstance(child.func, ast.Attribute)
+        and child.func.attr == "set"
+        and isinstance(child.func.value, ast.Name)
+    }
+
+    assert "close" in protected_calls
+    assert {"render_release", "unrelated_release"} <= released_names
 
 
 @pytest.mark.parametrize(

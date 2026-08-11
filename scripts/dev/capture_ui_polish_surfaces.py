@@ -1645,7 +1645,7 @@ def _assert_epoching_dialog_contract(
             "Events inside EEG files",
             "Events",
             "Time Window",
-            "Apply baseline correction",
+            "Baseline Correction",
             "Cancel",
         ),
         BIDS_EPOCH_SCREENSHOT: (
@@ -1660,7 +1660,6 @@ def _assert_epoching_dialog_contract(
             "Events",
             "Time Window",
             "Baseline Correction",
-            "Apply baseline correction",
             "Cancel",
         ),
     }
@@ -1671,6 +1670,18 @@ def _assert_epoching_dialog_contract(
     missing = [text for text in required if text not in visible_text]
     if missing:
         raise RuntimeError(f"{filename} is missing visible Epoch controls: {missing}.")
+    expected_baseline_state = {
+        INTERNAL_EPOCH_SCREENSHOT: "On",
+        BIDS_EPOCH_SCREENSHOT: "Off",
+    }[filename]
+    if (
+        dialog.baseline_check is None
+        or dialog.baseline_check.text() != expected_baseline_state
+    ):
+        raise RuntimeError(
+            f"{filename} does not show baseline correction as "
+            f"{expected_baseline_state}."
+        )
 
     controls = (
         dialog.event_list,

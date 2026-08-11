@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
+from XBrainLab.backend.application.resource_guard import TrainingResourceRefinement
 from XBrainLab.backend.application.serialization import serialize_json_value
 from XBrainLab.backend.application.state import TrainingStateSnapshot
 from XBrainLab.backend.application.training_recommendation import (
@@ -105,7 +106,7 @@ def test_gpu_uses_fixed_metadata_cap_without_resource_query_claim():
     )
 
     assert recommendation.recommended_values.batch_size == SAFE_UNKNOWN_VRAM_BATCH_SIZE
-    assert any("intentionally not queried" in item for item in recommendation.warnings)
+    assert not any("GPU memory" in item for item in recommendation.warnings)
     assert any(
         "metadata-only device cap" in item.message for item in recommendation.reasons
     )
@@ -127,7 +128,7 @@ def test_auto_device_uses_safe_unknown_cap_without_hardware_query_claim():
     assert recommendation.recommended_values.batch_size == (
         SAFE_UNKNOWN_VRAM_BATCH_SIZE
     )
-    assert any("intentionally not queried" in item for item in recommendation.warnings)
+    assert not any("GPU memory" in item for item in recommendation.warnings)
 
 
 def test_no_validation_split_uses_last_epoch_with_warning():
@@ -263,6 +264,42 @@ def test_training_state_snapshot_publishes_typed_recommendation_as_json():
         "optimizer": "recommended",
         "evaluation_strategy": "recommended",
     }
+
+
+def test_resource_refinement_is_preserved_in_saved_and_reopened_recommendation() -> (
+    None
+):
+    service = TrainingRecommendationService()
+    context = _context()
+    baseline = service.recommend(context)
+    saved = _Option(
+        epoch=baseline.values.epochs,
+        bs=4,
+        lr=baseline.values.learning_rate,
+        optim=baseline.values.optimizer,
+        evaluation_option=baseline.values.evaluation_strategy,
+    )
+    refinement = TrainingResourceRefinement.batch_size(
+        requested=baseline.values.batch_size,
+        refined=4,
+    )
+
+    service.note_configuration_submitted(set(), refinements=(refinement,))
+    adjusted = service.recommend(context, current_option=saved)
+    reopened = service.recommend(context, current_option=saved)
+    payload = serialize_json_value(
+        TrainingStateSnapshot(recommendation=reopened),
+    )
+
+    assert adjusted.values.batch_size == 4
+    assert adjusted.provenance[TrainingRecommendationField.BATCH_SIZE] is (
+        TrainingSettingProvenance.RESOURCE_ADJUSTED
+    )
+    assert reopened is adjusted
+    assert payload["recommendation"]["values"]["batch_size"] == 4
+    assert payload["recommendation"]["provenance"]["batch_size"] == (
+        "resource_adjusted"
+    )
 
 
 def test_service_has_no_resource_checker_or_resource_cache_state():

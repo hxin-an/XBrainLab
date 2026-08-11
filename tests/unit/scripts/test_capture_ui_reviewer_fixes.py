@@ -63,6 +63,14 @@ def _identity() -> dict[str, object]:
     }
 
 
+def test_dispose_widget_tolerates_an_already_deleted_qt_wrapper(qapp) -> None:
+    class DeletedWidget:
+        def close(self) -> None:
+            raise RuntimeError("wrapped C/C++ object of type QWidget has been deleted")
+
+    capture_script._dispose_widget(qapp, DeletedWidget())  # type: ignore[arg-type]
+
+
 def test_surface_inventory_preserves_existing_artifacts_and_adds_review_states() -> (
     None
 ):
@@ -298,6 +306,10 @@ def test_training_setting_geometry_is_observed_at_supported_font_scales(
     try:
         app.setStyleSheet(capture_script.Stylesheets.MAIN_WINDOW)
         dialog = capture_script._training_setting_dialog()
+        assert dialog.bs_entry is not None
+        assert dialog.resource_preview_note is not None
+        assert dialog.bs_entry.text() == "32"
+        assert dialog.resource_preview_note.isHidden()
         capture_script._apply_training_setting_font_scale(dialog, font_scale)
         _settle(app, dialog)
 
@@ -315,12 +327,23 @@ def test_training_setting_geometry_is_observed_at_supported_font_scales(
     assert check["overlap_count"] == 0
     assert check["clipped_text_count"] == 0
     assert len(check["rows"]) == 9
+    assert check["set_button_count"] == 3
+    assert check["footer"]["passed"] is True
+    assert check["resource_preview"]["passed"] is True
+    assert check["resource_preview"]["visible"] is True
+    assert check["resource_preview"]["contained_in_viewport"] is True
+    assert check["resource_preview"]["text_complete"] is True
+    assert check["resource_preview"]["batch_visible_with_note"] is True
+    assert "adjusted to 8" in check["resource_preview"]["text"]
     assert check["font_point_size"] == pytest.approx(
         check["base_font_point_size"] * font_scale
     )
     assert all(row["horizontal_gap_px"] >= 0 for row in check["rows"])
     assert all(row["label_text_clipped"] is False for row in check["rows"])
     assert all(row["overlap"] is False for row in check["rows"])
+    assert all(
+        row.get("set_button", {}).get("passed", True) is True for row in check["rows"]
+    )
 
 
 def test_training_setting_bounds_inflated_native_combo_size_hint(qapp) -> None:
@@ -445,6 +468,42 @@ def test_training_setting_geometry_guard_rejects_clipped_label(qapp) -> None:
             capture_script._observe_training_setting_geometry(
                 dialog,
                 font_scale=1.0,
+            )
+    finally:
+        _dispose(qapp, dialog)
+
+
+def test_training_setting_geometry_guard_rejects_set_button_overlap(qapp) -> None:
+    dialog = capture_script._training_setting_dialog()
+    try:
+        capture_script._apply_training_setting_font_scale(dialog, 1.5)
+        _settle(qapp, dialog)
+        assert dialog.opt_btn is not None
+        assert dialog.opt_label is not None
+        dialog.opt_btn.setGeometry(dialog.opt_label.geometry())
+
+        with pytest.raises(RuntimeError, match="Set-button column"):
+            capture_script._observe_training_setting_geometry(
+                dialog,
+                font_scale=1.5,
+            )
+    finally:
+        _dispose(qapp, dialog)
+
+
+def test_training_setting_geometry_guard_rejects_hidden_footer(qapp) -> None:
+    dialog = capture_script._training_setting_dialog()
+    try:
+        capture_script._apply_training_setting_font_scale(dialog, 1.5)
+        _settle(qapp, dialog)
+        button_box = dialog.findChild(QDialogButtonBox)
+        assert button_box is not None
+        button_box.hide()
+
+        with pytest.raises(RuntimeError, match="footer geometry"):
+            capture_script._observe_training_setting_geometry(
+                dialog,
+                font_scale=1.5,
             )
     finally:
         _dispose(qapp, dialog)

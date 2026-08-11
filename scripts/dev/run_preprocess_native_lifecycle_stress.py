@@ -181,7 +181,7 @@ def run_stress(fixture: Path, cycles: int) -> dict[str, Any]:
     final_proxy_slots_disconnected = False
     final_items_detached = False
     destroy_recreate_cycles = 0
-    parent_owned_plot_teardown_cycles = 0
+    explicit_plot_finalization_cycles = 0
     widget: PreviewWidget | None = None
     try:
         for _cycle in range(cycles):
@@ -270,11 +270,15 @@ def run_stress(fixture: Path, cycles: int) -> dict[str, Any]:
             _assert_plot_item_ownership(widget, attached=False)
             final_items_detached = True
             widget.close()
-            if widget.plot_time.closed or widget.plot_freq.closed:
+            if (
+                not widget._native_plot_finalized
+                or not widget.plot_time.closed
+                or not widget.plot_freq.closed
+            ):
                 raise RuntimeError(
-                    "Final close cleared a PyQtGraph scene before parent teardown."
+                    "Final close did not explicitly finalize detached PyQtGraph roots."
                 )
-            parent_owned_plot_teardown_cycles += 1
+            explicit_plot_finalization_cycles += 1
             widget.deleteLater()
             QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
             app.processEvents()
@@ -304,7 +308,7 @@ def run_stress(fixture: Path, cycles: int) -> dict[str, Any]:
         "detached_shutdown_cycles": detached_shutdown_cycles,
         "restored_ownership_cycles": restored_ownership_cycles,
         "destroy_recreate_cycles": destroy_recreate_cycles,
-        "parent_owned_plot_teardown_cycles": parent_owned_plot_teardown_cycles,
+        "explicit_plot_finalization_cycles": explicit_plot_finalization_cycles,
         "minimum_owned_items_checked": minimum_owned_items_checked or 0,
         "plot_update_callbacks": plot_update_callbacks,
         "minimum_time_samples": minimum_time_samples or 0,

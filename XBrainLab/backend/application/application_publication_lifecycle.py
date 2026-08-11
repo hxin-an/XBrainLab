@@ -243,14 +243,14 @@ class ApplicationPublicationLifecycle:
             with self._command_lock:
                 state = self._refresh_training_publication()
                 lifecycle_event = self.terminal_training_publication_event(state)
-                if state.state_reliable:
+                if lifecycle_event is not None and state.state_reliable:
                     publication = self._committed_view_publication()
         except Exception:
             logger.exception("Could not publish terminal training state")
             return False
-        view_delivered = publication is None or self._publish_view_changed(publication)
         if lifecycle_event is None:
-            return view_delivered
+            return not state.training.terminal_outcome.is_terminal
+        view_delivered = publication is None or self._publish_view_changed(publication)
         terminal_delivered = self.deliver_training_terminal_publication(lifecycle_event)
         return view_delivered and terminal_delivered
 

@@ -1,0 +1,300 @@
+"""Application-owned single-flight coordination for training draft estimates."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
+from secrets import token_urlsafe
+from threading import Condition, Event, RLock, Thread, current_thread
+from time import monotonic
+from typing import Any
+
+from .errors import PreconditionError
+from .resource_guard import (
+    TrainingResourcePreviewContext,
+    TrainingResourcePreviewReceipt,
+    TrainingResourcePreviewRequest,
+    TrainingResourcePreviewResult,
+    TrainingResourceRefinement,
+)
+
+_CLOSING_MESSAGE = (
+    "Training resource preview is unavailable while XBrainLab is closing."
+)
+_SUPERSEDED_MESSAGE = "A newer training resource preview replaced this pending request."
+_STALE_CONTEXT_MESSAGE = "Training context changed. Review the settings again."
+
+
+@dataclass(slots=True)
+class _PreviewJob:
+    sequence: int
+    request: TrainingResourcePreviewRequest
+    context: TrainingResourcePreviewContext
+    completed: Event = field(default_factory=Event)
+    result: TrainingResourcePreviewResult | None = None
+    error: BaseException | None = None
+
+    def matches(
+        self,
+        request: TrainingResourcePreviewRequest,
+        context: TrainingResourcePreviewContext,
+    ) -> bool:
+        return self.request == request and self.context == context
+
+
+class TrainingResourcePreviewTicket:
+    """One client claim on an application-owned preview job."""
+
+    def __init__(self, job: _PreviewJob) -> None:
+        self._job = job
+
+    def result(self, timeout: float | None = None) -> TrainingResourcePreviewResult:
+        """Wait for this exact request without taking worker ownership."""
+        wait_timeout = None if timeout is None else max(0.0, float(timeout))
+        if not self._job.completed.wait(timeout=wait_timeout):
+            raise TimeoutError("Training resource preview did not finish in time.")
+        if self._job.error is not None:
+            raise self._job.error
+        result = self._job.result
+        if not isinstance(result, TrainingResourcePreviewResult):
+            raise RuntimeError("Training resource preview completed without a result.")
+        return result
+
+
+class TrainingResourcePreviewCoordinator:
+    """Serialize native model estimates and retain only the newest queued draft."""
+
+    def __init__(
+        self,
+        *,
+        estimate: Callable[
+            [TrainingResourcePreviewRequest, TrainingResourcePreviewContext],
+            TrainingResourcePreviewResult,
+        ],
+        generation_is_current: Callable[[int], bool],
+    ) -> None:
+        self._estimate = estimate
+        self._generation_is_current = generation_is_current
+        self._lock = RLock()
+        self._idle = Condition(self._lock)
+        self._pending: _PreviewJob | None = None
+        self._active: _PreviewJob | None = None
+        self._worker: Thread | None = None
+        self._closing = False
+        self._sequence = 0
+        self._last_completed: (
+            tuple[int, TrainingResourcePreviewRequest, TrainingResourcePreviewResult]
+            | None
+        ) = None
+
+    def submit(
+        self,
+        request: TrainingResourcePreviewRequest,
+        context: TrainingResourcePreviewContext,
+    ) -> TrainingResourcePreviewTicket:
+        """Admit a draft, sharing identical work and replacing older pending work."""
+        if not isinstance(request, TrainingResourcePreviewRequest):
+            raise TypeError("request must be a TrainingResourcePreviewRequest")
+        if not isinstance(context, TrainingResourcePreviewContext):
+            raise TypeError("context must be a TrainingResourcePreviewContext")
+        with self._idle:
+            if self._closing:
+                raise PreconditionError(_CLOSING_MESSAGE)
+            for job in (self._active, self._pending):
+                if job is not None and job.matches(request, context):
+                    return TrainingResourcePreviewTicket(job)
+            self._sequence += 1
+            job = _PreviewJob(self._sequence, request, context)
+            obsolete = self._pending
+            self._pending = job
+            if obsolete is not None:
+                self._fail_job(obsolete, PreconditionError(_SUPERSEDED_MESSAGE))
+            self._ensure_worker_locked()
+            self._idle.notify_all()
+            return TrainingResourcePreviewTicket(job)
+
+    def wait_for_idle(self, timeout: float | None = None) -> bool:
+        """Wait for active and pending estimates at an explicit lifecycle boundary."""
+        deadline = None if timeout is None else monotonic() + max(0.0, timeout)
+        with self._idle:
+            while (
+                self._active is not None
+                or self._pending is not None
+                or self._worker is not None
+            ):
+                remaining = (
+                    None if deadline is None else max(0.0, deadline - monotonic())
+                )
+                if remaining == 0.0:
+                    return False
+                self._idle.wait(timeout=remaining)
+            return True
+
+    def begin_close(self) -> None:
+        """Fence new submissions and cancel work that has not entered estimation."""
+        with self._idle:
+            if self._closing:
+                return
+            self._closing = True
+            self._last_completed = None
+            pending = self._pending
+            self._pending = None
+            if pending is not None:
+                self._fail_job(pending, PreconditionError(_CLOSING_MESSAGE))
+            self._idle.notify_all()
+
+    def close(self, timeout: float | None = 2.0) -> bool:
+        """Fence and join the owned non-daemon worker within a bounded wait."""
+        self.begin_close()
+        deadline = None if timeout is None else monotonic() + max(0.0, timeout)
+        with self._idle:
+            worker = self._worker
+        if worker is not None and worker is not current_thread():
+            remaining = None if deadline is None else max(0.0, deadline - monotonic())
+            worker.join(timeout=remaining)
+        with self._idle:
+            worker = self._worker
+            if worker is not None and not worker.is_alive():
+                self._worker = None
+                worker = None
+            return worker is None and self._active is None and self._pending is None
+
+    @property
+    def worker_thread(self) -> Thread | None:
+        """Expose detached worker identity for lifecycle validation."""
+        with self._idle:
+            return self._worker
+
+    def refinements_for_configuration(
+        self,
+        command: Any,
+    ) -> tuple[TrainingResourceRefinement, ...]:
+        """Consume the latest matching refinement when a draft is saved."""
+        with self._idle:
+            completed = self._last_completed
+        if completed is None:
+            return ()
+        _sequence, request, result = completed
+        from .training_submission import (  # noqa: PLC0415
+            training_submission_resource_preview_receipt,
+        )
+
+        submitted_receipt = training_submission_resource_preview_receipt(command)
+        if result.receipt is None or submitted_receipt != result.receipt:
+            return ()
+        with self._idle:
+            if self._last_completed == completed:
+                self._last_completed = None
+        refinement = result.refinement
+        if refinement is None or not self._is_generation_current(request):
+            return ()
+        if getattr(command, "batch_size", None) != refinement.refined_value:
+            return ()
+        if _normalized(getattr(command, "device", None)) != request.device:
+            return ()
+        if _normalized(getattr(command, "optimizer", None)) != _normalized(
+            request.optimizer
+        ):
+            return ()
+        command_model = getattr(command, "model_name", None)
+        if request.model_name is not None and _normalized(command_model) != _normalized(
+            request.model_name
+        ):
+            return ()
+        command_params = dict(getattr(command, "model_params", {}) or {})
+        if request.model_name is not None and command_params != dict(
+            request.model_params
+        ):
+            return ()
+        return (refinement,)
+
+    def _ensure_worker_locked(self) -> None:
+        worker = self._worker
+        if worker is not None and worker.is_alive():
+            return
+        self._worker = Thread(
+            target=self._worker_loop,
+            name="xbrainlab-training-resource-preview",
+            daemon=False,
+        )
+        self._worker.start()
+
+    def _worker_loop(self) -> None:
+        while True:
+            with self._idle:
+                if self._pending is None:
+                    self._worker = None
+                    self._idle.notify_all()
+                    return
+                job = self._pending
+                self._pending = None
+                self._active = job
+            if job is None:
+                continue
+            try:
+                result = self._estimate_current_job(job)
+            except BaseException as exc:
+                error: BaseException | None = exc
+                result = None
+            else:
+                error = None
+            with self._idle:
+                if self._closing:
+                    error = PreconditionError(_CLOSING_MESSAGE)
+                    result = None
+                newer_pending = (
+                    self._pending is not None and self._pending.sequence > job.sequence
+                )
+                if error is None and result is not None and not newer_pending:
+                    self._last_completed = (job.sequence, job.request, result)
+                job.error = error
+                job.result = result
+                job.completed.set()
+                if self._active is job:
+                    self._active = None
+                self._idle.notify_all()
+
+    def _estimate_current_job(
+        self,
+        job: _PreviewJob,
+    ) -> TrainingResourcePreviewResult:
+        result = self._estimate(job.request, job.context)
+        if not isinstance(result, TrainingResourcePreviewResult):
+            raise TypeError("Training resource preview returned an invalid contract.")
+        if not self._is_generation_current(job.request):
+            raise PreconditionError(_STALE_CONTEXT_MESSAGE)
+        return replace(
+            result,
+            receipt=TrainingResourcePreviewReceipt(
+                token=token_urlsafe(24),
+                request_generation=result.request_generation,
+                publication_generation=result.publication_generation,
+                requested_batch_size=result.requested_batch_size,
+                suggested_batch_size=result.suggested_batch_size,
+            ),
+        )
+
+    def _is_generation_current(
+        self,
+        request: TrainingResourcePreviewRequest,
+    ) -> bool:
+        try:
+            return bool(self._generation_is_current(request.publication_generation))
+        except Exception:
+            return False
+
+    @staticmethod
+    def _fail_job(job: _PreviewJob, error: BaseException) -> None:
+        job.error = error
+        job.result = None
+        job.completed.set()
+
+
+def _normalized(value: Any) -> str:
+    return str(value or "").strip().casefold()
+
+
+__all__ = [
+    "TrainingResourcePreviewCoordinator",
+    "TrainingResourcePreviewTicket",
+]

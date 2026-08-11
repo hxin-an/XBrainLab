@@ -148,17 +148,18 @@ class ModelSelectionDialog(BaseDialog):
         content_layout.setSpacing(12)
         content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        self.content_scroll = QScrollArea()
-        self.content_scroll.setObjectName("ModelSelectionContentScroll")
-        self.content_scroll.setWidgetResizable(True)
-        self.content_scroll.setHorizontalScrollBarPolicy(
+        content_scroll = QScrollArea()
+        self.content_scroll = content_scroll
+        content_scroll.setObjectName("ModelSelectionContentScroll")
+        content_scroll.setWidgetResizable(True)
+        content_scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
-        self.content_scroll.setVerticalScrollBarPolicy(
+        content_scroll.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded,
         )
-        self.content_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.content_scroll.setWidget(content)
+        content_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        content_scroll.setWidget(content)
 
         # Model setup
         setup_frame = QFrame()
@@ -177,76 +178,82 @@ class ModelSelectionDialog(BaseDialog):
         setup_layout.addWidget(setup_title, 0, 0, 1, 3)
 
         setup_layout.addWidget(QLabel("Model"), 1, 0)
-        self.model_combo = QComboBox()
-        self.model_combo.addItems(self.model_list)
+        model_combo = QComboBox()
+        self.model_combo = model_combo
+        model_combo.addItems(self.model_list)
         if self.initial_model_name is not None:
-            self.model_combo.setCurrentText(self.initial_model_name)
-        self.model_combo.currentTextChanged.connect(self.on_model_select)
-        setup_layout.addWidget(self.model_combo, 1, 1)
+            model_combo.setCurrentText(self.initial_model_name)
+        model_combo.currentTextChanged.connect(self.on_model_select)
+        setup_layout.addWidget(model_combo, 1, 1)
 
         setup_layout.addWidget(QLabel("Pretrained weight"), 2, 0)
-        self.weight_label = QLabel("None")
-        self.weight_label.setObjectName("PretrainedWeightLabel")
-        self.weight_label.setMinimumHeight(28)
-        self.weight_label.setWordWrap(False)
-        setup_layout.addWidget(self.weight_label, 2, 1)
-        self.weight_btn = QPushButton("Load")
-        self.weight_btn.setFixedWidth(76)
-        self.weight_btn.clicked.connect(self.load_pretrained_weight)
-        setup_layout.addWidget(self.weight_btn, 2, 2)
+        weight_label = QLabel("None")
+        self.weight_label = weight_label
+        weight_label.setObjectName("PretrainedWeightLabel")
+        weight_label.setMinimumHeight(28)
+        weight_label.setWordWrap(False)
+        setup_layout.addWidget(weight_label, 2, 1)
+        weight_btn = QPushButton("Load")
+        self.weight_btn = weight_btn
+        weight_btn.setFixedWidth(76)
+        weight_btn.clicked.connect(self.load_pretrained_weight)
+        setup_layout.addWidget(weight_btn, 2, 2)
         setup_layout.setColumnStretch(1, 1)
         content_layout.addWidget(setup_frame)
 
         # Parameters Table
-        self.params_group = QFrame()
-        self.params_group.setObjectName("ModelSection")
-        self.params_group.setFrameShape(QFrame.Shape.NoFrame)
-        self.params_group.setSizePolicy(
+        params_group = QFrame()
+        self.params_group = params_group
+        params_group.setObjectName("ModelSection")
+        params_group.setFrameShape(QFrame.Shape.NoFrame)
+        params_group.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
-        group_layout = QVBoxLayout(self.params_group)
+        group_layout = QVBoxLayout(params_group)
         group_layout.setContentsMargins(12, 12, 12, 12)
         group_layout.setSpacing(10)
         params_title = QLabel("Model parameters")
         params_title.setObjectName("SectionTitle")
         group_layout.addWidget(params_title)
-        self.params_table = QTableWidget()
-        self.params_table.setColumnCount(2)
-        self.params_table.setHorizontalHeaderLabels(["Parameter", "Value"])
-        self.params_table.setAlternatingRowColors(True)
-        self.params_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self.params_table.setSelectionBehavior(
+        params_table = QTableWidget()
+        self.params_table = params_table
+        params_table.setColumnCount(2)
+        params_table.setHorizontalHeaderLabels(["Parameter", "Value"])
+        params_table.setAlternatingRowColors(True)
+        params_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        params_table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
         )
-        self.params_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.params_table.setSizePolicy(
+        params_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        params_table.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
-        self.params_table.setMaximumHeight(240)
+        params_table.setMaximumHeight(240)
         configure_dark_table(
-            self.params_table,
+            params_table,
             object_name="ModelParamsTable",
             no_selection=True,
         )
-        header = self.params_table.horizontalHeader()
+        header = params_table.horizontalHeader()
         if header is not None:
             header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        vertical_header = self.params_table.verticalHeader()
+        vertical_header = params_table.verticalHeader()
         if vertical_header is not None:
             vertical_header.setVisible(False)
-        group_layout.addWidget(self.params_table)
-        content_layout.addWidget(self.params_group, stretch=0)
-        layout.addWidget(self.content_scroll, stretch=0)
+        group_layout.addWidget(params_table)
+        content_layout.addWidget(params_group, stretch=0)
+        layout.addWidget(content_scroll, stretch=0)
 
         # Buttons
         action_layout = QHBoxLayout()
         action_layout.addStretch(1)
-        self.confirm_btn = QPushButton("Confirm")
-        self.confirm_btn.setObjectName("PrimaryConfirmButton")
-        self.confirm_btn.clicked.connect(self.accept)
-        action_layout.addWidget(self.confirm_btn)
+        confirm_btn = QPushButton("Confirm")
+        self.confirm_btn = confirm_btn
+        confirm_btn.setObjectName("PrimaryConfirmButton")
+        confirm_btn.clicked.connect(self.accept)
+        action_layout.addWidget(confirm_btn)
         layout.addLayout(action_layout)
 
     @staticmethod

@@ -137,6 +137,30 @@ def fit_table_height_to_contents(
     return target_height
 
 
+def preprocess_toggle_stylesheet() -> str:
+    """Return the shared compact On/Off toggle styling."""
+    return f"""
+        QPushButton#PreprocessToggle {{
+            min-width: 44px;
+            max-width: 44px;
+            min-height: 22px;
+            max-height: 22px;
+            padding: 1px 6px;
+            border-radius: 11px;
+            background-color: {Theme.BACKGROUND_MID};
+            border: 1px solid {Theme.BACKGROUND_LIGHT};
+            color: {Theme.TEXT_SECONDARY};
+            font-size: 11px;
+            font-weight: 700;
+        }}
+        QPushButton#PreprocessToggle:checked {{
+            background-color: {Theme.BLUE_PRIMARY};
+            border-color: {Theme.BLUE_HOVER};
+            color: {Theme.TEXT_PRIMARY};
+        }}
+    """
+
+
 def dark_dialog_stylesheet() -> str:
     """Common dark styling for compact setting dialogs."""
     return f"""
@@ -186,24 +210,7 @@ def dark_dialog_stylesheet() -> str:
             color: {Theme.ACCENT_ERROR};
             padding: 2px 0;
         }}
-        QPushButton#PreprocessToggle {{
-            min-width: 44px;
-            max-width: 44px;
-            min-height: 22px;
-            max-height: 22px;
-            padding: 1px 6px;
-            border-radius: 11px;
-            background-color: {Theme.BACKGROUND_MID};
-            border: 1px solid {Theme.BACKGROUND_LIGHT};
-            color: {Theme.TEXT_SECONDARY};
-            font-size: 11px;
-            font-weight: 700;
-        }}
-        QPushButton#PreprocessToggle:checked {{
-            background-color: {Theme.BLUE_PRIMARY};
-            border-color: {Theme.BLUE_HOVER};
-            color: {Theme.TEXT_PRIMARY};
-        }}
+        {preprocess_toggle_stylesheet()}
         QListWidget#PreprocessReferenceChannels:disabled {{
             background-color: {Theme.BACKGROUND_DARK};
             border-color: {Theme.HISTORY_TABLE_BORDER};

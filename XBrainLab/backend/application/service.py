@@ -7,7 +7,7 @@ from contextlib import nullcontext
 from dataclasses import replace
 from threading import Lock, RLock
 from time import monotonic
-from typing import Any
+from typing import Any, cast
 
 from XBrainLab.backend.services.dataset_state_service import (
     DatasetProductPort,
@@ -34,6 +34,8 @@ from .application_publication_lifecycle import ApplicationPublicationLifecycle
 from .application_shutdown_lifecycle import (
     ApplicationShutdownLifecycleCoordinator,
 )
+from .bids_montage_coordinator import BidsMontagePreparationCoordinator
+from .bids_montage_preparation import MontagePreparationSnapshot
 from .capabilities import (
     RECOVERY_COMMAND_NAMES,
     CapabilityPolicy,
@@ -100,6 +102,7 @@ from .evaluation_render import (
     EvaluationRenderRequest,
 )
 from .lifecycle_service import LifecycleCommandService
+from .montage_preparation_lifecycle import MontagePreparationWork
 from .pipeline_stage import pipeline_stage_readiness_summary
 from .pipeline_transaction import PipelineStateTransaction
 from .post_training_saliency import PostTrainingSaliencyAutomation
@@ -110,7 +113,13 @@ from .preprocess_render import (
 )
 from .preprocess_service import PreprocessCommandService
 from .query_state_service import QueryStateCommandService
-from .resource_guard import ResourceConfirmationRequiredError, ResourcePreflightResult
+from .resource_guard import (
+    ResourceConfirmationRequiredError,
+    ResourcePreflightResult,
+    TrainingResourcePreviewContext,
+    TrainingResourcePreviewRequest,
+    TrainingResourcePreviewResult,
+)
 from .results import ChangedState, CommandResult, ErrorType
 from .saliency_coverage import SaliencyCoverageProjector
 from .saliency_render import (
@@ -133,6 +142,9 @@ from .training_configuration_reset import TrainingConfigurationResetService
 from .training_recommendation import (
     TrainingRecommendation,
     TrainingRecommendationService,
+)
+from .training_resource_preview_coordinator import (
+    TrainingResourcePreviewCoordinator,
 )
 from .training_runtime import (
     StudyTrainingRuntime,
@@ -438,6 +450,9 @@ class _LazyTrainingCommandService:
         self._get_state = get_state
         self._configuration_reset = configuration_reset
         self._recommendation = recommendation
+        self._resource_refinement_provider: Callable[
+            [ConfigureTrainingCommand], tuple[Any, ...]
+        ] = lambda _command: ()
         self._service_instance: Any | None = None
 
     def _service(self) -> Any:
@@ -449,8 +464,20 @@ class _LazyTrainingCommandService:
                 training_runtime=self.training_runtime,
                 get_state=self._get_state,
                 recommendation=self._recommendation,
+                resource_refinement_provider=self._resource_refinement_provider,
             )
         return self._service_instance
+
+    def set_resource_refinement_provider(
+        self,
+        provider: Callable[[ConfigureTrainingCommand], tuple[Any, ...]],
+    ) -> None:
+        """Bind application-owned preview provenance before lazy construction."""
+        if self._service_instance is not None:
+            raise RuntimeError(
+                "Training refinement provider must be bound before first use."
+            )
+        self._resource_refinement_provider = provider
 
     def clear_configuration(self) -> None:
         self._configuration_reset.clear()
@@ -470,6 +497,13 @@ class _LazyTrainingCommandService:
 
     def get_resource_preflight(self) -> ResourcePreflightResult:
         return self._service().get_resource_preflight()
+
+    def get_resource_preview(
+        self,
+        request: TrainingResourcePreviewRequest,
+        context: TrainingResourcePreviewContext,
+    ) -> TrainingResourcePreviewResult:
+        return self._service().get_resource_preview(request, context)
 
     def handle_configure_training(self, command: Command) -> HandlerResult:
         return self._service().handle_configure_training(command)
@@ -636,7 +670,17 @@ class ApplicationService(Observable):
             configuration_reset=self.training_configuration_reset,
             recommendation=self.training_recommendation,
         )
+        self.training_resource_preview = TrainingResourcePreviewCoordinator(
+            estimate=self.training_commands.get_resource_preview,
+            generation_is_current=(self._training_preview_generation_is_current),
+        )
+        self.training_commands.set_resource_refinement_provider(
+            self.training_resource_preview.refinements_for_configuration
+        )
         self.saliency_coverage_projector = SaliencyCoverageProjector()
+        self.bids_montage_preparation = BidsMontagePreparationCoordinator(
+            commit_publication=self._commit_bids_montage_publication,
+        )
         self.state_snapshot = StateSnapshotService(
             study=self.study,
             dataset=self.dataset_state,
@@ -650,6 +694,10 @@ class ApplicationService(Observable):
             interpretation=self.interpretation,
             saliency_coverage_projector=self.saliency_coverage_projector,
             training_recommendation=self.training_recommendation,
+            montage_snapshot_provider=self.bids_montage_preparation.snapshot,
+            effective_montage_provider=(
+                self.bids_montage_preparation.effective_montage
+            ),
         )
         initial_training_boundary = self.state_snapshot.capture_training_read_boundary()
         initial_state = self.state_snapshot.build(last_error=self._last_error)
@@ -720,6 +768,9 @@ class ApplicationService(Observable):
             get_publication=self._committed_view_publication,
             capture_training_boundary=(
                 self.state_snapshot.capture_training_read_boundary
+            ),
+            effective_montage_provider=(
+                self.bids_montage_preparation.effective_montage
             ),
         )
         self.evaluation_render = EvaluationRenderPublisher(
@@ -827,6 +878,14 @@ class ApplicationService(Observable):
         ):
             return
         self.shutdown_lifecycle.cancel_close_automation()
+        if not self.training_resource_preview.close(timeout=2.0):
+            logger.warning(
+                "Training resource preview did not quiesce within the close timeout."
+            )
+        if not self.bids_montage_preparation.close(timeout=2.0):
+            logger.warning(
+                "BIDS montage preparation did not quiesce within the close timeout."
+            )
         self.publication_lifecycle.close()
 
     @property
@@ -1038,7 +1097,15 @@ class ApplicationService(Observable):
             publication = self._committed_view_publication()
             if publication.usable or self._mutation_in_progress:
                 return publication
-            self._refresh_training_publication_opportunistic()
+            had_montage_candidate = self.bids_montage_preparation.has_pending_promotion
+            if had_montage_candidate:
+                self.bids_montage_preparation.retry_promotion(
+                    refresh_candidate=self._refresh_training_publication_strict,
+                )
+            if not self.bids_montage_preparation.has_pending_promotion:
+                publication = self._committed_view_publication()
+                if not publication.usable:
+                    self._refresh_training_publication_opportunistic()
         finally:
             self._command_lock.release()
         # Recovery can change publication health without changing domain
@@ -1217,6 +1284,78 @@ class ApplicationService(Observable):
         finally:
             self._command_lock.release()
 
+    def get_training_resource_preview(
+        self,
+        request: TrainingResourcePreviewRequest,
+    ) -> TrainingResourcePreviewResult:
+        """Return a generation-bound advisory estimate for unsaved draft settings."""
+        if not isinstance(request, TrainingResourcePreviewRequest):
+            raise TypeError("request must be a TrainingResourcePreviewRequest")
+        with self._command_lock, self._command_admission_lock:
+            if (
+                self.shutdown_lifecycle.is_closing
+                or self.shutdown_lifecycle.is_closed
+                or self.shutdown_lifecycle.is_shutdown_fenced
+            ):
+                raise PreconditionError(
+                    "Training resource preview is unavailable while XBrainLab "
+                    "is closing."
+                )
+            if self._mutation_in_progress:
+                raise PreconditionError("Training context is changing. Wait and retry.")
+            publication = self._committed_view_publication()
+            if publication.generation != request.publication_generation:
+                raise PreconditionError(
+                    "Training context changed. Review the settings again."
+                )
+            if not publication.usable:
+                raise PreconditionError(
+                    publication.public_unavailable_reason
+                    or "Training resource preview is unavailable."
+                )
+            epoch = publication.state.epoch
+            n_channels = epoch.n_channels
+            n_times = epoch.n_times
+            epoch_count = epoch.epoch_count
+            sampling_frequency = epoch.sfreq
+            if any(
+                value is None
+                for value in (
+                    n_channels,
+                    n_times,
+                    epoch_count,
+                    sampling_frequency,
+                )
+            ):
+                raise PreconditionError(
+                    "Training resource preview requires prepared EEG epochs."
+                )
+            event_ids = epoch.event_ids if isinstance(epoch.event_ids, dict) else {}
+            context = TrainingResourcePreviewContext(
+                input_shape=(
+                    int(cast(int, n_channels)),
+                    int(cast(int, n_times)),
+                ),
+                sample_count=int(cast(int, epoch_count)),
+                class_count=max(len(event_ids), len(epoch.event_names), 1),
+                sampling_frequency=float(cast(float, sampling_frequency)),
+            )
+            ticket = self.training_resource_preview.submit(request, context)
+        return ticket.result()
+
+    def _training_preview_generation_is_current(self, generation: int) -> bool:
+        """Revalidate application identity after native estimate completion."""
+        with self._command_lock:
+            admission = self.shutdown_lifecycle.snapshot()
+            publication = self._committed_view_publication()
+            return bool(
+                not admission.closing
+                and not admission.closed
+                and not admission.fenced
+                and publication.generation == generation
+                and (publication.usable or self._mutation_in_progress)
+            )
+
     def get_dataset_split_context(
         self,
         request: DatasetSplitContextRequest,
@@ -1388,6 +1527,12 @@ class ApplicationService(Observable):
                 return None
             return max(0.0, deadline - monotonic())
 
+        if not self.bids_montage_preparation.wait_for_idle(timeout=remaining()):
+            return False
+
+        if not self.training_resource_preview.wait_for_idle(timeout=remaining()):
+            return False
+
         if not self.training.wait_for_terminal_notification(
             training_handoff_generation,
             timeout=remaining(),
@@ -1476,6 +1621,55 @@ class ApplicationService(Observable):
             state=publication.state,
             changed_state=ChangedState(),
             diagnostics=diagnostics,
+        )
+
+    def query_published_data_summary(
+        self,
+        *,
+        expected_publication_generation: int | None = None,
+    ) -> CommandResult:
+        """Return the detached dataset summary without waiting on mutable state."""
+        command = QueryStateCommand(query="data_summary")
+        closed = self._closed_command_result_if_any(command)
+        if closed is not None:
+            return closed
+        publication = self._committed_view_publication()
+        if expected_publication_generation is not None:
+            rejection = self._expected_publication_rejection_for_publication(
+                command,
+                expected_publication_generation,
+                publication,
+            )
+            if rejection is not None:
+                return rejection
+        if not publication.usable:
+            message = publication.unavailable_reason or (
+                "Dataset summary is temporarily unavailable. Retry shortly."
+            )
+            return CommandResult.failure_result(
+                command_name=CommandName.QUERY_STATE.value,
+                message=message,
+                state=publication.state,
+                changed_state=ChangedState(state_unknown=True),
+                error_type=ErrorType.PRECONDITION,
+                recoverable=True,
+                error_message=message,
+                diagnostics={
+                    "query": command.query,
+                    "publication_generation": publication.generation,
+                    "publication_revision": publication.revision,
+                    "view_verified": publication.verified,
+                    "view_stale": publication.stale,
+                },
+            )
+        return CommandResult.success_result(
+            command_name=CommandName.QUERY_STATE.value,
+            message="Dataset summary ready.",
+            state=publication.state,
+            changed_state=ChangedState(),
+            diagnostics=self.state_snapshot.data_summary_from_published_state(
+                publication.state,
+            ),
         )
 
     def execute(
@@ -1635,6 +1829,13 @@ class ApplicationService(Observable):
         if self._is_published_state_query(command):
             return (
                 self.query_published_state(
+                    expected_publication_generation=expected_publication_generation,
+                ),
+                None,
+            )
+        if self._is_published_data_summary_query(command):
+            return (
+                self.query_published_data_summary(
                     expected_publication_generation=expected_publication_generation,
                 ),
                 None,
@@ -1861,6 +2062,13 @@ class ApplicationService(Observable):
             and str(command.query or "state").lower() == "state"
         )
 
+    @staticmethod
+    def _is_published_data_summary_query(command: Command | Any) -> bool:
+        """Whether a dataset summary is already detached in the publication."""
+        return isinstance(command, QueryStateCommand) and (
+            str(command.query or "").lower() == "data_summary"
+        )
+
     def _execute_query_without_wait(
         self,
         command: QueryStateCommand,
@@ -2007,6 +2215,11 @@ class ApplicationService(Observable):
                     command=command,
                     diagnostics=diagnostics,
                 )
+                diagnostics = self._update_montage_preparation_after_command(
+                    command=command,
+                    name=name,
+                    diagnostics=diagnostics,
+                )
             except Exception as exc:
                 self.legacy_raw_mutation_lifecycle.fail_closed(
                     command=command,
@@ -2062,6 +2275,91 @@ class ApplicationService(Observable):
             changed_state=self._changed_state(before, after),
             diagnostics=diagnostics,
         )
+
+    def _update_montage_preparation_after_command(
+        self,
+        *,
+        command: Command,
+        name: CommandName,
+        diagnostics: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Advance advisory BIDS geometry without changing command success."""
+        try:
+            snapshot = None
+            if name is CommandName.APPLY_INTERPRETATION:
+                applied = diagnostics.get("applied_interpretation")
+                source_kind = (
+                    str(applied.get("source_kind") or "")
+                    if isinstance(applied, dict)
+                    else ""
+                )
+                snapshot = (
+                    self.bids_montage_preparation.synchronize_loaded_recordings(
+                        self.dataset.get_loaded_data_list() or ()
+                    )
+                    if source_kind == "bids"
+                    else self.bids_montage_preparation.reset()
+                )
+            elif name is CommandName.APPLY_MONTAGE and isinstance(
+                command,
+                ApplyMontageCommand,
+            ):
+                snapshot = self.bids_montage_preparation.select_manual_values(
+                    name=command.montage_name or "Manual montage",
+                    channel_names=command.channels,
+                    positions=command.positions,
+                )
+            elif name in {
+                CommandName.LOAD_DATA,
+                CommandName.REMOVE_FILES,
+                CommandName.RESET_PREPROCESS,
+            }:
+                snapshot = self.bids_montage_preparation.synchronize_loaded_recordings(
+                    self.dataset.get_loaded_data_list() or ()
+                )
+            elif name in {CommandName.RESET_SESSION, CommandName.NEW_SESSION}:
+                snapshot = self.bids_montage_preparation.reset()
+            if snapshot is None:
+                return diagnostics
+            else:
+                return {
+                    **diagnostics,
+                    "montage_preparation": {
+                        "state": snapshot.state,
+                        "generation": snapshot.generation,
+                        "reason": snapshot.reason,
+                        "import_blocking": False,
+                    },
+                }
+        except Exception as exc:
+            logger.exception("Could not schedule optional BIDS montage preparation")
+            return {
+                **diagnostics,
+                "montage_preparation": {
+                    "state": "failed",
+                    "reason": public_exception_message(exc),
+                    "import_blocking": False,
+                },
+            }
+
+    def _commit_bids_montage_publication(
+        self,
+        work: MontagePreparationWork,
+        snapshot: MontagePreparationSnapshot,
+    ) -> None:
+        """Commit optional geometry atomically with its application publication."""
+        with self._command_lock:
+            if self.shutdown_lifecycle.snapshot().closing:
+                return
+            promoted = self.bids_montage_preparation.promote_result(
+                work,
+                snapshot,
+                refresh_candidate=self._refresh_training_publication_strict,
+            )
+            if not promoted:
+                return
+            publication = self._committed_view_publication()
+        self._publish_view_changed(publication)
 
     @staticmethod
     def _needs_training_read_guard(command: Command, name: CommandName) -> bool:

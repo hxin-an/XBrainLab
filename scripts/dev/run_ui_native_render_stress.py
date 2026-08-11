@@ -201,18 +201,54 @@ def _native_stress_render_publication(sequence: int) -> SaliencyRenderPublicatio
 class _NativeStressApplicationRuntime(Observable):
     """Minimal typed application publication fixture for product render stress."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        publication_identity: ApplicationViewPublication | None = None,
+    ) -> None:
         super().__init__()
         self._state = _native_stress_saliency_state()
         self._store = ApplicationViewStore(
             self._state,
             TrainingReadBoundary.no_trainer(),
         )
+        seed = self._store.read()
+        self._publication_generation = (
+            publication_identity.generation
+            if publication_identity is not None
+            else seed.generation
+        )
+        self._publication_revision = (
+            publication_identity.revision
+            if publication_identity is not None
+            else seed.revision
+        )
         self.render_publications_served = 0
         self._shutdown_fenced = False
+        self._next_render_started: threading.Event | None = None
+        self._next_render_release: threading.Event | None = None
+
+    def block_next_render(
+        self,
+        *,
+        started: threading.Event,
+        release: threading.Event,
+    ) -> None:
+        """Hold exactly one publication read for deterministic close coverage."""
+        if self._next_render_started is not None:
+            raise RuntimeError("A native stress render is already blocked.")
+        self._next_render_started = started
+        self._next_render_release = release
 
     def get_view_publication(self) -> ApplicationViewPublication:
-        return self._store.read()
+        return self._current_publication()
+
+    def _current_publication(self) -> ApplicationViewPublication:
+        """Keep the synthetic panel inside the desktop revision ledger."""
+        return replace(
+            self._store.read(),
+            generation=self._publication_generation,
+            revision=self._publication_revision,
+        )
 
     def execute(
         self,
@@ -241,7 +277,7 @@ class _NativeStressApplicationRuntime(Observable):
         self,
         request: SaliencyRenderRequest,
     ) -> SaliencyRenderPublication:
-        publication = self._store.read()
+        publication = self._current_publication()
         expected_run = SaliencyRunIdentity(
             plan=SaliencyPlanIdentity(0),
             run_index=0,
@@ -252,6 +288,14 @@ class _NativeStressApplicationRuntime(Observable):
             or request.method != "Gradient"
         ):
             raise RuntimeError("Native stress received a stale saliency request.")
+        started = self._next_render_started
+        release = self._next_render_release
+        self._next_render_started = None
+        self._next_render_release = None
+        if started is not None and release is not None:
+            started.set()
+            if not release.wait(timeout=15.0):
+                raise RuntimeError("Native stress render release timed out.")
         self.render_publications_served += 1
         return SaliencyRenderPublication(
             request=request,
@@ -267,7 +311,10 @@ class _NativeStressApplicationRuntime(Observable):
         self._shutdown_fenced = False
         return True
 
-    def wait_for_background_tasks(self, timeout: float | None = None) -> bool:
+    def wait_for_background_tasks(
+        self,
+        timeout: float | None = None,
+    ) -> bool:
         del timeout
         return True
 
@@ -1065,6 +1112,8 @@ def _exercise_active_render_close(
     app: QApplication,
     window: MainWindow,
     visualization_panel: VisualizationPanel,
+    runtime: _NativeStressApplicationRuntime,
+    application_service: Any,
     thread_pool: QThreadPool,
     interactive_3d_status: str,
 ) -> dict[str, object]:
@@ -1074,21 +1123,11 @@ def _exercise_active_render_close(
     interactor_ref = weakref.ref(plotter) if plotter is not None else None
     plotter = None
 
-    _activate_saliency_tab(visualization_panel, 0)
-    if visualization_panel.tab_map.native_render_work_idle():
-        raise RuntimeError("Product map render did not retain active close ownership.")
-
+    render_started = threading.Event()
+    render_release = threading.Event()
     unrelated_started = threading.Event()
     unrelated_release = threading.Event()
     unrelated_finished = threading.Event()
-    unrelated_work = _UnrelatedGlobalPoolWork(
-        started=unrelated_started,
-        release=unrelated_release,
-        finished=unrelated_finished,
-    )
-    thread_pool.start(unrelated_work)
-    _pump_until(app, unrelated_started.is_set, timeout_seconds=3.0)
-
     owned_idle_observations: list[bool] = []
     global_pool_observations: list[int] = []
     unrelated_active_observations: list[bool] = []
@@ -1109,14 +1148,36 @@ def _exercise_active_render_close(
         )
         return finalized
 
-    visualization_panel.finalize_native_render_resources = finalize_with_measurements
-    window.close()
-    close_fenced = window.isVisible() and window._closing_in_progress
-    if not close_fenced:
-        unrelated_release.set()
-        raise RuntimeError("MainWindow did not fence the active product render.")
-
     try:
+        runtime.block_next_render(started=render_started, release=render_release)
+        # Map and Spectrogram intentionally share the channel-time publication.
+        # Invalidate it so this close probe owns a real blocked backend read on
+        # every platform, including the reduced headless-macOS view set.
+        visualization_panel._clear_saliency_render_cache()
+        _activate_saliency_tab(visualization_panel, 0)
+        _pump_until(app, render_started.is_set, timeout_seconds=3.0)
+        if visualization_panel.native_render_work_idle():
+            raise RuntimeError(
+                "Product visualization render did not retain active close ownership."
+            )
+
+        unrelated_work = _UnrelatedGlobalPoolWork(
+            started=unrelated_started,
+            release=unrelated_release,
+            finished=unrelated_finished,
+        )
+        thread_pool.start(unrelated_work)
+        _pump_until(app, unrelated_started.is_set, timeout_seconds=3.0)
+
+        visualization_panel.finalize_native_render_resources = (
+            finalize_with_measurements
+        )
+        window.close()
+        close_fenced = window.isVisible() and window._closing_in_progress
+        if not close_fenced:
+            raise RuntimeError("MainWindow did not fence the active product render.")
+
+        render_release.set()
         try:
             _pump_until(
                 app,
@@ -1124,6 +1185,40 @@ def _exercise_active_render_close(
                 timeout_seconds=15.0,
             )
         except RuntimeError as exc:
+            background_diagnostics: dict[str, object] = {}
+            background_checks = {
+                "bids_montage_idle": lambda: application_service.bids_montage_preparation.wait_for_idle(
+                    timeout=0.0
+                ),
+                "training_resource_preview_idle": lambda: application_service.training_resource_preview.wait_for_idle(
+                    timeout=0.0
+                ),
+                "training_terminal_idle": lambda: application_service.training.wait_for_terminal_notification(
+                    None, timeout=0.0
+                ),
+                "training_delivery_idle": lambda: application_service.training_publications.wait_for_training_delivery(
+                    timeout=0.0
+                ),
+                "post_training_saliency_idle": lambda: application_service.post_training_saliency.wait_for_idle(
+                    timeout=0.0
+                ),
+                "saliency_job_idle": lambda: application_service.training_runtime.wait_for_saliency_job(
+                    timeout=0.0
+                ),
+                "saliency_runtime_delivery_idle": lambda: application_service.training_runtime.wait_for_saliency_delivery(
+                    timeout=0.0
+                ),
+                "saliency_publication_delivery_idle": lambda: application_service.training_publications.wait_for_saliency_delivery(
+                    timeout=0.0
+                ),
+            }
+            for name, check in background_checks.items():
+                try:
+                    background_diagnostics[name] = bool(check())
+                except Exception as diagnostic_error:
+                    background_diagnostics[name] = (
+                        f"{type(diagnostic_error).__name__}: {diagnostic_error}"
+                    )
             view_diagnostics = {}
             for name in ("tab_map", "tab_spectro", "tab_topo", "tab_3d"):
                 view = getattr(visualization_panel, name, None)
@@ -1149,10 +1244,18 @@ def _exercise_active_render_close(
                     window._training_close_check_in_flight
                 ),
                 "close_retry_pending": window._close_retry_pending,
+                "startup_prewarm_worker": (
+                    type(window._startup_prewarm_worker).__name__
+                    if window._startup_prewarm_worker is not None
+                    else None
+                ),
+                "panel_prepare_workers": sorted(window._panel_prepare_workers),
+                "panel_prepare_active_index": window._panel_prepare_active_index,
                 "owned_ui_background_idle": window._owned_ui_background_work_idle(),
                 "visualization_native_idle": (
                     visualization_panel.native_render_work_idle()
                 ),
+                "application_background": background_diagnostics,
                 "views": view_diagnostics,
             }
             raise RuntimeError(
@@ -1160,6 +1263,7 @@ def _exercise_active_render_close(
                 f"{json.dumps(diagnostics, sort_keys=True)}"
             ) from exc
     finally:
+        render_release.set()
         unrelated_release.set()
     _pump_until(app, unrelated_finished.is_set, timeout_seconds=3.0)
     _pump_until(
@@ -1228,6 +1332,8 @@ def _exercise_active_render_close(
         else None
     )
     return {
+        "active_render_owned_before_close": True,
+        "active_render_owner": "publication_preparation",
         "active_render_close_fenced": close_fenced,
         "active_render_close_completed": not window.isVisible(),
         "pool_drained_before_close": pool_drained_before_close,
@@ -1266,6 +1372,7 @@ def _stress_contract_failures(
     warmup_cycles: int = 0,
 ) -> list[str]:
     required_true_metrics = (
+        "active_render_owned_before_close",
         "active_render_close_fenced",
         "active_render_close_completed",
         "pool_drained_before_close",
@@ -1303,8 +1410,20 @@ def _stress_contract_failures(
         failures.append("product_saliency_measurement_cycles")
     if result.get("product_saliency_publications_primed") != 1:
         failures.append("product_saliency_publications_primed")
-    if result.get("product_saliency_publications_served") != 0:
+    # Headless macOS exercises only Map and Spectrogram, which share the
+    # primed channel-time publication. Full native scope includes Topomap;
+    # switching view lineage causes every subsequent 2D installation to read
+    # a fresh publication.
+    expected_publications_after_prime = (
+        0 if safe_headless_macos else max(expected_2d_renders - 1, 0)
+    )
+    if (
+        result.get("product_saliency_publications_served")
+        != expected_publications_after_prime
+    ):
         failures.append("product_saliency_publications_served")
+    if result.get("active_render_owner") != "publication_preparation":
+        failures.append("active_render_owner")
     if result.get("product_2d_renders_installed") != expected_2d_renders:
         failures.append("product_2d_renders_installed")
     if result.get("product_2d_loading_cleared") != expected_2d_renders:
@@ -1490,7 +1609,9 @@ def run_stress(
         _exercise_render_cycle(app=app, window=window, panel=panel, cycle=cycle + 1)
 
     saliency_metrics = _exercise_saliency_lifecycle(app=app, cycles=cycles)
-    publication_runtime = _NativeStressApplicationRuntime()
+    publication_runtime = _NativeStressApplicationRuntime(
+        service.get_view_publication(),
+    )
     visualization_panel = _replace_visualization_panel_with_publication_fixture(
         app=app,
         window=window,
@@ -1527,6 +1648,8 @@ def run_stress(
         app=app,
         window=window,
         visualization_panel=visualization_panel,
+        runtime=publication_runtime,
+        application_service=service,
         thread_pool=thread_pool,
         interactive_3d_status=str(product_saliency_metrics["product_3d_status"]),
     )

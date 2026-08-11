@@ -45,6 +45,7 @@ from XBrainLab.ui.dialogs.common import (
     checkbox_stylesheet,
     configure_dark_table,
     normalize_dialog_button_box,
+    preprocess_toggle_stylesheet,
 )
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
@@ -204,7 +205,7 @@ class EpochingDialog(BaseDialog):
         tmax_spin: QDoubleSpinBox for epoch end time.
         duration_label: QLabel showing computed epoch duration.
         warning_label: QLabel showing duration warnings.
-        baseline_check: QCheckBox to enable/disable baseline correction.
+        baseline_check: QPushButton to enable/disable baseline correction.
         b_min_spin: QDoubleSpinBox for baseline start time.
         b_max_spin: QDoubleSpinBox for baseline end time.
 
@@ -247,7 +248,13 @@ class EpochingDialog(BaseDialog):
         self.duration_label: QLabel | None = None
         self.warning_label: QLabel | None = None
         self.confirmation_check: QCheckBox | None = None
-        self.baseline_check: QCheckBox | None = None
+        self.baseline_check: QPushButton | None = None
+        self.baseline_group: QFrame | None = None
+        self.baseline_content: QWidget | None = None
+        self.baseline_title_label: QLabel | None = None
+        self.baseline_help_label: QLabel | None = None
+        self.baseline_min_label: QLabel | None = None
+        self.baseline_max_label: QLabel | None = None
         self.b_min_spin: QDoubleSpinBox | None = None
         self.b_max_spin: QDoubleSpinBox | None = None
         self.baseline_error_label: QLabel | None = None
@@ -295,20 +302,21 @@ class EpochingDialog(BaseDialog):
             content_layout.addWidget(self._build_import_hint_card())
 
         # 1. Event Selection
-        event_group, event_layout = self._build_section_card("Events")
+        event_group, _, event_layout = self._build_section_card("Events")
         event_layout.setSpacing(6)
         event_hint = QLabel(self._event_hint_text())
         event_hint.setWordWrap(True)
         event_layout.addWidget(event_hint)
-        self.event_list = QTableWidget()
-        self.event_list.setColumnCount(4)
-        self.event_list.setHorizontalHeaderLabels(["Use", "Event", "Type", "Count"])
-        configure_dark_table(self.event_list, object_name="EpochEventTable")
-        self.event_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self.event_list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.event_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.event_list.setShowGrid(False)
-        event_vertical_header = self.event_list.verticalHeader()
+        event_list = QTableWidget()
+        self.event_list = event_list
+        event_list.setColumnCount(4)
+        event_list.setHorizontalHeaderLabels(["Use", "Event", "Type", "Count"])
+        configure_dark_table(event_list, object_name="EpochEventTable")
+        event_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        event_list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        event_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        event_list.setShowGrid(False)
+        event_vertical_header = event_list.verticalHeader()
         if event_vertical_header is not None:
             event_vertical_header.setDefaultSectionSize(25)
             event_vertical_header.setMinimumSectionSize(24)
@@ -323,7 +331,7 @@ class EpochingDialog(BaseDialog):
                 continue
             rows.append((event_name, event))
 
-        self.event_list.setRowCount(len(rows))
+        event_list.setRowCount(len(rows))
         for row, (event_name, event) in enumerate(rows):
             use_item = QTableWidgetItem("")
             use_item.setFlags(
@@ -336,11 +344,11 @@ class EpochingDialog(BaseDialog):
                 if event_name in recommended_events
                 else Qt.CheckState.Unchecked
             )
-            self.event_list.setItem(row, 0, use_item)
+            event_list.setItem(row, 0, use_item)
 
             event_item = QTableWidgetItem(event_name)
             event_item.setFlags(event_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.event_list.setItem(row, 1, event_item)
+            event_list.setItem(row, 1, event_item)
 
             event_type = (
                 "Training label"
@@ -349,20 +357,20 @@ class EpochingDialog(BaseDialog):
             )
             type_item = QTableWidgetItem(event_type)
             type_item.setFlags(type_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.event_list.setItem(row, 2, type_item)
+            event_list.setItem(row, 2, type_item)
 
             count = event.get("count")
             count_text = f"{count} events" if count is not None else "-"
             count_item = QTableWidgetItem(count_text)
             count_item.setFlags(count_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.event_list.setItem(row, 3, count_item)
+            event_list.setItem(row, 3, count_item)
             if count is not None:
                 for col in range(4):
-                    item = self.event_list.item(row, col)
+                    item = event_list.item(row, col)
                     if item is not None:
                         item.setToolTip(f"{event_name}: {count} event(s)")
 
-        event_header = self.event_list.horizontalHeader()
+        event_header = event_list.horizontalHeader()
         if event_header is not None:
             event_header.setSectionResizeMode(
                 0,
@@ -377,13 +385,13 @@ class EpochingDialog(BaseDialog):
                 3,
                 QHeaderView.ResizeMode.ResizeToContents,
             )
-        fit_table_to_all_rows(self.event_list)
-        self.event_list.itemChanged.connect(self._confirmation_scope_changed)
-        event_layout.addWidget(self.event_list)
+        fit_table_to_all_rows(event_list)
+        event_list.itemChanged.connect(self._confirmation_scope_changed)
+        event_layout.addWidget(event_list)
         content_layout.addWidget(event_group)
 
         # 2. Parameters
-        param_group, param_layout = self._build_section_card("Time Window")
+        param_group, _, param_layout = self._build_section_card("Time Window")
         window_mode_text = self._window_mode_text()
         if window_mode_text:
             mode_label = QLabel(window_mode_text)
@@ -391,17 +399,19 @@ class EpochingDialog(BaseDialog):
             mode_label.setWordWrap(True)
             param_layout.addWidget(mode_label)
 
-        self.tmin_spin = QDoubleSpinBox()
-        self.tmin_spin.setRange(-300, 300)
-        self.tmin_spin.setValue(float(self.epoch_context.get("suggested_t_min", -0.2)))
-        self.tmin_spin.setSingleStep(0.1)
-        self._configure_compact_spinbox(self.tmin_spin)
-        self.tmin_spin.valueChanged.connect(self.update_duration_info)
-        self.tmin_spin.valueChanged.connect(self._confirmation_scope_changed)
+        tmin_spin = QDoubleSpinBox()
+        self.tmin_spin = tmin_spin
+        tmin_spin.setRange(-300, 300)
+        tmin_spin.setValue(float(self.epoch_context.get("suggested_t_min", -0.2)))
+        tmin_spin.setSingleStep(0.1)
+        self._configure_compact_spinbox(tmin_spin)
+        tmin_spin.valueChanged.connect(self.update_duration_info)
+        tmin_spin.valueChanged.connect(self._confirmation_scope_changed)
 
-        self.tmax_spin = QDoubleSpinBox()
-        self.tmax_spin.setRange(-300, 300)
-        self.tmax_spin.setDecimals(
+        tmax_spin = QDoubleSpinBox()
+        self.tmax_spin = tmax_spin
+        tmax_spin.setRange(-300, 300)
+        tmax_spin.setDecimals(
             max(
                 2,
                 min(
@@ -410,27 +420,28 @@ class EpochingDialog(BaseDialog):
                 ),
             )
         )
-        self.tmax_spin.setValue(float(self.epoch_context.get("suggested_t_max", 1.0)))
-        self.tmax_spin.setSingleStep(0.1)
-        self._configure_compact_spinbox(self.tmax_spin)
-        self.tmax_spin.valueChanged.connect(self.update_duration_info)
-        self.tmax_spin.valueChanged.connect(self._confirmation_scope_changed)
+        tmax_spin.setValue(float(self.epoch_context.get("suggested_t_max", 1.0)))
+        tmax_spin.setSingleStep(0.1)
+        self._configure_compact_spinbox(tmax_spin)
+        tmax_spin.valueChanged.connect(self.update_duration_info)
+        tmax_spin.valueChanged.connect(self._confirmation_scope_changed)
 
         window_grid = QGridLayout()
         window_grid.setContentsMargins(0, 2, 0, 0)
         window_grid.setHorizontalSpacing(12)
         window_grid.setVerticalSpacing(8)
         window_grid.addWidget(self._field_label("Start (s)"), 0, 0)
-        window_grid.addWidget(self.tmin_spin, 0, 1)
+        window_grid.addWidget(tmin_spin, 0, 1)
         window_grid.addWidget(self._field_label("End (s)"), 0, 2)
-        window_grid.addWidget(self.tmax_spin, 0, 3)
+        window_grid.addWidget(tmax_spin, 0, 3)
 
         # Duration info label
-        self.duration_label = QLabel()
-        self.duration_label.setObjectName("EpochDialogValue")
-        self.duration_label.setStyleSheet(Stylesheets.DIALOG_INFO_LABEL)
+        duration_label = QLabel()
+        self.duration_label = duration_label
+        duration_label.setObjectName("EpochDialogValue")
+        duration_label.setStyleSheet(Stylesheets.DIALOG_INFO_LABEL)
         window_grid.addWidget(self._field_label("Duration"), 1, 0)
-        window_grid.addWidget(self.duration_label, 1, 1, 1, 3)
+        window_grid.addWidget(duration_label, 1, 1, 1, 3)
 
         window_evidence = str(self.epoch_context.get("window_evidence") or "").strip()
         if window_evidence:
@@ -441,16 +452,18 @@ class EpochingDialog(BaseDialog):
             window_grid.addWidget(evidence_label, 2, 1, 1, 3)
 
         # Warning label (must be created before update_duration_info is called)
-        self.warning_label = QLabel()
-        self.warning_label.setStyleSheet(Stylesheets.DIALOG_WARNING_LABEL)
-        self.warning_label.setWordWrap(True)
-        window_grid.addWidget(self.warning_label, 3, 0, 1, 4)
+        warning_label = QLabel()
+        self.warning_label = warning_label
+        warning_label.setStyleSheet(Stylesheets.DIALOG_WARNING_LABEL)
+        warning_label.setWordWrap(True)
+        window_grid.addWidget(warning_label, 3, 0, 1, 4)
 
-        self.confirmation_check = QCheckBox()
-        self.confirmation_check.setObjectName("EpochConfirmationCheck")
-        self.confirmation_check.toggled.connect(self._refresh_submit_validity)
-        self.confirmation_check.hide()
-        window_grid.addWidget(self.confirmation_check, 4, 0, 1, 4)
+        confirmation_check = QCheckBox()
+        self.confirmation_check = confirmation_check
+        confirmation_check.setObjectName("EpochConfirmationCheck")
+        confirmation_check.toggled.connect(self._refresh_submit_validity)
+        confirmation_check.hide()
+        window_grid.addWidget(confirmation_check, 4, 0, 1, 4)
         window_grid.setColumnStretch(4, 1)
         param_layout.addLayout(window_grid)
 
@@ -462,26 +475,44 @@ class EpochingDialog(BaseDialog):
 
         # Baseline
         suggested_baseline = self.epoch_context.get("suggested_baseline")
-        baseline_group, baseline_layout = self._build_section_card(
-            "Baseline Correction"
+        baseline_check = self._toggle_button(
+            checked=self._baseline_is_inside_window(suggested_baseline)
+        )
+        self.baseline_check = baseline_check
+        baseline_check.setAccessibleName("Baseline correction")
+        baseline_check.setToolTip("Enable or disable baseline correction.")
+        (
+            baseline_group,
+            self.baseline_title_label,
+            baseline_layout,
+        ) = self._build_section_card(
+            "Baseline Correction",
+            header_action=baseline_check,
         )
         baseline_group.setObjectName("EpochBaselineSection")
-        baseline_help = QLabel(
-            "The average signal in this interval will be removed from each epoch."
-        )
-        baseline_help.setObjectName("EpochDialogEvidence")
-        baseline_help.setWordWrap(True)
-        baseline_layout.addWidget(baseline_help)
-        self.baseline_check = QCheckBox("Apply baseline correction")
-        self.baseline_check.setObjectName("EpochBaselineCheck")
-        self.baseline_check.setChecked(
-            self._baseline_is_inside_window(suggested_baseline)
-        )
-        self.baseline_check.toggled.connect(self.toggle_baseline)
-        baseline_layout.addWidget(self.baseline_check)
+        self.baseline_group = baseline_group
 
-        self.b_min_spin = QDoubleSpinBox()
-        self.b_min_spin.setRange(-300, 300)
+        baseline_content = QWidget()
+        self.baseline_content = baseline_content
+        baseline_content.setObjectName("EpochBaselineContent")
+        baseline_content.setAutoFillBackground(False)
+        baseline_content_layout = QVBoxLayout(baseline_content)
+        baseline_content_layout.setContentsMargins(0, 0, 0, 0)
+        baseline_content_layout.setSpacing(6)
+
+        baseline_help_label = QLabel(
+            "When enabled, the average signal in this interval will be removed "
+            "from each epoch."
+        )
+        self.baseline_help_label = baseline_help_label
+        baseline_help_label.setObjectName("EpochDialogEvidence")
+        baseline_help_label.setWordWrap(True)
+        baseline_content_layout.addWidget(baseline_help_label)
+        baseline_check.toggled.connect(self.toggle_baseline)
+
+        b_min_spin = QDoubleSpinBox()
+        self.b_min_spin = b_min_spin
+        b_min_spin.setRange(-300, 300)
         baseline_min = (
             suggested_baseline[0]
             if isinstance(suggested_baseline, (list, tuple))
@@ -489,11 +520,12 @@ class EpochingDialog(BaseDialog):
             and suggested_baseline[0] is not None
             else -0.2
         )
-        self.b_min_spin.setValue(float(baseline_min))
-        self._configure_compact_spinbox(self.b_min_spin)
+        b_min_spin.setValue(float(baseline_min))
+        self._configure_compact_spinbox(b_min_spin)
 
-        self.b_max_spin = QDoubleSpinBox()
-        self.b_max_spin.setRange(-300, 300)
+        b_max_spin = QDoubleSpinBox()
+        self.b_max_spin = b_max_spin
+        b_max_spin.setRange(-300, 300)
         baseline_max = (
             suggested_baseline[1]
             if isinstance(suggested_baseline, (list, tuple))
@@ -501,28 +533,32 @@ class EpochingDialog(BaseDialog):
             and suggested_baseline[1] is not None
             else 0.0
         )
-        self.b_max_spin.setValue(float(baseline_max))
-        self._configure_compact_spinbox(self.b_max_spin)
-        self.b_min_spin.valueChanged.connect(self._refresh_submit_validity)
-        self.b_max_spin.valueChanged.connect(self._refresh_submit_validity)
+        b_max_spin.setValue(float(baseline_max))
+        self._configure_compact_spinbox(b_max_spin)
+        b_min_spin.valueChanged.connect(self._refresh_submit_validity)
+        b_max_spin.valueChanged.connect(self._refresh_submit_validity)
 
         baseline_grid = QGridLayout()
         baseline_grid.setContentsMargins(0, 0, 0, 0)
         baseline_grid.setHorizontalSpacing(12)
         baseline_grid.setVerticalSpacing(8)
-        baseline_grid.addWidget(self._field_label("Baseline Min (s)"), 0, 0)
-        baseline_grid.addWidget(self.b_min_spin, 0, 1)
-        baseline_grid.addWidget(self._field_label("Baseline Max (s)"), 0, 2)
-        baseline_grid.addWidget(self.b_max_spin, 0, 3)
+        self.baseline_min_label = self._field_label("Baseline Min (s)")
+        baseline_grid.addWidget(self.baseline_min_label, 0, 0)
+        baseline_grid.addWidget(b_min_spin, 0, 1)
+        self.baseline_max_label = self._field_label("Baseline Max (s)")
+        baseline_grid.addWidget(self.baseline_max_label, 0, 2)
+        baseline_grid.addWidget(b_max_spin, 0, 3)
         baseline_grid.setColumnStretch(4, 1)
-        baseline_layout.addLayout(baseline_grid)
-        self.baseline_error_label = QLabel()
-        self.baseline_error_label.setObjectName("EpochBaselineError")
-        self.baseline_error_label.setStyleSheet(Stylesheets.DIALOG_WARNING_LABEL)
-        self.baseline_error_label.setWordWrap(True)
-        self.baseline_error_label.hide()
-        baseline_layout.addWidget(self.baseline_error_label)
-        self.toggle_baseline(self.baseline_check.isChecked())
+        baseline_content_layout.addLayout(baseline_grid)
+        baseline_error_label = QLabel()
+        self.baseline_error_label = baseline_error_label
+        baseline_error_label.setObjectName("EpochBaselineError")
+        baseline_error_label.setStyleSheet(Stylesheets.DIALOG_WARNING_LABEL)
+        baseline_error_label.setWordWrap(True)
+        baseline_error_label.hide()
+        baseline_content_layout.addWidget(baseline_error_label)
+        baseline_layout.addWidget(baseline_content)
+        self.toggle_baseline(baseline_check.isChecked())
 
         content_layout.addWidget(baseline_group)
         layout.addWidget(scroll, stretch=1)
@@ -546,7 +582,12 @@ class EpochingDialog(BaseDialog):
         layout.addLayout(footer)
         self._refresh_submit_validity()
 
-    def _build_section_card(self, title: str) -> tuple[QFrame, QVBoxLayout]:
+    def _build_section_card(
+        self,
+        title: str,
+        *,
+        header_action: QWidget | None = None,
+    ) -> tuple[QFrame, QLabel, QVBoxLayout]:
         card = QFrame()
         card.setObjectName("EpochSectionCard")
         card.setFrameShape(QFrame.Shape.StyledPanel)
@@ -556,8 +597,16 @@ class EpochingDialog(BaseDialog):
         card_layout.setSpacing(6)
         title_label = QLabel(title)
         title_label.setObjectName("EpochSectionTitle")
-        card_layout.addWidget(title_label)
-        return card, card_layout
+        if header_action is None:
+            card_layout.addWidget(title_label)
+        else:
+            header = QHBoxLayout()
+            header.setContentsMargins(0, 0, 0, 0)
+            header.addWidget(title_label)
+            header.addStretch()
+            header.addWidget(header_action)
+            card_layout.addLayout(header)
+        return card, title_label, card_layout
 
     @staticmethod
     def _field_label(text: str) -> QLabel:
@@ -570,6 +619,24 @@ class EpochingDialog(BaseDialog):
         spinbox.setMinimumWidth(116)
         spinbox.setMaximumWidth(150)
         spinbox.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+
+    @staticmethod
+    def _toggle_button(*, checked: bool) -> QPushButton:
+        button = QPushButton()
+        button.setObjectName("PreprocessToggle")
+        button.setCheckable(True)
+        button.setChecked(checked)
+        button.setAutoDefault(False)
+        button.setDefault(False)
+        button.toggled.connect(
+            lambda _checked, owned=button: EpochingDialog._sync_toggle_text(owned)
+        )
+        EpochingDialog._sync_toggle_text(button)
+        return button
+
+    @staticmethod
+    def _sync_toggle_text(button: QPushButton) -> None:
+        button.setText("On" if button.isChecked() else "Off")
 
     def _build_import_hint_card(self) -> QFrame:
         card = QFrame()
@@ -856,11 +923,24 @@ class EpochingDialog(BaseDialog):
             background-color: transparent;
             color: #bac2cc;
         }
+        QLabel#EpochDialogEvidence:disabled,
+        QLabel#EpochFieldLabel:disabled {
+            color: #7f8791;
+        }
         QFrame#EpochSectionCard,
         QFrame#EpochBaselineSection {
             background: #222426;
             border: 1px solid #3b3f45;
             border-radius: 6px;
+        }
+        QFrame#EpochBaselineSection[baselineEnabled="false"] {
+            background: #202124;
+            border-color: #363a40;
+        }
+        QWidget#EpochBaselineContent,
+        QWidget#EpochBaselineContent:disabled {
+            background-color: transparent;
+            border: none;
         }
         QLabel#EpochSectionTitle {
             background-color: transparent;
@@ -948,6 +1028,7 @@ class EpochingDialog(BaseDialog):
             min-width: 84px;
         }
         """
+            + preprocess_toggle_stylesheet()
         )
 
     def toggle_baseline(self, checked):
@@ -957,10 +1038,20 @@ class EpochingDialog(BaseDialog):
             checked: Whether baseline correction is enabled.
 
         """
-        if self.b_min_spin:
-            self.b_min_spin.setEnabled(checked)
-        if self.b_max_spin:
-            self.b_max_spin.setEnabled(checked)
+        if self.baseline_check is not None:
+            self._sync_toggle_text(self.baseline_check)
+        if self.baseline_content is not None:
+            self.baseline_content.setEnabled(checked)
+        if self.baseline_group is not None:
+            self.baseline_group.setProperty(
+                "baselineEnabled",
+                "true" if checked else "false",
+            )
+            style = self.baseline_group.style()
+            if style is not None:
+                style.unpolish(self.baseline_group)
+                style.polish(self.baseline_group)
+            self.baseline_group.update()
         self._refresh_submit_validity()
 
     def _baseline_is_inside_window(self, value: object) -> bool:

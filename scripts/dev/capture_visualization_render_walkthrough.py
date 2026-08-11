@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 import traceback
+from io import BytesIO
 from pathlib import Path
 from typing import Any, cast
 
@@ -23,7 +24,7 @@ from XBrainLab.ui.qt_runtime import configure_qt_platform_for_runtime
 
 configure_qt_platform_for_runtime()
 
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QBuffer, QIODevice, QTimer
 from PyQt6.QtGui import QColor, QPixmap
 from PyQt6.QtWidgets import QApplication, QLabel, QMessageBox, QWidget
 
@@ -36,6 +37,10 @@ from scripts.dev.capture_chatpanel_local_training_completion_walkthrough import 
     write_synthetic_training_raw_fif,
 )
 from scripts.dev.capture_chatpanel_local_walkthrough import is_nearly_black
+from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
+    collect_source_identity,
+    validate_source_identity,
+)
 from scripts.dev.ui_navigation import open_workflow_panel
 from XBrainLab.backend.application import (
     ApplyMontageCommand,
@@ -77,7 +82,7 @@ THREE_D_TAB_SPECS: list[dict[str, str]] = [
         "tab": "3D Plot",
         "screenshot": "visualization-render-3d-blocked.png",
         "interactive_screenshot": "visualization-render-3d-interactive.png",
-        "expected_reason": "Saliency Map, Spectrogram, or Topographic Map",
+        "expected_reason": "Set a 3D montage before opening the 3D plot.",
     },
 ]
 UNCAUGHT_EXCEPTIONS: list[str] = []
@@ -245,6 +250,7 @@ def run_visualization_render_walkthrough(
     _install_uncaught_exception_capture()
     _set_deterministic_capture_seed()
     started_at = time.monotonic()
+    source_identity_at_start = collect_source_identity(ROOT, refresh=True)
     _clear_saved_main_window_geometry()
     source_path = write_synthetic_training_raw_fif()
     study = Study()
@@ -258,6 +264,10 @@ def run_visualization_render_walkthrough(
     payload: dict[str, Any] = {
         "status": "running",
         "failure_reason": "",
+        "source_identity_at_start": source_identity_at_start,
+        "source_identity_at_completion": {},
+        "source_identity": {},
+        "source_capture": {},
         "artifact_metadata": _artifact_metadata_for_runtime(three_d_runtime),
         "source_path": str(source_path),
         "training_output_dir": str(training_output_dir),
@@ -355,6 +365,7 @@ def run_visualization_render_walkthrough(
 
     payload["final_state"] = service.get_state().to_dict()
     payload["uncaught_exceptions"] = list(UNCAUGHT_EXCEPTIONS)
+    _seal_source_identity(payload)
     ok, reason = validate_visualization_render_payload(payload)
     payload["status"] = "passed" if ok else "failed"
     payload["failure_reason"] = "" if ok else reason
@@ -464,6 +475,9 @@ def _capture_render_tab(
     if callable(draw):
         draw()
         _process_events(app, 100)
+    # Processing the draw can deliver a newer queued render publication. Use
+    # the canvas that is currently owned by the view, not a deleted predecessor.
+    canvas = getattr(widget, "canvas", None)
     evidence = _render_evidence(widget, window)
     explanation_context = _explanation_context_from_panel(panel)
     expected_context = spec["expected_context"]
@@ -511,6 +525,7 @@ def _capture_render_tab(
     )
     return {
         "tab": tab_name,
+        "transform_controls": _transform_control_evidence(panel),
         "screenshot": _artifact_path(screenshot_path),
         "screenshot_sha256": screenshot_sha256,
         "ok": ok,
@@ -775,6 +790,7 @@ def _capture_blocked_tab(
         message_geometry,
         window_size={"width": int(window.width()), "height": int(window.height())},
         require_chromatic_content=True,
+        allow_sparse_foreground=True,
     )
     ok = (
         capture_code == 0
@@ -1186,6 +1202,54 @@ def _control_layout_evidence(panel: Any) -> dict[str, Any]:
     }
 
 
+def _transform_control_evidence(panel: Any) -> dict[str, Any]:
+    """Record tab-specific transform semantics and stable selector geometry."""
+    layout = getattr(panel, "ctrl_layout", None)
+    absolute = getattr(panel, "abs_check", None)
+    normalize = getattr(panel, "normalize_check", None)
+    tabs = getattr(panel, "tabs", None)
+    if layout is None or absolute is None or normalize is None or tabs is None:
+        return {"ok": False, "reason": "transform controls are incomplete"}
+
+    def control_state(widget: Any) -> dict[str, Any]:
+        index = layout.indexOf(widget)
+        grid_position: list[int] = []
+        if index >= 0:
+            row, column, row_span, column_span = layout.getItemPosition(index)
+            grid_position = [row, column, row_span, column_span]
+        return {
+            "visible": bool(widget.isVisibleTo(panel)),
+            "enabled": bool(widget.isEnabled()),
+            "checked": bool(widget.isChecked()),
+            "grid_position": grid_position,
+        }
+
+    return {
+        "ok": True,
+        "tab": tabs.tabText(tabs.currentIndex()),
+        "absolute": control_state(absolute),
+        "normalize": control_state(normalize),
+        "selector_geometry": {
+            name: _widget_rect_relative_to(
+                getattr(panel, f"{name}_combo"),
+                panel.ctrl_bar,
+            )
+            for name in ("plan", "run", "method")
+        },
+        "control_bar_size": [panel.ctrl_bar.width(), panel.ctrl_bar.height()],
+    }
+
+
+def _widget_rect_relative_to(widget: Any, ancestor: Any) -> list[int]:
+    top_left = widget.mapTo(ancestor, widget.rect().topLeft())
+    return [
+        int(top_left.x()),
+        int(top_left.y()),
+        int(widget.width()),
+        int(widget.height()),
+    ]
+
+
 def _global_widget_rect(widget: Any) -> dict[str, int]:
     rect = widget.rect()
     top_left = widget.mapToGlobal(rect.topLeft())
@@ -1286,6 +1350,9 @@ def validate_visualization_render_payload(
     payload: dict[str, Any],
 ) -> tuple[bool, str]:
     """Validate source -> tiny train -> real VisualizationPanel render evidence."""
+    source_ok, source_reason = _validate_exact_source_capture(payload)
+    if not source_ok:
+        return False, source_reason
     if not payload.get("dataset_preparation", {}).get("ok"):
         return False, "Dataset preparation failed."
     if payload.get("uncaught_exceptions"):
@@ -1339,6 +1406,9 @@ def validate_visualization_render_payload(
             return False, "Final state does not have montage for topographic render."
 
     renders = {item.get("tab"): item for item in payload.get("renders", [])}
+    transform_ok, transform_reason = _validate_transform_control_evidence(renders)
+    if not transform_ok:
+        return False, transform_reason
     screenshot_digests: dict[str, str] = {}
     for spec in RENDER_TAB_SPECS:
         tab = spec["tab"]
@@ -1418,6 +1488,95 @@ def validate_visualization_render_payload(
             return False, reason
     else:
         return False, "3D runtime contract is missing or invalid."
+    return True, ""
+
+
+def _validate_exact_source_capture(payload: dict[str, Any]) -> tuple[bool, str]:
+    start = payload.get("source_identity_at_start")
+    completion = payload.get("source_identity_at_completion")
+    recorded = payload.get("source_identity")
+    if not isinstance(start, dict) or not isinstance(completion, dict):
+        return False, "Visualization source identity is missing."
+    if not isinstance(recorded, dict) or recorded != completion:
+        return False, "Visualization source identity does not match completion."
+    if start.get("source_digest") != completion.get("source_digest"):
+        return False, "Visualization source changed during capture."
+    start_ok, start_reason = validate_source_identity(
+        start,
+        expected_repo_root=ROOT,
+        refresh=False,
+        current_identity=completion,
+        artifact_name="Visualization walkthrough",
+    )
+    if not start_ok:
+        return False, start_reason
+    completion_ok, completion_reason = validate_source_identity(
+        completion,
+        expected_repo_root=ROOT,
+        refresh=False,
+        current_identity=completion,
+        artifact_name="Visualization walkthrough completion",
+    )
+    if not completion_ok:
+        return False, completion_reason
+    source_capture = payload.get("source_capture")
+    if not isinstance(source_capture, dict):
+        return False, "Visualization source capture summary is missing."
+    expected_summary = {
+        "branch": completion.get("branch"),
+        "commit_sha": completion.get("commit_sha"),
+        "head_tree_sha": completion.get("head_tree_sha"),
+        "dirty": bool(completion.get("dirty")),
+        "dirty_digest": completion.get("dirty_digest"),
+        "source_content_digest": completion.get("source_content_digest"),
+        "source_digest_at_start": start.get("source_digest"),
+        "source_digest_at_completion": completion.get("source_digest"),
+    }
+    if source_capture != expected_summary:
+        return False, "Visualization source capture summary is inconsistent."
+    return True, ""
+
+
+def _validate_transform_control_evidence(
+    renders: dict[object, dict[str, Any]],
+) -> tuple[bool, str]:
+    states: dict[str, dict[str, Any]] = {}
+    for tab in ("Saliency Map", "Spectrogram", "Topographic Map"):
+        render = renders.get(tab)
+        state = render.get("transform_controls") if isinstance(render, dict) else None
+        if not isinstance(state, dict) or not state.get("ok"):
+            return False, f"{tab} transform control evidence is missing."
+        if state.get("tab") != tab:
+            return False, f"{tab} transform control evidence names the wrong tab."
+        states[tab] = state
+
+    spectrogram = states["Spectrogram"]
+    if bool((spectrogram.get("absolute") or {}).get("visible")):
+        return False, "Spectrogram must keep Absolute hidden."
+    if not bool((spectrogram.get("normalize") or {}).get("visible")):
+        return False, "Spectrogram must keep Normalize visible."
+    if bool((spectrogram.get("absolute") or {}).get("enabled")):
+        return False, "Spectrogram must keep Absolute unavailable."
+
+    for tab in ("Saliency Map", "Topographic Map"):
+        if not bool((states[tab].get("absolute") or {}).get("visible")):
+            return False, f"{tab} Absolute was not restored after Spectrogram."
+        if not bool((states[tab].get("normalize") or {}).get("visible")):
+            return False, f"{tab} did not keep Normalize visible."
+
+    baseline = states["Saliency Map"]
+    baseline_selectors = baseline.get("selector_geometry")
+    baseline_absolute_slot = (baseline.get("absolute") or {}).get("grid_position")
+    baseline_normalize_slot = (baseline.get("normalize") or {}).get("grid_position")
+    for tab, state in states.items():
+        if state.get("selector_geometry") != baseline_selectors:
+            return False, f"{tab} selector geometry jumped across tab changes."
+        if (state.get("absolute") or {}).get("grid_position") != baseline_absolute_slot:
+            return False, f"{tab} changed the Absolute control slot."
+        if (state.get("normalize") or {}).get(
+            "grid_position"
+        ) != baseline_normalize_slot:
+            return False, f"{tab} changed the Normalize control slot."
     return True, ""
 
 
@@ -1638,9 +1797,16 @@ def _capture_matplotlib_window(
 
         draw()
         framebuffer = np.asarray(buffer_rgba()).copy()
-    except Exception as exc:
-        print(f"Failed to read the Matplotlib framebuffer: {exc}", file=sys.stderr)
-        return 3
+    except Exception as matplotlib_error:
+        try:
+            framebuffer = _capture_qt_canvas_framebuffer(canvas)
+        except Exception as qt_error:
+            print(
+                "Failed to read the Matplotlib framebuffer "
+                f"({matplotlib_error}); Qt canvas fallback also failed: {qt_error}",
+                file=sys.stderr,
+            )
+            return 3
 
     parent = canvas.parentWidget()
     layout = parent.layout() if parent is not None else None
@@ -1699,6 +1865,34 @@ def _capture_matplotlib_window(
             print(reason, file=sys.stderr)
             return 2
     return 0
+
+
+def _capture_qt_canvas_framebuffer(canvas: QWidget) -> Any:
+    """Read only the visible canvas when QTAgg has lost its Agg renderer.
+
+    A completed Qt canvas can remain correctly painted after Matplotlib has
+    released the renderer used by ``buffer_rgba``. Capturing the child widget
+    itself preserves that visible product evidence without accepting an
+    all-black whole-window framebuffer from WSLg.
+    """
+    import numpy as np
+    from PIL import Image
+
+    pixmap = canvas.grab()
+    if pixmap.isNull():
+        raise RuntimeError("the Qt canvas pixmap is empty")
+    buffer = QBuffer()
+    if not buffer.open(QIODevice.OpenModeFlag.WriteOnly):
+        raise RuntimeError("the Qt canvas image buffer could not be opened")
+    try:
+        if not pixmap.save(buffer, "PNG"):
+            raise RuntimeError("the Qt canvas pixmap could not be encoded")
+        payload = bytes(buffer.data())
+    finally:
+        buffer.close()
+    with Image.open(BytesIO(payload)) as source:
+        source.load()
+        return np.asarray(source.convert("RGBA")).copy()
 
 
 def _capture_interactive_3d_window(
@@ -1829,6 +2023,7 @@ def _screenshot_region_evidence(
     *,
     window_size: dict[str, int],
     require_chromatic_content: bool,
+    allow_sparse_foreground: bool = False,
 ) -> dict[str, Any]:
     """Measure whether a widget's screenshot region contains visible content."""
     from collections import Counter
@@ -1912,9 +2107,10 @@ def _screenshot_region_evidence(
         )
         / pixel_count
     )
+    minimum_unique_colors = 2 if allow_sparse_foreground else 16
     visually_empty = (
-        unique_color_count < 16
-        or dominant_color_fraction >= 0.98
+        unique_color_count < minimum_unique_colors
+        or (dominant_color_fraction >= 0.98 and not allow_sparse_foreground)
         or near_black_fraction >= 0.85
     )
     missing_chromatic_content = require_chromatic_content and chromatic_fraction < 0.005
@@ -2283,7 +2479,26 @@ def _finish_payload(
         payload["final_state"] = service.get_state().to_dict()
     except Exception:
         payload["final_state"] = {}
+    _seal_source_identity(payload)
     return payload
+
+
+def _seal_source_identity(payload: dict[str, Any]) -> None:
+    completion = collect_source_identity(ROOT, refresh=True)
+    start = payload.get("source_identity_at_start")
+    start_identity = start if isinstance(start, dict) else {}
+    payload["source_identity_at_completion"] = completion
+    payload["source_identity"] = completion
+    payload["source_capture"] = {
+        "branch": completion.get("branch"),
+        "commit_sha": completion.get("commit_sha"),
+        "head_tree_sha": completion.get("head_tree_sha"),
+        "dirty": bool(completion.get("dirty")),
+        "dirty_digest": completion.get("dirty_digest"),
+        "source_content_digest": completion.get("source_content_digest"),
+        "source_digest_at_start": start_identity.get("source_digest"),
+        "source_digest_at_completion": completion.get("source_digest"),
+    }
 
 
 def _command_payload(result: Any) -> dict[str, Any]:

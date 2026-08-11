@@ -1368,3 +1368,116 @@ def test_cuda_oom_detection_matches_common_runtime_errors(monkeypatch) -> None:
     resource_guard.release_cuda_cache()
 
     assert calls == ["empty"]
+
+
+def test_draft_training_preview_keeps_batch_and_warning_empty_when_vram_unknown(
+    monkeypatch,
+) -> None:
+    request = resource_guard.TrainingResourcePreviewRequest(
+        request_generation=3,
+        publication_generation=17,
+        model_name="EEGNet",
+        model_params={},
+        device="cuda:0",
+        batch_size=32,
+        optimizer="Adam",
+    )
+    context = resource_guard.TrainingResourcePreviewContext(
+        input_shape=(22, 256),
+        sample_count=128,
+        class_count=4,
+        sampling_frequency=250.0,
+    )
+    monkeypatch.setattr(
+        resource_guard.ResourceChecker,
+        "get_gpu_vram_status",
+        staticmethod(
+            lambda _gpu_idx=None: {
+                "gpu_name": None,
+                "available_bytes": None,
+                "total_bytes": None,
+                "used_bytes": None,
+                "allocated_bytes": None,
+                "reserved_bytes": None,
+                "gpu_index": 0,
+                "device_count": 1,
+                "reason": "gpu_memory_query_failed",
+                "query_error_type": "RuntimeError",
+            }
+        ),
+    )
+
+    result = resource_guard.preview_training_resources(request, context)
+
+    assert isinstance(result, resource_guard.TrainingResourcePreviewResult)
+    assert result.request_generation == 3
+    assert result.publication_generation == 17
+    assert result.requested_batch_size == 32
+    assert result.suggested_batch_size == 32
+    assert result.vram_known is False
+    assert result.risk_level == resource_guard.RISK_UNKNOWN
+    assert result.warning is None
+
+
+def test_training_resource_preview_request_detaches_and_freezes_model_params() -> None:
+    params = {"nested": {"filters": [8, 16]}}
+    request = resource_guard.TrainingResourcePreviewRequest(
+        request_generation=1,
+        publication_generation=2,
+        model_name="EEGNet",
+        model_params=params,
+        device="cpu",
+        batch_size=16,
+        optimizer="Adam",
+    )
+
+    params["nested"]["filters"].append(32)
+
+    assert request.model_params == {"nested": {"filters": [8, 16]}}
+    with pytest.raises(TypeError):
+        request.model_params["new"] = 1  # type: ignore[index]
+
+
+def test_draft_training_preview_only_reduces_batch_to_known_vram_budget(
+    monkeypatch,
+) -> None:
+    request = resource_guard.TrainingResourcePreviewRequest(
+        request_generation=4,
+        publication_generation=18,
+        model_name=None,
+        model_params={},
+        device="cuda:0",
+        batch_size=64,
+        optimizer="AdamW",
+    )
+    context = resource_guard.TrainingResourcePreviewContext(
+        input_shape=(128, 2_048),
+        sample_count=256,
+        class_count=4,
+        sampling_frequency=250.0,
+    )
+    monkeypatch.setattr(
+        resource_guard.ResourceChecker,
+        "get_gpu_vram_status",
+        staticmethod(
+            lambda _gpu_idx=None: {
+                "gpu_name": "Test GPU",
+                "available_bytes": 256 * 1024**2,
+                "total_bytes": 512 * 1024**2,
+                "used_bytes": 256 * 1024**2,
+                "allocated_bytes": 0,
+                "reserved_bytes": 0,
+                "gpu_index": 0,
+                "device_count": 1,
+                "reason": None,
+                "query_error_type": None,
+            }
+        ),
+    )
+
+    result = resource_guard.preview_training_resources(request, context)
+
+    assert 1 <= result.suggested_batch_size < request.batch_size
+    assert result.suggested_batch_size & (result.suggested_batch_size - 1) == 0
+    assert result.vram_known is True
+    assert result.estimated_vram_bytes > 0

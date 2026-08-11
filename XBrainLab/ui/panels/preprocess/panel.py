@@ -209,7 +209,9 @@ class PreprocessPanel(BasePanel):
 
     def closeEvent(self, event) -> None:  # noqa: N802
         """Quiesce native plot callbacks before Qt tears down the panel."""
-        self.preview_widget.prepare_for_shutdown()
+        if not self.preview_widget.finalize_native_plot_shutdown():
+            event.ignore()
+            return
         self.cleanup()
         super().closeEvent(event)
 

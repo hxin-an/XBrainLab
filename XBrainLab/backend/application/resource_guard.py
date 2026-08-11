@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import math
 import os
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from contextlib import suppress
+from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import Enum
 from importlib import import_module
 from itertools import islice
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from XBrainLab.backend.utils.cuda_errors import (
@@ -161,6 +163,219 @@ class ResourceCheckResult:
             "message": self.message,
             "suggestions": list(self.suggestions),
         }
+
+
+@dataclass(frozen=True, slots=True)
+class TrainingResourceRefinement:
+    """Typed provenance for one estimator-adjusted draft field."""
+
+    field: str
+    requested_value: int
+    refined_value: int
+    source: str = "resource_adjusted"
+    reason_code: str = "available_vram"
+
+    def __post_init__(self) -> None:
+        if self.field != "batch_size":
+            raise ValueError("Only batch_size resource refinement is supported.")
+        for field_name in ("requested_value", "refined_value"):
+            value = getattr(self, field_name)
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"{field_name} must be a positive integer.")
+        if self.refined_value >= self.requested_value:
+            raise ValueError("A resource refinement must reduce the requested value.")
+        if self.source != "resource_adjusted":
+            raise ValueError("Resource refinement source is invalid.")
+        if not str(self.reason_code).strip():
+            raise ValueError("Resource refinement reason_code cannot be empty.")
+
+    @classmethod
+    def batch_size(
+        cls,
+        *,
+        requested: int,
+        refined: int,
+    ) -> TrainingResourceRefinement:
+        """Build the supported batch-size refinement contract."""
+        return cls(
+            field="batch_size",
+            requested_value=requested,
+            refined_value=refined,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class TrainingResourcePreviewReceipt:
+    """Opaque proof that one exact advisory preview was accepted by the host."""
+
+    token: str
+    request_generation: int
+    publication_generation: int
+    requested_batch_size: int
+    suggested_batch_size: int
+
+    def __post_init__(self) -> None:
+        if not str(self.token).strip():
+            raise ValueError("Training resource preview receipt token cannot be empty.")
+        for field_name in (
+            "request_generation",
+            "publication_generation",
+            "requested_batch_size",
+            "suggested_batch_size",
+        ):
+            value = getattr(self, field_name)
+            minimum = 0 if field_name.endswith("generation") else 1
+            if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+                raise ValueError(f"{field_name} is invalid.")
+
+
+@dataclass(frozen=True, slots=True)
+class TrainingResourcePreviewRequest:
+    """Only user-editable draft settings for a non-authoritative estimate."""
+
+    request_generation: int
+    publication_generation: int
+    model_name: str | None
+    model_params: Mapping[str, Any]
+    device: str
+    batch_size: int
+    optimizer: str
+
+    def __post_init__(self) -> None:
+        for field_name in ("request_generation", "publication_generation"):
+            value = getattr(self, field_name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{field_name} must be a non-negative integer.")
+        if (
+            isinstance(self.batch_size, bool)
+            or not isinstance(self.batch_size, int)
+            or self.batch_size <= 0
+        ):
+            raise ValueError("batch_size must be a positive integer.")
+        device = str(self.device).strip().lower()
+        if device not in {"auto", "cpu", "cuda", "gpu"} and not device.startswith(
+            "cuda:"
+        ):
+            raise ValueError("device must identify CPU, auto, or a CUDA device.")
+        optimizer = str(self.optimizer).strip()
+        if not optimizer:
+            raise ValueError("optimizer cannot be empty.")
+        model_name = None if self.model_name is None else str(self.model_name).strip()
+        if self.model_name is not None and not model_name:
+            raise ValueError("model_name cannot be empty when provided.")
+        object.__setattr__(self, "device", device)
+        object.__setattr__(self, "optimizer", optimizer)
+        object.__setattr__(self, "model_name", model_name)
+        object.__setattr__(
+            self,
+            "model_params",
+            MappingProxyType(deepcopy(dict(self.model_params))),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class TrainingResourcePreviewContext:
+    """Application-owned epoch facts used by the resource estimator."""
+
+    input_shape: tuple[int, int]
+    sample_count: int
+    class_count: int
+    sampling_frequency: float
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.input_shape, tuple)
+            or len(self.input_shape) != 2
+            or any(
+                isinstance(value, bool) or not isinstance(value, int) or value <= 0
+                for value in self.input_shape
+            )
+        ):
+            raise ValueError(
+                "input_shape must contain positive channel and sample counts."
+            )
+        for field_name in ("sample_count", "class_count"):
+            value = getattr(self, field_name)
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"{field_name} must be a positive integer.")
+        if (
+            isinstance(self.sampling_frequency, bool)
+            or not isinstance(self.sampling_frequency, (int, float))
+            or not math.isfinite(float(self.sampling_frequency))
+            or self.sampling_frequency <= 0
+        ):
+            raise ValueError("sampling_frequency must be positive and finite.")
+        object.__setattr__(self, "sampling_frequency", float(self.sampling_frequency))
+
+
+@dataclass(frozen=True, slots=True)
+class TrainingResourcePreviewResult:
+    """Typed advisory result for one exact draft request generation."""
+
+    request_generation: int
+    publication_generation: int
+    requested_batch_size: int
+    suggested_batch_size: int
+    estimated_vram_bytes: int
+    available_vram_bytes: int | None
+    risk_level: str
+    vram_known: bool
+    warning: str | None = None
+    refinement: TrainingResourceRefinement | None = None
+    receipt: TrainingResourcePreviewReceipt | None = None
+    model_parameter_estimate_reliable: bool = False
+    model_parameter_estimate_source: str = "unavailable"
+
+    def __post_init__(self) -> None:
+        for field_name in ("request_generation", "publication_generation"):
+            value = getattr(self, field_name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{field_name} must be a non-negative integer.")
+        for field_name in (
+            "requested_batch_size",
+            "suggested_batch_size",
+            "estimated_vram_bytes",
+        ):
+            value = getattr(self, field_name)
+            minimum = 0 if field_name == "estimated_vram_bytes" else 1
+            if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+                raise ValueError(f"{field_name} is invalid.")
+        if self.available_vram_bytes is not None and (
+            isinstance(self.available_vram_bytes, bool)
+            or not isinstance(self.available_vram_bytes, int)
+            or self.available_vram_bytes < 0
+        ):
+            raise ValueError("available_vram_bytes is invalid.")
+        if self.suggested_batch_size > self.requested_batch_size:
+            raise ValueError("A draft resource preview cannot increase batch size.")
+        if self.risk_level not in {
+            RISK_SAFE,
+            RISK_WARNING,
+            RISK_BLOCKING,
+            RISK_UNKNOWN,
+        }:
+            raise ValueError("risk_level is invalid.")
+        if self.vram_known != (self.available_vram_bytes is not None):
+            raise ValueError("vram_known must match available_vram_bytes.")
+        if (
+            self.suggested_batch_size < self.requested_batch_size
+            and self.risk_level == RISK_SAFE
+        ):
+            raise ValueError("A safe preview cannot reduce batch size.")
+        if self.refinement is not None and (
+            self.refinement.requested_value != self.requested_batch_size
+            or self.refinement.refined_value != self.suggested_batch_size
+        ):
+            raise ValueError("Resource refinement must match the preview batch values.")
+        if self.receipt is not None and (
+            self.receipt.request_generation != self.request_generation
+            or self.receipt.publication_generation != self.publication_generation
+            or self.receipt.requested_batch_size != self.requested_batch_size
+            or self.receipt.suggested_batch_size != self.suggested_batch_size
+        ):
+            raise ValueError("Resource preview receipt must match the result.")
+        if not str(self.model_parameter_estimate_source).strip():
+            raise ValueError("model_parameter_estimate_source cannot be empty.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1313,6 +1528,188 @@ def estimate_training_resources(
             "safety_margin"
         ),
     }
+
+
+@dataclass(slots=True)
+class _DraftArray:
+    nbytes: int
+    shape: tuple[int, ...]
+
+
+@dataclass(slots=True)
+class _DraftEpochData:
+    context: TrainingResourcePreviewContext
+
+    def get_data(self) -> _DraftArray:
+        channels, samples = self.context.input_shape
+        return _DraftArray(
+            nbytes=(
+                self.context.sample_count
+                * channels
+                * samples
+                * TRAINING_INPUT_DTYPE_BYTES
+            ),
+            shape=(self.context.sample_count, channels, samples),
+        )
+
+    def get_label_list(self) -> _DraftArray:
+        return _DraftArray(
+            nbytes=self.context.sample_count * TRAINING_INPUT_DTYPE_BYTES,
+            shape=(self.context.sample_count,),
+        )
+
+    def get_label_number(self) -> int:
+        return self.context.class_count
+
+    def get_model_args(self) -> dict[str, int | float]:
+        channels, samples = self.context.input_shape
+        return {
+            "n_classes": self.context.class_count,
+            "channels": channels,
+            "samples": samples,
+            "sfreq": self.context.sampling_frequency,
+        }
+
+
+@dataclass(slots=True)
+class _DraftDataset:
+    epoch_data: _DraftEpochData
+
+    def get_epoch_data(self) -> _DraftEpochData:
+        return self.epoch_data
+
+
+@dataclass(slots=True)
+class _DraftTrainingOption:
+    bs: int
+    optim: str
+    repeat_num: int = 1
+
+
+def preview_training_resources(
+    request: TrainingResourcePreviewRequest,
+    context: TrainingResourcePreviewContext,
+    *,
+    model_holder: Any | None = None,
+) -> TrainingResourcePreviewResult:
+    """Estimate one draft without changing saved training configuration.
+
+    This query is advisory. The start-training resource preflight remains the
+    authoritative admission check and is intentionally not reused here.
+    """
+    if not isinstance(request, TrainingResourcePreviewRequest):
+        raise TypeError("request must be a TrainingResourcePreviewRequest")
+    if not isinstance(context, TrainingResourcePreviewContext):
+        raise TypeError("context must be a TrainingResourcePreviewContext")
+    if request.device == "cpu":
+        return TrainingResourcePreviewResult(
+            request_generation=request.request_generation,
+            publication_generation=request.publication_generation,
+            requested_batch_size=request.batch_size,
+            suggested_batch_size=request.batch_size,
+            estimated_vram_bytes=0,
+            available_vram_bytes=None,
+            risk_level=RISK_SAFE,
+            vram_known=False,
+            warning=None,
+        )
+
+    dataset = _DraftDataset(_DraftEpochData(context))
+    option = _DraftTrainingOption(
+        bs=request.batch_size,
+        optim=request.optimizer,
+    )
+    estimate = estimate_training_resources(
+        [dataset],
+        option,
+        model_holder=model_holder,
+    )
+    estimated_vram = int(estimate["estimated_gpu_batch_working_set_bytes"])
+    gpu_index = _gpu_index_from_device(request.device)
+    vram = ResourceChecker.get_gpu_vram_status(gpu_index)
+    available = vram.get("available_bytes")
+    if available is None:
+        return TrainingResourcePreviewResult(
+            request_generation=request.request_generation,
+            publication_generation=request.publication_generation,
+            requested_batch_size=request.batch_size,
+            suggested_batch_size=request.batch_size,
+            estimated_vram_bytes=estimated_vram,
+            available_vram_bytes=None,
+            risk_level=RISK_UNKNOWN,
+            vram_known=False,
+            warning=None,
+            model_parameter_estimate_reliable=bool(
+                estimate.get("model_parameter_estimate_reliable")
+            ),
+            model_parameter_estimate_source=str(
+                estimate.get("model_parameter_estimate_source") or "unavailable"
+            ),
+        )
+
+    available_bytes = max(int(available), 0)
+    warning_budget = int(available_bytes * VRAM_WARNING_RATIO)
+    blocking_budget = int(available_bytes * VRAM_BLOCKING_RATIO)
+    if estimated_vram >= blocking_budget:
+        risk_level = RISK_BLOCKING
+    elif estimated_vram >= warning_budget:
+        risk_level = RISK_WARNING
+    else:
+        risk_level = RISK_SAFE
+
+    suggested_batch = request.batch_size
+    if risk_level != RISK_SAFE:
+        peak_samples = max(int(estimate.get("peak_batch_samples") or 1), 1)
+        variable_before_margin = sum(
+            int(estimate.get(key) or 0)
+            for key in ("peak_batch_bytes", "activation_bytes", "logits_bytes")
+        )
+        before_margin = int(estimate.get("estimated_gpu_before_margin_bytes") or 0)
+        fixed_before_margin = max(before_margin - variable_before_margin, 0)
+        variable_per_sample = variable_before_margin / peak_samples
+        candidate = 1 << (request.batch_size.bit_length() - 1)
+        if candidate == request.batch_size:
+            candidate //= 2
+        candidate = max(candidate, 1)
+        while candidate > 1:
+            candidate_estimate = math.ceil(
+                (fixed_before_margin + variable_per_sample * candidate)
+                * VRAM_SAFETY_MARGIN
+            )
+            if candidate_estimate < warning_budget:
+                break
+            candidate //= 2
+        suggested_batch = min(request.batch_size, max(candidate, 1))
+
+    warning = None
+    refinement = None
+    if suggested_batch < request.batch_size:
+        warning = (
+            f"Available GPU memory suggests batch size {suggested_batch} for this "
+            "draft. Start Training will run the final resource check."
+        )
+        refinement = TrainingResourceRefinement.batch_size(
+            requested=request.batch_size,
+            refined=suggested_batch,
+        )
+    return TrainingResourcePreviewResult(
+        request_generation=request.request_generation,
+        publication_generation=request.publication_generation,
+        requested_batch_size=request.batch_size,
+        suggested_batch_size=suggested_batch,
+        estimated_vram_bytes=estimated_vram,
+        available_vram_bytes=available_bytes,
+        risk_level=risk_level,
+        vram_known=True,
+        warning=warning,
+        refinement=refinement,
+        model_parameter_estimate_reliable=bool(
+            estimate.get("model_parameter_estimate_reliable")
+        ),
+        model_parameter_estimate_source=str(
+            estimate.get("model_parameter_estimate_source") or "unavailable"
+        ),
+    )
 
 
 def available_ram_bytes() -> int | None:

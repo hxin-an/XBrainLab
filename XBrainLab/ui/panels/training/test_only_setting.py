@@ -86,7 +86,8 @@ class TestOnlySettingWindow(BaseDialog):
         """Open the device-selection dialog and update the label."""
         setter = DeviceSettingDialog(self)
         if setter.exec() == QDialog.DialogCode.Accepted:
-            self.use_cpu, self.gpu_idx = setter.get_result()
+            use_cpu, self.gpu_idx = setter.get_result()
+            self.use_cpu = bool(use_cpu)
             self.dev_label.setText(parse_device_name(self.use_cpu, self.gpu_idx))
 
     def set_output_dir(self):

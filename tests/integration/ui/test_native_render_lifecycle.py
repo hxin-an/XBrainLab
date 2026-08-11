@@ -65,6 +65,8 @@ def test_real_eeg_panel_switching_exits_without_native_abort():
     assert result["saliency_workers_released"] == 8
     assert result["saliency_signals_released"] == 8
     assert result["saliency_gui_heartbeat_ticks"] >= 8
+    assert result["active_render_owned_before_close"] is True
+    assert result["active_render_owner"] == "publication_preparation"
     assert result["active_render_close_fenced"] is True
     assert result["active_render_close_completed"] is True
     assert result["pool_drained_before_close"] is True
@@ -93,7 +95,13 @@ def test_real_eeg_panel_switching_exits_without_native_abort():
     )
     assert result["product_2d_view_names"] == expected_2d_view_names
     assert result["product_saliency_publications_primed"] == 1
-    assert result["product_saliency_publications_served"] == 0
+    expected_publication_transitions = (
+        0 if safe_headless_macos else expected_2d_renders - 1
+    )
+    assert (
+        result["product_saliency_publications_served"]
+        == expected_publication_transitions
+    )
     assert result["product_2d_renders_installed"] == expected_2d_renders
     assert result["product_2d_loading_cleared"] == expected_2d_renders
     assert result["product_2d_replaced_resources_released"] == expected_2d_renders

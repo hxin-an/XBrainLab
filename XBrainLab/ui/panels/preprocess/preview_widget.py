@@ -71,6 +71,7 @@ class PreviewWidget(QWidget):
         """
         super().__init__(parent)
         self._native_plot_shutdown = False
+        self._native_plot_finalized = False
         self._plot_items_attached = False
         self.init_ui()
         self._plot_items_attached = True
@@ -532,7 +533,7 @@ class PreviewWidget(QWidget):
 
     def prepare_for_shutdown(self) -> None:
         """Quiesce callbacks and detach items before native ViewBox destruction."""
-        if self._native_plot_shutdown:
+        if self._native_plot_shutdown or self._native_plot_finalized:
             return
         self._native_plot_shutdown = True
         self.plot_timer.stop()
@@ -551,9 +552,32 @@ class PreviewWidget(QWidget):
                 viewport.setUpdatesEnabled(False)
         self._detach_owned_plot_items()
 
+    def finalize_native_plot_shutdown(self) -> bool:
+        """Close PyQtGraph roots in their supported axis-before-scene order."""
+        if self._native_plot_finalized:
+            return True
+        self.prepare_for_shutdown()
+        for plot_name in ("plot_time", "plot_freq"):
+            plot = getattr(self, plot_name, None)
+            if plot is None or sip.isdeleted(plot):
+                continue
+            if getattr(plot, "plotItem", None) is None:
+                continue
+            try:
+                plot.close()
+            except RuntimeError as exc:
+                if "has been deleted" not in str(exc):
+                    return False
+        self._native_plot_finalized = True
+        return True
+
     def resume_after_cancelled_shutdown(self) -> None:
         """Restore plot callbacks when an application close is cancelled."""
-        if not self._native_plot_shutdown or not self._attach_owned_plot_items():
+        if (
+            self._native_plot_finalized
+            or not self._native_plot_shutdown
+            or not self._attach_owned_plot_items()
+        ):
             return
         self.proxy_time = self._create_mouse_proxy(
             self.plot_time,
@@ -574,7 +598,9 @@ class PreviewWidget(QWidget):
 
     def closeEvent(self, event) -> None:  # noqa: N802
         """Release deferred plot callbacks before the widget hierarchy closes."""
-        self.prepare_for_shutdown()
+        if not self.finalize_native_plot_shutdown():
+            event.ignore()
+            return
         super().closeEvent(event)
 
     def _owned_plot_item_bindings(

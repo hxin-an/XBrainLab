@@ -70,7 +70,7 @@ equivalent owner 則重新雜湊下載檔案 manifest。Receipt 與 evidence 分
 | Candidate checkout | 由 `git rev-parse --show-toplevel` 和 generated evidence 記錄，不在 canonical docs 寫死本機 path。 |
 | Product baseline | `main` |
 | Current candidate | 不在 canonical docs 寫死 branch；只有目前 task PR 的 pushed exact head 可成為候選。 |
-| Baseline | `main@b3a87e3996585ebb09ae46335da82d234ae70249` |
+| Baseline | `main@6c09c6a17bda63ec92dfa4f848bb11e995dc2da0` |
 | Closure state | Local validation candidate；exact-head CI / Windows acceptance pending；not release-ready；Assistant not ready；not product complete |
 | Data Import artifacts | Tracked folder is a dirty checkpoint；read its manifest for source identity and never treat it as current candidate evidence |
 | Required authority | 本頁與 [Now](../planning/now.md)；舊 product-quality goal / audit 只作歷史 provenance。 |
@@ -265,16 +265,18 @@ artifacts 仍是必須另行檢查的 evidence。
 exact-head CI 成功並完成規定 gate 後，才能經 PR 回到 `main`；這不表示產品、Assistant、效能、
 資料格式、Windows acceptance 或 release gate 已完成。
 
-## Historical EEG Workflow Improvements Checkpoint
+## Historical EEG Workflow And Product Polish Checkpoints
 
-下列數字是 PR #12 合併前的 provenance；該 PR 已進入 `main`，舊
-`integration/eeg-workflow-improvements-v1` 不是 current candidate，也不能把這些舊 local totals
-當作目前 task evidence。當時整合的五項改進是：curated
-Braindecode model catalog、BIDS scan 前 subject selection、training test accuracy curve、
-backend-admitted cross-fold Evaluation summary，以及 cross-fold Saliency summary / detached display
-normalization。Local focused backend `74 passed`、focused UI `204 passed`、public IO/BIDS/cross-source
-integration `40 passed`、representative EEGNet pipeline `2 passed`；strict format matrix 為 `20/20`
-lifecycle cases、`14/14` required formats，strict cross-source runner 為 `4/4` required cases
+先前 `integration/eeg-workflow-improvements-v1` 的 curated Braindecode model catalog、BIDS scan 前
+subject selection、training test accuracy curve、backend-admitted cross-fold Evaluation summary，
+以及 cross-fold Saliency summary / detached display normalization 已由 PR #12 進入 `main`。後續
+import terminal feedback、BIDS montage preparation、Epoch baseline interaction、Training draft resource
+preview / optimizer contract 與 position-dependent Visualization gates 已由 PR #14 進入 `main`。
+合併前 checkpoint 的 backend full unit `5007 passed`、
+UI full unit `2586 passed`、architecture unit `291 passed`、focused Application/BIDS/Epoch/product
+walkthrough `38 passed`、required IO/BIDS/cross-source integration `41 passed`、representative EEGNet
+pipeline `2 passed`；strict format matrix 為 `20/20` lifecycle cases、`14/14` required formats，
+strict cross-source runner 為 `4/4` required cases
 （PhysioNet EDF / BBCI GDF training；SCCN SET / MNE CNT import/preprocess boundary）。本輪後續 contract closure
 另涵蓋 selected-run BIDS label recommendation、mixed-sampling epoch fail-closed 與 resample recovery、
 deferred split publication / rollback，以及逐欄位 manual provenance 的 deterministic training
@@ -283,19 +285,11 @@ Independent source review additionally found and closed stable model-ID loss at 
 boundary and subject-cohort conflation in cross-fold summaries; their red-first regressions and
 expanded adjacent suite passed before this checkpoint was updated.
 
-The final local working-tree closure reran the complete backend unit shard (`4935 passed`) and the
-active non-MCP integration tree (`476 passed`). The latter includes the strict Data Interpretation
-matrix, required public multi-source fixtures, ApplicationService import/preprocess/epoch/split/train
-flows, and the human-like product walkthrough artifact. Focused real-fixture UI acceptance covering
-GDF, SET, CNT, BrainVision, EDF, and OpenNeuro P300 BIDS passed (`22 passed`), as did the final
-walkthrough artifact (`1 passed`). Ruff, Ruff format, architecture compliance, and MkDocs strict also
-passed locally.
-
-Configured full-source Basedpyright is **not clean**: it currently reports `234 errors` and `1 warning`,
-primarily existing PyQt dynamic-widget optionality and Matplotlib canvas typing debt. Therefore this
-checkpoint does not claim the static/quality handoff gate or handoff-ready status. The totals above are
-working-tree evidence until the candidate is committed, pushed, and rerun at the exact head; Windows
-interaction acceptance and the deferred 20-scenario product gate also remain open.
+Ruff、Ruff format、configured product-source Basedpyright（`0 errors, 0 warnings`）、architecture
+compliance 與 current-source UI artifact generation pass locally。這些仍是 working-tree evidence；
+候選必須 commit、整合最新 `main`、push，並在該 exact head 取得成功 CI，才能形成 Windows 人工
+驗收候選。Windows interaction acceptance、Assistant readiness 與延後的 20-scenario product gate
+仍然開放。
 
 The first exact-head run after fixing the required fixture profile proved the public multi-dataset
 job itself, but its Windows/Linux/macOS general jobs failed on stale display-name assertions, eager

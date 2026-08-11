@@ -1802,6 +1802,9 @@ class DataInterpretationPreviewDialog(
 
         if self._review_restore_size is None:
             self._review_restore_size = QSize(self.size())
+        restore_size = self._review_restore_size
+        if restore_size is None:
+            return
         current_page = self.step_stack.currentWidget()
         viewport = self.scroll_area.viewport()
         if current_page is None or viewport is None or viewport.height() <= 0:
@@ -1817,7 +1820,7 @@ class DataInterpretationPreviewDialog(
         # wrapped review rows by a few pixels; using that transient height makes
         # the text look compressed until the report is expanded and collapsed.
         desired_height = max(content_height + chrome_height + 8, 560)
-        restore_height = self._review_restore_size.height()
+        restore_height = restore_size.height()
         collapsed_ceiling = max(560, restore_height - 48)
         if self.import_report_card.isHidden():
             # Native title bars can clamp the working dialog to the screen's

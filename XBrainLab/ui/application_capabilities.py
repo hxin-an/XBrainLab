@@ -45,7 +45,11 @@ if TYPE_CHECKING:
         PreprocessRenderPublication,
         PreprocessRenderRequest,
     )
-    from XBrainLab.backend.application.resource_guard import ResourcePreflightResult
+    from XBrainLab.backend.application.resource_guard import (
+        ResourcePreflightResult,
+        TrainingResourcePreviewRequest,
+        TrainingResourcePreviewResult,
+    )
     from XBrainLab.backend.application.saliency_render import (
         SaliencyRenderPublication,
         SaliencyRenderRequest,
@@ -194,6 +198,13 @@ class TrainingQueryPort(Protocol):
         """Return the backend-owned starting point for Training Setting."""
         ...
 
+    def get_training_resource_preview(
+        self,
+        request: TrainingResourcePreviewRequest,
+    ) -> TrainingResourcePreviewResult:
+        """Return a detached advisory estimate for unsaved draft settings."""
+        ...
+
 
 class TrainingPublicationPort(ApplicationViewPublicationPort, Protocol):
     """Committed state/capability publication port used by Training."""
@@ -326,6 +337,10 @@ class ApplicationUiRuntime(
         """Wait for application-owned background work at lifecycle boundaries."""
         ...
 
+    def close(self) -> bool:
+        """Release the initialized application runtime after workers are idle."""
+        ...
+
 
 @dataclass(frozen=True)
 class _StudyApplicationUiRuntime:
@@ -455,6 +470,12 @@ class _StudyApplicationUiRuntime:
             prospective_model_params=prospective_model_params,
         )
 
+    def get_training_resource_preview(
+        self,
+        request: TrainingResourcePreviewRequest,
+    ) -> TrainingResourcePreviewResult:
+        return self._service().get_training_resource_preview(request)
+
     def subscribe(self, event_name: str, callback: Callable[..., Any]) -> None:
         from XBrainLab.backend.application.view_publication import (  # noqa: PLC0415
             APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
@@ -509,7 +530,28 @@ class _StudyApplicationUiRuntime:
         return self._service().release_shutdown_fence()
 
     def wait_for_background_tasks(self, timeout: float | None = None) -> bool:
+        host = self.desktop_host_ref() if self.desktop_host_ref is not None else None
+        if bool(getattr(host, "_closing_in_progress", False)):
+            from XBrainLab.backend.application.runtime import (  # noqa: PLC0415
+                get_initialized_application_service,
+            )
+
+            service = get_initialized_application_service(self.study)
+            if service is None:
+                return True
+            return service.wait_for_background_tasks(timeout=timeout)
         return self._service().wait_for_background_tasks(timeout=timeout)
+
+    def close(self) -> bool:
+        from XBrainLab.backend.application.runtime import (  # noqa: PLC0415
+            get_initialized_application_service,
+        )
+
+        service = get_initialized_application_service(self.study)
+        if service is None:
+            return True
+        service.close()
+        return bool(service.is_closed)
 
 
 @dataclass(frozen=True)
@@ -1015,6 +1057,25 @@ def application_background_tasks_idle(
         return bool(waiter(timeout=timeout))
     except Exception:
         logger.exception("Could not verify application background task shutdown")
+        return False
+
+
+def close_application_runtime(
+    context: Any,
+    *,
+    runtime: ApplicationUiRuntime | None = None,
+) -> bool:
+    """Close the existing application runtime without constructing a new one."""
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
+        return True
+    closer = getattr(application_runtime, "close", None)
+    if not callable(closer):
+        return True
+    try:
+        return bool(closer())
+    except Exception:
+        logger.exception("Could not finalize the application runtime")
         return False
 
 

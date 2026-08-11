@@ -531,10 +531,22 @@ def test_training_plan_holder_get_loader(base_holder):
 
     torch.testing.assert_close(test_data[0], val_data[0])
     torch.testing.assert_close(test_data[1], val_data[1])
-    with pytest.raises(AssertionError):
-        torch.testing.assert_close(test_data[0], train_data[0])
-    with pytest.raises(AssertionError):
-        torch.testing.assert_close(test_data[1], train_data[1])
+
+    np.testing.assert_array_equal(
+        trainHolder.dataset.indices,
+        np.where(base_holder.dataset.train_mask)[0],
+    )
+    np.testing.assert_array_equal(
+        valHolder.dataset.indices,
+        np.where(base_holder.dataset.val_mask)[0],
+    )
+    np.testing.assert_array_equal(
+        testHolder.dataset.indices,
+        np.where(base_holder.dataset.test_mask)[0],
+    )
+    assert isinstance(trainHolder.sampler, torch.utils.data.RandomSampler)
+    assert isinstance(valHolder.sampler, torch.utils.data.SequentialSampler)
+    assert isinstance(testHolder.sampler, torch.utils.data.SequentialSampler)
 
 
 def test_training_plan_holder_keeps_saliency_empty_until_configured(

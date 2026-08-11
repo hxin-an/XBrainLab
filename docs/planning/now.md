@@ -8,8 +8,9 @@
 
 ## 目前焦點
 
-**以 `main@b3a87e3996585ebb09ae46335da82d234ae70249` 為產品基線，先交付 validation
-control plane；EEG workflow PR #12 與 guidance PR #13 已合併，不再是 active candidate。**
+**以 `main@6c09c6a17bda63ec92dfa4f848bb11e995dc2da0` 為產品基線，先交付 validation
+control plane；EEG workflow PR #12、guidance PR #13 與 import / training / montage polish PR #14
+已合併，不再是 active candidate。**
 
 目前不是 release 或 Assistant handoff-ready。真人資料驗收只涵蓋 Graz 2a GDF 與 OpenNeuro
 ds003061 P300 BIDS 各一個資料集；其餘格式、自動化 evidence 與舊 Agent gate 不可外推。
@@ -25,7 +26,7 @@ exact-head CI 證明控制面可排程且 fail closed；完整 20 個 product sc
 | Worktree | 由 `git rev-parse --show-toplevel` 與 `git branch --show-current` 現場取得；不在文件寫死本機 path。 |
 | Product baseline | `main` |
 | Candidate branch | 不寫死長期 branch；只有目前 task PR 的 pushed exact head 可成為候選。 |
-| Baseline | `main@b3a87e3996585ebb09ae46335da82d234ae70249` |
+| Baseline | `main@6c09c6a17bda63ec92dfa4f848bb11e995dc2da0` |
 | Goal | 先關閉 validation control plane，再以新控制面推進 UI QA 與 guidance closure。 |
 | Historical ledger | [Product Quality Audit - 2026-07-30](../records/product_quality_audit_2026-07-30.md) |
 | Current classification | Local validation PR candidate；exact-head CI pending；not release / not Assistant-ready。 |
@@ -64,6 +65,7 @@ candidate 的完成條件，也不可由現有 recommended-defaults UI 暗示為
 
 | 順序 | 工作 | Exit signal |
 | --- | --- | --- |
+| 0 | Close validation control plane PR #15 | 在最新 `main` 上通過 focused/same-class/static/docs、blind review 與 pushed exact-head CI；不得用舊 SHA evidence。 |
 | 1 | Stabilize teacher-facing GUI/data flow | 針對 GDF、BIDS 與老師新增資料逐一走 import -> preprocess -> epoch -> training；發現 blocker 就用 focused regression 修正。 |
 | 1a | Preserve merged EEG workflow baseline | PR #12 已合併；後續 bug fix 以 main 上的 Braindecode catalog、BIDS subject preselection、test curve、Evaluation / Saliency cross-fold 與 Normalize contract 為 regression baseline，不重啟舊 integration branch。 |
 | 2 | Measure and polish performance | 保留目前 BIDS review latency checkpoint，補 phase timing、fixture manifest、環境、至少 3 samples 的 median/p95；wall-clock ceiling 不和 semantic CI gate 混在一起。再量 load、publication refresh、plots、preprocess 與 training startup。 |

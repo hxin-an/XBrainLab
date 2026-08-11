@@ -358,9 +358,10 @@ class DataSplittingPreviewDialog(BaseDialog):
         self.timer.timeout.connect(self.update_table)
         self.timer.start(500)
 
-        self.preview_debounce_timer = QTimer(self)
-        self.preview_debounce_timer.setSingleShot(True)
-        self.preview_debounce_timer.timeout.connect(self.preview)
+        preview_debounce_timer = QTimer(self)
+        self.preview_debounce_timer = preview_debounce_timer
+        preview_debounce_timer.setSingleShot(True)
+        preview_debounce_timer.timeout.connect(self.preview)
 
         self.preview()
 
@@ -373,23 +374,23 @@ class DataSplittingPreviewDialog(BaseDialog):
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
 
-        self.content_scroll = QScrollArea(self)
-        self.content_scroll.setObjectName("SplitPreviewContentScroll")
-        self.content_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.content_scroll.setWidgetResizable(True)
-        self.content_scroll.setMinimumHeight(260)
-        self.content_scroll.setHorizontalScrollBarPolicy(
+        content_scroll = QScrollArea(self)
+        self.content_scroll = content_scroll
+        content_scroll.setObjectName("SplitPreviewContentScroll")
+        content_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        content_scroll.setWidgetResizable(True)
+        content_scroll.setMinimumHeight(260)
+        content_scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
-        self.content_scroll.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
-        content = QWidget(self.content_scroll)
+        content_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        content = QWidget(content_scroll)
         content.setObjectName("SplitPreviewContent")
-        self.content_layout = QBoxLayout(QBoxLayout.Direction.LeftToRight, content)
-        self.content_layout.setContentsMargins(0, 0, 0, 0)
-        self.content_layout.setSpacing(18)
-        self.content_scroll.setWidget(content)
+        content_layout = QBoxLayout(QBoxLayout.Direction.LeftToRight, content)
+        self.content_layout = content_layout
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(18)
+        content_scroll.setWidget(content)
 
         results_column = QWidget(content)
         results_column.setObjectName("SplitPreviewResultsColumn")
@@ -413,50 +414,52 @@ class DataSplittingPreviewDialog(BaseDialog):
         results_title = QLabel("Split results")
         results_title.setObjectName("SplitPreviewSectionTitle")
         results_layout.addWidget(results_title)
-        self.tree = QTreeWidget()
-        self.tree.setFrameShape(QFrame.Shape.NoFrame)
-        self.tree.setHeaderLabels(["Split", "Train", "Validation", "Test"])
-        header_item = self.tree.headerItem()
+        tree = QTreeWidget()
+        self.tree = tree
+        tree.setFrameShape(QFrame.Shape.NoFrame)
+        tree.setHeaderLabels(["Split", "Train", "Validation", "Test"])
+        header_item = tree.headerItem()
         if header_item is not None:
             for column, tooltip in enumerate(
                 ("Split", "Training rows", "Validation rows", "Test rows")
             ):
                 header_item.setToolTip(column, tooltip)
-        self.tree.setRootIsDecorated(False)
-        self.tree.setAlternatingRowColors(True)
-        self.tree.setUniformRowHeights(True)
-        self.tree.setIndentation(0)
-        self.tree.setRootIsDecorated(False)
-        self.tree.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self.tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.tree.setHorizontalScrollBarPolicy(
+        tree.setRootIsDecorated(False)
+        tree.setAlternatingRowColors(True)
+        tree.setUniformRowHeights(True)
+        tree.setIndentation(0)
+        tree.setRootIsDecorated(False)
+        tree.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        tree.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
-        self.tree.setSizePolicy(
+        tree.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
-        self.tree.setStyleSheet(_RESULT_TREE_STYLE)
-        header = self.tree.header()
+        tree.setStyleSheet(_RESULT_TREE_STYLE)
+        header = tree.header()
         if header is not None:
             header.setStretchLastSection(False)
-            for column in range(self.tree.columnCount()):
+            for column in range(tree.columnCount()):
                 header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
-        results_layout.addWidget(self.tree)
+        results_layout.addWidget(tree)
         self._resize_tree_to_rows()
         left_layout.addWidget(results_group)
 
-        self.content_layout.addWidget(results_column, stretch=3)
+        content_layout.addWidget(results_column, stretch=3)
 
         # Right: Controls
-        self.controls_column = QWidget(content)
-        self.controls_column.setObjectName("SplitPreviewControlsColumn")
-        self.controls_column.setMaximumWidth(320)
-        self.controls_column.setSizePolicy(
+        controls_column = QWidget(content)
+        self.controls_column = controls_column
+        controls_column.setObjectName("SplitPreviewControlsColumn")
+        controls_column.setMaximumWidth(320)
+        controls_column.setSizePolicy(
             QSizePolicy.Policy.Fixed,
             QSizePolicy.Policy.Maximum,
         )
-        right_layout = QVBoxLayout(self.controls_column)
+        right_layout = QVBoxLayout(controls_column)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(12)
         right_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -615,36 +618,39 @@ class DataSplittingPreviewDialog(BaseDialog):
                 row += 1
         right_layout.addWidget(test_group)
 
-        self.content_layout.addWidget(self.controls_column, stretch=0)
-        layout.addWidget(self.content_scroll, stretch=1)
+        content_layout.addWidget(controls_column, stretch=0)
+        layout.addWidget(content_scroll, stretch=1)
 
         footer = QHBoxLayout()
         footer.setContentsMargins(0, 0, 0, 0)
         footer.setSpacing(8)
-        self.preview_status_label = QLabel("")
-        self.preview_status_label.setObjectName("SplitPreviewFailureReason")
-        self.preview_status_label.setWordWrap(True)
-        self.preview_status_label.setSizePolicy(
+        preview_status_label = QLabel("")
+        self.preview_status_label = preview_status_label
+        preview_status_label.setObjectName("SplitPreviewFailureReason")
+        preview_status_label.setWordWrap(True)
+        preview_status_label.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
         )
-        footer.addWidget(self.preview_status_label, stretch=1)
+        footer.addWidget(preview_status_label, stretch=1)
 
-        self.btn_retry = QPushButton("Retry")
-        self.btn_retry.setObjectName("SplitPreviewRetryButton")
-        self.btn_retry.setAutoDefault(False)
-        self.btn_retry.setDefault(False)
-        self.btn_retry.clicked.connect(self._retry_preview)
-        self.btn_retry.hide()
-        footer.addWidget(self.btn_retry)
+        btn_retry = QPushButton("Retry")
+        self.btn_retry = btn_retry
+        btn_retry.setObjectName("SplitPreviewRetryButton")
+        btn_retry.setAutoDefault(False)
+        btn_retry.setDefault(False)
+        btn_retry.clicked.connect(self._retry_preview)
+        btn_retry.hide()
+        footer.addWidget(btn_retry)
 
-        self.btn_confirm = QPushButton("Confirm")
-        self.btn_confirm.setObjectName("PrimaryConfirmButton")
-        self.btn_confirm.setAutoDefault(False)
-        self.btn_confirm.setDefault(False)
-        self.btn_confirm.setMinimumWidth(128)
-        self.btn_confirm.clicked.connect(self.confirm)
-        footer.addWidget(self.btn_confirm)
+        btn_confirm = QPushButton("Confirm")
+        self.btn_confirm = btn_confirm
+        btn_confirm.setObjectName("PrimaryConfirmButton")
+        btn_confirm.setAutoDefault(False)
+        btn_confirm.setDefault(False)
+        btn_confirm.setMinimumWidth(128)
+        btn_confirm.clicked.connect(self.confirm)
+        footer.addWidget(btn_confirm)
         layout.addLayout(footer)
 
     def resizeEvent(self, event) -> None:  # noqa: N802

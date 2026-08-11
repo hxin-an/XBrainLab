@@ -788,32 +788,32 @@ class ModelDownloader(QObject):
         self._active_target = ModelDownloadTarget.create(repo_id, cache_dir)
         self._pending_outcome = None
         self._last_cleanup_snapshot = ProcessCleanupSnapshot(ProcessCleanupPhase.IDLE)
-        self._thread = QThread(self)
-        self.worker = DownloadWorker(
+        thread = QThread(self)
+        worker = DownloadWorker(
             self._active_target.repo_id,
             self._active_target.cache_dir,
             deadline_seconds=self._download_deadline_seconds,
         )
-        self.worker.moveToThread(self._thread)
+        self._thread = thread
+        self.worker = worker
+        worker.moveToThread(thread)
 
         # Connect signals
-        self._thread.started.connect(self.worker.run)
-        self.worker.progress_update.connect(self.progress.emit)
-        self.worker.download_finished.connect(self._record_success)
-        self.worker.download_failed.connect(self._record_failure)
-        self.worker.cleanup_state_changed.connect(self._record_cleanup_state)
-        self.cleanup_retry_requested.connect(self.worker.retry_cleanup)
+        thread.started.connect(worker.run)
+        worker.progress_update.connect(self.progress.emit)
+        worker.download_finished.connect(self._record_success)
+        worker.download_failed.connect(self._record_failure)
+        worker.cleanup_state_changed.connect(self._record_cleanup_state)
+        self.cleanup_retry_requested.connect(worker.retry_cleanup)
 
         # Cleanup
-        self.worker.download_finished.connect(self._thread.quit)
-        self.worker.download_failed.connect(self._thread.quit)
-        self.worker.download_finished.connect(self.worker.deleteLater)
-        self.worker.download_failed.connect(self.worker.deleteLater)
-        self._thread.finished.connect(self._on_thread_finished)
-        self._thread.finished.connect(self._thread.deleteLater)
+        worker.download_finished.connect(thread.quit)
+        worker.download_failed.connect(thread.quit)
+        worker.download_finished.connect(worker.deleteLater)
+        worker.download_failed.connect(worker.deleteLater)
+        thread.finished.connect(self._on_thread_finished)
+        thread.finished.connect(thread.deleteLater)
 
-        thread = self._thread
-        worker = self.worker
         try:
             thread.start()
         except Exception as exc:

@@ -449,37 +449,39 @@ class DataSplittingDialog(BaseDialog):
         layout.setContentsMargins(18, 16, 18, 16)
         layout.setSpacing(14)
 
-        self.content_scroll = QScrollArea()
-        self.content_scroll.setObjectName("DataSplitContentScroll")
-        self.content_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.content_scroll.setMinimumSize(500, 260)
-        self.content_scroll.setWidgetResizable(True)
-        self.content_scroll.setHorizontalScrollBarPolicy(
+        content_scroll = QScrollArea()
+        self.content_scroll = content_scroll
+        content_scroll.setObjectName("DataSplitContentScroll")
+        content_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        content_scroll.setMinimumSize(500, 260)
+        content_scroll.setWidgetResizable(True)
+        content_scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
-        self.content_scroll.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
+        content_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         content_widget = QWidget()
         content_widget.setObjectName("DataSplitContentWidget")
-        self.content_layout = QBoxLayout(QBoxLayout.Direction.LeftToRight)
-        self.content_layout.setContentsMargins(0, 0, 0, 0)
-        self.content_layout.setSpacing(16)
-        content_widget.setLayout(self.content_layout)
-        self.content_scroll.setWidget(content_widget)
+        content_layout = QBoxLayout(QBoxLayout.Direction.LeftToRight)
+        self.content_layout = content_layout
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(16)
+        content_widget.setLayout(content_layout)
+        content_scroll.setWidget(content_widget)
 
         # Left: Preview
-        self.preview_group = QFrame()
-        self.preview_group.setObjectName("DataSplitPreviewGroup")
-        self.preview_group.setFrameShape(QFrame.Shape.NoFrame)
-        left_layout = QVBoxLayout(self.preview_group)
+        preview_group = QFrame()
+        self.preview_group = preview_group
+        preview_group.setObjectName("DataSplitPreviewGroup")
+        preview_group.setFrameShape(QFrame.Shape.NoFrame)
+        left_layout = QVBoxLayout(preview_group)
         left_layout.setContentsMargins(12, 12, 12, 12)
         left_layout.setSpacing(12)
         preview_title = QLabel("Data splitting preview")
         preview_title.setObjectName("DataSplitSectionTitle")
         left_layout.addWidget(preview_title)
-        self.canvas = PreviewCanvas(self)
-        left_layout.addWidget(self.canvas)
+        canvas = PreviewCanvas(self)
+        self.canvas = canvas
+        left_layout.addWidget(canvas)
 
         # Legend
         legend_layout = QHBoxLayout()
@@ -496,19 +498,20 @@ class DataSplittingDialog(BaseDialog):
             legend_layout.addWidget(QLabel(name))
         legend_layout.addStretch(1)
         left_layout.addLayout(legend_layout)
-        self.content_layout.addWidget(self.preview_group, stretch=1)
+        content_layout.addWidget(preview_group, stretch=1)
 
         # Right: Options
-        self.options_group = QFrame()
-        self.options_group.setObjectName("DataSplitOptionsGroup")
-        self.options_group.setFrameShape(QFrame.Shape.NoFrame)
-        self.options_group.setMinimumWidth(260)
-        self.options_group.setMaximumWidth(300)
-        self.options_group.setSizePolicy(
+        options_group = QFrame()
+        self.options_group = options_group
+        options_group.setObjectName("DataSplitOptionsGroup")
+        options_group.setFrameShape(QFrame.Shape.NoFrame)
+        options_group.setMinimumWidth(260)
+        options_group.setMaximumWidth(300)
+        options_group.setSizePolicy(
             QSizePolicy.Policy.Fixed,
             QSizePolicy.Policy.Maximum,
         )
-        right_layout = QVBoxLayout(self.options_group)
+        right_layout = QVBoxLayout(options_group)
         right_layout.setContentsMargins(12, 12, 12, 12)
         right_layout.setSpacing(12)
         right_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -523,57 +526,63 @@ class DataSplittingDialog(BaseDialog):
         form_layout.setColumnStretch(1, 0)
 
         # Training Type
-        self.train_type_combo = QComboBox()
-        self.train_type_combo.addItems([i.value for i in TrainingType])
-        self._configure_split_combo(self.train_type_combo)
-        self.train_type_combo.currentTextChanged.connect(self.update_preview)
+        train_type_combo = QComboBox()
+        self.train_type_combo = train_type_combo
+        train_type_combo.addItems([i.value for i in TrainingType])
+        self._configure_split_combo(train_type_combo)
+        train_type_combo.currentTextChanged.connect(self.update_preview)
         form_layout.addWidget(QLabel("Training"), 0, 0)
-        form_layout.addWidget(self.train_type_combo, 0, 1)
+        form_layout.addWidget(train_type_combo, 0, 1)
 
         # Testing Set
-        self.test_combo = QComboBox()
-        self.test_combo.addItems([i.value for i in SplitByType])
-        self._configure_split_combo(self.test_combo)
-        self.test_combo.setCurrentText(SplitByType.TRIAL.value)
-        self.test_combo.currentTextChanged.connect(self.update_preview)
+        test_combo = QComboBox()
+        self.test_combo = test_combo
+        test_combo.addItems([i.value for i in SplitByType])
+        self._configure_split_combo(test_combo)
+        test_combo.setCurrentText(SplitByType.TRIAL.value)
+        test_combo.currentTextChanged.connect(self.update_preview)
         form_layout.addWidget(QLabel("Testing"), 1, 0)
-        form_layout.addWidget(self.test_combo, 1, 1)
+        form_layout.addWidget(test_combo, 1, 1)
 
         # Validation Set
-        self.val_combo = QComboBox()
-        self.val_combo.addItems([i.value for i in ValSplitByType])
-        self._configure_split_combo(self.val_combo)
-        self.val_combo.setCurrentText(ValSplitByType.TRIAL.value)
-        self.val_combo.currentTextChanged.connect(self.update_preview)
+        val_combo = QComboBox()
+        self.val_combo = val_combo
+        val_combo.addItems([i.value for i in ValSplitByType])
+        self._configure_split_combo(val_combo)
+        val_combo.setCurrentText(ValSplitByType.TRIAL.value)
+        val_combo.currentTextChanged.connect(self.update_preview)
         form_layout.addWidget(QLabel("Validation"), 2, 0)
-        form_layout.addWidget(self.val_combo, 2, 1)
+        form_layout.addWidget(val_combo, 2, 1)
         self._apply_initial_values()
         right_layout.addLayout(form_layout)
 
-        self.cv_check = QCheckBox("Cross validation")
-        self.cv_check.setObjectName("DataSplitCrossValidationCheck")
-        self.cv_check.stateChanged.connect(self.update_preview)
-        right_layout.addWidget(self.cv_check)
+        cv_check = QCheckBox("Cross validation")
+        self.cv_check = cv_check
+        cv_check.setObjectName("DataSplitCrossValidationCheck")
+        cv_check.stateChanged.connect(self.update_preview)
+        right_layout.addWidget(cv_check)
 
-        self.blocked_label = QLabel("")
-        self.blocked_label.setWordWrap(True)
-        self.blocked_label.setStyleSheet("color: #f59e0b;")
-        right_layout.addWidget(self.blocked_label)
-        self.content_layout.addWidget(self.options_group, stretch=0)
-        self.content_layout.setAlignment(
-            self.options_group,
+        blocked_label = QLabel("")
+        self.blocked_label = blocked_label
+        blocked_label.setWordWrap(True)
+        blocked_label.setStyleSheet("color: #f59e0b;")
+        right_layout.addWidget(blocked_label)
+        content_layout.addWidget(options_group, stretch=0)
+        content_layout.setAlignment(
+            options_group,
             Qt.AlignmentFlag.AlignTop,
         )
-        layout.addWidget(self.content_scroll, stretch=1)
+        layout.addWidget(content_scroll, stretch=1)
 
         action_layout = QHBoxLayout()
         action_layout.addStretch(1)
-        self.btn_confirm = QPushButton("Confirm")
-        self.btn_confirm.setObjectName("PrimaryConfirmButton")
-        self.btn_confirm.setAutoDefault(False)
-        self.btn_confirm.setDefault(False)
-        self.btn_confirm.clicked.connect(self.confirm)
-        action_layout.addWidget(self.btn_confirm)
+        btn_confirm = QPushButton("Confirm")
+        self.btn_confirm = btn_confirm
+        btn_confirm.setObjectName("PrimaryConfirmButton")
+        btn_confirm.setAutoDefault(False)
+        btn_confirm.setDefault(False)
+        btn_confirm.clicked.connect(self.confirm)
+        action_layout.addWidget(btn_confirm)
         layout.addLayout(action_layout)
         self._update_content_flow(self.width(), self.height())
 

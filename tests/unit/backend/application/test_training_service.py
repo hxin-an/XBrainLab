@@ -24,6 +24,10 @@ from XBrainLab.backend.application.commands import (
     TrainCommand,
 )
 from XBrainLab.backend.application.errors import ApplicationError, PreconditionError
+from XBrainLab.backend.application.resource_guard import (
+    TrainingResourcePreviewRequest,
+    TrainingResourcePreviewResult,
+)
 from XBrainLab.backend.application.results import ErrorType
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
@@ -609,6 +613,101 @@ def test_training_service_maps_adamw_optimizer_without_facade() -> None:
     assert option is not None
     assert option.get_optim_name() == "AdamW"
     assert payload["training_option"]["optimizer"] == "AdamW"
+
+
+def test_training_service_draft_resource_preview_does_not_commit_configuration(
+    monkeypatch,
+) -> None:
+    service, training = _service()
+    existing_model = object()
+    existing_option = object()
+    training.model_holder = existing_model
+    training.training_option = existing_option
+    request = TrainingResourcePreviewRequest(
+        request_generation=2,
+        publication_generation=9,
+        model_name="EEGNet",
+        model_params={},
+        device="cpu",
+        batch_size=16,
+        optimizer="Adam",
+    )
+    context = resource_guard.TrainingResourcePreviewContext(
+        input_shape=(22, 256),
+        sample_count=128,
+        class_count=4,
+        sampling_frequency=250.0,
+    )
+    expected = TrainingResourcePreviewResult(
+        request_generation=2,
+        publication_generation=9,
+        requested_batch_size=16,
+        suggested_batch_size=16,
+        estimated_vram_bytes=0,
+        available_vram_bytes=None,
+        risk_level=resource_guard.RISK_SAFE,
+        vram_known=False,
+        warning=None,
+    )
+    captured: dict[str, Any] = {}
+
+    def preview(draft, preview_context, *, model_holder=None):
+        captured["request"] = draft
+        captured["context"] = preview_context
+        captured["model_holder"] = model_holder
+        return expected
+
+    monkeypatch.setattr(training_service_module, "preview_training_resources", preview)
+
+    result = service.get_resource_preview(request, context)
+
+    assert result is expected
+    assert captured["request"] is request
+    assert captured["context"] is context
+    assert captured["model_holder"] is not existing_model
+    assert training.model_holder is existing_model
+    assert training.training_option is existing_option
+
+
+def test_training_service_preview_instantiates_tiny_real_eegnet_estimate(
+    monkeypatch,
+) -> None:
+    service, training = _service()
+    monkeypatch.setattr(
+        resource_guard.ResourceChecker,
+        "get_gpu_vram_status",
+        staticmethod(
+            lambda _gpu_idx=None: {
+                "available_bytes": None,
+                "total_bytes": None,
+                "used_bytes": None,
+                "reason": "gpu_memory_query_failed",
+            }
+        ),
+    )
+    request = TrainingResourcePreviewRequest(
+        request_generation=1,
+        publication_generation=3,
+        model_name="EEGNet",
+        model_params={"f1": 2, "f2": 4, "d": 1},
+        device="cuda:0",
+        batch_size=2,
+        optimizer="Adam",
+    )
+    context = resource_guard.TrainingResourcePreviewContext(
+        input_shape=(2, 256),
+        sample_count=4,
+        class_count=2,
+        sampling_frequency=128.0,
+    )
+
+    result = service.get_resource_preview(request, context)
+
+    assert result.estimated_vram_bytes > 0
+    assert result.model_parameter_estimate_reliable is True
+    assert result.model_parameter_estimate_source == "instantiated"
+    assert training.model_holder is None
+    assert training.training_option is None
 
 
 def test_training_service_maps_auto_device_without_facade(monkeypatch) -> None:
