@@ -54,8 +54,14 @@
 - Evaluator v4 已將 60-case routing suite 與 14-case authority-only suite 分開；authority corpus
   對七種 canonical layer 各有兩題，完整 A/B 為 `444` executions。12-case blind pack 固定混合
   8 routing 與 4 authority cases，避免人工抽查只驗證其中一半契約。
+- 第四輪在 candidate `fff7cf63` 完成 `444/444` valid executions；authority `100%`、primary
+  `99.44%`、overlap `100%`、MCP explicit/incidental `100%/0%`、median input savings `687` tokens、
+  latency `+0.87%`。唯一退件是 false-positive `5.56%`：candidate 一次選到已被刪除的
+  `pr-branch-governance`，原因是 evaluator 仍把 baseline 的 retired skill 放進兩邊共用 output enum。
+  v5 改由每個 worktree 的實際 skill inventory 建立 variant-specific schema，並把 schema digest
+  納入 resume fingerprint；沒有降低 `5%` threshold 或改標原始結果。
 - Evaluator 已加入真 API preflight、structured error、invalid-record fail-closed、failed-only resume
-  與 contract version。v4 正式 A/B、blind subagent review 與 PR exact-head CI 尚未完成。
+  與 contract version。v5 正式 A/B、blind subagent review 與 PR exact-head CI 尚未完成。
 - 本改動只校準 repo coding-agent guidance；不改 XBrainLab 產品 API、Granite runtime、EEG
   workflow 或 product handoff status。
 

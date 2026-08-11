@@ -37,6 +37,26 @@
 
 ## 2026-08-11
 
+### 15:15 第四輪 444-run A/B 與 variant-specific schema
+
+- 做了什麼：在 baseline `a0e16b400236b687bd2b4c9f58ef4a20929e377b`、candidate
+  `fff7cf63ac02df5e7795c60a1f9f0acd1756b6fd` 完成 v4 正式 A/B：routing `360/360`、authority
+  `84/84`，合計 `444/444` valid executions。routing baseline 兩筆 infrastructure timeout 由
+  failed-only resume 補跑，其餘輸入與紀錄未變。
+- 結果：candidate authority `42/42`、primary `99.44%`、overlap `100%`、explicit/incidental MCP
+  `100%/0%`、single-scope average `0.958`、median input savings `687` tokens、latency `+0.87%`；
+  single-purpose authority suite 證明 v4 已排除原 multi-objective oracle。
+- 退件：automatic PASS 仍為 false，因 18 次 no-skill execution 中一筆 `n-branch-rule-r2` 選到
+  已刪除的 `pr-branch-governance`，false positive `5.56%` 略高於 `5%`。逐筆 reason 顯示模型把
+  output enum 中的 retired name 當成可用 repo-local skill；candidate source 已不存在該 skill。
+- 修正：red-first 將 evaluator 升為 v5；baseline 與 candidate routing schema 現在分別從各自
+  worktree 的真實 `.agents/skills/*/SKILL.md` inventory 建立，且 schema digest 納入 fingerprint。
+  這保留 baseline 表達 retired routing 的能力，同時不向 candidate 暴露不存在的選項。
+- 證據：combined guidance contract/evaluator `21 passed`；static audit、Ruff check/format、MkDocs
+  strict 與 `git diff --check` PASS。
+- 接續 / 本輪剩餘：commit/push 後對 v5 exact SHA 跑下一輪 `444` executions；automatic PASS
+  後才由 blind subagent 審查混合 12-case pack。
+
 ### 14:42 第三輪 guidance A/B 退件與 evaluator v4 single-purpose suites
 
 - 做了什麼：在 baseline `a0e16b400236b687bd2b4c9f58ef4a20929e377b`、candidate

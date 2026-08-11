@@ -79,7 +79,7 @@ MAX_SKILL_LINES = 120
 MAX_TOTAL_SKILL_LINES = 1_000
 MAX_DESCRIPTION_CHARS = 220
 MAX_TOTAL_DESCRIPTION_CHARS = 2_920
-EVALUATOR_CONTRACT_VERSION = 4
+EVALUATOR_CONTRACT_VERSION = 5
 INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
 
 
@@ -121,34 +121,35 @@ class EvalRecord:
     error: str | None
 
 
-ROUTING_OUTPUT_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "additionalProperties": False,
-    "required": [
-        "primary_skill",
-        "secondary_skills",
-        "reason",
-    ],
-    "properties": {
-        "primary_skill": {
-            "type": ["string", "null"],
-            "enum": [None, *EXPECTED_SKILLS, *RETIRED_SKILLS],
-            "description": (
-                "Exact repo-local primary skill, or null. When the user explicitly "
-                "names a skill in this enum, return that exact skill; explicit-only "
-                "controls invocation, not schema availability."
-            ),
-        },
-        "secondary_skills": {
-            "type": "array",
-            "items": {
-                "type": "string",
-                "enum": [*EXPECTED_SKILLS, *RETIRED_SKILLS],
+def build_routing_output_schema(skill_names: Sequence[str]) -> dict[str, Any]:
+    """Build a routing schema limited to one variant's real skill inventory."""
+    skills = list(skill_names)
+    if len(skills) != len(set(skills)):
+        raise ValueError("routing schema skill names must be unique")
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["primary_skill", "secondary_skills", "reason"],
+        "properties": {
+            "primary_skill": {
+                "type": ["string", "null"],
+                "enum": [None, *skills],
+                "description": (
+                    "Exact repo-local primary skill, or null. When the user explicitly "
+                    "names a skill in this enum, return that exact skill; explicit-only "
+                    "controls invocation, not schema availability."
+                ),
             },
+            "secondary_skills": {
+                "type": "array",
+                "items": {"type": "string", "enum": skills},
+            },
+            "reason": {"type": "string", "maxLength": 240},
         },
-        "reason": {"type": "string", "maxLength": 240},
-    },
-}
+    }
+
+
+ROUTING_OUTPUT_SCHEMA = build_routing_output_schema(EXPECTED_SKILLS)
 
 AUTHORITY_OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -459,6 +460,16 @@ def _git_sha(repo_root: Path) -> str:
     return completed.stdout.strip()
 
 
+def _repo_skill_names(repo_root: Path) -> tuple[str, ...]:
+    """Return the exact repo-local skill inventory exposed by one variant."""
+    skill_root = repo_root / ".agents" / "skills"
+    return tuple(
+        sorted(
+            path.parent.name for path in skill_root.glob("*/SKILL.md") if path.is_file()
+        )
+    )
+
+
 def _guidance_digest(repo_root: Path) -> str:
     hasher = hashlib.sha256()
     paths = [repo_root / "AGENTS.md"]
@@ -729,6 +740,9 @@ async def run_variant(
                 [asdict(case) for case in cases],
                 sort_keys=True,
             ).encode("utf-8")
+        ).hexdigest(),
+        "output_schema_digest": hashlib.sha256(
+            json.dumps(output_schema, sort_keys=True).encode("utf-8")
         ).hexdigest(),
     }
     manifest_path = output_dir / "variant-manifest.json"
@@ -1146,6 +1160,12 @@ def _run_ab(args: argparse.Namespace) -> int:
     candidate_root = args.candidate_root.resolve()
     cases = load_cases(args.cases.resolve())
     authority_cases = load_authority_cases(args.authority_cases.resolve())
+    baseline_routing_schema = build_routing_output_schema(
+        _repo_skill_names(baseline_root)
+    )
+    candidate_routing_schema = build_routing_output_schema(
+        _repo_skill_names(candidate_root)
+    )
     base_sha = _git_sha(baseline_root)
     output_root = args.output_root.resolve() / base_sha
     output_root.mkdir(parents=True, exist_ok=True)
@@ -1177,6 +1197,7 @@ def _run_ab(args: argparse.Namespace) -> int:
             model=args.model,
             reasoning_effort=args.reasoning_effort,
             timeout_seconds=args.timeout_seconds,
+            output_schema=baseline_routing_schema,
         )
     )
     candidate_records = asyncio.run(
@@ -1190,6 +1211,7 @@ def _run_ab(args: argparse.Namespace) -> int:
             model=args.model,
             reasoning_effort=args.reasoning_effort,
             timeout_seconds=args.timeout_seconds,
+            output_schema=candidate_routing_schema,
         )
     )
     baseline_authority_records = asyncio.run(

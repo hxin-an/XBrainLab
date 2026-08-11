@@ -23,6 +23,7 @@ from scripts.dev.audit_agent_guidance import (
     _write_blind_sample,
     acceptance_summary,
     build_codex_command,
+    build_routing_output_schema,
     run_variant,
     score_authority_variant,
     score_human_review,
@@ -67,9 +68,27 @@ def test_routing_schema_is_single_purpose_and_uses_supported_array_contract() ->
     assert "uniqueItems" not in secondary
     assert "authority_class" not in ROUTING_OUTPUT_SCHEMA["properties"]
     assert (
+        "pr-branch-governance"
+        not in ROUTING_OUTPUT_SCHEMA["properties"]["primary_skill"]["enum"]
+    )
+    assert (
         "explicitly names"
         in ROUTING_OUTPUT_SCHEMA["properties"]["primary_skill"]["description"]
     )
+
+
+def test_routing_schema_exposes_only_the_variant_skill_inventory() -> None:
+    schema = build_routing_output_schema(("code-reviewer", "pr-branch-governance"))
+
+    assert schema["properties"]["primary_skill"]["enum"] == [
+        None,
+        "code-reviewer",
+        "pr-branch-governance",
+    ]
+    assert schema["properties"]["secondary_skills"]["items"]["enum"] == [
+        "code-reviewer",
+        "pr-branch-governance",
+    ]
 
 
 def test_routing_prompt_only_asks_for_skill_routing() -> None:
