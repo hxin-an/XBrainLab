@@ -1,194 +1,66 @@
-# Handoff Candidate Workflow
+# Workflow: Handoff Candidate
 
-最後更新：`2026-08-05`
+最後更新：`2026-08-11`
 
-這份 workflow 用於任何準備交給使用者手測的修復、功能或整合 branch。
+Use before telling the user a branch is ready for manual testing. The goal is to keep the user from
+being first-line QA, not to replace native human acceptance.
 
-目標不是消滅所有人工驗收，而是避免使用者成為第一層 QA。agent 必須先用自動化、
-artifact 和同類掃描抓掉明顯 bug，再請使用者做 acceptance。
+## Classification
 
-## Current Delivery Flow
+- `checkpoint`: a bounded slice is validated but one or more handoff gates remain.
+- `handoff-ready`: every applicable section below passed on one clean/explained exact commit.
+- `blocked`: completion needs an external environment, user decision, or unavailable evidence.
 
-目前 integration 與 handoff 只走這條交付線：
+## 1. Identity and scope
 
-```text
-main
-  -> short task branch
-  -> focused validation + pushed exact commit + PR
-  -> exact-head CI completed/success
-  -> Windows handoff candidate when the full handoff gate is required
-  -> user acceptance or explicitly agreed merge gate
-  -> PR merge to main
-  -> local main fast-forwarded and remote containment verified
-```
+Record branch, HEAD, upstream, `git status --short --branch`, generated worktree inventory, scope,
+non-goals, and preserved dirty files. Do not infer any value from old docs or records.
 
-含義：
+## 2. Focused protection
 
-- `main` 是目前唯一產品基線；舊 stabilization branches 只作 provenance。
-- task branch 只能證明局部修復可整合；不等於可以請使用者手測。
-- 使用者回報的 bug 是 audit trigger，不是唯一 symptom；agent 要主動找產品 bug、
-  code quality issue、test gap、architecture drift 和可見 UI regression。
-- `handoff-ready` 只能從 clean exact commit 宣稱，且必須完成本 workflow。
-- `main` merge 要等使用者 acceptance，或明確同意的 release-candidate gate。
-- merge 前還必須確認 PR exact-head 的 CI run 已完成且成功；沒有 branch protection 時也不得略過。
-- 前一個 task branch 未合併、關閉或明確保留前，不得再從它切下一個 task branch。
+Reproduce the reported bug with a failing test or observable artifact. For behavior-preserving
+refactors, establish a passing characterization baseline instead. Re-run the same protection after
+the change.
 
-## 0. Classification
+## 3. Same-class sweep
 
-先分類本輪交付：
+Search the relevant class across call sites and workflows. Examples include duplicated readiness,
+manual refresh, direct/private mutation, async stale callbacks, label/event variants, figure/thread
+cleanup, and repeated layout components. Add a source guard when a stable static rule can prevent
+recurrence. Fix blocking matches or report `blocked`.
 
-- `checkpoint`：局部修復已驗證，但尚未跑完整 handoff gate。
-- `handoff-ready`：可交給使用者手測；已完成本 workflow 的必要 gate。
-- `blocked`：需要使用者決策、外部環境或無法自動取得的 evidence。
+## 4. Happy path and edges
 
-未完成必要 gate 時，不可把 checkpoint 說成 handoff-ready。
+Exercise one user-like path and the adjacent failures/cancellation/repeat behavior for the changed
+area. Select commands from `docs/validation/README.md`; executable handoff gates come only from
+`scripts/dev/handoff_gate_spec.py` via its canonical runner.
 
-## 0.1 Product-Quality Audit Gate
+- Visible UI: behavior test plus screenshot/walkthrough.
+- Data/import/label/epoch/training/evaluation/visualization: required source-diverse dataset gate.
+- Backend/ApplicationService: focused command test plus architecture/source guard.
+- Async/resource: lifecycle, stale-callback, cleanup, and bounded-time evidence.
+- Docs-only/guidance-only: focused contract tests, source audit, diff check, and MkDocs strict build.
+- MCP: only when the user explicitly requested MCP scope.
 
-使用者要求「全面盤點」或「不要讓我一個一個回報 bug」時，先讀 `docs/current.md`、
-`docs/planning/now.md` 與 `docs/validation/README.md` 的 current truth，再做 product-quality
-audit。舊 dated audit / goal 只能用來追溯歷史 finding，不得直接當成 active queue。
+If a required gate is too slow or unavailable, return a checkpoint; do not silently reduce it.
 
-這不是只找同類 bug，而是找會阻礙 Desktop MVP handoff 的問題：
+## 5. Artifact review
 
-- product bugs：主流程 crash、卡 UI、狀態不同步、錯誤資料流、button/step 行為錯誤。
-- UI / UX blockers：跑版、白字白底、primary action 不可見、nested scroll、不可點卻像可點、
-  空/錯誤/載入狀態讓新手誤解。
-- code correctness：state lifecycle、thread/figure cleanup、data pipeline mutation、label/event
-  recipe trace、command result / changed-state refresh。
-- architecture / clean code：direct controller mutation 回流、duplicated workflow truth、
-  legacy/fallback creep、god-object growth、large mixed-responsibility methods。
-- test quality：mock-heavy tests 假保護、缺 non-mocked workflow smoke、缺 screenshot / artifact
-  evidence、dashboard PASS 被過度解讀。
-- performance/resource：UI-thread blocking、eager loading、background job cleanup、Matplotlib /
-  Qt native resource leaks。
-- docs/claim：current truth、known blockers、validation claim 和 artifacts 是否仍對齊。
+The primary agent must inspect artifacts, not only trust a script verdict. For UI check hierarchy,
+contrast, wrapping, clipping, primary action, scroll, dialog geometry, empty/loading/error/blocked
+states, and relevant DPI/widths. Offscreen evidence does not replace Windows native acceptance.
 
-最低輸出：
+## 6. Branch and CI
 
-- audit scope：本輪檢查哪些 workflow area，哪些刻意不碰。
-- findings queue：blocking / non-blocking / needs-human-decision 分類。
-- proposed branch slices：每個 blocking finding 對應一個小 task branch 或明確合併理由。
-- validation plan：每個 area 要跑的 tests、source guards、walkthrough、screenshots、multi-dataset gate。
-- claim boundary：audit 還不能證明什麼。
+Require a focused commit, pushed exact SHA, PR to the intended `main`, and CI whose head SHA exactly
+matches the PR head. CI and every non-skipped reported check must be completed/successful. Missing,
+pending, stale, cancelled, or failed evidence fails closed; do not use auto-merge as a substitute.
 
-若 audit 發現 blocking issue，不能直接回報 handoff-ready。必須依 queue 修完，或明確回報 blocked。
+## 7. Final report
 
-## 0.5 Slice / Task-Branch Gate
+Report branch/SHA/upstream, scope/non-goals, focused result, same-class sweep/guard, happy path,
+edge/regression, artifacts reviewed, dirty-state explanation, CI status, and claim boundary. End
+with exactly one label: `handoff-ready`, `checkpoint`, or `blocked`.
 
-任何修復 slice 或 task branch 整合回 `main` 前，至少要有：
-
-- focused regression：重現或保護本分支要修的問題。
-- same-class sweep：搜尋同類 call sites、screens、state flow 或 data flow。
-- relevant validation：依改動類型跑 focused tests、source guard、screenshot script 或 artifact capture。
-- docs note：若改變 current truth、gate、使用者流程或 known blocker，更新 canonical docs。
-- branch hygiene：worktree clean；commit pushed。
-- claim boundary：只能說這個 task branch 可合回，不可說產品可手測。
-
-## 1. Start Gate
-
-開始前必須記錄：
-
-- current branch。
-- `git status --short --branch`。
-- `git rev-parse HEAD`。
-- `git worktree list --porcelain`；不要從文件中的舊 worktree 數量推論目前 inventory。
-- intended scope。
-- intentionally not touched。
-- dirty files 是否屬於本輪；不屬於本輪則保留且不可覆蓋。
-
-若工作會觸及 UI / backend / tests / docs 多個區域，先確認這些改動是否必須同 branch。
-否則拆成 reviewable slices。
-
-## 2. Focused Bug Protection
-
-對使用者指出的 bug，先建立至少一種保護：
-
-- red/failing test，若可自動化。
-- failing script / walkthrough artifact，若是 UI 或 runtime 問題。
-- explicit reproduction note，若只能人工重現。
-
-修復後要跑同一條 protection，證明它轉綠或 artifact 已改善。
-
-## 3. Same-Class Sweep
-
-不能只修第一個 symptom。依問題類型做同類掃描：
-
-- UI layout：檢查同類 dialog / panel / table / screenshot artifact。
-- UI refresh / state truth：搜尋同類 manual refresh、observer callback、duplicated readiness。
-- backend command path：搜尋 direct controller / Study mutation、capability bypass、legacy fallback。
-- data import / label：檢查 auto-discovered / user-added / removed / reloaded label source。
-- visualization / evaluation：檢查 fold、label mapping、empty state、figure lifecycle。
-- performance：檢查 UI-thread blocking、eager loading、background worker cleanup。
-
-若 sweep 發現同類 blocker，必須修完或回報 blocked；不能交給使用者去找下一個。
-
-## 4. Happy Path Gate
-
-每個 handoff candidate 至少跑一條代表性 happy path：
-
-- UI 可見改動：跑 relevant UI walkthrough / screenshot script。
-- data/import/label 相關：跑 Data Import wizard 或 replay artifact。
-- training/evaluation/visualization 相關：跑 tiny pipeline 或 visualization render walkthrough。
-- assistant 相關：跑 assistant tool / verification focused tests 或 walkthrough artifact。
-- MCP 相關只在使用者明確要求 MCP work 時才跑；MCP 不再是一般 handoff gate。
-- docs-only：跑 docs gate 即可，不宣稱產品 handoff。
-
-happy path 要保存或引用 artifact / command output，不能只說「看起來可以」。
-
-## 5. Edge / Regression Gate
-
-再跑與本輪風險相符的 edge gate：
-
-- data/import/label/epoch/training/evaluation/visualization handoff：
-  required multi-dataset gate；Data Import wizard 另跑
-  `tests/integration/ui/test_data_import_wizard_format_matrix.py`，確認代表格式都能打開五步
-  wizard。
-- backend command / ApplicationService：
-  focused command tests + architecture/source guard。
-- UI layout / visible UX：
-  screenshot artifact + UI unit/integration tests。
-- async / performance / resource：
-  lifecycle tests、stale callback tests、figure/thread cleanup tests。
-- docs-only：
-  `git diff --check` 和 `poetry run -- mkdocs build --strict`。
-
-如果 gate 太慢，可先回報 checkpoint；不能省略 gate 後仍說 handoff-ready。
-
-## 6. Reviewer / Subagent Gate
-
-subagents 可作為 gate reviewer，但不能替主 agent 判定完成。
-
-常用 reviewer：
-
-- UI / UX：檢查 screenshot、layout、visible language、primary action。
-- Backend / architecture：檢查 command spine、state truth、legacy fallback。
-- Test quality：檢查新增測試是否能抓真 bug，不只是 mock-heavy。
-- EEG / data interpretation：檢查資料格式、label/event、BIDS-like boundary。
-- Performance/resource：檢查 UI 卡頓、thread、figure、GPU/VRAM、lazy loading。
-
-主 agent 必須讀 reviewer findings、決定修或明確標成非阻塞。核心需求相關 finding 不能標成
-非阻塞後交給使用者手測。
-
-## 7. Final Handoff Report
-
-handoff-ready 回報必須包含：
-
-- branch name and commit hash。
-- generated worktree inventory。
-- pushed status。
-- scope and non-goals。
-- focused regression result。
-- same-class sweep result。
-- happy path command / artifact。
-- edge/regression command / artifact。
-- reviewer/subagent gate verdict，若有使用。
-- remaining risks and claim boundaries。
-- explicit statement: `handoff-ready` 或 `checkpoint` 或 `blocked`。
-
-final totals 不得從 checkpoint notes、聊天回報或舊 branch 手動相加。它們只能取自同一個
-clean exact commit 產生的 handoff evidence；report 必須顯示 profile、branch、完整 commit、
-dirty state、commands 和各 gate 結果。
-
-如果沒有 commit / push、evidence identity 不吻合，或 worktree 有未解釋 dirty files，不可說
-handoff-ready。
+Final totals or PASS claims must come from the same exact commit and canonical evidence identity,
+never from chat notes, stale dashboards, different SHAs, hidden skips, or reduced denominators.

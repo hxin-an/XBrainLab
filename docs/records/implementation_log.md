@@ -1,6 +1,6 @@
 # XBrainLab Implementation Log
 
-最後更新：`2026-08-04`
+最後更新：`2026-08-11`
 
 ## 這份文件的用途
 
@@ -14,6 +14,33 @@
 - 主要 evidence 入口在哪裡
 - 還不能宣稱完成的是什麼
 - 下一手 owner 應該看哪裡
+
+## 2026-08-11 GPT-5.6 Agent Guidance Rebaseline
+
+### 狀態
+
+- Repo guidance 已改為單一 authority map：根 `AGENTS.md` 保存 safety/delivery invariants，
+  current/plan/validation 回到 canonical docs，skills 只保存 routing 與方法，workflows 保存多步驟程序。
+- Skills 從 19 個收斂為 15 個 implicit skills 加 1 個 explicit-only MCP skill；architecture/design、
+  code/clean-code 與 branch-governance 重疊已合併。
+- 舊 stack、runbooks、skills/workflows README 和 superseded goal 已移除；歷史 audit 保留為
+  provenance，不再標成 active queue。
+- 新增 static guidance audit、60-case routing corpus、固定 GPT-5.6 Sol/xhigh/read-only 的三次 A/B
+  runner，以及 blind 12-output review pack。
+
+### Evidence 入口
+
+- `.agents/evals/skill-routing-cases.yaml`
+- `scripts/dev/audit_agent_guidance.py`
+- `tests/unit/test_agent_guidance_contract.py`
+- `tests/unit/scripts/test_audit_agent_guidance.py`
+
+### 不能宣稱完成
+
+- Static/focused/docs validation 不等於 routing A/B acceptance。正式 360 executions 必須等目前
+  product integration candidate 先合併，再把本 branch rebase 到 updated `main` 後執行。
+- 本改動只校準 repo coding-agent guidance；不改 XBrainLab 產品 API、Granite runtime、EEG
+  workflow 或 product handoff status。
 
 ## 2026-08-04 Main Development Checkpoint
 

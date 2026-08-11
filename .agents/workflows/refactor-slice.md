@@ -1,36 +1,16 @@
 # Workflow: Refactor Slice
 
-## 目的
+Use `refactor-slicer` as primary. Add `tdd-guard`, `test-quality-reviewer`, and
+`validation-runner` only when their step begins.
 
-在架構複盤完成後，執行一個小而可驗證的重構 slice。
+1. Define one workflow, current pain, observable behavior, scope, and non-goals.
+2. List entry points, call sites, owners, consumers, and same-class locations.
+3. Establish a passing characterization baseline.
+4. Define target ownership, affected files, rollback, and the smallest coherent slice.
+5. Implement the slice without mixing unrelated UI redesign, backend cleanup, and Assistant work.
+6. Re-run the identical baseline, source guard, and adjacent regression.
+7. Remove compatibility code only after callers and stronger tests migrate.
+8. Update architecture/current docs only when their truth changed.
 
-## 使用 Skills
-
-- `software-design-reviewer`
-- `refactor-slicer`
-- `tdd-guard`
-- `test-quality-reviewer`
-- `validation-runner`
-
-## 前置條件
-
-- 使用者已同意進入該 slice。
-- `.agents/runbooks/refactor-gate.md` 通過。
-- 已列出 current call sites。
-- 已定義 validation plan。
-
-## 步驟
-
-1. 寫 slice scope 和 non-goals。
-2. 盤點 affected files。
-3. 補或確認測試保護。
-4. 實作最小變更。
-5. 跑 validation plan。
-6. 更新 `docs/architecture/` 或 `docs/current.md`。
-7. 更新 worklog / implementation log。
-
-## 禁止
-
-- 不同時重寫 UI、backend、agent runtime。
-- 不把 Application Service 做成新平行 backend。
-- 不破壞 current UI workflow。
+For presentation-only UI work record layout/visual invariants; require command shape only for
+state-changing workflows. Stop at checkpoint if same-class sweep or regression remains open.

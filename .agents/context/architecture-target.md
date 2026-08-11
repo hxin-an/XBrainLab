@@ -22,4 +22,4 @@ UI、agent tools、headless scripts 最後應該共用同一套 backend workflow
 
 ## 重構原則
 
-重構 gate 看 `.agents/runbooks/refactor-gate.md`。
+重構切片流程看 `.agents/workflows/refactor-slice.md`。

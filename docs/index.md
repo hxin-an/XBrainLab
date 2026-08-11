@@ -1,6 +1,6 @@
 # XBrainLab 專案控制室
 
-最後更新：`2026-08-04`
+最後更新：`2026-08-11`
 
 XBrainLab 是本地優先的 EEG / BCI 桌面分析工具。目前可執行的 Desktop GUI checkpoint 已
 收斂到 `main`；這個入口用來快速判斷現況、缺口和證據。
@@ -166,5 +166,5 @@ belong in git history unless they are still needed for current evidence. Current
 | [目標](target/README.md) | 需求、目標架構、agent / Data Interpretation 終局設計。 |
 | [目前架構](architecture/README.md) | 目前 implementation、backend command spine、active risks。 |
 | [驗證](validation/README.md) | evidence tiers、artifact interpretation、validation gates。 |
-| [Active Audit](records/product_quality_audit_2026-07-30.md) | product-quality finding ledger 和 closure status。 |
+| [Historical Audit](records/product_quality_audit_2026-07-30.md) | 已完成 closure 的 provenance；不是 active queue。 |
 | [決策](decisions/README.md) | active product/architecture decisions；不是 worklog。 |

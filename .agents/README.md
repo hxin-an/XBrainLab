@@ -1,110 +1,95 @@
-# XBrainLab Agent Entry
+# XBrainLab Agent Operations
 
-最後更新：`2026-07-03`
+最後更新：`2026-08-11`
 
-這是 repo-local agent 操作入口。
+`.agents/` 只保存 repo-local agent 能力與可重用流程，不保存產品 current truth、active branch、
+gate argv 或 finding queue。一般入口先讀根目錄 `AGENTS.md`；只有任務命中時才載入相應 skill
+或 workflow。
 
-## 先讀
+## 唯一權威
 
-1. `AGENTS.md`
-2. `docs/current.md`
-3. `docs/target/README.md`
-4. `docs/architecture/README.md`
-5. `docs/planning/now.md`
-6. `.agents/stack.md`
-
-## Agent 定位
-
-本 repo 的 agent 不是口令執行器，而是 product-delivery engineering agent。
-任務目標是把 XBrainLab 做成工程級可用的本地 EEG 桌面工具：backend 穩、UI 不閃退、agent 能可靠用 tool、本地 LLM 有可控路線、文件能交接。
-
-Milestone 是最低交付門檻，不是只需要做這些。若 milestone 勾完但程式碼仍不可用、測試不能支撐、文件和現況不一致，工作沒有完成。
-
-## 監督模式
-
-大工作預設採 supervisor model：
-
-- 主 agent 是交付審查者，可以把工作拆給多個 worker，但不能把 worker 的完成回報直接轉交給使用者。
-- 每個 worker 交付後，主 agent 必須獨立驗證：讀 diff、看 UI artifact、跑對應 tests、確認 docs/current truth。
-- 若發現 worker 只修局部、留下明顯產品問題、或沒有碰到核心需求，必須打回並要求補完。
-- 使用者要求的是工程級可用軟體；「完成 checklist」但仍不專業、不穩定、不可操作，不算完成。
-- 只有在已知 blocker 被解除、剩餘風險被清楚界定且不違背本輪核心需求時，才能回報為可交付。
-
-## Manual Handoff Gate
-
-agent 不能把未驗證的修復直接交給使用者手測。任何「可以手測」回報都必須先通過
-`.agents/workflows/handoff-candidate.md`：
-
-- bug 類工作要有 focused regression 和 same-class sweep。
-- UI 可見工作要有 screenshot / walkthrough artifact，且主 agent 自己檢查過畫面。
-- data / import / labels / epoch / training / evaluation / visualization handoff 要跑 required
-  multi-dataset gate，除非本輪明確不是產品 handoff。
-- subagent reviewer 只能當 gate input；主 agent 必須讀 diff、看 artifact、跑驗證後自己判定。
-- 若 gate 未完成，回報語意只能是 checkpoint / blocked，不能說 handoff-ready。
-- 長對話的 worker 預設使用 bounded prompt，不繼承完整 conversation context。並行前先確認
-  C 槽與 `~/.codex/sessions` 有足夠空間；大型下載、artifact 與 benchmark 暫存放 D 槽。
-- native/Qt/PyTorch 測試使用 timeout 與 `prlimit --core=0`，避免 WSL crash dump 吃滿 C 槽。
-
-目前主線是 product delivery：
-
-```text
-backend core -> UI/agent command surface unification -> UI chat stabilization
--> agent tool alignment -> local LLM runtime -> desktop launcher
--> product stabilization -> tool-call eval
-```
-
-tool-call eval / thesis evidence 要等產品主線穩定後再開始。
-MCP 已從 active roadmap 移除；不要把 MCP adapter / client certification 當成預設 gate。
-
-## 不要做
-
-- 不恢復 `.agents/legacy/`。
-- 不恢復舊 `xbrainlab-*` repo-local skills。
-- 不用舊 AQ / Prep Gate / Repair Loop queue。
-- 不把 `docs/records/` 當 current truth。
-- 不把 `target/` 當作已完成事實。
-- 不把 milestone 當成工作上限。
-- 不在產品主線不穩時提前做 tool-call eval。
-- 不把 MCP 當成 active roadmap；除非使用者明確要求，不做 MCP hardening 或 MCP gate。
-- 不靠聊天回報保存狀態；重要狀態寫文件。
-
-## Product Milestones
-
-最低交付 milestone：
-
-1. Backend product core。
-2. UI chat / agent panel 成品化。
-3. UI / agent command surface unification。
-4. Agent tool system 成品化。
-5. Local LLM runtime。
-6. Desktop launch / packaging。
-7. End-to-end product stabilization。
-8. Tool-call eval / thesis evidence。
-9. Final validation / documentation closure。
-
-完成 milestone 時要自己判斷是否還有工程破洞；有就繼續修，不要把「通過最低清單」當成完成。
-
-## 常用 runbooks
-
-| 文件 | 用途 |
+| 問題 | 唯一入口 |
 | --- | --- |
-| `runbooks/setup.md` | 基本工作規則與驗證指令。 |
-| `runbooks/autopilot.md` | 長時間工作循環。 |
-| `runbooks/architecture-review.md` | 全盤架構複盤步驟。 |
-| `runbooks/refactor-gate.md` | 後端重構開工前檢查。 |
-| `workflows/handoff-candidate.md` | 交給使用者手測前的 happy path / edge / artifact gate。 |
+| Repo 級安全、授權、dirty/branch、handoff 不變量 | `AGENTS.md` |
+| Current product/candidate truth | `docs/current.md`、`docs/planning/now.md` |
+| Current / target architecture | `docs/architecture/`、`docs/target/` |
+| Claim/evidence 解讀 | `docs/validation/README.md` |
+| Executable handoff gate IDs 與 argv | `scripts/dev/handoff_gate_spec.py` |
+| Skill routing | 各 `.agents/skills/*/SKILL.md` frontmatter |
+| 多步驟 agent 流程 | `.agents/workflows/*.md` |
+| 歷史與 provenance | `docs/records/`、Git history |
 
-## Skills / Workflows
+若入口衝突，以 source/runtime/Git evidence 校準 canonical docs；不要讓 skill、workflow 或 record
+成為第二份 current truth。
 
-| 路徑 | 用途 |
+## Progressive loading
+
+1. 先讀 `AGENTS.md` 與任務直接涉及的 canonical docs。
+2. 只載入一個 primary skill；跨領域確有需要時才加入 secondary skill。
+3. Skill body 只定義方法與邊界；其中引用的文件也只在當前步驟需要時讀。
+4. Workflow 用於三步以上或需要明確 handoff/rollback 的流程，不因名稱相似而全部載入。
+5. 論文與 tool-call claim 才讀 `.agents/context/thesis.md`。
+6. `mcp-adapter-reviewer` 只能由使用者明確點名或明確要求 MCP 工作時載入。
+
+## Skills
+
+| Primary scope | Skill | Boundary |
+| --- | --- | --- |
+| Assistant tools/contracts | `agent-toolcall-designer` | Tool/state/verification surface；不是一般架構 review。 |
+| Architecture | `architecture-reviewer` | Current vs target boundaries；不是 line-level diff review。 |
+| Code changes | `code-reviewer` | Regression、lifecycle、maintainability、architecture drift。 |
+| EEG data semantics | `data-interpretation-reviewer` | Import、events、labels、BIDS、recipe/capability。 |
+| Canonical docs | `docs-curator` | Current/target/planning/records 分工與連結。 |
+| Docs portal UX | `docs-site-product-designer` | MkDocs IA、visual hierarchy、artifact gallery。 |
+| Explicit MCP | `mcp-adapter-reviewer` | Explicit-only historical adapter scope。 |
+| Performance/resources | `performance-resource-reviewer` | Measurement、memory/GPU/cache、responsiveness。 |
+| Refactor slicing | `refactor-slicer` | Bounded slice、call sites、rollback、validation。 |
+| Release/packaging | `release-packaging-reviewer` | Launcher、packaging、platform acceptance。 |
+| Security/privacy | `security-privacy-reviewer` | Data、files、LLM、agency、logs、secrets。 |
+| Test-first change | `tdd-guard` | Bug/core behavior loop and characterization baseline。 |
+| Test evidence | `test-quality-reviewer` | Test strength、mock risk、claim boundary。 |
+| Thesis evidence | `thesis-evidence-reviewer` | Exact model/cases/scorer/reproducibility。 |
+| UI product quality | `ui-product-reviewer` | Desktop workflow、copy、states、visual artifacts。 |
+| Validation | `validation-runner` | Select/execute/interpret canonical gates。 |
+
+`clean-code-reviewer` 已合併進 `code-reviewer`；`software-design-reviewer` 已合併進
+`architecture-reviewer`；branch/PR 穩定規則在根 `AGENTS.md`，具體 handoff 流程在
+`workflows/handoff-candidate.md`。不要恢復這三個退役 skills。
+
+## Workflows
+
+| Workflow | Use |
 | --- | --- |
-| `skills/` | 可重用能力，例如文件整理、架構複盤、驗證、重構切片、agent tool-call 設計。 |
-| `workflows/` | 多步驟流程，例如 documentation review、architecture review、refactor slice、tool-call scoring。 |
+| `architecture-review.md` | 盤點 current/target gap 並排序可交付 slice。 |
+| `documentation-review.md` | 找 current truth split、stale link 與 record leakage。 |
+| `docs-site-redesign.md` | 重整 MkDocs portal 並以 screenshots review。 |
+| `refactor-slice.md` | 將 backend/UI/Assistant refactor 切成可驗證步驟。 |
+| `tdd-change.md` | 進行 bug/core behavior test-first loop。 |
+| `test-audit.md` | 分類 strong/weak tests 並補 evidence。 |
+| `agent-toolcall-scoring.md` | 產品穩定後建立 tool-call experiment。 |
+| `handoff-candidate.md` | 宣稱可手測/handoff-ready 前的完整 gate。 |
 
-## Context
+## Bounded delivery loop
 
-| 文件 | 用途 |
-| --- | --- |
-| `context/project.md` | 接手脈絡與目前目標。 |
-| `context/architecture-target.md` | 給 agent 的目標架構濃縮版。 |
-| `context/thesis.md` | thesis / agent claim 相關背景。 |
+1. 從 Git、source 與 canonical docs 定義 scope/non-goals。
+2. 找同類 call sites、observable behavior 與最低 evidence。
+3. Bug 先重現；純重構先建立 passing characterization baseline。
+4. 實作最小 coherent slice，不引入第二份 workflow truth。
+5. 跑 focused test、same-class guard 與相鄰 regression。
+6. 將重要決策、current truth、validation boundary 寫回相應 canonical docs。
+7. Review diff、dirty state、artifact 與 claim boundary；再 commit/push/PR。
+
+Refactor slice 至少記錄 scope、call sites、target boundary、affected files、validation 與 rollback。
+UI-only refactor 不強迫使用 command-shape template；涉及 state-changing workflow 時才需要 command/
+service contract。Validation 未覆蓋完整 declared scope 時只能稱 checkpoint。
+
+## Retired control surfaces
+
+下列內容只能作歷史字詞或 migration guard，不得 dispatch：
+
+- superseded product-closure goal files and stabilization branches
+- `Prep Gate`、`Repair Loop`、`AQ-*`
+- retired runbook/stack layers and duplicate skill/workflow indexes
+- `docs/current/*`、`docs/history/*`、`docs/workflows/*`、`.agents/legacy/*`
+
+需要歷史理由時查 Git history 或明確標成 historical 的 record；不要把它們重新加入先讀清單。

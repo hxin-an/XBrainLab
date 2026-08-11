@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-08-04`
+最後更新：`2026-08-11`
 
 這頁只回答三件事：目前在哪一條整合線、現在能相信什麼、離 handoff 還缺什麼。
 短期施工看 [Now](planning/now.md)，驗證規則看
@@ -21,7 +21,7 @@ Assistant ready 或廣泛資料格式相容。
 | Active branch | `main` |
 | Baseline | `ux/assistant-product-v1@3869aaef73acf3fb30ce95d15868c2abcf17c6f5`，只作 baseline / provenance，不是目前 candidate。 |
 | Active goal | 以 [Now](planning/now.md) 的效能、Assistant prototype 與 gate 重整順序為準。 |
-| Finding ledger | [Product Quality Audit - 2026-07-30](records/product_quality_audit_2026-07-30.md) |
+| Historical ledger | [Product Quality Audit - 2026-07-30](records/product_quality_audit_2026-07-30.md)；provenance only，不是 active queue。 |
 | Delivery state | Main checkpoint；GUI 可繼續真人測試，但不是 release、Assistant candidate 或 product complete。 |
 
 其他 registered worktree 不代表 active candidate。需要 inventory 時必須執行
@@ -98,7 +98,7 @@ generated evidence；branch、commit 或 dirty state 不吻合時，只能稱為
 | 你想知道 | 讀這裡 |
 | --- | --- |
 | 下一步施工 | [planning/now.md](planning/now.md) |
-| Active findings | [records/product_quality_audit_2026-07-30.md](records/product_quality_audit_2026-07-30.md) |
+| Historical audit | [records/product_quality_audit_2026-07-30.md](records/product_quality_audit_2026-07-30.md)；active work 只讀 Now。 |
 | 下一個 candidate contract | [planning/now.md](planning/now.md) 與 [validation/README.md](validation/README.md) |
 | 目前架構 | [architecture/README.md](architecture/README.md) |
 | 目標架構 | [target/architecture.md](target/architecture.md) |

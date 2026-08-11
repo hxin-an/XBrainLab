@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-08-03`
+最後更新：`2026-08-11`
 
 ## 這份文件的用途
 
@@ -34,6 +34,23 @@
 - 證據：
 - 接續 / 本輪剩餘：
 ```
+
+## 2026-08-11
+
+### GPT-5.6 guidance authority/skill rebaseline
+
+- 做了什麼：以官方 GPT-5.6 lean prompt、Skills progressive disclosure、AGENTS chain 與 subagent
+  guidance 重整 repo 操作層；刪除重複 stack/runbooks/README/goal，將 19 skills 收斂成
+  15 implicit + 1 explicit MCP，並修正 TDD refactor baseline、UI refactor frame、validation
+  completion semantics 與 exact-model fallback 語意。
+- 結果：新增 60-case routing corpus（32 positive / 16 boundary-adversarial / 12 overlap）和
+  baseline/candidate 三次 A/B runner；guard 鎖住 inventory、frontmatter、size budget、stale
+  authority tokens、MCP policy 與 corpus schema。
+- 證據：guidance static audit PASS；focused runner/contract `9 passed`；Ruff check/format、
+  `git diff --check` PASS；16/16 active skills 通過官方 quick validator；MkDocs strict PASS。
+- 接續 / 本輪剩餘：等目前 product integration candidate 合併後 rebase，再跑正式 360
+  executions、12-output blind review、exact-head PR CI。此前是 guidance checkpoint，不是 final A/B
+  acceptance，也不改變產品 handoff claim。
 
 ## 2026-08-03
 

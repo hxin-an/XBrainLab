@@ -1,48 +1,25 @@
 ---
 name: test-quality-reviewer
-description: Use when judging whether XBrainLab tests can actually catch product or backend problems, especially mock-heavy tests, implementation-detail assertions, and weak validation claims.
+description: "Use for judging whether XBrainLab tests detect real failures, including mock-heavy tests, detail assertions, weak fixtures, and overstated evidence. Do not use merely to run tests."
 ---
 
-# test-quality-reviewer
+# Test Quality Reviewer
 
-## 用途
+Judge tests by the defects and claims they can actually protect.
 
-用於檢查測試是否真的能抓問題，尤其是避免 AI 生成的 tests 只測 mock、只測 implementation detail、或假通過。
+## Review
 
-## 先讀
+1. Map each test to a user/backend behavior, state transition, side effect, or claim.
+2. Inspect fixtures, mocks, monkeypatches, assertions, and failure messages.
+3. Mutate or reason about the protected behavior: would a realistic defect make the test fail?
+4. Check that test setup does not bypass the production entry point or precondition owner.
+5. Require at least one lower-mock workflow path for important side effects.
+6. Separate unit contract, integration smoke, UI baseline, real-data evidence, and scientific/eval
+   evidence.
+7. Recommend the smallest stronger replacement before deleting weak tests.
 
-1. `docs/validation/README.md`
-2. `docs/architecture/validation.md`
+## Output
 
-## Review Checklist
-
-- 測試是否描述真實使用者或 backend workflow 行為？
-- assertion 是否檢查結果，而不是只檢查某個 mock 被 call？
-- 是否有過度 monkeypatch / MagicMock？
-- 測試失敗時能否指出真 bug？
-- 是否有 non-mocked smoke 覆蓋重要 side effect？
-- 測試是否和 XBrainLab state lifecycle 一致？
-- 測試是否誤把 dashboard PASS 當 thesis evidence？
-
-## 分類
-
-| 類型 | 用途 | 風險 |
-| --- | --- | --- |
-| unit contract test | 快速 regression floor | 可能 mock-heavy |
-| integration smoke | 走過真 path | 可能慢或 fixture-sensitive |
-| UI baseline | 防 UI 明顯偏移 | 不等於 UX 完整驗證 |
-| real-data IO | 驗證資料格式入口 | 不等於 scientific reproducibility |
-| tool-call scoring | thesis agent evidence | 尚未建立 |
-
-## 輸出
-
-用短格式：
-
-```md
-## Test Quality Review
-
-- Strong tests:
-- Weak / mock-heavy tests:
-- Missing non-mocked evidence:
-- Recommended next test:
-```
+Classify strong tests, weak/mock-heavy tests, duplicated/obsolete tests, missing non-mocked evidence,
+and the next highest-value test. State what the suite supports and cannot support. Passing counts,
+dashboard status, or a mocked happy path never establish product completion by themselves.

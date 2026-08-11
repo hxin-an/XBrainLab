@@ -1,0 +1,424 @@
+version: 1
+cases:
+  - id: p-agent-toolcall-01
+    prompt: "Design the immutable Assistant state snapshot and backend-owned tool admission contract for training commands."
+    category: positive
+    expected_primary: agent-toolcall-designer
+    allowed_secondary: []
+    forbidden_skills: [thesis-evidence-reviewer]
+    expected_authority_class: target_architecture
+  - id: p-agent-toolcall-02
+    prompt: "Review whether tool execution, confirmation, and postcondition verification are separated correctly in the Assistant command path."
+    category: positive
+    expected_primary: agent-toolcall-designer
+    allowed_secondary: []
+    forbidden_skills: [mcp-adapter-reviewer]
+    expected_authority_class: skill_trigger
+  - id: p-architecture-01
+    prompt: "Compare the current UI/backend state ownership against the target Application Service boundary and propose the first migration slice."
+    category: positive
+    expected_primary: architecture-reviewer
+    allowed_secondary: []
+    forbidden_skills: [code-reviewer]
+    expected_authority_class: target_architecture
+  - id: p-architecture-02
+    prompt: "Audit responsibility placement and dependency direction across the Assistant, application layer, and persistence boundary without editing code."
+    category: positive
+    expected_primary: architecture-reviewer
+    allowed_secondary: []
+    forbidden_skills: [mcp-adapter-reviewer]
+    expected_authority_class: target_architecture
+  - id: p-code-01
+    prompt: "Review this diff for state lifecycle regressions, duplicated workflow truth, god-object growth, and missing behavior tests."
+    category: positive
+    expected_primary: code-reviewer
+    allowed_secondary: []
+    forbidden_skills: [architecture-reviewer]
+    expected_authority_class: skill_trigger
+  - id: p-code-02
+    prompt: "Find actionable correctness and maintainability issues in the changed async callback and UI refresh code."
+    category: positive
+    expected_primary: code-reviewer
+    allowed_secondary: []
+    forbidden_skills: [ui-product-reviewer]
+    expected_authority_class: skill_trigger
+  - id: p-data-01
+    prompt: "Review how selected BIDS runs resolve event columns, provenance, and uncertainty before applying labels."
+    category: positive
+    expected_primary: data-interpretation-reviewer
+    allowed_secondary: []
+    forbidden_skills: [docs-curator]
+    expected_authority_class: skill_trigger
+  - id: p-data-02
+    prompt: "Check whether external EEG labels, sampling-frequency mismatch, and recipe reload fail closed without partial mutation."
+    category: positive
+    expected_primary: data-interpretation-reviewer
+    allowed_secondary: []
+    forbidden_skills: [performance-resource-reviewer]
+    expected_authority_class: skill_trigger
+  - id: p-docs-01
+    prompt: "Consolidate conflicting current, target, planning, and historical claims into their canonical XBrainLab documents."
+    category: positive
+    expected_primary: docs-curator
+    allowed_secondary: []
+    forbidden_skills: [docs-site-product-designer]
+    expected_authority_class: current_truth
+  - id: p-docs-02
+    prompt: "Remove stale agent guidance, repair links, and ensure records are no longer presented as active dispatch."
+    category: positive
+    expected_primary: docs-curator
+    allowed_secondary: []
+    forbidden_skills: [architecture-reviewer]
+    expected_authority_class: current_truth
+  - id: p-docsite-01
+    prompt: "Redesign the MkDocs landing page hierarchy and navigation as a readable engineering product portal."
+    category: positive
+    expected_primary: docs-site-product-designer
+    allowed_secondary: []
+    forbidden_skills: [ui-product-reviewer]
+    expected_authority_class: skill_trigger
+  - id: p-docsite-02
+    prompt: "Review the documentation site's cards, artifact gallery, responsive layout, contrast, and narrow screenshots."
+    category: positive
+    expected_primary: docs-site-product-designer
+    allowed_secondary: []
+    forbidden_skills: [docs-curator]
+    expected_authority_class: skill_trigger
+  - id: p-mcp-01
+    prompt: "Explicitly review the XBrainLab MCP stdio tools/list and tools/call adapter for protocol stdout and ApplicationService enforcement."
+    category: positive
+    expected_primary: mcp-adapter-reviewer
+    allowed_secondary: []
+    forbidden_skills: []
+    expected_authority_class: skill_trigger
+  - id: p-mcp-02
+    prompt: "I explicitly want an MCP HTTP adapter audit covering authorization, session ownership, cancellation, and resource locks."
+    category: positive
+    expected_primary: mcp-adapter-reviewer
+    allowed_secondary: []
+    forbidden_skills: []
+    expected_authority_class: skill_trigger
+  - id: p-performance-01
+    prompt: "Measure why dataset scan freezes the Qt UI and propose the smallest optimization with before/after evidence."
+    category: positive
+    expected_primary: performance-resource-reviewer
+    allowed_secondary: []
+    forbidden_skills: [ui-product-reviewer]
+    expected_authority_class: skill_trigger
+  - id: p-performance-02
+    prompt: "Audit VRAM, RAM, model cache growth, warm/cold latency, and cleanup for repeated local LLM runs."
+    category: positive
+    expected_primary: performance-resource-reviewer
+    allowed_secondary: []
+    forbidden_skills: [release-packaging-reviewer]
+    expected_authority_class: skill_trigger
+  - id: p-refactor-01
+    prompt: "Slice this backend state-ownership refactor into a passing baseline, call-site migration, rollback, and source guard."
+    category: positive
+    expected_primary: refactor-slicer
+    allowed_secondary: []
+    forbidden_skills: [code-reviewer]
+    expected_authority_class: workflow
+  - id: p-refactor-02
+    prompt: "Plan a presentation-only UI refactor with widget ownership and visual invariants without inventing a backend command."
+    category: positive
+    expected_primary: refactor-slicer
+    allowed_secondary: []
+    forbidden_skills: [architecture-reviewer]
+    expected_authority_class: workflow
+  - id: p-release-01
+    prompt: "Review the Windows launcher first-run path, cache setup, logs, paths with spaces, and click-through evidence."
+    category: positive
+    expected_primary: release-packaging-reviewer
+    allowed_secondary: []
+    forbidden_skills: [performance-resource-reviewer]
+    expected_authority_class: skill_trigger
+  - id: p-release-02
+    prompt: "Audit packaging contents, clean install recovery, signing boundary, and exact artifact identity for release claims."
+    category: positive
+    expected_primary: release-packaging-reviewer
+    allowed_secondary: []
+    forbidden_skills: [validation-runner]
+    expected_authority_class: skill_trigger
+  - id: p-security-01
+    prompt: "Threat-model EEG dataset paths, subject identifiers, logs, prompt injection, and excessive Assistant agency."
+    category: positive
+    expected_primary: security-privacy-reviewer
+    allowed_secondary: []
+    forbidden_skills: [mcp-adapter-reviewer]
+    expected_authority_class: skill_trigger
+  - id: p-security-02
+    prompt: "Review path containment, symlink replacement, secret leakage, bounded retention, and destructive-action confirmation."
+    category: positive
+    expected_primary: security-privacy-reviewer
+    allowed_secondary: []
+    forbidden_skills: [code-reviewer]
+    expected_authority_class: skill_trigger
+  - id: p-tdd-01
+    prompt: "Fix this reproducible command-state bug with a test that fails for the right reason before implementation."
+    category: positive
+    expected_primary: tdd-guard
+    allowed_secondary: []
+    forbidden_skills: [test-quality-reviewer]
+    expected_authority_class: skill_trigger
+  - id: p-tdd-02
+    prompt: "Protect a behavior-preserving refactor with a passing characterization baseline and the same regression after the change."
+    category: positive
+    expected_primary: tdd-guard
+    allowed_secondary: []
+    forbidden_skills: [refactor-slicer]
+    expected_authority_class: skill_trigger
+  - id: p-test-quality-01
+    prompt: "Judge whether these MagicMock-heavy tests would fail on a real backend state regression."
+    category: positive
+    expected_primary: test-quality-reviewer
+    allowed_secondary: []
+    forbidden_skills: [validation-runner]
+    expected_authority_class: skill_trigger
+  - id: p-test-quality-02
+    prompt: "Classify strong, obsolete, duplicated, and weak tests and recommend the smallest non-mocked replacement."
+    category: positive
+    expected_primary: test-quality-reviewer
+    allowed_secondary: []
+    forbidden_skills: [code-reviewer]
+    expected_authority_class: skill_trigger
+  - id: p-thesis-01
+    prompt: "Review the local-LLM tool-call experiment's exact model revision, repeats, scorer validity, variance, and claim boundary."
+    category: positive
+    expected_primary: thesis-evidence-reviewer
+    allowed_secondary: []
+    forbidden_skills: [validation-runner]
+    expected_authority_class: skill_trigger
+  - id: p-thesis-02
+    prompt: "Audit whether blocked, recovery, ambiguity, and trajectory cases support the proposed thesis claim without silent model fallback."
+    category: positive
+    expected_primary: thesis-evidence-reviewer
+    allowed_secondary: []
+    forbidden_skills: [agent-toolcall-designer]
+    expected_authority_class: skill_trigger
+  - id: p-ui-01
+    prompt: "Review the desktop Assistant panel's loading, empty, blocked, error, success, and narrow-window screenshots."
+    category: positive
+    expected_primary: ui-product-reviewer
+    allowed_secondary: []
+    forbidden_skills: [docs-site-product-designer]
+    expected_authority_class: skill_trigger
+  - id: p-ui-02
+    prompt: "Check primary action hierarchy, copy, clipping, nested scroll, focus, DPI, and dialog geometry in this visible UI change."
+    category: positive
+    expected_primary: ui-product-reviewer
+    allowed_secondary: []
+    forbidden_skills: [code-reviewer]
+    expected_authority_class: skill_trigger
+  - id: p-validation-01
+    prompt: "Choose and interpret the canonical focused, source-guard, adjacent-regression, and docs gates for this guidance-only change."
+    category: positive
+    expected_primary: validation-runner
+    allowed_secondary: []
+    forbidden_skills: [test-quality-reviewer]
+    expected_authority_class: validation_registry
+  - id: p-validation-02
+    prompt: "Run the registered handoff gates without copying argv and explain exactly which claim the exact-SHA evidence supports."
+    category: positive
+    expected_primary: validation-runner
+    allowed_secondary: []
+    forbidden_skills: [release-packaging-reviewer]
+    expected_authority_class: validation_registry
+
+  - id: n-current-status
+    prompt: "Summarize what XBrainLab can currently claim and what remains incomplete; do not change files."
+    category: negative
+    expected_primary: null
+    allowed_secondary: []
+    forbidden_skills: [architecture-reviewer, docs-curator]
+    expected_authority_class: current_truth
+  - id: n-branch-rule
+    prompt: "Which branch and dirty-worktree rules must I follow before starting a task?"
+    category: negative
+    expected_primary: null
+    allowed_secondary: []
+    forbidden_skills: [validation-runner]
+    expected_authority_class: root_invariants
+  - id: n-gate-argv
+    prompt: "Where must the executable handoff gate IDs and argv come from, and how should I run them?"
+    category: negative
+    expected_primary: validation-runner
+    allowed_secondary: []
+    forbidden_skills: [docs-curator]
+    expected_authority_class: validation_registry
+  - id: n-historical-queue
+    prompt: "An old dated product audit says it is the active queue. Resolve the authority conflict and keep it as provenance only."
+    category: negative
+    expected_primary: docs-curator
+    allowed_secondary: []
+    forbidden_skills: [architecture-reviewer]
+    expected_authority_class: historical_provenance
+  - id: n-generic-python
+    prompt: "Explain what a Python context manager is. No XBrainLab repository work is needed."
+    category: negative
+    expected_primary: null
+    allowed_secondary: []
+    forbidden_skills: [code-reviewer, architecture-reviewer]
+    expected_authority_class: root_invariants
+  - id: n-security-incidental-mcp
+    prompt: "Review dataset privacy and prompt injection. MCP files happen to exist, but I am not asking for MCP work."
+    category: negative
+    expected_primary: security-privacy-reviewer
+    allowed_secondary: []
+    forbidden_skills: [mcp-adapter-reviewer]
+    expected_authority_class: skill_trigger
+  - id: n-architecture-incidental-mcp
+    prompt: "Review the current UI/backend architecture. Ignore retained MCP compatibility code because MCP is not in scope."
+    category: negative
+    expected_primary: architecture-reviewer
+    allowed_secondary: []
+    forbidden_skills: [mcp-adapter-reviewer]
+    expected_authority_class: target_architecture
+  - id: n-run-tests
+    prompt: "Run the focused pytest and MkDocs checks and interpret their claim boundary; do not audit test design."
+    category: negative
+    expected_primary: validation-runner
+    allowed_secondary: []
+    forbidden_skills: [test-quality-reviewer]
+    expected_authority_class: validation_registry
+  - id: n-review-tests-only
+    prompt: "Review whether these tests can catch real failures, but do not execute the suite."
+    category: negative
+    expected_primary: test-quality-reviewer
+    allowed_secondary: []
+    forbidden_skills: [validation-runner]
+    expected_authority_class: skill_trigger
+  - id: n-backend-diff
+    prompt: "Review a backend-only diff for regressions and maintainability. There is no visible UI change."
+    category: negative
+    expected_primary: code-reviewer
+    allowed_secondary: []
+    forbidden_skills: [ui-product-reviewer]
+    expected_authority_class: skill_trigger
+  - id: n-routine-doc-sync
+    prompt: "Update a stale current-status sentence and fix its canonical link; do not redesign the docs portal."
+    category: negative
+    expected_primary: docs-curator
+    allowed_secondary: []
+    forbidden_skills: [docs-site-product-designer]
+    expected_authority_class: current_truth
+  - id: n-app-ui-only
+    prompt: "Review a desktop dialog screenshot for clipping and primary-action visibility; this is not a documentation-site task."
+    category: negative
+    expected_primary: ui-product-reviewer
+    allowed_secondary: []
+    forbidden_skills: [docs-site-product-designer]
+    expected_authority_class: skill_trigger
+  - id: n-tool-contract-not-thesis
+    prompt: "Design Assistant capability and verification contracts only; no benchmark or thesis claim is requested."
+    category: negative
+    expected_primary: agent-toolcall-designer
+    allowed_secondary: []
+    forbidden_skills: [thesis-evidence-reviewer]
+    expected_authority_class: target_architecture
+  - id: n-model-current-fact
+    prompt: "Read the canonical current product decision and tell me which local model is selected. Do not evaluate alternatives."
+    category: negative
+    expected_primary: null
+    allowed_secondary: []
+    forbidden_skills: [thesis-evidence-reviewer, performance-resource-reviewer]
+    expected_authority_class: current_truth
+  - id: n-mcp-code-is-not-roadmap
+    prompt: "MCP code exists in the tree. Does that make MCP active roadmap work? Answer from current product truth only."
+    category: negative
+    expected_primary: null
+    allowed_secondary: []
+    forbidden_skills: [mcp-adapter-reviewer]
+    expected_authority_class: current_truth
+  - id: n-priority-summary
+    prompt: "Read the active priorities and completion conditions, then summarize them without proposing implementation."
+    category: negative
+    expected_primary: null
+    allowed_secondary: []
+    forbidden_skills: [refactor-slicer, architecture-reviewer]
+    expected_authority_class: current_truth
+
+  - id: o-architecture-tools
+    prompt: "Review the target Assistant/application architecture, including state snapshot and tool-admission ownership."
+    category: overlap
+    expected_primary: architecture-reviewer
+    allowed_secondary: [agent-toolcall-designer]
+    forbidden_skills: [thesis-evidence-reviewer]
+    expected_authority_class: target_architecture
+  - id: o-code-architecture
+    prompt: "Review this implementation diff for regressions and architecture drift, including duplicated workflow truth."
+    category: overlap
+    expected_primary: code-reviewer
+    allowed_secondary: [architecture-reviewer]
+    forbidden_skills: [refactor-slicer]
+    expected_authority_class: skill_trigger
+  - id: o-data-ui
+    prompt: "Review the Data Import label semantics first, then note any user-visible wizard clarity risks."
+    category: overlap
+    expected_primary: data-interpretation-reviewer
+    allowed_secondary: [ui-product-reviewer]
+    forbidden_skills: [docs-site-product-designer]
+    expected_authority_class: skill_trigger
+  - id: o-docsite-truth
+    prompt: "Redesign the MkDocs status portal while ensuring current, target, validation, and historical content stay separated."
+    category: overlap
+    expected_primary: docs-site-product-designer
+    allowed_secondary: [docs-curator]
+    forbidden_skills: [ui-product-reviewer]
+    expected_authority_class: skill_trigger
+  - id: o-performance-ui
+    prompt: "Measure a Qt UI freeze during dataset loading and review the resulting responsiveness artifact."
+    category: overlap
+    expected_primary: performance-resource-reviewer
+    allowed_secondary: [ui-product-reviewer]
+    forbidden_skills: [code-reviewer]
+    expected_authority_class: skill_trigger
+  - id: o-release-security
+    prompt: "Review Windows packaging and first-run setup, including secrets, path permissions, private logs, and cache cleanup."
+    category: overlap
+    expected_primary: release-packaging-reviewer
+    allowed_secondary: [security-privacy-reviewer]
+    forbidden_skills: [performance-resource-reviewer]
+    expected_authority_class: skill_trigger
+  - id: o-tdd-test-quality
+    prompt: "Fix this bug test-first and verify the new regression test observes real behavior rather than mock calls."
+    category: overlap
+    expected_primary: tdd-guard
+    allowed_secondary: [test-quality-reviewer]
+    forbidden_skills: [validation-runner]
+    expected_authority_class: skill_trigger
+  - id: o-thesis-tools
+    prompt: "Review a frozen local-LLM tool-call experiment and audit both the tool contract and thesis scorer validity."
+    category: overlap
+    expected_primary: thesis-evidence-reviewer
+    allowed_secondary: [agent-toolcall-designer]
+    forbidden_skills: [validation-runner]
+    expected_authority_class: skill_trigger
+  - id: o-validation-tests
+    prompt: "Choose the canonical gates for this test-cleanup change and judge whether their assertions support the intended claim."
+    category: overlap
+    expected_primary: validation-runner
+    allowed_secondary: [test-quality-reviewer]
+    forbidden_skills: [tdd-guard]
+    expected_authority_class: validation_registry
+  - id: o-ui-state
+    prompt: "Review visible Assistant loading and error UX while checking that readiness still comes from backend state."
+    category: overlap
+    expected_primary: ui-product-reviewer
+    allowed_secondary: [architecture-reviewer]
+    forbidden_skills: [docs-site-product-designer]
+    expected_authority_class: skill_trigger
+  - id: o-refactor-architecture
+    prompt: "Slice a current-to-target state ownership refactor into bounded migrations with characterization tests."
+    category: overlap
+    expected_primary: refactor-slicer
+    allowed_secondary: [architecture-reviewer, tdd-guard]
+    forbidden_skills: [code-reviewer]
+    expected_authority_class: workflow
+  - id: o-security-tools
+    prompt: "Threat-model Assistant file access, prompt injection, confirmation, and backend tool admission."
+    category: overlap
+    expected_primary: security-privacy-reviewer
+    allowed_secondary: [agent-toolcall-designer]
+    forbidden_skills: [mcp-adapter-reviewer]
+    expected_authority_class: skill_trigger

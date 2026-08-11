@@ -1,42 +1,28 @@
 ---
 name: refactor-slicer
-description: Use when slicing XBrainLab backend, UI, or agent refactors into validated implementation steps with scope, call sites, target command shape, tests, and rollback boundaries.
+description: "Use for bounded XBrainLab backend, UI, or Assistant refactor slices with call sites, baselines, tests, rollback, and ownership. Do not use for broad redesign."
 ---
 
-# refactor-slicer
+# Refactor Slicer
 
-## 用途
+Turn an architectural concern into independently reviewable behavior-preserving slices.
 
-用於把後端 / agent 重構切成可驗證的小 slice。
+## Workflow
 
-## 先讀
+1. Name one workflow, current pain, and observable behavior that must remain.
+2. Enumerate entry points, owners, consumers, tests, and same-class call sites.
+3. Establish a passing characterization baseline before structural changes.
+4. Define the target ownership boundary and the smallest slice that moves toward it.
+5. List affected files, non-goals, rollback point, and evidence.
+6. Implement one slice; run focused and adjacent regression before starting the next.
+7. Remove compatibility code only after all callers and stronger tests have migrated.
 
-1. `.agents/runbooks/refactor-gate.md`
-2. `docs/target/architecture.md`
-3. `docs/architecture/backend.md`
-4. `docs/validation/README.md`
+For state-changing backend/Assistant work, specify command/service shape and publication contract.
+For presentation-only UI refactors, specify widget/layout ownership and visual invariants instead;
+do not force a command template where no command exists.
 
-## Slice 格式
+## Slice output
 
-每個 slice 必須寫：
-
-- scope
-- current call sites
-- target command shape
-- affected files
-- validation plan
-- non-goals
-- rollback / shrink plan
-
-## 選 slice 原則
-
-- 優先選低風險 workflow。
-- 優先建立 Application Service / Command API 的薄切片。
-- 先保護 current behavior，再改入口。
-- 不同時大改 UI、backend、agent tools、runtime。
-
-## 禁止
-
-- 不在未盤點 call sites 前改 controller。
-- 不只靠 MagicMock 保護 real side effect。
-- 不讓 agent tools 直接綁零散 controller internals。
+Include scope, current call sites, target boundary, first patch, behavior baseline, tests, source
+guard, rollback, and stopping condition. Split UI redesign from backend/test cleanup unless one
+shared behavior and validation genuinely require both.
