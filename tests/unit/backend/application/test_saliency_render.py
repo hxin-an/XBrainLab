@@ -7,6 +7,7 @@ from typing import cast
 import numpy as np
 import pytest
 
+from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.saliency_render import (
     SaliencyCrossFoldIdentity,
     SaliencyPlanIdentity,
@@ -38,6 +39,29 @@ class _EpochData:
 
     def get_model_args(self) -> dict[str, float]:
         return {"sfreq": 128.0}
+
+
+class _EpochDataWithPartialBidsGeometry(_EpochData):
+    def get_channel_names(self) -> list[str]:
+        return ["C3", "C4", "Cz", "EOG"]
+
+    def get_montage_position(self) -> list[tuple[float, float, float]]:
+        return []
+
+
+class _EpochDataWithManualGeometry(_EpochData):
+    def __init__(
+        self,
+        positions: tuple[tuple[float, float, float], ...],
+    ) -> None:
+        super().__init__()
+        self._positions = positions
+
+    def get_channel_names(self) -> list[str]:
+        return ["C3", "C4", "Cz", "Pz"]
+
+    def get_montage_position(self) -> list[tuple[float, float, float]]:
+        return list(self._positions)
 
 
 class _Record:
@@ -173,6 +197,46 @@ def _fold_holders(
     )
 
 
+def _manual_geometry_publisher(
+    positions: tuple[tuple[float, float, float], ...],
+) -> tuple[SaliencyRenderPublisher, SaliencyRunIdentity]:
+    epoch_data = _EpochDataWithManualGeometry(positions)
+    record = _Record(
+        (
+            np.ones((1, 4, 4), dtype=np.float32),
+            np.full((1, 4, 4), 2.0, dtype=np.float32),
+        )
+    )
+    holder = _Holder(
+        epoch_data,
+        SimpleNamespace(is_cross_validation=False),
+        _Run(record),
+        plan_index=0,
+        test_mask=(True,),
+    )
+    boundary = TrainingReadBoundary.no_trainer()
+    publication = cast(
+        ApplicationViewPublication,
+        SimpleNamespace(
+            generation=4,
+            usable=True,
+            training_boundary=boundary,
+        ),
+    )
+    publisher = SaliencyRenderPublisher(
+        training_runtime=cast(
+            TrainingRuntimePort,
+            SimpleNamespace(
+                has_trainer=lambda: True,
+                training_plan_holders=lambda: (holder,),
+            ),
+        ),
+        get_publication=lambda: publication,
+        capture_training_boundary=lambda: boundary,
+    )
+    return publisher, SaliencyRunIdentity(SaliencyPlanIdentity(0), 0)
+
+
 def test_cross_fold_choices_require_matching_verified_runs_and_split() -> None:
     choices = build_saliency_cross_fold_choices(_fold_holders())
 
@@ -189,6 +253,167 @@ def test_cross_fold_choices_require_matching_verified_runs_and_split() -> None:
         == ()
     )
     assert build_saliency_cross_fold_choices(_fold_holders(second_repeat=1)) == ()
+
+
+def test_bids_geometry_subsets_only_position_dependent_render_views() -> None:
+    epoch_data = _EpochDataWithPartialBidsGeometry()
+    record = _Record(
+        (
+            np.ones((1, 4, 4), dtype=np.float32),
+            np.full((1, 4, 4), 2.0, dtype=np.float32),
+        )
+    )
+    holder = _Holder(
+        epoch_data,
+        SimpleNamespace(is_cross_validation=False),
+        _Run(record),
+        plan_index=0,
+        test_mask=(True,),
+    )
+    boundary = TrainingReadBoundary.no_trainer()
+    publication = cast(
+        ApplicationViewPublication,
+        SimpleNamespace(
+            generation=4,
+            usable=True,
+            training_boundary=boundary,
+        ),
+    )
+    publisher = SaliencyRenderPublisher(
+        training_runtime=cast(
+            TrainingRuntimePort,
+            SimpleNamespace(
+                has_trainer=lambda: True,
+                training_plan_holders=lambda: (holder,),
+            ),
+        ),
+        get_publication=lambda: publication,
+        capture_training_boundary=lambda: boundary,
+        effective_montage_provider=lambda: SimpleNamespace(
+            source="bids",
+            channel_names=("C3", "C4", "Cz"),
+            positions_m=(
+                (-0.04, 0.0, 0.08),
+                (0.04, 0.0, 0.08),
+                (0.0, 0.04, 0.09),
+            ),
+            supports_topographic=True,
+            supports_three_dimensional=False,
+        ),
+    )
+    identity = SaliencyRunIdentity(SaliencyPlanIdentity(0), 0)
+
+    map_render = publisher.publish(
+        SaliencyRenderRequest(
+            publication_generation=4,
+            run=identity,
+            method="Gradient",
+            view="channel_time",
+        )
+    )
+    topographic_render = publisher.publish(
+        SaliencyRenderRequest(
+            publication_generation=4,
+            run=identity,
+            method="Gradient",
+            view="topographic_map",
+        )
+    )
+
+    assert map_render.data.channel_names == ("C3", "C4", "Cz", "EOG")
+    assert map_render.data.channel_positions == ()
+    assert map_render.data.saliency_by_class[0].shape == (1, 4, 4)
+    assert topographic_render.data.channel_names == ("C3", "C4", "Cz")
+    assert topographic_render.data.channel_positions == (
+        (-0.04, 0.0, 0.08),
+        (0.04, 0.0, 0.08),
+        (0.0, 0.04, 0.09),
+    )
+    assert topographic_render.data.saliency_by_class[0].shape == (1, 3, 4)
+
+
+@pytest.mark.parametrize(
+    "positions",
+    [
+        (
+            (-0.04, -0.04, 0.0),
+            (0.04, -0.04, 0.0),
+            (-0.04, 0.04, 0.0),
+            (0.04, 0.04, 0.0),
+        ),
+        (
+            (-0.04, 0.0, 0.0),
+            (-0.01, 0.0, 0.0),
+            (0.01, 0.0, 0.0),
+            (0.04, 0.0, 0.0),
+        ),
+    ],
+    ids=("planar", "degenerate"),
+)
+def test_direct_render_query_blocks_non_3d_manual_geometry(
+    positions: tuple[tuple[float, float, float], ...],
+) -> None:
+    publisher, identity = _manual_geometry_publisher(positions)
+
+    with pytest.raises(PreconditionError) as exc_info:
+        publisher.publish(
+            SaliencyRenderRequest(
+                publication_generation=4,
+                run=identity,
+                method="Gradient",
+                view="three_dimensional",
+            )
+        )
+
+    assert str(exc_info.value) == (
+        "The selected visualization requires compatible electrode positions."
+    )
+    assert exc_info.value.diagnostics == {
+        "retryable": True,
+        "view": "three_dimensional",
+    }
+
+
+def test_direct_render_query_allows_valid_2d_manual_geometry() -> None:
+    positions = (
+        (-0.04, -0.04, 0.0),
+        (0.04, -0.04, 0.0),
+        (-0.04, 0.04, 0.0),
+        (0.04, 0.04, 0.0),
+    )
+    publisher, identity = _manual_geometry_publisher(positions)
+
+    render = publisher.publish(
+        SaliencyRenderRequest(
+            publication_generation=4,
+            run=identity,
+            method="Gradient",
+            view="topographic_map",
+        )
+    )
+
+    assert render.data.channel_positions == positions
+
+
+def test_direct_render_query_allows_true_3d_manual_geometry() -> None:
+    positions = (
+        (0.0, 0.0, 0.0),
+        (0.04, 0.0, 0.0),
+        (0.0, 0.04, 0.0),
+        (0.0, 0.0, 0.04),
+    )
+    publisher, identity = _manual_geometry_publisher(positions)
+
+    render = publisher.publish(
+        SaliencyRenderRequest(
+            publication_generation=4,
+            run=identity,
+            method="Gradient",
+            view="three_dimensional",
+        )
+    )
+
+    assert render.data.channel_positions == positions
 
 
 def test_cross_fold_choices_reject_distinct_subject_cohorts() -> None:

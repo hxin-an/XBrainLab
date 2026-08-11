@@ -52,7 +52,7 @@ DEFAULT_CHECK_TIMEOUT_SECONDS = 300
 UI_UNIT_SUITE_TIMEOUT_SECONDS = 900
 CHECK_TERMINATION_GRACE_SECONDS = 5
 RESOURCE_CALIBRATION_PATH = ROOT / "artifacts" / "resource_guard" / "calibration.json"
-EXPECTED_HANDOFF_BRANCH = "stabilize/product-quality-closure"
+DEFAULT_HANDOFF_BRANCH = "main"
 PROTECTED_LOCAL_CONFIG_PATHS = frozenset({"settings.json"})
 REQUIRED_PUBLIC_IO_TEST_NODES = (
     "tests/integration/io/test_io_integration.py"
@@ -1565,6 +1565,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--expected-branch",
+        default=None,
+        help=(
+            "Branch identity required by the handoff traceability check. "
+            "Defaults to the current checkout; the full handoff manifest passes "
+            "and verifies its candidate branch separately."
+        ),
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=None,
@@ -1592,10 +1601,11 @@ def main(argv: list[str] | None = None) -> int:
     include_slow_checks = bool(args.include_slow_checks or args.handoff)
     profile = "handoff" if args.handoff else ("full" if include_slow_checks else "fast")
     git_state = collect_git_state()
+    handoff_expected_branch = args.expected_branch or git_state.branch
     traceability = workspace_traceability_check(
         git_state,
         fail_on_unprotected_dirty=bool(args.handoff),
-        expected_branch=EXPECTED_HANDOFF_BRANCH if args.handoff else None,
+        expected_branch=handoff_expected_branch if args.handoff else None,
         require_upstream_sync=bool(args.handoff),
     )
     if not args.handoff and latest_is_fresh(
@@ -1657,7 +1667,7 @@ def main(argv: list[str] | None = None) -> int:
             "externally_required_sections": list(HANDOFF_EXTERNAL_MANIFEST_SECTIONS),
             "ordered_sections": list(range(1, 9)),
             "dashboard_clean_last": True,
-            "expected_branch": EXPECTED_HANDOFF_BRANCH,
+            "expected_branch": handoff_expected_branch,
             "requires_upstream_sync": True,
         }
     if report_output_dir is None:

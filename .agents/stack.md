@@ -1,6 +1,6 @@
 # XBrainLab Agent Stack
 
-最後更新：`2026-07-31`
+最後更新：`2026-08-11`
 
 這份文件只記錄「目前有效」的 agent 操作層。舊的 automation、role、skill、AQ queue 已整合到 canonical 文件或刪除。
 
@@ -57,8 +57,9 @@ dispatch，依 source/runtime evidence 校準 canonical 文件。
 
 ## 目前階段
 
-目前在 `integration/eeg-workflow-improvements-v1` 收斂 EEG workflow integration candidate。
-這條線是 checkpoint，尚未 handoff-ready；`stabilize/product-quality-closure` 只保留為歷史
+目前在 `integration/import-training-montage-polish-v1` 收斂 import / training / montage polish
+integration candidate。這條線是 checkpoint，尚未 handoff-ready；先前 EEG workflow branch 與
+`stabilize/product-quality-closure` 只保留為歷史
 provenance，不是 active dispatch base。
 
 這代表：

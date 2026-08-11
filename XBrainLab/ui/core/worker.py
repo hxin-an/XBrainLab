@@ -99,16 +99,27 @@ class PythonThreadWorker:
     thread state while preserving the same queued Qt signal delivery contract.
     """
 
-    def __init__(self, fn, *args, name: str, **kwargs):
+    def __init__(
+        self,
+        fn,
+        *args,
+        name: str,
+        daemon: bool = False,
+        **kwargs,
+    ):
         self.fn = fn
         self.args = args
         self.kwargs = kwargs
         self.signals = WorkerSignals()
-        self._thread = Thread(target=self.run, name=name, daemon=False)
+        self._thread = Thread(target=self.run, name=name, daemon=daemon)
 
     @property
     def name(self) -> str:
         return self._thread.name
+
+    @property
+    def daemon(self) -> bool:
+        return self._thread.daemon
 
     def start(self) -> None:
         self._thread.start()

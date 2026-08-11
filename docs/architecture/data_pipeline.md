@@ -1,6 +1,6 @@
 # Data Pipeline Architecture
 
-最後更新：`2026-08-10`
+最後更新：`2026-08-11`
 
 ## 可信度
 
@@ -39,6 +39,11 @@ EEG file
 ```
 
 最重要的判斷是：`import 成功`、`label/event 正確`、`dataset generation 成功`、`training smoke 成功` 是不同層級的 evidence，不能混成同一個 claim。
+
+目前 import / training polish 還有三個明確邊界：BIDS electrode geometry 在 import 後以
+generation-bound background preparation 發布，不阻塞資料載入；Training Setting 的 RAM/VRAM
+結果是 draft recommendation preview，Start Training 仍執行 authoritative preflight；Epoch 的
+baseline 是獨立 On/Off 設定，不改變 reviewed event/window handoff。
 
 ## 支援格式
 

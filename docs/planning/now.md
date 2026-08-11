@@ -8,8 +8,8 @@
 
 ## 目前焦點
 
-**以已合併的 `main` GUI checkpoint 為產品基線，先關閉五項 EEG workflow 改進的整合候選，
-再繼續效能與簡化 Assistant prototype。**
+**以已合併的 `main` EEG workflow checkpoint 為產品基線，先關閉 import / training / montage
+polish 整合候選，再繼續效能與簡化 Assistant prototype。**
 
 目前不是 release 或 Assistant handoff-ready。真人資料驗收只涵蓋 Graz 2a GDF 與 OpenNeuro
 ds003061 P300 BIDS 各一個資料集；其餘格式、自動化 evidence 與舊 Agent gate 不可外推。
@@ -23,8 +23,8 @@ product scenarios gate 依使用者指示延後，不能被記為通過，也不
 | --- | --- |
 | Worktree | 以目前 `main` checkout 的 `git rev-parse --show-toplevel` 為準。 |
 | Product baseline | `main` |
-| Candidate branch | `integration/eeg-workflow-improvements-v1`；五項 EEG workflow 改進的未合併整合候選。 |
-| Baseline | `main@a0e16b400236b687bd2b4c9f58ef4a20929e377b` |
+| Candidate branch | `integration/import-training-montage-polish-v1`；import / training / montage polish 的未合併整合候選。 |
+| Baseline | `main@b3a87e3996585ebb09ae46335da82d234ae70249` |
 | Goal | 老師試用前 GUI/data stabilization；其後是 performance 與 simplified Assistant prototype。 |
 | Historical ledger | [Product Quality Audit - 2026-07-30](../records/product_quality_audit_2026-07-30.md) |
 | Current classification | integration candidate；local gates passed，exact-head CI / Windows acceptance pending；not release / not Assistant-ready |
@@ -98,7 +98,7 @@ candidate 的完成條件，也不可由現有 recommended-defaults UI 暗示為
 | Case-study evidence | 每個 dataset 一頁，只顯示實際重跑的 screenshots、training result 與 limitation，不把 format coverage 冒充 dataset diversity。 | manifest 和頁面數字可對應 exact artifacts；主 agent 逐圖檢查。 | Pending pipeline |
 | Integration and review | Agent/runtime 與 user-site/evidence 使用明確的 stacked branches，不污染已綠的 EEG workflow candidate。 | 主 agent 重讀 diff、跑 combined tests、UI/product/architecture reviewers 重審，再 commit/push。 | Pending workers |
 
-分支邊界：`integration/eeg-workflow-improvements-v1` 是目前唯一整合候選；其 exact identity
+分支邊界：`integration/import-training-montage-polish-v1` 是目前唯一整合候選；其 exact identity
 以 PR pushed head 為準。Assistant contract、lifecycle 與 tool-call showcase 不得在本輪收尾時
 繼續擴張；user-facing site、MOABB runner 與 case evidence 也不納入這次 candidate。後續工作
 從更新後的 `main` 建立短分支，不得把未審查 worker commit 混入本 PR。

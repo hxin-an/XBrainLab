@@ -9,6 +9,7 @@ import uuid
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import torch
@@ -96,7 +97,7 @@ def _cleanup_temporary(
 
 def _encode_json_value(value: object, *, location: str) -> object:
     if isinstance(value, np.generic):
-        value = value.item()
+        value = cast(np.generic, value).item()
     if value is None or isinstance(value, (bool, int, str)):
         return value
     if isinstance(value, float):
@@ -179,7 +180,7 @@ def _decode_json_value(value: object, *, location: str) -> object:
 
 def _numeric_array(value: object, *, name: str) -> np.ndarray:
     if isinstance(value, torch.Tensor):
-        tensor = value.detach()
+        tensor = cast(torch.Tensor, value).detach()
         if tensor.is_conj():
             tensor = tensor.resolve_conj()
         if tensor.is_neg():

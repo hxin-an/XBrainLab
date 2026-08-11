@@ -7,7 +7,7 @@ import math
 import warnings
 from collections import Counter
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol, cast
 
 import mne
 import numpy as np
@@ -18,6 +18,10 @@ from XBrainLab.backend.utils.logger import logger
 
 _MNE_EXCLUDED_CLASS_PREFIXES = ("bad", "edge")
 _MNE_ANNOTATION_TIME_TOLERANCE_SECONDS = 1e-6
+
+
+class _AnnotationSnapshotSource(Protocol):
+    def copy(self) -> mne.Annotations: ...
 
 
 def _require_equal_annotation_counts(
@@ -190,7 +194,7 @@ def _annotation_snapshot(
     """Copy attached MNE annotations, or a known-safe fallback for adapters."""
     annotations = getattr(raw_mne, "annotations", None)
     if isinstance(annotations, mne.Annotations):
-        return annotations.copy()
+        return cast(_AnnotationSnapshotSource, annotations).copy()
     if fallback is not None:
         return fallback.copy()
     return mne.Annotations([], [], [])

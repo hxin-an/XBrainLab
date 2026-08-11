@@ -58,17 +58,18 @@ class ChannelSelectionDialog(BaseDialog):
         layout.addWidget(self.search_bar)
 
         # Channel List
-        self.list_widget = QListWidget()
-        self.list_widget.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        list_widget = QListWidget()
+        self.list_widget = list_widget
+        list_widget.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
 
         if self.channels:
             for ch in self.channels:
                 item = QListWidgetItem(ch)
                 item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                 item.setCheckState(Qt.CheckState.Checked)
-                self.list_widget.addItem(item)
+                list_widget.addItem(item)
 
-        layout.addWidget(self.list_widget)
+        layout.addWidget(list_widget)
         self.create_buttons(layout)
 
     def filter_channels(self, text: str):
@@ -95,12 +96,14 @@ class ChannelSelectionDialog(BaseDialog):
         """
         # Select All / None
         btn_layout = QHBoxLayout()
-        self.btn_all = QPushButton("Select All")
-        self.btn_all.clicked.connect(lambda: self.set_all_checked(True))
-        self.btn_none = QPushButton("Deselect All")
-        self.btn_none.clicked.connect(lambda: self.set_all_checked(False))
-        btn_layout.addWidget(self.btn_all)
-        btn_layout.addWidget(self.btn_none)
+        btn_all = QPushButton("Select All")
+        self.btn_all = btn_all
+        btn_all.clicked.connect(lambda: self.set_all_checked(True))
+        btn_none = QPushButton("Deselect All")
+        self.btn_none = btn_none
+        btn_none.clicked.connect(lambda: self.set_all_checked(False))
+        btn_layout.addWidget(btn_all)
+        btn_layout.addWidget(btn_none)
         layout.addLayout(btn_layout)
 
         # Dialog Buttons

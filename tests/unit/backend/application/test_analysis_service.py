@@ -1091,7 +1091,11 @@ def test_analysis_service_requires_channel_positions_for_3d_plot() -> None:
     assert "saliency map" in visualize["available_views"]
     assert "3D plot" not in visualize["available_views"]
     assert visualize["blocked_views"]["3D plot"] == [
-        "Set Montage before opening the 3D plot."
+        "Set a 3D montage before opening the 3D plot."
+    ]
+    assert "topographic map" not in visualize["available_views"]
+    assert visualize["blocked_views"]["topographic map"] == [
+        "Set Montage before opening the topographic map."
     ]
 
 

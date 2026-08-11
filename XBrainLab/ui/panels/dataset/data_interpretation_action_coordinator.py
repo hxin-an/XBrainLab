@@ -804,6 +804,12 @@ class DataInterpretationActionCoordinator:
         dialog_result = (
             dict(raw_dialog_result) if isinstance(raw_dialog_result, dict) else {}
         )
+        import_confirmed = dialog_result.get("confirmed") is True
+        if import_confirmed:
+            self._show_status(
+                "Preparing import...",
+                _IMPORT_IN_PROGRESS_STATUS_TIMEOUT_MS,
+            )
         raw_dialog_choices = dialog_result.get("choices")
         dialog_choices: dict[str, Any] = (
             {str(key): value for key, value in raw_dialog_choices.items()}
@@ -834,6 +840,8 @@ class DataInterpretationActionCoordinator:
             str(review_state.decision.get("decision")) == "blocked"
             and updated_choices == choices
         ):
+            if import_confirmed:
+                self._show_status("Dataset import blocked · Review the import settings")
             return InteractionOutcome.blocked(
                 self._decision_reason(review_state.decision)
             )
@@ -1052,8 +1060,36 @@ class DataInterpretationActionCoordinator:
         ],
         error_title: str,
         loading_token: object | None = None,
+        on_terminal: Callable[[InteractionOutcome], None] | None = None,
     ) -> InteractionOutcome | None:
         """Rebuild choices from the admitted scan, then validate the candidate."""
+
+        def _terminal(outcome: InteractionOutcome) -> InteractionOutcome:
+            if on_terminal is not None and outcome.status.value in {
+                "blocked",
+                "cancelled",
+                "failed",
+            }:
+                on_terminal(outcome)
+            return outcome
+
+        def _handle_async_error(error: tuple, fallback_message: str) -> None:
+            message = (
+                str(error[1]).strip()
+                if len(error) > 1 and str(error[1]).strip()
+                else fallback_message
+            )
+            if loading_token is not None:
+                self._show_loading_error(loading_token, message)
+                return
+            self._bindings.message_box().warning(
+                self.panel,
+                error_title,
+                "The import settings could not be revalidated.\n\n"
+                f"{message}\n\nReopen Import EEG Data and review the current settings.",
+            )
+            _terminal(InteractionOutcome.failed(message))
+
         scan = dict(review_state.scan)
         scan_id = self._optional_payload_id(scan, "scan_id")
         if scan_id is None:
@@ -1067,7 +1103,7 @@ class DataInterpretationActionCoordinator:
                 self._bindings.message_box().warning(
                     self.panel, "Import review changed", message
                 )
-            return InteractionOutcome.blocked(message)
+            return _terminal(InteractionOutcome.blocked(message))
 
         def _handle_validation(
             validation_result,
@@ -1082,9 +1118,11 @@ class DataInterpretationActionCoordinator:
             ):
                 if loading_token is not None:
                     self._show_loading_error(loading_token, validation_result.message)
-                return self._interaction_failure_outcome(
-                    validation_result,
-                    validation_result.message,
+                return _terminal(
+                    self._interaction_failure_outcome(
+                        validation_result,
+                        validation_result.message,
+                    )
                 )
             decision = self._diagnostic_payload(
                 validation_result,
@@ -1109,7 +1147,7 @@ class DataInterpretationActionCoordinator:
                         "Import review changed",
                         str(exc),
                     )
-                return InteractionOutcome.blocked(str(exc))
+                return _terminal(InteractionOutcome.blocked(str(exc)))
             return on_validated(validated_state)
 
         def _handle_preview_result(preview_result) -> InteractionOutcome:
@@ -1129,7 +1167,7 @@ class DataInterpretationActionCoordinator:
                             loading_token,
                             resource_outcome.message,
                         )
-                return resource_outcome
+                return _terminal(resource_outcome)
             if self._result_failed(
                 preview_result,
                 error_title,
@@ -1137,9 +1175,11 @@ class DataInterpretationActionCoordinator:
             ):
                 if loading_token is not None:
                     self._show_loading_error(loading_token, preview_result.message)
-                return self._interaction_failure_outcome(
-                    preview_result,
-                    preview_result.message,
+                return _terminal(
+                    self._interaction_failure_outcome(
+                        preview_result,
+                        preview_result.message,
+                    )
                 )
             preview = self._diagnostic_payload(preview_result, "preview")
             candidate = self._diagnostic_payload(preview_result, "candidate")
@@ -1163,7 +1203,7 @@ class DataInterpretationActionCoordinator:
                         "Import review changed",
                         str(exc),
                     )
-                return InteractionOutcome.blocked(str(exc))
+                return _terminal(InteractionOutcome.blocked(str(exc)))
             started = self._execute_interpretation_command_async(
                 ValidateInterpretationCommand(candidate_id=candidate_id),
                 on_result=lambda result: _handle_validation(
@@ -1173,36 +1213,30 @@ class DataInterpretationActionCoordinator:
                 ),
                 error_title="Interpretation validation failed",
                 expected_publication_generation=(preview_state.publication_generation),
-                on_error=(
-                    lambda error: self._show_loading_error(
-                        loading_token,
-                        str(error[1])
-                        if len(error) > 1
-                        else "The import preview could not be validated.",
-                    )
-                    if loading_token is not None
-                    else None
+                on_error=lambda error: _handle_async_error(
+                    error,
+                    "The import preview could not be validated.",
                 ),
                 unexpected_error_context=(
                     UnexpectedErrorContext.DATA_INTERPRETATION_VALIDATION
                 ),
             )
             if started is not None:
-                return started
+                return _terminal(started)
             message = "Data Interpretation validation service is unavailable."
             self._bindings.message_box().critical(
                 self.panel,
                 "Interpretation validation unavailable",
                 message,
             )
-            return InteractionOutcome.blocked(message)
+            return _terminal(InteractionOutcome.blocked(message))
 
         def _dispatch_preview(
             *,
             resource_preflight_confirmed: bool = False,
             resource_preflight_token: str | None = None,
         ) -> InteractionOutcome | None:
-            return self._execute_interpretation_command_async(
+            started = self._execute_interpretation_command_async(
                 PreviewInterpretationCommand(
                     scan_id=scan_id,
                     choices=choices,
@@ -1212,20 +1246,15 @@ class DataInterpretationActionCoordinator:
                 on_result=_handle_preview_result,
                 error_title=error_title,
                 expected_publication_generation=(review_state.publication_generation),
-                on_error=(
-                    lambda error: self._show_loading_error(
-                        loading_token,
-                        str(error[1])
-                        if len(error) > 1
-                        else "The import preview could not be updated.",
-                    )
-                    if loading_token is not None
-                    else None
+                on_error=lambda error: _handle_async_error(
+                    error,
+                    "The import preview could not be updated.",
                 ),
                 unexpected_error_context=(
                     UnexpectedErrorContext.DATA_INTERPRETATION_PREVIEW
                 ),
             )
+            return _terminal(started) if started is not None else None
 
         return _dispatch_preview()
 
@@ -1295,24 +1324,39 @@ class DataInterpretationActionCoordinator:
     ) -> InteractionOutcome | None:
         """Validate edited choices from the existing scan, then apply."""
 
+        def _replace_preparing_status(outcome: InteractionOutcome) -> None:
+            if outcome.status.value == "cancelled":
+                self._show_status("Dataset import cancelled")
+            elif outcome.status.value == "blocked":
+                self._show_status("Dataset import blocked · Review the import settings")
+            elif outcome.status.value == "failed":
+                self._show_status("Dataset import failed · Review the import settings")
+
         def _apply_validated_review(
             validated_state: _InterpretationReviewState,
         ) -> InteractionOutcome:
             if str(validated_state.decision.get("decision")) == "blocked":
-                return InteractionOutcome.blocked(
+                outcome = InteractionOutcome.blocked(
                     self._decision_reason(validated_state.decision)
                 )
+                _replace_preparing_status(outcome)
+                return outcome
             return self._apply_interpretation_async(
                 validated_state,
                 dialog_result,
             )
 
-        return self._preview_and_validate_interpretation_async(
+        started = self._preview_and_validate_interpretation_async(
             choices=choices,
             review_state=review_state,
             on_validated=_apply_validated_review,
             error_title="Interpretation preview failed",
+            on_terminal=_replace_preparing_status,
         )
+        if started is not None:
+            return started
+        self._show_status("Dataset import failed · Review the import settings")
+        return None
 
     def _apply_interpretation_async(
         self,
@@ -1344,6 +1388,7 @@ class DataInterpretationActionCoordinator:
                             "The resource check could not be confirmed safely. "
                             "Retry the import to run a fresh check."
                         )
+                        self._show_status("Dataset import blocked · Retry the import")
                         self._bindings.message_box().critical(
                             self.panel,
                             "Dataset Resource Check",
@@ -1394,6 +1439,9 @@ class DataInterpretationActionCoordinator:
                         message = (
                             "The confirmed dataset import retry could not be started."
                         )
+                        self._show_status(
+                            "Dataset import failed · Review the import settings"
+                        )
                         if continuation is not None:
                             continuation.fail(message)
                         return InteractionOutcome.failed(message)
@@ -1432,10 +1480,11 @@ class DataInterpretationActionCoordinator:
             resource_preflight_confirmed: bool = False,
             resource_preflight_token: str | None = None,
         ) -> InteractionOutcome:
-            self._show_status(
-                "Importing EEG data and labels...",
-                _IMPORT_IN_PROGRESS_STATUS_TIMEOUT_MS,
-            )
+            if not resource_preflight_confirmed:
+                self._show_status(
+                    "Importing EEG data and labels...",
+                    _IMPORT_IN_PROGRESS_STATUS_TIMEOUT_MS,
+                )
             apply_command = ApplyInterpretationCommand(
                 candidate_id=candidate_id,
                 confirmed=dialog_result.get("confirmed") is True,
@@ -1453,7 +1502,7 @@ class DataInterpretationActionCoordinator:
                     title="Interpretation apply failed",
                 )
 
-            return self._execute_interpretation_command_async(
+            started = self._execute_interpretation_command_async(
                 apply_command,
                 on_result=_handle_apply_result,
                 error_title="Interpretation apply failed",
@@ -1462,7 +1511,11 @@ class DataInterpretationActionCoordinator:
                 unexpected_error_context=(
                     UnexpectedErrorContext.DATA_INTERPRETATION_APPLY
                 ),
-            ) or InteractionOutcome.blocked(
+            )
+            if started is not None:
+                return started
+            self._show_status("Dataset import failed · Review the import settings")
+            return InteractionOutcome.blocked(
                 "Data interpretation apply could not be started."
             )
 

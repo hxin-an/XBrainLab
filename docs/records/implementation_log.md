@@ -1,6 +1,6 @@
 # XBrainLab Implementation Log
 
-最後更新：`2026-08-04`
+最後更新：`2026-08-11`
 
 ## 這份文件的用途
 
@@ -14,6 +14,28 @@
 - 主要 evidence 入口在哪裡
 - 還不能宣稱完成的是什麼
 - 下一手 owner 應該看哪裡
+
+## 2026-08-11 Import / Training / Montage Polish Candidate
+
+### 狀態
+
+- Application-owned Training resource preview、generation-bound BIDS montage preparation、Epoch
+  baseline On/Off、optimizer parameter parsing 與 Visualization capability presentation 已整合到
+  `integration/import-training-montage-polish-v1`。
+- Application background workers 與 PyQtGraph plot roots 已納入 bounded desktop shutdown；取消
+  close 仍保留可恢復狀態。
+
+### 已可宣稱
+
+- Local gates 通過 20/20 required import lifecycles、14/14 required formats、5 個 public source
+  families、4/4 strict cross-source cases，以及 focused BIDS / Epoch / product walkthrough。
+- Offscreen UI evidence 已重新產生並人工檢查 Training resource adjustment、Import review、Smart
+  Parser、Epoch baseline、Saliency / Spectrogram 與 3D blocked state。
+
+### 不能宣稱完成
+
+- 仍待本 branch commit/push、整合最新 `main`、PR exact-head CI 與 Windows 人工驗收；目前不是
+  release、full BIDS validator、任意 EEG dataset support、AutoML 或 Assistant-ready 證明。
 
 ## 2026-08-04 Main Development Checkpoint
 

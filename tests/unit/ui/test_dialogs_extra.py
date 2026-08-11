@@ -6,12 +6,13 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QLabel,
+    QPushButton,
     QScrollArea,
 )
 
@@ -282,6 +283,155 @@ class TestEpochingDialog:
     def test_toggle_baseline(self, dlg):
         dlg.toggle_baseline(True)
         dlg.toggle_baseline(False)
+
+    def test_baseline_uses_right_aligned_on_off_toggle(self, dlg, qtbot):
+        assert isinstance(dlg.baseline_check, QPushButton)
+        assert dlg.baseline_check.objectName() == "PreprocessToggle"
+
+        dlg.show()
+        qtbot.wait(0)
+
+        assert dlg.baseline_title_label is not None
+        assert dlg.baseline_check.x() > dlg.baseline_title_label.x()
+        assert dlg.baseline_check.text() in {"On", "Off"}
+        assert dlg.baseline_check.accessibleName() == "Baseline correction"
+
+    def test_disabled_baseline_retains_values_without_blocking_create(self, dlg):
+        assert dlg.baseline_check is not None
+        assert dlg.baseline_content is not None
+        assert dlg.baseline_help_label is not None
+        assert dlg.baseline_min_label is not None
+        assert dlg.baseline_max_label is not None
+        assert dlg.baseline_error_label is not None
+        assert dlg.b_min_spin is not None
+        assert dlg.b_max_spin is not None
+        assert dlg.create_button is not None
+
+        dlg.baseline_check.setChecked(True)
+        dlg.b_min_spin.setValue(0.5)
+        dlg.b_max_spin.setValue(0.2)
+
+        retained_values = (dlg.b_min_spin.value(), dlg.b_max_spin.value())
+        assert not dlg.create_button.isEnabled()
+        assert dlg.baseline_error_label.isVisibleTo(dlg)
+
+        dlg.baseline_check.setChecked(False)
+
+        assert dlg.baseline_check.text() == "Off"
+        assert not dlg.baseline_content.isEnabled()
+        assert not dlg.baseline_help_label.isEnabled()
+        assert not dlg.baseline_min_label.isEnabled()
+        assert not dlg.baseline_max_label.isEnabled()
+        assert not dlg.baseline_error_label.isEnabled()
+        assert not dlg.b_min_spin.isEnabled()
+        assert not dlg.b_max_spin.isEnabled()
+        assert (dlg.b_min_spin.value(), dlg.b_max_spin.value()) == retained_values
+        assert not dlg.baseline_error_label.isVisibleTo(dlg)
+        assert dlg.create_button.isEnabled()
+
+        dlg.baseline_check.setChecked(True)
+
+        assert dlg.baseline_check.text() == "On"
+        assert dlg.baseline_content.isEnabled()
+        assert dlg.baseline_help_label.isEnabled()
+        assert dlg.baseline_min_label.isEnabled()
+        assert dlg.baseline_max_label.isEnabled()
+        assert dlg.baseline_error_label.isEnabled()
+        assert (dlg.b_min_spin.value(), dlg.b_max_spin.value()) == retained_values
+        assert dlg.baseline_error_label.isVisibleTo(dlg)
+        assert not dlg.create_button.isEnabled()
+
+    def test_disabled_baseline_submits_none_through_create_button(self, dlg, qtbot):
+        assert dlg.baseline_check is not None
+        assert dlg.baseline_help_label is not None
+        assert dlg.b_min_spin is not None
+        assert dlg.b_max_spin is not None
+        assert dlg.create_button is not None
+
+        dlg.show()
+        dlg.baseline_check.setChecked(True)
+        dlg.b_min_spin.setValue(0.5)
+        dlg.b_max_spin.setValue(0.2)
+        assert not dlg.create_button.isEnabled()
+
+        dlg.baseline_check.setChecked(False)
+        assert dlg.create_button.isEnabled()
+        assert dlg.baseline_help_label.text().startswith("When enabled,")
+
+        with qtbot.waitSignal(dlg.accepted, timeout=1000):
+            qtbot.mouseClick(dlg.create_button, Qt.MouseButton.LeftButton)
+
+        params = dlg.get_params()
+        assert params is not None
+        baseline, selected_events, _t_min, _t_max = params
+        assert baseline is None
+        assert selected_events == ["left", "right"]
+
+    def test_baseline_surface_matches_section_and_never_paints_black(self, dlg, qtbot):
+        assert dlg.baseline_group is not None
+        assert dlg.baseline_content is not None
+        assert dlg.baseline_check is not None
+        assert dlg.baseline_help_label is not None
+        assert dlg.baseline_min_label is not None
+        assert dlg.baseline_max_label is not None
+        assert dlg.b_min_spin is not None
+        assert dlg.b_max_spin is not None
+        assert "QWidget#EpochBaselineContent:disabled" in dlg.styleSheet()
+        assert (
+            'QFrame#EpochBaselineSection[baselineEnabled="false"]' in dlg.styleSheet()
+        )
+
+        dlg.show()
+        expected_surfaces = {
+            True: (34, 36, 38),
+            False: (32, 33, 36),
+        }
+        for enabled, expected_rgb in expected_surfaces.items():
+            dlg.baseline_check.setChecked(enabled)
+            dlg.repaint()
+            qtbot.wait(0)
+            sample = dlg.baseline_content.mapTo(
+                dlg,
+                QPoint(
+                    max(dlg.baseline_content.width() - 6, 0),
+                    max(dlg.baseline_content.height() - 6, 0),
+                ),
+            )
+            color = dlg.grab().toImage().pixelColor(sample).getRgb()[:3]
+
+            assert (
+                max(
+                    abs(actual - expected)
+                    for actual, expected in zip(color, expected_rgb, strict=True)
+                )
+                <= 5
+            )
+            assert min(color) >= 24
+            assert dlg.baseline_help_label.isVisibleTo(dlg)
+            assert dlg.baseline_min_label.isVisibleTo(dlg)
+            assert dlg.baseline_max_label.isVisibleTo(dlg)
+            assert dlg.b_min_spin.isVisibleTo(dlg)
+            assert dlg.b_max_spin.isVisibleTo(dlg)
+            for label in (
+                dlg.baseline_help_label,
+                dlg.baseline_min_label,
+                dlg.baseline_max_label,
+            ):
+                required_height = (
+                    label.heightForWidth(label.width())
+                    if label.wordWrap()
+                    else label.fontMetrics().lineSpacing()
+                )
+                assert required_height <= label.contentsRect().height()
+
+    def test_baseline_first_layer_does_not_restore_legacy_checkbox_copy(self):
+        from inspect import getsource
+
+        from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
+
+        assert 'QCheckBox("Apply baseline correction")' not in getsource(
+            EpochingDialog.init_ui
+        )
 
     def test_update_duration_info(self, dlg):
         dlg.update_duration_info()

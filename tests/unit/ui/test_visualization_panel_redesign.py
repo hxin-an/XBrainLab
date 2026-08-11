@@ -544,22 +544,41 @@ def test_visualization_panel_invalidates_rendered_views_when_publication_read_fa
         invalidate.assert_called_once_with()
 
 
-def test_visualization_panel_disables_absolute_when_view_is_already_nonnegative(
+def test_visualization_panel_hides_absolute_only_for_spectrogram_and_restores_choice(
     qtbot,
 ):
     panel, _ctrl = _make_panel(qtbot)
 
     panel.method_combo.setCurrentText("Gradient")
-    panel.tabs.setCurrentIndex(0)
-    assert panel.abs_check.isEnabled()
+    panel.abs_check.setChecked(True)
+
+    for tab_index in (0, 2, 3):
+        panel.tabs.setCurrentIndex(tab_index)
+        assert not panel.abs_check.isHidden()
+        assert panel.abs_check.isEnabled()
+        assert panel.abs_check.isChecked()
+
+        panel.tabs.setCurrentIndex(1)
+        assert panel.abs_check.isHidden()
+        assert panel.abs_check.isChecked()
+        assert not panel.normalize_check.isHidden()
+        assert panel.normalize_check.isEnabled()
+
+
+def test_visualization_panel_keeps_nonnegative_method_absolute_visible_but_disabled(
+    qtbot,
+):
+    panel, _ctrl = _make_panel(qtbot)
 
     panel.method_combo.setCurrentText("SmoothGrad_Squared")
-    assert not panel.abs_check.isEnabled()
-    assert "non-negative" in panel.abs_check.toolTip()
+    for tab_index in (0, 2, 3):
+        panel.tabs.setCurrentIndex(tab_index)
+        assert not panel.abs_check.isHidden()
+        assert not panel.abs_check.isEnabled()
+        assert "non-negative" in panel.abs_check.toolTip()
 
-    panel.method_combo.setCurrentText("Gradient")
     panel.tabs.setCurrentIndex(1)
-    assert not panel.abs_check.isEnabled()
+    assert panel.abs_check.isHidden()
     assert "magnitude" in panel.abs_check.toolTip()
 
 
@@ -585,9 +604,12 @@ def test_spectrogram_normalize_uses_raw_publication_and_display_transform(
         "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
         publish,
     )
+    panel.abs_check.setChecked(True)
     panel.tabs.setCurrentIndex(1)
+    qtbot.waitUntil(panel.native_render_work_idle, timeout=3000)
     spectrogram = cast(Any, panel.tab_spectro)
     spectrogram.update_plot.reset_mock()
+    raw_request_count = len(requests)
 
     panel.normalize_check.setChecked(True)
     qtbot.waitUntil(
@@ -597,6 +619,7 @@ def test_spectrogram_normalize_uses_raw_publication_and_display_transform(
     )
 
     assert requests
+    assert len(requests) == raw_request_count
     assert requests[-1].normalize is False
     publication, absolute = spectrogram.update_plot.call_args.args
     assert publication.data.normalized is False
@@ -606,6 +629,7 @@ def test_spectrogram_normalize_uses_raw_publication_and_display_transform(
 
 def test_visualization_controls_stay_in_a_compact_two_row_grid(qtbot):
     panel, _ctrl = _make_panel(qtbot)
+    panel.abs_check.setChecked(True)
     panel.resize(760, 720)
     panel.show()
     qtbot.wait(50)
@@ -650,12 +674,57 @@ def test_visualization_controls_stay_in_a_compact_two_row_grid(qtbot):
         for right_rect in rects[left_index + 1 :]:
             assert not left_rect.intersects(right_rect)
 
+    control_height = control_group.height()
+    transform_row_y = panel.normalize_check.y()
+    selector_geometry = {
+        "plan": panel.plan_combo.geometry(),
+        "run": panel.run_combo.geometry(),
+        "method": panel.method_combo.geometry(),
+        "normalize": panel.normalize_check.geometry(),
+    }
+    panel.tabs.setCurrentIndex(1)
+    qtbot.wait(20)
+
+    assert panel.abs_check.isHidden()
+    assert panel.abs_check.isChecked()
+    assert not panel.normalize_check.isHidden()
+    assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (1, 3)
+    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (1, 4)
+    assert panel.normalize_check.y() == transform_row_y
+    assert control_group.height() == control_height
+    assert panel.plan_combo.geometry() == selector_geometry["plan"]
+    assert panel.run_combo.geometry() == selector_geometry["run"]
+    assert panel.method_combo.geometry() == selector_geometry["method"]
+    assert panel.normalize_check.geometry() == selector_geometry["normalize"]
+
+    panel.tabs.setCurrentIndex(2)
+    qtbot.wait(20)
+
+    assert not panel.abs_check.isHidden()
+    assert panel.abs_check.isChecked()
+    assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (1, 3)
+    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (1, 4)
+    assert control_group.height() == control_height
+    assert panel.plan_combo.geometry() == selector_geometry["plan"]
+    assert panel.run_combo.geometry() == selector_geometry["run"]
+    assert panel.method_combo.geometry() == selector_geometry["method"]
+    assert panel.normalize_check.geometry() == selector_geometry["normalize"]
+
 
 def test_visualization_controls_use_one_row_when_panel_is_wide(qtbot):
     panel, _ctrl = _make_panel(qtbot)
+    panel.abs_check.setChecked(True)
     panel.resize(1180, 720)
     panel.show()
     qtbot.wait(50)
+
+    control_group = next(
+        group
+        for group in panel.findChildren(QGroupBox)
+        if group.title() == "VISUALIZATION CONTROLS"
+    )
+    layout = control_group.layout()
+    assert isinstance(layout, QGridLayout)
 
     assert panel.plan_combo.y() == panel.run_combo.y()
     assert panel.plan_combo.y() == panel.method_combo.y()
@@ -673,6 +742,42 @@ def test_visualization_controls_use_one_row_when_panel_is_wide(qtbot):
     for left_index, left_rect in enumerate(rects):
         for right_rect in rects[left_index + 1 :]:
             assert not left_rect.intersects(right_rect)
+
+    control_height = control_group.height()
+    transform_row_y = panel.normalize_check.y()
+    selector_geometry = {
+        "plan": panel.plan_combo.geometry(),
+        "run": panel.run_combo.geometry(),
+        "method": panel.method_combo.geometry(),
+        "normalize": panel.normalize_check.geometry(),
+    }
+    panel.tabs.setCurrentIndex(1)
+    qtbot.wait(20)
+
+    assert panel.abs_check.isHidden()
+    assert panel.abs_check.isChecked()
+    assert not panel.normalize_check.isHidden()
+    assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (0, 6)
+    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (0, 7)
+    assert panel.normalize_check.y() == transform_row_y
+    assert control_group.height() == control_height
+    assert panel.plan_combo.geometry() == selector_geometry["plan"]
+    assert panel.run_combo.geometry() == selector_geometry["run"]
+    assert panel.method_combo.geometry() == selector_geometry["method"]
+    assert panel.normalize_check.geometry() == selector_geometry["normalize"]
+
+    panel.tabs.setCurrentIndex(3)
+    qtbot.wait(20)
+
+    assert not panel.abs_check.isHidden()
+    assert panel.abs_check.isChecked()
+    assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (0, 6)
+    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (0, 7)
+    assert control_group.height() == control_height
+    assert panel.plan_combo.geometry() == selector_geometry["plan"]
+    assert panel.run_combo.geometry() == selector_geometry["run"]
+    assert panel.method_combo.geometry() == selector_geometry["method"]
+    assert panel.normalize_check.geometry() == selector_geometry["normalize"]
 
 
 def test_visualization_panel_defers_service_queries_until_opened(
@@ -2518,6 +2623,71 @@ def test_visualization_panel_shows_placeholder_without_valid_selection(qtbot):
         "Select a fold and run to continue."
     )
     current_widget.show_error.assert_not_called()
+
+
+def test_visualization_panel_shows_pending_montage_on_position_dependent_view(
+    qtbot,
+):
+    panel, _ctrl = _make_panel(qtbot)
+    panel.tabs.setCurrentWidget(panel.tab_topo)
+    panel.last_application_query = CommandResult.success_result(
+        command_name="visualize",
+        message="Results available",
+        state={},
+        changed_state=ChangedState(),
+        diagnostics={
+            "payload_type": "visualization_summary",
+            "available": True,
+            "blocked_views": {"topographic map": ["Preparing electrode positions..."]},
+        },
+    )
+    panel._application_summary_dirty = False
+    current_widget = _current_mock_widget(panel)
+    current_widget.show_message.reset_mock()
+
+    panel.refresh_combos()
+    panel.on_update()
+
+    assert current_widget.show_message.call_args_list
+    assert all(
+        call.args == ("Preparing electrode positions...",)
+        for call in current_widget.show_message.call_args_list
+    )
+
+
+def test_visualization_panel_normalizes_3d_blocked_key_without_duplicate_status(
+    qtbot,
+    monkeypatch,
+):
+    panel, _ctrl = _make_panel(qtbot)
+    panel.tabs.setCurrentWidget(panel.tab_3d)
+    panel.last_application_query = CommandResult.success_result(
+        command_name="visualize",
+        message="Results available",
+        state={},
+        changed_state=ChangedState(),
+        diagnostics={
+            "payload_type": "visualization_summary",
+            "available": True,
+            "blocked_views": {
+                "3D plot": ["Set a 3D montage before opening the 3D plot."]
+            },
+        },
+    )
+    panel._application_summary_dirty = False
+    current_widget = _current_mock_widget(panel)
+    current_widget.show_message.reset_mock()
+    statuses: list[str] = []
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.show_status_message",
+        lambda _context, message: statuses.append(message),
+    )
+
+    panel.on_update()
+
+    expected = "Set a 3D montage before opening the 3D plot."
+    current_widget.show_message.assert_called_once_with(expected)
+    assert statuses == []
 
 
 def test_visualization_panel_shows_setup_message_without_training_results(

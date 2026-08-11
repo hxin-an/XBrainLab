@@ -703,6 +703,178 @@ def test_label_field_repreview_reopens_match_labels_instead_of_applying(
     apply_review.assert_not_called()
 
 
+def test_confirm_import_shows_preparing_status_before_async_revalidation(
+    monkeypatch,
+) -> None:
+    panel = MagicMock()
+    handler = DatasetActionHandler(panel)
+    revised_choices = {
+        "label_carrier_choices": {"/data/sub-01_events.tsv": {"label_field": "value"}}
+    }
+    statuses: list[tuple[str, int]] = []
+
+    class _Dialog:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        @staticmethod
+        def exec() -> bool:
+            return True
+
+        @staticmethod
+        def get_result() -> dict[str, Any]:
+            return {
+                "confirmed": True,
+                "choices": revised_choices,
+            }
+
+    monkeypatch.setattr(actions, "DataInterpretationPreviewDialog", _Dialog)
+    monkeypatch.setattr(
+        handler,
+        "_show_status",
+        lambda message, timeout_ms=7000: statuses.append((message, timeout_ms)),
+    )
+
+    def _start_revalidation(**_kwargs):
+        assert statuses == [("Preparing import...", 900_000)]
+        return InteractionOutcome.accepted("Import revalidation scheduled.")
+
+    revalidate = MagicMock(side_effect=_start_revalidation)
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_review_interpretation_for_apply_async",
+        revalidate,
+    )
+
+    outcome = handler._data_interpretation._continue_data_interpretation_import(
+        source_path="/data",
+        source_hint="bids",
+        choices={},
+        label_sources=[],
+        review_state=_review_state(publication_generation=17),
+    )
+
+    assert outcome.status is InteractionStatus.ACCEPTED
+    assert statuses == [("Preparing import...", 900_000)]
+    revalidate.assert_called_once()
+
+
+def test_confirm_import_revalidation_worker_failure_replaces_preparing_status(
+    monkeypatch,
+) -> None:
+    panel = MagicMock()
+    handler = DatasetActionHandler(panel)
+    revised_choices = {"class_map": {"1": "Target"}}
+    statuses: list[tuple[str, int]] = []
+
+    class _Dialog:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        @staticmethod
+        def exec() -> bool:
+            return True
+
+        @staticmethod
+        def get_result() -> dict[str, Any]:
+            return {"confirmed": True, "choices": revised_choices}
+
+    monkeypatch.setattr(actions, "DataInterpretationPreviewDialog", _Dialog)
+    monkeypatch.setattr(
+        handler,
+        "_show_status",
+        lambda message, timeout_ms=7000: statuses.append((message, timeout_ms)),
+    )
+    execute = MagicMock(return_value=InteractionOutcome.accepted("scheduled"))
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_execute_interpretation_command_async",
+        execute,
+    )
+
+    outcome = handler._data_interpretation._continue_data_interpretation_import(
+        source_path="/data",
+        source_hint="file",
+        choices={},
+        label_sources=[],
+        review_state=_review_state(publication_generation=17),
+    )
+    execute.call_args.kwargs["on_error"](
+        (RuntimeError, RuntimeError("revalidation failed"), None)
+    )
+
+    assert outcome.status is InteractionStatus.ACCEPTED
+    assert statuses == [
+        ("Preparing import...", 900_000),
+        ("Dataset import failed · Review the import settings", 7000),
+    ]
+    handler._data_interpretation._bindings.message_box().warning.assert_called_once()
+    warning_text = (
+        handler._data_interpretation._bindings.message_box().warning.call_args.args[2]
+    )
+    assert "revalidation failed" in warning_text
+    assert "Reopen Import EEG Data" in warning_text
+
+
+def test_confirm_import_revalidation_cancel_replaces_preparing_status(
+    monkeypatch,
+) -> None:
+    panel = MagicMock()
+    handler = DatasetActionHandler(panel)
+    revised_choices = {"class_map": {"1": "Target"}}
+    statuses: list[tuple[str, int]] = []
+
+    class _Dialog:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        @staticmethod
+        def exec() -> bool:
+            return True
+
+        @staticmethod
+        def get_result() -> dict[str, Any]:
+            return {"confirmed": True, "choices": revised_choices}
+
+    monkeypatch.setattr(actions, "DataInterpretationPreviewDialog", _Dialog)
+    monkeypatch.setattr(
+        handler,
+        "_show_status",
+        lambda message, timeout_ms=7000: statuses.append((message, timeout_ms)),
+    )
+    execute = MagicMock(return_value=InteractionOutcome.accepted("scheduled"))
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_execute_interpretation_command_async",
+        execute,
+    )
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_preview_resource_preflight_outcome",
+        MagicMock(
+            return_value=InteractionOutcome.cancelled(
+                "Dataset import preview was cancelled during the resource check."
+            )
+        ),
+    )
+
+    outcome = handler._data_interpretation._continue_data_interpretation_import(
+        source_path="/data",
+        source_hint="file",
+        choices={},
+        label_sources=[],
+        review_state=_review_state(publication_generation=17),
+    )
+    terminal = execute.call_args.kwargs["on_result"](MagicMock())
+
+    assert outcome.status is InteractionStatus.ACCEPTED
+    assert terminal.status is InteractionStatus.CANCELLED
+    assert statuses == [
+        ("Preparing import...", 900_000),
+        ("Dataset import cancelled", 7000),
+    ]
+
+
 def test_blocked_review_closes_without_a_second_error_dialog(monkeypatch) -> None:
     panel = MagicMock()
     handler = DatasetActionHandler(panel)
@@ -881,6 +1053,33 @@ def test_apply_replaces_loading_status_when_the_worker_fails(monkeypatch):
         ("Dataset import failed · Review the import settings", 7000),
     ]
     assert present_error.call_args.kwargs["error_info"] == error
+
+
+def test_apply_replaces_loading_status_when_dispatch_cannot_start(monkeypatch):
+    panel = MagicMock()
+    handler = DatasetActionHandler(panel)
+    statuses: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        handler,
+        "_show_status",
+        lambda message, timeout_ms=7000: statuses.append((message, timeout_ms)),
+    )
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_execute_interpretation_command_async",
+        MagicMock(return_value=None),
+    )
+
+    outcome = handler._data_interpretation._apply_interpretation_async(
+        _review_state(),
+        {"confirmed": True, "save_recipe": False},
+    )
+
+    assert outcome.status is InteractionStatus.BLOCKED
+    assert statuses == [
+        ("Importing EEG data and labels...", 900_000),
+        ("Dataset import failed · Review the import settings", 7000),
+    ]
 
 
 def test_smart_parse_binds_the_generation_reviewed_before_the_dialog(
@@ -2141,7 +2340,6 @@ def test_apply_warning_confirmation_resubmits_trusted_receipt_async(
     qtbot.wait(50)
     assert status.call_args_list == [
         call("Importing EEG data and labels...", 900_000),
-        call("Importing EEG data and labels...", 900_000),
         call("ok"),
     ]
     assert commands[0].resource_preflight_confirmed is False
@@ -2205,7 +2403,6 @@ def test_apply_warning_handoff_ack_completes_without_result_refresh(
     qtbot.waitUntil(lambda: len(terminal) == 1, timeout=2000)
     assert status.call_args_list == [
         call("Importing EEG data and labels...", 900_000),
-        call("Importing EEG data and labels...", 900_000),
         call("ok"),
     ]
 
@@ -2243,6 +2440,8 @@ def test_apply_warning_handoff_refusal_reports_only_cancelled(
         "question",
         lambda *_args, **_kwargs: actions.QMessageBox.StandardButton.No,
     )
+    status = MagicMock()
+    monkeypatch.setattr(handler, "_show_status", status)
     completion = InteractionCompletionSession(
         request_id="handoff-declined",
         command_name="scan_source",
@@ -2261,6 +2460,10 @@ def test_apply_warning_handoff_refusal_reports_only_cancelled(
     assert len(commands) == 1
     assert terminal[0].status is InteractionCompletionStatus.CANCELLED
     assert "cancelled" in terminal[0].message.lower()
+    assert status.call_args_list == [
+        call("Importing EEG data and labels...", 900_000),
+        call("Dataset import cancelled"),
+    ]
 
 
 def test_apply_warning_handoff_retry_start_failure_reports_only_failed(

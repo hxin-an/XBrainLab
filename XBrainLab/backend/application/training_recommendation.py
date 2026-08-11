@@ -15,6 +15,8 @@ from enum import Enum
 from threading import RLock
 from typing import Any
 
+from .resource_guard import TrainingResourceRefinement
+
 RECOMMENDATION_PROFILE_VERSION = "training-start-v1"
 SAFE_UNKNOWN_VRAM_BATCH_SIZE = 8
 CPU_BATCH_SIZE_CAP = 32
@@ -48,6 +50,7 @@ class TrainingSettingProvenance(str, Enum):
     """Whether one effective field follows the recommendation or the user."""
 
     RECOMMENDED = "recommended"
+    RESOURCE_ADJUSTED = "resource_adjusted"
     MANUAL = "manual"
 
 
@@ -149,11 +152,15 @@ class TrainingRecommendation:
         values: Mapping[Any, int | float | str],
         *,
         edited_fields: frozenset[TrainingRecommendationField],
+        refinements: tuple[TrainingResourceRefinement, ...] = (),
     ) -> TrainingRecommendation:
         """Reconcile one saved option while honoring explicit edit provenance."""
         effective = self.values.to_mapping()
         recommended = self.recommended_values.to_mapping()
         provenance = dict(self.provenance)
+        refinements_by_field = {
+            TrainingRecommendationField(item.field): item for item in refinements
+        }
         for raw_field, value in values.items():
             try:
                 field = (
@@ -167,6 +174,17 @@ class TrainingRecommendation:
             if field in edited_fields or was_manual:
                 effective[field] = value
                 provenance[field.value] = TrainingSettingProvenance.MANUAL
+            elif (
+                refinement := refinements_by_field.get(field)
+            ) is not None and value == refinement.refined_value:
+                effective[field] = value
+                provenance[field.value] = TrainingSettingProvenance.RESOURCE_ADJUSTED
+            elif (
+                provenance.get(field.value)
+                is TrainingSettingProvenance.RESOURCE_ADJUSTED
+                and value == effective[field]
+            ):
+                effective[field] = value
             else:
                 effective[field] = recommended[field]
                 provenance[field.value] = TrainingSettingProvenance.RECOMMENDED
@@ -237,15 +255,21 @@ class TrainingRecommendationService:
         self._configuration_submission_pending: (
             frozenset[TrainingRecommendationField] | None
         ) = None
+        self._configuration_submission_refinements: tuple[
+            TrainingResourceRefinement, ...
+        ] = ()
 
     def note_configuration_submitted(
         self,
         edited_fields: frozenset[TrainingRecommendationField]
         | set[TrainingRecommendationField],
+        *,
+        refinements: tuple[TrainingResourceRefinement, ...] = (),
     ) -> None:
         """Record exactly which recommendation fields the submitter edited."""
         with self._lock:
             self._configuration_submission_pending = frozenset(edited_fields)
+            self._configuration_submission_refinements = tuple(refinements)
 
     def cached_for_context(
         self,
@@ -281,6 +305,7 @@ class TrainingRecommendationService:
             self._current = None
             self._context_key = None
             self._configuration_submission_pending = None
+            self._configuration_submission_refinements = ()
 
     def recommend(
         self,
@@ -307,8 +332,10 @@ class TrainingRecommendationService:
                     recommendation = recommendation.with_submitted_values(
                         option_values,
                         edited_fields=pending_fields,
+                        refinements=self._configuration_submission_refinements,
                     )
                 self._configuration_submission_pending = None
+                self._configuration_submission_refinements = ()
             self._current = recommendation
             self._context_key = context_key
             return recommendation
@@ -332,15 +359,7 @@ class TrainingRecommendationService:
             )
         candidate_batch = max(candidate_batch, 1)
         use_cpu = _uses_cpu(context.device)
-        if use_cpu:
-            device_cap = CPU_BATCH_SIZE_CAP
-            device_warning = None
-        else:
-            device_cap = SAFE_UNKNOWN_VRAM_BATCH_SIZE
-            device_warning = (
-                "GPU memory is intentionally not queried while opening Training "
-                f"Setting; batch size is capped at {SAFE_UNKNOWN_VRAM_BATCH_SIZE}."
-            )
+        device_cap = CPU_BATCH_SIZE_CAP if use_cpu else SAFE_UNKNOWN_VRAM_BATCH_SIZE
         batch_size = min(candidate_batch, device_cap)
         evaluation_strategy = (
             VALIDATION_LOSS_STRATEGY
@@ -409,8 +428,6 @@ class TrainingRecommendationService:
                 "No validation split is available; validation-based checkpoint "
                 "selection cannot be recommended."
             )
-        if device_warning:
-            warnings.append(device_warning)
         fingerprint = _context_fingerprint(
             context,
             profile=profile,

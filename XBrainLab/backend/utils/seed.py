@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+from typing import cast
 
 import numpy as np
 import torch
@@ -26,7 +27,8 @@ def set_seed(seed: int | None = None, deterministic: bool = False) -> int:
 
     """
     if seed is None:
-        seed = torch.seed() & 0xFFFF_FFFF  # Mask to 32 bits for safe serialisation
+        generated_seed = cast(int, torch.seed())
+        seed = generated_seed & 0xFFFF_FFFF  # Mask to 32 bits for safe serialisation
 
     # random
     random.seed(seed)

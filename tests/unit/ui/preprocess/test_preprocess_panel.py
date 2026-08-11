@@ -208,12 +208,14 @@ def test_preprocess_panel_quiesces_native_plots_before_close(qtbot):
     assert preview.v_line_freq.scene() is None
     assert preview.v_line_time.getViewBox() is None
     assert preview.v_line_freq.getViewBox() is None
-    # The PlotWidget remains parent-owned so a cancelled application close can
-    # restore its detached graphics items without rebuilding native canvases.
-    assert preview.plot_time.closed is False
-    assert preview.plot_freq.closed is False
-    assert preview.plot_time.getPlotItem() is not None
-    assert preview.plot_freq.getPlotItem() is not None
+    # A real panel close is terminal and must let PyQtGraph close axes before
+    # its scene is destroyed. Cancelled application closes exercise the
+    # separate prepare/resume path without closing these roots.
+    assert preview._native_plot_finalized is True
+    assert preview.plot_time.closed is True
+    assert preview.plot_freq.closed is True
+    assert preview.plot_time.plotItem is None
+    assert preview.plot_freq.plotItem is None
 
 
 def test_signal_preview_uses_distinct_no_data_loaded_and_locked_states(qtbot):

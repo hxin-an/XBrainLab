@@ -566,7 +566,10 @@ class TestSaliencySpectrogramWidget:
         w.update_plot(None, False)
         assert "publication is invalid" in w.error_label.text()
 
-    def test_update_plot_binds_preparation_cache_to_publication_lineage(self, qtbot):
+    def test_normalize_toggle_reuses_preparation_cache_and_publication_lineage(
+        self,
+        qtbot,
+    ):
         from XBrainLab.ui.panels.visualization.saliency_views.spectrogram_view import (
             SaliencySpectrogramWidget,
         )
@@ -577,17 +580,29 @@ class TestSaliencySpectrogramWidget:
         publication = _render_publication()
 
         with patch.object(widget, "_render_figure_async") as render_async:
-            widget.update_plot(publication, False)
+            widget.update_plot(publication, False, display_normalized=False)
+            widget.update_plot(publication, False, display_normalized=True)
 
-        render_callable = render_async.call_args.args[0]
-        assert render_callable.args[1] is widget._preparation_cache
-        assert render_callable.args[2] == (
+        assert render_async.call_count == 2
+        render_callables = [call.args[0] for call in render_async.call_args_list]
+        expected_lineage = (
             publication.generation,
             publication.training_generation,
             publication.request.run,
             publication.data.method,
         )
-        assert render_callable.args[3] is False
+        assert all(
+            render_callable.args[1] is widget._preparation_cache
+            for render_callable in render_callables
+        )
+        assert [render_callable.args[2] for render_callable in render_callables] == [
+            expected_lineage,
+            expected_lineage,
+        ]
+        assert [render_callable.args[3] for render_callable in render_callables] == [
+            False,
+            True,
+        ]
 
 
 # ============ SaliencyTopographicMapWidget ============

@@ -429,6 +429,80 @@ def test_close_waits_for_owned_ui_background_work(
     assert "background interface work" in main_window.statusBar().currentMessage()
 
 
+def test_owned_background_gate_includes_application_workers(main_window) -> None:
+    main_window._startup_prewarm_worker = None
+    main_window._panel_prepare_workers = {}
+    main_window._panel_prepare_active_index = None
+
+    with (
+        patch.object(
+            main_window,
+            "_visualization_native_render_idle",
+            return_value=True,
+        ),
+        patch(
+            "XBrainLab.ui.main_window.application_background_tasks_idle",
+            return_value=False,
+            create=True,
+        ) as application_idle,
+    ):
+        assert main_window._owned_ui_background_work_idle() is False
+
+    application_idle.assert_called_once_with(main_window, timeout=0.0)
+
+
+def test_close_finalizes_application_runtime_before_qt_close(main_window) -> None:
+    event = QCloseEvent()
+    call_order: list[str] = []
+
+    with (
+        patch.object(
+            main_window, "_ensure_shutdown_fence_for_close", return_value=True
+        ),
+        patch.object(main_window, "_stop_training_for_close", return_value=True),
+        patch.object(main_window, "_owned_ui_background_work_idle", return_value=True),
+        patch.object(
+            main_window,
+            "_finalize_visualization_native_render_resources",
+            return_value=True,
+        ),
+        patch.object(
+            main_window,
+            "_finalize_preprocess_native_plots_for_shutdown",
+            side_effect=lambda: call_order.append("preprocess") or True,
+        ),
+        patch.object(main_window, "_close_assistant_for_shutdown", return_value=True),
+        patch.object(
+            main_window,
+            "_finalize_application_publication_renderer_for_shutdown",
+            side_effect=lambda: call_order.append("renderer") or True,
+        ),
+        patch(
+            "XBrainLab.ui.main_window.close_application_runtime",
+            side_effect=lambda _window: call_order.append("application") or True,
+            create=True,
+        ),
+        patch.object(
+            main_window.window_geometry,
+            "persist_before_close",
+            return_value=True,
+        ),
+        patch.object(
+            main_window,
+            "_delegate_close_event_if_alive",
+            side_effect=lambda _event: call_order.append("qt-close") or True,
+        ),
+    ):
+        main_window.closeEvent(event)
+
+    assert call_order == [
+        "preprocess",
+        "renderer",
+        "application",
+        "qt-close",
+    ]
+
+
 def test_close_waits_for_active_visualization_native_render(main_window):
     visualization_panel = SimpleNamespace(
         begin_native_render_shutdown=MagicMock(),

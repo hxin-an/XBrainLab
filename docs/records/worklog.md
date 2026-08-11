@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-08-03`
+最後更新：`2026-08-11`
 
 ## 這份文件的用途
 
@@ -34,6 +34,22 @@
 - 證據：
 - 接續 / 本輪剩餘：
 ```
+
+## 2026-08-11
+
+### 17:45 Import / Training / Montage integration closure
+
+- 做了什麼：收斂 Training resource preview、BIDS montage background publication、Epoch baseline
+  interaction、optimizer parsing、Visualization capability UI，以及 application/PyQtGraph shutdown
+  ownership；同步更新過時的 Epoch screenshot contract。
+- 結果：Backend full unit `5007 passed`、UI full unit `2586 passed`、script suite 除三個過時
+  contract 外 `1314 passed`，更新後 focused capture `40 passed`；architecture compliance PASS、
+  architecture unit `291 passed`、focused integration `38 passed`、pipeline `2 passed`、required
+  multi-dataset integration `41 passed`、strict matrix `20/20`、strict cross-source `4/4`。
+- 證據：`build/dev-artifacts/ui-review-fixes/`、`build/dev-artifacts/epoching-dialog/`、
+  `build/dev-artifacts/visualization-render/`、`build/dev-artifacts/data-interpretation/`。
+- 接續 / 本輪剩餘：更新 canonical docs、commit/push、整合最新 main、PR exact-head CI；Windows
+  人工 acceptance 與 Assistant readiness 仍不可宣稱。
 
 ## 2026-08-03
 

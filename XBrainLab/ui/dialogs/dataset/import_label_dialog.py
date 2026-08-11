@@ -111,61 +111,69 @@ class ImportLabelDialog(BaseDialog):
     def init_ui(self) -> None:
         layout = QVBoxLayout(self)
 
-        self.target_summary_label = QLabel(self._target_summary_text())
-        self.target_summary_label.setWordWrap(True)
-        self.target_summary_label.setTextInteractionFlags(
+        target_summary_label = QLabel(self._target_summary_text())
+        self.target_summary_label = target_summary_label
+        target_summary_label.setWordWrap(True)
+        target_summary_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse,
         )
-        layout.addWidget(self.target_summary_label)
+        layout.addWidget(target_summary_label)
 
-        self.recipe_note_label = QLabel(
+        recipe_note_label = QLabel(
             "A successful import updates the current import recipe trace when a "
             "data interpretation is active."
         )
-        self.recipe_note_label.setWordWrap(True)
-        layout.addWidget(self.recipe_note_label)
+        self.recipe_note_label = recipe_note_label
+        recipe_note_label.setWordWrap(True)
+        layout.addWidget(recipe_note_label)
 
         file_group = QGroupBox("Select Label File")
         file_layout = QHBoxLayout()
-        self.file_list = QListWidget()
-        self.file_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
-        self.file_list.itemSelectionChanged.connect(self.on_file_selection_changed)
+        file_list = QListWidget()
+        self.file_list = file_list
+        file_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
+        file_list.itemSelectionChanged.connect(self.on_file_selection_changed)
 
         button_layout = QVBoxLayout()
-        self.browse_button = QPushButton("Add Files...")
-        self.browse_button.clicked.connect(self.browse_files)
-        self.remove_button = QPushButton("Remove Selected")
-        self.remove_button.clicked.connect(self.remove_files)
-        button_layout.addWidget(self.browse_button)
-        button_layout.addWidget(self.remove_button)
+        browse_button = QPushButton("Add Files...")
+        self.browse_button = browse_button
+        browse_button.clicked.connect(self.browse_files)
+        remove_button = QPushButton("Remove Selected")
+        self.remove_button = remove_button
+        remove_button.clicked.connect(self.remove_files)
+        button_layout.addWidget(browse_button)
+        button_layout.addWidget(remove_button)
         button_layout.addStretch()
-        file_layout.addWidget(self.file_list, stretch=1)
+        file_layout.addWidget(file_list, stretch=1)
         file_layout.addLayout(button_layout)
         file_group.setLayout(file_layout)
         layout.addWidget(file_group)
 
         map_group = QGroupBox("Map Codes to Event Names")
         map_layout = QVBoxLayout()
-        self.map_table = QTableWidget()
-        self.map_table.setColumnCount(2)
-        self.map_table.setHorizontalHeaderLabels(["Code", "Event Name"])
-        header = self.map_table.horizontalHeader()
+        map_table = QTableWidget()
+        self.map_table = map_table
+        map_table.setColumnCount(2)
+        map_table.setHorizontalHeaderLabels(["Code", "Event Name"])
+        header = map_table.horizontalHeader()
         if header is not None:
             header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        map_layout.addWidget(self.map_table)
+        map_layout.addWidget(map_table)
         map_group.setLayout(map_layout)
         layout.addWidget(map_group)
 
-        self.info_label = QLabel("No labels selected.")
-        layout.addWidget(self.info_label)
+        info_label = QLabel("No labels selected.")
+        self.info_label = info_label
+        layout.addWidget(info_label)
 
-        self.button_box = QDialogButtonBox(
+        button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
-        normalize_dialog_button_box(self.button_box)
-        self.button_box.accepted.connect(self.accept)
-        self.button_box.rejected.connect(self.reject)
-        layout.addWidget(self.button_box)
+        self.button_box = button_box
+        normalize_dialog_button_box(button_box)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
         self._set_preview_busy(False)
 
     def _target_summary_text(self) -> str:

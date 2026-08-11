@@ -45,7 +45,7 @@ class SaliencyContextError(ValueError):
 def _canonical_identity_value(value: object) -> object:
     """Convert provenance metadata into deterministic JSON values."""
     if isinstance(value, np.generic):
-        value = value.item()
+        value = cast(np.generic, value).item()
     if value is None or isinstance(value, (bool, int, str)):
         return value
     if isinstance(value, float):
@@ -159,21 +159,23 @@ def _exact_array_descriptor(
         "logical_order": "C",
     }
     if isinstance(value, np.ndarray):
-        if require_finite_float and not np.issubdtype(value.dtype, np.floating):
+        array = cast(np.ndarray, value)
+        if require_finite_float and not np.issubdtype(array.dtype, np.floating):
             raise SaliencyContextError(
                 "Saliency attribution payloads require a floating NumPy dtype."
             )
         descriptor["content_sha256"] = _fingerprint_numpy_array_content(
-            value,
+            array,
             require_finite=require_finite_float,
         )
     elif torch.is_tensor(value):
-        if require_finite_float and not value.is_floating_point():
+        tensor = cast(torch.Tensor, value)
+        if require_finite_float and not tensor.is_floating_point():
             raise SaliencyContextError(
                 "Saliency attribution payloads require a floating Torch dtype."
             )
         descriptor["content_sha256"] = _fingerprint_torch_tensor_content(
-            value,
+            tensor,
             require_finite=require_finite_float,
         )
     else:
@@ -370,7 +372,7 @@ def _bounded_sequence_descriptor(
 def _plain_identity_value(value: object) -> object:
     """Return a stable torch-serializable scalar for a class identity."""
     if isinstance(value, np.generic):
-        value = value.item()
+        value = cast(np.generic, value).item()
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
     raise SaliencyContextError(

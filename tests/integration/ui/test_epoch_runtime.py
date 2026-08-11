@@ -206,8 +206,9 @@ def test_epoch_ram_block_is_shown_without_copy_or_materialization(
     for command in commands:
         result = service.execute(command)
         assert result.ok, result.message
-    raw = study.data_manager.loaded_data_list[0]
-    assert isinstance(raw, Raw)
+    loaded_state = service.execute(QueryStateCommand(query="state"))
+    assert loaded_state.ok, loaded_state.message
+    assert loaded_state.diagnostics["state"]["raw"]["count"] == 1
     window = MainWindow(study)
     qtbot.addWidget(window)
     window.show()
@@ -236,7 +237,7 @@ def test_epoch_ram_block_is_shown_without_copy_or_materialization(
         message="EEG epoch data is too large for available RAM.",
     )
     copy_spy = MagicMock(side_effect=AssertionError("Raw.copy must not run"))
-    monkeypatch.setattr(raw, "copy", copy_spy)
+    monkeypatch.setattr(Raw, "copy", copy_spy)
 
     with (
         patch(

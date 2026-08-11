@@ -3,7 +3,7 @@
 import contextlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, cast
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -28,8 +28,10 @@ class SaliencyClassIdentity:
 
 def _identity_token(value: object) -> tuple[str, object]:
     """Return a comparison token without conflating unrelated text values."""
-    if isinstance(value, (int, np.integer)) and not isinstance(value, bool):
-        return ("integer", int(value))
+    if isinstance(value, int) and not isinstance(value, bool):
+        return ("integer", value)
+    if isinstance(value, np.integer):
+        return ("integer", int(cast(np.integer[Any], value).item()))
     if isinstance(value, str):
         stripped = value.strip()
         with contextlib.suppress(ValueError):
@@ -383,7 +385,10 @@ class Visualizer:
             if not isinstance(value, (str, bytes, int, np.integer)):
                 continue
             with contextlib.suppress(TypeError, ValueError):
-                candidates.append(int(value))
+                if isinstance(value, np.integer):
+                    candidates.append(int(cast(np.integer[Any], value).item()))
+                else:
+                    candidates.append(int(cast(str | bytes | int, value)))
         candidates.append(order_index)
 
         if isinstance(saliency_store, Mapping):
@@ -400,11 +405,14 @@ class Visualizer:
         except TypeError:
             return None
         for candidate in candidates:
-            if (
-                isinstance(candidate, (int, np.integer))
-                and 0 <= int(candidate) < store_len
-            ):
-                return int(candidate)
+            if isinstance(candidate, int):
+                integer_candidate = candidate
+            elif isinstance(candidate, np.integer):
+                integer_candidate = int(cast(np.integer[Any], candidate).item())
+            else:
+                continue
+            if 0 <= integer_candidate < store_len:
+                return integer_candidate
         return None
 
     @staticmethod

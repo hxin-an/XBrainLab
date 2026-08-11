@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import InitVar, dataclass, replace
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 
@@ -13,6 +13,10 @@ from XBrainLab.backend.training_state_contract import TrainingReadBoundary
 
 from .errors import PreconditionError
 from .evaluation_render import build_evaluation_cross_fold_choices
+from .montage_capability import (
+    MontageCoordinateDimension,
+    project_montage_geometry,
+)
 from .training_runtime import TrainingRuntimePort
 from .view_publication import ApplicationViewPublication
 
@@ -148,6 +152,12 @@ class _ValidatedSaliencyCrossFoldChoice:
 
 
 SaliencySelectionIdentity = SaliencyRunIdentity | SaliencyCrossFoldIdentity
+SaliencyRenderView = Literal[
+    "channel_time",
+    "topographic_map",
+    "three_dimensional",
+]
+_POSITION_DEPENDENT_VIEWS = {"topographic_map", "three_dimensional"}
 
 
 @dataclass(frozen=True)
@@ -158,6 +168,7 @@ class SaliencyRenderRequest:
     run: SaliencySelectionIdentity
     method: str
     normalize: bool = False
+    view: SaliencyRenderView = "channel_time"
 
     def __post_init__(self) -> None:
         if (
@@ -176,7 +187,15 @@ class SaliencyRenderRequest:
             raise ValueError("method must be a non-empty string")
         if type(self.normalize) is not bool:
             raise TypeError("normalize must be a bool")
+        view = str(self.view).strip()
+        if view not in {
+            "channel_time",
+            "topographic_map",
+            "three_dimensional",
+        }:
+            raise ValueError("view must identify a supported saliency render view")
         object.__setattr__(self, "method", method)
+        object.__setattr__(self, "view", view)
 
 
 def _copy_array_readonly(value: Any) -> np.ndarray:
@@ -726,10 +745,12 @@ class SaliencyRenderPublisher:
         training_runtime: TrainingRuntimePort,
         get_publication: Callable[[], ApplicationViewPublication],
         capture_training_boundary: Callable[[], TrainingReadBoundary],
+        effective_montage_provider: Callable[[], Any] | None = None,
     ) -> None:
         self._training_runtime = training_runtime
         self._get_publication = get_publication
         self._capture_training_boundary = capture_training_boundary
+        self._effective_montage_provider = effective_montage_provider
 
     def publish(self, request: SaliencyRenderRequest) -> SaliencyRenderPublication:
         """Return a detached payload or reject a generation-crossing read."""
@@ -954,6 +975,32 @@ class SaliencyRenderPublisher:
             if callable(positions_getter)
             else []
         )
+        if len(positions) != len(channel_names):
+            positions = []
+        if positions and request.view in _POSITION_DEPENDENT_VIEWS:
+            geometry = project_montage_geometry(
+                positions,
+                coordinate_dimension=3,
+            )
+            if not geometry.supports_view(request.view):
+                raise self._position_precondition_error(request.view)
+            positions = list(geometry.positions)
+        if not positions and request.view in _POSITION_DEPENDENT_VIEWS:
+            projection = self._automatic_montage_projection(
+                channel_names,
+                view=request.view,
+            )
+            if projection is not None:
+                projected_names, positions, channel_indexes = projection
+                if channel_indexes != tuple(range(len(channel_names))):
+                    saliency_store = self._select_saliency_channels(
+                        saliency_store,
+                        channel_indexes,
+                        expected_channel_count=len(channel_names),
+                    )
+                    channel_names = list(projected_names)
+            if not positions:
+                raise self._position_precondition_error(request.view)
         model_args = self._required_call(epoch_data, "get_model_args")
         sfreq = model_args.get("sfreq") if isinstance(model_args, dict) else None
         if sfreq is None:
@@ -980,6 +1027,107 @@ class SaliencyRenderPublisher:
                 _DETACHED_SALIENCY_ARRAYS if adopt_saliency_store else None
             ),
         )
+
+    def _automatic_montage_projection(
+        self,
+        channel_names: list[Any],
+        *,
+        view: str,
+    ) -> (
+        tuple[
+            tuple[str, ...],
+            list[tuple[float, float, float]],
+            tuple[int, ...],
+        ]
+        | None
+    ):
+        provider = self._effective_montage_provider
+        if provider is None:
+            return None
+        try:
+            montage = provider()
+        except Exception:
+            return None
+        if montage is None or getattr(montage, "source", None) != "bids":
+            return None
+        names = tuple(str(name) for name in getattr(montage, "channel_names", ()))
+        positions: tuple[object, ...] = tuple(getattr(montage, "positions_m", ()))
+        if len(names) != len(positions) or len(set(names)) != len(names):
+            return None
+        by_name = dict(zip(names, positions, strict=True))
+        selected_names: list[str] = []
+        ordered: list[object] = []
+        channel_indexes: list[int] = []
+        for index, channel_name in enumerate(channel_names):
+            normalized_name = str(channel_name)
+            source_position = by_name.get(normalized_name)
+            if source_position is None:
+                continue
+            selected_names.append(normalized_name)
+            ordered.append(source_position)
+            channel_indexes.append(index)
+        if not selected_names:
+            return None
+        raw_coordinate_dimension = getattr(montage, "coordinate_dimension", 3)
+        coordinate_dimension: MontageCoordinateDimension | None
+        if raw_coordinate_dimension == 2:
+            coordinate_dimension = 2
+        elif raw_coordinate_dimension == 3:
+            coordinate_dimension = 3
+        else:
+            coordinate_dimension = None
+        geometry = project_montage_geometry(
+            ordered,
+            coordinate_dimension=coordinate_dimension,
+        )
+        supports_topographic = geometry.supports_topographic and bool(
+            getattr(
+                montage,
+                "supports_topographic",
+                geometry.supports_topographic,
+            )
+        )
+        supports_three_dimensional = geometry.supports_three_dimensional and bool(
+            getattr(
+                montage,
+                "supports_three_dimensional",
+                geometry.supports_three_dimensional,
+            )
+        )
+        if view == "topographic_map" and not supports_topographic:
+            return None
+        if view == "three_dimensional" and not supports_three_dimensional:
+            return None
+        return (
+            tuple(selected_names),
+            list(geometry.positions),
+            tuple(channel_indexes),
+        )
+
+    @staticmethod
+    def _position_precondition_error(view: str) -> PreconditionError:
+        return PreconditionError(
+            "The selected visualization requires compatible electrode positions.",
+            diagnostics={"retryable": True, "view": view},
+        )
+
+    @staticmethod
+    def _select_saliency_channels(
+        saliency_store: Mapping[object, Any],
+        channel_indexes: tuple[int, ...],
+        *,
+        expected_channel_count: int,
+    ) -> dict[object, np.ndarray]:
+        selected: dict[object, np.ndarray] = {}
+        for key, raw_values in saliency_store.items():
+            values = np.asarray(raw_values)
+            if values.ndim < 2 or values.shape[1] != expected_channel_count:
+                raise PreconditionError(
+                    "Saliency channel metadata does not match the prepared montage",
+                    diagnostics={"retryable": False},
+                )
+            selected[key] = np.take(values, channel_indexes, axis=1)
+        return selected
 
     @staticmethod
     def _validated_class_map(

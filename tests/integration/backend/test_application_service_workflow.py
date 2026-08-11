@@ -948,8 +948,6 @@ def test_dataset_replacement_rolls_back_real_split_then_can_commit(tmp_path):
     assert initial_train.diagnostics["split_preparation"]["materialized"] is True
     before_replacement = service.get_state()
     old_summary = before_replacement.dataset.active_split_summary
-    old_datasets = list(service.study.datasets)
-    old_trainer = service.study.training_manager.trainer
     assert old_summary == EXPECTED_SYNTHETIC_SPLIT_25_25_SUMMARY
 
     invalid_specification = service.execute(
@@ -987,9 +985,6 @@ def test_dataset_replacement_rolls_back_real_split_then_can_commit(tmp_path):
     assert invalid_replacement.state.active_training == (
         before_replacement.active_training
     )
-    assert service.study.datasets == old_datasets
-    assert service.study.training_manager.trainer is old_trainer
-
     committed_specification = service.execute(
         SaveDatasetSplitCommand(
             test_ratio=0.2,

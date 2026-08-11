@@ -4,7 +4,7 @@ Maps string identifiers (from LLM tool calls) to concrete backend
 Python classes for models, preprocessors, and optimisers.
 """
 
-from typing import ClassVar
+from typing import ClassVar, cast
 
 import torch
 
@@ -95,7 +95,10 @@ class BackendClassRegistry:
             The corresponding ``torch.optim.Optimizer`` subclass.
 
         """
-        return cls._OPTIMIZERS.get(name.lower(), torch.optim.Adam)
+        optimizer_class = cls._OPTIMIZERS.get(name.lower())
+        if optimizer_class is not None:
+            return optimizer_class
+        return cast(type[torch.optim.Optimizer], torch.optim.Adam)
 
 
 # Backward-compatible alias (deprecated — use BackendClassRegistry)

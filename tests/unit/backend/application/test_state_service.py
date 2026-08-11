@@ -127,6 +127,21 @@ class _MalformedCapabilityEpoch:
         return ["C3", "C4"]
 
 
+class _EpochWithManualGeometry(_Epoch):
+    data: ClassVar[np.ndarray] = np.zeros((1, 4, 2), dtype=np.float32)
+
+    def __init__(
+        self,
+        positions: tuple[tuple[float, float, float], ...],
+    ) -> None:
+        self.channel_position = dict(
+            zip(self.get_channel_names(), positions, strict=True)
+        )
+
+    def get_channel_names(self) -> list[str]:
+        return ["C3", "C4", "Cz", "Pz"]
+
+
 class _Study:
     def __init__(self) -> None:
         raw = _Raw()
@@ -462,6 +477,8 @@ class _EvaluationControllerWithPlans:
 def _snapshot_service(
     *,
     saliency_coverage_projector: SaliencyCoverageProjector | None = None,
+    montage_snapshot_provider: Any | None = None,
+    effective_montage_provider: Any | None = None,
 ) -> StateSnapshotService:
     study = _Study()
     study.trainer = _StableTrainer()
@@ -498,6 +515,8 @@ def _snapshot_service(
                 )
             },
         )(),
+        montage_snapshot_provider=montage_snapshot_provider,
+        effective_montage_provider=effective_montage_provider,
     )
 
 
@@ -537,6 +556,86 @@ def test_state_snapshot_service_builds_workflow_snapshot() -> None:
     assert state.visualization.saliency_configured is True
     assert state.interpretation.has_scan_result is True
     assert state.active_dataset.has_epoch_data is True
+
+
+def test_state_snapshot_projects_partial_bids_geometry_without_hiding_channels() -> (
+    None
+):
+    service = _snapshot_service(
+        montage_snapshot_provider=lambda: SimpleNamespace(
+            state="ready",
+            reason=None,
+        ),
+        effective_montage_provider=lambda: SimpleNamespace(
+            source="bids",
+            channel_names=("C3",),
+            positions_m=((0.0, 0.0, 0.08),),
+        ),
+    )
+
+    state = service.build()
+
+    assert state.epoch.channel_names == ["C3", "C4"]
+    assert state.visualization.channel_count == 2
+    assert state.visualization.channel_positions_available is False
+    assert state.visualization.three_dimensional_positions_available is False
+    assert state.visualization.montage_source == "bids"
+    assert state.visualization.montage_channels == ["C3"]
+    assert state.visualization.montage_positions == [[0.0, 0.0, 0.08]]
+
+
+@pytest.mark.parametrize(
+    ("positions", "supports_topographic", "supports_three_dimensional"),
+    [
+        (
+            (
+                (-0.04, -0.04, 0.0),
+                (0.04, -0.04, 0.0),
+                (-0.04, 0.04, 0.0),
+                (0.04, 0.04, 0.0),
+            ),
+            True,
+            False,
+        ),
+        (
+            (
+                (-0.04, 0.0, 0.0),
+                (-0.01, 0.0, 0.0),
+                (0.01, 0.0, 0.0),
+                (0.04, 0.0, 0.0),
+            ),
+            False,
+            False,
+        ),
+        (
+            (
+                (0.0, 0.0, 0.0),
+                (0.04, 0.0, 0.0),
+                (0.0, 0.04, 0.0),
+                (0.0, 0.0, 0.04),
+            ),
+            True,
+            True,
+        ),
+    ],
+    ids=("planar", "degenerate", "three-dimensional"),
+)
+def test_state_snapshot_applies_manual_geometry_capability_policy(
+    positions: tuple[tuple[float, float, float], ...],
+    supports_topographic: bool,
+    supports_three_dimensional: bool,
+) -> None:
+    service = _snapshot_service()
+    service.study.epoch_data = _EpochWithManualGeometry(positions)
+
+    state = service.build()
+
+    assert state.visualization.montage_source == "manual"
+    assert state.visualization.channel_positions_available is supports_topographic
+    assert (
+        state.visualization.three_dimensional_positions_available
+        is supports_three_dimensional
+    )
 
 
 def test_state_and_explicit_recommendation_do_not_read_dataset_payload() -> None:

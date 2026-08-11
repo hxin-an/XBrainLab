@@ -700,38 +700,41 @@ class AgentWorker(QObject):
 
             self._active_generation_id = generation_id
             self._generation_thread_id = generation_id
-            self.generation_thread = GenerationThread(engine, request)
-            self.generation_thread.chunk_received.connect(
+            generation_thread = GenerationThread(engine, request)
+            self.generation_thread = generation_thread
+            generation_thread.chunk_received.connect(
                 lambda chunk, current=generation_id: self._on_generation_chunk(
                     current,
                     chunk,
                 )
             )
-            self.generation_thread.finished_generation.connect(
+            generation_thread.finished_generation.connect(
                 lambda current=generation_id: self._on_generation_finished(current)
             )
-            self.generation_thread.error_occurred.connect(
+            generation_thread.error_occurred.connect(
                 lambda message, current=generation_id: self._on_generation_error(
                     current,
                     message,
                 )
             )
-            self._track_generation_thread(self.generation_thread)
+            self._track_generation_thread(generation_thread)
 
             # Timeout timer (thread-safe UI timer) — reuse existing or create once
             self._is_timed_out = False
             self._timed_out_generation = None
 
-            if self.timeout_timer is None:
-                self.timeout_timer = QTimer(self)
-                self.timeout_timer.setSingleShot(True)
-                self.timeout_timer.timeout.connect(self._on_timeout)
+            timeout_timer = self.timeout_timer
+            if timeout_timer is None:
+                timeout_timer = QTimer(self)
+                self.timeout_timer = timeout_timer
+                timeout_timer.setSingleShot(True)
+                timeout_timer.timeout.connect(self._on_timeout)
 
             # Start with config timeout or default 60s
             timeout_ms = getattr(engine.config, "timeout", 60) * 1000
-            self.timeout_timer.start(timeout_ms)
+            timeout_timer.start(timeout_ms)
 
-            self.generation_thread.start()
+            generation_thread.start()
         except Exception as error:
             self._finish_generation_setup_failure(generation_id, error)
             return

@@ -787,3 +787,21 @@ def test_replaced_figure_is_fitted_to_current_qt_layout_synchronously(qtbot):
     bounds = axis.get_tightbbox(view.canvas.get_renderer())
     assert bounds is not None
     assert bounds.x0 >= 3.0
+
+
+def test_replaced_figure_becomes_visible_after_loading_state(qtbot):
+    view = BaseSaliencyView()
+    qtbot.addWidget(view)
+    view.show()
+    view._display_message("Rendering saliency...")
+
+    assert view.canvas is not None
+    assert view.canvas.isHidden()
+
+    replaced = view._replace_figure(Figure(figsize=(2, 2), dpi=100))
+    qtbot.wait(0)
+
+    assert replaced is True
+    assert view.canvas is not None
+    assert view.canvas.isVisibleTo(view)
+    assert view.error_label.isHidden()
