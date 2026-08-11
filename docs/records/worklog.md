@@ -17304,3 +17304,14 @@
 - Exact-head CI then found two public BIDS montage tests missing the canonical optional-fixture
   marker. Added the module marker; required public coverage remains owned by the separate strict
   multi-dataset job, which passed on that same SHA.
+
+## 2026-08-11 - Exact-head test isolation follow-up
+
+- The next PR-head run passed the required public dataset gate and platform/UI shards but exposed
+  two full-shard-only test defects: a resource-confirmation fixture did not quiesce/close its
+  application-owned montage worker, and a legacy loader test used a probabilistic first-batch
+  inequality assertion.
+- Added explicit montage idleness plus service cleanup to the control-flow fixture. Replaced the
+  probabilistic loader check with exact mask-index and Random/Sequential sampler assertions.
+- Local evidence: focused regression `9 passed`; adjacent integration backend and training-plan
+  suite `171 passed`; no product command or metric semantics were relaxed.

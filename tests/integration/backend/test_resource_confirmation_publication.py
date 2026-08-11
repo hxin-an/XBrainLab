@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -293,7 +293,7 @@ def resource_confirmation_scenario(
     request: pytest.FixtureRequest,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-) -> _ConfirmationScenario:
+) -> Iterator[_ConfirmationScenario]:
     factory = {
         "preview": _prepare_preview,
         "reload": _prepare_reload,
@@ -301,7 +301,13 @@ def resource_confirmation_scenario(
         "load_data": _prepare_load,
         "train": _prepare_train,
     }[str(request.param)]
-    return factory(tmp_path, monkeypatch)
+    scenario = factory(tmp_path, monkeypatch)
+    assert scenario.service.bids_montage_preparation.wait_for_idle(timeout=10.0)
+    scenario.service.get_state()
+    try:
+        yield scenario
+    finally:
+        scenario.service.close()
 
 
 def test_resource_confirmation_is_a_generation_preserving_control_flow(

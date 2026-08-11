@@ -6978,3 +6978,10 @@ call sites into explicit legacy/fallback helpers.
   montage tests whose public-fixture dependency lacked the canonical `optional_public_fixture`
   marker. The module now declares that ownership so an unpopulated general CI cache may skip it,
   while the dedicated required-public gate continues to download and execute the tests.
+- The following exact-head run exposed two test-isolation defects rather than product regressions.
+  Resource-confirmation scenarios now wait for optional montage publication and close each
+  `ApplicationService`, so an unrelated background generation cannot race a generation-preserving
+  assertion. The training loader test now verifies exact split indices and sampler contracts instead
+  of assuming a shuffled first batch can never coincidentally equal another split.
+- Focused fixes passed `9` tests; the complete adjacent integration-backend and training-plan group
+  passed `171` tests. A new exact-head run remains required before merge.
