@@ -587,7 +587,8 @@ jobs:
       - linux-test
       - platform-test
       - risk-gates
-    if: always()
+    if: >-
+      always() && !cancelled()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

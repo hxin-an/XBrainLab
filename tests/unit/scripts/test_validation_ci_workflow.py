@@ -203,3 +203,13 @@ def test_linux_aggregate_does_not_start_after_missing_or_failed_shards() -> None
         "always() && needs.validation_plan.outputs.run_product == 'true' && "
         "needs.linux-shard.result == 'success'"
     )
+
+
+def test_final_verdict_runs_on_failed_dependencies_but_not_cancelled_workflows() -> (
+    None
+):
+    _text, workflow = _workflow()
+
+    assert workflow["jobs"]["ci-capability-verdict"]["if"] == (
+        "always() && !cancelled()"
+    )
