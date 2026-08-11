@@ -125,6 +125,62 @@ def test_variant_preflight_stops_before_parallel_fanout(
     assert calls == [("first", 1)]
 
 
+def test_variant_fails_before_next_variant_when_any_record_is_invalid(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    async def run_case(**kwargs: object) -> EvalRecord:
+        case = kwargs["case"]
+        assert isinstance(case, RoutingCase)
+        error = "timed out" if case.id == "second" else None
+        return EvalRecord(
+            variant="baseline",
+            run_fingerprint="test",
+            case_id=case.id,
+            repeat=1,
+            returncode=1 if error else 0,
+            elapsed_seconds=0.1,
+            input_tokens=None if error else 10,
+            output_tokens=None if error else 2,
+            response=None
+            if error
+            else {
+                "primary_skill": None,
+                "secondary_skills": [],
+                "authority_class": "current_truth",
+                "reason": "no skill",
+            },
+            error=error,
+        )
+
+    monkeypatch.setattr(audit_agent_guidance, "_git_sha", lambda _root: "abc")
+    monkeypatch.setattr(
+        audit_agent_guidance,
+        "_guidance_digest",
+        lambda _root: "digest",
+    )
+    monkeypatch.setattr(audit_agent_guidance, "_run_case", run_case)
+    cases = (
+        RoutingCase("first", "one", "positive", None, (), (), "current_truth"),
+        RoutingCase("second", "two", "positive", None, (), (), "current_truth"),
+    )
+
+    with pytest.raises(RuntimeError, match="baseline produced 1 invalid record"):
+        asyncio.run(
+            run_variant(
+                variant="baseline",
+                repo_root=tmp_path,
+                cases=cases,
+                output_dir=tmp_path / "output",
+                repeats=1,
+                max_concurrency=2,
+                model="gpt-5.6-sol",
+                reasoning_effort="xhigh",
+                timeout_seconds=30,
+            )
+        )
+
+
 def test_case_runner_closes_stdin_and_excludes_queue_wait_from_latency(
     tmp_path: Path,
     monkeypatch,
@@ -203,6 +259,89 @@ def test_case_runner_closes_stdin_and_excludes_queue_wait_from_latency(
 
     assert captured["stdin"] is asyncio.subprocess.DEVNULL
     assert record.elapsed_seconds == 0.0
+    assert record.error is None
+
+
+def test_case_runner_retries_matching_failed_record(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    record_path = output_dir / "retry-case-r1.record.json"
+    record_path.write_text(
+        json.dumps(
+            {
+                "variant": "candidate",
+                "run_fingerprint": "test",
+                "case_id": "retry-case",
+                "repeat": 1,
+                "returncode": 1,
+                "elapsed_seconds": 30.0,
+                "input_tokens": None,
+                "output_tokens": None,
+                "response": None,
+                "error": "timed out",
+            }
+        ),
+        encoding="utf-8",
+    )
+    launched = {"value": False}
+
+    class CompletedProcess:
+        returncode = 0
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            return b'{"usage":{"input_tokens":10,"output_tokens":2}}\n', b""
+
+    async def create_process(*command: str, **_kwargs: object) -> CompletedProcess:
+        launched["value"] = True
+        final_path = Path(command[command.index("--output-last-message") + 1])
+        final_path.write_text(
+            json.dumps(
+                {
+                    "primary_skill": None,
+                    "secondary_skills": [],
+                    "authority_class": "current_truth",
+                    "reason": "retried",
+                }
+            ),
+            encoding="utf-8",
+        )
+        return CompletedProcess()
+
+    monkeypatch.setattr(
+        audit_agent_guidance.asyncio,
+        "create_subprocess_exec",
+        create_process,
+    )
+    case = RoutingCase(
+        "retry-case",
+        "read truth",
+        "negative",
+        None,
+        (),
+        (),
+        "current_truth",
+    )
+
+    record = asyncio.run(
+        audit_agent_guidance._run_case(
+            semaphore=asyncio.Semaphore(1),
+            variant="candidate",
+            run_fingerprint="test",
+            case=case,
+            repeat=1,
+            repo_root=tmp_path,
+            output_dir=output_dir,
+            schema_path=tmp_path / "schema.json",
+            model="gpt-5.6-sol",
+            reasoning_effort="xhigh",
+            timeout_seconds=30,
+        )
+    )
+
+    assert launched["value"] is True
     assert record.error is None
 
 

@@ -519,7 +519,9 @@ async def _run_case(
         payload = json.loads(record_path.read_text(encoding="utf-8"))
         if payload.get("run_fingerprint") != run_fingerprint:
             raise RuntimeError(f"{record_path} belongs to a different evaluation run")
-        return EvalRecord(**payload)
+        existing = EvalRecord(**payload)
+        if existing.error is None and existing.response is not None:
+            return existing
 
     command = build_codex_command(
         repo_root=repo_root,
@@ -696,7 +698,17 @@ async def run_variant(
         )
         for case, repeat in pending
     ]
-    return [preflight, *await asyncio.gather(*tasks)]
+    records = [preflight, *await asyncio.gather(*tasks)]
+    invalid = [record for record in records if record.error is not None]
+    if invalid:
+        details = "; ".join(
+            f"{record.case_id}-r{record.repeat}: {record.error}"
+            for record in invalid[:3]
+        )
+        raise RuntimeError(
+            f"{variant} produced {len(invalid)} invalid record(s): {details}"
+        )
+    return records
 
 
 def score_variant(
