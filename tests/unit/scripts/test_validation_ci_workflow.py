@@ -221,3 +221,19 @@ def test_workflow_uses_the_v2_cancellation_protocol_group() -> None:
     assert workflow["concurrency"]["group"] == (
         "${{ github.workflow }}-validation-plan-v2-${{ github.ref }}"
     )
+
+
+def test_target_aware_jobs_use_bounded_short_branch_history() -> None:
+    text, workflow = _workflow()
+
+    for job_id in (
+        "validation_plan",
+        "registered-gates",
+        "docs-validation",
+        "risk-gates",
+        "ci-capability-verdict",
+    ):
+        checkout = workflow["jobs"][job_id]["steps"][0]
+        assert checkout["uses"] == "actions/checkout@v4"
+        assert checkout["with"]["fetch-depth"] == 64
+    assert "fetch-depth: 0" not in text
