@@ -12,7 +12,7 @@ import statistics
 import subprocess
 import time
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -66,6 +66,7 @@ CASE_CATEGORY_COUNTS = {
     "negative": 16,
     "overlap": 12,
 }
+AUTHORITY_CASES_PER_CLASS = 2
 FORBIDDEN_GUIDANCE_TOKENS = (
     "docs/agent_goals/product_quality_closure_goal.md",
     "stabilize/product-quality-closure",
@@ -78,7 +79,7 @@ MAX_SKILL_LINES = 120
 MAX_TOTAL_SKILL_LINES = 1_000
 MAX_DESCRIPTION_CHARS = 220
 MAX_TOTAL_DESCRIPTION_CHARS = 2_920
-EVALUATOR_CONTRACT_VERSION = 3
+EVALUATOR_CONTRACT_VERSION = 4
 INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
 
 
@@ -96,8 +97,17 @@ class RoutingCase:
 
 
 @dataclass(frozen=True)
+class AuthorityCase:
+    """One independent canonical-authority classification case."""
+
+    id: str
+    prompt: str
+    expected_authority_class: str
+
+
+@dataclass(frozen=True)
 class EvalRecord:
-    """One Codex routing execution."""
+    """One isolated Codex evaluation execution."""
 
     variant: str
     run_fingerprint: str
@@ -117,7 +127,6 @@ ROUTING_OUTPUT_SCHEMA: dict[str, Any] = {
     "required": [
         "primary_skill",
         "secondary_skills",
-        "authority_class",
         "reason",
     ],
     "properties": {
@@ -137,13 +146,19 @@ ROUTING_OUTPUT_SCHEMA: dict[str, Any] = {
                 "enum": [*EXPECTED_SKILLS, *RETIRED_SKILLS],
             },
         },
+        "reason": {"type": "string", "maxLength": 240},
+    },
+}
+
+AUTHORITY_OUTPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["authority_class", "reason"],
+    "properties": {
         "authority_class": {
             "type": "string",
             "enum": list(AUTHORITY_CLASSES),
-            "description": (
-                "Canonical repo layer that owns the task facts, contract, or procedure; "
-                "classify independently of skill routing using the prompt definitions."
-            ),
+            "description": "The one canonical repo layer that owns the requested truth.",
         },
         "reason": {"type": "string", "maxLength": 240},
     },
@@ -231,6 +246,42 @@ def load_cases(path: Path) -> tuple[RoutingCase, ...]:
             )
         if case.expected_authority_class not in AUTHORITY_CLASSES:
             raise ValueError(f"{path}: {case.id} has an unknown authority class")
+    return tuple(cases)
+
+
+def load_authority_cases(path: Path) -> tuple[AuthorityCase, ...]:
+    """Load a balanced, single-purpose authority-classification corpus."""
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or not isinstance(payload.get("cases"), list):
+        raise ValueError(f"{path}: expected a top-level cases list")
+
+    cases: list[AuthorityCase] = []
+    required = {"id", "prompt", "expected_authority_class"}
+    for index, item in enumerate(payload["cases"]):
+        if not isinstance(item, dict) or set(item) != required:
+            raise ValueError(
+                f"{path}: case {index} must contain exactly {sorted(required)}"
+            )
+        case = AuthorityCase(
+            id=str(item["id"]),
+            prompt=str(item["prompt"]),
+            expected_authority_class=str(item["expected_authority_class"]),
+        )
+        if re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", case.id) is None:
+            raise ValueError(f"{path}: case {index} has an unsafe id: {case.id}")
+        if case.expected_authority_class not in AUTHORITY_CLASSES:
+            raise ValueError(f"{path}: {case.id} has an unknown authority class")
+        cases.append(case)
+
+    ids = [case.id for case in cases]
+    if len(ids) != len(set(ids)):
+        raise ValueError(f"{path}: case ids must be unique")
+    counts = Counter(case.expected_authority_class for case in cases)
+    expected_counts = dict.fromkeys(AUTHORITY_CLASSES, AUTHORITY_CASES_PER_CLASS)
+    if dict(counts) != expected_counts:
+        raise ValueError(
+            f"{path}: expected authority counts {expected_counts}, got {dict(counts)}"
+        )
     return tuple(cases)
 
 
@@ -380,6 +431,14 @@ def audit_guidance(root: Path) -> list[str]:
             load_cases(cases_path)
         except ValueError as exc:
             errors.append(str(exc))
+    authority_cases_path = root / ".agents" / "evals" / "authority-cases.yaml"
+    if not authority_cases_path.is_file():
+        errors.append("missing .agents/evals/authority-cases.yaml")
+    else:
+        try:
+            load_authority_cases(authority_cases_path)
+        except ValueError as exc:
+            errors.append(str(exc))
     return errors
 
 
@@ -458,18 +517,19 @@ def _routing_prompt(case: RoutingCase) -> str:
         "repo-local $skill, select that exact skill when it exists; explicit-only controls when "
         "a skill may be selected, not whether the output schema permits it. Use null when no "
         "repo-local skill is warranted.\n\n"
-        "authority_class is independent of primary_skill: choose the canonical repo "
-        "layer that owns the task's required facts, contract, or procedure. Do not use "
-        "skill_trigger merely because a skill routes the task. Definitions: root_invariants = "
-        "root AGENTS.md safety, authorization, branch rules, or the no-repo boundary; "
-        "current_truth = docs/current plus docs/planning status, priorities, and current product "
-        "decisions; target_architecture = docs/target plus docs/architecture current/target "
-        "system boundaries and ownership contracts; validation_registry = docs/validation plus "
-        "the executable handoff-gate registry and evidence claims; workflow = a matching "
-        ".agents/workflows procedure; historical_provenance = dated records or Git history when "
-        "resolving historical authority; skill_trigger = the matching SKILL.md method or boundary "
-        "when none of the preceding canonical sources owns the task content.\n\n"
         f"User request:\n{case.prompt}"
+    )
+
+
+def _authority_prompt(case: AuthorityCase) -> str:
+    return (
+        "Perform a read-only authority classification for the request below. Use only "
+        "repo-local instructions already supplied to you. Do not inspect .agents/evals, audit "
+        "scripts, tests, artifacts, or expected answers. Do not solve the request and do not call "
+        "tools. Select one canonical authority class for the repository layer that owns the "
+        "requested truth, contract, or reusable procedure. Do not select or discuss skills; this "
+        "is not a skill-routing task.\n\n"
+        f"Authority request:\n{case.prompt}"
     )
 
 
@@ -524,7 +584,7 @@ async def _run_case(
     semaphore: asyncio.Semaphore,
     variant: str,
     run_fingerprint: str,
-    case: RoutingCase,
+    case: RoutingCase | AuthorityCase,
     repeat: int,
     repo_root: Path,
     output_dir: Path,
@@ -532,6 +592,7 @@ async def _run_case(
     model: str,
     reasoning_effort: str,
     timeout_seconds: int,
+    prompt_text: str | None = None,
 ) -> EvalRecord:
     stem = f"{case.id}-r{repeat}"
     jsonl_path = output_dir / f"{stem}.events.jsonl"
@@ -552,7 +613,7 @@ async def _run_case(
         reasoning_effort=reasoning_effort,
         schema_path=schema_path,
         final_path=final_path,
-        prompt=_routing_prompt(case),
+        prompt=prompt_text if prompt_text is not None else _routing_prompt(case),
     )
     async with semaphore:
         started = time.monotonic()
@@ -640,18 +701,22 @@ async def run_variant(
     *,
     variant: str,
     repo_root: Path,
-    cases: Sequence[RoutingCase],
+    cases: Sequence[RoutingCase | AuthorityCase],
     output_dir: Path,
     repeats: int,
     max_concurrency: int,
     model: str,
     reasoning_effort: str,
     timeout_seconds: int,
+    suite_name: str = "routing",
+    output_schema: dict[str, Any] = ROUTING_OUTPUT_SCHEMA,
+    prompt_builder: Callable[[Any], str] = _routing_prompt,
 ) -> list[EvalRecord]:
-    """Run one isolated routing variant."""
+    """Run one isolated evaluation-suite variant."""
     output_dir.mkdir(parents=True, exist_ok=True)
     variant_manifest = {
         "variant": variant,
+        "suite": suite_name,
         "repo_root": str(repo_root.resolve()),
         "repo_sha": _git_sha(repo_root),
         "guidance_digest": _guidance_digest(repo_root),
@@ -681,9 +746,9 @@ async def run_variant(
     run_fingerprint = hashlib.sha256(
         json.dumps(variant_manifest, sort_keys=True).encode("utf-8")
     ).hexdigest()
-    schema_path = output_dir / "routing-output-schema.json"
+    schema_path = output_dir / f"{suite_name}-output-schema.json"
     schema_path.write_text(
-        json.dumps(ROUTING_OUTPUT_SCHEMA, indent=2) + "\n",
+        json.dumps(output_schema, indent=2) + "\n",
         encoding="utf-8",
     )
     semaphore = asyncio.Semaphore(max_concurrency)
@@ -703,6 +768,7 @@ async def run_variant(
         model=model,
         reasoning_effort=reasoning_effort,
         timeout_seconds=timeout_seconds,
+        prompt_text=prompt_builder(preflight_case),
     )
     if preflight.error is not None:
         raise RuntimeError(f"{variant} preflight failed: {preflight.error}")
@@ -719,6 +785,7 @@ async def run_variant(
             model=model,
             reasoning_effort=reasoning_effort,
             timeout_seconds=timeout_seconds,
+            prompt_text=prompt_builder(case),
         )
         for case, repeat in pending
     ]
@@ -754,9 +821,6 @@ def score_variant(
         forbidden_ok = valid and not (
             {primary, *secondary_set} & set(case.forbidden_skills)
         )
-        authority_ok = valid and (
-            response.get("authority_class") == case.expected_authority_class
-        )
         scored.append(
             {
                 "case_id": case.id,
@@ -765,7 +829,6 @@ def score_variant(
                 "primary_ok": primary_ok,
                 "secondary_ok": secondary_ok,
                 "forbidden_ok": forbidden_ok,
-                "authority_ok": authority_ok,
                 "selected_count": int(primary is not None) + len(secondary_set),
                 "primary_skill": primary,
             }
@@ -812,7 +875,6 @@ def score_variant(
             if mcp_incidental
             else 0.0
         ),
-        "authority_accuracy": rate(scored, "authority_ok"),
         "average_selected_skills_single_scope": (
             statistics.fmean(row["selected_count"] for row in single_scope)
             if single_scope
@@ -822,6 +884,29 @@ def score_variant(
             statistics.median(input_tokens) if input_tokens else None
         ),
         "median_latency_seconds": statistics.median(elapsed) if elapsed else None,
+    }
+
+
+def score_authority_variant(
+    cases: Sequence[AuthorityCase],
+    records: Sequence[EvalRecord],
+) -> dict[str, Any]:
+    """Score the independent authority-classification suite."""
+    by_id = {case.id: case for case in cases}
+    valid = [record for record in records if record.error is None and record.response]
+    correct = [
+        record
+        for record in valid
+        if record.response is not None
+        and record.response.get("authority_class")
+        == by_id[record.case_id].expected_authority_class
+    ]
+    return {
+        "authority_executions": len(records),
+        "authority_valid_response_rate": (
+            len(valid) / len(records) if records else 0.0
+        ),
+        "authority_accuracy": len(correct) / len(records) if records else 0.0,
     }
 
 
@@ -887,19 +972,50 @@ def _write_blind_sample(
     cases: Sequence[RoutingCase],
     baseline_records: Sequence[EvalRecord],
     candidate_records: Sequence[EvalRecord],
+    authority_cases: Sequence[AuthorityCase],
+    baseline_authority_records: Sequence[EvalRecord],
+    candidate_authority_records: Sequence[EvalRecord],
     output_root: Path,
 ) -> None:
-    baseline = {(record.case_id, record.repeat): record for record in baseline_records}
-    candidate = {
+    routing_baseline = {
+        (record.case_id, record.repeat): record for record in baseline_records
+    }
+    routing_candidate = {
         (record.case_id, record.repeat): record for record in candidate_records
     }
-    ranked = sorted(
+    authority_baseline = {
+        (record.case_id, record.repeat): record for record in baseline_authority_records
+    }
+    authority_candidate = {
+        (record.case_id, record.repeat): record
+        for record in candidate_authority_records
+    }
+    ranked_routing = sorted(
         cases,
         key=lambda case: hashlib.sha256(case.id.encode()).hexdigest(),
-    )[:12]
+    )[:8]
+    ranked_authority = sorted(
+        authority_cases,
+        key=lambda case: hashlib.sha256(case.id.encode()).hexdigest(),
+    )[:4]
     sample: list[dict[str, Any]] = []
     key: list[dict[str, Any]] = []
-    for case in ranked:
+    selected: list[
+        tuple[
+            str,
+            RoutingCase | AuthorityCase,
+            dict[tuple[str, int], EvalRecord],
+            dict[tuple[str, int], EvalRecord],
+        ]
+    ] = [
+        ("routing", case, routing_baseline, routing_candidate)
+        for case in ranked_routing
+    ]
+    selected.extend(
+        ("authority", case, authority_baseline, authority_candidate)
+        for case in ranked_authority
+    )
+    for case_type, case, baseline, candidate in selected:
         pair_key = (case.id, 1)
         left_is_candidate = (
             int(hashlib.sha256(case.prompt.encode()).hexdigest(), 16) % 2
@@ -917,6 +1033,7 @@ def _write_blind_sample(
         sample.append(
             {
                 "case_id": case.id,
+                "case_type": case_type,
                 "prompt": case.prompt,
                 "A": records_by_label["A"].response,
                 "B": records_by_label["B"].response,
@@ -928,10 +1045,11 @@ def _write_blind_sample(
         key.append(
             {
                 "case_id": case.id,
+                "case_type": case_type,
                 "A": left_variant,
                 "B": right_variant,
-                "A_auto_pass": _record_pass(case, records_by_label["A"]),
-                "B_auto_pass": _record_pass(case, records_by_label["B"]),
+                "A_auto_pass": _blind_record_pass(case, records_by_label["A"]),
+                "B_auto_pass": _blind_record_pass(case, records_by_label["B"]),
             }
         )
     (output_root / "human-review-sample.yaml").write_text(
@@ -956,6 +1074,18 @@ def _record_pass(case: RoutingCase, record: EvalRecord) -> bool:
         primary == case.expected_primary
         and set(secondary) <= set(case.allowed_secondary)
         and not selected & set(case.forbidden_skills)
+    )
+
+
+def _blind_record_pass(
+    case: RoutingCase | AuthorityCase,
+    record: EvalRecord,
+) -> bool:
+    if isinstance(case, RoutingCase):
+        return _record_pass(case, record)
+    return bool(
+        record.error is None
+        and record.response is not None
         and record.response.get("authority_class") == case.expected_authority_class
     )
 
@@ -1015,6 +1145,7 @@ def _run_ab(args: argparse.Namespace) -> int:
     baseline_root = args.baseline_root.resolve()
     candidate_root = args.candidate_root.resolve()
     cases = load_cases(args.cases.resolve())
+    authority_cases = load_authority_cases(args.authority_cases.resolve())
     base_sha = _git_sha(baseline_root)
     output_root = args.output_root.resolve() / base_sha
     output_root.mkdir(parents=True, exist_ok=True)
@@ -1028,6 +1159,8 @@ def _run_ab(args: argparse.Namespace) -> int:
         "repeats": args.repeats,
         "max_concurrency": args.max_concurrency,
         "case_count": len(cases),
+        "authority_case_count": len(authority_cases),
+        "planned_executions": (len(cases) + len(authority_cases)) * args.repeats * 2,
     }
     (output_root / "manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n",
@@ -1038,7 +1171,7 @@ def _run_ab(args: argparse.Namespace) -> int:
             variant="baseline",
             repo_root=baseline_root,
             cases=cases,
-            output_dir=output_root / "baseline",
+            output_dir=output_root / "routing" / "baseline",
             repeats=args.repeats,
             max_concurrency=args.max_concurrency,
             model=args.model,
@@ -1051,7 +1184,7 @@ def _run_ab(args: argparse.Namespace) -> int:
             variant="candidate",
             repo_root=candidate_root,
             cases=cases,
-            output_dir=output_root / "candidate",
+            output_dir=output_root / "routing" / "candidate",
             repeats=args.repeats,
             max_concurrency=args.max_concurrency,
             model=args.model,
@@ -1059,8 +1192,46 @@ def _run_ab(args: argparse.Namespace) -> int:
             timeout_seconds=args.timeout_seconds,
         )
     )
+    baseline_authority_records = asyncio.run(
+        run_variant(
+            variant="baseline",
+            repo_root=baseline_root,
+            cases=authority_cases,
+            output_dir=output_root / "authority" / "baseline",
+            repeats=args.repeats,
+            max_concurrency=args.max_concurrency,
+            model=args.model,
+            reasoning_effort=args.reasoning_effort,
+            timeout_seconds=args.timeout_seconds,
+            suite_name="authority",
+            output_schema=AUTHORITY_OUTPUT_SCHEMA,
+            prompt_builder=_authority_prompt,
+        )
+    )
+    candidate_authority_records = asyncio.run(
+        run_variant(
+            variant="candidate",
+            repo_root=candidate_root,
+            cases=authority_cases,
+            output_dir=output_root / "authority" / "candidate",
+            repeats=args.repeats,
+            max_concurrency=args.max_concurrency,
+            model=args.model,
+            reasoning_effort=args.reasoning_effort,
+            timeout_seconds=args.timeout_seconds,
+            suite_name="authority",
+            output_schema=AUTHORITY_OUTPUT_SCHEMA,
+            prompt_builder=_authority_prompt,
+        )
+    )
     baseline_score = score_variant(cases, baseline_records)
+    baseline_score.update(
+        score_authority_variant(authority_cases, baseline_authority_records)
+    )
     candidate_score = score_variant(cases, candidate_records)
+    candidate_score.update(
+        score_authority_variant(authority_cases, candidate_authority_records)
+    )
     summary = {
         "baseline": baseline_score,
         "candidate": candidate_score,
@@ -1074,6 +1245,9 @@ def _run_ab(args: argparse.Namespace) -> int:
         cases=cases,
         baseline_records=baseline_records,
         candidate_records=candidate_records,
+        authority_cases=authority_cases,
+        baseline_authority_records=baseline_authority_records,
+        candidate_authority_records=candidate_authority_records,
         output_root=output_root,
     )
     print(json.dumps(summary, indent=2, sort_keys=True))
@@ -1097,6 +1271,11 @@ def build_parser() -> argparse.ArgumentParser:
         / ".agents"
         / "evals"
         / "skill-routing-cases.yaml",
+    )
+    ab.add_argument(
+        "--authority-cases",
+        type=Path,
+        default=_repo_root_from_script() / ".agents" / "evals" / "authority-cases.yaml",
     )
     ab.add_argument(
         "--output-root",

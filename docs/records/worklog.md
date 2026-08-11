@@ -37,6 +37,26 @@
 
 ## 2026-08-11
 
+### 14:42 第三輪 guidance A/B 退件與 evaluator v4 single-purpose suites
+
+- 做了什麼：在 baseline `a0e16b400236b687bd2b4c9f58ef4a20929e377b`、candidate
+  `5479b8e6e7a3ffa55fe52c034330e4a6db9bf679` 完成第三輪 GPT-5.6 Sol/xhigh A/B。三筆 300 秒
+  infrastructure timeout 由 failed-only resume 單獨補跑；prompt、SHA、corpus 與其餘紀錄未變，
+  最終為 `360/360` valid executions。
+- 結果：candidate primary `98.89%`、negative false-positive `0%`、overlap `94.44%`、MCP
+  explicit/incidental `100%/0%`、single-scope average `0.979`、median input savings `687` tokens、
+  latency `-15.04%`；所有 routing/efficiency checks PASS。
+- 退件：authority `62.78%` 未達 `100%`。逐案例分布顯示模型在 specialist method、root/current/
+  architecture、validation 與 workflow 之間合理但不一致地選擇；這是同一 call 同時測兩個目標的
+  evaluator defect，不是可藉調低 threshold 消除的 guidance finding。原始結果保留於 ignored
+  `build/dev-artifacts/agent-guidance-eval-v6/`，不執行 blind review、不回算 PASS。
+- 修正：red-first 將 evaluator 升為 v4。60 個 routing cases 的 schema/prompt 只判 skill；新增
+  `.agents/evals/authority-cases.yaml`，以七類各兩題的 14-case suite 單獨判 authority。下一輪為
+  `(60 + 14) × 3 × 2 = 444` executions；blind pack 為 8 routing + 4 authority，交由不繼承主對話、
+  不讀 key/summary/eval corpus 的 subagent 審查。
+- 證據：combined guidance contract/evaluator `20 passed`；static audit、Ruff check/format、MkDocs
+  strict 與 `git diff --check` PASS。仍需 commit/push 後對新 exact SHA 跑正式 v4 A/B。
+
 ### 13:55 第二輪 GPT-5.6 guidance A/B 與 evaluator v3
 
 - 做了什麼：在 baseline `a0e16b400236b687bd2b4c9f58ef4a20929e377b`、candidate

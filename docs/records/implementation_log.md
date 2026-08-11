@@ -31,6 +31,7 @@
 ### Evidence 入口
 
 - `.agents/evals/skill-routing-cases.yaml`
+- `.agents/evals/authority-cases.yaml`
 - `scripts/dev/audit_agent_guidance.py`
 - `tests/unit/test_agent_guidance_contract.py`
 - `tests/unit/scripts/test_audit_agent_guidance.py`
@@ -45,11 +46,16 @@
   `+2.81%`。這證明 lean guidance 的主要 routing/boundary 改善，但 automatic acceptance 仍為 false：
   authority `80%` 未達 `100%`，explicit MCP `5/6`；唯一 MCP 錯誤的 reason 明確選中 skill，輸出卻
   自相矛盾地回傳 `null` 並誤稱 schema 不允許該值。
-- 第二輪同時證明 evaluator v2 仍把 skill routing authority 和 canonical task-content authority 混為
-  一談。v3 已將七種 canonical layer 定義成獨立於 primary skill 的分類，並在 structured schema
-  明示 explicit `$skill` 的合法性；需以新的完整 A/B 驗證，不能回算或改標第二輪結果。
+- 第三輪在 candidate `5479b8e6` 完成另 `360/360` 個有效 executions：primary `98.89%`、negative
+  false-positive `0%`、overlap `94.44%`、explicit/incidental MCP `100%/0%`、median input savings
+  `687` tokens、latency `-15.04%`，但 authority 僅 `62.78%`，automatic acceptance 仍為 false。
+  三輪結果共同證明 skill routing 已穩定改善，也證明在同一輸出同時要求 routing 與 content
+  authority 會形成無法可靠評分的 multi-objective oracle；不能靠改標既有答案或降低門檻結案。
+- Evaluator v4 已將 60-case routing suite 與 14-case authority-only suite 分開；authority corpus
+  對七種 canonical layer 各有兩題，完整 A/B 為 `444` executions。12-case blind pack 固定混合
+  8 routing 與 4 authority cases，避免人工抽查只驗證其中一半契約。
 - Evaluator 已加入真 API preflight、structured error、invalid-record fail-closed、failed-only resume
-  與 contract version。第三輪正式 A/B、blind review 與 PR exact-head CI 尚未完成。
+  與 contract version。v4 正式 A/B、blind subagent review 與 PR exact-head CI 尚未完成。
 - 本改動只校準 repo coding-agent guidance；不改 XBrainLab 產品 API、Granite runtime、EEG
   workflow 或 product handoff status。
 

@@ -9,15 +9,22 @@ import yaml
 
 from scripts.dev import audit_agent_guidance
 from scripts.dev.audit_agent_guidance import (
+    AUTHORITY_OUTPUT_SCHEMA,
     ROUTING_OUTPUT_SCHEMA,
+    AuthorityCase,
     EvalRecord,
     RoutingCase,
+    _authority_prompt,
+    _blind_record_pass,
     _error_from_jsonl,
+    _record_pass,
     _routing_prompt,
     _usage_from_jsonl,
+    _write_blind_sample,
     acceptance_summary,
     build_codex_command,
     run_variant,
+    score_authority_variant,
     score_human_review,
     score_variant,
 )
@@ -54,25 +61,38 @@ def test_usage_parser_takes_final_cumulative_token_values() -> None:
     assert _usage_from_jsonl(events) == (140, 12)
 
 
-def test_response_schema_uses_only_supported_array_contract() -> None:
+def test_routing_schema_is_single_purpose_and_uses_supported_array_contract() -> None:
     secondary = ROUTING_OUTPUT_SCHEMA["properties"]["secondary_skills"]
 
     assert "uniqueItems" not in secondary
+    assert "authority_class" not in ROUTING_OUTPUT_SCHEMA["properties"]
     assert (
         "explicitly names"
         in ROUTING_OUTPUT_SCHEMA["properties"]["primary_skill"]["description"]
     )
 
 
-def test_routing_prompt_separates_skill_routing_from_canonical_authority() -> None:
+def test_routing_prompt_only_asks_for_skill_routing() -> None:
     case = RoutingCase("case", "review code", "positive", None, (), (), "current_truth")
 
     prompt = _routing_prompt(case)
 
-    assert "independent of primary_skill" in prompt
-    assert "target_architecture = docs/target plus docs/architecture" in prompt
-    assert "workflow = a matching .agents/workflows procedure" in prompt
     assert "explicit-only controls when a skill may be selected" in prompt
+    assert "authority_class" not in prompt
+
+
+def test_authority_prompt_and_schema_do_not_ask_for_skill_routing() -> None:
+    case = AuthorityCase("authority", "who owns current truth", "current_truth")
+
+    prompt = _authority_prompt(case)
+
+    assert "one canonical authority class" in prompt
+    assert "Do not select or discuss skills" in prompt
+    assert "primary_skill" not in AUTHORITY_OUTPUT_SCHEMA["properties"]
+    assert set(AUTHORITY_OUTPUT_SCHEMA["properties"]) == {
+        "authority_class",
+        "reason",
+    }
 
 
 def test_jsonl_error_parser_reports_api_failure_instead_of_stderr_notice() -> None:
@@ -361,7 +381,7 @@ def test_case_runner_retries_matching_failed_record(
     assert record.error is None
 
 
-def test_variant_scoring_enforces_primary_secondary_forbidden_and_authority() -> None:
+def test_variant_scoring_enforces_primary_secondary_and_forbidden_skills() -> None:
     cases = (
         RoutingCase(
             id="positive",
@@ -424,9 +444,145 @@ def test_variant_scoring_enforces_primary_secondary_forbidden_and_authority() ->
     assert score["primary_accuracy"] == 0.5
     assert score["false_positive_rate"] == 1.0
     assert score["forbidden_skill_accuracy"] == 0.5
-    assert score["authority_accuracy"] == 1.0
+    assert "authority_accuracy" not in score
     assert score["median_input_tokens"] == 110.0
     assert score["median_latency_seconds"] == 3.0
+
+
+def test_authority_scoring_is_independent_from_skill_routing() -> None:
+    cases = (
+        AuthorityCase("current", "current truth", "current_truth"),
+        AuthorityCase("workflow", "multi-step procedure", "workflow"),
+    )
+    records = (
+        EvalRecord(
+            variant="candidate",
+            run_fingerprint="test",
+            case_id="current",
+            repeat=1,
+            returncode=0,
+            elapsed_seconds=1.0,
+            input_tokens=100,
+            output_tokens=5,
+            response={"authority_class": "current_truth", "reason": "current"},
+            error=None,
+        ),
+        EvalRecord(
+            variant="candidate",
+            run_fingerprint="test",
+            case_id="workflow",
+            repeat=1,
+            returncode=0,
+            elapsed_seconds=2.0,
+            input_tokens=110,
+            output_tokens=6,
+            response={"authority_class": "skill_trigger", "reason": "wrong"},
+            error=None,
+        ),
+    )
+
+    score = score_authority_variant(cases, records)
+
+    assert score["authority_executions"] == 2
+    assert score["authority_accuracy"] == 0.5
+    assert score["authority_valid_response_rate"] == 1.0
+
+
+def test_routing_record_pass_does_not_score_authority_metadata() -> None:
+    case = RoutingCase(
+        "route",
+        "review code",
+        "positive",
+        "code-reviewer",
+        (),
+        (),
+        "skill_trigger",
+    )
+    record = EvalRecord(
+        variant="candidate",
+        run_fingerprint="test",
+        case_id="route",
+        repeat=1,
+        returncode=0,
+        elapsed_seconds=1.0,
+        input_tokens=100,
+        output_tokens=5,
+        response={
+            "primary_skill": "code-reviewer",
+            "secondary_skills": [],
+            "reason": "diff review",
+        },
+        error=None,
+    )
+
+    assert _record_pass(case, record) is True
+
+
+def test_blind_sample_includes_routing_and_authority_cases(tmp_path: Path) -> None:
+    routing_cases = tuple(
+        RoutingCase(
+            f"r-{index}",
+            "generic request",
+            "negative",
+            None,
+            (),
+            (),
+            "root_invariants",
+        )
+        for index in range(8)
+    )
+    authority_cases = tuple(
+        AuthorityCase(f"a-{index}", "current truth", "current_truth")
+        for index in range(4)
+    )
+
+    def records(
+        cases: tuple[RoutingCase | AuthorityCase, ...],
+    ) -> tuple[EvalRecord, ...]:
+        return tuple(
+            EvalRecord(
+                variant="candidate",
+                run_fingerprint="test",
+                case_id=case.id,
+                repeat=1,
+                returncode=0,
+                elapsed_seconds=1.0,
+                input_tokens=100,
+                output_tokens=5,
+                response=(
+                    {
+                        "primary_skill": None,
+                        "secondary_skills": [],
+                        "reason": "no skill",
+                    }
+                    if isinstance(case, RoutingCase)
+                    else {
+                        "authority_class": "current_truth",
+                        "reason": "current",
+                    }
+                ),
+                error=None,
+            )
+            for case in cases
+        )
+
+    routing_records = records(routing_cases)
+    authority_records = records(authority_cases)
+    _write_blind_sample(
+        cases=routing_cases,
+        baseline_records=routing_records,
+        candidate_records=routing_records,
+        authority_cases=authority_cases,
+        baseline_authority_records=authority_records,
+        candidate_authority_records=authority_records,
+        output_root=tmp_path,
+    )
+
+    payload = yaml.safe_load((tmp_path / "human-review-sample.yaml").read_text())
+    assert len(payload["samples"]) == 12
+    assert sum(row["case_type"] == "routing" for row in payload["samples"]) == 8
+    assert sum(row["case_type"] == "authority" for row in payload["samples"]) == 4
+    assert _blind_record_pass(authority_cases[0], authority_records[0]) is True
 
 
 def test_acceptance_summary_requires_efficiency_and_routing_thresholds() -> None:
