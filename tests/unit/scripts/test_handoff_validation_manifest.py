@@ -203,8 +203,14 @@ def test_guidance_contract_uses_attested_deterministic_contract_tests() -> None:
 
     assert spec.outcome.require_pytest_attestation
     assert spec.pytest_attestation_path == "pytest-attestations/guidance-contract.json"
-    assert "tests/unit/test_agent_guidance_contract.py" in spec.argv
-    assert "tests/unit/scripts/test_audit_agent_guidance.py" in spec.argv
+    assert spec.argv[-6:] == (
+        "--",
+        "--capture=sys",
+        "--confcutdir=tests/unit",
+        "tests/unit/test_agent_guidance_contract.py",
+        "tests/unit/scripts/test_audit_agent_guidance.py",
+        "-q",
+    )
 
 
 def test_exact_granite_recovery_and_long_session_gates_are_sha_scoped() -> None:

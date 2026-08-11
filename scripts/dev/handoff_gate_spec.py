@@ -412,6 +412,7 @@ _GATE_SPECS = (
             f"{EVIDENCE_ROOT_TOKEN}/pytest-attestations/guidance-contract.json",
             "--",
             "--capture=sys",
+            "--confcutdir=tests/unit",
             "tests/unit/test_agent_guidance_contract.py",
             "tests/unit/scripts/test_audit_agent_guidance.py",
             "-q",
