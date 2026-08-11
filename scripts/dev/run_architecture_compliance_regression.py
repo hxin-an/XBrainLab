@@ -145,7 +145,7 @@ def run_regression_check(
             "candidate_return_code": candidate_code,
             "target_return_code": target_code,
             "comparison_policy": (
-                "candidate-policy normalized violation-line multiset; "
+                "candidate-policy category+normalized-violation multiset; "
                 "locations retained"
             ),
         }

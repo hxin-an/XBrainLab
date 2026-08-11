@@ -94,5 +94,8 @@ def test_runner_uses_candidate_guard_policy_for_candidate_and_exact_target(
 
     assert exit_code == 0
     assert result["target_sha"] == "c" * 40
+    assert result["comparison_policy"] == (
+        "candidate-policy category+normalized-violation multiset; locations retained"
+    )
     assert {root for root, _checker in calls} != {repo.resolve()}
     assert {checker_path for _root, checker_path in calls} == {checker.resolve()}
