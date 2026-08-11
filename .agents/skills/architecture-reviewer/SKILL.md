@@ -1,45 +1,32 @@
 ---
 name: architecture-reviewer
-description: Use when reviewing XBrainLab current versus target architecture across UI, backend, data pipeline, agent, validation, and documentation before proposing or accepting implementation work.
+description: "Use for XBrainLab current-versus-target boundaries across UI, backend, data, Assistant, validation, and docs. Do not use for line-level code review or read-only current-status and roadmap summaries."
 ---
 
-# architecture-reviewer
+# Architecture Reviewer
 
-## 用途
+Evaluate architecture from source and runtime evidence before accepting design claims.
 
-用於做 UI、backend、data pipeline、agent、validation 的架構複盤。
+## Workflow
 
-## 先讀
+1. Define the workflow and decision being reviewed.
+2. Read the relevant current architecture and target document; do not load unrelated domains.
+3. Trace real entry points, state ownership, mutations, publications, and consumers.
+4. Compare current and target boundaries without treating target prose as implemented fact.
+5. Check responsibility placement, dependency direction, lifecycle ownership, and error semantics.
+6. Find parallel state machines, compatibility fallbacks, duplicated policy, and direct private access.
+7. Propose the smallest coherent migration slice with call sites, tests, rollback, and non-goals.
 
-1. `docs/target/README.md`
-2. `docs/target/architecture.md`
-3. `docs/target/agent.md`
-4. `docs/architecture/README.md`
-5. `.agents/runbooks/architecture-review.md`
+## Design rules
 
-## 工作方式
+- Prefer one application command path for state-changing workflows.
+- Keep UI presentation, application orchestration, domain policy, and persistence responsibilities
+  explicit.
+- Make state publication immutable or revisioned when multiple consumers observe it.
+- Do not add an abstraction unless it removes a measured coupling or enables a required seam.
+- Do not preserve mutable current facts, branch names, or completion status in reusable guidance.
 
-1. 先描述 current implementation。
-2. 再描述 target expectation。
-3. 列出 gap。
-4. 標出 risk。
-5. 建議 first slice。
-6. 寫出 required validation。
+## Output
 
-## 特別注意
-
-- Product command spine 目前是 `ApplicationService / Command API`；`Study` 與 managers
-  持有 domain state，部分 UI controller adapter / observer boundary 仍待收斂。
-- `BackendFacade` 已物理移除。把它描述成 current wrapper、compatibility layer 或 target
-  abstraction 都是架構失真；review 要防止它或等價 generic facade 回流。
-- target 不是把所有 workflow 邏輯塞進 `ApplicationService`；新邏輯應落在 focused command
-  service / handler，再由 command spine 統一 gate 與包裝 result。
-- agent target 包含 State Manager、Verification Layer、capability policy、tool-call scoring。
-- MCP 已退出 active product / thesis roadmap。除非使用者明確要求 MCP，review 不讀 MCP
-  adapter、不把 MCP 納入 current architecture gap，也不新增 MCP gate。
-
-## 禁止
-
-- 不直接開始重構。
-- 不把 target 當已完成。
-- 不只看文件；需要對 source 或 tests。
+Return current evidence, target gap, severity-ranked risks, accepted boundaries, first slice,
+validation floor, and claim boundary.

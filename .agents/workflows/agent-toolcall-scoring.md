@@ -1,31 +1,18 @@
-# Workflow: Agent Tool-Call Scoring
+# Workflow: Agent Tool-call Scoring
 
-## 目的
+Use only after current product planning and validation confirm the Assistant/backend/local-runtime
+surface is stable enough to freeze. Primary skills are `agent-toolcall-designer` and
+`thesis-evidence-reviewer`.
 
-設計 thesis 用的 agent tool-call scoring system。
+1. State hypothesis, intended claim, exact source SHA, and product prerequisite evidence.
+2. Freeze exact model/revision/runtime, prompt, tools, cases, scorer, seed, retries, and repeats.
+3. Define case schema with positive, negative, blocked, recovery, ambiguity, and multi-step routes.
+4. Score intent, tool, arguments, admission, execution, verification, trajectory, and final answer
+   separately.
+5. Preserve per-run machine-readable traces and a bounded human-readable report.
+6. Blind-review a sample to estimate scorer false positives/negatives.
+7. Report variance, failures, exclusions, and reproducible identity.
 
-## 使用 Skills
-
-- `agent-toolcall-designer`
-- `validation-runner`
-
-## 前置條件
-
-- local-only runtime 方向已確認。
-- State Snapshot / Tool Call / Verification Result / Scoring contract 外框已存在。
-- 後端 command surface 至少有第一個可測切片。
-
-## 步驟
-
-1. 定義 benchmark case schema。
-2. 定義 expected tool call / expected state delta。
-3. 定義 scorer output：intent、tool、parameters、verification、state transition、error recovery。
-4. 區分 single-turn、multi-turn、wrong-stage、invalid parameter、self-correction cases。
-5. 產生 machine-readable report 和 human-readable summary。
-6. 將結果映射到 thesis claim。
-
-## 禁止
-
-- 不把舊 Gemini/API benchmark 當新的 thesis evidence。
-- 不只評自然語言回答。
-- 不在沒有 backend command evidence 時宣稱 workflow success。
+Never silently switch model/revision or reinterpret a failed exact-model run as fallback success.
+Do not equate deterministic command tests, tool-call accuracy, EEG model accuracy, usability, or
+clinical validity.

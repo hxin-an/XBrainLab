@@ -1,57 +1,36 @@
 ---
 name: validation-runner
-description: Use when choosing and interpreting XBrainLab validation commands, quality dashboard checks, pytest gates, mkdocs builds, real-data IO smoke tests, and claim boundaries.
+description: "Use for selecting and interpreting XBrainLab tests, source guards, dashboards, MkDocs, real-data, UI, and handoff gates. Do not invent commands or overstate results."
 ---
 
-# validation-runner
+# Validation Runner
 
-## 用途
+Select evidence proportional to the declared scope and claim.
 
-用於選擇 XBrainLab 驗證指令，並判斷結果能支撐什麼 claim。
+## Authority
 
-## 先讀
+Read the relevant section of `docs/validation/README.md`. Executable handoff gate IDs, order, argv,
+timeouts, cache injection, and attestation come only from `scripts/dev/handoff_gate_spec.py`; run
+them through the canonical manifest runner. Do not copy or weaken commands in this skill.
 
-1. `docs/validation/README.md`
-2. `docs/architecture/validation.md`
-3. `docs/current.md`
-4. `docs/agent_goals/product_quality_closure_goal.md`
-5. `docs/records/product_quality_audit_2026-07-30.md`
-6. `.agents/runbooks/setup.md`
+## Workflow
 
-## Command Authority
+1. Define changed areas, expected behavior, same-class risk, environment, and intended claim.
+2. Select the smallest focused test that directly protects the change.
+3. Add the applicable source guard and adjacent workflow regression.
+4. For visible UI, inspect screenshots/walkthroughs; for data workflow handoff, use the required
+   source-diverse dataset gate.
+5. Record command, exact source identity, result, artifact, and dirty-state boundary.
+6. Distinguish complete bounded work from product handoff: a docs-only or narrow internal scope may
+   be complete when all its declared gates pass; handoff-ready requires the full handoff workflow.
 
-所有 current validation commands 只由 `docs/validation/README.md` 的 **Handoff Command
-Manifest** 定義。這個 skill 負責選擇、執行和解讀 manifest slice，不複製命令、不省略
-`required-ci` / `--verify-only` / wizard / multi-dataset steps，也不移除 native command 的
-timeout 或 `prlimit --core=0`。
+## Interpretation
 
-若 manifest command 與 repo path/CLI 不一致，先回報並修正 canonical manifest；不得自行改跑
-較弱 command 後宣稱原 gate 通過。Focused work 可以只跑相關 slice，但 completion label 必須
-保持 `checkpoint`，直到 active goal 要求的完整 exact-commit manifest 通過。
+- Dashboard PASS is engineering evidence, not product, thesis, scientific, or human acceptance.
+- Mock-heavy unit tests are a regression floor, not a real workflow claim.
+- Different formats from one dataset are not dataset diversity.
+- Offscreen UI evidence does not replace native Windows acceptance.
+- Evidence from a different SHA, dirty source, stale branch, or reduced denominator cannot certify
+  the candidate.
 
-## 判斷規則
-
-- dashboard PASS 是 engineering health，不是 thesis claim。
-- mock-heavy unit tests 是 regression floor，不是 real workflow evidence。
-- architecture / refresh / state-truth 類修復，必須有 same-class sweep 和 source guard clean
-  evidence；只跑新增測試只能支撐 checkpoint，不能支撐 complete。
-- 給使用者手測或宣稱 handoff-ready 前，必須完成 `.agents/workflows/handoff-candidate.md`：
-  focused regression、same-class sweep、happy path、edge/regression、artifact review、branch
-  hygiene 和 claim boundary。
-- data/import/label/epoch/training/evaluation/visualization handoff 前，必須跑 required
-  multi-dataset gate；跳過時只能稱為 checkpoint。
-- 不同副檔名不等於不同資料集；同一 source family 的轉檔只能算 format coverage，不能算 dataset source diversity。
-- public local-only fixture evidence 不能當作 clean clone always-on CI。
-- optional `llm` group 未驗證前，不能宣稱 local LLM runtime ready。
-- tool-call scoring system 尚未建立前，不能宣稱 agent tool-call accuracy。
-
-## 輸出
-
-每次驗證要寫：
-
-- command
-- result
-- claim supported
-- claim not supported
-- completion label：`complete` / `checkpoint` / `blocked`
-- follow-up
+Report command, result, supported claim, unsupported claim, completion label, and follow-up.

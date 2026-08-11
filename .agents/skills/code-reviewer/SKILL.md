@@ -1,51 +1,32 @@
 ---
 name: code-reviewer
-description: Use when reviewing XBrainLab code changes for behavioral regressions, state lifecycle bugs, UI refresh/threading risks, data pipeline correctness, missing tests, and architecture drift.
+description: "Use for XBrainLab diffs with regression, lifecycle, data, test, maintainability, duplication, or architecture risks. Do not use for architecture-only planning."
 ---
 
-# code-reviewer
+# Code Reviewer
 
-## 用途
+Review changed behavior first, then maintainability and evidence.
 
-用於 review XBrainLab 程式碼變更。採用 code-review stance：先找 bug、regression、missing tests，再談風格。
+## Review order
 
-## 先讀
+1. Read the diff, owning public contract, and directly affected tests.
+2. Trace each changed state transition, callback, async boundary, and error path.
+3. Check EEG/data semantics, persistence, cancellation, cleanup, and UI refresh where applicable.
+4. Search same-class call sites for inconsistent handling.
+5. Inspect tests for observable outcomes rather than mock choreography.
+6. Assess responsibility, naming, duplication, fallback creep, and module size.
+7. Compare the change with relevant architecture boundaries and validation claims.
 
-1. `docs/current.md`
-2. 相關 `docs/architecture/*.md`
-3. `docs/validation/README.md`
-
-## Review Priority
-
-1. 行為 regression。
-2. state lifecycle / side effect 錯誤。
-3. thread / UI refresh / long-running task 風險。
-4. data pipeline correctness。
-5. test coverage gap。
-6. API / Gemini path 是否被誤當產品目標。
-7. style / naming。
-
-## XBrainLab 特別注意
-
-- UI 和 backend state 不應分裂。
-- agent tool availability 要由 backend capability policy 控制。
-- 一次只有一個 active dataset pipeline。
-- epoch / dataset 後，一般 `load_data` / 開新 dataset 應被擋下。
-- `blocked_commands` 不完整塞進 LLM prompt。
-- `target/` 是目標，不是 current implementation。
-
-## 輸出格式
-
-Findings first：
-
-```md
 ## Findings
 
-- [severity] file:line - issue
+Report only actionable issues. For each finding include severity, path/line, failing scenario,
+why existing evidence misses it, and the smallest correction. Prioritize correctness, privacy,
+data loss, deadlock/crash, and state divergence over style.
 
-## Open Questions
+## Maintainability guard
 
-## Test Gaps
-```
-
-若沒有問題，明確說沒有發現 blocking issue，並列 remaining risk。
+- Flag god objects, mixed UI/application/domain responsibilities, repeated workflow truth, hidden
+  compatibility branches, and unbounded caches.
+- Do not demand abstractions for one-off code without demonstrated reuse or coupling reduction.
+- Do not weaken assertions or preserve obsolete paths merely to keep tests green.
+- If no defect is found, state residual risks and validation not examined.

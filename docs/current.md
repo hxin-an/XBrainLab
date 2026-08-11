@@ -111,7 +111,7 @@ generated evidence；branch、commit 或 dirty state 不吻合時，只能稱為
 | 你想知道 | 讀這裡 |
 | --- | --- |
 | 下一步施工 | [planning/now.md](planning/now.md) |
-| Active findings | [records/product_quality_audit_2026-07-30.md](records/product_quality_audit_2026-07-30.md) |
+| Historical audit | [records/product_quality_audit_2026-07-30.md](records/product_quality_audit_2026-07-30.md)；active work 只讀 Now。 |
 | 下一個 candidate contract | [planning/now.md](planning/now.md) 與 [validation/README.md](validation/README.md) |
 | 目前架構 | [architecture/README.md](architecture/README.md) |
 | 目標架構 | [target/architecture.md](target/architecture.md) |

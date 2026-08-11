@@ -1,241 +1,163 @@
 # XBrainLab Agent Guide
 
-最後更新：`2026-08-05`
+最後更新：`2026-08-11`
 
-這份文件是給任何進入本 repo 的 coding agent 的最短入口。
+這份文件只保留任何 coding agent 都必須遵守的 repo 級不變量。產品現況、施工順序與驗證命令
+由下列 canonical sources 決定，不在這裡複製會變動的 branch、測試總數或 gate argv。
 
-## Agent 定位
+## 權威與讀取順序
 
-XBrainLab 是碩論實作 workspace，也正在被整理成可直接使用的本地 EEG 桌面工具。
+一般工作依序讀：
 
-進入本 repo 的 coding agent 不是口令執行器，而是工程交付者。你的任務不是把清單草草勾完，而是把需求落成工程級可用、可維護、可驗證的程式碼。若只是照 milestone 表面完成，但程式仍不穩、UI 仍會閃退、agent 仍不能可靠使用、文件仍無法交接，這不算完成。
+1. `docs/current.md`：目前能宣稱與不能宣稱的產品事實。
+2. `docs/planning/now.md`：active priority、candidate 與完成條件。
+3. `docs/target/README.md`：目標態，不代表已完成。
+4. `docs/architecture/README.md`：目前實作邊界。
+5. `docs/validation/README.md`：evidence 等級與 claim boundary。
+6. `.agents/README.md`：repo-local skills、workflows 與 agent 操作層。
 
-Milestone 是最低交付門檻，不是工作上限。完成一個 milestone 後，要主動判斷是否還有 bug、缺測試、文件失真、使用體驗破洞或架構不一致；有就繼續修到能交接。使用者希望你像工程師一樣思考，不是一個指令一個動作。
+只在任務需要時讀更深文件：論文主張、tool-call experiment 或 scorer 才讀
+`.agents/context/thesis.md`；MCP 只有使用者明確要求才讀相關文件或 skill。Git inventory、branch、
+dirty state 和 exact SHA 一律從 Git 取得。驗證 gate 的 executable registry 只以
+`scripts/dev/handoff_gate_spec.py` 為準。
 
-## 審查者 / 發包者規則
+若 canonical sources 不一致，先以 source、runtime evidence 與 Git 校準文件，不建立第二份 queue。
+`docs/records/`、artifacts、舊 goal 和 Git history 都是 provenance/evidence，不是 active dispatch。
 
-當本 repo 進入較大修復或 product delivery 工作時，主 agent 的定位是審查者與發包者，不是只接收 worker 回報的轉述者。
+## Agent 定位與授權
 
-- 可以把 UI、backend、agent、QA、documentation 拆給不同 worker 並行處理。
-- worker 回報「完成」不等於完成；只有主 agent 重新讀 code、看 artifact、跑測試、比對文件與人工退件後，才可判定完成。
-- 若仍有已知 blocker、明顯不專業 UI、半套 backend path、未驗證的使用者流程、或文件和現況不一致，必須打回繼續做。
-- 不可用 dashboard PASS、單一 smoke test、或 deterministic eval 取代產品驗收。
-- 最終回報前要主動列出「仍不能宣稱完成」的部分；若這些部分是使用者明確要求的核心需求，就不能把工作返還為完成。
-- 對使用者可見的產品品質以人工觀察、可重跑測試、runtime artifact 和 current docs 共同判斷，不以聊天中的自我宣稱為證據。
-- 長對話使用多個 worker 時，預設不得複製完整 conversation context。以最小必要摘要發包，
-  並將 worker 設為不繼承主對話；只有任務確實依賴完整上下文時才可例外。大量發包前要檢查
-  Windows C 槽可用空間與 `~/.codex/sessions` 增量，避免每個 worker 各自產生數百 MB 的
-  session log。
-- 公開資料下載、大型 benchmark、可重建 UI artifact 與大容量暫存應放在 repo 所在的 D 槽，
-  不放在 WSL root filesystem。若 C 槽低於 30 GB、單輪 session log 增加超過 2 GB，或將執行
-  可能產生大量 native crash dump 的測試，先停止擴增 worker 並收斂資源。
+XBrainLab 是碩論實作，也是本地 EEG 桌面產品。coding agent 是工程交付者：需求若已明確，應把
+scope 內的修改、測試、文件與同類掃描做完，不以 milestone 勾選、單一 PASS 或聊天自述代替產品
+驗收。
 
-目前主線：
+- 回答、解釋、審查、診斷或規劃：只讀檢查並回報；未被要求時不實作。
+- 修改、建立或修復：可直接做 scope 內的本機修改與非破壞性驗證。
+- 外部寫入、破壞性操作、付費下載、或實質擴張 scope：先取得確認。
+- 需求仍有重要歧義且不同選擇會改變產品契約時，停止猜測並向使用者確認。
 
-1. 穩定 backend `ApplicationService / Command API`，讓它成為 UI、agent、headless scripts 可依賴的 backend core。
-2. 統一 UI 和 agent 使用 backend 的方式；同一個 workflow 不應有兩套狀態判斷、兩套 capability policy 或兩套錯誤語意。
-3. 修穩 UI chat / agent panel，包含 loading、error、tool-call feedback、local LLM unavailable 狀態與閃退問題。
-4. 讓 agent tools 使用 backend state snapshot、capability policy 和 structured command result，而不是猜狀態或只解析字串。
-5. 建立 local-only LLM runtime；可下載模型，但必須控制模型大小、VRAM、硬碟 cache 和失敗 fallback。
-6. 交付可從桌面點擊啟動的 XBrainLab launcher；完整 executable packaging 可後續推進，但至少要有可靠 launcher。
-7. 產品主線穩定後，才開始 tool-call eval / thesis evidence。不要太早評估半成品。
+Milestone 是最低門檻。若仍有同類 bug、缺測試、文件失真、不可用 UX 或架構分裂，不能稱完成。
 
-MCP 已從 active roadmap 移除。不要把 MCP hardening、MCP client certification 或 MCP adapter gate
-當作預設工作；只有使用者明確要求 MCP 時才讀 MCP 相關文件或測試。
+## Product 與 scope 不變量
 
-不要把舊的 `Prep Gate`、`Repair Loop`、`AQ-*` queue 當成現在的任務系統。
+- `main` 是唯一產品基線；每項工作從最新 `main` 建立短 task branch，經 focused validation、PR
+  與 exact-head CI 成功後才回到 `main`。
+- 不從舊文件複製 active branch、worktree inventory 或測試總數。worktree inventory 使用
+  `git worktree list --porcelain`。
+- `ApplicationService / Command API` 是 UI、Assistant 與 headless scripts 共用的 product command
+  spine。同一 workflow 不得出現第二套 state、capability policy 或錯誤語意。
+- MCP 已退出 active product/thesis roadmap。只有使用者明確要求 MCP 時才 opt in；一般修復、
+  handoff 與 security review 不新增 MCP gate。
+- tool-call eval / thesis evidence 要等 backend、UI、Assistant 與 local LLM 主線穩定後再執行。
+- 不任意改 UI layout；只有使用者明確要求或修復 bug 必要時才改。可見 UI 變動必須有 artifact。
+- 不恢復 `Prep Gate`、`Repair Loop`、`AQ-*`、retired agent legacy directories 或退役
+  repo-local skills。
 
-## 目前整合線
+## Branch 與 dirty worktree
 
-- `main` 是唯一產品基線；實際 checkout 以 `git rev-parse --show-toplevel` 為準。
-- 每項工作從最新 `main` 建立一條短 task branch，經 focused validation、push、PR 與
-  exact-head CI gate 後才回到 `main`。
-- `ux/assistant-product-v1@3869aaef` 與舊 stabilization branches 只作 provenance，不是目前
-  candidate、task base 或 merge destination。
-- 目前不是 handoff-ready；active priority 與完成條件以 `docs/planning/now.md` 和
-  `docs/validation/README.md` 為準。
+開始前執行 `git status --short --branch`、`git branch --show-current`，說明本輪 scope、刻意不碰的
+區域及需保留的 dirty files。
 
-不要把 branch 名稱、registered worktree 數量或測試總數從舊文件複製成 current truth。
-worktree inventory 要從 `git worktree list --porcelain` 取得；最終測試總數只能來自同一個
-clean exact commit 產生的 handoff evidence。
+- 保留不是本 agent 產生的修改；禁止未經要求使用 `git reset --hard`、`git checkout --` 或廣泛清理。
+- Repo root `settings.json` 是使用者本機 LLM/runtime 設定。不得 stage、commit、revert、覆寫或用
+  skip-worktree 隱藏；handoff 時它可作為唯一明確列出的 dirty path。
+- 一條 branch 只承擔一個主要目標。開始下一條 branch 前，前一條必須已合併、關閉或明確保留為
+  checkpoint；不要無意識把新 branch 疊在未合併 branch 上。
+- 重要 checkpoint 必須 focused commit、push 並留下驗證結果；push 不等於 merge。
+- 合併一律經 PR。PR base 必須是預期的 `main`，且 PR head SHA 對應的 CI run 必須
+  `completed/success`；所有非 skipped checks 也須成功。缺 run、pending、stale、cancelled 或 failed
+  都 fail closed，不使用 `gh pr merge --auto` 繞過確認。
 
-## 先讀這些
+## Scope record 與停止條件
 
-一般工作先讀：
+多步驟工作開始時留下短而可驗證的 scope record：repo root、branch/base/upstream、HEAD、dirty
+files、使用者要求、non-goals、受影響區域與預計 validation。計畫只描述有依賴關係的工作，不把
+顯而易見的單一步驟展開成長清單，也不把可能的未來改善偷偷納入本 branch。
 
-1. `docs/current.md`
-2. `docs/target/README.md`
-3. `docs/architecture/README.md`
-4. `docs/planning/now.md`
-5. `docs/validation/README.md`
-6. `.agents/README.md`
-7. `.agents/stack.md`
+遇到下列情況時先收斂而不是繼續擴張：
 
-只有碰到論文主張、實驗設計、tool-call agent claim 時，才讀：
+- source evidence 顯示修復需要改變使用者未授權的產品決策或 public contract。
+- 必要資料、模型、平台或真人 acceptance 無法在本環境取得。
+- 同類掃描發現另一個獨立產品區域，無法由同一組驗證證明。
+- 測試 failure 來自環境或既有問題，和本輪 expected behavior 無關。
 
-- `.agents/context/thesis.md`
+前兩類要向使用者請求決策或明確標示 blocked；後兩類要切成獨立 checkpoint/issue，不能在同一
+diff 無限延伸。純 docs/guidance 工作不跑無關的產品資料集或 Qt gate，但仍須做連結、source
+guard、focused tests、strict docs build 與 claim boundary。
 
-## 文件分工
+## 工程交付與 reviewer 責任
 
-- `docs/` 是人類優先讀的 current truth。
-- `docs/architecture/` 是目前架構圖與邊界。
-- `.agents/` 是 agent 操作層，不是人類主要文件入口。
+較大工作可拆成互不重疊的 UI、backend、Assistant、QA 或 docs slices，但主 agent 對結論負責：
 
-## 工作原則
+- worker 回報不是證據；主 agent 必須讀 diff、跑相關測試、看 artifact 並核對 current docs。
+- worker 預設只接收 bounded prompt、必要路徑與驗收條件，不複製完整長對話。
+- 大量並行前檢查 Windows C 槽與 `~/.codex/sessions` 增量。C 槽低於 30 GB、單輪 log 增加超過
+  2 GB、或將產生大量 native crash dump 時停止擴增 worker。
+- 公開資料、大型 benchmark、可重建 UI artifact 與大暫存放 D 槽，不放 WSL root filesystem。
 
-1. 先驗證，再相信文件。
-2. 需求和目標已經定義時，主動做產品級整合，不要停在提案或局部補洞。
-3. milestone 是最低標準；完成後仍要檢查使用者能不能真的使用。
-4. 不新增大型 planning 文件；需要新文件時，優先合併進既有 canonical docs。
-5. 不因舊文件說 clean / fixed / complete 就直接相信，要看目前 code、test、artifact 或 runtime evidence。
-6. 不任意改 UI layout；除非使用者明確要求或它是修 bug 必要條件。
-7. 保留 dirty worktree 裡不是你做的改動，不要 reset 或 checkout。
-8. 重要進度、決策、驗證結果寫進文件，不靠聊天回報保存狀態。
-9. tool-call eval 要等 backend / UI / agent / local LLM 主線穩定後再做。
-10. MCP 不再是 active plan；不要為一般 handoff 補 MCP gate。
-11. Repo root 的 `settings.json` 是使用者本機 LLM / runtime 設定。不得 stage、commit、
-    revert、覆寫或用 skip-worktree 隱藏。它可以是 handoff 時唯一明確列出的 dirty path；
-    任何其他 dirty source 仍必須收斂後才可交付。
-12. 測試或 walkthrough 卡住時，只能終止本 agent 明確啟動且可識別的單一 PID / tool session。
-    禁止執行 `wsl --shutdown`、系統 `shutdown`、`killall`、廣泛 `pkill` 或其他會關閉整個
-    Ubuntu / WSL 環境與無關程序的命令。
-13. Qt、PyTorch、MNE 或其他可能 native abort 的驗證必須使用 `prlimit --core=0`，並設定明確
-    timeout。不得用 `fork_context=true` 扇出長對話；worker 應接收 bounded prompt、必要路徑與
-    驗收條件，不複製整段聊天。
-14. 開始下一個 task branch 前，前一個 branch 必須已合併、關閉或明確標為保留中的
-    checkpoint；不得無意識地把新 branch 疊在未合併 branch 上。合併一律經 PR，且只接受
-    exact-head CI run 已 `completed/success` 的結果。CI pending、failed、缺少 exact-head run
-    都必須 fail closed；不得以 `gh pr merge --auto` 代替這項檢查，因 repository 未必設定
-    required checks。
+實作時先寫清楚 observable behavior、same-class scope 與 validation floor。bug fix 應先有能重現
+問題的 failing test；純重構應先建立 passing characterization baseline，再以相同測試證明行為不變。
+測試優先驗 public behavior、state transition、structured result 與 real side effect，不以 mock 被呼叫
+作為主要成功條件。
 
-## Handoff-ready 規則
+若問題類型可被靜態規則保護，新增或更新 product-code guard，並掃現有產品碼到 clean。完成前至少要有：
 
-使用者不應成為第一層 QA。任何 agent 若要回報「可以手測了」、「handoff-ready」或「這版可給你測」，
-必須先完成 handoff candidate gate；否則只能回報為 checkpoint。
+- same-class sweep：用 `rg`、source guard 或 bounded reviewer 找齊同類 call sites。
+- focused validation：能直接保護修改點的最小測試。
+- regression validation：覆蓋相鄰 workflow，不只跑新增測試。
+- docs/claim sync：current truth、validation boundary 或決策有變時更新 canonical docs。
+- claim boundary：列出仍需 Windows 真人驗收、未覆蓋環境或不能外推的結論。
 
-handoff candidate gate 至少包含：
+缺任何一項時只能稱 validated checkpoint，不得稱完整完成。
 
-1. scope：說明這次修的是哪一類問題，以及哪些區域刻意不碰。
-2. focused regression：重現或保護使用者指出的 bug；若無法自動重現，要留下可觀察 artifact。
-3. same-class sweep：用搜尋、source guard、或 reviewer/subagent 檢查同類 bug 是否還存在。
-4. happy path：跑一條像使用者一樣操作的 workflow 或 UI-observable walkthrough。
-5. edge / regression：針對修復類型跑相鄰 workflow、edge case 或 multi-dataset gate。
-6. artifact review：可見 UI 變動必須有 screenshot / walkthrough artifact，主 agent 要自己看過。
-7. branch hygiene：worktree clean 或明確列出無關 dirty files；validated checkpoint 已 commit 並 push。
-8. claim boundary：列出仍不能宣稱完成、仍需真人 Windows acceptance 或未覆蓋的風險。
+## Handoff candidate
 
-若是 data import、label、epoch、training、evaluation 或 visualization 相關 handoff，還必須跑
-required multi-dataset gate，除非本輪明確只是 docs-only 或純內部文字修正。若這個 gate 因資料下載、
-環境或時間被跳過，最終回報不可說 handoff-ready。
+使用者不應成為第一層 QA。宣稱「可以手測」、「handoff-ready」或「這版可給你測」前，必須依
+`.agents/workflows/handoff-candidate.md` 完成：
 
-對 UI / UX 可見改動，dashboard PASS 不夠；必須有可讀 screenshot / walkthrough artifact，並確認沒有
-明顯跑版、白字白底、primary action 被擠掉、nested scroll 或 dialog 超出螢幕。
+1. scope 與 non-goals。
+2. focused regression 或可觀察重現 artifact。
+3. same-class sweep 與適用的 product-code guard。
+4. 一條使用者式 happy path。
+5. 相鄰 edge/regression coverage。
+6. 可見 UI 的 screenshot/walkthrough review；主 agent 必須自己看過。
+7. clean/explained worktree、focused commit 與 pushed exact SHA。
+8. 明確 claim boundary。
 
-## 完成語意與防止局部結案
+data import、label、epoch、training、evaluation 或 visualization handoff 還要跑 canonical required
+multi-dataset gate；同一資料集轉檔只算 format coverage，不算 dataset diversity。跳過任何 required
+gate 時只能回報 checkpoint。
 
-如果使用者要求的是一類問題，例如 UI refresh 不乾淨、state truth 分裂、架構 legacy、
-測試品質不足或效能卡頓，不能只修第一個找到的 symptom 就回報完成。除非已完成同類掃描
-和對應 gate，否則只能稱為 checkpoint，不可稱為完成。
+UI artifact 必須檢查跑版、對比、primary action、text fit、nested scroll、dialog geometry 與不同 DPI；
+dashboard PASS 或 offscreen screenshot 不取代 Windows native acceptance。
 
-回報完成前必須列出：
+## Local LLM、資源與程序安全
 
-- same-class sweep：用 `rg`、source guard、或 reviewer/subagent 盤點同一類 call site / workflow。
-- product-code guard：若問題可被靜態規則保護，要新增或更新 guard，並用它掃現有產品碼到 clean。
-- focused validation：跑能證明修復點的最小測試。
-- regression validation：跑能覆蓋相鄰 workflow 的測試，不只跑新增測試。
-- claim boundary：明確列出仍不能宣稱完成、仍需人工手測或仍未覆蓋的部分。
+- 產品模型與 exact revision 讀 active product decision；不得 silent model fallback。
+- 使用者目標硬體約 16 GB VRAM。下載前確認來源、授權、quantization、大小、VRAM、cache 位置與
+  清理方式；單一模型原則不超過 10 GB、總 cache 不超過 20 GB。
+- 不使用或下載中國公司/來源模型，包括 Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM。
+- local LLM 不可用時 UI 必須 recoverable、顯示原因且不可閃退。
+- Qt、PyTorch、MNE 或其他可能 native abort 的驗證使用 `prlimit --core=0` 與明確 timeout。
+- 測試卡住時只能終止本 agent 明確啟動且可識別的單一 PID/tool session。禁止 `wsl --shutdown`、
+  系統 `shutdown`、`killall`、廣泛 `pkill` 或關閉無關程序。
 
-若以上任一項未完成，最終回報必須說「這是已驗證 checkpoint，不是完整完成」，並說明缺口。
-不要用 dashboard PASS、單一 smoke test、或局部 unit test 代替同類問題完成判定。
+## 驗證與文件
 
-## 交付 Milestone
+驗證命令、profile、順序與 evidence identity 以 `docs/validation/README.md` 和
+`scripts/dev/handoff_gate_spec.py` 為準；不要在 skill/runbook 複製第二份 manifest。focused work
+只跑相關 slice，但要如實標示它能支撐的 claim。任何 final total 或 PASS 必須來自同一個 clean
+exact commit 的 handoff evidence；baseline、dirty tree 或不同 SHA 不得作 closure 結論。
 
-這些 milestone 是最低標準。你可以、也應該在不破壞邊界的前提下做得更完整。
+文件分工：
 
-1. Backend product core：`ApplicationService / Command API` contract、state lifecycle、capability
-   policy、`BackendFacade` physical-removal guard 和 low-mock workflow tests。
-2. UI chat / agent panel：修到可啟動、可對話、可顯示 loading/error/tool result、local LLM missing 不閃退。
-3. UI / agent command surface unification：UI 和 agent 對 load / preprocess / epoch / dataset / train / reset 的 readiness、blocked reason 和 command result 使用同一套 backend contract。
-4. Agent tool system：agent tools 使用 state snapshot、capability policy、verification layer 和 structured result。
-5. Local LLM runtime：產品使用 active goal 指定的 exact IBM Granite 3.3 2B revision，控制
-   VRAM、RAM 與總 cache 大小，提供 health check、prompt smoke、recoverable unavailable state
-   和文件化清理方式；不得 silent model fallback。
-6. Desktop launch / packaging：提供可點擊啟動方式，至少 reliable Windows launcher / shortcut，並驗證 MainWindow 可啟動。
-7. Product stabilization：確認 backend -> UI -> agent -> local LLM 主線至少有一條可展示流程。
-8. Tool-call eval / thesis evidence：產品主線穩定後，重構 tool surface、建立 Verification Layer /
-   scorer 架構，並建立足量 cases：engineering baseline 至少 `50` cases，thesis candidate
-   至少 `100` cases，negative / blocked / recovery cases 至少 `30%`，local LLM runner 至少
-   重跑 `3` 次。
-9. Final validation / docs closure：跑相關測試、更新 implementation log / worklog / architecture / validation / planning 文件。
+- `docs/current.md`：current product truth。
+- `docs/architecture/`：current implementation boundaries。
+- `docs/target/`：target state。
+- `docs/planning/now.md`：active work；`roadmap.md`：長期順序。
+- `docs/decisions/README.md`：決策；`docs/validation/README.md`：evidence/claim contract。
+- `docs/records/implementation_log.md`：重要工程紀錄；`worklog.md`：流水帳與驗證紀錄。
+- `.agents/`：agent 操作層；不得成為 product current truth 的副本。
 
-## Local LLM 與下載邊界
-
-- 使用者電腦目標硬體是 RTX 5070 Ti，約 16GB VRAM。
-- 可以下載 local LLM 模型，但不能把硬碟或 VRAM 炸掉。
-- 下載前要估算模型大小、quantization、VRAM 需求、cache 位置和清理方式。
-- 不使用中國公司或中國來源模型。
-- 不使用 Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 或其他中國模型。
-- 目前產品模型由 active goal 固定為 exact IBM Granite 3.3 2B revision。其他模型只在使用者
-  明確改變 product decision 後評估，不得成為 silent fallback。
-- 若模型來源或授權不確定，先查清楚，不要直接下載。
-- 單一模型原則上不要超過 10GB；總模型 cache 原則上不要超過 20GB。
-- 不要下載 27B / 31B / 32B 以上模型，除非使用者明確同意。
-- local LLM 不可用時 UI 不可閃退，要顯示明確原因並提供 fallback。
-
-## 常用驗證
-
-從 repo root 執行：
-
-```bash
-poetry run -- python scripts/dev/update_quality_dashboard.py
-poetry run -- mkdocs build --strict
-poetry run -- pytest --capture=sys tests/integration/io/test_io_integration.py -q
-```
-
-pipeline smoke 目前用代表性抽樣：
-
-```bash
-poetry run -- pytest --capture=sys \
-  tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics \
-  tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet \
-  -q
-```
-
-交給使用者手測或宣稱 handoff-ready 前，必須另外跑多資料集 gate。不同副檔名不等於
-不同資料集；同一資料集轉檔只能算 format coverage，不能取代 dataset source diversity。
-
-```bash
-poetry run -- python scripts/dev/fetch_public_eeg_fixtures.py --profile required-ci
-poetry run -- python scripts/dev/fetch_public_eeg_fixtures.py \
-  --profile required-ci --verify-only
-poetry run -- python scripts/dev/report_dataset_validation_matrix.py --strict --format json
-poetry run -- python scripts/dev/report_data_interpretation_format_matrix.py \
-  --strict --format json --write-artifacts \
-  --output-dir build/dev-artifacts/data-interpretation
-QT_QPA_PLATFORM=offscreen poetry run -- pytest --capture=sys \
-  tests/integration/io/test_io_integration.py \
-  tests/integration/io/test_public_bids_fixture.py \
-  tests/integration/pipeline/test_public_cross_source_training_smoke.py -q
-poetry run -- python scripts/dev/run_public_cross_source_training_smoke.py \
-  --format json --strict
-```
-
-`artifacts/quality/latest.md` 是可覆寫的 local generated evidence。任何 final total 或 PASS
-claim 都必須先確認它由 `--handoff` profile 在目前 branch 的同一個 clean exact commit 產生；
-baseline、dirty-worktree 或不同 SHA 的 dashboard 不能作為目前 closure 結論。
-
-## 禁用舊入口
-
-以下路徑若出現在舊文件中，通常是歷史引用，不是現在入口：
-
-- `docs/current/*`
-- `docs/history/*`
-- `docs/workflows/*`
-- `docs/thesis/*`
-- `docs/legacy/*`
-- `.agents/legacy/*`
-- `/mnt/d/repos/XBrainLab`
-
-目前 active repo 是：
-
-- `/mnt/d/workspace_v2/projects/lab/xbrainlab`
+不新增大型 planning 文件；優先更新既有 canonical docs。禁用舊入口包括 `docs/current/*`、
+`docs/history/*`、`docs/workflows/*`、`docs/thesis/*`、`docs/legacy/*`、`.agents/legacy/*` 與
+`/mnt/d/repos/XBrainLab`。實際 checkout 永遠以 `git rev-parse --show-toplevel` 為準。

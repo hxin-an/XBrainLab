@@ -1,6 +1,6 @@
 # XBrainLab Decisions
 
-最後更新：`2026-07-30`
+最後更新：`2026-08-11`
 
 ## 這份文件的用途
 
@@ -23,6 +23,7 @@
 | tool surface 可重設計 | active | 不被舊工具 taxonomy 綁住，應以 workflow intent 設計。 |
 | validation 是 thesis-critical | active | 測試和 evidence 是論文主張的一部分。 |
 | 文件要少數 canonical 化 | active | 短期 AI / agent 文件整合後刪除，只保留少數 canonical 文件。 |
+| Agent guidance 採 lean single-authority contract | active | 依官方 GPT-5.6、Skills 與 AGENTS.md guidance，repo root 只保留安全/交付不變量，mutable product truth 回到 canonical docs，skill frontmatter 負責 routing、workflow 負責多步驟程序；MCP skill 以 machine policy explicit-only。任何精簡必須通過 60-case、三次重跑的 baseline/candidate A/B，而不是只靠主觀 token 感受。 |
 | product delivery milestone 是最低門檻 | active | 目前已進入 product-delivery engineering；milestone 不是工作上限，agent 應把程式做到可用、可維護、可驗證。 |
 | tool-call eval 等產品主線穩定後再做 | active | Eval / thesis evidence 應測穩定產品主線，不應太早測半成品 bug。 |
 | local LLM 下載需受容量邊界控制 | active | 可下載模型，但單模型原則 10GB 內、總 cache 原則 20GB 內；27B+ 需使用者明確同意。 |

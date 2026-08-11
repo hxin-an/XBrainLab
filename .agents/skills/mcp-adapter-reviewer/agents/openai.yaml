@@ -1,0 +1,6 @@
+interface:
+  display_name: "XBrainLab MCP Adapter Reviewer"
+  short_description: "Review explicit opt-in XBrainLab MCP adapter work"
+  default_prompt: "Use $mcp-adapter-reviewer to review this explicitly requested XBrainLab MCP adapter change."
+policy:
+  allow_implicit_invocation: false
