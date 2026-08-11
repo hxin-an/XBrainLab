@@ -107,6 +107,10 @@ _CATALOG_ENTRIES = (
     _entry(
         "persistence-path-stop-barrier",
         "persistence",
+        dependencies=("architecture-unit",),
+    ),
+    _entry(
+        "security-contract",
         "security-privacy",
         dependencies=("architecture-unit",),
     ),
@@ -131,7 +135,6 @@ _CATALOG_ENTRIES = (
     _entry(
         "assistant-security-suite",
         "assistant",
-        "security-privacy",
         dependencies=("command-spine",),
     ),
     _entry(

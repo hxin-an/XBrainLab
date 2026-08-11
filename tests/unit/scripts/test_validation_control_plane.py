@@ -106,7 +106,7 @@ def _catalog() -> dict[str, object]:
             "dependencies": ("native-lifecycle-tests",),
             "expensive": True,
         },
-        "security-boundary": {
+        "security-contract": {
             "tags": {"security-privacy"},
             "dependencies": ("focused-contract",),
         },

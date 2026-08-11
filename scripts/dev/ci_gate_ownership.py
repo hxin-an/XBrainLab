@@ -21,6 +21,7 @@ CI_GATE_OWNERS: Final = MappingProxyType(
         "architecture-unit": "focused",
         "guidance-contract": "docs",
         "persistence-path-stop-barrier": "focused",
+        "security-contract": "focused",
         "complete-regression": "product",
         "command-spine": "focused",
         "assistant-security-suite": "focused",

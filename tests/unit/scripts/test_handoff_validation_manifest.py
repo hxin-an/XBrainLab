@@ -38,6 +38,7 @@ EXPECTED_HANDOFF_CHECK_IDS = (
     "architecture-unit",
     "guidance-contract",
     "persistence-path-stop-barrier",
+    "security-contract",
     "complete-regression",
     "command-spine",
     "assistant-security-suite",
@@ -214,7 +215,7 @@ def test_guidance_contract_uses_attested_deterministic_contract_tests() -> None:
     )
 
 
-def test_assistant_security_suite_records_shared_runner_timing_policy() -> None:
+def test_assistant_security_suite_keeps_lifecycle_but_excludes_long_session() -> None:
     spec = HANDOFF_GATE_SPECS["assistant-security-suite"]
 
     assert spec.environment.as_dict() == {
@@ -222,8 +223,41 @@ def test_assistant_security_suite_records_shared_runner_timing_policy() -> None:
         "MNE_DONTWRITE_HOME": "true",
         "HF_HUB_OFFLINE": "1",
         "TRANSFORMERS_OFFLINE": "1",
-        "XBL_SHARED_CI_RUNNER": "1",
     }
+    assert "tests/integration/agent/test_controller_lifecycle_faults.py" in spec.argv
+    assert "tests/unit/llm/agent/test_worker_process_supervision.py" in spec.argv
+    assert "tests/unit/llm/agent/test_worker_timeout.py" in spec.argv
+    assert "tests/integration/agent/test_long_session_product_flow.py" not in spec.argv
+
+
+def test_security_contract_is_a_bounded_attested_non_soak_gate() -> None:
+    spec = HANDOFF_GATE_SPECS["security-contract"]
+
+    assert spec.timeout_seconds == 600
+    assert spec.outcome.allowed_return_codes == (0,)
+    assert spec.outcome.require_pytest_attestation
+    assert spec.outcome.forbidden_pytest_outcomes == (
+        "failed",
+        "errors",
+        "skipped",
+        "xfailed",
+        "xpassed",
+        "deselected",
+    )
+    assert spec.pytest_attestation_path == "pytest-attestations/security-contract.json"
+    assert "tests/unit/scripts/test_secret_baseline_contract.py" in spec.argv
+    assert "tests/unit/backend/utils/test_public_diagnostics.py" in spec.argv
+    assert "tests/unit/llm/tools/test_authorized_paths.py" in spec.argv
+    assert "tests/integration/agent/test_strict_recovery_execution_boundary.py" in (
+        spec.argv
+    )
+    assert "tests/unit/llm/rag/test_security_policy.py" in spec.argv
+    assert "tests/integration/agent/test_long_session_product_flow.py" not in spec.argv
+    assert (
+        "tests/integration/agent/test_controller_lifecycle_faults.py" not in spec.argv
+    )
+    assert "tests/unit/llm/agent/test_worker_process_supervision.py" not in spec.argv
+    assert "tests/unit/llm/agent/test_worker_timeout.py" not in spec.argv
 
 
 def test_exact_granite_recovery_and_long_session_gates_are_sha_scoped() -> None:

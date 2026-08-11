@@ -247,7 +247,8 @@ artifacts 仍是必須另行檢查的 evidence。
 | Functional happy path | Real FIF import 經 ApplicationService 到 preprocess、epoch、split、persisted training、evaluation、visualization readiness，且不 mock persistence。 |
 | Semantic oracle | Deterministic dataset 驗證 source events/classes、disjoint/exhaustive splits、held-out targets/logits、finite metrics/probabilities 和 safe persistence。 |
 | Data diversity | Required fixture manifest、Data Interpretation matrix、visible wizard matrix、IO/BIDS integration 和 strict cross-source runner 全部通過，mandatory case 不得 skip/xfail/deselect。 |
-| Assistant/local runtime | Exact Granite、secure offline RAG、confirmation/error/retry/cancel/long-session 和 bounded shutdown；不做 silent fallback。 |
+| Security contract | 鎖定 `detect-secrets==1.5.0`、detector/filter policy 與 exact generated-artifact exclusions；掃描全部 eligible tracked text，並另行強制掃描 `poetry.lock`，再驗證 diagnostics、authorized paths、confirmation、strict envelope、untrusted context 和 secure RAG contracts。 |
+| Assistant/local runtime | Exact Granite、controller/worker lifecycle、confirmation/error/retry/cancel 和 bounded shutdown；不做 silent fallback。202-turn soak 另由 complete regression 和 exact artifact 負責。 |
 | UI/product | Relevant happy path、edge states、full/narrow/DPI screenshots、source identity 和人工 artifact review。 |
 | Native lifecycle | Qt/PyTorch/MNE/Matplotlib/PyQtGraph tests 使用 timeout 與 `prlimit --core=0`；Preprocess 和 Visualization ownership gate 分開判讀。 |
 | Static/quality | Ruff、完整 configured product-source Basedpyright（`XBrainLab/`，排除模型 cache）、architecture checks、relevant regression 和 handoff dashboard 由 final commit 重跑。Scripts/tests 由 Ruff、pytest 與各自 executable gates 保護，不宣稱納入 Basedpyright scope。 |
@@ -255,10 +256,20 @@ artifacts 仍是必須另行檢查的 evidence。
 | Branch hygiene | Expected branch 有 configured upstream；`HEAD == upstream`、ahead/behind `0/0`；只有 unstaged repo-root `settings.json` 可例外；final report identity 吻合。 |
 | Claim boundary | Windows native DPI/multi-monitor、interactive 3D、teacher datasets、long-session 和 product completion 仍分開。 |
 
-`assistant-security-suite` 在 shared CI runner 上只保護 202-turn workflow、pruning、state、
-security 與 bounded-resource 契約，不把 hosted-runner wall-clock latency 當成產品效能證據。
-實際 UI responsiveness 仍由 `chatpanel-local-long-session` artifact 與真人 Windows acceptance
-判定。
+`security-contract` 是 `security-privacy` 的唯一 claim owner。它會以 Poetry lock 中的
+`detect-secrets==1.5.0`、鎖定的 detector/filter policy 和 repo-root exact exclude policy
+掃描全部 eligible tracked text。只有五個已追蹤 generated dataset/artifact manifests 可被
+exclude；`poetry.lock` 會停用 extension-based non-text filter 後另行掃描。任何 detector 缺失、
+新增 filter、exclude 擴張、未實際開啟預期檔案、缺 attestation、timeout、skip、xfail 或
+deselect 都不得形成 PASS。Detect-secrets 無法 UTF-8 decode 的 14 個既有 EEG/3D binary fixture
+以 exact path allowlist 鎖定；實際 unreadable set 增減都必須 fail closed 並重新審查，不能以
+副檔名 wildcard 擴張。
+
+`assistant-security-suite` 保護 controller、product flow、RAG re-admission、worker supervision
+和 bounded shutdown，但不重跑 202-turn long-session。202-turn workflow 由
+`complete-regression` 的獨立 timing shard與 `chatpanel-local-long-session` exact artifact 負責；
+hosted-runner wall-clock latency 仍不可外推成產品效能，實際 UI responsiveness 需要真人 Windows
+acceptance。
 
 任何 required gate 未完成時，狀態只能是：
 
@@ -497,9 +508,9 @@ candidate，以 repo-relative path、severity、rule、normalized message 與 st
 | Section | Evidence boundary |
 | --- | --- |
 | 1. Identity/static/docs | Branch/upstream/source identity、Ruff、Basedpyright、MkDocs。 |
-| 2. Architecture/security/regression | Guidance/architecture contracts、safe persistence/path、Stop barrier，以及隔離 subprocess 的 product regression。 |
+| 2. Architecture/security/regression | Guidance/architecture contracts、locked eligible-text plus `poetry.lock` secret scan、deterministic security contract、safe persistence/path、Stop barrier，以及隔離 subprocess 的 product regression。 |
 | 3. Real command spine | Real ApplicationService FIF workflow plus deterministic oracle；不支撐 scientific accuracy。 |
-| 4. Assistant/local runtime | Exact Granite、secure RAG、guided/training readiness/completion、recovery、long session 與 bounded shutdown。 |
+| 4. Assistant/local runtime | Exact Granite、controller/worker lifecycle、secure RAG、guided/training readiness/completion、recovery 與 bounded shutdown；202-turn soak 由 complete regression 和 exact artifact 分開證明。 |
 | 5. UI artifacts | Exact-source full/narrow/DPI/wizard/visualization artifact set。 |
 | 6. Native lifecycle | Preprocess and render ownership；不取代 Windows native acceptance。 |
 | 7. Multi-dataset | Fixed denominator、verify-only、wizard、IO/BIDS、cross-source diversity與能力相符的 training/readiness。 |
@@ -509,8 +520,10 @@ Section 2 的 WSL/POSIX regression 與 Windows native-opener source/dispatch gua
 NTFS junction/reparse acceptance。Section 3 的 real command-spine smoke 和 deterministic oracle
 不能互相替代，也不能外推成 scientific model quality。
 
-Section 4 必須共同覆蓋 success、confirmation approve/reject、blocked/error、retry、cancel、
-RAG re-admission、long session 和 bounded shutdown。Deterministic tests 或 host-composed UI
+Section 2 的 `security-contract` 必須直接跑 locked secret scanner，不得以「其他 product tests
+可能順便覆蓋」代替。Section 4 必須共同覆蓋 success、confirmation approve/reject、
+blocked/error、retry、cancel、RAG re-admission、long session 和 bounded shutdown；其中
+long-session soak 不重複塞入 assistant focused gate。Deterministic tests 或 host-composed UI
 不能單獨替代 exact Granite artifacts；exact Granite artifact 也不能外推成 raw-model accuracy。
 所有 desktop 與 bounded walkthrough 退出路徑必須在 `QApplication` 尚存活時處理 Qt deferred
 deletes；artifact 內容 PASS 但 process return code 非 0 仍視為 gate failure。

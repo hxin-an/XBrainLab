@@ -4,6 +4,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
+from scripts.dev.ci_gate_ownership import CI_GATE_OWNERS
 from scripts.dev.handoff_gate_spec import HANDOFF_GATE_SPECS
 from scripts.dev.validation_control_plane import (
     ChangeDescriptor,
@@ -117,6 +118,34 @@ def test_eeg_training_plan_does_not_select_granite_or_assistant_qa() -> None:
     assert "complete-regression" in plan.execution_ids
     assert "granite-runtime" not in plan.execution_ids
     assert "assistant-security-suite" not in plan.execution_ids
+
+
+def test_security_change_selects_bounded_security_gate_not_assistant_soak() -> None:
+    plan = plan_validation(
+        ChangeDescriptor(
+            intent=ChangeIntent.SECURITY,
+            claim_level=ClaimLevel.PRODUCT_PR,
+        ),
+        [".secrets.baseline"],
+        gate_catalog=HANDOFF_VALIDATION_GATE_CATALOG,
+    )
+
+    assert plan.ready
+    assert "security-contract" in plan.execution_ids
+    assert "complete-regression" in plan.execution_ids
+    assert "persistence-path-stop-barrier" not in plan.execution_ids
+    assert "assistant-security-suite" not in plan.execution_ids
+
+
+def test_security_privacy_has_one_focused_claim_owner() -> None:
+    owners = {
+        gate_id
+        for gate_id, entry in HANDOFF_VALIDATION_GATE_CATALOG.items()
+        if "security-privacy" in entry.tags
+    }
+
+    assert owners == {"security-contract"}
+    assert CI_GATE_OWNERS["security-contract"] == "focused"
 
 
 def test_handoff_dashboard_depends_on_its_calibration_artifact_producer() -> None:

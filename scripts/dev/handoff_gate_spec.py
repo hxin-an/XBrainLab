@@ -257,9 +257,6 @@ _QT_MNE_OFFLINE = EnvironmentPolicy(
         ("TRANSFORMERS_OFFLINE", "1"),
     )
 )
-_QT_MNE_OFFLINE_SHARED_RUNNER = EnvironmentPolicy(
-    required=(*_QT_MNE_OFFLINE.required, ("XBL_SHARED_CI_RUNNER", "1"))
-)
 _QT_MNE_LOCAL_RUNTIME = EnvironmentPolicy(
     required=(
         *_QT_MNE_OFFLINE.required,
@@ -458,6 +455,46 @@ _GATE_SPECS = (
         ),
     ),
     GateSpec(
+        check_id="security-contract",
+        section="2",
+        argv=(
+            *_PRLIMIT,
+            *_POETRY_EXEC,
+            "python",
+            "-m",
+            "scripts.dev.run_required_pytest_gate",
+            "--result-json",
+            f"{EVIDENCE_ROOT_TOKEN}/pytest-attestations/security-contract.json",
+            "--",
+            "--capture=sys",
+            "tests/unit/scripts/test_secret_baseline_contract.py",
+            "tests/unit/backend/application/test_confirmation_gate.py",
+            "tests/unit/backend/utils/test_public_diagnostics.py",
+            "tests/unit/llm/tools/test_authorized_paths.py",
+            "tests/unit/llm/tools/test_result_contract.py",
+            "tests/unit/llm/tools/test_confirmation_contract_closure.py",
+            "tests/unit/llm/agent/test_confirmation.py",
+            "tests/unit/llm/agent/test_confirmation_contract_closure.py",
+            "tests/unit/llm/agent/test_confirmation_risk_contract.py",
+            "tests/unit/llm/agent/test_strict_envelope_recovery.py",
+            "tests/unit/llm/agent/test_untrusted_context.py",
+            "tests/unit/llm/rag/test_security_policy.py",
+            "tests/unit/llm/rag/test_untrusted_context.py",
+            "tests/integration/agent/test_product_flow.py::test_model_invented_existing_path_is_rejected_before_file_access",
+            "tests/integration/agent/test_product_flow.py::test_qt_chat_wiring_rejects_prose_prefixed_tool_trace_without_execution",
+            "tests/integration/agent/test_resource_preflight_receipt.py",
+            "tests/integration/agent/test_resource_confirmation_generation.py",
+            "tests/integration/agent/test_strict_recovery_execution_boundary.py",
+            "tests/integration/agent/test_rag_readmission.py::test_delayed_rag_same_command_uses_current_publication_without_stale_context",
+            "-q",
+        ),
+        timeout_seconds=600,
+        environment=_QT_MNE_OFFLINE,
+        outcome=_STRICT_PYTEST,
+        required_artifact_paths=("pytest-attestations/security-contract.json",),
+        pytest_attestation_path="pytest-attestations/security-contract.json",
+    ),
+    GateSpec(
         check_id="complete-regression",
         section="2",
         argv=(
@@ -513,7 +550,6 @@ _GATE_SPECS = (
             "--capture=sys",
             "tests/integration/agent/test_product_flow.py",
             "tests/integration/agent/test_controller_lifecycle_faults.py",
-            "tests/integration/agent/test_long_session_product_flow.py",
             "tests/integration/agent/test_rag_readmission.py",
             "tests/integration/agent/test_resource_confirmation_generation.py",
             "tests/integration/agent/test_strict_recovery_execution_boundary.py",
@@ -524,7 +560,7 @@ _GATE_SPECS = (
             "-q",
         ),
         timeout_seconds=1800,
-        environment=_QT_MNE_OFFLINE_SHARED_RUNNER,
+        environment=_QT_MNE_OFFLINE,
         outcome=_STRICT_PYTEST,
         required_artifact_paths=("pytest-attestations/assistant-security-suite.json",),
         pytest_attestation_path="pytest-attestations/assistant-security-suite.json",
