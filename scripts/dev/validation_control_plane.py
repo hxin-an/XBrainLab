@@ -179,6 +179,7 @@ class ValidationPlan:
     unknown_paths: tuple[str, ...] = ()
     source_sha: str | None = None
     base_sha: str | None = None
+    target_sha: str | None = None
     change_set_digest: str | None = None
 
     def __post_init__(self) -> None:
@@ -200,7 +201,12 @@ class ValidationPlan:
                 _clean_identifiers(getattr(self, attribute), attribute),
             )
         object.__setattr__(self, "executions", tuple(self.executions))
-        lineage = (self.source_sha, self.base_sha, self.change_set_digest)
+        lineage = (
+            self.source_sha,
+            self.base_sha,
+            self.target_sha,
+            self.change_set_digest,
+        )
         if any(value is not None for value in lineage):
             if not all(value is not None for value in lineage):
                 raise ValueError("plan source lineage must be complete or absent")
@@ -208,6 +214,8 @@ class ValidationPlan:
                 raise ValueError("plan source SHA must be a lowercase Git hash")
             if not _GIT_SHA.fullmatch(str(self.base_sha)):
                 raise ValueError("plan base SHA must be a lowercase Git hash")
+            if not _GIT_SHA.fullmatch(str(self.target_sha)):
+                raise ValueError("plan target SHA must be a lowercase Git hash")
             if not _SHA256.fullmatch(str(self.change_set_digest)):
                 raise ValueError("plan change-set digest must be lowercase SHA-256")
             if self.change_set_digest != _changed_paths_digest(self.changed_paths):
@@ -231,7 +239,7 @@ class ValidationPlan:
     @classmethod
     def from_json(cls, value: str) -> ValidationPlan:
         payload = _load_json_object(value)
-        if payload.get("schema_version") != 1:
+        if payload.get("schema_version") != 2:
             raise ValueError("unsupported ValidationPlan schema version")
         return _plan_from_payload(payload)
 
@@ -244,6 +252,7 @@ def bind_validation_plan(
     *,
     source_sha: str,
     base_sha: str,
+    target_sha: str,
 ) -> ValidationPlan:
     """Bind a pure semantic plan to one exact Git source and comparison base."""
 
@@ -251,6 +260,7 @@ def bind_validation_plan(
         plan,
         source_sha=source_sha,
         base_sha=base_sha,
+        target_sha=target_sha,
         change_set_digest=_changed_paths_digest(plan.changed_paths),
     )
 
@@ -998,7 +1008,7 @@ def _descriptor_from_payload(payload: Mapping[str, Any]) -> ChangeDescriptor:
 
 def _plan_payload(plan: ValidationPlan) -> dict[str, Any]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "descriptor": _descriptor_payload(plan.descriptor),
         "changed_paths": [
             {
@@ -1026,6 +1036,7 @@ def _plan_payload(plan: ValidationPlan) -> dict[str, Any]:
         "unknown_paths": list(plan.unknown_paths),
         "source_sha": plan.source_sha,
         "base_sha": plan.base_sha,
+        "target_sha": plan.target_sha,
         "change_set_digest": plan.change_set_digest,
     }
 
@@ -1067,6 +1078,11 @@ def _plan_from_payload(payload: Mapping[str, Any]) -> ValidationPlan:
         ),
         base_sha=(
             str(payload["base_sha"]) if payload.get("base_sha") is not None else None
+        ),
+        target_sha=(
+            str(payload["target_sha"])
+            if payload.get("target_sha") is not None
+            else None
         ),
         change_set_digest=(
             str(payload["change_set_digest"])

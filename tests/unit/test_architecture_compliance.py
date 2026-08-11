@@ -6059,6 +6059,52 @@ def broken(:
     assert architecture_compliance.check_architecture(str(tmp_path)) == 1
 
 
+def test_architecture_runner_reports_later_rule_groups_after_earlier_debt(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    (tmp_path / "XBrainLab" / "ui").mkdir(parents=True)
+    for name, value in vars(architecture_compliance).items():
+        if (
+            name.startswith("check_")
+            and name != "check_architecture"
+            and callable(value)
+        ):
+            monkeypatch.setattr(
+                architecture_compliance,
+                name,
+                lambda *_args, **_kwargs: [],
+            )
+
+    calls = []
+
+    def early_guard(_root):
+        calls.append("early")
+        return ["existing early debt"]
+
+    def late_guard(_root):
+        calls.append("late")
+        return ["new late violation"]
+
+    monkeypatch.setattr(
+        architecture_compliance,
+        "check_local_only_llm_runtime",
+        early_guard,
+    )
+    monkeypatch.setattr(
+        architecture_compliance,
+        "check_visualization_publication_refresh_boundary",
+        late_guard,
+    )
+
+    assert architecture_compliance.check_architecture(str(tmp_path)) == 1
+    output = capsys.readouterr().out
+    assert calls == ["early", "late"]
+    assert "existing early debt" in output
+    assert "new late violation" in output
+
+
 def test_direct_study_state_guard_flags_product_ui_read(tmp_path):
     _write_ui_file(
         tmp_path,

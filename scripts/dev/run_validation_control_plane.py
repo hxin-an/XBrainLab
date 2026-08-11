@@ -170,11 +170,16 @@ def _canonical_plan(plan: ValidationPlan) -> ValidationPlan:
         plan.changed_paths,
         gate_catalog=HANDOFF_VALIDATION_GATE_CATALOG,
     )
-    if plan.source_sha is not None and plan.base_sha is not None:
+    if (
+        plan.source_sha is not None
+        and plan.base_sha is not None
+        and plan.target_sha is not None
+    ):
         canonical = bind_validation_plan(
             canonical,
             source_sha=plan.source_sha,
             base_sha=plan.base_sha,
+            target_sha=plan.target_sha,
         )
     return canonical
 
@@ -198,6 +203,7 @@ def execute_validation_plan(
     expected_branch: str,
     source_sha: str | None = None,
     expected_base_sha: str | None = None,
+    expected_target_sha: str | None = None,
     model_cache_dir: Path | None = None,
     rag_cache_dir: Path | None = None,
     require_upstream: bool = True,
@@ -220,15 +226,23 @@ def execute_validation_plan(
         raise ValidationExecutionError(
             "Validation plan is blocked by unknown paths or unresolved rules."
         )
-    if plan.source_sha is None or plan.base_sha is None:
+    if plan.source_sha is None or plan.base_sha is None or plan.target_sha is None:
         raise ValidationExecutionError("Validation plan is not bound to exact source.")
     if plan.descriptor.claim_level in _MAIN_BASE_CLAIMS and expected_base_sha is None:
         raise ValidationExecutionError(
             "Claim-bearing execution requires an authorized target merge base."
         )
+    if plan.descriptor.claim_level in _MAIN_BASE_CLAIMS and expected_target_sha is None:
+        raise ValidationExecutionError(
+            "Claim-bearing execution requires an authorized target tip."
+        )
     if expected_base_sha is not None and plan.base_sha != expected_base_sha:
         raise ValidationExecutionError(
             "Validation plan base differs from the authorized target merge base."
+        )
+    if expected_target_sha is not None and plan.target_sha != expected_target_sha:
+        raise ValidationExecutionError(
+            "Validation plan target differs from the authorized target tip."
         )
     if recorder is None or dossier_validator is None:
         from scripts.dev.handoff_evidence_recorder import (
@@ -304,11 +318,11 @@ def execute_validation_plan(
             command=spec.resolve_argv(
                 resolved_evidence_root,
                 expected_branch=expected_branch,
-                target_sha=plan.base_sha,
+                target_sha=plan.target_sha,
             ),
             timeout_seconds=spec.timeout_seconds,
             expected_branch=expected_branch,
-            target_sha=plan.base_sha,
+            target_sha=plan.target_sha,
             require_upstream=require_upstream,
             model_cache_dir=model_cache_dir,
             rag_cache_dir=rag_cache_dir,
@@ -334,7 +348,7 @@ def execute_validation_plan(
             allow_external_evidence_root=allow_external_evidence_root,
             expected_profile=resolved_profile,
             expected_profile_metadata=resolved_profile_metadata,
-            target_sha=plan.base_sha,
+            target_sha=plan.target_sha,
         )
         if not dossier_ok:
             raise ValidationExecutionError(
@@ -373,6 +387,7 @@ def verify_validation_evidence(
     expected_branch: str,
     source_sha: str | None = None,
     expected_base_sha: str | None = None,
+    expected_target_sha: str | None = None,
     model_cache_dir: Path | None = None,
     rag_cache_dir: Path | None = None,
     require_upstream: bool = True,
@@ -390,12 +405,16 @@ def verify_validation_evidence(
     verdict = evaluate_validation_receipt(plan, receipt)
     if verdict.status is not VerdictStatus.PASSED:
         return verdict
-    if plan.source_sha is None or plan.base_sha is None:
+    if plan.source_sha is None or plan.base_sha is None or plan.target_sha is None:
         return _blocked_verdict(plan, receipt, "plan-source-lineage-missing")
     if plan.descriptor.claim_level in _MAIN_BASE_CLAIMS and expected_base_sha is None:
         return _blocked_verdict(plan, receipt, "plan-target-base-missing")
+    if plan.descriptor.claim_level in _MAIN_BASE_CLAIMS and expected_target_sha is None:
+        return _blocked_verdict(plan, receipt, "plan-target-tip-missing")
     if expected_base_sha is not None and plan.base_sha != expected_base_sha:
         return _blocked_verdict(plan, receipt, "plan-target-base-mismatch")
+    if expected_target_sha is not None and plan.target_sha != expected_target_sha:
+        return _blocked_verdict(plan, receipt, "plan-target-tip-mismatch")
     if dossier_validator is None:
         from scripts.dev.handoff_evidence_recorder import validate_handoff_dossier
 
@@ -432,7 +451,7 @@ def verify_validation_evidence(
         allow_external_evidence_root=allow_external_evidence_root,
         expected_profile=resolved_profile,
         expected_profile_metadata=resolved_profile_metadata,
-        target_sha=plan.base_sha,
+        target_sha=plan.target_sha,
     )
     if not dossier_ok:
         return _blocked_verdict(
@@ -614,6 +633,7 @@ def _run_cli(args: argparse.Namespace) -> int:
             plan,
             source_sha=_run_git(root, "rev-parse", "HEAD").strip(),
             base_sha=base_sha,
+            target_sha=base_sha if args.target_sha is None else args.target_sha,
         )
         _write_output(plan.to_json(), args.output)
         return 0 if plan.ready else 1
@@ -647,6 +667,7 @@ def _run_cli(args: argparse.Namespace) -> int:
             evidence_root=evidence_root,
             source_sha=source_sha,
             expected_base_sha=expected_base_sha,
+            expected_target_sha=args.target_sha,
             expected_branch=branch,
             model_cache_dir=args.model_cache_dir,
             rag_cache_dir=args.rag_cache_dir,
@@ -688,6 +709,7 @@ def _run_cli(args: argparse.Namespace) -> int:
             evidence_root=args.evidence_root,
             expected_branch=branch,
             expected_base_sha=expected_base_sha,
+            expected_target_sha=args.target_sha,
             model_cache_dir=args.model_cache_dir,
             rag_cache_dir=args.rag_cache_dir,
             require_upstream=not args.no_upstream_check,

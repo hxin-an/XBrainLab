@@ -170,7 +170,7 @@ def test_basedpyright_is_an_exact_target_regression_gate() -> None:
         "scripts/dev/run_basedpyright_regression.py",
         "--repo-root",
         ".",
-        "--base-sha",
+        "--target-sha",
         TARGET_SHA_TOKEN,
     )
     assert spec.stdout_artifact_path == "basedpyright-regression.json"
@@ -178,6 +178,24 @@ def test_basedpyright_is_an_exact_target_regression_gate() -> None:
     with pytest.raises(ValueError, match="target SHA"):
         spec.resolve_argv(ROOT)
     assert spec.resolve_argv(ROOT, target_sha="a" * 40)[-1] == "a" * 40
+
+
+def test_architecture_compliance_is_an_exact_target_regression_gate() -> None:
+    spec = HANDOFF_GATE_SPECS["architecture-compliance"]
+
+    assert spec.argv == (
+        "poetry",
+        "run",
+        "--",
+        "python",
+        "scripts/dev/run_architecture_compliance_regression.py",
+        "--repo-root",
+        ".",
+        "--target-sha",
+        TARGET_SHA_TOKEN,
+    )
+    assert spec.stdout_artifact_path == "architecture-compliance-regression.json"
+    assert spec.required_artifact_paths == ("architecture-compliance-regression.json",)
 
 
 def test_guidance_contract_uses_attested_deterministic_contract_tests() -> None:

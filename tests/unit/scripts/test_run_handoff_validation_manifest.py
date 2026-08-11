@@ -41,6 +41,7 @@ def test_compatibility_runner_delegates_to_plan_execute_and_verify(
         execution_ids=gate_ids,
         source_sha="a" * 40,
         base_sha="b" * 40,
+        target_sha="b" * 40,
         to_json=lambda: '{"plan":true}',
         digest=lambda: "c" * 64,
     )
@@ -102,6 +103,7 @@ def test_compatibility_runner_preserves_failed_verdict_boundary(
         execution_ids=gate_ids,
         source_sha="a" * 40,
         base_sha="b" * 40,
+        target_sha="b" * 40,
         to_json=lambda: "{}",
         digest=lambda: "c" * 64,
     )

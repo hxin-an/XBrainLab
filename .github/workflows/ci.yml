@@ -349,7 +349,10 @@ jobs:
   linux-test:
     name: Full Test Suite (Linux, py3.11)
     needs: [validation_plan, linux-shard]
-    if: always() && needs.validation_plan.outputs.run_product == 'true'
+    if: >-
+      always() &&
+      needs.validation_plan.outputs.run_product == 'true' &&
+      needs.linux-shard.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

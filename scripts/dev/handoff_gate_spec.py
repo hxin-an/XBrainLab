@@ -349,7 +349,7 @@ _GATE_SPECS = (
             "scripts/dev/run_basedpyright_regression.py",
             "--repo-root",
             ".",
-            "--base-sha",
+            "--target-sha",
             TARGET_SHA_TOKEN,
         ),
         timeout_seconds=3600,
@@ -365,8 +365,18 @@ _GATE_SPECS = (
     GateSpec(
         check_id="architecture-compliance",
         section="2",
-        argv=(*_POETRY_EXEC, "python", "tests/architecture_compliance.py"),
+        argv=(
+            *_POETRY_EXEC,
+            "python",
+            "scripts/dev/run_architecture_compliance_regression.py",
+            "--repo-root",
+            ".",
+            "--target-sha",
+            TARGET_SHA_TOKEN,
+        ),
         timeout_seconds=900,
+        required_artifact_paths=("architecture-compliance-regression.json",),
+        stdout_artifact_path="architecture-compliance-regression.json",
     ),
     GateSpec(
         check_id="architecture-unit",

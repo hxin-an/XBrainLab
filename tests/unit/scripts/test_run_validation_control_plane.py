@@ -35,7 +35,12 @@ def _product_backend_plan():
         ["XBrainLab/backend/utils/logger.py"],
         gate_catalog=HANDOFF_VALIDATION_GATE_CATALOG,
     )
-    return bind_validation_plan(plan, source_sha="a" * 40, base_sha="b" * 40)
+    return bind_validation_plan(
+        plan,
+        source_sha="a" * 40,
+        base_sha="b" * 40,
+        target_sha="b" * 40,
+    )
 
 
 def _planned_paths(_root: Path, *, base_ref: str):
@@ -46,7 +51,7 @@ def _planned_paths(_root: Path, *, base_ref: str):
 def test_executor_uses_registry_commands_once_and_emits_complete_receipt(
     tmp_path: Path,
 ) -> None:
-    plan = _product_backend_plan()
+    plan = replace(_product_backend_plan(), target_sha="c" * 40)
     calls: list[str] = []
     target_shas: list[str] = []
 
@@ -65,6 +70,7 @@ def test_executor_uses_registry_commands_once_and_emits_complete_receipt(
         evidence_root=tmp_path / ("a" * 40),
         source_sha="a" * 40,
         expected_base_sha="b" * 40,
+        expected_target_sha="c" * 40,
         expected_branch="refactor/validation-control-plane-v1",
         recorder=recorder,
         dossier_validator=lambda **_kwargs: (True, "ok"),
@@ -73,7 +79,7 @@ def test_executor_uses_registry_commands_once_and_emits_complete_receipt(
 
     registry_order = tuple(HANDOFF_VALIDATION_GATE_CATALOG)
     assert calls == sorted(calls, key=registry_order.index)
-    assert target_shas == ["b" * 40] * len(calls)
+    assert target_shas == ["c" * 40] * len(calls)
     assert len(calls) == len(set(calls))
     assert set(calls) == set(plan.execution_ids)
     assert receipt.completed_gate_ids == tuple(calls)
@@ -99,6 +105,7 @@ def test_executor_stops_on_failure_and_receipt_cannot_pass(tmp_path: Path) -> No
         evidence_root=tmp_path / ("a" * 40),
         source_sha="a" * 40,
         expected_base_sha="b" * 40,
+        expected_target_sha="b" * 40,
         expected_branch="refactor/validation-control-plane-v1",
         recorder=recorder,
         dossier_validator=lambda **_kwargs: (True, "ok"),
@@ -124,6 +131,7 @@ def test_executor_can_attest_an_explicit_partial_ci_owner_without_claiming_plan_
         evidence_root=tmp_path / ("a" * 40),
         source_sha="a" * 40,
         expected_base_sha="b" * 40,
+        expected_target_sha="b" * 40,
         expected_branch="",
         execution_gate_ids=selected,
         recorder=lambda **kwargs: (
@@ -150,6 +158,7 @@ def test_partial_executor_rejects_unselected_or_duplicate_gate_ids(
         "evidence_root": tmp_path / ("a" * 40),
         "source_sha": "a" * 40,
         "expected_base_sha": "b" * 40,
+        "expected_target_sha": "b" * 40,
         "expected_branch": "",
         "recorder": lambda **_kwargs: {},
         "dossier_validator": lambda **_kwargs: (True, "ok"),
@@ -181,6 +190,7 @@ def test_executor_rejects_a_plan_edited_after_catalog_selection(tmp_path: Path) 
             evidence_root=tmp_path / ("a" * 40),
             source_sha="a" * 40,
             expected_base_sha="b" * 40,
+            expected_target_sha="b" * 40,
             expected_branch="refactor/validation-control-plane-v1",
             recorder=lambda **_kwargs: {},
             dossier_validator=lambda **_kwargs: (True, "ok"),
@@ -200,6 +210,7 @@ def test_executor_and_verifier_reject_unauthorized_target_merge_base(
             evidence_root=tmp_path / ("a" * 40),
             source_sha="a" * 40,
             expected_base_sha="c" * 40,
+            expected_target_sha="b" * 40,
             expected_branch="branch",
             recorder=lambda **_kwargs: {},
             dossier_validator=lambda **_kwargs: (True, "ok"),
@@ -219,6 +230,7 @@ def test_executor_and_verifier_reject_unauthorized_target_merge_base(
         evidence_root=tmp_path / ("a" * 40),
         source_sha="a" * 40,
         expected_base_sha="c" * 40,
+        expected_target_sha="b" * 40,
         expected_branch="branch",
         dossier_validator=lambda **_kwargs: (True, "ok"),
         changed_path_collector=_planned_paths,
@@ -226,6 +238,24 @@ def test_executor_and_verifier_reject_unauthorized_target_merge_base(
 
     assert verdict.status is VerdictStatus.BLOCKED
     assert "plan-target-base-mismatch" in verdict.reasons
+
+
+def test_executor_rejects_authorized_target_tip_replay(tmp_path: Path) -> None:
+    plan = _product_backend_plan()
+
+    with pytest.raises(ValidationExecutionError, match="authorized target tip"):
+        execute_validation_plan(
+            plan,
+            repo_root=tmp_path,
+            evidence_root=tmp_path / ("a" * 40),
+            source_sha="a" * 40,
+            expected_base_sha="b" * 40,
+            expected_target_sha="c" * 40,
+            expected_branch="branch",
+            recorder=lambda **_kwargs: {},
+            dossier_validator=lambda **_kwargs: (True, "ok"),
+            changed_path_collector=_planned_paths,
+        )
 
 
 def test_collect_changed_paths_unions_committed_staged_dirty_and_untracked() -> None:
@@ -269,15 +299,19 @@ def test_claim_bearing_plan_requires_an_authorized_immutable_target() -> None:
     )
     calls: list[tuple[str, ...]] = []
 
+    def git_runner(_root: Path, *args: str) -> str:
+        calls.append(args)
+        return "a" * 40 if args[0] == "rev-parse" else "b" * 40
+
     base = resolve_comparison_base(
         Path("/repo"),
         descriptor,
         base_ref="origin/main",
         authorized_target_sha="a" * 40,
-        git_runner=lambda _root, *args: calls.append(args) or "a" * 40,
+        git_runner=git_runner,
     )
 
-    assert base == "a" * 40
+    assert base == "b" * 40
     assert calls == [
         ("rev-parse", "origin/main"),
         ("merge-base", "HEAD", "a" * 40),
@@ -328,6 +362,7 @@ def test_evidence_verifier_detects_record_tampering(tmp_path: Path) -> None:
         evidence_root=tmp_path / ("a" * 40),
         source_sha="a" * 40,
         expected_base_sha="b" * 40,
+        expected_target_sha="b" * 40,
         expected_branch="refactor/validation-control-plane-v1",
         recorder=lambda **kwargs: records[kwargs["check_id"]],
         dossier_validator=lambda **_kwargs: (True, "ok"),
@@ -351,6 +386,7 @@ def test_evidence_verifier_detects_record_tampering(tmp_path: Path) -> None:
         evidence_root=evidence_root,
         source_sha="a" * 40,
         expected_base_sha="b" * 40,
+        expected_target_sha="b" * 40,
         expected_branch="refactor/validation-control-plane-v1",
         dossier_validator=lambda **_kwargs: (True, "ok"),
         changed_path_collector=_planned_paths,
@@ -368,6 +404,7 @@ def test_evidence_verifier_detects_record_tampering(tmp_path: Path) -> None:
         evidence_root=evidence_root,
         source_sha="a" * 40,
         expected_base_sha="b" * 40,
+        expected_target_sha="b" * 40,
         expected_branch="refactor/validation-control-plane-v1",
         dossier_validator=lambda **_kwargs: (True, "ok"),
         changed_path_collector=_planned_paths,
@@ -388,6 +425,7 @@ def test_executor_rejects_source_or_diff_that_changed_after_planning(
             evidence_root=tmp_path / ("c" * 40),
             source_sha="c" * 40,
             expected_base_sha="b" * 40,
+            expected_target_sha="b" * 40,
             expected_branch="branch",
             recorder=lambda **_kwargs: {},
             dossier_validator=lambda **_kwargs: (True, "ok"),
@@ -401,6 +439,7 @@ def test_executor_rejects_source_or_diff_that_changed_after_planning(
             evidence_root=tmp_path / ("a" * 40),
             source_sha="a" * 40,
             expected_base_sha="b" * 40,
+            expected_target_sha="b" * 40,
             expected_branch="branch",
             recorder=lambda **_kwargs: {},
             dossier_validator=lambda **_kwargs: (True, "ok"),

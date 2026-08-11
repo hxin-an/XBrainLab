@@ -30,7 +30,12 @@ def _plan(path: str, *layers: Layer):
         [path],
         gate_catalog=HANDOFF_VALIDATION_GATE_CATALOG,
     )
-    return bind_validation_plan(plan, source_sha="a" * 40, base_sha="b" * 40)
+    return bind_validation_plan(
+        plan,
+        source_sha="a" * 40,
+        base_sha="b" * 40,
+        target_sha="b" * 40,
+    )
 
 
 def test_backend_product_pr_selects_one_linux_suite_without_unrelated_matrices() -> (
@@ -82,6 +87,7 @@ def test_data_native_and_docs_risks_select_only_their_ci_capabilities() -> None:
         docs_plan,
         source_sha="a" * 40,
         base_sha="b" * 40,
+        target_sha="b" * 40,
     )
     docs = build_ci_validation_plan(docs_plan, source_sha="a" * 40)
 
@@ -150,7 +156,12 @@ def test_ci_expansion_fails_closed_when_selected_gate_has_no_execution_owner() -
         ["XBrainLab/llm/core/model_catalog.py"],
         gate_catalog=HANDOFF_VALIDATION_GATE_CATALOG,
     )
-    plan = bind_validation_plan(plan, source_sha="a" * 40, base_sha="b" * 40)
+    plan = bind_validation_plan(
+        plan,
+        source_sha="a" * 40,
+        base_sha="b" * 40,
+        target_sha="b" * 40,
+    )
 
     with pytest.raises(ValueError, match=r"no CI execution owner.*granite-runtime"):
         build_ci_validation_plan(plan, source_sha="a" * 40)
@@ -211,6 +222,7 @@ def test_ci_owner_registry_is_registered_and_covers_product_semantic_space() -> 
                 plan,
                 source_sha="a" * 40,
                 base_sha="b" * 40,
+                target_sha="b" * 40,
             )
 
             ci_plan = build_ci_validation_plan(plan, source_sha="a" * 40)

@@ -903,6 +903,7 @@ def check_architecture(root_dir: str) -> int:
         print(f"UI directory not found: {ui_dir}")
         return 1
 
+    failed = False
     syntax_violations = check_product_python_syntax(Path(root_dir))
     if syntax_violations:
         print("\nProduct Python Syntax Violations Found:")
@@ -958,28 +959,28 @@ def check_architecture(root_dir: str) -> int:
         print("\nArchitecture Violations Found:")
         for v in violations:
             print(f" - {v}")
-        return 1
+        failed = True
 
     llm_violations = check_local_only_llm_runtime(Path(root_dir))
     if llm_violations:
         print("\nLocal-only LLM Runtime Violations Found:")
         for violation in llm_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     backend_llm_import_violations = check_backend_llm_imports(Path(root_dir))
     if backend_llm_import_violations:
         print("\nBackend to LLM Import Violations Found:")
         for violation in backend_llm_import_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     saliency_provenance_violations = check_saliency_provenance_ownership(Path(root_dir))
     if saliency_provenance_violations:
         print("\nSaliency Provenance Ownership Violations Found:")
         for violation in saliency_provenance_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     saliency_integrity_violations = check_saliency_artifact_integrity_ownership(
         Path(root_dir)
@@ -988,7 +989,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nSaliency Artifact Integrity Ownership Violations Found:")
         for violation in saliency_integrity_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     visualization_saliency_violations = (
         check_visualization_saliency_publication_boundary(Path(root_dir))
@@ -997,7 +998,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nVisualization Saliency Publication Violations Found:")
         for violation in visualization_saliency_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     application_state_violations = check_application_state_module_boundaries(
         Path(root_dir)
@@ -1006,7 +1007,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nApplication State Module Boundary Violations Found:")
         for violation in application_state_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     application_service_ownership_violations = (
         check_application_service_ownership_boundaries(Path(root_dir))
@@ -1015,7 +1016,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nApplicationService Ownership Boundary Violations Found:")
         for violation in application_service_ownership_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     application_shutdown_violations = check_application_shutdown_lifecycle_ownership(
         Path(root_dir)
@@ -1024,7 +1025,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nApplication Shutdown Lifecycle Ownership Violations Found:")
         for violation in application_shutdown_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     application_controller_violations = check_application_controller_boundary(
         Path(root_dir)
@@ -1033,7 +1034,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nApplication Controller Boundary Violations Found:")
         for violation in application_controller_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     dataset_product_port_violations = check_dataset_product_port_boundary(
         Path(root_dir)
@@ -1042,7 +1043,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nDataset Product Port Boundary Violations Found:")
         for violation in dataset_product_port_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     preprocess_product_port_violations = check_preprocess_product_port_boundary(
         Path(root_dir)
@@ -1051,7 +1052,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nPreprocess Product Port Boundary Violations Found:")
         for violation in preprocess_product_port_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     visualization_product_port_violations = check_visualization_product_port_boundary(
         Path(root_dir)
@@ -1060,7 +1061,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nVisualization Product Port Boundary Violations Found:")
         for violation in visualization_product_port_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     publication_lifecycle_port_violations = (
         check_application_publication_lifecycle_port_boundary(Path(root_dir))
@@ -1069,14 +1070,14 @@ def check_architecture(root_dir: str) -> int:
         print("\nApplication Publication Lifecycle Port Violations Found:")
         for violation in publication_lifecycle_port_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     training_runtime_violations = check_training_runtime_port_boundary(Path(root_dir))
     if training_runtime_violations:
         print("\nTraining Runtime Port Boundary Violations Found:")
         for violation in training_runtime_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     raw_mutation_atomicity_violations = check_raw_mutation_atomicity_boundaries(
         Path(root_dir)
@@ -1085,14 +1086,14 @@ def check_architecture(root_dir: str) -> int:
         print("\nRaw Mutation Atomicity Boundary Violations Found:")
         for violation in raw_mutation_atomicity_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     label_resource_violations = check_label_resource_admission_boundary(Path(root_dir))
     if label_resource_violations:
         print("\nLabel Resource Admission Boundary Violations Found:")
         for violation in label_resource_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     training_history_violations = check_training_history_projection_boundary(
         Path(root_dir),
@@ -1101,28 +1102,28 @@ def check_architecture(root_dir: str) -> int:
         print("\nTraining History Projection Boundary Violations Found:")
         for violation in training_history_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     dataset_read_violations = check_dataset_detached_read_boundary(Path(root_dir))
     if dataset_read_violations:
         print("\nDataset Detached Read Boundary Violations Found:")
         for violation in dataset_read_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     dataset_split_violations = check_dataset_split_publication_boundary(Path(root_dir))
     if dataset_split_violations:
         print("\nDataset Split Publication Boundary Violations Found:")
         for violation in dataset_split_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     epoch_dialog_violations = check_epoch_dialog_publication_boundary(Path(root_dir))
     if epoch_dialog_violations:
         print("\nEpoch Dialog Publication Boundary Violations Found:")
         for violation in epoch_dialog_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     mutable_object_boundary_violations = check_mutable_object_boundaries(
         Path(root_dir),
@@ -1132,7 +1133,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nMutable Object Boundary Violations Found:")
         for violation in mutable_object_boundary_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     montage_command_ownership_violations = check_montage_command_ownership(
         Path(root_dir)
@@ -1141,7 +1142,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nMontage Command Ownership Violations Found:")
         for violation in montage_command_ownership_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     training_reset_ownership_violations = check_training_configuration_reset_ownership(
         Path(root_dir)
@@ -1150,14 +1151,14 @@ def check_architecture(root_dir: str) -> int:
         print("\nTraining Configuration Reset Ownership Violations Found:")
         for violation in training_reset_ownership_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     runtime_mock_violations = check_product_runtime_mock_dependencies(Path(root_dir))
     if runtime_mock_violations:
         print("\nProduct Runtime Mock Dependency Violations Found:")
         for violation in runtime_mock_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     tool_result_contract_violations = check_concrete_llm_tool_result_contracts(
         Path(root_dir)
@@ -1166,7 +1167,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nConcrete LLM Tool Result Contract Violations Found:")
         for violation in tool_result_contract_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     real_tool_command_ownership_violations = check_mapped_real_tool_command_ownership(
         Path(root_dir)
@@ -1175,7 +1176,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nMapped Real Tool Command Ownership Violations Found:")
         for violation in real_tool_command_ownership_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     typed_confirmation_violations = check_typed_agent_confirmation_boundary(
         Path(root_dir)
@@ -1184,7 +1185,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nTyped Agent Confirmation Boundary Violations Found:")
         for violation in typed_confirmation_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     pending_interaction_compatibility_violations = (
         check_pending_interaction_compatibility_api(Path(root_dir))
@@ -1193,7 +1194,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nPending Interaction Compatibility API Violations Found:")
         for violation in pending_interaction_compatibility_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     controller_lifecycle_alias_violations = check_agent_controller_lifecycle_aliases(
         Path(root_dir)
@@ -1202,7 +1203,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nAgent Controller Lifecycle Alias Violations Found:")
         for violation in controller_lifecycle_alias_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     manager_publication_state_violations = (
         check_agent_manager_publication_state_ownership(Path(root_dir))
@@ -1211,7 +1212,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nAgent Manager Publication State Ownership Violations Found:")
         for violation in manager_publication_state_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     confirmation_evidence_violations = check_agent_confirmation_contract_evidence(
         Path(root_dir)
@@ -1220,14 +1221,14 @@ def check_architecture(root_dir: str) -> int:
         print("\nAgent Confirmation Contract Evidence Violations Found:")
         for violation in confirmation_evidence_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     montage_handoff_violations = check_typed_montage_ui_handoff_boundary(Path(root_dir))
     if montage_handoff_violations:
         print("\nTyped Montage UI Handoff Boundary Violations Found:")
         for violation in montage_handoff_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     presentation_ownership_violations = check_assistant_presentation_ownership(
         Path(root_dir)
@@ -1236,7 +1237,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nAssistant Presentation Ownership Violations Found:")
         for violation in presentation_ownership_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     turn_scope_ownership_violations = check_assistant_turn_scope_ownership(
         Path(root_dir)
@@ -1245,42 +1246,42 @@ def check_architecture(root_dir: str) -> int:
         print("\nAssistant Turn Scope Ownership Violations Found:")
         for violation in turn_scope_ownership_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     llm_study_state_violations = check_llm_direct_study_state_reads(Path(root_dir))
     if llm_study_state_violations:
         print("\nLLM Direct Study State Read Violations Found:")
         for violation in llm_study_state_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     mcp_study_state_violations = check_mcp_direct_study_state_reads(Path(root_dir))
     if mcp_study_state_violations:
         print("\nMCP Direct Study State Read Violations Found:")
         for violation in mcp_study_state_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     facade_usage_violations = check_product_runtime_backend_facade_usage(Path(root_dir))
     if facade_usage_violations:
         print("\nProduct Runtime BackendFacade Usage Violations Found:")
         for violation in facade_usage_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     facade_test_violations = check_product_success_backend_facade_tests(Path(root_dir))
     if facade_test_violations:
         print("\nProduct Success BackendFacade Test Violations Found:")
         for violation in facade_test_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     facade_test_usage_violations = check_backend_facade_test_usage(Path(root_dir))
     if facade_test_usage_violations:
         print("\nBackendFacade Test Usage Violations Found:")
         for violation in facade_test_usage_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     fallback_test_violations = check_product_success_legacy_fallback_tests(
         Path(root_dir)
@@ -1289,7 +1290,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nProduct Success Legacy Fallback Test Violations Found:")
         for violation in fallback_test_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     product_success_study_state_violations = (
         check_product_success_direct_study_state_tests(Path(root_dir))
@@ -1298,7 +1299,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nProduct Success Direct Study State Test Violations Found:")
         for violation in product_success_study_state_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     headless_verifier_study_state_violations = (
         check_headless_verifier_direct_study_state(Path(root_dir))
@@ -1307,7 +1308,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nHeadless Verifier Direct Study State Violations Found:")
         for violation in headless_verifier_study_state_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     controller_lookup_test_violations = (
         check_product_success_controller_lookup_assertions(Path(root_dir))
@@ -1316,14 +1317,14 @@ def check_architecture(root_dir: str) -> int:
         print("\nProduct Success Controller Lookup Assertion Violations Found:")
         for violation in controller_lookup_test_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     worker_internal_violations = check_ui_agent_worker_internal_access(Path(root_dir))
     if worker_internal_violations:
         print("\nUI Agent Worker Internal Access Violations Found:")
         for violation in worker_internal_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     runtime_selection_violations = check_assistant_runtime_selection_ownership(
         Path(root_dir)
@@ -1332,14 +1333,14 @@ def check_architecture(root_dir: str) -> int:
         print("\nAssistant Runtime Selection Ownership Violations Found:")
         for violation in runtime_selection_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     weak_test_name_violations = check_weak_test_names(Path(root_dir))
     if weak_test_name_violations:
         print("\nWeak Test Name Violations Found:")
         for violation in weak_test_name_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     generic_panel_assertion_violations = (
         check_product_success_generic_panel_instance_assertions(Path(root_dir))
@@ -1348,14 +1349,14 @@ def check_architecture(root_dir: str) -> int:
         print("\nProduct Success Generic Panel Assertion Violations Found:")
         for violation in generic_panel_assertion_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     mcp_weak_assertion_violations = check_mcp_weak_response_assertions(Path(root_dir))
     if mcp_weak_assertion_violations:
         print("\nMCP Weak Response Assertion Violations Found:")
         for violation in mcp_weak_assertion_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     pipeline_state_weak_assertion_violations = (
         check_pipeline_state_weak_string_assertions(Path(root_dir))
@@ -1364,7 +1365,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nPipeline State Weak String Assertion Violations Found:")
         for violation in pipeline_state_weak_assertion_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     llm_parser_weak_assertion_violations = check_llm_parser_weak_parse_assertions(
         Path(root_dir)
@@ -1373,7 +1374,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nLLM Parser Weak Parse Assertion Violations Found:")
         for violation in llm_parser_weak_assertion_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     tool_envelope_boundary_violations = check_product_tool_envelope_boundary(
         Path(root_dir)
@@ -1382,7 +1383,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nProduct Tool Envelope Boundary Violations Found:")
         for violation in tool_envelope_boundary_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     interpretation_action_ownership_violations = (
         check_dataset_data_interpretation_action_ownership(Path(root_dir))
@@ -1391,7 +1392,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nDataset Data Interpretation Action Ownership Violations Found:")
         for violation in interpretation_action_ownership_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     resource_receipt_boundary_violations = check_agent_resource_receipt_boundary(
         Path(root_dir)
@@ -1400,7 +1401,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nAgent Resource Receipt Boundary Violations Found:")
         for violation in resource_receipt_boundary_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     llm_application_surface_weak_assertion_violations = (
         check_llm_application_surface_weak_result_assertions(Path(root_dir))
@@ -1409,7 +1410,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nLLM Application Surface Weak Result Assertion Violations Found:")
         for violation in llm_application_surface_weak_assertion_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     llm_agent_intent_boundary_weak_assertion_violations = (
         check_llm_agent_intent_boundary_weak_result_assertions(Path(root_dir))
@@ -1418,7 +1419,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nLLM Agent Intent-Boundary Weak Result Assertion Violations Found:")
         for violation in llm_agent_intent_boundary_weak_assertion_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     llm_agent_confirmation_weak_assertion_violations = (
         check_llm_agent_confirmation_weak_pending_assertions(Path(root_dir))
@@ -1427,7 +1428,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nLLM Agent Confirmation Weak Pending Assertion Violations Found:")
         for violation in llm_agent_confirmation_weak_assertion_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     llm_controller_integration_weak_assertion_violations = (
         check_llm_controller_integration_weak_initialization_assertions(Path(root_dir))
@@ -1436,7 +1437,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nLLM Controller Integration Weak Initialization Violations Found:")
         for violation in llm_controller_integration_weak_assertion_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     llm_tool_definition_weak_assertion_violations = (
         check_llm_tool_definition_weak_string_assertions(Path(root_dir))
@@ -1445,28 +1446,28 @@ def check_architecture(root_dir: str) -> int:
         print("\nLLM Tool Definition Weak String Assertion Violations Found:")
         for violation in llm_tool_definition_weak_assertion_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     docs_overclaim_violations = check_docs_current_truth_overclaims(Path(root_dir))
     if docs_overclaim_violations:
         print("\nDocs Current Truth Overclaim Violations Found:")
         for violation in docs_overclaim_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     fallback_violations = check_ui_controller_fallbacks(Path(root_dir))
     if fallback_violations:
         print("\nUI Controller Fallback Violations Found:")
         for violation in fallback_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     render_fallback_violations = check_ui_controller_render_fallbacks(Path(root_dir))
     if render_fallback_violations:
         print("\nUI Controller Render Fallback Violations Found:")
         for violation in render_fallback_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     training_history_fallback_violations = check_training_panel_history_fallback_scope(
         Path(root_dir)
@@ -1475,7 +1476,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nTraining History Fallback Scope Violations Found:")
         for violation in training_history_fallback_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     direct_controller_mutation_violations = check_ui_direct_controller_mutations(
         Path(root_dir)
@@ -1484,7 +1485,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nUI Direct Controller Mutation Violations Found:")
         for violation in direct_controller_mutation_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     legacy_helper_call_violations = check_ui_legacy_mutation_helper_calls(
         Path(root_dir)
@@ -1493,7 +1494,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nUI Legacy Mutation Helper Call Violations Found:")
         for violation in legacy_helper_call_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     legacy_fallback_scope_violations = check_ui_legacy_fallback_helper_scope(
         Path(root_dir)
@@ -1502,14 +1503,14 @@ def check_architecture(root_dir: str) -> int:
         print("\nUI Legacy Fallback Helper Scope Violations Found:")
         for violation in legacy_fallback_scope_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     backend_execute_violations = check_ui_direct_backend_service_execute(Path(root_dir))
     if backend_execute_violations:
         print("\nUI Direct Backend Service Execute Violations Found:")
         for violation in backend_execute_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     command_suppression_violations = (
         check_ui_command_execution_suppresses_observer_refresh(Path(root_dir))
@@ -1518,21 +1519,21 @@ def check_architecture(root_dir: str) -> int:
         print("\nUI Command Observer Suppression Violations Found:")
         for violation in command_suppression_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     loader_apply_violations = check_ui_direct_loader_apply(Path(root_dir))
     if loader_apply_violations:
         print("\nUI Direct Loader Apply Violations Found:")
         for violation in loader_apply_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     study_state_violations = check_ui_direct_study_state_reads(Path(root_dir))
     if study_state_violations:
         print("\nUI Direct Study State Read Violations Found:")
         for violation in study_state_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     controller_study_violations = check_ui_controller_study_get_controller_fallbacks(
         Path(root_dir)
@@ -1541,7 +1542,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nUI Controller Study Fallback Violations Found:")
         for violation in controller_study_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     study_controller_lookup_violations = check_ui_direct_study_get_controller_lookups(
         Path(root_dir)
@@ -1550,14 +1551,14 @@ def check_architecture(root_dir: str) -> int:
         print("\nUI Direct Study Controller Lookup Violations Found:")
         for violation in study_controller_lookup_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     controller_echo_violations = check_ui_post_command_controller_echoes(Path(root_dir))
     if controller_echo_violations:
         print("\nUI Post-command Controller Echo Violations Found:")
         for violation in controller_echo_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     capability_readiness_violations = check_ui_capability_gated_controller_readiness(
         Path(root_dir)
@@ -1566,21 +1567,21 @@ def check_architecture(root_dir: str) -> int:
         print("\nUI Capability-gated Controller Readiness Violations Found:")
         for violation in capability_readiness_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     refresh_violations = check_ui_post_command_local_refreshes(Path(root_dir))
     if refresh_violations:
         print("\nUI Post-command Local Refresh Violations Found:")
         for violation in refresh_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     refresh_false_violations = check_ui_refresh_false_commands(Path(root_dir))
     if refresh_false_violations:
         print("\nUI No-refresh Command Violations Found:")
         for violation in refresh_false_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     observer_refresh_violations = check_ui_observer_direct_update_bridges(
         Path(root_dir)
@@ -1589,7 +1590,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nUI Observer Direct Refresh Violations Found:")
         for violation in observer_refresh_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     observer_handler_violations = check_ui_observer_handlers_call_refresh_coordinator(
         Path(root_dir)
@@ -1598,7 +1599,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nUI Observer Handler Refresh Violations Found:")
         for violation in observer_handler_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     primary_bootstrap_violations = check_primary_panel_product_bootstrap_boundary(
         Path(root_dir)
@@ -1607,7 +1608,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nPrimary Panel Product Bootstrap Boundary Violations Found:")
         for violation in primary_bootstrap_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     primary_publication_violations = check_primary_ui_publication_refresh_boundary(
         Path(root_dir)
@@ -1616,7 +1617,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nPrimary UI Publication Refresh Boundary Violations Found:")
         for violation in primary_publication_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     evaluation_refresh_violations = check_evaluation_publication_refresh_boundary(
         Path(root_dir)
@@ -1625,7 +1626,7 @@ def check_architecture(root_dir: str) -> int:
         print("\nEvaluation Publication Refresh Boundary Violations Found:")
         for violation in evaluation_refresh_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     visualization_refresh_violations = check_visualization_publication_refresh_boundary(
         Path(root_dir)
@@ -1634,10 +1635,10 @@ def check_architecture(root_dir: str) -> int:
         print("\nVisualization Publication Refresh Boundary Violations Found:")
         for violation in visualization_refresh_violations:
             print(f" - {violation}")
-        return 1
+        failed = True
 
     print("\nArchitecture compliant!")
-    return 0
+    return int(failed)
 
 
 def check_local_only_llm_runtime(root_dir: Path) -> list[str]:

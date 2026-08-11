@@ -57,7 +57,12 @@ def _plans(source_sha: str = "a" * 40):
         ["XBrainLab/backend/utils/logger.py"],
         gate_catalog=HANDOFF_VALIDATION_GATE_CATALOG,
     )
-    plan = bind_validation_plan(plan, source_sha=source_sha, base_sha="b" * 40)
+    plan = bind_validation_plan(
+        plan,
+        source_sha=source_sha,
+        base_sha="b" * 40,
+        target_sha="b" * 40,
+    )
     return plan, build_ci_validation_plan(plan, source_sha=source_sha)
 
 

@@ -478,12 +478,16 @@ runner source，不是用來抵抗能任意修改同一使用者 source/evidence
 先刷新 configured `origin` 的 main tip，再把該 reviewed identity 傳入；若 PR/event 指定另一個
 正式 target，必須直接使用其 exact SHA。未刷新、被本機重指或來源未經授權的 tracking ref
 不能縮小 claim-bearing diff。`--expected-branch` 同樣必填，避免舊 branch 名成為隱性 policy。
+Plan 會分別保存並 digest authorized target tip 與 comparison merge-base；前者約束 exact-target
+static regression，後者約束 changed-path diff。兩者不可互換。Exact-target static gate 另要求 target
+是 candidate ancestor；main 已前進的 stale branch 必須先整合最新 target，不能沿用較舊 merge-base
+的寬鬆 debt baseline。
 
 Registered `basedpyright` gate 是 exact-target regression，不是把 legacy typing debt 寫成固定
 allowlist。它在同一 runner、同一 executable 與相依環境下分別分析 authorized target SHA 與
-candidate，以 repo-relative path、severity、rule、normalized message 的 multiset 比較；source
-range 不參與 fingerprint，避免純行號位移製造假 regression，但新增或重複增加的診斷仍 fail
-closed。比較結果寫入 `basedpyright-regression.json` 並納入 dossier hash。Fast dashboard 的
+candidate，以 repo-relative path、severity、rule、normalized message 與 start range 的 multiset
+比較；位置變動採 fail closed，避免「修掉舊位置、在新位置新增同訊息錯誤」互相抵銷。比較結果
+寫入 `basedpyright-regression.json` 並納入 dossier hash。Fast dashboard 的
 `basedpyright_type_check` 仍是目前 checkout 的 absolute health 診斷，兩者 claim 不可互換。
 
 ## Registered Gate Sections

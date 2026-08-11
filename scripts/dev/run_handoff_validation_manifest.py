@@ -91,6 +91,7 @@ def run_handoff_manifest(
         expected_branch=expected_branch,
         source_sha=plan.source_sha,
         expected_base_sha=plan.base_sha,
+        expected_target_sha=plan.target_sha,
         require_upstream=require_upstream,
         model_cache_dir=model_cache_dir,
         rag_cache_dir=rag_cache_dir,
@@ -108,6 +109,7 @@ def run_handoff_manifest(
         expected_branch=expected_branch,
         source_sha=plan.source_sha,
         expected_base_sha=plan.base_sha,
+        expected_target_sha=plan.target_sha,
         require_upstream=require_upstream,
         model_cache_dir=model_cache_dir,
         rag_cache_dir=rag_cache_dir,
@@ -153,6 +155,7 @@ def _build_handoff_plan(
         plan,
         source_sha=_git_head(repo_root),
         base_sha=base_sha,
+        target_sha=target_sha,
     )
     if not plan.ready:
         raise HandoffManifestError(

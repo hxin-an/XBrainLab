@@ -594,15 +594,70 @@ def test_plan_can_be_bound_to_exact_source_and_change_set() -> None:
         unbound,
         source_sha="a" * 40,
         base_sha="b" * 40,
+        target_sha="c" * 40,
     )
 
     assert unbound.source_sha is None
     assert bound.source_sha == "a" * 40
     assert bound.base_sha == "b" * 40
+    assert bound.target_sha == "c" * 40
     assert bound.change_set_digest is not None
     assert len(bound.change_set_digest) == 64
     assert bound.digest() != unbound.digest()
     assert ValidationPlan.from_json(bound.to_json()) == bound
+
+
+def test_authorized_target_is_part_of_the_plan_digest() -> None:
+    unbound = plan_validation(
+        _descriptor(layers=frozenset({Layer.BACKEND_DOMAIN})),
+        ["XBrainLab/backend/utils/logger.py"],
+        gate_catalog=_catalog(),
+    )
+    first = bind_validation_plan(
+        unbound,
+        source_sha="a" * 40,
+        base_sha="b" * 40,
+        target_sha="c" * 40,
+    )
+    second = bind_validation_plan(
+        unbound,
+        source_sha="a" * 40,
+        base_sha="b" * 40,
+        target_sha="d" * 40,
+    )
+
+    assert first.digest() != second.digest()
+
+
+def test_explicit_blank_authorized_target_does_not_fall_back_to_merge_base() -> None:
+    unbound = plan_validation(
+        _descriptor(layers=frozenset({Layer.BACKEND_DOMAIN})),
+        ["XBrainLab/backend/utils/logger.py"],
+        gate_catalog=_catalog(),
+    )
+
+    with pytest.raises(ValueError, match="plan target SHA"):
+        bind_validation_plan(
+            unbound,
+            source_sha="a" * 40,
+            base_sha="b" * 40,
+            target_sha="",
+        )
+
+
+def test_binding_requires_an_explicit_authorized_target_tip() -> None:
+    unbound = plan_validation(
+        _descriptor(layers=frozenset({Layer.BACKEND_DOMAIN})),
+        ["XBrainLab/backend/utils/logger.py"],
+        gate_catalog=_catalog(),
+    )
+
+    with pytest.raises(TypeError, match="target_sha"):
+        bind_validation_plan(  # type: ignore[call-arg]
+            unbound,
+            source_sha="a" * 40,
+            base_sha="b" * 40,
+        )
 
 
 def test_receipt_verdict_requires_exact_plan_coverage_and_evidence() -> None:
@@ -637,7 +692,12 @@ def test_bound_plan_receipt_requires_the_same_source_sha() -> None:
         ["XBrainLab/backend/utils/logger.py"],
         gate_catalog=_catalog(),
     )
-    plan = bind_validation_plan(plan, source_sha="a" * 40, base_sha="b" * 40)
+    plan = bind_validation_plan(
+        plan,
+        source_sha="a" * 40,
+        base_sha="b" * 40,
+        target_sha="b" * 40,
+    )
     receipt = ValidationReceipt(
         plan_digest=plan.digest(),
         source_sha="c" * 40,

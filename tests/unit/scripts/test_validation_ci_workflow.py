@@ -181,6 +181,7 @@ def test_all_semantic_rule_upgrades_are_owned_or_fail_closed_as_local_only() -> 
                 plan,
                 source_sha="a" * 40,
                 base_sha="b" * 40,
+                target_sha="b" * 40,
             )
             unowned = set(plan.execution_ids).difference(CI_GATE_OWNERS)
             if unowned:
@@ -193,3 +194,12 @@ def test_all_semantic_rule_upgrades_are_owned_or_fail_closed_as_local_only() -> 
                 continue
             ci_plan = build_ci_validation_plan(plan, source_sha="a" * 40)
             assert set(ci_plan.required_owners) <= supported_ci_owners
+
+
+def test_linux_aggregate_does_not_start_after_missing_or_failed_shards() -> None:
+    _text, workflow = _workflow()
+
+    assert workflow["jobs"]["linux-test"]["if"] == (
+        "always() && needs.validation_plan.outputs.run_product == 'true' && "
+        "needs.linux-shard.result == 'success'"
+    )

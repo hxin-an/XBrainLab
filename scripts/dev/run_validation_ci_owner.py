@@ -136,6 +136,7 @@ def _run(args: argparse.Namespace) -> int:
             expected_branch="",
             source_sha=ci_plan.source_sha,
             expected_base_sha=expected_base_sha,
+            expected_target_sha=args.target_sha,
             require_upstream=False,
             execution_gate_ids=gate_ids,
             evidence_profile="ci-owner",
@@ -225,6 +226,8 @@ def _verify_owner_evidence(
     else:
         if plan.base_sha != expected_base_sha:
             reasons.add("plan-target-base-mismatch")
+        if plan.target_sha != target_sha:
+            reasons.add("plan-target-tip-mismatch")
     registry_receipts = {
         receipt.owner: receipt
         for receipt in receipts
@@ -286,7 +289,7 @@ def _verify_owner_evidence(
                 full_plan_gate_ids=plan.execution_ids,
                 required_check_ids=ci_plan.gate_ids_for_owner(receipt.owner),
                 expected_evidence_digests=dict(receipt.evidence_digests),
-                target_sha=target_sha,
+                target_sha=plan.target_sha,
             )
         if not ok:
             reasons.add(f"owner-evidence-invalid:{receipt.owner}:{reason}")
