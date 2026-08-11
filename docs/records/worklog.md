@@ -46,11 +46,15 @@
 - 結果：新增 60-case routing corpus（32 positive / 16 boundary-adversarial / 12 overlap）和
   baseline/candidate 三次 A/B runner；guard 鎖住 inventory、frontmatter、size budget、stale
   authority tokens、MCP policy 與 corpus schema。
-- 證據：guidance static audit PASS；focused runner/contract `9 passed`；Ruff check/format、
+- 證據：guidance static audit PASS；focused runner/contract `16 passed`；Ruff check/format、
   `git diff --check` PASS；16/16 active skills 通過官方 quick validator；MkDocs strict PASS。
-- 接續 / 本輪剩餘：等目前 product integration candidate 合併後 rebase，再跑正式 360
-  executions、12-output blind review、exact-head PR CI。此前是 guidance checkpoint，不是 final A/B
-  acceptance，也不改變產品 handoff claim。
+- A/B 退件：第一輪有效 360 executions 的 candidate primary `93.89%`、negative false-positive
+  `38.89%`、overlap `100%`、median input savings `706` tokens、latency `+5.05%`；automatic PASS
+  為 false。執行前另抓到 structured-output schema 與 invalid-resume/fan-out 問題，皆以 red-first
+  tests 修復並保留失敗 evidence。
+- 接續 / 本輪剩餘：以 v2 authority/explicit-MCP/status-only/token-efficiency contract 跑第二輪正式
+  A/B，再做 12-output blind review 與 exact-head PR CI。此前是退件後的 validated checkpoint，
+  不是 final A/B acceptance，也不改變產品 handoff claim。
 
 ## 2026-08-03
 

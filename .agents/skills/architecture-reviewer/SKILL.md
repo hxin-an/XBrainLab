@@ -1,6 +1,6 @@
 ---
 name: architecture-reviewer
-description: "Use for XBrainLab current-versus-target boundaries across UI, backend, data, Assistant, validation, and docs. Do not use for line-level code review."
+description: "Use for XBrainLab current-versus-target boundaries across UI, backend, data, Assistant, validation, and docs. Do not use for line-level code review or read-only current-status and roadmap summaries."
 ---
 
 # Architecture Reviewer

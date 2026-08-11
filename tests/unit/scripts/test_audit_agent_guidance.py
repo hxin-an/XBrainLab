@@ -13,6 +13,7 @@ from scripts.dev.audit_agent_guidance import (
     EvalRecord,
     RoutingCase,
     _error_from_jsonl,
+    _routing_prompt,
     _usage_from_jsonl,
     acceptance_summary,
     build_codex_command,
@@ -57,6 +58,15 @@ def test_response_schema_uses_only_supported_array_contract() -> None:
     secondary = ROUTING_OUTPUT_SCHEMA["properties"]["secondary_skills"]
 
     assert "uniqueItems" not in secondary
+
+
+def test_routing_prompt_defines_authority_as_dispatch_instruction_source() -> None:
+    case = RoutingCase("case", "review code", "positive", None, (), (), "current_truth")
+
+    prompt = _routing_prompt(case)
+
+    assert "instruction source that controls routing and execution" in prompt
+    assert "not the implementation evidence" in prompt
 
 
 def test_jsonl_error_parser_reports_api_failure_instead_of_stderr_notice() -> None:
@@ -415,7 +425,7 @@ def test_variant_scoring_enforces_primary_secondary_forbidden_and_authority() ->
 
 def test_acceptance_summary_requires_efficiency_and_routing_thresholds() -> None:
     baseline = {
-        "median_input_tokens": 1000,
+        "median_input_tokens": 2000,
         "median_latency_seconds": 10,
     }
     candidate = {
@@ -426,14 +436,15 @@ def test_acceptance_summary_requires_efficiency_and_routing_thresholds() -> None
         "mcp_incidental_rate": 0.0,
         "authority_accuracy": 1.0,
         "average_selected_skills_single_scope": 1.1,
-        "median_input_tokens": 790,
+        "median_input_tokens": 1400,
         "median_latency_seconds": 11,
     }
 
     summary = acceptance_summary(baseline, candidate)
 
     assert summary["automatic_pass"] is True
-    assert summary["token_reduction"] == 0.21
+    assert summary["token_reduction"] == 0.3
+    assert summary["median_input_token_savings"] == 600
     assert summary["latency_change"] == 0.1
     assert summary["human_review_required"]["sample_size"] == 12
 

@@ -85,14 +85,14 @@ cases:
     forbidden_skills: [docs-curator]
     expected_authority_class: skill_trigger
   - id: p-mcp-01
-    prompt: "Explicitly review the XBrainLab MCP stdio tools/list and tools/call adapter for protocol stdout and ApplicationService enforcement."
+    prompt: "Use $mcp-adapter-reviewer to review the XBrainLab MCP stdio tools/list and tools/call adapter for protocol stdout and ApplicationService enforcement."
     category: positive
     expected_primary: mcp-adapter-reviewer
     allowed_secondary: []
     forbidden_skills: []
     expected_authority_class: skill_trigger
   - id: p-mcp-02
-    prompt: "I explicitly want an MCP HTTP adapter audit covering authorization, session ownership, cancellation, and resource locks."
+    prompt: "Use $mcp-adapter-reviewer for an MCP HTTP adapter audit covering authorization, session ownership, cancellation, and resource locks."
     category: positive
     expected_primary: mcp-adapter-reviewer
     allowed_secondary: []

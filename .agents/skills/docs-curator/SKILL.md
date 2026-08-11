@@ -1,6 +1,6 @@
 ---
 name: docs-curator
-description: "Use for XBrainLab doc consolidation, current-truth conflicts, historical cleanup, and navigation repair. Do not use for visual MkDocs redesign."
+description: "Use for XBrainLab doc consolidation, conflicting claims, historical cleanup, and navigation repair. Do not use for visual MkDocs redesign or a read-only status/current-fact summary with no documentation change."
 ---
 
 # Docs Curator

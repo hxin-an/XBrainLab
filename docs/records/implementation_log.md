@@ -37,8 +37,12 @@
 
 ### 不能宣稱完成
 
-- Static/focused/docs validation 不等於 routing A/B acceptance。正式 360 executions 必須等目前
-  product integration candidate 先合併，再把本 branch rebase 到 updated `main` 後執行。
+- 第一輪 360 個有效 executions 已完成，但 automatic acceptance 未通過：candidate primary
+  accuracy `93.89%`、negative false-positive `38.89%`、overlap `100%`，且原 authority prompt
+  與 oracle 定義互相矛盾。它是有效的退件 evidence，不是 PASS。
+- Evaluator 已加入真 API preflight、structured error、invalid-record fail-closed、failed-only resume
+  與 contract version；authority dispatch 定義、explicit MCP cases、status-only skill boundary 和
+  token-efficiency denominator 已校正。正式第二輪與 blind review 尚未完成。
 - 本改動只校準 repo coding-agent guidance；不改 XBrainLab 產品 API、Granite runtime、EEG
   workflow 或 product handoff status。
 

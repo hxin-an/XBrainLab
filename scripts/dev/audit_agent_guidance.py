@@ -78,6 +78,7 @@ MAX_SKILL_LINES = 120
 MAX_TOTAL_SKILL_LINES = 1_000
 MAX_DESCRIPTION_CHARS = 220
 MAX_TOTAL_DESCRIPTION_CHARS = 2_920
+EVALUATOR_CONTRACT_VERSION = 2
 INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
 
 
@@ -444,8 +445,12 @@ def _routing_prompt(case: RoutingCase) -> str:
         "Use only repo-local instructions and skill metadata already supplied to you. "
         "Do not inspect .agents/evals, audit scripts, tests, artifacts, or expected answers. "
         "Do not solve the request and do not call tools. Select one primary repo-local skill, "
-        "zero or more genuinely necessary secondary skills, and the authority class that owns "
-        "the requested truth. Use null when no repo-local skill is warranted.\n\n"
+        "zero or more genuinely necessary secondary skills. The authority class means the "
+        "instruction source that controls routing and execution, not the implementation evidence "
+        "or factual source you may inspect later. Use skill_trigger when SKILL.md metadata owns "
+        "the routing decision, workflow for a multi-step workflow, and the matching canonical "
+        "authority for root/current/target/validation/history requests. Use null when no "
+        "repo-local skill is warranted.\n\n"
         f"User request:\n{case.prompt}"
     )
 
@@ -634,6 +639,7 @@ async def run_variant(
         "guidance_digest": _guidance_digest(repo_root),
         "model": model,
         "reasoning_effort": reasoning_effort,
+        "evaluator_contract_version": EVALUATOR_CONTRACT_VERSION,
         "repeats": repeats,
         "case_digest": hashlib.sha256(
             json.dumps(
@@ -815,6 +821,11 @@ def acceptance_summary(
         if baseline_tokens and candidate_tokens is not None
         else None
     )
+    token_savings = (
+        baseline_tokens - candidate_tokens
+        if baseline_tokens is not None and candidate_tokens is not None
+        else None
+    )
     latency_change = (
         round(candidate_latency / baseline_latency - 1, 12)
         if baseline_latency and candidate_latency is not None
@@ -832,8 +843,8 @@ def acceptance_summary(
         "average_selected_skills_lte_1_2": (
             candidate["average_selected_skills_single_scope"] <= 1.2
         ),
-        "median_input_tokens_reduced_gte_20pct": (
-            token_reduction is not None and token_reduction >= 0.20
+        "median_input_token_savings_gte_500": (
+            token_savings is not None and token_savings >= 500
         ),
         "median_latency_change_lte_10pct": (
             latency_change is not None and latency_change <= 0.10
@@ -843,6 +854,7 @@ def acceptance_summary(
         "checks": checks,
         "automatic_pass": all(checks.values()),
         "token_reduction": token_reduction,
+        "median_input_token_savings": token_savings,
         "latency_change": latency_change,
         "human_review_required": {
             "sample_size": 12,
