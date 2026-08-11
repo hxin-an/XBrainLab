@@ -46,7 +46,8 @@ def test_three_real_gdf_files_filter_in_python_owned_worker_and_render() -> None
         if line.startswith("PREPROCESS_ASYNC_FILTER_STRESS=")
     )
     result = json.loads(result_line.split("=", 1)[1])
-    assert result["core_dumps_disabled"] is True
+    assert result["core_dump_limit_supported"] is (os.name == "posix")
+    assert result["core_dumps_disabled"] is (os.name == "posix")
     assert result["fixture_count"] == 3
     assert result["cycles"] == 2
     assert result["completed_cycles"] == 2

@@ -24,6 +24,8 @@ from XBrainLab.backend.application.view_publication import (
 from XBrainLab.llm.agent.ui_handoff import (
     WorkflowUiHandoffRequest,
     WorkflowUiHandoffResolutionStatus,
+    WorkflowUiHandoffSurfaceKind,
+    workflow_ui_handoff_routes,
 )
 from XBrainLab.ui.components.workflow_surface_router import WorkflowPanel
 from XBrainLab.ui.components.workflow_ui_handoff_host import WorkflowUiHandoffHost
@@ -93,6 +95,19 @@ def _main_window() -> Any:
         ),
     )
     return window
+
+
+def test_host_route_table_is_derived_from_typed_handoff_descriptors() -> None:
+    host = WorkflowUiHandoffHost(_main_window())
+
+    for descriptor in workflow_ui_handoff_routes():
+        route = host._router.route_for(descriptor.command.value)
+
+        assert route is not None
+        assert route.panel.value == descriptor.target_panel.value
+        assert (route.open_surface is not None) is (
+            descriptor.surface_kind is WorkflowUiHandoffSurfaceKind.DIALOG
+        )
 
 
 def _review_identity() -> InterpretationReviewIdentity:
@@ -395,7 +410,7 @@ def test_dataset_handoff_prefills_values_already_supplied_by_user() -> None:
     window = _main_window()
     host = WorkflowUiHandoffHost(window)
     request = WorkflowUiHandoffRequest.for_decision(
-        "generate_dataset",
+        "configure_dataset_split",
         decision_fields=("split_strategy",),
         suggested_values={"training_mode": "individual", "test_ratio": "0.2"},
     )
@@ -496,7 +511,7 @@ def test_training_handoff_preserves_standalone_configuration_actions(
     ("command_name", "panel_index", "expected_status"),
     [
         ("scan_source", 0, WorkflowUiHandoffResolutionStatus.COMPLETED),
-        ("generate_dataset", 2, WorkflowUiHandoffResolutionStatus.COMPLETED),
+        ("configure_dataset_split", 2, WorkflowUiHandoffResolutionStatus.COMPLETED),
         (
             "configure_training",
             2,
@@ -653,7 +668,7 @@ def test_epoch_handoff_command_mismatch_fails_instead_of_waiting_forever() -> No
 
     scheduled_callbacks[0].on_result(
         CommandResult.success_result(
-            command_name="generate_dataset",
+            command_name="configure_dataset_split",
             message="Unexpected dataset completion.",
             state={},
             changed_state=ChangedState(datasets_changed=True),
@@ -729,7 +744,7 @@ def test_mismatched_async_callback_is_rejected_without_resolving_current_request
     mismatched_command = host.resolve_terminal(
         InteractionCompletionEvent(
             request_id=request.request_id,
-            command_name="generate_dataset",
+            command_name="configure_dataset_split",
             status=InteractionCompletionStatus.COMPLETED,
         )
     )
@@ -885,5 +900,5 @@ def test_host_rejects_untyped_payload_instead_of_inferring_command_text() -> Non
 
     with pytest.raises(TypeError, match="WorkflowUiHandoffRequest"):
         cast(Any, host).open(
-            {"tool_name": "create_epoch", "command": "generate_dataset"}
+            {"tool_name": "create_epoch", "command": "configure_dataset_split"}
         )

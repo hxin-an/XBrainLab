@@ -57,8 +57,9 @@ dispatch，依 source/runtime evidence 校準 canonical 文件。
 
 ## 目前階段
 
-目前在 `stabilize/product-quality-closure` 進行 product-quality closure。這條線是
-checkpoint，尚未 handoff-ready。
+目前在 `integration/eeg-workflow-improvements-v1` 收斂 EEG workflow integration candidate。
+這條線是 checkpoint，尚未 handoff-ready；`stabilize/product-quality-closure` 只保留為歷史
+provenance，不是 active dispatch base。
 
 這代表：
 

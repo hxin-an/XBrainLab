@@ -52,22 +52,37 @@ def get_random_state() -> tuple:
     """Capture the current random state of PyTorch, Python, and NumPy.
 
     Returns:
-        A tuple of ``(torch_rng_state, random_state, numpy_state)``.
+        A tuple of ``(torch_rng_state, random_state, numpy_state,
+        cuda_rng_states)``. ``cuda_rng_states`` is ``None`` when CUDA is not
+        available.
 
     """
-    return torch.get_rng_state(), random.getstate(), np.random.get_state()
+    cuda_rng_states = (
+        torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+    )
+    return (
+        torch.get_rng_state(),
+        random.getstate(),
+        np.random.get_state(),
+        cuda_rng_states,
+    )
 
 
 def set_random_state(state: tuple) -> None:
     """Restore the random state of PyTorch, Python, and NumPy.
 
     Args:
-        state: A tuple of ``(torch_rng_state, random_state, numpy_state)``
-            as returned by :func:`get_random_state`.
+        state: The four-part state returned by :func:`get_random_state`.
 
     """
-    torch_state, random_state, np_state = state
+    if not isinstance(state, tuple) or len(state) != 4:
+        raise ValueError("Random state must include CPU, Python, NumPy, and CUDA state")
+    torch_state, random_state, np_state, cuda_rng_states = state
+    if cuda_rng_states is not None and not torch.cuda.is_available():
+        raise RuntimeError("CUDA RNG state cannot be restored without CUDA")
 
     torch.set_rng_state(torch_state)
     random.setstate(random_state)
     np.random.set_state(np_state)
+    if cuda_rng_states is not None:
+        torch.cuda.set_rng_state_all(cuda_rng_states)

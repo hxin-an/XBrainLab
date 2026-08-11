@@ -19,8 +19,6 @@ from XBrainLab.backend.services.visualization_state_service import (
 )
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training_state_contract import (
-    PostTrainingSaliencyStatus,
-    TrainingLifecycleEvent,
     TrainingOutcomeState,
     TrainingReadBoundary,
     TrainingTerminalOutcome,
@@ -52,8 +50,8 @@ from .commands import (
     CommandName,
     ConfigureTrainingCommand,
     CreateEpochCommand,
+    DiscardTrainingPreparationCommand,
     EvaluateCommand,
-    GenerateDatasetCommand,
     ImportLabelsCommand,
     LabelImportPlan,
     LoadDataCommand,
@@ -67,6 +65,7 @@ from .commands import (
     ResetSessionCommand,
     ReviewInterpretationCommand,
     SaliencyCommand,
+    SaveDatasetSplitCommand,
     ScanSourceCommand,
     StopTrainingCommand,
     TrainCommand,
@@ -87,6 +86,7 @@ from .epoch_context import (
     EPOCH_DIALOG_CONTEXT_UNAVAILABLE_MESSAGE,
     EpochDialogContext,
     build_epoching_context,
+    require_epoch_context_available,
     validated_epoch_handoff,
 )
 from .errors import (
@@ -102,10 +102,7 @@ from .evaluation_render import (
 from .lifecycle_service import LifecycleCommandService
 from .pipeline_stage import pipeline_stage_readiness_summary
 from .pipeline_transaction import PipelineStateTransaction
-from .post_training_saliency import (
-    PostTrainingSaliencyAutomation,
-    SaliencyTerminalNotification,
-)
+from .post_training_saliency import PostTrainingSaliencyAutomation
 from .preprocess_render import (
     PreprocessRenderPublication,
     PreprocessRenderPublisher,
@@ -113,7 +110,7 @@ from .preprocess_render import (
 )
 from .preprocess_service import PreprocessCommandService
 from .query_state_service import QueryStateCommandService
-from .resource_guard import ResourcePreflightResult
+from .resource_guard import ResourceConfirmationRequiredError, ResourcePreflightResult
 from .results import ChangedState, CommandResult, ErrorType
 from .saliency_coverage import SaliencyCoverageProjector
 from .saliency_render import (
@@ -123,6 +120,7 @@ from .saliency_render import (
 )
 from .state import (
     ApplicationStateSnapshot,
+    DatasetSplitLifecycle,
     ErrorSnapshot,
     InterpretationStateSnapshot,
 )
@@ -132,8 +130,9 @@ from .synchronous_training_lifecycle import (
     SynchronousTrainingLifecycleCoordinator,
 )
 from .training_configuration_reset import TrainingConfigurationResetService
-from .training_publication_lifecycle import (
-    SaliencyTerminalDeliveryPlan,
+from .training_recommendation import (
+    TrainingRecommendation,
+    TrainingRecommendationService,
 )
 from .training_runtime import (
     StudyTrainingRuntime,
@@ -359,11 +358,13 @@ class _LazyDatasetGenerationCommandService:
         training: Any,
         has_trainer: Callable[[], bool],
         pipeline_transaction: PipelineStateTransaction,
+        get_publication_generation: Callable[[], int],
     ) -> None:
         self.study = study
         self.training = training
         self.has_trainer = has_trainer
         self.pipeline_transaction = pipeline_transaction
+        self.get_publication_generation = get_publication_generation
         self._service_instance: Any | None = None
 
     def _service(self) -> Any:
@@ -377,16 +378,44 @@ class _LazyDatasetGenerationCommandService:
                 training=self.training,
                 has_trainer=self.has_trainer,
                 pipeline_transaction=self.pipeline_transaction,
+                get_publication_generation=self.get_publication_generation,
             )
         return self._service_instance
 
-    def dataset_split_summary(self, datasets: list[Any]) -> dict[str, Any]:
+    def active_split_summary(self, datasets: list[Any]) -> dict[str, Any]:
         if not datasets:
             return {}
-        return self._service().dataset_split_summary(datasets)
+        return self._service().active_split_summary(datasets)
 
-    def handle_generate_dataset(self, command: Command) -> HandlerResult:
-        return self._service().handle_generate_dataset(command)
+    def dataset_split_state(self, datasets: list[Any]) -> dict[str, Any]:
+        if self._service_instance is None:
+            return {
+                "split_spec_saved": False,
+                "split_specification": {},
+                "split_specification_fingerprint": None,
+                "split_epoch_revision": None,
+                "split_preview_summary": {},
+                "split_lifecycle": DatasetSplitLifecycle.UNCONFIGURED,
+                "split_materialized": False,
+                "active_split_summary": {},
+                "last_split_attempt": {},
+            }
+        return self._service().dataset_split_state(datasets)
+
+    def prepare_saved_split_candidate(self) -> Any:
+        return self._service().prepare_saved_split_candidate()
+
+    def commit_prepared_split(self, candidate: Any) -> dict[str, Any]:
+        return self._service().commit_prepared_split(candidate)
+
+    def discard_prepared_split(self) -> bool:
+        return self._service().discard_prepared_split()
+
+    def restore_committed_candidate(self, candidate: Any) -> None:
+        self._service().restore_committed_candidate(candidate)
+
+    def handle_save_dataset_split(self, command: Command) -> HandlerResult:
+        return self._service().handle_save_dataset_split(command)
 
     def handle_clear_datasets(self, command: Command) -> HandlerResult:
         return self._service().handle_clear_datasets(command)
@@ -402,11 +431,13 @@ class _LazyTrainingCommandService:
         training_runtime: TrainingRuntimePort,
         get_state: Callable[[], ApplicationStateSnapshot],
         configuration_reset: TrainingConfigurationResetService,
+        recommendation: TrainingRecommendationService,
     ) -> None:
         self.training = training
         self.training_runtime = training_runtime
         self._get_state = get_state
         self._configuration_reset = configuration_reset
+        self._recommendation = recommendation
         self._service_instance: Any | None = None
 
     def _service(self) -> Any:
@@ -417,11 +448,13 @@ class _LazyTrainingCommandService:
                 training=self.training,
                 training_runtime=self.training_runtime,
                 get_state=self._get_state,
+                recommendation=self._recommendation,
             )
         return self._service_instance
 
     def clear_configuration(self) -> None:
         self._configuration_reset.clear()
+        self._recommendation.clear()
 
     @staticmethod
     def model_name(model_holder: Any) -> str | None:
@@ -451,6 +484,35 @@ class _LazyTrainingCommandService:
             command,
             defer_synchronous_completion=defer_synchronous_completion,
         )
+
+    def resolve_train_preflight(
+        self,
+        command: Command,
+        *,
+        datasets: Any,
+    ) -> tuple[ResourcePreflightResult, bool]:
+        return self._service().resolve_train_preflight(
+            command,
+            datasets=datasets,
+        )
+
+    def start_train_after_preflight(
+        self,
+        command: Command,
+        *,
+        preflight: ResourcePreflightResult,
+        receipt_reused: bool,
+        defer_synchronous_completion: bool = False,
+    ) -> HandlerResult:
+        return self._service().start_train_after_preflight(
+            command,
+            preflight=preflight,
+            receipt_reused=receipt_reused,
+            defer_synchronous_completion=defer_synchronous_completion,
+        )
+
+    def discard_train_preflight(self, token: str | None) -> None:
+        self._service().discard_train_preflight(token)
 
     def complete_synchronous_training(
         self,
@@ -558,16 +620,21 @@ class ApplicationService(Observable):
             training=self.training,
             has_trainer=self.training_runtime.has_trainer,
             pipeline_transaction=self.pipeline_transaction,
+            get_publication_generation=(
+                lambda: self._committed_view_publication().generation
+            ),
         )
         self.training_configuration_reset = TrainingConfigurationResetService(
             training=self.training,
             training_runtime=self.training_runtime,
         )
+        self.training_recommendation = TrainingRecommendationService()
         self.training_commands = _LazyTrainingCommandService(
             training=self.training,
             training_runtime=self.training_runtime,
             get_state=self.get_state,
             configuration_reset=self.training_configuration_reset,
+            recommendation=self.training_recommendation,
         )
         self.saliency_coverage_projector = SaliencyCoverageProjector()
         self.state_snapshot = StateSnapshotService(
@@ -576,14 +643,13 @@ class ApplicationService(Observable):
             preprocess=self.preprocess,
             training=self.training_state,
             training_runtime=self.training_runtime,
-            training_state=self.training_state,
             evaluation=self.evaluation_state,
-            evaluation_state=self.evaluation_state,
             visualization=self.visualization,
             dataset_generation=self.dataset_generation,
             training_commands=self.training_commands,
             interpretation=self.interpretation,
             saliency_coverage_projector=self.saliency_coverage_projector,
+            training_recommendation=self.training_recommendation,
         )
         initial_training_boundary = self.state_snapshot.capture_training_read_boundary()
         initial_state = self.state_snapshot.build(last_error=self._last_error)
@@ -750,20 +816,6 @@ class ApplicationService(Observable):
             return preprocessed_rows
         return self.dataset.get_loaded_data_rows()
 
-    @property
-    def _observer_finalizer(self) -> Callable[[], Any]:
-        """Compatibility view of publication observer cleanup ownership."""
-        return self.publication_lifecycle.observer_finalizer
-
-    @_observer_finalizer.setter
-    def _observer_finalizer(self, cleanup: Callable[[], Any]) -> None:
-        self.publication_lifecycle.observer_finalizer = cleanup
-
-    @property
-    def _saliency_notification_boundary(self) -> Any:
-        """Compatibility view of the coordinator-owned delivery boundary."""
-        return self.publication_lifecycle.saliency_notification_boundary
-
     def close(self) -> None:
         """Idempotently detach lifecycle observers and release runtime ownership."""
         from .runtime import begin_application_service_close  # noqa: PLC0415
@@ -818,112 +870,20 @@ class ApplicationService(Observable):
         if self.shutdown_lifecycle.snapshot().closed:
             raise RuntimeError(_CLOSED_SERVICE_MESSAGE)
 
-    def _discard_pending_saliency_terminal(self) -> None:
-        """Explicitly abandon terminal UI delivery during permanent close."""
-        self.publication_lifecycle.coordinator.discard_pending()
-
     def dispose(self) -> None:
         """Compatibility alias for explicit ApplicationService cleanup."""
         self.close()
-
-    def _publish_training_live_state(self, *_args: Any, **_kwargs: Any) -> None:
-        """Compatibility delegate for focused lifecycle tests."""
-        self.publication_lifecycle.publish_training_live_state(*_args, **_kwargs)
 
     def _publish_training_terminal_state(
         self,
         *_args: Any,
         **_kwargs: Any,
     ) -> bool:
-        """Compatibility delegate for headless waits and focused tests."""
+        """Compatibility delegate retained for out-of-scope UI lifecycle callers."""
         return self.publication_lifecycle.publish_training_terminal_state(
             *_args,
             **_kwargs,
         )
-
-    def _deliver_training_terminal_publication(
-        self,
-        lifecycle_event: TrainingLifecycleEvent,
-    ) -> bool:
-        """Compatibility delegate for terminal acknowledgement tests."""
-        return self.publication_lifecycle.deliver_training_terminal_publication(
-            lifecycle_event
-        )
-
-    def _terminal_training_publication_event(
-        self,
-        state: ApplicationStateSnapshot,
-    ) -> TrainingLifecycleEvent | None:
-        """Compatibility delegate for exact terminal generation tests."""
-        return self.publication_lifecycle.terminal_training_publication_event(state)
-
-    def _publish_post_training_saliency_terminal_state(
-        self,
-        status: PostTrainingSaliencyStatus,
-    ) -> bool:
-        """Compatibility delegate for terminal saliency observer tests."""
-        return self.publication_lifecycle.publish_post_training_saliency_terminal_state(
-            status
-        )
-
-    def _commit_post_training_saliency_terminal_state(
-        self,
-        status: PostTrainingSaliencyStatus,
-    ) -> bool:
-        """Compatibility delegate for command-boundary saliency delivery."""
-        return self.publication_lifecycle.commit_post_training_saliency_terminal_state(
-            status
-        )
-
-    def _remember_pending_saliency_terminal(
-        self,
-        status: PostTrainingSaliencyStatus,
-    ) -> None:
-        """Compatibility delegate for shutdown reconciliation call sites."""
-        self.publication_lifecycle.remember_pending_saliency_terminal(status)
-
-    def _pending_saliency_terminal(self) -> PostTrainingSaliencyStatus | None:
-        """Return coordinator-owned terminal identity awaiting delivery."""
-        return self.publication_lifecycle.pending_saliency_terminal()
-
-    def _clear_pending_saliency_terminal(
-        self,
-        status: PostTrainingSaliencyStatus,
-    ) -> None:
-        """Discard one exact coordinator-owned delivery obligation."""
-        self.publication_lifecycle.clear_pending_saliency_terminal(status)
-
-    def _reconcile_pending_saliency_terminal(
-        self,
-        *,
-        allow_shutdown_fenced: bool = False,
-        blocking: bool = True,
-    ) -> bool:
-        """Compatibility delegate for retained terminal saliency work."""
-        return self.publication_lifecycle.reconcile_pending_saliency_terminal(
-            allow_shutdown_fenced=allow_shutdown_fenced,
-            blocking=blocking,
-        )
-
-    def _plan_saliency_terminal_delivery(
-        self,
-        notification: SaliencyTerminalNotification,
-    ) -> SaliencyTerminalDeliveryPlan:
-        """Compatibility delegate for delivery policy tests."""
-        return self.publication_lifecycle.plan_saliency_terminal_delivery(notification)
-
-    def _notify_saliency_publication_changed(
-        self,
-        notification: SaliencyTerminalNotification | None = None,
-    ) -> bool:
-        """Compatibility delegate for visualization notification tests."""
-        return self.publication_lifecycle.notify_saliency_publication_changed(
-            notification
-        )
-
-    def _visualization_batch_generation(self) -> int | None:
-        """Compatibility delegate for command-batch diagnostics."""
-        return self.publication_lifecycle.visualization_batch_generation()
 
     def _configure_post_training_saliency(
         self,
@@ -939,19 +899,101 @@ class ApplicationService(Observable):
         return result
 
     def _handle_train_with_automation(self, command: Command) -> HandlerResult:
-        """Arm post-training work only for a training command that can start."""
-        append = command.append if isinstance(command, TrainCommand) else True
-        self.post_training_saliency.arm(append=append)
+        """Admit candidate resources before publishing the saved data split."""
+        if not isinstance(command, TrainCommand):
+            raise TypeError("Invalid command for train")
+        candidate = self.dataset_generation.prepare_saved_split_candidate()
         try:
-            return self.training_commands.handle_train(
+            preflight, receipt_reused = self.training_commands.resolve_train_preflight(
                 command,
-                defer_synchronous_completion=bool(
-                    isinstance(command, TrainCommand) and not command.interactive
-                ),
+                datasets=candidate.datasets,
             )
-        except Exception:
-            self.post_training_saliency.cancel()
+        except ResourceConfirmationRequiredError:
             raise
+        except Exception as exc:
+            candidate_discarded = self.dataset_generation.discard_prepared_split()
+            application_error = map_exception(exc)
+            raise ApplicationError(
+                message=application_error.message,
+                error_type=application_error.error_type,
+                recoverable=application_error.recoverable,
+                diagnostics={
+                    **application_error.diagnostics,
+                    "state_preserved": True,
+                    "split_candidate_discarded": candidate_discarded,
+                },
+            ) from exc
+
+        split_preparation: dict[str, Any] | None = None
+        try:
+            split_preparation = self.dataset_generation.commit_prepared_split(candidate)
+            self.post_training_saliency.arm(append=command.append)
+            result = self.training_commands.start_train_after_preflight(
+                command,
+                preflight=preflight,
+                receipt_reused=receipt_reused,
+                defer_synchronous_completion=not command.interactive,
+            )
+        except Exception as exc:
+            self.post_training_saliency.cancel()
+            if split_preparation is not None:
+                try:
+                    self.dataset_generation.restore_committed_candidate(candidate)
+                except Exception as rollback_exc:
+                    rollback_error = map_exception(rollback_exc)
+                    raise ApplicationError(
+                        message=rollback_error.message,
+                        error_type=rollback_error.error_type,
+                        recoverable=rollback_error.recoverable,
+                        diagnostics={
+                            **rollback_error.diagnostics,
+                            "state_preserved": False,
+                            "split_rollback": False,
+                            "rollback_failed": True,
+                        },
+                    ) from rollback_exc
+                application_error = map_exception(exc)
+                raise ApplicationError(
+                    message=application_error.message,
+                    error_type=application_error.error_type,
+                    recoverable=application_error.recoverable,
+                    diagnostics={
+                        **application_error.diagnostics,
+                        "state_preserved": True,
+                        "split_rollback": True,
+                    },
+                ) from exc
+            else:
+                self.dataset_generation.discard_prepared_split()
+            raise
+        message, diagnostics = self._normalize_handler_result(result)
+        return message, {
+            **diagnostics,
+            "split_preparation": split_preparation,
+        }
+
+    def _handle_discard_training_preparation(
+        self,
+        command: Command,
+    ) -> HandlerResult:
+        """Discard warning confirmation and candidate without active mutation."""
+        if not isinstance(command, DiscardTrainingPreparationCommand):
+            raise TypeError("Invalid command for discard_training_preparation")
+        try:
+            self.training_commands.discard_train_preflight(
+                command.resource_preflight_token
+            )
+        finally:
+            candidate_discarded = self.dataset_generation.discard_prepared_split()
+        self.post_training_saliency.cancel()
+        return (
+            "Training preparation discarded.",
+            {
+                "candidate_discarded": candidate_discarded,
+                "resource_preflight_discarded": bool(command.resource_preflight_token),
+                "state_preserved": True,
+            },
+        )
 
     def get_state(self) -> ApplicationStateSnapshot:
         """Return a fresh serializable snapshot of backend state."""
@@ -964,7 +1006,7 @@ class ApplicationService(Observable):
                 else:
                     state = self._refresh_training_publication_strict()
             if not mutation_in_progress:
-                self._reconcile_pending_saliency_terminal()
+                self.publication_lifecycle.reconcile_pending_saliency_terminal()
             return state
 
     def _refresh_training_publication_strict(self) -> ApplicationStateSnapshot:
@@ -1088,6 +1130,7 @@ class ApplicationService(Observable):
                 self.dataset_state.get_preprocessed_data_list(),
                 epoch_handoff=handoff,
             )
+            require_epoch_context_available(setup)
             return EpochDialogContext(
                 capability=capability,
                 epoch_handoff=handoff,
@@ -1096,11 +1139,80 @@ class ApplicationService(Observable):
                 usable=True,
                 unavailable_reason=None,
             )
+        except PreconditionError as exc:
+            publication = self._committed_view_publication()
+            return EpochDialogContext.unavailable(
+                reason=str(exc),
+                capability=publication.effective_capabilities.get(
+                    CommandName.CREATE_EPOCH
+                ),
+                publication_generation=publication.generation,
+            )
         except (TypeError, ValueError):
             logger.error("Failed to build detached EEG epoch setup.", exc_info=True)
             publication = self._committed_view_publication()
             return EpochDialogContext.unavailable(
                 publication_generation=publication.generation,
+            )
+        finally:
+            self._command_lock.release()
+
+    def get_training_recommendation(
+        self,
+        *,
+        expected_publication_generation: int | None = None,
+        prospective_model_name: str | None = None,
+        prospective_model_params: dict[str, Any] | None = None,
+        prospective_device: str | None = None,
+    ) -> TrainingRecommendation:
+        """Return a metadata-only recommendation at the dialog boundary."""
+        acquired = self._command_lock.acquire(blocking=False)
+        if not acquired:
+            raise PreconditionError("Training recommendation is busy. Wait and retry.")
+        try:
+            self._ensure_open()
+            if self._mutation_in_progress:
+                raise PreconditionError("Training context is changing. Wait and retry.")
+            publication = self._committed_view_publication()
+            if (
+                expected_publication_generation is not None
+                and publication.generation != expected_publication_generation
+            ):
+                raise PreconditionError(
+                    "Training context changed. Review the settings again."
+                )
+            if not publication.usable:
+                raise PreconditionError(
+                    publication.public_unavailable_reason
+                    or "Training recommendation is unavailable."
+                )
+            if prospective_model_name is not None:
+                if not isinstance(prospective_model_name, str) or not (
+                    prospective_model_name.strip()
+                ):
+                    raise PreconditionError("Prospective model name is invalid.")
+                try:
+                    prospective_model_params = dict(prospective_model_params or {})
+                except (TypeError, ValueError) as exc:
+                    raise PreconditionError(
+                        "Prospective model parameters are invalid."
+                    ) from exc
+                prospective_model_name = prospective_model_name.strip()
+            elif prospective_model_params:
+                raise PreconditionError(
+                    "Prospective model parameters require a model name."
+                )
+            if prospective_device is not None:
+                if not isinstance(prospective_device, str) or not (
+                    prospective_device.strip()
+                ):
+                    raise PreconditionError("Prospective training device is invalid.")
+                prospective_device = prospective_device.strip()
+            return self.state_snapshot.refresh_training_recommendation(
+                publication.state,
+                prospective_model_name=prospective_model_name,
+                prospective_model_params=prospective_model_params,
+                prospective_device=prospective_device,
             )
         finally:
             self._command_lock.release()
@@ -1281,7 +1393,9 @@ class ApplicationService(Observable):
             timeout=remaining(),
         ):
             return False
-        terminal_reconciled = self._publish_training_terminal_state()
+        terminal_reconciled = (
+            self.publication_lifecycle.publish_training_terminal_state()
+        )
         if not self.training_publications.wait_for_training_delivery(
             timeout=remaining()
         ):
@@ -1296,7 +1410,9 @@ class ApplicationService(Observable):
             timeout=remaining()
         ):
             return False
-        return terminal_reconciled or self._publish_training_terminal_state()
+        return terminal_reconciled or (
+            self.publication_lifecycle.publish_training_terminal_state()
+        )
 
     def _committed_view_publication(self) -> ApplicationViewPublication:
         """Copy the internal publication without exposing mutable nested values."""
@@ -1313,8 +1429,13 @@ class ApplicationService(Observable):
         if closed is not None:
             return closed
         publication = self._committed_view_publication()
-        if not publication.usable and self._pending_saliency_terminal() is not None:
-            self._reconcile_pending_saliency_terminal(blocking=False)
+        if (
+            not publication.usable
+            and self.publication_lifecycle.pending_saliency_terminal() is not None
+        ):
+            self.publication_lifecycle.reconcile_pending_saliency_terminal(
+                blocking=False
+            )
             publication = self._committed_view_publication()
         if expected_publication_generation is not None:
             rejection = self._expected_publication_rejection_for_publication(
@@ -1384,7 +1505,7 @@ class ApplicationService(Observable):
             else nullcontext()
         )
         manager_notifications = self.training_runtime.defer_saliency_terminal(
-            self._commit_post_training_saliency_terminal_state
+            self.publication_lifecycle.commit_post_training_saliency_terminal_state
         )
         visualization_batch_generation: int | None = None
         completion_release: Callable[[], None] | None = None
@@ -1396,7 +1517,7 @@ class ApplicationService(Observable):
             ):
                 if isinstance(command, SaliencyCommand):
                     visualization_batch_generation = (
-                        self._visualization_batch_generation()
+                        self.publication_lifecycle.visualization_batch_generation()
                     )
                 result, completion_release = self._execute_at_command_boundary(
                     command,
@@ -2304,14 +2425,17 @@ class ApplicationService(Observable):
             CommandName.REMOVE_FILES: self.data_table.handle_remove_files,
             CommandName.PREPROCESS: self.preprocess_commands.handle_preprocess,
             CommandName.CREATE_EPOCH: self.preprocess_commands.handle_create_epoch,
-            CommandName.GENERATE_DATASET: (
-                self.dataset_generation.handle_generate_dataset
+            CommandName.CONFIGURE_DATASET_SPLIT: (
+                self.dataset_generation.handle_save_dataset_split
             ),
             CommandName.CLEAR_DATASETS: self.dataset_generation.handle_clear_datasets,
             CommandName.CONFIGURE_TRAINING: (
                 self.training_commands.handle_configure_training
             ),
             CommandName.TRAIN: self._handle_train_with_automation,
+            CommandName.DISCARD_TRAINING_PREPARATION: (
+                self._handle_discard_training_preparation
+            ),
             CommandName.STOP_TRAINING: self.training_commands.handle_stop_training,
             CommandName.CLEAR_TRAINING_HISTORY: (
                 self.training_commands.handle_clear_training_history
@@ -2474,8 +2598,11 @@ class ApplicationService(Observable):
             ),
         )
 
-    def generate_dataset(self, command: GenerateDatasetCommand) -> CommandResult:
-        """Execute a dataset-generation command."""
+    def configure_dataset_split(
+        self,
+        command: SaveDatasetSplitCommand,
+    ) -> CommandResult:
+        """Save one data splitting specification."""
         return self.execute(command)
 
     def clear_datasets(self, confirmed: bool = False) -> CommandResult:
@@ -2590,6 +2717,12 @@ class ApplicationService(Observable):
 
     @staticmethod
     def _is_read_only_command(command: Command, name: CommandName) -> bool:
+        if isinstance(command, ScanSourceCommand) and command.catalog_only:
+            # Subject discovery inspects only bounded directory metadata and does
+            # not enter the Data Interpretation lifecycle. Preserve the current
+            # publication identity so an open review cannot become stale merely
+            # because another catalog was inspected.
+            return True
         if isinstance(command, PreviewLabelImportCommand):
             # Preview materialization only populates an opaque, one-shot backend
             # cache. It does not change published application state, so the

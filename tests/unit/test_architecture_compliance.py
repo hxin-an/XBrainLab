@@ -1,5 +1,5 @@
 import ast
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from tests import architecture_compliance
 from tests.architecture_compliance import (
@@ -68,6 +68,15 @@ from tests.architecture_compliance import (
     check_visualization_saliency_publication_boundary,
     check_weak_test_names,
 )
+
+
+def test_guard_diagnostic_path_is_repo_relative_posix_on_windows() -> None:
+    root = PureWindowsPath("D:/a/XBrainLab/XBrainLab")
+    source = root / "XBrainLab" / "ui" / "components" / "attach_labels.py"
+
+    assert architecture_compliance._repo_relative_posix(source, root) == (
+        "XBrainLab/ui/components/attach_labels.py"
+    )
 
 
 def test_agent_controller_lifecycle_alias_guard_rejects_product_and_test_aliases(
@@ -1593,6 +1602,81 @@ def open_surface(self, command_name):
     assert any("legacy montage coordinator" in item for item in violations)
     assert any("fake user message" in item for item in violations)
     assert any("open_montage_picker_dialog" in item for item in violations)
+
+
+def test_montage_handoff_guard_accepts_canonical_registry_adapter(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/llm/agent/controller.py",
+        """
+def request_montage(self):
+    return WorkflowUiHandoffRequest.for_decision(
+        CommandName.APPLY_MONTAGE,
+        suggested_values=(),
+    )
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/llm/agent/ui_handoff.py",
+        """
+WorkflowUiHandoffRouteDescriptor(
+    command=CommandName.APPLY_MONTAGE,
+    route_identity=WorkflowUiHandoffRouteIdentity.MONTAGE_SETTINGS_DIALOG,
+)
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/components/workflow_ui_handoff_host.py",
+        """
+surface_openers = {
+    WorkflowUiHandoffRouteIdentity.MONTAGE_SETTINGS_DIALOG: self._open_montage,
+}
+
+def _open_montage(self, request):
+    return self._surface_result(self.sidebar.set_montage())
+""",
+    )
+
+    assert check_typed_montage_ui_handoff_boundary(tmp_path) == []
+
+
+def test_montage_handoff_guard_rejects_registry_without_host_adapter(
+    tmp_path: Path,
+) -> None:
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/llm/agent/controller.py",
+        """
+def request_montage(self):
+    return WorkflowUiHandoffRequest.for_decision(
+        CommandName.APPLY_MONTAGE,
+        suggested_values=(),
+    )
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/llm/agent/ui_handoff.py",
+        """
+WorkflowUiHandoffRouteDescriptor(
+    command=CommandName.APPLY_MONTAGE,
+    route_identity=WorkflowUiHandoffRouteIdentity.MONTAGE_SETTINGS_DIALOG,
+)
+""",
+    )
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/components/workflow_ui_handoff_host.py",
+        "def open_other_surface(self): pass\n",
+    )
+
+    violations = check_typed_montage_ui_handoff_boundary(tmp_path)
+
+    assert any("montage surface" in item for item in violations)
 
 
 def test_product_montage_decision_uses_typed_ui_handoff() -> None:

@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import io
+import os
 import signal
 from types import SimpleNamespace
 
 import pytest
 
 from scripts.dev import owned_process_bootstrap, owned_process_group
+
+POSIX_ONLY = pytest.mark.skipif(
+    os.name != "posix" or not hasattr(os, "killpg") or not hasattr(signal, "SIGKILL"),
+    reason="requires the POSIX process-group signal contract",
+)
 
 
 class _FakeProcess:
@@ -107,6 +113,8 @@ def test_windows_force_falls_back_to_direct_owned_process_kill(monkeypatch) -> N
     assert process.killed is True
 
 
+@pytest.mark.platform_contract
+@POSIX_ONLY
 def test_posix_force_targets_only_the_owned_session(monkeypatch) -> None:
     monkeypatch.setattr(owned_process_group, "_platform_name", lambda: "posix")
     calls: list[tuple[int, int]] = []
@@ -114,6 +122,7 @@ def test_posix_force_targets_only_the_owned_session(monkeypatch) -> None:
         owned_process_group.os,
         "killpg",
         lambda pid, sig: calls.append((pid, sig)),
+        raising=False,
     )
     process = _FakeProcess()
 
@@ -126,6 +135,8 @@ def test_posix_force_targets_only_the_owned_session(monkeypatch) -> None:
     assert calls == [(4321, signal.SIGKILL)]
 
 
+@pytest.mark.platform_contract
+@POSIX_ONLY
 def test_posix_group_is_still_signalled_after_its_leader_exits(monkeypatch) -> None:
     monkeypatch.setattr(owned_process_group, "_platform_name", lambda: "posix")
     calls: list[tuple[int, int]] = []
@@ -133,12 +144,33 @@ def test_posix_group_is_still_signalled_after_its_leader_exits(monkeypatch) -> N
         owned_process_group.os,
         "killpg",
         lambda pid, sig: calls.append((pid, sig)),
+        raising=False,
     )
     process = _FakeProcess(running=False)
 
     owned_process_group.signal_owned_group(process, force=True)
 
     assert calls == [(4321, signal.SIGKILL)]
+
+
+@pytest.mark.platform_contract
+@POSIX_ONLY
+def test_posix_orphaned_group_permission_error_does_not_escape_or_widen_cleanup(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(owned_process_group, "_platform_name", lambda: "posix")
+    process = _FakeProcess(running=False)
+    monkeypatch.setattr(
+        owned_process_group.os,
+        "killpg",
+        lambda _pid, _sig: (_ for _ in ()).throw(PermissionError("orphaned group")),
+        raising=False,
+    )
+
+    owned_process_group.signal_owned_group(process, force=True)
+
+    assert process.killed is False
+    assert process.terminated is False
 
 
 def test_windows_owner_closes_job_after_parent_already_exited(monkeypatch) -> None:

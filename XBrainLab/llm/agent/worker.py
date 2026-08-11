@@ -7,7 +7,7 @@ switching.
 
 import contextlib
 
-from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal
+from PyQt6.QtCore import QCoreApplication, QEvent, QObject, QThread, QTimer, pyqtSignal
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.core.config import LLMConfig
@@ -145,6 +145,18 @@ class RuntimeLoadThread(QThread):
 
 ACTIVE_GENERATION_THREADS: set[GenerationThread] = set()
 ACTIVE_RUNTIME_LOAD_THREADS: set[RuntimeLoadThread] = set()
+
+
+def _retire_finished_thread(thread: QThread) -> None:
+    """Drain a stopped owned QThread before its owner event loop can exit."""
+    try:
+        if thread.isRunning():
+            return
+        thread.deleteLater()
+        if thread.thread() == QThread.currentThread():
+            QCoreApplication.sendPostedEvents(thread, QEvent.Type.DeferredDelete)
+    except RuntimeError:
+        return
 
 
 class AgentWorker(QObject):
@@ -361,6 +373,7 @@ class AgentWorker(QObject):
         ACTIVE_RUNTIME_LOAD_THREADS.discard(thread)
         if self.runtime_load_thread is thread:
             self.runtime_load_thread = None
+        _retire_finished_thread(thread)
 
     @staticmethod
     def _close_engine(engine: object, *, wait_ms: int = 0) -> bool:
@@ -398,6 +411,7 @@ class AgentWorker(QObject):
         """Release ownership only after Qt confirms the thread has finished."""
         ACTIVE_GENERATION_THREADS.discard(thread)
         if self.generation_thread is not thread:
+            _retire_finished_thread(thread)
             return
         generation_id = self._generation_thread_id or self._active_generation_id
         self.generation_thread = None
@@ -415,6 +429,7 @@ class AgentWorker(QObject):
                 request = AssistantGenerationStopRequest(generation_id=generation_id)
             if request is not None:
                 self._acknowledge_generation_stop(request, stopped=True)
+            _retire_finished_thread(thread)
             return
         if self._timed_out_generation is thread:
             self._timed_out_generation = None
@@ -422,6 +437,7 @@ class AgentWorker(QObject):
             if generation_id is not None and generation_id > 0:
                 self.generation_error.emit(generation_id, message)
             self._active_generation_id = None
+        _retire_finished_thread(thread)
 
     def _generation_is_active(self) -> bool:
         """Return whether the worker still owns a running generation thread."""

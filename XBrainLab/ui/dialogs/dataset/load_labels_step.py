@@ -399,6 +399,11 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
 
     @staticmethod
     def _label_source_detail(carrier: dict[str, Any], carrier_path: str) -> str:
+        if str(carrier.get("format") or "") == "BIDS events":
+            paired_name = LoadLabelsStepMixin._bids_paired_eeg_name(carrier)
+            return (
+                f"Paired with {paired_name}" if paired_name else "Pairing needs review"
+            )
         source_kind = str(carrier.get("source_kind") or "").strip().lower()
         source_location = str(carrier.get("source_location") or "").strip()
         if source_location:
@@ -415,6 +420,11 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
         carrier: dict[str, Any],
         carrier_path: str,
     ) -> str:
+        if str(carrier.get("format") or "") == "BIDS events":
+            paired_name = LoadLabelsStepMixin._bids_paired_eeg_name(carrier)
+            return (
+                f"Paired with {paired_name}" if paired_name else "Pairing needs review"
+            )
         source_kind = str(carrier.get("source_kind") or "").strip().lower()
         source_location = str(carrier.get("source_location") or "").strip()
         location = source_location or str(Path(carrier_path).parent)
@@ -424,6 +434,15 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
         )
         origin = "Loaded" if source_kind == "user_added" else "Detected nearby"
         return f"{origin} · {folder}" if folder else origin
+
+    @staticmethod
+    def _bids_paired_eeg_name(carrier: dict[str, Any]) -> str:
+        target = str(
+            carrier.get("selected_target_file")
+            or carrier.get("bids_expected_target_file")
+            or ""
+        ).strip()
+        return Path(target).name if target else ""
 
     @staticmethod
     def _looks_like_file(path: str) -> bool:

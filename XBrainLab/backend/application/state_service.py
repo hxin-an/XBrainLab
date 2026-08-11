@@ -9,6 +9,9 @@ from typing import Any, cast
 
 from XBrainLab.backend.services.dataset_state_service import DatasetStateReadPort
 from XBrainLab.backend.services.preprocess_state_service import PreprocessStateReadPort
+from XBrainLab.backend.services.training_state_service import (
+    resolve_training_missing_requirements,
+)
 from XBrainLab.backend.training_state_contract import (
     PostTrainingSaliencyStatus,
     TrainingReadBoundary,
@@ -16,6 +19,12 @@ from XBrainLab.backend.training_state_contract import (
 )
 from XBrainLab.backend.utils.logger import logger
 
+from .epoch_context import (
+    EPOCH_CONTEXT_AVAILABILITY_KEY,
+    EpochContextAvailabilityCode,
+    build_epoching_context,
+    validated_epoch_context_availability,
+)
 from .errors import PreconditionError
 from .pipeline_stage import pipeline_stage_from_snapshots
 from .query_state_service import HandlerResult, QueryStateCommandService
@@ -42,6 +51,11 @@ from .state import (
     VisualizationStateSnapshot,
 )
 from .training_history import project_training_history_rows
+from .training_recommendation import (
+    TrainingRecommendation,
+    TrainingRecommendationContext,
+    TrainingRecommendationService,
+)
 from .training_runtime import TrainingStateReadPort
 
 __all__ = [
@@ -75,6 +89,7 @@ class StateSnapshotService:
         saliency_coverage_projector: SaliencyCoverageProjector,
         training_state: Any | None = None,
         evaluation_state: Any | None = None,
+        training_recommendation: TrainingRecommendationService | None = None,
     ) -> None:
         self.study = study
         self.dataset = dataset
@@ -89,6 +104,7 @@ class StateSnapshotService:
         self.training_commands = training_commands
         self.interpretation = interpretation
         self.saliency_coverage_projector = saliency_coverage_projector
+        self.training_recommendation = training_recommendation
 
     def build(
         self,
@@ -170,6 +186,7 @@ class StateSnapshotService:
         has_trainer = self.training_runtime.has_trainer()
         model_holder = training_configuration.model_holder
         training_option = training_configuration.training_option
+        interpretation = self._interpretation_snapshot()
 
         raw_diagnostics = (
             self._read_optional_dict(
@@ -179,13 +196,20 @@ class StateSnapshotService:
             if raw_data
             else {}
         )
-        preprocess_diagnostics = (
+        preprocess_diagnostics = dict(
             self._read_optional_dict(
                 self.preprocess.get_runtime_diagnostics,
                 label="preprocess.runtime_diagnostics",
             )
             if preprocessed
             else {}
+        )
+        preprocess_diagnostics.update(
+            self._epoch_context_readiness_diagnostics(
+                preprocessed,
+                epoch_data=epoch_data,
+                epoch_handoff=interpretation.epoch_handoff,
+            )
         )
         event_info = (
             self._read_optional_dict(
@@ -265,22 +289,50 @@ class StateSnapshotService:
             event_ids=self._epoch_event_ids(epoch_data),
             channel_names=self._epoch_channel_names(epoch_data),
         )
+        split_state = self.dataset_generation.dataset_split_state(datasets)
         dataset = DatasetStateSnapshot(
             available=bool(datasets),
             count=len(datasets),
             names=[self._dataset_name(item, idx) for idx, item in enumerate(datasets)],
             locked=raw.locked,
             generator_exists=getattr(self.study, "dataset_generator", None) is not None,
-            split_summary=self.dataset_generation.dataset_split_summary(datasets),
+            split_spec_saved=bool(split_state["split_spec_saved"]),
+            split_specification=dict(split_state["split_specification"]),
+            split_specification_fingerprint=split_state[
+                "split_specification_fingerprint"
+            ],
+            split_epoch_revision=split_state["split_epoch_revision"],
+            split_preview_summary=dict(split_state["split_preview_summary"]),
+            split_lifecycle=split_state["split_lifecycle"],
+            split_materialized=bool(split_state["split_materialized"]),
+            active_split_summary=dict(split_state["active_split_summary"]),
+            last_split_attempt=dict(split_state["last_split_attempt"]),
+        )
+        model_name = self.training_commands.model_name(model_holder)
+        model_params = self.training_commands.model_params_snapshot(model_holder)
+        training_option_values = self.training_commands.training_option_snapshot(
+            training_option,
+        )
+        recommendation = self._training_recommendation(
+            epoch=epoch,
+            dataset=dataset,
+            model_name=model_name,
+            model_params=model_params,
+            training_option=training_option,
+            training_option_values=training_option_values,
+        )
+        materialized_missing_requirements = self._read_authoritative_list(
+            getattr(self.training_state, "get_missing_requirements", None),
+            label="training.missing_requirements",
+            errors=read_errors,
         )
         training = TrainingStateSnapshot(
             has_model=model_holder is not None,
-            model_name=self.training_commands.model_name(model_holder),
-            model_params=self.training_commands.model_params_snapshot(model_holder),
+            model_name=model_name,
+            model_params=model_params,
             has_training_option=training_option is not None,
-            training_option=self.training_commands.training_option_snapshot(
-                training_option,
-            ),
+            training_option=training_option_values,
+            recommendation=recommendation,
             has_trainer=has_trainer,
             is_running=self._read_authoritative_bool(
                 getattr(self.training_state, "is_training", None),
@@ -297,10 +349,9 @@ class StateSnapshotService:
                 label="training.progress",
             ),
             terminal_outcome=self._training_terminal_outcome(),
-            missing_requirements=self._read_authoritative_list(
-                getattr(self.training_state, "get_missing_requirements", None),
-                label="training.missing_requirements",
-                errors=read_errors,
+            missing_requirements=resolve_training_missing_requirements(
+                materialized_missing_requirements,
+                data_splitting_ready=dataset.split_spec_saved,
             ),
         )
 
@@ -318,12 +369,12 @@ class StateSnapshotService:
             saliency_coverage=saliency_coverage,
             post_training_saliency=post_training_saliency,
         )
-        interpretation = self._interpretation_snapshot()
         active_dataset = ActiveDatasetSnapshot(
             has_raw_data=raw.count > 0,
             has_preprocessed_data=preprocessed_state.count > 0,
             has_epoch_data=epoch.exists,
             has_datasets=dataset.count > 0,
+            has_saved_split=dataset.split_spec_saved,
             is_locked=raw.locked,
         )
         active_training = ActiveTrainingSnapshot(
@@ -357,6 +408,170 @@ class StateSnapshotService:
             training_liveness_reliable=training_liveness_reliable,
             read_errors=sorted(read_errors),
         )
+
+    @staticmethod
+    def _epoch_context_readiness_diagnostics(
+        preprocessed: list[Any],
+        *,
+        epoch_data: Any | None,
+        epoch_handoff: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Publish a canonical, metadata-only blocker needed by capability policy."""
+        if not preprocessed or epoch_data is not None:
+            return {}
+        try:
+            context = build_epoching_context(
+                preprocessed,
+                epoch_handoff=epoch_handoff,
+            )
+            availability = validated_epoch_context_availability(context)
+        except (TypeError, ValueError):
+            logger.debug(
+                "Failed to project EEG epoch context readiness.", exc_info=True
+            )
+            return {}
+        if (
+            availability.code
+            is not EpochContextAvailabilityCode.SAMPLING_FREQUENCY_MISMATCH
+        ):
+            return {}
+        return {EPOCH_CONTEXT_AVAILABILITY_KEY: availability.to_payload()}
+
+    def _training_recommendation(
+        self,
+        *,
+        epoch: EpochStateSnapshot,
+        dataset: DatasetStateSnapshot,
+        model_name: str | None,
+        model_params: dict[str, Any],
+        training_option: Any | None,
+        training_option_values: dict[str, Any],
+    ) -> TrainingRecommendation | None:
+        """Project a matching cached starting point without recomputing it."""
+        service = self.training_recommendation
+        if service is None or not (
+            epoch.exists
+            or dataset.available
+            or model_name is not None
+            or training_option is not None
+        ):
+            return None
+        context = self._training_recommendation_context(
+            epoch=epoch,
+            dataset=dataset,
+            model_name=model_name,
+            model_params=model_params,
+            training_option_values=training_option_values,
+        )
+        return service.for_state_snapshot(
+            context,
+            current_option=training_option,
+        )
+
+    def refresh_training_recommendation(
+        self,
+        state: ApplicationStateSnapshot,
+        *,
+        prospective_model_name: str | None = None,
+        prospective_model_params: dict[str, Any] | None = None,
+        prospective_device: str | None = None,
+    ) -> TrainingRecommendation:
+        """Build a recommendation from detached publication metadata only."""
+        service = self.training_recommendation
+        if service is None:
+            raise PreconditionError("Training recommendations are unavailable.")
+        configuration = self.training_runtime.configuration_snapshot()
+        model_holder = configuration.model_holder
+        training_option = configuration.training_option
+        model_name = (
+            prospective_model_name
+            if prospective_model_name is not None
+            else self.training_commands.model_name(model_holder)
+        )
+        model_params = (
+            dict(prospective_model_params or {})
+            if prospective_model_name is not None
+            else self.training_commands.model_params_snapshot(model_holder)
+        )
+        option_values = self.training_commands.training_option_snapshot(training_option)
+        if prospective_device is not None:
+            option_values = {**option_values, "device": prospective_device}
+        context = self._training_recommendation_context(
+            epoch=state.epoch,
+            dataset=state.dataset,
+            model_name=model_name,
+            model_params=model_params,
+            training_option_values=option_values,
+        )
+        return service.recommend(
+            context,
+            current_option=training_option,
+        )
+
+    @staticmethod
+    def _training_recommendation_context(
+        *,
+        epoch: EpochStateSnapshot,
+        dataset: DatasetStateSnapshot,
+        model_name: str | None,
+        model_params: dict[str, Any],
+        training_option_values: dict[str, Any],
+    ) -> TrainingRecommendationContext:
+        split_summary = dataset.active_split_summary
+        split_preview_summary = dataset.split_preview_summary
+        train_count = StateSnapshotService._positive_summary_count(
+            split_summary,
+            "train_count",
+        )
+        if train_count is None:
+            train_count = StateSnapshotService._positive_summary_count(
+                split_preview_summary,
+                "train_count",
+            )
+        validation_count = StateSnapshotService._positive_summary_count(
+            split_summary,
+            "val_count",
+            allow_zero=True,
+        )
+        if validation_count is None:
+            validation_count = StateSnapshotService._positive_summary_count(
+                split_preview_summary,
+                "validation_count",
+                allow_zero=True,
+            )
+        preview_dataset_count = StateSnapshotService._positive_summary_count(
+            split_preview_summary,
+            "dataset_count",
+        )
+        return TrainingRecommendationContext(
+            model_name=model_name,
+            model_params=dict(model_params),
+            epoch_count=epoch.epoch_count,
+            n_channels=epoch.n_channels,
+            n_times=epoch.n_times,
+            dataset_count=dataset.count or preview_dataset_count or 0,
+            training_sample_count=train_count or epoch.epoch_count,
+            validation_sample_count=validation_count,
+            device=str(training_option_values.get("device") or "auto"),
+        )
+
+    @staticmethod
+    def _positive_summary_count(
+        summary: dict[str, Any],
+        key: str,
+        *,
+        allow_zero: bool = False,
+    ) -> int | None:
+        value = summary.get(key)
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            parsed = int(cast(Any, value))
+        except (TypeError, ValueError):
+            return None
+        if parsed > 0 or (allow_zero and parsed == 0):
+            return parsed
+        return None
 
     def _training_terminal_outcome(self) -> TrainingTerminalOutcome:
         """Read typed trainer truth; never infer it from progress display text."""

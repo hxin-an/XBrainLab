@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hmac
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from XBrainLab.backend.preprocessor.normalize import (
@@ -22,8 +22,10 @@ from .commands import (
     PreprocessOperation,
 )
 from .epoch_context import (
+    EPOCH_HINT_KEY,
     build_epoch_confirmation_requirement,
     build_epoching_context,
+    require_epoch_context_available,
     validated_epoch_handoff,
 )
 from .errors import ConfirmationRequiredError, PreconditionError
@@ -132,12 +134,16 @@ class PreprocessCommandService:
         if not isinstance(command, CreateEpochCommand):
             raise TypeError("Invalid command for create_epoch")
         handoff = self._epoch_handoff()
-        event_ids = self._event_ids_for_epoch_command(command, handoff=handoff)
         preprocessed_data = self.preprocess.get_preprocessed_data_list()
+        epoch_context = build_epoching_context(
+            preprocessed_data,
+            epoch_handoff=handoff,
+        )
+        require_epoch_context_available(epoch_context)
+        event_ids = self._event_ids_for_epoch_command(command, handoff=handoff)
         self._enforce_epoch_confirmation(
             command,
-            preprocessed_data=preprocessed_data,
-            handoff=handoff,
+            epoch_context=epoch_context,
             effective_event_ids=event_ids,
         )
         resource_check = ResourceChecker.check_epoch_materialization_safe(
@@ -159,12 +165,21 @@ class PreprocessCommandService:
             tmin=command.t_min,
             tmax=command.t_max,
         )
+        event_label_aliases_by_source = self._event_label_aliases_by_source(
+            handoff,
+            preprocessed_data,
+        )
+        epoch_options: dict[str, Any] = {}
+        if event_label_aliases_by_source is not None:
+            epoch_options["event_label_aliases_by_source"] = (
+                event_label_aliases_by_source
+            )
         boundary_diagnostics = boundary_summary.to_diagnostics()
         if boundary_summary.excluded_event_count:
             if boundary_summary.remaining_event_count <= 0:
                 raise PreconditionError(
                     "The selected epoch window exceeds recording bounds for every "
-                    "selected event. Shorten the epoch window before creating epochs.",
+                    "selected event. Shorten the EEG epoch window before continuing.",
                     diagnostics={"epoch_boundary_check": boundary_diagnostics},
                 )
             if boundary_summary.excluded_ratio > EPOCH_BOUNDARY_AUTO_EXCLUDE_MAX_RATIO:
@@ -183,6 +198,7 @@ class PreprocessCommandService:
                 command.t_min,
                 command.t_max,
                 True,
+                **epoch_options,
             )
         else:
             self.preprocess.apply_epoching(
@@ -190,6 +206,7 @@ class PreprocessCommandService:
                 event_ids,
                 command.t_min,
                 command.t_max,
+                **epoch_options,
             )
         message = f"Created EEG epochs from {command.t_min}s to {command.t_max}s."
         diagnostics: dict[str, Any] = {
@@ -266,16 +283,11 @@ class PreprocessCommandService:
         self,
         command: CreateEpochCommand,
         *,
-        preprocessed_data: list[Any],
-        handoff: dict[str, Any],
+        epoch_context: Mapping[str, Any],
         effective_event_ids: list[str] | dict[str, int] | None,
     ) -> None:
-        context = build_epoching_context(
-            preprocessed_data,
-            epoch_handoff=handoff,
-        )
         requirement = build_epoch_confirmation_requirement(
-            context,
+            epoch_context,
             t_min=command.t_min,
             t_max=command.t_max,
             event_ids=(
@@ -338,6 +350,96 @@ class PreprocessCommandService:
             label_text = str(label_name).strip()
             if event_text and label_text and event_text != label_text:
                 aliases[label_text] = event_text
+        return aliases
+
+    @classmethod
+    def _event_label_aliases_by_source(
+        cls,
+        handoff: dict[str, Any],
+        preprocessed_data: list[Any],
+    ) -> list[dict[str, str]] | None:
+        """Resolve reviewed class names without flattening per-run semantics."""
+        global_aliases = cls._normalized_event_label_aliases(
+            handoff.get("event_label_aliases"),
+        )
+        aliases_by_source: list[dict[str, str]] = []
+        source_semantics_resolved: list[bool] = []
+        for data in preprocessed_data:
+            source_aliases: dict[str, str] | None = None
+            getter = getattr(data, "get_runtime_detail", None)
+            if callable(getter):
+                try:
+                    hint = getter(EPOCH_HINT_KEY)
+                except Exception as exc:
+                    if handoff.get("run_dependent_mapping") is True:
+                        raise PreconditionError(
+                            "Creating EEG epochs is unavailable because reviewed "
+                            "per-recording class labels could not be read."
+                        ) from exc
+                else:
+                    if isinstance(hint, Mapping) and "event_label_aliases" in hint:
+                        source_aliases = cls._normalized_event_label_aliases(
+                            hint.get("event_label_aliases"),
+                        )
+            aliases_by_source.append(
+                dict(source_aliases if source_aliases is not None else global_aliases)
+            )
+            source_semantics_resolved.append(
+                bool(aliases_by_source[-1])
+                or cls._source_events_are_already_semantic(data, handoff)
+            )
+
+        if handoff.get("run_dependent_mapping") is True and any(
+            not resolved for resolved in source_semantics_resolved
+        ):
+            raise PreconditionError(
+                "Creating EEG epochs is unavailable because reviewed per-recording "
+                "class labels are incomplete. Review each run's event meanings again."
+            )
+        if not any(aliases_by_source):
+            return None
+        return aliases_by_source
+
+    @staticmethod
+    def _source_events_are_already_semantic(
+        data: Any,
+        handoff: Mapping[str, Any],
+    ) -> bool:
+        reviewed_labels = {
+            str(label).strip()
+            for label in handoff.get("usable_class_labels", [])
+            if str(label).strip()
+        }
+        if not reviewed_labels:
+            return False
+        try:
+            _events, event_id = data.get_event_list()
+        except Exception:
+            return False
+        if not isinstance(event_id, Mapping):
+            return False
+        source_event_names = {
+            str(name).strip() for name in event_id if str(name).strip()
+        }
+        unresolved_targets = {
+            str(name).strip()
+            for name in handoff.get("default_epoch_events", [])
+            if str(name).strip() and str(name).strip() not in reviewed_labels
+        }
+        return bool(source_event_names & reviewed_labels) and not bool(
+            source_event_names & unresolved_targets
+        )
+
+    @staticmethod
+    def _normalized_event_label_aliases(value: object) -> dict[str, str]:
+        if not isinstance(value, Mapping):
+            return {}
+        aliases: dict[str, str] = {}
+        for raw_event, display_label in value.items():
+            event_name = str(raw_event).strip()
+            label_name = str(display_label).strip()
+            if event_name and label_name and event_name != label_name:
+                aliases[event_name] = label_name
         return aliases
 
     def _handle_standard_preprocess(self, command: PreprocessCommand) -> HandlerResult:

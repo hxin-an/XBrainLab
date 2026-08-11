@@ -40,7 +40,7 @@ EXPECTED_CONTROLLER_TOOL_NAMES = (
     "clear_dataset",
     "query_state",
     "get_dataset_info",
-    "generate_dataset",
+    "configure_dataset_split",
     "evaluate",
     "visualize",
     "saliency",

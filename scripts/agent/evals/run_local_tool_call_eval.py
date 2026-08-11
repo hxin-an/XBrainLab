@@ -33,6 +33,10 @@ from scripts.agent.evals.run_tool_call_eval import (
 )
 from scripts.dev.inspect_local_assistant_runtime import classify_runtime
 from XBrainLab.backend.application.capabilities import build_capability_policy
+from XBrainLab.backend.application.state import (
+    ApplicationStateSnapshot,
+    DatasetSplitLifecycle,
+)
 from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.application.workflow_projection import (
     build_workflow_projection,
@@ -258,7 +262,7 @@ TOOL_INTENTS: dict[str, str] = {
     "apply_standard_preprocess": "preprocess",
     "apply_bandpass_filter": "preprocess",
     "epoch_data": "create_epoch",
-    "generate_dataset": "generate_dataset",
+    "configure_dataset_split": "configure_dataset_split",
     "set_model": "configure_training",
     "configure_training": "configure_training",
     "start_training": "train",
@@ -307,6 +311,81 @@ PHI4_DECISION_CASE_SUITES = {
     "development": PHI4_DECISION_DEVELOPMENT_CASE_IDS,
     "held-out": PHI4_DECISION_HELD_OUT_CASE_IDS,
 }
+
+_SAVED_SPLIT_STATE_NAMES = frozenset(
+    {"dataset_without_training_config", "training_ready", "trained"}
+)
+_STALE_GENERATE_DATASETS_REASON = "Generate datasets before training"
+_CURRENT_SAVE_SPLIT_REASON = "Save a valid data splitting specification before training"
+_EVAL_SPLIT_SPECIFICATION = {
+    "train_type": "Individual",
+    "is_cross_validation": False,
+    "val_splitters": [
+        {
+            "split_type": "By Trial",
+            "split_unit": "Ratio",
+            "value": "0.2",
+            "is_option": True,
+        }
+    ],
+    "test_splitters": [
+        {
+            "split_type": "By Trial",
+            "split_unit": "Ratio",
+            "value": "0.2",
+            "is_option": True,
+        }
+    ],
+}
+
+
+def _current_eval_state(state_name: str) -> ApplicationStateSnapshot:
+    """Project legacy eval labels onto the current deferred-split state contract."""
+    state = make_state(state_name)
+    if state_name not in _SAVED_SPLIT_STATE_NAMES:
+        return state
+
+    materialized = state_name == "trained"
+    split_specification = json.loads(json.dumps(_EVAL_SPLIT_SPECIFICATION))
+    return replace(
+        state,
+        dataset=replace(
+            state.dataset,
+            available=materialized,
+            count=1 if materialized else 0,
+            names=["Eval split"] if materialized else [],
+            generator_exists=materialized,
+            split_spec_saved=True,
+            split_specification=split_specification,
+            split_specification_fingerprint=_json_sha256(split_specification),
+            split_epoch_revision=1,
+            split_lifecycle=(
+                DatasetSplitLifecycle.VERIFIED
+                if materialized
+                else DatasetSplitLifecycle.SAVED
+            ),
+            split_materialized=materialized,
+        ),
+        active_dataset=replace(
+            state.active_dataset,
+            has_datasets=materialized,
+            has_saved_split=True,
+        ),
+    )
+
+
+def _current_eval_case_contract(case: EvalCase) -> EvalCase:
+    """Replace stale fixture wording with current capability-policy reasons."""
+    reasons = [
+        reason.replace(
+            _STALE_GENERATE_DATASETS_REASON,
+            _CURRENT_SAVE_SPLIT_REASON,
+        )
+        for reason in case.expected_reason_terms
+    ]
+    if reasons == case.expected_reason_terms:
+        return case
+    return replace(case, expected_reason_terms=reasons)
 
 
 @dataclass(frozen=True)
@@ -413,7 +492,7 @@ def build_prompt_messages(
 
 def _primary_prompt_state_snapshot(state_name: str) -> dict[str, Any]:
     """Return compact product state without evaluator labels or expected answers."""
-    state = make_state(state_name)
+    state = _current_eval_state(state_name)
     return {
         "pipeline_stage": state.pipeline_stage,
         "raw": {"loaded": state.raw.loaded, "count": state.raw.count},
@@ -425,6 +504,8 @@ def _primary_prompt_state_snapshot(state_name: str) -> dict[str, Any]:
         "dataset": {
             "available": state.dataset.available,
             "count": state.dataset.count,
+            "split_spec_saved": state.dataset.split_spec_saved,
+            "split_materialized": state.dataset.split_materialized,
         },
         "training": {
             "has_model": state.training.has_model,
@@ -452,7 +533,7 @@ def _primary_prompt_decision_context(
     available_tools: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Return state-only workflow advice without inferring the user intent."""
-    state = make_state(case.state_name)
+    state = _current_eval_state(case.state_name)
     policy = build_capability_policy(state)
     projection = build_workflow_projection(state, policy)
     recommended = projection.recommended_command
@@ -522,6 +603,7 @@ def _primary_prompt_decision_context(
 
 def score_local_case(case: EvalCase, raw_outputs: list[str]):
     """Score unmodified model decisions before host normalization or blocking."""
+    case = _current_eval_case_contract(case)
     predictions = [
         raw_prediction_from_model_output(case, raw_output) for raw_output in raw_outputs
     ]
@@ -534,6 +616,7 @@ def score_local_case(case: EvalCase, raw_outputs: list[str]):
 
 def score_host_assisted_local_case(case: EvalCase, raw_outputs: list[str]):
     """Score the product host's normalized and safely blocked interpretation."""
+    case = _current_eval_case_contract(case)
     admission_prediction = _host_admission_prediction(case)
     predictions = [
         admission_prediction
@@ -594,7 +677,7 @@ def _host_admission_prediction(case: EvalCase) -> Prediction | None:
     """Return the product decision made before optional local-model generation."""
     if not case.user_turns:
         return None
-    state = make_state(case.state_name)
+    state = _current_eval_state(case.state_name)
     publication = ApplicationViewPublication(
         generation=1,
         state=state,
@@ -921,7 +1004,14 @@ def run_local_eval(
     prompt_condition: PromptConditionSpec = PRIMARY_PROMPT_CONDITION,
 ) -> dict[str, Any]:
     """Run local-model evals and return a JSON-friendly report."""
-    cases = _select_cases(build_eval_cases(), case_ids=case_ids, case_limit=case_limit)
+    cases = [
+        _current_eval_case_contract(case)
+        for case in _select_cases(
+            build_eval_cases(),
+            case_ids=case_ids,
+            case_limit=case_limit,
+        )
+    ]
     config = LLMConfig.load_from_file() or LLMConfig()
     config.apply_runtime_selection("local", model_id=model_id, ui_active_mode="local")
     config.max_new_tokens = max_new_tokens
@@ -1841,7 +1931,7 @@ def _select_cases(
 
 
 def _available_tool_schemas(state_name: str) -> list[dict[str, Any]]:
-    state = make_state(state_name)
+    state = _current_eval_state(state_name)
     policy = build_capability_policy(state)
     stage_tools = set(STAGE_CONFIG[_prompt_stage_for_state(state)]["tools"])
     schemas: list[dict[str, Any]] = []
@@ -1884,7 +1974,7 @@ def _prompt_stage_for_state(state: Any) -> PipelineStage:
         return PipelineStage.TRAINED
     if state.training.is_running:
         return PipelineStage.TRAINING
-    if state.dataset.available:
+    if state.dataset.available or state.dataset.split_spec_saved:
         return PipelineStage.DATASET_READY
     if state.epoch.available:
         return PipelineStage.EPOCH_READY
@@ -1936,7 +2026,7 @@ def _normalized_prediction_arguments(
     params: dict[str, Any],
 ) -> dict[str, Any]:
     normalized = dict(params)
-    if tool_name == "generate_dataset":
+    if tool_name == "configure_dataset_split":
         normalized.setdefault("val_ratio", 0.2)
     return normalized
 
@@ -1975,7 +2065,9 @@ def _blocked_requested_intent_reason(state_name: str, intent: str) -> str:
     command_name = command_for_intent(intent)
     if command_name is None:
         return ""
-    capability = build_capability_policy(make_state(state_name)).get(command_name)
+    capability = build_capability_policy(_current_eval_state(state_name)).get(
+        command_name
+    )
     if capability.enabled:
         return ""
     return "; ".join(capability.reasons)
@@ -2028,7 +2120,9 @@ def _blocked_reason_for_tool(state_name: str, tool_name: str) -> str:
     command_name = TOOL_TO_COMMAND.get(tool_name)
     if command_name is None:
         return "" if tool_name in READ_ONLY_TOOLS else "Tool is not available."
-    capability = build_capability_policy(make_state(state_name)).get(command_name)
+    capability = build_capability_policy(_current_eval_state(state_name)).get(
+        command_name
+    )
     if capability.enabled:
         return ""
     return "; ".join(capability.reasons)
@@ -2038,7 +2132,9 @@ def _confirmation_required_for_tool(state_name: str, tool_name: str) -> bool:
     command_name = TOOL_TO_COMMAND.get(tool_name)
     if command_name is None:
         return False
-    capability = build_capability_policy(make_state(state_name)).get(command_name)
+    capability = build_capability_policy(_current_eval_state(state_name)).get(
+        command_name
+    )
     return capability.requires_confirmation or capability.confirmation_required
 
 

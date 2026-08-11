@@ -148,7 +148,7 @@ def _validated_interpretation_state() -> ApplicationStateSnapshot:
         (
             lambda: _with_pending_interpretation(_epoched_state()),
             "Generate a training dataset.",
-            CommandName.GENERATE_DATASET,
+            CommandName.CONFIGURE_DATASET_SPLIT,
             ("split_strategy", "training_mode"),
         ),
         (
@@ -204,7 +204,7 @@ def test_guided_goal_starts_from_backend_recommended_prerequisite() -> None:
         "Prepare this EEG dataset for training.",
         _publication(ApplicationStateSnapshot.empty()),
         scope=AssistantTurnScope.GUIDED_WORKFLOW,
-        terminal_command=CommandName.GENERATE_DATASET.value,
+        terminal_command=CommandName.CONFIGURE_DATASET_SPLIT.value,
     )
 
     assert decision.action is UserRequestAdmissionAction.UI_HANDOFF
@@ -368,6 +368,26 @@ def test_explicit_standard_preprocess_defaults_are_model_ready() -> None:
     assert decision.command is CommandName.PREPROCESS
 
 
+@pytest.mark.parametrize(
+    "text",
+    (
+        "Use Deep4Net for this training setup.",
+        "EEGConformer",
+        "Use braindecode.atcnet as the model.",
+    ),
+)
+def test_catalog_model_selection_reaches_configuration_not_training(
+    text: str,
+) -> None:
+    decision = UserRequestAdmissionPolicy().evaluate(
+        text,
+        _publication(ApplicationStateSnapshot.empty()),
+    )
+
+    assert decision.action is UserRequestAdmissionAction.GENERATE
+    assert decision.command is CommandName.CONFIGURE_TRAINING
+
+
 def test_state_query_is_admitted_as_deterministic_read_only_execution() -> None:
     decision = UserRequestAdmissionPolicy().evaluate(
         "What is ready now?",
@@ -430,7 +450,7 @@ def test_missing_split_strategy_opens_existing_splitting_surface() -> None:
     )
 
     assert decision.action is UserRequestAdmissionAction.UI_HANDOFF
-    assert decision.command is CommandName.GENERATE_DATASET
+    assert decision.command is CommandName.CONFIGURE_DATASET_SPLIT
     assert decision.decision_fields == ("split_strategy",)
     assert decision.suggestions == {
         "training_mode": "individual",
@@ -454,7 +474,7 @@ def test_missing_training_mode_opens_existing_splitting_surface() -> None:
     )
 
     assert decision.action is UserRequestAdmissionAction.UI_HANDOFF
-    assert decision.command is CommandName.GENERATE_DATASET
+    assert decision.command is CommandName.CONFIGURE_DATASET_SPLIT
     assert decision.decision_fields == ("training_mode",)
     assert decision.suggestions == {
         "split_strategy": "trial",

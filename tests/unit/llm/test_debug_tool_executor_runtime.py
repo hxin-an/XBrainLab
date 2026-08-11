@@ -149,6 +149,7 @@ def test_mapped_debug_command_uses_application_runtime_exactly_once() -> None:
         result = executor.execute(
             "configure_training",
             _complete_training_params(),
+            confirmed=True,
         )
 
     assert isinstance(result, ToolCommandResult)
@@ -165,7 +166,9 @@ def test_mapped_debug_command_uses_application_runtime_exactly_once() -> None:
     assert evidence.adapter_invocation_count == 0
     assert evidence.ui_adapter_invocation_count == 0
     assert evidence.runtime_command_invocation_count == 1
-    assert evidence.publication_read_count == 1
+    # One read admits the proposal; the second revalidates the exact setting
+    # confirmation against the current publication immediately before mutation.
+    assert evidence.publication_read_count == 2
 
 
 def test_explicit_headless_runtime_executes_mapped_command_exactly_once() -> None:
@@ -184,6 +187,7 @@ def test_explicit_headless_runtime_executes_mapped_command_exactly_once() -> Non
         ).execute(
             "configure_training",
             _complete_training_params(),
+            confirmed=True,
         )
 
     assert isinstance(result, ToolCommandResult)
@@ -757,7 +761,11 @@ def test_default_canonical_script_authorizes_declared_paths(
     monkeypatch.setattr(verify_all_tools_headless, "ToolExecutor", _Executor)
 
     assert verify_all_tools_headless.verify_all_tools_script() is False
-    assert str(data_dir) in captured_authorization["text"]
+    prefix = "Canonical repository debug script call: "
+    authorization_text = captured_authorization["text"]
+    assert authorization_text.startswith(prefix)
+    authorization = json.loads(authorization_text.removeprefix(prefix))
+    assert authorization["params"]["directory"] == str(data_dir)
 
 
 @pytest.mark.parametrize(

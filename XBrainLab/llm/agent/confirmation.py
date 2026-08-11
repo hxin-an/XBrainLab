@@ -26,6 +26,79 @@ class AgentConfirmationResolutionStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+_COMMAND_IMPACT_TEXT = {
+    "start_training": (
+        "Starts a potentially long GPU or CPU job using the configured resources. "
+        "You can stop it after it starts."
+    ),
+}
+_HIGH_IMPACT_DECISION_BOUNDARIES = frozenset(
+    {"high_impact", "high_impact_setting_change"}
+)
+
+
+@dataclass(frozen=True, slots=True)
+class AgentConfirmationRisk:
+    """Typed impact semantics copied from one verified action policy."""
+
+    destructive: bool = False
+    high_impact: bool = False
+    long_running: bool = False
+    decision_boundary: str | None = None
+    impact_text: str | None = None
+
+    def __post_init__(self) -> None:
+        for value, label in (
+            (self.destructive, "destructive"),
+            (self.high_impact, "high-impact"),
+            (self.long_running, "long-running"),
+        ):
+            if not isinstance(value, bool):
+                raise TypeError(f"Confirmation {label} risk must be a boolean.")
+        for value, label in (
+            (self.decision_boundary, "decision boundary"),
+            (self.impact_text, "impact text"),
+        ):
+            if value is not None and not isinstance(value, str):
+                raise TypeError(f"Confirmation {label} must be text or None.")
+            if isinstance(value, str) and not value.strip():
+                raise ValueError(f"Confirmation {label} cannot be empty.")
+
+    @classmethod
+    def from_policy(
+        cls,
+        *,
+        command_name: str,
+        destructive: bool,
+        high_impact: bool,
+        long_running: bool,
+        decision_boundary: str | None,
+    ) -> AgentConfirmationRisk:
+        """Copy typed policy facts without inferring them from display prose."""
+        command = _require_text(command_name, "Confirmation risk command")
+        typed_high_impact = bool(
+            high_impact or decision_boundary in _HIGH_IMPACT_DECISION_BOUNDARIES
+        )
+        boundary = (
+            "high_impact_setting_change"
+            if typed_high_impact and not decision_boundary
+            else decision_boundary
+        )
+        impact_text = _COMMAND_IMPACT_TEXT.get(command)
+        if typed_high_impact and command in {"configure_training", "set_model"}:
+            impact_text = (
+                "Changes the model or training settings used by the next run. "
+                "XBrainLab will validate the reviewed values before applying them."
+            )
+        return cls(
+            destructive=destructive,
+            high_impact=typed_high_impact,
+            long_running=long_running,
+            decision_boundary=boundary,
+            impact_text=impact_text,
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class AgentConfirmationRequest:
     """One exact assistant action waiting for an explicit user decision."""
@@ -34,7 +107,7 @@ class AgentConfirmationRequest:
     params_fingerprint: str
     action_label: str
     description: str
-    destructive: bool
+    risk: AgentConfirmationRisk
     publication_generation: int | None
     confirmation_kind: str | None = None
     parameter_rows: tuple[tuple[str, str], ...] = ()
@@ -46,8 +119,8 @@ class AgentConfirmationRequest:
         _require_text(self.params_fingerprint, "Confirmation params fingerprint")
         _require_text(self.action_label, "Confirmation action label")
         _require_text(self.description, "Confirmation description")
-        if not isinstance(self.destructive, bool):
-            raise TypeError("Confirmation destructive flag must be a boolean.")
+        if not isinstance(self.risk, AgentConfirmationRisk):
+            raise TypeError("Confirmation risk must use the typed risk contract.")
         _validate_generation(self.publication_generation)
         if self.confirmation_kind is not None and not isinstance(
             self.confirmation_kind,
@@ -62,6 +135,26 @@ class AgentConfirmationRequest:
         ):
             raise TypeError("Confirmation parameter rows must be typed text pairs.")
 
+    @property
+    def destructive(self) -> bool:
+        return self.risk.destructive
+
+    @property
+    def high_impact(self) -> bool:
+        return self.risk.high_impact
+
+    @property
+    def long_running(self) -> bool:
+        return self.risk.long_running
+
+    @property
+    def decision_boundary(self) -> str | None:
+        return self.risk.decision_boundary
+
+    @property
+    def impact_text(self) -> str | None:
+        return self.risk.impact_text
+
     @classmethod
     def for_action(
         cls,
@@ -74,18 +167,26 @@ class AgentConfirmationRequest:
         publication_generation: int | None,
         confirmation_kind: str | None = None,
         request_id: str | None = None,
+        risk: AgentConfirmationRisk | None = None,
     ) -> AgentConfirmationRequest:
         """Build a request from exact params and a safe human-readable summary."""
         if not isinstance(params, Mapping):
             raise TypeError("Confirmation params must be a mapping.")
         command = _require_text(command_name, "Confirmation command")
+        if not isinstance(destructive, bool):
+            raise TypeError("Confirmation destructive flag must be a boolean.")
+        typed_risk = risk or AgentConfirmationRisk(destructive=destructive)
+        if not isinstance(typed_risk, AgentConfirmationRisk):
+            raise TypeError("Confirmation risk must use the typed risk contract.")
+        if typed_risk.destructive is not destructive:
+            raise ValueError("Confirmation destructive flag must match its typed risk.")
         request = uuid4().hex if request_id is None else str(request_id).strip()
         return cls(
             command_name=command,
             params_fingerprint=_fingerprint_params(params),
             action_label=" ".join(str(action_label or "").split()),
             description=" ".join(str(description or "").split()),
-            destructive=destructive,
+            risk=typed_risk,
             publication_generation=publication_generation,
             confirmation_kind=(
                 " ".join(confirmation_kind.split()) if confirmation_kind else None

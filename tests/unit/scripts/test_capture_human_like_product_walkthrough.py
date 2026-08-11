@@ -57,6 +57,7 @@ from scripts.dev.capture_human_like_product_walkthrough import (
     _grab_widget_to_path,
     _record_capture_source_stability,
     _required_command_payload,
+    _ru_maxrss_kb,
     _run_walkthrough_steps,
     _use_native_window_capture,
     apply_review_choices,
@@ -726,9 +727,11 @@ def _valid_assistant_runtime_idle_phase() -> dict[str, Any]:
                 "setup_action_visible": True,
                 "setup_action_enabled": True,
                 "setup_action_text": "Open Assistant Settings",
+                "setup_action_semantic_text": "Open Assistant Settings",
                 "retry_action_visible": False,
                 "retry_action_enabled": False,
                 "retry_action_text": "Retry local assistant",
+                "retry_action_semantic_text": "Retry local assistant",
             }
         },
     }
@@ -738,7 +741,7 @@ def _valid_assistant_runtime_ready_phase() -> dict[str, Any]:
     return {
         "phase": "assistant_runtime_ready",
         "screenshot": "assistant-ready.png",
-        "visible_text": ["Ask about the current EEG workflow...", "Send"],
+        "visible_text": ["Ask about EEG...", "Send"],
         "button_state": [{"text": "Send", "enabled": False}],
         "workflow_state": {},
         "notes": {
@@ -750,7 +753,7 @@ def _valid_assistant_runtime_ready_phase() -> dict[str, Any]:
                 "composer_visible": True,
                 "send_button_enabled": False,
                 "send_button_text": "Send",
-                "composer_placeholder": "Ask about the current EEG workflow...",
+                "composer_placeholder": "Ask about EEG...",
                 "status_visible": False,
                 "status_text": "",
                 "inline_state_visible": False,
@@ -798,9 +801,11 @@ def _valid_assistant_runtime_failed_phase() -> dict[str, Any]:
                 "setup_action_visible": True,
                 "setup_action_enabled": True,
                 "setup_action_text": "Settings",
+                "setup_action_semantic_text": "Open Assistant Settings",
                 "retry_action_visible": True,
                 "retry_action_enabled": True,
                 "retry_action_text": "Retry local assistant",
+                "retry_action_semantic_text": "Retry local assistant",
             }
         },
     }
@@ -1012,7 +1017,12 @@ def test_validate_walkthrough_payload_rejects_noncanonical_phase_sequence(
     assert "phase sequence" in reason
 
 
-def _write_valid_screenshot_artifacts(payload: dict[str, Any], directory: Path) -> None:
+def _write_valid_screenshot_artifacts(
+    payload: dict[str, Any],
+    directory: Path,
+    *,
+    monkeypatch: pytest.MonkeyPatch | None = None,
+) -> None:
     screenshot_hashes: dict[str, str] = {}
     screenshot_review: list[dict[str, Any]] = []
     for index, key in enumerate(payload["screenshots"]):
@@ -1048,8 +1058,8 @@ def _write_valid_screenshot_artifacts(payload: dict[str, Any], directory: Path) 
                 },
             }
         )
-    identity = collect_source_identity(walkthrough_module.ROOT)
-    generated_at = datetime(2026, 8, 2, 4, 0, tzinfo=UTC)
+    identity = collect_source_identity(walkthrough_module.ROOT, refresh=True)
+    generated_at = datetime.now(UTC)
     payload["artifact_run"] = walkthrough_module._build_artifact_run_manifest(
         payload,
         staging_dir=directory,
@@ -1062,13 +1072,40 @@ def _write_valid_screenshot_artifacts(payload: dict[str, Any], directory: Path) 
     assert payload["artifact_run"]["screenshot_sha256"] == screenshot_hashes
     payload["ui_quality_review"]["screenshot_review"] = screenshot_review
     payload["ui_quality_review"]["frame_readiness_coverage"] = True
+    if monkeypatch is not None:
+        recorded_identity = payload["artifact_run"]["source_identity"]
+        validate_identity = walkthrough_module.validate_source_identity
+
+        def validate_pinned_identity(
+            value,
+            *,
+            expected_repo_root,
+            refresh,
+            current_identity,
+            artifact_name,
+        ):
+            del refresh, current_identity
+            return validate_identity(
+                value,
+                expected_repo_root=expected_repo_root,
+                refresh=False,
+                current_identity=recorded_identity,
+                artifact_name=artifact_name,
+            )
+
+        monkeypatch.setattr(
+            walkthrough_module,
+            "validate_source_identity",
+            validate_pinned_identity,
+        )
 
 
 def test_validate_walkthrough_payload_recomputes_published_screenshot_hashes(
     tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     payload = _base_payload()
-    _write_valid_screenshot_artifacts(payload, tmp_path)
+    _write_valid_screenshot_artifacts(payload, tmp_path, monkeypatch=monkeypatch)
 
     ok, reason = validate_walkthrough_payload(payload, require_files=True)
 
@@ -1105,9 +1142,10 @@ def test_walkthrough_artifact_manifest_binds_source_environment_and_claims(
 def test_validate_walkthrough_payload_rejects_undecodable_png_with_matching_hash(
     tmp_path: Path,
     corruption: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     payload = _base_payload()
-    _write_valid_screenshot_artifacts(payload, tmp_path)
+    _write_valid_screenshot_artifacts(payload, tmp_path, monkeypatch=monkeypatch)
     key = next(iter(payload["screenshots"]))
     path = Path(payload["screenshots"][key])
     if corruption == "text":
@@ -1127,9 +1165,10 @@ def test_validate_walkthrough_payload_rejects_undecodable_png_with_matching_hash
 
 def test_validate_walkthrough_payload_rechecks_saved_pixel_evidence(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     payload = _base_payload()
-    _write_valid_screenshot_artifacts(payload, tmp_path)
+    _write_valid_screenshot_artifacts(payload, tmp_path, monkeypatch=monkeypatch)
     key = next(iter(payload["screenshots"]))
     path = Path(payload["screenshots"][key])
     Image.new("RGB", (64, 48), color="black").save(path, format="PNG")
@@ -1145,9 +1184,10 @@ def test_validate_walkthrough_payload_rechecks_saved_pixel_evidence(
 
 def test_validate_walkthrough_payload_rechecks_saved_frame_readiness(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     payload = _base_payload()
-    _write_valid_screenshot_artifacts(payload, tmp_path)
+    _write_valid_screenshot_artifacts(payload, tmp_path, monkeypatch=monkeypatch)
     payload["ui_quality_review"]["screenshot_review"][0]["frame_readiness"][
         "stable"
     ] = False
@@ -1160,9 +1200,10 @@ def test_validate_walkthrough_payload_rechecks_saved_frame_readiness(
 
 def test_validate_walkthrough_payload_rechecks_saved_full_window_geometry(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     payload = _base_payload()
-    _write_valid_screenshot_artifacts(payload, tmp_path)
+    _write_valid_screenshot_artifacts(payload, tmp_path, monkeypatch=monkeypatch)
     phase = next(
         item
         for item in payload["phases"]
@@ -1270,6 +1311,56 @@ def test_assistant_runtime_contract_requires_recovery_action_in_idle_and_failed(
             _valid_assistant_runtime_phase(),
             _valid_assistant_runtime_ready_phase(),
             failed,
+        ]
+    )
+
+    assert review["passed"] is False
+    assert "incorrect settings action" in "; ".join(review["findings"])
+
+
+def test_assistant_runtime_contract_accepts_elided_visible_action_with_identity() -> (
+    None
+):
+    idle = _valid_assistant_runtime_idle_phase()
+    failed = _valid_assistant_runtime_failed_phase()
+    idle_evidence = idle["notes"]["assistant_runtime"]
+    failed_evidence = failed["notes"]["assistant_runtime"]
+    idle_evidence["setup_action_text"] = "Open Assistant Set..."
+    failed_evidence["retry_action_text"] = "Retry local..."
+    recovery = _valid_assistant_runtime_phase()
+    recovery["phase"] = "assistant_runtime_recovery_loading"
+    recovery["notes"]["assistant_runtime"].update(
+        {
+            "inline_state_title": "Retrying local assistant",
+            "inline_state_detail": "Retrying the local model.",
+        }
+    )
+
+    review = build_assistant_runtime_contract_review(
+        [
+            idle,
+            _valid_assistant_runtime_phase(),
+            recovery,
+            _valid_assistant_runtime_ready_phase(),
+            failed,
+        ]
+    )
+
+    assert review["passed"] is True, review["findings"]
+
+
+def test_assistant_runtime_contract_rejects_wrong_visible_action_with_identity() -> (
+    None
+):
+    idle = _valid_assistant_runtime_idle_phase()
+    idle["notes"]["assistant_runtime"]["setup_action_text"] = "Delete settings"
+
+    review = build_assistant_runtime_contract_review(
+        [
+            idle,
+            _valid_assistant_runtime_phase(),
+            _valid_assistant_runtime_ready_phase(),
+            _valid_assistant_runtime_failed_phase(),
         ]
     )
 
@@ -1844,7 +1935,7 @@ def test_validate_walkthrough_payload_rejects_missing_full_window_screenshot() -
 
 def test_assistant_source_fingerprint_covers_every_chat_presentation_source() -> None:
     relative_paths = {
-        str(path.relative_to(Path(__file__).resolve().parents[3]))
+        path.relative_to(Path(__file__).resolve().parents[3]).as_posix()
         for path in ASSISTANT_FINGERPRINT_PATHS
     }
 
@@ -1892,7 +1983,7 @@ def test_assistant_source_fingerprint_covers_capture_evidence_lifecycle_sources(
 ) -> None:
     root = Path(__file__).resolve().parents[3]
     relative_paths = {
-        str(path.relative_to(root)) for path in ASSISTANT_FINGERPRINT_PATHS
+        path.relative_to(root).as_posix() for path in ASSISTANT_FINGERPRINT_PATHS
     }
     required_sources = {
         "scripts/dev/human_like_walkthrough/readiness.py",
@@ -1920,7 +2011,7 @@ def test_assistant_source_fingerprint_covers_turn_history_and_action_contracts()
 ):
     root = Path(__file__).resolve().parents[3]
     relative_paths = {
-        str(path.relative_to(root)) for path in ASSISTANT_FINGERPRINT_PATHS
+        path.relative_to(root).as_posix() for path in ASSISTANT_FINGERPRINT_PATHS
     }
     required_contract_sources = {
         "XBrainLab/chat_contract.py",
@@ -2882,9 +2973,11 @@ def test_single_recording_walkthrough_uses_individual_trial_split() -> None:
     assert len(set(WALKTHROUGH_EVENT_ROWS)) == 10
     assert "t_max=0.51" in source
     assert 'model_name="SCCNet"' in source
-    assert 'split_strategy="trial"' in source
-    assert 'training_mode="individual"' in source
-    assert 'training_mode="group"' not in source
+    assert '"train_type": "Individual"' in source
+    assert '"split_type": "By Trial"' in source
+    assert "DatasetSplitPreviewRequest(" in source
+    assert "SaveDatasetSplitCommand(" in source
+    assert "GenerateDatasetCommand(" not in source
     assert "TrainCommand(confirmed=True, interactive=True)" in source
     assert "TrainCommand(confirmed=True, interactive=False)" not in source
 
@@ -2957,7 +3050,6 @@ def test_data_import_visual_evidence_rejects_duplicate_or_wrong_step(tmp_path) -
 def test_step_navigation_pixel_guard_rejects_unpainted_label(qtbot, tmp_path) -> None:
     widget = QWidget()
     qtbot.addWidget(widget)
-    widget.resize(980, 110)
     full_titles = (
         "Choose EEG Data",
         "Load Labels",
@@ -2966,22 +3058,29 @@ def test_step_navigation_pixel_guard_rejects_unpainted_label(qtbot, tmp_path) ->
         "Review and Import",
     )
     labels: list[QLabel] = []
+    label_left = 10
     for index, title in enumerate(full_titles, start=1):
         label = QLabel(f"{index}. {title}", widget)
-        label.setGeometry(10 + (index - 1) * 190, 8, 180, 34)
+        label_width = label.fontMetrics().horizontalAdvance(label.text()) + 20
+        label.setGeometry(label_left, 8, label_width, 34)
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         labels.append(label)
+        label_left += label_width + 10
+    widget.resize(max(label_left + 220, 1160), 110)
     cancel = QPushButton("Cancel", widget)
     cancel.setGeometry(10, 60, 90, 34)
     next_button = QPushButton("Next: Load Labels", widget)
     next_button.setObjectName("DataImportPrimaryButton")
-    next_button.setGeometry(770, 60, 190, 34)
+    primary_left = widget.width() - 220
+    next_button.setGeometry(primary_left, 60, 200, 34)
     apply_button = QPushButton("Confirm and Import", widget)
     apply_button.setObjectName("DataImportPrimaryButton")
-    apply_button.setGeometry(770, 60, 190, 34)
+    apply_button.setGeometry(primary_left, 60, 200, 34)
     apply_button.hide()
     summary = QLabel("Found 1 EEG file and 1 label carrier.", widget)
-    summary.setGeometry(300, 44, 300, 18)
+    summary_width = summary.fontMetrics().horizontalAdvance(summary.text()) + 20
+    summary_height = summary.fontMetrics().lineSpacing() + 4
+    summary.setGeometry(300, 44, summary_width, summary_height)
     summary.setAlignment(Qt.AlignmentFlag.AlignCenter)
     state = cast(Any, widget)
     state.step_labels = labels
@@ -2993,22 +3092,26 @@ def test_step_navigation_pixel_guard_rejects_unpainted_label(qtbot, tmp_path) ->
     qtbot.wait(20)
 
     empty = tmp_path / "empty.png"
-    Image.new("RGB", (980, 110), "#1e1e1e").save(empty)
+    Image.new("RGB", (widget.width(), widget.height()), "#1e1e1e").save(empty)
     with pytest.raises(RuntimeError, match="not fully rendered"):
         _assert_step_navigation_rendered(widget, empty)
 
     painted = tmp_path / "painted.png"
-    image = Image.new("RGB", (980, 110), "#1e1e1e")
-    ImageDraw.Draw(image).rectangle((10, 8, 189, 41), fill="#23303a")
+    image = Image.new("RGB", (widget.width(), widget.height()), "#1e1e1e")
+    first = labels[0].geometry()
+    ImageDraw.Draw(image).rectangle(
+        (first.left(), first.top(), first.right(), first.bottom()),
+        fill="#23303a",
+    )
     image.save(painted)
     with pytest.raises(RuntimeError, match="not fully rendered"):
         _assert_step_navigation_rendered(widget, painted)
 
     styled_blank = tmp_path / "styled-blank.png"
-    image = Image.new("RGB", (980, 110), "#1e1e1e")
+    image = Image.new("RGB", (widget.width(), widget.height()), "#1e1e1e")
     draw = ImageDraw.Draw(image)
     draw.rectangle(
-        (10, 8, 189, 41),
+        (first.left(), first.top(), first.right(), first.bottom()),
         fill="#23303a",
         outline="#5b7db1",
         width=1,
@@ -3151,11 +3254,12 @@ def test_text_paint_guard_honors_label_alignment_and_contents_margins(
 ) -> None:
     root = QWidget()
     qtbot.addWidget(root)
-    root.resize(620, 120)
     root.setStyleSheet("background: #202020;")
     label = QLabel("Interpretation summary is ready for review.", root)
-    label.setGeometry(30, 30, 560, 44)
     label.setContentsMargins(32, 4, 24, 4)
+    label_width = label.fontMetrics().horizontalAdvance(label.text()) + 56 + 16
+    label.setGeometry(30, 30, label_width, 44)
+    root.resize(label_width + 60, 120)
     label.setAlignment(alignment | Qt.AlignmentFlag.AlignVCenter)
     label.setStyleSheet("color: #f2f2f2; background: #303030;")
     root.show()
@@ -3170,6 +3274,34 @@ def test_text_paint_guard_honors_label_alignment_and_contents_margins(
         [label],
         surface_name="Aligned interpretation summary",
     )
+
+
+def test_unwrapped_label_probe_uses_widget_logical_font_metrics(
+    qtbot,
+    monkeypatch,
+) -> None:
+    label = QLabel("Interpretation summary is ready for review.")
+    qtbot.addWidget(label)
+    label.setContentsMargins(32, 4, 24, 4)
+    label.resize(label.fontMetrics().horizontalAdvance(label.text()) + 56 + 16, 44)
+    label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+    def reject_device_independent_layout(*_args, **_kwargs):
+        raise AssertionError("unwrapped labels must use the widget's logical metrics")
+
+    monkeypatch.setattr(
+        walkthrough_module, "QTextLayout", reject_device_independent_layout
+    )
+
+    probes = walkthrough_module._label_text_line_probes(
+        label,
+        label.text(),
+        surface_name="Aligned interpretation summary",
+    )
+
+    assert len(probes) == 1
+    _probe, expected_width = probes[0]
+    assert expected_width == label.fontMetrics().horizontalAdvance(label.text())
 
 
 def test_text_paint_guard_honors_word_wrap_and_rejects_real_label_clipping(
@@ -3874,7 +4006,7 @@ def test_workflow_contract_rejects_failed_happy_path_command() -> None:
                     "error_type": "precondition",
                 },
                 "dataset": {
-                    "command": "generate_dataset",
+                    "command": "configure_dataset_split",
                     "ok": False,
                     "error_type": "precondition",
                 },
@@ -4273,6 +4405,21 @@ def test_resource_smoke_records_max_rss_without_failing_high_water_only() -> Non
     assert summary["max_rss_growth_kb"] == 899900
 
 
+@pytest.mark.parametrize(
+    ("platform_name", "reported_value", "expected_kb"),
+    [
+        ("linux", 912_490, 912_490),
+        ("darwin", 912_490_496, 891_104),
+    ],
+)
+def test_ru_maxrss_is_normalized_to_kb_for_platform_contract(
+    platform_name: str,
+    reported_value: int,
+    expected_kb: int,
+) -> None:
+    assert _ru_maxrss_kb(reported_value, platform_name=platform_name) == expected_kb
+
+
 def test_resource_smoke_fails_closed_without_snapshots() -> None:
     summary = build_resource_smoke_summary(None)
 
@@ -4286,6 +4433,7 @@ def test_resource_smoke_rejects_live_foreign_thread_growth() -> None:
         [
             {
                 "label": "start",
+                "platform_name": "linux",
                 "live_python_threads": 1,
                 "live_python_thread_native_ids": [10],
                 "os_threads": 2,
@@ -4317,6 +4465,7 @@ def test_resource_smoke_accepts_idle_qt_and_explicit_cuda_runtime_threads() -> N
         [
             {
                 "label": "start",
+                "platform_name": "linux",
                 "live_python_threads": 1,
                 "live_python_thread_native_ids": [10],
                 "os_threads": 2,
@@ -4337,6 +4486,7 @@ def test_resource_smoke_accepts_idle_qt_and_explicit_cuda_runtime_threads() -> N
             },
             {
                 "label": "after_close",
+                "platform_name": "linux",
                 "live_python_threads": 2,
                 "live_python_thread_native_ids": [10, 21],
                 "os_threads": 6,
@@ -4382,6 +4532,488 @@ def test_resource_smoke_accepts_idle_qt_and_explicit_cuda_runtime_threads() -> N
     assert summary["unexpected_extra_os_thread_ids"] == []
     assert summary["persistent_runtime_os_thread_ids"] == [21, 22, 23, 24]
     assert summary["extra_live_python_thread_native_ids"] == [21]
+
+
+def test_resource_smoke_accepts_bounded_idle_qt_pool_after_concurrency_drop() -> None:
+    idle_records = [
+        {
+            "native_id": native_id,
+            "name": "Thread (pooled)",
+            "wait_channel": "futex_wait_queue",
+        }
+        for native_id in range(21, 27)
+    ]
+    summary = build_resource_smoke_summary(
+        [
+            {
+                "label": "start",
+                "platform_name": "linux",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 1,
+                "os_thread_ids": [10],
+                "os_thread_records": [
+                    {"native_id": 10, "name": "python", "wait_channel": "0"}
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 2,
+                "cuda_runtime_initialized": False,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "platform_name": "linux",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 7,
+                "os_thread_ids": [10, 21, 22, 23, 24, 25, 26],
+                "os_thread_records": [
+                    {"native_id": 10, "name": "python", "wait_channel": "0"},
+                    *idle_records,
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 2,
+                "cuda_runtime_initialized": False,
+                "max_rss_kb": 120,
+                "current_rss_kb": 120,
+            },
+        ]
+    )
+
+    assert summary["passed"] is True
+    assert summary["persistent_runtime_os_thread_ids"] == [21, 22, 23, 24, 25, 26]
+
+
+def _linux_dormant_qt_resource_notes(
+    *,
+    extra_count: int = 6,
+    wait_channel: str = "futex_do_wait",
+    qt_active_threads: int = 0,
+    thread_name: str = "Thread (pooled)",
+) -> list[dict[str, Any]]:
+    start_ids = list(range(10, 17))
+    extra_ids = list(range(21, 21 + extra_count))
+    return [
+        {
+            "label": "start",
+            "platform_name": "linux",
+            "live_python_threads": 1,
+            "live_python_thread_native_ids": [10],
+            "os_threads": len(start_ids),
+            "os_thread_ids": start_ids,
+            "os_thread_records": [],
+            "qt_active_threads": 0,
+            "qt_max_threads": 4,
+            "max_rss_kb": 100,
+            "current_rss_kb": 100,
+        },
+        {
+            "label": "after_close",
+            "platform_name": "linux",
+            "live_python_threads": 1,
+            "live_python_thread_native_ids": [10],
+            "os_threads": len(start_ids) + len(extra_ids),
+            "os_thread_ids": [*start_ids, *extra_ids],
+            "os_thread_records": [
+                {
+                    "native_id": native_id,
+                    "name": thread_name,
+                    "wait_channel": wait_channel,
+                }
+                for native_id in extra_ids
+            ],
+            "qt_active_threads": qt_active_threads,
+            "qt_max_threads": 4,
+            "max_rss_kb": 120,
+            "current_rss_kb": 120,
+        },
+    ]
+
+
+def test_resource_smoke_accepts_ci_observed_linux_dormant_qt_pool() -> None:
+    summary = build_resource_smoke_summary(_linux_dormant_qt_resource_notes())
+
+    assert summary["passed"] is True
+    assert summary["persistent_runtime_os_thread_ids"] == [21, 22, 23, 24, 25, 26]
+    assert summary["unexpected_extra_os_thread_ids"] == []
+    assert summary["linux_dormant_qt_thread_limit"] == 16
+
+
+def test_resource_smoke_accepts_product_sized_dormant_qt_pool_with_dummy_wrapper() -> (
+    None
+):
+    notes = _linux_dormant_qt_resource_notes(extra_count=9)
+    notes[-1]["live_python_threads"] = 2
+    notes[-1]["live_python_thread_native_ids"] = [10, 29]
+
+    summary = build_resource_smoke_summary(notes)
+
+    assert summary["passed"] is True
+    assert summary["persistent_runtime_os_thread_ids"] == list(range(21, 30))
+    assert summary["unexpected_extra_os_thread_ids"] == []
+
+
+@pytest.mark.parametrize(
+    ("wait_channel", "qt_active_threads", "thread_name"),
+    [
+        ("do_sys_poll", 0, "Thread (pooled)"),
+        ("futex_do_wait", 1, "Thread (pooled)"),
+        ("futex_do_wait", 0, "native-worker"),
+        ("futex_do_wait", 0, "python-worker"),
+    ],
+)
+def test_resource_smoke_rejects_unproven_linux_qt_pool_threads(
+    wait_channel: str,
+    qt_active_threads: int,
+    thread_name: str,
+) -> None:
+    summary = build_resource_smoke_summary(
+        _linux_dormant_qt_resource_notes(
+            wait_channel=wait_channel,
+            qt_active_threads=qt_active_threads,
+            thread_name=thread_name,
+        )
+    )
+
+    assert summary["passed"] is False
+    assert summary["persistent_runtime_os_thread_ids"] == []
+    assert summary["unexpected_extra_os_thread_ids"] == [21, 22, 23, 24, 25, 26]
+
+
+def test_resource_smoke_rejects_linux_dormant_qt_pool_above_cap() -> None:
+    summary = build_resource_smoke_summary(
+        _linux_dormant_qt_resource_notes(extra_count=17)
+    )
+
+    assert summary["passed"] is False
+    assert summary["persistent_runtime_os_thread_ids"] == []
+    assert summary["unexpected_extra_os_thread_ids"] == list(range(21, 38))
+
+
+def test_resource_smoke_accepts_bounded_linux_pool_with_process_thread_name() -> None:
+    idle_records = [
+        {
+            "native_id": native_id,
+            "name": "python3.11",
+            "wait_channel": "futex_wait_queue",
+        }
+        for native_id in range(21, 27)
+    ]
+    summary = build_resource_smoke_summary(
+        [
+            {
+                "label": "start",
+                "platform_name": "linux",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 1,
+                "os_thread_ids": [10],
+                "os_thread_records": [
+                    {"native_id": 10, "name": "python", "wait_channel": "0"}
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "platform_name": "linux",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 7,
+                "os_thread_ids": [10, 21, 22, 23, 24, 25, 26],
+                "os_thread_records": [
+                    {"native_id": 10, "name": "python", "wait_channel": "0"},
+                    *idle_records,
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "max_rss_kb": 120,
+                "current_rss_kb": 120,
+            },
+        ]
+    )
+
+    assert summary["passed"] is True
+    assert summary["persistent_runtime_os_thread_ids"] == [21, 22, 23, 24, 25, 26]
+
+
+def test_resource_smoke_rejects_running_linux_process_named_threads() -> None:
+    summary = build_resource_smoke_summary(
+        [
+            {
+                "label": "start",
+                "platform_name": "linux",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 1,
+                "os_thread_ids": [10],
+                "os_thread_records": [],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "platform_name": "linux",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 2,
+                "os_thread_ids": [10, 21],
+                "os_thread_records": [
+                    {"native_id": 21, "name": "python", "wait_channel": "0"}
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "max_rss_kb": 120,
+                "current_rss_kb": 120,
+            },
+        ]
+    )
+
+    assert summary["passed"] is False
+    assert summary["unexpected_extra_os_thread_ids"] == [21]
+
+
+def test_resource_smoke_accepts_bounded_anonymous_qt_pool_on_darwin() -> None:
+    summary = build_resource_smoke_summary(
+        [
+            {
+                "label": "start",
+                "platform_name": "darwin",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 1,
+                "os_thread_ids": [10],
+                "os_thread_records": [],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "platform_name": "darwin",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 9,
+                "os_thread_ids": [10, 21, 22, 23, 24, 25, 26, 27, 28],
+                "os_thread_records": [],
+                "qt_active_threads": 0,
+                "qt_max_threads": 8,
+                "max_rss_kb": 120,
+                "current_rss_kb": 120,
+            },
+        ]
+    )
+
+    assert summary["passed"] is True
+    assert summary["persistent_runtime_os_thread_ids"] == [
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+    ]
+
+
+def test_resource_smoke_accepts_ci_observed_blank_records_on_darwin() -> None:
+    summary = build_resource_smoke_summary(
+        [
+            {
+                "label": "start",
+                "platform_name": "darwin",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 3,
+                "os_thread_ids": [10, 11, 12],
+                "os_thread_records": [
+                    {"native_id": native_id, "name": "", "wait_channel": ""}
+                    for native_id in [10, 11, 12]
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 4,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "platform_name": "darwin",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 11,
+                "os_thread_ids": [10, 11, 12, 21, 22, 23, 24, 25, 26, 27, 28],
+                "os_thread_records": [
+                    {"native_id": native_id, "name": "", "wait_channel": ""}
+                    for native_id in [10, 11, 12, 21, 22, 23, 24, 25, 26, 27, 28]
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 4,
+                "max_rss_kb": 120,
+                "current_rss_kb": 120,
+            },
+        ]
+    )
+
+    assert summary["passed"] is True
+    assert summary["persistent_runtime_os_thread_ids"] == [
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+    ]
+    assert summary["limited_introspection_os_thread_ids"] == [
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+    ]
+    assert summary["limited_introspection_os_thread_limit"] == 12
+    assert "reported as limited-introspection evidence" in summary["boundary"]
+
+
+@pytest.mark.parametrize(
+    ("platform_name", "qt_active_threads", "extra_live_ids", "record_name"),
+    [
+        ("linux", 0, [], ""),
+        ("win32", 0, [], ""),
+        ("darwin", 1, [], ""),
+        ("darwin", 0, [21], ""),
+        ("darwin", 0, [], "QThread"),
+    ],
+)
+def test_resource_smoke_rejects_unproven_anonymous_runtime_threads(
+    platform_name: str,
+    qt_active_threads: int,
+    extra_live_ids: list[int],
+    record_name: str,
+) -> None:
+    summary = build_resource_smoke_summary(
+        [
+            {
+                "label": "start",
+                "platform_name": platform_name,
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 1,
+                "os_thread_ids": [10],
+                "os_thread_records": [],
+                "qt_active_threads": 0,
+                "qt_max_threads": 4,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "platform_name": platform_name,
+                "live_python_threads": 1 + len(extra_live_ids),
+                "live_python_thread_native_ids": [10, *extra_live_ids],
+                "os_threads": 7,
+                "os_thread_ids": [10, 21, 22, 23, 24, 25, 26],
+                "os_thread_records": [
+                    {
+                        "native_id": native_id,
+                        "name": record_name,
+                        "wait_channel": "",
+                    }
+                    for native_id in [21, 22, 23, 24, 25, 26]
+                ],
+                "qt_active_threads": qt_active_threads,
+                "qt_max_threads": 4,
+                "max_rss_kb": 120,
+                "current_rss_kb": 120,
+            },
+        ]
+    )
+
+    assert summary["passed"] is False
+    assert summary["limited_introspection_os_thread_ids"] == []
+    if extra_live_ids:
+        assert summary["extra_live_python_thread_native_ids"] == extra_live_ids
+    assert summary["unexpected_extra_os_thread_ids"] == [21, 22, 23, 24, 25, 26]
+
+
+def test_resource_smoke_rejects_darwin_anonymous_threads_above_cap() -> None:
+    extra_ids = list(range(21, 34))
+    summary = build_resource_smoke_summary(
+        [
+            {
+                "label": "start",
+                "platform_name": "darwin",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 1,
+                "os_thread_ids": [10],
+                "os_thread_records": [],
+                "qt_active_threads": 0,
+                "qt_max_threads": 16,
+                "max_rss_kb": 100,
+                "current_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "platform_name": "darwin",
+                "live_python_threads": 1,
+                "live_python_thread_native_ids": [10],
+                "os_threads": 1 + len(extra_ids),
+                "os_thread_ids": [10, *extra_ids],
+                "os_thread_records": [
+                    {"native_id": native_id, "name": "", "wait_channel": ""}
+                    for native_id in extra_ids
+                ],
+                "qt_active_threads": 0,
+                "qt_max_threads": 16,
+                "max_rss_kb": 120,
+                "current_rss_kb": 120,
+            },
+        ]
+    )
+
+    assert summary["passed"] is False
+    assert summary["limited_introspection_os_thread_ids"] == []
+    assert summary["unexpected_extra_os_thread_ids"] == extra_ids
+
+
+def test_resource_smoke_limited_introspection_is_visible_in_markdown() -> None:
+    payload = _base_payload()
+    payload["pass_fail_summary"]["resource_smoke"] = {
+        "checked": True,
+        "passed": True,
+        "limited_introspection_os_thread_ids": [
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+        ],
+        "limited_introspection_os_thread_limit": 12,
+        "boundary": "macOS limited native-thread introspection",
+    }
+
+    rendered = render_markdown(payload)
+
+    assert (
+        "limited-introspection OS threads: `[21, 22, 23, 24, 25, 26, 27, 28, 29]` "
+        "/ cap `12`" in rendered
+    )
 
 
 def test_resource_smoke_rejects_unattributed_qthread() -> None:

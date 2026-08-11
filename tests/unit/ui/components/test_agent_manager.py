@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ast
+import inspect
 import json
 from dataclasses import replace
 from threading import Thread
@@ -45,6 +47,7 @@ from XBrainLab.backend.utils.observer import ObserverDeliveryStatus
 from XBrainLab.chat_contract import CHAT_HISTORY_LIVE_WINDOW_ROWS
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantAttentionKind,
+    AssistantDecisionOwner,
     AssistantTurnActivity,
     AssistantTurnActivityPhase,
 )
@@ -128,6 +131,31 @@ def _admit_ui_turn(agent_mgr: Any, *, turn_id: int = 1) -> AssistantTurnCorrelat
         submission,
         correlation,
     )
+    return correlation
+
+
+def _publish_waiting_handoff_activity(
+    agent_mgr: Any,
+    request: WorkflowUiHandoffRequest,
+    *,
+    owner: AssistantDecisionOwner = AssistantDecisionOwner.GUI_DIALOG,
+) -> AssistantTurnCorrelation:
+    correlation = agent_mgr._assistant_turn_state.lease or _admit_ui_turn(agent_mgr)
+    agent_mgr.on_assistant_activity_changed(
+        AssistantTurnActivity(
+            AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+            command_name=request.command_name,
+            request_id=request.request_id,
+            turn_id=correlation.turn_id,
+            generation=correlation.generation,
+            decision_owner=owner,
+        )
+    )
+    if agent_mgr.chat_panel is not None and hasattr(
+        agent_mgr.chat_panel,
+        "show_notice",
+    ):
+        agent_mgr.chat_panel.show_notice.reset_mock()
     return correlation
 
 
@@ -300,6 +328,72 @@ class TestAgentManagerInit:
 
     def test_not_initialized_by_default(self, agent_mgr):
         assert not agent_mgr.agent_initialized
+
+    def test_constructor_does_not_resolve_legacy_study_controllers(self, qtbot):
+        from XBrainLab.backend.study import Study
+        from XBrainLab.ui.components.agent_manager import AgentManager
+
+        main_window = cast(Any, QMainWindow())
+        main_window.ai_btn = MagicMock()
+        qtbot.addWidget(main_window)
+        study = Study()
+        study.get_controller = MagicMock(
+            side_effect=AssertionError("AgentManager must use application ports."),
+        )
+
+        manager = AgentManager(main_window, study)
+
+        study.get_controller.assert_not_called()
+        assert not hasattr(manager, "preprocess_controller")
+
+    def test_status_projection_uses_one_atomic_publication_ast_boundary(self):
+        from XBrainLab.ui.components.agent_manager import AgentManager
+
+        tree = ast.parse(inspect.getsource(AgentManager))
+        class_node = next(node for node in tree.body if isinstance(node, ast.ClassDef))
+        methods = {
+            node.name: node
+            for node in class_node.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+
+        def called_names(method_name: str) -> set[str]:
+            return {
+                node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id
+                for node in ast.walk(methods[method_name])
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, (ast.Attribute, ast.Name))
+            }
+
+        assert "get_view_publication" in called_names("refresh_backend_status")
+        assert "build_assistant_status_projection" in called_names(
+            "_render_backend_publication"
+        )
+        all_calls = {
+            node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, (ast.Attribute, ast.Name))
+        }
+        assert {
+            "get_state",
+            "get_capabilities",
+            "build_workflow_projection",
+        }.isdisjoint(all_calls)
+        assert "_product_next_steps" not in methods
+        assert "_on_execution_mode_changed" not in methods
+        assert "_sync_execution_mode_ui" not in methods
+        capability_train_lookups = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == "train"
+        ]
+        assert capability_train_lookups == []
 
 
 class TestAgentManagerMethods:
@@ -994,7 +1088,10 @@ class TestAgentManagerMethods:
             is ChatMessagePresentationKind.ERROR
         )
 
-    def test_error_response_offers_retry_for_last_user_request(self, agent_mgr) -> None:
+    def test_error_response_without_typed_action_does_not_invent_retry(
+        self,
+        agent_mgr,
+    ) -> None:
         agent_mgr._last_user_input = "Review the training configuration"
         correlation = _admit_ui_turn(agent_mgr)
         presentation = AssistantResponsePresentation(
@@ -1008,10 +1105,7 @@ class TestAgentManagerMethods:
         actions = agent_mgr.chat_controller.add_agent_message.call_args.kwargs[
             "actions"
         ]
-        assert len(actions) == 1
-        assert actions[0].label == "Try again"
-        assert actions[0].kind is ChatResponseActionKind.SEND_MESSAGE
-        assert actions[0].prompt == "Review the training configuration"
+        assert actions == ()
 
     def test_error_response_keeps_runtime_recovery_action_without_duplicate_retry(
         self,
@@ -2033,6 +2127,7 @@ class TestAgentManagerMethods:
                     request_id=request.request_id,
                     turn_id=correlation.turn_id,
                     generation=correlation.generation,
+                    decision_owner=AssistantDecisionOwner.CONFIRMATION_CARD,
                 )
             )
             agent_mgr._show_action_confirmation(request)
@@ -2091,6 +2186,7 @@ class TestAgentManagerMethods:
                     request_id=request.request_id,
                     turn_id=correlation.turn_id,
                     generation=correlation.generation,
+                    decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
                 )
             )
             agent_mgr.handle_workflow_ui_handoff(request)
@@ -2890,6 +2986,8 @@ class TestAgentManagerMethods:
                 AssistantTurnActivity(
                     AssistantTurnActivityPhase.WAITING_FOR_DECISION,
                     command_name="start_training",
+                    request_id="training-confirmation-1",
+                    decision_owner=AssistantDecisionOwner.CONFIRMATION_CARD,
                 ),
                 ChatTurnPresentationPhase.WAITING,
                 ChatTurnCancelability.NOT_CANCELLABLE,
@@ -2940,6 +3038,7 @@ class TestAgentManagerMethods:
                 WorkflowUiHandoffResolutionStatus.COMMAND_PENDING,
             )
         )
+        _publish_waiting_handoff_activity(agent_mgr, request)
 
         agent_mgr.handle_workflow_ui_handoff(request)
 
@@ -2989,6 +3088,7 @@ class TestAgentManagerMethods:
         request = WorkflowUiHandoffRequest.for_decision("create_epoch")
         resolution = _handoff_resolution(request, status)
         agent_mgr._workflow_ui_handoff_host.open = MagicMock(return_value=resolution)
+        _publish_waiting_handoff_activity(agent_mgr, request)
 
         agent_mgr.handle_workflow_ui_handoff(request)
 
@@ -3017,6 +3117,7 @@ class TestAgentManagerMethods:
             return pending
 
         agent_mgr._workflow_ui_handoff_host.open = MagicMock(side_effect=_open)
+        _publish_waiting_handoff_activity(agent_mgr, request)
 
         agent_mgr.handle_workflow_ui_handoff(request)
         callbacks[0](completed)
@@ -3052,6 +3153,7 @@ class TestAgentManagerMethods:
                 message="Assistant runtime closed before the dialog returned.",
             )
         )
+        _publish_waiting_handoff_activity(agent_mgr, request)
 
         agent_mgr.handle_workflow_ui_handoff(request)
 
@@ -3080,6 +3182,7 @@ class TestAgentManagerMethods:
                 request_id=request.request_id,
                 turn_id=correlation.turn_id,
                 generation=correlation.generation,
+                decision_owner=AssistantDecisionOwner.CONFIRMATION_CARD,
             )
         )
         agent_mgr.chat_panel.show_notice.reset_mock()
@@ -3112,6 +3215,42 @@ class TestAgentManagerMethods:
             "Assistant runtime closed before confirmation returned."
         )
 
+    def test_approved_confirmation_is_forwarded_and_cleared(self, agent_mgr):
+        agent_mgr.chat_panel = MagicMock()
+        correlation = _admit_ui_turn(agent_mgr)
+        request = AgentConfirmationRequest.for_action(
+            command_name="start_training",
+            params={"learning_rate": 0.001},
+            action_label="Start training",
+            description="Start the configured training run.",
+            destructive=False,
+            publication_generation=4,
+        )
+        agent_mgr.on_assistant_activity_changed(
+            AssistantTurnActivity(
+                AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+                command_name=request.command_name,
+                request_id=request.request_id,
+                turn_id=correlation.turn_id,
+                generation=correlation.generation,
+                decision_owner=AssistantDecisionOwner.CONFIRMATION_CARD,
+            )
+        )
+        resolution = AgentConfirmationResolution.for_request(
+            request,
+            status=AgentConfirmationResolutionStatus.APPROVED,
+        )
+
+        agent_mgr._resolve_action_confirmation(resolution)
+
+        sent = agent_mgr._assistant_runtime.confirm.call_args.args[0]
+        assert sent is resolution
+        assert sent.matches(request)
+        assert sent.status is AgentConfirmationResolutionStatus.APPROVED
+        agent_mgr.chat_panel.clear_confirmation_request.assert_called_once_with(
+            request.request_id
+        )
+
     def test_confirmation_card_requires_matching_active_turn_activity(
         self,
         agent_mgr,
@@ -3137,6 +3276,7 @@ class TestAgentManagerMethods:
                 request_id="stale-request",
                 turn_id=correlation.turn_id,
                 generation=correlation.generation,
+                decision_owner=AssistantDecisionOwner.CONFIRMATION_CARD,
             )
         )
         agent_mgr._show_action_confirmation(request)
@@ -3149,6 +3289,7 @@ class TestAgentManagerMethods:
                 request_id=request.request_id,
                 turn_id=correlation.turn_id,
                 generation=correlation.generation,
+                decision_owner=AssistantDecisionOwner.CONFIRMATION_CARD,
             )
         )
         agent_mgr._show_action_confirmation(request)
@@ -3205,7 +3346,7 @@ class TestAgentManagerMethods:
         agent_mgr._workflow_ui_handoff_host.open = MagicMock()
 
         agent_mgr.handle_workflow_ui_handoff(
-            {"tool_name": "create_epoch", "command": "generate_dataset"}
+            {"tool_name": "create_epoch", "command": "configure_dataset_split"}
         )
 
         agent_mgr._workflow_ui_handoff_host.open.assert_not_called()
@@ -3220,9 +3361,21 @@ class TestAgentManagerMethods:
                 WorkflowUiHandoffResolutionStatus.COMPLETED,
             )
         )
+        _publish_waiting_handoff_activity(agent_mgr, request)
 
         agent_mgr.handle_workflow_ui_handoff(request)
 
+        agent_mgr._assistant_runtime.resolve_ui_handoff.assert_not_called()
+
+    def test_stale_handoff_request_cannot_open_for_current_turn(self, agent_mgr):
+        active_request = WorkflowUiHandoffRequest.for_decision("create_epoch")
+        stale_request = WorkflowUiHandoffRequest.for_decision("create_epoch")
+        _publish_waiting_handoff_activity(agent_mgr, active_request)
+        agent_mgr._workflow_ui_handoff_host.open = MagicMock()
+
+        agent_mgr.handle_workflow_ui_handoff(stale_request)
+
+        agent_mgr._workflow_ui_handoff_host.open.assert_not_called()
         agent_mgr._assistant_runtime.resolve_ui_handoff.assert_not_called()
 
     def test_untyped_panel_navigation_payload_is_rejected(
@@ -3234,7 +3387,7 @@ class TestAgentManagerMethods:
         params = {
             "panel": "preprocess",
             "tool_name": "create_epoch",
-            "command": "generate_dataset",
+            "command": "configure_dataset_split",
         }
 
         agent_mgr.handle_panel_navigation(params)
@@ -3333,22 +3486,32 @@ class TestAgentManagerMethods:
 
     def test_prepare_model_deletion_no_controller(self, agent_mgr):
         agent_mgr._assistant_runtime.controller = None
+
         assert agent_mgr.prepare_model_deletion("test") is True
+        agent_mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.assert_not_called()
 
-    def test_prepare_model_deletion_local_mode(self, agent_mgr):
+    def test_prepare_model_deletion_allows_inactive_runtime(self, agent_mgr):
+        agent_mgr._assistant_runtime.controller = MagicMock()
+        agent_mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.return_value = False
+
+        assert agent_mgr.prepare_model_deletion("test") is True
+        agent_mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.assert_called_once_with()
+
+    def test_prepare_model_deletion_blocks_active_local_runtime(self, agent_mgr):
+        agent_mgr._assistant_runtime.controller = MagicMock()
         agent_mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.return_value = True
-        with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
+        with patch(
+            "XBrainLab.ui.components.agent_manager.QMessageBox.warning"
+        ) as warning:
             assert agent_mgr.prepare_model_deletion("test") is False
 
-    def test_prepare_model_deletion_stale_remote_mode_still_blocks(self, agent_mgr):
-        agent_mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.return_value = True
-        with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
-            assert agent_mgr.prepare_model_deletion("test") is False
-
-    def test_prepare_model_deletion_uses_inference_mode_truth(self, agent_mgr):
-        agent_mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.return_value = True
-        with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
-            assert agent_mgr.prepare_model_deletion("test") is False
+        agent_mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.assert_called_once_with()
+        warning.assert_called_once_with(
+            agent_mgr.main_window,
+            "Assistant Model In Use",
+            "The AI assistant is currently using this local model.\n"
+            "Close the assistant or select a different model before deleting it.",
+        )
 
     def test_on_processing_state_changed(self, agent_mgr):
         agent_mgr.chat_panel = MagicMock()
@@ -3621,6 +3784,7 @@ class TestAgentManagerMethods:
         assert features & QDockWidget.DockWidgetFeature.DockWidgetMovable
         assert features & QDockWidget.DockWidgetFeature.DockWidgetFloatable
         assert manager.chat_dock.minimumWidth() >= 320
+        assert manager.chat_panel.minimumWidth() >= 320
         title = manager.chat_dock.findChild(QLabel, "AssistantDockTitle")
         assert title is not None
         assert title.minimumWidth() >= title.fontMetrics().horizontalAdvance(
@@ -3827,7 +3991,7 @@ class TestAgentManagerMethods:
 
         assert "Training is not available yet" in visible
         assert "Load raw data before training" in visible
-        assert "Generate datasets before training" in visible
+        assert "Save a valid data splitting specification before training" in visible
         assert "Tool Output:" not in visible
         assert "command_name" not in visible
         assert manager.chat_panel.empty_state_widget.accessibleDescription() == (
@@ -4122,6 +4286,51 @@ class TestAgentManagerProductChatFlow:
         finally:
             manager.close()
 
+    def test_exhausted_error_retry_remains_available_in_narrow_dock(
+        self,
+        qtbot,
+    ) -> None:
+        manager, fake = _make_real_manager_with_fake_controller(qtbot, "normal")
+        try:
+            assert manager.chat_panel is not None
+            assert manager.assistant_header is not None
+            manager._last_user_input = "Configure training for 20 epochs."
+            correlation = _admit_ui_turn(manager, turn_id=902)
+            manager.assistant_header.resize(320, manager.assistant_header.height())
+            manager.assistant_header._sync_responsive_actions()
+
+            manager._handle_response_presentation(
+                AssistantResponsePresentation(
+                    text="The assistant action failed after its automatic retry.",
+                    correlation=correlation,
+                    kind=AssistantResponseKind.ERROR,
+                    actions=(
+                        AssistantResponseAction.send_message(
+                            "Try again",
+                            manager._last_user_input,
+                        ),
+                    ),
+                )
+            )
+            QApplication.processEvents()
+
+            assert manager.retry_title_btn.isHidden()
+            retry_buttons = [
+                button
+                for button in manager.chat_panel.response_actions_widget.findChildren(
+                    QToolButton
+                )
+                if button.text() == "Try again"
+            ]
+            assert len(retry_buttons) == 1
+
+            retry_buttons[0].click()
+            QApplication.processEvents()
+
+            assert fake.received_inputs == [manager._last_user_input]
+        finally:
+            manager.close()
+
     def test_background_queued_render_failure_retries_and_delivers_terminal_once(
         self,
         qtbot,
@@ -4265,6 +4474,23 @@ class TestAgentManagerProductChatFlow:
         assert "Hello from XBrainLab" in bubble.get_text()
         assert manager.chat_controller.is_processing is False
         assert manager.chat_panel.is_processing is False
+
+    def test_retry_replays_last_request_through_real_panel_admission(self, qtbot):
+        manager, fake = _make_real_manager_with_fake_controller(qtbot, "normal")
+        manager.chat_panel.input_field.setText("inspect the loaded EEG")
+        manager.chat_panel._on_send()
+
+        manager.retry_last_user_input()
+
+        assert fake.received_inputs == [
+            "inspect the loaded EEG",
+            "inspect the loaded EEG",
+        ]
+        assert [
+            message["content"]
+            for message in manager.chat_controller.messages
+            if message["role"] == "user"
+        ] == ["inspect the loaded EEG", "inspect the loaded EEG"]
 
     def test_empty_response_fallback_is_visible(self, qtbot):
         manager, _fake = _make_real_manager_with_fake_controller(qtbot, "empty")

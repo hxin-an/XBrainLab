@@ -31,6 +31,7 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.application.dataset_split_preview import (
     DatasetSplitContext,
     DatasetSplitPreviewPublication,
+    DatasetSplitPreviewReceipt,
     DatasetSplitPreviewRequest,
 )
 from XBrainLab.backend.dataset import (
@@ -419,6 +420,7 @@ class DataSplittingDialog(BaseDialog):
 
         self.step2_window: DataSplittingPreviewDialog | None = None
         self.split_result: dict[str, object] | None = None
+        self.split_preview_receipt: DatasetSplitPreviewReceipt | None = None
 
         # UI Elements
         self.canvas: PreviewCanvas | None = None
@@ -812,7 +814,12 @@ class DataSplittingDialog(BaseDialog):
             initial_values=self.initial_values,
         )
         if self.step2_window.exec():
-            self.split_result = self.step2_window.get_result()
+            split_result = self.step2_window.get_result()
+            preview_receipt = self.step2_window.get_preview_receipt()
+            if split_result is None or preview_receipt is None:
+                return
+            self.split_result = split_result
+            self.split_preview_receipt = preview_receipt
             super().accept()
         else:
             return  # Allow user to retry instead of rejecting
@@ -825,6 +832,10 @@ class DataSplittingDialog(BaseDialog):
 
         """
         return self.split_result
+
+    def get_preview_receipt(self) -> DatasetSplitPreviewReceipt | None:
+        """Return detached evidence for the exact accepted split preview."""
+        return self.split_preview_receipt
 
     def _sync_availability(self) -> None:
         """Reflect whether detached context and preview service are available."""

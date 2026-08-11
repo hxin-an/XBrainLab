@@ -8,6 +8,7 @@ import pytest
 
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantAttentionKind,
+    AssistantDecisionOwner,
     AssistantTurnActivity,
     AssistantTurnActivityPhase,
 )
@@ -42,6 +43,48 @@ def test_attention_kind_is_typed_and_independent_of_message_copy() -> None:
 
     assert terse.attention_kind is detailed.attention_kind
     assert terse.attention_kind is AssistantAttentionKind.ERROR
+
+
+def test_waiting_activity_requires_a_typed_decision_owner_and_identity() -> None:
+    activity = AssistantTurnActivity(
+        AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+        command_name="configure_training",
+        request_id="confirmation-7",
+        decision_owner=AssistantDecisionOwner.CONFIRMATION_CARD,
+    )
+
+    assert activity.decision_owner is AssistantDecisionOwner.CONFIRMATION_CARD
+
+    with pytest.raises(ValueError, match="decision owner"):
+        AssistantTurnActivity(
+            AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+            command_name="configure_training",
+            request_id="confirmation-7",
+        )
+
+
+@pytest.mark.parametrize("field_name", ["command_name", "request_id"])
+def test_waiting_activity_rejects_missing_decision_identity(field_name: str) -> None:
+    values = {
+        "command_name": "create_epoch",
+        "request_id": "epoch-dialog-1",
+    }
+    values[field_name] = ""
+
+    with pytest.raises(ValueError, match="decision identity"):
+        AssistantTurnActivity(
+            AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+            decision_owner=AssistantDecisionOwner.GUI_DIALOG,
+            **values,
+        )
+
+
+def test_non_waiting_activity_rejects_a_decision_owner() -> None:
+    with pytest.raises(ValueError, match="only valid while waiting"):
+        AssistantTurnActivity(
+            AssistantTurnActivityPhase.THINKING,
+            decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
+        )
 
 
 @pytest.mark.parametrize("turn_id", [0, -1, True, "7"])

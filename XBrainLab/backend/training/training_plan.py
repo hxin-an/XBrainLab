@@ -202,6 +202,8 @@ def to_holder(
     dev: str,
     bs: int,
     shuffle: bool = False,
+    *,
+    seed: int,
 ) -> torch_data.DataLoader | None:
     """Convert data arrays into a PyTorch DataLoader using shared memory.
 
@@ -212,12 +214,15 @@ def to_holder(
         dev: Target PyTorch device string.
         bs: Batch size.
         shuffle: Whether to shuffle the data. Defaults to ``False``.
+        seed: Effective repeat seed used by this loader's RNG.
 
     Returns:
         A :class:`torch.utils.data.DataLoader` wrapping a
         :class:`SharedMemoryDataset`, or ``None`` if ``indices`` is empty.
 
     """
+    if type(seed) is not int or not 0 <= seed <= 0xFFFF_FFFF:
+        raise ValueError("DataLoader seed must be an unsigned 32-bit integer")
     if len(indices) == 0:
         return None
 
@@ -230,6 +235,7 @@ def to_holder(
         batch_size=bs,
         shuffle=shuffle,
         pin_memory=dev.startswith("cuda"),
+        generator=torch.Generator().manual_seed(seed),
     )
     return dataloader
 
@@ -303,8 +309,9 @@ class TrainingPlanHolder:
     ):
         """Initialize the training plan holder.
 
-        Creates :class:`TrainRecord` instances for each repetition, each with
-        a fresh model and random seed.
+        Creates :class:`TrainRecord` instances for each repetition. The option
+        owns one concrete base seed, and every repeat derives
+        ``base_seed + repeat_index``.
 
         Args:
             model_holder: Holder containing the model class and parameters.
@@ -336,7 +343,7 @@ class TrainingPlanHolder:
         self.error: str | None = None
         self.status = Status.PENDING.value
         for i in range(self.option.repeat_num):
-            seed = set_seed(seed=None)
+            seed = self._resolve_and_apply_repeat_seed(i)
             try:
                 model = self.model_holder.get_model(
                     self.dataset.get_epoch_data().get_model_args(),
@@ -363,6 +370,85 @@ class TrainingPlanHolder:
                 ),
             )
         self._validate_loaded_saliency_artifacts()
+
+    def _verified_repeat_seed(
+        self,
+        repeat_index: int,
+        *,
+        train_record: TrainRecord | None = None,
+    ) -> int:
+        """Return the configured repeat seed after validating persisted truth."""
+        configured_seed = self.option.get_seed_for_repeat(repeat_index)
+        if type(configured_seed) is not int or not 0 <= configured_seed <= 0xFFFF_FFFF:
+            raise RuntimeError("Configured repeat seed is not a valid 32-bit integer")
+        if train_record is not None:
+            recorded_seed = train_record.seed
+            if (
+                train_record.repeat != repeat_index
+                or type(recorded_seed) is not int
+                or not 0 <= recorded_seed <= 0xFFFF_FFFF
+                or recorded_seed != configured_seed
+            ):
+                raise RuntimeError(
+                    "Training record seed does not match the configured repeat seed"
+                )
+        return configured_seed
+
+    def _resolve_and_apply_repeat_seed(
+        self,
+        repeat_index: int,
+        *,
+        train_record: TrainRecord | None = None,
+    ) -> int:
+        """Apply and return the one effective seed owned by this repeat."""
+        configured_seed = self._verified_repeat_seed(
+            repeat_index,
+            train_record=train_record,
+        )
+        effective_seed = set_seed(seed=configured_seed)
+        if (
+            type(effective_seed) is not int
+            or not 0 <= effective_seed <= 0xFFFF_FFFF
+            or effective_seed != configured_seed
+        ):
+            raise RuntimeError(
+                "Training seed application did not return the configured repeat seed"
+            )
+        return effective_seed
+
+    def _prepare_repeat_for_training(self, train_record: TrainRecord) -> None:
+        """Establish the only supported RNG state at a repeat training boundary."""
+        if not any(train_record is record for record in self.train_record_list):
+            raise ValueError("Training record belongs to another training plan")
+        self._verified_repeat_seed(
+            train_record.repeat,
+            train_record=train_record,
+        )
+
+        fresh_repeat = (
+            train_record.epoch == 0
+            and train_record.start_timestamp is None
+            and train_record.end_timestamp is None
+        )
+        process_local_evaluation_pause = (
+            train_record.epoch >= self.option.epoch
+            and train_record.start_timestamp is not None
+            and train_record.end_timestamp is not None
+        )
+        if not fresh_repeat and not process_local_evaluation_pause:
+            raise RuntimeError(
+                "Partially completed training cannot be resumed reproducibly: "
+                "model, optimizer, global RNG, and DataLoader generator continuation "
+                "state are not persisted together. Start a fresh training plan "
+                "instead."
+            )
+
+        train_record.resume()
+        if fresh_repeat:
+            self._resolve_and_apply_repeat_seed(
+                train_record.repeat,
+                train_record=train_record,
+            )
 
     def _validate_loaded_saliency_artifacts(self) -> None:
         """Fail closed when a persisted record belongs to another producer."""
@@ -415,6 +501,30 @@ class TrainingPlanHolder:
         validate_type(self.dataset, Dataset, "dataset")
         validate_type(self.option, TrainingOption, "option")
         self.option.validate()
+        self._validate_finite_epoch_data()
+
+    def _validate_finite_epoch_data(self) -> None:
+        data = np.asarray(self.dataset.get_epoch_data().get_data())
+        flat = data.reshape(-1)
+        chunk_size = 1_048_576
+        for start in range(0, flat.size, chunk_size):
+            chunk = flat[start : start + chunk_size]
+            invalid = np.flatnonzero(~np.isfinite(chunk))
+            if invalid.size == 0:
+                continue
+            flat_index = start + int(invalid[0])
+            location = np.unravel_index(flat_index, data.shape)
+            if len(location) == 3:
+                epoch, channel, sample = (int(value) for value in location)
+                raise ValueError(
+                    "Training dataset contains NaN or infinite values at "
+                    f"epoch {epoch}, channel {channel}, sample {sample}. "
+                    "Review channel selection and preprocessing before training."
+                )
+            raise ValueError(
+                "Training dataset contains NaN or infinite values. Review "
+                "channel selection and preprocessing before training."
+            )
 
     # interact
     def train(self) -> None:
@@ -425,13 +535,15 @@ class TrainingPlanHolder:
         error message.
         """
         try:
+            self._validate_finite_epoch_data()
             for i in range(self.option.repeat_num):
                 with self._state_mutation():
                     self.status = Status.INIT.value.format(
                         self.train_record_list[i].get_name(),
                     )
                 train_record = self.train_record_list[i]
-                train_record.resume()
+                if train_record.is_finished():
+                    continue
                 self.train_one_repeat(train_record)
                 train_record.pause()
             with self._state_mutation():
@@ -497,18 +609,25 @@ class TrainingPlanHolder:
 
     def get_loader(
         self,
+        train_record: TrainRecord,
     ) -> tuple[
         torch_data.DataLoader | None,
         torch_data.DataLoader | None,
         torch_data.DataLoader | None,
     ]:
-        """Create data loaders for training, validation, and testing splits.
+        """Create repeat-seeded data loaders for all configured splits.
 
         Returns:
             A tuple of ``(train_loader, val_loader, test_loader)``. Any loader
             may be ``None`` if the corresponding split has no samples.
 
         """
+        if not any(train_record is record for record in self.train_record_list):
+            raise ValueError("Training record belongs to another training plan")
+        effective_seed = self._verified_repeat_seed(
+            train_record.repeat,
+            train_record=train_record,
+        )
         bs = self.option.bs
         dev = self.option.get_device()
 
@@ -528,6 +647,7 @@ class TrainingPlanHolder:
             dev,
             bs,
             True,
+            seed=effective_seed,
         )
         val_holder: torch_data.DataLoader | None = to_holder(
             full_data,
@@ -535,6 +655,7 @@ class TrainingPlanHolder:
             val_idx,
             dev,
             bs,
+            seed=effective_seed,
         )
         test_holder: torch_data.DataLoader | None = to_holder(
             full_data,
@@ -542,6 +663,7 @@ class TrainingPlanHolder:
             test_idx,
             dev,
             bs,
+            seed=effective_seed,
         )
         return train_holder, val_holder, test_holder
 
@@ -616,9 +738,10 @@ class TrainingPlanHolder:
         """
         if train_record.is_finished():
             return
+        self._prepare_repeat_for_training(train_record)
         # init
         model = train_record.get_training_model(device=self.option.get_device())
-        train_loader, val_loader, test_loader = self.get_loader()
+        train_loader, val_loader, test_loader = self.get_loader(train_record)
         if self.option.epoch > 0 and not train_loader:
             raise ValueError("No Training Data")
         optimizer = train_record.optim
@@ -924,10 +1047,10 @@ class TrainingPlanHolder:
         if not plan.records:
             return PreparedSaliencyUpdate(plan=plan, eval_records=())
 
-        train_loader, val_loader, test_loader = self.get_loader()
         prepared_eval_records: list[tuple[TrainRecord, EvalRecord, EvalRecord]] = []
         for train_record, previous_eval_record in plan.records:
             self._raise_if_saliency_plan_stale(plan, should_cancel=should_cancel)
+            train_loader, val_loader, test_loader = self.get_loader(train_record)
             saliency_split = self._select_saliency_evaluation_split(
                 train_record,
                 val_loader=val_loader,

@@ -6,10 +6,12 @@ import threading
 import time
 from dataclasses import fields
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
+from XBrainLab.llm.core import model_catalog
 from XBrainLab.llm.core.model_catalog import (
     MAX_SINGLE_MODEL_DOWNLOAD_GB,
     MAX_TOTAL_MODEL_CACHE_GB,
@@ -56,18 +58,78 @@ def test_cache_usage_scan_is_bounded_and_interruptible(tmp_path: Path) -> None:
         cache_usage_bytes(str(cache_dir), deadline=time.monotonic() - 1.0)
 
 
-def test_cache_usage_scan_preserves_normal_hardlink_aware_sizing(
-    tmp_path: Path,
-) -> None:
+def _write_hardlinked_cache(tmp_path: Path) -> tuple[Path, Path, Path]:
     cache_dir = tmp_path / "models"
     nested = cache_dir / "nested"
     nested.mkdir(parents=True)
     payload = nested / "weights.bin"
     payload.write_bytes(b"12345")
     try:
-        os.link(payload, cache_dir / "weights-hardlink.bin")
+        hardlink = cache_dir / "weights-hardlink.bin"
+        os.link(payload, hardlink)
     except OSError as exc:  # pragma: no cover - platform privilege boundary
         pytest.skip(f"Hardlinks unavailable: {type(exc).__name__}")
+
+    assert os.path.samefile(payload, hardlink)
+    return cache_dir, payload, hardlink
+
+
+def test_cache_usage_scan_preserves_normal_hardlink_aware_sizing(
+    tmp_path: Path,
+) -> None:
+    cache_dir, _, _ = _write_hardlinked_cache(tmp_path)
+
+    assert cache_usage_bytes(str(cache_dir)) == 5
+
+
+def test_cache_usage_scan_handles_unreliable_windows_hardlink_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache_dir, _, _ = _write_hardlinked_cache(tmp_path)
+
+    original_scandir = os.scandir
+    fake_inodes: dict[str, int] = {}
+
+    class WindowsLikeDirEntry:
+        def __init__(self, entry) -> None:
+            self._entry = entry
+            self.path = entry.path
+
+        def stat(self, *, follow_symlinks: bool = True):
+            entry_stat = self._entry.stat(follow_symlinks=follow_symlinks)
+            if not self._entry.is_file(follow_symlinks=False):
+                return entry_stat
+            fake_inode = fake_inodes.setdefault(self.path, len(fake_inodes) + 1)
+            return SimpleNamespace(
+                st_mode=entry_stat.st_mode,
+                st_size=entry_stat.st_size,
+                st_dev=entry_stat.st_dev,
+                st_ino=fake_inode,
+                st_nlink=1,
+            )
+
+    class WindowsLikeScandir:
+        def __init__(self, directory) -> None:
+            self._entries = original_scandir(directory)
+
+        def __enter__(self):
+            self._entries.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self._entries.__exit__(*args)
+
+        def __iter__(self):
+            return (WindowsLikeDirEntry(entry) for entry in self._entries)
+
+    monkeypatch.setattr(model_catalog.os, "scandir", WindowsLikeScandir)
+    monkeypatch.setattr(
+        model_catalog,
+        "_requires_samefile_hardlink_fallback",
+        lambda: True,
+        raising=False,
+    )
 
     assert cache_usage_bytes(str(cache_dir)) == 5
 

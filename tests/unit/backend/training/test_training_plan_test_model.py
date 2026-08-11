@@ -20,7 +20,7 @@ def test_to_holder(shuffle):
 
     bs = 128
     indices = np.arange(length)
-    dataloader = to_holder(X, y, indices, device, bs, shuffle)
+    dataloader = to_holder(X, y, indices, device, bs, shuffle, seed=7)
 
     # Perform assertions
     assert isinstance(dataloader, DataLoader)
@@ -44,7 +44,7 @@ def test_to_holder_empty():
     device = "cpu"
     bs = 128
     shuffle = True
-    assert to_holder(X, y, indices, device, bs, shuffle) is None
+    assert to_holder(X, y, indices, device, bs, shuffle, seed=7) is None
 
 
 CLASS_NUM = 4
@@ -99,7 +99,7 @@ def dataloader(full_y, y):
     device = "cpu"
     shuffle = False
     indices = np.arange(TOTAL_NUM)
-    return to_holder(X, y, indices, device, BS, shuffle)
+    return to_holder(X, y, indices, device, BS, shuffle, seed=7)
 
 
 @pytest.fixture

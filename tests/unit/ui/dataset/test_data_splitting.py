@@ -101,7 +101,7 @@ def test_data_splitting_window_preview_renders_typed_rows(qtbot) -> None:
     assert window.tree.topLevelItemCount() == 1
     item = window.tree.topLevelItem(0)
     assert [item.text(column) for column in range(4)] == [
-        "Fold_0",
+        "Fold 1",
         "80",
         "10",
         "10",

@@ -1216,6 +1216,44 @@ def test_terminal_retry_owner_constructor_matrix_fails_closed(
     assert state.retry_unavailable is False
 
 
+def test_discard_terminal_delivery_releases_pending_retry_ownership() -> None:
+    manager, run = _manager_with_compute(lambda _plan, _should_cancel: object())
+    status = PostTrainingSaliencyStatus.pending(
+        generation=1,
+        run=run,
+        training_generation=7,
+        methods=("Gradient",),
+    ).transition(
+        generation=1,
+        phase=PostTrainingSaliencyPhase.FAILED,
+        error_code="fault_injection",
+        message="Injected terminal failure.",
+        diagnostic_type=RuntimeError.__name__,
+    )
+    with manager._saliency_job_lock:
+        manager._saliency_job_sequence = status.generation
+        manager._post_training_saliency_status = status
+
+    def reject_delivery(_status: PostTrainingSaliencyStatus) -> None:
+        raise RuntimeError("terminal observer is unavailable")
+
+    manager.subscribe_post_training_saliency_terminal(reject_delivery)
+    manager._notify_post_training_saliency_terminal(status)
+
+    pending = manager.get_post_training_saliency_terminal_delivery_state()
+    assert pending.pending_generations == (status.generation,)
+    assert pending.retry_owner_active is True
+
+    manager.discard_post_training_saliency_terminal_delivery()
+
+    discarded = manager.get_post_training_saliency_terminal_delivery_state()
+    assert discarded.pending_generations == ()
+    assert discarded.active_generation is None
+    assert discarded.retry_owner_active is False
+    assert discarded.retry_unavailable is False
+    assert manager.wait_for_saliency_terminal_delivery(timeout=0.1)
+
+
 def test_reset_during_post_training_saliency_cancels_before_retiring_status() -> None:
     compute_started = Event()
     cancel_ready = Event()

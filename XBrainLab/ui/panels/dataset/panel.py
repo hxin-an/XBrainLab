@@ -358,14 +358,40 @@ class DatasetPanel(BasePanel):
         # --- Right Side: Sidebar ---
         self.sidebar = DatasetSidebar(self, self)
         self.main_layout.addWidget(self.sidebar, stretch=0)
+        self._fit_fixed_sidebar_layout()
         self._fit_table_columns_to_viewport()
         self._schedule_table_column_fit()
 
     def resizeEvent(self, event):  # noqa: N802
         super().resizeEvent(event)
+        self._fit_fixed_sidebar_layout()
         if hasattr(self, "table"):
             self._fit_table_columns_to_viewport()
             self._schedule_table_column_fit()
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        """Fit a size requested while the parent panel was still hidden."""
+        super().showEvent(event)
+        self._fit_fixed_sidebar_layout()
+        self._fit_table_columns_to_viewport()
+        self._schedule_table_column_fit()
+
+    def _fit_fixed_sidebar_layout(self) -> None:
+        """Reserve the product sidebar width and bound the remaining surface."""
+        if not hasattr(self, "sidebar") or not hasattr(self, "content_column"):
+            return
+        margins = self.main_layout.contentsMargins()
+        available_width = max(
+            self.contentsRect().width()
+            - margins.left()
+            - margins.right()
+            - self.main_layout.spacing()
+            - self.sidebar.width(),
+            0,
+        )
+        if available_width <= 0:
+            return
+        self.content_column.setMaximumWidth(available_width)
 
     def _schedule_table_column_fit(self) -> None:
         """Refit once Qt has settled row headers and scrollbars."""

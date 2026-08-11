@@ -61,6 +61,22 @@ timeout 1800s prlimit --core=0 -- poetry run -- python \
 - CHB-MIT seizure sidecar 與 Sleep-EDF hypnogram 尚不會自動轉成 supervised labels；這是
   明確產品邊界，不可由 raw import PASS 外推
 
+若要專門測試 BIDS subject selector，可使用三個真實 P300 subjects 的 local-only profile。
+它保留 ds003061 的 `sub-001`，並加入完整的 `sub-002`、`sub-003`；每個 subject 都有三個
+EEGLAB runs 及相對應的 BIDS sidecars：
+
+```bash
+poetry run python scripts/dev/fetch_public_eeg_fixtures.py \
+  --profile p300-multisubject
+poetry run python scripts/dev/fetch_public_eeg_fixtures.py \
+  --profile p300-multisubject --verify-only
+```
+
+- exact pinned profile：`68` files、`569,171,066 bytes`
+- BIDS root：`tests/fixtures/data/public/openneuro-ds003061-p300/`
+- 手測時選擇 `Import BIDS folder`，subject selector 應列出 `001`、`002`、`003`
+- 這個 profile 不屬於 required CI 或 teacher-preflight，不會增加一般 CI 下載量
+
 一般本機 pytest 仍允許在尚未下載 public fixtures 時 skip，方便日常開發。CI 的
 `Required Public Multi-Dataset Gate` 不依賴這個 skip：它會先下載 required profile、
 執行 `--verify-only` 與 strict dataset matrix，再跑 public IO、BIDS、cross-source

@@ -13,6 +13,7 @@ from scripts.agent.evals.run_local_tool_call_eval import (
     PHI4_DECISION_DEVELOPMENT_CASE_IDS,
     PHI4_DECISION_HELD_OUT_CASE_IDS,
     _available_tool_schemas,
+    _primary_prompt_state_snapshot,
     _resolve_case_suite_ids,
     build_local_eval_cli_gate,
     build_local_eval_resource_preflight,
@@ -91,6 +92,24 @@ def test_every_expected_tool_is_exposed_in_the_case_prompt_state() -> None:
         assert expected <= exposed, (
             f"{case.case_id} expects unexposed tools: {sorted(expected - exposed)}"
         )
+
+
+def test_training_ready_state_exposes_start_only_after_deferred_split_is_saved():
+    state = _primary_prompt_state_snapshot("training_ready")
+    exposed = {str(tool["name"]) for tool in _available_tool_schemas("training_ready")}
+    missing_config_exposed = {
+        str(tool["name"])
+        for tool in _available_tool_schemas("dataset_without_training_config")
+    }
+
+    assert state["dataset"] == {
+        "available": False,
+        "count": 0,
+        "split_spec_saved": True,
+        "split_materialized": False,
+    }
+    assert "start_training" in exposed
+    assert "start_training" not in missing_config_exposed
 
 
 def test_primary_prompt_includes_state_enabled_tools_without_answer_fields():
@@ -533,7 +552,10 @@ def test_host_admission_blocks_substitute_before_model_without_hiding_raw_failur
     assert assisted_score.passed
     assert assisted_score.parsed_tool_calls == []
     assert assisted_score.prediction["ui_handoff"] is False
-    assert "Generate datasets before training" in assisted_score.visible_response
+    assert (
+        "Save a valid data splitting specification before training"
+        in assisted_score.visible_response
+    )
 
 
 def test_raw_blocked_direct_tool_call_is_preserved_and_fails_no_tool_decision():
@@ -805,10 +827,10 @@ def test_blocked_requested_direct_tool_is_scored_as_blocked_response():
     assert "Reset the session before changing raw files" in score.visible_response
 
 
-def test_generate_dataset_default_val_ratio_is_counted():
+def test_configure_dataset_split_default_val_ratio_is_counted():
     case = _case("epoched-generate-dataset")
     raw_output = (
-        '{"tool_name":"generate_dataset",'
+        '{"tool_name":"configure_dataset_split",'
         '"parameters":{"split_strategy":"trial",'
         '"training_mode":"individual","test_ratio":0.2}}'
     )
@@ -819,10 +841,10 @@ def test_generate_dataset_default_val_ratio_is_counted():
     assert score.parsed_tool_calls[0]["arguments"]["val_ratio"] == 0.2
 
 
-def test_raw_generate_dataset_accepts_omitted_optional_schema_default():
+def test_raw_configure_dataset_split_accepts_omitted_optional_schema_default():
     case = _case("epoched-generate-dataset")
     raw_output = (
-        '{"tool_name":"generate_dataset",'
+        '{"tool_name":"configure_dataset_split",'
         '"parameters":{"split_strategy":"trial",'
         '"training_mode":"individual","test_ratio":0.2}}'
     )
@@ -851,7 +873,7 @@ def test_unspecified_dataset_split_strategy_requires_named_missing_field():
 def test_unspecified_dataset_split_strategy_rejects_invented_trial_call():
     case = _case("epoched-generate-dataset-missing-strategy")
     invented = (
-        '{"tool_name":"generate_dataset",'
+        '{"tool_name":"configure_dataset_split",'
         '"parameters":{"split_strategy":"trial",'
         '"training_mode":"individual","test_ratio":0.2}}'
     )
@@ -863,10 +885,10 @@ def test_unspecified_dataset_split_strategy_rejects_invented_trial_call():
     assert "tool/no-tool decision mismatch" in score.failures
 
 
-def test_scores_generate_dataset_missing_test_ratio_from_latest_text():
+def test_scores_configure_dataset_split_missing_test_ratio_from_latest_text():
     case = _case("epoched-generate-dataset")
     raw_output = (
-        '{"tool_name":"generate_dataset",'
+        '{"tool_name":"configure_dataset_split",'
         '"parameters":{"split_strategy":"trial",'
         '"training_mode":"individual"}}'
     )
@@ -1077,6 +1099,10 @@ def test_scores_policy_reason_subset_as_blocked_command_handling():
     assert score.passed
     assert score.verification_result == "blocked"
     assert score.parsed_tool_calls == []
+    assert (
+        "Save a valid data splitting specification before training"
+        in score.visible_response
+    )
 
 
 def test_scores_latest_turn_intent_not_joined_history():

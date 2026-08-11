@@ -86,13 +86,13 @@ def test_normalizes_bandpass_frequency_alias_arguments():
     assert params == {"low_freq": 8, "high_freq": 30}
 
 
-def test_normalizes_generate_dataset_training_mode_alias_without_split_guess():
+def test_normalizes_configure_dataset_split_training_mode_alias_without_split_guess():
     tool_name, params = normalize_tool_call(
-        "generate_dataset",
+        "configure_dataset_split",
         {"split_strategy": "individual", "test_ratio": 0.2},
     )
 
-    assert tool_name == "generate_dataset"
+    assert tool_name == "configure_dataset_split"
     assert params == {
         "training_mode": "individual",
         "test_ratio": 0.2,
@@ -100,14 +100,14 @@ def test_normalizes_generate_dataset_training_mode_alias_without_split_guess():
     }
 
 
-def test_generate_dataset_extracts_missing_test_ratio_from_user_text():
+def test_configure_dataset_split_extracts_missing_test_ratio_from_user_text():
     tool_name, params = normalize_tool_call(
-        "generate_dataset",
+        "configure_dataset_split",
         {"split_strategy": "trial", "training_mode": "individual"},
         latest_user_text="Generate an individual training dataset with 20% test split.",
     )
 
-    assert tool_name == "generate_dataset"
+    assert tool_name == "configure_dataset_split"
     assert params == {
         "split_strategy": "trial",
         "training_mode": "individual",
@@ -548,12 +548,12 @@ def test_latest_intent_does_not_rewrite_reload_proposal_to_validate():
 
 def test_latest_intent_does_not_rewrite_dataset_proposal_to_epoch():
     tool_name, params = normalize_tool_call(
-        "generate_dataset",
+        "configure_dataset_split",
         {"split_strategy": "trial"},
         latest_user_text="Create epochs for event BAD_EVENT from -0.1 to 0.5 seconds.",
     )
 
-    assert tool_name == "generate_dataset"
+    assert tool_name == "configure_dataset_split"
     assert params == {
         "split_strategy": "trial",
         "training_mode": "individual",
@@ -735,14 +735,14 @@ def test_apply_drops_unmentioned_opaque_candidate_id_for_latest_state():
     assert params == {}
 
 
-def test_generate_dataset_normalizes_split_and_training_mode_from_text():
+def test_configure_dataset_split_normalizes_split_and_training_mode_from_text():
     tool_name, params = normalize_tool_call(
-        "generate_dataset",
+        "configure_dataset_split",
         {},
         latest_user_text="Generate a group dataset with subject split.",
     )
 
-    assert tool_name == "generate_dataset"
+    assert tool_name == "configure_dataset_split"
     assert params == {
         "split_strategy": "subject",
         "training_mode": "group",
@@ -750,14 +750,14 @@ def test_generate_dataset_normalizes_split_and_training_mode_from_text():
     }
 
 
-def test_generate_dataset_moves_group_out_of_split_strategy_without_guessing():
+def test_configure_dataset_split_moves_group_out_of_split_strategy_without_guessing():
     tool_name, params = normalize_tool_call(
-        "generate_dataset",
+        "configure_dataset_split",
         {"split_strategy": "group", "training_mode": "group", "test_ratio": 0.2},
         latest_user_text="Generate a group training dataset with 20% test split.",
     )
 
-    assert tool_name == "generate_dataset"
+    assert tool_name == "configure_dataset_split"
     assert params == {
         "training_mode": "group",
         "test_ratio": 0.2,
@@ -765,16 +765,16 @@ def test_generate_dataset_moves_group_out_of_split_strategy_without_guessing():
     }
 
 
-def test_generate_dataset_does_not_invent_missing_split_strategy():
+def test_configure_dataset_split_does_not_invent_missing_split_strategy():
     tool_name, params = normalize_tool_call(
-        "generate_dataset",
+        "configure_dataset_split",
         {"training_mode": "individual", "test_ratio": 0.2},
         latest_user_text=(
             "Generate an individual training dataset with 20% test split."
         ),
     )
 
-    assert tool_name == "generate_dataset"
+    assert tool_name == "configure_dataset_split"
     assert params == {
         "training_mode": "individual",
         "test_ratio": 0.2,

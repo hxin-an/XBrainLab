@@ -13,7 +13,7 @@ import json
 import re
 import subprocess
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -22,20 +22,27 @@ DESKTOP_CMD = r"C:\Users\Administrator\Desktop\XBrainLab.cmd"
 ACTIVE_WSL_REPO = str(REPO_ROOT)
 
 
-def _windows_path(path: Path) -> str:
+def _windows_path(path: str | Path | PurePosixPath) -> str:
     """Convert a WSL-mounted path to its Windows spelling for launcher probes."""
-    resolved = str(path.resolve())
-    parts = resolved.split("/")
+    resolved = str(path.resolve()) if isinstance(path, Path) else str(path)
+    parts = PurePosixPath(resolved).parts
     if len(parts) < 4 or parts[1] != "mnt" or len(parts[2]) != 1:
         raise RuntimeError(f"Expected a /mnt/<drive>/ path, got: {resolved}")
     drive = parts[2].upper()
     return drive + ":\\" + "\\".join(parts[3:])
 
 
-POWERSHELL_LAUNCHER = _windows_path(
-    REPO_ROOT / "scripts" / "launchers" / "xbrainlab_wsl_launcher.ps1"
-)
-ACTIVE_WINDOWS_REPO = _windows_path(REPO_ROOT)
+def launcher_windows_paths(
+    repo_root: Path | PurePosixPath = REPO_ROOT,
+) -> tuple[str, str]:
+    """Resolve Windows launcher paths only when the WSL walkthrough runs."""
+    active_windows_repo = _windows_path(repo_root)
+    powershell_launcher = _windows_path(
+        repo_root / "scripts" / "launchers" / "xbrainlab_wsl_launcher.ps1"
+    )
+    return active_windows_repo, powershell_launcher
+
+
 JSON_ARTIFACT = "windows-launcher-walkthrough.json"
 MD_ARTIFACT = "windows-launcher-walkthrough.md"
 
@@ -86,6 +93,7 @@ def main() -> int:
 
 def capture_walkthrough(startup_timeout: int) -> dict[str, Any]:
     """Run launcher smoke commands and return a structured artifact payload."""
+    active_windows_repo, powershell_launcher = launcher_windows_paths()
     desktop = run_command(
         "desktop_cmd_smoke",
         [
@@ -97,18 +105,18 @@ def capture_walkthrough(startup_timeout: int) -> dict[str, Any]:
     )
     wsl = run_command(
         "powershell_wsl_smoke",
-        powershell_command("wsl"),
+        powershell_command("wsl", powershell_launcher),
         timeout=60,
     )
     startup = run_command(
         "powershell_startup_smoke",
-        powershell_command("startup"),
+        powershell_command("startup", powershell_launcher),
         timeout=startup_timeout,
     )
 
     checks = {
         "desktop_points_to_active_repo": (
-            ACTIVE_WINDOWS_REPO.lower() in desktop.stdout.lower()
+            active_windows_repo.lower() in desktop.stdout.lower()
         ),
         "desktop_smoke_skipped_wsl": "WSL launch skipped" in desktop.stdout,
         "wsl_stdout_mirrored": "WSL_launcher_smoke_stdout" in wsl.stdout,
@@ -138,8 +146,8 @@ def capture_walkthrough(startup_timeout: int) -> dict[str, Any]:
             "click-through or packaging release approval."
         ),
         "desktop_cmd": DESKTOP_CMD,
-        "powershell_launcher": POWERSHELL_LAUNCHER,
-        "active_windows_repo": ACTIVE_WINDOWS_REPO,
+        "powershell_launcher": powershell_launcher,
+        "active_windows_repo": active_windows_repo,
         "active_wsl_repo": ACTIVE_WSL_REPO,
         "checks": checks,
         "log_paths": log_paths,
@@ -147,9 +155,9 @@ def capture_walkthrough(startup_timeout: int) -> dict[str, Any]:
     }
 
 
-def powershell_command(smoke_mode: str) -> list[str]:
+def powershell_command(smoke_mode: str, powershell_launcher: str) -> list[str]:
     """Return a PowerShell command that runs the launcher in smoke mode."""
-    command = f"$env:XBRAINLAB_LAUNCHER_SMOKE='{smoke_mode}'; & '{POWERSHELL_LAUNCHER}'"
+    command = f"$env:XBRAINLAB_LAUNCHER_SMOKE='{smoke_mode}'; & '{powershell_launcher}'"
     return [
         "powershell.exe",
         "-NoProfile",

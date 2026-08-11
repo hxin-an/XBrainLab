@@ -6,26 +6,21 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import sys
 import traceback
 from pathlib import Path
 from typing import Any
 
+from scripts.dev.native_process_safety import disable_core_dumps
 
-def _disable_core_dumps() -> bool:
-    if os.name != "posix":
-        return False
-    import resource
-
-    try:
-        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-        return resource.getrlimit(resource.RLIMIT_CORE) == (0, 0)
-    except (OSError, ValueError):
-        return False
-
-
-_CORE_DUMPS_DISABLED = _disable_core_dumps()
+_NATIVE_PROCESS_SAFETY = disable_core_dumps()
+if (
+    _NATIVE_PROCESS_SAFETY.core_dump_limit_supported
+    and not _NATIVE_PROCESS_SAFETY.core_dumps_disabled
+):
+    raise RuntimeError(
+        "Preprocess stress refused to load Qt because RLIMIT_CORE=0 failed."
+    )
 
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, QEventLoop, QTimer
@@ -300,7 +295,8 @@ def run_stress(fixture: Path, cycles: int) -> dict[str, Any]:
     return {
         "fixture": str(fixture),
         "fixture_sha256": hashlib.sha256(fixture.read_bytes()).hexdigest(),
-        "core_dumps_disabled": _CORE_DUMPS_DISABLED,
+        "core_dump_limit_supported": (_NATIVE_PROCESS_SAFETY.core_dump_limit_supported),
+        "core_dumps_disabled": _NATIVE_PROCESS_SAFETY.core_dumps_disabled,
         "cycles": cycles,
         "time_render_cycles": time_render_cycles,
         "psd_render_cycles": psd_render_cycles,

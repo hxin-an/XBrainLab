@@ -3,14 +3,13 @@
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from PyQt6.QtCore import QEvent, Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, QRect, Qt, pyqtSignal
 from PyQt6.QtGui import QShowEvent
 from PyQt6.QtWidgets import (
     QAbstractScrollArea,
     QFrame,
     QGroupBox,
     QHeaderView,
-    QLayout,
     QScrollArea,
     QSizePolicy,
     QTableWidget,
@@ -73,9 +72,11 @@ class SidebarScrollArea(QScrollArea):
             QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored,
         )
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.viewport().setStyleSheet(
-            f"background-color: {Theme.BACKGROUND_MID}; border: none;",
-        )
+        viewport = self.viewport()
+        if viewport is not None:
+            viewport.setStyleSheet(
+                f"background-color: {Theme.BACKGROUND_MID}; border: none;",
+            )
 
         self.content = QWidget(self)
         self.content.setObjectName("SidebarScrollContent")
@@ -85,8 +86,27 @@ class SidebarScrollArea(QScrollArea):
         )
         self.content_layout = QVBoxLayout(self.content)
         self.content_layout.setContentsMargins(10, 20, 10, 20)
-        self.content_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         self.setWidget(self.content)
+        self._fit_content_to_viewport()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        """Keep the single sidebar surface at the live viewport width."""
+        super().resizeEvent(event)
+        self._fit_content_to_viewport()
+
+    def _fit_content_to_viewport(self) -> None:
+        """Ignore native child width hints that would create hidden overflow."""
+        if not hasattr(self, "content"):
+            return
+        viewport = self.viewport()
+        if viewport is None or viewport.width() <= 0:
+            return
+        target_width = viewport.width()
+        if (
+            self.content.minimumWidth() != target_width
+            or self.content.maximumWidth() != target_width
+        ):
+            self.content.setFixedWidth(target_width)
 
 
 class AggregateInfoPanel(QGroupBox):
@@ -114,6 +134,7 @@ class AggregateInfoPanel(QGroupBox):
         """
         super().__init__("Data Summary", parent)
         self._has_data = False
+        self._refreshing_metrics = False
         self.init_ui()
 
         # Auto-register with InfoPanelService if available
@@ -141,7 +162,10 @@ class AggregateInfoPanel(QGroupBox):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.table.setWordWrap(True)
-        self.table.setTextElideMode(Qt.TextElideMode.ElideNone)
+        # Native fonts can make a single token wider than the fixed sidebar.
+        # Elide that exceptional token instead of silently clipping it; every
+        # cell keeps the complete value in its tooltip.
+        self.table.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.table.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
@@ -166,8 +190,8 @@ class AggregateInfoPanel(QGroupBox):
 
         header = self.table.horizontalHeader()
         if header is not None:
-            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-            header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
 
         self.table.setRowCount(len(_SUMMARY_KEYS))
         self.row_map = {}
@@ -228,6 +252,12 @@ class AggregateInfoPanel(QGroupBox):
         super().showEvent(event)
         self._refresh_table_metrics()
 
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        """Refit columns and wrapped rows to the settled sidebar viewport."""
+        super().resizeEvent(event)
+        if hasattr(self, "table"):
+            self._refresh_table_metrics()
+
     @property
     def has_data(self) -> bool:
         """Return whether this presentation currently contains dataset metrics."""
@@ -263,37 +293,162 @@ class AggregateInfoPanel(QGroupBox):
 
     def _refresh_table_metrics(self) -> None:
         """Keep the accepted fixed 13-row summary readable at the active font."""
-        row_height = max(
-            INFO_ROW_MIN_HEIGHT,
-            self.table.fontMetrics().height() + INFO_ROW_VERTICAL_PADDING,
-        )
-        header = self.table.verticalHeader()
-        if header is not None:
-            header.setMinimumSectionSize(row_height)
-            header.setDefaultSectionSize(row_height)
-            for row in range(self.table.rowCount()):
-                header.resizeSection(row, row_height)
-        horizontal_header = self.table.horizontalHeader()
-        if horizontal_header is not None:
-            key_width = (
-                max(
-                    self.table.fontMetrics().horizontalAdvance(item.text())
-                    for row in range(self.table.rowCount())
-                    if (item := self.table.item(row, 0)) is not None
+        if self._refreshing_metrics:
+            return
+        self._refreshing_metrics = True
+        try:
+            key_texts = self._column_texts(0)
+            value_texts = self._column_texts(1)
+            viewport = self.table.viewport()
+            available_width = viewport.width() if viewport is not None else 0
+            if available_width <= 0:
+                available_width = max(
+                    self.table.contentsRect().width() - (self.table.frameWidth() * 2),
+                    1,
                 )
-                + INFO_KEY_COLUMN_PADDING
+
+            key_width, value_width = self._responsive_column_widths(
+                available_width,
+                key_texts,
+                value_texts,
             )
-            horizontal_header.setSectionResizeMode(
-                0,
-                QHeaderView.ResizeMode.Fixed,
-            )
+            horizontal_header = self.table.horizontalHeader()
+            if horizontal_header is not None:
+                horizontal_header.setSectionResizeMode(
+                    0,
+                    QHeaderView.ResizeMode.Fixed,
+                )
+                horizontal_header.setSectionResizeMode(
+                    1,
+                    QHeaderView.ResizeMode.Fixed,
+                )
             self.table.setColumnWidth(0, key_width)
-            horizontal_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        total_height = self.table.rowCount() * row_height + INFO_TABLE_FRAME_BUFFER
-        self.table.setFixedHeight(total_height)
-        self.setFixedHeight(total_height + INFO_GROUP_VERTICAL_BUFFER)
-        self.table.updateGeometry()
-        self.updateGeometry()
+            self.table.setColumnWidth(1, value_width)
+
+            row_heights = self._wrapped_row_heights((key_width, value_width))
+            vertical_header = self.table.verticalHeader()
+            if vertical_header is not None:
+                vertical_header.setMinimumSectionSize(INFO_ROW_MIN_HEIGHT)
+                for row, row_height in enumerate(row_heights):
+                    vertical_header.resizeSection(row, row_height)
+
+            rendered_rows_height = (
+                vertical_header.length()
+                if vertical_header is not None
+                else sum(row_heights)
+            )
+            total_height = rendered_rows_height + max(
+                INFO_TABLE_FRAME_BUFFER,
+                self.table.frameWidth() * 2,
+            )
+            self.table.setFixedHeight(total_height)
+            self.setFixedHeight(total_height + INFO_GROUP_VERTICAL_BUFFER)
+            self.table.updateGeometries()
+            self.table.updateGeometry()
+            self.updateGeometry()
+        finally:
+            self._refreshing_metrics = False
+
+    def _column_texts(self, column: int) -> list[str]:
+        return [
+            item.text()
+            for row in range(self.table.rowCount())
+            if not self.table.isRowHidden(row)
+            and (item := self.table.item(row, column)) is not None
+        ]
+
+    def _responsive_column_widths(
+        self,
+        available_width: int,
+        key_texts: Sequence[str],
+        value_texts: Sequence[str],
+    ) -> tuple[int, int]:
+        """Allocate the viewport using the active font's real text metrics."""
+        metrics = self.table.fontMetrics()
+        key_desired = (
+            max(
+                (metrics.horizontalAdvance(text) for text in key_texts),
+                default=0,
+            )
+            + INFO_KEY_COLUMN_PADDING
+        )
+        value_desired = (
+            max(
+                (metrics.horizontalAdvance(text) for text in value_texts),
+                default=0,
+            )
+            + INFO_VALUE_COLUMN_PADDING
+        )
+        key_floor = self._minimum_wrapped_text_width(
+            key_texts,
+            INFO_KEY_COLUMN_PADDING,
+        )
+        value_floor = self._minimum_wrapped_text_width(
+            value_texts,
+            INFO_VALUE_COLUMN_PADDING,
+        )
+
+        if key_desired + value_desired <= available_width:
+            return key_desired, available_width - key_desired
+        if key_floor + value_floor <= available_width:
+            value_width = min(
+                value_desired,
+                max(value_floor, available_width - key_floor),
+            )
+            return available_width - value_width, value_width
+
+        floor_total = max(key_floor + value_floor, 1)
+        value_width = max(
+            1,
+            min(
+                available_width - 1,
+                round(available_width * value_floor / floor_total),
+            ),
+        )
+        return available_width - value_width, value_width
+
+    def _minimum_wrapped_text_width(
+        self,
+        texts: Sequence[str],
+        padding: int,
+    ) -> int:
+        metrics = self.table.fontMetrics()
+        tokens = [token for text in texts for token in text.split()]
+        return (
+            max(
+                (metrics.horizontalAdvance(token) for token in tokens),
+                default=0,
+            )
+            + padding
+        )
+
+    def _wrapped_row_heights(self, column_widths: tuple[int, int]) -> list[int]:
+        metrics = self.table.fontMetrics()
+        wrap_flags = (
+            int(Qt.AlignmentFlag.AlignLeft)
+            | int(Qt.AlignmentFlag.AlignTop)
+            | int(Qt.TextFlag.TextWordWrap)
+        )
+        heights: list[int] = []
+        for row in range(self.table.rowCount()):
+            text_height = metrics.height()
+            for column, column_width in enumerate(column_widths):
+                item = self.table.item(row, column)
+                if item is None:
+                    continue
+                text_rect = metrics.boundingRect(
+                    QRect(0, 0, max(column_width - 8, 1), 10_000),
+                    wrap_flags,
+                    item.text(),
+                )
+                text_height = max(text_height, text_rect.height())
+            heights.append(
+                max(
+                    INFO_ROW_MIN_HEIGHT,
+                    text_height + INFO_ROW_VERTICAL_PADDING,
+                )
+            )
+        return heights
 
     def update_info(
         self,
@@ -429,6 +584,7 @@ class AggregateInfoPanel(QGroupBox):
             self.set_val(key, str(value) if available else "-")
             available_count += int(available)
         self._has_data = available_count > 0
+        self._refresh_table_metrics()
         self.presentation_changed.emit()
 
     @staticmethod
@@ -466,4 +622,5 @@ class AggregateInfoPanel(QGroupBox):
                 if item.toolTip() != "-":
                     item.setToolTip("-")
         self._has_data = False
+        self._refresh_table_metrics()
         self.presentation_changed.emit()

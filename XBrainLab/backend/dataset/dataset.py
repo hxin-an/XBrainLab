@@ -54,6 +54,7 @@ class Dataset:
         self.val_mask = np.zeros(data_length, dtype=bool)
         self.test_mask = np.zeros(data_length, dtype=bool)
         self.is_selected = True
+        self.cross_validation_cohort_id: str | None = None
         self._resource_fingerprint_revision = 0
 
     def get_epoch_data(self) -> Epochs:
@@ -124,6 +125,14 @@ class Dataset:
 
         """
         self.name = name
+        self._mark_resource_fingerprint_mutation()
+
+    def set_cross_validation_cohort_id(self, cohort_id: str) -> None:
+        """Bind this fold to one explicit cross-validation cohort."""
+        validate_type(cohort_id, str, "cross_validation_cohort_id")
+        if not cohort_id:
+            raise ValueError("cross_validation_cohort_id must not be empty")
+        self.cross_validation_cohort_id = cohort_id
         self._mark_resource_fingerprint_mutation()
 
     def has_set_empty(self) -> bool:

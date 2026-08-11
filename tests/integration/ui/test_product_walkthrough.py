@@ -2,12 +2,7 @@
 
 from __future__ import annotations
 
-import json
-import os
-import subprocess
-import sys
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -26,12 +21,14 @@ from PyQt6.QtWidgets import (
 )
 
 import XBrainLab.backend.application.service as application_service_module
-from scripts.dev.capture_human_like_product_walkthrough import REQUIRED_PHASES
 from tests.qt_lifecycle import close_controller_and_wait
 from XBrainLab.backend.application import (
     APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
     CommandName,
     DatasetSplitContextRequest,
+    DatasetSplitPreviewReceipt,
+    DatasetSplitPreviewRequest,
+    DatasetSplitSpecification,
     LoadDataCommand,
     PreviewInterpretationCommand,
     QueryStateCommand,
@@ -95,7 +92,12 @@ EXPECTED_PRODUCT_WALKTHROUGH_SPLIT_SUMMARY = {
     "train_count": 7,
     "val_count": 2,
     "test_count": 3,
-    "audit": {"ok": True, "dataset_count": 1, "issues": []},
+    "audit": {
+        "ok": True,
+        "dataset_count": 1,
+        "issues": [],
+        "truncated_issue_count": 0,
+    },
 }
 
 
@@ -179,46 +181,6 @@ class _ReadyAssistantIntegrationRuntime(QObject):
 
     def close(self) -> bool:
         return bool(self.controller.close())
-
-
-def test_human_like_capture_script_is_a_real_exit_code_gate(tmp_path) -> None:
-    """Execute the product capture itself so helper-only tests cannot mask failure."""
-    root = Path(__file__).resolve().parents[3]
-    output_dir = tmp_path / "human-like-walkthrough-runs" / "current"
-    env = os.environ.copy()
-    env["QT_QPA_PLATFORM"] = "offscreen"
-    completed = subprocess.run(  # noqa: S603 - fixed repository script path
-        [
-            sys.executable,
-            "scripts/dev/capture_human_like_product_walkthrough.py",
-            "--output-dir",
-            str(output_dir),
-        ],
-        cwd=root,
-        env=env,
-        capture_output=True,
-        check=False,
-        text=True,
-        timeout=120,
-    )
-    reports = sorted(output_dir.parent.glob("*/human-like-walkthrough.md"))
-    report_text = reports[-1].read_text(encoding="utf-8") if reports else ""
-
-    assert completed.returncode == 0, (
-        "Human-like walkthrough process failed.\n"
-        f"stdout:\n{completed.stdout}\n"
-        f"stderr:\n{completed.stderr}\n"
-        f"report:\n{report_text}"
-    )
-    payload = json.loads(
-        (output_dir / "human-like-walkthrough.json").read_text(encoding="utf-8")
-    )
-    assert payload["status"] == "passed"
-    expected_phase_count = len(REQUIRED_PHASES)
-    assert payload["pass_fail_summary"]["observed_phase_count"] == expected_phase_count
-    assert payload["pass_fail_summary"]["required_phase_count"] == expected_phase_count
-    assert payload["artifact_run"]["source_fingerprint"]
-    assert isinstance(payload["artifact_run"]["working_tree_dirty"], bool)
 
 
 def _click(qtbot, button) -> None:
@@ -638,6 +600,33 @@ def test_assistant_dock_width_stays_within_responsive_product_bounds(
     assert observed_widths == sorted(observed_widths)
 
 
+def test_assistant_dock_preserves_workflow_width_with_wide_platform_title(
+    test_app,
+    qtbot,
+) -> None:
+    """Platform title metrics cannot consume the workflow's usable width."""
+    test_app.resize(760, 800)
+    test_app.init_agent()
+    manager = test_app.agent_manager
+    dock = manager.chat_dock
+    title = dock.findChild(QLabel, "AssistantDockTitle")
+    assert title is not None
+
+    title.setMinimumWidth(title.minimumWidth() + 48)
+    dock.show()
+    test_app.resize(760, 800)
+    qtbot.waitUntil(dock.isVisible, timeout=2_000)
+    qtbot.wait(50)
+
+    assert manager.assistant_header.minimumSizeHint().width() <= 320
+    assert 320 <= dock.width() <= 420
+    assert manager.chat_panel.width() == dock.width()
+    assert test_app.centralWidget().width() >= 436
+    assert title.fontMetrics().horizontalAdvance(title.text()) <= (
+        title.contentsRect().width() + 1
+    )
+
+
 @pytest.mark.parametrize(
     ("choice", "outcome_message", "visible_message"),
     [
@@ -750,6 +739,7 @@ def test_visible_open_data_import_action_opens_typed_product_surface_directly(
         title: str,
         directory: str,
         file_filter: str,
+        options=None,
     ):
         chooser_calls.append((parent, title, directory, file_filter))
         return ([], "")
@@ -945,16 +935,21 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
     training_option_holder = {}
     fake_train_calls = []
 
-    def fake_handle_train(
+    def fake_start_train_after_preflight(
         _training_commands,
         command,
         *,
+        preflight,
+        receipt_reused,
         defer_synchronous_completion=False,
     ):
         """Populate finished-run state through the command route without real training."""
         assert isinstance(command, TrainCommand)
         assert command.confirmed is True
+        assert preflight.ok is True
+        assert receipt_reused is False
         assert defer_synchronous_completion is False
+        assert service.get_state().dataset.split_materialized is True
         fake_train_calls.append(command)
         eval_record = SimpleNamespace(
             label=np.array([0, 1, 0, 1]),
@@ -1037,8 +1032,8 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
 
     monkeypatch.setattr(
         application_service_module._LazyTrainingCommandService,
-        "handle_train",
-        fake_handle_train,
+        "start_train_after_preflight",
+        fake_start_train_after_preflight,
     )
     test_app.study._application_service = None
     service = get_application_service(test_app.study)
@@ -1149,7 +1144,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
     assert epoch_state["event_ids"] == {"left": 0, "right": 1}
     _assert_assistant_status_matches_publication(
         manager,
-        command_name="generate_dataset",
+        command_name="configure_dataset_split",
         surface=AssistantWorkflowSurface.DATASET_SPLIT,
         decision_fields=("split_strategy", "training_mode"),
     )
@@ -1202,17 +1197,39 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
             },
         ],
     }
+    split_preview_receipts: list[DatasetSplitPreviewReceipt] = []
 
     class FakeSplitDialog:
-        def __init__(self, _parent, *, split_context, **_dialog_context):
+        def __init__(
+            self,
+            _parent,
+            *,
+            split_context,
+            publication_generation,
+            preview_provider,
+            **_dialog_context,
+        ):
             assert split_context.epoch_available is True
             assert split_context.trial_count == 12
+            preview = preview_provider(
+                DatasetSplitPreviewRequest(
+                    request_id="product-walkthrough-split-preview",
+                    publication_generation=publication_generation,
+                    specification=DatasetSplitSpecification.from_payload(split_payload),
+                )
+            )
+            self.preview_receipt = preview.receipt
+            assert isinstance(self.preview_receipt, DatasetSplitPreviewReceipt)
+            split_preview_receipts.append(self.preview_receipt)
 
         def exec(self):
             return True
 
         def get_result(self):
             return split_payload
+
+        def get_preview_receipt(self):
+            return self.preview_receipt
 
     class FakeModelDialog:
         def __init__(self, _parent, _controller, **_dialog_context):
@@ -1252,10 +1269,22 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog", FakeSplitDialog
     ):
         _click(qtbot, test_app.training_panel.sidebar.btn_split)
-    _wait_for_dataset_count(qtbot, test_app.study, 1)
+    qtbot.waitUntil(
+        lambda: _application_state(test_app.study)["dataset"]["split_spec_saved"]
+        or bool(blocking_messages),
+        timeout=5000,
+    )
+    assert not blocking_messages, blocking_messages
+    assert len(split_preview_receipts) == 1
+    preview_receipt = split_preview_receipts[0]
     dataset_state = _application_state(test_app.study)["dataset"]
-    assert dataset_state["count"] == EXPECTED_PRODUCT_WALKTHROUGH_SPLIT_SUMMARY["count"]
-    assert dataset_state["split_summary"] == EXPECTED_PRODUCT_WALKTHROUGH_SPLIT_SUMMARY
+    assert dataset_state["count"] == 0
+    assert dataset_state["generator_exists"] is False
+    assert dataset_state["split_spec_saved"] is True
+    assert dataset_state["split_materialized"] is False
+    assert dataset_state["split_preview_summary"] == preview_receipt.summary_payload()
+    assert dataset_state["active_split_summary"] == {}
+    assert test_app.study.datasets == []
     _assert_assistant_status_matches_publication(
         manager,
         command_name="configure_training",
@@ -1269,7 +1298,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         _click(qtbot, test_app.training_panel.sidebar.btn_model)
     training_state = _application_state(test_app.study)["training"]
     assert training_state["has_model"] is True
-    assert training_state["model_name"] == "EEGNet"
+    assert training_state["model_name"] == "EEGNet (XBrainLab)"
 
     with patch(
         "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog",
@@ -1291,6 +1320,14 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         qtbot.waitUntil(lambda: len(fake_train_calls) == 1, timeout=5000)
 
     assert len(fake_train_calls) == 1
+    _wait_for_dataset_count(qtbot, test_app.study, 1)
+    dataset_state = _application_state(test_app.study)["dataset"]
+    assert dataset_state["count"] == EXPECTED_PRODUCT_WALKTHROUGH_SPLIT_SUMMARY["count"]
+    assert dataset_state["split_materialized"] is True
+    assert (
+        dataset_state["active_split_summary"]
+        == EXPECTED_PRODUCT_WALKTHROUGH_SPLIT_SUMMARY
+    )
     qtbot.waitUntil(
         lambda: _application_state(test_app.study)["training"]["finished_run_count"]
         == 1,

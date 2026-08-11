@@ -156,14 +156,14 @@ def test_controller_explains_blocked_steps_from_real_atomic_publications(
         (
             _preprocessed_state(),
             "Why can't I build the training dataset?",
-            CommandName.GENERATE_DATASET,
+            CommandName.CONFIGURE_DATASET_SPLIT,
             "Create EEG epochs before building the training dataset.",
         ),
         (
             _epoch_state_without_split_or_training_config(),
             "為什麼現在不能訓練?",
             CommandName.TRAIN,
-            "Generate datasets before training.",
+            "Save a valid data splitting specification before training.",
         ),
         (
             ApplicationStateSnapshot.empty(),

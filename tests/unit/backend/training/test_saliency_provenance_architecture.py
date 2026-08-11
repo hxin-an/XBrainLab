@@ -99,9 +99,10 @@ def test_guard_rejects_product_imports_from_compatibility_module(
     )
 
     violations = check_saliency_provenance_ownership(tmp_path)
+    normalized = violations[0].replace("\\", "/")
 
     assert len(violations) == 1
-    assert "visualization/base.py" in violations[0]
+    assert "visualization/base.py" in normalized
     assert "must import saliency provenance" in violations[0]
 
 

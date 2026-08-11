@@ -307,6 +307,7 @@ class MainWindow(QMainWindow):
     COMPACT_NAV_BREAKPOINT = 720
     ASSISTANT_DOCK_STANDARD_WIDTH = 420
     ASSISTANT_DOCK_MINIMUM_WIDTH = 320
+    ASSISTANT_CENTRAL_WIDGET_MINIMUM_WIDTH = 436
     ASSISTANT_DOCK_CENTRAL_MINIMUM_WIDTH = 440
 
     def __init__(self, study):
@@ -654,8 +655,10 @@ class MainWindow(QMainWindow):
         """Reserve the current styled font width for the Assistant entry point."""
         if not hasattr(self, "ai_btn"):
             return
-        required_width = (
-            self.ai_btn.fontMetrics().horizontalAdvance(self.ai_btn.text()) + 32
+        self.ai_btn.ensurePolished()
+        required_width = max(
+            self.ai_btn.sizeHint().width(),
+            self.ai_btn.fontMetrics().horizontalAdvance(self.ai_btn.text()) + 32,
         )
         if self.ai_btn.minimumWidth() != required_width:
             self.ai_btn.setMinimumWidth(required_width)
@@ -1085,9 +1088,9 @@ class MainWindow(QMainWindow):
         else:
             raise RuntimeError(f"No typed product bootstrap for {spec.class_name}")
         if not isinstance(panel, QWidget):
-            if isinstance(panel, QObject):
+            if isinstance(panel, QObject) and not sip.isdeleted(panel):
                 panel.setParent(None)
-                panel.deleteLater()
+                sip.delete(panel)
             raise TypeError(f"{spec.class_name} did not create a QWidget")
 
         old_widget = self.stack.widget(index)
@@ -1189,6 +1192,7 @@ class MainWindow(QMainWindow):
         dock.installEventFilter(self)
         dock.visibilityChanged.connect(self._on_assistant_dock_visibility_changed)
         dock.topLevelChanged.connect(self._on_assistant_dock_top_level_changed)
+        self._sync_assistant_central_width_floor()
 
     def eventFilter(self, watched, event):  # noqa: N802
         """Reapply dock policy after Qt or child layouts resize the Assistant."""
@@ -1203,13 +1207,30 @@ class MainWindow(QMainWindow):
 
     def _on_assistant_dock_visibility_changed(self, visible: bool) -> None:
         """Restore the standard dock width after every open."""
+        self._sync_assistant_central_width_floor()
         if visible:
             self._schedule_assistant_dock_resize()
 
     def _on_assistant_dock_top_level_changed(self, floating: bool) -> None:
         """Restore the docked width after a floating Assistant is reattached."""
+        self._sync_assistant_central_width_floor()
         if not floating:
             self._schedule_assistant_dock_resize()
+
+    def _sync_assistant_central_width_floor(self) -> None:
+        """Protect workflow controls while the Assistant consumes shell width."""
+        dock = self._assistant_dock()
+        central = self.centralWidget()
+        if dock is None or central is None:
+            return
+        target = (
+            self.ASSISTANT_CENTRAL_WIDGET_MINIMUM_WIDTH
+            if dock.isVisible() and not dock.isFloating()
+            else 0
+        )
+        if central.minimumWidth() != target:
+            central.setMinimumWidth(target)
+            central.updateGeometry()
 
     def _schedule_assistant_dock_resize(self) -> None:
         """Apply dock geometry after Qt has settled the current shell layout."""

@@ -34,6 +34,8 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QStyle,
+    QStyleOptionComboBox,
     QVBoxLayout,
     QWidget,
 )
@@ -613,6 +615,11 @@ def _apply_training_setting_font_scale(
             "}"
         )
     dialog._fit_dialog_to_content()
+    layout = dialog.layout()
+    if layout is not None:
+        layout.activate()
+    target = dialog.sizeHint().expandedTo(dialog.minimumSizeHint())
+    dialog.resize(dialog.size().expandedTo(target))
 
 
 def _observe_training_setting_geometry(
@@ -731,7 +738,21 @@ def _control_text_is_clipped(widget: QWidget) -> bool:
             or metrics.lineSpacing() > available_height
         )
     if isinstance(widget, QComboBox):
-        available_width = max(contents.width() - 30, 0)
+        option = QStyleOptionComboBox()
+        option.initFrom(widget)
+        option.currentText = widget.currentText()
+        style = widget.style()
+        edit_rect = (
+            style.subControlRect(
+                QStyle.ComplexControl.CC_ComboBox,
+                option,
+                QStyle.SubControl.SC_ComboBoxEditField,
+                widget,
+            )
+            if style is not None
+            else contents
+        )
+        available_width = max(edit_rect.width(), 0)
         return metrics.horizontalAdvance(text) > available_width
     if isinstance(widget, QLineEdit):
         available_width = max(contents.width() - 12, 0)
@@ -808,11 +829,13 @@ def _capture_extended_review_surfaces(
         ("data-splitting-step-2-ratio.png", False),
         ("data-splitting-step-2-cross-validation.png", True),
     ):
+        dialog = _data_splitting_step_two_dialog(
+            cross_validation=cross_validation,
+        )
+        _expand_data_splitting_capture(app, dialog)
         _capture(
             app,
-            _data_splitting_step_two_dialog(
-                cross_validation=cross_validation,
-            ),
+            dialog,
             filename,
             output_dir=output_dir,
             compare_child_references=False,
@@ -869,6 +892,30 @@ def _data_splitting_step_two_dialog(
     return dialog
 
 
+def _expand_data_splitting_capture(
+    app: QApplication,
+    dialog: DataSplittingPreviewDialog,
+) -> None:
+    """Expand the scroll viewport so artifact frames include every split control."""
+    _settle_widget(app, dialog)
+    scroll = dialog.content_scroll
+    content = scroll.widget() if scroll is not None else None
+    if scroll is None or content is None:
+        raise RuntimeError("Data-splitting capture content is unavailable.")
+
+    capture_width = dialog.width()
+    full_content_height = max(
+        content.minimumSizeHint().height(),
+        content.sizeHint().height(),
+    )
+    scroll.setFixedHeight(full_content_height)
+    layout = dialog.layout()
+    if layout is not None:
+        layout.activate()
+    dialog.adjustSize()
+    dialog.resize(QSize(capture_width, dialog.sizeHint().height()))
+
+
 def _data_split_capture_context() -> DatasetSplitContext:
     return DatasetSplitContext(
         epoch_available=True,
@@ -893,7 +940,7 @@ def _data_split_capture_provider(
         generation=request.publication_generation,
         rows=tuple(
             DatasetSplitPreviewRow(
-                name=(f"Fold_{index + 1}" if fold_count > 1 else "Holdout"),
+                name=(f"Fold_{index}" if fold_count > 1 else "Holdout"),
                 train_count=76,
                 validation_count=20,
                 test_count=24,

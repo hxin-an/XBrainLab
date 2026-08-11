@@ -14,6 +14,9 @@ from XBrainLab.backend.application.data_interpretation_candidate import (
 from XBrainLab.backend.application.data_interpretation_pairing import (
     resolve_label_file_pairing,
 )
+from XBrainLab.backend.application.data_interpretation_public_projection import (
+    project_label_carrier_plan,
+)
 from XBrainLab.backend.application.data_interpretation_recipe import (
     ImportRecipe,
     choices_from_import_recipe,
@@ -364,7 +367,9 @@ def test_label_import_record_updates_applied_and_recipe_state() -> None:
     assert latest_recipe.recipe_trace[-1] == "label_import:timestamp:1"
 
 
-def test_external_label_import_supersedes_a_saved_skip_labels_decision() -> None:
+def test_external_label_import_supersedes_a_saved_skip_labels_decision(
+    tmp_path: Path,
+) -> None:
     state = _state()
     scan = _scan(state.next_id("scan"))
     candidate = _candidate(scan, state.next_id("candidate"))
@@ -382,8 +387,9 @@ def test_external_label_import_supersedes_a_saved_skip_labels_decision() -> None
     )
     state.record_applied(applied)
     state.record_recipe(recipe, recipe_path=None)
-    label_path = "/tmp/xbrainlab/source/external-labels.tsv"
-    target_path = "/tmp/xbrainlab/source/sub-01_raw.fif"
+    source_path = tmp_path / "source"
+    label_path = str((source_path / "external-labels.tsv").resolve())
+    target_path = str((source_path / "sub-01_raw.fif").resolve())
 
     record = state.record_label_import_for_recipe(
         plan=LabelImportPlan(
@@ -522,8 +528,8 @@ def test_post_load_state_keeps_unproven_placement_blocked_across_projections() -
     updated_recipe = state.resolve_recipe(None)
     [carrier] = updated_candidate.label_carrier_plan
     assert carrier["placement_review"]["status"] == "blocked"
-    assert (
-        updated_preview["label_carrier_preview"] == updated_candidate.label_carrier_plan
+    assert updated_preview["label_carrier_preview"] == project_label_carrier_plan(
+        updated_candidate.label_carrier_plan
     )
     assert updated_decision is not None
     assert updated_decision.decision == "blocked"
@@ -579,10 +585,11 @@ def test_external_label_recipe_round_trip_preserves_multi_target_pairing_and_eve
     tmp_path: Path,
 ) -> None:
     state = _state()
-    shared_labels = "/tmp/xbrainlab/source/shared.mat"
+    source_path = tmp_path / "source"
+    shared_labels = str((source_path / "shared.mat").resolve())
     target_paths = [
-        "/tmp/xbrainlab/source/sub01.gdf",
-        "/tmp/xbrainlab/source/sub02.gdf",
+        str((source_path / "sub01.gdf").resolve()),
+        str((source_path / "sub02.gdf").resolve()),
     ]
     scan = replace(
         _scan(state.next_id("scan")),
@@ -890,3 +897,34 @@ def test_internal_event_handoff_requires_trials_for_each_selected_class() -> Non
     assert handoff["usable_class_labels"] == ["Left hand"]
     assert handoff["supervised_ready"] is False
     assert handoff["supervised_blocker_codes"] == ["insufficient_usable_classes"]
+
+
+def test_epoch_handoff_compacts_bids_event_evidence() -> None:
+    event_rows = [
+        {"row": index, "onset": float(index), "value": str(index % 2)}
+        for index in range(50)
+    ]
+    applied = AppliedInterpretation(
+        interpretation_id="interpretation-bids",
+        candidate_id="candidate-bids",
+        source_path="/tmp/xbrainlab/bids",
+        source_kind="bids",
+        loaded_files=["/tmp/xbrainlab/bids/sub-01_task-test_eeg.set"],
+        bids={
+            "is_bids": True,
+            "event_validation": {
+                "runs": [
+                    {
+                        "file": "/tmp/xbrainlab/bids/sub-01_task-test_eeg.set",
+                        "row_evidence": event_rows,
+                    }
+                ]
+            },
+        },
+    )
+
+    handoff = DataInterpretationSessionState._epoch_handoff(None, applied)
+
+    [run] = handoff["bids"]["event_validation"]["runs"]
+    assert "row_evidence" not in run
+    assert run["row_evidence_count"] == len(event_rows)

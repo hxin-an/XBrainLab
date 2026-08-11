@@ -1,7 +1,8 @@
 import inspect
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from PyQt6.QtWidgets import QGroupBox, QLabel, QMainWindow, QMessageBox, QPushButton
@@ -15,6 +16,7 @@ from XBrainLab.backend.application import (
     QueryStateCommand,
 )
 from XBrainLab.backend.application.capabilities import CommandCapability
+from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.resource_guard import (
     RISK_BLOCKING,
     RISK_SAFE,
@@ -22,7 +24,15 @@ from XBrainLab.backend.application.resource_guard import (
     RISK_WARNING,
     ResourcePreflightResult,
 )
+from XBrainLab.backend.application.training_recommendation import (
+    TrainingRecommendation,
+    TrainingRecommendationField,
+    TrainingRecommendationValues,
+    TrainingSettingProvenance,
+)
+from XBrainLab.backend.model_base.model_catalog import get_model_spec
 from XBrainLab.backend.study import Study
+from XBrainLab.backend.training.model_holder import ModelHolder
 from XBrainLab.ui.application_capabilities import CommandReviewContext
 from XBrainLab.ui.panels.training.sidebar import TrainingSidebar
 from XBrainLab.ui.refresh_coordinator import refresh_after_command
@@ -121,6 +131,56 @@ def _training_preflight(
             if risk == RISK_WARNING
         ),
         diagnostics=diagnostics,
+    )
+
+
+def test_configure_training_command_preserves_catalog_model_id() -> None:
+    spec = get_model_spec("braindecode.eegnet")
+    holder = ModelHolder(
+        spec.factory,
+        {},
+        model_id=spec.model_id,
+        display_name=spec.display_name,
+    )
+
+    command = TrainingSidebar._configure_training_command(model_holder=holder)
+
+    assert command.model_name == "braindecode.eegnet"
+
+
+def test_configure_training_command_preserves_auto_and_exact_edited_fields() -> None:
+    option = SimpleNamespace(
+        epoch=50,
+        bs=8,
+        lr=0.001,
+        repeat_num=1,
+        optim=SimpleNamespace(__name__="Adam"),
+        optim_params={"weight_decay": 0.01},
+        checkpoint_epoch=0,
+        output_dir="./output",
+        evaluation_option=SimpleNamespace(value="Best validation loss"),
+        use_cpu=True,
+        gpu_idx=None,
+    )
+
+    command = TrainingSidebar._configure_training_command(
+        training_option=option,
+        device="auto",
+        edited_recommendation_fields=frozenset(
+            {
+                TrainingRecommendationField.EPOCHS,
+                TrainingRecommendationField.OPTIMIZER,
+            }
+        ),
+    )
+
+    assert command.device == "auto"
+    assert command.optimizer_params == {"weight_decay": 0.01}
+    assert command.edited_recommendation_fields == frozenset(
+        {
+            TrainingRecommendationField.EPOCHS,
+            TrainingRecommendationField.OPTIMIZER,
+        }
     )
 
 
@@ -268,6 +328,16 @@ def test_start_training_busy_scope_does_not_disable_entire_panel(sidebar):
     assert dispatched[0]["busy_target"] is not sidebar.panel
 
 
+def test_training_start_publishes_preparing_data_split_before_dispatch(sidebar):
+    with (
+        patch.object(sidebar, "_execute_action_async", return_value=True),
+        patch.object(sidebar, "_show_status") as show_status,
+    ):
+        assert sidebar._dispatch_start_training() is True
+
+    assert show_status.call_args_list[0].args == ("Preparing data split",)
+
+
 def test_train_result_after_running_publication_does_not_reapply_state(sidebar):
     sidebar.on_training_started(refresh_ready=False)
 
@@ -300,6 +370,58 @@ def test_duplicate_late_train_results_cannot_overwrite_terminal_publication(side
 
     reconcile.assert_not_called()
     assert sidebar.btn_stop.isEnabled() is False
+
+
+def test_late_train_ack_cannot_overwrite_terminal_publication_status(sidebar):
+    terminal_publication = SimpleNamespace(
+        usable=True,
+        state=SimpleNamespace(
+            training=SimpleNamespace(
+                terminal_outcome=SimpleNamespace(is_terminal=True),
+            ),
+        ),
+    )
+
+    with (
+        patch.object(
+            sidebar,
+            "_application_publication",
+            return_value=terminal_publication,
+        ),
+        patch.object(sidebar, "_show_status") as show_status,
+    ):
+        sidebar._handle_start_training_result(
+            _training_result(preflight=_training_preflight()),
+            unknown_retried=False,
+        )
+
+    show_status.assert_not_called()
+
+
+def test_current_train_ack_reports_started_from_nonterminal_publication(sidebar):
+    running_publication = SimpleNamespace(
+        usable=True,
+        state=SimpleNamespace(
+            training=SimpleNamespace(
+                terminal_outcome=SimpleNamespace(is_terminal=False),
+            ),
+        ),
+    )
+
+    with (
+        patch.object(
+            sidebar,
+            "_application_publication",
+            return_value=running_publication,
+        ),
+        patch.object(sidebar, "_show_status") as show_status,
+    ):
+        sidebar._handle_start_training_result(
+            _training_result(preflight=_training_preflight()),
+            unknown_retried=False,
+        )
+
+    show_status.assert_called_once_with("Training started")
 
 
 def test_completed_command_ack_leaves_readiness_to_publication(sidebar):
@@ -472,6 +594,311 @@ def test_training_settings_bind_snapshot_and_apply_to_one_reviewed_generation(
         call.kwargs["expected_publication_generation"]
         for call in execute.call_args_list
     ] == [71, 71]
+
+
+def test_training_setting_prefills_backend_recommendation_then_explicit_proposal(
+    sidebar,
+):
+    values = TrainingRecommendationValues(
+        epochs=50,
+        batch_size=8,
+        learning_rate=0.001,
+        optimizer="AdamW",
+        evaluation_strategy="Best validation loss",
+    )
+    recommendation = TrainingRecommendation(
+        context_fingerprint="sidebar-context",
+        recommended_values=values,
+        values=values,
+        provenance={
+            field.value: TrainingSettingProvenance.RECOMMENDED
+            for field in TrainingRecommendationField
+        },
+        reasons=(),
+        warnings=(),
+    ).with_user_values({TrainingRecommendationField.BATCH_SIZE: 12})
+    query_port = MagicMock()
+    query_port.query_training_state.return_value = SimpleNamespace(
+        failed=False,
+        diagnostics={
+            "state": {
+                "training": {
+                    "training_option": {
+                        "epoch": 7,
+                        "batch_size": 9,
+                        "learning_rate": 0.9,
+                        "optimizer": "Adam",
+                        "evaluation_option": "Last Epoch",
+                        "repeat": 3,
+                        "device": "cpu",
+                    }
+                }
+            }
+        },
+    )
+    query_port.get_training_recommendation.return_value = recommendation
+    sidebar.panel._typed_port_mode = True
+    sidebar.panel._query_port = query_port
+    sidebar.panel._publication_port = MagicMock()
+    captured: dict[str, Any] = {}
+    selected_option = SimpleNamespace()
+    completed = SimpleNamespace(status="completed")
+
+    def _capture_visible_fields(dialog):
+        captured.update(
+            epoch=dialog.epoch_entry.text(),
+            batch_size=dialog.bs_entry.text(),
+            learning_rate=dialog.lr_entry.text(),
+            optimizer=dialog.optim.__name__,
+            evaluation=dialog.evaluation_combo.currentData().value,
+            repeat=dialog.repeat_entry.text(),
+            use_cpu=dialog.use_cpu,
+            manual_fields=dialog.get_recommendation().manual_fields,
+        )
+        return True
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_command_review_context",
+            return_value=CommandReviewContext(
+                capability=CommandCapability(
+                    command_name="configure_training",
+                    enabled=True,
+                ),
+                publication_generation=71,
+            ),
+        ),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog.exec",
+            new=_capture_visible_fields,
+        ),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog.get_result",
+            new=lambda _dialog: selected_option,
+        ),
+        patch.object(
+            sidebar,
+            "_apply_training_configuration",
+            return_value=completed,
+        ) as apply_configuration,
+    ):
+        outcome = sidebar.training_setting(
+            suggested_values={"epoch": "61", "learning_rate": "0.002"}
+        )
+
+    assert outcome is completed
+    query_port.get_training_recommendation.assert_called_once_with(
+        expected_publication_generation=71
+    )
+    assert captured == {
+        "epoch": "61",
+        "batch_size": "12",
+        "learning_rate": "0.002",
+        "optimizer": "AdamW",
+        "evaluation": "Best validation loss",
+        "repeat": "3",
+        "use_cpu": True,
+        "manual_fields": (
+            TrainingRecommendationField.EPOCHS,
+            TrainingRecommendationField.BATCH_SIZE,
+            TrainingRecommendationField.LEARNING_RATE,
+        ),
+    }
+    submitted = apply_configuration.call_args.args[0]
+    assert submitted.edited_recommendation_fields == frozenset(
+        {
+            TrainingRecommendationField.EPOCHS,
+            TrainingRecommendationField.LEARNING_RATE,
+        }
+    )
+
+
+def test_training_setting_recommendation_unavailable_still_opens_dialog(sidebar):
+    query_port = MagicMock()
+    query_port.query_training_state.return_value = SimpleNamespace(
+        failed=False,
+        diagnostics={"state": {"training": {"training_option": {}}}},
+    )
+    query_port.get_training_recommendation.side_effect = PreconditionError(
+        "Recommendation context is changing."
+    )
+    sidebar.panel._typed_port_mode = True
+    sidebar.panel._query_port = query_port
+    sidebar.panel._publication_port = MagicMock()
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_command_review_context",
+            return_value=CommandReviewContext(
+                capability=CommandCapability(
+                    command_name="configure_training",
+                    enabled=True,
+                ),
+                publication_generation=72,
+            ),
+        ),
+        patch("XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog") as dialog,
+    ):
+        dialog.return_value.exec.return_value = False
+        outcome = sidebar.training_setting()
+
+    assert outcome.status.value == "cancelled"
+    assert dialog.call_args.kwargs["recommendation"] is None
+
+
+def test_device_recommendation_uses_same_detached_publication_context(sidebar):
+    cpu_values = TrainingRecommendationValues(
+        epochs=40,
+        batch_size=32,
+        learning_rate=0.0005,
+        optimizer="AdamW",
+        evaluation_strategy="Best validation loss",
+    )
+    gpu_values = replace(cpu_values, batch_size=8)
+    cpu = TrainingRecommendation(
+        context_fingerprint="cpu",
+        recommended_values=cpu_values,
+        values=cpu_values,
+        provenance={},
+        reasons=(),
+        warnings=(),
+    )
+    gpu = replace(
+        cpu,
+        context_fingerprint="gpu",
+        recommended_values=gpu_values,
+        values=gpu_values,
+    )
+    query_port = MagicMock()
+    query_port.get_training_recommendation.side_effect = [cpu, gpu]
+    sidebar.panel._typed_port_mode = True
+    sidebar.panel._query_port = query_port
+
+    cpu_result = sidebar._training_device_recommendation(
+        "cpu",
+        expected_publication_generation=74,
+    )
+    gpu_result = sidebar._training_device_recommendation(
+        "cuda:0",
+        expected_publication_generation=74,
+    )
+
+    assert cpu_result is cpu
+    assert gpu_result is gpu
+    assert query_port.get_training_recommendation.call_args_list == [
+        call(
+            expected_publication_generation=74,
+            prospective_device="cpu",
+        ),
+        call(
+            expected_publication_generation=74,
+            prospective_device="cuda:0",
+        ),
+    ]
+
+
+def test_configure_training_previews_selected_model_recommendation_before_commit(
+    sidebar,
+):
+    query_port = MagicMock()
+    query_port.query_training_state.return_value = SimpleNamespace(
+        failed=False,
+        diagnostics={"state": {"training": {"training_option": {}}}},
+    )
+    attention_values = TrainingRecommendationValues(
+        epochs=75,
+        batch_size=16,
+        learning_rate=0.0003,
+        optimizer="AdamW",
+        evaluation_strategy="Best validation loss",
+    )
+    attention_recommendation = TrainingRecommendation(
+        context_fingerprint="prospective-attention",
+        recommended_values=attention_values,
+        values=attention_values,
+        provenance={
+            field.value: TrainingSettingProvenance.RECOMMENDED
+            for field in TrainingRecommendationField
+        },
+        reasons=(),
+        warnings=(),
+    )
+    query_port.get_training_recommendation.return_value = attention_recommendation
+    sidebar.panel._typed_port_mode = True
+    sidebar.panel._query_port = query_port
+    sidebar.panel._publication_port = MagicMock()
+    model_holder = MagicMock()
+    model_holder.model_id = "braindecode.eegconformer"
+    model_holder.model_params_map = {"n_filters_time": 40}
+    model_holder.pretrained_weight_path = None
+    model_holder.target_model.__name__ = "EEGConformer"
+    selected_option = SimpleNamespace()
+    completed = SimpleNamespace(status="completed")
+    committed = False
+    captured: dict[str, str] = {}
+
+    def _capture_visible_fields(dialog):
+        assert committed is False
+        captured.update(
+            epoch=dialog.epoch_entry.text(),
+            batch_size=dialog.bs_entry.text(),
+            learning_rate=dialog.lr_entry.text(),
+            optimizer=dialog.optim.__name__,
+        )
+        return True
+
+    def _commit(*_args, **_kwargs):
+        nonlocal committed
+        committed = True
+        return completed
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_command_review_context",
+            return_value=CommandReviewContext(
+                capability=CommandCapability(
+                    command_name="configure_training",
+                    enabled=True,
+                ),
+                publication_generation=73,
+            ),
+        ),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog"
+        ) as model_dialog,
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog.exec",
+            new=_capture_visible_fields,
+        ),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog.get_result",
+            new=lambda _dialog: selected_option,
+        ),
+        patch.object(
+            sidebar,
+            "_apply_training_configuration",
+            side_effect=_commit,
+        ) as apply_configuration,
+    ):
+        model_dialog.return_value.exec.return_value = True
+        model_dialog.return_value.get_result.return_value = model_holder
+        outcome = sidebar.configure_training()
+
+    assert outcome is completed
+    query_port.get_training_recommendation.assert_called_once_with(
+        expected_publication_generation=73,
+        prospective_model_name="braindecode.eegconformer",
+        prospective_model_params={"n_filters_time": 40},
+    )
+    assert captured == {
+        "epoch": "75",
+        "batch_size": "16",
+        "learning_rate": "0.0003",
+        "optimizer": "AdamW",
+    }
+    submitted = apply_configuration.call_args.args[0]
+    assert submitted.model_name == "braindecode.eegconformer"
+    assert submitted.edited_recommendation_fields == frozenset()
 
 
 def test_start_training_blocking_result_opens_adjust_settings_without_retry(sidebar):
@@ -1334,6 +1761,7 @@ def test_dataset_split_dialog_binding_uses_typed_runtime_callbacks():
     preview_publication = DatasetSplitPreviewPublication(
         request=preview_request,
         generation=generation,
+        epoch_token=1,
         rows=(
             DatasetSplitPreviewRow(
                 name="Subject 1",
@@ -1391,12 +1819,12 @@ def test_split_data_passes_typed_detached_binding_to_dialog(
 
     generation = 92
     capability = CommandCapability(
-        command_name=CommandName.GENERATE_DATASET.value,
+        command_name=CommandName.CONFIGURE_DATASET_SPLIT.value,
         enabled=True,
     )
     publication = SimpleNamespace(
         generation=generation,
-        effective_capabilities={CommandName.GENERATE_DATASET: capability},
+        effective_capabilities={CommandName.CONFIGURE_DATASET_SPLIT: capability},
     )
     split_context = DatasetSplitContext(
         epoch_available=True,
@@ -1447,6 +1875,87 @@ def test_split_data_passes_typed_detached_binding_to_dialog(
         preview_canceller=preview_canceller,
         initial_values=initial_values,
     )
+
+
+def test_split_confirmation_keeps_model_and_training_settings_responsive(sidebar):
+    from PyQt6.QtWidgets import QDialog
+
+    from XBrainLab.backend.application.dataset_split_preview import (
+        DatasetSplitContext,
+        DatasetSplitPreviewPublication,
+        DatasetSplitPreviewRequest,
+        DatasetSplitPreviewRow,
+        DatasetSplitSpecification,
+    )
+    from XBrainLab.ui.application_capabilities import DatasetSplitDialogBinding
+
+    generation = 93
+    capability = CommandCapability(
+        command_name=CommandName.CONFIGURE_DATASET_SPLIT.value,
+        enabled=True,
+    )
+    publication = SimpleNamespace(
+        generation=generation,
+        effective_capabilities={CommandName.CONFIGURE_DATASET_SPLIT: capability},
+    )
+    specification = DatasetSplitSpecification.from_payload(
+        {
+            "train_type": "Individual",
+            "is_cross_validation": False,
+            "val_splitters": [],
+            "test_splitters": [],
+        }
+    )
+    preview_request = DatasetSplitPreviewRequest(
+        request_id="preview-93",
+        publication_generation=generation,
+        specification=specification,
+    )
+    receipt = DatasetSplitPreviewPublication(
+        request=preview_request,
+        generation=generation,
+        epoch_token=1,
+        rows=(
+            DatasetSplitPreviewRow(
+                name="S01",
+                train_count=8,
+                validation_count=2,
+                test_count=2,
+            ),
+        ),
+    ).receipt
+    binding = DatasetSplitDialogBinding(
+        split_context=DatasetSplitContext(epoch_available=True, trial_count=12),
+        publication_generation=generation,
+        preview_provider=MagicMock(),
+        preview_canceller=MagicMock(),
+    )
+    dispatched: list[tuple[Any, dict[str, Any]]] = []
+
+    def dispatch(command, **kwargs):
+        dispatched.append((command, kwargs))
+        kwargs["busy_target"].set_busy(True)
+        return True
+
+    with (
+        patch.object(sidebar, "_application_publication", return_value=publication),
+        patch.object(sidebar, "_data_splitting_dialog_context", return_value=binding),
+        patch("XBrainLab.ui.panels.training.sidebar.DataSplittingDialog") as dialog,
+        patch.object(sidebar, "_execute_action_async", side_effect=dispatch),
+    ):
+        dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+        dialog.return_value.get_result.return_value = specification.to_payload()
+        dialog.return_value.get_preview_receipt.return_value = receipt
+        outcome = sidebar.split_data()
+
+    assert len(dispatched) == 1
+    assert outcome.message == "Data splitting settings will be saved."
+    command, kwargs = dispatched[0]
+    assert command.preview_receipt is receipt
+    assert kwargs["busy_target"] is sidebar
+    assert sidebar.btn_start.isEnabled() is False
+    assert sidebar.btn_model.isEnabled() is True
+    assert sidebar.btn_setting.isEnabled() is True
 
 
 def test_data_splitting_context_fails_closed_when_product_binding_disappears(

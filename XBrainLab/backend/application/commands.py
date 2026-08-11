@@ -6,9 +6,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from XBrainLab.backend.training.input_contract import DEFAULT_TRAINING_OUTPUT_DIR
+from XBrainLab.backend.training_contract import DEFAULT_TRAINING_OUTPUT_DIR
 
 if TYPE_CHECKING:
+    from .dataset_split_preview import DatasetSplitPreviewReceipt
     from .evaluation_render import EvaluationSummaryIdentity
 
 
@@ -30,10 +31,11 @@ class CommandName(str, Enum):
     REMOVE_FILES = "remove_files"
     PREPROCESS = "preprocess"
     CREATE_EPOCH = "create_epoch"
-    GENERATE_DATASET = "generate_dataset"
+    CONFIGURE_DATASET_SPLIT = "configure_dataset_split"
     CLEAR_DATASETS = "clear_datasets"
     CONFIGURE_TRAINING = "configure_training"
     TRAIN = "train"
+    DISCARD_TRAINING_PREPARATION = "discard_training_preparation"
     STOP_TRAINING = "stop_training"
     CLEAR_TRAINING_HISTORY = "clear_training_history"
     EVALUATE = "evaluate"
@@ -58,13 +60,6 @@ class PreprocessOperation(str, Enum):
     CHANNEL_SELECTION = "channel_selection"
     SET_MONTAGE = "set_montage"
     STANDARD = "standard"
-
-
-class DatasetGenerationMode(str, Enum):
-    """How generated datasets should be committed to the active study."""
-
-    CREATE = "create"
-    REPLACE_EXISTING = "replace_existing"
 
 
 @dataclass(frozen=True)
@@ -104,6 +99,8 @@ class ScanSourceCommand:
     source_path: str
     source_hint: str = "auto"
     label_sources: list[str] = field(default_factory=list)
+    selected_bids_subjects: list[str] = field(default_factory=list)
+    catalog_only: bool = False
 
     @property
     def name(self) -> CommandName:
@@ -311,20 +308,19 @@ class CreateEpochCommand:
 
 
 @dataclass(frozen=True)
-class GenerateDatasetCommand:
-    """Generate train/validation/test datasets from epoch data."""
+class SaveDatasetSplitCommand:
+    """Save a validated train/validation/test split specification."""
 
     test_ratio: float = 0.2
     val_ratio: float = 0.2
     split_strategy: str = "subject"
     training_mode: str = "individual"
     split_config: dict[str, Any] = field(default_factory=dict)
-    replacement_mode: DatasetGenerationMode = DatasetGenerationMode.CREATE
-    confirmed: bool = False
+    preview_receipt: DatasetSplitPreviewReceipt | None = None
 
     @property
     def name(self) -> CommandName:
-        return CommandName.GENERATE_DATASET
+        return CommandName.CONFIGURE_DATASET_SPLIT
 
 
 @dataclass(frozen=True)
@@ -346,6 +342,7 @@ class ConfigureTrainingCommand:
     batch_size: int | None = None
     learning_rate: float | None = None
     repeat: int = 1
+    seed: int | None = None
     device: str = "auto"
     optimizer: str = "adam"
     optimizer_params: dict[str, Any] = field(default_factory=dict)
@@ -374,6 +371,17 @@ class TrainCommand:
     @property
     def name(self) -> CommandName:
         return CommandName.TRAIN
+
+
+@dataclass(frozen=True)
+class DiscardTrainingPreparationCommand:
+    """Discard one pending resource receipt and speculative split candidate."""
+
+    resource_preflight_token: str | None = None
+
+    @property
+    def name(self) -> CommandName:
+        return CommandName.DISCARD_TRAINING_PREPARATION
 
 
 @dataclass(frozen=True)
@@ -510,10 +518,11 @@ Command = (
     | RemoveFilesCommand
     | PreprocessCommand
     | CreateEpochCommand
-    | GenerateDatasetCommand
+    | SaveDatasetSplitCommand
     | ClearDatasetsCommand
     | ConfigureTrainingCommand
     | TrainCommand
+    | DiscardTrainingPreparationCommand
     | StopTrainingCommand
     | ClearTrainingHistoryCommand
     | EvaluateCommand

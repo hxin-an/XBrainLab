@@ -172,7 +172,7 @@ pipeline evidence 要分層，不要用單一大測試包全部。
 - Real-data IO integration 只證明特定資料或 fixture 能走過預期 IO path。
 - Required multi-dataset gate 是手測 / release-candidate handoff 前的必跑項目；它要求
   checked-in GDF+MAT、compact multiformat、2 個 class-grounded public training sources、
-  2 個 public IO/epoch-only sources，以及 public BIDS EEG fixture。只測同一資料集的不同
+  2 個 public import/preprocess boundary sources，以及 public BIDS EEG fixture。只測同一資料集的不同
   副檔名不算通過。
 - Tiny E2E smoke 只證明小型 train/evaluate loop 沒有 shape、metric、輸出路徑等基本錯誤。
 - 兩者都不能直接當作 scientific validation。
@@ -189,7 +189,7 @@ pipeline evidence 要分層，不要用單一大測試包全部。
 | chat product-flow tests | normal input / empty response / worker error / local unavailable 有可見 feedback | 真 local model 長時間穩定性或人工 click-through 完整體驗 |
 | product UI walkthrough tests | assistant layout / panel navigation / synthetic pipeline button path 有 regression protection | 真 Windows launcher 人工驗收或長時間 local model UX |
 | real-data IO tests | 特定 real-data / fixture import paths | 完整 data pipeline reproducibility |
-| required multi-dataset gate | 不同 dataset source 的 import / label / BIDS、class-grounded training 與 IO/epoch-only preflight | full BIDS validator compliance、所有資料集、SCCN/CNT scientific class semantics、model quality |
+| required multi-dataset gate | 不同 dataset source 的 import / label / BIDS、class-grounded training 與 import/preprocess boundary | full BIDS validator compliance、所有資料集、SCCN/CNT scientific class semantics、model quality |
 | tiny pipeline smoke | 小型 train/evaluate path 能閉環 | model quality 或 thesis reproducibility |
 | split audit artifact tests | split indices schema、index overlap、subject/session group leakage | model quality 或完整 external dataset experiment |
 | quality dashboard | fast engineering health | thesis conclusion |

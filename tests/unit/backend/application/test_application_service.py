@@ -32,10 +32,9 @@ from XBrainLab.backend.application import (
     CommandResult,
     ConfigureTrainingCommand,
     CreateEpochCommand,
-    DatasetGenerationMode,
+    DiscardTrainingPreparationCommand,
     ErrorType,
     EvaluateCommand,
-    GenerateDatasetCommand,
     ImportLabelsCommand,
     LabelImportPlan,
     LoadDataCommand,
@@ -50,6 +49,7 @@ from XBrainLab.backend.application import (
     ResetSessionCommand,
     ReviewInterpretationCommand,
     SaliencyCommand,
+    SaveDatasetSplitCommand,
     SaveInterpretationRecipeCommand,
     ScanSourceCommand,
     StopTrainingCommand,
@@ -62,7 +62,10 @@ from XBrainLab.backend.application import (
 )
 from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.errors import ApplicationError
-from XBrainLab.backend.application.resource_guard import ResourceChecker
+from XBrainLab.backend.application.resource_guard import (
+    ResourceChecker,
+    ResourcePreflightResult,
+)
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ActiveTrainingSnapshot,
@@ -217,6 +220,28 @@ def _positive_epoch_data() -> Epochs:
     return epoch_data
 
 
+def _prepare_saved_training_split(service: ApplicationService) -> dict[str, Any]:
+    """Prepare one real, audited split through the deferred public contract."""
+    service.study.data_manager.loaded_data_list = [
+        _minimal_raw(Path("/tmp/application-service-training.fif"))
+    ]
+    service.study.data_manager.epoch_data = _positive_epoch_data()
+
+    saved = service.execute(SaveDatasetSplitCommand(split_strategy="trial"))
+    assert saved.ok is True
+    assert saved.state.dataset.split_spec_saved is True
+    assert saved.state.dataset.split_materialized is False
+
+    candidate = service.dataset_generation.prepare_saved_split_candidate()
+    prepared = service.dataset_generation.commit_prepared_split(candidate)
+    state = service.get_state()
+    assert prepared["materialized"] is True
+    assert prepared["split_audit"]["ok"] is True
+    assert state.dataset.split_spec_saved is True
+    assert state.dataset.split_materialized is True
+    return prepared
+
+
 def _bound_method_identity(handler: Any) -> tuple[Any, Any]:
     return (
         getattr(handler, "__self__", None),
@@ -254,14 +279,17 @@ def test_application_service_binds_every_command_handler_at_initialization():
         CommandName.REMOVE_FILES: service.data_table.handle_remove_files,
         CommandName.PREPROCESS: service.preprocess_commands.handle_preprocess,
         CommandName.CREATE_EPOCH: service.preprocess_commands.handle_create_epoch,
-        CommandName.GENERATE_DATASET: (
-            service.dataset_generation.handle_generate_dataset
+        CommandName.CONFIGURE_DATASET_SPLIT: (
+            service.dataset_generation.handle_save_dataset_split
         ),
         CommandName.CLEAR_DATASETS: service.dataset_generation.handle_clear_datasets,
         CommandName.CONFIGURE_TRAINING: (
             service.training_commands.handle_configure_training
         ),
         CommandName.TRAIN: service._handle_train_with_automation,
+        CommandName.DISCARD_TRAINING_PREPARATION: (
+            service._handle_discard_training_preparation
+        ),
         CommandName.STOP_TRAINING: service.training_commands.handle_stop_training,
         CommandName.CLEAR_TRAINING_HISTORY: (
             service.training_commands.handle_clear_training_history
@@ -284,6 +312,108 @@ def test_application_service_binds_every_command_handler_at_initialization():
         assert _bound_method_identity(actual) == _bound_method_identity(expected), (
             name.value
         )
+
+
+def test_training_recommendation_previews_model_family_without_committing_model():
+    service = ApplicationService(Study())
+
+    with patch(
+        "XBrainLab.backend.application.training_service.get_model_spec",
+        side_effect=AssertionError(
+            "recommendation preview must not resolve or instantiate a model"
+        ),
+    ) as model_lookup:
+        recommendation = service.get_training_recommendation(
+            prospective_model_name="braindecode.eegconformer",
+            prospective_model_params={},
+        )
+
+    assert recommendation.recommended_values.epochs == 40
+    assert recommendation.recommended_values.learning_rate == 0.0003
+    assert recommendation.recommended_values.optimizer == "AdamW"
+    assert service.get_state().training.model_name is None
+    model_lookup.assert_not_called()
+
+
+def test_training_recommendation_previews_device_in_backend_owned_context():
+    service = ApplicationService(Study())
+
+    cpu = service.get_training_recommendation(
+        prospective_model_name="braindecode.deep4net",
+        prospective_model_params={"n_filters_time": 25},
+        prospective_device="cpu",
+    )
+    gpu = service.get_training_recommendation(
+        prospective_model_name="braindecode.deep4net",
+        prospective_model_params={"n_filters_time": 25},
+        prospective_device="cuda:0",
+    )
+
+    assert cpu.recommended_values.batch_size == 8
+    assert gpu.recommended_values.batch_size == 8
+    assert cpu.context_fingerprint != gpu.context_fingerprint
+    assert not any("GPU memory" in warning for warning in cpu.warnings)
+    assert any("GPU memory" in warning for warning in gpu.warnings)
+    assert service.get_state().training.model_name is None
+
+
+def test_get_training_recommendation_does_not_touch_payload_or_resource_queries():
+    service = ApplicationService(Study())
+    epoch_get_data = MagicMock(
+        side_effect=AssertionError("recommendation materialized epoch payload")
+    )
+    get_epoch_data = MagicMock(return_value=SimpleNamespace(get_data=epoch_get_data))
+    service.study.datasets = [
+        SimpleNamespace(name="payload-trap", get_epoch_data=get_epoch_data)
+    ]
+    unknown_vram = {
+        "available_bytes": None,
+        "total_bytes": None,
+        "used_bytes": None,
+        "reason": "test",
+    }
+
+    with (
+        patch.object(
+            ResourceChecker,
+            "check_training_config_safe",
+            wraps=ResourceChecker.check_training_config_safe,
+        ) as resource_check,
+        patch.object(
+            ResourceChecker,
+            "get_gpu_vram_status",
+            return_value=unknown_vram,
+        ) as gpu_query,
+        patch.object(
+            ResourceChecker,
+            "estimate_training_vram",
+            side_effect=AssertionError("recommendation estimated training VRAM"),
+        ) as vram_estimator,
+        patch(
+            "XBrainLab.backend.application.resource_guard.estimate_training_resources",
+            side_effect=AssertionError("recommendation ran direct estimator"),
+        ) as direct_estimator,
+        patch.object(
+            ModelHolder,
+            "get_model",
+            side_effect=AssertionError("recommendation instantiated a model"),
+        ) as model_factory,
+        patch(
+            "XBrainLab.backend.application.training_service.get_model_spec",
+            side_effect=AssertionError("recommendation resolved a model factory"),
+        ) as model_lookup,
+    ):
+        recommendation = service.get_training_recommendation()
+
+    assert recommendation.is_starting_point is True
+    get_epoch_data.assert_not_called()
+    epoch_get_data.assert_not_called()
+    resource_check.assert_not_called()
+    gpu_query.assert_not_called()
+    vram_estimator.assert_not_called()
+    direct_estimator.assert_not_called()
+    model_factory.assert_not_called()
+    model_lookup.assert_not_called()
 
 
 def test_shutdown_owner_exists_before_lifecycle_observers_can_publish(
@@ -484,6 +614,48 @@ def test_view_publication_keeps_state_and_capabilities_on_one_generation() -> No
     assert after.capabilities == build_capability_policy(after.state)
 
 
+def test_bids_catalog_only_scan_preserves_application_publication(
+    tmp_path: Path,
+) -> None:
+    bids_root = tmp_path / "bids"
+    eeg_dir = bids_root / "sub-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    (bids_root / "dataset_description.json").write_text("{}", encoding="utf-8")
+    (eeg_dir / "sub-01_task-P300_eeg.set").write_bytes(b"catalog only")
+    service = ApplicationService(Study())
+    delivered = []
+    service.subscribe(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, delivered.append)
+    before = service.get_view_publication()
+
+    result = service.execute(
+        ScanSourceCommand(
+            source_path=str(bids_root),
+            source_hint="bids",
+            catalog_only=True,
+        )
+    )
+    after = service.get_view_publication()
+
+    assert result.ok is True
+    assert result.diagnostics["bids_subject_catalog"]["subject_count"] == 1
+    assert result.state == before.state
+    assert after == before
+    assert delivered == [before]
+    assert service.acknowledge_view_publication_delivery(before.revision) is True
+
+    repeated = service.execute(
+        ScanSourceCommand(
+            source_path=str(bids_root),
+            source_hint="bids",
+            catalog_only=True,
+        )
+    )
+
+    assert repeated.ok is True
+    assert service.get_view_publication() == before
+    assert delivered == [before]
+
+
 def test_view_publication_consumers_cannot_mutate_committed_state_or_policy() -> None:
     service = ApplicationService(Study())
     lock_acquired = Event()
@@ -597,7 +769,7 @@ def test_training_terminal_delivery_waits_for_canonical_view_acknowledgement(
         deliver_terminal,
     )
 
-    assert service._publish_training_terminal_state() is False
+    assert service.publication_lifecycle.publish_training_terminal_state() is False
     publish_view.assert_called_once()
     deliver_terminal.assert_called_once_with(lifecycle_event)
 
@@ -620,7 +792,7 @@ def test_deferred_view_ack_releases_retained_training_terminal_event() -> None:
         terminal_events.append,
     )
 
-    assert service._publish_training_terminal_state() is False
+    assert service.publication_lifecycle.publish_training_terminal_state() is False
     publication = service.get_view_publication()
     delivery = service.training_publications.training_delivery_state()
 
@@ -653,7 +825,7 @@ def test_saliency_delivery_waits_for_canonical_view_acknowledgement(
         notify_visualization,
     )
 
-    assert service._notify_saliency_publication_changed() is False
+    assert service.publication_lifecycle.notify_saliency_publication_changed() is False
 
     publish_view.assert_called_once()
     notify_visualization.assert_not_called()
@@ -678,7 +850,9 @@ def test_saliency_delivery_does_not_publish_stale_view_during_mutation(
     service._view_coordinator.mark_stale("mutation in progress")
     service._mutation_in_progress = True
     try:
-        assert service._notify_saliency_publication_changed() is False
+        assert (
+            service.publication_lifecycle.notify_saliency_publication_changed() is False
+        )
     finally:
         service._mutation_in_progress = False
 
@@ -716,7 +890,12 @@ def test_training_terminal_event_rejects_mismatched_trainer_identity(
         lambda: replace(publication, state=mismatched_state),
     )
 
-    assert service._terminal_training_publication_event(mismatched_state) is None
+    assert (
+        service.publication_lifecycle.terminal_training_publication_event(
+            mismatched_state
+        )
+        is None
+    )
 
 
 def test_training_terminal_publication_ledger_accepts_each_new_generation_once(
@@ -768,11 +947,11 @@ def test_training_terminal_publication_ledger_accepts_each_new_generation_once(
     )
     service.training.subscribe("training_terminal_published", observe)
 
-    service._publish_training_terminal_state()
-    service._publish_training_terminal_state()
-    service._publish_training_terminal_state()
-    service._publish_training_terminal_state()
-    service._publish_training_terminal_state()
+    service.publication_lifecycle.publish_training_terminal_state()
+    service.publication_lifecycle.publish_training_terminal_state()
+    service.publication_lifecycle.publish_training_terminal_state()
+    service.publication_lifecycle.publish_training_terminal_state()
+    service.publication_lifecycle.publish_training_terminal_state()
 
     assert terminal_events == [first, second]
     delivery_state = service.training_publications.training_delivery_state()
@@ -1157,8 +1336,8 @@ def test_object_query_uses_committed_generation_without_refresh_side_effects(
     )
     monkeypatch.setattr(service.state_snapshot, "build", build)
     monkeypatch.setattr(
-        service,
-        "_reconcile_pending_saliency_terminal",
+        service.publication_lifecycle,
+        "reconcile_pending_saliency_terminal",
         reconcile,
     )
 
@@ -1313,10 +1492,14 @@ def test_shutdown_fence_does_not_wait_for_saliency_terminal_reconciliation() -> 
     release_command_lock = Event()
     shutdown_returned = Event()
     pending_terminal = MagicMock()
-    service._pending_saliency_terminal = MagicMock(return_value=pending_terminal)
+    service.publication_lifecycle.pending_saliency_terminal = MagicMock(
+        return_value=pending_terminal
+    )
     service.post_training_saliency.cancel = MagicMock()
     service.training_runtime.cancel_saliency_job = MagicMock(
-        side_effect=lambda: service._reconcile_pending_saliency_terminal(),
+        side_effect=(
+            lambda: service.publication_lifecycle.reconcile_pending_saliency_terminal()
+        ),
     )
 
     def hold_command_lock() -> None:
@@ -1345,6 +1528,22 @@ def test_shutdown_fence_does_not_wait_for_saliency_terminal_reconciliation() -> 
     assert not lock_owner.is_alive()
     assert not shutdown_thread.is_alive()
     service.training_runtime.cancel_saliency_job.assert_called_once_with()
+
+
+def test_close_releases_saliency_delivery_when_automation_cancel_fails() -> None:
+    service = ApplicationService(Study())
+    service.post_training_saliency.cancel = MagicMock(
+        side_effect=RuntimeError("automation cancel failed")
+    )
+    service.training_runtime.cancel_saliency_job = MagicMock()
+    service.training_runtime.discard_saliency_delivery = MagicMock()
+
+    service.close()
+
+    assert service.is_closed is True
+    service.post_training_saliency.cancel.assert_called_once_with()
+    service.training_runtime.cancel_saliency_job.assert_called_once_with()
+    service.training_runtime.discard_saliency_delivery.assert_called_once_with()
 
 
 def test_shutdown_fence_rechecks_command_queued_before_fence(monkeypatch) -> None:
@@ -1954,8 +2153,7 @@ class _SlowCancellationPlan(TrainingPlanHolder):
 
 def test_synchronous_train_command_allows_stop_command_to_reach_active_worker() -> None:
     service = ApplicationService(Study())
-    service.study.loaded_data_list = [_raw_mock()]
-    cast(Any, service.study).datasets = [object()]
+    _prepare_saved_training_split(service)
     service.study.set_model_holder(_valid_model_holder())
     service.study.set_training_option(_valid_training_option())
     plan = _RecoveryBlockingPlan()
@@ -2219,7 +2417,7 @@ def test_train_capability_blocks_short_epoch_for_selected_model():
             state.dataset,
             available=True,
             count=1,
-            split_summary={"audit": {"issues": []}},
+            active_split_summary={"audit": {"issues": []}},
         ),
         training=replace(
             state.training,
@@ -2233,6 +2431,7 @@ def test_train_capability_blocks_short_epoch_for_selected_model():
             has_raw_data=True,
             has_epoch_data=True,
             has_datasets=True,
+            has_saved_split=True,
         ),
         active_training=replace(
             state.active_training,
@@ -2256,7 +2455,9 @@ def test_train_capability_blocks_split_audit_errors():
             state.dataset,
             available=True,
             count=1,
-            split_summary={
+            split_spec_saved=True,
+            last_split_attempt={
+                "status": "failed",
                 "audit": {
                     "issues": [
                         {
@@ -2264,7 +2465,7 @@ def test_train_capability_blocks_split_audit_errors():
                             "message": "train split is missing class label(s) 1.",
                         }
                     ]
-                }
+                },
             },
         ),
         training=replace(
@@ -2279,6 +2480,7 @@ def test_train_capability_blocks_split_audit_errors():
             has_raw_data=True,
             has_epoch_data=True,
             has_datasets=True,
+            has_saved_split=True,
         ),
         active_training=replace(
             state.active_training,
@@ -2408,6 +2610,7 @@ def test_training_history_query_returns_detached_json_rows(monkeypatch):
                 "accuracy": [75.0, 79.0],
                 "auc": [0.65, 0.72],
             },
+            "test": {"accuracy": []},
         },
     }
     assert returned_row == expected_row
@@ -3667,7 +3870,7 @@ def test_apply_interpretation_honors_interval_end_field(
     service.dataset.import_files = MagicMock(return_value=(1, []))
     service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
 
-    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    scan_result = service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
         PreviewInterpretationCommand(
             choices={
@@ -3690,6 +3893,7 @@ def test_apply_interpretation_honors_interval_end_field(
     service.execute(ValidateInterpretationCommand())
     apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
 
+    assert scan_result.diagnostics["scan_result"]["source_kind"] == "folder"
     assert apply_result.ok is True
     events, event_id = raw.get_event_list()
     np.testing.assert_array_equal(
@@ -3706,7 +3910,7 @@ def test_apply_interpretation_honors_interval_end_field(
     assert list(annotations.description) == ["Left hand", "Right hand"]
     epoch_hint = raw.get_runtime_detail("data_interpretation_epoch_hint")
     assert isinstance(epoch_hint, dict)
-    assert epoch_hint["source"] == "BIDS events.tsv"
+    assert epoch_hint["source"] == "Loaded label file"
     assert epoch_hint["placement_method"] == "interval"
     assert epoch_hint["label_field"] == "label"
     assert epoch_hint["time_field"] == "onset"
@@ -4955,15 +5159,15 @@ def test_train_command_blocked_until_backend_ready():
 
     assert result.failed is True
     assert result.error_type == ErrorType.PRECONDITION
-    assert "Generate datasets before training" in result.message
+    assert (
+        "Save a valid data splitting specification before training." in result.message
+    )
     assert result.state.training.has_trainer is False
 
 
 def test_train_command_requires_confirmation_before_long_running_start():
     service = ApplicationService(Study())
-    raw = _raw_mock()
-    service.study.loaded_data_list = [raw]
-    cast(Any, service.study).datasets = [object()]
+    _prepare_saved_training_split(service)
     service.study.set_model_holder(_valid_model_holder())
     service.study.set_training_option(_valid_training_option())
     service.training.start_training = MagicMock(return_value=1)
@@ -5017,8 +5221,7 @@ def test_synchronous_train_command_returns_failed_result_for_plan_failure(
     is_oom: bool,
 ) -> None:
     service = ApplicationService(Study())
-    service.study.loaded_data_list = [_raw_mock()]
-    cast(Any, service.study).datasets = [object()]
+    _prepare_saved_training_split(service)
     service.study.set_model_holder(_valid_model_holder())
     service.study.set_training_option(_valid_training_option())
 
@@ -5057,8 +5260,7 @@ def test_synchronous_training_failure_waits_for_exact_terminal_handoff(
 ) -> None:
     """Worker failure is not returned until its monitor publication is terminal."""
     service = ApplicationService(Study())
-    service.study.loaded_data_list = [_raw_mock()]
-    cast(Any, service.study).datasets = [object()]
+    _prepare_saved_training_split(service)
     service.study.set_model_holder(_valid_model_holder())
     service.study.set_training_option(_valid_training_option())
     failure_message = "training data loader failed"
@@ -5165,17 +5367,50 @@ def test_train_restart_cleanup_waits_before_command_lock_and_fails_recoverably(
     execute_with_lock.assert_not_called()
 
 
-def test_training_automation_receives_replacement_mode() -> None:
+def test_training_automation_commits_split_after_resource_admission() -> None:
     service = ApplicationService(Study())
+    split_preparation: dict[str, object] = {
+        "materialized": False,
+        "cache_reused": True,
+        "split_epoch_revision": 3,
+        "split_specification_fingerprint": "saved-split-fingerprint",
+        "split_summary": {"count": 1},
+    }
+    candidate = SimpleNamespace(datasets=(object(),))
+    service.dataset_generation.prepare_saved_split_candidate = MagicMock(
+        return_value=candidate
+    )
+    service.dataset_generation.commit_prepared_split = MagicMock(
+        return_value=split_preparation
+    )
     service.post_training_saliency = MagicMock()
-    service.training_commands.handle_train = MagicMock(
+    preflight = ResourcePreflightResult(issues=(), diagnostics={})
+    service.training_commands.resolve_train_preflight = MagicMock(
+        return_value=(preflight, False)
+    )
+    service.training_commands.start_train_after_preflight = MagicMock(
         return_value=("Training completed.", {}),
     )
     command = TrainCommand(append=False, interactive=False)
 
     result = service._handle_train_with_automation(command)
 
-    assert result == ("Training completed.", {})
+    assert result == (
+        "Training completed.",
+        {"split_preparation": split_preparation},
+    )
+    service.dataset_generation.prepare_saved_split_candidate.assert_called_once_with()
+    service.training_commands.resolve_train_preflight.assert_called_once_with(
+        command,
+        datasets=candidate.datasets,
+    )
+    service.dataset_generation.commit_prepared_split.assert_called_once_with(candidate)
+    service.training_commands.start_train_after_preflight.assert_called_once_with(
+        command,
+        preflight=preflight,
+        receipt_reused=False,
+        defer_synchronous_completion=True,
+    )
     service.post_training_saliency.arm.assert_called_once_with(append=False)
     service.post_training_saliency.cancel.assert_not_called()
 
@@ -5188,7 +5423,7 @@ def test_wait_for_background_tasks_waits_for_submission_then_saliency_job() -> N
             call_order.append(f"monitor_terminal:{generation}") or True
         ),
     )
-    service._publish_training_terminal_state = MagicMock(
+    service.publication_lifecycle.publish_training_terminal_state = MagicMock(
         side_effect=lambda: call_order.append("terminal_reconcile") or True,
     )
     service.training_publications.wait_for_training_delivery = MagicMock(
@@ -5254,7 +5489,11 @@ def test_wait_for_background_tasks_retries_terminal_reconciliation_after_empty_l
     """A transient monitor refresh failure cannot look like an idle success."""
     service = ApplicationService(Study())
     reconcile = MagicMock(side_effect=[False, True])
-    monkeypatch.setattr(service, "_publish_training_terminal_state", reconcile)
+    monkeypatch.setattr(
+        service.publication_lifecycle,
+        "publish_training_terminal_state",
+        reconcile,
+    )
 
     assert service.wait_for_background_tasks(timeout=1.0) is True
 
@@ -5266,7 +5505,11 @@ def test_wait_for_background_tasks_rejects_persistent_terminal_reconciliation_fa
 ) -> None:
     service = ApplicationService(Study())
     reconcile = MagicMock(return_value=False)
-    monkeypatch.setattr(service, "_publish_training_terminal_state", reconcile)
+    monkeypatch.setattr(
+        service.publication_lifecycle,
+        "publish_training_terminal_state",
+        reconcile,
+    )
 
     assert service.wait_for_background_tasks(timeout=1.0) is False
 
@@ -5301,8 +5544,7 @@ def test_synchronous_train_waits_for_application_background_tasks() -> None:
 def test_synchronous_train_waits_for_real_monitor_terminal_handoff(monkeypatch) -> None:
     """Worker exit alone is not completion until monitor callbacks have returned."""
     service = ApplicationService(Study())
-    service.study.loaded_data_list = [_raw_mock()]
-    cast(Any, service.study).datasets = [object()]
+    _prepare_saved_training_split(service)
     service.study.set_model_holder(_valid_model_holder())
     service.study.set_training_option(_valid_training_option())
     plan = _SlowCancellationPlan()
@@ -5617,8 +5859,7 @@ def test_close_stops_worker_blocking_synchronous_training_completion() -> None:
 
 def test_close_does_not_commit_while_real_synchronous_worker_ignores_stop() -> None:
     service = ApplicationService(Study())
-    service.study.loaded_data_list = [_raw_mock()]
-    cast(Any, service.study).datasets = [object()]
+    _prepare_saved_training_split(service)
     service.study.set_model_holder(_valid_model_holder())
     service.study.set_training_option(_valid_training_option())
     plan = _SlowCancellationPlan()
@@ -5688,8 +5929,7 @@ def test_close_waits_for_synchronous_completion_publication_to_quiesce(
     monkeypatch,
 ) -> None:
     service = ApplicationService(Study())
-    service.study.loaded_data_list = [_raw_mock()]
-    cast(Any, service.study).datasets = [object()]
+    _prepare_saved_training_split(service)
     service.study.set_model_holder(_valid_model_holder())
     service.study.set_training_option(_valid_training_option())
     plan = _SlowCancellationPlan()
@@ -5916,22 +6156,8 @@ def test_published_state_query_does_not_retry_training_terminal_delivery() -> No
 
 def test_train_resource_warning_is_returned_before_training_starts(monkeypatch):
     service = ApplicationService(Study())
-    raw = _raw_mock()
-    data = SimpleNamespace(nbytes=10_000, shape=(10, 1_000))
-    labels = SimpleNamespace(nbytes=1_000, shape=(10,))
-    epoch_data = SimpleNamespace(
-        get_data=lambda: data,
-        get_label_list=lambda: labels,
-    )
-    dataset = SimpleNamespace(
-        get_epoch_data=lambda: epoch_data,
-        train_mask=[True] * 10,
-        val_mask=[True] * 2,
-        test_mask=[True] * 2,
-    )
     option = _valid_training_option(batch_size=4)
-    service.study.loaded_data_list = [raw]
-    cast(Any, service.study).datasets = [dataset]
+    _prepare_saved_training_split(service)
     service.study.set_model_holder(_valid_model_holder())
     service.study.set_training_option(option)
     service.training.start_training = MagicMock(return_value=1)
@@ -5978,10 +6204,11 @@ def test_every_declared_command_returns_result_envelope():
             high_freq=40,
         ),
         CreateEpochCommand(t_min=0, t_max=1),
-        GenerateDatasetCommand(),
+        SaveDatasetSplitCommand(),
         ClearDatasetsCommand(),
         ConfigureTrainingCommand(model_name="EEGNet"),
         TrainCommand(),
+        DiscardTrainingPreparationCommand(),
         EvaluateCommand(),
         VisualizeCommand(),
         SaliencyCommand(),
@@ -6062,7 +6289,7 @@ def test_apply_interpretation_blocks_after_epoch_without_import_side_effect(
     service.dataset.import_files.assert_not_called()
 
 
-def test_generate_dataset_requires_confirmation_when_dataset_already_exists():
+def test_configure_dataset_split_save_preserves_existing_dataset_without_confirmation():
     service = ApplicationService(Study())
     raw = _raw_mock()
     service.study.data_manager.loaded_data_list = [raw]
@@ -6071,20 +6298,18 @@ def test_generate_dataset_requires_confirmation_when_dataset_already_exists():
     service.study.data_manager.datasets = [MagicMock()]
 
     result = service.execute(
-        GenerateDatasetCommand(
-            replacement_mode=DatasetGenerationMode.REPLACE_EXISTING,
-        ),
+        SaveDatasetSplitCommand(),
     )
 
-    assert result.failed is True
-    assert result.error_type == ErrorType.CONFIRMATION_REQUIRED
-    capability = service.get_capabilities().get(CommandName.GENERATE_DATASET)
+    assert result.ok is True
+    assert service.study.data_manager.datasets[0] is not None
+    capability = service.get_capabilities().get(CommandName.CONFIGURE_DATASET_SPLIT)
     assert capability.enabled is True
-    assert capability.requires_confirmation is True
-    assert capability.decision_boundary == "replace_generated_datasets"
+    assert capability.requires_confirmation is False
+    assert capability.destructive is False
 
 
-def test_generate_dataset_requires_confirmation_when_only_generator_exists():
+def test_configure_dataset_split_save_is_non_destructive_with_existing_generator():
     service = ApplicationService(Study())
     raw = _raw_mock()
     service.study.data_manager.loaded_data_list = [raw]
@@ -6093,14 +6318,14 @@ def test_generate_dataset_requires_confirmation_when_only_generator_exists():
     service.study.data_manager.dataset_generator = MagicMock()
     service.get_state()
 
-    capability = service.get_capabilities().get(CommandName.GENERATE_DATASET)
+    capability = service.get_capabilities().get(CommandName.CONFIGURE_DATASET_SPLIT)
 
     assert capability.enabled is True
-    assert capability.requires_confirmation is True
-    assert capability.decision_boundary == "replace_generated_datasets"
+    assert capability.requires_confirmation is False
+    assert capability.destructive is False
 
 
-def test_generate_dataset_confirmation_does_not_imply_replacement_intent():
+def test_configure_dataset_split_command_has_no_replacement_confirmation_field():
     service = ApplicationService(Study())
     raw = _raw_mock()
     existing_dataset = MagicMock()
@@ -6109,15 +6334,15 @@ def test_generate_dataset_confirmation_does_not_imply_replacement_intent():
     service.study.data_manager.epoch_data = _positive_epoch_data()
     service.study.data_manager.datasets = [existing_dataset]
 
-    result = service.execute(GenerateDatasetCommand(confirmed=True))
+    result = service.execute(SaveDatasetSplitCommand())
 
-    assert result.failed is True
-    assert result.error_type == ErrorType.PRECONDITION
-    assert result.diagnostics["replacement_required"] is True
+    assert result.ok is True
     assert service.study.data_manager.datasets == [existing_dataset]
 
 
-def test_generate_dataset_replacement_failure_restores_previous_training_state():
+def test_deferred_dataset_replacement_failure_restores_previous_training_state(
+    monkeypatch,
+):
     service = ApplicationService(Study())
     raw = _raw_mock()
     service.study.data_manager.loaded_data_list = [raw]
@@ -6158,29 +6383,39 @@ def test_generate_dataset_replacement_failure_restores_previous_training_state()
     service.study.get_datasets_generator = MagicMock(
         return_value=replacement_generator,
     )
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.dataset_generation_service.audit_dataset_splits",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            ok=True,
+            dataset_count=1,
+            issues=[],
+        ),
+    )
     service.dataset_generation.pipeline_transaction.publish_datasets = MagicMock(
         side_effect=fail_after_partial_publication,
     )
 
-    result = service.execute(
-        GenerateDatasetCommand(
-            replacement_mode=DatasetGenerationMode.REPLACE_EXISTING,
-            confirmed=True,
-        ),
+    saved = service.execute(
+        SaveDatasetSplitCommand(),
     )
 
-    assert result.failed is True
+    assert saved.ok is True
+    assert service.study.data_manager.datasets == [old_dataset]
+    assert service.study.data_manager.dataset_generator is old_generator
+    assert service.study.training_manager.trainer is old_trainer
+    candidate = service.dataset_generation.prepare_saved_split_candidate()
+    with pytest.raises(ApplicationError) as exc_info:
+        service.dataset_generation.commit_prepared_split(candidate)
+
     assert service.study.data_manager.datasets == [old_dataset]
     assert service.study.data_manager.dataset_generator is old_generator
     assert service.study.training_manager.trainer is old_trainer
     assert old_trainer.get_training_plan_holders() == old_history
-    assert result.changed_state.datasets_changed is False
-    assert result.changed_state.training_changed is False
-    assert result.diagnostics["rolled_back"] is True
-    assert result.diagnostics["replacement_mode"] == "replace_existing"
+    assert exc_info.value.diagnostics["state_preserved"] is True
+    assert exc_info.value.diagnostics["replacement_mode"] == "replace_existing"
 
 
-def test_generate_dataset_blocks_while_training_is_running():
+def test_configure_dataset_split_blocks_while_training_is_running():
     service = ApplicationService(Study())
     raw = _raw_mock()
     service.study.data_manager.loaded_data_list = [raw]
@@ -6188,7 +6423,7 @@ def test_generate_dataset_blocks_while_training_is_running():
     service.study.data_manager.epoch_data = _positive_epoch_data()
     service.study.training_manager.is_training = MagicMock(return_value=True)
 
-    result = service.execute(GenerateDatasetCommand())
+    result = service.execute(SaveDatasetSplitCommand())
 
     assert result.failed is True
     assert result.error_type == ErrorType.PRECONDITION
@@ -6209,7 +6444,7 @@ def test_clear_datasets_blocks_while_training_is_running():
     service.training.clean_datasets.assert_not_called()
 
 
-def test_generate_dataset_fails_when_split_audit_has_empty_or_leaking_splits():
+def test_training_split_preparation_fails_for_empty_or_leaking_splits():
     service = ApplicationService(Study())
     epoch_data = _positive_epoch_data()
     service.study.data_manager.epoch_data = epoch_data
@@ -6223,28 +6458,30 @@ def test_generate_dataset_fails_when_split_audit_has_empty_or_leaking_splits():
     generator.prepare_result.return_value = [leaking]
     service.study.get_datasets_generator = MagicMock(return_value=generator)
 
-    result = service.execute(
-        GenerateDatasetCommand(split_strategy="trial"),
+    saved = service.execute(
+        SaveDatasetSplitCommand(split_strategy="trial"),
     )
 
-    assert result.failed is True
-    assert result.error_type == ErrorType.DATA_MISMATCH
-    assert "split audit" in result.message
-    assert result.state.dataset.available is False
-    assert result.state.dataset.generator_exists is False
-    assert result.state.training.has_trainer is False
-    assert result.diagnostics["rolled_back"] is True
-    assert result.diagnostics["split_audit"]["ok"] is False
+    assert saved.ok is True
+    with pytest.raises(ApplicationError) as exc_info:
+        service.dataset_generation.prepare_saved_split_candidate()
+
+    error = exc_info.value
+    state = service.get_state()
+    assert error.error_type == ErrorType.DATA_MISMATCH
+    assert "split audit" in error.message
+    assert state.dataset.available is False
+    assert state.dataset.generator_exists is False
+    assert state.training.has_trainer is False
+    assert error.diagnostics["state_preserved"] is True
+    assert error.diagnostics["split_audit"]["ok"] is False
     assert any(
         "split is empty" in issue["message"]
-        for issue in result.diagnostics["split_audit"]["issues"]
+        for issue in error.diagnostics["split_audit"]["issues"]
     )
-    train = service.execute(TrainCommand())
-    assert train.failed is True
-    assert "Generate datasets before training" in train.message
 
 
-def test_generate_dataset_rolls_back_partial_apply_failure():
+def test_training_split_preparation_rolls_back_stale_apply(monkeypatch):
     service = ApplicationService(Study())
     epoch_data = _positive_epoch_data()
     service.study.data_manager.epoch_data = epoch_data
@@ -6263,20 +6500,29 @@ def test_generate_dataset_rolls_back_partial_apply_failure():
     generator = MagicMock()
     generator.prepare_result.side_effect = prepare_after_new_trainer_started
     service.study.get_datasets_generator = MagicMock(return_value=generator)
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.dataset_generation_service.audit_dataset_splits",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            ok=True,
+            dataset_count=1,
+            issues=[],
+        ),
+    )
 
-    result = service.execute(GenerateDatasetCommand())
+    saved = service.execute(SaveDatasetSplitCommand())
 
-    assert result.failed is True
-    assert result.state.dataset.available is False
-    assert result.state.dataset.generator_exists is False
-    assert result.state.training.has_trainer is True
+    assert saved.ok is True
+    candidate = service.dataset_generation.prepare_saved_split_candidate()
+    with pytest.raises(ApplicationError):
+        service.dataset_generation.commit_prepared_split(candidate)
+    state = service.get_state()
+    assert state.dataset.available is False
+    assert state.dataset.generator_exists is False
+    assert state.training.has_trainer is True
     assert service.study.training_manager.trainer is replacement_trainer
-    assert result.changed_state.datasets_changed is False
-    assert result.changed_state.training_changed is True
-    assert result.changed_state.error_changed is True
 
 
-def test_generate_dataset_audits_custom_trial_generator_as_trial_protocol():
+def test_training_split_preparation_audits_custom_trial_protocol():
     service = ApplicationService(Study())
     epoch_data = _positive_epoch_data()
     service.study.data_manager.epoch_data = epoch_data
@@ -6291,8 +6537,8 @@ def test_generate_dataset_audits_custom_trial_generator_as_trial_protocol():
     generator = MagicMock()
     generator.prepare_result.return_value = [dataset]
     service.study.get_datasets_generator = MagicMock(return_value=generator)
-    result = service.execute(
-        GenerateDatasetCommand(
+    saved = service.execute(
+        SaveDatasetSplitCommand(
             split_config={
                 "train_type": "Individual",
                 "is_cross_validation": False,
@@ -6314,9 +6560,11 @@ def test_generate_dataset_audits_custom_trial_generator_as_trial_protocol():
         ),
     )
 
-    assert result.ok is True
-    assert result.diagnostics["protocol"] == "trial-wise"
-    assert result.state.dataset.available is True
+    assert saved.ok is True
+    candidate = service.dataset_generation.prepare_saved_split_candidate()
+    prepared = service.dataset_generation.commit_prepared_split(candidate)
+    assert prepared["protocol"] == "trial-wise"
+    assert service.get_state().dataset.available is True
 
 
 def test_reset_preprocess_command_clears_downstream_training_plan():
@@ -6555,14 +6803,15 @@ def test_import_labels_updates_applied_interpretation_recipe_trace(tmp_path):
     assert import_result.ok is True
     assert import_result.diagnostics["recipe_updated"] is True
     label_import = import_result.diagnostics["label_import"]
+    canonical_label_path = str(label_path.resolve())
     assert label_import["mode"] == "batch"
-    assert label_import["label_carriers"] == [str(label_path)]
+    assert label_import["label_carriers"] == [canonical_label_path]
     assert label_import["selected_event_names"] == ["cue"]
-    assert import_result.state.interpretation.label_carriers == [str(label_path)]
+    assert import_result.state.interpretation.label_carriers == [canonical_label_path]
     assert import_result.state.interpretation.label_import_count == 1
     assert save_result.ok is True
     recipe = save_result.diagnostics["recipe"]
-    assert recipe["label_carriers"] == [str(label_path)]
+    assert recipe["label_carriers"] == [canonical_label_path]
     assert recipe["label_imports"][0]["class_map"] == {"1": "left", "2": "right"}
     assert "label_import:batch:1" in recipe["recipe_trace"]
 

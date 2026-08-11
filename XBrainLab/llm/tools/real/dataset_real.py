@@ -18,7 +18,7 @@ from ..definitions.dataset_def import (
     BaseApplyInterpretationTool,
     BaseAttachLabelsTool,
     BaseClearDatasetTool,
-    BaseGenerateDatasetTool,
+    BaseConfigureDatasetSplitTool,
     BaseGetDatasetInfoTool,
     BaseListFilesTool,
     BaseLoadDataTool,
@@ -461,10 +461,10 @@ class RealQueryStateTool(BaseQueryStateTool):
         )
 
 
-class RealGenerateDatasetTool(BaseGenerateDatasetTool):
-    """Real implementation of :class:`BaseGenerateDatasetTool`.
+class RealConfigureDatasetSplitTool(BaseConfigureDatasetSplitTool):
+    """Real implementation of :class:`BaseConfigureDatasetSplitTool`.
 
-    Generates train/validation/test splits from epoched EEG data.
+    Saves train/validation/test split settings for epoched EEG data.
     """
 
     def execute(
@@ -476,7 +476,7 @@ class RealGenerateDatasetTool(BaseGenerateDatasetTool):
         training_mode: str = "individual",
         **kwargs,
     ) -> ToolResult:
-        """Generate a training dataset from epoched data.
+        """Save training dataset split settings for epoched data.
 
         Args:
             study: The global ``Study`` instance.
@@ -489,16 +489,16 @@ class RealGenerateDatasetTool(BaseGenerateDatasetTool):
             **kwargs: Additional keyword arguments.
 
         Returns:
-            A success message with dataset count or an error message.
+            A success message for the saved specification or an error message.
 
         """
-        return execute_real_application_tool(
-            study,
-            self.name,
-            {
-                "test_ratio": test_ratio,
-                "val_ratio": val_ratio,
-                "split_strategy": split_strategy,
-                "training_mode": training_mode,
-            },
-        )
+        params = {
+            "test_ratio": test_ratio,
+            "val_ratio": val_ratio,
+            "split_strategy": split_strategy,
+            "training_mode": training_mode,
+        }
+        for host_param in ("preview_receipt", "assistant_setting_confirmation"):
+            if host_param in kwargs:
+                params[host_param] = kwargs[host_param]
+        return execute_real_application_tool(study, self.name, params)

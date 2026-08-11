@@ -8,8 +8,14 @@ from pathlib import Path
 
 import pytest
 from PIL import Image
-from PyQt6.QtCore import QPoint, QRect
-from PyQt6.QtWidgets import QApplication, QDialogButtonBox, QLabel
+from PyQt6.QtCore import QPoint, QRect, QSize
+from PyQt6.QtWidgets import (
+    QApplication,
+    QDialogButtonBox,
+    QLabel,
+    QProxyStyle,
+    QStyle,
+)
 
 import scripts.dev.capture_ui_reviewer_fixes as capture_script
 from XBrainLab.backend.application.preprocess_render import (
@@ -114,13 +120,16 @@ def test_saliency_capture_factory_builds_requested_full_content_state(
 
 
 @pytest.mark.parametrize(
-    ("cross_validation", "expected_rows", "expected_test_unit"),
-    [(False, 1, "Ratio"), (True, 5, "K Fold")],
+    ("cross_validation", "expected_split_labels", "expected_test_unit"),
+    [
+        (False, ["Holdout"], "Ratio"),
+        (True, [f"Fold {index}" for index in range(1, 6)], "K Fold"),
+    ],
 )
 def test_data_splitting_step_two_capture_factory_builds_representative_states(
     qapp,
     cross_validation,
-    expected_rows,
+    expected_split_labels,
     expected_test_unit,
 ) -> None:
     dialog = capture_script._data_splitting_step_two_dialog(
@@ -129,7 +138,10 @@ def test_data_splitting_step_two_capture_factory_builds_representative_states(
     try:
         _settle(qapp, dialog)
         assert dialog.tree is not None
-        assert dialog.tree.topLevelItemCount() == expected_rows
+        assert [
+            dialog.tree.topLevelItem(row).text(0)
+            for row in range(dialog.tree.topLevelItemCount())
+        ] == expected_split_labels
         assert dialog.test_widgets[0][0].currentText() == expected_test_unit
         assert dialog.btn_confirm is not None and dialog.btn_confirm.isEnabled()
         assert dialog.rect().contains(
@@ -309,6 +321,84 @@ def test_training_setting_geometry_is_observed_at_supported_font_scales(
     assert all(row["horizontal_gap_px"] >= 0 for row in check["rows"])
     assert all(row["label_text_clipped"] is False for row in check["rows"])
     assert all(row["overlap"] is False for row in check["rows"])
+
+
+def test_training_setting_bounds_inflated_native_combo_size_hint(qapp) -> None:
+    dialog = capture_script._training_setting_dialog()
+    try:
+        assert dialog.evaluation_combo is not None
+        dialog.evaluation_combo.sizeHint = lambda: QSize(1200, 36)
+        dialog._fit_dialog_to_content()
+        _settle(qapp, dialog)
+
+        check = capture_script._observe_training_setting_geometry(
+            dialog,
+            font_scale=1.5,
+        )
+    finally:
+        _dispose(qapp, dialog)
+
+    evaluation = next(row for row in check["rows"] if row["label"] == "Evaluation")
+    assert evaluation["contained_in_dialog"] is True
+    assert evaluation["input_text_clipped"] is False
+
+
+def test_training_setting_reserves_native_combo_edit_field_chrome(qapp) -> None:
+    class NarrowEditFieldStyle(QProxyStyle):
+        def subControlRect(self, control, option, sub_control, widget=None):
+            rect = super().subControlRect(control, option, sub_control, widget)
+            if (
+                control == QStyle.ComplexControl.CC_ComboBox
+                and sub_control == QStyle.SubControl.SC_ComboBoxEditField
+            ):
+                rect.setWidth(max(rect.width() - 190, 0))
+            return rect
+
+    dialog = capture_script._training_setting_dialog()
+    try:
+        assert dialog.evaluation_combo is not None
+        native_style = NarrowEditFieldStyle()
+        native_style.setParent(dialog.evaluation_combo)
+        dialog.evaluation_combo.setStyle(native_style)
+        dialog._fit_dialog_to_content()
+        _settle(qapp, dialog)
+
+        check = capture_script._observe_training_setting_geometry(
+            dialog,
+            font_scale=1.5,
+        )
+    finally:
+        _dispose(qapp, dialog)
+
+    evaluation = next(row for row in check["rows"] if row["label"] == "Evaluation")
+    assert evaluation["input_text_clipped"] is False
+
+
+def test_training_setting_reserves_stylesheet_combo_chrome(qapp) -> None:
+    dialog = capture_script._training_setting_dialog()
+    try:
+        assert dialog.evaluation_combo is not None
+        capture_script._apply_training_setting_font_scale(dialog, 1.5)
+        _settle(qapp, dialog)
+
+        widest = max(
+            dialog.evaluation_combo.fontMetrics().horizontalAdvance(
+                dialog.evaluation_combo.itemText(index)
+            )
+            for index in range(dialog.evaluation_combo.count())
+        )
+        assert dialog.evaluation_combo.width() >= (
+            widest + dialog._COMBO_HORIZONTAL_CHROME_FALLBACK
+        )
+        check = capture_script._observe_training_setting_geometry(
+            dialog,
+            font_scale=1.5,
+        )
+    finally:
+        _dispose(qapp, dialog)
+
+    evaluation = next(row for row in check["rows"] if row["label"] == "Evaluation")
+    assert evaluation["input_text_clipped"] is False
 
 
 def test_training_setting_geometry_guard_rejects_overlap(qapp) -> None:

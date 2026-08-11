@@ -30,6 +30,7 @@ PRODUCT_LOG_ROOTS = (
     PROJECT_ROOT / "scripts/dev",
 )
 LOGGER_MODULE = PROJECT_ROOT / "XBrainLab/backend/utils/logger.py"
+MODEL_CACHE_ROOT = PROJECT_ROOT / "XBrainLab/llm/core/models"
 LOG_HANDLER_FACTORIES = frozenset(
     {
         "FileHandler",
@@ -2166,7 +2167,11 @@ def test_product_code_cannot_install_a_log_handler_outside_central_logger() -> N
     findings: list[tuple[str, int, str]] = []
     for root in PRODUCT_LOG_ROOTS:
         for path in root.rglob("*.py"):
-            if path == LOGGER_MODULE or "/mcp/" in path.as_posix():
+            if (
+                path == LOGGER_MODULE
+                or path.is_relative_to(MODEL_CACHE_ROOT)
+                or "/mcp/" in path.as_posix()
+            ):
                 continue
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for node in ast.walk(tree):

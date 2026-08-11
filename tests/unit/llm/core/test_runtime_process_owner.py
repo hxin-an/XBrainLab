@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from collections.abc import Iterator
@@ -16,9 +17,10 @@ from XBrainLab.llm.core.runtime_process import (
     LocalRuntimeProcessOwner,
     LocalRuntimeRestartRequiredError,
     LocalRuntimeTurnBusyError,
+    _RuntimeEvent,
 )
 
-_SPAWN_TEST_STARTUP_TIMEOUT_SECONDS = 10.0
+_SPAWN_TEST_STARTUP_TIMEOUT_SECONDS = 60.0 if os.name == "nt" else 10.0
 
 
 class _CooperativeEngine:
@@ -253,6 +255,119 @@ def test_clean_generation_and_close_do_not_require_restart() -> None:
     ) == ["one", "two"]
     assert owner.close(wait_timeout=0.5) is True
     assert owner.restart_required is False
+
+
+def test_runtime_event_wait_drains_terminal_event_after_initial_empty_poll() -> None:
+    terminal = _RuntimeEvent("closed")
+
+    class _DelayedTerminalConnection:
+        def __init__(self) -> None:
+            self.poll_count = 0
+
+        def poll(self, _timeout: float) -> bool:
+            self.poll_count += 1
+            return self.poll_count >= 2
+
+        def recv(self) -> _RuntimeEvent:
+            return terminal
+
+    owner = LocalRuntimeProcessOwner.__new__(LocalRuntimeProcessOwner)
+    owner._event_connection = _DelayedTerminalConnection()
+
+    event = owner._wait_for_runtime_event(deadline=time.monotonic() + 0.2)
+
+    assert event is terminal
+    assert owner._event_connection.poll_count == 2
+
+
+def test_close_succeeds_when_process_exits_zero_before_terminal_pipe_event() -> None:
+    class _Process:
+        pid = 123
+        exitcode: int | None = None
+        alive = True
+
+        def is_alive(self) -> bool:
+            return self.alive
+
+        def join(self, timeout: float) -> None:
+            del timeout
+
+    class _CommandConnection:
+        def __init__(self, process: _Process) -> None:
+            self.process = process
+
+        def send(self, command) -> None:
+            assert command.kind == "close"
+            self.process.alive = False
+            self.process.exitcode = 0
+
+        def close(self) -> None:
+            return None
+
+    class _LateEventConnection:
+        def poll(self, timeout: float) -> bool:
+            time.sleep(timeout)
+            return False
+
+        def close(self) -> None:
+            return None
+
+    process = _Process()
+    owner = LocalRuntimeProcessOwner(_config())
+    owner._process = process
+    owner._command_connection = _CommandConnection(process)
+    owner._event_connection = _LateEventConnection()
+    owner._transport_ready.set()
+    owner._initialized = True
+
+    assert owner.close(wait_timeout=0.01) is True
+    assert owner.restart_required is False
+
+
+def test_explicit_close_error_is_not_masked_by_zero_process_exit() -> None:
+    class _Process:
+        pid = 123
+        exitcode: int | None = None
+        alive = True
+
+        def is_alive(self) -> bool:
+            return self.alive
+
+        def join(self, timeout: float) -> None:
+            del timeout
+
+    class _CommandConnection:
+        def __init__(self, process: _Process) -> None:
+            self.process = process
+
+        def send(self, command) -> None:
+            assert command.kind == "close"
+            self.process.alive = False
+            self.process.exitcode = 0
+
+        def close(self) -> None:
+            return None
+
+    class _CloseErrorConnection:
+        def poll(self, timeout: float) -> bool:
+            del timeout
+            return True
+
+        def recv(self) -> _RuntimeEvent:
+            return _RuntimeEvent("close_error")
+
+        def close(self) -> None:
+            return None
+
+    process = _Process()
+    owner = LocalRuntimeProcessOwner(_config())
+    owner._process = process
+    owner._command_connection = _CommandConnection(process)
+    owner._event_connection = _CloseErrorConnection()
+    owner._transport_ready.set()
+    owner._initialized = True
+
+    assert owner.close(wait_timeout=0.01) is False
 
 
 def test_recoverable_load_failure_crosses_process_boundary_without_traceback() -> None:

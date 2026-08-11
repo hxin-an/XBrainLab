@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 from scipy.io import savemat
 
+from tests.unit.backend.path_assertions import filesystem_path_key
 from XBrainLab.backend.application import (
     ApplicationService,
     ApplyInterpretationCommand,
@@ -428,7 +429,9 @@ def test_real_shared_label_recipe_keeps_full_path_identity_for_duplicate_basenam
     candidate_event_rows = candidate["internal_event_preview"]["candidate_label_events"]
     assert candidate_event_rows
     for event_row in candidate_event_rows:
-        assert set(event_row["file_counts"]) == set(file_mapping)
+        assert {filesystem_path_key(path) for path in event_row["file_counts"]} == {
+            filesystem_path_key(path) for path in file_mapping
+        }
     [replayed_carrier] = candidate["label_carrier_plan"]
     assert replayed_carrier["selected_target_files"] == sorted(file_mapping)
     assert replayed_carrier["selected_target_event_codes"] == selected_events

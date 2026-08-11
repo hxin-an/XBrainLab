@@ -16,6 +16,7 @@ from .data_interpretation_event_values import (
     RESOLVED,
     class_map_from_value_decisions,
 )
+from .data_interpretation_public_projection import PUBLIC_EVIDENCE_PREVIEW_LIMIT
 from .data_interpretation_resource_reader import AdmittedResourceReader
 
 
@@ -157,12 +158,7 @@ def review_strict_bids_event_runs(
         plan["placement_review"] = _plan_placement_review(run_evidence)
         runs.append(run_evidence)
         if run_evidence["issues"]:
-            issue_rows = ", ".join(
-                f"row {issue['row']} ({issue['message']})"
-                if issue.get("row") is not None
-                else str(issue["message"])
-                for issue in run_evidence["issues"]
-            )
+            issue_rows = _bounded_issue_rows_summary(run_evidence["issues"])
             if run_evidence["bids_schema"]["issues"]:
                 blocked_reasons.append(
                     "BIDS events field value review for "
@@ -213,6 +209,22 @@ def review_strict_bids_event_runs(
         confirmation_items=confirmation_items,
         warnings=list(dict.fromkeys(warnings)),
     )
+
+
+def _bounded_issue_rows_summary(issues: list[dict[str, Any]]) -> str:
+    """Keep blocker text reviewable while retaining full structured evidence."""
+    preview = issues[:PUBLIC_EVIDENCE_PREVIEW_LIMIT]
+    summary = ", ".join(
+        f"row {issue['row']} ({issue['message']})"
+        if issue.get("row") is not None
+        else str(issue["message"])
+        for issue in preview
+    )
+    omitted = len(issues) - len(preview)
+    if omitted:
+        noun = "issue" if omitted == 1 else "issues"
+        summary += f", and {omitted} more {noun}"
+    return summary
 
 
 def _review_one_run(

@@ -4,34 +4,40 @@ Aggregates settings for epochs, batch size, learning rate, optimizer,
 device, output directory, evaluation strategy, and repeat count.
 """
 
-from typing import Any
+from collections.abc import Callable
+from typing import Any, ClassVar
 
-from PyQt6.QtCore import QEvent, Qt
+from PyQt6.QtCore import QEvent, QRect, QSize, Qt
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialogButtonBox,
     QFileDialog,
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
+    QStyle,
+    QStyleOptionComboBox,
     QVBoxLayout,
+    QWidget,
 )
 
+from XBrainLab.backend.application.training_recommendation import (
+    TrainingRecommendation,
+    TrainingRecommendationField,
+)
 from XBrainLab.backend.training import (
     TrainingEvaluation,
     TrainingOption,
-    parse_device_name,
     parse_optim_name,
 )
 from XBrainLab.backend.training.input_contract import DEFAULT_TRAINING_OUTPUT_DIR
-from XBrainLab.backend.training.utils import (
-    get_device_count,
-    get_optimizer_classes,
-)
+from XBrainLab.backend.training.utils import get_optimizer_classes
 from XBrainLab.ui.application_capabilities import (
     ControllerCompatibilityUnavailableError,
     run_controller_compatibility_call,
@@ -73,7 +79,37 @@ class TrainingSettingDialog(BaseDialog):
 
     """
 
-    def __init__(self, parent, controller, initial_option: Any | None = None):
+    # ``dark_dialog_stylesheet`` reserves 28 px for the combo arrow in
+    # addition to the shared horizontal input padding. Some native Windows
+    # styles report an edit-field rectangle that excludes only part of that
+    # stylesheet chrome, so keep a platform-independent lower bound too.
+    _COMBO_HORIZONTAL_CHROME_FALLBACK = 64
+    _EVALUATION_DISPLAY_LABELS: ClassVar[dict[TrainingEvaluation, str]] = {
+        TrainingEvaluation.VAL_LOSS: "Validation loss",
+        TrainingEvaluation.VAL_AUC: "Validation AUC",
+        TrainingEvaluation.VAL_ACC: "Validation accuracy",
+        TrainingEvaluation.LAST_EPOCH: "Last epoch",
+    }
+    _RECOMMENDATION_FIELD_LABELS: ClassVar[dict[TrainingRecommendationField, str]] = {
+        TrainingRecommendationField.EPOCHS: "training epochs",
+        TrainingRecommendationField.BATCH_SIZE: "batch size",
+        TrainingRecommendationField.LEARNING_RATE: "learning rate",
+        TrainingRecommendationField.OPTIMIZER: "optimizer",
+        TrainingRecommendationField.EVALUATION_STRATEGY: "evaluation",
+    }
+
+    def __init__(
+        self,
+        parent,
+        controller,
+        initial_option: Any | None = None,
+        *,
+        recommendation: TrainingRecommendation | None = None,
+        proposed_values: dict[str, Any] | None = None,
+        device_recommendation_provider: (
+            Callable[[str], TrainingRecommendation | None] | None
+        ) = None,
+    ):
         # self.controller is handled by BaseDialog
 
         self.training_option: TrainingOption | None = None
@@ -82,7 +118,14 @@ class TrainingSettingDialog(BaseDialog):
         self.optim_classes = get_optimizer_classes()
         self.optim = self.optim_classes.get("Adam")
         self.optim_params: dict[str, Any] = {}
-        self.use_cpu, self.gpu_idx = self._default_device()
+        self.device = "auto"
+        self.use_cpu = True
+        self.gpu_idx: int | None = None
+        self._recommendation: TrainingRecommendation | None = None
+        self._recommendation_invalid_fields: set[TrainingRecommendationField] = set()
+        self._edited_recommendation_fields: set[TrainingRecommendationField] = set()
+        self._device_recommendation_provider = device_recommendation_provider
+        self._device_recommendation_refresh_failed = False
 
         # UI Elements (Init them to None)
         self.epoch_entry: QLineEdit | None = None
@@ -94,6 +137,9 @@ class TrainingSettingDialog(BaseDialog):
         self.dev_label: QLabel | None = None
         self.output_dir_label: QLabel | None = None
         self.evaluation_combo: QComboBox | None = None
+        self.recommendation_note: QLabel | None = None
+        self.content_scroll: QScrollArea | None = None
+        self.content_widget: QWidget | None = None
 
         super().__init__(parent, title="Training Setting", controller=controller)
         self.setStyleSheet(dark_dialog_stylesheet())
@@ -105,11 +151,17 @@ class TrainingSettingDialog(BaseDialog):
                 self._optimizer_summary(self.optim, self.optim_params)
             )
         if self.dev_label:
-            self.dev_label.setText(parse_device_name(self.use_cpu, self.gpu_idx))
+            self.dev_label.setText(self._device_display_name(self.device))
         if self.output_dir_label:
             self.output_dir_label.setText(self.output_dir)
 
         self.load_settings()
+        if recommendation is not None:
+            self.apply_recommendation(recommendation)
+        if proposed_values:
+            self.apply_proposed_values(proposed_values)
+        self._connect_recommendation_tracking()
+        self._fit_dialog_to_content()
 
     def changeEvent(self, event: QEvent | None) -> None:  # noqa: N802
         """Keep the form readable after application font or DPI changes."""
@@ -122,12 +174,15 @@ class TrainingSettingDialog(BaseDialog):
 
     def _fit_dialog_to_content(self) -> None:
         """Keep form labels readable without overlapping adjacent controls."""
+        self.ensurePolished()
         labels = self.findChildren(QLabel, "TrainingSettingLabel")
+        for label in labels:
+            label.ensurePolished()
         label_text_width = max(
             (label.fontMetrics().horizontalAdvance(label.text()) for label in labels),
             default=128,
         )
-        label_column_width = min(max(label_text_width + 12, 160), 240)
+        label_column_width = min(max(label_text_width + 24, 160), 200)
         for label in labels:
             label.setWordWrap(True)
             label.setMinimumWidth(label_column_width)
@@ -138,24 +193,108 @@ class TrainingSettingDialog(BaseDialog):
             )
             label.setMinimumHeight(
                 max(
-                    label.fontMetrics().height(),
-                    label.heightForWidth(label_column_width),
+                    label.fontMetrics().lineSpacing() + 4,
+                    label.heightForWidth(label_column_width) + 4,
                 )
             )
         form_layout = getattr(self, "form_layout", None)
+        input_column_width = 240
+        if self.evaluation_combo is not None:
+            self.evaluation_combo.ensurePolished()
+            metrics = self.evaluation_combo.fontMetrics()
+            widest_item = max(
+                (
+                    metrics.horizontalAdvance(self.evaluation_combo.itemText(index))
+                    for index in range(self.evaluation_combo.count())
+                ),
+                default=0,
+            )
+            fixed_dialog_width = 36 + label_column_width + 12 + 12 + 72
+            screen = self.screen()
+            available_dialog_width = (
+                max(screen.availableGeometry().width() - 48, 1)
+                if screen is not None
+                else 800
+            )
+            input_width_ceiling = max(
+                min(available_dialog_width - fixed_dialog_width, 440),
+                240,
+            )
+            probe_width = max(
+                self.evaluation_combo.width(),
+                self.evaluation_combo.sizeHint().width(),
+                240,
+            )
+            option = QStyleOptionComboBox()
+            option.initFrom(self.evaluation_combo)
+            option.rect = QRect(
+                0,
+                0,
+                probe_width,
+                max(self.evaluation_combo.sizeHint().height(), 1),
+            )
+            option.currentText = self.evaluation_combo.currentText()
+            style = self.evaluation_combo.style()
+            native_chrome_width = 0
+            native_content_width = 0
+            if style is not None:
+                edit_rect = style.subControlRect(
+                    QStyle.ComplexControl.CC_ComboBox,
+                    option,
+                    QStyle.SubControl.SC_ComboBoxEditField,
+                    self.evaluation_combo,
+                )
+                native_chrome_width = max(probe_width - edit_rect.width(), 0)
+                native_content_width = style.sizeFromContents(
+                    QStyle.ContentsType.CT_ComboBox,
+                    option,
+                    QSize(widest_item, metrics.height()),
+                    self.evaluation_combo,
+                ).width()
+            evaluation_width = max(
+                self.evaluation_combo.sizeHint().width(),
+                widest_item + native_chrome_width + 8,
+                native_content_width,
+                widest_item + self._COMBO_HORIZONTAL_CHROME_FALLBACK,
+            )
+            input_column_width = min(
+                max(input_column_width, evaluation_width),
+                input_width_ceiling,
+            )
+            self.evaluation_combo.setMinimumWidth(input_column_width)
         if form_layout is not None:
             form_layout.setColumnMinimumWidth(0, label_column_width)
-            form_layout.setColumnMinimumWidth(1, 240)
+            form_layout.setColumnMinimumWidth(1, input_column_width)
         target_width = max(
             520,
-            36 + label_column_width + 12 + 240 + 12 + 72,
+            36 + label_column_width + 12 + input_column_width + 12 + 72,
         )
         layout = self.layout()
         if layout is not None:
             layout.activate()
-        target_height = max(390, self.sizeHint().height())
-        self.setMinimumSize(target_width, target_height)
+        content_hint = (
+            self.content_widget.sizeHint().height()
+            if self.content_widget is not None
+            else self.sizeHint().height()
+        )
+        target_height = max(390, min(content_hint + 92, 620))
+        self.setMinimumSize(target_width, 390)
         self.resize(max(self.width(), target_width), max(self.height(), target_height))
+
+    def _set_evaluation_option(self, option: Any) -> None:
+        """Select one backend strategy through its compact UI label."""
+        if self.evaluation_combo is None:
+            return
+        normalized = option
+        if not isinstance(normalized, TrainingEvaluation):
+            normalized = getattr(normalized, "value", normalized)
+            try:
+                normalized = TrainingEvaluation(str(normalized))
+            except ValueError:
+                return
+        index = self.evaluation_combo.findData(normalized)
+        if index >= 0:
+            self.evaluation_combo.setCurrentIndex(index)
 
     def load_settings(self):
         """Load settings from a snapshot or controller compatibility."""
@@ -188,8 +327,13 @@ class TrainingSettingDialog(BaseDialog):
             # Restore device
             self.use_cpu = opt.use_cpu
             self.gpu_idx = opt.gpu_idx
+            self.device = (
+                "cpu"
+                if self.use_cpu
+                else f"cuda:{self.gpu_idx if self.gpu_idx is not None else 0}"
+            )
             if self.dev_label:
-                self.dev_label.setText(parse_device_name(self.use_cpu, self.gpu_idx))
+                self.dev_label.setText(self._device_display_name(self.device))
 
             # Restore output dir
             self.output_dir = opt.output_dir
@@ -198,7 +342,7 @@ class TrainingSettingDialog(BaseDialog):
 
             # Restore evaluation
             if opt.evaluation_option and self.evaluation_combo:
-                self.evaluation_combo.setCurrentText(opt.evaluation_option.value)
+                self._set_evaluation_option(opt.evaluation_option)
 
     def _compatibility_training_option(self) -> Any | None:
         """Read training option only for mock / compatibility dialog contexts."""
@@ -244,10 +388,11 @@ class TrainingSettingDialog(BaseDialog):
 
         device = str(option.get("device") or "")
         if device:
-            self.use_cpu = not device.startswith("cuda")
-            self.gpu_idx = self._gpu_index_from_device(device)
+            self.device = self._normalize_device_value(device)
+            self.use_cpu = not self.device.startswith("cuda")
+            self.gpu_idx = self._gpu_index_from_device(self.device)
             if self.dev_label:
-                self.dev_label.setText(parse_device_name(self.use_cpu, self.gpu_idx))
+                self.dev_label.setText(self._device_display_name(self.device))
 
         output_dir = option.get("output_dir")
         if output_dir:
@@ -257,7 +402,185 @@ class TrainingSettingDialog(BaseDialog):
 
         evaluation = option.get("evaluation_option")
         if evaluation and self.evaluation_combo:
-            self.evaluation_combo.setCurrentText(str(evaluation))
+            self._set_evaluation_option(evaluation)
+
+    def apply_recommendation(
+        self,
+        recommendation: TrainingRecommendation,
+    ) -> None:
+        """Apply backend effective values while preserving draft manual fields."""
+        if not isinstance(recommendation, TrainingRecommendation):
+            raise TypeError("recommendation must be a TrainingRecommendation")
+        effective = (
+            self._recommendation.refresh_from(recommendation)
+            if self._recommendation is not None
+            else recommendation
+        )
+        self._recommendation = effective
+        values = effective.values.to_mapping()
+        for field, value in values.items():
+            if field in self._recommendation_invalid_fields:
+                continue
+            self._set_recommendation_field(field, value)
+        self._update_recommendation_note()
+
+    def get_recommendation(self) -> TrainingRecommendation | None:
+        """Return the current backend-owned recommendation/provenance contract."""
+        return self._recommendation
+
+    def get_edited_recommendation_fields(
+        self,
+    ) -> frozenset[TrainingRecommendationField]:
+        """Return recommendation fields explicitly edited in this dialog."""
+        return frozenset(self._edited_recommendation_fields)
+
+    def get_device_value(self) -> str:
+        """Return the detached device choice without resolving local hardware."""
+        return self.device
+
+    def apply_proposed_values(self, values: dict[str, Any]) -> None:
+        """Apply an explicit user/agent proposal after recommendation defaults."""
+        snapshot_values = dict(values)
+        if (
+            "evaluation_strategy" in snapshot_values
+            and "evaluation_option" not in snapshot_values
+        ):
+            snapshot_values["evaluation_option"] = snapshot_values[
+                "evaluation_strategy"
+            ]
+        self._load_settings_snapshot(snapshot_values)
+        proposed_fields = {
+            "epoch": TrainingRecommendationField.EPOCHS,
+            "batch_size": TrainingRecommendationField.BATCH_SIZE,
+            "learning_rate": TrainingRecommendationField.LEARNING_RATE,
+            "optimizer": TrainingRecommendationField.OPTIMIZER,
+            "evaluation_option": TrainingRecommendationField.EVALUATION_STRATEGY,
+            "evaluation_strategy": TrainingRecommendationField.EVALUATION_STRATEGY,
+        }
+        for key, field in proposed_fields.items():
+            if key in values:
+                self._track_recommendation_edit(field)
+        if "device" in values:
+            self._refresh_recommendation_for_device()
+
+    def _connect_recommendation_tracking(self) -> None:
+        """Track actual user edits without treating programmatic fills as manual."""
+        for entry, field in (
+            (self.epoch_entry, TrainingRecommendationField.EPOCHS),
+            (self.bs_entry, TrainingRecommendationField.BATCH_SIZE),
+            (self.lr_entry, TrainingRecommendationField.LEARNING_RATE),
+        ):
+            if entry is not None:
+                entry.textEdited.connect(
+                    lambda _text, target=field: self._track_recommendation_edit(target)
+                )
+        if self.evaluation_combo is not None:
+            self.evaluation_combo.activated.connect(
+                lambda _index: self._track_recommendation_edit(
+                    TrainingRecommendationField.EVALUATION_STRATEGY
+                )
+            )
+
+    def _track_recommendation_edit(
+        self,
+        field: TrainingRecommendationField,
+    ) -> None:
+        value = self._recommendation_field_value(field)
+        self._edited_recommendation_fields.add(field)
+        if value is None:
+            self._recommendation_invalid_fields.add(field)
+            self._update_recommendation_note()
+            return
+        self._recommendation_invalid_fields.discard(field)
+        recommendation = self._recommendation
+        if recommendation is None:
+            self._update_recommendation_note()
+            return
+        self._recommendation = recommendation.with_user_values({field: value})
+        self._update_recommendation_note()
+
+    def _update_recommendation_note(self) -> None:
+        note = self.recommendation_note
+        recommendation = self._recommendation
+        if note is None:
+            return
+        note.setVisible(recommendation is not None)
+        if recommendation is None:
+            return
+        manual_fields = set(recommendation.manual_fields)
+        manual_fields.update(self._edited_recommendation_fields)
+        manual_labels = [
+            self._RECOMMENDATION_FIELD_LABELS[field]
+            for field in TrainingRecommendationField
+            if field in manual_fields
+        ]
+        manual_summary = ", ".join(manual_labels) if manual_labels else "none"
+        note.setText(
+            "Recommended starting points; fields you edit are retained. "
+            f"Manual fields: {manual_summary}."
+        )
+        note.updateGeometry()
+
+    def _recommendation_field_value(
+        self,
+        field: TrainingRecommendationField,
+    ) -> int | float | str | None:
+        try:
+            if field is TrainingRecommendationField.EPOCHS:
+                return int(self.epoch_entry.text()) if self.epoch_entry else None
+            if field is TrainingRecommendationField.BATCH_SIZE:
+                return int(self.bs_entry.text()) if self.bs_entry else None
+            if field is TrainingRecommendationField.LEARNING_RATE:
+                return float(self.lr_entry.text()) if self.lr_entry else None
+        except ValueError:
+            return None
+        if field is TrainingRecommendationField.OPTIMIZER:
+            return str(getattr(self.optim, "__name__", self.optim) or "")
+        if field is TrainingRecommendationField.EVALUATION_STRATEGY:
+            if self.evaluation_combo is None:
+                return None
+            option = self.evaluation_combo.currentData()
+            return str(getattr(option, "value", option) or "")
+        return None
+
+    def _set_recommendation_field(
+        self,
+        field: TrainingRecommendationField,
+        value: int | float | str,
+    ) -> None:
+        if field is TrainingRecommendationField.EPOCHS and self.epoch_entry:
+            self.epoch_entry.setText(str(int(value)))
+            return
+        if field is TrainingRecommendationField.BATCH_SIZE and self.bs_entry:
+            self.bs_entry.setText(str(int(value)))
+            return
+        if field is TrainingRecommendationField.LEARNING_RATE and self.lr_entry:
+            self.lr_entry.setText(format(float(value), ".12g"))
+            return
+        if field is TrainingRecommendationField.OPTIMIZER:
+            optimizer_name = str(value).strip().casefold()
+            selected = next(
+                (
+                    optimizer
+                    for name, optimizer in self.optim_classes.items()
+                    if name.casefold() == optimizer_name
+                ),
+                None,
+            )
+            if selected is not None:
+                current_name = str(
+                    getattr(self.optim, "__name__", self.optim) or ""
+                ).casefold()
+                if current_name != optimizer_name:
+                    self.optim_params = {}
+                self.optim = selected
+                if self.opt_label is not None:
+                    self.opt_label.setText(
+                        self._optimizer_summary(selected, self.optim_params)
+                    )
+            return
+        if field is TrainingRecommendationField.EVALUATION_STRATEGY:
+            self._set_evaluation_option(value)
 
     @staticmethod
     def _gpu_index_from_device(device: str) -> int | None:
@@ -272,26 +595,61 @@ class TrainingSettingDialog(BaseDialog):
             return 0
 
     @staticmethod
+    def _normalize_device_value(device: str) -> str:
+        normalized = str(device or "auto").strip().lower()
+        if normalized == "cpu":
+            return "cpu"
+        if normalized == "auto":
+            return "auto"
+        if normalized == "cuda":
+            return "cuda:0"
+        if normalized.startswith("cuda:"):
+            return normalized
+        return "auto"
+
+    @staticmethod
+    def _device_display_name(device: str) -> str:
+        normalized = TrainingSettingDialog._normalize_device_value(device)
+        if normalized == "auto":
+            return "Auto"
+        if normalized == "cpu":
+            return "CPU"
+        return f"GPU {TrainingSettingDialog._gpu_index_from_device(normalized) or 0}"
+
+    @staticmethod
     def _optimizer_summary(optim: Any, optim_params: dict[str, Any]) -> str:
         if not optim_params:
             return str(getattr(optim, "__name__", optim))
         return parse_optim_name(optim, optim_params)
-
-    @staticmethod
-    def _default_device() -> tuple[bool, int | None]:
-        try:
-            count = get_device_count()
-        except Exception:
-            return True, None
-        if count > 0:
-            return False, count - 1
-        return True, None
 
     def init_ui(self):
         """Initialize the dialog UI with training parameter controls."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 16, 18, 14)
         layout.setSpacing(12)
+
+        self.content_scroll = QScrollArea(self)
+        self.content_scroll.setObjectName("TrainingSettingContentScroll")
+        self.content_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.content_scroll.setWidgetResizable(True)
+        self.content_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.content_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.content_scroll.setStyleSheet(
+            "QScrollArea#TrainingSettingContentScroll, "
+            "QScrollArea#TrainingSettingContentScroll > QWidget > QWidget {"
+            "border: none; background: transparent;"
+            "}"
+        )
+        self.content_widget = QWidget(self.content_scroll)
+        self.content_widget.setObjectName("TrainingSettingContent")
+        content_layout = QVBoxLayout(self.content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(12)
+
         form_layout = QGridLayout()
         form_layout.setContentsMargins(0, 0, 0, 0)
         form_layout.setHorizontalSpacing(12)
@@ -370,15 +728,34 @@ class TrainingSettingDialog(BaseDialog):
 
         # Evaluation
         self.evaluation_combo = QComboBox()
-        self.evaluation_list = [i.value for i in TrainingEvaluation]
-        self.evaluation_combo.addItems(self.evaluation_list)
-        self.evaluation_combo.setCurrentText(TrainingEvaluation.VAL_LOSS.value)
+        self.evaluation_list = [
+            self._EVALUATION_DISPLAY_LABELS[option] for option in TrainingEvaluation
+        ]
+        for option in TrainingEvaluation:
+            self.evaluation_combo.addItem(
+                self._EVALUATION_DISPLAY_LABELS[option],
+                option,
+            )
+        self._set_evaluation_option(TrainingEvaluation.VAL_LOSS)
         add_simple_row(7, "Evaluation", self.evaluation_combo)
 
         self.repeat_entry = QLineEdit("1")
         add_simple_row(8, "Repeat number", self.repeat_entry)
 
-        layout.addLayout(form_layout)
+        content_layout.addLayout(form_layout)
+
+        self.recommendation_note = QLabel()
+        self.recommendation_note.setObjectName("TrainingRecommendationNote")
+        self.recommendation_note.setWordWrap(True)
+        self.recommendation_note.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
+        self.recommendation_note.hide()
+        content_layout.addWidget(self.recommendation_note)
+        content_layout.addStretch(1)
+        self.content_scroll.setWidget(self.content_widget)
+        layout.addWidget(self.content_scroll, stretch=1)
 
         # Buttons
         footer = QHBoxLayout()
@@ -404,14 +781,41 @@ class TrainingSettingDialog(BaseDialog):
                     self.opt_label.setText(
                         self._optimizer_summary(optim, self.optim_params)
                     )
+                self._track_recommendation_edit(TrainingRecommendationField.OPTIMIZER)
 
     def set_device(self):
         """Open the device setting dialog and apply the result."""
         setter = DeviceSettingDialog(self)
         if setter.exec():
+            previous_device = self.device
             self.use_cpu, self.gpu_idx = setter.get_result()
+            self.device = (
+                "cpu"
+                if self.use_cpu
+                else f"cuda:{self.gpu_idx if self.gpu_idx is not None else 0}"
+            )
             if self.dev_label:
-                self.dev_label.setText(parse_device_name(self.use_cpu, self.gpu_idx))
+                self.dev_label.setText(self._device_display_name(self.device))
+            if self.device != previous_device:
+                self._refresh_recommendation_for_device()
+
+    def _refresh_recommendation_for_device(self) -> None:
+        """Refresh device-sensitive defaults while retaining explicit edits."""
+        if self._recommendation is None:
+            return
+        provider = self._device_recommendation_provider
+        if provider is None:
+            self._device_recommendation_refresh_failed = True
+            return
+        try:
+            recommendation = provider(self.device)
+        except Exception:
+            recommendation = None
+        if not isinstance(recommendation, TrainingRecommendation):
+            self._device_recommendation_refresh_failed = True
+            return
+        self.apply_recommendation(recommendation)
+        self._device_recommendation_refresh_failed = False
 
     def set_output_dir(self):
         """Open a directory picker for the training output path."""
@@ -428,6 +832,15 @@ class TrainingSettingDialog(BaseDialog):
             QMessageBox: Warning if input validation fails.
 
         """
+        if self._device_recommendation_refresh_failed:
+            QMessageBox.warning(
+                self,
+                "Training Recommendation Changed",
+                "The selected device could not be reconciled with the current "
+                "training recommendation. Review the settings again.",
+            )
+            return
+
         if (
             not self.evaluation_combo
             or not self.epoch_entry
@@ -438,10 +851,12 @@ class TrainingSettingDialog(BaseDialog):
         ):
             return
 
-        evaluation_option = TrainingEvaluation.VAL_LOSS
-        for i in TrainingEvaluation:
-            if i.value == self.evaluation_combo.currentText():
-                evaluation_option = i
+        selected_evaluation = self.evaluation_combo.currentData()
+        evaluation_option = (
+            selected_evaluation
+            if isinstance(selected_evaluation, TrainingEvaluation)
+            else TrainingEvaluation.VAL_LOSS
+        )
 
         try:
             # Validate inputs

@@ -5,14 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 from unittest.mock import MagicMock
 
 import mne
 import numpy as np
 import pytest
-import torch
 
 from XBrainLab.backend.application import (
     data_compatibility_service,
@@ -22,9 +20,11 @@ from XBrainLab.backend.application import (
 from XBrainLab.backend.application.commands import (
     ApplyInterpretationCommand,
     Command,
+    ConfigureTrainingCommand,
     LoadDataCommand,
     PreviewInterpretationCommand,
     ReloadInterpretationRecipeCommand,
+    SaveDatasetSplitCommand,
     ScanSourceCommand,
     TrainCommand,
     ValidateInterpretationCommand,
@@ -36,13 +36,9 @@ from XBrainLab.backend.application.resource_guard import (
 )
 from XBrainLab.backend.application.results import ErrorType
 from XBrainLab.backend.application.service import ApplicationService
+from XBrainLab.backend.dataset import Epochs, EpochWindowProvenance
 from XBrainLab.backend.study import Study
-from XBrainLab.backend.training import (
-    ModelHolder,
-    Trainer,
-    TrainingEvaluation,
-    TrainingOption,
-)
+from XBrainLab.backend.training import Trainer
 
 
 @dataclass(frozen=True)
@@ -94,6 +90,40 @@ def _warning_training_preflight(
             "available_vram_bytes": 8_192,
         },
     )
+
+
+def _install_minimal_training_epoch(service: ApplicationService) -> None:
+    """Install only the domain state this control-flow test does not exercise."""
+    labels = np.asarray([0, 1] * 6, dtype=int)
+    epoch = Epochs([])
+    epoch.data = np.zeros((len(labels), 2, 32), dtype=np.float32)
+    epoch.event_id = {"left": 0, "right": 1}
+    epoch.label_map = {0: "left", 1: "right"}
+    epoch.label = labels
+    epoch.subject = np.zeros(len(labels), dtype=int)
+    epoch.session = np.zeros(len(labels), dtype=int)
+    epoch.idx = np.arange(len(labels), dtype=int)
+    epoch.trial_group = np.arange(len(labels), dtype=int)
+    epoch.subject_map = {0: "S01"}
+    epoch.session_map = {0: "001"}
+    epoch.ch_names = ["C3", "C4"]
+    epoch.sfreq = 128.0
+    epoch.epoch_window_provenance = tuple(
+        EpochWindowProvenance(
+            source_recording_id=f"content-sha256:{index:064x}",
+            event_sample=index * 64,
+            window_start_sample=index * 64,
+            window_end_sample_exclusive=index * 64 + 32,
+            source_sfreq=128.0,
+            epoch_sfreq=128.0,
+            tmin_seconds=0.0,
+            tmax_seconds=31 / 128,
+            source_coordinates_verified=True,
+        )
+        for index in range(len(labels))
+    )
+    service.study.epoch_data = epoch
+    service.get_state()
 
 
 def _prepare_preview(
@@ -205,25 +235,30 @@ def _prepare_train(
     service = ApplicationService(Study())
     loaded = service.execute(LoadDataCommand(paths=[str(eeg_path)]))
     assert loaded.ok
-    cast(Any, service.study.data_manager).datasets = [
-        SimpleNamespace(train_mask=[True], val_mask=[], test_mask=[])
-    ]
-    service.study.set_model_holder(ModelHolder(int, {}))
-    service.study.set_training_option(
-        TrainingOption(
-            output_dir=str(tmp_path / "training-output"),
-            optim=torch.optim.Adam,
-            optim_params={},
-            use_cpu=True,
-            gpu_idx=None,
-            epoch=1,
-            bs=1,
-            lr=0.001,
-            checkpoint_epoch=0,
-            evaluation_option=TrainingEvaluation.LAST_EPOCH,
-            repeat_num=1,
+    _install_minimal_training_epoch(service)
+    saved = service.execute(
+        SaveDatasetSplitCommand(
+            test_ratio=0.2,
+            val_ratio=0.2,
+            split_strategy="trial",
+            training_mode="individual",
         )
     )
+    configured = service.execute(
+        ConfigureTrainingCommand(
+            model_name="EEGNet",
+            epoch=1,
+            batch_size=2,
+            learning_rate=0.001,
+            device="cpu",
+            output_dir=str(tmp_path / "training-output"),
+        )
+    )
+    assert saved.ok, saved.message
+    assert saved.state.dataset.split_spec_saved is True
+    assert saved.state.dataset.available is False
+    assert configured.ok, configured.message
+    assert service.study.datasets == []
 
     def start_with_runtime_identity(
         *,

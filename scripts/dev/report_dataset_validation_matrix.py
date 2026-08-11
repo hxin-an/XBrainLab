@@ -258,7 +258,7 @@ def build_dataset_validation_rows(
             ),
         ),
         DatasetLayerRow(
-            layer="public local-only epoch-only fixtures",
+            layer="public local-only import/preprocess boundary fixtures",
             representative_data=(
                 ", ".join(public_epoch_only_formats)
                 if public_epoch_only_formats
@@ -279,7 +279,7 @@ def build_dataset_validation_rows(
             ),
             label_attach="reviewed events; no supervised class claim",
             dataset_generation="no; epoch creation checked separately",
-            training_smoke="epoch-only by contract",
+            training_smoke="supervised epoch blocked by contract",
             notes=(
                 "SCCN rt/square lacks public protocol class ground truth; CNT is too "
                 "small for class-balanced training. Both prove load, preprocess, "
@@ -475,7 +475,7 @@ def validate_required_dataset_matrix(
         ),
         DatasetMatrixRequirement(
             key="public_epoch_only_sources",
-            label="Public IO/epoch-only source diversity",
+            label="Public import/preprocess source diversity",
             ok=len(public_epoch_only_fixtures) == len(PUBLIC_EPOCH_ONLY_FIXTURES),
             observed=(
                 ", ".join(

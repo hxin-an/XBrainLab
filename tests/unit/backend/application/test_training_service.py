@@ -38,10 +38,16 @@ from XBrainLab.backend.application.state import (
     TrainingStateSnapshot,
     VisualizationStateSnapshot,
 )
+from XBrainLab.backend.application.training_recommendation import (
+    TrainingRecommendationField,
+)
 from XBrainLab.backend.application.training_runtime import TrainingRuntimeContext
 from XBrainLab.backend.application.training_service import (
     HandlerResult,
     TrainingCommandService,
+)
+from XBrainLab.backend.application.training_submission import (
+    attach_training_submission_provenance,
 )
 from XBrainLab.backend.training import option as training_option_module
 from XBrainLab.backend.training_state_contract import (
@@ -300,14 +306,18 @@ def test_training_service_configures_model_and_options() -> None:
 
     assert model_message == "Model configured: EEGNet."
     assert training.model_holder is not None
-    assert service.model_name(training.model_holder) == "EEGNet"
+    assert service.model_name(training.model_holder) == "EEGNet (XBrainLab)"
     assert option_message == "Training configured."
     assert training.training_option is not None
+    generated_seed = training.training_option.seed
+    assert type(generated_seed) is int
     assert option_payload["training_option"] == {
         "epoch": 2,
         "batch_size": 4,
         "learning_rate": 0.001,
         "repeat": 1,
+        "seed": generated_seed,
+        "repeat_seeds": [generated_seed],
         "device": "cpu",
         "optimizer": "SGD",
         "optimizer_params": {},
@@ -323,6 +333,42 @@ def test_configure_training_command_has_no_unvalidated_option_object_path() -> N
     }
 
 
+def test_training_service_forwards_only_typed_edited_recommendation_fields() -> None:
+    training = _TrainingController()
+    recommendation = MagicMock()
+    service = TrainingCommandService(
+        training=training,
+        training_runtime=_TrainingRuntime(training),
+        get_state=_state,
+        recommendation=recommendation,
+    )
+
+    service.handle_configure_training(
+        attach_training_submission_provenance(
+            ConfigureTrainingCommand(
+                epoch=3,
+                batch_size=8,
+                learning_rate=0.001,
+            ),
+            frozenset(
+                {
+                    TrainingRecommendationField.BATCH_SIZE,
+                    TrainingRecommendationField.OPTIMIZER,
+                }
+            ),
+        )
+    )
+
+    recommendation.note_configuration_submitted.assert_called_once_with(
+        frozenset(
+            {
+                TrainingRecommendationField.BATCH_SIZE,
+                TrainingRecommendationField.OPTIMIZER,
+            }
+        )
+    )
+
+
 def test_training_service_maps_case_insensitive_model_without_facade() -> None:
     service, training = _service()
 
@@ -332,7 +378,7 @@ def test_training_service_maps_case_insensitive_model_without_facade() -> None:
 
     assert message == "Model configured: EEGNET."
     assert training.model_holder is not None
-    assert service.model_name(training.model_holder) == "EEGNet"
+    assert service.model_name(training.model_holder) == "EEGNet (XBrainLab)"
 
 
 def test_training_service_rejects_unknown_model_without_facade() -> None:
@@ -342,6 +388,22 @@ def test_training_service_rejects_unknown_model_without_facade() -> None:
         service.handle_configure_training(
             ConfigureTrainingCommand(model_name="nonexistent_model"),
         )
+
+
+def test_training_service_resolves_braindecode_catalog_model() -> None:
+    service, training = _service()
+
+    message = service.handle_configure_training(
+        ConfigureTrainingCommand(
+            model_name="braindecode.eegnet",
+            model_params={"F1": 12},
+        ),
+    )
+
+    assert message == "Model configured: braindecode.eegnet."
+    assert training.model_holder.model_id == "braindecode.eegnet"
+    assert training.model_holder.display_name == "EEGNet (Braindecode)"
+    assert training.model_holder.model_params_map == {"F1": 12}
 
 
 @pytest.mark.parametrize(
@@ -384,6 +446,32 @@ def test_training_snapshot_preserves_evaluation_and_optimizer_settings() -> None
     assert snapshot["optimizer_params"] == {"weight_decay": 0.01}
 
 
+def test_training_service_propagates_explicit_seed_and_repeat_snapshot() -> None:
+    service, training = _service()
+
+    result = service.handle_configure_training(
+        ConfigureTrainingCommand(
+            output_dir="./output",
+            device="cpu",
+            epoch=3,
+            batch_size=8,
+            learning_rate=0.001,
+            repeat=3,
+            seed=4294967293,
+        )
+    )
+
+    assert isinstance(result, tuple)
+    assert training.training_option is not None
+    assert training.training_option.seed == 4294967293
+    assert result[1]["training_option"]["seed"] == 4294967293
+    assert result[1]["training_option"]["repeat_seeds"] == [
+        4294967293,
+        4294967294,
+        4294967295,
+    ]
+
+
 def test_incomplete_training_configuration_does_not_mutate_model() -> None:
     service, training = _service()
     existing_model = object()
@@ -398,6 +486,22 @@ def test_incomplete_training_configuration_does_not_mutate_model() -> None:
                 epoch=3,
                 batch_size=8,
             ),
+        )
+
+    assert training.model_holder is existing_model
+    assert training.training_option is existing_option
+
+
+def test_seed_without_complete_training_option_is_not_silently_ignored() -> None:
+    service, training = _service()
+    existing_model = object()
+    existing_option = object()
+    training.model_holder = existing_model
+    training.training_option = existing_option
+
+    with pytest.raises(PreconditionError, match="Training epochs, batch size"):
+        service.handle_configure_training(
+            ConfigureTrainingCommand(model_name="EEGNet", seed=1729),
         )
 
     assert training.model_holder is existing_model
@@ -457,6 +561,8 @@ def test_model_only_configuration_rejects_invalid_option_without_mutation(
             {"save_checkpoints_every": -1},
             "save_checkpoints_every must be a non-negative integer",
         ),
+        ({"seed": True}, "Invalid seed"),
+        ({"seed": 0xFFFF_FFFF, "repeat": 2}, "Invalid seed"),
     ],
 )
 def test_invalid_training_configuration_is_rejected_without_mutation(

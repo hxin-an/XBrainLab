@@ -60,11 +60,13 @@ def _process_timed_saliency(
     sample_count: int,
     sfreq: float,
     tmin: float,
+    dtype: object = np.float64,
 ) -> Saliency3DEngine:
     monkeypatch.setattr(Saliency3DEngine, "_load_models", lambda _self: None)
     saliency_cap = MagicMock()
     saliency_cap.scale.return_value = saliency_cap
     saliency_cap.n_points = 1
+    saliency_cap.points = np.array([[0.0, 0.0, 0.0]], dtype=float)
     monkeypatch.setattr(
         saliency_3d_module,
         "channel_convex_hull",
@@ -78,7 +80,7 @@ def _process_timed_saliency(
     eval_record = type(
         "EvalRecord",
         (),
-        {"gradient": {0: np.ones((2, 1, sample_count), dtype=float)}},
+        {"gradient": {0: np.ones((2, 1, sample_count), dtype=dtype)}},
     )()
     epoch_data = _TimedEpochData(
         sample_count=sample_count,
@@ -308,6 +310,20 @@ def test_3d_time_axis_uses_epoch_tmin_and_sampling_frequency(
     assert engine.sample_index_for_time(10.0) == 3
 
 
+def test_3d_process_data_prepares_default_interpolation_before_return(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _process_timed_saliency(
+        monkeypatch,
+        sample_count=4,
+        sfreq=8.0,
+        tmin=-0.25,
+    )
+
+    assert engine._prepared_interpolation is not None
+    assert engine._prepared_interpolation_neighbor_count == 1
+
+
 def test_3d_time_axis_supports_single_sample_negative_epoch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -322,3 +338,189 @@ def test_3d_time_axis_supports_single_sample_negative_epoch(
     assert engine.time_range_seconds == pytest.approx((-0.75, -0.75))
     assert engine.sample_index_for_time(-100.0) == 0
     assert engine.sample_index_for_time(100.0) == 0
+
+
+def test_3d_trial_aggregation_uses_float64_accumulator_without_input_copy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _process_timed_saliency(
+        monkeypatch,
+        sample_count=8,
+        sfreq=128.0,
+        tmin=-0.2,
+        dtype=np.dtype(np.float32),
+    )
+
+    assert engine.saliency is not None
+    assert engine.saliency.dtype == np.float64
+
+
+def test_3d_trial_aggregation_preserves_cancellation_sensitive_mean(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(Saliency3DEngine, "_load_models", lambda _self: None)
+    saliency_cap = MagicMock()
+    saliency_cap.scale.return_value = saliency_cap
+    saliency_cap.n_points = 1
+    saliency_cap.points = np.array([[0.0, 0.0, 0.0]], dtype=float)
+    monkeypatch.setattr(
+        saliency_3d_module,
+        "channel_convex_hull",
+        lambda _positions: saliency_cap,
+    )
+    values = np.array([1e8, 1.0, -1e8], dtype=np.float32).reshape(3, 1, 1)
+    eval_record = type("EvalRecord", (), {"gradient": {0: values}})()
+    epoch_data = _TimedEpochData(sample_count=1, sfreq=128.0, tmin=0.0)
+    engine = Saliency3DEngine()
+    engine.head_mesh = MagicMock()
+    engine.head_mesh.bounds = (0.0, 1.0, 0.0, 1.0, 0.0, 1.0)
+    engine.brain_mesh = MagicMock()
+
+    engine.process_data(eval_record, epoch_data, "left")
+
+    assert engine.saliency is not None
+    assert engine.saliency[0, 0] == pytest.approx(1.0 / 3.0)
+
+
+def _engine_with_interpolation_geometry(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    cap_points: np.ndarray,
+    channel_positions: np.ndarray,
+    saliency: np.ndarray,
+) -> Saliency3DEngine:
+    monkeypatch.setattr(Saliency3DEngine, "_load_models", lambda _self: None)
+    engine = Saliency3DEngine(mesh_scale_scalar=0.8)
+    engine.saliency_cap = type(
+        "SaliencyCap",
+        (),
+        {"points": np.asarray(cap_points, dtype=float)},
+    )()
+    engine.pos_on_3d = np.asarray(channel_positions, dtype=float)
+    engine.saliency = np.asarray(saliency, dtype=float)
+    return engine
+
+
+def test_3d_interpolation_weights_are_reused_for_exact_geometry_and_stay_correct(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cap_points = np.array(
+        [
+            [0.00, 0.00, 0.00],
+            [0.20, 0.10, 0.00],
+            [0.30, 0.30, 0.10],
+        ],
+        dtype=float,
+    )
+    channel_positions = np.array(
+        [
+            [0.00, 0.00, 0.00],
+            [0.25, 0.00, 0.00],
+            [0.00, 0.25, 0.00],
+            [0.25, 0.25, 0.10],
+        ],
+        dtype=float,
+    )
+    first_saliency = np.array(
+        [
+            [1.0, -1.0],
+            [2.0, -2.0],
+            [4.0, -4.0],
+            [8.0, -8.0],
+        ],
+        dtype=float,
+    )
+    second_saliency = first_saliency * 0.25
+
+    Saliency3DEngine._clear_interpolation_cache()
+    try:
+        first = _engine_with_interpolation_geometry(
+            monkeypatch,
+            cap_points=cap_points,
+            channel_positions=channel_positions,
+            saliency=first_saliency,
+        )
+        second = _engine_with_interpolation_geometry(
+            monkeypatch,
+            cap_points=cap_points.copy(),
+            channel_positions=channel_positions.copy(),
+            saliency=second_saliency,
+        )
+        original_norm = np.linalg.norm
+        norm_calls = 0
+
+        def tracked_norm(*args, **kwargs):
+            nonlocal norm_calls
+            norm_calls += 1
+            return original_norm(*args, **kwargs)
+
+        monkeypatch.setattr(saliency_3d_module.np.linalg, "norm", tracked_norm)
+
+        first._prepare_interpolation_weights(neighbor=3)
+        first_output = first.update_scalars(0, neighbor=3)
+        second._prepare_interpolation_weights(neighbor=3)
+        second_output = second.update_scalars(1, neighbor=3)
+
+        scaled_channels = channel_positions * first.mesh_scale_scalar
+        distances = original_norm(
+            cap_points[:, None, :] - scaled_channels[None, :, :],
+            axis=2,
+        )
+        nearest = np.argpartition(distances, 2, axis=1)[:, :3]
+        nearest_distances = np.take_along_axis(distances, nearest, axis=1)
+        expected_weights = 1 / (nearest_distances + 1e-8)
+        expected_weights /= expected_weights.sum(axis=1, keepdims=True)
+        expected_first = (expected_weights * first_saliency[:, 0][nearest]).sum(axis=1)
+        expected_second = (expected_weights * second_saliency[:, 1][nearest]).sum(
+            axis=1
+        )
+
+        assert norm_calls == 1
+        np.testing.assert_allclose(first_output, expected_first)
+        np.testing.assert_allclose(second_output, expected_second)
+    finally:
+        Saliency3DEngine._clear_interpolation_cache()
+
+
+def test_3d_interpolation_cache_distinguishes_geometry_and_is_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    Saliency3DEngine._clear_interpolation_cache()
+    try:
+        for offset in range(Saliency3DEngine._MAX_INTERPOLATION_CACHE_ENTRIES + 2):
+            engine = _engine_with_interpolation_geometry(
+                monkeypatch,
+                cap_points=np.array([[float(offset), 0.0, 0.0]]),
+                channel_positions=np.array(
+                    [
+                        [0.0, 0.0, 0.0],
+                        [0.1 + offset, 0.0, 0.0],
+                        [0.0, 0.1, 0.0],
+                    ]
+                ),
+                saliency=np.ones((3, 1)),
+            )
+            engine._prepare_interpolation_weights(neighbor=3)
+
+        assert len(Saliency3DEngine._interpolation_cache) == (
+            Saliency3DEngine._MAX_INTERPOLATION_CACHE_ENTRIES
+        )
+
+        changed = _engine_with_interpolation_geometry(
+            monkeypatch,
+            cap_points=np.array([[999.0, 0.0, 0.0]]),
+            channel_positions=np.array(
+                [[0.0, 0.0, 0.0], [0.1, 0.0, 0.0], [0.0, 0.1, 0.0]]
+            ),
+            saliency=np.ones((3, 1)),
+        )
+        with patch.object(
+            saliency_3d_module.np.linalg,
+            "norm",
+            wraps=np.linalg.norm,
+        ) as norm:
+            changed._prepare_interpolation_weights(neighbor=3)
+
+        norm.assert_called_once()
+    finally:
+        Saliency3DEngine._clear_interpolation_cache()

@@ -5,7 +5,7 @@ from typing import Any, cast
 import pytest
 from PIL import Image, ImageDraw
 from PyQt6.QtCore import QPoint
-from PyQt6.QtWidgets import QAbstractButton
+from PyQt6.QtWidgets import QAbstractButton, QApplication
 
 from scripts.dev.app_polish_capture_contract import (
     APP_POLISH_SURFACES,
@@ -33,6 +33,7 @@ from scripts.dev.capture_ui_polish_surfaces import (
     _epoching_internal_events_dialog,
     _evaluation_controls_panel,
     _publish_capture,
+    _settle_capture_widget,
     _surface_contract,
     _training_history_few_rows,
     _training_history_many_rows,
@@ -60,16 +61,19 @@ def test_data_splitting_preview_capture_uses_current_worker_lifecycle(qtbot) -> 
     assert dialog.tree is not None
     assert dialog.tree.topLevelItemCount() == 5
     dialog.show()
+    app = QApplication.instance()
+    assert isinstance(app, QApplication)
+    _settle_capture_widget(app, dialog)
     _assert_capture_geometry("data-splitting-preview-dialog.png", dialog)
     semantics = _data_splitting_preview_semantics(dialog)
     assert semantics["split_unit"] == "K Fold"
     assert semantics["k_fold_count"] == 5
     assert [row["name"] for row in semantics["dataset_rows"]] == [
-        "Fold_0",
-        "Fold_1",
-        "Fold_2",
-        "Fold_3",
-        "Fold_4",
+        "Fold 1",
+        "Fold 2",
+        "Fold 3",
+        "Fold 4",
+        "Fold 5",
     ]
 
 
@@ -117,6 +121,8 @@ def test_epoch_capture_contract_requires_complete_visible_controls(
     assert contract["selected_event_count"] > 0
     assert contract["primary_action"] == "Create EEG Epochs"
     assert contract["cancel_action"] == "Cancel"
+    assert contract["window_mode_valid"] is True
+    assert contract["primary_action_enabled"] is True
     assert "Create EEG Epochs" in contract["verified_controls"]
     assert "Cancel" in contract["verified_controls"]
     if scenario == "internal_events":
@@ -144,6 +150,7 @@ def test_assistant_setup_capture_is_a_valid_320px_state(qtbot) -> None:
     panel = _assistant_setup_required_narrow()
     qtbot.addWidget(panel)
     panel.show()
+    _settle_capture_widget(QApplication.instance(), panel)
 
     _assert_capture_geometry("assistant-setup-required-narrow.png", panel)
 
@@ -199,7 +206,11 @@ def test_assistant_active_turn_capture_is_ready_before_processing(qtbot) -> None
     scrollbar = panel.scroll_area.horizontalScrollBar()
     assert scrollbar is not None
     assert scrollbar.maximum() == 0
-    assert assistant_composer_placeholder_evidence(panel)["fits"] is True
+    placeholder = assistant_composer_placeholder_evidence(panel)
+    assert placeholder["visible"] is True
+    assert placeholder["text"] == "Ask about EEG..."
+    assert placeholder["available_width"] > 0
+    assert placeholder["available_height"] > 0
 
 
 @pytest.mark.parametrize(
@@ -227,6 +238,7 @@ def test_assistant_standard_runtime_captures_are_semantically_valid(
     panel = factory()
     qtbot.addWidget(panel)
     panel.show()
+    _settle_capture_widget(QApplication.instance(), panel)
 
     _assert_capture_geometry(filename, panel)
 

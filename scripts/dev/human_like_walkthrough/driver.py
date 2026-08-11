@@ -30,6 +30,7 @@ from scripts.dev.human_like_walkthrough.contract import (
 )
 from XBrainLab.backend.application.commands import CommandName
 from XBrainLab.llm.agent.assistant_activity import (
+    AssistantDecisionOwner,
     AssistantTurnActivity,
     AssistantTurnActivityPhase,
 )
@@ -201,6 +202,7 @@ class WalkthroughAssistantController(QObject):
         *,
         command_name: str = "",
         request_id: str = "",
+        decision_owner: AssistantDecisionOwner | None = None,
     ) -> None:
         correlation = self._active_turn
         self.activity_changed.emit(
@@ -208,6 +210,7 @@ class WalkthroughAssistantController(QObject):
                 phase,
                 command_name=command_name,
                 request_id=request_id,
+                decision_owner=decision_owner,
                 turn_id=correlation.turn_id if correlation is not None else None,
                 generation=(
                     correlation.generation if correlation is not None else None
@@ -391,6 +394,7 @@ class WalkthroughAssistantController(QObject):
                 AssistantTurnActivityPhase.WAITING_FOR_DECISION,
                 command_name=confirmation.command_name,
                 request_id=confirmation.request_id,
+                decision_owner=AssistantDecisionOwner.CONFIRMATION_CARD,
             )
             self.confirmation_requested.emit(confirmation)
             self.events.append("interaction:confirmation_requested")
@@ -409,6 +413,7 @@ class WalkthroughAssistantController(QObject):
                 AssistantTurnActivityPhase.WAITING_FOR_DECISION,
                 command_name=handoff.command_name,
                 request_id=handoff.request_id,
+                decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
             )
             self.events.append("handoff:typed_requested:evaluate")
             self.workflow_ui_handoff_requested.emit(handoff)
@@ -450,7 +455,6 @@ class WalkthroughAssistantController(QObject):
             )
         elif outcome == "clarification":
             self.status_update.emit("Waiting for your choice")
-            self._publish_activity(AssistantTurnActivityPhase.WAITING_FOR_DECISION)
             self.response_presentation_ready.emit(
                 self._response_presentation(
                     text=message,

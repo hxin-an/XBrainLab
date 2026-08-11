@@ -27,6 +27,14 @@ class AssistantAttentionKind(str, Enum):
     ERROR = "error"
 
 
+class AssistantDecisionOwner(str, Enum):
+    """Product surface that owns a pending human decision."""
+
+    CONFIRMATION_CARD = "confirmation_card"
+    GUI_DIALOG = "gui_dialog"
+    PANEL_HANDOFF = "panel_handoff"
+
+
 @dataclass(frozen=True, slots=True)
 class AssistantTurnActivity:
     """Correlated transient activity that never represents backend workflow state."""
@@ -38,12 +46,18 @@ class AssistantTurnActivity:
     turn_id: int | None = None
     generation: int | None = None
     attention_kind: AssistantAttentionKind = AssistantAttentionKind.ATTENTION
+    decision_owner: AssistantDecisionOwner | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.phase, AssistantTurnActivityPhase):
             raise TypeError("Assistant turn activity phase must be typed.")
         if not isinstance(self.attention_kind, AssistantAttentionKind):
             raise TypeError("Assistant turn attention kind must be typed.")
+        if self.decision_owner is not None and not isinstance(
+            self.decision_owner,
+            AssistantDecisionOwner,
+        ):
+            raise TypeError("Assistant turn decision owner must be typed.")
         if self.turn_id is not None:
             if isinstance(self.turn_id, bool) or not isinstance(self.turn_id, int):
                 raise TypeError("Assistant turn activity turn id must be an integer.")
@@ -66,6 +80,16 @@ class AssistantTurnActivity:
                 label = field_name.replace("_", " ")
                 raise TypeError(f"Assistant turn activity {label} must be a string.")
             object.__setattr__(self, field_name, " ".join(value.split()))
+
+        waiting = self.phase is AssistantTurnActivityPhase.WAITING_FOR_DECISION
+        if waiting and self.decision_owner is None:
+            raise ValueError("Waiting assistant activity requires a decision owner.")
+        if waiting and (not self.command_name or not self.request_id):
+            raise ValueError("Waiting assistant activity requires decision identity.")
+        if not waiting and self.decision_owner is not None:
+            raise ValueError(
+                "Assistant decision owner is only valid while waiting for a decision."
+            )
 
     @property
     def correlation(self) -> AssistantTurnCorrelation | None:

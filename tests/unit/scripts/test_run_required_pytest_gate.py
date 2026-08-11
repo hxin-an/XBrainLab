@@ -20,6 +20,7 @@ def test_required_gate_records_skip_xpass_and_deselection() -> None:
             passed=False,
             wasxfail=None,
             longrepr="fixture missing",
+            keywords={},
         )
     )
     observer.pytest_runtest_logreport(
@@ -54,6 +55,7 @@ def test_required_gate_main_fails_when_pytest_skips(monkeypatch, tmp_path) -> No
                 passed=False,
                 wasxfail=None,
                 longrepr="missing fixture",
+                keywords={"optional_public_fixture": True},
             )
         )
         return 0
@@ -77,6 +79,138 @@ def test_required_gate_main_fails_when_pytest_skips(monkeypatch, tmp_path) -> No
     assert payload["completed"] is True
     assert payload["exit_code"] == 1
     assert payload["counts"]["skipped"] == 1
+
+
+def test_required_gate_allows_explicit_platform_contract_skip(
+    monkeypatch, tmp_path
+) -> None:
+    def fake_main(args, *, plugins):
+        assert args == ["tests/test_platform.py", "-q"]
+        observer = plugins[0]
+        observer.pytest_collection_finish(SimpleNamespace(items=[object()]))
+        observer.pytest_runtest_logreport(
+            SimpleNamespace(
+                nodeid="tests/test_platform.py::test_posix_contract",
+                when="setup",
+                skipped=True,
+                failed=False,
+                passed=False,
+                wasxfail=None,
+                keywords={"platform_contract": True},
+            )
+        )
+        return 0
+
+    monkeypatch.setattr(gate.pytest, "main", fake_main)
+    result_path = tmp_path / "platform-skip-result.json"
+
+    assert (
+        gate.main(
+            [
+                "--result-json",
+                str(result_path),
+                "--",
+                "tests/test_platform.py",
+                "-q",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert payload["counts"]["skipped"] == 1
+
+
+def test_optional_public_fixture_skip_requires_explicit_policy() -> None:
+    observer = gate.RequiredPytestGate()
+    observer.pytest_collection_finish(SimpleNamespace(items=[object()]))
+    observer.pytest_runtest_logreport(
+        SimpleNamespace(
+            nodeid="tests/test_public.py::test_downloaded_fixture",
+            when="setup",
+            skipped=True,
+            failed=False,
+            passed=False,
+            wasxfail=None,
+            keywords={"optional_public_fixture": True},
+        )
+    )
+
+    assert observer.clean is False
+    assert observer.skipped == ["tests/test_public.py::test_downloaded_fixture"]
+
+
+def test_optional_public_fixture_policy_does_not_allow_unmarked_skip() -> None:
+    observer = gate.RequiredPytestGate(allowed_skip_markers={"optional_public_fixture"})
+    observer.pytest_collection_finish(SimpleNamespace(items=[object()]))
+    observer.pytest_runtest_logreport(
+        SimpleNamespace(
+            nodeid="tests/test_general.py::test_unexpected_skip",
+            when="setup",
+            skipped=True,
+            failed=False,
+            passed=False,
+            wasxfail=None,
+            keywords={},
+        )
+    )
+
+    assert observer.clean is False
+    assert observer.skipped == ["tests/test_general.py::test_unexpected_skip"]
+
+
+def test_main_allows_only_explicit_optional_public_fixture_skip(
+    monkeypatch, tmp_path
+) -> None:
+    def fake_main(args, *, plugins):
+        assert args == ["tests/test_public.py", "-q"]
+        observer = plugins[0]
+        observer.pytest_collection_finish(SimpleNamespace(items=[object()]))
+        observer.pytest_runtest_logreport(
+            SimpleNamespace(
+                nodeid="tests/test_public.py::test_downloaded_fixture",
+                when="setup",
+                skipped=True,
+                failed=False,
+                passed=False,
+                wasxfail=None,
+                keywords={"optional_public_fixture": True},
+            )
+        )
+        return 0
+
+    monkeypatch.setattr(gate.pytest, "main", fake_main)
+    result_path = tmp_path / "optional-public-skip-result.json"
+
+    assert (
+        gate.main(
+            [
+                "--result-json",
+                str(result_path),
+                "--allow-skip-marker",
+                "optional_public_fixture",
+                "--",
+                "tests/test_public.py",
+                "-q",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert payload["counts"]["skipped"] == 1
+
+
+def test_os_specific_skip_contracts_are_explicitly_marked() -> None:
+    offenders: list[str] = []
+    for path in Path("tests").rglob("test_*.py"):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for index, line in enumerate(lines):
+            if not line.strip().startswith("@pytest.mark.skipif(os.name"):
+                continue
+            decorators = lines[max(0, index - 2) : index]
+            if not any("@pytest.mark.platform_contract" in item for item in decorators):
+                offenders.append(f"{path.as_posix()}:{index + 1}")
+
+    assert offenders == []
 
 
 def test_required_gate_main_preserves_pytest_failure(monkeypatch, tmp_path) -> None:
@@ -223,6 +357,50 @@ def test_early_process_exit_cannot_forge_completion_attestation(tmp_path) -> Non
     assert completed.returncode == 0
     assert "1 passed in 0.01s" in completed.stdout
     assert not result_path.exists()
+
+
+def test_optional_public_fixture_policy_uses_real_pytest_marker_semantics(
+    tmp_path,
+) -> None:
+    marked_test = tmp_path / "test_optional_public.py"
+    marked_test.write_text(
+        "import pytest\n\n"
+        "@pytest.mark.optional_public_fixture\n"
+        "def test_missing_download():\n"
+        "    pytest.skip('downloaded fixture is absent')\n",
+        encoding="utf-8",
+    )
+    unmarked_test = tmp_path / "test_unexpected_skip.py"
+    unmarked_test.write_text(
+        "import pytest\n\n"
+        "def test_unexpected_skip():\n"
+        "    pytest.skip('unexpected generic skip')\n",
+        encoding="utf-8",
+    )
+    runner = Path(gate.__file__).resolve()
+
+    def run(test_file: Path, *, allow_optional: bool) -> subprocess.CompletedProcess:
+        result_path = tmp_path / f"{test_file.stem}-{allow_optional}.json"
+        command = [
+            sys.executable,
+            str(runner),
+            "--result-json",
+            str(result_path),
+        ]
+        if allow_optional:
+            command.extend(("--allow-skip-marker", "optional_public_fixture"))
+        command.extend(("--", "-q", str(test_file)))
+        return subprocess.run(  # noqa: S603 - exact test-owned runner and file.
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert run(marked_test, allow_optional=False).returncode == 1
+    assert run(marked_test, allow_optional=True).returncode == 0
+    assert run(unmarked_test, allow_optional=True).returncode == 1
 
 
 def test_required_gate_rejects_missing_result_path() -> None:

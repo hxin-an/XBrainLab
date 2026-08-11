@@ -104,7 +104,9 @@ def test_bids_artifact_and_boundary_rows_reject_overlapping_class_epoch(
         "1.0\t0.0\tleft\t1\n"
         "1.1\t0.2\tocular\t2\n"
         "1.1\t0.2\tocular\t2\n"
-        "2.5\t0.1\trun_break\t3\n",
+        "2.5\t0.1\trun_break\t3\n"
+        "4.0\t0.0\tright\t4\n"
+        "4.1\t0.2\tocular\t2\n",
         encoding="utf-8",
     )
     choices = {
@@ -122,6 +124,11 @@ def test_bids_artifact_and_boundary_rows_reject_overlapping_class_epoch(
                         "stimulus",
                         use_as_class=True,
                         class_name="Left hand",
+                    ),
+                    "right": _decision(
+                        "stimulus",
+                        use_as_class=True,
+                        class_name="Right hand",
                     ),
                     "ocular": _decision("artifact", use_as_class=False),
                     "run_break": _decision("boundary", use_as_class=False),
@@ -143,8 +150,8 @@ def test_bids_artifact_and_boundary_rows_reject_overlapping_class_epoch(
     assert applied.ok is True
     loaded = service.study.preprocessed_data_list[0]
     events, event_id = loaded.get_event_list()
-    assert events[:, 0].tolist() == [100]
-    assert event_id == {"Left hand": 1}
+    assert events[:, 0].tolist() == [100, 400]
+    assert event_id == {"Left hand": 1, "Right hand": 2}
     annotations = loaded.get_mne().annotations
     assert annotations.orig_time == acquisition_orig_time
     merged_rows = _annotation_rows(annotations)
@@ -152,19 +159,19 @@ def test_bids_artifact_and_boundary_rows_reject_overlapping_class_epoch(
         acquisition_rows,
         merged_rows,
     )
-    assert annotations.description.tolist().count("BAD_artifact/ocular") == 1
+    assert annotations.description.tolist().count("BAD_artifact/ocular") == 2
     assert "BAD_boundary/run_break" in annotations.description
 
     epoch_result = service.execute(
         CreateEpochCommand(
             t_min=0.0,
             t_max=0.4,
-            event_ids=["Left hand"],
+            event_ids=["Left hand", "Right hand"],
         )
     )
 
     assert epoch_result.ok is False
-    assert epoch_result.error_type.value == "validation"
+    assert epoch_result.error_type.value == "validation", epoch_result
     assert epoch_result.recoverable is True
     assert "No usable epochs remain" in epoch_result.message
     assert epoch_result.state.pipeline_stage == "preprocessed"
@@ -173,8 +180,8 @@ def test_bids_artifact_and_boundary_rows_reject_overlapping_class_epoch(
     assert epoch_result.changed_state.epoch_changed is False
     retained = service.study.preprocessed_data_list[0]
     retained_events, retained_event_id = retained.get_event_list()
-    assert retained_events[:, 0].tolist() == [100]
-    assert retained_event_id == {"Left hand": 1}
+    assert retained_events[:, 0].tolist() == [100, 400]
+    assert retained_event_id == {"Left hand": 1, "Right hand": 2}
     assert isinstance(retained.get_mne(), mne.io.BaseRaw)
 
 

@@ -520,7 +520,7 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
         fold_count = _positive_int(contract.get("k_fold_count"))
         rows = contract.get("dataset_rows")
         rows = rows if isinstance(rows, list) else []
-        expected_names = [f"Fold_{index}" for index in range(fold_count)]
+        expected_names = [f"Fold {index + 1}" for index in range(fold_count)]
         names = [str(_mapping(row).get("name") or "") for row in rows]
         if contract.get("split_unit") != "K Fold" or fold_count < 2:
             return False, "Data splitting K-fold control is invalid."
@@ -550,6 +550,10 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
             return False, f"Epoch cancel action is missing: {filename}."
         if _positive_int(contract.get("selected_event_count")) <= 0:
             return False, f"Epoch event selection is empty: {filename}."
+        if contract.get("window_mode_valid") is not True:
+            return False, f"Epoch window mode is invalid: {filename}."
+        if contract.get("primary_action_enabled") is not True:
+            return False, f"Epoch primary action is disabled: {filename}."
         required_controls = {
             "preprocess-epoching-internal-events-dialog.png": (
                 "Create EEG Epochs",
@@ -564,13 +568,15 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
             "preprocess-epoching-bids-interval-duration-dialog.png": (
                 "Create EEG Epochs",
                 "BIDS events from import",
-                "BIDS events confirmed in Match Labels.",
-                "Label interval",
                 "trial_type",
-                "onset + duration",
-                "Use event duration.",
+                "Epoch anchor",
+                "Event onset",
+                "Window mode",
+                "Fixed to largest duration",
+                "Use one fixed window.",
                 "Events",
                 "Time Window",
+                "Baseline Correction",
                 "Apply baseline correction",
                 "Cancel",
             ),

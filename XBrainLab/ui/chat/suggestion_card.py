@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QTextLayout, QTextOption
+from PyQt6.QtCore import QRect, Qt
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -40,6 +39,7 @@ class AssistantSuggestionCard(QPushButton):
         self._subtitle = subtitle
         self.setObjectName("AssistantSuggestionPrompt")
         self.setProperty("accent", accent)
+        self.setProperty("assistantCustomContent", True)
         self.setStyleSheet(SUGGESTION_PROMPT_STYLE)
         self.setMinimumHeight(52)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -113,24 +113,21 @@ class AssistantSuggestionCard(QPushButton):
         )
 
         def wrapped_height(label: QLabel) -> int:
-            text_layout = QTextLayout(label.text(), label.font())
-            options = QTextOption()
-            options.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
-            text_layout.setTextOption(options)
-            text_layout.beginLayout()
-            line_heights: list[int] = []
-            try:
-                while True:
-                    line = text_layout.createLine()
-                    if not line.isValid():
-                        break
-                    line.setLineWidth(float(copy_width))
-                    line_heights.append(
-                        max(round(line.height()), label.fontMetrics().height())
-                    )
-            finally:
-                text_layout.endLayout()
-            required = sum(line_heights)
+            label.ensurePolished()
+            required = (
+                label.fontMetrics()
+                .boundingRect(
+                    QRect(0, 0, copy_width, 10_000),
+                    int(
+                        Qt.AlignmentFlag.AlignLeft
+                        | Qt.AlignmentFlag.AlignTop
+                        | Qt.TextFlag.TextWordWrap
+                    ),
+                    label.text(),
+                )
+                .height()
+            )
+            required = max(required, label.fontMetrics().height())
             label.setMinimumHeight(required)
             return required
 

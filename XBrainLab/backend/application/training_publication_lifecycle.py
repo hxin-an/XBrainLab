@@ -161,8 +161,11 @@ class TrainingPublicationLifecycleCoordinator:
                     self._latest_training_publication_generation,
                     publication_generation,
                 )
+            if self._training_run_already_delivered_locked(event):
+                return True
             if key in self._training_delivered:
                 return True
+            self._discard_superseded_pending_for_run_locked(event)
             self._training_pending.setdefault(key, event)
             self._reset_training_retry_budget_locked()
             if self._training_draining:
@@ -348,6 +351,40 @@ class TrainingPublicationLifecycleCoordinator:
             event.token.generation,
             run.trainer_id if run is not None else None,
             run.run_id if run is not None else None,
+        )
+
+    def _discard_superseded_pending_for_run_locked(
+        self,
+        event: TrainingLifecycleEvent,
+    ) -> None:
+        """Retire older revisions once the same run has newer terminal truth."""
+        run = event.outcome.run
+        publication_generation = event.publication_generation
+        if run is None or publication_generation is None:
+            return
+        superseded = [
+            key
+            for key, pending in self._training_pending.items()
+            if pending.outcome.run is not None
+            and pending.outcome.run.trainer_id == run.trainer_id
+            and pending.outcome.run.run_id == run.run_id
+            and pending.publication_generation is not None
+            and pending.publication_generation < publication_generation
+            and pending.token.generation <= event.token.generation
+        ]
+        for key in superseded:
+            self._training_pending.pop(key, None)
+
+    def _training_run_already_delivered_locked(
+        self,
+        event: TrainingLifecycleEvent,
+    ) -> bool:
+        run = event.outcome.run
+        if run is None:
+            return False
+        return any(
+            trainer_id == run.trainer_id and run_id == run.run_id
+            for _generation, trainer_id, run_id in self._training_delivered
         )
 
     @contextmanager

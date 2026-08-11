@@ -53,10 +53,10 @@ from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
     ConfigureTrainingCommand,
     CreateEpochCommand,
-    GenerateDatasetCommand,
     PreprocessCommand,
     PreprocessOperation,
     PreviewInterpretationCommand,
+    SaveDatasetSplitCommand,
     ScanSourceCommand,
     TrainCommand,
     ValidateInterpretationCommand,
@@ -990,7 +990,7 @@ def prepare_precondition_state(
             method="z-score",
         ),
         CreateEpochCommand(t_min=0.0, t_max=1.5, event_ids=["left", "right"]),
-        GenerateDatasetCommand(
+        SaveDatasetSplitCommand(
             test_ratio=0.25,
             val_ratio=0.25,
             split_strategy="trial",

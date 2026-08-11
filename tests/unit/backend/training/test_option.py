@@ -1,3 +1,4 @@
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -185,6 +186,75 @@ def test_training_option_falls_back_to_cpu_when_cuda_probe_fails():
     assert option.gpu_idx is None
     assert option.get_device() == "cpu"
     assert option.get_device_name() == "cpu"
+
+
+@pytest.mark.parametrize(
+    ("seed", "repeat_num"),
+    [
+        (0, 1),
+        (0xFFFF_FFFF, 1),
+        (0xFFFF_FFFF - 4, 5),
+        (None, 5),
+    ],
+)
+def test_training_option_accepts_portable_repeat_seed_range(
+    seed: int | None,
+    repeat_num: int,
+) -> None:
+    option = TrainingOption(
+        output_dir="ok",
+        optim=torch.optim.Adam,
+        optim_params={},
+        use_cpu=True,
+        gpu_idx=None,
+        epoch=1,
+        bs=2,
+        lr=0.001,
+        checkpoint_epoch=0,
+        evaluation_option=TrainingEvaluation.LAST_EPOCH,
+        repeat_num=repeat_num,
+        seed=seed,
+    )
+
+    if seed is None:
+        assert type(option.seed) is int
+        assert 0 <= option.seed <= 0xFFFF_FFFF - (repeat_num - 1)
+        assert option.get_configured_repeat_seeds() == [
+            option.seed + repeat_index for repeat_index in range(repeat_num)
+        ]
+    else:
+        assert option.seed == seed
+
+
+@pytest.mark.parametrize(
+    ("seed", "repeat_num"),
+    [
+        (True, 1),
+        (-1, 1),
+        (1.5, 1),
+        (0x1_0000_0000, 1),
+        (0xFFFF_FFFF, 2),
+    ],
+)
+def test_training_option_rejects_nonportable_or_overflowing_seed(
+    seed: Any,
+    repeat_num: int,
+) -> None:
+    with pytest.raises(ValueError, match="Invalid seed"):
+        TrainingOption(
+            output_dir="ok",
+            optim=torch.optim.Adam,
+            optim_params={},
+            use_cpu=True,
+            gpu_idx=None,
+            epoch=1,
+            bs=2,
+            lr=0.001,
+            checkpoint_epoch=0,
+            evaluation_option=TrainingEvaluation.LAST_EPOCH,
+            repeat_num=repeat_num,
+            seed=seed,
+        )
 
 
 @pytest.mark.parametrize(

@@ -137,9 +137,18 @@ class EpochRunner:
                 inputs,
                 labels,
             )
+            Evaluator.require_finite_tensor(
+                batch_inputs,
+                context="Training input",
+            )
             optimizer.zero_grad()
             outputs = model(batch_inputs)
+            Evaluator.require_finite_tensor(
+                outputs,
+                context="Training model output",
+            )
             loss = criterion(outputs, batch_labels)
+            Evaluator.require_finite_tensor(loss, context="Training loss")
             loss.backward()
             optimizer.step()
 

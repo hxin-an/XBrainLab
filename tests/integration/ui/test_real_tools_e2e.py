@@ -11,6 +11,11 @@ from XBrainLab.backend.application import (
     QueryStateCommand,
     get_application_service,
 )
+from XBrainLab.llm.tools.application_surface import (
+    ToolCommandResult,
+    authorize_assistant_setting_change,
+    execute_application_tool_command,
+)
 from XBrainLab.llm.tools.authorized_paths import authorize_existing_path
 from XBrainLab.llm.tools.real.dataset_real import (
     RealGetDatasetInfoTool,
@@ -71,6 +76,19 @@ def _assert_tool_result(result, *, ok: bool = True) -> ToolResult:
         assert result.error_type == ErrorType.NONE.value
     else:
         assert result.error_type != ErrorType.NONE.value
+    return result
+
+
+def _execute_confirmed_setting(study, tool_name: str, params: dict):
+    publication = get_application_service(study).get_view_publication()
+    reviewed = authorize_assistant_setting_change(
+        tool_name,
+        params,
+        publication_generation=publication.generation,
+    )
+    result = execute_application_tool_command(study, tool_name, reviewed)
+    assert isinstance(result, ToolCommandResult)
+    assert result.ok, result.message
     return result
 
 
@@ -179,11 +197,18 @@ def test_real_tools_e2e_flow(test_app, tmp_path):
     # Set Model
     tool_model = RealSetModelTool()
     res_model = tool_model.execute(study, model_name="EEGNet")
-    res_model = _assert_tool_result(res_model)
+    res_model = _assert_tool_result(res_model, ok=False)
+    assert res_model.error_type == "confirmation_required"
+    assert _state(study)["training"]["has_model"] is False
+    res_model = _execute_confirmed_setting(
+        study,
+        "set_model",
+        {"model_name": "EEGNet"},
+    )
     assert res_model.message == "Model configured: EEGNet."
     training_state = _state(study)["training"]
     assert training_state["has_model"] is True
-    assert training_state["model_name"] == "EEGNet"
+    assert training_state["model_name"] == "EEGNet (XBrainLab)"
     assert training_state["has_training_option"] is False
     assert training_state["training_option"] == {}
     assert training_state["missing_requirements"] == [
@@ -196,15 +221,27 @@ def test_real_tools_e2e_flow(test_app, tmp_path):
     res_config = tool_config.execute(
         study, epoch=5, batch_size=4, optimizer="adam", learning_rate=0.01
     )
-    res_config = _assert_tool_result(res_config)
+    res_config = _assert_tool_result(res_config, ok=False)
+    assert res_config.error_type == "confirmation_required"
+    res_config = _execute_confirmed_setting(
+        study,
+        "configure_training",
+        {
+            "epoch": 5,
+            "batch_size": 4,
+            "optimizer": "adam",
+            "learning_rate": 0.01,
+        },
+    )
     assert res_config.message == "Training configured."
-    assert res_config.payload["diagnostics"]["training_option"]["epoch"] == 5
-    assert res_config.payload["diagnostics"]["training_option"]["batch_size"] == 4
-    assert res_config.payload["diagnostics"]["training_option"]["learning_rate"] == 0.01
+    assert res_config.diagnostics["training_option"]["epoch"] == 5
+    assert res_config.diagnostics["training_option"]["batch_size"] == 4
+    assert res_config.diagnostics["training_option"]["learning_rate"] == 0.01
 
     training_state = _state(study)["training"]
     assert training_state["has_training_option"] is True
-    assert training_state["training_option"] == {
+    training_option = training_state["training_option"]
+    expected_training_option = {
         "epoch": 5,
         "batch_size": 4,
         "learning_rate": 0.01,
@@ -214,8 +251,12 @@ def test_real_tools_e2e_flow(test_app, tmp_path):
         "optimizer_params": {},
         "checkpoint_epoch": 0,
         "evaluation_option": "Last Epoch",
-        "output_dir": "./output",
+        "output_dir": "./output/runs",
     }
+    for key, expected in expected_training_option.items():
+        assert training_option[key] == expected
+    assert type(training_option["seed"]) is int
+    assert training_option["repeat_seeds"] == [training_option["seed"]]
     assert training_state["missing_requirements"] == ["Data Splitting"]
 
     # 4. UI Control

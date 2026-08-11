@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "XBrainLab"}]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.13"
+python = ">=3.11,<3.13"
 # Core Science Stack
 numpy = "^1.23.0"
 scipy = "^1.10.0"
@@ -19,6 +19,7 @@ h5py = "^3.10.0"
 # EEG Analysis
 mne = "^1.6.0"
 pymatreader = "^1.0.0"
+braindecode = ">=1.6,<1.7"
 
 # Deep Learning Core (Required for Backend & LLM)
 torch = "^2.11.0"
@@ -33,6 +34,7 @@ pyyaml = "^6.0"
 psutil = "^5.9.0"
 python-dotenv = "^1.2.1"
 typing-extensions = ">=4.6.0"
+torchinfo = "^1.8.0"
 
 # GUI (Required)
 pyqt6 = "^6.10.2"
@@ -61,7 +63,6 @@ optional = true
 [tool.poetry.group.llm.dependencies]
 transformers = "^4.30.0"
 accelerate = "^1.12.0"
-torchinfo = "^1.8.0"
 bitsandbytes = "^0.49.1"
 
 [tool.poetry.group.dev.dependencies]
@@ -178,6 +179,8 @@ testpaths = ["tests"]
 norecursedirs = ["XBrainLab", ".git", "__pycache__", "*.egg-info"]
 markers = [
     "timeout: Mark test with a timeout.",
+    "platform_contract: Test validates an explicit OS-specific contract.",
+    "optional_public_fixture: Test requires downloaded public fixture data owned by a dedicated gate.",
 ]
 filterwarnings = [
     "ignore::pytest.PytestUnknownMarkWarning",

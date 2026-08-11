@@ -10,6 +10,7 @@ from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ActiveTrainingSnapshot,
     ApplicationStateSnapshot,
+    DatasetSplitLifecycle,
     DatasetStateSnapshot,
     EpochStateSnapshot,
     TrainingStateSnapshot,
@@ -32,7 +33,12 @@ def _training_ready_state(*, event_ids: dict[str, int]) -> ApplicationStateSnaps
             count=1,
             names=["split-0"],
             generator_exists=True,
-            split_summary={"audit": {"ok": True, "dataset_count": 1, "issues": []}},
+            split_spec_saved=True,
+            split_lifecycle=DatasetSplitLifecycle.VERIFIED,
+            split_materialized=True,
+            active_split_summary={
+                "audit": {"ok": True, "dataset_count": 1, "issues": []}
+            },
         ),
         training=TrainingStateSnapshot(
             has_model=True,
@@ -44,6 +50,7 @@ def _training_ready_state(*, event_ids: dict[str, int]) -> ApplicationStateSnaps
             has_preprocessed_data=True,
             has_epoch_data=True,
             has_datasets=True,
+            has_saved_split=True,
         ),
         active_training=ActiveTrainingSnapshot(
             has_model=True,
@@ -56,7 +63,7 @@ def test_one_class_epoch_disables_dataset_and_training_capabilities() -> None:
     policy = build_capability_policy(_training_ready_state(event_ids={"Left hand": 0}))
 
     for command_name in (
-        CommandName.GENERATE_DATASET.value,
+        CommandName.CONFIGURE_DATASET_SPLIT.value,
         CommandName.TRAIN.value,
     ):
         capability = policy.get(command_name)
@@ -72,5 +79,5 @@ def test_two_class_epoch_keeps_supervised_capabilities_available() -> None:
         _training_ready_state(event_ids={"Left hand": 0, "Right hand": 1})
     )
 
-    assert policy.get(CommandName.GENERATE_DATASET.value).enabled is True
+    assert policy.get(CommandName.CONFIGURE_DATASET_SPLIT.value).enabled is True
     assert policy.get(CommandName.TRAIN.value).enabled is True

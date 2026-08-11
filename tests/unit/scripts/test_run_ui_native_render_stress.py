@@ -13,6 +13,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from scripts.dev import native_process_safety
+
 SCRIPT_PATH = (
     Path(__file__).resolve().parents[3]
     / "scripts"
@@ -34,20 +36,6 @@ def _script_tree() -> ast.Module:
     return ast.parse(SCRIPT_PATH.read_text(encoding="utf-8"))
 
 
-def _core_limit_function() -> ast.FunctionDef:
-    function = next(
-        (
-            node
-            for node in _script_tree().body
-            if isinstance(node, ast.FunctionDef)
-            and node.name == "_disable_core_dumps_for_native_stress"
-        ),
-        None,
-    )
-    assert function is not None
-    return function
-
-
 def _named_function(name: str) -> ast.FunctionDef:
     function = next(
         (
@@ -64,23 +52,20 @@ def _named_function(name: str) -> ast.FunctionDef:
 def _load_core_limit_function(
     monkeypatch,
     resource_module,
-) -> Callable[[], bool]:
+) -> Callable[[], native_process_safety.NativeProcessSafety]:
+    monkeypatch.setattr(native_process_safety.os, "name", "posix")
     monkeypatch.setitem(sys.modules, "resource", resource_module)
-    function = _core_limit_function()
-    namespace: dict[str, object] = {}
-    module = ast.Module(body=[function], type_ignores=[])
-    ast.fix_missing_locations(module)
-    exec(compile(module, str(SCRIPT_PATH), "exec"), namespace)  # noqa: S102
-    return cast(
-        Callable[[], bool],
-        namespace["_disable_core_dumps_for_native_stress"],
-    )
+    return native_process_safety.disable_core_dumps
 
 
 def _load_stress_contract_function() -> Callable[..., list[str]]:
     function = _named_function("_stress_contract_failures")
     namespace: dict[str, Any] = {
+        "_NATIVE_QT_PLATFORM": "offscreen",
         "PRODUCT_2D_VIEW_NAMES": ("map", "spectrogram", "topomap"),
+        "HEADLESS_MACOS_SAFE_2D_VIEW_NAMES": ("map", "spectrogram"),
+        "HEADLESS_MACOS_NATIVE_SCOPE": "headless_macos_safe_2d",
+        "FULL_NATIVE_SCOPE": "full_native_lifecycle",
     }
     module = ast.Module(body=[function], type_ignores=[])
     ast.fix_missing_locations(module)
@@ -121,6 +106,15 @@ def _load_memory_contract_function() -> Callable[..., list[str]]:
     )
 
 
+def _load_native_qt_platform_function() -> Callable[[str], str]:
+    function = _named_function("_native_qt_platform")
+    namespace: dict[str, object] = {}
+    module = ast.Module(body=[function], type_ignores=[])
+    ast.fix_missing_locations(module)
+    exec(compile(module, str(SCRIPT_PATH), "exec"), namespace)  # noqa: S102
+    return cast(Callable[[str], str], namespace["_native_qt_platform"])
+
+
 def _passing_stress_result(
     *,
     cycles: int = 1,
@@ -129,6 +123,8 @@ def _passing_stress_result(
     expected_2d = cycles * 3
     expected_3d_updates = cycles
     result: dict[str, object] = {
+        "qt_qpa_platform": "offscreen",
+        "core_dump_limit_supported": True,
         "core_dumps_disabled": True,
         "active_render_close_fenced": True,
         "active_render_close_completed": True,
@@ -140,12 +136,16 @@ def _passing_stress_result(
         "child_finalizers_completed": True,
         "child_finalizers_exactly_once": True,
         "two_d_resources_released": True,
+        "active_3d_worker_status": "PASS",
+        "active_3d_worker_block_reason": "",
         "active_3d_engine_close_safe": True,
         "active_3d_probe_close_safe": True,
         "active_3d_engine_late_callbacks": 0,
         "active_3d_probe_late_callbacks": 0,
         "active_3d_worker_gui_heartbeat_ticks": 2,
         "resources_finalized": True,
+        "native_render_scope": "full_native_lifecycle",
+        "product_2d_view_names": ["map", "spectrogram", "topomap"],
         "product_saliency_cycles": cycles,
         "product_saliency_warmup_cycles": 0,
         "product_saliency_measurement_cycles": cycles,
@@ -166,13 +166,16 @@ def _passing_stress_result(
             }
             for index in range(cycles + 1)
         ],
-        "product_saliency_publications_served": expected_2d + expected_3d_updates,
+        "product_saliency_publications_primed": 1,
+        "product_saliency_publications_served": 0,
         "product_2d_renders_installed": expected_2d,
         "product_2d_loading_cleared": expected_2d,
         "product_2d_replaced_resources_released": expected_2d,
         "product_map_renders_installed": cycles,
         "product_spectrogram_renders_installed": cycles,
         "product_topomap_renders_installed": cycles,
+        "product_topomap_status": "PASS",
+        "product_topomap_block_reason": "",
         "product_3d_tab_updates": expected_3d_updates,
         "product_3d_status": "SKIP",
         "product_3d_renders_installed": 0,
@@ -202,6 +205,37 @@ def _passing_stress_result(
     return result
 
 
+def _passing_headless_macos_result(*, cycles: int = 1) -> dict[str, object]:
+    result = _passing_stress_result(cycles=cycles)
+    expected_2d = cycles * 2
+    block_reason = "Headless macOS CI does not provide interactive OpenGL."
+    result.update(
+        {
+            "native_render_scope": "headless_macos_safe_2d",
+            "product_2d_view_names": ["map", "spectrogram"],
+            "product_saliency_publications_primed": 1,
+            "product_saliency_publications_served": 0,
+            "product_2d_renders_installed": expected_2d,
+            "product_2d_loading_cleared": expected_2d,
+            "product_2d_replaced_resources_released": expected_2d,
+            "product_topomap_renders_installed": 0,
+            "product_topomap_status": "BLOCKED",
+            "product_topomap_block_reason": block_reason,
+            "product_3d_tab_updates": 0,
+            "product_3d_status": "BLOCKED",
+            "product_3d_block_reason": block_reason,
+            "active_3d_worker_status": "BLOCKED",
+            "active_3d_worker_block_reason": block_reason,
+            "active_3d_engine_close_safe": None,
+            "active_3d_probe_close_safe": None,
+            "active_3d_engine_late_callbacks": None,
+            "active_3d_probe_late_callbacks": None,
+            "active_3d_worker_gui_heartbeat_ticks": None,
+        }
+    )
+    return result
+
+
 def test_core_dump_limit_is_applied_before_native_imports():
     tree = _script_tree()
     assignment = next(
@@ -211,7 +245,7 @@ def test_core_dump_limit_is_applied_before_native_imports():
             if isinstance(node, (ast.Assign, ast.AnnAssign))
             and isinstance(node.value, ast.Call)
             and isinstance(node.value.func, ast.Name)
-            and node.value.func.id == "_disable_core_dumps_for_native_stress"
+            and node.value.func.id == "disable_core_dumps"
         ),
         None,
     )
@@ -221,6 +255,10 @@ def test_core_dump_limit_is_applied_before_native_imports():
         node.lineno
         for node in tree.body
         if isinstance(node, (ast.Import, ast.ImportFrom))
+        and not (
+            isinstance(node, ast.ImportFrom)
+            and node.module == "scripts.dev.native_process_safety"
+        )
         and (
             (
                 isinstance(node, ast.Import)
@@ -240,12 +278,16 @@ def test_core_dump_limit_is_applied_before_native_imports():
     assert assignment.lineno < min(native_import_lines)
 
 
-def test_posix_parent_stops_before_native_imports_when_core_guard_fails():
+def test_supported_parent_stops_before_native_imports_when_core_guard_fails():
     tree = _script_tree()
     native_import_line = min(
         node.lineno
         for node in tree.body
         if isinstance(node, (ast.Import, ast.ImportFrom))
+        and not (
+            isinstance(node, ast.ImportFrom)
+            and node.module == "scripts.dev.native_process_safety"
+        )
         and (
             (
                 isinstance(node, ast.Import)
@@ -268,8 +310,13 @@ def test_posix_parent_stops_before_native_imports_when_core_guard_fails():
             if isinstance(node, ast.If)
             and node.lineno < native_import_line
             and any(
-                isinstance(candidate, ast.Name)
-                and candidate.id == "_CORE_DUMPS_DISABLED"
+                isinstance(candidate, ast.Attribute)
+                and candidate.attr == "core_dumps_disabled"
+                for candidate in ast.walk(node.test)
+            )
+            and any(
+                isinstance(candidate, ast.Attribute)
+                and candidate.attr == "core_dump_limit_supported"
                 for candidate in ast.walk(node.test)
             )
         ),
@@ -278,6 +325,58 @@ def test_posix_parent_stops_before_native_imports_when_core_guard_fails():
 
     assert guard is not None
     assert any(isinstance(node, ast.Raise) for node in ast.walk(guard))
+
+
+def test_native_stress_uses_cocoa_on_darwin_and_offscreen_elsewhere() -> None:
+    native_qt_platform = _load_native_qt_platform_function()
+
+    assert native_qt_platform("darwin") == "cocoa"
+    assert native_qt_platform("linux") == "offscreen"
+    assert native_qt_platform("win32") == "offscreen"
+
+
+def test_native_render_scope_only_bounds_headless_macos_ci() -> None:
+    function = _named_function("_native_render_scope")
+    namespace = {
+        "HEADLESS_MACOS_NATIVE_SCOPE": "headless_macos_safe_2d",
+        "FULL_NATIVE_SCOPE": "full_native_lifecycle",
+    }
+    module = ast.Module(body=[function], type_ignores=[])
+    ast.fix_missing_locations(module)
+    exec(compile(module, str(SCRIPT_PATH), "exec"), namespace)  # noqa: S102
+    native_render_scope = namespace["_native_render_scope"]
+
+    assert native_render_scope("darwin", "true") == "headless_macos_safe_2d"
+    assert native_render_scope("darwin", "") == "full_native_lifecycle"
+    assert native_render_scope("linux", "true") == "full_native_lifecycle"
+    assert native_render_scope("win32", "true") == "full_native_lifecycle"
+
+
+def test_native_wait_loop_only_collects_garbage_when_explicitly_requested() -> None:
+    function = _named_function("_pump_until")
+    collect_calls = [
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "gc"
+        and node.func.attr == "collect"
+    ]
+
+    assert collect_calls
+    assert all(
+        any(
+            isinstance(parent, ast.If)
+            and any(candidate is call for candidate in ast.walk(parent))
+            and any(
+                isinstance(candidate, ast.Name) and candidate.id == "collect_garbage"
+                for candidate in ast.walk(parent.test)
+            )
+            for parent in ast.walk(function)
+        )
+        for call in collect_calls
+    )
 
 
 def test_product_tab_stress_uses_public_panel_publication_path():
@@ -593,7 +692,6 @@ def test_stress_failures_return_nonzero_without_intentional_native_crash():
 @pytest.mark.parametrize(
     "failed_metric",
     [
-        "core_dumps_disabled",
         "pool_drained_before_close",
         "unrelated_global_work_started",
         "unrelated_global_work_active_at_finalize",
@@ -616,7 +714,8 @@ def test_stress_contract_fails_closed_for_required_resource_metrics(failed_metri
 @pytest.mark.parametrize(
     ("failed_metric", "failed_value"),
     [
-        ("product_saliency_publications_served", 3),
+        ("product_saliency_publications_primed", 0),
+        ("product_saliency_publications_served", 1),
         ("product_2d_replaced_resources_released", 2),
         ("product_map_renders_installed", 0),
         ("product_spectrogram_renders_installed", 0),
@@ -688,6 +787,37 @@ def test_stress_contract_requires_3d_render_for_every_interactive_cycle():
     assert "product_3d_renders_installed" in failures
 
 
+def test_stress_contract_accepts_explicit_headless_macos_blocked_scope():
+    contract_failures = _load_stress_contract_function()
+    result = _passing_headless_macos_result(cycles=3)
+
+    assert contract_failures(result, cycles=3) == []
+
+
+@pytest.mark.parametrize(
+    "metric",
+    [
+        "product_topomap_block_reason",
+        "product_3d_block_reason",
+        "active_3d_worker_block_reason",
+    ],
+)
+def test_headless_macos_contract_requires_a_reason_for_each_blocked_surface(metric):
+    contract_failures = _load_stress_contract_function()
+    result = _passing_headless_macos_result()
+    result[metric] = ""
+
+    assert metric in contract_failures(result, cycles=1)
+
+
+def test_headless_macos_contract_rejects_claimed_unexecuted_worker_metrics():
+    contract_failures = _load_stress_contract_function()
+    result = _passing_headless_macos_result()
+    result["active_3d_engine_close_safe"] = True
+
+    assert "active_3d_engine_close_safe" in contract_failures(result, cycles=1)
+
+
 @pytest.mark.parametrize("status", ["SKIP", "BLOCKED"])
 def test_stress_contract_requires_a_reason_when_interactive_3d_does_not_run(status):
     contract_failures = _load_stress_contract_function()
@@ -708,7 +838,10 @@ def test_core_dump_limit_is_process_local_when_posix_supports_it(monkeypatch):
     )
     disable = _load_core_limit_function(monkeypatch, resource_module)
 
-    assert disable() is True
+    policy = disable()
+
+    assert policy.core_dump_limit_supported is True
+    assert policy.core_dumps_disabled is True
     setrlimit.assert_called_once_with(4, (0, 0))
     getrlimit.assert_called_once_with(4)
 
@@ -723,15 +856,24 @@ def test_core_dump_limit_fails_closed_when_zero_limit_cannot_be_verified(
     )
     disable = _load_core_limit_function(monkeypatch, resource_module)
 
-    assert disable() is False
+    policy = disable()
+
+    assert policy.core_dump_limit_supported is True
+    assert policy.core_dumps_disabled is False
 
 
 @pytest.mark.parametrize("failure", [AttributeError, OSError, ValueError])
-def test_core_dump_limit_safely_skips_unsupported_runtimes(monkeypatch, failure):
+def test_core_dump_limit_fails_closed_when_posix_limit_setup_errors(
+    monkeypatch,
+    failure,
+):
     resource_module = SimpleNamespace(
         RLIMIT_CORE=4,
         setrlimit=MagicMock(side_effect=failure("unsupported")),
     )
     disable = _load_core_limit_function(monkeypatch, resource_module)
 
-    assert disable() is False
+    policy = disable()
+
+    assert policy.core_dump_limit_supported is True
+    assert policy.core_dumps_disabled is False

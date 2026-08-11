@@ -37,6 +37,7 @@ class _FakeDirectoryLease:
         self.active = False
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name != "posix", reason="POSIX no-follow regression")
 @pytest.mark.parametrize("target_kind", ("file", "directory"))
 def test_posix_containment_rejects_lexical_descendant_symlink_escape(
@@ -88,7 +89,9 @@ def test_normal_contained_file_and_folder_keep_stable_identity(
     assert isinstance(authorized, AuthorizedPath)
     with open_authorized_path(authorized, expected_kind=target_kind) as opened:
         assert opened.identity.kind == target_kind
-        assert opened.identity.final_path == str(target)
+        assert os.path.normcase(opened.identity.final_path) == os.path.normcase(
+            str(target.resolve())
+        )
 
 
 def test_windows_final_identity_rejects_junction_like_escape(monkeypatch) -> None:
@@ -115,6 +118,7 @@ def test_windows_final_identity_rejects_junction_like_escape(monkeypatch) -> Non
             kind=expected_kind or "file",
         )
 
+    monkeypatch.setattr(authorized_paths, "_native_windows_runtime", lambda: False)
     monkeypatch.setattr(authorized_paths, "_resolve_windows_identity", _identity)
 
     with pytest.raises(AuthorizedPathError, match="outside"):
@@ -164,6 +168,7 @@ def test_windows_normal_contained_identity_is_revalidated(monkeypatch) -> None:
             kind=expected_kind or "directory",
         )
 
+    monkeypatch.setattr(authorized_paths, "_native_windows_runtime", lambda: False)
     monkeypatch.setattr(authorized_paths, "_resolve_windows_identity", _identity)
 
     authorized = authorize_existing_path(

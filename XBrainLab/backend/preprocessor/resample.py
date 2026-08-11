@@ -35,6 +35,7 @@ class Resample(PreprocessBase):
 
         """
         preprocessed_data.get_mne().load_data()
+        self._require_finite_input(preprocessed_data)
         if preprocessed_data.is_raw():
             events, event_id = preprocessed_data.get_event_list()
             old_sfreq = preprocessed_data.get_sfreq()
@@ -57,3 +58,32 @@ class Resample(PreprocessBase):
         else:
             new_mne = preprocessed_data.get_mne().resample(sfreq=sfreq)
             preprocessed_data.set_mne_and_wipe_events(new_mne)
+
+    @staticmethod
+    def _require_finite_input(preprocessed_data: Raw) -> None:
+        """Reject non-finite input before FFT resampling contaminates all samples."""
+        mne_data = preprocessed_data.get_mne()
+        if preprocessed_data.is_raw():
+            channel_count = max(1, len(mne_data.ch_names))
+            sample_chunk_size = max(1, 1_048_576 // channel_count)
+            finite = all(
+                np.isfinite(
+                    mne_data.get_data(
+                        start=start,
+                        stop=min(start + sample_chunk_size, mne_data.n_times),
+                    )
+                ).all()
+                for start in range(0, mne_data.n_times, sample_chunk_size)
+            )
+        else:
+            epochs = mne_data.get_data(copy=False)
+            finite = all(np.isfinite(epoch).all() for epoch in epochs)
+        if finite:
+            return
+        raise ValueError(
+            "Resampling requires finite EEG data. Remove the resampling step and "
+            "keep this recording at its native sampling rate so BAD_nonfinite "
+            "segments can be excluded during epoching, or select a recording "
+            "without NaN or infinite samples. Raw FFT resampling can contaminate "
+            "the complete recording."
+        )

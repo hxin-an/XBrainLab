@@ -17,6 +17,16 @@ ATTRIBUTION_COLORBAR_TICK_SIZE = 7
 ATTRIBUTION_COLORBAR_LABEL_SIZE = 8
 
 
+def mean_saliency_over_trials(
+    values: np.ndarray,
+    *,
+    absolute: bool,
+) -> np.ndarray:
+    """Aggregate trials with a stable accumulator without copying the tensor."""
+    source = np.abs(values) if absolute else values
+    return np.mean(source, axis=0, dtype=np.float64)
+
+
 def attribution_colormap(name: str) -> Colormap:
     """Return one isolated attribution palette with shared exceptional colors."""
     cmap = colormaps[name].copy()
@@ -84,9 +94,16 @@ def saliency_color_scale(
     values: np.ndarray | Iterable[np.ndarray],
     *,
     absolute: bool,
+    normalized: bool = False,
 ) -> tuple[str, float, float]:
     """Return a colormap and limits that preserve each method's sign semantics."""
     nonnegative = absolute or method in NONNEGATIVE_SALIENCY_METHODS
+    if normalized:
+        return (
+            "Reds" if nonnegative else SALIENCY_RED_BLUE_CMAP,
+            0.0 if nonnegative else -1.0,
+            1.0,
+        )
     color_min, color_max = shared_color_limits(
         values,
         nonnegative=nonnegative,

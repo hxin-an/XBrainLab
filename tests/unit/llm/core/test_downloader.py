@@ -170,7 +170,7 @@ class TestModelDownloader:
         assert isinstance(outcome, ModelDownloadOutcome)
         assert outcome.status is ModelDownloadStatus.SUCCEEDED
         assert outcome.target.repo_id == "repo/id"
-        assert outcome.target.cache_dir == "/cache"
+        assert outcome.target.cache_dir == str(Path("/cache").resolve(strict=False))
         assert outcome.model_path == "/path/to/model"
         mock_mp.Process.assert_called_once()
         mock_process.start.assert_called_once()

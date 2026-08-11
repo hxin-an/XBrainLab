@@ -158,15 +158,15 @@ def record_handoff_command(
     stem = f"section-{section_name}-{check_name}"
     stdout_path = logs_dir / f"{stem}.stdout.log"
     stderr_path = logs_dir / f"{stem}.stderr.log"
-    stdout_path.write_text(stdout, encoding="utf-8")
-    stderr_path.write_text(stderr, encoding="utf-8")
+    _write_text_exact(stdout_path, stdout)
+    _write_text_exact(stderr_path, stderr)
     if spec.stdout_artifact_path:
         artifact_path = _contained_output_path(
             output_root,
             spec.stdout_artifact_path,
         )
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        artifact_path.write_text(stdout, encoding="utf-8")
+        _write_text_exact(artifact_path, stdout)
     _redact_registered_text_artifacts(
         output_root,
         spec=spec,
@@ -788,7 +788,13 @@ def _redact_registered_text_artifacts(
             ) from error
         redacted = _redact_sensitive_text(original, redactions)
         if redacted != original:
-            path.write_text(redacted, encoding="utf-8")
+            _write_text_exact(path, redacted)
+
+
+def _write_text_exact(path: Path, content: str) -> None:
+    """Write evidence text without platform newline translation."""
+    with path.open("w", encoding="utf-8", newline="") as stream:
+        stream.write(content)
 
 
 def _contained_output_path(root: Path, relative_path: str) -> Path:

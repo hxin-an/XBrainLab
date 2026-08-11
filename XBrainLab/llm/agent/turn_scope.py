@@ -51,7 +51,7 @@ _WORKFLOW_ORDER = {
     CommandName.APPLY_INTERPRETATION.value: 40,
     CommandName.PREPROCESS.value: 50,
     CommandName.CREATE_EPOCH.value: 60,
-    CommandName.GENERATE_DATASET.value: 70,
+    CommandName.CONFIGURE_DATASET_SPLIT.value: 70,
     CommandName.CONFIGURE_TRAINING.value: 80,
     CommandName.TRAIN.value: 90,
     CommandName.STOP_TRAINING.value: 95,
@@ -138,7 +138,7 @@ _WORKFLOW_STAGE_SPECS = (
         chinese_exclusion_pattern=r"(?:建立epochs?|切epochs?|切片段)",
     ),
     _WorkflowStageSpec(
-        command=CommandName.GENERATE_DATASET,
+        command=CommandName.CONFIGURE_DATASET_SPLIT,
         mention_pattern=(
             r"\b(?:split|generate)\b.{0,24}\bdataset\b|資料切分|建立資料集"
         ),
@@ -342,7 +342,7 @@ def _explicit_workflow_endpoint(normalized: str) -> CommandName | None:
     if re.search(
         r"\bprepare\b.{0,64}\b(?:for\s+training|to\s+train)\b", normalized
     ) or re.search(r"(?:準備|處理).{0,24}(?:可以|能夠)?訓練", compact):
-        return CommandName.GENERATE_DATASET
+        return CommandName.CONFIGURE_DATASET_SPLIT
 
     stages = _ordered_stage_mentions(normalized)
     commands = {command for _, command in stages}

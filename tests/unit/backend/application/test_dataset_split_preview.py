@@ -7,6 +7,8 @@ import time
 from types import SimpleNamespace
 from typing import Any
 
+import mne
+import numpy as np
 import pytest
 
 from XBrainLab.backend.application.dataset_split_preview import (
@@ -16,6 +18,8 @@ from XBrainLab.backend.application.dataset_split_preview import (
     DatasetSplitSpecification,
 )
 from XBrainLab.backend.application.errors import PreconditionError
+from XBrainLab.backend.dataset import Dataset, DatasetGenerator, Epochs
+from XBrainLab.backend.load_data import Raw
 
 
 class _EpochData:
@@ -97,6 +101,58 @@ def _specification() -> DatasetSplitSpecification:
     )
 
 
+def _real_epoch_data() -> Epochs:
+    trial_count = 10
+    info = mne.create_info(ch_names=["C3", "C4"], sfreq=20, ch_types="eeg")
+    events = np.column_stack(
+        (
+            np.arange(trial_count, dtype=int) * 20,
+            np.zeros(trial_count, dtype=int),
+            np.tile([0, 1], trial_count // 2),
+        )
+    )
+    mne_epochs = mne.EpochsArray(
+        np.zeros((trial_count, 2, 8)),
+        info,
+        events=events,
+        event_id={"left": 0, "right": 1},
+        tmin=0,
+        verbose=False,
+    )
+    raw = Raw("sub-01_ses-01_task-preview-epo.fif", mne_epochs)
+    raw.set_subject_name("01")
+    raw.set_session_name("01")
+    return Epochs([raw])
+
+
+def _assert_live_split_state_unchanged(
+    epoch_data: Epochs,
+    original_evidence: list[dict[str, Any]],
+    *,
+    sequence: int,
+    dropped: int,
+) -> None:
+    assert epoch_data.trial_selection_evidence is original_evidence
+    assert epoch_data.trial_selection_evidence == [
+        {"source": "live", "details": {"selected": 3}}
+    ]
+    assert epoch_data.trial_selection_evidence_dropped == dropped
+    assert sequence == Dataset.SEQ
+
+
+class _BlockingDatasetGenerator(DatasetGenerator):
+    def __init__(self, *args: Any, started: threading.Event, release: threading.Event):
+        super().__init__(*args)
+        self._started = started
+        self._release = release
+
+    def _populate_pending_datasets(self) -> None:
+        self._started.set()
+        if not self._release.wait(timeout=1.0):
+            raise TimeoutError("Timed out waiting to continue the preview")
+        super()._populate_pending_datasets()
+
+
 def test_context_publication_contains_only_detached_split_choices() -> None:
     dataset = _DatasetState(_EpochData())
     publisher = DatasetSplitPreviewPublisher(
@@ -172,6 +228,139 @@ def test_preview_publication_returns_detached_rows_and_canonical_config() -> Non
     assert publication.rows[0].test_count == 2
     assert captured_configs
     assert publisher.cancel_preview("preview-1") is False
+
+
+def test_real_preview_success_preserves_live_epoch_evidence_and_dataset_sequence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    epoch_data = _real_epoch_data()
+    original_evidence = [{"source": "live", "details": {"selected": 3}}]
+    epoch_data.trial_selection_evidence = original_evidence
+    epoch_data.trial_selection_evidence_dropped = 2
+    monkeypatch.setattr(Dataset, "SEQ", 41)
+    publisher = DatasetSplitPreviewPublisher(
+        dataset=_DatasetState(epoch_data),
+        generator_factory=lambda config: DatasetGenerator(epoch_data, config),
+        get_publication=lambda: _view(),
+    )
+
+    publication = publisher.publish_preview(
+        DatasetSplitPreviewRequest(
+            request_id="real-preview-success",
+            publication_generation=4,
+            specification=_specification(),
+        )
+    )
+
+    assert publication.rows
+    _assert_live_split_state_unchanged(
+        epoch_data,
+        original_evidence,
+        sequence=41,
+        dropped=2,
+    )
+
+
+def test_real_preview_failure_preserves_live_epoch_evidence_and_dataset_sequence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    epoch_data = _real_epoch_data()
+    original_evidence = [{"source": "live", "details": {"selected": 3}}]
+    epoch_data.trial_selection_evidence = original_evidence
+    epoch_data.trial_selection_evidence_dropped = 5
+    monkeypatch.setattr(Dataset, "SEQ", 73)
+    publisher = DatasetSplitPreviewPublisher(
+        dataset=_DatasetState(epoch_data),
+        generator_factory=lambda config: DatasetGenerator(epoch_data, config),
+        get_publication=lambda: _view(),
+    )
+    invalid_specification = DatasetSplitSpecification.from_payload(
+        {
+            "train_type": "Full Data",
+            "is_cross_validation": False,
+            "val_splitters": [],
+            "test_splitters": [
+                {
+                    "split_type": "By Trial",
+                    "split_unit": "Ratio",
+                    "value": "invalid-ratio",
+                    "is_option": True,
+                }
+            ],
+        }
+    )
+
+    with pytest.raises(ValueError, match="Preview failed"):
+        publisher.publish_preview(
+            DatasetSplitPreviewRequest(
+                request_id="real-preview-failure",
+                publication_generation=4,
+                specification=invalid_specification,
+            )
+        )
+
+    _assert_live_split_state_unchanged(
+        epoch_data,
+        original_evidence,
+        sequence=73,
+        dropped=5,
+    )
+
+
+def test_real_preview_cancel_preserves_live_epoch_evidence_and_dataset_sequence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    epoch_data = _real_epoch_data()
+    original_evidence = [{"source": "live", "details": {"selected": 3}}]
+    epoch_data.trial_selection_evidence = original_evidence
+    epoch_data.trial_selection_evidence_dropped = 7
+    monkeypatch.setattr(Dataset, "SEQ", 109)
+    started = threading.Event()
+    release = threading.Event()
+    publisher = DatasetSplitPreviewPublisher(
+        dataset=_DatasetState(epoch_data),
+        generator_factory=lambda config: _BlockingDatasetGenerator(
+            epoch_data,
+            config,
+            started=started,
+            release=release,
+        ),
+        get_publication=lambda: _view(),
+    )
+    errors: list[BaseException] = []
+
+    def publish() -> None:
+        try:
+            publisher.publish_preview(
+                DatasetSplitPreviewRequest(
+                    request_id="real-preview-cancel",
+                    publication_generation=4,
+                    specification=_specification(),
+                )
+            )
+        except BaseException as error:
+            errors.append(error)
+
+    worker = threading.Thread(target=publish)
+    worker.start()
+    assert started.wait(timeout=1.0)
+
+    try:
+        assert publisher.cancel_preview("real-preview-cancel") is True
+    finally:
+        release.set()
+        worker.join(timeout=1.0)
+
+    assert worker.is_alive() is False
+    assert len(errors) == 1
+    assert isinstance(errors[0], PreconditionError)
+    assert "cancelled" in str(errors[0]).casefold()
+    _assert_live_split_state_unchanged(
+        epoch_data,
+        original_evidence,
+        sequence=109,
+        dropped=7,
+    )
 
 
 def test_stale_context_request_fails_before_reading_epoch_data() -> None:

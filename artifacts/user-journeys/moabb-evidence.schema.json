@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xbrainlab.local/schemas/moabb-user-journey-evidence-v1.json",
+  "title": "XBrainLab MOABB User Journey Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "status", "quality_evidence_status", "application", "runner", "resource_policy", "datasets", "failures", "claim_boundary"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["planned", "partial", "failed", "completed"]},
+    "quality_evidence_status": {"enum": ["pending", "complete", "failed"]},
+    "started_at": {"type": ["string", "null"], "format": "date-time"},
+    "completed_at": {"type": ["string", "null"], "format": "date-time"},
+    "application": {
+      "type": "object",
+      "required": ["git_sha", "baseline_sha", "dirty_paths"],
+      "properties": {
+        "git_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "baseline_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "dirty_paths": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": true
+    },
+    "runner": {
+      "type": "object",
+      "required": ["registry_sha256", "registry_profile", "python", "platform", "command"],
+      "additionalProperties": true
+    },
+    "resource_policy": {
+      "type": "object",
+      "required": ["data_root", "expected_download_bytes", "max_download_bytes", "serial_downloads"],
+      "additionalProperties": true
+    },
+    "datasets": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/datasetEvidence"}
+    },
+    "failures": {"type": "array", "items": {"$ref": "#/$defs/failure"}},
+    "claim_boundary": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "required": ["path", "size_bytes", "sha256"],
+      "properties": {
+        "path": {"type": "string"},
+        "size_bytes": {"type": "integer", "minimum": 0},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      },
+      "additionalProperties": true
+    },
+    "failure": {
+      "type": "object",
+      "required": ["stage", "type", "message", "recoverable"],
+      "properties": {
+        "stage": {"type": "string"},
+        "type": {"type": "string"},
+        "message": {"type": "string"},
+        "recoverable": {"type": "boolean"}
+      },
+      "additionalProperties": true
+    },
+    "datasetEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dataset", "selection", "source_artifacts", "import", "preprocessing", "epoch", "split", "model", "seed", "metrics", "training_curves", "quality_acceptance", "quality_evidence_status", "saliency", "screenshots", "timings", "command_trace", "failures", "resume", "claim_boundary"],
+      "properties": {
+        "dataset": {
+          "type": "object",
+          "required": ["id", "moabb_class", "moabb_code", "paradigm", "source_format", "source", "license"],
+          "additionalProperties": true
+        },
+        "selection": {
+          "type": "object",
+          "required": ["subjects", "sessions", "runs"],
+          "additionalProperties": true
+        },
+        "source_artifacts": {"type": "array", "items": {"$ref": "#/$defs/artifact"}},
+        "import": {
+          "type": "object",
+          "required": ["recipe", "recipe_artifact", "validation_decision", "applied"],
+          "additionalProperties": true
+        },
+        "preprocessing": {"type": "array", "items": {"type": "object"}},
+        "epoch": {"type": "object"},
+        "split": {"type": "object"},
+        "model": {
+          "type": "object",
+          "required": ["name", "device", "actual_device", "epochs", "batch_size", "learning_rate", "optimizer", "evaluation_option", "stopping_budget"],
+          "properties": {
+            "actual_device": {"type": ["string", "null"]},
+            "reproducibility": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["base_seed", "derivation", "configured_training_state_verified", "persisted_train_records_verified", "repeat_seeds"],
+              "properties": {
+                "base_seed": {"type": "integer", "minimum": 0, "maximum": 4294967295},
+                "derivation": {"const": "base_seed + zero_based_repeat_index"},
+                "configured_training_state_verified": {"const": true},
+                "persisted_train_records_verified": {"const": true},
+                "repeat_seeds": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {"type": "integer", "minimum": 0, "maximum": 4294967295}
+                }
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "seed": {"type": "integer"},
+        "metrics": {"type": "object"},
+        "training_curves": {"type": "array", "items": {"$ref": "#/$defs/artifact"}},
+        "quality_acceptance": {
+          "type": "object",
+          "required": ["specification", "evaluations", "passed", "status"],
+          "properties": {
+            "specification": {"type": "object"},
+            "evaluations": {"type": "array", "items": {"type": "object"}},
+            "passed": {"type": "boolean"},
+            "status": {"enum": ["not_evaluated", "accepted", "threshold_not_met"]}
+          },
+          "additionalProperties": true
+        },
+        "quality_evidence_status": {"enum": ["pending", "complete", "failed"]},
+        "saliency": {
+          "type": "object",
+          "required": ["methods", "params", "artifacts"],
+          "properties": {
+            "methods": {"type": "array", "items": {"type": "string"}},
+            "params": {"type": "object"},
+            "artifacts": {"type": "array", "items": {"$ref": "#/$defs/artifact"}}
+          },
+          "additionalProperties": true
+        },
+        "screenshots": {"type": "array", "items": {"$ref": "#/$defs/artifact"}},
+        "timings": {"type": "object", "additionalProperties": {"type": "number", "minimum": 0}},
+        "command_trace": {"type": "array", "items": {"type": "object"}},
+        "failures": {"type": "array", "items": {"$ref": "#/$defs/failure"}},
+        "resume": {"type": "object"},
+        "claim_boundary": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

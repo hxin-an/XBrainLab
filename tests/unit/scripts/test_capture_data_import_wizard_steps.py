@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import inspect
+import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from PIL import Image, ImageDraw
-from PyQt6.QtCore import QPoint, QSize, Qt
+from PyQt6.QtCore import QPoint, QSize
 
 import scripts.dev.capture_data_import_wizard_steps as capture_script
 from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
@@ -15,6 +17,16 @@ from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
 from scripts.dev.data_import_capture_contract import (
     build_data_import_capture_manifest,
 )
+
+
+def _historical_capture_spec(spec):
+    manifest_path = (
+        capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR
+        / "data-import-wizard-steps-evidence.json"
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    dimensions = tuple(manifest["screenshots"][spec.filename]["dimensions"])
+    return replace(spec, expected_size=dimensions)
 
 
 def test_default_data_import_evidence_uses_dev_artifact_namespace() -> None:
@@ -70,7 +82,7 @@ def test_placement_mode_states_are_bound_in_the_root_manifest(tmp_path: Path) ->
         path.parent.mkdir(parents=True, exist_ok=True)
         Image.new("RGB", (80 + index, 60), (35, 70, 105)).save(path)
     identity = collect_source_identity(capture_script.ROOT)
-    captured_at = datetime(2026, 8, 2, 4, 0, tzinfo=UTC)
+    captured_at = datetime.now(UTC)
     manifest = build_data_import_capture_manifest(
         tmp_path,
         expected_surfaces=[spec.filename for spec in specs],
@@ -146,7 +158,10 @@ def test_placement_mode_states_are_bound_in_the_root_manifest(tmp_path: Path) ->
 def test_every_canonical_artifact_renders_required_text(spec):
     screenshot = capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR / spec.filename
     assert screenshot.is_file()
-    capture_script._assert_canonical_png_artifact(screenshot, spec)
+    capture_script._assert_canonical_png_artifact(
+        screenshot,
+        _historical_capture_spec(spec),
+    )
 
 
 def test_canonical_capture_specs_cover_the_complete_png_inventory():
@@ -403,17 +418,22 @@ def test_review_import_capture_has_no_unresolved_primary_decision(qtbot):
     assert dialog.apply_button.isEnabled()
     assert dialog.apply_button.isVisibleTo(dialog)
     assert not dialog.review_actions_panel.isVisibleTo(dialog)
-    assert (
-        dialog.scroll_area.verticalScrollBarPolicy()
-        == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-    )
     vertical = dialog.scroll_area.verticalScrollBar()
     assert vertical is not None
     assert vertical.maximum() == 0
+    assert vertical.isVisible() is False
+    capture_script._assert_single_vertical_scroll_owner(
+        dialog,
+        capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR / "test-review.png",
+    )
     assert (
         dialog._review_summary_value_labels["Resource check"].text()
         == "Estimated RAM 2.0 GB / Available RAM 24.0 GB"
     )
+    assert not dialog.review_tree.isVisibleTo(dialog)
+    dialog.import_report_toggle.click()
+    qtbot.wait(1)
+    assert dialog.review_tree.isVisibleTo(dialog)
     assert dialog.review_tree.topLevelItemCount() > 0
     report_steps: set[str] = set()
     report_issues: set[str] = set()
@@ -424,6 +444,34 @@ def test_review_import_capture_has_no_unresolved_primary_decision(qtbot):
         report_issues.add(item.text(1))
     assert "Match Labels" not in report_steps
     assert report_issues == {"Optional session values were inferred"}
+
+
+def test_review_import_releases_stale_conservative_summary_row_height(qtbot):
+    dialog = capture_script._review_import_dialog()
+    qtbot.addWidget(dialog)
+    dialog.resize(capture_script.WINDOW_SIZE)
+    dialog.show()
+    dialog._go_to_step(dialog._step_titles.index("Review and Import"))
+    qtbot.wait(20)
+
+    summary = dialog._review_summary_value_labels["Resource check"]
+    layout = dialog._review_import_rows_layout
+    summary_item = next(
+        layout.itemAt(index)
+        for index in range(layout.count())
+        if layout.itemAt(index).widget() is summary
+    )
+    row, _column, _row_span, _column_span = layout.getItemPosition(
+        layout.indexOf(summary_item.widget())
+    )
+    stale_height = summary.minimumHeight() + 40
+    summary.setMinimumHeight(stale_height)
+    layout.setRowMinimumHeight(row, stale_height)
+
+    dialog._sync_review_import_row_heights()
+
+    assert summary.minimumHeight() < stale_height
+    assert layout.rowMinimumHeight(row) == summary.minimumHeight()
 
 
 def test_capture_step_navigation_resets_hidden_horizontal_scroll(qtbot):
@@ -511,7 +559,21 @@ def test_required_region_guard_rejects_large_same_theme_content_erasure(
         capture_script._assert_required_capture_regions(dialog, screenshot)
 
 
-def test_review_import_artifact_matches_live_import_eeg_data_action(qtbot):
+def test_historical_review_import_artifact_preserves_canonical_visual_contract():
+    spec = next(
+        spec
+        for spec in capture_script._canonical_capture_specs()
+        if spec.filename == "05-review-and-import.png"
+    )
+    historical = capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR / spec.filename
+
+    capture_script._assert_canonical_png_artifact(
+        historical,
+        _historical_capture_spec(spec),
+    )
+
+
+def test_review_import_live_action_matches_current_platform_control(qtbot, tmp_path):
     spec = next(
         spec
         for spec in capture_script._canonical_capture_specs()
@@ -526,9 +588,12 @@ def test_review_import_artifact_matches_live_import_eeg_data_action(qtbot):
     dialog._go_to_step(dialog._step_titles.index("Review and Import"))
     qtbot.wait(20)
 
+    live_capture = tmp_path / spec.filename
+    assert dialog.grab().save(str(live_capture))
+    capture_script._normalize_png_for_artifact(live_capture)
     capture_script._assert_text_controls_rendered(
         dialog,
-        capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR / spec.filename,
+        live_capture,
         [dialog.apply_button],
         surface_name="Review primary action",
     )

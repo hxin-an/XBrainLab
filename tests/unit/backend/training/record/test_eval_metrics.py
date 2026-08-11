@@ -71,3 +71,30 @@ class TestEvalMetrics(unittest.TestCase):
         expected_macro_p = (2 / 3 + 2 / 3 + 0.75) / 3
         self.assertAlmostEqual(metrics["macro_avg"]["precision"], expected_macro_p)
         self.assertEqual(metrics["macro_avg"]["support"], 10)
+
+    def test_perfect_classification_metrics_are_one_for_every_class(self):
+        labels = np.array([0, 1, 2, 0, 1, 2])
+        outputs = np.eye(3)[labels]
+        record = EvalRecord(labels, outputs, {}, {}, {}, {}, {})
+
+        metrics = record.get_per_class_metrics()
+
+        for class_index in range(3):
+            self.assertEqual(
+                metrics[class_index],
+                {
+                    "precision": 1.0,
+                    "recall": 1.0,
+                    "f1-score": 1.0,
+                    "support": 2,
+                },
+            )
+        self.assertEqual(
+            metrics["macro_avg"],
+            {
+                "precision": 1.0,
+                "recall": 1.0,
+                "f1-score": 1.0,
+                "support": 6,
+            },
+        )

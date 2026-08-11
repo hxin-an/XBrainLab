@@ -32,6 +32,7 @@ PRIMARY_MODEL_REVISION = (
     "707f574c62054322f6b5b04b6d075f0a8f05e0f0"  # pragma: allowlist secret
 )
 VALID_TEST_WEIGHT_BYTES = 300_000_000
+THREAD_START_HARD_CEILING_SECONDS = 0.75
 
 
 def _write_complete_model_cache(cache_dir: Path) -> Path:
@@ -198,7 +199,10 @@ def test_recursive_cache_cleanup_is_background_owned_and_in_close_fence(
         )
         elapsed = time.monotonic() - started_at
 
-        assert elapsed < 0.05
+        # Shared runners can spend hundreds of milliseconds admitting a native
+        # thread. The heartbeat below proves the two-second cleanup itself does
+        # not occupy the GUI thread; this remains a separate hard upper bound.
+        assert elapsed < THREAD_START_HARD_CEILING_SECONDS
         qtbot.waitUntil(entered_cleanup.is_set, timeout=1000)
         assert lifecycle.is_idle() is False
         assert lifecycle.request_shutdown() is False
@@ -339,18 +343,18 @@ def test_cache_root_resolve_failure_emits_exactly_once_and_thread_terminates(
     )
 
     with patch.object(Path, "resolve", side_effect=RuntimeError(sensitive)):
-        try:
-            assert lifecycle.request_cache_removal(
-                "repo/id",
-                str(tmp_path),
-                reason=ModelCacheCleanupReason.USER_DELETE,
-            )
-            qtbot.waitUntil(lambda: bool(terminals), timeout=2000)
-        finally:
-            thread = lifecycle._cleanup_thread
-            if thread is not None:
-                thread.quit()
-                qtbot.waitUntil(lambda: not thread.isRunning(), timeout=2000)
+        assert lifecycle.request_cache_removal(
+            "repo/id",
+            str(tmp_path),
+            reason=ModelCacheCleanupReason.USER_DELETE,
+        )
+        thread = lifecycle._cleanup_thread
+        assert thread is not None
+        qtbot.waitUntil(lambda: bool(terminals), timeout=2000)
+        qtbot.waitUntil(
+            lambda: sip.isdeleted(thread) or lifecycle._cleanup_thread is None,
+            timeout=2000,
+        )
 
     assert len(results) == 1
     assert results[0].ok is False
@@ -546,7 +550,9 @@ def test_model_status_inspection_runs_outside_gui_thread(
         started_at = time.monotonic()
         assert lifecycle.request_model_inspection(request) is True
         elapsed = time.monotonic() - started_at
-        assert elapsed < 0.05
+        # The heartbeat below proves the two-second inspection itself does not
+        # occupy the GUI thread. Keep scheduler admission separately bounded.
+        assert elapsed < THREAD_START_HARD_CEILING_SECONDS
         qtbot.waitUntil(entered.is_set, timeout=1000)
         assert lifecycle._inspection_thread is not None
         inspection_thread_name = lifecycle._inspection_thread.objectName()

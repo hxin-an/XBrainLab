@@ -491,7 +491,7 @@ def test_mismatched_command_result_fails_session_once_and_ignores_late_result() 
     )
     callbacks.mark_started(True)
     mismatched = CommandResult.success_result(
-        command_name="generate_dataset",
+        command_name="configure_dataset_split",
         message="Wrong command completed.",
         state={},
         changed_state=ChangedState(datasets_changed=True),

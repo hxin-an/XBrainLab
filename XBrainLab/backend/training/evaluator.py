@@ -53,6 +53,16 @@ class Evaluator:
         )
 
     @staticmethod
+    def require_finite_tensor(value: torch.Tensor, *, context: str) -> None:
+        if not bool(value.isfinite().all().item()):
+            raise ValueError(f"{context} contains NaN or infinite values.")
+
+    @staticmethod
+    def require_finite_array(value: np.ndarray, *, context: str) -> None:
+        if not np.isfinite(value).all():
+            raise ValueError(f"{context} contains NaN or infinite values.")
+
+    @staticmethod
     def _noise_tunnel_params(
         saliency_params: dict,
         method: str,
@@ -93,7 +103,12 @@ class Evaluator:
         """Return the first tensor attribution as a CPU numpy array."""
         if isinstance(value, tuple):
             value = value[0]
-        return value.detach().cpu().numpy()
+        result = value.detach().cpu().numpy()
+        Evaluator.require_finite_array(
+            result,
+            context="Saliency attribution",
+        )
+        return result
 
     @staticmethod
     def compute_auc(y_true, y_pred, multi_class="ovr") -> float | None:
@@ -109,11 +124,21 @@ class Evaluator:
             The computed AUC score, or ``None`` when AUC is undefined.
 
         """
-        try:
-            if y_true is None or y_pred is None:
-                logging.getLogger(__name__).warning("No data to compute AUC")
-                return None
+        if y_true is None or y_pred is None:
+            logging.getLogger(__name__).warning("No data to compute AUC")
+            return None
 
+        raw_predictions = (
+            y_pred.detach().cpu().numpy()
+            if isinstance(y_pred, torch.Tensor)
+            else np.asarray(y_pred)
+        )
+        Evaluator.require_finite_array(
+            raw_predictions,
+            context="AUC prediction array",
+        )
+
+        try:
             # Detach and CPU if tensors
             if isinstance(y_true, torch.Tensor):
                 y_true = y_true.detach().cpu().numpy()
@@ -130,7 +155,7 @@ class Evaluator:
                     torch.nn.functional.softmax(y_pred, dim=1).detach().cpu().numpy()
                 )
             else:
-                probs = np.asarray(y_pred)
+                probs = raw_predictions
 
             if probs.shape[-1] <= 2:
                 # Binary case
@@ -183,7 +208,15 @@ class Evaluator:
                     labels,
                 )
                 outputs = model(batch_inputs)
+                Evaluator.require_finite_tensor(
+                    outputs,
+                    context="Evaluation model output",
+                )
                 loss = criterion(outputs, batch_labels)
+                Evaluator.require_finite_tensor(
+                    loss,
+                    context="Evaluation loss",
+                )
                 batch_count = len(batch_labels)
                 running_loss += loss.item() * batch_count
 
@@ -232,6 +265,10 @@ class Evaluator:
                     labels,
                 )
                 outputs = model(batch_inputs)
+                Evaluator.require_finite_tensor(
+                    outputs,
+                    context="Evaluation model output",
+                )
                 output_list.append(outputs.detach().cpu().numpy())
                 label_list.append(batch_labels.detach().cpu().numpy())
 
@@ -326,6 +363,10 @@ class Evaluator:
                 labels,
             )
             outputs = model(batch_inputs)
+            Evaluator.require_finite_tensor(
+                outputs,
+                context="Saliency evaluation model output",
+            )
 
             output_list.append(outputs.detach().cpu().numpy())
             label_list.append(batch_labels.detach().cpu().numpy())

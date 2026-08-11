@@ -368,14 +368,18 @@ class TrainRecord:
             previous_directory.close()
 
     def resume(self) -> None:
-        """Resume training by restoring the saved random state.
+        """Restore global RNG state for a holder-approved local transition.
 
-        Also sets the start timestamp if this is the first resume.
+        ``TrainingPlanHolder`` permits this only for an untouched repeat, which
+        it immediately reseeds, or completed in-memory training entering
+        evaluation. DataLoader generator state is excluded, so partial stochastic
+        training cannot resume reproducibly through this method.
         """
         with self._state_mutation():
             set_random_state(self.random_state)
             if self.start_timestamp is None:
                 self.start_timestamp = time.time()
+            self.end_timestamp = None
 
     def _retain_artifact_identity(
         self,
@@ -388,7 +392,11 @@ class TrainRecord:
         return retain_directory_identity(target_path)
 
     def pause(self) -> None:
-        """Pause training by saving the current random state and timestamp."""
+        """Capture process-local global RNG state and an end timestamp.
+
+        This is not a resumable checkpoint because DataLoader generator state is
+        not captured.
+        """
         with self._state_mutation():
             self.random_state = get_random_state()
             self.end_timestamp = time.time()
@@ -674,7 +682,9 @@ class TrainRecord:
         """Load a previously saved training record from disk.
 
         Restores training statistics, best records, seed, and evaluation record
-        only from the already-bound secure artifact directory.
+        only from the already-bound secure artifact directory. Model, optimizer,
+        global RNG, and DataLoader generator continuation state are not persisted
+        together, so a partial record cannot resume stochastic training.
         """
         with self._state_mutation():
             target_path = self._artifact_io_path

@@ -1,6 +1,7 @@
 """Trainer module for managing and executing training plan queues."""
 
 import threading
+from dataclasses import dataclass
 from enum import Enum
 from uuid import uuid4
 
@@ -33,6 +34,22 @@ class Status(Enum):
     INIT = "Initializing"
     INTERRUPTING = "Interrupting"
     TRAIN = "Now training: {}"
+
+
+@dataclass(frozen=True, slots=True)
+class TrainerStartupSnapshot:
+    """Quiescent trainer state that can be restored after startup fails."""
+
+    trainer_id: str
+    training_plan_holders: tuple[TrainingPlanHolder, ...]
+    current_idx: int
+    progress_text: Status | str
+    run_sequence: int
+    active_run: TrainingRunIdentity | None
+    terminal_outcome: TrainingTerminalOutcome
+    active_run_start_index: int
+    active_run_end_index: int
+    interrupt_requested: bool
 
 
 class Trainer:
@@ -130,6 +147,61 @@ class Trainer:
             self._terminal_outcome = TrainingTerminalOutcome(
                 state=TrainingOutcomeState.NOT_STARTED,
             )
+
+    def capture_startup_snapshot(self) -> TrainerStartupSnapshot:
+        """Capture a quiescent queue before a new training run is admitted."""
+        with self._state_lock:
+            thread = self.job_thread
+            if (
+                self._run_admitted
+                or self._worker_started
+                or (thread is not None and thread.is_alive())
+            ):
+                raise RuntimeError(
+                    "Cannot snapshot a trainer while training is running"
+                )
+            return TrainerStartupSnapshot(
+                trainer_id=self._trainer_id,
+                training_plan_holders=tuple(self.training_plan_holders),
+                current_idx=self.current_idx,
+                progress_text=self.progress_text,
+                run_sequence=self._run_sequence,
+                active_run=self._active_run,
+                terminal_outcome=self._terminal_outcome,
+                active_run_start_index=self._active_run_start_index,
+                active_run_end_index=self._active_run_end_index,
+                interrupt_requested=self._interrupt.is_set(),
+            )
+
+    def restore_startup_snapshot(self, snapshot: TrainerStartupSnapshot) -> None:
+        """Undo queue/admission mutations after a synchronous startup failure."""
+        if not isinstance(snapshot, TrainerStartupSnapshot):
+            raise TypeError("snapshot must be a TrainerStartupSnapshot")
+        if snapshot.trainer_id != self._trainer_id:
+            raise ValueError("Trainer startup snapshot belongs to another trainer")
+        with self._state_tracker.mutation(), self._state_lock:
+            thread = self.job_thread
+            if (
+                self._run_admitted
+                or self._worker_started
+                or (thread is not None and thread.is_alive())
+            ):
+                raise RuntimeError("Cannot restore a trainer while training is running")
+            self.training_plan_holders[:] = snapshot.training_plan_holders
+            for holder in self.training_plan_holders:
+                self._bind_plan_holder(holder)
+            self.current_idx = snapshot.current_idx
+            self.progress_text = snapshot.progress_text
+            self._run_sequence = snapshot.run_sequence
+            self._active_run = snapshot.active_run
+            self._terminal_outcome = snapshot.terminal_outcome
+            self._active_run_start_index = snapshot.active_run_start_index
+            self._active_run_end_index = snapshot.active_run_end_index
+            self.job_thread = None
+            if snapshot.interrupt_requested:
+                self._interrupt.set()
+            else:
+                self._interrupt.clear()
 
     def job(self) -> None:
         """Execute the training job, iterating through all pending plan holders.

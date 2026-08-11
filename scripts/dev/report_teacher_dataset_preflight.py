@@ -114,6 +114,7 @@ def build_openneuro_p300_choices(dataset_root: Path) -> dict[str, Any]:
             "value_decisions": value_decisions,
         }
     return {
+        "selected_bids_subjects": ["001"],
         "selected_eeg_files": [str(path.resolve()) for path in eeg_files],
         "label_carrier_choices": label_choices,
     }
@@ -303,6 +304,7 @@ def run_openneuro_p300_case(repo_root: Path = ROOT) -> dict[str, Any]:
                 ScanSourceCommand(
                     source_path=str(dataset_root),
                     source_hint="bids",
+                    selected_bids_subjects=["001"],
                 )
             )
             result["stages"]["scan"] = _stage(scan)

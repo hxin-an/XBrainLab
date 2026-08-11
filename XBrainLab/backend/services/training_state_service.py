@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from enum import Enum
 from time import monotonic
@@ -23,6 +23,23 @@ if TYPE_CHECKING:
     from XBrainLab.backend.training import ModelHolder, Trainer, TrainingOption
 
 TrainingLifecycleCallback = Callable[..., object]
+DATA_SPLITTING_REQUIREMENT = "Data Splitting"
+
+
+def resolve_training_missing_requirements(
+    requirements: Iterable[str],
+    *,
+    data_splitting_ready: bool,
+) -> list[str]:
+    """Align materialized training requirements with deferred split readiness."""
+    missing = [str(requirement) for requirement in requirements]
+    if not data_splitting_ready:
+        return missing
+    return [
+        requirement
+        for requirement in missing
+        if requirement != DATA_SPLITTING_REQUIREMENT
+    ]
 
 
 class TrainingStudyPort(Protocol):
@@ -30,6 +47,8 @@ class TrainingStudyPort(Protocol):
 
     @property
     def trainer(self) -> Trainer | None: ...
+    @trainer.setter
+    def trainer(self, value: Trainer | None) -> None: ...
     @property
     def loaded_data_list(self) -> list[Raw]: ...
     @property
@@ -95,6 +114,13 @@ class TrainingProductPort(Protocol):
         interactive: bool = True,
     ) -> int: ...
     def clear_history(self) -> None: ...
+    def get_trainer(self) -> Any | None: ...
+    def capture_trainer_startup_snapshot(self) -> Any | None: ...
+    def restore_trainer_after_failed_start(
+        self,
+        trainer: Any | None,
+        startup_snapshot: Any | None,
+    ) -> None: ...
     def apply_data_splitting(self, generator: Any) -> None: ...
     def clean_datasets(self, force_update: bool = False) -> None: ...
     def is_training(self) -> bool: ...
@@ -472,6 +498,42 @@ class TrainingStateService(Observable):
     def get_trainer(self) -> Any | None:
         return self._study.trainer
 
+    def capture_trainer_startup_snapshot(self) -> Any | None:
+        """Capture an opaque quiescent trainer snapshot for startup rollback."""
+        trainer = self._study.trainer
+        if trainer is None:
+            return None
+        capture = getattr(trainer, "capture_startup_snapshot", None)
+        if not callable(capture):
+            raise RuntimeError("Trainer does not support startup rollback snapshots")
+        return capture()
+
+    def restore_trainer_after_failed_start(
+        self,
+        trainer: Any | None,
+        startup_snapshot: Any | None,
+    ) -> None:
+        """Restore quiescent history after replacement training fails to start."""
+        current = self._study.trainer
+        restore_in_place = current is trainer and trainer is not None
+        if current is not None and current is not trainer:
+            clean = getattr(current, "clean", None)
+            if callable(clean):
+                clean(force_update=True)
+            self._study.trainer = trainer
+        elif current is None:
+            self._study.trainer = trainer
+        if trainer is None or startup_snapshot is None:
+            return
+        if restore_in_place:
+            clean = getattr(trainer, "clean", None)
+            if callable(clean):
+                clean(force_update=True)
+        restore = getattr(trainer, "restore_startup_snapshot", None)
+        if not callable(restore):
+            raise RuntimeError("Trainer does not support startup rollback snapshots")
+        restore(startup_snapshot)
+
     def get_progress_text(self) -> str:
         trainer = self._study.trainer
         if trainer is None or not hasattr(trainer, "get_progress_text"):
@@ -516,12 +578,15 @@ class TrainingStateService(Observable):
     def get_missing_requirements(self) -> list[str]:
         missing: list[str] = []
         if not self.has_datasets():
-            missing.append("Data Splitting")
+            missing.append(DATA_SPLITTING_REQUIREMENT)
         if not self.has_model():
             missing.append("Model Selection")
         if not self.has_training_option():
             missing.append("Training Settings")
-        return missing
+        return resolve_training_missing_requirements(
+            missing,
+            data_splitting_ready=self.has_datasets(),
+        )
 
     def has_loaded_data(self) -> bool:
         return bool(self._study.loaded_data_list)

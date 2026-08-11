@@ -569,7 +569,14 @@ def test_dataset_generator_handle_individual_cross_validation(
     generator = DatasetGenerator(epochs, config)
     result = generator.generate()
     assert len(result) == len(subject_list) * len(session_list)
+    cohort_ids = [dataset.cross_validation_cohort_id for dataset in result]
+    assert all(isinstance(cohort_id, str) and cohort_id for cohort_id in cohort_ids)
+    assert len(set(cohort_ids)) == len(subject_list)
     for i in range(len(subject_list)):
+        subject_cohort_ids = {
+            cohort_ids[i * len(session_list) + j] for j in range(len(session_list))
+        }
+        assert len(subject_cohort_ids) == 1
         for j in range(len(session_list)):
             idx = i * len(session_list) + j
             assert result[idx].get_name() == "Subject-" + str(i + 1) + "_" + str(j)

@@ -219,7 +219,7 @@ def test_pipeline_prompts_map_to_the_exact_workflow_intents():
         "apply_interpretation",
         "preprocess",
         "create_epoch",
-        "generate_dataset",
+        "configure_dataset_split",
     ]
     assert "validated" not in prompts[3].casefold()
     assert not any(tool_name in " ".join(prompts) for tool_name in EXPECTED_TOOLS)
@@ -235,7 +235,7 @@ def test_contract_prompts_remain_available_for_explicit_tool_probes():
         "apply_interpretation",
         "preprocess",
         "create_epoch",
-        "generate_dataset",
+        "configure_dataset_split",
     ]
     assert EXPECTED_TOOLS[0] in prompts[0]
 

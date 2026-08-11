@@ -72,8 +72,8 @@ _PIPELINE_STAGE_CONTRACTS: dict[PipelineStage, PipelineStageContract] = {
     ),
     PipelineStage.EPOCH_READY: PipelineStageContract(
         prompt_label="EEG epochs ready",
-        status_label="Ready to build dataset",
-        next_command=CommandName.GENERATE_DATASET.value,
+        status_label="Ready to configure split",
+        next_command=CommandName.CONFIGURE_DATASET_SPLIT.value,
     ),
     PipelineStage.DATASET_READY: PipelineStageContract(
         prompt_label="Dataset Ready",
@@ -105,7 +105,7 @@ WORKFLOW_COMMAND_LABELS: dict[str, str] = {
     CommandName.ATTACH_LABELS.value: "Add labels to loaded data",
     CommandName.PREPROCESS.value: "Preprocess data",
     CommandName.CREATE_EPOCH.value: "Create EEG epochs",
-    CommandName.GENERATE_DATASET.value: "Build training dataset",
+    CommandName.CONFIGURE_DATASET_SPLIT.value: "Configure data splitting",
     CommandName.CONFIGURE_TRAINING.value: "Configure training",
     CommandName.TRAIN.value: "Start training",
     CommandName.STOP_TRAINING.value: "Stop training",
@@ -173,12 +173,14 @@ def derive_pipeline_stage(
     has_preprocessed_data: bool = False,
     has_epoch_data: bool = False,
     has_datasets: bool = False,
+    has_saved_split: bool = False,
     has_trainer: bool = False,
     is_training: bool = False,
     finished_run_count: int = 0,
 ) -> PipelineStage:
     """Derive the highest workflow stage from backend read-model facts."""
-    del has_trainer  # Trainer construction is not evidence of completed results.
+    # Trainer construction and saved split intent are not completed-stage evidence.
+    del has_trainer, has_saved_split
     if is_training:
         return PipelineStage.TRAINING
     if finished_run_count > 0:
@@ -204,6 +206,7 @@ def pipeline_stage_from_snapshots(
         has_preprocessed_data=bool(active_dataset.has_preprocessed_data),
         has_epoch_data=bool(active_dataset.has_epoch_data),
         has_datasets=bool(active_dataset.has_datasets),
+        has_saved_split=bool(active_dataset.has_saved_split),
         has_trainer=bool(active_training.has_trainer),
         is_training=bool(active_training.is_running),
         finished_run_count=max(0, int(active_training.finished_run_count)),

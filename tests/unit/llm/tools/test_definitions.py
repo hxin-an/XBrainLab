@@ -19,7 +19,7 @@ from XBrainLab.llm.tools.definitions.dataset_def import (
     BaseApplyInterpretationTool,
     BaseAttachLabelsTool,
     BaseClearDatasetTool,
-    BaseGenerateDatasetTool,
+    BaseConfigureDatasetSplitTool,
     BaseGetDatasetInfoTool,
     BaseListFilesTool,
     BaseLoadDataTool,
@@ -72,7 +72,7 @@ def _get_all_def_classes():
         BaseClearDatasetTool,
         BaseQueryStateTool,
         BaseGetDatasetInfoTool,
-        BaseGenerateDatasetTool,
+        BaseConfigureDatasetSplitTool,
         BaseEvaluateTool,
         BaseVisualizeTool,
         BaseSaliencyTool,
@@ -167,9 +167,9 @@ EXPECTED_TOOL_CONTRACTS = {
         "properties": (),
         "required": (),
     },
-    BaseGenerateDatasetTool: {
-        "name": "generate_dataset",
-        "description_markers": ("Generate a training dataset", "EEG epochs"),
+    BaseConfigureDatasetSplitTool: {
+        "name": "configure_dataset_split",
+        "description_markers": ("Save data splitting settings", "EEG training"),
         "properties": (
             "test_ratio",
             "val_ratio",
@@ -371,16 +371,16 @@ class TestSwitchPanelEnums:
         assert "evaluation" in panel_enum
 
 
-class TestGenerateDatasetEnums:
+class TestConfigureDatasetSplitEnums:
     def test_split_strategy(self):
-        params = _property_value(BaseGenerateDatasetTool.parameters)
+        params = _property_value(BaseConfigureDatasetSplitTool.parameters)
         strategies = params["properties"]["split_strategy"]["enum"]
         assert "trial" in strategies
         assert "session" in strategies
         assert "subject" in strategies
 
     def test_required_fields(self):
-        params = _property_value(BaseGenerateDatasetTool.parameters)
+        params = _property_value(BaseConfigureDatasetSplitTool.parameters)
         assert "split_strategy" in params["required"]
         assert "training_mode" in params["required"]
 
@@ -537,7 +537,7 @@ class TestRequiresConfirmation:
             BaseLoadDataTool,
             BaseAttachLabelsTool,
             BaseGetDatasetInfoTool,
-            BaseGenerateDatasetTool,
+            BaseConfigureDatasetSplitTool,
             BaseEvaluateTool,
             BaseVisualizeTool,
             BaseSaliencyTool,

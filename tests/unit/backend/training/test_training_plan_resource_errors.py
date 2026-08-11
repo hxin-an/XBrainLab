@@ -5,6 +5,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any, cast
 
+import numpy as np
+
 from XBrainLab.backend.training.training_plan import Status, TrainingPlanHolder
 
 
@@ -17,6 +19,9 @@ class _Record:
     def get_name(self) -> str:
         return "repeat-1"
 
+    def is_finished(self) -> bool:
+        return False
+
     def resume(self) -> None:
         self.resumed = True
 
@@ -24,10 +29,18 @@ class _Record:
         self.paused = True
 
 
+def _finite_dataset():
+    epochs = SimpleNamespace(
+        get_data=lambda: np.zeros((2, 2, 16), dtype=np.float32),
+    )
+    return SimpleNamespace(get_epoch_data=lambda: epochs)
+
+
 def test_training_plan_marks_cuda_oom_as_failed_and_releases_cache(monkeypatch) -> None:
     calls: list[str] = []
     holder = cast(Any, TrainingPlanHolder.__new__(TrainingPlanHolder))
     holder.option = SimpleNamespace(repeat_num=1)
+    holder.dataset = _finite_dataset()
     holder.train_record_list = [_Record()]
     holder.status = Status.PENDING.value
     holder.error = None
@@ -57,8 +70,10 @@ def test_training_plan_marks_cuda_oom_as_failed_and_releases_cache(monkeypatch) 
 def test_training_plan_preserves_oom_when_cuda_cache_release_fails(
     monkeypatch,
 ) -> None:
+    calls: list[str] = []
     holder = cast(Any, TrainingPlanHolder.__new__(TrainingPlanHolder))
     holder.option = SimpleNamespace(repeat_num=1)
+    holder.dataset = _finite_dataset()
     holder.train_record_list = [_Record()]
     holder.status = Status.PENDING.value
     holder.error = None
@@ -67,6 +82,7 @@ def test_training_plan_preserves_oom_when_cuda_cache_release_fails(
         raise RuntimeError("CUDA out of memory. Tried to allocate 1.00 GiB")
 
     def fail_cache_release() -> None:
+        calls.append("empty")
         raise RuntimeError("CUDA runtime is already shutting down")
 
     holder.train_one_repeat = raise_oom
@@ -85,3 +101,4 @@ def test_training_plan_preserves_oom_when_cuda_cache_release_fails(
     assert holder.status == "Failed: CUDA out of memory"
     assert holder.error is not None
     assert "CUDA out of memory during training" in holder.error
+    assert calls == ["empty"]

@@ -26,6 +26,35 @@ def decision_reason(decision: dict[str, Any]) -> str:
     return "This data interpretation cannot be applied."
 
 
+def _merge_label_carrier_choices(
+    previous: dict[str, Any],
+    updates: dict[str, Any],
+) -> dict[str, Any]:
+    merged = dict(previous)
+    for carrier, carrier_update in updates.items():
+        prior_choice = merged.get(carrier)
+        if not isinstance(carrier_update, dict):
+            merged[carrier] = carrier_update
+            continue
+
+        carrier_choice = dict(prior_choice) if isinstance(prior_choice, dict) else {}
+        for key, value in carrier_update.items():
+            if key == "value_decisions" and isinstance(value, dict):
+                previous_decisions = carrier_choice.get(key)
+                carrier_choice[key] = {
+                    **(
+                        previous_decisions
+                        if isinstance(previous_decisions, dict)
+                        else {}
+                    ),
+                    **value,
+                }
+            else:
+                carrier_choice[key] = value
+        merged[carrier] = carrier_choice
+    return merged
+
+
 def merge_interpretation_choices(
     base: dict[str, Any],
     updates: dict[str, Any],
@@ -53,6 +82,7 @@ def merge_interpretation_choices(
                 merged[key] = value
         return merged
 
+    previous_carrier_choices = merged.get("label_carrier_choices")
     for key in label_choice_keys:
         merged.pop(key, None)
 
@@ -82,6 +112,15 @@ def merge_interpretation_choices(
                 **(previous if isinstance(previous, dict) else {}),
                 **value,
             }
+        elif key == "label_carrier_choices" and isinstance(value, dict):
+            previous = (
+                previous_carrier_choices
+                if isinstance(previous_carrier_choices, dict)
+                and not skip_labels
+                and label_carrier != "embedded_events"
+                else {}
+            )
+            merged[key] = _merge_label_carrier_choices(previous, value)
         else:
             merged[key] = value
     return merged

@@ -5,20 +5,20 @@ from __future__ import annotations
 from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any, Generic, Protocol, TypeVar, cast
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 
 from XBrainLab.backend.application.commands import (
     ClearDatasetsCommand,
-    DatasetGenerationMode,
-    GenerateDatasetCommand,
+    SaveDatasetSplitCommand,
 )
 from XBrainLab.backend.application.dataset_generation_service import (
     DatasetGenerationCommandService,
     HandlerResult,
 )
-from XBrainLab.backend.application.errors import ApplicationError
+from XBrainLab.backend.application.errors import ApplicationError, PreconditionError
 from XBrainLab.backend.application.results import ErrorType
 from XBrainLab.backend.dataset import (
     Dataset,
@@ -168,6 +168,15 @@ class _TrainingManager:
         publish()
         return self.retire_trainer_if_current(expected)
 
+    def capture_startup_rollback_snapshot(self) -> tuple[Any | None, int]:
+        return self.trainer, self.saliency_generation
+
+    def restore_startup_rollback_snapshot(
+        self,
+        snapshot: tuple[Any | None, int],
+    ) -> None:
+        self.trainer, self.saliency_generation = snapshot
+
 
 class _StableTrainer:
     def __init__(self) -> None:
@@ -288,6 +297,16 @@ def _service() -> tuple[
     )
 
 
+def _save_and_prepare(
+    service: DatasetGenerationCommandService,
+    command: SaveDatasetSplitCommand,
+) -> tuple[tuple[str, dict[str, Any]], dict[str, Any]]:
+    saved = _expect_payload(service.handle_save_dataset_split(command))
+    candidate = service.prepare_saved_split_candidate()
+    prepared = service.commit_prepared_split(candidate)
+    return saved, prepared
+
+
 def test_dataset_generation_service_builds_config_audits_and_summarizes() -> None:
     service, study, training = _service()
     training.next_datasets = [
@@ -298,18 +317,18 @@ def test_dataset_generation_service_builds_config_audits_and_summarizes() -> Non
         ),
     ]
 
-    message, payload = _expect_payload(
-        service.handle_generate_dataset(
-            GenerateDatasetCommand(
-                split_strategy="trial",
-                training_mode="group",
-                test_ratio=0.25,
-                val_ratio=0.25,
-            ),
+    (message, saved), payload = _save_and_prepare(
+        service,
+        SaveDatasetSplitCommand(
+            split_strategy="trial",
+            training_mode="group",
+            test_ratio=0.25,
+            val_ratio=0.25,
         ),
     )
 
-    assert message == "Generated 1 dataset(s)."
+    assert message == "Data splitting specification saved."
+    assert saved["materialized"] is False
     assert study.generated_config is not None
     assert study.generated_config.train_type == TrainingType.FULL
     assert payload["dataset_count"] == 1
@@ -343,13 +362,12 @@ def test_dataset_generation_service_maps_command_split_strategies_without_facade
         ),
     ]
 
-    _message, payload = _expect_payload(
-        service.handle_generate_dataset(
-            GenerateDatasetCommand(
-                split_strategy=split_strategy,
-                test_ratio=0.25,
-                val_ratio=0.25,
-            ),
+    (_message, _saved), payload = _save_and_prepare(
+        service,
+        SaveDatasetSplitCommand(
+            split_strategy=split_strategy,
+            test_ratio=0.25,
+            val_ratio=0.25,
         ),
     )
 
@@ -382,10 +400,9 @@ def test_dataset_generation_service_maps_command_training_modes_without_facade(
         ),
     ]
 
-    _message, payload = _expect_payload(
-        service.handle_generate_dataset(
-            GenerateDatasetCommand(training_mode=training_mode),
-        ),
+    (_message, _saved), payload = _save_and_prepare(
+        service,
+        SaveDatasetSplitCommand(training_mode=training_mode),
     )
 
     assert study.generated_config is not None
@@ -403,17 +420,18 @@ def test_dataset_generation_service_empty_split_payload_fails_through_audit() ->
         ),
     ]
 
-    with pytest.raises(ApplicationError) as exc_info:
-        service.handle_generate_dataset(
-            GenerateDatasetCommand(
-                split_config={
-                    "train_type": "Full Data",
-                    "is_cross_validation": False,
-                    "val_splitters": [],
-                    "test_splitters": [],
-                },
-            ),
+    service.handle_save_dataset_split(
+        SaveDatasetSplitCommand(
+            split_config={
+                "train_type": "Full Data",
+                "is_cross_validation": False,
+                "val_splitters": [],
+                "test_splitters": [],
+            },
         )
+    )
+    with pytest.raises(ApplicationError) as exc_info:
+        service.prepare_saved_split_candidate()
 
     assert study.generated_config is not None
     assert study.generated_config.val_splitter_list == []
@@ -449,10 +467,9 @@ def test_dataset_generation_service_rolls_back_unknown_trial_provenance() -> Non
     )
     training.next_datasets = [dataset]
 
+    service.handle_save_dataset_split(SaveDatasetSplitCommand(split_strategy="trial"))
     with pytest.raises(ApplicationError) as exc_info:
-        service.handle_generate_dataset(
-            GenerateDatasetCommand(split_strategy="trial"),
-        )
+        service.prepare_saved_split_candidate()
 
     error = exc_info.value
     provenance_issue = next(
@@ -461,7 +478,7 @@ def test_dataset_generation_service_rolls_back_unknown_trial_provenance() -> Non
         if issue["details"].get("kind") == "missing_epoch_window_provenance"
     )
     assert error.error_type == ErrorType.DATA_MISMATCH
-    assert error.diagnostics["rolled_back"] is True
+    assert error.diagnostics["state_preserved"] is True
     assert provenance_issue["severity"] == "error"
     assert provenance_issue["details"]["unverified_count"] == 4
     assert study.datasets == []
@@ -479,28 +496,27 @@ def test_dataset_generation_service_accepts_trial_kfold_split_payload() -> None:
         ),
     ]
 
-    _message, payload = _expect_payload(
-        service.handle_generate_dataset(
-            GenerateDatasetCommand(
-                split_config={
-                    "train_type": "Full Data",
-                    "is_cross_validation": True,
-                    "val_splitters": [
-                        {
-                            "split_type": "By Trial",
-                            "split_unit": "Ratio",
-                            "value": "0.2",
-                        },
-                    ],
-                    "test_splitters": [
-                        {
-                            "split_type": "By Trial",
-                            "split_unit": "K Fold",
-                            "value": "5",
-                        },
-                    ],
-                },
-            ),
+    (_message, _saved), payload = _save_and_prepare(
+        service,
+        SaveDatasetSplitCommand(
+            split_config={
+                "train_type": "Full Data",
+                "is_cross_validation": True,
+                "val_splitters": [
+                    {
+                        "split_type": "By Trial",
+                        "split_unit": "Ratio",
+                        "value": "0.2",
+                    },
+                ],
+                "test_splitters": [
+                    {
+                        "split_type": "By Trial",
+                        "split_unit": "K Fold",
+                        "value": "5",
+                    },
+                ],
+            },
         ),
     )
 
@@ -530,18 +546,20 @@ def test_dataset_generation_service_rolls_back_failed_split_audit() -> None:
         ),
     ]
 
-    with pytest.raises(ApplicationError) as exc_info:
-        service.handle_generate_dataset(
-            GenerateDatasetCommand(
-                split_strategy="trial",
-                replacement_mode=DatasetGenerationMode.REPLACE_EXISTING,
-                confirmed=True,
-            ),
+    service.handle_save_dataset_split(
+        SaveDatasetSplitCommand(
+            split_strategy="trial",
         )
+    )
+    assert study.data_manager.datasets == [previous_dataset]
+    assert study.data_manager.dataset_generator is previous_generator
+    assert study.training_manager.trainer is previous_trainer
+    with pytest.raises(ApplicationError) as exc_info:
+        service.prepare_saved_split_candidate()
 
     error = exc_info.value
     assert error.error_type == ErrorType.DATA_MISMATCH
-    assert error.diagnostics["rolled_back"] is True
+    assert error.diagnostics["state_preserved"] is True
     assert any(
         "split is empty" in issue["message"]
         for issue in error.diagnostics["split_audit"]["issues"]
@@ -551,6 +569,49 @@ def test_dataset_generation_service_rolls_back_failed_split_audit() -> None:
     assert study.training_manager.trainer is previous_trainer
     assert study.training_manager.saliency_generation == previous_saliency_generation
     assert training.cleaned is False
+
+
+def test_failed_split_audit_snapshot_diagnostics_are_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, _study, training = _service()
+    training.next_datasets = [
+        _Dataset(
+            train=[True, False, False],
+            val=[False, True, False],
+            test=[False, False, True],
+        )
+    ]
+    issues = [
+        SimpleNamespace(
+            dataset_name=f"dataset-{index}",
+            severity="error",
+            message="train and test splits overlap",
+            indices=list(range(1_000)),
+            details={"samples": list(range(1_000)), "kind": "overlap"},
+        )
+        for index in range(30)
+    ]
+    audit = SimpleNamespace(
+        ok=False,
+        dataset_count=1,
+        issues=issues,
+        to_dict=lambda: {"ok": False, "dataset_count": 1, "issues": []},
+    )
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.dataset_generation_service.audit_dataset_splits",
+        lambda *_args, **_kwargs: audit,
+    )
+
+    service.handle_save_dataset_split(SaveDatasetSplitCommand(split_strategy="trial"))
+    with pytest.raises(ApplicationError):
+        service.prepare_saved_split_candidate()
+    snapshot = service.dataset_split_state([])["last_split_attempt"]["audit"]
+
+    assert len(snapshot["issues"]) == 20
+    assert snapshot["truncated_issue_count"] == 10
+    assert all(len(issue["indices"]) == 10 for issue in snapshot["issues"])
+    assert all(len(issue["details"]["samples"]) == 10 for issue in snapshot["issues"])
 
 
 def test_failed_split_audit_restores_shared_epoch_evidence_and_dataset_sequence(
@@ -581,17 +642,60 @@ def test_failed_split_audit_restores_shared_epoch_evidence_and_dataset_sequence(
     )
     monkeypatch.setattr(study, "get_datasets_generator", lambda _config: generator)
 
+    service.handle_save_dataset_split(SaveDatasetSplitCommand(split_strategy="trial"))
     with pytest.raises(ApplicationError):
-        service.handle_generate_dataset(
-            GenerateDatasetCommand(split_strategy="trial"),
-        )
+        service.prepare_saved_split_candidate()
 
     assert Dataset.SEQ == 41
     assert shared_epoch.trial_selection_evidence == [{"source": "accepted", "count": 4}]
     assert shared_epoch.trial_selection_evidence_dropped == 2
 
 
-def test_failed_split_audit_preserves_concrete_saliency_terminal_state() -> None:
+def test_successful_split_commit_publishes_epoch_evidence_and_dataset_sequence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, study, _training = _service()
+    shared_epoch = SimpleNamespace(
+        trial_selection_evidence=[{"source": "previous", "count": 4}],
+        trial_selection_evidence_dropped=1,
+    )
+    study.data_manager.epoch_data = shared_epoch
+    monkeypatch.setattr(Dataset, "SEQ", 41)
+    replacement = _Dataset(
+        train=[True, True, False, False],
+        val=[False, False, True, False],
+        test=[False, False, False, True],
+    )
+
+    def publish_candidate_provenance() -> None:
+        Dataset.SEQ = 3
+        shared_epoch.trial_selection_evidence = [{"source": "candidate", "count": 4}]
+        shared_epoch.trial_selection_evidence_dropped = 2
+
+    generator = _Generator(
+        [replacement],
+        before_prepare=publish_candidate_provenance,
+    )
+    monkeypatch.setattr(study, "get_datasets_generator", lambda _config: generator)
+
+    service.handle_save_dataset_split(SaveDatasetSplitCommand(split_strategy="trial"))
+    candidate = service.prepare_saved_split_candidate()
+
+    assert Dataset.SEQ == 41
+    assert shared_epoch.trial_selection_evidence == [{"source": "previous", "count": 4}]
+    assert shared_epoch.trial_selection_evidence_dropped == 1
+
+    service.commit_prepared_split(candidate)
+
+    assert study.data_manager.datasets == [replacement]
+    assert Dataset.SEQ == 3
+    assert shared_epoch.trial_selection_evidence == [
+        {"source": "candidate", "count": 4}
+    ]
+    assert shared_epoch.trial_selection_evidence_dropped == 2
+
+
+def test_failed_deferred_audit_preserves_concrete_saliency_terminal_state() -> None:
     manager = TrainingManager()
     study = _Study(manager)
     training = _TrainingController(study)
@@ -631,14 +735,13 @@ def test_failed_split_audit_preserves_concrete_saliency_terminal_state() -> None
         ),
     ]
 
-    with pytest.raises(ApplicationError):
-        service.handle_generate_dataset(
-            GenerateDatasetCommand(
-                split_strategy="trial",
-                replacement_mode=DatasetGenerationMode.REPLACE_EXISTING,
-                confirmed=True,
-            ),
+    service.handle_save_dataset_split(
+        SaveDatasetSplitCommand(
+            split_strategy="trial",
         )
+    )
+    with pytest.raises(ApplicationError):
+        service.prepare_saved_split_candidate()
 
     assert study.data_manager.datasets == [previous_dataset]
     assert study.data_manager.dataset_generator is previous_generator
@@ -674,22 +777,79 @@ def test_dataset_generation_service_stale_commit_preserves_newer_trainer(
     )
     monkeypatch.setattr(study, "get_datasets_generator", lambda _config: generator)
 
+    service.handle_save_dataset_split(SaveDatasetSplitCommand())
+    candidate = service.prepare_saved_split_candidate()
     with pytest.raises(ApplicationError) as exc_info:
-        service.handle_generate_dataset(
-            GenerateDatasetCommand(
-                replacement_mode=DatasetGenerationMode.REPLACE_EXISTING,
-                confirmed=True,
-            ),
-        )
+        service.commit_prepared_split(candidate)
 
-    assert exc_info.value.diagnostics["rolled_back"] is True
+    assert exc_info.value.diagnostics["state_preserved"] is True
     assert study.data_manager.datasets == [previous_dataset]
     assert study.data_manager.dataset_generator is previous_generator
     assert study.training_manager.trainer is replacement_trainer
     assert training.cleaned is False
 
 
-def test_dataset_generation_service_requires_explicit_replacement_mode() -> None:
+def test_dataset_generation_service_mapped_stale_commit_does_not_restore_old_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, study, training = _service()
+    previous_dataset = object()
+    previous_generator = object()
+    previous_trainer = object()
+    replacement_trainer = object()
+    replacement_dataset = _Dataset(
+        train=[True, True, False, False],
+        val=[False, False, True, False],
+        test=[False, False, False, True],
+    )
+    study.data_manager.datasets = [previous_dataset]
+    study.data_manager.dataset_generator = previous_generator
+    study.training_manager.trainer = previous_trainer
+    training.next_datasets = [replacement_dataset]
+
+    service.handle_save_dataset_split(SaveDatasetSplitCommand())
+    candidate = service.prepare_saved_split_candidate()
+    study.training_manager.trainer = replacement_trainer
+
+    def reject_stale_commit(*_args, **_kwargs) -> bool:
+        raise PreconditionError(
+            "Training state changed before commit.",
+            diagnostics={
+                "code": "training_pipeline_boundary_changed",
+                "state_preserved": True,
+            },
+        )
+
+    restore_training = MagicMock()
+    restore_dataset = MagicMock()
+    monkeypatch.setattr(
+        service._pipeline_transaction,
+        "commit_dataset_replacement",
+        reject_stale_commit,
+    )
+    monkeypatch.setattr(
+        service._pipeline_transaction,
+        "restore_training_startup_snapshot",
+        restore_training,
+    )
+    monkeypatch.setattr(
+        service._pipeline_transaction,
+        "restore_dataset_publication",
+        restore_dataset,
+    )
+
+    with pytest.raises(ApplicationError) as exc_info:
+        service.commit_prepared_split(candidate)
+
+    assert exc_info.value.diagnostics["state_preserved"] is True
+    assert study.training_manager.trainer is replacement_trainer
+    assert study.data_manager.datasets == [previous_dataset]
+    assert study.data_manager.dataset_generator is previous_generator
+    restore_training.assert_not_called()
+    restore_dataset.assert_not_called()
+
+
+def test_dataset_generation_service_save_never_requires_replacement_mode() -> None:
     service, study, training = _service()
     previous_dataset = object()
     previous_generator = object()
@@ -698,11 +858,13 @@ def test_dataset_generation_service_requires_explicit_replacement_mode() -> None
     study.data_manager.dataset_generator = previous_generator
     study.training_manager.trainer = previous_trainer
 
-    with pytest.raises(ApplicationError) as exc_info:
-        service.handle_generate_dataset(GenerateDatasetCommand())
+    message, diagnostics = _expect_payload(
+        service.handle_save_dataset_split(SaveDatasetSplitCommand())
+    )
 
-    assert exc_info.value.error_type == ErrorType.PRECONDITION
-    assert exc_info.value.diagnostics["replacement_required"] is True
+    assert message == "Data splitting specification saved."
+    assert diagnostics["existing_dataset_count"] == 1
+    assert diagnostics["existing_trainer_preserved"] is True
     assert study.data_manager.datasets == [previous_dataset]
     assert study.data_manager.dataset_generator is previous_generator
     assert study.training_manager.trainer is previous_trainer
@@ -724,21 +886,17 @@ def test_dataset_generation_service_commits_confirmed_replacement_once() -> None
     study.training_manager.trainer = previous_trainer
     training.next_datasets = [replacement_dataset]
 
-    _message, payload = _expect_payload(
-        service.handle_generate_dataset(
-            GenerateDatasetCommand(
-                replacement_mode=DatasetGenerationMode.REPLACE_EXISTING,
-                confirmed=True,
-            ),
-        ),
+    (_message, saved), payload = _save_and_prepare(
+        service,
+        SaveDatasetSplitCommand(),
     )
 
     assert study.data_manager.datasets == [replacement_dataset]
     assert study.data_manager.dataset_generator is not previous_generator
     assert study.training_manager.trainer is None
-    assert payload["replaced_existing"] is True
-    assert payload["previous_dataset_count"] == 1
-    assert payload["previous_trainer_present"] is True
+    assert saved["existing_dataset_count"] == 1
+    assert saved["existing_trainer_preserved"] is True
+    assert saved["verified_split_reused"] is False
     assert payload["trainer_retired"] is True
     assert payload["split_audit"]["ok"] is True
 

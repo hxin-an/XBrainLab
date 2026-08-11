@@ -5,6 +5,7 @@ real model execution and metrics, not the user-facing import-to-visualization
 command workflow.
 """
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import mne
@@ -12,6 +13,12 @@ import numpy as np
 import pytest
 import torch
 
+from XBrainLab.backend.application.evaluation_render import (
+    EvaluationPlanIdentity,
+    EvaluationRunIdentity,
+    EvaluationSummaryIdentity,
+    build_evaluation_model_summary,
+)
 from XBrainLab.backend.dataset import Dataset, DataSplittingConfig, Epochs, TrainingType
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.model_base import EEGNet
@@ -133,6 +140,18 @@ class TestFullPipeline:
 
             # Eval record should exist
             assert record.eval_record is not None
+
+            plan_identity = EvaluationPlanIdentity(plan_index=0)
+            summary = build_evaluation_model_summary(
+                SimpleNamespace(training_plan_holders=lambda: (plan,)),
+                EvaluationSummaryIdentity(
+                    plan=plan_identity,
+                    run=EvaluationRunIdentity(plan=plan_identity, run_index=0),
+                ),
+            )
+            assert "=== Run: Repeat-0 ===" in summary
+            assert "EEGNet" in summary
+            assert "Total params" in summary
 
     def test_sccnet_model(self, synthetic_dataset, tmp_path):
         """Pipeline also works with SCCNet model."""

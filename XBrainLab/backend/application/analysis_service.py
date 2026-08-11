@@ -20,10 +20,12 @@ from .evaluation_render import (
     EvaluationPlanIdentity,
     EvaluationRunIdentity,
     EvaluationSummaryIdentity,
-    build_evaluation_model_summary,
+    build_evaluation_cross_fold_choices,
+    build_evaluation_model_summary_result,
 )
 from .resource_guard import ResourcePreflightResult
 from .saliency_policy import normalize_saliency_params
+from .saliency_render import build_saliency_cross_fold_choices
 from .saliency_resource import (
     SaliencyResourceAdmission,
     check_saliency_resource_preflight,
@@ -137,6 +139,10 @@ class AnalysisCommandService:
             "evaluation_splits": sorted(evaluation_splits),
             "training_active": self._get_state().training.is_running,
             "plans": summaries,
+            "cross_fold_choices": [
+                choice.to_dict()
+                for choice in build_evaluation_cross_fold_choices(plans)
+            ],
         }
         if command.summary_identity is not None:
             if not isinstance(command.summary_identity, EvaluationSummaryIdentity):
@@ -144,12 +150,14 @@ class AnalysisCommandService:
                     "EvaluateCommand.summary_identity must be an "
                     "EvaluationSummaryIdentity"
                 )
+            model_summary = build_evaluation_model_summary_result(
+                self.training_runtime,
+                command.summary_identity,
+            )
             diagnostics["model_summary"] = {
                 "identity": command.summary_identity.to_dict(),
-                "text": build_evaluation_model_summary(
-                    self.training_runtime,
-                    command.summary_identity,
-                ),
+                "status": model_summary.status,
+                "text": model_summary.text,
             }
         return (
             message,
@@ -195,6 +203,12 @@ class AnalysisCommandService:
             "montage_available": state.visualization.montage_available,
             "saliency_configured": state.visualization.saliency_configured,
             "saliency_available": state.visualization.saliency_available,
+            "saliency_cross_fold_choices": [
+                choice.to_dict()
+                for choice in build_saliency_cross_fold_choices(
+                    self.training_runtime.training_plan_holders()
+                )
+            ],
         }
         return (
             message,

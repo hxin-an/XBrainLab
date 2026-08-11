@@ -29,7 +29,7 @@ EXPECTED_PRECONDITION_COMMANDS = (
     "apply_interpretation",
     "preprocess",
     "create_epoch",
-    "generate_dataset",
+    "configure_dataset_split",
     "configure_training",
 )
 EXPECTED_RECOVERY_COMMANDS = ("train",)

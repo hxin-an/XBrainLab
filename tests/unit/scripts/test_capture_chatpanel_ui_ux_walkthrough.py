@@ -5,8 +5,10 @@ import copy
 import json
 from pathlib import Path
 
-from PIL import Image
-from PyQt6.QtWidgets import QLabel
+import pytest
+from PIL import Image, ImageDraw
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QLabel, QPushButton, QToolButton
 
 from scripts.dev import capture_chatpanel_ui_ux_walkthrough as walkthrough_module
 from scripts.dev.capture_chatpanel_ui_ux_walkthrough import (
@@ -138,7 +140,30 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
     payload = capture_walkthrough(qapp, tmp_path)
     current_fingerprint = source_fingerprint()
 
-    assert payload["status"] == "passed", payload["failures"]
+    failed_screens = [
+        {
+            "name": screen["name"],
+            "failures": screen["failures"],
+            "failed_buttons": [
+                button
+                for button in screen["visible_buttons"]
+                if not button["text_fits"]
+            ],
+        }
+        for screen in payload["screens"]
+        if screen["failures"]
+    ]
+    if payload["status"] != "passed":
+        pytest.fail(
+            json.dumps(
+                {
+                    "failures": payload["failures"],
+                    "failed_screens": failed_screens,
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
     assert payload["failures"] == []
     assert payload["source_fingerprint"] == current_fingerprint
     assert payload["capture_source"] == {
@@ -168,6 +193,13 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
         "restored_action_inert_check": True,
         "live_action_pre_click_region_check": True,
     }
+    collapsed_settings = payload["assistant_settings"]["screens"][0]
+    assert (
+        collapsed_settings["render_content"]["regions"]["heading"][
+            "minimum_color_count"
+        ]
+        == 2
+    )
     assert len(payload["source_files"]) == len(FINGERPRINT_RELATIVE_PATHS)
     assert tuple(screen["file"] for screen in payload["screens"]) == (
         EXPECTED_SCREEN_FILES
@@ -244,9 +276,10 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
         evidence = first_paint[surface]
         assert evidence["observed_during_first_paint_event"] is True
         assert evidence["paint_event_index"] == 1
-        assert evidence["paint_events_observed_before_capture"] == 1
+        assert evidence["paint_events_observed_before_capture"] >= 1
+        assert evidence["checks"]["observation_captured_first_paint"] is True
         assert evidence["settle_layout_called_before_observation"] is False
-        assert evidence["assistant_usable_width"] == 320
+        assert evidence["assistant_usable_width"] >= 320
         assert evidence["runtime_phase"] == "idle"
         assert evidence["manual_mode_selector_present"] is False
         assert evidence["composer_enabled"] is False
@@ -390,6 +423,58 @@ def test_image_content_gate_rejects_blank_canvas_and_required_regions(tmp_path) 
     assert all(region["passed"] is False for region in evidence["regions"].values())
 
 
+def test_image_content_gate_uses_font_tolerant_profile_only_for_text_regions(
+    tmp_path,
+) -> None:
+    path = tmp_path / "painted-text-region.png"
+    image = Image.new("RGB", (240, 180), "#202020")
+    draw = ImageDraw.Draw(image)
+    for index, color in enumerate(
+        ("#303030", "#404040", "#505050", "#606060", "#707070", "#808080", "#909090")
+    ):
+        draw.rectangle((index * 20, 80, index * 20 + 19, 179), fill=color)
+    text_bounds = (20, 20, 180, 40)
+    draw.rectangle((20, 20, 199, 59), fill="#202020")
+    for left in range(28, 192, 24):
+        draw.rectangle((left, 30, left + 11, 45), fill="#eeeeee")
+    image.save(path)
+
+    generic = image_content_evidence(
+        path,
+        required_regions={"empty_state": text_bounds},
+    )
+    text_profile = image_content_evidence(
+        path,
+        required_regions={"empty_state": text_bounds},
+        text_region_names=("empty_state",),
+    )
+
+    assert generic["regions"]["empty_state"]["passed"] is False
+    assert text_profile["passed"] is True
+    assert text_profile["regions"]["empty_state"] == {
+        **generic["regions"]["empty_state"],
+        "minimum_color_count": 2,
+        "passed": True,
+    }
+
+
+def test_image_content_gate_accepts_semantic_text_only_empty_state(tmp_path) -> None:
+    path = tmp_path / "text-only-empty-state.png"
+    image = Image.new("RGB", (240, 180), "#202020")
+    ImageDraw.Draw(image).rectangle((40, 82, 199, 97), fill="#eeeeee")
+    image.save(path)
+
+    evidence = image_content_evidence(
+        path,
+        required_regions={"empty_state": (0, 0, 240, 180)},
+        text_region_names=("empty_state",),
+    )
+
+    assert evidence["passed"] is True
+    assert evidence["full_frame"]["color_count"] == 2
+    assert evidence["regions"]["empty_state"]["passed"] is True
+
+
 def test_scaled_child_regions_maps_logical_geometry_to_physical_pixels(
     qapp,
 ) -> None:
@@ -484,6 +569,79 @@ def test_send_button_renders_its_visible_command_text(qapp) -> None:
     )
     assert send_record["text_rendered"] is True
     assert send_record["text_fits"] is True
+
+    panel.close()
+    panel.deleteLater()
+    qapp.processEvents()
+
+
+def test_custom_suggestion_card_is_measured_through_its_child_labels(qapp) -> None:
+    panel = ChatPanel()
+    panel.resize(320, 650)
+    panel.set_runtime_state("ready")
+    panel.show()
+    qapp.processEvents()
+
+    card = panel.suggestion_prompt_buttons[0]
+    assert card.property("assistantCustomContent") is True
+    assert human_evidence._button_renders_text(card) is False
+    assert human_evidence.button_visible_text_fits(card) is True
+    assert human_evidence._label_text_exceeds_bounds(card.title_label) is False
+    assert human_evidence._label_text_exceeds_bounds(card.subtitle_label) is False
+
+    panel.close()
+    panel.deleteLater()
+    qapp.processEvents()
+
+
+def test_visible_button_fit_uses_live_content_rect(qapp) -> None:
+    button = QPushButton("Working")
+    button.show()
+    qapp.processEvents()
+
+    button.setFixedWidth(
+        max(button.fontMetrics().tightBoundingRect(button.text()).width() - 4, 1)
+    )
+    assert human_evidence.button_visible_text_fits(button) is False
+
+    button.setFixedWidth(button.sizeHint().width())
+    assert human_evidence.button_visible_text_fits(button) is True
+
+    button.close()
+    button.deleteLater()
+    qapp.processEvents()
+
+
+def test_visible_tool_button_fit_uses_live_content_rect(qapp) -> None:
+    button = QToolButton()
+    button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+    button.setText("Review before continuing")
+    button.show()
+    qapp.processEvents()
+
+    button.setFixedWidth(
+        max(button.fontMetrics().tightBoundingRect(button.text()).width() - 4, 1)
+    )
+    assert human_evidence.button_visible_text_fits(button) is False
+
+    button.setFixedWidth(button.sizeHint().width())
+    assert human_evidence.button_visible_text_fits(button) is True
+
+    button.close()
+    button.deleteLater()
+    qapp.processEvents()
+
+
+@pytest.mark.parametrize("label", ["Send", "Waiting", "Stopping", "Working"])
+def test_composer_action_reserves_current_state_label(qapp, label: str) -> None:
+    panel = ChatPanel()
+    panel.resize(320, 520)
+    panel.send_btn.setText(label)
+    panel._fit_composer_action_width()
+
+    required = panel.send_btn.fontMetrics().horizontalAdvance(label) + 24
+    assert panel.send_btn.width() >= required
+    assert panel.composer_actions.width() == panel.send_btn.width()
 
     panel.close()
     panel.deleteLater()

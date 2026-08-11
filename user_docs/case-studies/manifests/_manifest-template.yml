@@ -1,0 +1,30 @@
+schema_version: 1
+case_id: "{{CASE_ID}}"
+page: "case-studies/{{PAGE_SLUG}}.md"
+publication_status: unverified
+# Only scripts/dev/validate_user_site.py --publish-run-manifest may replace these
+# null publication fields with a hash-checked bounded publication receipt.
+publication: null
+observations: null
+identity:
+  manifest_id: null
+  app_revision: null
+  run_id: null
+  dataset_revision: null
+  evidence_files: []
+route:
+  source: "{{DATASET_SOURCE}}"
+  source_version: unpinned
+  scope: "{{EXACT_SCOPE}}"
+  followable_through: "{{LAST_FOLLOWABLE_CHECKPOINT}}"
+stages:
+  source_and_dataset: {status: unverified, evidence_files: []}
+  import_scope: {status: unverified, evidence_files: []}
+  labels_and_metadata: {status: unverified, evidence_files: []}
+  preprocess: {status: unverified, evidence_files: []}
+  epoch: {status: unverified, evidence_files: []}
+  split: {status: unverified, evidence_files: []}
+  model_and_training: {status: unverified, evidence_files: []}
+  evaluation: {status: unverified, evidence_files: []}
+  saliency: {status: unverified, evidence_files: []}
+  reproducibility_and_limitations: {status: unverified, evidence_files: []}

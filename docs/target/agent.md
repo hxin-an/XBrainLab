@@ -417,7 +417,8 @@ controller method 命名。
 | Discovery / Query | `get_state`、`list_sources`、`explain_validation_state` | 讀狀態、查詢資料、向使用者解釋目前為什麼可做或不能做。 |
 | Data Interpretation | `scan_source`、`preview_interpretation`、`validate_interpretation`、`apply_interpretation`、`save_recipe`、`reload_recipe` | 資料匯入、label / event、BIDS、metadata、recipe 的共同入口。 |
 | Metadata Resolution | `infer_metadata`、`preview_subject_map`、`confirm_subject_map`、`confirm_class_map`、`confirm_event_roles` | subject/session/task/run、class map、event role、label anchor 的語意確認。 |
-| Data Transform | `apply_preprocess`、`create_epoch`、`generate_dataset` | 對資料做受控轉換，必須綁定 AppliedInterpretation 與 capability policy。 |
+| Data Transform | `apply_preprocess`、`create_epoch` | 對資料做受控轉換，必須綁定 AppliedInterpretation 與 capability policy。 |
+| Experiment Setup | `configure_dataset_split` | 保存經預覽與確認的 split specification；authoritative dataset materialization 由 `start_training` 執行。 |
 | Experiment Setup | `configure_model`、`configure_training`、`select_split_strategy`、`configure_saliency` | 設定高影響策略，通常需要使用者確認。 |
 | Execution | `start_training`、`run_evaluation`、`run_saliency`、`stop_job` | 長任務與 job lifecycle。 |
 | Lifecycle / Destructive | `reset_session`、`new_session`、`clear_dataset`、`remove_files` | 破壞性或改變 active pipeline 的操作，一律 confirmation。 |

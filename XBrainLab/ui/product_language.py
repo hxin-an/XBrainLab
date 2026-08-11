@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from XBrainLab.backend.application.commands import CommandName
@@ -33,6 +34,8 @@ DECISION_FIELD_LABELS: dict[str, str] = {
     "model": "model",
     "saliency_method": "saliency methods",
 }
+
+_INTERNAL_FOLD_NAME = re.compile(r"^fold(?:[_ -]?\d+)?$", re.IGNORECASE)
 
 
 def command_label(command_name: str | CommandName) -> str:
@@ -85,3 +88,18 @@ def workflow_stage_hint(stage: str | None) -> str:
     if contract.next_command is None:
         return contract.status_label
     return f"{contract.status_label} · {command_label(contract.next_command)}"
+
+
+def fold_display_label(fold_index: int, source_name: str = "") -> str:
+    """Return a 1-based fold label without repeating internal identifiers."""
+    label = f"Fold {fold_index + 1}"
+    descriptor = str(source_name or "").strip()
+    if not descriptor or _INTERNAL_FOLD_NAME.fullmatch(descriptor):
+        return label
+    return f"{label} ({descriptor})"
+
+
+def run_display_label(run_index: int, *, finished: bool = False) -> str:
+    """Return the canonical 1-based run label used by result selectors."""
+    status = " (Finished)" if finished else ""
+    return f"Run {run_index + 1}{status}"

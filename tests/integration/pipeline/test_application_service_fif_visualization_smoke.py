@@ -14,14 +14,17 @@ import numpy as np
 
 from XBrainLab.backend.application import (
     ApplicationService,
+    ApplyInterpretationCommand,
     ConfigureTrainingCommand,
     CreateEpochCommand,
     EvaluateCommand,
-    GenerateDatasetCommand,
-    LoadDataCommand,
     PreprocessCommand,
     PreprocessOperation,
+    PreviewInterpretationCommand,
+    SaveDatasetSplitCommand,
+    ScanSourceCommand,
     TrainCommand,
+    ValidateInterpretationCommand,
     VisualizeCommand,
 )
 
@@ -61,7 +64,32 @@ def test_application_service_fif_reaches_persisted_visualization_readiness(
     service = ApplicationService()
 
     try:
-        loaded = service.execute(LoadDataCommand(paths=[str(fif_path)]))
+        scanned = service.execute(
+            ScanSourceCommand(source_path=str(fif_path), source_hint="file")
+        )
+        previewed = service.execute(
+            PreviewInterpretationCommand(
+                choices={
+                    "selected_eeg_files": [str(fif_path)],
+                    "label_carrier": "embedded_events",
+                    "class_map": {"left": "left", "right": "right"},
+                    "internal_event_selection": {
+                        "label_event_codes": ["left", "right"],
+                        "class_map": {"left": "left", "right": "right"},
+                    },
+                }
+            )
+        )
+        validated = service.execute(ValidateInterpretationCommand())
+        imported = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+        assert scanned.ok, scanned.message
+        assert previewed.ok, previewed.message
+        assert validated.ok, validated.message
+        assert imported.ok, imported.message
+        assert imported.state.raw.files == [fif_path.name]
+        assert imported.state.interpretation.epoch_handoff["supervised_ready"] is True
+
         normalized = service.execute(
             PreprocessCommand(
                 operation=PreprocessOperation.NORMALIZE,
@@ -76,7 +104,7 @@ def test_application_service_fif_reaches_persisted_visualization_readiness(
             )
         )
         split = service.execute(
-            GenerateDatasetCommand(
+            SaveDatasetSplitCommand(
                 test_ratio=0.25,
                 val_ratio=0.25,
                 split_strategy="trial",
@@ -101,15 +129,16 @@ def test_application_service_fif_reaches_persisted_visualization_readiness(
         evaluated = service.execute(EvaluateCommand())
         visualized = service.execute(VisualizeCommand(view="summary"))
 
-        assert loaded.ok, loaded.message
-        assert loaded.state.raw.files == [fif_path.name]
         assert normalized.ok, normalized.message
         assert epoched.ok, epoched.message
         assert epoched.state.epoch.epoch_count == 12
         assert split.ok, split.message
-        assert split.diagnostics["split_audit"]["ok"] is True
+        assert split.state.dataset.split_spec_saved is True
+        assert split.state.dataset.available is False
         assert configured.ok, configured.message
         assert trained.ok, trained.message
+        assert trained.diagnostics["split_preparation"]["split_audit"]["ok"] is True
+        assert trained.state.dataset.available is True
         assert trained.state.training.finished_run_count == 1
         assert evaluated.ok, evaluated.message
         assert evaluated.diagnostics["available"] is True

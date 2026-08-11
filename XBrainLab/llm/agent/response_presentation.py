@@ -120,7 +120,7 @@ _PREPROCESS_PANEL_COMMANDS = frozenset(
 )
 _TRAINING_PANEL_COMMANDS = frozenset(
     {
-        CommandName.GENERATE_DATASET,
+        CommandName.CONFIGURE_DATASET_SPLIT,
         CommandName.CLEAR_DATASETS,
         CommandName.CONFIGURE_TRAINING,
         CommandName.TRAIN,

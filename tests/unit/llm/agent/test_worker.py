@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, replace
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -25,6 +27,34 @@ from XBrainLab.llm.core.runtime_selection import (
     AssistantRuntimeLaunchSpec,
 )
 from XBrainLab.llm.tools.result_contract import SAFE_UNEXPECTED_FAILURE_MESSAGE
+
+
+class _MessageCaptureHandler(logging.Handler):
+    def __init__(self) -> None:
+        super().__init__()
+        self.messages: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.messages.append(record.getMessage())
+
+
+class _StreamingEngine:
+    def __init__(
+        self,
+        chunks: tuple[str, ...] = (),
+        *,
+        error: Exception | None = None,
+    ) -> None:
+        self._chunks = chunks
+        self._error = error
+        self.config = SimpleNamespace(timeout=1)
+        self.requests: list[tuple[list[dict[str, object]], object]] = []
+
+    def generate_stream(self, messages, *, profile):
+        self.requests.append((messages, profile))
+        if self._error is not None:
+            raise self._error
+        yield from self._chunks
 
 
 @dataclass(frozen=True)
@@ -84,6 +114,65 @@ def _activation_request(
         settings=spec.settings,
         activation_id=activation_id,
     )
+
+
+class TestGenerationThread:
+    def test_streams_typed_request_and_publishes_terminal_result(self):
+        from XBrainLab.llm.agent.worker import GenerationThread
+
+        engine = _StreamingEngine(("first", "second"))
+        request = _request("summarize the workflow", generation_id=17)
+        thread = GenerationThread(engine, request)
+        chunks: list[str] = []
+        finished: list[bool] = []
+        errors: list[str] = []
+        thread.chunk_received.connect(chunks.append)
+        thread.finished_generation.connect(lambda: finished.append(True))
+        thread.error_occurred.connect(errors.append)
+
+        thread.run()
+
+        assert engine.requests == [
+            (request.to_model_messages(), request.generation_profile)
+        ]
+        assert chunks == ["first", "second"]
+        assert finished == [True]
+        assert errors == []
+
+    def test_failure_is_redacted_and_does_not_publish_success(self):
+        from XBrainLab.llm.agent.worker import GenerationThread
+
+        engine = _StreamingEngine(error=RuntimeError("private generation detail"))
+        thread = GenerationThread(engine, _request(generation_id=18))
+        finished: list[bool] = []
+        errors: list[str] = []
+        thread.finished_generation.connect(lambda: finished.append(True))
+        thread.error_occurred.connect(errors.append)
+
+        thread.run()
+
+        assert errors == [SAFE_UNEXPECTED_FAILURE_MESSAGE]
+        assert "private generation detail" not in errors[0]
+        assert finished == []
+
+    def test_interruption_stops_chunks_but_still_publishes_terminal_result(self):
+        from XBrainLab.llm.agent.worker import GenerationThread
+
+        engine = _StreamingEngine(("discarded",))
+        thread = GenerationThread(engine, _request(generation_id=20))
+        chunks: list[str] = []
+        finished: list[bool] = []
+        errors: list[str] = []
+        thread.chunk_received.connect(chunks.append)
+        thread.finished_generation.connect(lambda: finished.append(True))
+        thread.error_occurred.connect(errors.append)
+
+        with patch.object(thread, "isInterruptionRequested", return_value=True):
+            thread.run()
+
+        assert chunks == []
+        assert finished == [True]
+        assert errors == []
 
 
 @pytest.fixture
@@ -326,6 +415,40 @@ class TestGenerateFromMessages:
                     phase=AssistantGenerationDispatchPhase.STARTED,
                 ),
             ]
+
+    def test_logs_message_size_without_prompt_content(self, qtbot):
+        from XBrainLab.backend.utils.logger import logger
+        from XBrainLab.llm.agent.worker import AgentWorker
+
+        worker = AgentWorker()
+        worker.engine = _StreamingEngine(("done",))  # type: ignore[assignment]
+        completed: list[int] = []
+        worker.generation_finished.connect(
+            lambda generation_id, _tool_calls: completed.append(generation_id)
+        )
+        private_prompt = "SECRET_EEG_SUBJECT_42_" + "x" * 100
+        capture = _MessageCaptureHandler()
+        logger.addHandler(capture)
+
+        try:
+            with patch.object(LLMConfig, "load_from_file", return_value=None):
+                worker.generate_from_messages(
+                    _request(private_prompt, generation_id=19)
+                )
+                qtbot.waitUntil(lambda: completed == [19], timeout=2_000)
+                qtbot.waitUntil(
+                    lambda: worker.generation_thread is None,
+                    timeout=2_000,
+                )
+        finally:
+            logger.removeHandler(capture)
+
+        log_text = "\n".join(capture.messages)
+        assert f"message_chars={len(private_prompt)}" in log_text
+        assert private_prompt not in log_text
+        assert "SECRET_EEG_SUBJECT_42" not in log_text
+        if worker.timeout_timer is not None:
+            worker.timeout_timer.stop()
 
     def test_request_normalization_failure_is_correlated_and_releases_ids(
         self,

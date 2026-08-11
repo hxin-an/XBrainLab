@@ -15,8 +15,9 @@ class RawDataLoader(list):
     """Container and validator for a collection of loaded raw data files.
 
     Extends ``list`` to store ``Raw`` objects while enforcing consistency
-    checks (channel count, sample frequency, data type, epoch duration)
-    across all loaded files.
+    checks (channel identity, data type, and epoch shape) across loaded files.
+    Raw recordings may retain different sample frequencies until the explicit
+    resampling step; epoched inputs must already share one frequency.
 
     Args:
         raw_data_list: Initial list of loaded raw data objects.
@@ -107,8 +108,13 @@ class RawDataLoader(list):
                 f"expected {reference_types} from {reference.get_filename()}, "
                 f"got {candidate_types} from {raw.get_filename()}.",
             )
-        # check sfreq
-        if reference.get_sfreq() != raw.get_sfreq():
+        # Raw recordings can be imported before explicit resampling. Epoched
+        # inputs must already share one sampling grid to remain stackable.
+        if (
+            reference.get_sfreq() != raw.get_sfreq()
+            and not reference.is_raw()
+            and not raw.is_raw()
+        ):
             raise DataMismatchError(
                 "Dataset sample frequency inconsistent: "
                 f"expected {reference.get_sfreq()} from {reference.get_filename()}, "

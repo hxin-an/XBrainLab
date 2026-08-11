@@ -347,12 +347,12 @@ def _normalize_event_list(source: list[Any]) -> list[dict[str, Any]]:
 
 
 def _event_code_from_description(description: str, *, fallback: str = "") -> str:
-    text = " ".join(str(description or "").strip().split())
+    text = str(description or "").strip()
     if text.isdigit():
         return str(int(text))
     if _looks_like_prefixed_marker(text):
         return text
-    fallback_text = " ".join(str(fallback or "").strip().split())
+    fallback_text = str(fallback or "").strip()
     if text:
         return text
     return fallback_text

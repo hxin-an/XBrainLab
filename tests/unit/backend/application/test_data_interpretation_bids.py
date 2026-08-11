@@ -9,6 +9,7 @@ import mne
 import numpy as np
 import pytest
 
+from tests.unit.backend.path_assertions import assert_filesystem_path_lists_equal
 from XBrainLab.backend.application import (
     ApplicationService,
     ApplyInterpretationCommand,
@@ -131,6 +132,171 @@ def _value_decisions_from_events(path: Path) -> dict[str, dict[str, object]]:
         }
         for value in values
     }
+
+
+def test_bids_label_field_recommendation_ignores_unselected_run_carriers(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "bids"
+    selected_eeg, selected_events = _write_bids_run(
+        root,
+        run="1",
+        event_rows=[
+            ("0", "0", "stimulus", "standard"),
+            ("1", "0", "stimulus", "oddball"),
+            ("2", "0", "response", "response"),
+        ],
+    )
+    selected_events.with_suffix(".json").write_text(
+        json.dumps(
+            {
+                "trial_type": {
+                    "Levels": {
+                        "stimulus": "Auditory stimulus",
+                        "response": "Behavioral response",
+                    }
+                },
+                "value": {
+                    "Levels": {
+                        "standard": "Standard tone",
+                        "oddball": "Oddball tone",
+                        "response": "Button response",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    unselected_eeg, unselected_events = _write_bids_run(
+        root,
+        run="2",
+        event_rows=[
+            ("0", "0", "left_hand", "769"),
+            ("1", "0", "right_hand", "770"),
+        ],
+    )
+    unselected_events.with_suffix(".json").write_text(
+        json.dumps(
+            {
+                "trial_type": {
+                    "Levels": {
+                        "left_hand": "Left hand",
+                        "right_hand": "Right hand",
+                    }
+                },
+                "value": {"Description": "Hardware trigger code"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    selected_service = ApplicationService()
+    assert selected_service.execute(
+        ScanSourceCommand(source_path=str(root), source_hint="bids")
+    ).ok
+    selected_preview = selected_service.execute(
+        PreviewInterpretationCommand(
+            choices={"selected_eeg_files": [str(selected_eeg)]}
+        )
+    )
+
+    assert selected_preview.ok is True
+    selected_carriers = selected_preview.diagnostics["preview"]["label_carrier_preview"]
+    assert [row["path"] for row in selected_carriers] == [str(selected_events)]
+    assert [row["selected_target_file"] for row in selected_carriers] == [
+        str(selected_eeg)
+    ]
+    assert selected_carriers[0]["selected_label_field"] == "value"
+    recommendation = selected_carriers[0]["label_field_recommendation"]
+    assert recommendation["field"] == "value"
+    assert recommendation["facts"]["selected_run_count"] == 1
+
+    combined_service = ApplicationService()
+    assert combined_service.execute(
+        ScanSourceCommand(source_path=str(root), source_hint="bids")
+    ).ok
+    combined_preview = combined_service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(selected_eeg), str(unselected_eeg)],
+            }
+        )
+    )
+
+    assert combined_preview.ok is True
+    combined_carriers = combined_preview.diagnostics["preview"]["label_carrier_preview"]
+    assert {row["path"] for row in combined_carriers} == {
+        str(selected_events),
+        str(unselected_events),
+    }
+    assert {row["selected_label_field"] for row in combined_carriers} == {"trial_type"}
+    assert (
+        combined_carriers[0]["label_field_recommendation"]["facts"][
+            "selected_run_count"
+        ]
+        == 2
+    )
+
+
+def test_strict_bids_keeps_full_issue_evidence_but_bounds_blocker_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_path = "/data/sub-01/eeg/sub-01_task-P300_eeg.set"
+    events_path = "/data/sub-01/eeg/sub-01_task-P300_events.tsv"
+    issues = [
+        {
+            "code": "unresolved_event_value_decisions",
+            "row": None,
+            "message": "selected event values need semantic decisions",
+        },
+        *[
+            {
+                "code": "value_decision_unresolved",
+                "row": row,
+                "message": "selected label has no complete semantic decision",
+            }
+            for row in range(2, 33)
+        ],
+    ]
+
+    monkeypatch.setattr(
+        data_interpretation_bids,
+        "_review_one_run",
+        lambda **_kwargs: (
+            {
+                "event_count": 31,
+                "row_evidence": [],
+                "placement": {
+                    "status": "blocked",
+                    "usable_event_count": 0,
+                    "excluded_event_count": 0,
+                },
+                "bids_schema": {"issues": []},
+                "issues": issues,
+            },
+            {},
+        ),
+    )
+
+    review = data_interpretation_bids.review_strict_bids_event_runs(
+        bids={
+            "is_bids": True,
+            "layout": [
+                {
+                    "file": eeg_path,
+                    "events_file": events_path,
+                }
+            ],
+        },
+        selected_eeg_files=[eeg_path],
+        label_carrier_plan=[{"path": events_path}],
+    )
+
+    assert review.evidence["runs"][0]["issues"] == issues
+    [reason] = review.blocked_reasons
+    assert "row 12 (selected label has no complete semantic decision)" in reason
+    assert "row 13 (selected label has no complete semantic decision)" not in reason
+    assert "20 more issues" in reason
 
 
 def test_bids_preview_blocks_before_events_tsv_materialization(
@@ -278,16 +444,8 @@ def test_strict_bids_excludes_missing_selected_labels_without_blocking_import(
     assert run["placement"]["status"] == "ready_with_exclusions"
     assert run["placement"]["usable_event_count"] == 1
     assert run["placement"]["excluded_event_count"] == 1
-    assert run["placement"]["excluded_rows"] == [
-        {
-            "row": 3,
-            "code": "selected_label_missing",
-            "message": "selected label is empty or BIDS n/a",
-            "raw_onset": "2",
-            "raw_duration": "0",
-            "selected_label": "",
-        }
-    ]
+    assert run["placement"]["excluded_row_count"] == 1
+    assert "excluded_rows" not in run["placement"]
     decision = validation.diagnostics["validation_decision"]
     assert decision["decision"] == "safe"
     assert decision["blocked_reasons"] == []
@@ -485,7 +643,10 @@ def test_apply_fails_closed_when_reviewed_bids_event_content_changes(
     assert applied.diagnostics["code"] == (
         "interpretation_content_changed_after_review"
     )
-    assert applied.diagnostics["changed_paths"] == [str(events_path)]
+    assert_filesystem_path_lists_equal(
+        applied.diagnostics["changed_paths"],
+        [events_path],
+    )
     assert applied.diagnostics["next_action"] == "preview_and_review_again"
     assert applied.state.raw.count == 0
 
@@ -1018,6 +1179,24 @@ def test_timestamp_label_apply_uses_per_run_mapping_instead_of_global_mapping(
     assert isinstance(hint_2, dict)
     assert hint_1["class_map"] == {"T1": "left hand"}
     assert hint_2["class_map"] == {"T1": "right hand"}
+    assert hint_1["source"] == "BIDS events.tsv"
+    assert hint_2["source"] == "BIDS events.tsv"
+
+
+def test_bids_shaped_external_table_keeps_external_epoch_source() -> None:
+    candidate = InterpretationCandidate(
+        candidate_id="candidate-1",
+        scan_id="scan-1",
+        source_path="/data/recording.fif",
+        source_kind="file",
+    )
+
+    source = DataInterpretationApplyService._epoch_hint_source(
+        {"format": "BIDS events"},
+        candidate=candidate,
+    )
+
+    assert source == "Loaded label file"
 
 
 def test_internal_event_hints_use_each_run_mapping(tmp_path: Path) -> None:
