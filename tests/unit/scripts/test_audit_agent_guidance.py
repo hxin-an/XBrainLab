@@ -4,15 +4,19 @@ import asyncio
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 
 from scripts.dev import audit_agent_guidance
 from scripts.dev.audit_agent_guidance import (
+    ROUTING_OUTPUT_SCHEMA,
     EvalRecord,
     RoutingCase,
+    _error_from_jsonl,
     _usage_from_jsonl,
     acceptance_summary,
     build_codex_command,
+    run_variant,
     score_human_review,
     score_variant,
 )
@@ -47,6 +51,78 @@ def test_usage_parser_takes_final_cumulative_token_values() -> None:
     )
 
     assert _usage_from_jsonl(events) == (140, 12)
+
+
+def test_response_schema_uses_only_supported_array_contract() -> None:
+    secondary = ROUTING_OUTPUT_SCHEMA["properties"]["secondary_skills"]
+
+    assert "uniqueItems" not in secondary
+
+
+def test_jsonl_error_parser_reports_api_failure_instead_of_stderr_notice() -> None:
+    events = (
+        '{"type":"error","message":"invalid_json_schema: uniqueItems is not permitted"}\n'
+        '{"type":"turn.failed","error":{"message":"request failed"}}\n'
+    )
+
+    assert _error_from_jsonl(events) == (
+        "invalid_json_schema: uniqueItems is not permitted"
+    )
+
+
+def test_variant_preflight_stops_before_parallel_fanout(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    calls: list[tuple[str, int]] = []
+
+    async def failed_case(**kwargs: object) -> EvalRecord:
+        case = kwargs["case"]
+        assert isinstance(case, RoutingCase)
+        repeat = kwargs["repeat"]
+        assert isinstance(repeat, int)
+        calls.append((case.id, repeat))
+        return EvalRecord(
+            variant="baseline",
+            run_fingerprint="test",
+            case_id=case.id,
+            repeat=repeat,
+            returncode=1,
+            elapsed_seconds=0.1,
+            input_tokens=None,
+            output_tokens=None,
+            response=None,
+            error="invalid schema",
+        )
+
+    monkeypatch.setattr(audit_agent_guidance, "_git_sha", lambda _root: "abc")
+    monkeypatch.setattr(
+        audit_agent_guidance,
+        "_guidance_digest",
+        lambda _root: "digest",
+    )
+    monkeypatch.setattr(audit_agent_guidance, "_run_case", failed_case)
+    cases = (
+        RoutingCase("first", "one", "positive", None, (), (), "current_truth"),
+        RoutingCase("second", "two", "positive", None, (), (), "current_truth"),
+    )
+
+    with pytest.raises(RuntimeError, match="baseline preflight failed: invalid schema"):
+        asyncio.run(
+            run_variant(
+                variant="baseline",
+                repo_root=tmp_path,
+                cases=cases,
+                output_dir=tmp_path / "output",
+                repeats=3,
+                max_concurrency=3,
+                model="gpt-5.6-sol",
+                reasoning_effort="xhigh",
+                timeout_seconds=30,
+            )
+        )
+
+    assert calls == [("first", 1)]
 
 
 def test_case_runner_closes_stdin_and_excludes_queue_wait_from_latency(

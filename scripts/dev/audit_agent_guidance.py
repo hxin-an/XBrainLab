@@ -126,7 +126,6 @@ ROUTING_OUTPUT_SCHEMA: dict[str, Any] = {
         },
         "secondary_skills": {
             "type": "array",
-            "uniqueItems": True,
             "items": {
                 "type": "string",
                 "enum": [*EXPECTED_SKILLS, *RETIRED_SKILLS],
@@ -482,6 +481,21 @@ def _usage_from_jsonl(text: str) -> tuple[int | None, int | None]:
     )
 
 
+def _error_from_jsonl(text: str) -> str | None:
+    """Return the first structured Codex error from an event stream."""
+    for line in text.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict) or event.get("type") != "error":
+            continue
+        message = event.get("message")
+        if isinstance(message, str) and message.strip():
+            return message.strip()
+    return None
+
+
 async def _run_case(
     *,
     semaphore: asyncio.Semaphore,
@@ -554,7 +568,11 @@ async def _run_case(
     if timed_out:
         error = f"timed out after {timeout_seconds} seconds"
     elif process.returncode != 0:
-        error = stderr_text.strip() or f"Codex exited {process.returncode}"
+        error = (
+            _error_from_jsonl(stdout_text)
+            or stderr_text.strip()
+            or f"Codex exited {process.returncode}"
+        )
     elif not final_path.is_file():
         error = "Codex did not write the final response"
     else:
@@ -564,7 +582,13 @@ async def _run_case(
             error = f"invalid final JSON: {exc}"
         else:
             if isinstance(parsed, dict):
-                response = parsed
+                secondary = parsed.get("secondary_skills")
+                if isinstance(secondary, list) and len(secondary) != len(
+                    set(secondary)
+                ):
+                    error = "response contains duplicate secondary skills"
+                else:
+                    response = parsed
             else:
                 error = "final response is not an object"
 
@@ -637,6 +661,25 @@ async def run_variant(
         encoding="utf-8",
     )
     semaphore = asyncio.Semaphore(max_concurrency)
+    pending = [(case, repeat) for case in cases for repeat in range(1, repeats + 1)]
+    if not pending:
+        return []
+    preflight_case, preflight_repeat = pending.pop(0)
+    preflight = await _run_case(
+        semaphore=semaphore,
+        variant=variant,
+        run_fingerprint=run_fingerprint,
+        case=preflight_case,
+        repeat=preflight_repeat,
+        repo_root=repo_root,
+        output_dir=output_dir,
+        schema_path=schema_path,
+        model=model,
+        reasoning_effort=reasoning_effort,
+        timeout_seconds=timeout_seconds,
+    )
+    if preflight.error is not None:
+        raise RuntimeError(f"{variant} preflight failed: {preflight.error}")
     tasks = [
         _run_case(
             semaphore=semaphore,
@@ -651,10 +694,9 @@ async def run_variant(
             reasoning_effort=reasoning_effort,
             timeout_seconds=timeout_seconds,
         )
-        for case in cases
-        for repeat in range(1, repeats + 1)
+        for case, repeat in pending
     ]
-    return list(await asyncio.gather(*tasks))
+    return [preflight, *await asyncio.gather(*tasks)]
 
 
 def score_variant(
