@@ -17,7 +17,9 @@ EVIDENCE_ROOT_TOKEN: Final = "{evidence_root}"  # noqa: S105 - path placeholder
 MODEL_CACHE_DIR_TOKEN: Final = "{model_cache_dir}"  # noqa: S105 - path placeholder
 RAG_CACHE_DIR_TOKEN: Final = "{rag_cache_dir}"  # noqa: S105 - path placeholder
 EXPECTED_BRANCH_TOKEN: Final = "{expected_branch}"  # noqa: S105 - argv placeholder
+TARGET_SHA_TOKEN: Final = "{target_sha}"  # noqa: S105 - argv placeholder
 _SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,79}$")
+_FULL_SHA = re.compile(r"^[0-9a-fA-F]{40}$")
 _SAFE_ENV_NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 _PYTEST_FORBIDDEN = (
     "failed",
@@ -149,18 +151,28 @@ class GateSpec:
         evidence_root: Path,
         *,
         expected_branch: str | None = None,
+        target_sha: str | None = None,
     ) -> tuple[str, ...]:
         root = str(evidence_root.expanduser().resolve())
         branch = (expected_branch or "").strip()
+        target = (target_sha or "").strip()
         if any(EXPECTED_BRANCH_TOKEN in part for part in self.argv) and not branch:
             raise ValueError(
                 f"Gate {self.check_id!r} requires an explicit expected branch."
             )
+        if any(TARGET_SHA_TOKEN in part for part in self.argv) and not (
+            _FULL_SHA.fullmatch(target)
+        ):
+            raise ValueError(
+                f"Gate {self.check_id!r} requires an immutable 40-character target SHA."
+            )
         return tuple(
-            part.replace(EVIDENCE_ROOT_TOKEN, root).replace(
+            part.replace(EVIDENCE_ROOT_TOKEN, root)
+            .replace(
                 EXPECTED_BRANCH_TOKEN,
                 branch,
             )
+            .replace(TARGET_SHA_TOKEN, target)
             for part in self.argv
         )
 
@@ -331,8 +343,18 @@ _GATE_SPECS = (
     GateSpec(
         check_id="basedpyright",
         section="1",
-        argv=(*_POETRY_EXEC, "basedpyright"),
+        argv=(
+            *_POETRY_EXEC,
+            "python",
+            "scripts/dev/run_basedpyright_regression.py",
+            "--repo-root",
+            ".",
+            "--base-sha",
+            TARGET_SHA_TOKEN,
+        ),
         timeout_seconds=3600,
+        required_artifact_paths=("basedpyright-regression.json",),
+        stdout_artifact_path="basedpyright-regression.json",
     ),
     GateSpec(
         check_id="mkdocs-strict",

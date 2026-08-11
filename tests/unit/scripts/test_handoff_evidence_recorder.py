@@ -23,6 +23,7 @@ from scripts.dev.handoff_gate_spec import (
     EVIDENCE_ROOT_TOKEN,
     MODEL_CACHE_DIR_TOKEN,
     RAG_CACHE_DIR_TOKEN,
+    TARGET_SHA_TOKEN,
     EnvironmentPolicy,
     GateSpec,
     OutcomePolicy,
@@ -143,6 +144,45 @@ def test_recorded_command_is_bound_to_clean_sha_and_hashed_logs(tmp_path) -> Non
         expected_branch=branch,
         require_upstream=False,
     ) == (True, "")
+
+
+def test_target_bound_gate_is_rejected_against_a_different_authorized_base(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, sha, branch = _repo(tmp_path)
+    evidence_root = repo / "build" / "handoff-evidence" / sha
+    spec = GateSpec(
+        check_id="target-bound",
+        section="1",
+        argv=(sys.executable, "-c", "print('ok')", TARGET_SHA_TOKEN),
+        timeout_seconds=30,
+    )
+    _install_test_gate(monkeypatch, spec)
+    first_target = "a" * 40
+    record_handoff_command(
+        repo_root=repo,
+        evidence_root=evidence_root,
+        section="1",
+        check_id=spec.check_id,
+        command=spec.resolve_argv(evidence_root, target_sha=first_target),
+        timeout_seconds=30,
+        expected_branch=branch,
+        target_sha=first_target,
+        require_upstream=False,
+    )
+
+    ok, reason = validate_handoff_dossier(
+        repo_root=repo,
+        evidence_root=evidence_root,
+        required_check_ids=(spec.check_id,),
+        expected_branch=branch,
+        target_sha="b" * 40,
+        require_upstream=False,
+    )
+
+    assert ok is False
+    assert "argv was edited" in reason
 
 
 def test_portable_ci_owner_dossier_rehashes_downloaded_command_evidence(

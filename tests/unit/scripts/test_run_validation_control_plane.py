@@ -48,9 +48,11 @@ def test_executor_uses_registry_commands_once_and_emits_complete_receipt(
 ) -> None:
     plan = _product_backend_plan()
     calls: list[str] = []
+    target_shas: list[str] = []
 
     def recorder(**kwargs):  # type: ignore[no-untyped-def]
         calls.append(kwargs["check_id"])
+        target_shas.append(kwargs["target_sha"])
         return {
             "check_id": kwargs["check_id"],
             "passed": True,
@@ -71,6 +73,7 @@ def test_executor_uses_registry_commands_once_and_emits_complete_receipt(
 
     registry_order = tuple(HANDOFF_VALIDATION_GATE_CATALOG)
     assert calls == sorted(calls, key=registry_order.index)
+    assert target_shas == ["b" * 40] * len(calls)
     assert len(calls) == len(set(calls))
     assert set(calls) == set(plan.execution_ids)
     assert receipt.completed_gate_ids == tuple(calls)

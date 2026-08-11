@@ -13,6 +13,7 @@ from scripts.dev.handoff_gate_spec import (
     MODEL_CACHE_DIR_TOKEN,
     RAG_CACHE_DIR_TOKEN,
     REQUIRED_HANDOFF_CHECK_IDS,
+    TARGET_SHA_TOKEN,
     GateSpec,
     OutcomePolicy,
 )
@@ -156,6 +157,27 @@ def test_complete_regression_uses_the_bounded_fail_closed_full_runner() -> None:
     assert spec.pytest_attestation_path == (
         "pytest-attestations/complete-regression.json"
     )
+
+
+def test_basedpyright_is_an_exact_target_regression_gate() -> None:
+    spec = HANDOFF_GATE_SPECS["basedpyright"]
+
+    assert spec.argv == (
+        "poetry",
+        "run",
+        "--",
+        "python",
+        "scripts/dev/run_basedpyright_regression.py",
+        "--repo-root",
+        ".",
+        "--base-sha",
+        TARGET_SHA_TOKEN,
+    )
+    assert spec.stdout_artifact_path == "basedpyright-regression.json"
+    assert spec.required_artifact_paths == ("basedpyright-regression.json",)
+    with pytest.raises(ValueError, match="target SHA"):
+        spec.resolve_argv(ROOT)
+    assert spec.resolve_argv(ROOT, target_sha="a" * 40)[-1] == "a" * 40
 
 
 def test_guidance_contract_uses_attested_deterministic_contract_tests() -> None:

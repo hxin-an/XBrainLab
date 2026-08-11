@@ -70,6 +70,7 @@ def record_handoff_command(
     command: Sequence[str],
     timeout_seconds: float,
     expected_branch: str,
+    target_sha: str | None = None,
     require_upstream: bool = True,
     enforce_pytest_outcomes: bool | None = None,
     stdout_artifact: str | None = None,
@@ -123,6 +124,7 @@ def record_handoff_command(
     expected_argv = spec.resolve_argv(
         output_root,
         expected_branch=expected_branch,
+        target_sha=target_sha,
     )
     if argv != expected_argv:
         raise HandoffEvidenceError(
@@ -259,6 +261,7 @@ def validate_handoff_dossier(
     evidence_root: Path,
     required_check_ids: Sequence[str],
     expected_branch: str,
+    target_sha: str | None = None,
     require_upstream: bool = True,
     model_cache_dir: Path | None = None,
     rag_cache_dir: Path | None = None,
@@ -343,6 +346,7 @@ def validate_handoff_dossier(
             raw_record=checks.get(check_id),
             model_cache_dir=model_cache_dir,
             rag_cache_dir=rag_cache_dir,
+            target_sha=target_sha,
         )
         if not ok:
             return False, reason
@@ -360,6 +364,7 @@ def validate_portable_ci_owner_dossier(
     full_plan_gate_ids: Sequence[str],
     required_check_ids: Sequence[str],
     expected_evidence_digests: Mapping[str, str],
+    target_sha: str | None = None,
 ) -> tuple[bool, str]:
     """Revalidate downloaded registry evidence in a separate CI job.
 
@@ -472,6 +477,7 @@ def validate_portable_ci_owner_dossier(
             raw_record=record,
             model_cache_dir=None,
             rag_cache_dir=None,
+            target_sha=target_sha,
         )
         if not ok:
             return False, reason
@@ -501,6 +507,7 @@ def _validate_check_record(
     raw_record: object,
     model_cache_dir: Path | None,
     rag_cache_dir: Path | None,
+    target_sha: str | None,
 ) -> tuple[bool, str]:
     if not isinstance(raw_record, dict):
         return False, f"Handoff check record is malformed: {check_id}."
@@ -515,6 +522,7 @@ def _validate_check_record(
         spec.resolve_argv(
             expected_command_root,
             expected_branch=expected_branch,
+            target_sha=target_sha,
         )
     ):
         return False, f"Handoff check argv was edited: {check_id}."
@@ -1387,6 +1395,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--check-id", required=True)
     run.add_argument("--timeout-seconds", type=float, required=True)
     run.add_argument("--expected-branch", required=True)
+    run.add_argument("--target-sha")
     run.add_argument("--no-upstream-check", action="store_true")
     run.add_argument("--model-cache-dir", type=Path)
     run.add_argument("--rag-cache-dir", type=Path)
@@ -1404,6 +1413,7 @@ def _build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--evidence-root", type=Path, required=True)
     verify.add_argument("--required-check", action="append", default=[])
     verify.add_argument("--expected-branch", required=True)
+    verify.add_argument("--target-sha")
     verify.add_argument("--no-upstream-check", action="store_true")
     verify.add_argument("--model-cache-dir", type=Path)
     verify.add_argument("--rag-cache-dir", type=Path)
@@ -1426,6 +1436,7 @@ def main() -> int:
                 command=command,
                 timeout_seconds=args.timeout_seconds,
                 expected_branch=args.expected_branch,
+                target_sha=args.target_sha,
                 require_upstream=not args.no_upstream_check,
                 enforce_pytest_outcomes=args.enforce_pytest_outcomes,
                 stdout_artifact=args.stdout_artifact,
@@ -1441,6 +1452,7 @@ def main() -> int:
                 evidence_root=args.evidence_root,
                 required_check_ids=args.required_check,
                 expected_branch=args.expected_branch,
+                target_sha=args.target_sha,
                 require_upstream=not args.no_upstream_check,
                 model_cache_dir=args.model_cache_dir,
                 rag_cache_dir=args.rag_cache_dir,

@@ -479,6 +479,13 @@ runner source，不是用來抵抗能任意修改同一使用者 source/evidence
 正式 target，必須直接使用其 exact SHA。未刷新、被本機重指或來源未經授權的 tracking ref
 不能縮小 claim-bearing diff。`--expected-branch` 同樣必填，避免舊 branch 名成為隱性 policy。
 
+Registered `basedpyright` gate 是 exact-target regression，不是把 legacy typing debt 寫成固定
+allowlist。它在同一 runner、同一 executable 與相依環境下分別分析 authorized target SHA 與
+candidate，以 repo-relative path、severity、rule、normalized message 的 multiset 比較；source
+range 不參與 fingerprint，避免純行號位移製造假 regression，但新增或重複增加的診斷仍 fail
+closed。比較結果寫入 `basedpyright-regression.json` 並納入 dossier hash。Fast dashboard 的
+`basedpyright_type_check` 仍是目前 checkout 的 absolute health 診斷，兩者 claim 不可互換。
+
 ## Registered Gate Sections
 
 下表只說明 section 意圖；ID、順序、dependency 與 exact argv 全部直接讀 checked-in registry，

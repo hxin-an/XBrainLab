@@ -286,6 +286,7 @@ def _verify_owner_evidence(
                 full_plan_gate_ids=plan.execution_ids,
                 required_check_ids=ci_plan.gate_ids_for_owner(receipt.owner),
                 expected_evidence_digests=dict(receipt.evidence_digests),
+                target_sha=target_sha,
             )
         if not ok:
             reasons.add(f"owner-evidence-invalid:{receipt.owner}:{reason}")

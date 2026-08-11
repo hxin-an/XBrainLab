@@ -304,9 +304,11 @@ def execute_validation_plan(
             command=spec.resolve_argv(
                 resolved_evidence_root,
                 expected_branch=expected_branch,
+                target_sha=plan.base_sha,
             ),
             timeout_seconds=spec.timeout_seconds,
             expected_branch=expected_branch,
+            target_sha=plan.base_sha,
             require_upstream=require_upstream,
             model_cache_dir=model_cache_dir,
             rag_cache_dir=rag_cache_dir,
@@ -332,6 +334,7 @@ def execute_validation_plan(
             allow_external_evidence_root=allow_external_evidence_root,
             expected_profile=resolved_profile,
             expected_profile_metadata=resolved_profile_metadata,
+            target_sha=plan.base_sha,
         )
         if not dossier_ok:
             raise ValidationExecutionError(
@@ -429,6 +432,7 @@ def verify_validation_evidence(
         allow_external_evidence_root=allow_external_evidence_root,
         expected_profile=resolved_profile,
         expected_profile_metadata=resolved_profile_metadata,
+        target_sha=plan.base_sha,
     )
     if not dossier_ok:
         return _blocked_verdict(
