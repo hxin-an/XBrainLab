@@ -101,11 +101,17 @@ def test_docs_selected_gates_use_registry_runner_not_blanket_recording() -> None
     text, workflow = _workflow()
     docs = workflow["jobs"]["docs-validation"]
     rendered = yaml.safe_dump(docs)
+    portal_step = next(
+        step
+        for step in docs["steps"]
+        if step.get("name") == "Test and build both documentation portals"
+    )
 
     assert "--owner docs" in rendered
     assert "run_validation_ci_owner.py run" in rendered
     assert "run_validation_ci_owner.py record" not in rendered
     assert "poetry install --only docs,test,dev --no-root" in text
+    assert portal_step["env"] == {"PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}
 
 
 def test_registry_receipts_and_dossiers_are_uploaded_and_downloaded_separately() -> (

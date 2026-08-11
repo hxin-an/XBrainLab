@@ -252,6 +252,8 @@ jobs:
             --output build/ci-owner-receipts/docs.json
 
       - name: Test and build both documentation portals
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
         run: |
           poetry run -- python -m pytest --confcutdir=tests/unit/scripts \
             tests/unit/scripts/test_build_docs_portal.py -q
