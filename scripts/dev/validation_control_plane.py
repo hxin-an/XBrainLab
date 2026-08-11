@@ -548,9 +548,11 @@ def infer_changed_path(path: str) -> ChangedPath:
             "validation_selector",
         )
     )
+    is_pre_commit_policy = lowered == ".pre-commit-config.yaml"
     if (
         lowered.startswith((".github/workflows/", "scripts/ci/"))
         or selector_or_registry
+        or is_pre_commit_policy
     ):
         match(Layer.CI_VALIDATION, RiskLevel.CRITICAL, "path:validation-control")
 
@@ -636,7 +638,7 @@ def infer_changed_path(path: str) -> ChangedPath:
         "redaction",
         "secret",
     )
-    if any(marker in lowered for marker in security_markers):
+    if is_pre_commit_policy or any(marker in lowered for marker in security_markers):
         match(Layer.SECURITY_PRIVACY, RiskLevel.CRITICAL, "path:security-privacy")
 
     data_owned_markers = (

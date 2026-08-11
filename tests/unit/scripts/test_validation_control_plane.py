@@ -258,6 +258,17 @@ def test_pull_request_template_is_guidance_not_an_unknown_path() -> None:
     assert changed.risk_floor is RiskLevel.LOW
 
 
+def test_pre_commit_config_is_critical_ci_security_policy() -> None:
+    changed = infer_changed_path(".pre-commit-config.yaml")
+
+    assert changed.layers == frozenset({Layer.CI_VALIDATION, Layer.SECURITY_PRIVACY})
+    assert changed.risk_floor is RiskLevel.CRITICAL
+    assert changed.matched_rule_ids == (
+        "path:security-privacy",
+        "path:validation-control",
+    )
+
+
 @pytest.mark.parametrize(
     "path",
     [
