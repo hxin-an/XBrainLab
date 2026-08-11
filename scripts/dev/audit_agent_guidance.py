@@ -515,11 +515,12 @@ async def _run_case(
         final_path=final_path,
         prompt=_routing_prompt(case),
     )
-    started = time.monotonic()
     async with semaphore:
+        started = time.monotonic()
         process = await asyncio.create_subprocess_exec(
             *command,
             cwd=repo_root,
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

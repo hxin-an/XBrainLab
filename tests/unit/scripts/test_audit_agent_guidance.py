@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
 import yaml
 
+from scripts.dev import audit_agent_guidance
 from scripts.dev.audit_agent_guidance import (
     EvalRecord,
     RoutingCase,
@@ -45,6 +47,87 @@ def test_usage_parser_takes_final_cumulative_token_values() -> None:
     )
 
     assert _usage_from_jsonl(events) == (140, 12)
+
+
+def test_case_runner_closes_stdin_and_excludes_queue_wait_from_latency(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    clock = {"value": 0.0}
+    captured: dict[str, object] = {}
+
+    class DelayedSemaphore:
+        async def __aenter__(self) -> None:
+            clock["value"] = 100.0
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+    class CompletedProcess:
+        returncode = 0
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            return b'{"usage":{"input_tokens":10,"output_tokens":2}}\n', b""
+
+    async def create_process(*command: str, **kwargs: object) -> CompletedProcess:
+        captured["stdin"] = kwargs.get("stdin")
+        final_path = Path(command[command.index("--output-last-message") + 1])
+        final_path.write_text(
+            json.dumps(
+                {
+                    "primary_skill": None,
+                    "secondary_skills": [],
+                    "authority_class": "current_truth",
+                    "reason": "no skill needed",
+                }
+            ),
+            encoding="utf-8",
+        )
+        return CompletedProcess()
+
+    monkeypatch.setattr(
+        audit_agent_guidance.asyncio,
+        "create_subprocess_exec",
+        create_process,
+    )
+    monkeypatch.setattr(
+        audit_agent_guidance.time,
+        "monotonic",
+        lambda: clock["value"],
+    )
+    schema_path = tmp_path / "schema.json"
+    schema_path.write_text("{}", encoding="utf-8")
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    case = RoutingCase(
+        id="stdin-contract",
+        prompt="read current truth",
+        category="negative",
+        expected_primary=None,
+        allowed_secondary=(),
+        forbidden_skills=(),
+        expected_authority_class="current_truth",
+    )
+
+    record = asyncio.run(
+        audit_agent_guidance._run_case(
+            semaphore=DelayedSemaphore(),
+            variant="candidate",
+            run_fingerprint="test",
+            case=case,
+            repeat=1,
+            repo_root=tmp_path,
+            output_dir=output_dir,
+            schema_path=schema_path,
+            model="gpt-5.6-sol",
+            reasoning_effort="xhigh",
+            timeout_seconds=30,
+        )
+    )
+
+    assert captured["stdin"] is asyncio.subprocess.DEVNULL
+    assert record.elapsed_seconds == 0.0
+    assert record.error is None
 
 
 def test_variant_scoring_enforces_primary_secondary_forbidden_and_authority() -> None:
