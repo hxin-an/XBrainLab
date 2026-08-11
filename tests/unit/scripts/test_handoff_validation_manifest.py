@@ -203,6 +203,7 @@ def test_guidance_contract_uses_attested_deterministic_contract_tests() -> None:
 
     assert spec.outcome.require_pytest_attestation
     assert spec.pytest_attestation_path == "pytest-attestations/guidance-contract.json"
+    assert spec.environment.as_dict() == {"PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}
     assert spec.argv[-6:] == (
         "--",
         "--capture=sys",

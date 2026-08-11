@@ -226,6 +226,9 @@ def _pytest_attestation_contract(
 
 _POETRY_EXEC = ("poetry", "run", "--")
 _PRLIMIT = ("prlimit", "--core=0", "--")
+_PYTEST_BUILTINS_ONLY = EnvironmentPolicy(
+    required=(("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1"),)
+)
 _MNE = EnvironmentPolicy(required=(("MNE_DONTWRITE_HOME", "true"),))
 _QT = EnvironmentPolicy(required=(("QT_QPA_PLATFORM", "offscreen"),))
 _QT_MNE = EnvironmentPolicy(
@@ -418,6 +421,7 @@ _GATE_SPECS = (
             "-q",
         ),
         timeout_seconds=1200,
+        environment=_PYTEST_BUILTINS_ONLY,
         outcome=_STRICT_PYTEST,
         required_artifact_paths=("pytest-attestations/guidance-contract.json",),
         pytest_attestation_path="pytest-attestations/guidance-contract.json",
