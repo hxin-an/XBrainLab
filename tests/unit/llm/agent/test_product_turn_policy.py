@@ -221,7 +221,7 @@ def test_training_blocker_uses_backend_capability_reasons(text: str) -> None:
             command_name=CommandName.TRAIN.value,
             enabled=False,
             reasons=[
-                "Generate datasets before training.",
+                "Save a valid data splitting specification before training.",
                 "Select a model before training.",
             ],
         ),
@@ -232,8 +232,8 @@ def test_training_blocker_uses_backend_capability_reasons(text: str) -> None:
     assert decision is not None
     assert decision.kind is ProductTurnKind.WORKFLOW_BLOCKED
     assert decision.message == (
-        "Training is not ready yet: Generate datasets before training.; "
-        "Select a model before training."
+        "Training is not ready yet: Save a valid data splitting specification "
+        "before training.; Select a model before training."
     )
 
 
@@ -243,7 +243,9 @@ def test_default_policy_reads_real_application_service_publication() -> None:
     assert decision is not None
     assert decision.kind is ProductTurnKind.WORKFLOW_BLOCKED
     assert "Load raw data before training." in decision.message
-    assert "Generate datasets before training." in decision.message
+    assert (
+        "Save a valid data splitting specification before training." in decision.message
+    )
     assert "Select a model before training." in decision.message
 
 
@@ -294,7 +296,7 @@ def test_enabled_command_reports_no_blocker_from_published_capability() -> None:
             "為什麼現在不能訓練?",
             CommandName.TRAIN,
             "Training",
-            "Generate datasets before training.",
+            "Save a valid data splitting specification before training.",
         ),
         (
             "為什麼無法評估模型?",

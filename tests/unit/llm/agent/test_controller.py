@@ -680,7 +680,7 @@ def test_blocked_request_is_presented_before_rag_or_model_generation(ctrl):
         return_value=UserRequestAdmission(
             UserRequestAdmissionAction.BLOCKED,
             command=CommandName.TRAIN,
-            message="Generate datasets before training.",
+            message="Save a valid data splitting specification before training.",
         )
     )
     rag = _use_rag_probe(ctrl)
@@ -701,7 +701,9 @@ def test_blocked_request_is_presented_before_rag_or_model_generation(ctrl):
     ctrl._generate_response.assert_not_called()
     presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
     assert presentation.kind is AssistantResponseKind.BLOCKED
-    assert "Generate datasets before training" in presentation.text
+    assert "Save a valid data splitting specification before training" in (
+        presentation.text
+    )
     assert ctrl.is_processing is False
 
 
@@ -1174,7 +1176,9 @@ class TestHandleUserInput:
                     CommandName.TRAIN.value: CommandCapability(
                         command_name=CommandName.TRAIN.value,
                         enabled=False,
-                        reasons=["Generate datasets before training."],
+                        reasons=[
+                            "Save a valid data splitting specification before training."
+                        ],
                     )
                 }
             ),
@@ -1190,7 +1194,8 @@ class TestHandleUserInput:
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
         assert (
             presentation.text
-            == "Training is not ready yet: Generate datasets before training."
+            == "Training is not ready yet: Save a valid data splitting "
+            "specification before training."
         )
         assert ctrl.history == [
             {"role": "user", "content": "Why can't I train?"},
@@ -2708,7 +2713,7 @@ class TestProcessToolCalls:
         capability = CommandCapability(
             command_name=CommandName.TRAIN.value,
             enabled=False,
-            reasons=["Generate datasets before training"],
+            reasons=["Save a valid data splitting specification before training"],
         )
         policy = MagicMock()
         policy.get.return_value = capability
@@ -2745,7 +2750,7 @@ class TestProcessToolCalls:
         capability = CommandCapability(
             command_name=CommandName.TRAIN.value,
             enabled=False,
-            reasons=["Generate datasets before training"],
+            reasons=["Save a valid data splitting specification before training"],
         )
         policy = MagicMock()
         policy.get.return_value = capability
@@ -2767,10 +2772,10 @@ class TestProcessToolCalls:
             result,
             tool_name="set_model",
             command_name=CommandName.TRAIN,
-            blocked_reason="Generate datasets before training",
+            blocked_reason="Save a valid data splitting specification before training",
             message=(
                 "Requested workflow step 'train' is not available: "
-                "Generate datasets before training"
+                "Save a valid data splitting specification before training"
             ),
         )
         assert result.capability == capability.to_dict()
@@ -2868,7 +2873,12 @@ class TestProcessToolCalls:
         ctrl._turn_orchestrator.active_publication = PromptToolPublication(
             tool_names=frozenset({"scan_source"}),
             backend_generation=13,
-            blocked_reasons=(("train", "Generate datasets before training"),),
+            blocked_reasons=(
+                (
+                    "train",
+                    "Save a valid data splitting specification before training",
+                ),
+            ),
         )
 
         matching = _evaluate_policy(
@@ -2884,7 +2894,9 @@ class TestProcessToolCalls:
 
         assert isinstance(matching, ToolCommandResult)
         assert matching.error_type == "precondition"
-        assert matching.blocked_reason == "Generate datasets before training"
+        assert matching.blocked_reason == (
+            "Save a valid data splitting specification before training"
+        )
         assert isinstance(unrelated, ToolCommandResult)
         assert unrelated.error_type == "tool_not_published"
 
@@ -4105,6 +4117,7 @@ class TestOnUserConfirmed:
     ):
         from XBrainLab.backend.application import (
             ConfigureTrainingCommand,
+            SaveDatasetSplitCommand,
             get_application_service,
         )
         from XBrainLab.backend.study import Study
@@ -4112,10 +4125,20 @@ class TestOnUserConfirmed:
         from XBrainLab.llm.tools.application_surface import ToolAvailabilityContext
 
         study = Study()
-        service = get_application_service(study)
         runtime_study = cast(Any, study)
         runtime_study.loaded_data_list = [object()]
-        runtime_study.datasets = [object()]
+        epoch_data = MagicMock()
+        epoch_data.__len__.return_value = 2
+        epoch_data.data = None
+        epoch_data.event_id = {"Left": 0, "Right": 1}
+        epoch_data.sfreq = None
+        runtime_study.data_manager.epoch_data = epoch_data
+        service = get_application_service(study)
+        saved = service.execute(SaveDatasetSplitCommand(split_strategy="trial"))
+        assert saved.ok is True
+        assert saved.state.dataset.split_spec_saved is True
+        assert saved.state.dataset.split_materialized is False
+        assert runtime_study.datasets == []
         configured = service.execute(
             ConfigureTrainingCommand(
                 model_name="EEGNet",
@@ -4136,7 +4159,9 @@ class TestOnUserConfirmed:
         assert prompt_context.availability.command_name == CommandName.TRAIN.value
         assert prompt_context.state is not None
         assert prompt_context.availability.enabled is True
-        assert service.get_view_publication().state.pipeline_stage == "dataset_ready"
+        state = service.get_view_publication().state
+        assert state.dataset.split_spec_saved is True
+        assert state.dataset.split_materialized is False
         _begin_confirmation(
             ctrl,
             _pending_decision("start_training", {}, context=prompt_context),
@@ -5035,7 +5060,10 @@ class TestProcessToolCallsConfirmation:
         assert isinstance(result, ToolCommandResult)
         assert result.ok is False
         assert result.error_type == "precondition"
-        assert "Generate datasets before training." in result.message
+        assert (
+            "Save a valid data splitting specification before training."
+            in result.message
+        )
         assert result.capability is not None
         assert result.capability["enabled"] is False
         ctrl._generate_response.assert_not_called()
@@ -5051,7 +5079,7 @@ class TestProcessToolCallsConfirmation:
             availability=ToolAvailability(
                 tool_name="start_training",
                 enabled=False,
-                reasons=("Generate datasets before training.",),
+                reasons=("Save a valid data splitting specification before training.",),
                 command_name="train",
             ),
             state=state,
@@ -5512,7 +5540,7 @@ class TestPipelineGate:
         assert "load_data" not in summary
 
     def test_train_blocked_until_backend_ready(self, ctrl):
-        """Train is blocked until dataset/model/training options exist."""
+        """Train is blocked until raw data, split, model, and options exist."""
         from XBrainLab.backend.study import Study
 
         ctrl.study = Study()
@@ -5525,7 +5553,10 @@ class TestPipelineGate:
         assert not outcome.success
         assert result.ok is False
         assert result.command_name == "train"
-        assert "Generate datasets before training" in result.message
+        assert (
+            "Save a valid data splitting specification before training"
+            in result.message
+        )
 
     def test_mapped_tool_uses_application_command_result(self, ctrl):
         """Mapped agent tools can bypass legacy string results."""

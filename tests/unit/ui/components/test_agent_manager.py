@@ -3991,7 +3991,7 @@ class TestAgentManagerMethods:
 
         assert "Training is not available yet" in visible
         assert "Load raw data before training" in visible
-        assert "Generate datasets before training" in visible
+        assert "Save a valid data splitting specification before training" in visible
         assert "Tool Output:" not in visible
         assert "command_name" not in visible
         assert manager.chat_panel.empty_state_widget.accessibleDescription() == (

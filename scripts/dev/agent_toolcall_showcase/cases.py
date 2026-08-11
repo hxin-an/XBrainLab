@@ -226,10 +226,10 @@ SHOWCASE_CASES: tuple[ShowcaseCase, ...] = (
     ),
     ShowcaseCase(
         case_id="split.generate_trial",
-        title="Build a trial-split dataset",
+        title="Save a trial-split specification",
         area="split",
         prompt=(
-            "Build an individual training dataset with a trial split, "
+            "Create an individual dataset split by trial, with "
             "20 percent validation, and 20 percent test data."
         ),
         tool_name="configure_dataset_split",
@@ -240,8 +240,9 @@ SHOWCASE_CASES: tuple[ShowcaseCase, ...] = (
             "test_ratio": 0.2,
         },
         preparation="epoched",
+        confirmation="approve",
         expected_changed_state=("datasets_changed",),
-        tags=("split", "dataset", "success"),
+        tags=("split", "confirmation", "deferred", "success"),
     ),
     ShowcaseCase(
         case_id="settings.model_approved",

@@ -65,6 +65,10 @@ def test_complete_training_case_approves_and_publishes_exact_values(
 
     before = result["state_before"]["training"]
     after = result["state_after"]["training"]
+    dataset_before = result["state_before"]["dataset"]
+    assert dataset_before["split_spec_saved"] is True
+    assert dataset_before["split_materialized"] is False
+    assert dataset_before["available"] is False
     assert before["model_name"] == "EEGNet (XBrainLab)"
     assert before["training_option"]["epoch"] == 1
     assert before["training_option"]["batch_size"] == 4

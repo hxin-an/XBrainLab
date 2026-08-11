@@ -660,6 +660,28 @@ def test_real_granite_initialization_failure_never_falls_back(
     assert "/home/private" not in rendered
 
 
+def test_split_case_uses_confirmation_and_saves_deferred_specification(
+    tmp_path: Path,
+) -> None:
+    case = _case("split.generate_trial")
+
+    payload = ShowcaseRunner(
+        output_dir=tmp_path / "showcase",
+        selector=DeterministicSelector(),
+    ).run([case])
+    result = payload["cases"][0]
+
+    assert result["pass"] is True, result["failures"]
+    assert case.confirmation == "approve"
+    assert result["confirmation"]["kind"] == "setting_change"
+    assert result["confirmation"]["resolution"] == "approved"
+    assert result["confirmation"]["correlation_valid"] is True
+    dataset = result["state_after"]["dataset"]
+    assert dataset["split_spec_saved"] is True
+    assert dataset["split_materialized"] is False
+    assert dataset["available"] is False
+
+
 def test_real_boundaries_cover_success_block_confirmation_stale_and_retry(
     tmp_path: Path,
 ) -> None:

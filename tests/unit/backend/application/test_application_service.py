@@ -3870,7 +3870,7 @@ def test_apply_interpretation_honors_interval_end_field(
     service.dataset.import_files = MagicMock(return_value=(1, []))
     service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
 
-    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    scan_result = service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
         PreviewInterpretationCommand(
             choices={
@@ -3893,6 +3893,7 @@ def test_apply_interpretation_honors_interval_end_field(
     service.execute(ValidateInterpretationCommand())
     apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
 
+    assert scan_result.diagnostics["scan_result"]["source_kind"] == "folder"
     assert apply_result.ok is True
     events, event_id = raw.get_event_list()
     np.testing.assert_array_equal(
@@ -3909,7 +3910,7 @@ def test_apply_interpretation_honors_interval_end_field(
     assert list(annotations.description) == ["Left hand", "Right hand"]
     epoch_hint = raw.get_runtime_detail("data_interpretation_epoch_hint")
     assert isinstance(epoch_hint, dict)
-    assert epoch_hint["source"] == "BIDS events.tsv"
+    assert epoch_hint["source"] == "Loaded label file"
     assert epoch_hint["placement_method"] == "interval"
     assert epoch_hint["label_field"] == "label"
     assert epoch_hint["time_field"] == "onset"

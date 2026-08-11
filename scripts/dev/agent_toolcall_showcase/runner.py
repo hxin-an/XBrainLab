@@ -12,6 +12,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from XBrainLab.backend.application import (
+    DatasetSplitPreviewRequest,
+    DatasetSplitSpecification,
+)
 from XBrainLab.backend.application.runtime import get_application_service
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.agent.assembler import ContextAssembler
@@ -239,8 +243,27 @@ class WorkflowHarness:
                 )
             )
             state = self.service.get_state()
-        if target >= 2 and not state.interpretation.has_candidate:
-            trace.append(self._setup_command("preview_interpretation", {}))
+        needs_reviewed_event_timing = bool(
+            target >= 4 and not state.interpretation.has_applied_interpretation
+        )
+        if target >= 2 and (
+            not state.interpretation.has_candidate or needs_reviewed_event_timing
+        ):
+            preview_params: dict[str, Any] = {}
+            if needs_reviewed_event_timing:
+                preview_params = {
+                    "choices": {
+                        "selected_eeg_files": [str(self.source_path)],
+                        "internal_event_selection": {
+                            "label_event_codes": ["left", "right"],
+                            "class_map": {"left": "left", "right": "right"},
+                        },
+                        "label_carrier": "embedded_events",
+                        "event_roles": {"internal_events": "class cue"},
+                        "class_map": {"1": "left", "2": "right"},
+                    }
+                }
+            trace.append(self._setup_command("preview_interpretation", preview_params))
             state = self.service.get_state()
         if target >= 3 and not state.interpretation.has_validation_decision:
             trace.append(self._setup_command("validate_interpretation", {}))
@@ -277,16 +300,51 @@ class WorkflowHarness:
                 )
             )
             state = self.service.get_state()
-        if target >= 7 and not state.active_dataset.has_datasets:
+        if target >= 7 and not state.active_dataset.has_saved_split:
+            split_params = {
+                "training_mode": "individual",
+                "split_strategy": "trial",
+                "val_ratio": 0.2,
+                "test_ratio": 0.2,
+            }
+            generation = self.publication().generation
+            specification = DatasetSplitSpecification.from_payload(
+                {
+                    "train_type": "Individual",
+                    "is_cross_validation": False,
+                    "val_splitters": [
+                        {
+                            "split_type": "By Trial",
+                            "split_unit": "Ratio",
+                            "value": "0.2",
+                            "is_option": True,
+                        }
+                    ],
+                    "test_splitters": [
+                        {
+                            "split_type": "By Trial",
+                            "split_unit": "Ratio",
+                            "value": "0.2",
+                            "is_option": True,
+                        }
+                    ],
+                }
+            )
+            preview = self.service.get_dataset_split_preview(
+                DatasetSplitPreviewRequest(
+                    request_id="showcase-preparation-split-preview",
+                    publication_generation=generation,
+                    specification=specification,
+                )
+            )
             trace.append(
                 self._setup_command(
                     "configure_dataset_split",
-                    {
-                        "training_mode": "individual",
-                        "split_strategy": "trial",
-                        "val_ratio": 0.2,
-                        "test_ratio": 0.2,
-                    },
+                    authorize_assistant_setting_change(
+                        "configure_dataset_split",
+                        {**split_params, "preview_receipt": preview.receipt},
+                        publication_generation=generation,
+                    ),
                 )
             )
             state = self.service.get_state()

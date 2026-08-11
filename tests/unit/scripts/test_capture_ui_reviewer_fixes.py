@@ -120,13 +120,16 @@ def test_saliency_capture_factory_builds_requested_full_content_state(
 
 
 @pytest.mark.parametrize(
-    ("cross_validation", "expected_rows", "expected_test_unit"),
-    [(False, 1, "Ratio"), (True, 5, "K Fold")],
+    ("cross_validation", "expected_split_labels", "expected_test_unit"),
+    [
+        (False, ["Holdout"], "Ratio"),
+        (True, [f"Fold {index}" for index in range(1, 6)], "K Fold"),
+    ],
 )
 def test_data_splitting_step_two_capture_factory_builds_representative_states(
     qapp,
     cross_validation,
-    expected_rows,
+    expected_split_labels,
     expected_test_unit,
 ) -> None:
     dialog = capture_script._data_splitting_step_two_dialog(
@@ -135,7 +138,10 @@ def test_data_splitting_step_two_capture_factory_builds_representative_states(
     try:
         _settle(qapp, dialog)
         assert dialog.tree is not None
-        assert dialog.tree.topLevelItemCount() == expected_rows
+        assert [
+            dialog.tree.topLevelItem(row).text(0)
+            for row in range(dialog.tree.topLevelItemCount())
+        ] == expected_split_labels
         assert dialog.test_widgets[0][0].currentText() == expected_test_unit
         assert dialog.btn_confirm is not None and dialog.btn_confirm.isEnabled()
         assert dialog.rect().contains(

@@ -210,10 +210,10 @@ def test_build_dataset_validation_rows_reports_checked_in_and_public_layers(
     assert rows[2].training_smoke == "separate strict cross-source runner"
     assert "BBCI" in rows[2].source_families
     assert "PhysioNet" in rows[2].source_families
-    assert rows[3].layer == "public local-only epoch-only fixtures"
+    assert rows[3].layer == "public local-only import/preprocess boundary fixtures"
     assert rows[3].representative_data == "EEGLAB .set, CNT"
     assert rows[3].dataset_generation == "no; epoch creation checked separately"
-    assert rows[3].training_smoke == "epoch-only by contract"
+    assert rows[3].training_smoke == "supervised epoch blocked by contract"
     assert rows[4].layer == "public local-only import-only fixtures"
     assert "PhysioNet" in rows[4].source_families
     assert rows[5].layer == "public local-only BIDS EEG fixture"
@@ -236,7 +236,7 @@ def test_render_markdown_includes_current_truth(tmp_path: Path):
     assert "# Dataset Validation Matrix" in rendered
     assert "checked-in core GDF + MAT" in rendered
     assert "public local-only event-rich fixtures" in rendered
-    assert "public local-only epoch-only fixtures" in rendered
+    assert "public local-only import/preprocess boundary fixtures" in rendered
     assert "public local-only BIDS EEG fixture" in rendered
     assert "Required Multi-Dataset Gate" in rendered
     assert "Real Data Interpretation Lifecycle" in rendered
@@ -257,16 +257,20 @@ def test_dataset_validation_rows_ignore_empty_public_fixture(tmp_path: Path):
     assert rows[2].training_smoke == "separate strict cross-source runner"
 
 
-def test_cnt_fixture_is_reported_as_epoch_only_not_training(tmp_path: Path):
+def test_cnt_fixture_is_reported_as_import_preprocess_boundary_not_training(
+    tmp_path: Path,
+):
     _touch(tmp_path / "tests" / "fixtures" / "data" / "public" / "scan41_short.cnt")
 
     rows = build_dataset_validation_rows(tmp_path)
 
     assert rows[2].representative_data == "not downloaded"
     assert rows[2].training_smoke == "separate strict cross-source runner"
+    assert rows[3].layer == "public local-only import/preprocess boundary fixtures"
     assert rows[3].representative_data == "CNT"
     assert rows[3].dataset_generation == "no; epoch creation checked separately"
-    assert rows[3].training_smoke == "epoch-only by contract"
+    assert rows[3].training_smoke == "supervised epoch blocked by contract"
+    assert "too small for class-balanced training" in rows[3].notes
 
 
 def test_required_dataset_matrix_passes_only_with_source_diverse_fixtures(

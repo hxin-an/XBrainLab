@@ -570,14 +570,17 @@ def test_training_settings_unexpected_exception_uses_stable_warning(
     monkeypatch,
     caplog,
 ) -> None:
-    from XBrainLab.ui.dialogs.training import training_setting_dialog
+    from XBrainLab.ui.dialogs.training import (
+        device_setting_dialog,
+        training_setting_dialog,
+    )
 
     monkeypatch.setattr(
         training_setting_dialog,
         "get_optimizer_classes",
         dict,
     )
-    monkeypatch.setattr(training_setting_dialog, "get_device_count", lambda: 0)
+    monkeypatch.setattr(device_setting_dialog, "get_device_count", lambda: 0)
     controller = MagicMock()
     controller.get_training_option.return_value = None
     dialog = training_setting_dialog.TrainingSettingDialog(None, controller)
