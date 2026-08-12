@@ -17,11 +17,9 @@ from .config import RAGConfig
 from .example_policy import is_primary_workflow_example
 
 try:
-    from langchain.docstore.document import Document as _Document
-    from langchain_community.embeddings import (
-        HuggingFaceEmbeddings as _HuggingFaceEmbeddings,
-    )
-    from langchain_community.vectorstores import Qdrant as _Qdrant
+    from langchain_core.documents import Document as _Document
+    from langchain_huggingface import HuggingFaceEmbeddings as _HuggingFaceEmbeddings
+    from langchain_qdrant import Qdrant as _Qdrant
     from qdrant_client import QdrantClient as _QdrantClient
     from qdrant_client.http import models as _rest
 except ImportError:

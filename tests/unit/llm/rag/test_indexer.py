@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
-from langchain.docstore.document import Document
+from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest

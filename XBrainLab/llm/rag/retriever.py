@@ -24,8 +24,8 @@ from XBrainLab.llm.agent.context_encoding import (
 from XBrainLab.llm.agent.intent import infer_user_intent
 
 if TYPE_CHECKING:
-    from langchain_community.embeddings import HuggingFaceEmbeddings
-    from langchain_community.vectorstores import Qdrant
+    from langchain_huggingface import HuggingFaceEmbeddings
+    from langchain_qdrant import Qdrant
     from qdrant_client import QdrantClient
 
 from .bm25 import BM25Index
@@ -194,7 +194,7 @@ class RAGRetriever:
 
     @staticmethod
     def _create_embeddings() -> HuggingFaceEmbeddings:
-        from langchain_community.embeddings import HuggingFaceEmbeddings
+        from langchain_huggingface import HuggingFaceEmbeddings
 
         if not RAGConfig.embedding_cache_ready():
             raise RuntimeError("Pinned RAG embedding cache is unavailable.")
@@ -211,7 +211,7 @@ class RAGRetriever:
         client: QdrantClient,
         embeddings: HuggingFaceEmbeddings,
     ) -> Qdrant:
-        from langchain_community.vectorstores import Qdrant
+        from langchain_qdrant import Qdrant
 
         return Qdrant(
             client=client,
