@@ -1,5 +1,6 @@
 import threading
 import time
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, ClassVar, cast
 from unittest.mock import MagicMock, patch
@@ -13,7 +14,9 @@ from PyQt6.QtWidgets import QDockWidget, QMessageBox, QWidget
 from XBrainLab.backend.application import StopTrainingCommand
 from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.application_publication_renderer import (
+    DESKTOP_PUBLICATION_RENDER_MAX_ATTEMPTS,
     ApplicationPublicationRenderLedger,
+    DesktopApplicationPublicationRenderer,
 )
 from XBrainLab.ui.async_command_runner import application_command_registry
 from XBrainLab.ui.main_window import MainWindow
@@ -843,6 +846,79 @@ def test_runtime_wrapper_panel_blocks_desktop_revision_until_ledger_commits(
         assert panel._application_render_ledger.record_rendered(publication) is True
         assert main_window._render_application_view_publication(publication) is True
     finally:
+        service.close()
+
+
+def test_desktop_renderer_recovers_from_long_panel_deferral_without_false_error(
+    main_window,
+):
+    from XBrainLab.backend.application.service import ApplicationService
+    from XBrainLab.backend.study import Study
+    from XBrainLab.ui.components.info_panel_service import InfoPanelService
+
+    study = Study()
+    service = ApplicationService(study)
+    initial = service.get_view_publication()
+    first = replace(
+        initial,
+        generation=initial.generation + 1,
+        revision=initial.revision + 1,
+    )
+    latest = replace(
+        first,
+        generation=first.generation + 1,
+        revision=first.revision + 1,
+    )
+    panel = QWidget(main_window)
+    ledger = ApplicationPublicationRenderLedger(
+        panel_name="MainWindow regression panel",
+        render_publication=lambda _publication: None,
+        commit_publication=lambda _publication: None,
+        parent=panel,
+    )
+    panel._application_render_ledger = ledger
+    main_window.dataset_panel = panel
+    main_window._loaded_panel_indices.add(0)
+    main_window.info_service = InfoPanelService(study)
+    renderer = DesktopApplicationPublicationRenderer(
+        service=service,
+        render_publication=main_window._render_application_view_publication,
+        parent=main_window,
+    )
+    main_window._application_publication_renderer = renderer
+    acknowledge = MagicMock(wraps=service.acknowledge_view_publication_delivery)
+    service.acknowledge_view_publication_delivery = acknowledge
+
+    try:
+        with patch(
+            "XBrainLab.ui.application_publication_renderer.logger.error"
+        ) as log_error:
+            assert renderer._render_and_acknowledge(first) is not True
+            for _ in range(DESKTOP_PUBLICATION_RENDER_MAX_ATTEMPTS):
+                assert renderer._attempt_pending_render() is False
+
+            assert renderer.pending_publication == first
+            assert renderer.retry_timer.isActive() is True
+            acknowledge.assert_not_called()
+            assert (
+                service._view_event_publisher.has_delivered_revision(first.revision)
+                is False
+            )
+
+            assert renderer._render_and_acknowledge(latest) is not True
+            assert renderer.pending_publication == latest
+            assert ledger.record_rendered(latest) is True
+            assert renderer._attempt_pending_render() is True
+
+            acknowledge.assert_called_once()
+            assert acknowledge.call_args.args[0] == latest.revision
+            assert service._view_event_publisher.has_delivered_revision(latest.revision)
+            assert renderer.pending_publication is None
+            log_error.assert_not_called()
+    finally:
+        renderer.cleanup()
+        ledger.cleanup()
+        main_window._application_publication_renderer = None
         service.close()
 
 
