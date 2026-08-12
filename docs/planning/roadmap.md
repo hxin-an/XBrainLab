@@ -166,6 +166,84 @@ balanced-accuracy / compatible objective scorer；split 與 preprocessing fold l
 once；History / Hyperparameters selection；100% / 125% / 150% DPI；以及 RTX 5070 Ti 上 wall time、RAM、
 VRAM cleanup、UI responsiveness 和安全停止延遲。取得實測前不得宣稱可在某時間內完成多少 trials。
 
+## Deferred Braindecode Release Catalog {#deferred-braindecode-release-catalog}
+
+> 狀態：`target design recorded; not implemented`（`2026-08-12`）。目前產品仍使用手寫的
+> curated Braindecode catalog；本節不表示 release snapshot、自動 qualification、官方 checkpoint
+> 下載或新版 model UI 已存在。等目前產品工作完成並合併後，才從當時最新 `main` 建立獨立短
+> branch 實作。
+
+未來不再由開發者逐一把 Braindecode model class 複製到 XBrainLab 名單。每次升級並鎖定
+Braindecode 版本時，由 release-time generator 讀取該版本的 `models_dict`、constructor / generated
+config 和 `summary.csv`，完成資格檢查後產生 deterministic product snapshot。App 啟動只讀這份
+輕量 snapshot；直到真正建立模型時才 lazy import Braindecode，不依使用者環境做 runtime catalog
+discovery。
+
+### Catalog 與可選模型 contract
+
+- Snapshot 綁定 schema version、Braindecode exact version / package hash、constructor fingerprint 與
+  snapshot digest。UI、ApplicationService、Assistant tool schema、recipe 和 Timed Search 共用同一份
+  stable model identity，不再各自維護模型 enum。
+- `models_dict` 只作 discovery seed；constructor / generated config 提供 parameter type 和 default，
+  `summary.csv` 只補 application、type、modality、categorization 與參考 sampling frequency。這些
+  upstream metadata 都不是 XBrainLab support claim 或 executable compatibility proof。
+- 第一版只收錄能接受目前 3-D EEG epoch、輸出 per-epoch classification logits，並通過現有
+  supervised classification training / evaluation contract 的模型。Embedding、CTC、sEMG、不同
+  task semantics、缺少依賴或無法安全估算資源的模型不得進入 selectable snapshot。
+- 產品介面只顯示 `qualified / selectable` 模型，不顯示灰色或實驗性 unsupported entries。
+  Generator / CI 仍須為每個 upstream model 留下 qualified 或 rejected 結果與明確原因，不能無聲
+  遺漏。
+- Catalog query 依目前 reviewed epoch 的 class count、channels、samples、sfreq、channel names、
+  `chs_info` / montage 與資源能力做 admission。同一模型可存在於 release snapshot，卻因目前資料
+  contract 不相容而不出現在當次可選清單。
+
+### Model parameters 與設定
+
+- `n_outputs`、`n_chans`、`n_times`、`sfreq`、`input_window_seconds`、`chs_info` 等 signal-derived
+  欄位由 Backend 從 reviewed dataset context 提供，永遠不作一般使用者輸入或搜尋欄位。
+- Model Setup 預設顯示經驗證的常用 typed scalar / finite-choice parameters，其餘安全參數收在
+  `Advanced`。Python class、callable、任意 object、不可序列化或缺乏有效 validation 的參數固定
+  使用已驗證 default，不以 free-form 字串暴露。
+- 每個模型的 Timed Search space 只能來自 snapshot 明確宣告的 type、range、scale、choice、
+  conditional constraint 與 resource hard bound；不得從 constructor default 自動猜搜尋範圍。
+- 儲存 Model Setup 前，Backend 使用目前 dataset context 建立 detached candidate，驗證 constructor、
+  forward output shape、serialization 與 resource preview。失敗不得改變 current training setup。
+
+### 官方 pretrained checkpoint contract
+
+- 官方 checkpoint 使用獨立、受控的 manifest；只接受經審查的官方來源，並鎖定 repo、exact
+  revision、file hash、license、download size、model fingerprint、task、sfreq、channel / montage
+  contract 和允許不同的 classification-head keys。`from_pretrained()` 存在不代表該模型有已驗證
+  官方權重。
+- 同一模型在 UI 只出現一次，初始化方式提供 `Random initialization`、相容的
+  `Official pretrained` 與既有 `Local weights`。不接受任意 Hub repo ID，也不 silent fallback 到
+  random initialization。
+- 官方權重只在使用者選用並確認來源、license、大小、destination 與相容條件後按需下載。
+  使用可設定的獨立 EEG model cache；開發機可設在 D 槽，正式 Windows 安裝不得硬編磁碟代號。
+  預設 cache 上限為 `20 GB`，並提供取消、離線錯誤、disk preflight、hash verification、atomic
+  publication、失敗清理及逐 checkpoint / 全 cache 清理。
+- 第一版 checkpoint 只作全模型 fine-tune 初始化，不新增 inference-only、backbone freeze 或 staged
+  unfreezing workflow。輸出類別不同時，UI 必須明示 `pretrained backbone + new classification head`；
+  除 manifest 允許重建的 head keys 外，任何 missing / unexpected backbone key 都 fail closed。
+- Recipe / result 保存 checkpoint revision / hash、原始與目前 class count、head rebuild、實際載入
+  contract、catalog digest 和 model fingerprint，不能只記一個會漂移的 display name。
+
+### 升級、實作切片與驗證底線
+
+- 舊 project / recipe 的 catalog identity 與目前 release 不一致時，既有結果仍可讀；重新訓練前
+  必須顯示差異並明確遷移，遷移後建立新的 experiment lineage。不得因新版本 constructor 看似
+  相容就靜默替換。
+- 未來依序交付：release generator / version adapter / deterministic snapshot；Backend-owned catalog
+  與手寫 enum 移除；typed Common / Advanced UI 與 dataset admission；官方 checkpoint lifecycle；
+  recipe migration 和跨版本 lineage。
+- 驗收至少包含 snapshot reproducibility、upstream model completeness、qualified / rejected oracle、
+  lazy import、UI / Backend / Assistant / Timed Search identity parity、constructor / forward / backward /
+  serialization probes、montage / sfreq / output negative cases、resource timeout / OOM，以及 checkpoint
+  offline / cancel / disk-full / cache-cap / hash-tamper / revision / backbone-mismatch / head-rebuild / cleanup。
+- UI 另需 Common / Advanced、download、failure、head rebuild 與 migration artifacts，以及 Windows
+  路徑含空格 / 非 ASCII、first run、repeated launch 和 RTX 5070 Ti 真實 fine-tune acceptance。這些
+  evidence 完成前不可宣稱 full Braindecode model support 或 official pretrained support。
+
 ## MCP 決策
 
 MCP 不再是 active roadmap。
@@ -188,3 +266,4 @@ client matrix 和 validation cost；不能從舊 roadmap 自動復活。
 - Workflow Recipe DSL。
 - Training Model Registry / Model Node Visualization。
 - Training timed hyperparameter search（當前只交付 deterministic recommended defaults）。
+- Braindecode release catalog / official checkpoint integration（目前只有 curated catalog）。

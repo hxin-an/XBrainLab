@@ -87,9 +87,22 @@ worker、storage 或驗證細節。
 - 不要求人工驗過每個 MOABB dataset。Catalog entries 都可嘗試，但以
   `Catalog` / `Compatibility passed` / `End-to-end verified` / `Curated` 分開實際證據。
 
-目前只落盤設計，不開始產品程式實作。等正在進行的 GUI 工作交付、其餘兩項
-GUI 想法討論完並再次確認優先順序後，才從最新 `main` 開短 branch 分段實作。
+目前只落盤設計，不開始產品程式實作。等正在進行的 GUI 工作交付，並再次確認三項後續
+功能的施工優先順序後，才從最新 `main` 開短 branch 分段實作。
 在此之前，不可將這份 target design 寫成 current MOABB support claim。
+
+## 已記錄的後續設計：Braindecode Release Catalog
+
+第三個後續功能的完整產品設計已記錄在
+[Roadmap 的 deferred Braindecode contract](roadmap.md#deferred-braindecode-release-catalog)。未來在
+升級並鎖定 Braindecode 版本時，以 release-time discovery / qualification 產生 deterministic
+snapshot；只有符合目前 supervised EEG classification 與當次 dataset context 的模型會出現在
+UI、Backend、Assistant 與 Timed Search。
+
+官方 pretrained checkpoint 另用 exact revision / hash / license manifest 管理，選用時才下載，
+預設使用獨立 `20 GB` cache；第一版只作明示 provenance 的全模型 fine-tune 初始化。這仍是
+deferred design，不代表目前已移除手寫 catalog、已有自動 qualification、checkpoint downloader
+或跨版本 migration。等目前產品工作完成並合併後，才從最新 `main` 開獨立短 branch 實作。
 
 ## 施工順序
 
@@ -129,6 +142,7 @@ GUI 想法討論完並再次確認優先順序後，才從最新 `main` 開短 b
 | MOABB dataset journeys | Batch 1 先完成 3 個不同 source/paradigm 的真實 dataset；長期 campaign 目標約 80 個 MOABB dataset cases。每個 case 都使用 XBrainLab product path 走 load -> labels/metadata -> preprocess -> epoch -> split -> train -> evaluation -> saliency。未達品質門檻時先診斷資料量、切分與 validation-only tuning，不以反覆查看 test 或直接放棄收尾。 | pinned source/license/identity/subject/run/seed/recipe/metrics/saliency manifest，可 resume，且 batch 1 至少一個 case 非 GDF、一個非 MI。Campaign runner 必須 dataset-agnostic，後續可逐批擴到約 80 cases。 | Batch 1 in progress (3 cases) |
 | MOABB product acquisition | 以 `Browse & load` 將 pinned MOABB catalog / subject acquisition / BrainVision BIDS materialization 接回同一套 Data Interpretation review，不把 dataset policy 寫進 wizard。 | Canonical target design 已記錄；依設計的 slices 建立 exact worker lock、fake-provider lifecycle、folder/BIDS regression、真實 MOABB evidence 與 Windows acceptance。 | Design recorded; implementation deferred until current GUI work and remaining GUI discussions close |
 | Training Setup / Timed Search | Data Split 後保留 Manual Training，另提供可多模型、限時、公平資格篩選並自動完成 winner final training 的獨立路徑；search trials 不讀 test，只有 Final row 可進 Evaluation / Saliency。 | Canonical deferred design 已記錄；未來依序完成 composed Setup、typed search contract、isolated coordinator、test-zero-access runner、History / Hyperparameters UI 與 real-GPU acceptance。 | Design recorded; implementation deferred until current product work merges |
+| Braindecode release catalog | 升級 pinned Braindecode 時自動 discovery / qualification 並產生 deterministic selectable snapshot；產品只顯示與目前資料相容的 supervised EEG classification models，官方 checkpoint 另以受控 manifest 按需下載。 | Canonical deferred design 已記錄；未來完成 version adapter、snapshot reproducibility、single backend catalog、typed parameter UI、checkpoint cache lifecycle、recipe migration 與 Windows / GPU acceptance。 | Design recorded; implementation deferred until current product work merges |
 | Case-study evidence | 每個 dataset 一頁，只顯示實際重跑的 screenshots、training result 與 limitation，不把 format coverage 冒充 dataset diversity。 | manifest 和頁面數字可對應 exact artifacts；主 agent 逐圖檢查。 | Pending pipeline |
 | Integration and review | Agent/runtime 與 user-site/evidence 使用明確的 stacked branches，不污染已綠的 EEG workflow candidate。 | 主 agent 重讀 diff、跑 combined tests、UI/product/architecture reviewers 重審，再 commit/push。 | Pending workers |
 
@@ -190,3 +204,5 @@ aggregation 在同一 exact head 的 GitHub Actions 完成；本機 runner tests
   此階段只維護上述 canonical target design。
 - 不在目前產品工作完成並合併前開始 Training Setup / Timed Search implementation；此階段只維護
   Roadmap 的 deferred target design，不新增 Optuna dependency、commands、trial storage 或 UI。
+- 不在目前產品工作完成並合併前開始 Braindecode release catalog implementation；此階段只記錄
+  deferred contract，不移除手寫 enum、不建立 generator / downloader、不下載 checkpoint。
