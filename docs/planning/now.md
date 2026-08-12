@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-08-11`
+最後更新：`2026-08-12`
 
 這頁只保存 active delivery context、近期施工順序和 exit condition。舊
 [Product Quality Audit](../records/product_quality_audit_2026-07-30.md) 保留為此次 main checkpoint
@@ -59,6 +59,30 @@ preflight 仍是最後 authority。
 未來的計時搜尋必須依 [Roadmap](roadmap.md) 的 deferred contract 獨立交付；它不是本輪
 candidate 的完成條件，也不可由現有 recommended-defaults UI 暗示為已有功能。
 
+## 已記錄的後續設計：MOABB Browse & load
+
+MOABB public dataset acquisition 的完整產品設計已記錄在
+[Data Interpretation 目標系統](../target/data_interpretation_system.md#moabb-managed-public-dataset-acquisition)。
+這是後續實作的單一完整 design authority；本頁只保存排程與狀態，不複製 command、
+worker、storage 或驗證細節。
+
+已鎖定的產品方向：
+
+- `Import folder` 自動區分 ordinary folder 與 BIDS root，保留 BIDS subject preselection；
+  invalid BIDS 不 silent fallback。
+- 原 `Import BIDS` 位置改為 `Browse & load`，可搜尋完整 pinned MOABB catalog、
+  選擇 subjects、下載、轉 BrainVision BIDS、資格檢查，再接回現有 Import wizard。
+- MOABB `1.5.0` 由 lazy isolated managed worker 執行，不升級或拖慢主程式的
+  NumPy 1.x science stack。開發期按需建 runtime，正式安裝包日後內附。
+- BIDS 持久保留，raw cache 可精確清理；首次使用確認 library location、
+  license 和資源上限。
+- 不要求人工驗過每個 MOABB dataset。Catalog entries 都可嘗試，但以
+  `Catalog` / `Compatibility passed` / `End-to-end verified` / `Curated` 分開實際證據。
+
+目前只落盤設計，不開始產品程式實作。等正在進行的 GUI 工作交付、其餘兩項
+GUI 想法討論完並再次確認優先順序後，才從最新 `main` 開短 branch 分段實作。
+在此之前，不可將這份 target design 寫成 current MOABB support claim。
+
 ## 施工順序
 
 | 順序 | 工作 | Exit signal |
@@ -95,6 +119,7 @@ candidate 的完成條件，也不可由現有 recommended-defaults UI 暗示為
 | Data Import composition debt | 約 4,500 行 wizard dialog 不能再吸收 backend policy、scan 或 recipe truth；新的 MOABB / site 工作不得把 dataset-specific 規則寫回 UI。 | 本輪先用 architecture guard 阻擋新回流；真正拆分只用可回滾的獨立 refactor slice。 | Guard now; refactor later |
 | User-facing site | 另一個面向 EEG 使用者的 site source，不覆寫 developer docs；流程導航、限制與資料來源清楚。 | isolated strict MkDocs build、desktop/mobile screenshot review，不存在假 metrics 或 placeholder-as-evidence。 | In progress |
 | MOABB dataset journeys | Batch 1 先完成 3 個不同 source/paradigm 的真實 dataset；長期 campaign 目標約 80 個 MOABB dataset cases。每個 case 都使用 XBrainLab product path 走 load -> labels/metadata -> preprocess -> epoch -> split -> train -> evaluation -> saliency。未達品質門檻時先診斷資料量、切分與 validation-only tuning，不以反覆查看 test 或直接放棄收尾。 | pinned source/license/identity/subject/run/seed/recipe/metrics/saliency manifest，可 resume，且 batch 1 至少一個 case 非 GDF、一個非 MI。Campaign runner 必須 dataset-agnostic，後續可逐批擴到約 80 cases。 | Batch 1 in progress (3 cases) |
+| MOABB product acquisition | 以 `Browse & load` 將 pinned MOABB catalog / subject acquisition / BrainVision BIDS materialization 接回同一套 Data Interpretation review，不把 dataset policy 寫進 wizard。 | Canonical target design 已記錄；依設計的 slices 建立 exact worker lock、fake-provider lifecycle、folder/BIDS regression、真實 MOABB evidence 與 Windows acceptance。 | Design recorded; implementation deferred until current GUI work and remaining GUI discussions close |
 | Case-study evidence | 每個 dataset 一頁，只顯示實際重跑的 screenshots、training result 與 limitation，不把 format coverage 冒充 dataset diversity。 | manifest 和頁面數字可對應 exact artifacts；主 agent 逐圖檢查。 | Pending pipeline |
 | Integration and review | Agent/runtime 與 user-site/evidence 使用明確的 stacked branches，不污染已綠的 EEG workflow candidate。 | 主 agent 重讀 diff、跑 combined tests、UI/product/architecture reviewers 重審，再 commit/push。 | Pending workers |
 
@@ -152,3 +177,5 @@ aggregation 在同一 exact head 的 GitHub Actions 完成；本機 runner tests
 - 不把 automated dashboard、offscreen screenshots 或 launcher smoke 當成人工 acceptance。
 - 不實作 Training timed hyperparameter search；本輪只交付可保留使用者逐欄位編輯的 deterministic recommended defaults。
 - 不新增 planning 文件；新 current truth 回寫既有 canonical pages。
+- 不在目前 GUI 工作結案與其餘 GUI 想法討論前開始 MOABB product implementation；
+  此階段只維護上述 canonical target design。
