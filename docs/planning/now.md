@@ -59,6 +59,14 @@ preflight 仍是最後 authority。
 未來的計時搜尋必須依 [Roadmap](roadmap.md) 的 deferred contract 獨立交付；它不是本輪
 candidate 的完成條件，也不可由現有 recommended-defaults UI 暗示為已有功能。
 
+Timed Search 的 target design 已於 `2026-08-12` 定案並記錄在
+[Roadmap 的 deferred Training contract](roadmap.md#deferred-training-timed-search)：
+Data Split 後分成 Manual Training 與 Timed Search 兩條完整路徑；後者可由使用者選擇多模型、
+在總時間目標內完成公平 search 與 winner final training，test 只在 final model 評估一次，並沿用
+Training History 加上 `Hyperparameters` tab。這仍是 deferred design，不代表目前已安裝 Optuna、
+已有 search command、trial history 或自動模型選擇；等目前產品工作完成並合併後才從最新
+`main` 開獨立短 branch 實作。
+
 ## 已記錄的後續設計：MOABB Browse & load
 
 MOABB public dataset acquisition 的完整產品設計已記錄在
@@ -120,6 +128,7 @@ GUI 想法討論完並再次確認優先順序後，才從最新 `main` 開短 b
 | User-facing site | 另一個面向 EEG 使用者的 site source，不覆寫 developer docs；流程導航、限制與資料來源清楚。 | isolated strict MkDocs build、desktop/mobile screenshot review，不存在假 metrics 或 placeholder-as-evidence。 | In progress |
 | MOABB dataset journeys | Batch 1 先完成 3 個不同 source/paradigm 的真實 dataset；長期 campaign 目標約 80 個 MOABB dataset cases。每個 case 都使用 XBrainLab product path 走 load -> labels/metadata -> preprocess -> epoch -> split -> train -> evaluation -> saliency。未達品質門檻時先診斷資料量、切分與 validation-only tuning，不以反覆查看 test 或直接放棄收尾。 | pinned source/license/identity/subject/run/seed/recipe/metrics/saliency manifest，可 resume，且 batch 1 至少一個 case 非 GDF、一個非 MI。Campaign runner 必須 dataset-agnostic，後續可逐批擴到約 80 cases。 | Batch 1 in progress (3 cases) |
 | MOABB product acquisition | 以 `Browse & load` 將 pinned MOABB catalog / subject acquisition / BrainVision BIDS materialization 接回同一套 Data Interpretation review，不把 dataset policy 寫進 wizard。 | Canonical target design 已記錄；依設計的 slices 建立 exact worker lock、fake-provider lifecycle、folder/BIDS regression、真實 MOABB evidence 與 Windows acceptance。 | Design recorded; implementation deferred until current GUI work and remaining GUI discussions close |
+| Training Setup / Timed Search | Data Split 後保留 Manual Training，另提供可多模型、限時、公平資格篩選並自動完成 winner final training 的獨立路徑；search trials 不讀 test，只有 Final row 可進 Evaluation / Saliency。 | Canonical deferred design 已記錄；未來依序完成 composed Setup、typed search contract、isolated coordinator、test-zero-access runner、History / Hyperparameters UI 與 real-GPU acceptance。 | Design recorded; implementation deferred until current product work merges |
 | Case-study evidence | 每個 dataset 一頁，只顯示實際重跑的 screenshots、training result 與 limitation，不把 format coverage 冒充 dataset diversity。 | manifest 和頁面數字可對應 exact artifacts；主 agent 逐圖檢查。 | Pending pipeline |
 | Integration and review | Agent/runtime 與 user-site/evidence 使用明確的 stacked branches，不污染已綠的 EEG workflow candidate。 | 主 agent 重讀 diff、跑 combined tests、UI/product/architecture reviewers 重審，再 commit/push。 | Pending workers |
 
@@ -179,3 +188,5 @@ aggregation 在同一 exact head 的 GitHub Actions 完成；本機 runner tests
 - 不新增 planning 文件；新 current truth 回寫既有 canonical pages。
 - 不在目前 GUI 工作結案與其餘 GUI 想法討論前開始 MOABB product implementation；
   此階段只維護上述 canonical target design。
+- 不在目前產品工作完成並合併前開始 Training Setup / Timed Search implementation；此階段只維護
+  Roadmap 的 deferred target design，不新增 Optuna dependency、commands、trial storage 或 UI。
