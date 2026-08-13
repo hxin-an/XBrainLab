@@ -7,6 +7,7 @@ import json
 import os
 import re
 from collections.abc import Callable, Iterable
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import asdict, dataclass
 from dataclasses import field as dc_field
 from pathlib import Path
@@ -173,9 +174,12 @@ def bids_summary(
     discovered_files: Iterable[str | Path] | None = None,
     admitted_metadata_files: Iterable[str] | None = None,
     metadata_read_budget: BidsMetadataReadBudget | None = None,
-    on_metadata_unit_materialized: Callable[[], None] | None = None,
+    on_metadata_checkpoint: Callable[[], None] | None = None,
+    metadata_file_guard: Callable[[Path], AbstractContextManager[None]] | None = None,
 ) -> dict[str, Any]:
     """Summarize BIDS entities discovered during source scan."""
+    if materialize and on_metadata_checkpoint is not None:
+        on_metadata_checkpoint()
     discovered_values = None if discovered_files is None else list(discovered_files)
     discovered = _canonical_path_keys(discovered_values)
     admitted = _canonical_path_keys(admitted_metadata_files)
@@ -222,44 +226,60 @@ def bids_summary(
     channels_files = _unique_paths(
         row.get("channels_file") for row in layout if row.get("channels_file")
     )
+    if materialize and on_metadata_checkpoint is not None:
+        on_metadata_checkpoint()
 
     def _is_admitted(path: Path) -> bool:
         return admitted is None or _canonical_path_key(path) in admitted
 
-    participants = (
-        _read_tsv_rows(participants_file)
-        if materialize
-        and participants_file is not None
-        and _is_admitted(participants_file)
-        else []
-    )
-    if materialize and on_metadata_unit_materialized is not None:
-        on_metadata_unit_materialized()
+    def _guard(path: Path | None) -> AbstractContextManager[None]:
+        return (
+            metadata_file_guard(path)
+            if path is not None and metadata_file_guard is not None
+            else nullcontext()
+        )
+
+    if materialize and on_metadata_checkpoint is not None:
+        on_metadata_checkpoint()
+    with _guard(participants_file):
+        participants = (
+            _read_tsv_rows(participants_file)
+            if materialize
+            and participants_file is not None
+            and _is_admitted(participants_file)
+            else []
+        )
+    if materialize and on_metadata_checkpoint is not None:
+        on_metadata_checkpoint()
     admitted_channels = [item for item in channels_files if _is_admitted(Path(item))]
     read_budget = metadata_read_budget or BidsMetadataReadBudget()
-    if (
-        materialize
-        and dataset_description is not None
-        and _is_admitted(dataset_description)
-    ):
-        dataset, root_validation_issue = _read_bids_dataset_description(
-            dataset_description,
-            read_budget,
-        )
-    elif materialize and source_kind == "bids":
-        dataset = {}
-        root_validation_issue = (
-            "dataset_description.json is missing from the selected BIDS root."
-        )
-    else:
-        dataset = {}
-        root_validation_issue = ""
-    if materialize and on_metadata_unit_materialized is not None:
-        on_metadata_unit_materialized()
+    if materialize and on_metadata_checkpoint is not None:
+        on_metadata_checkpoint()
+    with _guard(dataset_description):
+        if (
+            materialize
+            and dataset_description is not None
+            and _is_admitted(dataset_description)
+        ):
+            dataset, root_validation_issue = _read_bids_dataset_description(
+                dataset_description,
+                read_budget,
+            )
+        elif materialize and source_kind == "bids":
+            dataset = {}
+            root_validation_issue = (
+                "dataset_description.json is missing from the selected BIDS root."
+            )
+        else:
+            dataset = {}
+            root_validation_issue = ""
+    if materialize and on_metadata_checkpoint is not None:
+        on_metadata_checkpoint()
     channel_status_summary = (
         _channel_status_summary(
             admitted_channels,
-            on_file_materialized=on_metadata_unit_materialized,
+            on_file_checkpoint=on_metadata_checkpoint,
+            file_guard=metadata_file_guard,
         )
         if materialize
         else {"total": 0, "good": 0, "bad": 0, "other": 0}
@@ -522,21 +542,26 @@ def _read_json_object(path: Path) -> dict[str, Any]:
 def _channel_status_summary(
     channels_files: list[str],
     *,
-    on_file_materialized: Callable[[], None] | None = None,
+    on_file_checkpoint: Callable[[], None] | None = None,
+    file_guard: Callable[[Path], AbstractContextManager[None]] | None = None,
 ) -> dict[str, int]:
     summary = {"total": 0, "good": 0, "bad": 0, "other": 0}
     for file_path in channels_files:
-        for row in _read_tsv_rows(Path(file_path)):
-            summary["total"] += 1
-            status = str(row.get("status") or "").strip().lower()
-            if status == "good":
-                summary["good"] += 1
-            elif status == "bad":
-                summary["bad"] += 1
-            else:
-                summary["other"] += 1
-        if on_file_materialized is not None:
-            on_file_materialized()
+        if on_file_checkpoint is not None:
+            on_file_checkpoint()
+        path = Path(file_path)
+        with file_guard(path) if file_guard is not None else nullcontext():
+            for row in _read_tsv_rows(path):
+                summary["total"] += 1
+                status = str(row.get("status") or "").strip().lower()
+                if status == "good":
+                    summary["good"] += 1
+                elif status == "bad":
+                    summary["bad"] += 1
+                else:
+                    summary["other"] += 1
+        if on_file_checkpoint is not None:
+            on_file_checkpoint()
     return summary
 
 

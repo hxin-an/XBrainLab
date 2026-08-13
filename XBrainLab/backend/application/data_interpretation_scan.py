@@ -381,7 +381,10 @@ def scan_source_path(
         ]
     )
     bids_review_metadata_total = (
-        len(eeg_files) + len(admitted_channel_files) + 2
+        # Each materialization unit owns a cancellable begin and end boundary.
+        # The fixed units are BIDS summary preparation, participants, and the
+        # dataset description, followed by every channel file and EEG row.
+        2 * (len(eeg_files) + len(admitted_channel_files) + 3)
         if materialize_metadata and source_kind == "bids"
         else None
     )
@@ -398,35 +401,41 @@ def scan_source_path(
             total=bids_review_metadata_total,
         )
 
-    metadata_guard = (
-        resource_reader.guard(
-            metadata_files,
-            purpose="BIDS metadata materialization",
+    def _metadata_file_guard(path: Path):
+        return (
+            resource_reader.guard(
+                [path],
+                purpose="BIDS metadata materialization",
+            )
+            if resource_reader is not None
+            else contextlib.nullcontext()
         )
-        if materialize_metadata and resource_reader is not None and metadata_files
-        else contextlib.nullcontext()
-    )
+
     if bids_review_metadata_total is not None:
         owned_work_checkpoint(
             BIDS_REVIEW_METADATA_STAGE,
             completed=0,
             total=bids_review_metadata_total,
         )
-    with metadata_guard:
-        bids = _bids_summary(
-            scan_root,
-            source_kind,
-            eeg_files,
-            label_carriers,
-            layout=bids_layout,
-            materialize=materialize_metadata,
-            admitted_metadata_files=metadata_files,
-            on_metadata_unit_materialized=(
-                _publish_bids_metadata_unit
-                if bids_review_metadata_total is not None
-                else None
-            ),
-        )
+    bids = _bids_summary(
+        scan_root,
+        source_kind,
+        eeg_files,
+        label_carriers,
+        layout=bids_layout,
+        materialize=materialize_metadata,
+        admitted_metadata_files=metadata_files,
+        on_metadata_checkpoint=(
+            _publish_bids_metadata_unit
+            if bids_review_metadata_total is not None
+            else None
+        ),
+        metadata_file_guard=(
+            _metadata_file_guard
+            if materialize_metadata and resource_reader is not None
+            else None
+        ),
+    )
     scope_issue = str(scope.bids.get("root_validation_issue") or "")
     materialized_issue = str(bids.get("root_validation_issue") or "")
     root_validation_issue = (
@@ -472,6 +481,7 @@ def scan_source_path(
         bids["selection_root"] = str(scope.bids["selection_root"])
     metadata: list[FileMetadataResolution] = []
     for file_path in eeg_files:
+        _publish_bids_metadata_unit()
         metadata.append(_metadata_for_file(Path(file_path), scan_root, source_kind))
         _publish_bids_metadata_unit()
 

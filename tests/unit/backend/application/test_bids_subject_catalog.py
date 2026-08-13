@@ -217,7 +217,7 @@ def test_cached_bids_review_publishes_cancellable_metadata_materialization_stage
     assert snapshot.phase is OwnedWorkPhase.RUNNING
     assert snapshot.stage == "Materializing BIDS review metadata"
     assert snapshot.completed == 0
-    assert snapshot.total == 3
+    assert snapshot.total == 8
     assert len(results) == 1
     cancelled = results[0]
     assert cancelled.failed
@@ -293,10 +293,130 @@ def test_bids_review_advances_progress_before_slow_channel_metadata_read(
     assert not worker.is_alive()
     assert snapshot.phase is OwnedWorkPhase.RUNNING
     assert snapshot.stage == "Materializing BIDS review metadata"
-    assert snapshot.completed == 2
-    assert snapshot.total == 4
+    assert snapshot.completed == 7
+    assert snapshot.total == 10
     assert len(results) == 1
     assert results[0].ok
+
+
+def test_bids_review_checkpoints_before_slow_metadata_preparation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_bids_dataset(tmp_path)
+    service = ApplicationService(Study())
+    catalog = service.execute(
+        ScanSourceCommand(
+            source_path=str(tmp_path),
+            source_hint="bids",
+            catalog_only=True,
+        )
+    )
+    assert catalog.ok
+
+    from XBrainLab.backend.application import data_interpretation_metadata
+
+    original_canonical_paths = data_interpretation_metadata._canonical_path_keys
+    preparation_started = Event()
+    release_preparation = Event()
+    block_first_call = True
+
+    def _blocking_canonical_paths(values):
+        nonlocal block_first_call
+        if (
+            block_first_call
+            and service.get_owned_operation(operation.operation_id).stage
+            == "Materializing BIDS review metadata"
+        ):
+            block_first_call = False
+            preparation_started.set()
+            assert release_preparation.wait(timeout=_THREAD_WATCHDOG_SECONDS)
+        return original_canonical_paths(values)
+
+    monkeypatch.setattr(
+        data_interpretation_metadata,
+        "_canonical_path_keys",
+        _blocking_canonical_paths,
+    )
+    command = ReviewInterpretationCommand(
+        source_path=str(tmp_path),
+        source_hint="bids",
+        choices={"selected_bids_subjects": ["02"]},
+    )
+    operation = service.begin_owned_operation(command)
+    results = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="bids-review-metadata-preparation-progress",
+    )
+
+    worker.start()
+    assert preparation_started.wait(timeout=_THREAD_WATCHDOG_SECONDS)
+    snapshot = service.get_owned_operation(operation.operation_id)
+    assert service.cancel_owned_operation(operation.operation_id) is True
+    release_preparation.set()
+    worker.join(timeout=_THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert snapshot.phase is OwnedWorkPhase.RUNNING
+    assert snapshot.stage == "Materializing BIDS review metadata"
+    assert snapshot.completed == 1
+    assert snapshot.total == 8
+    assert (
+        snapshot.updated_at_monotonic - snapshot.started_at_monotonic
+        < _THREAD_WATCHDOG_SECONDS
+    )
+    assert len(results) == 1
+    assert results[0].failed
+    assert results[0].error_type is ErrorType.CANCELLED
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.CANCELLED
+    )
+
+
+def test_cached_selected_bids_review_metadata_progress_is_monotonic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_bids_dataset(tmp_path)
+    service = ApplicationService(Study())
+    catalog = service.execute(
+        ScanSourceCommand(
+            source_path=str(tmp_path),
+            source_hint="bids",
+            catalog_only=True,
+        )
+    )
+    assert catalog.ok
+
+    from XBrainLab.backend.application import data_interpretation_scan
+
+    original_checkpoint = data_interpretation_scan.owned_work_checkpoint
+    observed: list[tuple[int | None, int | None]] = []
+
+    def _capture_checkpoint(stage: str, **kwargs):
+        if stage == data_interpretation_scan.BIDS_REVIEW_METADATA_STAGE:
+            observed.append((kwargs.get("completed"), kwargs.get("total")))
+        return original_checkpoint(stage, **kwargs)
+
+    monkeypatch.setattr(
+        data_interpretation_scan,
+        "owned_work_checkpoint",
+        _capture_checkpoint,
+    )
+
+    result = service.execute(
+        ReviewInterpretationCommand(
+            source_path=str(tmp_path),
+            source_hint="bids",
+            choices={"selected_bids_subjects": ["02"]},
+        )
+    )
+
+    assert result.ok
+    assert observed == [(completed, 8) for completed in range(9)]
 
 
 def test_bids_review_publishes_candidate_preparation_before_slow_label_review(

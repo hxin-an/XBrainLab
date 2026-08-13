@@ -1047,31 +1047,37 @@ class GuiCampaignDriver:
         *,
         timeout_seconds: float,
         excluding_operation_id: str | None = None,
-        max_progress_silence_seconds: float = 5.0,
     ) -> ActiveOperationEvidence:
-        """Pin a visible non-terminal owner by backend-owned work kind."""
+        """Pin a visible non-terminal owner by backend-owned work kind.
+
+        A preceding review/validation owner may legitimately remain visible
+        while its result callback schedules Apply. Liveness for the target
+        begins after its exact identity is pinned; this transition wait is
+        bounded by ``timeout_seconds`` and still handles the product's public
+        resource-confirmation modal.
+        """
         expected_kind = str(operation_kind or "").strip()
         if not expected_kind:
             raise ValueError("operation_kind must be non-empty")
         started = time.monotonic()
-        last_heartbeat_at = started
-        previous_signature: tuple[str, ...] | None = None
-        while True:
-            now = time.monotonic()
-            progress = self._visible_operation_progress()
-            if progress is not None:
-                operation_id = str(progress.property("operationId") or "").strip()
-                phase = str(progress.property("operationPhase") or "").casefold()
-                observed_kind = str(progress.property("operationKind") or "").strip()
-                signature = self._progress_signature(progress)
-                if phase in {"pending", "running", "cancelling"}:
-                    if signature != previous_signature:
-                        last_heartbeat_at = now
-                        previous_signature = signature
+        modal_failures: list[BaseException] = []
+        resource_check_probe = self._start_dataset_resource_check_probe(modal_failures)
+        try:
+            while True:
+                if modal_failures:
+                    raise modal_failures[0]
+                progress = self._visible_operation_progress()
+                if progress is not None:
+                    operation_id = str(progress.property("operationId") or "").strip()
+                    phase = str(progress.property("operationPhase") or "").casefold()
+                    observed_kind = str(
+                        progress.property("operationKind") or ""
+                    ).strip()
                     if (
                         operation_id
                         and operation_id != excluding_operation_id
                         and observed_kind == expected_kind
+                        and phase in {"pending", "running", "cancelling"}
                     ):
                         evidence = self._active_operation_evidence(progress)
                         if evidence.operation_kind != expected_kind:
@@ -1079,17 +1085,13 @@ class GuiCampaignDriver:
                                 "visible operation kind changed while it was pinned"
                             )
                         return evidence
-            silence = now - last_heartbeat_at
-            if silence > max_progress_silence_seconds:
-                raise DriverContractError(
-                    f"{expected_kind} operation had no visible progress for "
-                    f"{silence:.3f}s"
-                )
-            if now - started > timeout_seconds:
-                raise DriverContractError(
-                    f"no visible active {expected_kind} operation was published"
-                )
-            self._settle_once()
+                if time.monotonic() - started > timeout_seconds:
+                    raise DriverContractError(
+                        f"no visible active {expected_kind} operation was published"
+                    )
+                self._settle_once()
+        finally:
+            resource_check_probe.stop()
 
     def click_active_operation_cancel(
         self,

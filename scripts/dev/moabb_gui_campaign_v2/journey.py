@@ -27,6 +27,7 @@ from .driver import (
 )
 
 _LONG_OPERATION_TIMEOUT_SECONDS: Final = 3600.0
+_POST_CONFIRM_APPLY_START_TIMEOUT_SECONDS: Final = 120.0
 
 STAGE_CONTROL_ROUTE: Final[dict[str, VisibleControl | None]] = {
     "import_bids_folder": VisibleControl.IMPORT_BIDS,
@@ -374,7 +375,7 @@ class ProductRecommendedJourneyScaffold:
                 )
         apply_operation = self.driver.wait_for_active_operation_kind(
             "import_apply",
-            timeout_seconds=_LONG_OPERATION_TIMEOUT_SECONDS,
+            timeout_seconds=_POST_CONFIRM_APPLY_START_TIMEOUT_SECONDS,
             excluding_operation_id=confirm_baseline,
         )
         confirm_progress = self.driver.wait_for_exact_owned_operation_completion(

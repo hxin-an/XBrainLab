@@ -2259,6 +2259,39 @@ def test_driver_pins_apply_by_public_kind_through_shared_content_stages(qtbot) -
     assert completed.heartbeat_count >= 2
 
 
+def test_apply_kind_wait_allows_a_stable_preceding_review_owner(qtbot) -> None:
+    window = QMainWindow()
+    status = window.statusBar()
+    status.setObjectName("OwnedOperationProgress")
+    status.setProperty("operationId", "review-operation")
+    status.setProperty("operationKind", "import_review")
+    status.setProperty("operationPhase", "running")
+    status.setProperty("stage", "Admitting Data Import discovery")
+    status.setProperty("progress", "indeterminate")
+    status.setProperty("indeterminate", True)
+    status.showMessage("Admitting Data Import discovery · Working…")
+    qtbot.addWidget(window)
+    window.show()
+
+    def publish_apply() -> None:
+        status.setProperty("operationId", "apply-operation")
+        status.setProperty("operationKind", "import_apply")
+        status.setProperty("stage", "Preparing interpretation apply")
+        status.showMessage("Preparing interpretation apply · Working…")
+
+    QTimer.singleShot(80, publish_apply)
+    driver = GuiCampaignDriver(window, poll_interval_ms=2)
+
+    active = driver.wait_for_active_operation_kind(
+        "import_apply",
+        timeout_seconds=0.5,
+        excluding_operation_id="review-operation",
+    )
+
+    assert active.operation_id == "apply-operation"
+    assert active.operation_kind == "import_apply"
+
+
 def test_exact_apply_wait_rejects_frozen_indeterminate_progress(qtbot) -> None:
     window = QMainWindow()
     status = window.statusBar()
