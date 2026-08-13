@@ -2196,6 +2196,36 @@ def test_wait_for_transition_accepts_exact_nested_dataset_resource_check(
     assert driver.clicks[-1].elapsed_seconds <= driver.acknowledgement_seconds
 
 
+def test_driver_ignores_hidden_stale_active_modal_for_visible_preview(
+    qtbot,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stale_loading = QDialog()
+    stale_loading.setObjectName("DataImportLoadingDialog")
+    qtbot.addWidget(stale_loading)
+    stale_loading.hide()
+
+    preview = QDialog()
+    next_button = QPushButton("Next", preview)
+    next_button.setObjectName("DataImportNextButton")
+    next_button.setAccessibleName("Next")
+    qtbot.addWidget(preview)
+    preview.show()
+    monkeypatch.setattr(
+        QApplication,
+        "activeModalWidget",
+        lambda _self: stale_loading,
+    )
+
+    assert (
+        GuiCampaignDriver(preview).control(
+            VisibleControl.WIZARD_NEXT,
+            timeout_seconds=0.0,
+        )
+        is next_button
+    )
+
+
 @pytest.mark.parametrize(
     ("title", "buttons", "error"),
     [

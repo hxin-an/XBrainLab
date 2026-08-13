@@ -2169,13 +2169,13 @@ class GuiCampaignDriver:
         roots: list[QWidget] = []
         if app is not None:
             modal = app.activeModalWidget()
-            if modal is not None:
+            if modal is not None and modal.isVisible():
                 roots.append(modal)
             else:
                 roots.extend(
                     widget
                     for widget in app.topLevelWidgets()
-                    if isinstance(widget, QWidget)
+                    if isinstance(widget, QWidget) and widget.isVisible()
                 )
         if self.root is not None and not roots:
             roots.append(self.root)
