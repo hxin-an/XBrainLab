@@ -523,6 +523,7 @@ class DataInterpretationCommandService:
             resource_scope=admission.resource_scope,
             admitted_content_identities=admission.reusable_content_identities,
         )
+        self._remember_safe_apply_resource_admission(candidate, admission)
         preview = build_interpretation_preview(
             preview_id=preview_id,
             candidate=candidate,
@@ -635,6 +636,7 @@ class DataInterpretationCommandService:
             resource_scope=admission.resource_scope,
             admitted_content_identities=admission.reusable_content_identities,
         )
+        self._remember_safe_apply_resource_admission(candidate, admission)
         preview = build_interpretation_preview(
             preview_id=preview_id,
             candidate=candidate,
@@ -872,6 +874,7 @@ class DataInterpretationCommandService:
             self._resolve_apply_resource_preflight(
                 command=plan.command,
                 candidate=candidate,
+                reuse_safe_preview_admission=True,
             )
         )
         self._ensure_apply_session_is_current(plan)
@@ -883,8 +886,6 @@ class DataInterpretationCommandService:
         self._ensure_apply_session_is_current(plan)
         detached_state = deepcopy(self.state)
         self._ensure_apply_session_is_current(plan)
-        owned_work_checkpoint("Verifying reviewed import content")
-        self._ensure_reviewed_label_content_is_current(candidate)
         prepared_dataset = self.dataset.prepare_replacement_import(
             candidate.selected_eeg_files
         )
@@ -939,7 +940,16 @@ class DataInterpretationCommandService:
         label_apply = detached_apply.apply_label_carriers(
             candidate,
             label_resources,
+            recheck_content_identity=False,
         )
+        if self._label_apply_blocks_interpretation(candidate, label_apply):
+            # Normal two-phase Apply performs one final full identity pass after
+            # detached preparation.  A changed label payload can fail semantic
+            # materialization before that pass, so classify that failure against
+            # the reviewed bytes now rather than misreporting changed content as
+            # invalid user choices.  This branch is terminal and therefore still
+            # performs exactly one full identity check for the attempt.
+            self._ensure_reviewed_label_content_is_current(candidate)
         owned_work_checkpoint("Recording reviewed epoch hints")
         internal_epoch_hints = detached_apply.record_internal_epoch_hints(candidate)
         self._ensure_label_apply_succeeded(candidate, label_apply)
@@ -1150,6 +1160,7 @@ class DataInterpretationCommandService:
         *,
         command: ApplyInterpretationCommand,
         candidate: InterpretationCandidate,
+        reuse_safe_preview_admission: bool = False,
     ) -> tuple[
         ResourcePreflightResult,
         _ImportPreflightReceipt | None,
@@ -1159,8 +1170,17 @@ class DataInterpretationCommandService:
         resource_paths = self._candidate_resource_paths(candidate)
         owned_work_checkpoint("Binding reviewed import resource scope")
         fingerprint = self._resource_scope_fingerprint(resource_paths)
-        owned_work_checkpoint("Estimating reviewed import resources")
-        preflight = check_import_resource_preflight(resource_paths)
+        preflight = (
+            self._reusable_safe_apply_resource_preflight(
+                candidate=candidate,
+                resource_paths=resource_paths,
+            )
+            if reuse_safe_preview_admission
+            else None
+        )
+        if preflight is None:
+            owned_work_checkpoint("Estimating reviewed import resources")
+            preflight = check_import_resource_preflight(resource_paths)
         owned_work_checkpoint("Finalizing reviewed import resource preflight")
         preflight_fingerprint = fingerprint_resource_preflight(preflight)
         receipt = self._matching_import_preflight_receipt(
@@ -1215,6 +1235,86 @@ class DataInterpretationCommandService:
             confirmed=False,
         )
         return preflight, None, False
+
+    def _reusable_safe_apply_resource_preflight(
+        self,
+        *,
+        candidate: InterpretationCandidate,
+        resource_paths: list[str],
+    ) -> ResourcePreflightResult | None:
+        """Reuse only the current SAFE admission for this exact preview scope."""
+        if not _stat_change_time_is_reliable():
+            # Windows ctime is creation time, so the bounded stat/content probe
+            # cannot authorize reuse of a header-derived memory estimate.
+            return None
+        cache_key = (
+            "apply_interpretation",
+            candidate.candidate_id,
+            self._normalized_resource_path_set(resource_paths),
+        )
+        cached = self._safe_preview_admissions.get(cache_key)
+        if (
+            cached is None
+            or self._normalized_resource_path_set(cached.resource_scope.paths)
+            != cache_key[2]
+            or self._preflight_resource_path_set(cached.preflight) != cache_key[2]
+        ):
+            return None
+        admission = self._reusable_safe_preview_admission(
+            cache_key=cache_key,
+            scope=cached.resource_scope,
+        )
+        if admission is None:
+            return None
+        return admission.preflight
+
+    def _remember_safe_apply_resource_admission(
+        self,
+        candidate: InterpretationCandidate,
+        admission: _PreviewResourceAdmission,
+    ) -> None:
+        """Bind one SAFE preview admission to the exact candidate it produced."""
+        if admission.preflight.risk_level is not ResourceRiskLevel.SAFE:
+            return
+        resource_paths = self._candidate_resource_paths(candidate)
+        normalized_paths = self._normalized_resource_path_set(resource_paths)
+        if (
+            self._normalized_resource_path_set(admission.resource_scope.paths)
+            != normalized_paths
+            or self._preflight_resource_path_set(admission.preflight)
+            != normalized_paths
+        ):
+            return
+        self._remember_safe_preview_admission(
+            (
+                "apply_interpretation",
+                candidate.candidate_id,
+                normalized_paths,
+            ),
+            admission,
+        )
+
+    @staticmethod
+    def _normalized_resource_path_set(paths: list[str]) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                identity
+                for path in paths
+                if (identity := normalized_path_identity(path))
+            )
+        )
+
+    @classmethod
+    def _preflight_resource_path_set(
+        cls,
+        preflight: ResourcePreflightResult,
+    ) -> tuple[str, ...]:
+        rows = preflight.to_diagnostics().get("files")
+        if not isinstance(rows, list):
+            return ()
+        return cls._normalized_resource_path_set(
+            [str(row.get("path") or "") for row in rows if isinstance(row, dict)]
+        )
 
     def _resolve_preview_resource_preflight(
         self,
@@ -1960,7 +2060,10 @@ class DataInterpretationCommandService:
             ),
             error_type=ErrorType.VALIDATION,
             recoverable=True,
-            diagnostics={"label_apply": dict(label_apply)},
+            diagnostics={
+                "label_apply": dict(label_apply),
+                "state_preserved": True,
+            },
         )
 
     def _has_active_raw_data(self) -> bool:

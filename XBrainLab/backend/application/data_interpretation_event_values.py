@@ -237,6 +237,11 @@ def filter_kept_label_values(
     kept: list[Any] = []
     for value in values:
         raw_value = _normalized_raw_value(value)
+        if not raw_value:
+            # Canonical missing values are intentionally absent from Preview's
+            # decision set.  Apply must exclude the same rows instead of asking
+            # users to resolve a value that the review surface never displayed.
+            continue
         decision = normalized.get(raw_value)
         if not isinstance(decision, Mapping) or decision.get("decision") != RESOLVED:
             raise ValueError(f"Event value has no resolved decision: {raw_value}.")

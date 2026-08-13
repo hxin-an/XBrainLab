@@ -15,6 +15,7 @@ def _snapshot(
     *,
     kind: OwnedWorkKind = OwnedWorkKind.PREPROCESS,
     stage: str = "Reading EEG files",
+    message: str = "",
     completed: int | None = None,
     total: int | None = None,
     cancel_requested: bool = False,
@@ -23,6 +24,7 @@ def _snapshot(
         kind=kind,
         phase=SimpleNamespace(value=phase),
         stage=stage,
+        message=message,
         completed=completed,
         total=total,
         indeterminate=completed is None or total is None,
@@ -65,6 +67,185 @@ def test_presenter_shows_real_stage_progress_and_nonblocking_cancel(qtbot) -> No
     presenter.refresh()
     assert presenter.active_operation_id is None
     assert status.currentMessage() == ""
+
+
+def test_import_apply_keeps_stable_status_while_exact_stage_changes(qtbot) -> None:
+    window = QMainWindow()
+    owner = QWidget(window)
+    cancel = QPushButton("Cancel", owner)
+    snapshots = {
+        "operation-apply": _snapshot(
+            "running",
+            kind=OwnedWorkKind.IMPORT_APPLY,
+            stage="Binding reviewed import resource scope",
+        )
+    }
+    presenter = OwnedOperationPresenter(
+        owner,
+        cancel_button=cancel,
+        snapshot_getter=snapshots.get,
+        canceller=lambda _operation_id: True,
+        interval_ms=10_000,
+    )
+    qtbot.addWidget(window)
+    window.show()
+
+    presenter.bind("operation-apply", stage="Preparing import")
+    status = window.statusBar()
+    expected_message = "Importing reviewed EEG data · Working…"
+
+    for stage in (
+        "Estimating reviewed import resources",
+        "Inspecting reviewed label resource 1 of 10",
+        "Hashing reviewed import content",
+        "Loading EEG recording 1 of 10",
+        "Applying reviewed label carriers",
+    ):
+        snapshots["operation-apply"] = _snapshot(
+            "running",
+            kind=OwnedWorkKind.IMPORT_APPLY,
+            stage=stage,
+        )
+        presenter.refresh()
+        assert status.currentMessage() == expected_message
+        assert status.property("stage") == stage
+        assert status.property("operationDetail") == stage
+
+
+def test_import_review_keeps_stable_status_while_exact_stage_changes(qtbot) -> None:
+    window = QMainWindow()
+    owner = QWidget(window)
+    cancel = QPushButton("Cancel", owner)
+    snapshots = {
+        "operation-review": _snapshot(
+            "running",
+            kind=OwnedWorkKind.IMPORT_REVIEW,
+            stage="Scanning selected BIDS files",
+        )
+    }
+    presenter = OwnedOperationPresenter(
+        owner,
+        cancel_button=cancel,
+        snapshot_getter=snapshots.get,
+        canceller=lambda _operation_id: True,
+        interval_ms=10_000,
+    )
+    qtbot.addWidget(window)
+    window.show()
+
+    presenter.bind("operation-review", stage="Preparing review")
+    status = window.statusBar()
+    expected_message = "Checking selected EEG data · Working…"
+
+    for stage in (
+        "Inspecting import resource 1 of 10",
+        "Reading BIDS recording metadata 2 of 5",
+        "Building reviewed label matches",
+    ):
+        snapshots["operation-review"] = _snapshot(
+            "running",
+            kind=OwnedWorkKind.IMPORT_REVIEW,
+            stage=stage,
+        )
+        presenter.refresh()
+        assert status.currentMessage() == expected_message
+        assert status.property("stage") == stage
+        assert status.property("operationDetail") == stage
+        assert status.accessibleDescription() == stage
+
+
+def test_import_apply_bounds_snapshot_detail_and_preserves_cancel_terminal(
+    qtbot,
+) -> None:
+    window = QMainWindow()
+    owner = QWidget(window)
+    cancel = QPushButton("Cancel", owner)
+    stage = "Loading EEG recording 2 of 10 " * 20
+    snapshots = {
+        "operation-apply": _snapshot(
+            "running",
+            kind=OwnedWorkKind.IMPORT_APPLY,
+            stage=stage,
+            message="separate snapshot message",
+            completed=2,
+            total=10,
+        )
+    }
+    presenter = OwnedOperationPresenter(
+        owner,
+        cancel_button=cancel,
+        snapshot_getter=snapshots.get,
+        canceller=lambda _operation_id: True,
+        interval_ms=10_000,
+    )
+    qtbot.addWidget(window)
+    window.show()
+
+    presenter.bind("operation-apply", stage="Preparing import")
+    status = window.statusBar()
+    assert status.currentMessage() == "Importing reviewed EEG data · 20%"
+    assert status.property("stage") == stage
+    assert 0 < len(status.property("operationDetail")) <= 240
+    assert status.accessibleDescription() == status.property("operationDetail")
+
+    snapshots["operation-apply"] = _snapshot(
+        "cancelling",
+        kind=OwnedWorkKind.IMPORT_APPLY,
+        stage=stage,
+        cancel_requested=True,
+    )
+    presenter.refresh()
+    assert status.currentMessage() == "Cancelling · Importing reviewed EEG data"
+    assert status.property("stage") == stage
+    assert 0 < len(status.property("operationDetail")) <= 240
+    assert status.accessibleDescription() == status.property("operationDetail")
+
+    snapshots["operation-apply"] = _snapshot(
+        "cancelled",
+        kind=OwnedWorkKind.IMPORT_APPLY,
+        stage=stage,
+        cancel_requested=True,
+    )
+    presenter.refresh()
+    assert presenter.active_operation_id is None
+    assert status.currentMessage() == ""
+    assert status.accessibleDescription() == ""
+
+
+def test_deferred_import_apply_uses_latest_stable_projection(qtbot) -> None:
+    window = QMainWindow()
+    owner = QWidget(window)
+    cancel = QPushButton("Cancel", owner)
+    stage = "Hashing reviewed import content"
+    snapshots = {
+        "operation-apply": _snapshot(
+            "running",
+            kind=OwnedWorkKind.IMPORT_APPLY,
+            stage=stage,
+            completed=1,
+            total=4,
+        )
+    }
+    presenter = OwnedOperationPresenter(
+        owner,
+        cancel_button=cancel,
+        snapshot_getter=snapshots.get,
+        canceller=lambda _operation_id: True,
+        interval_ms=10_000,
+    )
+    qtbot.addWidget(window)
+    window.show()
+    assert show_status_message(window, "Import review ready", 5_000)
+
+    presenter.bind("operation-apply", stage="Preparing import")
+
+    qtbot.waitUntil(
+        lambda: window.statusBar().currentMessage()
+        == "Importing reviewed EEG data · 25%",
+        timeout=1_500,
+    )
+    assert window.statusBar().property("stage") == stage
+    assert window.statusBar().property("operationDetail") == stage
 
 
 def test_owned_progress_does_not_overwrite_higher_priority_transient(qtbot) -> None:

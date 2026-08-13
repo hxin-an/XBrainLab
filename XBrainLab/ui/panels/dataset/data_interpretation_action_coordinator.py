@@ -1750,6 +1750,26 @@ class DataInterpretationActionCoordinator:
                         resource_preflight.message or apply_result.message,
                     )
                     return InteractionOutcome.blocked(apply_result.message)
+            diagnostics = getattr(apply_result, "diagnostics", {})
+            state_preserved = (
+                isinstance(diagnostics, dict)
+                and diagnostics.get("state_preserved") is True
+            )
+            if (
+                apply_result.failed
+                and state_preserved
+                and not self._bindings.is_stale_publication_result(apply_result)
+            ):
+                self._bindings.message_box().critical(
+                    self.panel,
+                    "Interpretation apply failed",
+                    apply_result.message + "\n\nExisting data was preserved.",
+                )
+                self._show_status("Dataset import failed · Existing data preserved")
+                return self._interaction_failure_outcome(
+                    apply_result,
+                    apply_result.message,
+                )
             if self._result_failed(apply_result, "Interpretation apply failed"):
                 self._show_status("Dataset import failed · Review the import settings")
                 return self._interaction_failure_outcome(

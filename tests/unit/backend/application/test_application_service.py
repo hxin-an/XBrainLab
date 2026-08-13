@@ -2559,6 +2559,11 @@ def test_apply_resource_admission_runs_without_holding_command_lock(
 
     if blocked_phase == "resource_preflight":
         original_preflight = data_interpretation_service.check_import_resource_preflight
+        monkeypatch.setattr(
+            data_interpretation_service,
+            "available_ram_bytes",
+            lambda: 0,
+        )
 
         def _blocking_preflight(paths):
             admission_started.set()
@@ -4016,6 +4021,118 @@ def test_apply_interpretation_rehashes_content_before_short_commit_admission(
     assert retry.ok
     assert retry.state.interpretation.has_applied_interpretation is True
     assert study.data_manager.loaded_data_list[0].get_filepath() == str(eeg_path)
+
+
+def test_apply_reuses_safe_review_preflight_and_hashes_reviewed_content_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from XBrainLab.backend.application import data_interpretation_service
+
+    source_dir = tmp_path / "reviewed"
+    source_dir.mkdir()
+    eeg_path = source_dir / "subject01_run1.fif"
+    eeg_path.write_bytes(b"reviewed EEG identity")
+    service = ApplicationService(Study())
+    _use_test_raw_factory(service)
+    assert service.execute(ScanSourceCommand(source_path=str(source_dir))).ok
+
+    original_preflight = data_interpretation_service.check_import_resource_preflight
+    original_identity = data_interpretation_service.DataInterpretationCommandService._reviewed_content_identity
+    preflight_calls = 0
+    identity_calls = 0
+
+    def _counted_preflight(paths: list[str]) -> ResourcePreflightResult:
+        nonlocal preflight_calls
+        preflight_calls += 1
+        return original_preflight(paths)
+
+    def _counted_identity(candidate: Any) -> dict[str, Any]:
+        nonlocal identity_calls
+        identity_calls += 1
+        return original_identity(candidate)
+
+    monkeypatch.setattr(
+        data_interpretation_service,
+        "check_import_resource_preflight",
+        _counted_preflight,
+    )
+    monkeypatch.setattr(
+        data_interpretation_service.DataInterpretationCommandService,
+        "_reviewed_content_identity",
+        staticmethod(_counted_identity),
+    )
+
+    review = service.execute(
+        ReviewInterpretationCommand(
+            source_path=str(source_dir),
+            choices={
+                "selected_eeg_files": [str(eeg_path)],
+                "skip_labels": True,
+            },
+        )
+    )
+    candidate_id = review.diagnostics["candidate"]["candidate_id"]
+    assert service.execute(ValidateInterpretationCommand(candidate_id=candidate_id)).ok
+
+    applied = service.execute(
+        ApplyInterpretationCommand(candidate_id=candidate_id, confirmed=True)
+    )
+
+    assert applied.ok
+    assert preflight_calls == 1
+    assert identity_calls == 1
+
+
+def test_apply_invalidates_safe_review_admission_when_content_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from XBrainLab.backend.application import data_interpretation_service
+
+    source_dir = tmp_path / "reviewed"
+    source_dir.mkdir()
+    eeg_path = source_dir / "subject01_run1.fif"
+    eeg_path.write_bytes(b"reviewed EEG identity a")
+    study = Study()
+    service = ApplicationService(study)
+    _use_test_raw_factory(service)
+    review = service.execute(
+        ReviewInterpretationCommand(
+            source_path=str(source_dir),
+            choices={
+                "selected_eeg_files": [str(eeg_path)],
+                "skip_labels": True,
+            },
+        )
+    )
+    candidate_id = review.diagnostics["candidate"]["candidate_id"]
+    assert service.execute(ValidateInterpretationCommand(candidate_id=candidate_id)).ok
+    original_preflight = data_interpretation_service.check_import_resource_preflight
+    preflight_calls = 0
+
+    def _counted_preflight(paths: list[str]) -> ResourcePreflightResult:
+        nonlocal preflight_calls
+        preflight_calls += 1
+        return original_preflight(paths)
+
+    monkeypatch.setattr(
+        data_interpretation_service,
+        "check_import_resource_preflight",
+        _counted_preflight,
+    )
+    eeg_path.write_bytes(b"reviewed EEG identity b")
+
+    rejected = service.execute(
+        ApplyInterpretationCommand(candidate_id=candidate_id, confirmed=True)
+    )
+
+    assert rejected.failed
+    assert rejected.error_type is ErrorType.PRECONDITION
+    assert rejected.diagnostics["reason"] == "reviewed_content_or_contract_changed"
+    assert preflight_calls == 1
+    assert study.data_manager.loaded_data_list == []
+    assert rejected.state.interpretation.has_applied_interpretation is False
 
 
 def test_cancelled_command_fails_closed_when_rollback_state_does_not_match(
@@ -5800,23 +5917,47 @@ def test_apply_interpretation_blocks_mixed_label_placement_modes(
         "onset\ttrial_type\n0.5\tleft\n1.5\tright\n",
         encoding="utf-8",
     )
+    sentinel_path = tmp_path / "existing_interpretation.fif"
+    sentinel_path.write_bytes(b"existing reviewed EEG identity")
     _patch_internal_events(
         monkeypatch,
         {"A01T.gdf": {"768": {"count": 2, "description": "768"}}},
     )
     service = ApplicationService(Study())
-    raw = _raw_mock()
-    raw.get_filepath.return_value = str(eeg_path)
-    raw.get_filename.return_value = eeg_path.name
-    second_raw = _raw_mock()
-    second_raw.get_filepath.return_value = str(second_eeg_path)
-    second_raw.get_filename.return_value = second_eeg_path.name
+    sentinel_raw = _minimal_raw(sentinel_path)
+    raw = _raw_with_event_codes(eeg_path, [768, 768])
+    second_raw = _minimal_raw(second_eeg_path)
     load_raw = _use_test_raw_factory(
         service,
         {
-            str(eeg_path): cast(Raw, raw),
-            str(second_eeg_path): cast(Raw, second_raw),
+            str(sentinel_path): sentinel_raw,
+            str(eeg_path): raw,
+            str(second_eeg_path): second_raw,
         },
+    )
+
+    baseline_review = service.execute(
+        ReviewInterpretationCommand(
+            source_path=str(sentinel_path),
+            choices={
+                "selected_eeg_files": [str(sentinel_path)],
+                "skip_labels": True,
+            },
+        )
+    )
+    baseline_candidate_id = baseline_review.diagnostics["candidate"]["candidate_id"]
+    assert service.execute(
+        ValidateInterpretationCommand(candidate_id=baseline_candidate_id)
+    ).ok
+    baseline_apply = service.execute(
+        ApplyInterpretationCommand(
+            candidate_id=baseline_candidate_id,
+            confirmed=True,
+        )
+    )
+    assert baseline_apply.ok
+    source_identity_before = dict(
+        sentinel_raw.runtime_details["source_content_identity"]
     )
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
@@ -5849,14 +5990,37 @@ def test_apply_interpretation_blocks_mixed_label_placement_modes(
         ),
     )
     service.execute(ValidateInterpretationCommand())
+    state_before = service.get_state()
+    loaded_before = service.study.data_manager.loaded_data_list
+    applied_before = (
+        service.interpretation._service().state.resolve_applied_interpretation()
+    )
+    assert loaded_before == [sentinel_raw]
+    assert state_before.interpretation.has_applied_interpretation is True
     apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+    state_after = service.get_state()
+    loaded_after = service.study.data_manager.loaded_data_list
+    applied_after = (
+        service.interpretation._service().state.resolve_applied_interpretation()
+    )
 
     assert apply_result.failed is True
     assert apply_result.error_type == ErrorType.VALIDATION
     assert apply_result.diagnostics["label_apply"]["status"] == "failed"
+    assert apply_result.diagnostics["state_preserved"] is True
     assert "mixed placement modes" in apply_result.diagnostics["label_apply"]["reason"]
-    assert apply_result.state.interpretation.has_applied_interpretation is False
-    assert load_raw.call_count == 2
+    assert apply_result.state.raw == state_before.raw
+    assert apply_result.state.interpretation == state_before.interpretation
+    assert state_after.raw == state_before.raw
+    assert state_after.interpretation == state_before.interpretation
+    assert loaded_after is loaded_before
+    assert loaded_after == [sentinel_raw]
+    assert loaded_after[0] is sentinel_raw
+    assert applied_after is applied_before
+    assert sentinel_raw.runtime_details["source_content_identity"] == (
+        source_identity_before
+    )
+    assert load_raw.call_count == 3
 
 
 def test_apply_interpretation_blocks_sequence_label_apply_count_mismatch(
@@ -5905,6 +6069,7 @@ def test_apply_interpretation_blocks_sequence_label_apply_count_mismatch(
     assert apply_result.failed is True
     assert apply_result.error_type == ErrorType.VALIDATION
     assert apply_result.diagnostics["label_apply"]["status"] == "failed"
+    assert apply_result.diagnostics["state_preserved"] is True
     assert "Applied labels to 0/1" in apply_result.diagnostics["label_apply"]["reason"]
     assert apply_result.state.interpretation.has_applied_interpretation is False
 

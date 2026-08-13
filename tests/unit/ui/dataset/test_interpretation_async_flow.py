@@ -6,16 +6,20 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, call
 
+import mne
+import numpy as np
 import pytest
 from PyQt6 import sip
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QDialog, QMainWindow, QPushButton, QWidget
 
 from XBrainLab.backend.application import (
+    ApplicationService,
     ApplyInterpretationCommand,
     ApplySmartParseCommand,
     ChangedState,
@@ -28,6 +32,7 @@ from XBrainLab.backend.application import (
     ReviewInterpretationCommand,
     SaveInterpretationRecipeCommand,
     ValidateInterpretationCommand,
+    data_interpretation_internal_events,
 )
 from XBrainLab.backend.application.capabilities import (
     CommandCapability,
@@ -42,6 +47,7 @@ from XBrainLab.backend.application.view_publication import (
     ApplicationViewPublication,
     InterpretationReviewIdentity,
 )
+from XBrainLab.backend.load_data.raw import Raw
 from XBrainLab.backend.services.dataset_state_service import DatasetStateService
 from XBrainLab.backend.study import Study
 from XBrainLab.ui import application_capabilities, async_command_runner
@@ -677,6 +683,112 @@ def _cancelled_result(command_name: str = "apply_interpretation") -> CommandResu
     )
 
 
+def _state_preserved_apply_failure_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> CommandResult:
+    """Return product diagnostics from a real mixed-placement Apply failure."""
+    from scipy.io import savemat
+
+    source_dir = tmp_path / "mixed_label_placement"
+    source_dir.mkdir()
+    eeg_path = source_dir / "A01T.gdf"
+    second_eeg_path = source_dir / "B01T.gdf"
+    sequence_labels = source_dir / "A01T.mat"
+    timed_labels = source_dir / "B01T_events.tsv"
+    eeg_path.write_bytes(b"reviewed sequence EEG")
+    second_eeg_path.write_bytes(b"reviewed timestamp EEG")
+    savemat(sequence_labels, {"classlabel": [[1, 2]]})
+    timed_labels.write_text(
+        "onset\ttrial_type\n0.5\tleft\n1.5\tright\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        data_interpretation_internal_events,
+        "_read_internal_events_for_file",
+        lambda path: (
+            {"events": {"768": {"count": 2, "description": "768"}}}
+            if Path(path).name == eeg_path.name
+            else {"events": {}}
+        ),
+    )
+    raw_by_path: dict[str, Raw] = {}
+    for path in (eeg_path, second_eeg_path):
+        raw_by_path[str(path)] = Raw(
+            str(path),
+            mne.io.RawArray(
+                np.zeros((1, 500)),
+                mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg"),
+                verbose="ERROR",
+            ),
+        )
+    service = ApplicationService(Study())
+    service.dataset._raw_factory_provider = lambda: SimpleNamespace(
+        load=lambda path: raw_by_path[str(path)]
+    )
+    review = service.execute(
+        ReviewInterpretationCommand(
+            source_path=str(source_dir),
+            choices={
+                "label_carrier_choices": {
+                    str(sequence_labels): {
+                        "label_field": "classlabel",
+                        "target_event_codes": ["768"],
+                        "placement_method": "eeg_event",
+                        "time_model": "trial_order",
+                        "granularity": "trial",
+                        "value_decisions": {
+                            "1": {
+                                "role": "stimulus",
+                                "keep_event": True,
+                                "use_as_class": True,
+                                "class_name": "Left hand",
+                            },
+                            "2": {
+                                "role": "stimulus",
+                                "keep_event": True,
+                                "use_as_class": True,
+                                "class_name": "Right hand",
+                            },
+                        },
+                    },
+                    str(timed_labels): {
+                        "label_field": "trial_type",
+                        "anchor": "onset",
+                        "placement_method": "time_field",
+                        "time_model": "seconds",
+                        "granularity": "trial",
+                        "value_decisions": {
+                            "left": {
+                                "role": "stimulus",
+                                "keep_event": True,
+                                "use_as_class": True,
+                                "class_name": "Left hand",
+                            },
+                            "right": {
+                                "role": "stimulus",
+                                "keep_event": True,
+                                "use_as_class": True,
+                                "class_name": "Right hand",
+                            },
+                        },
+                    },
+                },
+            },
+        )
+    )
+    candidate_id = review.diagnostics["candidate"]["candidate_id"]
+    assert service.execute(ValidateInterpretationCommand(candidate_id=candidate_id)).ok
+    result = service.execute(
+        ApplyInterpretationCommand(candidate_id=candidate_id, confirmed=True)
+    )
+    assert result.failed
+    assert result.error_type is ErrorType.VALIDATION
+    assert result.diagnostics["label_apply"]["status"] == "failed"
+    assert result.diagnostics["state_preserved"] is True
+    return result
+
+
 def _resource_confirmation_result(token: str) -> CommandResult:
     message = "Estimated RAM requires confirmation."
     return CommandResult.failure_result(
@@ -901,14 +1013,16 @@ def _assert_visible_apply_completes(qtbot, status, runtime) -> None:
         assert status.property("operationKind") == "import_apply"
         assert status.property("operationPhase") in {"pending", "running"}
         assert "interpretation apply" in str(status.property("stage")).casefold()
-        assert str(status.property("stage")) in status.currentMessage()
+        assert status.property("operationDetail") == status.property("stage")
+        assert status.currentMessage() == "Importing reviewed EEG data · Working…"
 
         assert runtime.worker_started.wait(timeout=1.0)
         runtime.running_release.set()
         qtbot.waitUntil(
             lambda: status.property("operationPhase") == "running"
             and status.property("stage") == "Loading reviewed EEG recordings"
-            and "Loading reviewed EEG recordings" in status.currentMessage(),
+            and status.property("operationDetail") == "Loading reviewed EEG recordings"
+            and status.currentMessage() == "Importing reviewed EEG data · Working…",
             timeout=1_000,
         )
     finally:
@@ -1152,7 +1266,8 @@ def test_fast_apply_preserves_exact_visible_pending_then_terminal_evidence(
     assert status.property("operationKind") == "import_apply"
     assert status.property("operationPhase") == "pending"
     assert status.property("stage") == "Preparing interpretation apply"
-    assert status.currentMessage() == "Preparing interpretation apply · Working…"
+    assert status.property("operationDetail") == "Preparing interpretation apply"
+    assert status.currentMessage() == "Importing reviewed EEG data · Working…"
 
     assert runtime.worker_started.wait(timeout=1.0)
     qtbot.waitUntil(
@@ -1580,6 +1695,50 @@ def test_apply_leaves_in_flight_status_to_owned_operation_presenter(monkeypatch)
     on_result(completed)
 
     assert statuses[-1] == (completed.message, 7000)
+
+
+def test_apply_failure_explains_that_existing_data_was_preserved(
+    tmp_path,
+    monkeypatch,
+):
+    panel = MagicMock()
+    handler = DatasetActionHandler(panel)
+    statuses: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        handler,
+        "_show_status",
+        lambda message, timeout_ms=7000: statuses.append((message, timeout_ms)),
+    )
+    execute = MagicMock(return_value=InteractionOutcome.accepted("scheduled"))
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_execute_interpretation_command_async",
+        execute,
+    )
+    critical = MagicMock()
+    handler._data_interpretation._bindings = replace(
+        handler._data_interpretation._bindings,
+        message_box=lambda: SimpleNamespace(critical=critical),
+    )
+
+    outcome = handler._data_interpretation._apply_interpretation_async(
+        _review_state(publication_generation=17),
+        {"confirmed": True, "save_recipe": False},
+    )
+    terminal = execute.call_args.kwargs["on_result"](
+        _state_preserved_apply_failure_result(tmp_path, monkeypatch)
+    )
+
+    assert outcome.status is InteractionStatus.ACCEPTED
+    assert terminal.status is InteractionStatus.BLOCKED
+    assert "mixed placement modes" in terminal.message
+    assert statuses == [
+        ("Dataset import failed · Existing data preserved", 7000),
+    ]
+    critical.assert_called_once()
+    assert critical.call_args.args[1] == "Interpretation apply failed"
+    assert "mixed placement modes" in critical.call_args.args[2]
+    assert "Existing data was preserved." in critical.call_args.args[2]
 
 
 def test_apply_replaces_loading_status_when_the_worker_fails(monkeypatch):

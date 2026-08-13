@@ -99,6 +99,7 @@ class OwnedOperationPresenter(QObject):
             operation_id=operation_id,
             kind=kind,
             stage=str(getattr(snapshot, "stage", "") or "Working"),
+            detail=str(getattr(snapshot, "stage", "") or "Working"),
             phase=phase,
             completed=completed if isinstance(completed, int) else None,
             total=total if isinstance(total, int) else None,

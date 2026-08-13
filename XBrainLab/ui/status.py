@@ -11,6 +11,9 @@ from PyQt6.QtCore import QTimer
 
 DEFAULT_STATUS_TIMEOUT_MS = 7000
 MAX_TRANSIENT_BEFORE_OWNED_PROGRESS_MS = 1000
+MAX_OPERATION_DETAIL_CHARS = 240
+IMPORT_REVIEW_STATUS_LABEL = "Checking selected EEG data"
+IMPORT_APPLY_STATUS_LABEL = "Importing reviewed EEG data"
 _TRANSIENT_MESSAGE_ATTRIBUTE = "_xbrainlab_transient_status_message"
 _TRANSIENT_DEADLINE_ATTRIBUTE = "_xbrainlab_transient_status_deadline"
 _OWNED_MESSAGE_ATTRIBUTE = "_xbrainlab_owned_operation_status_message"
@@ -50,6 +53,7 @@ def publish_owned_operation_progress(
     kind: str = "",
     stage: str,
     phase: str,
+    detail: str = "",
     completed: int | None = None,
     total: int | None = None,
     indeterminate: bool = True,
@@ -73,19 +77,46 @@ def publish_owned_operation_progress(
             if indeterminate
             else str(phase or "")
         )
+        normalized_kind = str(kind or "")
+        normalized_stage = str(stage or "Working")
+        normalized_phase = str(phase or "running")
+        operation_detail = (
+            _bounded_operation_detail(detail or normalized_stage)
+            if normalized_kind in {"import_review", "import_apply"}
+            and normalized_phase.casefold() not in {"completed", "cancelled", "failed"}
+            else ""
+        )
         set_property("operationId", operation_id)
-        set_property("operationKind", str(kind or ""))
-        set_property("stage", str(stage or "Working"))
+        set_property("operationKind", normalized_kind)
+        set_property("stage", normalized_stage)
+        set_property("operationDetail", operation_detail)
         set_property("progress", progress)
         set_property("indeterminate", bool(indeterminate))
-        set_property("operationPhase", str(phase or "running"))
+        set_property("operationPhase", normalized_phase)
         set_property("cancelRequested", bool(cancel_requested))
+        set_accessible_description = getattr(
+            status_bar,
+            "setAccessibleDescription",
+            None,
+        )
+        if callable(set_accessible_description):
+            set_accessible_description(
+                operation_detail
+                if normalized_kind in {"import_review", "import_apply"}
+                else ""
+            )
         _show_owned_operation_message(
             status_bar,
             operation_id=operation_id,
-            stage=str(stage or "Working"),
-            phase=str(phase or "running"),
-            progress=progress,
+            kind=normalized_kind,
+            stage=normalized_stage,
+            phase=normalized_phase,
+            progress=_display_progress(
+                kind=normalized_kind,
+                progress=progress,
+                completed=completed,
+                total=total,
+            ),
             cancel_requested=cancel_requested,
         )
         repaint = getattr(status_bar, "repaint", None)
@@ -99,6 +130,7 @@ def _show_owned_operation_message(
     status_bar: Any,
     *,
     operation_id: str,
+    kind: str,
     stage: str,
     phase: str,
     progress: str,
@@ -146,6 +178,7 @@ def _show_owned_operation_message(
                 status_bar,
                 token=token,
                 operation_id=operation_id,
+                kind=kind,
                 stage=stage,
                 phase=phase,
                 progress=progress,
@@ -154,12 +187,13 @@ def _show_owned_operation_message(
         )
         return
     _clear_deferred_owned_message(status_bar)
-    if cancel_requested or phase.casefold() == "cancelling":
-        message = f"Cancelling · {stage}"
-    elif progress == "indeterminate":
-        message = f"{stage} · Working…"
-    else:
-        message = f"{stage} · {progress}"
+    message = _owned_operation_message(
+        kind=kind,
+        stage=stage,
+        phase=phase,
+        progress=progress,
+        cancel_requested=cancel_requested,
+    )
     show_message(message)
     setattr(status_bar, _OWNED_MESSAGE_ATTRIBUTE, message)
     setattr(status_bar, _OWNED_OPERATION_ATTRIBUTE, operation_id)
@@ -170,6 +204,7 @@ def _publish_deferred_owned_message(
     *,
     token: int,
     operation_id: str,
+    kind: str,
     stage: str,
     phase: str,
     progress: str,
@@ -195,12 +230,24 @@ def _publish_deferred_owned_message(
         show_message = getattr(status_bar, "showMessage", None)
         if not callable(show_message):
             return
-        if cancel_requested or current_phase == "cancelling":
-            message = f"Cancelling · {stage}"
-        elif progress == "indeterminate":
-            message = f"{stage} · Working…"
-        else:
-            message = f"{stage} · {progress}"
+        current_kind = str(status_bar.property("operationKind") or kind)
+        current_stage = str(status_bar.property("stage") or stage)
+        current_progress = str(status_bar.property("progress") or progress)
+        current_cancel_requested = bool(
+            status_bar.property("cancelRequested") or cancel_requested
+        )
+        message = _owned_operation_message(
+            kind=current_kind,
+            stage=current_stage,
+            phase=current_phase,
+            progress=_display_progress(
+                kind=current_kind,
+                progress=current_progress,
+                completed=None,
+                total=None,
+            ),
+            cancel_requested=current_cancel_requested,
+        )
         _clear_transient_status(status_bar)
         show_message(message)
         setattr(status_bar, _OWNED_MESSAGE_ATTRIBUTE, message)
@@ -209,6 +256,63 @@ def _publish_deferred_owned_message(
         # The QStatusBar can be destroyed after the liveness probe while this
         # queued callback is being delivered during MainWindow teardown.
         return
+
+
+def _display_progress(
+    *,
+    kind: str,
+    progress: str,
+    completed: int | None,
+    total: int | None,
+) -> str:
+    """Use a compact percentage only for stable Data Import status copy."""
+    if kind != "import_apply":
+        return progress
+    if not isinstance(completed, int) or not isinstance(total, int):
+        try:
+            completed_text, total_text = progress.split("/", maxsplit=1)
+            completed = int(completed_text)
+            total = int(total_text)
+        except (TypeError, ValueError):
+            return progress
+    if total <= 0:
+        return progress
+    percentage = min(max(int((completed / total) * 100), 0), 100)
+    return f"{percentage}%"
+
+
+def _owned_operation_message(
+    *,
+    kind: str,
+    stage: str,
+    phase: str,
+    progress: str,
+    cancel_requested: bool,
+) -> str:
+    """Project exact operation truth into stable primary product copy."""
+    if cancel_requested or phase.casefold() == "cancelling":
+        cancelling_stage = _stable_import_status_label(kind) or stage
+        return f"Cancelling · {cancelling_stage}"
+    display_stage = _stable_import_status_label(kind) or stage
+    if progress == "indeterminate":
+        return f"{display_stage} · Working…"
+    return f"{display_stage} · {progress}"
+
+
+def _stable_import_status_label(kind: str) -> str:
+    if kind == "import_review":
+        return IMPORT_REVIEW_STATUS_LABEL
+    if kind == "import_apply":
+        return IMPORT_APPLY_STATUS_LABEL
+    return ""
+
+
+def _bounded_operation_detail(detail: str) -> str:
+    """Keep exact-stage context useful without exposing unbounded snapshot text."""
+    normalized = " ".join(str(detail or "").split())
+    if len(normalized) <= MAX_OPERATION_DETAIL_CHARS:
+        return normalized
+    return normalized[: MAX_OPERATION_DETAIL_CHARS - 1].rstrip() + "…"
 
 
 def _clear_deferred_owned_message(status_bar: Any) -> None:

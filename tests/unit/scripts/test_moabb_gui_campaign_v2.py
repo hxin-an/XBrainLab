@@ -2240,6 +2240,7 @@ def test_driver_pins_apply_by_public_kind_through_shared_content_stages(qtbot) -
     status.setProperty("operationKind", "import_review")
     status.setProperty("operationPhase", "running")
     status.setProperty("stage", "Verifying reviewed import content")
+    status.setProperty("operationDetail", "Verifying reviewed import content")
     status.setProperty("progress", "indeterminate")
     status.setProperty("indeterminate", True)
     qtbot.addWidget(window)
@@ -2249,11 +2250,13 @@ def test_driver_pins_apply_by_public_kind_through_shared_content_stages(qtbot) -
         status.setProperty("operationId", "apply-operation")
         status.setProperty("operationKind", "import_apply")
         status.setProperty("stage", "Hashing reviewed import content")
-        status.showMessage("Hashing reviewed import content · Working…")
+        status.setProperty("operationDetail", "Hashing reviewed import content")
+        status.showMessage("Importing reviewed EEG data · Working…")
 
     def publish_finalizing() -> None:
         status.setProperty("stage", "Finalizing reviewed import content")
-        status.showMessage("Finalizing reviewed import content · Working…")
+        status.setProperty("operationDetail", "Finalizing reviewed import content")
+        status.showMessage("Importing reviewed EEG data · Working…")
 
     def publish_completed() -> None:
         status.setProperty("operationPhase", "completed")
@@ -2280,6 +2283,102 @@ def test_driver_pins_apply_by_public_kind_through_shared_content_stages(qtbot) -
     assert completed.heartbeat_count >= 2
 
 
+@pytest.mark.parametrize("operation_kind", ["import_review", "import_apply"])
+@pytest.mark.parametrize("operation_phase", ["pending", "running", "cancelling"])
+def test_driver_rejects_stable_import_status_with_stale_operation_detail(
+    qtbot,
+    operation_kind: str,
+    operation_phase: str,
+) -> None:
+    window = QMainWindow()
+    status = window.statusBar()
+    status.setObjectName("OwnedOperationProgress")
+    status.setProperty("operationId", "import-operation")
+    status.setProperty("operationKind", operation_kind)
+    status.setProperty("operationPhase", operation_phase)
+    status.setProperty("stage", "Loading reviewed EEG recordings")
+    status.setProperty("operationDetail", "Hashing reviewed import content")
+    status.setProperty("progress", "indeterminate")
+    status.setProperty("indeterminate", True)
+    stable_label = {
+        "import_review": "Checking selected EEG data",
+        "import_apply": "Importing reviewed EEG data",
+    }[operation_kind]
+    stable_message = (
+        f"Cancelling · {stable_label}"
+        if operation_phase == "cancelling"
+        else f"{stable_label} · Working…"
+    )
+    status.showMessage(stable_message)
+    qtbot.addWidget(window)
+    window.show()
+    driver = GuiCampaignDriver(window)
+
+    assert driver._visible_operation_progress() is None
+
+
+def test_driver_rejects_import_progress_hidden_by_transient_message(qtbot) -> None:
+    window = QMainWindow()
+    status = window.statusBar()
+    status.setObjectName("OwnedOperationProgress")
+    status.setProperty("operationId", "apply-operation")
+    status.setProperty("operationKind", "import_apply")
+    status.setProperty("operationPhase", "running")
+    status.setProperty("stage", "Loading reviewed EEG recordings")
+    status.setProperty("operationDetail", "Loading reviewed EEG recordings")
+    status.setProperty("progress", "indeterminate")
+    status.setProperty("indeterminate", True)
+    status.showMessage("Confirm and Import clicked")
+    qtbot.addWidget(window)
+    window.show()
+    driver = GuiCampaignDriver(window)
+
+    assert driver._visible_operation_progress() is None
+
+    status.showMessage("Importing reviewed EEG data · Working…")
+
+    assert driver._visible_operation_progress() is status
+
+
+@pytest.mark.parametrize("operation_kind", ["import_review", "import_apply"])
+@pytest.mark.parametrize("operation_phase", ["pending", "running", "cancelling"])
+def test_driver_rejects_dynamic_import_status_even_when_message_contains_stage(
+    qtbot,
+    operation_kind: str,
+    operation_phase: str,
+) -> None:
+    window = QMainWindow()
+    status = window.statusBar()
+    status.setObjectName("OwnedOperationProgress")
+    status.setProperty("operationId", "import-operation")
+    status.setProperty("operationKind", operation_kind)
+    status.setProperty("operationPhase", operation_phase)
+    status.setProperty("stage", "Loading reviewed EEG recordings")
+    status.setProperty("operationDetail", "Loading reviewed EEG recordings")
+    status.setProperty("progress", "indeterminate")
+    status.setProperty("indeterminate", True)
+    prefix = "Cancelling · " if operation_phase == "cancelling" else ""
+    status.showMessage(f"{prefix}Loading reviewed EEG recordings · Working…")
+    qtbot.addWidget(window)
+    window.show()
+    driver = GuiCampaignDriver(window)
+
+    assert driver._visible_operation_progress() is None
+
+    stable_label = {
+        "import_review": "Checking selected EEG data",
+        "import_apply": "Importing reviewed EEG data",
+    }[operation_kind]
+    stable_message = (
+        f"Cancelling · {stable_label}"
+        if operation_phase == "cancelling"
+        else f"{stable_label} · Working…"
+    )
+    status.showMessage(stable_message)
+
+    assert driver._visible_operation_progress() is status
+
+
 def test_apply_kind_wait_allows_a_stable_preceding_review_owner(qtbot) -> None:
     window = QMainWindow()
     status = window.statusBar()
@@ -2290,7 +2389,8 @@ def test_apply_kind_wait_allows_a_stable_preceding_review_owner(qtbot) -> None:
     status.setProperty("stage", "Admitting Data Import discovery")
     status.setProperty("progress", "indeterminate")
     status.setProperty("indeterminate", True)
-    status.showMessage("Admitting Data Import discovery · Working…")
+    status.setProperty("operationDetail", "Admitting Data Import discovery")
+    status.showMessage("Checking selected EEG data · Working…")
     qtbot.addWidget(window)
     window.show()
 
@@ -2298,7 +2398,8 @@ def test_apply_kind_wait_allows_a_stable_preceding_review_owner(qtbot) -> None:
         status.setProperty("operationId", "apply-operation")
         status.setProperty("operationKind", "import_apply")
         status.setProperty("stage", "Preparing interpretation apply")
-        status.showMessage("Preparing interpretation apply · Working…")
+        status.setProperty("operationDetail", "Preparing interpretation apply")
+        status.showMessage("Importing reviewed EEG data · Working…")
 
     QTimer.singleShot(80, publish_apply)
     driver = GuiCampaignDriver(window, poll_interval_ms=2)
@@ -2415,9 +2516,14 @@ def test_armed_apply_probe_follows_live_review_chain_before_apply(qtbot) -> None
         status.setProperty("operationKind", kind)
         status.setProperty("operationPhase", phase)
         status.setProperty("stage", stage)
+        status.setProperty("operationDetail", stage)
         status.setProperty("progress", progress)
         status.setProperty("indeterminate", progress == "indeterminate")
-        status.showMessage(f"{stage} · Working…")
+        stable_label = {
+            "import_review": "Checking selected EEG data",
+            "import_apply": "Importing reviewed EEG data",
+        }[kind]
+        status.showMessage(f"{stable_label} · Working…")
 
     QTimer.singleShot(
         10,
@@ -2522,7 +2628,8 @@ def test_armed_apply_probe_observes_fresh_target_after_blocking_modal_unwind(
         status.setProperty("operationKind", "import_apply")
         status.setProperty("operationPhase", "pending")
         status.setProperty("stage", "Preparing interpretation apply")
-        status.showMessage("Preparing interpretation apply · Working…")
+        status.setProperty("operationDetail", "Preparing interpretation apply")
+        status.showMessage("Importing reviewed EEG data · Working…")
 
     QTimer.singleShot(10, block_then_publish_apply)
 
@@ -2541,9 +2648,10 @@ def test_exact_apply_wait_rejects_frozen_indeterminate_progress(qtbot) -> None:
     status.setProperty("operationKind", "import_apply")
     status.setProperty("operationPhase", "running")
     status.setProperty("stage", "Finalizing reviewed import content")
+    status.setProperty("operationDetail", "Finalizing reviewed import content")
     status.setProperty("progress", "indeterminate")
     status.setProperty("indeterminate", True)
-    status.showMessage("Finalizing reviewed import content · Working…")
+    status.showMessage("Importing reviewed EEG data · Working…")
     qtbot.addWidget(window)
     window.show()
 

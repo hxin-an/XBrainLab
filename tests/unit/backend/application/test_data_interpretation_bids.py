@@ -1080,6 +1080,32 @@ def test_strict_bids_keeps_run_specific_events_json_levels_as_suggestions(
     assert plans[eeg_2.name]["value_decisions"]["1"]["suggested_name"] == ("right hand")
 
 
+def test_strict_bids_preserves_numeric_category_lexemes(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "bids"
+    _eeg, _events = _write_bids_run(
+        root,
+        run="1",
+        event_rows=[
+            ("1", "0", "0.0", "1"),
+            ("2", "0", "1.0", "2"),
+        ],
+    )
+
+    candidate = _candidate_for_bids(root)
+
+    plan = candidate.label_carrier_plan[0]
+    run = candidate.bids["event_validation"]["runs"][0]
+    assert set(plan["value_decisions"]) == {"0.0", "1.0"}
+    assert plan["run_class_map"] == {"0.0": "0.0", "1.0": "1.0"}
+    assert run["placement"]["status"] == "ready"
+    assert {row["selected_label"] for row in run["row_evidence"]} == {"0.0", "1.0"}
+    assert "unresolved_event_value_decisions" not in {
+        issue["code"] for issue in run["issues"]
+    }
+
+
 def test_timestamp_label_apply_uses_per_run_mapping_instead_of_global_mapping(
     tmp_path: Path,
 ) -> None:

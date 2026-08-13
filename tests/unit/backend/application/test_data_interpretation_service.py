@@ -3235,6 +3235,135 @@ def test_repeated_safe_preview_reuses_admission_after_identity_check(
     assert payload["resource_preflight"]["admission_cache_reused"] is True
 
 
+def test_apply_rechecks_resources_when_current_ram_invalidates_safe_review(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
+    eeg_path.write_bytes(b"stable EEG header")
+    service, _dataset = _service()
+    service.handle_review_interpretation(
+        ReviewInterpretationCommand(
+            source_path=str(eeg_path),
+            choices={"selected_eeg_files": [str(eeg_path.resolve())]},
+        )
+    )
+    candidate = service.state.resolve_candidate(None)
+    checks = 0
+
+    def _blocking_check(paths: list[str]) -> ResourcePreflightResult:
+        nonlocal checks
+        checks += 1
+        return _resource_preflight("blocking", paths)
+
+    monkeypatch.setattr(service_module, "available_ram_bytes", lambda: 0)
+    monkeypatch.setattr(
+        service_module,
+        "check_import_resource_preflight",
+        _blocking_check,
+    )
+
+    with pytest.raises(ApplicationError):
+        service._resolve_apply_resource_preflight(
+            command=ApplyInterpretationCommand(candidate_id=candidate.candidate_id),
+            candidate=candidate,
+            reuse_safe_preview_admission=True,
+        )
+
+    assert checks == 1
+
+
+def test_apply_rechecks_resources_when_platform_change_time_is_unreliable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
+    eeg_path.write_bytes(b"stable EEG header")
+    service, _dataset = _service()
+    service.handle_review_interpretation(
+        ReviewInterpretationCommand(
+            source_path=str(eeg_path),
+            choices={"selected_eeg_files": [str(eeg_path.resolve())]},
+        )
+    )
+    candidate = service.state.resolve_candidate(None)
+    original_check = service_module.check_import_resource_preflight
+    checks = 0
+
+    def _counted_check(paths: list[str]) -> ResourcePreflightResult:
+        nonlocal checks
+        checks += 1
+        return original_check(paths)
+
+    monkeypatch.setattr(
+        service_module,
+        "_stat_change_time_is_reliable",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        service_module,
+        "check_import_resource_preflight",
+        _counted_check,
+    )
+
+    preflight, receipt, reused = service._resolve_apply_resource_preflight(
+        command=ApplyInterpretationCommand(candidate_id=candidate.candidate_id),
+        candidate=candidate,
+        reuse_safe_preview_admission=True,
+    )
+
+    assert preflight.risk_level is resource_guard.ResourceRiskLevel.SAFE
+    assert receipt is None
+    assert reused is False
+    assert checks == 1
+
+
+def test_apply_does_not_reuse_safe_review_for_different_resource_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
+    extra_path = tmp_path / "sub-01_task-mi_run-02_raw.fif"
+    eeg_path.write_bytes(b"stable EEG header")
+    extra_path.write_bytes(b"different EEG header")
+    service, _dataset = _service()
+    service.handle_review_interpretation(
+        ReviewInterpretationCommand(
+            source_path=str(eeg_path),
+            choices={"selected_eeg_files": [str(eeg_path.resolve())]},
+        )
+    )
+    candidate = service.state.resolve_candidate(None)
+    changed_scope_candidate = replace(
+        candidate,
+        selected_eeg_files=[*candidate.selected_eeg_files, str(extra_path.resolve())],
+    )
+    original_check = service_module.check_import_resource_preflight
+    checks = 0
+
+    def _counted_check(paths: list[str]) -> ResourcePreflightResult:
+        nonlocal checks
+        checks += 1
+        return original_check(paths)
+
+    monkeypatch.setattr(
+        service_module,
+        "check_import_resource_preflight",
+        _counted_check,
+    )
+
+    preflight, receipt, reused = service._resolve_apply_resource_preflight(
+        command=ApplyInterpretationCommand(candidate_id=candidate.candidate_id),
+        candidate=changed_scope_candidate,
+        reuse_safe_preview_admission=True,
+    )
+
+    assert preflight.risk_level is resource_guard.ResourceRiskLevel.SAFE
+    assert receipt is None
+    assert reused is False
+    assert checks == 1
+
+
 def test_first_safe_preview_reuses_matching_scan_admission(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -218,6 +218,8 @@ class DataInterpretationApplyService:
         self,
         candidate: InterpretationCandidate,
         label_resources: AdmittedLabelResourceSession | None = None,
+        *,
+        recheck_content_identity: bool = True,
     ) -> dict[str, Any]:
         """Apply reviewed label carriers after interpretation apply."""
         if not candidate.label_carrier_plan:
@@ -335,7 +337,8 @@ class DataInterpretationApplyService:
             }
 
         try:
-            self._assert_reviewed_label_content_is_current(candidate)
+            if recheck_content_identity:
+                self._assert_reviewed_label_content_is_current(candidate)
             bids_placement: list[dict[str, Any]] = []
             mapping = self._label_import_mapping_from_class_map(candidate.class_map)
             if mode == "event_code":

@@ -34,6 +34,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.ui.status import (
+    IMPORT_APPLY_STATUS_LABEL,
+    IMPORT_REVIEW_STATUS_LABEL,
+)
+
 
 class DriverContractError(RuntimeError):
     """The visible product surface cannot satisfy the campaign contract."""
@@ -2328,9 +2333,23 @@ class GuiCampaignDriver:
         phase = str(progress.property("operationPhase") or "").casefold()
         if phase in {"pending", "running", "cancelling"}:
             stage = str(progress.property("stage") or "").strip()
+            kind = str(progress.property("operationKind") or "").strip()
+            detail = str(progress.property("operationDetail") or "").strip()
             current_message = getattr(progress, "currentMessage", None)
             message = str(current_message() or "") if callable(current_message) else ""
-            if stage and stage not in message:
+            stable_label = {
+                "import_review": IMPORT_REVIEW_STATUS_LABEL,
+                "import_apply": IMPORT_APPLY_STATUS_LABEL,
+            }.get(kind, "")
+            if stable_label:
+                stable_message_visible = (
+                    message == f"Cancelling · {stable_label}"
+                    if phase == "cancelling"
+                    else message.startswith(f"{stable_label} ·")
+                )
+                if not stage or not stable_message_visible or detail != stage:
+                    return None
+            elif stage and stage not in message:
                 return None
         return progress
 
