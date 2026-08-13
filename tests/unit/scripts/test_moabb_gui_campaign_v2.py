@@ -2605,6 +2605,7 @@ def test_import_action_and_subject_dialog_are_captured_on_distinct_surfaces() ->
             surface["name"] = "subject_dialog"
             before_confirm()
             surface["name"] = "wizard"
+            QApplication.processEvents()
             return (
                 self._ack(opener),
                 self._ack(confirm),
@@ -2641,6 +2642,16 @@ def test_import_action_and_subject_dialog_are_captured_on_distinct_surfaces() ->
                 self._ack(control),
                 ProgressWaitEvidence("review-op", 1, 0.01, 0.02),
             )
+
+        @staticmethod
+        def wait_for_modal_interaction(
+            _control,
+            interaction,
+            *,
+            timeout_seconds,
+        ):
+            del timeout_seconds
+            interaction(ProgressWaitEvidence("review-op", 1, 0.01, 0.02))
 
         def click(self, control, *, timeout_seconds):
             del timeout_seconds
@@ -2694,6 +2705,142 @@ def test_import_action_and_subject_dialog_are_captured_on_distinct_surfaces() ->
             "selection_basis": "oracle_expected_class",
         },
     ]
+
+
+def test_import_journey_traverses_and_closes_synchronous_preview_exec(qtbot) -> None:
+    dialog = QDialog()
+    layout = QVBoxLayout(dialog)
+    next_button = QPushButton("Next", dialog)
+    next_button.setObjectName("DataImportNextButton")
+    next_button.setAccessibleName("Next: Load Labels")
+    confirm_button = QPushButton("Confirm and Import", dialog)
+    confirm_button.setObjectName("DataImportConfirmButton")
+    confirm_button.setAccessibleName("Confirm and Import")
+    confirm_button.hide()
+    layout.addWidget(next_button)
+    layout.addWidget(confirm_button)
+    qtbot.addWidget(dialog)
+    step = 0
+
+    def advance() -> None:
+        nonlocal step
+        step += 1
+        if step < 4:
+            next_button.setAccessibleName(f"Next: step {step + 1}")
+            return
+        next_button.hide()
+        confirm_button.show()
+
+    next_button.clicked.connect(advance)
+    confirm_button.clicked.connect(dialog.accept)
+    gui_driver = GuiCampaignDriver(dialog, poll_interval_ms=1)
+
+    class _SynchronousImportDriver:
+        @staticmethod
+        def _ack(control: VisibleControl) -> ClickAcknowledgement:
+            return ClickAcknowledgement(control, control.value, "", 0.01)
+
+        def open_modal_and_click(
+            self,
+            opener,
+            confirm,
+            *,
+            before_confirm,
+            timeout_seconds,
+        ):
+            del timeout_seconds
+            before_confirm()
+            result = REAL_QDIALOG_EXEC(dialog)
+            assert result == QDialog.DialogCode.Accepted
+            return (
+                self._ack(opener),
+                self._ack(confirm),
+                ProgressWaitEvidence("import-op", 1, 0.01, 0.02),
+            )
+
+        @staticmethod
+        def select_subjects(_subjects, *, timeout_seconds):
+            del timeout_seconds
+            return 0.01
+
+        @staticmethod
+        def resolve_visible_event_value_decisions(
+            *, expected_events, expected_classes, timeout_seconds
+        ):
+            del timeout_seconds
+            return [
+                {
+                    "event_value": value,
+                    "use": "class" if value in expected_classes else "ignore",
+                    "class_name": value if value in expected_classes else "",
+                    "selection_basis": (
+                        "oracle_expected_class"
+                        if value in expected_classes
+                        else "oracle_nonclass_event"
+                    ),
+                }
+                for value in expected_events
+            ]
+
+        def wait_for_modal_interaction(
+            self,
+            target,
+            interaction,
+            *,
+            timeout_seconds,
+        ):
+            return gui_driver.wait_for_modal_interaction(
+                target,
+                interaction,
+                timeout_seconds=timeout_seconds,
+            )
+
+        @staticmethod
+        def wait_for_transition(_control, *, timeout_seconds):
+            del timeout_seconds
+            raise AssertionError("preview interaction escaped synchronous exec()")
+
+        @staticmethod
+        def visible_operation_id():
+            return "previous-op"
+
+        def click(self, control, *, timeout_seconds):
+            return gui_driver.click(control, timeout_seconds=timeout_seconds)
+
+        @staticmethod
+        def wait_for_owned_operation_completion(
+            *, timeout_seconds, excluding_operation_id
+        ):
+            del timeout_seconds, excluding_operation_id
+            return ProgressWaitEvidence("apply-op", 1, 0.01, 0.02)
+
+        @staticmethod
+        def control(control, *, timeout_seconds):
+            del timeout_seconds
+            if control is VisibleControl.NAV_PREPROCESS:
+                return object()
+            return gui_driver.control(control, timeout_seconds=0.0)
+
+    journey = ProductRecommendedJourneyScaffold(
+        _SynchronousImportDriver(),  # type: ignore[arg-type]
+        mode="replay",
+    )
+
+    journey.import_and_review(
+        (1,),
+        expected_events=("stimulus",),
+        expected_classes=("stimulus",),
+    )
+
+    assert step == 4
+    assert dialog.result() == QDialog.DialogCode.Accepted
+    assert journey.observed_stage_order()[:5] == (
+        "import_bids_folder",
+        "select_subjects",
+        "review_metadata",
+        "match_labels",
+        "confirm_import",
+    )
 
 
 @pytest.mark.parametrize(

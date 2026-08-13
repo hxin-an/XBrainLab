@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Final
 
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QCheckBox
 
 from .contract import (
@@ -129,7 +130,12 @@ class ProductRecommendedJourneyScaffold:
         expected_events: tuple[str, ...] | None = None,
         expected_classes: tuple[str, ...] | None = None,
     ) -> None:
-        """Open BIDS, select the fixed cohort, and traverse every wizard page."""
+        """Open BIDS, select the fixed cohort, and traverse every wizard page.
+
+        The preview is owned by synchronous ``QDialog.exec()``; using the
+        ordinary ``driver.wait_for_transition(...)`` after Subject Continue
+        would run too late to interact with that nested event loop.
+        """
         event_oracle = tuple(expected_events or self._expected_events)
         class_oracle = tuple(expected_classes or self._expected_classes)
         if self._expected_events and event_oracle != self._expected_events:
@@ -139,7 +145,90 @@ class ProductRecommendedJourneyScaffold:
         if self._should_cancel("import") or self._should_cancel("review"):
             self._exercise_import_review_cancellation(subjects)
         subject_acknowledgement: list[float] = [0.0]
+        review_progress: list[ProgressWaitEvidence] = []
+        review_acknowledgements: list[ClickAcknowledgement] = []
+        confirm_acknowledgements: list[ClickAcknowledgement] = []
+        confirm_baselines: list[str | None] = []
+        review_sessions: list[Any] = []
+        apply_states_before: list[dict[str, Any]] = []
+        modal_failures: list[BaseException] = []
         self._capture_visible_stage("import_bids_folder")
+
+        def confirm_import() -> None:
+            if self._should_cancel("apply"):
+                review_sessions.append(
+                    self.driver.read_control_property(
+                        VisibleControl.WIZARD_CONFIRM,
+                        "reviewSessionIdentity",
+                    )
+                )
+                apply_states_before.append(self.driver.workflow_state_identity("apply"))
+            confirm_baselines.append(self.driver.visible_operation_id())
+            self._capture_visible_stage("confirm_import")
+            confirm_acknowledgements.append(
+                self.driver.click(
+                    VisibleControl.WIZARD_CONFIRM,
+                    timeout_seconds=30.0,
+                )
+            )
+
+        def interact_with_reopened_confirmation() -> None:
+            try:
+                self.driver.wait_for_modal_interaction(
+                    VisibleControl.WIZARD_CONFIRM,
+                    lambda _progress: confirm_import(),
+                    timeout_seconds=_LONG_OPERATION_TIMEOUT_SECONDS,
+                )
+            except BaseException as exc:
+                modal_failures.append(exc)
+
+        def traverse_preview(progress: ProgressWaitEvidence) -> None:
+            review_progress.append(progress)
+            first = self.driver.click(
+                VisibleControl.WIZARD_NEXT,
+                timeout_seconds=30.0,
+            )
+            second = self.driver.click(
+                VisibleControl.WIZARD_NEXT,
+                timeout_seconds=30.0,
+            )
+            review_acknowledgements.extend((first, second))
+            self._capture_visible_stage("review_metadata")
+            match_acknowledgement = self.driver.click(
+                VisibleControl.WIZARD_NEXT,
+                timeout_seconds=30.0,
+            )
+            self.observed_ui_options["event_value_decisions"] = (
+                self.driver.resolve_visible_event_value_decisions(
+                    expected_events=event_oracle,
+                    expected_classes=class_oracle,
+                    timeout_seconds=30.0,
+                )
+            )
+            self._capture_visible_stage("match_labels")
+            review_acknowledgements.append(match_acknowledgement)
+            self.driver.click(VisibleControl.WIZARD_NEXT, timeout_seconds=30.0)
+            try:
+                self.driver.control(
+                    VisibleControl.WIZARD_CONFIRM,
+                    timeout_seconds=0.0,
+                )
+            except DriverContractError:
+                # Match Labels may close the synchronous preview so the backend
+                # can refresh its decision before reopening Review and Import.
+                QTimer.singleShot(0, interact_with_reopened_confirmation)
+                return
+            confirm_import()
+
+        def interact_with_synchronous_preview() -> None:
+            try:
+                self.driver.wait_for_modal_interaction(
+                    VisibleControl.WIZARD_NEXT,
+                    traverse_preview,
+                    timeout_seconds=_LONG_OPERATION_TIMEOUT_SECONDS,
+                )
+            except BaseException as exc:
+                modal_failures.append(exc)
 
         def choose_subjects() -> None:
             self._capture_visible_stage("select_subjects")
@@ -147,6 +236,10 @@ class ProductRecommendedJourneyScaffold:
                 subjects,
                 timeout_seconds=30.0,
             )
+            # Continue opens DataInterpretationPreviewDialog with synchronous
+            # QDialog.exec(). Arm the public-control interaction before that
+            # nested event loop starts so the click can return normally.
+            QTimer.singleShot(0, interact_with_synchronous_preview)
 
         (
             import_acknowledgement,
@@ -158,84 +251,90 @@ class ProductRecommendedJourneyScaffold:
             before_confirm=choose_subjects,
             timeout_seconds=_LONG_OPERATION_TIMEOUT_SECONDS,
         )
+        if modal_failures:
+            raise modal_failures[0]
         self._record(
             "import_bids_folder",
             (VisibleControl.IMPORT_BIDS,),
             import_acknowledgement.elapsed_seconds,
             progress=import_progress,
         )
-        _, review_progress = self.driver.wait_for_transition(
-            VisibleControl.WIZARD_NEXT,
-            timeout_seconds=_LONG_OPERATION_TIMEOUT_SECONDS,
-        )
         self._record(
             "select_subjects",
             (VisibleControl.SUBJECT_TABLE, VisibleControl.SUBJECT_CONTINUE),
             max(acknowledgement.elapsed_seconds, subject_acknowledgement[0]),
         )
-
-        # Choose EEG Data -> Load Labels -> Review Metadata. BIDS sidecars/events
-        # remain product-decided; the campaign never names a label field itself.
-        first = self.driver.click(VisibleControl.WIZARD_NEXT, timeout_seconds=30.0)
-        second = self.driver.click(VisibleControl.WIZARD_NEXT, timeout_seconds=30.0)
-        self._capture_visible_stage("review_metadata")
+        if len(review_progress) != 1 or len(review_acknowledgements) != 3:
+            raise DriverContractError(
+                "synchronous data interpretation preview did not complete"
+            )
+        first, second, match_acknowledgement = review_acknowledgements
         self._record(
             "review_metadata",
             (VisibleControl.WIZARD_NEXT, VisibleControl.WIZARD_NEXT),
             max(first.elapsed_seconds, second.elapsed_seconds),
-            progress=review_progress,
+            progress=review_progress[0],
         )
-        match_acknowledgement = self.driver.click(
-            VisibleControl.WIZARD_NEXT,
-            timeout_seconds=30.0,
-        )
-        self.observed_ui_options["event_value_decisions"] = (
-            self.driver.resolve_visible_event_value_decisions(
-                expected_events=event_oracle,
-                expected_classes=class_oracle,
-                timeout_seconds=30.0,
-            )
-        )
-        self._capture_visible_stage("match_labels")
         self._record(
             "match_labels",
             (VisibleControl.WIZARD_NEXT,),
             match_acknowledgement.elapsed_seconds,
         )
-        self.driver.click(VisibleControl.WIZARD_NEXT, timeout_seconds=30.0)
-        self._capture_visible_stage("confirm_import")
-        review_session: Any | None = None
-        apply_state_before: dict[str, Any] | None = None
-        if self._should_cancel("apply"):
-            review_session = self.driver.read_control_property(
-                VisibleControl.WIZARD_CONFIRM,
-                "reviewSessionIdentity",
+        if len(confirm_acknowledgements) != 1:
+            raise DriverContractError(
+                "synchronous Review and Import confirmation did not complete"
             )
-            apply_state_before = self.driver.workflow_state_identity("apply")
-        confirm_baseline = self.driver.visible_operation_id()
-        confirm_acknowledgement = self.driver.click(
-            VisibleControl.WIZARD_CONFIRM,
-            timeout_seconds=30.0,
-        )
+        confirm_acknowledgement = confirm_acknowledgements[0]
+        confirm_baseline = confirm_baselines[0]
+        review_session = review_sessions[0] if review_sessions else None
+        apply_state_before = apply_states_before[0] if apply_states_before else None
         if self._should_cancel("apply"):
+            retry_acknowledgements: list[ClickAcknowledgement] = []
+            retry_baselines: list[str | None] = []
+            retry_review_sessions: list[Any] = []
+
+            def confirm_reopened_review(_progress: ProgressWaitEvidence) -> None:
+                retry_review_sessions.append(
+                    self.driver.read_control_property(
+                        VisibleControl.WIZARD_CONFIRM,
+                        "reviewSessionIdentity",
+                    )
+                )
+                retry_baselines.append(self.driver.visible_operation_id())
+                retry_acknowledgements.append(
+                    self.driver.click(
+                        VisibleControl.WIZARD_CONFIRM,
+                        timeout_seconds=30.0,
+                    )
+                )
+
+            def schedule_reopened_review_interaction() -> None:
+                QTimer.singleShot(
+                    0,
+                    lambda: self.driver.wait_for_modal_interaction(
+                        VisibleControl.WIZARD_CONFIRM,
+                        confirm_reopened_review,
+                        timeout_seconds=_LONG_OPERATION_TIMEOUT_SECONDS,
+                    ),
+                )
+
             self._cancel_active_stage(
                 "apply",
                 review_session=review_session,
                 state_before=apply_state_before,
+                after_cancel_requested=schedule_reopened_review_interaction,
             )
-            self.driver.control(
-                VisibleControl.WIZARD_CONFIRM,
-                timeout_seconds=30.0,
-            )
-            retry_review_session = self.driver.read_control_property(
-                VisibleControl.WIZARD_CONFIRM,
-                "reviewSessionIdentity",
-            )
-            confirm_baseline = self.driver.visible_operation_id()
-            confirm_acknowledgement = self.driver.click(
-                VisibleControl.WIZARD_CONFIRM,
-                timeout_seconds=30.0,
-            )
+            if (
+                len(retry_acknowledgements) != 1
+                or len(retry_baselines) != 1
+                or len(retry_review_sessions) != 1
+            ):
+                raise DriverContractError(
+                    "cancelled Apply did not reopen its synchronous review dialog"
+                )
+            retry_review_session = retry_review_sessions[0]
+            confirm_baseline = retry_baselines[0]
+            confirm_acknowledgement = retry_acknowledgements[0]
             self.cancellation.review_session_after = _json_mapping(retry_review_session)
             self.cancellation.same_review_session_retry = bool(
                 self.cancellation.review_session_before
@@ -656,12 +755,15 @@ class ProductRecommendedJourneyScaffold:
         *,
         review_session: Any | None = None,
         state_before: dict[str, Any] | None = None,
+        after_cancel_requested: Callable[[], None] | None = None,
     ) -> None:
         before = state_before or self.driver.workflow_state_identity(target)
         acknowledgement, at_click = self.cancel_current_operation(
             partition=self.cancellation.partition,
             target=target,
         )
+        if after_cancel_requested is not None:
+            after_cancel_requested()
         terminal = self.driver.wait_for_operation_terminal(
             at_click.operation_id,
             timeout_seconds=_LONG_OPERATION_TIMEOUT_SECONDS,
