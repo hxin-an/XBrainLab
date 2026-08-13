@@ -2246,6 +2246,9 @@ def test_meaningful_cancellation_stage_families_are_product_backed() -> None:
     assert (
         "Materializing BIDS review metadata" in CANCELLATION_MEANINGFUL_STAGES["review"]
     )
+    assert (
+        "Preparing interpretation candidate" in CANCELLATION_MEANINGFUL_STAGES["review"]
+    )
     assert {
         "Preparing import",
         "Preparing import review",

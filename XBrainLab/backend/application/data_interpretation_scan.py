@@ -369,9 +369,35 @@ def scan_source_path(
                 for file_path in all_files
                 if resource_reader.admits(file_path)
             ]
-    bids_review_metadata_total = (
-        len(eeg_files) + 1 if materialize_metadata and source_kind == "bids" else None
+    bids_layout = [
+        dict(row) for row in scope.bids.get("layout", []) if isinstance(row, dict)
+    ]
+    admitted_metadata = set(metadata_files)
+    admitted_channel_files = _dedupe_strings(
+        [
+            str(row.get("channels_file") or "")
+            for row in bids_layout
+            if str(row.get("channels_file") or "") in admitted_metadata
+        ]
     )
+    bids_review_metadata_total = (
+        len(eeg_files) + len(admitted_channel_files) + 2
+        if materialize_metadata and source_kind == "bids"
+        else None
+    )
+    bids_review_metadata_completed = 0
+
+    def _publish_bids_metadata_unit() -> None:
+        nonlocal bids_review_metadata_completed
+        if bids_review_metadata_total is None:
+            return
+        bids_review_metadata_completed += 1
+        owned_work_checkpoint(
+            BIDS_REVIEW_METADATA_STAGE,
+            completed=bids_review_metadata_completed,
+            total=bids_review_metadata_total,
+        )
+
     metadata_guard = (
         resource_reader.guard(
             metadata_files,
@@ -392,19 +418,14 @@ def scan_source_path(
             source_kind,
             eeg_files,
             label_carriers,
-            layout=[
-                dict(row)
-                for row in scope.bids.get("layout", [])
-                if isinstance(row, dict)
-            ],
+            layout=bids_layout,
             materialize=materialize_metadata,
             admitted_metadata_files=metadata_files,
-        )
-    if bids_review_metadata_total is not None:
-        owned_work_checkpoint(
-            BIDS_REVIEW_METADATA_STAGE,
-            completed=1,
-            total=bids_review_metadata_total,
+            on_metadata_unit_materialized=(
+                _publish_bids_metadata_unit
+                if bids_review_metadata_total is not None
+                else None
+            ),
         )
     scope_issue = str(scope.bids.get("root_validation_issue") or "")
     materialized_issue = str(bids.get("root_validation_issue") or "")
@@ -432,7 +453,6 @@ def scan_source_path(
     bids["metadata_discovery"] = dict(
         scope.bids.get("metadata_discovery") or {},
     )
-    admitted_metadata = set(metadata_files)
     for key in ("electrodes_files", "coordsystem_files", "json_sidecar_files"):
         bids[key] = [
             str(path)
@@ -451,17 +471,31 @@ def scan_source_path(
     if "selection_root" in scope.bids:
         bids["selection_root"] = str(scope.bids["selection_root"])
     metadata: list[FileMetadataResolution] = []
-    for index, file_path in enumerate(eeg_files, start=1):
+    for file_path in eeg_files:
         metadata.append(_metadata_for_file(Path(file_path), scan_root, source_kind))
-        if bids_review_metadata_total is not None:
-            owned_work_checkpoint(
-                BIDS_REVIEW_METADATA_STAGE,
-                completed=index + 1,
-                total=bids_review_metadata_total,
-            )
+        _publish_bids_metadata_unit()
+
+    format_classification_completed = 0
+
+    def _publish_format_classification() -> None:
+        nonlocal format_classification_completed
+        format_classification_completed += 1
+        owned_work_checkpoint(
+            "Classifying import formats",
+            completed=format_classification_completed,
+            total=len(all_files),
+        )
+
+    if all_files:
+        owned_work_checkpoint(
+            "Classifying import formats",
+            completed=0,
+            total=len(all_files),
+        )
     format_capabilities = _format_capabilities(
         all_files,
         resource_reader=resource_reader,
+        on_file_classified=_publish_format_classification if all_files else None,
     )
     warnings = _scan_warnings(
         source_kind,

@@ -6,7 +6,7 @@ import csv
 import json
 import os
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass
 from dataclasses import field as dc_field
 from pathlib import Path
@@ -173,6 +173,7 @@ def bids_summary(
     discovered_files: Iterable[str | Path] | None = None,
     admitted_metadata_files: Iterable[str] | None = None,
     metadata_read_budget: BidsMetadataReadBudget | None = None,
+    on_metadata_unit_materialized: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """Summarize BIDS entities discovered during source scan."""
     discovered_values = None if discovered_files is None else list(discovered_files)
@@ -232,6 +233,8 @@ def bids_summary(
         and _is_admitted(participants_file)
         else []
     )
+    if materialize and on_metadata_unit_materialized is not None:
+        on_metadata_unit_materialized()
     admitted_channels = [item for item in channels_files if _is_admitted(Path(item))]
     read_budget = metadata_read_budget or BidsMetadataReadBudget()
     if (
@@ -251,6 +254,16 @@ def bids_summary(
     else:
         dataset = {}
         root_validation_issue = ""
+    if materialize and on_metadata_unit_materialized is not None:
+        on_metadata_unit_materialized()
+    channel_status_summary = (
+        _channel_status_summary(
+            admitted_channels,
+            on_file_materialized=on_metadata_unit_materialized,
+        )
+        if materialize
+        else {"total": 0, "good": 0, "bad": 0, "other": 0}
+    )
     return {
         "is_bids": source_kind == "bids",
         "root": str(bids_root),
@@ -267,11 +280,7 @@ def bids_summary(
         "participant_count": len(participants),
         "participants": participants,
         "metadata_materialized": materialize,
-        "channel_status_summary": (
-            _channel_status_summary(admitted_channels)
-            if materialize
-            else {"total": 0, "good": 0, "bad": 0, "other": 0}
-        ),
+        "channel_status_summary": channel_status_summary,
         "layout": layout,
         "selected_scope": bids_scope_summary(eeg_files, layout),
         "dataset_description": (
@@ -510,7 +519,11 @@ def _read_json_object(path: Path) -> dict[str, Any]:
     return payload
 
 
-def _channel_status_summary(channels_files: list[str]) -> dict[str, int]:
+def _channel_status_summary(
+    channels_files: list[str],
+    *,
+    on_file_materialized: Callable[[], None] | None = None,
+) -> dict[str, int]:
     summary = {"total": 0, "good": 0, "bad": 0, "other": 0}
     for file_path in channels_files:
         for row in _read_tsv_rows(Path(file_path)):
@@ -522,6 +535,8 @@ def _channel_status_summary(channels_files: list[str]) -> dict[str, int]:
                 summary["bad"] += 1
             else:
                 summary["other"] += 1
+        if on_file_materialized is not None:
+            on_file_materialized()
     return summary
 
 

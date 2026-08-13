@@ -49,6 +49,22 @@ def test_format_capabilities_report_unsupported_sidecars(tmp_path: Path):
     assert by_name["session.sidecar"]["status"] == "limited"
 
 
+def test_format_capabilities_reports_each_classified_file(tmp_path: Path) -> None:
+    first = tmp_path / "first.set"
+    second = tmp_path / "second_events.tsv"
+    first.write_bytes(b"")
+    second.write_text("onset\ttrial_type\n", encoding="utf-8")
+    completed: list[int] = []
+
+    capabilities = format_capabilities(
+        [second, first],
+        on_file_classified=lambda: completed.append(len(completed) + 1),
+    )
+
+    assert len(capabilities) == 2
+    assert completed == [1, 2]
+
+
 def test_format_constants_remain_shared_import_boundaries():
     assert ".gdf" in SUPPORTED_EEG_EXTENSIONS
     assert ".mat" in LABEL_CARRIER_EXTENSIONS

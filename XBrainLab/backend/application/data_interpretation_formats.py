@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -149,6 +150,7 @@ def format_capabilities(
     files: list[Path],
     *,
     resource_reader: AdmittedResourceReader | None = None,
+    on_file_classified: Callable[[], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Return user-facing import capability boundaries for discovered files."""
     capabilities: list[dict[str, Any]] = []
@@ -156,6 +158,8 @@ def format_capabilities(
         capability = format_capability(path, resource_reader=resource_reader)
         if capability:
             capabilities.append(capability)
+        if on_file_classified is not None:
+            on_file_classified()
     return capabilities
 
 

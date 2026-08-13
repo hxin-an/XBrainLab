@@ -514,6 +514,7 @@ class DataInterpretationCommandService:
         )
         candidate_id = self.state.next_id("candidate")
         preview_id = self.state.next_id("preview")
+        owned_work_checkpoint("Preparing interpretation candidate")
         candidate = build_interpretation_candidate(
             candidate_id=candidate_id,
             scan=scan,

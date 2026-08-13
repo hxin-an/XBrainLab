@@ -217,7 +217,7 @@ def test_cached_bids_review_publishes_cancellable_metadata_materialization_stage
     assert snapshot.phase is OwnedWorkPhase.RUNNING
     assert snapshot.stage == "Materializing BIDS review metadata"
     assert snapshot.completed == 0
-    assert snapshot.total == 2
+    assert snapshot.total == 3
     assert len(results) == 1
     cancelled = results[0]
     assert cancelled.failed
@@ -228,3 +228,135 @@ def test_cached_bids_review_publishes_cancellable_metadata_materialization_stage
     assert service.get_owned_operation(operation.operation_id).phase is (
         OwnedWorkPhase.CANCELLED
     )
+
+
+def test_bids_review_advances_progress_before_slow_channel_metadata_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_bids_dataset(tmp_path)
+    channels_path = (
+        tmp_path
+        / "sub-02"
+        / "ses-02"
+        / "eeg"
+        / "sub-02_ses-02_task-mi_run-1_channels.tsv"
+    )
+    channels_path.write_text("name\tstatus\nCz\tgood\n", encoding="utf-8")
+    service = ApplicationService(Study())
+    catalog = service.execute(
+        ScanSourceCommand(
+            source_path=str(tmp_path),
+            source_hint="bids",
+            catalog_only=True,
+        )
+    )
+    assert catalog.ok
+
+    from XBrainLab.backend.application import data_interpretation_metadata
+
+    original_read_tsv = data_interpretation_metadata._read_tsv_rows
+    channel_read_started = Event()
+    release_channel_read = Event()
+
+    def _blocking_channel_read(path: Path):
+        if path.name.endswith("_channels.tsv"):
+            channel_read_started.set()
+            assert release_channel_read.wait(timeout=_THREAD_WATCHDOG_SECONDS)
+        return original_read_tsv(path)
+
+    monkeypatch.setattr(
+        data_interpretation_metadata,
+        "_read_tsv_rows",
+        _blocking_channel_read,
+    )
+    command = ReviewInterpretationCommand(
+        source_path=str(tmp_path),
+        source_hint="bids",
+        choices={"selected_bids_subjects": ["02"]},
+    )
+    operation = service.begin_owned_operation(command)
+    results = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="bids-review-progress",
+    )
+
+    worker.start()
+    assert channel_read_started.wait(timeout=_THREAD_WATCHDOG_SECONDS)
+    snapshot = service.get_owned_operation(operation.operation_id)
+    release_channel_read.set()
+    worker.join(timeout=_THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert snapshot.phase is OwnedWorkPhase.RUNNING
+    assert snapshot.stage == "Materializing BIDS review metadata"
+    assert snapshot.completed == 2
+    assert snapshot.total == 4
+    assert len(results) == 1
+    assert results[0].ok
+
+
+def test_bids_review_publishes_candidate_preparation_before_slow_label_review(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_bids_dataset(tmp_path)
+    service = ApplicationService(Study())
+    catalog = service.execute(
+        ScanSourceCommand(
+            source_path=str(tmp_path),
+            source_hint="bids",
+            catalog_only=True,
+        )
+    )
+    assert catalog.ok
+
+    from XBrainLab.backend.application import data_interpretation_service
+
+    original_build_candidate = (
+        data_interpretation_service.build_interpretation_candidate
+    )
+    candidate_started = Event()
+    release_candidate = Event()
+
+    def _blocking_build_candidate(*args, **kwargs):
+        candidate_started.set()
+        assert release_candidate.wait(timeout=_THREAD_WATCHDOG_SECONDS)
+        return original_build_candidate(*args, **kwargs)
+
+    monkeypatch.setattr(
+        data_interpretation_service,
+        "build_interpretation_candidate",
+        _blocking_build_candidate,
+    )
+    command = ReviewInterpretationCommand(
+        source_path=str(tmp_path),
+        source_hint="bids",
+        choices={"selected_bids_subjects": ["02"]},
+    )
+    operation = service.begin_owned_operation(command)
+    results = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="bids-review-candidate-progress",
+    )
+
+    worker.start()
+    assert candidate_started.wait(timeout=_THREAD_WATCHDOG_SECONDS)
+    snapshot = service.get_owned_operation(operation.operation_id)
+    release_candidate.set()
+    worker.join(timeout=_THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert snapshot.phase is OwnedWorkPhase.RUNNING
+    assert snapshot.stage == "Preparing interpretation candidate"
+    assert snapshot.indeterminate is True
+    assert snapshot.completed is None
+    assert snapshot.total is None
+    assert len(results) == 1
+    assert results[0].ok

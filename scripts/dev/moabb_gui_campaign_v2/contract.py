@@ -84,6 +84,8 @@ CANCELLATION_MEANINGFUL_STAGES: Final[dict[str, frozenset[str]]] = {
             "Indexing BIDS recordings",
             "Capturing BIDS resource identities",
             "Materializing BIDS review metadata",
+            "Classifying import formats",
+            "Preparing interpretation candidate",
             "Hashing reviewed import content",
         }
     ),
