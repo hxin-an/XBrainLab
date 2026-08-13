@@ -2196,6 +2196,52 @@ def test_wait_for_transition_accepts_exact_nested_dataset_resource_check(
     assert driver.clicks[-1].elapsed_seconds <= driver.acknowledgement_seconds
 
 
+def test_modal_interaction_accepts_exact_nested_dataset_resource_check(
+    qtbot,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    window = QMainWindow()
+    next_button = QPushButton("Next", window)
+    next_button.setObjectName("DataImportNextButton")
+    next_button.setAccessibleName("Next")
+    next_button.hide()
+    window.setCentralWidget(next_button)
+    qtbot.addWidget(window)
+    window.show()
+    resource_check_results: list[QMessageBox.StandardButton] = []
+    interactions: list[str] = []
+
+    def open_resource_check() -> None:
+        message_box = QMessageBox(window)
+        message_box.setWindowTitle("Dataset Resource Check")
+        message_box.setText("Continue with the selected bounded dataset?")
+        message_box.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        nested_loop = QEventLoop()
+        message_box.finished.connect(nested_loop.quit)
+        QTimer.singleShot(250, message_box.reject)
+        message_box.show()
+        nested_loop.exec()
+        selected = message_box.standardButton(message_box.clickedButton())
+        resource_check_results.append(selected)
+        if selected == QMessageBox.StandardButton.Yes:
+            next_button.show()
+
+    QTimer.singleShot(0, open_resource_check)
+    monkeypatch.setattr(QApplication, "activeModalWidget", lambda _self: window)
+    driver = GuiCampaignDriver(window)
+    driver.wait_for_modal_interaction(
+        VisibleControl.WIZARD_NEXT,
+        lambda _progress: interactions.append("next"),
+        timeout_seconds=1.0,
+    )
+
+    assert interactions == ["next"]
+    assert resource_check_results == [QMessageBox.StandardButton.Yes]
+    assert driver.clicks[-1].control is VisibleControl.DATASET_RESOURCE_CHECK_YES
+
+
 def test_driver_ignores_hidden_stale_active_modal_for_visible_preview(
     qtbot,
     monkeypatch: pytest.MonkeyPatch,
@@ -2739,7 +2785,6 @@ def test_import_journey_traverses_and_closes_synchronous_preview_exec(qtbot) -> 
                 next_button.setText("Refresh label preview")
             return
         dialog.accept()
-        assert REAL_QDIALOG_EXEC(confirm_dialog) == QDialog.DialogCode.Accepted
 
     next_button.clicked.connect(advance)
     refreshed_next.clicked.connect(refreshed_next.hide)
@@ -2775,6 +2820,10 @@ def test_import_journey_traverses_and_closes_synchronous_preview_exec(qtbot) -> 
             before_confirm()
             result = REAL_QDIALOG_EXEC(dialog)
             assert result == QDialog.DialogCode.Accepted
+            QTimer.singleShot(
+                0,
+                lambda: REAL_QDIALOG_EXEC(confirm_dialog),
+            )
             return (
                 self._ack(opener),
                 self._ack(confirm),

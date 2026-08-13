@@ -152,6 +152,7 @@ class ProductRecommendedJourneyScaffold:
         review_sessions: list[Any] = []
         apply_states_before: list[dict[str, Any]] = []
         modal_failures: list[BaseException] = []
+        refresh_requested: list[bool] = []
         self._capture_visible_stage("import_bids_folder")
 
         def confirm_import() -> None:
@@ -235,10 +236,7 @@ class ProductRecommendedJourneyScaffold:
             review_acknowledgements.append(match_acknowledgement)
             refresh_required = visible_next_requests_refresh()
             if refresh_required:
-                # This visible action closes the current preview and starts a
-                # new backend review before synchronously reopening Match
-                # Labels. Arm that nested dialog before the click.
-                QTimer.singleShot(0, interact_with_reopened_confirmation)
+                refresh_requested.append(True)
             self.driver.click(VisibleControl.WIZARD_NEXT, timeout_seconds=30.0)
             if not refresh_required:
                 confirm_import()
@@ -274,6 +272,12 @@ class ProductRecommendedJourneyScaffold:
             before_confirm=choose_subjects,
             timeout_seconds=_LONG_OPERATION_TIMEOUT_SECONDS,
         )
+        if refresh_requested:
+            # Production dispatches the refreshed backend review only after
+            # the first synchronous preview has fully returned. Enter the
+            # second modal wait from this outer boundary, never from the first
+            # dialog's click callback.
+            interact_with_reopened_confirmation()
         if modal_failures:
             raise modal_failures[0]
         self._record(

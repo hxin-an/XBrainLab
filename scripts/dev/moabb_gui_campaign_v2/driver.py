@@ -914,6 +914,8 @@ class GuiCampaignDriver:
         previous_signature: tuple[str, ...] | None = None
         finished = False
         failure: BaseException | None = None
+        modal_failures: list[BaseException] = []
+        resource_check_probe = self._start_dataset_resource_check_probe(modal_failures)
 
         def probe() -> None:
             nonlocal finished
@@ -924,6 +926,9 @@ class GuiCampaignDriver:
             nonlocal operation_id
             nonlocal previous_signature
             if finished or failure is not None:
+                return
+            if modal_failures:
+                failure = modal_failures[0]
                 return
             now = time.monotonic()
             progress = self._visible_operation_progress()
@@ -973,11 +978,14 @@ class GuiCampaignDriver:
                 return
             QTimer.singleShot(self.poll_interval_ms, probe)
 
-        QTimer.singleShot(0, probe)
-        while not finished and failure is None:
-            self._settle_once()
-        if failure is not None:
-            raise failure
+        try:
+            QTimer.singleShot(0, probe)
+            while not finished and failure is None:
+                self._settle_once()
+            if failure is not None:
+                raise failure
+        finally:
+            resource_check_probe.stop()
 
     def wait_for_active_operation(
         self,
