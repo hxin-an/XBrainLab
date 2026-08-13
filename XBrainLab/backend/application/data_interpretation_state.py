@@ -106,6 +106,14 @@ class InterpretationSessionCheckpoint:
     interpretation_counter: int
 
 
+@dataclass(frozen=True, slots=True)
+class InterpretationSessionIdentity:
+    """Immutable scalar identity for one interpretation-session revision."""
+
+    session_generation: int
+    session_revision: int
+
+
 class DataInterpretationSessionState:
     """Own Data Interpretation lifecycle objects, IDs, and snapshots."""
 
@@ -155,6 +163,25 @@ class DataInterpretationSessionState:
             latest_recipe_id=self._latest_recipe_id,
             latest_recipe_path=self._latest_recipe_path,
             interpretation_counter=self._interpretation_counter,
+        )
+
+    def session_identity(self) -> InterpretationSessionIdentity:
+        """Capture the current lifecycle identity without copying its payloads."""
+        return InterpretationSessionIdentity(
+            session_generation=self._session_generation,
+            session_revision=self._session_revision,
+        )
+
+    def session_identity_is_current(
+        self,
+        identity: InterpretationSessionIdentity,
+    ) -> bool:
+        """Return whether no interpretation-session mutation followed identity."""
+        if not isinstance(identity, InterpretationSessionIdentity):
+            raise TypeError("identity must be InterpretationSessionIdentity")
+        return (
+            self._session_generation == identity.session_generation
+            and self._session_revision == identity.session_revision
         )
 
     def restore_session_state(

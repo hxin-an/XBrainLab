@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tracemalloc
 from pathlib import Path
+from threading import Event, Thread
 from types import SimpleNamespace
 from typing import Any
 
@@ -12,6 +13,12 @@ import pytest
 
 from XBrainLab.backend.application import resource_guard
 from XBrainLab.backend.application import resource_label_estimation as label_estimation
+from XBrainLab.backend.application.owned_work import (
+    OwnedOperationCancelledError,
+    OwnedWorkKind,
+    OwnedWorkPhase,
+    OwnedWorkRegistry,
+)
 
 
 class _ArrayLike:
@@ -964,6 +971,148 @@ def test_safe_resource_preflight_proceeds_without_confirmation(
     assert preflight.risk_level is resource_guard.ResourceRiskLevel.SAFE
     assert preflight.requires_confirmation is False
     resource_guard.enforce_resource_preflight(preflight, confirmed=False)
+
+
+def test_import_resource_preflight_publishes_truthful_per_resource_progress(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = [tmp_path / "first.bdf", tmp_path / "second.edf"]
+    for path in paths:
+        path.write_bytes(b"header")
+    started = [Event(), Event()]
+    release = [Event(), Event()]
+
+    def _blocked_header(path: str, **_kwargs: Any) -> dict[str, Any]:
+        index = paths.index(Path(path))
+        started[index].set()
+        assert release[index].wait(timeout=2.0)
+        return {
+            "path": path,
+            "estimate_source": "test_header",
+            "file_bytes": 6,
+            "raw_bytes": 64,
+        }
+
+    monkeypatch.setattr(
+        resource_guard,
+        "_estimate_eeg_file_from_header",
+        _blocked_header,
+    )
+    monkeypatch.setattr(
+        resource_guard.ResourceChecker,
+        "get_system_ram_status",
+        staticmethod(
+            lambda: {
+                "available_bytes": 1_000_000,
+                "total_bytes": 2_000_000,
+                "used_bytes": 1_000_000,
+            }
+        ),
+    )
+    registry = OwnedWorkRegistry()
+    operation = registry.begin(OwnedWorkKind.IMPORT_APPLY, cancellable=True)
+    results: list[resource_guard.ResourcePreflightResult] = []
+
+    def _run() -> None:
+        with registry.bind(operation.operation_id):
+            registry.start(operation.operation_id)
+            results.append(
+                resource_guard.check_import_resource_preflight(
+                    [str(path) for path in paths]
+                )
+            )
+            registry.complete(operation.operation_id)
+
+    worker = Thread(target=_run)
+    worker.start()
+    try:
+        assert started[0].wait(timeout=1.0)
+        first = registry.snapshot(operation.operation_id)
+        release[0].set()
+        assert started[1].wait(timeout=1.0)
+        second = registry.snapshot(operation.operation_id)
+    finally:
+        for event in release:
+            event.set()
+        worker.join(timeout=2.0)
+
+    assert not worker.is_alive()
+    assert (first.stage, first.completed, first.total) == (
+        "Inspecting import resource 1 of 2",
+        0,
+        2,
+    )
+    assert (second.stage, second.completed, second.total) == (
+        "Inspecting import resource 2 of 2",
+        1,
+        2,
+    )
+    terminal = registry.snapshot(operation.operation_id)
+    assert terminal.phase is OwnedWorkPhase.COMPLETED
+    assert (terminal.stage, terminal.completed, terminal.total) == (
+        "Import resource estimate ready",
+        2,
+        2,
+    )
+    assert len(results) == 1
+
+
+def test_import_resource_preflight_cancellation_stops_before_next_resource(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = [tmp_path / "first.bdf", tmp_path / "second.edf"]
+    for path in paths:
+        path.write_bytes(b"header")
+    first_started = Event()
+    release_first = Event()
+    inspected: list[str] = []
+
+    def _blocked_header(path: str, **_kwargs: Any) -> dict[str, Any]:
+        inspected.append(path)
+        first_started.set()
+        assert release_first.wait(timeout=2.0)
+        return {
+            "path": path,
+            "estimate_source": "test_header",
+            "file_bytes": 6,
+            "raw_bytes": 64,
+        }
+
+    monkeypatch.setattr(
+        resource_guard,
+        "_estimate_eeg_file_from_header",
+        _blocked_header,
+    )
+    registry = OwnedWorkRegistry()
+    operation = registry.begin(OwnedWorkKind.IMPORT_APPLY, cancellable=True)
+    failures: list[BaseException] = []
+
+    def _run() -> None:
+        try:
+            with registry.bind(operation.operation_id):
+                registry.start(operation.operation_id)
+                resource_guard.check_import_resource_preflight(
+                    [str(path) for path in paths]
+                )
+        except BaseException as exc:
+            failures.append(exc)
+
+    worker = Thread(target=_run)
+    worker.start()
+    try:
+        assert first_started.wait(timeout=1.0)
+        assert registry.cancel(operation.operation_id) is True
+    finally:
+        release_first.set()
+        worker.join(timeout=2.0)
+
+    assert not worker.is_alive()
+    assert len(failures) == 1
+    assert isinstance(failures[0], OwnedOperationCancelledError)
+    assert registry.snapshot(operation.operation_id).phase is OwnedWorkPhase.CANCELLED
+    assert inspected == [str(paths[0])]
 
 
 def test_training_preflight_keeps_warning_and_unknown_details(monkeypatch) -> None:

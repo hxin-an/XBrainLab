@@ -2532,6 +2532,130 @@ def test_apply_interpretation_rejects_preparation_staled_by_concurrent_mutation(
     assert stale.state.interpretation.has_applied_interpretation is False
 
 
+@pytest.mark.parametrize("blocked_phase", ["resource_preflight", "label_admission"])
+def test_apply_resource_admission_runs_without_holding_command_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    blocked_phase: str,
+) -> None:
+    source_dir = tmp_path / "reviewed"
+    source_dir.mkdir()
+    eeg_path = source_dir / "subject01_run1.fif"
+    eeg_path.write_bytes(b"reviewed EEG identity")
+    service = ApplicationService(Study())
+    _use_test_raw_factory(service)
+    assert service.execute(ScanSourceCommand(source_path=str(source_dir))).ok
+    preview = service.execute(
+        PreviewInterpretationCommand(
+            choices={"selected_eeg_files": [str(eeg_path)], "skip_labels": True}
+        )
+    )
+    candidate_id = preview.diagnostics["candidate"]["candidate_id"]
+    assert service.execute(ValidateInterpretationCommand(candidate_id=candidate_id)).ok
+    from XBrainLab.backend.application import data_interpretation_service
+
+    admission_started = Event()
+    release_admission = Event()
+
+    if blocked_phase == "resource_preflight":
+        original_preflight = data_interpretation_service.check_import_resource_preflight
+
+        def _blocking_preflight(paths):
+            admission_started.set()
+            assert release_admission.wait(timeout=THREAD_WATCHDOG_SECONDS)
+            return original_preflight(paths)
+
+        monkeypatch.setattr(
+            data_interpretation_service,
+            "check_import_resource_preflight",
+            _blocking_preflight,
+        )
+    else:
+        interpretation = service.interpretation._service()
+        original_label_admission = interpretation._admitted_reviewed_label_resources
+
+        def _blocking_label_admission(candidate, preflight):
+            admission_started.set()
+            assert release_admission.wait(timeout=THREAD_WATCHDOG_SECONDS)
+            return original_label_admission(candidate, preflight)
+
+        monkeypatch.setattr(
+            interpretation,
+            "_admitted_reviewed_label_resources",
+            _blocking_label_admission,
+        )
+    command = ApplyInterpretationCommand(candidate_id=candidate_id, confirmed=True)
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="apply-interpretation-resource-preflight",
+    )
+
+    worker.start()
+    assert admission_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    assert service._command_lock.acquire(blocking=False) is True
+    service._command_lock.release()
+    release_admission.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert len(results) == 1
+    assert results[0].ok
+
+
+def test_apply_commit_rejects_same_value_interpretation_revision_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_dir = tmp_path / "reviewed"
+    source_dir.mkdir()
+    eeg_path = source_dir / "subject01_run1.fif"
+    eeg_path.write_bytes(b"reviewed EEG identity")
+    old_path = tmp_path / "previous.fif"
+    old_path.write_bytes(b"previous EEG identity")
+    old_raw = _minimal_raw(old_path)
+    study = Study()
+    study.set_loaded_data_list([old_raw], force_update=True)
+    service = ApplicationService(study)
+    _use_test_raw_factory(service)
+    assert service.execute(ScanSourceCommand(source_path=str(source_dir))).ok
+    preview = service.execute(
+        PreviewInterpretationCommand(
+            choices={"selected_eeg_files": [str(eeg_path)], "skip_labels": True}
+        )
+    )
+    candidate_id = preview.diagnostics["candidate"]["candidate_id"]
+    assert service.execute(ValidateInterpretationCommand(candidate_id=candidate_id)).ok
+    interpretation = service.interpretation._service()
+    original_prepare = interpretation.prepare_apply_interpretation
+
+    def _mutate_same_value_after_prepare(plan):
+        prepared = original_prepare(plan)
+        decision = interpretation.state.resolve_validation_decision(candidate_id)
+        assert decision is not None
+        interpretation.state.record_validation(candidate_id, decision)
+        return prepared
+
+    monkeypatch.setattr(
+        interpretation,
+        "prepare_apply_interpretation",
+        _mutate_same_value_after_prepare,
+    )
+
+    result = service.execute(
+        ApplyInterpretationCommand(candidate_id=candidate_id, confirmed=True)
+    )
+
+    assert result.failed
+    assert result.error_type is ErrorType.PRECONDITION
+    assert result.diagnostics["stale_prepared_interpretation_apply"] is True
+    assert study.data_manager.loaded_data_list == [old_raw]
+    assert result.state.interpretation.has_applied_interpretation is False
+
+
 @pytest.mark.parametrize("failure_mode", ["cancel", "load_error"])
 def test_detached_apply_failure_preserves_concurrent_publication_truth(
     tmp_path: Path,

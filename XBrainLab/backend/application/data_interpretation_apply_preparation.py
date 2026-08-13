@@ -10,10 +10,11 @@ from typing import Any
 from XBrainLab.backend.services.dataset_state_service import PreparedDatasetImport
 from XBrainLab.backend.training_state_contract import TrainingPipelineMutationBoundary
 
+from .commands import ApplyInterpretationCommand
 from .data_interpretation import InterpretationCandidate, ValidationDecision
 from .data_interpretation_state import (
-    DataInterpretationSessionState,
     InterpretationApplyCheckpoint,
+    InterpretationSessionIdentity,
 )
 from .errors import PreconditionError
 from .label_resource_admission import AdmittedLabelResourceSession
@@ -86,6 +87,7 @@ class SourceFileBoundary:
 class InterpretationApplyPlan:
     """Immutable identities captured under the short initial command admission."""
 
+    command: ApplyInterpretationCommand
     candidate: InterpretationCandidate
     decision: ValidationDecision
     content_scope_sha256: str
@@ -93,11 +95,7 @@ class InterpretationApplyPlan:
     training: TrainingPipelineMutationBoundary
     pipeline_snapshot: PipelineStateSnapshot
     pipeline_identity: PipelineStateIdentity
-    interpretation_state_before: InterpretationApplyCheckpoint
-    detached_interpretation_state: DataInterpretationSessionState
-    resource_preflight: ResourcePreflightResult
-    resource_preflight_receipt_reused: bool
-    label_resources: AdmittedLabelResourceSession | None
+    interpretation_identity: InterpretationSessionIdentity
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +105,9 @@ class PreparedInterpretationApply:
     plan: InterpretationApplyPlan
     dataset: PreparedDatasetImport
     interpretation_state_after: InterpretationApplyCheckpoint
+    resource_preflight: ResourcePreflightResult
+    resource_preflight_receipt_reused: bool
+    label_resources: AdmittedLabelResourceSession | None
     source_files: tuple[SourceFileBoundary, ...]
     source_identity_apply: tuple[dict[str, Any], ...]
     channels_apply: tuple[dict[str, Any], ...]

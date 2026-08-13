@@ -270,6 +270,23 @@ def test_session_checkpoint_current_guard_tracks_lifecycle_mutations() -> None:
     assert state.session_checkpoint_is_current(checkpoint) is False
 
 
+def test_session_identity_is_lightweight_and_tracks_same_value_mutation() -> None:
+    state = _state()
+    scan = _scan(state.next_id("scan"))
+    candidate = _candidate(scan, state.next_id("candidate"))
+    decision = _decision(candidate)
+    state.record_scan(scan)
+    state.record_preview(candidate, _preview(candidate, state.next_id("preview")))
+    state.record_validation(candidate.candidate_id, decision)
+    identity = state.session_identity()
+
+    assert state.session_identity_is_current(identity) is True
+
+    state.record_validation(candidate.candidate_id, decision)
+
+    assert state.session_identity_is_current(identity) is False
+
+
 def test_empty_legacy_invalidation_keeps_session_checkpoint_current() -> None:
     state = _state()
     checkpoint = state.checkpoint_session_state()

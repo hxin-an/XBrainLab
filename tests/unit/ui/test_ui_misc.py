@@ -1341,7 +1341,7 @@ class TestDatasetActionHandler:
 
         assert panel_context.set_busy.call_args_list == [((True,),), ((False,),)]
         assert [record.args for record in show_status.call_args_list] == [
-            ("Importing EEG data and labels...", 900000),
+            ("Importing EEG data and labels...", 0),
             ("Applied.",),
         ]
         assert runtime.commands[0].resource_preflight_confirmed is False

@@ -689,10 +689,18 @@ class ResourceChecker:
         path_list = _deduplicated_resource_paths(paths)
         eeglab_headers: dict[str, EeglabSetHeaderInspection] = {}
         eeglab_dependency_owners: dict[str, str] = {}
-        for path in tuple(path_list):
+        eeglab_paths = [
+            path for path in path_list if _normalized_suffix(Path(path)) == ".set"
+        ]
+        eeglab_path_count = len(eeglab_paths)
+        for index, path in enumerate(eeglab_paths):
             resource_path = Path(path)
-            if _normalized_suffix(resource_path) != ".set":
-                continue
+            owned_work_checkpoint(
+                f"Inspecting EEGLAB import dependency {index + 1} of "
+                f"{eeglab_path_count}",
+                completed=index,
+                total=eeglab_path_count,
+            )
             inspection = inspect_eeglab_set_header(resource_path)
             eeglab_headers[_path_key(resource_path)] = inspection
             dependency = str(inspection.external_data_file or "").strip()
@@ -720,7 +728,13 @@ class ResourceChecker:
         file_details: list[dict[str, Any]] = []
         mat_read_budget = create_mat_preflight_read_budget()
 
-        for path in path_list:
+        resource_count = len(path_list)
+        for index, path in enumerate(path_list):
+            owned_work_checkpoint(
+                f"Inspecting import resource {index + 1} of {resource_count}",
+                completed=index,
+                total=resource_count,
+            )
             resource_path = Path(path)
             resource_key = _path_key(resource_path)
             suffix = _normalized_suffix(resource_path)
@@ -818,6 +832,11 @@ class ResourceChecker:
             metadata_bytes += IMPORT_METADATA_BYTES_PER_FILE + annotations_bytes
             file_details.append(header)
 
+        owned_work_checkpoint(
+            "Import resource estimate ready",
+            completed=resource_count,
+            total=resource_count or None,
+        )
         label_carrier_working_set_bytes = (
             label_carrier_persistent_bytes + label_parser_transient_peak_bytes
         )

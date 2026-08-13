@@ -78,6 +78,28 @@ def test_discovery_prepare_paths_cannot_publish_session_state() -> None:
     assert "publish_staged_session_state" in commit_source
 
 
+def test_apply_begin_only_captures_short_state_and_prepare_owns_resources() -> None:
+    begin_source = inspect.getsource(
+        DataInterpretationCommandService.begin_apply_interpretation
+    )
+    prepare_source = inspect.getsource(
+        DataInterpretationCommandService.prepare_apply_interpretation
+    )
+    guard_source = inspect.getsource(
+        DataInterpretationCommandService._ensure_apply_session_is_current
+    )
+
+    assert "_resolve_apply_resource_preflight" not in begin_source
+    assert "_admitted_reviewed_label_resources" not in begin_source
+    assert "checkpoint_apply_state" not in begin_source
+    assert "deepcopy(self.state)" not in begin_source
+    assert "session_identity" in begin_source
+    assert "_resolve_apply_resource_preflight" in prepare_source
+    assert "_admitted_reviewed_label_resources" in prepare_source
+    assert "_ensure_apply_session_is_current" in prepare_source
+    assert "session_identity_is_current" in guard_source
+
+
 def test_discovery_commit_publishes_prepared_state_without_commit_time_copy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -331,6 +353,46 @@ def _resource_challenge(exc: resource_guard.ResourceConfirmationRequiredError) -
     assert isinstance(challenge, dict)
     assert challenge["challenge_id"]
     return challenge
+
+
+def test_apply_resource_preflight_publishes_scope_estimate_and_finalize_stages(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_path = tmp_path / "subject.bdf"
+    eeg_path.write_bytes(b"header")
+    service, _dataset = _service()
+    candidate = SimpleNamespace(
+        candidate_id="candidate-1",
+        selected_eeg_files=[str(eeg_path)],
+        label_carriers=[],
+        content_identity={},
+    )
+    stages: list[str] = []
+    monkeypatch.setattr(
+        service_module,
+        "owned_work_checkpoint",
+        lambda stage, **_kwargs: stages.append(stage),
+    )
+    monkeypatch.setattr(
+        service_module,
+        "check_import_resource_preflight",
+        lambda paths: _resource_preflight("safe", paths),
+    )
+
+    preflight, receipt, reused = service._resolve_apply_resource_preflight(
+        command=ApplyInterpretationCommand(candidate_id="candidate-1"),
+        candidate=candidate,
+    )
+
+    assert preflight.risk_level is resource_guard.ResourceRiskLevel.SAFE
+    assert receipt is None
+    assert reused is False
+    assert stages == [
+        "Binding reviewed import resource scope",
+        "Estimating reviewed import resources",
+        "Finalizing reviewed import resource preflight",
+    ]
 
 
 def _mutate_same_size(path: Path) -> None:

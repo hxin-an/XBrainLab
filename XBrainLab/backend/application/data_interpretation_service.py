@@ -843,16 +843,10 @@ class DataInterpretationCommandService:
         if decision is None:
             raise PreconditionError("Validate an interpretation before applying it.")
         self._ensure_candidate_can_apply(command, candidate, decision)
-        preflight, _preflight_receipt, receipt_reused = (
-            self._resolve_apply_resource_preflight(
-                command=command,
-                candidate=candidate,
-            )
-        )
         training_boundary = self._pipeline_transaction.begin_raw_replacement()
         pipeline_snapshot = self._pipeline_transaction.capture()
-        interpretation_before = self.state.checkpoint_apply_state()
         return InterpretationApplyPlan(
+            command=command,
             candidate=candidate,
             decision=decision,
             content_scope_sha256=str(
@@ -862,14 +856,7 @@ class DataInterpretationCommandService:
             training=training_boundary,
             pipeline_snapshot=pipeline_snapshot,
             pipeline_identity=PipelineStateIdentity.from_snapshot(pipeline_snapshot),
-            interpretation_state_before=interpretation_before,
-            detached_interpretation_state=deepcopy(self.state),
-            resource_preflight=preflight,
-            resource_preflight_receipt_reused=receipt_reused,
-            label_resources=self._admitted_reviewed_label_resources(
-                candidate,
-                preflight,
-            ),
+            interpretation_identity=self.state.session_identity(),
         )
 
     def prepare_apply_interpretation(
@@ -880,6 +867,22 @@ class DataInterpretationCommandService:
         if not isinstance(plan, InterpretationApplyPlan):
             raise TypeError("plan must be an InterpretationApplyPlan")
         candidate = plan.candidate
+        self._ensure_apply_session_is_current(plan)
+        preflight, _preflight_receipt, receipt_reused = (
+            self._resolve_apply_resource_preflight(
+                command=plan.command,
+                candidate=candidate,
+            )
+        )
+        self._ensure_apply_session_is_current(plan)
+        owned_work_checkpoint("Admitting reviewed label resources")
+        label_resources = self._admitted_reviewed_label_resources(
+            candidate,
+            preflight,
+        )
+        self._ensure_apply_session_is_current(plan)
+        detached_state = deepcopy(self.state)
+        self._ensure_apply_session_is_current(plan)
         owned_work_checkpoint("Verifying reviewed import content")
         self._ensure_reviewed_label_content_is_current(candidate)
         prepared_dataset = self.dataset.prepare_replacement_import(
@@ -908,7 +911,6 @@ class DataInterpretationCommandService:
         detached_dataset = self.dataset.detached_interpretation_service(
             prepared_dataset
         )
-        detached_state = deepcopy(plan.detached_interpretation_state)
         detached_apply = self.apply_service.detached_copy(
             detached_dataset,
             record_label_import=detached_state.record_label_import_for_recipe,
@@ -936,7 +938,7 @@ class DataInterpretationCommandService:
         owned_work_checkpoint("Applying reviewed label carriers")
         label_apply = detached_apply.apply_label_carriers(
             candidate,
-            plan.label_resources,
+            label_resources,
         )
         owned_work_checkpoint("Recording reviewed epoch hints")
         internal_epoch_hints = detached_apply.record_internal_epoch_hints(candidate)
@@ -946,6 +948,9 @@ class DataInterpretationCommandService:
             plan=plan,
             dataset=prepared_dataset,
             interpretation_state_after=detached_state.checkpoint_apply_state(),
+            resource_preflight=preflight,
+            resource_preflight_receipt_reused=receipt_reused,
+            label_resources=label_resources,
             source_files=(),
             source_identity_apply=tuple(deepcopy(source_identity_apply)),
             channels_apply=tuple(deepcopy(channels_apply)),
@@ -990,7 +995,7 @@ class DataInterpretationCommandService:
             candidate != plan.candidate
             or decision != plan.decision
             or current_scope_sha256 != plan.content_scope_sha256
-            or self.state.checkpoint_apply_state() != plan.interpretation_state_before
+            or not self.state.session_identity_is_current(plan.interpretation_identity)
             or PipelineStateIdentity.from_snapshot(current_pipeline)
             != plan.pipeline_identity
         ):
@@ -1057,11 +1062,27 @@ class DataInterpretationCommandService:
                 ],
                 "trainer_retired": trainer_retired,
                 "resource_preflight": {
-                    **plan.resource_preflight.to_diagnostics(),
+                    **prepared.resource_preflight.to_diagnostics(),
                     "confirmation_receipt_reused": (
-                        plan.resource_preflight_receipt_reused
+                        prepared.resource_preflight_receipt_reused
                     ),
                 },
+            },
+        )
+
+    def _ensure_apply_session_is_current(
+        self,
+        plan: InterpretationApplyPlan,
+    ) -> None:
+        if self.state.session_identity_is_current(plan.interpretation_identity):
+            return
+        raise PreconditionError(
+            "Data Import state changed while recordings were prepared. "
+            "Review the current interpretation and retry.",
+            diagnostics={
+                "code": "stale_prepared_interpretation_apply",
+                "stale_prepared_interpretation_apply": True,
+                "state_preserved": True,
             },
         )
 
@@ -1136,8 +1157,11 @@ class DataInterpretationCommandService:
     ]:
         """Return one current preflight without trusting stale UI confirmation."""
         resource_paths = self._candidate_resource_paths(candidate)
+        owned_work_checkpoint("Binding reviewed import resource scope")
         fingerprint = self._resource_scope_fingerprint(resource_paths)
+        owned_work_checkpoint("Estimating reviewed import resources")
         preflight = check_import_resource_preflight(resource_paths)
+        owned_work_checkpoint("Finalizing reviewed import resource preflight")
         preflight_fingerprint = fingerprint_resource_preflight(preflight)
         receipt = self._matching_import_preflight_receipt(
             command=command,

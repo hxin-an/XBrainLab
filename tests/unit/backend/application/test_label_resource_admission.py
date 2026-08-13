@@ -151,6 +151,42 @@ def _blocking_preflight(paths: list[str]) -> ResourcePreflightResult:
     )
 
 
+def test_reviewed_label_session_reports_each_real_resource_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = tmp_path / "first.csv"
+    second = tmp_path / "second.csv"
+    first.write_text("label\n1\n", encoding="utf-8")
+    second.write_text("label\n2\n", encoding="utf-8")
+    paths = [str(first), str(second)]
+    preflight = check_import_resource_preflight(paths)
+    stages: list[tuple[str, int | None, int | None]] = []
+    monkeypatch.setattr(
+        label_admission_module,
+        "owned_work_checkpoint",
+        lambda stage, completed=None, total=None, **_kwargs: stages.append(
+            (stage, completed, total)
+        ),
+    )
+
+    session = label_admission_module.session_from_resource_preflight(
+        specs_from_paths(paths),
+        preflight,
+    )
+
+    assert len(session.specs) == 2
+    assert stages == [
+        ("Normalizing reviewed label resource scope", None, None),
+        ("Inspecting reviewed label resource 1 of 2", 0, 2),
+        ("Inspecting reviewed label resource 2 of 2", 1, 2),
+        ("Binding reviewed label resource reader", None, None),
+        ("Verifying reviewed label resource 1 of 2", 0, 2),
+        ("Verifying reviewed label resource 2 of 2", 1, 2),
+        ("Reviewed label resources admitted", 2, 2),
+    ]
+
+
 def _challenge(error: ResourceConfirmationRequiredError) -> str:
     preflight = error.diagnostics["resource_preflight"]
     challenge = preflight["confirmation_challenge"]

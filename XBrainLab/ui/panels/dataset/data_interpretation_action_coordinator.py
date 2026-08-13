@@ -70,7 +70,6 @@ from XBrainLab.ui.panels.dataset.data_interpretation_ui_payload import (
 _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE = (
     "Data interpretation availability is unavailable right now."
 )
-_IMPORT_IN_PROGRESS_STATUS_TIMEOUT_MS = 15 * 60 * 1000
 
 
 def _default_loading_dialog_class() -> type[Any]:
@@ -961,7 +960,7 @@ class DataInterpretationActionCoordinator:
         if import_confirmed:
             self._show_status(
                 "Preparing import...",
-                _IMPORT_IN_PROGRESS_STATUS_TIMEOUT_MS,
+                0,
             )
         raw_dialog_choices = dialog_result.get("choices")
         dialog_choices: dict[str, Any] = (
@@ -1783,7 +1782,7 @@ class DataInterpretationActionCoordinator:
             if not resource_preflight_confirmed:
                 self._show_status(
                     "Importing EEG data and labels...",
-                    _IMPORT_IN_PROGRESS_STATUS_TIMEOUT_MS,
+                    0,
                 )
             apply_command = ApplyInterpretationCommand(
                 candidate_id=candidate_id,
