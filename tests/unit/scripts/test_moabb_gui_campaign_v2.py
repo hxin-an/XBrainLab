@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QEventLoop, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QImage
 from PyQt6.QtWidgets import (
     QApplication,
@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QDialog,
     QLineEdit,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -2144,6 +2145,100 @@ def test_driver_waits_past_early_stage_and_captures_meaningful_progress(qtbot) -
             "indeterminate": False,
         },
     )
+
+
+def test_wait_for_transition_accepts_exact_nested_dataset_resource_check(
+    qtbot,
+) -> None:
+    window = QMainWindow()
+    next_button = QPushButton("Next", window)
+    next_button.setObjectName("DataImportNextButton")
+    next_button.setAccessibleName("Next")
+    next_button.hide()
+    window.setCentralWidget(next_button)
+    qtbot.addWidget(window)
+    window.show()
+    resource_check_results: list[QMessageBox.StandardButton] = []
+
+    def open_resource_check() -> None:
+        message_box = QMessageBox(window)
+        message_box.setWindowTitle("Dataset Resource Check")
+        message_box.setText("Continue with the selected bounded dataset?")
+        message_box.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        nested_loop = QEventLoop()
+        message_box.finished.connect(nested_loop.quit)
+        QTimer.singleShot(250, message_box.reject)
+        message_box.show()
+        nested_loop.exec()
+        selected = message_box.standardButton(message_box.clickedButton())
+        resource_check_results.append(selected)
+        if selected == QMessageBox.StandardButton.Yes:
+            next_button.show()
+
+    QTimer.singleShot(0, open_resource_check)
+
+    driver = GuiCampaignDriver(window)
+    widget, _progress = driver.wait_for_transition(
+        VisibleControl.WIZARD_NEXT,
+        timeout_seconds=1.0,
+    )
+
+    assert widget is next_button
+    assert resource_check_results == [QMessageBox.StandardButton.Yes]
+    assert driver.clicks[-1].control is VisibleControl.DATASET_RESOURCE_CHECK_YES
+    assert driver.clicks[-1].accessible_name.replace("&", "") == "Yes"
+    assert driver.clicks[-1].elapsed_seconds <= driver.acknowledgement_seconds
+
+
+@pytest.mark.parametrize(
+    ("title", "buttons", "error"),
+    [
+        (
+            "Unexpected Resource Warning",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            "unexpected message box",
+        ),
+        (
+            "Dataset Resource Check",
+            QMessageBox.StandardButton.Ok,
+            "no visible enabled Yes action",
+        ),
+    ],
+)
+def test_wait_for_transition_rejects_unapproved_nested_message_box(
+    qtbot,
+    title: str,
+    buttons: QMessageBox.StandardButton,
+    error: str,
+) -> None:
+    window = QMainWindow()
+    next_button = QPushButton("Next", window)
+    next_button.setObjectName("DataImportNextButton")
+    next_button.hide()
+    window.setCentralWidget(next_button)
+    qtbot.addWidget(window)
+    window.show()
+
+    def open_message_box() -> None:
+        message_box = QMessageBox(window)
+        message_box.setWindowTitle(title)
+        message_box.setText("This action is outside the campaign contract.")
+        message_box.setStandardButtons(buttons)
+        nested_loop = QEventLoop()
+        message_box.finished.connect(nested_loop.quit)
+        QTimer.singleShot(250, message_box.reject)
+        message_box.show()
+        nested_loop.exec()
+
+    QTimer.singleShot(0, open_message_box)
+
+    with pytest.raises(DriverContractError, match=error):
+        GuiCampaignDriver(window).wait_for_transition(
+            VisibleControl.WIZARD_NEXT,
+            timeout_seconds=1.0,
+        )
 
 
 def test_driver_accepts_bids_review_metadata_as_meaningful_progress(qtbot) -> None:

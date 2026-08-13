@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QScrollArea,
     QTableWidget,
     QTabWidget,
@@ -44,6 +45,7 @@ class VisibleControl(StrEnum):
     IMPORT_BIDS = "import_bids"
     SUBJECT_TABLE = "subject_table"
     SUBJECT_CONTINUE = "subject_continue"
+    DATASET_RESOURCE_CHECK_YES = "dataset_resource_check_yes"
     WIZARD_NEXT = "wizard_next"
     WIZARD_CONFIRM = "wizard_confirm"
     OPERATION_CANCEL = "operation_cancel"
@@ -761,51 +763,139 @@ class GuiCampaignDriver:
         heartbeat_count = 0
         operation_id: str | None = None
         previous_signature: tuple[str, ...] | None = None
-        while True:
-            try:
-                widget = self.control(target, timeout_seconds=0.0)
-            except DriverContractError:
-                widget = None
-            now = time.monotonic()
-            if widget is not None:
+        modal_failure: list[BaseException] = []
+        resource_check_probe = self._start_dataset_resource_check_probe(modal_failure)
+        try:
+            while True:
+                if modal_failure:
+                    raise modal_failure[0]
+                try:
+                    widget = self.control(target, timeout_seconds=0.0)
+                except DriverContractError:
+                    widget = None
+                now = time.monotonic()
+                if widget is not None:
+                    progress = self._visible_operation_progress()
+                    if progress is not None:
+                        raw_operation_id = progress.property("operationId")
+                        if str(raw_operation_id or "").strip():
+                            operation_id = str(raw_operation_id).strip()
+                    return widget, ProgressWaitEvidence(
+                        operation_id=operation_id,
+                        heartbeat_count=heartbeat_count,
+                        max_progress_silence_seconds=max_silence,
+                        elapsed_seconds=now - started,
+                    )
                 progress = self._visible_operation_progress()
                 if progress is not None:
+                    signature = self._progress_signature(progress)
                     raw_operation_id = progress.property("operationId")
                     if str(raw_operation_id or "").strip():
                         operation_id = str(raw_operation_id).strip()
-                return widget, ProgressWaitEvidence(
-                    operation_id=operation_id,
-                    heartbeat_count=heartbeat_count,
-                    max_progress_silence_seconds=max_silence,
-                    elapsed_seconds=now - started,
+                    explicit_indeterminate = bool(progress.property("indeterminate"))
+                    if signature != previous_signature:
+                        silence = now - last_heartbeat_at
+                        max_silence = max(max_silence, silence)
+                        last_heartbeat_at = now
+                        previous_signature = signature
+                        heartbeat_count += 1
+                    elif explicit_indeterminate:
+                        max_silence = max(max_silence, now - last_heartbeat_at)
+                        last_heartbeat_at = now
+                silence = now - last_heartbeat_at
+                max_silence = max(max_silence, silence)
+                if silence > max_progress_silence_seconds:
+                    raise DriverContractError(
+                        f"{target.value} had no visible progress for {silence:.3f}s"
+                    )
+                if now - started > timeout_seconds:
+                    raise DriverContractError(
+                        f"{target.value} did not become ready within "
+                        f"{timeout_seconds:.3f}s"
+                    )
+                self._settle_once()
+        finally:
+            resource_check_probe.stop()
+
+    def _start_dataset_resource_check_probe(
+        self,
+        failure: list[BaseException],
+    ) -> QTimer:
+        """Accept only the exact product resource check inside nested Qt loops."""
+        probe = QTimer(self.root)
+        probe.setInterval(self.poll_interval_ms)
+        handled: set[int] = set()
+
+        def inspect_active_message_box() -> None:
+            if failure:
+                return
+            app = QApplication.instance()
+            modal = app.activeModalWidget() if app is not None else None
+            if app is not None and modal is None:
+                visible_modals = [
+                    widget
+                    for widget in app.topLevelWidgets()
+                    if isinstance(widget, QMessageBox) and widget.isVisible()
+                ]
+                if len(visible_modals) > 1:
+                    failure.append(
+                        DriverContractError(
+                            "multiple active message boxes while awaiting dataset "
+                            "review"
+                        )
+                    )
+                    for message_box in visible_modals:
+                        message_box.reject()
+                    return
+                modal = visible_modals[0] if visible_modals else None
+            if not isinstance(modal, QMessageBox) or id(modal) in handled:
+                return
+            message_box: QMessageBox = modal
+            handled.add(id(message_box))
+            if message_box.windowTitle() != "Dataset Resource Check":
+                failure.append(
+                    DriverContractError(
+                        "unexpected message box while awaiting dataset review: "
+                        f"{message_box.windowTitle()!r}"
+                    )
                 )
-            progress = self._visible_operation_progress()
-            if progress is not None:
-                signature = self._progress_signature(progress)
-                raw_operation_id = progress.property("operationId")
-                if str(raw_operation_id or "").strip():
-                    operation_id = str(raw_operation_id).strip()
-                explicit_indeterminate = bool(progress.property("indeterminate"))
-                if signature != previous_signature:
-                    silence = now - last_heartbeat_at
-                    max_silence = max(max_silence, silence)
-                    last_heartbeat_at = now
-                    previous_signature = signature
-                    heartbeat_count += 1
-                elif explicit_indeterminate:
-                    max_silence = max(max_silence, now - last_heartbeat_at)
-                    last_heartbeat_at = now
-            silence = now - last_heartbeat_at
-            max_silence = max(max_silence, silence)
-            if silence > max_progress_silence_seconds:
-                raise DriverContractError(
-                    f"{target.value} had no visible progress for {silence:.3f}s"
+                message_box.reject()
+                return
+            yes_button = message_box.button(QMessageBox.StandardButton.Yes)
+            if (
+                yes_button is None
+                or not yes_button.isVisible()
+                or not yes_button.isEnabled()
+            ):
+                failure.append(
+                    DriverContractError(
+                        "Dataset Resource Check has no visible enabled Yes action"
+                    )
                 )
-            if now - started > timeout_seconds:
-                raise DriverContractError(
-                    f"{target.value} did not become ready within {timeout_seconds:.3f}s"
+                message_box.reject()
+                return
+            started = time.monotonic()
+            QTest.mouseClick(yes_button, Qt.MouseButton.LeftButton)
+            elapsed = time.monotonic() - started
+            self.clicks.append(
+                ClickAcknowledgement(
+                    control=VisibleControl.DATASET_RESOURCE_CHECK_YES,
+                    object_name=str(yes_button.objectName() or ""),
+                    accessible_name=self._accessible_name(yes_button),
+                    elapsed_seconds=elapsed,
                 )
-            self._settle_once()
+            )
+            if elapsed > self.acknowledgement_seconds:
+                failure.append(
+                    DriverContractError(
+                        "Dataset Resource Check Yes acknowledgement exceeded "
+                        f"{self.acknowledgement_seconds:.3f}s"
+                    )
+                )
+
+        probe.timeout.connect(inspect_active_message_box)
+        probe.start()
+        return probe
 
     def wait_for_modal_interaction(
         self,
