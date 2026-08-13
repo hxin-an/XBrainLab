@@ -1024,14 +1024,19 @@ def test_reader_reads_unchanged_admitted_object_once_within_shared_budget(
 
     monkeypatch.setattr(Path, "open", _counted_open)
 
+    expected = {"trial_type": {"Description": "Movement class"}}
     first = reader.read_object(sidecar)
+    assert first == expected
+    first["trial_type"]["Description"] = "caller mutation"
     second = reader.read_object(sidecar)
     next_command = reader.for_command()
     third = next_command.read_object(sidecar)
 
-    assert first == {"trial_type": {"Description": "Movement class"}}
-    assert second is first
-    assert third is first
+    assert second == expected
+    assert third == expected
+    assert second is not first
+    assert third is not second
+    assert second["trial_type"] is not third["trial_type"]
     assert opens == 2
     assert reader.diagnostics() == {
         "read_limit_bytes": bids_resources.BIDS_EVENTS_JSON_READ_BUDGET_BYTES,

@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import cast
 
-from PyQt6.QtCore import Qt, QThreadPool, QTimer
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
+    QPushButton,
     QSizePolicy,
     QStackedWidget,
     QTabWidget,
@@ -32,6 +33,7 @@ from XBrainLab.backend.application import (
     EvaluationRunIdentity,
     EvaluationSummaryIdentity,
 )
+from XBrainLab.backend.application.owned_work import OwnedOperationCancelledError
 from XBrainLab.backend.application.results import CommandResult
 from XBrainLab.backend.application.serialization import serialize_json_value
 from XBrainLab.backend.application.state import EvaluationStateSnapshot
@@ -50,10 +52,14 @@ from XBrainLab.ui.application_capabilities import (
     EvaluationActionPort,
     EvaluationQueryPort,
     application_ui_runtime,
+    begin_evaluation_render_operation,
+    cancel_application_operation,
     execute_application_command,
     execute_application_command_async,
+    fail_application_operation,
+    get_application_operation,
     get_application_view_publication,
-    get_evaluation_render_publication,
+    run_evaluation_render_operation,
 )
 from XBrainLab.ui.application_publication_renderer import (
     ApplicationPublicationRenderLedger,
@@ -61,7 +67,8 @@ from XBrainLab.ui.application_publication_renderer import (
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.components.presentation import ElidingComboBox, ResponsiveControlsBar
 from XBrainLab.ui.core.base_panel import BasePanel
-from XBrainLab.ui.core.worker import Worker
+from XBrainLab.ui.core.worker import PythonThreadWorker
+from XBrainLab.ui.owned_operation_presenter import OwnedOperationPresenter
 from XBrainLab.ui.panels.evaluation.confusion_matrix import ConfusionMatrixWidget
 from XBrainLab.ui.panels.evaluation.metrics_bar_chart import MetricsBarChartWidget
 from XBrainLab.ui.panels.evaluation.metrics_table import MetricsTableWidget
@@ -170,10 +177,6 @@ class _ModelSummaryRequest:
     publication_generation: int | None
 
 
-class _RetryEvaluationPublicationRenderError(RuntimeError):
-    """Signal that the current publication was not rendered atomically."""
-
-
 class EvaluationPanel(BasePanel):
     """Panel for analysing trained-model performance.
 
@@ -228,11 +231,13 @@ class EvaluationPanel(BasePanel):
         self._application_summary_dirty = True
         self._evaluation_render_retry_request: EvaluationRenderRequest | None = None
         self._evaluation_render_retry_attempts = 0
-        self._evaluation_render_worker: Worker | None = None
+        self._evaluation_render_worker: PythonThreadWorker | None = None
         self._evaluation_render_active_request: EvaluationRenderRequest | None = None
+        self._evaluation_render_active_operation_id: str | None = None
         self._evaluation_render_pending_request: EvaluationRenderRequest | None = None
         self._evaluation_render_result_seen = False
         self._evaluation_render_shutdown_requested = False
+        self._evaluation_render_cleaned_up = False
         self._info_in_chart_tabs = False
 
         super().__init__(parent=parent, controller=None)
@@ -258,6 +263,20 @@ class EvaluationPanel(BasePanel):
         self._action_port = action_port if action_port is not None else runtime
         self._subscribe_to_application_publications()
         self.init_ui()
+        self._evaluation_operation_presenter = OwnedOperationPresenter(
+            self,
+            cancel_button=self.btn_cancel_evaluation,
+            snapshot_getter=lambda operation_id: get_application_operation(
+                self,
+                operation_id,
+                runtime=cast(ApplicationUiRuntime, self._query_port),
+            ),
+            canceller=lambda operation_id: cancel_application_operation(
+                self,
+                operation_id,
+                runtime=cast(ApplicationUiRuntime, self._query_port),
+            ),
+        )
 
     def _subscribe_to_application_publications(self) -> None:
         """Refresh state-changing content from the sole application truth."""
@@ -295,10 +314,19 @@ class EvaluationPanel(BasePanel):
         publication: ApplicationViewPublication,
     ) -> bool:
         self._application_view_publication = publication
-        try:
-            self.update_panel()
-        except _RetryEvaluationPublicationRenderError:
-            return False
+        # A newer publication can be queued re-entrantly while the previous
+        # render is still resolving its Evaluation query.  Re-check the
+        # render projection here, after the previous revision has committed,
+        # so equivalent PENDING -> RUNNING saliency publications do not
+        # rebuild the complete Evaluation surface twice.
+        if (
+            self._evaluation_publication_signature(publication)
+            == self._last_evaluation_publication_signature
+        ):
+            self._application_generation = publication.generation
+            self._evaluation_render = None
+            return True
+        self.update_panel()
         return True
 
     def update_panel(self):
@@ -915,6 +943,7 @@ class EvaluationPanel(BasePanel):
         self.matrix_widget.update_plot(None)
         self.bar_chart.update_plot({})
         self.metrics_table.update_data({})
+        self.metrics_table.setProperty("evaluationOutputNumericSummary", None)
 
     def on_model_changed(
         self,
@@ -1144,6 +1173,80 @@ class EvaluationPanel(BasePanel):
         metrics = dict(render_data.metrics)
         class_names = dict(render_data.class_labels)
         self.metrics_table.update_data(metrics, class_names=class_names)
+        self.metrics_table.setProperty(
+            "classLabels",
+            [str(value) for _, value in sorted(class_names.items())],
+        )
+        self.metrics_table.setProperty(
+            "publicationGeneration",
+            render.generation,
+        )
+        self.metrics_table.setProperty("operationId", render.operation_id or "")
+        self.metrics_table.setProperty(
+            "trainingGeneration",
+            render.training_boundary.token.generation,
+        )
+        self.metrics_table.setProperty(
+            "trainingBoundaryStable",
+            render.training_boundary.stable,
+        )
+        self.metrics_table.setProperty(
+            "splitSpecificationFingerprint",
+            render.split_specification_fingerprint or "",
+        )
+        self.metrics_table.setProperty(
+            "splitEpochRevision",
+            render.split_epoch_revision or 0,
+        )
+        self.metrics_table.setProperty(
+            "evaluationOutputNumericSummary",
+            render_data.output_numeric_summary.to_dict(),
+        )
+        producer_payloads = [
+            identity.to_payload() for identity in render.producer_identities
+        ]
+        self.metrics_table.setProperty("producerIdentities", producer_payloads)
+        self.metrics_table.setProperty(
+            "producerFingerprints",
+            [str(payload["fingerprint"]) for payload in producer_payloads],
+        )
+        for property_name, payload_key in (
+            ("producerDatasetFingerprints", "dataset_fingerprint"),
+            ("producerSplitFingerprints", "split_fingerprint"),
+            ("producerRunFingerprints", "run_fingerprint"),
+            ("producerModelFingerprints", "model_fingerprint"),
+        ):
+            self.metrics_table.setProperty(
+                property_name,
+                [str(payload[payload_key]) for payload in producer_payloads],
+            )
+        plan_indexes: list[int] = []
+        run_indexes: list[int] = []
+        selection_type = ""
+        self.metrics_table.setProperty("fold", -1)
+        self.metrics_table.setProperty("runId", "")
+        if isinstance(selection, EvaluationRunIdentity):
+            plan_index = selection.plan.plan_index
+            run_index = selection.run_index
+            plan_indexes = [plan_index]
+            run_indexes = [run_index]
+            self.metrics_table.setProperty("fold", plan_index)
+            self.metrics_table.setProperty(
+                "runId",
+                f"plan-{plan_index}:run-{run_index}",
+            )
+            selection_type = "run"
+        elif isinstance(selection, EvaluationPlanIdentity):
+            plan_indexes = [selection.plan_index]
+            selection_type = "plan"
+        else:
+            plan_indexes = [member.plan.plan_index for member in selection.members]
+            run_indexes = [member.run_index for member in selection.members]
+            selection_type = "cross_fold"
+        self.metrics_table.setProperty("planIndexes", plan_indexes)
+        self.metrics_table.setProperty("runIndexes", run_indexes)
+        self.metrics_table.setProperty("selectionType", selection_type)
+        self.metrics_table.setProperty("evaluationSplit", split)
         self.bar_chart.update_plot(metrics, class_names=class_names)
         self._update_summary_if_visible(render_data.summary_identity)
 
@@ -1166,64 +1269,14 @@ class EvaluationPanel(BasePanel):
         cached = self._evaluation_render
         if cached is not None and cached.request == request:
             return cached
-        if isinstance(selection, EvaluationCrossFoldIdentity):
-            if self._request_evaluation_render(request):
-                self._show_evaluation_render_loading()
-            else:
-                self._show_evaluation_render_unavailable(
-                    "The All Folds evaluation summary could not start in the "
-                    "background. Refresh Evaluation and try again."
-                )
-            return None
-        query_port = self._query_port
-        if query_port is None:
-            return None
-        try:
-            publication = get_evaluation_render_publication(
-                self,
-                request,
-                runtime=cast(ApplicationUiRuntime, query_port),
+        if self._request_evaluation_render(request):
+            self._show_evaluation_render_loading()
+        else:
+            self._show_evaluation_render_unavailable(
+                "The Evaluation result could not start in the background. "
+                "Refresh Evaluation and try again."
             )
-        except ApplicationError as exc:
-            if (
-                exc.diagnostics.get("evaluation_final_unavailable") is True
-                or exc.diagnostics.get("evaluation_split_unavailable") is True
-            ):
-                self._clear_evaluation_render_retry()
-                self._show_evaluation_render_unavailable(str(exc))
-                return None
-            if (
-                exc.diagnostics.get("evaluation_render_stale") is True
-                and exc.diagnostics.get("retryable") is True
-            ):
-                self._evaluation_render = None
-                self.mark_refresh_dirty()
-                if self._application_render_ledger.render_in_progress:
-                    raise _RetryEvaluationPublicationRenderError(
-                        "Evaluation render changed during publication delivery."
-                    ) from None
-                self._schedule_evaluation_render_retry(request)
-                return None
-            logger.error("Evaluation render publication failed.", exc_info=True)
-            self.mark_refresh_dirty()
-            if self._application_render_ledger.render_in_progress:
-                raise _RetryEvaluationPublicationRenderError(
-                    "Evaluation render changed during publication delivery."
-                ) from None
-            return None
-        except Exception:
-            logger.error("Evaluation render publication failed.", exc_info=True)
-            self.mark_refresh_dirty()
-            if self._application_render_ledger.render_in_progress:
-                raise _RetryEvaluationPublicationRenderError(
-                    "Evaluation render changed during publication delivery."
-                ) from None
-            return None
-        if publication is None or publication.request != request:
-            return None
-        self._clear_evaluation_render_retry()
-        self._evaluation_render = publication
-        return publication
+        return None
 
     def _request_evaluation_render(self, request: EvaluationRenderRequest) -> bool:
         """Serialize expensive cross-fold publication reads outside the GUI thread."""
@@ -1240,22 +1293,58 @@ class EvaluationPanel(BasePanel):
         runtime = self._query_port
         if runtime is None:
             return False
-        thread_pool = QThreadPool.globalInstance()
-        if thread_pool is None:
+        operation = begin_evaluation_render_operation(
+            self,
+            request,
+            runtime=cast(ApplicationUiRuntime, runtime),
+        )
+        if operation is None:
             return False
-        worker = Worker(self._load_evaluation_render, runtime, request)
-        worker.signals.result.connect(self._on_evaluation_render_ready)
-        worker.signals.error.connect(self._on_evaluation_render_error)
-        worker.signals.finished.connect(self._on_evaluation_render_finished)
+        operation_id = operation.operation_id
+        worker = PythonThreadWorker(
+            self._load_evaluation_render,
+            runtime,
+            operation_id,
+            request,
+            name=f"xbrainlab-evaluation-render-{operation_id[:8]}",
+        )
+        worker.signals.result.connect(
+            lambda result, owned=worker, oid=operation_id: (
+                self._on_evaluation_render_ready(owned, oid, result)
+            )
+        )
+        worker.signals.error.connect(
+            lambda error, owned=worker, oid=operation_id: (
+                self._on_evaluation_render_error(owned, oid, error)
+            )
+        )
+        worker.signals.finished.connect(
+            lambda owned=worker, oid=operation_id: (
+                self._on_evaluation_render_finished(owned, oid)
+            )
+        )
         self._evaluation_render_worker = worker
         self._evaluation_render_active_request = request
+        self._evaluation_render_active_operation_id = operation_id
         self._evaluation_render_pending_request = None
         self._evaluation_render_result_seen = False
+        self._evaluation_operation_presenter.bind(
+            operation_id,
+            stage="Queued evaluation render",
+        )
         try:
-            thread_pool.start(worker)
+            worker.start()
         except Exception:
+            self._evaluation_operation_presenter.abandon()
+            fail_application_operation(
+                self,
+                operation_id,
+                message="The Evaluation worker could not be scheduled.",
+                runtime=cast(ApplicationUiRuntime, runtime),
+            )
             self._evaluation_render_worker = None
             self._evaluation_render_active_request = None
+            self._evaluation_render_active_operation_id = None
             logger.error(
                 "Evaluation render publication worker could not start.",
                 exc_info=True,
@@ -1266,10 +1355,12 @@ class EvaluationPanel(BasePanel):
     @staticmethod
     def _load_evaluation_render(
         runtime,
+        operation_id: str,
         request: EvaluationRenderRequest,
     ) -> tuple[EvaluationRenderRequest, object]:
-        publication = get_evaluation_render_publication(
+        publication = run_evaluation_render_operation(
             None,
+            operation_id,
             request,
             runtime=runtime,
         )
@@ -1277,7 +1368,21 @@ class EvaluationPanel(BasePanel):
             raise RuntimeError("Evaluation render publication is unavailable")
         return request, publication
 
-    def _on_evaluation_render_ready(self, result: object) -> None:
+    def _on_evaluation_render_ready(
+        self,
+        worker: PythonThreadWorker | object,
+        operation_id: str | None = None,
+        result: object | None = None,
+    ) -> None:
+        if result is None and operation_id is None:
+            result = worker
+            worker = self._evaluation_render_worker
+            operation_id = self._evaluation_render_active_operation_id
+        if (
+            worker is not self._evaluation_render_worker
+            or operation_id != self._evaluation_render_active_operation_id
+        ):
+            return
         request = self._evaluation_render_active_request
         if self._evaluation_render_shutdown_requested or request is None:
             return
@@ -1290,7 +1395,7 @@ class EvaluationPanel(BasePanel):
         ):
             if request == self._current_evaluation_render_request():
                 self._show_evaluation_render_unavailable(
-                    "The All Folds evaluation summary could not be loaded. "
+                    "The Evaluation result could not be loaded. "
                     "Refresh Evaluation and try again."
                 )
             return
@@ -1299,7 +1404,23 @@ class EvaluationPanel(BasePanel):
         self._evaluation_render = cast(EvaluationRenderPublication, result[1])
         self.update_views()
 
-    def _on_evaluation_render_error(self, error: tuple) -> None:
+    def _on_evaluation_render_error(
+        self,
+        worker: PythonThreadWorker | tuple | None,
+        operation_id: str | None = None,
+        error: tuple | None = None,
+    ) -> None:
+        if error is None and operation_id is None and isinstance(worker, tuple):
+            error = worker
+            worker = self._evaluation_render_worker
+            operation_id = self._evaluation_render_active_operation_id
+        if (
+            worker is not self._evaluation_render_worker
+            or operation_id != self._evaluation_render_active_operation_id
+        ):
+            return
+        if error is None:
+            return
         request = self._evaluation_render_active_request
         if self._evaluation_render_shutdown_requested or request is None:
             return
@@ -1309,6 +1430,8 @@ class EvaluationPanel(BasePanel):
             if len(error) > 1
             else RuntimeError("Evaluation render worker returned an invalid error")
         )
+        if isinstance(value, OwnedOperationCancelledError):
+            return
         if request != self._current_evaluation_render_request():
             return
         if isinstance(value, ApplicationError):
@@ -1332,15 +1455,25 @@ class EvaluationPanel(BasePanel):
         logger.error("Evaluation render publication failed: %s", value)
         self.mark_refresh_dirty()
         self._show_evaluation_render_unavailable(
-            "The All Folds evaluation summary could not be loaded. "
+            "The Evaluation result could not be loaded. "
             "Refresh Evaluation and try again."
         )
 
-    def _on_evaluation_render_finished(self) -> None:
-        if self._evaluation_render_worker is None:
+    def _on_evaluation_render_finished(
+        self,
+        worker: PythonThreadWorker | None = None,
+        operation_id: str | None = None,
+    ) -> None:
+        worker = worker or self._evaluation_render_worker
+        operation_id = operation_id or self._evaluation_render_active_operation_id
+        if (
+            worker is not self._evaluation_render_worker
+            or operation_id != self._evaluation_render_active_operation_id
+        ):
             return
         self._evaluation_render_worker = None
         self._evaluation_render_active_request = None
+        self._evaluation_render_active_operation_id = None
         self._evaluation_render_result_seen = False
         pending = self._evaluation_render_pending_request
         self._evaluation_render_pending_request = None
@@ -1423,7 +1556,7 @@ class EvaluationPanel(BasePanel):
         """Replace prior metrics while one All Folds publication is prepared."""
         self._evaluation_render = None
         self._clear_metric_views()
-        self.no_data_label.setText("Preparing the All Folds evaluation summary...")
+        self.no_data_label.setText("Preparing the Evaluation result...")
         self.plot_stack.setCurrentIndex(1)
         self.bottom_tabs.setVisible(True)
 
@@ -1439,8 +1572,9 @@ class EvaluationPanel(BasePanel):
 
     def cleanup(self) -> None:
         """Cancel queued renders and release the publication subscription."""
-        self._evaluation_render_shutdown_requested = True
-        self._evaluation_render_pending_request = None
+        self._evaluation_render_cleaned_up = True
+        self.begin_evaluation_render_shutdown()
+        self._evaluation_operation_presenter.abandon()
         self._invalidate_model_summary_request()
         self._clear_evaluation_render_retry()
         self._application_render_ledger.cleanup()
@@ -1449,6 +1583,63 @@ class EvaluationPanel(BasePanel):
         if hasattr(self, "bar_chart"):
             self.bar_chart.cleanup()
         super().cleanup()
+
+    def begin_evaluation_render_shutdown(self) -> None:
+        """Reject new renders and request cancellation without blocking Qt."""
+        self._evaluation_render_shutdown_requested = True
+        self._evaluation_render_pending_request = None
+        self._clear_evaluation_render_retry()
+        self.cancel_evaluation_render()
+
+    def cancel_evaluation_render_shutdown(self) -> None:
+        """Resume Evaluation after a desktop close attempt was cancelled."""
+        if self._evaluation_render_cleaned_up:
+            return
+        was_shutdown = self._evaluation_render_shutdown_requested
+        self._evaluation_render_shutdown_requested = False
+        if not was_shutdown:
+            return
+        request = self._current_evaluation_render_request()
+        if request is None:
+            return
+        if self._evaluation_render_worker is not None:
+            self._evaluation_render_pending_request = request
+            return
+        QTimer.singleShot(0, self.update_views)
+
+    def cancel_evaluation_render(self) -> bool:
+        """Request active Evaluation cancellation without the command lock."""
+        operation_id = self._evaluation_render_active_operation_id
+        if operation_id is None:
+            return False
+        return cancel_application_operation(
+            self,
+            operation_id,
+            runtime=cast(ApplicationUiRuntime, self._query_port),
+        )
+
+    def evaluation_background_work_snapshot(self) -> dict[str, int | bool | str]:
+        """Expose exact, non-blocking worker ownership for close diagnostics."""
+        worker = self._evaluation_render_worker
+        alive = bool(worker is not None and worker.is_alive())
+        return {
+            "idle": worker is None,
+            "remaining_workers": int(worker is not None),
+            "alive_workers": int(alive),
+            "operation_id": self._evaluation_render_active_operation_id or "",
+        }
+
+    def evaluation_background_work_idle(self) -> bool:
+        """Return true only after the worker's terminal Qt callback releases it."""
+        return self._evaluation_render_worker is None
+
+    def wait_for_evaluation_background_work(self, timeout: float = 0.0) -> bool:
+        """Boundedly join the Python-owned worker outside normal GUI cleanup."""
+        worker = self._evaluation_render_worker
+        if worker is None:
+            return True
+        worker.join(timeout=max(0.0, float(timeout)))
+        return not worker.is_alive()
 
     def closeEvent(self, event):  # noqa: N802
         """Release the application publication subscription on panel close."""
@@ -1731,13 +1922,24 @@ class EvaluationPanel(BasePanel):
         )
         self.chk_percentage.toggled.connect(self._on_percentage_toggled)
 
+        self.btn_cancel_evaluation = QPushButton("Cancel Evaluation")
+        self.btn_cancel_evaluation.setObjectName("EvaluationCancelButton")
+        self.btn_cancel_evaluation.setToolTip(
+            "Cancel the active Evaluation summary without waiting for other commands."
+        )
+        self.btn_cancel_evaluation.setStyleSheet(Stylesheets.BTN_WARNING)
+        self.btn_cancel_evaluation.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
+        )
+
         self.evaluation_controls_bar = ResponsiveControlsBar(
             [
                 ("Fold", self.model_combo),
                 ("Run", self.run_combo),
                 ("Split", self.split_combo),
             ],
-            [self.chk_percentage],
+            [self.chk_percentage, self.btn_cancel_evaluation],
             wrap_width=760,
             greedy_wrap=True,
         )

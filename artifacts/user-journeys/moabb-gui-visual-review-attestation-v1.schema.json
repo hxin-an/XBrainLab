@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xbrainlab.local/schemas/moabb-gui-visual-review-attestation-v1.schema.json",
+  "title": "XBrainLab MOABB GUI Visual Review Attestation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "artifact_type",
+    "status",
+    "producer",
+    "campaign_plan",
+    "receipt_inventory_sha256",
+    "required_review_dimensions",
+    "reviewer",
+    "journeys"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "artifact_type": {"const": "xbrainlab.moabb_gui_visual_review"},
+    "status": {"enum": ["pending_manual_review", "completed"]},
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "completion_authority"],
+      "properties": {
+        "kind": {"const": "campaign_runner"},
+        "completion_authority": {"const": "independent_manual_reviewer_only"}
+      }
+    },
+    "campaign_plan": {"$ref": "#/$defs/boundFile"},
+    "receipt_inventory_sha256": {"$ref": "#/$defs/sha256"},
+    "required_review_dimensions": {
+      "const": ["layout", "contrast", "primary_action", "text_fit", "nested_scroll", "dialog_geometry", "dpi", "error_overlays"]
+    },
+    "reviewer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewer_id", "reviewer_role", "reviewed_at", "attestation"],
+      "properties": {
+        "reviewer_id": {"type": "string"},
+        "reviewer_role": {"const": "independent_manual_reviewer"},
+        "reviewed_at": {"type": "string"},
+        "attestation": {"type": "string"}
+      }
+    },
+    "journeys": {
+      "type": "array",
+      "minItems": 30,
+      "maxItems": 30,
+      "items": {"$ref": "#/$defs/journey"}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "boundFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "journey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dataset", "journey_mode", "receipt", "screenshots", "verdicts"],
+      "properties": {
+        "dataset": {"type": "string", "minLength": 1},
+        "journey_mode": {"enum": ["cold", "replay"]},
+        "receipt": {"$ref": "#/$defs/boundFile"},
+        "screenshots": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/boundFile"}
+        },
+        "verdicts": {
+          "type": "object",
+          "additionalProperties": {"enum": ["pass", null]}
+        }
+      }
+    }
+  }
+}

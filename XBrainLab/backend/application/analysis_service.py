@@ -17,12 +17,17 @@ from .commands import (
 )
 from .errors import PreconditionError
 from .evaluation_render import (
+    EvaluationModelSummary,
+    EvaluationModelSummaryPreparation,
     EvaluationPlanIdentity,
     EvaluationRunIdentity,
     EvaluationSummaryIdentity,
     build_evaluation_cross_fold_choices,
     build_evaluation_model_summary_result,
+    build_prepared_evaluation_model_summary,
+    prepare_evaluation_model_summary,
 )
+from .owned_work import owned_work_checkpoint
 from .resource_guard import ResourcePreflightResult
 from .saliency_policy import normalize_saliency_params
 from .saliency_render import build_saliency_cross_fold_choices
@@ -86,12 +91,112 @@ class AnalysisCommandService:
     def handle_evaluate(self, command: Command) -> HandlerResult:
         if not isinstance(command, EvaluateCommand):
             raise TypeError("Invalid command for evaluate")
+        result, _plans = self._build_evaluation_catalog(command)
+        if command.summary_identity is None:
+            return result
+        model_summary = build_evaluation_model_summary_result(
+            self.training_runtime,
+            command.summary_identity,
+        )
+        return self.complete_prepared_evaluate(result, command, model_summary)
+
+    def prepare_evaluate(
+        self,
+        command: Command,
+    ) -> tuple[
+        tuple[str, dict[str, Any]],
+        EvaluationModelSummaryPreparation | None,
+    ]:
+        """Capture an Evaluation catalog and lightweight summary target."""
+        if not isinstance(command, EvaluateCommand):
+            raise TypeError("Invalid command for evaluate")
+        result, plans = self._build_evaluation_catalog(command)
+        if command.summary_identity is None:
+            return result, None
+        preparation = prepare_evaluation_model_summary(
+            plans,
+            command.summary_identity,
+        )
+        return result, preparation
+
+    @staticmethod
+    def build_prepared_model_summary(
+        preparation: EvaluationModelSummaryPreparation,
+    ) -> EvaluationModelSummary:
+        """Perform model construction and torchinfo inspection for one target."""
+        return build_prepared_evaluation_model_summary(preparation)
+
+    @staticmethod
+    def complete_prepared_evaluate(
+        result: tuple[str, dict[str, Any]],
+        command: EvaluateCommand,
+        model_summary: EvaluationModelSummary,
+    ) -> tuple[str, dict[str, Any]]:
+        """Attach one verified summary to its already captured catalog."""
+        if command.summary_identity is None:
+            raise TypeError("EvaluateCommand.summary_identity must be provided")
+        if not isinstance(model_summary, EvaluationModelSummary):
+            raise TypeError("model_summary must be an EvaluationModelSummary")
+        message, diagnostics = result
+        return (
+            message,
+            {
+                **diagnostics,
+                "model_summary": {
+                    "identity": command.summary_identity.to_dict(),
+                    "status": model_summary.status,
+                    "text": model_summary.text,
+                },
+            },
+        )
+
+    def _build_evaluation_catalog(
+        self,
+        command: EvaluateCommand,
+    ) -> tuple[tuple[str, dict[str, Any]], list[Any]]:
+        """Build the lightweight Evaluation catalog without model inspection."""
+        owned_work_checkpoint("Reading evaluation plans")
         plans = list(self.training_runtime.training_plan_holders())
+        owned_work_checkpoint("Evaluation plans ready")
         summaries: list[_EvaluationPlanSummary] = []
         evaluation_splits: set[str] = set()
         for plan_idx, plan in enumerate(plans):
+            owned_work_checkpoint(
+                f"Reading evaluation plan {plan_idx + 1} of {len(plans)}",
+                completed=plan_idx,
+                total=len(plans),
+            )
             runs = self._safe_plan_runs(plan)
-            finished = [run for run in runs if self._run_finished(run)]
+            finished = []
+            run_summaries: list[_EvaluationRunSummary] = []
+            for run_index, run in enumerate(runs):
+                owned_work_checkpoint(
+                    (f"Reading evaluation run {run_index + 1} of {len(runs)}"),
+                    completed=run_index,
+                    total=len(runs),
+                )
+                run_finished = self._run_finished(run)
+                if run_finished:
+                    finished.append(run)
+                run_summaries.append(
+                    {
+                        "identity": EvaluationRunIdentity(
+                            plan=EvaluationPlanIdentity(plan_index=plan_idx),
+                            run_index=run_index,
+                        ).to_dict(),
+                        "name": self._safe_run_name(run, run_index),
+                        "finished": run_finished,
+                        "evaluation_split": str(
+                            getattr(
+                                getattr(run, "eval_record", None),
+                                "evaluation_split",
+                                None,
+                            )
+                            or "unknown"
+                        ),
+                        "evaluation_splits": self._run_evaluation_splits(run),
+                    }
+                )
             plan_evaluation_splits = self._evaluation_splits(finished)
             evaluation_splits.update(plan_evaluation_splits)
             plan_identity = EvaluationPlanIdentity(plan_index=plan_idx)
@@ -102,27 +207,13 @@ class AnalysisCommandService:
                     "run_count": len(runs),
                     "finished_run_count": len(finished),
                     "evaluation_splits": plan_evaluation_splits,
-                    "runs": [
-                        {
-                            "identity": EvaluationRunIdentity(
-                                plan=plan_identity,
-                                run_index=run_index,
-                            ).to_dict(),
-                            "name": self._safe_run_name(run, run_index),
-                            "finished": self._run_finished(run),
-                            "evaluation_split": str(
-                                getattr(
-                                    getattr(run, "eval_record", None),
-                                    "evaluation_split",
-                                    None,
-                                )
-                                or "unknown"
-                            ),
-                            "evaluation_splits": self._run_evaluation_splits(run),
-                        }
-                        for run_index, run in enumerate(runs)
-                    ],
+                    "runs": run_summaries,
                 }
+            )
+            owned_work_checkpoint(
+                f"Evaluation plan {plan_idx + 1} ready",
+                completed=plan_idx + 1,
+                total=len(plans),
             )
         finished_total = sum(item["finished_run_count"] for item in summaries)
         message = (
@@ -144,25 +235,14 @@ class AnalysisCommandService:
                 for choice in build_evaluation_cross_fold_choices(plans)
             ],
         }
-        if command.summary_identity is not None:
-            if not isinstance(command.summary_identity, EvaluationSummaryIdentity):
-                raise TypeError(
-                    "EvaluateCommand.summary_identity must be an "
-                    "EvaluationSummaryIdentity"
-                )
-            model_summary = build_evaluation_model_summary_result(
-                self.training_runtime,
-                command.summary_identity,
+        if command.summary_identity is not None and not isinstance(
+            command.summary_identity,
+            EvaluationSummaryIdentity,
+        ):
+            raise TypeError(
+                "EvaluateCommand.summary_identity must be an EvaluationSummaryIdentity"
             )
-            diagnostics["model_summary"] = {
-                "identity": command.summary_identity.to_dict(),
-                "status": model_summary.status,
-                "text": model_summary.text,
-            }
-        return (
-            message,
-            diagnostics,
-        )
+        return (message, diagnostics), plans
 
     def handle_visualize(self, command: Command) -> HandlerResult:
         if not isinstance(command, VisualizeCommand):
@@ -261,7 +341,7 @@ class AnalysisCommandService:
                 schedule = automatic_target.schedule_outcome
                 if schedule is None:
                     raise PreconditionError(
-                        "Automatic saliency scheduler did not publish an outcome.",
+                        "Saliency scheduler did not publish an outcome.",
                         diagnostics={
                             "post_training_saliency_schedule": {
                                 "disposition": "rejected",

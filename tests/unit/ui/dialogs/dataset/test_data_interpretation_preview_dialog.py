@@ -150,10 +150,32 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
     assert "Training uses this recipe trace." not in review_text
     assert not dialog.findChildren(QPlainTextEdit)
     assert dialog.apply_button.text() == "Confirm and Import"
+    assert dialog.next_button.objectName() == "DataImportNextButton"
+    assert dialog.apply_button.objectName() == "DataImportConfirmButton"
     assert dialog.get_result() == {
         "confirmed": True,
         "save_recipe": False,
         "choices": {"label_carrier": "embedded_events"},
+    }
+
+
+def test_import_confirm_exposes_exact_backend_review_session_identity(qtbot) -> None:
+    dialog = DataInterpretationPreviewDialog(
+        scan_result={"scan_id": "scan-1", "eeg_files": ["/data/run.edf"]},
+        preview={"preview_id": "preview-2"},
+        validation_decision={
+            "candidate_id": "candidate-3",
+            "decision": "safe",
+        },
+        publication_generation=17,
+    )
+    qtbot.addWidget(dialog)
+
+    assert dialog.apply_button.property("reviewSessionIdentity") == {
+        "scan_id": "scan-1",
+        "candidate_id": "candidate-3",
+        "preview_id": "preview-2",
+        "publication_generation": 17,
     }
 
 
@@ -1157,8 +1179,31 @@ def test_match_labels_internal_source_uses_task_panel_for_suggested_events(qtbot
     assert class_selector.currentText() == ""
 
     class_selector.setCurrentText("Left hand")
+    second_item = dialog.event_tree.topLevelItem(1)
+    assert second_item is not None
+    second_selector = dialog.event_tree.itemWidget(second_item, 2)
+    assert isinstance(second_selector, QComboBox)
+    second_selector.setCurrentText("Right hand")
+    dialog._sync_step_state()
 
-    assert dialog.get_result()["choices"]["class_map"] == {"769": "left hand"}
+    semantic_rows = dialog.next_button.property("eventClassMapping")
+    assert [row["event_value"] for row in semantic_rows] == [
+        "769",
+        "770",
+        "768",
+        "1023",
+    ]
+    assert [row["class_name"] for row in semantic_rows[:2]] == [
+        "left hand",
+        "right hand",
+    ]
+    assert all(row["use_as_class"] is True for row in semantic_rows[:2])
+    assert all(row["use_as_class"] is False for row in semantic_rows[2:])
+
+    assert dialog.get_result()["choices"]["class_map"] == {
+        "769": "left hand",
+        "770": "right hand",
+    }
 
 
 def test_class_name_suggestions_do_not_mix_in_non_class_event_uses() -> None:

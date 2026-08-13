@@ -247,6 +247,8 @@ class ApplicationViewStore:
                 raise RuntimeError(
                     "Application publication changed during control-flow recovery"
                 )
+            if current == expected:
+                return deepcopy(current)
             if current.usable and current != expected:
                 raise RuntimeError(
                     "A different verified application publication is already current"

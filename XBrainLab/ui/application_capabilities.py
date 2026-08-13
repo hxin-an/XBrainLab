@@ -41,6 +41,7 @@ if TYPE_CHECKING:
         EvaluationRenderPublication,
         EvaluationRenderRequest,
     )
+    from XBrainLab.backend.application.owned_work import OwnedOperationSnapshot
     from XBrainLab.backend.application.preprocess_render import (
         PreprocessRenderPublication,
         PreprocessRenderRequest,
@@ -56,6 +57,9 @@ if TYPE_CHECKING:
     )
     from XBrainLab.backend.application.training_recommendation import (
         TrainingRecommendation,
+    )
+    from XBrainLab.backend.application.training_resource_preview_coordinator import (
+        TrainingResourcePreviewTicket,
     )
     from XBrainLab.backend.application.view_publication import (
         InterpretationReviewIdentity,
@@ -111,6 +115,21 @@ class EvaluationQueryPort(Protocol):
         request: EvaluationRenderRequest,
     ) -> EvaluationRenderPublication:
         """Return a detached Evaluation render publication."""
+        ...
+
+    def begin_evaluation_render(
+        self,
+        request: EvaluationRenderRequest,
+    ) -> OwnedOperationSnapshot:
+        """Reserve backend ownership for one exact Evaluation request."""
+        ...
+
+    def run_evaluation_render(
+        self,
+        operation_id: str,
+        request: EvaluationRenderRequest,
+    ) -> EvaluationRenderPublication:
+        """Run the request using its unified backend operation identity."""
         ...
 
 
@@ -205,6 +224,27 @@ class TrainingQueryPort(Protocol):
         """Return a detached advisory estimate for unsaved draft settings."""
         ...
 
+    def begin_training_resource_preview(
+        self,
+        request: TrainingResourcePreviewRequest,
+    ) -> TrainingResourcePreviewTicket:
+        """Submit one advisory estimate without transferring worker ownership."""
+        ...
+
+    def training_resource_preview_background_work_snapshot(
+        self,
+    ) -> dict[str, int | bool]:
+        """Return exact backend-owned preview worker counts."""
+        ...
+
+    def begin_training_resource_preview_shutdown(self) -> None:
+        """Fence new preview work during a desktop close attempt."""
+        ...
+
+    def cancel_training_resource_preview_shutdown(self) -> bool:
+        """Reopen preview admission after a cancelled close attempt."""
+        ...
+
 
 class TrainingPublicationPort(ApplicationViewPublicationPort, Protocol):
     """Committed state/capability publication port used by Training."""
@@ -247,6 +287,45 @@ class VisualizationQueryPort(Protocol):
         request: SaliencyRenderRequest,
     ) -> SaliencyRenderPublication:
         """Return one detached saliency render publication."""
+        ...
+
+    def begin_saliency_render(
+        self,
+        request: SaliencyRenderRequest,
+    ) -> OwnedOperationSnapshot:
+        """Reserve unified ownership for one native saliency render."""
+        ...
+
+    def prepare_saliency_render(
+        self,
+        operation_id: str,
+        request: SaliencyRenderRequest,
+    ) -> SaliencyRenderPublication:
+        """Prepare detached data without prematurely completing ownership."""
+        ...
+
+    def prepare_saliency_render_variants(
+        self,
+        operation_id: str,
+        request: SaliencyRenderRequest,
+        *,
+        include_normalized: bool,
+    ) -> tuple[SaliencyRenderPublication, SaliencyRenderPublication | None]:
+        """Prepare raw/normalized data within one owned render lifecycle."""
+        ...
+
+    def finish_saliency_render(
+        self,
+        operation_id: str,
+        phase: str,
+        *,
+        message: str = "",
+    ) -> None:
+        """Finish ownership after a generation-bound native terminal."""
+        ...
+
+    def enter_saliency_render_commit(self, operation_id: str) -> bool:
+        """Atomically admit a generation-bound native canvas commit."""
         ...
 
 
@@ -306,6 +385,37 @@ class ApplicationUiRuntime(
 ):
     """Application command boundary used by UI capability helpers."""
 
+    def execute(
+        self,
+        command: Command,
+        *,
+        expected_publication_generation: int | None = None,
+        operation_id: str | None = None,
+    ) -> CommandResult:
+        """Execute a command, optionally bound to scheduled operation identity."""
+        ...
+
+    def begin_owned_operation(self, command: Command) -> OwnedOperationSnapshot:
+        """Allocate identity before asynchronous product work is scheduled."""
+        ...
+
+    def cancel_owned_operation(self, operation_id: str) -> bool:
+        """Request cooperative cancellation without waiting for command admission."""
+        ...
+
+    def get_owned_operation(self, operation_id: str) -> OwnedOperationSnapshot:
+        """Return immutable progress for one scheduled operation."""
+        ...
+
+    def fail_owned_operation(
+        self,
+        operation_id: str,
+        *,
+        message: str,
+    ) -> OwnedOperationSnapshot:
+        """Terminate identity when its UI worker could not be scheduled."""
+        ...
+
     def get_interpretation_review(
         self,
         *,
@@ -324,6 +434,35 @@ class ApplicationUiRuntime(
     ) -> SaliencyRenderPublication:
         """Return a detached saliency render publication."""
         ...
+
+    def begin_saliency_render(
+        self,
+        request: SaliencyRenderRequest,
+    ) -> OwnedOperationSnapshot: ...
+
+    def prepare_saliency_render(
+        self,
+        operation_id: str,
+        request: SaliencyRenderRequest,
+    ) -> SaliencyRenderPublication: ...
+
+    def prepare_saliency_render_variants(
+        self,
+        operation_id: str,
+        request: SaliencyRenderRequest,
+        *,
+        include_normalized: bool,
+    ) -> tuple[SaliencyRenderPublication, SaliencyRenderPublication | None]: ...
+
+    def finish_saliency_render(
+        self,
+        operation_id: str,
+        phase: str,
+        *,
+        message: str = "",
+    ) -> None: ...
+
+    def enter_saliency_render_commit(self, operation_id: str) -> bool: ...
 
     def request_shutdown_fence(self) -> None:
         """Close command admission before application shutdown."""
@@ -386,11 +525,35 @@ class _StudyApplicationUiRuntime:
         command: Command,
         *,
         expected_publication_generation: int | None = None,
+        operation_id: str | None = None,
     ) -> CommandResult:
+        if operation_id is None:
+            return self._service().execute(
+                command,
+                expected_publication_generation=expected_publication_generation,
+            )
         return self._service().execute(
             command,
             expected_publication_generation=expected_publication_generation,
+            operation_id=operation_id,
         )
+
+    def begin_owned_operation(self, command: Command) -> OwnedOperationSnapshot:
+        return self._service().begin_owned_operation(command)
+
+    def cancel_owned_operation(self, operation_id: str) -> bool:
+        return self._service().cancel_owned_operation(operation_id)
+
+    def get_owned_operation(self, operation_id: str) -> OwnedOperationSnapshot:
+        return self._service().get_owned_operation(operation_id)
+
+    def fail_owned_operation(
+        self,
+        operation_id: str,
+        *,
+        message: str,
+    ) -> OwnedOperationSnapshot:
+        return self._service().fail_owned_operation(operation_id, message=message)
 
     def get_interpretation_review(
         self,
@@ -425,11 +588,66 @@ class _StudyApplicationUiRuntime:
     ) -> SaliencyRenderPublication:
         return self._service().get_saliency_render(request)
 
+    def begin_saliency_render(
+        self,
+        request: SaliencyRenderRequest,
+    ) -> OwnedOperationSnapshot:
+        return self._service().begin_saliency_render(request)
+
+    def prepare_saliency_render(
+        self,
+        operation_id: str,
+        request: SaliencyRenderRequest,
+    ) -> SaliencyRenderPublication:
+        return self._service().prepare_saliency_render(operation_id, request)
+
+    def prepare_saliency_render_variants(
+        self,
+        operation_id: str,
+        request: SaliencyRenderRequest,
+        *,
+        include_normalized: bool,
+    ) -> tuple[SaliencyRenderPublication, SaliencyRenderPublication | None]:
+        return self._service().prepare_saliency_render_variants(
+            operation_id,
+            request,
+            include_normalized=include_normalized,
+        )
+
+    def finish_saliency_render(
+        self,
+        operation_id: str,
+        phase: str,
+        *,
+        message: str = "",
+    ) -> None:
+        self._service().finish_saliency_render(
+            operation_id,
+            phase,
+            message=message,
+        )
+
+    def enter_saliency_render_commit(self, operation_id: str) -> bool:
+        return self._service().enter_saliency_render_commit(operation_id)
+
     def get_evaluation_render(
         self,
         request: EvaluationRenderRequest,
     ) -> EvaluationRenderPublication:
         return self._service().get_evaluation_render(request)
+
+    def begin_evaluation_render(
+        self,
+        request: EvaluationRenderRequest,
+    ) -> OwnedOperationSnapshot:
+        return self._service().begin_evaluation_render(request)
+
+    def run_evaluation_render(
+        self,
+        operation_id: str,
+        request: EvaluationRenderRequest,
+    ) -> EvaluationRenderPublication:
+        return self._service().run_evaluation_render(operation_id, request)
 
     def get_preprocess_render(
         self,
@@ -475,6 +693,23 @@ class _StudyApplicationUiRuntime:
         request: TrainingResourcePreviewRequest,
     ) -> TrainingResourcePreviewResult:
         return self._service().get_training_resource_preview(request)
+
+    def begin_training_resource_preview(
+        self,
+        request: TrainingResourcePreviewRequest,
+    ) -> TrainingResourcePreviewTicket:
+        return self._service().begin_training_resource_preview(request)
+
+    def training_resource_preview_background_work_snapshot(
+        self,
+    ) -> dict[str, int | bool]:
+        return self._service().training_resource_preview_background_work_snapshot()
+
+    def begin_training_resource_preview_shutdown(self) -> None:
+        self._service().begin_training_resource_preview_shutdown()
+
+    def cancel_training_resource_preview_shutdown(self) -> bool:
+        return self._service().cancel_training_resource_preview_shutdown()
 
     def subscribe(self, event_name: str, callback: Callable[..., Any]) -> None:
         from XBrainLab.backend.application.view_publication import (  # noqa: PLC0415
@@ -873,6 +1108,89 @@ def get_saliency_render_publication(
     return publication
 
 
+def begin_saliency_render_operation(
+    context: Any,
+    request: SaliencyRenderRequest,
+    *,
+    runtime: ApplicationUiRuntime | None = None,
+) -> OwnedOperationSnapshot | None:
+    """Allocate a backend RENDER operation before scheduling publication work."""
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
+        return None
+    snapshot = application_runtime.begin_saliency_render(request)
+    operation_id = getattr(snapshot, "operation_id", None)
+    if not isinstance(operation_id, str) or not operation_id:
+        raise TypeError("Application runtime returned invalid saliency ownership")
+    return snapshot
+
+
+def prepare_saliency_render_operation(
+    context: Any,
+    operation_id: str,
+    request: SaliencyRenderRequest,
+    *,
+    runtime: ApplicationUiRuntime | None = None,
+) -> SaliencyRenderPublication | None:
+    """Prepare one saliency DTO inside its backend-owned lifecycle."""
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
+        return None
+    return application_runtime.prepare_saliency_render(operation_id, request)
+
+
+def prepare_saliency_render_variants_operation(
+    context: Any,
+    operation_id: str,
+    request: SaliencyRenderRequest,
+    *,
+    include_normalized: bool,
+    runtime: ApplicationUiRuntime | None = None,
+) -> tuple[SaliencyRenderPublication, SaliencyRenderPublication | None] | None:
+    """Prepare raw/normalized saliency DTOs inside one owned lifecycle."""
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
+        return None
+    return application_runtime.prepare_saliency_render_variants(
+        operation_id,
+        request,
+        include_normalized=include_normalized,
+    )
+
+
+def finish_saliency_render_operation(
+    context: Any,
+    operation_id: str,
+    phase: str,
+    *,
+    message: str = "",
+    runtime: ApplicationUiRuntime | None = None,
+) -> bool:
+    """Commit the native renderer's exact terminal outcome."""
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
+        return False
+    application_runtime.finish_saliency_render(
+        operation_id,
+        phase,
+        message=message,
+    )
+    return True
+
+
+def enter_saliency_render_commit_operation(
+    context: Any,
+    operation_id: str,
+    *,
+    runtime: ApplicationUiRuntime | None = None,
+) -> bool:
+    """Atomically admit one native canvas replacement."""
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
+        return False
+    return bool(application_runtime.enter_saliency_render_commit(operation_id))
+
+
 def get_evaluation_render_publication(
     context: Any,
     request: EvaluationRenderRequest,
@@ -891,6 +1209,62 @@ def get_evaluation_render_publication(
     if application_runtime is None:
         return None
     publication = application_runtime.get_evaluation_render(request)
+    if not isinstance(publication, EvaluationRenderPublication):
+        raise TypeError("Application runtime returned an invalid Evaluation render")
+    return publication
+
+
+def begin_evaluation_render_operation(
+    context: Any,
+    request: EvaluationRenderRequest,
+    *,
+    runtime: ApplicationUiRuntime | None = None,
+) -> OwnedOperationSnapshot | None:
+    """Allocate unified backend ownership before scheduling Evaluation work."""
+    from XBrainLab.backend.application.evaluation_render import (  # noqa: PLC0415
+        EvaluationRenderRequest,
+    )
+
+    if not isinstance(request, EvaluationRenderRequest):
+        raise TypeError("request must be an EvaluationRenderRequest")
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
+        return None
+    begin = getattr(application_runtime, "begin_evaluation_render", None)
+    if not callable(begin):
+        return None
+    snapshot = begin(request)
+    operation_id = getattr(snapshot, "operation_id", None)
+    if not isinstance(operation_id, str) or not operation_id:
+        raise TypeError("Application runtime returned invalid Evaluation ownership")
+    return cast("OwnedOperationSnapshot", snapshot)
+
+
+def run_evaluation_render_operation(
+    context: Any,
+    operation_id: str,
+    request: EvaluationRenderRequest,
+    *,
+    runtime: ApplicationUiRuntime | None = None,
+) -> EvaluationRenderPublication | None:
+    """Execute one Evaluation request inside its backend-owned lifecycle."""
+    from XBrainLab.backend.application.evaluation_render import (  # noqa: PLC0415
+        EvaluationRenderPublication,
+        EvaluationRenderRequest,
+    )
+
+    if not isinstance(request, EvaluationRenderRequest):
+        raise TypeError("request must be an EvaluationRenderRequest")
+    normalized_operation_id = str(operation_id or "").strip()
+    if not normalized_operation_id:
+        raise ValueError("operation_id must be non-empty")
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
+        return None
+    runner = getattr(application_runtime, "run_evaluation_render", None)
+    if not callable(runner):
+        return None
+    publication = runner(normalized_operation_id, request)
     if not isinstance(publication, EvaluationRenderPublication):
         raise TypeError("Application runtime returned an invalid Evaluation render")
     return publication
@@ -977,13 +1351,114 @@ def _execute_runtime_command(
     command: Command,
     *,
     expected_publication_generation: int | None,
+    operation_id: str | None = None,
 ) -> CommandResult:
-    if expected_publication_generation is None:
-        return runtime.execute(command)
+    if operation_id is None:
+        if expected_publication_generation is None:
+            return runtime.execute(command)
+        return runtime.execute(
+            command,
+            expected_publication_generation=expected_publication_generation,
+        )
     return runtime.execute(
         command,
         expected_publication_generation=expected_publication_generation,
+        operation_id=operation_id,
     )
+
+
+def cancel_application_operation(
+    context: Any,
+    operation_id: str,
+    *,
+    runtime: ApplicationUiRuntime | None = None,
+) -> bool:
+    """Cancel one backend-owned operation without entering the command lock."""
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
+        return False
+    canceller = getattr(application_runtime, "cancel_owned_operation", None)
+    if not callable(canceller):
+        return False
+    try:
+        return bool(canceller(operation_id))
+    except Exception:
+        logger.exception("Could not cancel application operation %s", operation_id)
+        return False
+
+
+def fail_application_operation(
+    context: Any,
+    operation_id: str,
+    *,
+    message: str,
+    runtime: ApplicationUiRuntime | None = None,
+) -> bool:
+    """Terminate ownership when a UI worker could not be scheduled."""
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
+        return False
+    fail = getattr(application_runtime, "fail_owned_operation", None)
+    if not callable(fail):
+        return False
+    try:
+        fail(operation_id, message=message)
+    except Exception:
+        logger.exception("Could not fail application operation %s", operation_id)
+        return False
+    return True
+
+
+def get_application_operation(
+    context: Any,
+    operation_id: str,
+    *,
+    runtime: ApplicationUiRuntime | None = None,
+) -> OwnedOperationSnapshot | None:
+    """Read lock-independent application progress for visible status surfaces."""
+    application_runtime = _resolve_application_ui_runtime(context, runtime)
+    if application_runtime is None:
+        return None
+    getter = getattr(application_runtime, "get_owned_operation", None)
+    if not callable(getter):
+        return None
+    try:
+        snapshot = getter(operation_id)
+    except (KeyError, RuntimeError):
+        return None
+    return cast("OwnedOperationSnapshot", snapshot)
+
+
+def _begin_runtime_operation(
+    runtime: ApplicationUiRuntime,
+    command: Command,
+) -> str | None:
+    """Allocate product ownership when the supplied runtime supports it."""
+    begin = getattr(runtime, "begin_owned_operation", None)
+    if not callable(begin):
+        return None
+    snapshot = begin(command)
+    operation_id = getattr(snapshot, "operation_id", None)
+    if not isinstance(operation_id, str) or not operation_id:
+        raise TypeError("Application runtime returned invalid operation identity")
+    return operation_id
+
+
+def _fail_runtime_operation(
+    runtime: ApplicationUiRuntime,
+    operation_id: str | None,
+    *,
+    message: str,
+) -> None:
+    if operation_id is None:
+        return
+    fail = getattr(runtime, "fail_owned_operation", None)
+    if not callable(fail):
+        return
+    try:
+        fail(operation_id, message=message)
+    except Exception:
+        logger.exception("Could not terminate unscheduled application operation")
 
 
 def execute_application_command(
@@ -1090,6 +1565,7 @@ def execute_application_command_async(
     allow_during_shutdown: bool = False,
     expected_publication_generation: int | None = None,
     runtime: ApplicationUiRuntime | None = None,
+    on_operation_started: Callable[[str], None] | None = None,
 ) -> bool:
     """Execute an ApplicationService command outside the GUI thread.
 
@@ -1115,6 +1591,12 @@ def execute_application_command_async(
     if application_runtime is None:
         return False
 
+    try:
+        operation_id = _begin_runtime_operation(application_runtime, command)
+    except Exception:
+        logger.exception("Could not allocate async application operation")
+        return False
+
     completion_callbacks = prepare_interaction_command_callbacks(
         context=context,
         command_name=command.name.value,
@@ -1128,6 +1610,7 @@ def execute_application_command_async(
             application_runtime,
             command,
             expected_publication_generation=expected_publication_generation,
+            operation_id=operation_id,
         ),
         on_result=completion_callbacks.on_result,
         on_error=completion_callbacks.on_error,
@@ -1139,6 +1622,22 @@ def execute_application_command_async(
         allow_during_shutdown=allow_during_shutdown,
         python_thread_name=_PYTHON_OWNED_COMMAND_THREADS.get(command.name),
     ).start()
+    if not started:
+        _fail_runtime_operation(
+            application_runtime,
+            operation_id,
+            message="The interface worker could not be scheduled.",
+        )
+    elif operation_id is not None and on_operation_started is not None:
+        try:
+            on_operation_started(operation_id)
+        except Exception:
+            cancel_application_operation(
+                context,
+                operation_id,
+                runtime=application_runtime,
+            )
+            logger.exception("Async operation-start callback failed")
     completion_callbacks.mark_started(started)
     return started
 

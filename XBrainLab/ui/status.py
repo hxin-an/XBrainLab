@@ -6,9 +6,16 @@ import math
 from time import monotonic
 from typing import Any
 
+from PyQt6 import sip
+from PyQt6.QtCore import QTimer
+
 DEFAULT_STATUS_TIMEOUT_MS = 7000
+MAX_TRANSIENT_BEFORE_OWNED_PROGRESS_MS = 1000
 _TRANSIENT_MESSAGE_ATTRIBUTE = "_xbrainlab_transient_status_message"
 _TRANSIENT_DEADLINE_ATTRIBUTE = "_xbrainlab_transient_status_deadline"
+_OWNED_MESSAGE_ATTRIBUTE = "_xbrainlab_owned_operation_status_message"
+_OWNED_OPERATION_ATTRIBUTE = "_xbrainlab_owned_operation_status_id"
+_OWNED_DEFERRED_ATTRIBUTE = "_xbrainlab_owned_operation_deferred_token"
 
 
 def show_status_message(
@@ -33,6 +40,159 @@ def show_status_message(
         _record_transient_status(status_bar, message, timeout_ms)
         return True
     return False
+
+
+def publish_owned_operation_progress(
+    owner: Any,
+    *,
+    operation_id: str,
+    stage: str,
+    phase: str,
+    completed: int | None = None,
+    total: int | None = None,
+    indeterminate: bool = True,
+    cancel_requested: bool = False,
+) -> bool:
+    """Publish one operation snapshot on the existing visible status surface."""
+    operation_id = str(operation_id or "").strip()
+    if not operation_id:
+        return False
+    for candidate in _status_owner_candidates(owner):
+        status_bar = _status_bar(candidate)
+        if status_bar is None:
+            continue
+        set_property = getattr(status_bar, "setProperty", None)
+        if not callable(set_property):
+            continue
+        progress = (
+            f"{completed}/{total}"
+            if isinstance(completed, int) and isinstance(total, int) and total > 0
+            else "indeterminate"
+            if indeterminate
+            else str(phase or "")
+        )
+        set_property("operationId", operation_id)
+        set_property("stage", str(stage or "Working"))
+        set_property("progress", progress)
+        set_property("indeterminate", bool(indeterminate))
+        set_property("operationPhase", str(phase or "running"))
+        set_property("cancelRequested", bool(cancel_requested))
+        _show_owned_operation_message(
+            status_bar,
+            operation_id=operation_id,
+            stage=str(stage or "Working"),
+            phase=str(phase or "running"),
+            progress=progress,
+            cancel_requested=cancel_requested,
+        )
+        repaint = getattr(status_bar, "repaint", None)
+        if callable(repaint):
+            repaint()
+        return True
+    return False
+
+
+def _show_owned_operation_message(
+    status_bar: Any,
+    *,
+    operation_id: str,
+    stage: str,
+    phase: str,
+    progress: str,
+    cancel_requested: bool,
+) -> None:
+    """Keep active work visible without erasing higher-priority feedback."""
+    current_message = getattr(status_bar, "currentMessage", None)
+    show_message = getattr(status_bar, "showMessage", None)
+    clear_message = getattr(status_bar, "clearMessage", None)
+    if not callable(current_message) or not callable(show_message):
+        return
+    previous_message = str(getattr(status_bar, _OWNED_MESSAGE_ATTRIBUTE, "") or "")
+    previous_operation = str(getattr(status_bar, _OWNED_OPERATION_ATTRIBUTE, "") or "")
+    terminal = phase.casefold() in {"completed", "cancelled", "failed"}
+    if terminal:
+        if (
+            previous_operation == operation_id
+            and previous_message
+            and current_message() == previous_message
+            and callable(clear_message)
+        ):
+            clear_message()
+        setattr(status_bar, _OWNED_MESSAGE_ATTRIBUTE, "")
+        setattr(status_bar, _OWNED_OPERATION_ATTRIBUTE, "")
+        return
+
+    transient_remaining = transient_status_remaining_ms(status_bar)
+    if transient_remaining > 0 and current_message() != previous_message:
+        token = int(getattr(status_bar, _OWNED_DEFERRED_ATTRIBUTE, 0) or 0) + 1
+        setattr(status_bar, _OWNED_DEFERRED_ATTRIBUTE, token)
+        QTimer.singleShot(
+            min(transient_remaining, MAX_TRANSIENT_BEFORE_OWNED_PROGRESS_MS),
+            lambda: _publish_deferred_owned_message(
+                status_bar,
+                token=token,
+                operation_id=operation_id,
+                stage=stage,
+                phase=phase,
+                progress=progress,
+                cancel_requested=cancel_requested,
+            ),
+        )
+        return
+    if cancel_requested or phase.casefold() == "cancelling":
+        message = f"Cancelling · {stage}"
+    elif progress == "indeterminate":
+        message = f"{stage} · Working…"
+    else:
+        message = f"{stage} · {progress}"
+    show_message(message)
+    setattr(status_bar, _OWNED_MESSAGE_ATTRIBUTE, message)
+    setattr(status_bar, _OWNED_OPERATION_ATTRIBUTE, operation_id)
+
+
+def _publish_deferred_owned_message(
+    status_bar: Any,
+    *,
+    token: int,
+    operation_id: str,
+    stage: str,
+    phase: str,
+    progress: str,
+    cancel_requested: bool,
+) -> None:
+    """Reveal still-active owned work after bounded transient feedback."""
+    try:
+        if sip.isdeleted(status_bar):
+            return
+    except (RuntimeError, TypeError):
+        # Lightweight status doubles are not SIP wrappers. Their public
+        # methods below remain the compatibility boundary.
+        pass
+    try:
+        if int(getattr(status_bar, _OWNED_DEFERRED_ATTRIBUTE, 0) or 0) != token:
+            return
+        if str(status_bar.property("operationId") or "") != operation_id:
+            return
+        current_phase = str(status_bar.property("operationPhase") or phase).casefold()
+        if current_phase in {"completed", "cancelled", "failed"}:
+            return
+        show_message = getattr(status_bar, "showMessage", None)
+        if not callable(show_message):
+            return
+        if cancel_requested or current_phase == "cancelling":
+            message = f"Cancelling · {stage}"
+        elif progress == "indeterminate":
+            message = f"{stage} · Working…"
+        else:
+            message = f"{stage} · {progress}"
+        _clear_transient_status(status_bar)
+        show_message(message)
+        setattr(status_bar, _OWNED_MESSAGE_ATTRIBUTE, message)
+        setattr(status_bar, _OWNED_OPERATION_ATTRIBUTE, operation_id)
+    except RuntimeError:
+        # The QStatusBar can be destroyed after the liveness probe while this
+        # queued callback is being delivered during MainWindow teardown.
+        return
 
 
 def transient_status_remaining_ms(status_bar: Any) -> int:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -17,6 +18,7 @@ from XBrainLab.backend.utils.filesystem_identity import (
     retain_directory_identity,
 )
 
+from .data_interpretation_parsed_cache import default_parsed_content_cache
 from .errors import PreconditionError
 
 if TYPE_CHECKING:
@@ -199,7 +201,11 @@ class BidsEventsJsonReader:
     budget: BidsEventsJsonReadBudget = field(default_factory=BidsEventsJsonReadBudget)
     candidates_by_carrier: dict[str, tuple[str, ...]] = field(default_factory=dict)
     canonical_path_aliases: dict[str, str] = field(default_factory=dict)
-    _cache: dict[str, dict[str, Any]] = field(default_factory=dict, init=False)
+    _parsed_paths: set[str] = field(default_factory=set, init=False)
+    _materialized_objects: dict[str, dict[str, Any]] = field(
+        default_factory=dict,
+        init=False,
+    )
     _verified_cache_keys: set[str] = field(default_factory=set, init=False)
 
     @property
@@ -253,7 +259,8 @@ class BidsEventsJsonReader:
             candidates_by_carrier=dict(self.candidates_by_carrier),
             canonical_path_aliases=dict(self.canonical_path_aliases),
         )
-        reader._cache = dict(self._cache)
+        reader._parsed_paths = set(self._parsed_paths)
+        reader._materialized_objects = dict(self._materialized_objects)
         return reader
 
     def __post_init__(self) -> None:
@@ -397,7 +404,7 @@ class BidsEventsJsonReader:
         )
 
     def read_object(self, path: Path) -> dict[str, Any]:
-        """Return one stable admitted JSON object, reusing the parsed object."""
+        """Return a fresh projection of one stable, cached admitted JSON object."""
         key = self._path_key(path)
         admitted_identity = self.admitted_files.get(key)
         try:
@@ -457,9 +464,10 @@ class BidsEventsJsonReader:
             admitted=admitted_identity,
             observed=current_identity,
         )
-        cached = self._cache.get(key)
-        if cached is not None and key in self._verified_cache_keys:
-            return cached
+        if key in self._parsed_paths and key in self._verified_cache_keys:
+            materialized = self._materialized_objects.get(key)
+            if materialized is not None:
+                return copy.deepcopy(materialized)
         try:
             with path.open("rb") as handle:
                 opened_stat = os.fstat(handle.fileno())
@@ -525,10 +533,18 @@ class BidsEventsJsonReader:
             )
         self.budget.record(len(encoded))
         self._verified_cache_keys.add(key)
-        if cached is not None:
-            return cached
+        materialized = self._materialized_objects.get(key)
+        if materialized is not None:
+            return copy.deepcopy(materialized)
         try:
-            payload = json.loads(encoded.decode("utf-8-sig"))
+            payload, _parsed_key = (
+                default_parsed_content_cache().json_value_from_verified_bytes(
+                    encoded,
+                    parser_id="bids-events-json",
+                    schema_version=1,
+                    expected_sha256=admitted_identity.content_sha256,
+                )
+            )
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise self._error(
                 code="events_json_sidecar_invalid",
@@ -544,8 +560,9 @@ class BidsEventsJsonReader:
                 path=path,
                 parse_started=True,
             )
-        self._cache[key] = payload
-        return payload
+        self._parsed_paths.add(key)
+        self._materialized_objects[key] = copy.deepcopy(payload)
+        return copy.deepcopy(payload)
 
     def _path_key(self, path: Path) -> str:
         lexical = _lexical_path_key(path)
@@ -556,7 +573,7 @@ class BidsEventsJsonReader:
             "read_limit_bytes": self.budget.limit_bytes,
             "bytes_read": self.budget.bytes_read,
             "admitted_path_count": len(self.admitted_files),
-            "cached_path_count": len(self._cache),
+            "cached_path_count": len(self._parsed_paths),
         }
 
     def _identity_from_stat(

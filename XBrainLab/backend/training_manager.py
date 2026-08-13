@@ -44,65 +44,60 @@ if TYPE_CHECKING:
 
 _BASELINE_SALIENCY_METHODS = frozenset({"Gradient", "Gradient * Input"})
 _POST_TRAINING_SALIENCY_CANCEL_WAIT_SECONDS = 2.0
-_POST_TRAINING_SALIENCY_CANCELLED_MESSAGE = (
-    "Automatic saliency computation was cancelled."
-)
+_POST_TRAINING_SALIENCY_CANCELLED_MESSAGE = "Saliency computation was cancelled."
 _POST_TRAINING_SALIENCY_FAILED_MESSAGE = (
-    "Automatic saliency computation failed. See the application log for details."
+    "Saliency computation failed. See the application log for details."
 )
 _POST_TRAINING_SALIENCY_OOM_MESSAGE = (
-    "Automatic saliency could not finish because GPU memory was exhausted."
+    "Saliency could not finish because GPU memory was exhausted."
 )
 _POST_TRAINING_SALIENCY_TERMINAL_EVENT = "post_training_saliency_terminal"
 _POST_TRAINING_SALIENCY_TERMINAL_RETRY_SECONDS = 0.05
 _POST_TRAINING_SALIENCY_SCHEDULE_MESSAGES = {
     PostTrainingSaliencyScheduleReason.TRAINER_UNAVAILABLE: (
-        "Automatic saliency was not scheduled because its trainer is no longer "
-        "available."
+        "Saliency was not scheduled because its trainer is no longer available."
     ),
     PostTrainingSaliencyScheduleReason.UNSUPPORTED_PROFILE: (
-        "Automatic saliency accepts only the recommended baseline profile."
+        "Saliency accepts only the recommended baseline profile."
     ),
     PostTrainingSaliencyScheduleReason.TRAINING_NOT_COMPLETED: (
-        "Automatic saliency was not scheduled because training did not complete "
-        "successfully."
+        "Saliency was not scheduled because training did not complete successfully."
     ),
     PostTrainingSaliencyScheduleReason.TRAINING_RUN_CHANGED: (
-        "Automatic saliency was cancelled because the completed training run changed."
+        "Saliency was cancelled because the completed training run changed."
     ),
     PostTrainingSaliencyScheduleReason.TRAINING_STATE_UNAVAILABLE: (
-        "Automatic saliency could not verify the completed training state."
+        "Saliency could not verify the completed training state."
     ),
     PostTrainingSaliencyScheduleReason.TRAINING_STATE_UNSTABLE: (
-        "Automatic saliency was cancelled because training state is still changing."
+        "Saliency was cancelled because training state is still changing."
     ),
     PostTrainingSaliencyScheduleReason.FINISHED_RUN_COUNT_CHANGED: (
-        "Automatic saliency was cancelled because the finished run set changed."
+        "Saliency was cancelled because the finished run set changed."
     ),
     PostTrainingSaliencyScheduleReason.NO_NEW_FINISHED_RUNS: (
-        "Automatic saliency found no newly finished runs to compute."
+        "Saliency found no newly finished runs to compute."
     ),
     PostTrainingSaliencyScheduleReason.NO_FINISHED_RECORDS: (
-        "Automatic saliency found no finished evaluation records to compute."
+        "Saliency found no finished evaluation records to compute."
     ),
     PostTrainingSaliencyScheduleReason.PLAN_PREPARATION_FAILED: (
-        "Automatic saliency could not prepare a safe computation plan."
+        "Saliency could not prepare a safe computation plan."
     ),
     PostTrainingSaliencyScheduleReason.TRAINING_GENERATION_CHANGED: (
-        "Automatic saliency was cancelled because the training generation changed."
+        "Saliency was cancelled because the training generation changed."
     ),
     PostTrainingSaliencyScheduleReason.REQUEST_SUPERSEDED: (
-        "Automatic saliency was cancelled because a newer request owns the lifecycle."
+        "Saliency was cancelled because a newer request owns the lifecycle."
     ),
     PostTrainingSaliencyScheduleReason.PREVIOUS_JOB_NOT_CANCELLED: (
-        "Automatic saliency could not start while the previous saliency job is "
-        "still stopping."
+        "Saliency could not start while the previous saliency job is still stopping."
     ),
     PostTrainingSaliencyScheduleReason.TRAINER_REPLACED: (
-        "Automatic saliency was cancelled because its trainer was replaced."
+        "Saliency was cancelled because its trainer was replaced."
     ),
     PostTrainingSaliencyScheduleReason.THREAD_START_FAILED: (
-        "Automatic saliency could not start its background worker."
+        "Saliency could not start its background worker."
     ),
 }
 
@@ -115,6 +110,7 @@ class PostTrainingSaliencyTarget:
     finished_runs_before: int
     finished_runs_after: int
     append: bool
+    explicit: bool = False
     _command_completed: Event = field(
         default_factory=Event,
         init=False,
@@ -145,6 +141,8 @@ class PostTrainingSaliencyTarget:
                 raise TypeError(f"{name} must be a non-negative integer")
         if not isinstance(self.append, bool):
             raise TypeError("append must be a boolean")
+        if not isinstance(self.explicit, bool):
+            raise TypeError("explicit must be a boolean")
 
     def mark_command_completed(self) -> None:
         """Release heavy computation after the command boundary has returned."""
@@ -949,7 +947,7 @@ class TrainingManager:
                 disposition=PostTrainingSaliencyScheduleDisposition.STALE,
                 reason=PostTrainingSaliencyScheduleReason.TRAINER_UNAVAILABLE,
             )
-        if not self._is_automatic_baseline(params):
+        if not target.explicit and not self._is_automatic_baseline(params):
             return self._terminal_schedule_outcome(
                 target,
                 request_generation=request_generation,
@@ -1292,10 +1290,7 @@ class TrainingManager:
                                 PostTrainingSaliencyScheduleDisposition.SCHEDULED
                             ),
                             reason=PostTrainingSaliencyScheduleReason.SCHEDULED,
-                            message=(
-                                status.message
-                                or "Automatic saliency is waiting to start."
-                            ),
+                            message=(status.message or "Saliency is waiting to start."),
                             status=status,
                         )
 
@@ -1523,7 +1518,7 @@ class TrainingManager:
                 self._transition_post_training_saliency_locked(
                     sequence,
                     PostTrainingSaliencyPhase.RUNNING,
-                    message="Automatic saliency is being computed.",
+                    message="Saliency is being computed.",
                 )
 
             def should_cancel() -> bool:
@@ -1559,7 +1554,7 @@ class TrainingManager:
                 terminal_status = self._transition_post_training_saliency_locked(
                     sequence,
                     PostTrainingSaliencyPhase.SUCCEEDED,
-                    message="Automatic saliency is available.",
+                    message="Saliency is available.",
                 )
         except Exception as exc:
             from .exceptions import StaleSaliencyUpdateError  # noqa: PLC0415

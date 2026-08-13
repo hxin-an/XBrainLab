@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -48,6 +49,28 @@ from XBrainLab.backend.application.errors import (
     PreconditionError,
 )
 from XBrainLab.backend.application.resource_guard import ResourcePreflightResult
+
+
+def test_discovery_prepare_paths_cannot_publish_session_state() -> None:
+    prepare_names = (
+        "_prepare_scan_source",
+        "_prepare_review_interpretation",
+        "_prepare_preview_interpretation",
+        "_prepare_validate_interpretation",
+    )
+
+    for name in prepare_names:
+        source = inspect.getsource(getattr(DataInterpretationCommandService, name))
+        assert "owned_work_commit_boundary" not in source
+        assert ".record_scan(" not in source
+        assert ".record_preview(" not in source
+        assert ".record_validation(" not in source
+
+    commit_source = inspect.getsource(
+        DataInterpretationCommandService.commit_prepared_interpretation_discovery
+    )
+    assert "owned_work_commit_boundary" in commit_source
+    assert "restore_session_state" in commit_source
 
 
 class _LoadedData:

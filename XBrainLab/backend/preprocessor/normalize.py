@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ..application.owned_work import owned_work_checkpoint
 from ..load_data import Raw
 from .base import PreprocessBase
 
@@ -42,7 +43,13 @@ class Normalize(PreprocessBase):
     def data_preprocess(self, norm: str) -> list[Raw]:
         """Queue raw requests or normalize already-epoched data."""
         canonical_method = self.canonical_method(norm)
-        for preprocessed_data in self.preprocessed_data_list:
+        total = len(self.preprocessed_data_list)
+        for index, preprocessed_data in enumerate(self.preprocessed_data_list):
+            owned_work_checkpoint(
+                "Normalizing EEG recordings",
+                completed=index,
+                total=total,
+            )
             self._data_preprocess(preprocessed_data, canonical_method)
             if preprocessed_data.is_raw():
                 description = (
@@ -55,6 +62,11 @@ class Normalize(PreprocessBase):
                     "per epoch and channel"
                 )
             preprocessed_data.add_preprocess(description)
+            owned_work_checkpoint(
+                "Normalizing EEG recordings",
+                completed=index + 1,
+                total=total,
+            )
         return self.preprocessed_data_list
 
     def _data_preprocess(self, preprocessed_data: Raw, norm: str) -> None:

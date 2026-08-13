@@ -18,12 +18,14 @@ from XBrainLab.backend.application import (
 )
 from XBrainLab.backend.application.capabilities import CommandCapability
 from XBrainLab.backend.application.errors import PreconditionError
+from XBrainLab.backend.application.owned_work import OwnedWorkRegistry
 from XBrainLab.backend.application.resource_guard import (
     RISK_BLOCKING,
     RISK_SAFE,
     RISK_UNKNOWN,
     RISK_WARNING,
     ResourcePreflightResult,
+    TrainingResourcePreviewContext,
     TrainingResourcePreviewReceipt,
     TrainingResourcePreviewRequest,
     TrainingResourcePreviewResult,
@@ -33,6 +35,9 @@ from XBrainLab.backend.application.training_recommendation import (
     TrainingRecommendationField,
     TrainingRecommendationValues,
     TrainingSettingProvenance,
+)
+from XBrainLab.backend.application.training_resource_preview_coordinator import (
+    TrainingResourcePreviewCoordinator,
 )
 from XBrainLab.backend.application.training_submission import (
     training_submission_resource_preview_receipt,
@@ -171,6 +176,35 @@ def _resource_preview_result(
     )
 
 
+def _resource_preview_context() -> TrainingResourcePreviewContext:
+    return TrainingResourcePreviewContext(
+        input_shape=(2, 64),
+        sample_count=8,
+        class_count=2,
+        sampling_frequency=128.0,
+    )
+
+
+class _ResourcePreviewPort:
+    def __init__(self, coordinator: TrainingResourcePreviewCoordinator) -> None:
+        self.coordinator = coordinator
+
+    def begin_training_resource_preview(
+        self,
+        request: TrainingResourcePreviewRequest,
+    ):
+        return self.coordinator.submit(request, _resource_preview_context())
+
+    def training_resource_preview_background_work_snapshot(self):
+        return self.coordinator.background_work_snapshot()
+
+    def begin_training_resource_preview_shutdown(self) -> None:
+        self.coordinator.begin_close()
+
+    def cancel_training_resource_preview_shutdown(self) -> bool:
+        return self.coordinator.cancel_close()
+
+
 def test_training_resource_preview_is_single_flight_and_delivers_only_latest(
     sidebar,
     qtbot,
@@ -188,25 +222,38 @@ def test_training_resource_preview_is_single_flight_and_delivers_only_latest(
             assert release_first.wait(timeout=2.0)
         return _resource_preview_result(request)
 
-    sidebar.panel._query_port = SimpleNamespace(
-        get_training_resource_preview=get_preview,
+    coordinator = TrainingResourcePreviewCoordinator(
+        estimate=lambda request, _context: get_preview(request),
+        generation_is_current=lambda _generation: True,
+        registry=OwnedWorkRegistry(),
     )
+    sidebar.panel._query_port = _ResourcePreviewPort(coordinator)
     delivered: list[list[TrainingResourcePreviewResult]] = [[], [], []]
     drafts = [_resource_preview_request(generation) for generation in (1, 2, 3)]
 
-    assert sidebar._dispatch_training_resource_preview(drafts[0], delivered[0].append)
-    qtbot.waitUntil(first_started.is_set, timeout=1000)
-    assert sidebar._dispatch_training_resource_preview(drafts[1], delivered[1].append)
-    assert sidebar._dispatch_training_resource_preview(drafts[2], delivered[2].append)
-    assert [request.request_generation for request in requests] == [1]
+    try:
+        assert sidebar._dispatch_training_resource_preview(
+            drafts[0], delivered[0].append
+        )
+        qtbot.waitUntil(first_started.is_set, timeout=1000)
+        assert sidebar._dispatch_training_resource_preview(
+            drafts[1], delivered[1].append
+        )
+        assert sidebar._dispatch_training_resource_preview(
+            drafts[2], delivered[2].append
+        )
+        assert [request.request_generation for request in requests] == [1]
 
-    release_first.set()
-    qtbot.waitUntil(lambda: len(delivered[2]) == 1, timeout=2000)
+        release_first.set()
+        qtbot.waitUntil(lambda: len(delivered[2]) == 1, timeout=2000)
 
-    assert [request.request_generation for request in requests] == [1, 3]
-    assert delivered[0] == []
-    assert delivered[1] == []
-    assert delivered[2][0].request_generation == 3
+        assert [request.request_generation for request in requests] == [1, 3]
+        assert delivered[0] == []
+        assert delivered[1] == []
+        assert delivered[2][0].request_generation == 3
+    finally:
+        release_first.set()
+        assert coordinator.close(timeout=2.0)
 
 
 def test_panel_close_abandons_preview_without_waiting_or_late_delivery(qtbot):
@@ -229,9 +276,12 @@ def test_panel_close_abandons_preview_without_waiting_or_late_delivery(qtbot):
         finally:
             worker_finished.set()
 
-    cast(Any, panel)._query_port = SimpleNamespace(
-        get_training_resource_preview=get_preview,
+    coordinator = TrainingResourcePreviewCoordinator(
+        estimate=lambda request, _context: get_preview(request),
+        generation_is_current=lambda _generation: True,
+        registry=OwnedWorkRegistry(),
     )
+    cast(Any, panel)._query_port = _ResourcePreviewPort(coordinator)
     sidebar = TrainingSidebar(panel, parent=None)
     qtbot.addWidget(sidebar)
     delivered: list[TrainingResourcePreviewResult] = []
@@ -241,9 +291,9 @@ def test_panel_close_abandons_preview_without_waiting_or_late_delivery(qtbot):
         delivered.append,
     )
     qtbot.waitUntil(worker_started.is_set, timeout=1000)
-    worker = sidebar._training_resource_preview_worker
+    worker = coordinator.worker_thread
     assert worker is not None
-    assert worker.daemon is True
+    assert worker.daemon is False
 
     panel.show()
     assert panel.close() is True
@@ -258,11 +308,31 @@ def test_panel_close_abandons_preview_without_waiting_or_late_delivery(qtbot):
 
     release_worker.set()
     qtbot.waitUntil(worker_finished.is_set, timeout=1000)
-    worker.join(timeout=1.0)
-    qtbot.wait(20)
+    qtbot.waitUntil(
+        lambda: bool(coordinator.background_work_snapshot()["idle"]),
+        timeout=1000,
+    )
 
-    assert worker.is_alive() is False
+    assert coordinator.background_work_snapshot()["remaining_workers"] == 0
     assert delivered == []
+
+    sidebar._cancel_training_resource_preview_shutdown()
+    retried: list[TrainingResourcePreviewResult] = []
+    assert sidebar._dispatch_training_resource_preview(
+        _resource_preview_request(2),
+        retried.append,
+    )
+    qtbot.waitUntil(lambda: len(retried) == 1, timeout=1000)
+    assert retried[0].request_generation == 2
+    assert coordinator.close(timeout=2.0)
+
+
+def test_training_sidebar_does_not_spawn_or_abandon_preview_workers() -> None:
+    source = inspect.getsource(TrainingSidebar)
+
+    assert "PythonThreadWorker" not in source
+    assert "daemon=True" not in source
+    assert "begin_training_resource_preview" in source
 
 
 def test_configure_training_command_preserves_catalog_model_id() -> None:

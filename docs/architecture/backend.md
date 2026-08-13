@@ -1,6 +1,6 @@
 # Backend 目前架構
 
-最後更新：`2026-08-11`
+最後更新：`2026-08-13`
 
 ## 快速讀法
 
@@ -14,14 +14,18 @@
 | `ApplicationService` 是不是 god object？ | 已從早期 god-object 形狀拆成 focused services；目前主要負責 dispatch、capability / confirmation gate、state/result envelope。 |
 | UI 是否完全不碰 controllers？ | Product MainWindow wiring 不使用 controller bundle；controllers 仍存在於 outer adapters、standalone/mock compatibility 與少數 lower-level utilities。 |
 | product success 應該怎麼證明？ | 用 command result、`QueryStateCommand` / state snapshot、typed diagnostics、UI-visible state、exact event/epoch/split/history evidence；不要用 facade、controller compatibility、direct mutable `Study` state、generic non-empty / no-crash assertion。 |
-| UI 和 assistant 同時下 command 怎麼辦？ | mutation lock 由 `Study` 擁有，序列化 state-changing command。已遷移的 UI readers、assistant 與 headless preflight 讀同一份 `ApplicationViewPublication(state, capabilities, generation)`；lock 空閒時刷新背景 truth，mutation 進行中則立即回最後一份已驗證 publication，不等待長命令。尚未遷移的 display path 仍是 closure debt。 |
+| UI 和 assistant 同時下 command 怎麼辦？ | mutation lock 由 `Study` 擁有，只包 admission / committed-state transition。已遷移的 import、preprocess 與 epoch 重工作先在 detached state 準備，再以 generation / revision / content guard 短暫取得 lock 提交；readers 在 mutation 期間立即回最後一份已驗證 publication。 |
+| 長工作如何取消與關閉？ | `OwnedWorkRegistry` 在 command lock 外配置 operation ID，保存 kind / phase / stage / progress 與 cancel intent；UI 的 Cancel、Training Stop 和 close fencing 先走 control path，再由 cooperative checkpoints 或 runtime owner 收斂 terminal receipt。 |
 
 ## Current Target Gap
 
 | Area | 已接近 target | 剩餘距離 |
 | --- | --- | --- |
 | Command spine | load / preprocess / epoch / split specification / training-time materialization / train / evaluate / visualize / saliency / reset / Data Interpretation 都有 command or query truth。 | 要持續防止新 wrapper、direct manager mutation、direct service bypass 回流；retained optional adapters 不是 active roadmap。 |
-| Focused services | Data Interpretation、analysis、training、dataset generation、lifecycle、compatibility、data table、preprocess、state/query 都已從 `ApplicationService` 拆出；training resource preview 與 BIDS montage preparation 各有 application-owned coordinator，saliency method policy 由 `backend.application.saliency_policy` 共用。 | focused service 間仍要靠 tests/guard 維持邊界，避免把 orchestration、UI policy 或 controller/context 探測塞回單一檔。 |
+| Focused services | Data Interpretation、analysis、training、dataset generation、lifecycle、compatibility、data table、preprocess、state/query 都已從 `ApplicationService` 拆出；training resource preview 與 BIDS montage preparation 各有 application-owned coordinator，saliency method policy 由 `backend.application.saliency_policy` 共用。Training preview 使用 service-owned registry，不另建 coordinator-local operation truth。 | focused service 間仍要靠 tests/guard 維持邊界，避免把 orchestration、UI policy 或 controller/context 探測塞回單一檔。 |
+| BIDS discovery | `BidsDatasetIndex` 是 formal BIDS root、nested-root resolution、subject catalog、selected recordings 與 sidecar inventory 的共用 immutable source；session cache / process registry 只重用仍 current 的 bounded index。 | 不是 full BIDS inheritance / validator，也不替使用者決定 event/class semantics。 |
+| Work ownership | Import review/apply、preprocess、epoch、interactive training、evaluation、explicit saliency 與 render 都可綁一個 backend operation identity；重 CPU/IO preparation 使用 checkpoint，commit 前再驗證 current generation。 | 第三方 loader / model call 內部不一定有細粒度 checkpoint；30-dataset-process campaign 與 Windows native close 尚未完成。 |
+| Evaluation / training preview lifecycle | Model Summary 在既有 async `EvaluateCommand` operation 內，對 plan/run collection、input metadata/model construction、input shape、torchinfo/fallback 和 publication 放 cooperative checkpoints。Training preview 對 estimator/model/GPU/batch refinement 使用同一 service registry，identical clients 共用 single-flight operation。 | Cancellation 是 cooperative；未返回的 third-party model、torchinfo 或 GPU query 不能被 Python checkpoint 強制中斷。 |
 | State truth | `StateSnapshotService` 建立 snapshot；`ApplicationViewPublication` 原子綁定 snapshot 與 capability policy。一般 `QueryStateCommand(state)`、product UI readers、assistant、headless preflight 共用這個 view。背景 resource / montage 結果只有在 generation 仍 current 時才可更新 publication。 | Refresh single-truth 仍需獨立 exact-commit source guard與 product workflow evidence；少數 lower-level tests 的 direct `Study` access也不能當 product smoke。 |
 | Result boundary | Product `CommandResult` 只包含 detached state、changed-state、typed error 與 JSON-safe diagnostics；`runtime` / `local_payload` fields 和 command `include_objects` opt-in 已物理移除。Dataset、Preprocess、training history、Evaluation 與 Visualization 使用 generation-bound detached rows/publications。 | 少數 lower-level presentation utilities 仍直接接收 domain objects；它們不能重新接回 product command result，也不能當 ApplicationService workflow evidence。 |
 | UI boundary | Product action method 不可直接呼叫 controller compatibility helper；MainWindow 以 typed ports materialize 五個 panels，Training progress 由 narrow transient port 傳遞。 | Standalone/mock compatibility signatures 仍存在；不是 repo-wide controller removal，refresh exact closure 也需獨立驗證。 |
@@ -441,6 +445,13 @@ taxonomy 都以這套 Data Interpretation command sequence 作為產品資料入
 
 目前 working candidate 把下游設定綁回 reviewed import 與 backend-owned provenance：
 
+- `BidsDatasetIndex` 對明確選取的 formal BIDS root 做一次 bounded walk，解析 nested root，
+  建立 subject catalog、selected-subject projection、recording entities 和 events / channels /
+  electrodes / coordsystem / JSON sidecar inventory；scan、review、apply、EEGLAB dependency preflight
+  與 montage preparation 只接受仍 current 的 index。
+- Small JSON / CSV / TSV parsing 由 `ParsedContentCache` 以 complete source bytes SHA-256、
+  parser ID、schema version 和 value kind 綁定 immutable result。LRU 同時限制 entries、retained
+  bytes 與單檔 bytes；Windows path binding 不以 `ctime` 當 freshness 證據。
 - BIDS label-field recommendation 由 `data_interpretation_label_carriers.py` 聚合 selected
   `events.tsv` runs 的 bounded row profiles、欄位 coverage、sidecar `Levels`、observed values 與
   cross-run consistency。任一 selected table 的 row / byte inspection 被截斷，或 evidence 不足時，
@@ -455,6 +466,12 @@ taxonomy 都以這套 Data Interpretation command sequence 作為產品資料入
 - `TrainingRecommendationService` 依 detached epoch shape、split summary、selected model family 和
   device metadata 產生 deterministic conservative defaults。`training_submission.py` 只接受 trusted
   host 附加 per-field edited provenance，重新推薦時只保留這些 manual fields。
+- Import discovery/apply、preprocess 與 epoch 的 heavy IO / copy / MNE construction 在 detached
+  preparation 執行；短 commit boundary 重新驗證 session generation、source identity、revision /
+  fingerprint 與 cancel intent，失敗或 stale 時保留原 committed state。
+- Training terminal path 只發布 metrics。只有 explicit `SaliencyCommand`（由 visible
+  `Compute Saliency` action 觸發）才建立 exact completed-run target 並排程 attribution；
+  generation 或 producer identity 不符的結果不得發布。
 - Timed hyperparameter search、trial orchestration、pruning 和 automatic model selection 沒有
   command / service / tool contract；它們只在 roadmap，不能從 recommended-defaults surface 推論
   已實作。
@@ -555,6 +572,12 @@ readiness 判斷；需要狀態或 blocked reason 時使用 `ApplicationService.
   command lock 空閒時先刷新，lock 忙碌時不等待並回最後一份已驗證 publication。
 - `ApplicationService.execute(command)`：回傳 `CommandResult`，包含
   status、command name、message、changed state、error type、recoverable 和 diagnostics。
+- `begin_owned_operation(command)` / `execute(..., operation_id=...)`：
+  先配置 lock-independent identity，再以 exact command kind / identity single-claim 執行；
+  terminal replay、kind mismatch 或 command mismatch 會 fail closed。
+- `cancel_owned_operation(operation_id)` / `get_owned_operation(operation_id)`：
+  不取得 shared command lock 即可送出 cancel intent 與讀取 immutable snapshot。Training /
+  Saliency 另把 cancel 轉交其 native runtime owner；其他流程在 bounded checkpoints 回應。
 - 已接上的核心 commands：
   `scan_source`、`preview_interpretation`、`validate_interpretation`、
   `apply_interpretation`、`save_interpretation_recipe`、`reload_interpretation_recipe`、

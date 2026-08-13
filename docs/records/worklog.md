@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-08-11`
+最後更新：`2026-08-13`
 
 ## 這份文件的用途
 
@@ -34,6 +34,49 @@
 - 證據：
 - 接續 / 本輪剩餘：
 ```
+
+## 2026-08-13
+
+### 15-dataset reliability implementation checkpoint
+
+- 做了什麼：將 Data Interpretation / Preprocess / Epoch 的重 IO 與 materialization 拆成 detached
+  prepare + guarded short commit，建立 backend-owned `BidsDatasetIndex`、content-identified bounded
+  parsed cache 與 lock-independent `OwnedWorkRegistry`。Training terminal 改成 metric-only；只有 visible
+  `Compute Saliency` 才建立 exact run-bound attribution operation。Model Summary、Training resource
+  preview、Evaluation、Saliency 與 render 補 operation / request / generation identity、cooperative
+  cancellation 與 stale-result publication guard。
+- 結果：15-dataset materializer、fixed-denominator plan、fresh-process MainWindow driver 與 fail-closed
+  receipt validation source 已建立。Driver 只在 `QFileDialog` 注入 path；每個 dataset 規劃 cold +
+  replay，5/5/5 cancellation partitions、1 epoch / repeat / fold、Evaluation、explicit Saliency、Map、
+  Spectrogram 與 clean close 都是必填 evidence。
+- 證據：dirty working checkpoint 的 focused backend Application/OwnedWork/Data Interpretation/
+  Preprocess suite `349 passed`；focused MainWindow/Evaluation/Visualization/Training UI suite
+  `260 passed`。Canonical truth sync 後 guidance audit、`git diff --check` 與
+  `mkdocs build --strict` 通過。這些是 dirty checkpoint / docs-scope evidence，不是 final total。
+- 接續 / 本輪剩餘：tracked GUI plan 目前 15/15 仍是 `awaiting_dataset_materialization`、
+  `bids.root=null`，尚無 ready/freeze manifest 或 qualifying receipt。仍須在 D 槽凍結資料與
+  checksums、於同一 clean exact commit 串行跑 30 條 journeys、逐圖審查、跑 canonical handoff
+  manifest、push/PR 並等待 exact-head CI completed/success。Cooperative cancel 不能中斷尚未返回的
+  第三方 native call；Windows / native 3D / scientific quality 仍是分開的 claim boundary。
+
+## 2026-08-12
+
+### 15-dataset MOABB GUI campaign scope
+
+- 做了什麼：從 `integration/import-training-montage-polish-v1`、baseline
+  `f08e389a` 開始固定 15 個 MOABB dataset 的 BIDS / MainWindow campaign。使用者要求的
+  anchor / subject denominator、cold + replay、cancellation 分組、1 epoch / 1 repeat / 1 fold、
+  Evaluation、明確 Compute Saliency、Saliency Map、Spectrogram 與 clean close 都是硬門檻。
+- 結果：現有三資料集工具確認只直接驅動 `ApplicationService`，並在完成後才建立
+  `MainWindow` 拍照；它不是使用者等價 gate，不能沿用為 15/15 證據。手測發現的 publication
+  deferral 問題已獨立收斂於 `f08e389a`。
+- 證據：repo root `/mnt/d/workspace_v2/projects/lab/xbrainlab`；branch
+  `integration/import-training-montage-polish-v1`；受保護的 `settings.json` 是唯一允許的 dirty
+  path。publication focused `88 passed`、adjacent `375 passed`、pre-commit PASS。
+- 接續 / 本輪剩餘：鎖定官方來源、license、subjects、checksum 與 D 槽 BIDS manifest；建立
+  backend-owned index/cache、可取消 owned-work lifecycle、只點 production controls 的 runner，
+  再於同一 clean exact commit 串行跑 15/15 cold/replay。Non-goals 是 MCP、Assistant thesis
+  eval、模型品質宣稱、任意未列 subject、Topographic Map 的無 montage 強制門檻與 3D 共通門檻。
 
 ## 2026-08-11
 

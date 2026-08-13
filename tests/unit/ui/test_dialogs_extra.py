@@ -535,6 +535,86 @@ class TestEpochingDialog:
             for label in dialog.findChildren(QLabel)
         )
 
+    def test_epoch_event_table_exposes_applied_nonclass_event_catalog(self, qtbot):
+        """The visible epoch surface must retain Apply's non-class semantics."""
+        from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
+
+        data = MagicMock()
+        data.get_event_list.return_value = (None, {"left": 1, "right": 2})
+        data.get_runtime_detail.return_value = {
+            "source": "BIDS events.tsv",
+            "placement_method": "interval",
+            "label_field": "trial_type",
+            "time_field": "onset",
+        }
+        handoff = {
+            "ready": True,
+            "supervised_ready": True,
+            "default_epoch_events": ["left", "right"],
+            "selected_event_names": ["left", "right"],
+            "label_source": "bids_events",
+            "placement_modes": ["interval"],
+            "event_catalog": [
+                {
+                    "raw_value": "left",
+                    "role": "stimulus",
+                    "keep_event": True,
+                    "use_as_class": True,
+                    "class_name": "left",
+                    "target_file": "sub-01_task-mi_events.tsv",
+                },
+                {
+                    "raw_value": "right",
+                    "role": "stimulus",
+                    "keep_event": True,
+                    "use_as_class": True,
+                    "class_name": "right",
+                    "target_file": "sub-01_task-mi_events.tsv",
+                },
+                {
+                    "raw_value": "boundary",
+                    "role": "boundary",
+                    "keep_event": True,
+                    "use_as_class": False,
+                    "class_name": "",
+                    "target_file": "sub-01_task-mi_events.tsv",
+                },
+            ],
+        }
+        dialog = EpochingDialog(
+            None,
+            epoch_context=build_epoching_context([data], epoch_handoff=handoff),
+        )
+        qtbot.addWidget(dialog)
+
+        assert dialog.event_list is not None
+        assert dialog.event_list.property("appliedEventCatalog") == [
+            {
+                "event_value": "boundary",
+                "event_role": "boundary",
+                "keep_event": True,
+                "use_as_class": False,
+                "class_name": "",
+                "sources": ["sub-01_task-mi_events.tsv"],
+            },
+            {
+                "event_value": "left",
+                "event_role": "stimulus",
+                "keep_event": True,
+                "use_as_class": True,
+                "class_name": "left",
+                "sources": ["sub-01_task-mi_events.tsv"],
+            },
+            {
+                "event_value": "right",
+                "event_role": "stimulus",
+                "keep_event": True,
+                "use_as_class": True,
+                "class_name": "right",
+                "sources": ["sub-01_task-mi_events.tsv"],
+            },
+        ]
+
     def test_assistant_handoff_prefills_explicit_event_and_window(self, qtbot):
         from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
 

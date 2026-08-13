@@ -1,5 +1,6 @@
 """Training panel for configuring, running, and monitoring model training."""
 
+from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import cast
@@ -1460,7 +1461,62 @@ class TrainingPanel(BasePanel):
         self.cleanup()
         super().closeEvent(event)
 
+    def begin_training_resource_preview_shutdown(self) -> None:
+        """Fence advisory preview work without blocking the GUI thread."""
+        sidebar = getattr(self, "sidebar", None)
+        shutdown = getattr(sidebar, "_shutdown_training_resource_previews", None)
+        if callable(shutdown):
+            shutdown()
+
+    def cancel_training_resource_preview_shutdown(self) -> None:
+        """Reopen advisory previews after a cancelled desktop close attempt."""
+        sidebar = getattr(self, "sidebar", None)
+        cancel_shutdown = getattr(
+            sidebar,
+            "_cancel_training_resource_preview_shutdown",
+            None,
+        )
+        if callable(cancel_shutdown):
+            cancel_shutdown()
+
+    def training_resource_preview_background_work_snapshot(
+        self,
+    ) -> dict[str, int | bool]:
+        """Return exact backend preview ownership for desktop close accounting."""
+        query_port = self._query_port
+        get_snapshot = getattr(
+            query_port,
+            "training_resource_preview_background_work_snapshot",
+            None,
+        )
+        if not callable(get_snapshot):
+            return {"idle": True, "remaining_workers": 0, "alive_workers": 0}
+        try:
+            snapshot = get_snapshot()
+        except Exception:
+            logger.exception("Could not verify Training resource preview cleanup.")
+            return {"idle": False, "remaining_workers": 1, "alive_workers": 0}
+        if not isinstance(snapshot, Mapping):
+            return {"idle": False, "remaining_workers": 1, "alive_workers": 0}
+        remaining = snapshot.get("remaining_workers", 0)
+        alive = snapshot.get("alive_workers", 0)
+        if (
+            isinstance(remaining, bool)
+            or not isinstance(remaining, int)
+            or remaining < 0
+            or isinstance(alive, bool)
+            or not isinstance(alive, int)
+            or alive < 0
+        ):
+            return {"idle": False, "remaining_workers": 1, "alive_workers": 0}
+        return {
+            "idle": remaining == 0,
+            "remaining_workers": remaining,
+            "alive_workers": alive,
+        }
+
     def cleanup(self) -> None:
         """Cancel queued publication work and release observer bridges."""
+        self.begin_training_resource_preview_shutdown()
         self._application_render_ledger.cleanup()
         super().cleanup()

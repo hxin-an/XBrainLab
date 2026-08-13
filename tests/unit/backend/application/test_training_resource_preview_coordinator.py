@@ -1,10 +1,23 @@
 from __future__ import annotations
 
+import ast
+import inspect
+from pathlib import Path
 from threading import Event
+from time import monotonic
 
 import pytest
 
+from XBrainLab.backend.application import (
+    training_resource_preview_coordinator as preview_coordinator_module,
+)
 from XBrainLab.backend.application.errors import PreconditionError
+from XBrainLab.backend.application.owned_work import (
+    OwnedWorkKind,
+    OwnedWorkPhase,
+    OwnedWorkRegistry,
+    owned_work_checkpoint,
+)
 from XBrainLab.backend.application.resource_guard import (
     RISK_SAFE,
     TrainingResourcePreviewContext,
@@ -54,6 +67,133 @@ def _result(request: TrainingResourcePreviewRequest) -> TrainingResourcePreviewR
     )
 
 
+def test_coordinator_requires_one_injected_owned_work_registry() -> None:
+    signature = inspect.signature(TrainingResourcePreviewCoordinator)
+    assert signature.parameters["registry"].default is inspect.Parameter.empty
+
+    source_path = Path(inspect.getsourcefile(TrainingResourcePreviewCoordinator) or "")
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
+    standalone_registry_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "OwnedWorkRegistry"
+    ]
+    assert standalone_registry_calls == []
+
+
+def test_close_cancels_active_and_pending_owned_preview_then_retry_succeeds() -> None:
+    registry = OwnedWorkRegistry()
+    first_started = Event()
+    release_first = Event()
+    estimate_calls: list[int] = []
+
+    def estimate(request, _context):
+        estimate_calls.append(request.request_generation)
+        owned_work_checkpoint("Estimating training preview resources")
+        if request.request_generation == 1:
+            first_started.set()
+            assert release_first.wait(timeout=2.0)
+            owned_work_checkpoint("Verifying training preview resources")
+        return _result(request)
+
+    coordinator = TrainingResourcePreviewCoordinator(
+        estimate=estimate,
+        generation_is_current=lambda _generation: True,
+        registry=registry,
+    )
+    active = coordinator.submit(_request(request_generation=1), _context())
+    assert first_started.wait(timeout=2.0)
+    pending = coordinator.submit(_request(request_generation=2), _context())
+
+    assert active.operation_id != pending.operation_id
+    assert registry.snapshot(active.operation_id).kind is (
+        OwnedWorkKind.TRAINING_RESOURCE_PREVIEW
+    )
+    assert registry.snapshot(active.operation_id).phase is OwnedWorkPhase.RUNNING
+    assert registry.snapshot(pending.operation_id).phase is OwnedWorkPhase.PENDING
+
+    started_at = monotonic()
+    coordinator.begin_close()
+    cancel_elapsed = monotonic() - started_at
+
+    assert cancel_elapsed < 0.1
+    assert registry.snapshot(active.operation_id).phase is OwnedWorkPhase.CANCELLING
+    assert registry.snapshot(pending.operation_id).phase is OwnedWorkPhase.CANCELLED
+    with pytest.raises(PreconditionError, match="closing"):
+        pending.result(timeout=0.1)
+
+    release_first.set()
+    with pytest.raises(PreconditionError, match="closing"):
+        active.result(timeout=2.0)
+    assert coordinator.close(timeout=2.0)
+    assert registry.snapshot(active.operation_id).phase is OwnedWorkPhase.CANCELLED
+    assert registry.wait_for_idle(timeout=0.0)
+    assert coordinator.background_work_snapshot() == {
+        "idle": True,
+        "remaining_workers": 0,
+        "alive_workers": 0,
+        "active_jobs": 0,
+        "pending_jobs": 0,
+    }
+
+    assert coordinator.cancel_close()
+    retried = coordinator.submit(_request(request_generation=3), _context())
+    assert retried.result(timeout=2.0).request_generation == 3
+    assert registry.snapshot(retried.operation_id).phase is OwnedWorkPhase.COMPLETED
+    assert coordinator.close(timeout=2.0)
+    assert estimate_calls == [1, 3]
+
+
+def test_worker_start_failure_terminalizes_owned_preview(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = OwnedWorkRegistry()
+    operation_ids: list[str] = []
+    original_begin = registry.begin
+
+    def capture_begin(*args, **kwargs):
+        operation = original_begin(*args, **kwargs)
+        operation_ids.append(operation.operation_id)
+        return operation
+
+    monkeypatch.setattr(registry, "begin", capture_begin)
+
+    class FailingThread:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        @staticmethod
+        def start() -> None:
+            raise RuntimeError("thread unavailable")
+
+        @staticmethod
+        def is_alive() -> bool:
+            return False
+
+    monkeypatch.setattr(preview_coordinator_module, "Thread", FailingThread)
+    coordinator = TrainingResourcePreviewCoordinator(
+        estimate=lambda request, _context: _result(request),
+        generation_is_current=lambda _generation: True,
+        registry=registry,
+    )
+
+    with pytest.raises(RuntimeError, match="thread unavailable"):
+        coordinator.submit(_request(request_generation=1), _context())
+
+    assert len(operation_ids) == 1
+    assert registry.snapshot(operation_ids[0]).phase is OwnedWorkPhase.FAILED
+    assert registry.active_snapshots() == ()
+    assert coordinator.background_work_snapshot() == {
+        "idle": True,
+        "remaining_workers": 0,
+        "alive_workers": 0,
+        "active_jobs": 0,
+        "pending_jobs": 0,
+    }
+
+
 def test_two_clients_share_one_active_estimate() -> None:
     estimate_started = Event()
     release_estimate = Event()
@@ -68,6 +208,7 @@ def test_two_clients_share_one_active_estimate() -> None:
     coordinator = TrainingResourcePreviewCoordinator(
         estimate=estimate,
         generation_is_current=lambda _generation: True,
+        registry=OwnedWorkRegistry(),
     )
     try:
         request = _request(request_generation=1)
@@ -105,6 +246,7 @@ def test_latest_pending_request_replaces_obsolete_pending_work() -> None:
     coordinator = TrainingResourcePreviewCoordinator(
         estimate=estimate,
         generation_is_current=lambda _generation: True,
+        registry=OwnedWorkRegistry(),
     )
     try:
         first = coordinator.submit(_request(request_generation=1), _context())
@@ -136,6 +278,7 @@ def test_generation_is_rechecked_after_estimation() -> None:
     coordinator = TrainingResourcePreviewCoordinator(
         estimate=estimate,
         generation_is_current=lambda generation: generation == current_generation,
+        registry=OwnedWorkRegistry(),
     )
     try:
         ticket = coordinator.submit(_request(request_generation=1), _context())
@@ -162,9 +305,18 @@ def test_close_fences_new_work_and_joins_owned_non_daemon_worker() -> None:
     coordinator = TrainingResourcePreviewCoordinator(
         estimate=estimate,
         generation_is_current=lambda _generation: True,
+        registry=OwnedWorkRegistry(),
     )
     ticket = coordinator.submit(_request(request_generation=1), _context())
     assert estimate_started.wait(timeout=2.0)
+    assert coordinator.background_work_snapshot() == {
+        "idle": False,
+        "remaining_workers": 1,
+        "alive_workers": 1,
+        "active_jobs": 1,
+        "pending_jobs": 0,
+    }
+    assert ticket.done is False
 
     assert coordinator.close(timeout=0.0) is False
     with pytest.raises(PreconditionError, match="closing"):
@@ -175,14 +327,28 @@ def test_close_fences_new_work_and_joins_owned_non_daemon_worker() -> None:
     with pytest.raises(PreconditionError, match="closing"):
         ticket.result(timeout=2.0)
     assert coordinator.close(timeout=2.0)
+    assert ticket.done is True
+    assert coordinator.background_work_snapshot() == {
+        "idle": True,
+        "remaining_workers": 0,
+        "alive_workers": 0,
+        "active_jobs": 0,
+        "pending_jobs": 0,
+    }
     worker = coordinator.worker_thread
     assert worker is None or not worker.is_alive()
+
+    assert coordinator.cancel_close() is True
+    retried = coordinator.submit(_request(request_generation=2), _context())
+    assert retried.result(timeout=2.0).request_generation == 2
+    assert coordinator.close(timeout=2.0)
 
 
 def test_worker_exits_after_queue_becomes_idle() -> None:
     coordinator = TrainingResourcePreviewCoordinator(
         estimate=lambda request, _context: _result(request),
         generation_is_current=lambda _generation: True,
+        registry=OwnedWorkRegistry(),
     )
 
     result = coordinator.submit(_request(request_generation=1), _context()).result(

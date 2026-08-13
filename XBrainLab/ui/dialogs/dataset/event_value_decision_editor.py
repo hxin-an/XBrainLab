@@ -278,6 +278,26 @@ class EventValueDecisionEditor(QWidget):
                 )
         return changed
 
+    def evidence_rows(self) -> list[dict[str, Any]]:
+        """Return the semantic choices currently shown by the visible editor."""
+        evidence: list[dict[str, Any]] = []
+        for row in self._rows:
+            semantics = self._current_semantics(row)
+            evidence.append(
+                {
+                    "event_value": row.raw_value,
+                    "event_role": str(semantics["role"] or ""),
+                    "keep_event": semantics["keep_event"],
+                    "use_as_class": semantics["use_as_class"],
+                    "class_name": str(semantics["class_name"] or ""),
+                    "sources": sorted(
+                        {item.carrier_key for item in row.occurrences},
+                        key=str.casefold,
+                    ),
+                }
+            )
+        return evidence
+
     def _build_row(self, occurrences: tuple[_Occurrence, ...]) -> _DecisionRow:
         representative = occurrences[0].decision
         role_selector = QComboBox(self)

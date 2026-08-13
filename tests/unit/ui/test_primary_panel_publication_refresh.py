@@ -542,11 +542,15 @@ def test_async_application_command_disables_command_result_refresh(
         _Runner,
     )
 
+    runtime = MagicMock()
+    runtime.begin_owned_operation.return_value = SimpleNamespace(
+        operation_id="test-query-state-operation"
+    )
     started = execute_application_command_async(
         context,
         QueryStateCommand(),
         on_result=lambda _result: None,
-        runtime=MagicMock(),
+        runtime=runtime,
         refresh=True,
     )
 

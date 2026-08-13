@@ -1,9 +1,16 @@
+from threading import Event, Thread
 from unittest.mock import MagicMock
 
 import mne
 import numpy as np
 import pytest
 
+from XBrainLab.backend.application.owned_work import (
+    OwnedOperationCancelledError,
+    OwnedWorkKind,
+    OwnedWorkPhase,
+    OwnedWorkRegistry,
+)
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.preprocessor.time_epoch import (
     TimeEpoch,
@@ -190,3 +197,71 @@ class TestTimeEpoch:
             match=r"different sampling frequencies .*Resample them to one shared rate",
         ):
             TimeEpoch([raw, other])
+
+    def test_multi_recording_epoch_reports_progress_and_cancels_between_records(
+        self,
+        mock_raw,
+    ):
+        raw, events, event_id = mock_raw
+        rows = [raw]
+        for index in range(1, 3):
+            other = MagicMock(spec=Raw)
+            other.get_mne.return_value = raw.get_mne().copy()
+            other.get_sfreq.return_value = raw.get_sfreq()
+            other.is_raw.return_value = True
+            other.get_event_list.return_value = (events.copy(), dict(event_id))
+            other.get_filename.return_value = f"recording-{index}.fif"
+            rows.append(other)
+
+        entered_second_recording = Event()
+        release_second_recording = Event()
+        processed_recordings: list[int] = []
+
+        class CancellableTimeEpoch(TimeEpoch):
+            def _data_preprocess(self, *_args, **_kwargs):
+                processed_recordings.append(len(processed_recordings))
+                if len(processed_recordings) == 2:
+                    entered_second_recording.set()
+                    assert release_second_recording.wait(timeout=2.0)
+
+        registry = OwnedWorkRegistry()
+        operation = registry.begin(OwnedWorkKind.EPOCH, cancellable=True)
+        cancellation_errors: list[OwnedOperationCancelledError] = []
+        thread_errors: list[BaseException] = []
+
+        def run_epoch() -> None:
+            try:
+                with registry.bind(operation.operation_id):
+                    registry.start(operation.operation_id)
+                    CancellableTimeEpoch(rows).data_preprocess(
+                        None,
+                        ["Event1"],
+                        -0.1,
+                        0.5,
+                    )
+            except OwnedOperationCancelledError as exc:
+                cancellation_errors.append(exc)
+            except BaseException as exc:
+                thread_errors.append(exc)
+
+        worker = Thread(target=run_epoch, daemon=True)
+        worker.start()
+        assert entered_second_recording.wait(timeout=2.0)
+
+        active = registry.snapshot(operation.operation_id)
+        assert active.stage == "Creating EEG epochs"
+        assert active.completed == 1
+        assert active.total == 3
+        assert active.indeterminate is False
+
+        assert registry.cancel(operation.operation_id) is True
+        release_second_recording.set()
+        worker.join(timeout=2.0)
+
+        assert not worker.is_alive()
+        assert thread_errors == []
+        assert len(cancellation_errors) == 1
+        assert (
+            registry.snapshot(operation.operation_id).phase is OwnedWorkPhase.CANCELLED
+        )
+        assert processed_recordings == [0, 1]

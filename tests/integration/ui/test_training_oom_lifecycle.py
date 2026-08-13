@@ -26,7 +26,10 @@ from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import training_plan as training_plan_module
 from XBrainLab.backend.training.record.eval import EvalRecord
 from XBrainLab.backend.training.training_plan import TrainingPlanHolder
-from XBrainLab.backend.training_state_contract import TrainingOutcomeState
+from XBrainLab.backend.training_state_contract import (
+    PostTrainingSaliencyPhase,
+    TrainingOutcomeState,
+)
 from XBrainLab.ui.async_command_runner import application_command_registry
 from XBrainLab.ui.main_window import MainWindow
 from XBrainLab.ui.panels.training.panel import TrainingPanel
@@ -269,16 +272,10 @@ def test_training_panel_recovers_after_async_cuda_oom(
     panel.on_history_selection_changed({"plan_index": 1, "run_index": 0})
     assert "CUDA out of memory during training" not in panel.log_text.toPlainText()
 
-    qtbot.waitUntil(
-        lambda: (
-            study.training_manager.get_post_training_saliency_status().generation > 0
-            and study.training_manager.get_post_training_saliency_status().phase.terminal
-        ),
-        timeout=10_000,
-    )
-    saliency_generation = (
-        study.training_manager.get_post_training_saliency_status().generation
-    )
+    saliency_status = study.training_manager.get_post_training_saliency_status()
+    assert saliency_status.phase is PostTrainingSaliencyPhase.IDLE
+    assert saliency_status.run is None
+    assert saliency_status.methods == ()
 
     def background_deliveries_idle() -> bool:
         application_delivery = service.training_publications.saliency_delivery_state()
@@ -298,5 +295,5 @@ def test_training_panel_recovers_after_async_cuda_oom(
     runtime_delivery = service.training_runtime.saliency_delivery_state()
     assert training_delivery.pending_count == 0
     assert training_delivery.delivered_count == 2
-    assert application_delivery.delivered_generation == saliency_generation
-    assert runtime_delivery.delivered_generation == saliency_generation
+    assert application_delivery.delivered_generation < 1
+    assert runtime_delivery.delivered_generation < 1

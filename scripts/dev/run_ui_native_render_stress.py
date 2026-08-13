@@ -57,7 +57,14 @@ from XBrainLab.backend.application import (
     SaliencyRunIdentity,
     get_application_service,
 )
+from XBrainLab.backend.application.owned_work import (
+    OwnedOperationSnapshot,
+    OwnedWorkRegistry,
+)
 from XBrainLab.backend.application.results import ChangedState, CommandResult
+from XBrainLab.backend.application.saliency_render_work import (
+    SaliencyRenderWorkController,
+)
 from XBrainLab.backend.application.state import (
     ApplicationStateSnapshot,
     SaliencyClassCoverageSnapshot,
@@ -223,9 +230,15 @@ class _NativeStressApplicationRuntime(Observable):
             else seed.revision
         )
         self.render_publications_served = 0
+        self.render_operations_started = 0
         self._shutdown_fenced = False
         self._next_render_started: threading.Event | None = None
         self._next_render_release: threading.Event | None = None
+        self._owned_work = OwnedWorkRegistry()
+        self._saliency_render_work = SaliencyRenderWorkController(
+            registry=self._owned_work,
+            publish=self.get_saliency_render,
+        )
 
     def block_next_render(
         self,
@@ -304,6 +317,51 @@ class _NativeStressApplicationRuntime(Observable):
             data=_native_stress_render_data(self.render_publications_served),
         )
 
+    def begin_saliency_render(
+        self,
+        request: SaliencyRenderRequest,
+    ) -> OwnedOperationSnapshot:
+        self.render_operations_started += 1
+        return self._saliency_render_work.begin(request)
+
+    def prepare_saliency_render(
+        self,
+        operation_id: str,
+        request: SaliencyRenderRequest,
+    ) -> SaliencyRenderPublication:
+        return self._saliency_render_work.prepare(operation_id, request)
+
+    def prepare_saliency_render_variants(
+        self,
+        operation_id: str,
+        request: SaliencyRenderRequest,
+        *,
+        include_normalized: bool,
+    ) -> tuple[SaliencyRenderPublication, SaliencyRenderPublication | None]:
+        return self._saliency_render_work.prepare_variants(
+            operation_id,
+            request,
+            include_normalized=include_normalized,
+        )
+
+    def finish_saliency_render(
+        self,
+        operation_id: str,
+        phase: str,
+        *,
+        message: str = "",
+    ) -> None:
+        self._saliency_render_work.finish(operation_id, phase, message=message)
+
+    def enter_saliency_render_commit(self, operation_id: str) -> bool:
+        return self._saliency_render_work.enter_commit(operation_id)
+
+    def cancel_owned_operation(self, operation_id: str) -> bool:
+        return self._owned_work.cancel(operation_id)
+
+    def get_owned_operation(self, operation_id: str) -> OwnedOperationSnapshot:
+        return self._owned_work.snapshot(operation_id)
+
     def request_shutdown_fence(self) -> None:
         self._shutdown_fenced = True
 
@@ -315,8 +373,7 @@ class _NativeStressApplicationRuntime(Observable):
         self,
         timeout: float | None = None,
     ) -> bool:
-        del timeout
-        return True
+        return self._owned_work.wait_for_idle(timeout)
 
 
 def _pump_events(app: QApplication, milliseconds: int = 30) -> None:
@@ -541,9 +598,9 @@ def _exercise_product_saliency_tabs(
     if not safe_headless_macos:
         view_specs.append(("topomap", 2, panel.tab_topo))
 
-    panel.on_update()
+    # Populate the real selection controls once. ``refresh_combos`` performs
+    # the resulting product update itself.
     panel.refresh_combos()
-    panel.on_update()
     _pump_until(
         app,
         lambda: (
@@ -577,7 +634,7 @@ def _exercise_product_saliency_tabs(
     three_d_replaced_interactors_closed = 0
     three_d_block_reason = ""
     three_d_tab_updates = 0
-    publications_before_cycles = runtime.render_publications_served
+    operations_before_cycles = runtime.render_operations_started
     product_memory_samples = [_sample_process_memory(app=app, process=process)]
 
     for _cycle in range(cycles):
@@ -682,9 +739,9 @@ def _exercise_product_saliency_tabs(
         "product_saliency_cycles": cycles,
         "native_render_scope": native_render_scope,
         "product_2d_view_names": [name for name, _index, _view in view_specs],
-        "product_saliency_publications_primed": publications_before_cycles,
-        "product_saliency_publications_served": (
-            runtime.render_publications_served - publications_before_cycles
+        "product_saliency_operations_primed": operations_before_cycles,
+        "product_saliency_operations_served": (
+            runtime.render_operations_started - operations_before_cycles
         ),
         "product_2d_renders_installed": two_d_installed,
         "product_2d_loading_cleared": two_d_loading_cleared,
@@ -1408,20 +1465,17 @@ def _stress_contract_failures(
         failures.append("product_saliency_warmup_cycles")
     if result.get("product_saliency_measurement_cycles", cycles) != cycles:
         failures.append("product_saliency_measurement_cycles")
-    if result.get("product_saliency_publications_primed") != 1:
-        failures.append("product_saliency_publications_primed")
-    # Headless macOS exercises only Map and Spectrogram, which share the
-    # primed channel-time publication. Full native scope includes Topomap;
-    # switching view lineage causes every subsequent 2D installation to read
-    # a fresh publication.
-    expected_publications_after_prime = (
-        0 if safe_headless_macos else max(expected_2d_renders - 1, 0)
-    )
+    if result.get("product_saliency_operations_primed") != 1:
+        failures.append("product_saliency_operations_primed")
+    # Every measured tab activation owns a fresh exact render operation,
+    # including the 3D data preparation that may end in a truthful
+    # native-runtime block. The unmeasured first Map is completed in priming.
+    expected_operations_after_prime = expected_2d_renders + expected_3d_updates
     if (
-        result.get("product_saliency_publications_served")
-        != expected_publications_after_prime
+        result.get("product_saliency_operations_served")
+        != expected_operations_after_prime
     ):
-        failures.append("product_saliency_publications_served")
+        failures.append("product_saliency_operations_served")
     if result.get("active_render_owner") != "publication_preparation":
         failures.append("active_render_owner")
     if result.get("product_2d_renders_installed") != expected_2d_renders:

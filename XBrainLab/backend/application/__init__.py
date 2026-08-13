@@ -57,6 +57,7 @@ _EXPORT_MODULES: dict[str, str] = {
     "ErrorType": ".results",
     # typed Evaluation render publication
     "EvaluationCrossFoldIdentity": ".evaluation_render",
+    "EvaluationNumericSummary": ".evaluation_render",
     "EvaluationPlanIdentity": ".evaluation_render",
     "EvaluationRenderData": ".evaluation_render",
     "EvaluationRenderPublication": ".evaluation_render",
@@ -190,6 +191,7 @@ __all__ = [
     "ErrorType",
     "EvaluateCommand",
     "EvaluationCrossFoldIdentity",
+    "EvaluationNumericSummary",
     "EvaluationPlanIdentity",
     "EvaluationRenderData",
     "EvaluationRenderPublication",

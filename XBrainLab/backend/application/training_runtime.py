@@ -495,7 +495,7 @@ class StudyTrainingRuntime:
             PostTrainingSaliencyPhase.RUNNING,
         }:
             raise PreconditionError(
-                "Automatic saliency is still running or cleaning up. Wait for it to "
+                "Saliency is still running or cleaning up. Wait for it to "
                 "finish before changing the data pipeline.",
                 diagnostics={
                     "code": "training_pipeline_saliency_active",

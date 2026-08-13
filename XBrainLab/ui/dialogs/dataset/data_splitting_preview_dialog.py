@@ -645,7 +645,7 @@ class DataSplittingPreviewDialog(BaseDialog):
 
         btn_confirm = QPushButton("Confirm")
         self.btn_confirm = btn_confirm
-        btn_confirm.setObjectName("PrimaryConfirmButton")
+        btn_confirm.setObjectName("DataSplitPreviewConfirmButton")
         btn_confirm.setAutoDefault(False)
         btn_confirm.setDefault(False)
         btn_confirm.setMinimumWidth(128)
@@ -1007,6 +1007,15 @@ class DataSplittingPreviewDialog(BaseDialog):
                 and self.btn_confirm is not None
                 and self._preview_pending_close_action is None
             ):
+                self.btn_confirm.setProperty(
+                    "splitConfiguration",
+                    self._split_config_payload(),
+                )
+                receipt = self.get_preview_receipt()
+                self.btn_confirm.setProperty(
+                    "splitSpecificationFingerprint",
+                    receipt.specification_fingerprint if receipt is not None else "",
+                )
                 self.btn_confirm.setEnabled(True)
 
     def _set_tree_message(self, message: str) -> None:

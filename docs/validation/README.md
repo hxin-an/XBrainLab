@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-08-11`
+最後更新：`2026-08-13`
 
 這頁定義 current gates、evidence identity 和 claim boundary。Dated checkpoint output 不在這裡
 冒充 current result；歷史結果看 records 或 Git history。
@@ -11,9 +11,9 @@
 | --- | --- |
 | Candidate checkout | 由 `git rev-parse --show-toplevel` 和 generated evidence 記錄，不在 canonical docs 寫死本機 path。 |
 | Product baseline | `main` |
-| Current candidate | `integration/import-training-montage-polish-v1`；未合併 checkpoint；只有 exact-head push / CI 可以提升證據狀態。 |
-| Baseline | `main@b3a87e3996585ebb09ae46335da82d234ae70249` |
-| Closure state | Local validation candidate；exact-head CI / Windows acceptance pending；not release-ready；Assistant not ready；not product complete |
+| Current candidate | 從最新 `main` 收斂的 15-dataset reliability task branch；實際 branch / SHA 由 Git 與 generated evidence 記錄。 |
+| Baseline | 以當次 `main` / merge-base 為準，不重用本頁的 historical SHA。 |
+| Closure state | Dirty implementation checkpoint；15-dataset materialization、30 GUI journeys、clean exact-head CI / Windows acceptance pending；not handoff-ready；not release-ready；Assistant not ready；not product complete |
 | Data Import artifacts | Tracked folder is a dirty checkpoint；read its manifest for source identity and never treat it as current candidate evidence |
 | Required authority | 本頁與 [Now](../planning/now.md)；舊 product-quality goal / audit 只作歷史 provenance。 |
 
@@ -90,6 +90,59 @@ walkthrough decision owner、跨平台 Qt teardown，以及 coverage-heavy CI �
   與 `build/dev-artifacts/data-import-wizard-steps/00-updating-label-matches.png`。這些是 Linux/xcb
   checkpoint，不取代 Windows native DPI / interaction acceptance，也不支撐 full BIDS claim。
 
+## 15-dataset MOABB Delivery Gate
+
+這是本次 data-workflow 交付的額外 fixed-denominator contract。Canonical registry 現已加入
+`moabb-15-delivery-validation`：它不下載資料也不啟動 30 條 journeys，而是保留同一 exact-SHA
+evidence root 內既有的 `moabb-15-campaign/`，重新執行 frozen BIDS / source / environment
+preflight；tracked awaiting plan 只用來定位 materializer 產生的 checksum-pinned ready plan，
+receipts 必須綁定該 ready-plan SHA。Gate 再驗證固定 30 receipts 與 artifacts。Awaiting dataset、null BIDS root、缺少任何
+receipt 或空 denominator 都會使 handoff runner fail closed。30 條 journeys 必須在 canonical
+runner 前由同一 candidate source 產生；registered validation 不會把尚未執行的 campaign 冒充
+成功。
+
+固定 denominator：
+
+- 5 個 anchor datasets 各 5 subjects：`BNCI2014_001`、`PhysionetMI`、
+  `Lee2021Mobile_ERP`、`BNCI2014_009`、`Nakanishi2015`；
+- 10 個 datasets 各 2 subjects：`Ofner2017`、`Ma2020`、`ErpCore2021_P3`、
+  `Wang2016`、`Chen2017SingleFlicker`、`Thielen2021`、`Hinss2021`、
+  `MAMEM1`、`GuttmannFlury2025_SSVEP`、`Zhou2020`；
+- 每個 dataset 依序跑 cold、關閉程式、replay，各使用 fresh process，總數固定為 `30`；
+- 每條 journey 必須經 visible `MainWindow` controls 完成 Import BIDS folder、subject selection、
+  metadata / label review、apply、preprocess、epoch、split、model、1 epoch / repeat / fold
+  training、evaluation、explicit `Compute Saliency`、Saliency Map、Spectrogram 與 clean close；
+- 5/5/5 dataset partitions 分別驗證 import/review、apply/epoch、training/saliency cancellation，
+  每個 partition 的兩個 target 都要覆蓋，且取消後在同一 journey 重試成功。
+
+Data materialization 必須先產生 D 槽 formal BIDS roots，整體 format coverage 包含 EDF、
+BrainVision、EEGLAB；保留 BDF formal mirror 時須如實記錄，不可假裝成轉檔格式。每個 row 都要
+綁定 source/license/revision、subjects、source + BIDS checksums、formal validator receipt、
+event/class oracle，以及 exact Git / Poetry lock / runtime packages / CUDA / GPU identity。
+Materializer 預設 no-download，只有 explicit authority 才可取用公開來源；no-download replay
+必須能從已凍結 bytes 驗證。
+
+GUI driver 只允許在 `QFileDialog` boundary 注入 BIDS path；不得直接建立 wizard、呼叫
+`ApplicationService`、偽造 state、使用 private navigation，或依 dataset name 選 production
+controls。每個 receipt 必須保存 exact stages、visible clicks、UI options、event/class summary、
+finite training/evaluation metrics、dataset/run/split/producer-bound saliency identity、screenshots、
+timing、PID/exit 與 close-time worker/subprocess inventory。任一缺漏、timeout、force close、stale
+publication 或 non-finite result 都使整體 campaign 失敗。
+
+30 條 sealed receipts 後，runner 只會建立
+`visual-review-attestation.json` 的 `pending_manual_review` template，絕不把 manual checklist 或
+delivery 狀態標成 ready。獨立人工 reviewer 必須另行完成它，逐一對所有 30 journeys 的每張 required
+stage screenshot 勾選 layout、contrast、primary action、text fit、nested scroll、dialog geometry、DPI
+及 error overlays。Attestation 綁定 ready-plan SHA、每一 receipt SHA 與每一 screenshot SHA；缺失、
+部分 verdict、producer identity、變更 receipt/artifact 或過期 plan 都 fail closed。Delivery validator
+和 final dossier revalidation 都重新驗證此 binding；offscreen review 仍不等於 Windows native acceptance。
+
+目前 tracked 15-dataset GUI plan 的所有 rows 都是
+`execution_state=awaiting_dataset_materialization` 且 `bids.root=null`；尚無 ready/freeze
+manifest 或 qualifying journey receipt。因此目前只能宣稱 materializer/runner/receipt validation
+source 存在且有 focused tests，不能宣稱 15/15、30/30、handoff-ready、Windows accepted 或
+scientific model quality。
+
 ## Agent Tool-Call 快速檢查
 
 以下入口用來快速查看單一使用者要求如何經過 state/capability、request-scoped schema、
@@ -139,6 +192,8 @@ thesis benchmark，也不能作為 Agent accuracy claim。
 | Real ApplicationService smoke | Product command spine 的代表性 state transition 和 side effect。 | 所有 panel UX、所有 datasets。 |
 | Deterministic oracle | Event/class semantics、split integrity、held-out outputs 和 finite result contract。 | Scientific model quality 或泛化準確率。 |
 | Strict multi-dataset gate | Manifest 內固定 sources、formats、label/event placement 和 cross-source boundary。 | Full BIDS validator、任意 clinical/proprietary format。 |
+| 15-dataset campaign contract tests | Materializer、fixed denominator、visible-control policy、receipt schema 與 fail-closed aggregation 的程式契約。 | Dataset bytes 已下載/驗證、任何真實 journey 成功或 handoff-ready。 |
+| 30 exact GUI journey receipts | 固定 15 datasets 的 cold/replay product path、cancellation retry、finite results、Map/Spectrogram 與 clean close（只有 receipt / artifact identity 全部符合時）。 | Windows native acceptance、未列 subjects、scientific accuracy、所有 MOABB datasets。 |
 | Automated UI artifact | Exact-source visible state、layout、primary action 和 bounded interaction。 | Windows native DPI/multi-monitor、真人 usability。 |
 | Local Granite/RAG walkthrough | 指定 product policy 下的 local runtime workflow。 | Raw-model accuracy、thesis benchmark、長時間穩定性。 |
 | Launcher/startup smoke | Launcher command 和 bounded startup。 | Signed installer、release approval。 |
@@ -411,7 +466,7 @@ runner source，不是用來抵抗能任意修改同一使用者 source/evidence
 | 4. Assistant/local runtime | `assistant-security-suite`、`granite-runtime`、`rag-offline`、五個 `chatpanel-*` gates | Exact Granite、secure RAG、guided/training readiness/completion、recovery、long session 與 bounded shutdown。 |
 | 5. UI artifacts | `human-like-product` through `data-import-wizard-validate` | Exact-source full/narrow/DPI/wizard/visualization artifact set。 |
 | 6. Native lifecycle | `native-lifecycle-tests`、`preprocess-native-stress`、`ui-native-render-stress` | Preprocess and render ownership；不取代 Windows native acceptance。 |
-| 7. Multi-dataset | `fetch-required-ci` through `public-cross-source-training`，包含 `real-data-interpretation-training` | Fixed denominator、verify-only、wizard、IO/BIDS、cross-source diversity；Graz external labels 與 PhysioNet internal events 走到 training，public BIDS 依 fixture 能力走到 preview/apply 或 epoch/split readiness。 |
+| 7. Multi-dataset | `fetch-required-ci` through `moabb-15-delivery-validation`，包含 `real-data-interpretation-training` | Required public fixture diversity，加上同一 exact-SHA root 內預先產生的 15-dataset / 30-journey evidence 之 read-only preflight 與 receipt validation；後者不下載資料、不啟動 journeys。 |
 | 8. Resource/dashboard | `resource-calibration`、`handoff-dashboard` | 在 ignored exact-SHA root 產生 CUDA calibration，dashboard 保留並驗證該輸入後做 final clean-source recheck；dashboard 必須維持最後一個 gate。 |
 
 Section 2 的 WSL/POSIX regression 與 Windows native-opener source/dispatch guard 不能取代真人
@@ -444,6 +499,14 @@ Sleep-EDF 和 CHB-MIT teacher fixture tests 是 optional acceptance evidence，
 不混入 mandatory public IO gate。不同副檔名不等於不同 dataset source；同一 source 的轉檔
 只算 format coverage。這組 gate 不支撐 full BIDS validator、任意 clinical/proprietary format
 或 scientific accuracy。
+
+`moabb-15-delivery-validation` 要求 canonical evidence root 先存在完整
+`moabb-15-campaign/`；recorder 將它視為 preserved input 並把完整 artifact identity 納入 dossier。
+Validator 只讀 tracked plan、frozen BIDS/checksum bytes 與既有 receipts；它不呼叫 materializer、
+campaign runner 或 worker。Tracked plan 仍為 `awaiting_dataset_materialization`、BIDS root 為
+null 或 receipts 為 `0` 時，這個 registered gate 必須失敗，因此「已註冊」不代表目前已通過。
+同樣地，存在 pending visual-review template 不代表 artifact 已被人工接受；只有 completed、完整且
+SHA-bound 的 independent attestation 才可令 delivery gate 通過。
 
 Section 8 不使用 tracked `artifacts/resource_guard/calibration.json` 認證 handoff；該檔只算開發期
 checkpoint。Canonical runner 會先將 calibration 寫到

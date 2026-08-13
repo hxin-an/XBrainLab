@@ -1,7 +1,9 @@
 """Base class for all EEG preprocessors."""
 
 from copy import deepcopy
+from typing import Any
 
+from ..application.owned_work import owned_work_checkpoint
 from ..load_data import Raw
 from ..utils import validate_list_type
 
@@ -31,7 +33,21 @@ class PreprocessBase:
             ValueError: If the list is empty.
 
         """
-        self.preprocessed_data_list = deepcopy(preprocessed_data_list)
+        self.preprocessed_data_list: list[Raw] = []
+        total = len(preprocessed_data_list)
+        memo: dict[int, Any] = {}
+        for index, preprocessed_data in enumerate(preprocessed_data_list):
+            owned_work_checkpoint(
+                "Preparing working EEG recordings",
+                completed=index,
+                total=total,
+            )
+            self.preprocessed_data_list.append(deepcopy(preprocessed_data, memo))
+            owned_work_checkpoint(
+                "Preparing working EEG recordings",
+                completed=index + 1,
+                total=total,
+            )
         self.check_data()
 
     def check_data(self) -> None:
@@ -85,9 +101,20 @@ class PreprocessBase:
             :class:`~XBrainLab.backend.load_data.Raw` instances.
 
         """
-        for preprocessed_data in self.preprocessed_data_list:
+        total = len(self.preprocessed_data_list)
+        for index, preprocessed_data in enumerate(self.preprocessed_data_list):
+            owned_work_checkpoint(
+                "Preprocessing EEG recordings",
+                completed=index,
+                total=total,
+            )
             self._data_preprocess(preprocessed_data, *args, **kwargs)
             preprocessed_data.add_preprocess(self.get_preprocess_desc(*args, **kwargs))
+            owned_work_checkpoint(
+                "Preprocessing EEG recordings",
+                completed=index + 1,
+                total=total,
+            )
         return self.preprocessed_data_list
 
     def _data_preprocess(self, preprocessed_data: Raw, *args, **kwargs) -> None:

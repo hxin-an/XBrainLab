@@ -12,6 +12,9 @@ from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtWidgets import QDockWidget, QMessageBox, QWidget
 
 from XBrainLab.backend.application import StopTrainingCommand
+from XBrainLab.backend.application.capabilities import build_capability_policy
+from XBrainLab.backend.application.state import ApplicationStateSnapshot
+from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.application_publication_renderer import (
     DESKTOP_PUBLICATION_RENDER_MAX_ATTEMPTS,
@@ -64,6 +67,56 @@ def test_switch_page_updates_dataset_panel(main_window):
     """Test switching to Dataset panel (Index 0) calls update_panel."""
     main_window.switch_page(0)
     main_window.dataset_panel.update_panel.assert_called_once()
+
+
+def test_workflow_state_snapshot_is_detached_from_visible_publication(
+    main_window,
+) -> None:
+    state = ApplicationStateSnapshot.empty()
+    publication = ApplicationViewPublication(
+        generation=7,
+        revision=11,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    main_window._last_rendered_application_publication = publication
+    main_window._last_fully_rendered_application_publication = publication
+
+    with patch(
+        "XBrainLab.ui.main_window.application_ui_runtime",
+        return_value=SimpleNamespace(get_view_publication=lambda: publication),
+    ):
+        first = main_window.workflow_state_snapshot()
+        first["state"]["raw"]["files"].append("mutated.fif")
+        second = main_window.workflow_state_snapshot()
+
+    assert second["generation"] == 7
+    assert second["revision"] == 11
+    assert second["state"] == state.to_dict()
+
+
+def test_workflow_state_snapshot_rejects_shell_only_pending_revision(
+    main_window,
+) -> None:
+    state = ApplicationStateSnapshot.empty()
+    previous = ApplicationViewPublication(
+        generation=3,
+        revision=4,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    current = replace(previous, generation=4, revision=5)
+    main_window._last_rendered_application_publication = current
+    main_window._last_fully_rendered_application_publication = previous
+
+    with (
+        patch(
+            "XBrainLab.ui.main_window.application_ui_runtime",
+            return_value=SimpleNamespace(get_view_publication=lambda: current),
+        ),
+        pytest.raises(RuntimeError, match="has not acknowledged current truth"),
+    ):
+        main_window.workflow_state_snapshot()
 
 
 def test_switch_page_updates_preprocess_panel(main_window):
@@ -458,6 +511,129 @@ def test_owned_background_gate_includes_application_workers(main_window) -> None
     application_idle.assert_called_once_with(main_window, timeout=0.0)
 
 
+def test_background_snapshot_does_not_invent_worker_for_busy_application(
+    main_window,
+) -> None:
+    main_window._startup_prewarm_worker = None
+    main_window._panel_prepare_workers = {}
+    main_window._panel_prepare_active_index = None
+
+    with (
+        patch.object(
+            main_window,
+            "_visualization_native_render_idle",
+            return_value=True,
+        ),
+        patch(
+            "XBrainLab.ui.main_window.application_background_tasks_idle",
+            return_value=False,
+        ),
+    ):
+        snapshot = main_window.background_work_snapshot()
+
+    assert snapshot["idle"] is False
+    assert snapshot["application_idle"] is False
+    assert snapshot["remaining_workers"] == 0
+
+
+def test_owned_background_snapshot_counts_exact_evaluation_workers(
+    main_window,
+) -> None:
+    main_window._startup_prewarm_worker = None
+    main_window._panel_prepare_workers = {}
+    main_window._panel_prepare_active_index = None
+    main_window.evaluation_panel = SimpleNamespace(
+        evaluation_background_work_snapshot=lambda: {
+            "idle": False,
+            "remaining_workers": 1,
+            "alive_workers": 1,
+            "operation_id": "evaluation-operation",
+        }
+    )
+
+    with (
+        patch.object(
+            main_window,
+            "_visualization_native_render_idle",
+            return_value=True,
+        ),
+        patch(
+            "XBrainLab.ui.main_window.application_background_tasks_idle",
+            return_value=True,
+        ),
+    ):
+        snapshot = main_window.background_work_snapshot()
+
+    assert snapshot["idle"] is False
+    assert snapshot["evaluation_workers"] == 1
+    assert snapshot["remaining_workers"] == 1
+
+
+def test_owned_background_snapshot_counts_exact_training_preview_workers(
+    main_window,
+) -> None:
+    main_window._startup_prewarm_worker = None
+    main_window._panel_prepare_workers = {}
+    main_window._panel_prepare_active_index = None
+    main_window.training_panel = SimpleNamespace(
+        training_resource_preview_background_work_snapshot=lambda: {
+            "idle": False,
+            "remaining_workers": 1,
+            "alive_workers": 1,
+        }
+    )
+
+    with (
+        patch.object(
+            main_window,
+            "_visualization_native_render_idle",
+            return_value=True,
+        ),
+        patch.object(
+            main_window,
+            "_evaluation_background_work_snapshot",
+            return_value={
+                "idle": True,
+                "remaining_workers": 0,
+                "alive_workers": 0,
+            },
+        ),
+        patch(
+            "XBrainLab.ui.main_window.application_background_tasks_idle",
+            return_value=False,
+        ),
+    ):
+        snapshot = main_window.background_work_snapshot()
+
+    assert snapshot["idle"] is False
+    assert snapshot["training_preview_workers"] == 1
+    assert snapshot["remaining_workers"] == 1
+
+
+def test_close_attempt_requests_evaluation_cancel_before_waiting(
+    main_window,
+) -> None:
+    begin_shutdown = MagicMock()
+    main_window.evaluation_panel = SimpleNamespace(
+        begin_evaluation_render_shutdown=begin_shutdown,
+    )
+
+    main_window._begin_close_attempt()
+
+    begin_shutdown.assert_called_once_with()
+
+
+def test_close_attempt_fences_training_preview_before_waiting(main_window) -> None:
+    begin_shutdown = MagicMock()
+    main_window.training_panel = SimpleNamespace(
+        begin_training_resource_preview_shutdown=begin_shutdown,
+    )
+
+    main_window._begin_close_attempt()
+
+    begin_shutdown.assert_called_once_with()
+
+
 def test_close_finalizes_application_runtime_before_qt_close(main_window) -> None:
     event = QCloseEvent()
     call_order: list[str] = []
@@ -521,6 +697,185 @@ def test_close_finalizes_application_runtime_before_qt_close(main_window) -> Non
     ]
 
 
+def test_close_emits_terminal_snapshot_only_after_runtime_close(main_window) -> None:
+    event = QCloseEvent()
+    emitted: list[dict[str, Any]] = []
+    main_window.shutdown_completed.connect(emitted.append)
+    main_window._closing_in_progress = True
+    main_window._close_attempt_id = "close-attempt-1"
+    pre_close_snapshot = {
+        "idle": True,
+        "application_idle": True,
+        "remaining_workers": 0,
+        "remaining_subprocesses": 0,
+    }
+    misleading_post_close_snapshot = {
+        "idle": True,
+        "application_idle": True,
+        "remaining_workers": 0,
+        "remaining_subprocesses": 0,
+        "post_close_runtime_missing": True,
+    }
+
+    with (
+        patch.object(main_window, "_stop_training_for_close", return_value=True),
+        patch.object(main_window, "_begin_desktop_render_shutdown"),
+        patch.object(
+            main_window,
+            "_finalize_visualization_native_render_resources",
+            return_value=True,
+        ),
+        patch.object(
+            main_window,
+            "_finalize_preprocess_native_plots_for_shutdown",
+            return_value=True,
+        ),
+        patch.object(main_window, "_close_assistant_for_shutdown", return_value=True),
+        patch.object(
+            main_window,
+            "_finalize_application_publication_renderer_for_shutdown",
+            return_value=True,
+        ),
+        patch(
+            "XBrainLab.ui.main_window.close_application_runtime",
+            return_value=True,
+        ) as close_runtime,
+        patch.object(
+            main_window,
+            "background_work_snapshot",
+            side_effect=[
+                pre_close_snapshot,
+                pre_close_snapshot,
+                misleading_post_close_snapshot,
+            ],
+        ) as background_snapshot,
+        patch.object(
+            main_window.window_geometry,
+            "persist_before_close",
+            return_value=False,
+        ),
+    ):
+        main_window.closeEvent(event)
+
+    close_runtime.assert_called_once_with(main_window)
+    assert background_snapshot.call_count == 2
+    assert emitted == [
+        {
+            "close_attempt_id": "close-attempt-1",
+            "pre_close_application_idle": True,
+            "pre_close_remaining_workers": 0,
+            "pre_close_remaining_subprocesses": 0,
+            "application_closed": True,
+        }
+    ]
+    assert event.isAccepted() is True
+
+
+def test_terminal_shutdown_snapshot_rejects_stale_earlier_close_attempt(
+    main_window,
+) -> None:
+    emitted: list[dict[str, Any]] = []
+    main_window.shutdown_completed.connect(emitted.append)
+    main_window._close_attempt_id = "close-attempt-2"
+    main_window._pre_close_background_snapshot = {
+        "close_attempt_id": "close-attempt-1",
+        "pre_close_application_idle": True,
+        "pre_close_remaining_workers": 0,
+        "pre_close_remaining_subprocesses": 0,
+    }
+
+    main_window._publish_terminal_shutdown_snapshot()
+
+    assert emitted == []
+
+
+def test_terminal_shutdown_snapshot_is_emitted_once_per_close_attempt(
+    main_window,
+) -> None:
+    emitted: list[dict[str, Any]] = []
+    main_window.shutdown_completed.connect(emitted.append)
+    main_window._close_attempt_id = "close-attempt-1"
+    main_window._pre_close_background_snapshot = {
+        "close_attempt_id": "close-attempt-1",
+        "pre_close_application_idle": True,
+        "pre_close_remaining_workers": 0,
+        "pre_close_remaining_subprocesses": 0,
+    }
+
+    main_window._publish_terminal_shutdown_snapshot()
+    main_window._publish_terminal_shutdown_snapshot()
+
+    assert len(emitted) == 1
+
+
+def test_cancelled_close_clears_attempt_identity_and_pre_close_snapshot(
+    main_window,
+) -> None:
+    main_window._begin_close_attempt()
+    first_attempt_id = main_window._close_attempt_id
+    main_window._pre_close_background_snapshot = {
+        "close_attempt_id": first_attempt_id,
+        "pre_close_application_idle": True,
+        "pre_close_remaining_workers": 0,
+        "pre_close_remaining_subprocesses": 0,
+    }
+
+    main_window._restore_close_interaction()
+
+    assert first_attempt_id
+    assert main_window._close_attempt_id is None
+    assert main_window._pre_close_background_snapshot is None
+
+
+def test_close_does_not_emit_terminal_snapshot_when_runtime_close_defers(
+    main_window,
+) -> None:
+    event = QCloseEvent()
+    emitted: list[dict[str, Any]] = []
+    main_window.shutdown_completed.connect(emitted.append)
+    main_window._closing_in_progress = True
+    main_window._close_attempt_id = "close-attempt-1"
+    snapshot = {
+        "idle": True,
+        "application_idle": True,
+        "remaining_workers": 0,
+        "remaining_subprocesses": 0,
+    }
+
+    with (
+        patch.object(main_window, "_stop_training_for_close", return_value=True),
+        patch.object(main_window, "_owned_ui_background_work_idle", return_value=True),
+        patch.object(main_window, "background_work_snapshot", return_value=snapshot),
+        patch.object(main_window, "_begin_desktop_render_shutdown"),
+        patch.object(
+            main_window,
+            "_finalize_visualization_native_render_resources",
+            return_value=True,
+        ),
+        patch.object(
+            main_window,
+            "_finalize_preprocess_native_plots_for_shutdown",
+            return_value=True,
+        ),
+        patch.object(main_window, "_close_assistant_for_shutdown", return_value=True),
+        patch.object(
+            main_window,
+            "_finalize_application_publication_renderer_for_shutdown",
+            return_value=True,
+        ),
+        patch(
+            "XBrainLab.ui.main_window.close_application_runtime",
+            return_value=False,
+        ),
+        patch.object(main_window, "_schedule_close_retry") as retry,
+    ):
+        main_window.closeEvent(event)
+
+    assert emitted == []
+    assert event.isAccepted() is False
+    retry.assert_called_once_with()
+
+
 def test_close_waits_for_active_visualization_native_render(main_window):
     visualization_panel = SimpleNamespace(
         begin_native_render_shutdown=MagicMock(),
@@ -540,7 +895,7 @@ def test_close_waits_for_active_visualization_native_render(main_window):
         main_window.closeEvent(event)
 
     assert event.isAccepted() is False
-    visualization_panel.begin_native_render_shutdown.assert_not_called()
+    visualization_panel.begin_native_render_shutdown.assert_called_once_with()
     visualization_panel.native_render_work_idle.assert_called()
     close_assistant.assert_not_called()
     retry.assert_called_once_with()
@@ -699,11 +1054,16 @@ def test_cancelled_close_resumes_visualization_rendering(main_window):
         cancel_native_render_shutdown=MagicMock(),
     )
     main_window.visualization_panel = visualization_panel
+    resume_evaluation = MagicMock()
+    main_window.evaluation_panel = SimpleNamespace(
+        cancel_evaluation_render_shutdown=resume_evaluation,
+    )
     main_window._closing_in_progress = True
 
     main_window._restore_close_interaction()
 
     visualization_panel.cancel_native_render_shutdown.assert_called_once_with()
+    resume_evaluation.assert_called_once_with()
     preview.resume_after_cancelled_shutdown.assert_called_once_with()
     assert main_window._closing_in_progress is False
 
@@ -1138,7 +1498,7 @@ def test_force_shutdown_bypasses_failed_state_verification(main_window):
     main_window.agent_manager.close.assert_called_once_with()
 
 
-def test_failed_stop_result_retains_close_fence_until_snapshot_recovers(qtbot):
+def test_close_stop_ack_does_not_rebuild_unavailable_mutable_state(qtbot):
     from XBrainLab.backend.application import get_application_service
     from XBrainLab.backend.study import Study
 
@@ -1172,34 +1532,30 @@ def test_failed_stop_result_retains_close_fence_until_snapshot_recovers(qtbot):
 
     assert event.isAccepted() is False
     assert service.shutdown_lifecycle.is_shutdown_fenced is True
-    original_build_state = service.state_snapshot.build
     service.state_snapshot.build = MagicMock(
         side_effect=RuntimeError("state backend unavailable"),
     )
+    started_at = time.monotonic()
     result = service.execute(StopTrainingCommand(wait_timeout=0.0))
-    assert result.failed is True
+    elapsed = time.monotonic() - started_at
+
+    assert elapsed < 0.1
+    assert result.ok is True
+    assert result.diagnostics["control_path"] == "lock_independent"
+    assert result.diagnostics["state_publication_deferred"] is True
+    service.state_snapshot.build.assert_not_called()
 
     callbacks["result"](result)
 
     assert service.shutdown_lifecycle.is_shutdown_fenced is True
     assert window._closing_in_progress is True
     assert window._shutdown_fence_active is True
-    assert window._shutdown_release_retry_pending is True
+    assert window._training_close_ready is True
+    assert window._shutdown_release_retry_pending is False
     central_widget = window.centralWidget()
     assert central_widget is not None
     assert central_widget.isEnabled() is False
     assert dock.isEnabled() is False
-
-    service.state_snapshot.build = original_build_state
-    qtbot.waitUntil(
-        lambda: service.shutdown_lifecycle.is_shutdown_fenced is False, timeout=2000
-    )
-
-    assert window._closing_in_progress is False
-    assert window._shutdown_fence_active is False
-    assert window._shutdown_release_retry_pending is False
-    assert central_widget.isEnabled() is True
-    assert dock.isEnabled() is True
 
 
 def test_close_does_not_wait_for_application_command_lock(qtbot):

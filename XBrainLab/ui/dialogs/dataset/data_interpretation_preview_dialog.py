@@ -320,12 +320,14 @@ class DataInterpretationPreviewDialog(
         validation_decision: dict[str, Any] | None = None,
         initial_step: str | None = None,
         choices: dict[str, Any] | None = None,
+        publication_generation: int | None = None,
     ):
         self.scan_result = dict(scan_result or {})
         self.preview = dict(preview or {})
         self.validation_decision = dict(validation_decision or {})
         self._initial_choices = dict(choices or {})
         self._initial_step = str(initial_step or "")
+        self._publication_generation = publication_generation
         self._resume_step_after_accept = ""
         self._review_restore_size: QSize | None = None
         self.workflow_steps_label: QLabel
@@ -945,7 +947,7 @@ class DataInterpretationPreviewDialog(
         self.back_button.setStyleSheet(self._secondary_button_style())
         self.back_button.clicked.connect(self._go_previous_step)
         self.next_button = QPushButton("Next")
-        self.next_button.setObjectName("DataImportPrimaryButton")
+        self.next_button.setObjectName("DataImportNextButton")
         self.next_button.setStyleSheet(self._primary_button_style())
         self.next_button.clicked.connect(self._go_next_step)
 
@@ -955,7 +957,18 @@ class DataInterpretationPreviewDialog(
             if self.decision == "blocked" and self._has_remap_options()
             else "Confirm and Import"
         )
-        self.apply_button.setObjectName("DataImportPrimaryButton")
+        self.apply_button.setObjectName("DataImportConfirmButton")
+        self.apply_button.setProperty(
+            "reviewSessionIdentity",
+            {
+                "scan_id": str(self.scan_result.get("scan_id") or "").strip(),
+                "candidate_id": str(
+                    self.validation_decision.get("candidate_id") or ""
+                ).strip(),
+                "preview_id": str(self.preview.get("preview_id") or "").strip(),
+                "publication_generation": self._publication_generation,
+            },
+        )
         self.apply_button.setStyleSheet(self._primary_button_style())
         self.apply_button.setEnabled(self.can_submit_for_backend_review())
         self.apply_button.clicked.connect(self.accept)
@@ -1746,6 +1759,10 @@ class DataInterpretationPreviewDialog(
         self.next_button.setVisible(not final_step)
         if not final_step and current + 1 < total:
             self.next_button.setText(f"Next: {self._step_titles[current + 1]}")
+        self.next_button.setProperty(
+            "eventClassMapping",
+            self._event_semantic_evidence() if title == "Match Labels" else [],
+        )
         self._sync_next_button_state()
         self.apply_button.setVisible(final_step)
         self.confirmation_label.setVisible(
@@ -3881,6 +3898,55 @@ class DataInterpretationPreviewDialog(
             choices["label_carrier_remap"] = label_carrier_remap
         return choices
 
+    def _event_semantic_evidence(self) -> list[dict[str, Any]]:
+        """Project the exact semantic choices visible on Match Labels."""
+        if self._skip_labels:
+            return []
+        editor = getattr(self, "event_value_editor", None)
+        if (
+            self._label_source_mode() != "internal_events"
+            and editor is not None
+            and editor.has_rows()
+        ):
+            return editor.evidence_rows()
+
+        class_names = {
+            code: self._class_map_item_text(item).strip()
+            for item, code, _original in self._class_map_items
+        }
+        evidence: list[dict[str, Any]] = []
+        for row in self._internal_candidate_label_event_rows():
+            event_value = str(row.get("code") or "").strip()
+            class_name = class_names.get(
+                event_value,
+                str(row.get("class_name") or "").strip(),
+            )
+            if event_value:
+                evidence.append(
+                    {
+                        "event_value": event_value,
+                        "event_role": "stimulus",
+                        "keep_event": True,
+                        "use_as_class": True,
+                        "class_name": class_name,
+                        "sources": ["embedded_events"],
+                    }
+                )
+        for row in self._internal_not_used_event_rows():
+            event_value = str(row.get("code") or "").strip()
+            if event_value:
+                evidence.append(
+                    {
+                        "event_value": event_value,
+                        "event_role": "unknown",
+                        "keep_event": True,
+                        "use_as_class": False,
+                        "class_name": "",
+                        "sources": ["embedded_events"],
+                    }
+                )
+        return evidence
+
     def _label_carrier_source_choice(self) -> str:
         if self._skip_labels:
             return ""
@@ -4252,6 +4318,11 @@ class DataInterpretationPreviewDialog(
         return plans
 
     def _handle_event_value_decisions_changed(self) -> None:
+        if hasattr(self, "next_button"):
+            self.next_button.setProperty(
+                "eventClassMapping",
+                self._event_semantic_evidence(),
+            )
         self._sync_apply_state()
         if (
             not hasattr(self, "step_stack")

@@ -92,7 +92,15 @@ class DataInterpretationLoadingDialog(BaseDialog):
         self.status_detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_detail.setWordWrap(True)
         self.progress_bar = QProgressBar()
+        # Keep the modal progress identity distinct from the always-present
+        # MainWindow status surface. Both expose the same public operation
+        # properties, but only one is the active user context at a time.
         self.progress_bar.setObjectName("DataImportLoadingProgress")
+        self.progress_bar.setProperty("operationId", "")
+        self.progress_bar.setProperty("stage", "Preparing import review")
+        self.progress_bar.setProperty("progress", "indeterminate")
+        self.progress_bar.setProperty("indeterminate", True)
+        self.progress_bar.setProperty("operationPhase", "pending")
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setTextVisible(False)
         self.progress_bar.setMinimumHeight(8)

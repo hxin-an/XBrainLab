@@ -355,6 +355,22 @@ files = [
 nodejs-wheel-binaries = ">=20.13.1"
 
 [[package]]
+name = "bids-validator-deno"
+version = "2.4.1"
+description = "Typescript implementation of the BIDS validator"
+optional = false
+python-versions = "*"
+groups = ["dev"]
+files = [
+    {file = "bids_validator_deno-2.4.1-py2.py3-none-macosx_10_12_x86_64.whl", hash = "sha256:18126fed28115efbe767fc3cb558c7ebb4d215b443ac8f005c78faaaf13e0518"},
+    {file = "bids_validator_deno-2.4.1-py2.py3-none-macosx_11_0_arm64.whl", hash = "sha256:45ecc93d9e6da8ff23529dc03c128ecc5f6527155dc0a10ec00aca020bcd250f"},
+    {file = "bids_validator_deno-2.4.1-py2.py3-none-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:f09c1e600cae71293ab5ae9ddc30aa56a871463837a020eb23b246fa2024c462"},
+    {file = "bids_validator_deno-2.4.1-py2.py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:5087fcd13341f529b5404792a74e22f570e50f17e5ea4cabe9c91b1caf74cbf4"},
+    {file = "bids_validator_deno-2.4.1-py2.py3-none-win_amd64.whl", hash = "sha256:24106f32e5c9dcdcec095527300e0bf683f6f4df5fb19b49a91586491eaaee5e"},
+    {file = "bids_validator_deno-2.4.1.tar.gz", hash = "sha256:a79b4af2818a200ff5a597715a3c1050ae93be7cb523bcfef54b93af057d8466"},
+]
+
+[[package]]
 name = "bitsandbytes"
 version = "0.49.1"
 description = "k-bit optimizers and matrix multiplication routines."
@@ -7242,4 +7258,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.13"
-content-hash = "7977040738928cfb704ad1edcea2dcf8711b292612daf8b02dc226cbd387d9a5"
+content-hash = "57729bc6b05b3b75bc05ce611acda90c9778406187a70bd43415126d989ee1dd"

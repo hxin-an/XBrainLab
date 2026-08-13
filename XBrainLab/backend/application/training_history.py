@@ -55,6 +55,7 @@ class TrainingHistoryRow:
     validation_accuracy: tuple[MetricValue, ...]
     validation_auc: tuple[MetricValue, ...]
     test_accuracy: tuple[MetricValue, ...]
+    runtime_device: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         """Return a detached, strictly JSON-safe row."""
@@ -88,6 +89,7 @@ class TrainingHistoryRow:
                     _ACCURACY_KEY: list(self.test_accuracy),
                 },
             },
+            "runtime_device": self.runtime_device,
         }
 
 
@@ -175,7 +177,23 @@ def _project_training_history_row(
         validation_accuracy=_copy_metric_series(validation_metrics, _ACCURACY_KEY),
         validation_auc=_copy_metric_series(validation_metrics, _AUC_KEY),
         test_accuracy=_copy_metric_series(test_metrics, _ACCURACY_KEY),
+        runtime_device=_runtime_device(plan, record),
     )
+
+
+def _runtime_device(plan: Any, record: Any) -> str:
+    """Detach the effective device after TrainingOption fallback resolution."""
+    for option in (getattr(plan, "option", None), getattr(record, "option", None)):
+        getter = getattr(option, "get_device", None)
+        if not callable(getter):
+            continue
+        try:
+            device = str(getter() or "").strip().casefold()
+        except Exception:
+            device = ""
+        if device == "cpu" or device.startswith("cuda:"):
+            return device
+    return ""
 
 
 def _row_plan_index(

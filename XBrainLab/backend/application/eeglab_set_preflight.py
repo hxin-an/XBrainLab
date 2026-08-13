@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 from typing import BinaryIO
 
+from .bids_dataset_index import current_bids_dataset_index_for_path
+
 MAT_FILE_HEADER_BYTES = 128
 MAT_COMPRESSED_HEADER_BUDGET_BYTES = 1_048_576
 MAT_REFERENCE_MAX_BYTES = 4_096
@@ -725,6 +727,22 @@ def _resolve_external_reference(
         return None, "The external EEGLAB data reference contains an unsafe path."
 
     root = set_path.parent.resolve()
+    bids_index = current_bids_dataset_index_for_path(set_path)
+    if bids_index is not None and bids_index.contains_recording(set_path):
+        if len(relative.parts) != 1:
+            return (
+                None,
+                "The indexed BIDS external EEGLAB data reference must be in the "
+                "recording directory.",
+            )
+        indexed = bids_index.indexed_file_in_recording_directory(set_path, relative)
+        if indexed is None:
+            return (
+                None,
+                "The external EEGLAB data reference was not listed in the BIDS "
+                "dataset index.",
+            )
+        return Path(indexed), ""
     current = root
     for part in relative.parts:
         try:

@@ -7,11 +7,14 @@ from pathlib import Path
 import pytest
 
 from XBrainLab.backend.application import bids_montage_preparation
+from XBrainLab.backend.application.bids_dataset_index import build_bids_dataset_index
 from XBrainLab.backend.application.bids_montage_preparation import (
     BidsMontageRecordingRequest,
     admit_bids_montage_resources,
     prepare_bids_montage,
+    resolve_bids_montage_resource_paths,
 )
+from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.montage_preparation_lifecycle import (
     ManualMontageOverride,
     MontagePreparationLifecycle,
@@ -149,6 +152,78 @@ def test_more_specific_run_resources_override_inherited_resources(
         str(local_electrodes.resolve()),
         str(local_coordsystem.resolve()),
     )
+
+
+def test_montage_inheritance_consumes_current_index_without_rewalking_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "bids"
+    _write_bids_dataset(root)
+    recording = _write_recording(root, "01")
+    inherited = _write_geometry(
+        root,
+        "task-rest_",
+        rows=(("Cz", "0.1", "0", "0"),),
+    )
+    index = build_bids_dataset_index(root)
+
+    def _forbid_rewalk(_path: Path):
+        pytest.fail("montage inheritance re-walked an already indexed BIDS root")
+
+    monkeypatch.setattr(Path, "iterdir", _forbid_rewalk)
+
+    resources = resolve_bids_montage_resource_paths(
+        recording,
+        bids_index=index,
+    )
+
+    assert resources == tuple(str(path.resolve()) for path in inherited)
+    assert resolve_bids_montage_resource_paths(recording) == resources
+
+
+def test_montage_rejects_changed_explicit_index_instead_of_using_stale_paths(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "bids"
+    _write_bids_dataset(root)
+    recording = _write_recording(root, "01")
+    _write_geometry(
+        root,
+        "task-rest_",
+        rows=(("Cz", "0.1", "0", "0"),),
+    )
+    index = build_bids_dataset_index(root)
+    _write_geometry(
+        recording.parent,
+        "sub-01_task-rest_run-1_",
+        rows=(("Cz", "0.2", "0", "0"),),
+    )
+
+    with pytest.raises(PreconditionError, match="index changed"):
+        resolve_bids_montage_resource_paths(recording, bids_index=index)
+
+
+def test_montage_registry_chooses_nested_exact_bids_root(tmp_path: Path) -> None:
+    parent = tmp_path / "parent-bids"
+    _write_bids_dataset(parent)
+    _write_recording(parent, "parent")
+    nested = parent / "sourcedata" / "nested-bids"
+    _write_bids_dataset(nested)
+    recording = _write_recording(nested, "01")
+    inherited = _write_geometry(
+        nested,
+        "task-rest_",
+        rows=(("Cz", "0.1", "0", "0"),),
+    )
+    parent_index = build_bids_dataset_index(parent)
+
+    resources = resolve_bids_montage_resource_paths(recording)
+
+    assert not any(
+        item.file == str(recording.resolve()) for item in parent_index.recordings
+    )
+    assert resources == tuple(str(path.resolve()) for path in inherited)
 
 
 def test_admitted_receipt_rejects_same_size_sidecar_change_before_parser_entry(

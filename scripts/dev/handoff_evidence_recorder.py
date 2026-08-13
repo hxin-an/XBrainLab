@@ -15,7 +15,7 @@ import tempfile
 import time
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
@@ -23,6 +23,7 @@ from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
 )
 from scripts.dev.handoff_gate_spec import (
     HANDOFF_GATE_SPECS,
+    MOABB_DELIVERY_DOSSIER_REVALIDATION,
     MODEL_CACHE_DIR_TOKEN,
     RAG_CACHE_DIR_TOKEN,
     GateSpec,
@@ -39,7 +40,7 @@ from scripts.dev.sensitive_path_redaction import (
 
 ROOT = Path(__file__).resolve().parents[2]
 DOSSIER_NAME = "handoff-evidence.json"
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 7
 DEFAULT_BRANCH = "main"
 _PROTECTED_LOCAL_PATHS = frozenset({"settings.json"})
 _SANITIZED_INHERITED_ENVIRONMENT = (
@@ -121,9 +122,11 @@ def record_handoff_command(
         raise HandoffEvidenceError(
             f"Gate {check_name!r} argv does not match its exact registered argv."
         )
+    _require_disjoint_preserved_inputs(spec)
     output_root.mkdir(parents=True, exist_ok=True)
     logs_dir = output_root / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
+    preserved_input_before = _preserved_input_records(output_root, spec=spec)
     _prepare_registered_artifacts(output_root, spec=spec)
 
     source_before = collect_source_identity(root, refresh=True)
@@ -172,6 +175,14 @@ def record_handoff_command(
         spec=spec,
         redactions=redactions,
     )
+    preserved_input_after: tuple[dict[str, Any], ...] = ()
+    preserved_input_failure = ""
+    try:
+        preserved_input_after = _preserved_input_records(output_root, spec=spec)
+    except HandoffEvidenceError as error:
+        preserved_input_failure = f"Preserved input changed during validation: {error}"
+    if not preserved_input_failure and preserved_input_before != preserved_input_after:
+        preserved_input_failure = "Preserved input changed during validation."
 
     source_after = collect_source_identity(root, refresh=True)
     source_stable = bool(source_before.get("source_digest")) and (
@@ -191,6 +202,8 @@ def record_handoff_command(
         output_root,
         spec=spec,
     )
+    if preserved_input_failure:
+        artifact_failures.append(preserved_input_failure)
     failure_reasons = _derive_failure_reasons(
         spec=spec,
         timed_out=timed_out,
@@ -224,6 +237,9 @@ def record_handoff_command(
         "pytest_outcomes": pytest_outcomes,
         "pytest_completion_attestation": pytest_attestation,
         "artifacts": artifact_records,
+        "preserved_input_stable": not preserved_input_failure,
+        "preserved_input_before": list(preserved_input_before),
+        "preserved_input_after": list(preserved_input_after),
         "stdout_log": _file_record(stdout_path, root=output_root),
         "stderr_log": _file_record(stderr_path, root=output_root),
         "stdout_tail": stdout[-4_000:],
@@ -331,6 +347,15 @@ def validate_handoff_dossier(
         )
         if not ok:
             return False, reason
+    for check_id in required:
+        spec = _registered_gate(check_id)
+        dossier_revalidation_error = _dossier_revalidation_error(
+            repo_root=root,
+            output_root=output_root,
+            spec=spec,
+        )
+        if dossier_revalidation_error is not None:
+            return False, f"{check_id} {dossier_revalidation_error}"
     return True, ""
 
 
@@ -463,6 +488,21 @@ def _validate_check_record(
     )
     if not artifacts_ok:
         return False, f"{check_id} {artifacts_reason}"
+    try:
+        current_preserved_inputs = list(
+            _preserved_input_records(output_root, spec=spec)
+        )
+    except HandoffEvidenceError as error:
+        return False, f"{check_id} preserved input is invalid: {error}"
+    preserved_before = raw_record.get("preserved_input_before")
+    preserved_after = raw_record.get("preserved_input_after")
+    if not isinstance(preserved_before, list) or not isinstance(preserved_after, list):
+        return False, f"Handoff check preserved input identity is missing: {check_id}."
+    if preserved_after != current_preserved_inputs:
+        return False, f"Handoff check preserved input is stale: {check_id}."
+    preserved_input_stable = preserved_before == preserved_after
+    if raw_record.get("preserved_input_stable") is not preserved_input_stable:
+        return False, f"Handoff check preserved input summary was edited: {check_id}."
     if spec.stdout_artifact_path:
         stdout_artifact_ok, stdout_artifact_reason, _content = _validate_file_record(
             output_root,
@@ -485,6 +525,11 @@ def _validate_check_record(
             f"Handoff check registered an unexpected stdout artifact: {check_id}.",
         )
 
+    preserved_input_failures = (
+        ()
+        if preserved_input_stable
+        else ("Preserved input changed during validation.",)
+    )
     failure_reasons = _derive_failure_reasons(
         spec=spec,
         timed_out=timed_out,
@@ -492,7 +537,7 @@ def _validate_check_record(
         source_stable=computed_source_stable,
         pytest_outcomes=pytest_outcomes,
         pytest_attestation_failure=pytest_attestation_failure,
-        artifact_failures=(),
+        artifact_failures=preserved_input_failures,
     )
     expected_failure_reason = " ".join(failure_reasons)
     computed_passed = not failure_reasons
@@ -759,7 +804,10 @@ _TEXT_EVIDENCE_SUFFIXES = frozenset(
 
 def _registered_text_files(root: Path, *, spec: GateSpec) -> list[Path]:
     files: list[Path] = []
+    preserved = set(spec.preserved_input_artifact_paths)
     for relative_path in spec.required_artifact_paths:
+        if relative_path in preserved:
+            continue
         path = _contained_output_path(root, relative_path)
         candidates = [path] if path.is_file() else list(path.rglob("*"))
         files.extend(
@@ -859,7 +907,83 @@ def _artifact_policy_record(spec: GateSpec) -> dict[str, Any]:
         "required_paths": list(spec.required_artifact_paths),
         "preserved_input_paths": list(spec.preserved_input_artifact_paths),
         "pytest_attestation_path": spec.pytest_attestation_path,
+        "dossier_revalidation": spec.dossier_revalidation,
     }
+
+
+def _dossier_revalidation_error(
+    *,
+    repo_root: Path,
+    output_root: Path,
+    spec: GateSpec,
+) -> str | None:
+    if spec.dossier_revalidation is None:
+        return None
+    if spec.dossier_revalidation != MOABB_DELIVERY_DOSSIER_REVALIDATION:
+        return "registered an unsupported final dossier revalidation."
+    try:
+        argv = spec.resolve_argv(output_root)
+        plan_path = _registered_revalidation_path(argv, "--plan", base=repo_root)
+        plan_path.relative_to(repo_root.resolve())
+        evidence_root = _registered_revalidation_path(
+            argv,
+            "--evidence-root",
+            base=repo_root,
+        )
+        evidence_root.relative_to(output_root.resolve())
+        result_path = _registered_revalidation_path(
+            argv,
+            "--output",
+            base=repo_root,
+        )
+        result_path.relative_to(output_root.resolve())
+        recorded_result = json.loads(result_path.read_text(encoding="utf-8"))
+        if not isinstance(recorded_result, dict):
+            return "MOABB delivery final dossier revalidation could not complete."
+        current_result = _load_current_moabb_delivery_validation(
+            plan_path=plan_path,
+            evidence_root=evidence_root,
+        )
+    except Exception:  # fail closed around external files and native probes
+        return "MOABB delivery final dossier revalidation could not complete."
+    if current_result.get("delivery_allowed") is not True:
+        return "MOABB delivery evidence no longer passes final dossier revalidation."
+    if current_result != recorded_result:
+        return (
+            "MOABB delivery evidence changed after its gate; final dossier "
+            "revalidation failed."
+        )
+    return None
+
+
+def _registered_revalidation_path(
+    argv: Sequence[str],
+    option: str,
+    *,
+    base: Path,
+) -> Path:
+    positions = [index for index, value in enumerate(argv) if value == option]
+    if len(positions) != 1 or positions[0] + 1 >= len(argv):
+        raise ValueError(f"registered dossier option is invalid: {option}")
+    path = Path(argv[positions[0] + 1]).expanduser()
+    if not path.is_absolute():
+        path = base / path
+    return path.resolve(strict=True)
+
+
+def _load_current_moabb_delivery_validation(
+    *,
+    plan_path: Path,
+    evidence_root: Path,
+) -> dict[str, Any]:
+    from scripts.dev.validate_moabb_gui_campaign_delivery import (
+        validate_delivery_evidence,
+    )
+
+    return validate_delivery_evidence(
+        plan_path=plan_path,
+        evidence_root=evidence_root,
+    )
 
 
 def _derive_failure_reasons(
@@ -1020,6 +1144,41 @@ def _prepare_registered_artifacts(root: Path, *, spec: GateSpec) -> None:
             raise HandoffEvidenceError(
                 f"Could not clear stale registered artifact {relative_path!r}."
             ) from error
+
+
+def _require_disjoint_preserved_inputs(spec: GateSpec) -> None:
+    """Refuse ambiguous artifact trees before clearing any rebuildable output."""
+    preserved_paths = tuple(
+        PurePosixPath(path) for path in spec.preserved_input_artifact_paths
+    )
+    for relative_path in spec.required_artifact_paths:
+        if relative_path in spec.preserved_input_artifact_paths:
+            continue
+        rebuildable = PurePosixPath(relative_path)
+        for preserved in preserved_paths:
+            if rebuildable in preserved.parents or preserved in rebuildable.parents:
+                raise HandoffEvidenceError(
+                    f"Rebuildable artifact {relative_path!r} overlaps a preserved "
+                    f"input {preserved.as_posix()!r}."
+                )
+
+
+def _preserved_input_records(
+    root: Path,
+    *,
+    spec: GateSpec,
+) -> tuple[dict[str, Any], ...]:
+    """Hash every preserved input without allowing the recorder to rewrite it."""
+    records: list[dict[str, Any]] = []
+    for relative_path in spec.preserved_input_artifact_paths:
+        try:
+            path = _contained_output_path(root, relative_path)
+            records.append(_registered_artifact_record(path, root=root))
+        except (HandoffEvidenceError, OSError) as error:
+            raise HandoffEvidenceError(
+                f"preserved artifact {relative_path!r} is invalid: {error}"
+            ) from error
+    return tuple(records)
 
 
 def _validate_registered_artifacts(
