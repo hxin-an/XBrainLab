@@ -489,6 +489,7 @@ def _materialize_one(
                 output_stage=output_stage,
                 gui_row=gui_rows[class_name],
             )
+            _normalize_legacy_bids_filter_metadata(staged_bids_root)
         else:
             staged_bids_root, resource_receipt = _materialize_formal_bids_mirror(
                 row=row,
@@ -1847,6 +1848,24 @@ def _validate_returned_bids_root(
             f"convert_to_bids returned root without required marker {marker}"
         )
     return resolved
+
+
+def _normalize_legacy_bids_filter_metadata(bids_root: Path) -> None:
+    """Preserve scalar filter descriptions in the structured BIDS shape."""
+
+    for sidecar in sorted(bids_root.rglob("*_eeg.json")):
+        payload = json.loads(sidecar.read_text(encoding="utf-8"))
+        filters = payload.get("HardwareFilters")
+        if not isinstance(filters, dict):
+            continue
+        normalized = {
+            str(name): {"Description": value} if isinstance(value, str) else value
+            for name, value in filters.items()
+        }
+        if normalized == filters:
+            continue
+        payload["HardwareFilters"] = normalized
+        _atomic_write_json(sidecar, payload)
 
 
 def _event_id(dataset: Any) -> dict[str, int]:

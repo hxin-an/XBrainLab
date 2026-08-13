@@ -617,6 +617,7 @@ def test_materializer_uses_generic_convert_to_bids_and_freezes_all_format_files(
     )
 
     assert result["status"] == "ready"
+
     assert calls == [
         {
             "class_name": class_name,
@@ -667,6 +668,54 @@ def test_materializer_uses_generic_convert_to_bids_and_freezes_all_format_files(
     assert row["bids_validation"]["status"] == "passed"
     assert row["bids_validation"]["error_count"] == 0
     assert len(row["bids_validation"]["report_sha256"]) == 64
+
+
+def test_materializer_normalizes_scalar_hardware_filter_metadata_before_validation(
+    tmp_path: Path,
+) -> None:
+    manifest_path, gui_plan_path = _write_contracts(tmp_path, class_names=("FakeEDF",))
+    seen: list[object] = []
+
+    class DatasetWithLegacyHardwareFilter(_FakeDataset):
+        def convert_to_bids(self, **kwargs: Any) -> Path:
+            root = super().convert_to_bids(**kwargs)
+            sidecar = root / "sub-1" / "eeg" / "sub-1_task-test_eeg.json"
+            sidecar.write_text(
+                json.dumps(
+                    {
+                        "TaskName": "test",
+                        "HardwareFilters": {
+                            "HardwareFilter": "0.01-200 Hz bandpass, 50 Hz notch"
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return root
+
+    def validator(root: Path) -> dict[str, Any]:
+        sidecar = next(root.rglob("*_eeg.json"))
+        value = json.loads(sidecar.read_text(encoding="utf-8"))["HardwareFilters"]
+        seen.append(value)
+        assert value == {
+            "HardwareFilter": {"Description": "0.01-200 Hz bandpass, 50 Hz notch"}
+        }
+        return _passed_validator(root)
+
+    result = run_materialization(
+        _inputs(
+            tmp_path,
+            manifest_path=manifest_path,
+            gui_plan_path=gui_plan_path,
+            dataset_factory=lambda name: DatasetWithLegacyHardwareFilter(
+                name, calls=[]
+            ),
+            bids_validator=validator,
+        )
+    )
+
+    assert result["status"] == "ready"
+    assert seen
 
 
 def test_materializer_downgrades_incomplete_head_montage_for_generic_converter(
