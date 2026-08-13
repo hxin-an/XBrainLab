@@ -1657,9 +1657,16 @@ def _validated_source_seed_root(
 
 
 def _copy_verified_source_seed(seed_root: Path, source_stage: Path) -> dict[str, Any]:
-    before_artifacts, before_revision = _hash_tree(seed_root)
+    seed_entries = [
+        child
+        for child in sorted(seed_root.iterdir(), key=lambda path: path.name)
+        if child.name != ".mne-config"
+    ]
+    before_artifacts, before_revision = _hash_tree(
+        seed_root, ignored_root_names=frozenset({".mne-config"})
+    )
     _require_source_artifacts(before_artifacts)
-    for child in sorted(seed_root.iterdir(), key=lambda path: path.name):
+    for child in seed_entries:
         target = source_stage / child.name
         if child.is_symlink():
             raise MaterializationContractError(
@@ -2016,13 +2023,19 @@ def _verified_formal_bids_mirror_oracle(
     }
 
 
-def _hash_tree(root: Path) -> tuple[list[dict[str, Any]], str]:
+def _hash_tree(
+    root: Path, *, ignored_root_names: frozenset[str] = frozenset()
+) -> tuple[list[dict[str, Any]], str]:
     canonical_root = root.resolve(strict=True)
     artifacts: list[dict[str, Any]] = []
     for directory, directory_names, file_names in os.walk(
         canonical_root, topdown=True, followlinks=False
     ):
         current = Path(directory)
+        if current == canonical_root:
+            directory_names[:] = [
+                name for name in directory_names if name not in ignored_root_names
+            ]
         admitted_directories: list[str] = []
         for name in sorted(directory_names):
             candidate = current / name

@@ -740,6 +740,9 @@ def test_materializer_independently_copies_and_seals_source_seed(
     seeded_file = seed_root / "download" / "prefetched.zip"
     seeded_file.parent.mkdir(parents=True)
     seeded_file.write_bytes(b"prefetched-upstream-bytes")
+    stale_config = seed_root / ".mne-config/.mne/mne-python.json"
+    stale_config.parent.mkdir(parents=True)
+    stale_config.write_text('{"MNE_DATA":"/stale/staging"}', encoding="utf-8")
     calls: list[dict[str, Any]] = []
 
     class SeedAwareDataset(_FakeDataset):
@@ -774,6 +777,12 @@ def test_materializer_independently_copies_and_seals_source_seed(
     assert (
         tmp_path / "source-cache/FakeEDF/download/prefetched.zip"
     ).read_bytes() == b"prefetched-upstream-bytes"
+    published_config = (
+        tmp_path / "source-cache/FakeEDF/.mne-config/.mne/mne-python.json"
+    )
+    assert not published_config.exists() or "/stale/staging" not in (
+        published_config.read_text(encoding="utf-8")
+    )
 
 
 def test_materializer_keeps_source_and_bids_event_codes_as_distinct_oracles(
