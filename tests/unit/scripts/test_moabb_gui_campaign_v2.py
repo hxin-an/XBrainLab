@@ -2108,6 +2108,69 @@ def test_import_modal_is_the_unique_progress_and_cancel_owner(qtbot) -> None:
     qtbot.waitUntil(lambda: not dialog.isVisible())
 
 
+def test_modal_wait_tracks_visible_loading_past_hidden_stale_active_modal(
+    qtbot,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stale Qt modal identity must not hide the real import progress owner."""
+    window = QMainWindow()
+    stale_subject_dialog = QDialog(window)
+    stale_subject_dialog.setObjectName("BidsSubjectSelectionDialog")
+    loading_dialog = DataInterpretationLoadingDialog(window)
+    loading_dialog.progress_bar.setProperty("operationId", "review-operation")
+    loading_dialog.progress_bar.setProperty("operationPhase", "running")
+    preview_dialog = QDialog(window)
+    preview_layout = QVBoxLayout(preview_dialog)
+    next_button = QPushButton("Next", preview_dialog)
+    next_button.setObjectName("DataImportNextButton")
+    next_button.setAccessibleName("Next: Load Labels")
+    next_button.clicked.connect(preview_dialog.accept)
+    preview_layout.addWidget(next_button)
+    for widget in (
+        window,
+        stale_subject_dialog,
+        loading_dialog,
+        preview_dialog,
+    ):
+        qtbot.addWidget(widget)
+    window.show()
+    stale_subject_dialog.hide()
+    loading_dialog.show()
+    monkeypatch.setattr(
+        QApplication,
+        "activeModalWidget",
+        lambda _self: stale_subject_dialog,
+    )
+    observed_progress: list[ProgressWaitEvidence] = []
+    preview_results: list[QDialog.DialogCode] = []
+
+    def open_nested_preview() -> None:
+        loading_dialog.accept()
+        QTimer.singleShot(250, preview_dialog.reject)
+        preview_results.append(REAL_QDIALOG_EXEC(preview_dialog))
+
+    QTimer.singleShot(125, open_nested_preview)
+    driver = GuiCampaignDriver(window, poll_interval_ms=5)
+
+    def click_nested_next(progress: ProgressWaitEvidence) -> None:
+        observed_progress.append(progress)
+        driver.click(VisibleControl.WIZARD_NEXT, timeout_seconds=0.0)
+
+    driver.wait_for_modal_interaction(
+        VisibleControl.WIZARD_NEXT,
+        click_nested_next,
+        timeout_seconds=1.0,
+        max_progress_silence_seconds=0.05,
+    )
+
+    assert len(observed_progress) == 1
+    assert observed_progress[0].operation_id == "review-operation"
+    assert observed_progress[0].heartbeat_count >= 1
+    assert observed_progress[0].max_progress_silence_seconds <= 0.05
+    assert preview_results == [QDialog.DialogCode.Accepted]
+    assert driver.clicks[-1].control is VisibleControl.WIZARD_NEXT
+
+
 def test_driver_waits_past_early_stage_and_captures_meaningful_progress(qtbot) -> None:
     window = QMainWindow()
     status = window.statusBar()
@@ -2754,7 +2817,13 @@ def test_import_action_and_subject_dialog_are_captured_on_distinct_surfaces() ->
     ]
 
 
-def test_import_journey_traverses_and_closes_synchronous_preview_exec(qtbot) -> None:
+def test_import_journey_traverses_and_closes_synchronous_preview_exec(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    qtbot,
+) -> None:
+    window = QWidget()
+    window.show()
     dialog = QDialog()
     layout = QVBoxLayout(dialog)
     next_button = QPushButton("Next", dialog)
@@ -2774,7 +2843,29 @@ def test_import_journey_traverses_and_closes_synchronous_preview_exec(qtbot) -> 
     confirm_layout.addWidget(confirm_button)
     qtbot.addWidget(dialog)
     qtbot.addWidget(confirm_dialog)
+    qtbot.addWidget(window)
     step = 0
+    first_mapping = [
+        {
+            "event_value": "stimulus",
+            "event_role": "trial",
+            "keep_event": True,
+            "use_as_class": True,
+            "class_name": "stale-preview",
+            "sources": ["events.tsv"],
+        }
+    ]
+    refreshed_mapping = [
+        {
+            "event_value": "stimulus",
+            "event_role": "trial",
+            "keep_event": True,
+            "use_as_class": True,
+            "class_name": "stimulus",
+            "sources": ["events.tsv"],
+        }
+    ]
+    refreshed_next.setProperty("eventClassMapping", refreshed_mapping)
 
     def advance() -> None:
         nonlocal step
@@ -2783,6 +2874,7 @@ def test_import_journey_traverses_and_closes_synchronous_preview_exec(qtbot) -> 
             next_button.setAccessibleName(f"Next: step {step + 1}")
             if step == 3:
                 next_button.setText("Refresh label preview")
+                next_button.setProperty("eventClassMapping", first_mapping)
             return
         dialog.accept()
 
@@ -2895,9 +2987,25 @@ def test_import_journey_traverses_and_closes_synchronous_preview_exec(qtbot) -> 
                 return object()
             return gui_driver.control(control, timeout_seconds=0.0)
 
+    driver = _SynchronousImportDriver()
+    collector = JourneyEvidenceCollector(
+        window=window,
+        driver=driver,  # type: ignore[arg-type]
+        artifact_root=tmp_path,
+    )
+    saved_surfaces: list[tuple[QWidget, str, Path]] = []
+
+    def save_widget(widget: QWidget, stem: str) -> Path:
+        path = tmp_path / "screenshots" / f"{stem}-{len(saved_surfaces)}.png"
+        saved_surfaces.append((widget, stem, path))
+        return path
+
+    monkeypatch.setattr(collector, "_save_widget", save_widget)
     journey = ProductRecommendedJourneyScaffold(
-        _SynchronousImportDriver(),  # type: ignore[arg-type]
+        driver,  # type: ignore[arg-type]
         mode="replay",
+        stage_observer=collector.record_stage,
+        visible_stage_observer=collector.capture_visible_stage,
     )
 
     journey.import_and_review(
@@ -2909,6 +3017,10 @@ def test_import_journey_traverses_and_closes_synchronous_preview_exec(qtbot) -> 
     assert step == 4
     assert dialog.result() == QDialog.DialogCode.Accepted
     assert confirm_dialog.result() == QDialog.DialogCode.Accepted
+    assert collector._sealed_evidence["review_event_class_mapping"] == refreshed_mapping
+    match_label_saves = [item for item in saved_surfaces if item[1] == "match_labels"]
+    assert [item[0] for item in match_label_saves] == [dialog, confirm_dialog]
+    assert collector.screenshots["match_labels"] == str(match_label_saves[-1][2])
     assert journey.observed_stage_order()[:5] == (
         "import_bids_folder",
         "select_subjects",

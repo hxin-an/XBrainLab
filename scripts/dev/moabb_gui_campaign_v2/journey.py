@@ -206,6 +206,7 @@ class ProductRecommendedJourneyScaffold:
                 raise DriverContractError(
                     "refreshed Match Labels still requires backend refresh"
                 )
+            self._capture_visible_stage("match_labels", replace=True)
             self.driver.click(VisibleControl.WIZARD_NEXT, timeout_seconds=30.0)
             confirm_import()
 

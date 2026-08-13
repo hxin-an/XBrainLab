@@ -1988,13 +1988,22 @@ class GuiCampaignDriver:
 
     def _visible_operation_progress(self) -> QWidget | None:
         app = QApplication.instance()
-        active_modal = app.activeModalWidget() if app is not None else None
-        expected_name = (
-            "DataImportLoadingProgress"
-            if active_modal is not None
-            and active_modal.objectName() == "DataImportLoadingDialog"
-            else "OwnedOperationProgress"
-        )
+        loading_progress_by_id: dict[int, QWidget] = {}
+        for root in app.topLevelWidgets() if app is not None else ():
+            if not isinstance(root, QWidget) or not root.isVisible():
+                continue
+            for widget in (root, *root.findChildren(QWidget)):
+                if (
+                    widget.objectName() == "DataImportLoadingProgress"
+                    and widget.isVisible()
+                ):
+                    loading_progress_by_id[id(widget)] = widget
+        loading_progress = list(loading_progress_by_id.values())
+        if len(loading_progress) > 1:
+            raise DriverContractError("DataImportLoadingProgress is ambiguous")
+        if loading_progress:
+            return loading_progress[0]
+        expected_name = "OwnedOperationProgress"
         matching = [
             widget
             for widget in self._candidate_widgets()
@@ -2005,16 +2014,13 @@ class GuiCampaignDriver:
         if not matching:
             return None
         progress = matching[0]
-        if expected_name == "OwnedOperationProgress":
-            phase = str(progress.property("operationPhase") or "").casefold()
-            if phase in {"pending", "running", "cancelling"}:
-                stage = str(progress.property("stage") or "").strip()
-                current_message = getattr(progress, "currentMessage", None)
-                message = (
-                    str(current_message() or "") if callable(current_message) else ""
-                )
-                if stage and stage not in message:
-                    return None
+        phase = str(progress.property("operationPhase") or "").casefold()
+        if phase in {"pending", "running", "cancelling"}:
+            stage = str(progress.property("stage") or "").strip()
+            current_message = getattr(progress, "currentMessage", None)
+            message = str(current_message() or "") if callable(current_message) else ""
+            if stage and stage not in message:
+                return None
         return progress
 
     @staticmethod

@@ -49,12 +49,10 @@ class JourneyEvidenceCollector:
                     "Epoch dialog did not expose the post-Apply event catalog"
                 )
         elif interaction.stage == "match_labels":
-            self._sealed_evidence["review_event_class_mapping"] = (
-                self._visible_mapping_rows(
-                    VisibleControl.WIZARD_NEXT,
-                    "eventClassMapping",
+            if "review_event_class_mapping" not in self._sealed_evidence:
+                raise DriverContractError(
+                    "Match Labels dialog did not expose its event/class mapping"
                 )
-            )
         elif interaction.stage == "evaluation":
             self._sealed_evidence["evaluation_metrics"] = self.evaluation_metrics()
             self._sealed_evidence["evaluation_output_numeric_summary"] = (
@@ -109,6 +107,16 @@ class JourneyEvidenceCollector:
 
     def capture_visible_stage(self, stage: str, *, replace: bool = False) -> None:
         """Capture the foreground modal/window before its production click."""
+        if stage == "match_labels":
+            # The preview is owned by synchronous QDialog.exec().  Seal its
+            # public mapping while that dialog is still visible; record_stage
+            # runs only after Confirm has closed the nested event loop.
+            self._sealed_evidence["review_event_class_mapping"] = (
+                self._visible_mapping_rows(
+                    VisibleControl.WIZARD_NEXT,
+                    "eventClassMapping",
+                )
+            )
         if stage == "epoch":
             # Read the detached applied handoff while the real Epoch dialog is
             # visible, before confirmation mutates the working dataset.
