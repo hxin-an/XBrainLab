@@ -136,6 +136,20 @@ class DataInterpretationApplyService:
 
         return updated
 
+    def detached_copy(
+        self,
+        dataset_controller: DatasetInterpretationPort,
+        *,
+        record_label_import: LabelImportRecorder,
+    ) -> DataInterpretationApplyService:
+        """Create the same apply policy over a detached Dataset holder."""
+        return type(self)(
+            dataset_controller,
+            data_filename=self._data_filename,
+            data_filepath=self._data_filepath,
+            record_label_import=record_label_import,
+        )
+
     def bind_source_content_identity(
         self,
         candidate: InterpretationCandidate,

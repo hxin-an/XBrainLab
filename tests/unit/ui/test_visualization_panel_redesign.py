@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
@@ -69,6 +70,51 @@ def _make_panel(qtbot, training_controller=None, parent=None, controller=None):
     fallback_runtime.get_view_publication = MagicMock(return_value=None)
     fallback_runtime.execute = MagicMock(return_value=None)
     fallback_runtime.get_saliency_render = MagicMock(return_value=None)
+    fallback_runtime.begin_saliency_render = MagicMock(
+        side_effect=lambda _request: SimpleNamespace(operation_id="render-operation")
+    )
+    fallback_runtime.prepare_saliency_render = MagicMock(
+        side_effect=lambda operation_id, request: replace(
+            _render_publication_for_request(None, request),
+            operation_id=operation_id,
+        )
+    )
+    fallback_runtime.prepare_saliency_render_variants = MagicMock(
+        side_effect=lambda operation_id, request, *, include_normalized: (
+            replace(
+                _render_publication_for_request(
+                    None,
+                    replace(request, normalize=False),
+                ),
+                operation_id=operation_id,
+            ),
+            (
+                replace(
+                    _render_publication_for_request(
+                        None,
+                        replace(request, normalize=True),
+                    ),
+                    operation_id=operation_id,
+                )
+                if include_normalized
+                else None
+            ),
+        )
+    )
+    fallback_runtime.enter_saliency_render_commit = MagicMock(return_value=True)
+    fallback_runtime.finish_saliency_render = MagicMock()
+    fallback_runtime.get_owned_operation = MagicMock(
+        return_value=SimpleNamespace(
+            phase="running",
+            completed=None,
+            total=None,
+            indeterminate=True,
+            cancel_requested=False,
+            cancellable=True,
+            stage="Rendering saliency canvas",
+        )
+    )
+    fallback_runtime.cancel_owned_operation = MagicMock(return_value=True)
 
     with (
         patch(
@@ -140,6 +186,108 @@ def test_visualization_selectors_have_visible_dropdown_affordance(qtbot):
         assert "chevron-down.svg" in style
 
 
+def test_visualization_shutdown_cancels_active_explicit_saliency(qtbot, monkeypatch):
+    panel, _ = _make_panel(qtbot)
+    panel._active_saliency_operation_id = "saliency-operation-1"
+    cancelled: list[tuple[object, str, object]] = []
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.cancel_application_operation",
+        lambda context, operation_id, *, runtime=None: cancelled.append(
+            (context, operation_id, runtime)
+        )
+        or True,
+    )
+
+    panel.begin_native_render_shutdown()
+
+    assert cancelled == [
+        (panel, "saliency-operation-1", panel._action_port),
+    ]
+
+
+def test_saliency_render_worker_start_failure_terminalizes_and_allows_retry(
+    qtbot,
+    monkeypatch,
+) -> None:
+    panel, _ = _make_panel(qtbot)
+    _publish_panel_state(
+        panel,
+        _application_query_with_saliency_state(
+            PostTrainingSaliencyStatus.idle(),
+            _complete_coverage(),
+        ),
+    )
+    task = panel._current_saliency_render_task()
+    assert task is not None
+    runtime = cast(Any, panel._query_port)
+    phases: dict[str, str] = {}
+    operation_ids = iter(("render-start-failed", "render-retry"))
+
+    def begin_operation(_request):
+        operation_id = next(operation_ids)
+        phases[operation_id] = "pending"
+        return SimpleNamespace(operation_id=operation_id)
+
+    def finish_operation(operation_id, phase, *, message=""):
+        del message
+        phases[operation_id] = phase
+
+    def operation_snapshot(operation_id):
+        return SimpleNamespace(
+            phase=phases[operation_id],
+            completed=None,
+            total=None,
+            indeterminate=True,
+            cancel_requested=False,
+            cancellable=phases[operation_id] not in {"failed", "cancelled"},
+            stage="Rendering saliency canvas",
+        )
+
+    runtime.begin_saliency_render.side_effect = begin_operation
+    runtime.finish_saliency_render.side_effect = finish_operation
+    runtime.get_owned_operation.side_effect = operation_snapshot
+    first_worker = MagicMock()
+    first_worker.signals = SimpleNamespace(
+        result=MagicMock(),
+        error=MagicMock(),
+        finished=MagicMock(),
+    )
+    first_worker.start.side_effect = RuntimeError("thread start failed")
+    retry_worker = MagicMock()
+    retry_worker.signals = SimpleNamespace(
+        result=MagicMock(),
+        error=MagicMock(),
+        finished=MagicMock(),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.PythonThreadWorker",
+        MagicMock(side_effect=(first_worker, retry_worker)),
+    )
+    current_widget = _current_mock_widget(panel)
+    current_widget.show_error.reset_mock()
+
+    panel._request_saliency_render(task)
+
+    assert phases["render-start-failed"] == "failed"
+    assert panel._saliency_render_worker is None
+    assert panel._saliency_render_active_task is None
+    assert panel.native_render_work_idle()
+    assert panel._saliency_operation_presenter.active_operation_id is None
+    current_widget.show_error.assert_called_once_with(
+        "Visualization could not be loaded. Refresh Visualization and try again."
+    )
+
+    panel._request_saliency_render(task)
+
+    retry_worker.start.assert_called_once_with()
+    assert panel._saliency_render_worker is retry_worker
+    assert panel._saliency_render_active_task is not None
+    assert panel._saliency_render_active_task.operation_id == "render-retry"
+    panel._on_saliency_render_finished(retry_worker)
+    assert phases["render-retry"] == "cancelled"
+    assert panel.native_render_work_idle()
+
+
 def _make_eval_record_without_saliency():
     record = MagicMock()
     record.gradient = {}
@@ -172,9 +320,11 @@ def _complete_coverage(
 
 def _post_training_saliency_status(
     phase: PostTrainingSaliencyPhase,
+    *,
+    generation: int = 3,
 ) -> PostTrainingSaliencyStatus:
     pending = PostTrainingSaliencyStatus.pending(
-        generation=3,
+        generation=generation,
         run=TrainingRunIdentity(trainer_id="trainer-ui", run_id=1),
         training_generation=7,
         methods=("Gradient", "Gradient * Input"),
@@ -184,12 +334,12 @@ def _post_training_saliency_status(
     source = pending
     if phase is PostTrainingSaliencyPhase.SUCCEEDED:
         source = pending.transition(
-            generation=3,
+            generation=generation,
             phase=PostTrainingSaliencyPhase.RUNNING,
             message="Automatic saliency is being computed.",
         )
     return source.transition(
-        generation=3,
+        generation=generation,
         phase=phase,
         error_code="computation_failed"
         if phase is PostTrainingSaliencyPhase.FAILED
@@ -283,6 +433,36 @@ def _render_publication_for_request(_panel, request, **_kwargs):
         training_generation=4,
         data=data,
     )
+
+
+def _prepare_render_operation(_panel, operation_id, request, **_kwargs):
+    return replace(
+        _render_publication_for_request(_panel, request),
+        operation_id=operation_id,
+    )
+
+
+def _prepare_render_variants(
+    _panel,
+    operation_id,
+    request,
+    *,
+    include_normalized,
+    **_kwargs,
+):
+    raw = replace(
+        _render_publication_for_request(_panel, replace(request, normalize=False)),
+        operation_id=operation_id,
+    )
+    normalized = (
+        replace(
+            _render_publication_for_request(_panel, replace(request, normalize=True)),
+            operation_id=operation_id,
+        )
+        if include_normalized
+        else None
+    )
+    return raw, normalized
 
 
 def _result_with_run_coverages(
@@ -596,12 +776,37 @@ def test_spectrogram_normalize_uses_raw_publication_and_display_transform(
     )
     requests = []
 
-    def publish(_panel, request, **_kwargs):
+    def publish(
+        _panel,
+        operation_id,
+        request,
+        *,
+        include_normalized,
+        **_kwargs,
+    ):
         requests.append(request)
-        return _render_publication_for_request(_panel, request)
+        raw = replace(
+            _render_publication_for_request(
+                _panel,
+                replace(request, normalize=False),
+            ),
+            operation_id=operation_id,
+        )
+        normalized = (
+            replace(
+                _render_publication_for_request(
+                    _panel,
+                    replace(request, normalize=True),
+                ),
+                operation_id=operation_id,
+            )
+            if include_normalized
+            else None
+        )
+        return raw, normalized
 
     monkeypatch.setattr(
-        "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
+        "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
         publish,
     )
     panel.abs_check.setChecked(True)
@@ -619,7 +824,7 @@ def test_spectrogram_normalize_uses_raw_publication_and_display_transform(
     )
 
     assert requests
-    assert len(requests) == raw_request_count
+    assert len(requests) == raw_request_count + 1
     assert requests[-1].normalize is False
     publication, absolute = spectrogram.update_plot.call_args.args
     assert publication.data.normalized is False
@@ -924,8 +1129,8 @@ def test_visualization_panel_dispatches_default_run_when_fold_changes(qtbot):
     current_widget.update_plot.reset_mock()
 
     with patch(
-        "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
-        side_effect=_render_publication_for_request,
+        "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
+        side_effect=_prepare_render_variants,
     ):
         panel.plan_combo.setCurrentIndex(2)
         qtbot.waitUntil(
@@ -962,8 +1167,8 @@ def test_visualization_panel_dispatches_plot_update_to_active_tab(qtbot):
     current_widget.update_plot.reset_mock()
 
     with patch(
-        "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
-        side_effect=_render_publication_for_request,
+        "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
+        side_effect=_prepare_render_variants,
     ):
         panel.on_update()
         qtbot.waitUntil(
@@ -1036,8 +1241,8 @@ def test_visualization_panel_filters_methods_by_selected_run_coverage(qtbot):
     )
     panel._application_summary_dirty = False
     with patch(
-        "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
-        side_effect=_render_publication_for_request,
+        "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
+        side_effect=_prepare_render_variants,
     ):
         panel.on_update()
         qtbot.waitUntil(panel.native_render_work_idle, timeout=3000)
@@ -1053,8 +1258,8 @@ def test_visualization_panel_filters_methods_by_selected_run_coverage(qtbot):
     assert panel.method_combo.currentText() == "Gradient * Input"
 
     with patch(
-        "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
-        side_effect=_render_publication_for_request,
+        "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
+        side_effect=_prepare_render_variants,
     ):
         panel.tabs.setCurrentIndex(3)
         gradient_item = model.item(panel.method_combo.findText("Gradient"))
@@ -1290,8 +1495,8 @@ def test_visualization_panel_partial_coverage_reports_running_not_no_data(qtbot)
     current_widget.show_message.reset_mock()
 
     with patch(
-        "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
-        side_effect=_render_publication_for_request,
+        "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
+        side_effect=_prepare_render_variants,
     ):
         panel.on_update()
 
@@ -1332,8 +1537,8 @@ def test_visualization_panel_renders_complete_coverage_after_background_failure(
     current_widget.update_plot.reset_mock()
 
     with patch(
-        "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
-        side_effect=_render_publication_for_request,
+        "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
+        side_effect=_prepare_render_variants,
     ):
         panel.on_update()
         qtbot.waitUntil(
@@ -1540,6 +1745,116 @@ def test_visualization_panel_configured_saliency_requires_explicit_action(
     assert isinstance(command, SaliencyCommand)
     assert command.method == "SmoothGrad"
     assert command.params == configured_params
+
+
+def test_explicit_saliency_busy_state_keeps_visible_cancel_operable(
+    qtbot,
+    monkeypatch,
+) -> None:
+    class BusyMainWindow(QWidget):
+        def __init__(self) -> None:
+            super().__init__()
+            self.study = Study()
+
+        def set_busy(self, busy: bool) -> None:
+            self.setEnabled(not busy)
+
+    window = BusyMainWindow()
+    qtbot.addWidget(window)
+    panel, _ctrl = _make_panel(qtbot, parent=window)
+    _publish_panel_state(
+        panel,
+        _result_with_run_coverages(
+            SaliencyRunCoverageSnapshot(
+                plan_index=0,
+                run_index=0,
+                model_name="EEGNet",
+                methods=[SaliencyMethodCoverageSnapshot(method="Gradient")],
+            ),
+        ),
+    )
+    panel._show_saliency_action_bar("Gradient")
+    commands: list[object] = []
+
+    def fake_execute_async(_panel, command, **kwargs) -> bool:
+        commands.append(command)
+        busy_target = kwargs["busy_target"]
+        busy_target.set_busy(True)
+        kwargs["on_operation_started"]("saliency-operation-1")
+        return True
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+        fake_execute_async,
+    )
+    cancelled: list[str] = []
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.cancel_application_operation",
+        lambda _context, operation_id, *, runtime=None: cancelled.append(operation_id)
+        or True,
+    )
+
+    panel.compute_saliency_btn.click()
+
+    assert len(commands) == 1
+    assert isinstance(commands[0], SaliencyCommand)
+    assert window.isEnabled()
+    assert not panel.cancel_saliency_btn.isHidden()
+    assert panel.cancel_saliency_btn.isEnabled()
+    assert not panel.plan_combo.isEnabled()
+    assert not panel.run_combo.isEnabled()
+    assert not panel.method_combo.isEnabled()
+    assert not panel.sidebar.btn_montage.isEnabled()
+    assert not panel.sidebar.btn_saliency.isEnabled()
+
+    panel.cancel_saliency_btn.click()
+
+    assert cancelled == ["saliency-operation-1"]
+    panel.set_busy(False)
+    assert not panel.plan_combo.isEnabled()
+
+    panel._finish_saliency_compute_cancelled(
+        attempt_key=None,
+        current_widget=panel.tab_map,
+    )
+
+    assert panel.plan_combo.isEnabled()
+    assert panel.run_combo.isEnabled()
+    assert panel.method_combo.isEnabled()
+    assert panel.sidebar.btn_montage.isEnabled()
+    assert panel.sidebar.btn_saliency.isEnabled()
+
+
+def test_saliency_busy_state_tolerates_minimal_sidebar(qtbot) -> None:
+    panel, _ctrl = _make_panel(qtbot)
+    full_sidebar = panel.sidebar
+    panel.sidebar = SimpleNamespace()
+    try:
+        panel.set_busy(True)
+
+        assert not panel.plan_combo.isEnabled()
+        assert panel.cancel_saliency_btn.isEnabled() is False
+
+        panel.set_busy(False)
+
+        assert panel.plan_combo.isEnabled()
+    finally:
+        panel.sidebar = full_sidebar
+
+
+def test_unowned_saliency_render_terminalization_is_a_noop(
+    qtbot,
+    monkeypatch,
+) -> None:
+    panel, _ctrl = _make_panel(qtbot)
+    finish = MagicMock(return_value=True)
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.finish_saliency_render_operation",
+        finish,
+    )
+
+    assert panel._finish_render_operation("", "cancelled") is False
+    finish.assert_not_called()
 
 
 def test_visualization_panel_converts_stored_saliency_params_before_compute(
@@ -1879,6 +2194,137 @@ def test_stale_saliency_compute_requests_settings_review(qtbot):
     current_widget.show_error.assert_not_called()
 
 
+def test_scheduled_saliency_result_keeps_visible_compute_state_busy(qtbot):
+    panel, _ctrl = _make_panel(qtbot)
+    panel._saliency_compute_in_progress = True
+    panel._active_saliency_operation_id = "saliency-operation-1"
+    result = CommandResult.success_result(
+        command_name="saliency",
+        message="Saliency computation scheduled.",
+        state=ApplicationStateSnapshot.empty(),
+        changed_state=ChangedState(),
+        diagnostics={
+            "action": "schedule",
+            "post_training_saliency_schedule": {
+                "status": {"generation": 4},
+            },
+        },
+    )
+    panel._active_saliency_minimum_generation = 4
+
+    outcome = panel._on_lazy_saliency_configured(result)
+
+    assert outcome.status is InteractionStatus.ACCEPTED
+    assert panel._saliency_compute_in_progress is True
+    assert panel._active_saliency_operation_id == "saliency-operation-1"
+    assert panel._active_saliency_generation == 4
+    assert panel.compute_saliency_btn.text() == "Computing..."
+
+
+def test_terminal_saliency_publication_releases_visible_compute_state(qtbot):
+    panel, _ctrl = _make_panel(qtbot)
+    panel._saliency_compute_in_progress = True
+    panel._active_saliency_operation_id = "saliency-operation-1"
+    panel._active_saliency_generation = 3
+    result = _application_query_with_saliency_state(
+        _post_training_saliency_status(PostTrainingSaliencyPhase.SUCCEEDED),
+        _complete_coverage(),
+    )
+    assert isinstance(result.state, ApplicationStateSnapshot)
+    publication = ApplicationViewStore(
+        result.state,
+        TrainingReadBoundary.no_trainer(),
+    ).read()
+
+    assert panel._accept_application_publication(publication)
+
+    assert panel._saliency_compute_in_progress is False
+    assert panel._active_saliency_operation_id is None
+    assert panel.compute_saliency_btn.text() == "Compute Saliency"
+
+
+def test_old_terminal_does_not_release_new_saliency_operation(qtbot):
+    panel, _ctrl = _make_panel(qtbot)
+    panel._saliency_compute_in_progress = True
+    panel._active_saliency_minimum_generation = 4
+    panel._bind_saliency_operation("saliency-operation-new")
+    assert panel.compute_saliency_btn.property("operationId") == (
+        "saliency-operation-new"
+    )
+    assert panel.compute_saliency_btn.property("operationPhase") == "pending"
+    old_result = _application_query_with_saliency_state(
+        _post_training_saliency_status(
+            PostTrainingSaliencyPhase.SUCCEEDED,
+            generation=3,
+        ),
+        _complete_coverage(),
+    )
+    assert isinstance(old_result.state, ApplicationStateSnapshot)
+    old_publication = ApplicationViewStore(
+        old_result.state,
+        TrainingReadBoundary.no_trainer(),
+    ).read()
+
+    assert panel._accept_application_publication(old_publication)
+
+    assert panel._saliency_compute_in_progress is True
+    assert panel._active_saliency_operation_id == "saliency-operation-new"
+    assert panel.compute_saliency_btn.property("operationPhase") == "pending"
+    assert panel._saliency_operation_presenter.active_operation_id == (
+        "saliency-operation-new"
+    )
+    assert panel.cancel_saliency_btn.isEnabled()
+
+    new_result = _application_query_with_saliency_state(
+        _post_training_saliency_status(
+            PostTrainingSaliencyPhase.SUCCEEDED,
+            generation=4,
+        ),
+        _complete_coverage(),
+    )
+    assert isinstance(new_result.state, ApplicationStateSnapshot)
+    new_publication = ApplicationViewStore(
+        new_result.state,
+        TrainingReadBoundary.no_trainer(),
+    ).read()
+
+    assert panel._accept_application_publication(new_publication)
+    assert panel._saliency_compute_in_progress is False
+    assert panel._active_saliency_operation_id is None
+    assert panel.compute_saliency_btn.property("operationPhase") == "completed"
+
+
+def test_terminal_saliency_publication_wins_over_late_schedule_receipt(qtbot):
+    panel, _ctrl = _make_panel(qtbot)
+    panel._saliency_compute_in_progress = True
+    panel._active_saliency_operation_id = "saliency-operation-1"
+    panel._active_saliency_minimum_generation = 3
+    terminal = _application_query_with_saliency_state(
+        _post_training_saliency_status(PostTrainingSaliencyPhase.SUCCEEDED),
+        _complete_coverage(),
+    )
+    assert isinstance(terminal.state, ApplicationStateSnapshot)
+    publication = ApplicationViewStore(
+        terminal.state,
+        TrainingReadBoundary.no_trainer(),
+    ).read()
+    scheduled = CommandResult.success_result(
+        command_name="saliency",
+        message="Saliency computation scheduled.",
+        state=terminal.state,
+        changed_state=ChangedState(),
+        diagnostics={"action": "schedule"},
+    )
+
+    assert panel._accept_application_publication(publication)
+    outcome = panel._on_lazy_saliency_configured(scheduled)
+
+    assert outcome.status is InteractionStatus.COMPLETED
+    assert panel._saliency_compute_in_progress is False
+    assert panel._active_saliency_operation_id is None
+    assert panel.compute_saliency_btn.text() == "Compute Saliency"
+
+
 def test_visualization_panel_unconfigured_saliency_requires_explicit_action(
     qtbot,
     monkeypatch,
@@ -1960,6 +2406,10 @@ def test_visualization_panel_unconfigured_saliency_requires_explicit_action(
     )
     assert async_commands == []
     assert panel.saliency_action_bar.isVisibleTo(panel)
+    assert panel.saliency_action_title.text() == "Saliency not computed yet"
+    assert panel.saliency_action_detail.text() == (
+        "Use Compute Saliency to prepare Gradient + Gradient * Input."
+    )
     assert panel.compute_saliency_btn.text() == "Compute Saliency"
 
     panel.compute_saliency_btn.click()
@@ -2917,8 +3367,8 @@ def test_visualization_panel_uses_typed_render_boundary(
         ),
     )
     monkeypatch.setattr(
-        "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
-        _render_publication_for_request,
+        "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
+        _prepare_render_variants,
     )
 
     assert panel.plan_combo.count() == 2
@@ -3133,17 +3583,26 @@ def test_visualization_panel_uses_typed_render_publication_without_live_getters(
     )
     render_requests = []
 
-    def get_render(_panel, request, **_kwargs):
+    def get_render(
+        _panel,
+        operation_id,
+        request,
+        *,
+        include_normalized,
+        **_kwargs,
+    ):
         render_requests.append(request)
-        return SaliencyRenderPublication(
-            request=request,
+        raw = SaliencyRenderPublication(
+            request=replace(request, normalize=False),
             generation=request.publication_generation,
             training_generation=4,
             data=render_data,
+            operation_id=operation_id,
         )
+        return raw, None
 
     monkeypatch.setattr(
-        "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
+        "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
         get_render,
         raising=False,
     )
@@ -3178,6 +3637,7 @@ def test_visualization_panel_uses_typed_render_publication_without_live_getters(
             generation=source_publication.generation,
             training_generation=4,
             data=render_data,
+            operation_id="render-operation",
         ),
         False,
     )

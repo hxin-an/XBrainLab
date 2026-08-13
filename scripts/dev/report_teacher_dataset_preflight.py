@@ -339,6 +339,21 @@ def run_openneuro_p300_case(repo_root: Path = ROOT) -> dict[str, Any]:
             result["stages"]["apply"] = _stage(applied)
             if not applied.ok:
                 return _failed(result, "apply", applied.message)
+            background_ready = active_service.wait_for_background_tasks(timeout=30.0)
+            result["stages"]["post_apply_background"] = {
+                "ok": background_ready,
+                "message": (
+                    "Application background publications are stable."
+                    if background_ready
+                    else "Application background publications did not become idle."
+                ),
+            }
+            if not background_ready:
+                return _failed(
+                    result,
+                    "post_apply_background",
+                    "Application background publications did not become idle.",
+                )
 
             scan_payload = _scan_payload(scan)
             label_apply = applied.diagnostics.get("label_apply", {})

@@ -142,6 +142,89 @@ def test_external_nested_arbitrary_fdt_reference_uses_exact_sidecar_size(
     assert detail["materializes_signal_data"] is False
 
 
+def test_bids_external_fdt_resolution_uses_index_without_directory_walk(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from XBrainLab.backend.application.bids_dataset_index import (
+        build_bids_dataset_index,
+    )
+
+    eeg_dir = tmp_path / "sub-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    (tmp_path / "dataset_description.json").write_text(
+        '{"Name":"eeglab","BIDSVersion":"1.11.0"}',
+        encoding="utf-8",
+    )
+    fdt_path = eeg_dir / "sub-01_task-rest_eeg.fdt"
+    fdt_path.write_bytes(b"\0" * (2 * 20 * 4))
+    set_path = eeg_dir / "sub-01_task-rest_eeg.set"
+    savemat(
+        set_path,
+        {
+            "EEG": {
+                "data": fdt_path.name,
+                "nbchan": 2.0,
+                "pnts": 20.0,
+                "trials": 1.0,
+            }
+        },
+        do_compression=True,
+    )
+    build_bids_dataset_index(tmp_path)
+
+    def _forbid_rewalk(_path: Path):
+        pytest.fail("EEGLAB dependency resolver walked an indexed BIDS directory")
+
+    monkeypatch.setattr(Path, "iterdir", _forbid_rewalk)
+
+    inspection = inspect_eeglab_set_header(set_path)
+
+    assert inspection.external_data_file == str(fdt_path.resolve())
+
+
+def test_nested_bids_eeglab_falls_back_when_parent_index_does_not_own_recording(
+    tmp_path: Path,
+) -> None:
+    from XBrainLab.backend.application.bids_dataset_index import (
+        build_bids_dataset_index,
+    )
+
+    parent_root = tmp_path / "parent-bids"
+    nested_root = parent_root / "sourcedata" / "nested-bids"
+    eeg_dir = nested_root / "sub-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    (parent_root / "dataset_description.json").write_text(
+        '{"Name":"parent","BIDSVersion":"1.11.0"}',
+        encoding="utf-8",
+    )
+    (nested_root / "dataset_description.json").write_text(
+        '{"Name":"nested","BIDSVersion":"1.11.0"}',
+        encoding="utf-8",
+    )
+    fdt_path = eeg_dir / "sub-01_task-rest_eeg.fdt"
+    fdt_path.write_bytes(b"\0" * (2 * 20 * 4))
+    set_path = eeg_dir / "sub-01_task-rest_eeg.set"
+    savemat(
+        set_path,
+        {
+            "EEG": {
+                "data": fdt_path.name,
+                "nbchan": 2.0,
+                "pnts": 20.0,
+                "trials": 1.0,
+            }
+        },
+        do_compression=True,
+    )
+    parent_index = build_bids_dataset_index(parent_root)
+    assert parent_index.contains_recording(set_path) is False
+
+    inspection = inspect_eeglab_set_header(set_path)
+
+    assert inspection.external_data_file == str(fdt_path.resolve())
+
+
 @pytest.mark.parametrize(
     ("sidecar_bytes", "reason_code", "partial_raw_bytes"),
     [

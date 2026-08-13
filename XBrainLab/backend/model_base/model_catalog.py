@@ -11,6 +11,7 @@ import importlib
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
+from threading import RLock
 from types import ModuleType
 from typing import Any
 
@@ -20,6 +21,7 @@ from XBrainLab.backend.model_catalog_contract import (
 )
 
 ModelFactory = Callable[..., Any]
+_BRAINCDECODE_MATPLOTLIB_STYLE_LOCK = RLock()
 
 
 @dataclass(frozen=True, slots=True)
@@ -375,15 +377,20 @@ def _braindecode_specs() -> tuple[ModelSpec, ...]:
 
 def _braindecode_factory(class_name: str) -> ModelFactory:
     def build_model(**kwargs: Any) -> Any:
-        models = importlib.import_module("braindecode.models")
-        model_class = getattr(models, class_name)
-        required = {
-            "n_outputs": kwargs.pop("n_classes"),
-            "n_chans": kwargs.pop("channels"),
-            "n_times": kwargs.pop("samples"),
-            "sfreq": kwargs.pop("sfreq"),
-        }
-        return model_class(**required, **kwargs)
+        # Braindecode imports visualization helpers that apply a global
+        # Seaborn/Matplotlib theme. Model construction is a backend operation;
+        # it must not silently change geometry and fonts in later product plots.
+        matplotlib = importlib.import_module("matplotlib")
+        with _BRAINCDECODE_MATPLOTLIB_STYLE_LOCK, matplotlib.rc_context():
+            models = importlib.import_module("braindecode.models")
+            model_class = getattr(models, class_name)
+            required = {
+                "n_outputs": kwargs.pop("n_classes"),
+                "n_chans": kwargs.pop("channels"),
+                "n_times": kwargs.pop("samples"),
+                "sfreq": kwargs.pop("sfreq"),
+            }
+            return model_class(**required, **kwargs)
 
     build_model.__name__ = f"Braindecode{class_name}"
     return build_model

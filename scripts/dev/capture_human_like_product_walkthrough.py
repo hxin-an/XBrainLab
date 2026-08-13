@@ -2281,7 +2281,12 @@ def _assert_step_navigation_rendered(widget: QWidget, screenshot: Path) -> None:
         "Confirm and Import",
         "Apply Remap",
     }
-    if not allowed_primary or primary.objectName() != "DataImportPrimaryButton":
+    expected_primary_name = (
+        "DataImportNextButton"
+        if primary.text().startswith("Next: ")
+        else "DataImportConfirmButton"
+    )
+    if not allowed_primary or primary.objectName() != expected_primary_name:
         raise RuntimeError(
             "Import Review capture has an invalid or stale primary action."
         )

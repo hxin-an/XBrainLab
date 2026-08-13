@@ -12,6 +12,11 @@ from dataclasses import field as dc_field
 from pathlib import Path
 from typing import Any, cast
 
+from .data_interpretation_parsed_cache import (
+    ParsedContentTooLargeError,
+    parsed_delimited_table,
+    parsed_json_value,
+)
 from .data_interpretation_path_identity import normalized_path_identity
 
 SAFE = "safe"
@@ -436,12 +441,17 @@ def _read_tsv_rows(path: Path) -> list[dict[str, str]]:
     if not path.exists():
         return []
     try:
-        with path.open("r", encoding="utf-8-sig", newline="") as handle:
-            reader = csv.DictReader(handle, delimiter="\t")
-            return [
-                {str(key): str(value or "") for key, value in row.items() if key}
-                for row in reader
-            ]
+        return parsed_delimited_table(path, delimiter="\t").dict_rows()
+    except ParsedContentTooLargeError:
+        try:
+            with path.open("r", encoding="utf-8-sig", newline="") as handle:
+                reader = csv.DictReader(handle, delimiter="\t")
+                return [
+                    {str(key): str(value or "") for key, value in row.items() if key}
+                    for row in reader
+                ]
+        except (OSError, UnicodeDecodeError, csv.Error):
+            return []
     except (OSError, UnicodeDecodeError, csv.Error):
         return []
 
@@ -452,13 +462,28 @@ def _read_bids_dataset_description(
 ) -> tuple[dict[str, Any], str]:
     if not path.is_file():
         return {}, "dataset_description.json is missing from the selected BIDS root."
-    encoded, read_issue = budget.read(path)
-    if encoded is None:
-        return {}, read_issue
     try:
-        payload = json.loads(encoded.decode("utf-8-sig"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        file_bytes = max(int(path.stat().st_size), 0)
+    except OSError:
+        return {}, f"{path.name} could not be read."
+    if file_bytes > budget.remaining_bytes:
+        budget.exhausted = True
+        return {}, (
+            f"{path.name} exceeds the bounded discovery limit of "
+            f"{budget.limit_bytes} bytes (the shared BIDS metadata byte budget)."
+        )
+    try:
+        payload, _content_key = parsed_json_value(
+            path,
+            parser_id="bids-dataset-description",
+            schema_version=1,
+        )
+    except OSError:
+        return {}, f"{path.name} could not be read."
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        budget.bytes_read += file_bytes
         return {}, "dataset_description.json is not valid JSON."
+    budget.bytes_read += file_bytes
     if not isinstance(payload, dict):
         return {}, "dataset_description.json must contain a JSON object."
     missing_fields = [

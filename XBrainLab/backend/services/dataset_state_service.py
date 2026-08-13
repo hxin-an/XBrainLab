@@ -4,13 +4,68 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from copy import copy
+from dataclasses import dataclass
 from math import isfinite
 from threading import RLock
 from typing import Any, Protocol
 
+from XBrainLab.backend.application.owned_work import (
+    owned_work_checkpoint,
+    owned_work_commit_boundary,
+)
 from XBrainLab.backend.exceptions import FileCorruptedError, UnsupportedFormatError
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.utils.runtime_diagnostics import collect_runtime_diagnostics
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedDatasetImport:
+    """Detached Raw holders loaded without publishing into the active Study."""
+
+    paths: tuple[str, ...]
+    loaded_data: tuple[Any, ...]
+    errors: tuple[str, ...] = ()
+
+    @property
+    def success_count(self) -> int:
+        return len(self.loaded_data)
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedChannelSelection:
+    """Detached selected Raw holders and undo backup for one loaded identity."""
+
+    source_identity: tuple[int, ...]
+    selected_data: tuple[Any, ...]
+    backup_data: tuple[Any, ...]
+
+    def __post_init__(self) -> None:
+        if not self.source_identity:
+            raise ValueError("Channel selection requires loaded EEG data.")
+        if len(self.source_identity) != len(self.selected_data) or len(
+            self.source_identity
+        ) != len(self.backup_data):
+            raise ValueError("Prepared channel selection changed recording count.")
+
+
+class _DetachedInterpretationStudy:
+    """Minimal private holder used while metadata and labels are prepared."""
+
+    def __init__(self, loaded_data: Sequence[Any]) -> None:
+        self.loaded_data_list = list(loaded_data)
+        self.preprocessed_data_list = list(loaded_data)
+        self.epoch_data = None
+        self.datasets: list[Any] = []
+        self.dataset_generator = None
+        self.dataset_locked = False
+
+    def reset_preprocess(self, force_update: bool = False) -> None:
+        del force_update
+        self.preprocessed_data_list = list(self.loaded_data_list)
+        self.epoch_data = None
+        self.datasets = []
+        self.dataset_generator = None
+        self.dataset_locked = False
 
 
 class DatasetLoadedDataReadPort(Protocol):
@@ -23,6 +78,15 @@ class DatasetInterpretationPort(DatasetLoadedDataReadPort, Protocol):
     """Raw import and label operations used by interpretation commands."""
 
     def import_files(self, filepaths: Sequence[str]) -> tuple[int, list[str]]: ...
+    def prepare_replacement_import(
+        self,
+        filepaths: Sequence[str],
+    ) -> PreparedDatasetImport: ...
+    def commit_prepared_import(self, prepared: PreparedDatasetImport) -> None: ...
+    def detached_interpretation_service(
+        self,
+        prepared: PreparedDatasetImport,
+    ) -> DatasetInterpretationPort: ...
     def clean_dataset(self) -> None: ...
     def apply_labels_batch(
         self,
@@ -45,6 +109,16 @@ class DatasetChannelSelectionPort(Protocol):
     """Raw channel-selection mutation used by preprocess commands."""
 
     def apply_channel_selection(self, selected_channels: Sequence[str]) -> bool: ...
+    def prepare_channel_selection(
+        self,
+        selected_channels: Sequence[str],
+        *,
+        source_data: Sequence[Any],
+    ) -> PreparedChannelSelection: ...
+    def commit_prepared_channel_selection(
+        self,
+        prepared: PreparedChannelSelection,
+    ) -> bool: ...
 
 
 class DatasetTablePort(DatasetLoadedDataReadPort, Protocol):
@@ -328,6 +402,13 @@ class DatasetStateService:
         filepaths: Sequence[str],
     ) -> tuple[int, list[str]]:
         with self._mutation_lock:
+            paths = [str(path) for path in filepaths]
+            total = len(paths)
+            owned_work_checkpoint(
+                "Preparing EEG import",
+                completed=0,
+                total=total or None,
+            )
             existing_data = self.get_loaded_data_list()
             try:
                 loader = self._raw_loader_provider()(existing_data)
@@ -337,8 +418,12 @@ class DatasetStateService:
             success_count = 0
             errors: list[str] = []
             factory = self._raw_factory_provider()
-            for raw_path in filepaths:
-                path = str(raw_path)
+            for index, path in enumerate(paths, start=1):
+                owned_work_checkpoint(
+                    f"Loading EEG recording {index} of {total}",
+                    completed=index - 1,
+                    total=None,
+                )
                 if any(data.get_filepath() == path for data in loader):
                     logger.info("Skipping duplicate: %s", path)
                     continue
@@ -359,10 +444,113 @@ class DatasetStateService:
                 except Exception as exc:
                     logger.error("Error loading %s: %s", path, exc)
                     errors.append(f"{path}: {exc!s}")
+                finally:
+                    owned_work_checkpoint(
+                        f"Loaded EEG recording {index} of {total}",
+                        completed=index,
+                        total=total,
+                    )
 
             if success_count > 0:
+                owned_work_checkpoint(
+                    "Materializing imported EEG recordings",
+                    completed=total,
+                    total=None,
+                )
                 loader.apply(self.study, force_update=True)
+                owned_work_checkpoint(
+                    "Imported EEG recordings materialized",
+                    completed=total,
+                    total=total,
+                )
             return success_count, errors
+
+    def prepare_replacement_import(
+        self,
+        filepaths: Sequence[str],
+    ) -> PreparedDatasetImport:
+        """Load and validate replacement Raw holders without touching the Study."""
+        paths = tuple(str(path) for path in filepaths)
+        total = len(paths)
+        owned_work_checkpoint(
+            "Preparing EEG import",
+            completed=0,
+            total=total or None,
+        )
+        try:
+            loader = self._raw_loader_provider()([])
+        except Exception as exc:
+            raise ValueError(
+                f"Replacement dataset loader is unavailable: {exc}"
+            ) from exc
+
+        errors: list[str] = []
+        factory = self._raw_factory_provider()
+        for index, path in enumerate(paths, start=1):
+            owned_work_checkpoint(
+                f"Loading EEG recording {index} of {total}",
+                completed=index - 1,
+                total=None,
+            )
+            try:
+                logger.info("Loading file: %s", path)
+                raw = factory.load(path)
+                if raw is None:
+                    errors.append(f"{path}: Loader returned None.")
+                    continue
+                loader.append(raw)
+            except UnsupportedFormatError:
+                logger.error("Unsupported format: %s", path)
+                errors.append(f"{path}: Unsupported format.")
+            except FileCorruptedError:
+                logger.error("File corrupted: %s", path)
+                errors.append(f"{path}: File corrupted.")
+            except Exception as exc:
+                logger.error("Error loading %s: %s", path, exc)
+                errors.append(f"{path}: {exc!s}")
+            finally:
+                owned_work_checkpoint(
+                    f"Loaded EEG recording {index} of {total}",
+                    completed=index,
+                    total=total,
+                )
+        return PreparedDatasetImport(
+            paths=paths,
+            loaded_data=tuple(loader),
+            errors=tuple(errors),
+        )
+
+    def detached_interpretation_service(
+        self,
+        prepared: PreparedDatasetImport,
+    ) -> DatasetStateService:
+        """Return a locally locked Dataset service over prepared Raw holders."""
+        if not isinstance(prepared, PreparedDatasetImport):
+            raise TypeError("prepared must be a PreparedDatasetImport")
+        holder = _DetachedInterpretationStudy(prepared.loaded_data)
+        return DatasetStateService(
+            holder,
+            raw_loader_provider=self._raw_loader_provider,
+            raw_factory_provider=self._raw_factory_provider,
+            label_service_provider=self._label_service_provider,
+            channel_selection_provider=self._channel_selection_provider,
+            event_loader_provider=self._event_loader_provider,
+        )
+
+    def commit_prepared_import(self, prepared: PreparedDatasetImport) -> None:
+        """Publish an admitted replacement import while the caller owns commit."""
+        if not isinstance(prepared, PreparedDatasetImport):
+            raise TypeError("prepared must be a PreparedDatasetImport")
+        if prepared.errors or prepared.success_count != len(prepared.paths):
+            raise ValueError("Prepared EEG replacement is incomplete.")
+        loaded_paths = tuple(str(data.get_filepath()) for data in prepared.loaded_data)
+        if loaded_paths != prepared.paths:
+            raise ValueError(
+                "Prepared EEG replacement identity does not match its paths."
+            )
+        with self._mutation_lock:
+            loader = self._raw_loader_provider()(list(prepared.loaded_data))
+            loader.apply(self.study, force_update=True)
 
     def clean_dataset(self) -> None:
         with self._mutation_lock:
@@ -502,15 +690,82 @@ class DatasetStateService:
             return count
 
     def apply_channel_selection(self, selected_channels: Sequence[str]) -> bool:
+        return self.commit_prepared_channel_selection(
+            self.prepare_channel_selection(
+                selected_channels,
+                source_data=self.get_loaded_data_list(),
+            )
+        )
+
+    def prepare_channel_selection(
+        self,
+        selected_channels: Sequence[str],
+        *,
+        source_data: Sequence[Any],
+    ) -> PreparedChannelSelection:
+        """Copy, back up, and select channels without mutating the Study."""
+        source = tuple(source_data)
+        if not source:
+            raise ValueError("No data to select channels from.")
+        backup: list[Any] = []
+        total = len(source)
+        for index, data in enumerate(source):
+            owned_work_checkpoint(
+                "Backing up EEG recordings for channel selection",
+                completed=index,
+                total=total,
+            )
+            backup.append(data.copy())
+            owned_work_checkpoint(
+                "Backing up EEG recordings for channel selection",
+                completed=index + 1,
+                total=total,
+            )
+        process = self._channel_selection_provider()(list(source))
+        try:
+            result = process.data_preprocess(list(selected_channels))
+        except Exception as exc:
+            logger.error("Channel selection failed: %s", exc)
+            raise
+        return PreparedChannelSelection(
+            source_identity=tuple(id(data) for data in source),
+            selected_data=tuple(result),
+            backup_data=tuple(backup),
+        )
+
+    def commit_prepared_channel_selection(
+        self,
+        prepared: PreparedChannelSelection,
+    ) -> bool:
+        """Publish selected channels and undo backup after final admission."""
+        if not isinstance(prepared, PreparedChannelSelection):
+            raise TypeError("prepared must be PreparedChannelSelection")
         with self._mutation_lock:
-            process = self._channel_selection_provider()(self.get_loaded_data_list())
-            try:
-                result = process.data_preprocess(list(selected_channels))
-            except Exception as exc:
-                logger.error("Channel selection failed: %s", exc)
-                raise
-            self.study.backup_loaded_data()
-            self.study.set_loaded_data_list(result, force_update=True)
+            current = self.get_loaded_data_list()
+            if tuple(id(data) for data in current) != prepared.source_identity:
+                raise RuntimeError(
+                    "Loaded EEG state changed before channel selection could commit."
+                )
+            manager = vars(self.study).get("data_manager")
+            backup_loaded_data = getattr(self.study, "backup_loaded_data", None)
+            backup_before_publish: Callable[[], Any] | None = None
+            if manager is None:
+                if not callable(backup_loaded_data):
+                    raise RuntimeError("Channel selection backup owner is unavailable.")
+                backup_before_publish = backup_loaded_data
+            owned_work_commit_boundary(
+                "Publishing selected EEG channels",
+                completed=len(prepared.selected_data),
+                total=len(prepared.selected_data),
+            )
+            if backup_before_publish is not None:
+                backup_before_publish()
+            self.study.set_loaded_data_list(
+                list(prepared.selected_data),
+                force_update=True,
+            )
+            if manager is not None:
+                manager.backup_loaded_data_list = list(prepared.backup_data)
             self.study.lock_dataset()
             return True
 

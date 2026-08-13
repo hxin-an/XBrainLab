@@ -25,6 +25,7 @@ class MetricsTableWidget(QTableWidget):
 
         """
         super().__init__(parent)
+        self.setObjectName("EvaluationMetricsTable")
         self.init_ui()
 
     def init_ui(self):

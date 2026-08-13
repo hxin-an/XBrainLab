@@ -63,6 +63,7 @@ EXPECTED_HANDOFF_CHECK_IDS = (
     "wizard-format-matrix",
     "required-public-io",
     "public-cross-source-training",
+    "moabb-15-delivery-validation",
     "resource-calibration",
     "handoff-dashboard",
 )
@@ -231,6 +232,44 @@ def test_resource_calibration_is_generated_then_preserved_for_dashboard() -> Non
     assert REQUIRED_HANDOFF_CHECK_IDS[-2:] == (
         "resource-calibration",
         "handoff-dashboard",
+    )
+
+
+def test_moabb_delivery_gate_validates_preserved_receipts_read_only() -> None:
+    spec = HANDOFF_GATE_SPECS["moabb-15-delivery-validation"]
+
+    assert spec.section == "7"
+    assert spec.argv == (
+        "prlimit",
+        "--core=0",
+        "--",
+        "poetry",
+        "run",
+        "--",
+        "python",
+        "scripts/dev/validate_moabb_gui_campaign_delivery.py",
+        "--plan",
+        "artifacts/user-journeys/moabb-gui-campaign-v2.json",
+        "--evidence-root",
+        f"{EVIDENCE_ROOT_TOKEN}/moabb-15-campaign",
+        "--output",
+        f"{EVIDENCE_ROOT_TOKEN}/moabb-15-delivery-validation.json",
+    )
+    assert "scripts.dev.moabb_gui_campaign_v2" not in spec.argv
+    assert "worker" not in spec.argv
+    assert "--allow-download" not in spec.argv
+    assert spec.required_artifact_paths == (
+        "moabb-15-campaign",
+        "moabb-15-campaign/visual-review-attestation.json",
+        "moabb-15-delivery-validation.json",
+    )
+    assert spec.preserved_input_artifact_paths == (
+        "moabb-15-campaign",
+        "moabb-15-campaign/visual-review-attestation.json",
+    )
+    assert spec.dossier_revalidation == "moabb-delivery-evidence-v1"
+    assert REQUIRED_HANDOFF_CHECK_IDS.index(spec.check_id) < (
+        REQUIRED_HANDOFF_CHECK_IDS.index("resource-calibration")
     )
 
 

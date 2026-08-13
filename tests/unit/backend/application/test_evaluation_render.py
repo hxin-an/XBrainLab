@@ -12,6 +12,7 @@ from XBrainLab.backend.application.evaluation_render import (
     EvaluationCrossFoldIdentity,
     EvaluationModelSummary,
     EvaluationPlanIdentity,
+    EvaluationRenderData,
     EvaluationRenderPublisher,
     EvaluationRenderRequest,
     EvaluationRunIdentity,
@@ -19,7 +20,10 @@ from XBrainLab.backend.application.evaluation_render import (
     build_evaluation_cross_fold_choices,
     build_evaluation_model_summary,
     build_evaluation_model_summary_result,
+    build_prepared_evaluation_model_summary,
+    prepare_evaluation_model_summary,
 )
+from XBrainLab.backend.training.saliency_provenance import SaliencyProducerIdentity
 from XBrainLab.backend.training_state_contract import (
     TrainingReadBoundary,
     TrainingStateToken,
@@ -144,6 +148,28 @@ class _Plan:
     def get_plans(self) -> list[_Run]:
         return self._runs
 
+    def build_saliency_producer_identity(
+        self,
+        run: _Run,
+        *,
+        evaluation_split: str,
+    ) -> SaliencyProducerIdentity:
+        if run not in self._runs:
+            raise ValueError("run does not belong to plan")
+        run_index = self._runs.index(run)
+        return SaliencyProducerIdentity.from_components(
+            dataset={
+                "epoch_shape": tuple(self.dataset.get_epoch_data().data.shape),
+                "cohort": self.dataset.cross_validation_cohort_id,
+            },
+            split={
+                "name": evaluation_split,
+                "test_mask": self.dataset.test_mask,
+            },
+            run={"index": run_index, "repeat": run.repeat},
+            model={"run_index": run_index, "type": type(run.model).__name__},
+        )
+
 
 class _Runtime:
     def __init__(self, plans: list[_Plan]) -> None:
@@ -169,12 +195,20 @@ def _publisher(
     *,
     publication_generation: int = 3,
     boundaries: list[TrainingReadBoundary] | None = None,
+    split_specification_fingerprint: str | None = "split-specification-sha256",
+    split_epoch_revision: int | None = 11,
 ) -> EvaluationRenderPublisher:
     boundary_values = iter(boundaries or [_boundary(), _boundary()])
     publication = SimpleNamespace(
         generation=publication_generation,
         usable=True,
         training_boundary=_boundary(),
+        state=SimpleNamespace(
+            dataset=SimpleNamespace(
+                split_specification_fingerprint=split_specification_fingerprint,
+                split_epoch_revision=split_epoch_revision,
+            )
+        ),
     )
     return EvaluationRenderPublisher(
         training_runtime=runtime,  # type: ignore[arg-type]
@@ -187,7 +221,8 @@ def test_run_publication_is_detached_immutable_and_identity_bound() -> None:
     source_labels = np.array([0, 1])
     source_outputs = np.array([[0.9, 0.1], [0.2, 0.8]])
     run = _Run(source_labels, source_outputs)
-    publisher = _publisher(_Runtime([_Plan([run])]))
+    plan = _Plan([run])
+    publisher = _publisher(_Runtime([plan]))
     run_identity = EvaluationRunIdentity(
         plan=EvaluationPlanIdentity(plan_index=0),
         run_index=0,
@@ -213,6 +248,25 @@ def test_run_publication_is_detached_immutable_and_identity_bound() -> None:
     assert publication.data.labels is not source_labels
     assert publication.data.outputs is not source_outputs
     assert publication.data.metrics[0]["precision"] == 1.0
+    assert publication.data.output_numeric_summary.to_dict() == {
+        "shape": [2, 2],
+        "dtype": "float64",
+        "count": 4,
+        "finite_count": 4,
+        "nonfinite_count": 0,
+        "minimum": 0.1,
+        "maximum": 0.9,
+    }
+    assert publication.split_specification_fingerprint == ("split-specification-sha256")
+    assert publication.split_epoch_revision == 11
+    assert publication.producer_identities == (
+        plan.build_saliency_producer_identity(run, evaluation_split="test"),
+    )
+    producer_payload = publication.producer_identities[0].to_payload()
+    assert producer_payload["dataset_fingerprint"]
+    assert producer_payload["split_fingerprint"]
+    assert producer_payload["run_fingerprint"]
+    assert producer_payload["model_fingerprint"]
 
     source_labels[0] = 1
     source_outputs[0, 0] = 0.0
@@ -235,6 +289,195 @@ def test_run_publication_is_detached_immutable_and_identity_bound() -> None:
         publication.data.class_labels[0] = "Changed"
     with pytest.raises(FrozenInstanceError):
         publication.generation = 4
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid", "error", "message"),
+    [
+        (
+            "labels",
+            np.array(["0", "1"]),
+            TypeError,
+            "labels must contain real numeric",
+        ),
+        (
+            "labels",
+            np.array([False, True]),
+            TypeError,
+            "labels must contain real numeric",
+        ),
+        (
+            "labels",
+            np.array([0.0, np.nan]),
+            ValueError,
+            "labels must contain only finite",
+        ),
+        (
+            "outputs",
+            np.array([["0.9", "0.1"], ["0.2", "0.8"]]),
+            TypeError,
+            "outputs must contain real numeric",
+        ),
+        (
+            "outputs",
+            np.array([[True, False], [False, True]]),
+            TypeError,
+            "outputs must contain real numeric",
+        ),
+        (
+            "outputs",
+            np.array([[0.9, np.inf], [0.2, 0.8]]),
+            ValueError,
+            "outputs must contain only finite",
+        ),
+        (
+            "outputs",
+            np.array([[0.9 + 0j, 0.1 + 0j], [0.2 + 0j, 0.8 + 0j]]),
+            TypeError,
+            "outputs must contain real numeric",
+        ),
+    ],
+)
+def test_render_data_rejects_non_numeric_or_nonfinite_arrays(
+    field: str,
+    invalid: np.ndarray,
+    error: type[Exception],
+    message: str,
+) -> None:
+    kwargs = {
+        "labels": np.array([0, 1]),
+        "outputs": np.array([[0.9, 0.1], [0.2, 0.8]]),
+        "metrics": {},
+        "class_labels": {0: "Left", 1: "Right"},
+        "summary_identity": None,
+        "evaluation_split": "test",
+    }
+    kwargs[field] = invalid
+
+    with pytest.raises(error, match=message):
+        EvaluationRenderData(**kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("labels", "outputs", "class_labels", "message"),
+    [
+        (
+            np.array([0, 1]),
+            np.empty((2, 0)),
+            {},
+            "at least one class",
+        ),
+        (
+            np.array([0, 2]),
+            np.array([[0.9, 0.1], [0.2, 0.8]]),
+            {0: "Left", 1: "Right"},
+            "labels must be within",
+        ),
+        (
+            np.array([-1, 1]),
+            np.array([[0.9, 0.1], [0.2, 0.8]]),
+            {0: "Left", 1: "Right"},
+            "labels must be within",
+        ),
+        (
+            np.array([0.5, 1.0]),
+            np.array([[0.9, 0.1], [0.2, 0.8]]),
+            {0: "Left", 1: "Right"},
+            "labels must be integer class indices",
+        ),
+        (
+            np.array([0, 1]),
+            np.array([[0.9, 0.1], [0.2, 0.8]]),
+            {0: "Left"},
+            "class label mapping must exactly cover",
+        ),
+        (
+            np.array([0, 1]),
+            np.array([[0.9, 0.1], [0.2, 0.8]]),
+            {0: "Left", 1: "Right", 2: "Unused"},
+            "class label mapping must exactly cover",
+        ),
+        (
+            np.array([0, 1]),
+            np.array([[0.9, 0.1], [0.2, 0.8]]),
+            {0: "Same", 1: "Same"},
+            "class label names must be unique",
+        ),
+    ],
+)
+def test_render_data_rejects_label_output_and_class_mapping_mismatch(
+    labels: np.ndarray,
+    outputs: np.ndarray,
+    class_labels: dict[int, str],
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        EvaluationRenderData(
+            labels=labels,
+            outputs=outputs,
+            metrics={},
+            class_labels=class_labels,
+            summary_identity=None,
+            evaluation_split="test",
+        )
+
+
+@pytest.mark.parametrize("invalid_metric", [np.nan, np.inf, "0.75", True])
+def test_publication_rejects_nonfinite_or_nonnumeric_metrics(
+    invalid_metric: object,
+) -> None:
+    run = _Run(
+        np.array([0, 1]),
+        np.array([[0.9, 0.1], [0.2, 0.8]]),
+    )
+    run.eval_record.metrics["macro_avg"]["precision"] = invalid_metric
+    publisher = _publisher(_Runtime([_Plan([run])]))
+
+    with pytest.raises((TypeError, ValueError), match="metric values"):
+        publisher.publish(
+            EvaluationRenderRequest(
+                publication_generation=3,
+                selection=EvaluationRunIdentity(
+                    plan=EvaluationPlanIdentity(plan_index=0),
+                    run_index=0,
+                ),
+            )
+        )
+
+
+def test_plan_publication_rejects_class_mapping_drift_between_runs() -> None:
+    first_dataset = _Dataset()
+    second_dataset = _Dataset()
+    second_dataset.epoch_data.label_map = {0: "Right", 1: "Left"}
+    publisher = _publisher(
+        _Runtime(
+            [
+                _Plan(
+                    [
+                        _Run(
+                            np.array([0]),
+                            np.array([[0.9, 0.1]]),
+                            dataset=first_dataset,
+                        ),
+                        _Run(
+                            np.array([1]),
+                            np.array([[0.2, 0.8]]),
+                            dataset=second_dataset,
+                        ),
+                    ],
+                    dataset=first_dataset,
+                )
+            ]
+        )
+    )
+
+    with pytest.raises(PreconditionError, match="Class label mappings differ"):
+        publisher.publish(
+            EvaluationRenderRequest(
+                publication_generation=3,
+                selection=EvaluationPlanIdentity(plan_index=0),
+            )
+        )
 
 
 def test_plan_publication_pools_only_finished_evaluation_arrays() -> None:
@@ -643,6 +886,41 @@ def test_training_boundary_change_discards_copied_render_data() -> None:
     assert exc_info.value.diagnostics["training_state_changed"] is True
 
 
+def test_render_fails_closed_without_backend_split_provenance() -> None:
+    runtime = _Runtime([_Plan([_Run(np.array([0]), np.array([[1.0, 0.0]]))])])
+    publisher = _publisher(
+        runtime,
+        split_specification_fingerprint=None,
+        split_epoch_revision=None,
+    )
+
+    with pytest.raises(PreconditionError, match="split provenance") as exc_info:
+        publisher.publish(
+            EvaluationRenderRequest(
+                publication_generation=3,
+                selection=EvaluationPlanIdentity(plan_index=0),
+            )
+        )
+
+    assert exc_info.value.diagnostics["evaluation_render_stale"] is True
+
+
+def test_render_fails_closed_without_backend_producer_identity_builder() -> None:
+    plan = _Plan([_Run(np.array([0]), np.array([[1.0, 0.0]]))])
+    plan.build_saliency_producer_identity = None  # type: ignore[method-assign]
+    publisher = _publisher(_Runtime([plan]))
+
+    with pytest.raises(PreconditionError, match="producer identity") as exc_info:
+        publisher.publish(
+            EvaluationRenderRequest(
+                publication_generation=3,
+                selection=EvaluationPlanIdentity(plan_index=0),
+            )
+        )
+
+    assert exc_info.value.diagnostics["evaluation_render_stale"] is True
+
+
 def test_summary_identity_rejects_a_run_from_another_plan() -> None:
     first = EvaluationPlanIdentity(plan_index=0)
     second = EvaluationPlanIdentity(plan_index=1)
@@ -706,6 +984,31 @@ def test_model_summary_maps_selected_fold_and_run_to_its_trained_model() -> None
     assert "=== Run: Repeat-1 ===" in summary
     assert "EEGNet" in summary
     assert "Total params" in summary
+
+
+def test_model_summary_preparation_defers_model_construction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    constructed_with: list[dict[str, int]] = []
+    model = SimpleNamespace(parameters=list)
+    plan = SimpleNamespace(
+        dataset=_Dataset(),
+        model_holder=SimpleNamespace(
+            get_model=lambda args: (constructed_with.append(args), model)[1]
+        ),
+    )
+    identity = EvaluationSummaryIdentity(
+        plan=EvaluationPlanIdentity(plan_index=0),
+    )
+
+    preparation = prepare_evaluation_model_summary([plan], identity)
+
+    assert constructed_with == []
+    monkeypatch.setattr("torchinfo.summary", lambda *_args, **_kwargs: "Summary")
+    result = build_prepared_evaluation_model_summary(preparation)
+
+    assert constructed_with == [{}]
+    assert result == EvaluationModelSummary(status="ready", text="Summary")
 
 
 def test_model_summary_is_unavailable_when_selected_run_model_is_missing() -> None:

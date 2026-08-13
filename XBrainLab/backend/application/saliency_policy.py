@@ -60,7 +60,7 @@ def recommended_saliency_params_for_method(method_name: str) -> dict[str, object
 
 
 def is_recommended_saliency_method(method_name: str) -> bool:
-    """Return whether a method belongs to the automatic baseline profile."""
+    """Return whether a method belongs to the recommended baseline profile."""
     return method_name in RECOMMENDED_SALIENCY_METHODS
 
 

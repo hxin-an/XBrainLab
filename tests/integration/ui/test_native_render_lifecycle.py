@@ -94,13 +94,10 @@ def test_real_eeg_panel_switching_exits_without_native_abort():
         "headless_macos_safe_2d" if safe_headless_macos else "full_native_lifecycle"
     )
     assert result["product_2d_view_names"] == expected_2d_view_names
-    assert result["product_saliency_publications_primed"] == 1
-    expected_publication_transitions = (
-        0 if safe_headless_macos else expected_2d_renders - 1
-    )
+    assert result["product_saliency_operations_primed"] == 1
+    expected_operation_transitions = expected_2d_renders + expected_3d_updates
     assert (
-        result["product_saliency_publications_served"]
-        == expected_publication_transitions
+        result["product_saliency_operations_served"] == expected_operation_transitions
     )
     assert result["product_2d_renders_installed"] == expected_2d_renders
     assert result["product_2d_loading_cleared"] == expected_2d_renders

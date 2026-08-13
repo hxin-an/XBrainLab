@@ -245,8 +245,12 @@ def test_apply_checkpoint_restores_applied_and_recipe_state() -> None:
 
     state.restore_apply_state(checkpoint)
 
-    assert state.resolve_applied_interpretation() is old_applied
-    assert state.resolve_recipe(None) is old_recipe
+    restored_applied = state.resolve_applied_interpretation()
+    restored_recipe = state.resolve_recipe(None)
+    assert restored_applied == old_applied
+    assert restored_recipe == old_recipe
+    assert restored_applied is not old_applied
+    assert restored_recipe is not old_recipe
     snapshot = state.snapshot()
     assert snapshot.latest_interpretation_id == old_applied.interpretation_id
     assert snapshot.latest_recipe_id == old_recipe.recipe_id

@@ -16,6 +16,10 @@ from .data_interpretation_event_values import (
     RESOLVED,
     class_map_from_value_decisions,
 )
+from .data_interpretation_parsed_cache import (
+    ParsedContentTooLargeError,
+    parsed_delimited_table,
+)
 from .data_interpretation_public_projection import PUBLIC_EVIDENCE_PREVIEW_LIMIT
 from .data_interpretation_resource_reader import AdmittedResourceReader
 
@@ -815,6 +819,36 @@ def _validated_recording_metadata(wrapper: Any) -> tuple[int, float, Decimal]:
 def _read_events_rows(
     path: Path,
 ) -> tuple[list[dict[str, str]], dict[str, str], dict[str, Any] | None]:
+    try:
+        table = parsed_delimited_table(path, delimiter="\t")
+        fieldnames = table.fieldnames
+        rows = table.dict_rows()
+    except ParsedContentTooLargeError:
+        return _read_events_rows_streaming(path)
+    except (OSError, UnicodeDecodeError, csv.Error) as exc:
+        return (
+            [],
+            {},
+            _issue(
+                "events_file_unreadable", None, f"events.tsv could not be read: {exc}"
+            ),
+        )
+    if not fieldnames:
+        return (
+            [],
+            {},
+            _issue("events_header_missing", None, "events.tsv has no header"),
+        )
+    columns = {
+        str(name).strip().lower(): str(name) for name in fieldnames if str(name).strip()
+    }
+    return rows, columns, None
+
+
+def _read_events_rows_streaming(
+    path: Path,
+) -> tuple[list[dict[str, str]], dict[str, str], dict[str, Any] | None]:
+    """Preserve established large-table behavior without retaining the parse."""
     try:
         with path.open("r", encoding="utf-8-sig", newline="") as handle:
             reader = csv.DictReader(handle, delimiter="\t")

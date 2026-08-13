@@ -43,7 +43,12 @@ from XBrainLab.backend.application import (
     data_interpretation_metadata,
     resource_guard,
 )
-from XBrainLab.backend.application import data_interpretation_service as service_module
+from XBrainLab.backend.application import (
+    data_interpretation_service as service_module,
+)
+from XBrainLab.backend.application.data_interpretation_parsed_cache import (
+    default_parsed_content_cache,
+)
 from XBrainLab.backend.load_data import label_loader
 from XBrainLab.backend.training import Trainer
 
@@ -305,41 +310,15 @@ def test_bids_description_payload_is_parsed_only_after_resource_admission(
     monkeypatch,
     workflow,
 ):
+    default_parsed_content_cache().clear()
     bids_root, _eeg_path, _events_path, _participants, _channels = (
         _write_resource_preflight_bids_fixture(tmp_path)
     )
     description = (bids_root / "dataset_description.json").resolve()
     service = ApplicationService()
     ordering = []
-    real_path_open = Path.open
     real_json_loads = data_interpretation_metadata.json.loads
     real_preflight = service_module.check_import_resource_preflight
-
-    class _ObservedReader:
-        def __init__(self, handle):
-            self._handle = handle
-
-        def __enter__(self):
-            self._handle.__enter__()
-            return self
-
-        def __exit__(self, *args):
-            return self._handle.__exit__(*args)
-
-        def read(self, *args, **kwargs):
-            ordering.append("description:read")
-            return self._handle.read(*args, **kwargs)
-
-        def __getattr__(self, name):
-            return getattr(self._handle, name)
-
-    def _observed_open(path: Path, *args, **kwargs):
-        handle = real_path_open(path, *args, **kwargs)
-        mode = str(args[0] if args else kwargs.get("mode", "r"))
-        if path.resolve() == description and "r" in mode:
-            ordering.append("description:open")
-            return _ObservedReader(handle)
-        return handle
 
     def _observed_loads(payload, *args, **kwargs):
         payload_text = (
@@ -355,7 +334,6 @@ def test_bids_description_payload_is_parsed_only_after_resource_admission(
         ordering.append("resource:admission")
         return real_preflight(paths)
 
-    monkeypatch.setattr(Path, "open", _observed_open)
     monkeypatch.setattr(data_interpretation_metadata.json, "loads", _observed_loads)
     monkeypatch.setattr(
         service_module, "check_import_resource_preflight", _observed_preflight
@@ -390,9 +368,10 @@ def test_bids_description_payload_is_parsed_only_after_resource_admission(
         assert cache_reused is False
         assert ordering[0] == "resource:admission"
     assert ordering.count("description:json.loads") == 1
-    assert "description:open" in ordering
-    assert "description:read" in ordering
-    assert ordering.index("description:json.loads") > ordering.index("description:read")
+    if workflow == "review":
+        assert ordering.index("description:json.loads") > ordering.index(
+            "resource:admission"
+        )
 
 
 @pytest.mark.parametrize("suffix", [".mat", ".csv"])

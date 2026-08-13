@@ -316,6 +316,14 @@ class EpochingDialog(BaseDialog):
         event_list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         event_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         event_list.setShowGrid(False)
+        # This public, visible table is the downstream projection of the
+        # backend-owned applied handoff.  It deliberately includes kept
+        # non-class events: the checked rows below are only the supervised
+        # epoch selection, not the import's complete event catalog.
+        event_list.setProperty(
+            "appliedEventCatalog",
+            self._applied_event_catalog_evidence(),
+        )
         event_vertical_header = event_list.verticalHeader()
         if event_vertical_header is not None:
             event_vertical_header.setDefaultSectionSize(25)
@@ -401,6 +409,7 @@ class EpochingDialog(BaseDialog):
 
         tmin_spin = QDoubleSpinBox()
         self.tmin_spin = tmin_spin
+        tmin_spin.setObjectName("EpochStartInput")
         tmin_spin.setRange(-300, 300)
         tmin_spin.setValue(float(self.epoch_context.get("suggested_t_min", -0.2)))
         tmin_spin.setSingleStep(0.1)
@@ -410,6 +419,7 @@ class EpochingDialog(BaseDialog):
 
         tmax_spin = QDoubleSpinBox()
         self.tmax_spin = tmax_spin
+        tmax_spin.setObjectName("EpochEndInput")
         tmax_spin.setRange(-300, 300)
         tmax_spin.setDecimals(
             max(
@@ -512,6 +522,7 @@ class EpochingDialog(BaseDialog):
 
         b_min_spin = QDoubleSpinBox()
         self.b_min_spin = b_min_spin
+        b_min_spin.setObjectName("EpochBaselineStartInput")
         b_min_spin.setRange(-300, 300)
         baseline_min = (
             suggested_baseline[0]
@@ -525,6 +536,7 @@ class EpochingDialog(BaseDialog):
 
         b_max_spin = QDoubleSpinBox()
         self.b_max_spin = b_max_spin
+        b_max_spin.setObjectName("EpochBaselineEndInput")
         b_max_spin.setRange(-300, 300)
         baseline_max = (
             suggested_baseline[1]
@@ -834,6 +846,69 @@ class EpochingDialog(BaseDialog):
         if suggestions:
             context["assistant_suggestions"] = suggestions
         return context
+
+    def _applied_event_catalog_evidence(self) -> list[dict[str, object]]:
+        """Project the applied backend catalog for visible downstream evidence.
+
+        ``epoch_handoff`` is detached from the ApplicationService publication;
+        the table only exposes an immutable semantic projection, never mutable
+        application state.  Per-recording duplicates are merged by event value
+        so a reviewed BIDS value remains one auditable choice with all source
+        recordings retained.
+        """
+        handoff = self.epoch_context.get("epoch_handoff")
+        if not isinstance(handoff, dict):
+            return []
+        catalog = handoff.get("event_catalog")
+        if not isinstance(catalog, list):
+            return []
+        grouped: dict[str, dict[str, object]] = {}
+        for row in catalog:
+            if not isinstance(row, dict):
+                return []
+            event_value = str(row.get("raw_value") or "").strip()
+            event_role = str(row.get("role") or "").strip()
+            keep_event = row.get("keep_event")
+            use_as_class = row.get("use_as_class")
+            class_name = str(row.get("class_name") or "").strip()
+            source = str(row.get("target_file") or row.get("carrier") or "").strip()
+            if (
+                not event_value
+                or not event_role
+                or not isinstance(keep_event, bool)
+                or not isinstance(use_as_class, bool)
+                or (use_as_class and not class_name)
+                or not source
+            ):
+                return []
+            current = {
+                "event_value": event_value,
+                "event_role": event_role,
+                "keep_event": keep_event,
+                "use_as_class": use_as_class,
+                "class_name": class_name,
+                "sources": [source],
+            }
+            prior = grouped.get(event_value)
+            if prior is None:
+                grouped[event_value] = current
+                continue
+            if any(
+                prior[field] != current[field]
+                for field in (
+                    "event_role",
+                    "keep_event",
+                    "use_as_class",
+                    "class_name",
+                )
+            ):
+                # A single value with inconsistent applied semantics cannot
+                # honestly be collapsed into one visible decision row.
+                return []
+            sources = prior["sources"]
+            if isinstance(sources, list) and source not in sources:
+                sources.append(source)
+        return [grouped[key] for key in sorted(grouped, key=str.casefold)]
 
     def _confirmation_scope_changed(self, *_args: object) -> None:
         self._refresh_confirmation_requirement()

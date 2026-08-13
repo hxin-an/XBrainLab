@@ -989,6 +989,81 @@ def test_resource_scope_includes_all_brainvision_parser_dependencies_without_ope
     assert opened_paths == [vhdr_path.resolve()]
 
 
+def test_bids_brainvision_dependency_resolution_uses_index_without_directory_walk(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from XBrainLab.backend.application.bids_dataset_index import (
+        build_bids_dataset_index,
+    )
+
+    eeg_dir = tmp_path / "sub-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    (tmp_path / "dataset_description.json").write_text(
+        '{"Name":"brainvision","BIDSVersion":"1.11.0"}',
+        encoding="utf-8",
+    )
+    vhdr_path = eeg_dir / "sub-01_task-rest_eeg.vhdr"
+    eeg_path = eeg_dir / "sub-01_task-rest_eeg.eeg"
+    vmrk_path = eeg_dir / "sub-01_task-rest_eeg.vmrk"
+    eeg_path.write_bytes(b"signal")
+    vmrk_path.write_text("marker", encoding="utf-8")
+    vhdr_path.write_text(
+        f"[Common Infos]\nDataFile={eeg_path.name}\nMarkerFile={vmrk_path.name}\n",
+        encoding="utf-8",
+    )
+    build_bids_dataset_index(tmp_path)
+
+    def _forbid_rewalk(_path: Path):
+        pytest.fail("BrainVision dependency resolver walked an indexed BIDS directory")
+
+    monkeypatch.setattr(Path, "iterdir", _forbid_rewalk)
+
+    scope = resolve_interpretation_resource_scope(
+        _scan(eeg_files=[str(vhdr_path)], label_carriers=[]),
+    )
+
+    assert scope.eeg_dependency_files == [str(eeg_path), str(vmrk_path)]
+
+
+def test_nested_bids_brainvision_falls_back_when_parent_index_does_not_own_recording(
+    tmp_path: Path,
+) -> None:
+    from XBrainLab.backend.application.bids_dataset_index import (
+        build_bids_dataset_index,
+    )
+
+    parent_root = tmp_path / "parent-bids"
+    nested_root = parent_root / "sourcedata" / "nested-bids"
+    eeg_dir = nested_root / "sub-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    (parent_root / "dataset_description.json").write_text(
+        '{"Name":"parent","BIDSVersion":"1.11.0"}',
+        encoding="utf-8",
+    )
+    (nested_root / "dataset_description.json").write_text(
+        '{"Name":"nested","BIDSVersion":"1.11.0"}',
+        encoding="utf-8",
+    )
+    vhdr_path = eeg_dir / "sub-01_task-rest_eeg.vhdr"
+    eeg_path = eeg_dir / "sub-01_task-rest_eeg.eeg"
+    vmrk_path = eeg_dir / "sub-01_task-rest_eeg.vmrk"
+    eeg_path.write_bytes(b"signal")
+    vmrk_path.write_text("marker", encoding="utf-8")
+    vhdr_path.write_text(
+        f"[Common Infos]\nDataFile={eeg_path.name}\nMarkerFile={vmrk_path.name}\n",
+        encoding="utf-8",
+    )
+    parent_index = build_bids_dataset_index(parent_root)
+    assert parent_index.contains_recording(vhdr_path) is False
+
+    scope = resolve_interpretation_resource_scope(
+        _scan(eeg_files=[str(vhdr_path)], label_carriers=[]),
+    )
+
+    assert scope.eeg_dependency_files == [str(eeg_path), str(vmrk_path)]
+
+
 def test_candidate_rebinds_changed_brainvision_reference_to_admitted_scope(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

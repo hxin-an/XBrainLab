@@ -27,6 +27,10 @@ from .data_interpretation_event_values import (
     derive_class_views,
     review_event_values,
 )
+from .data_interpretation_parsed_cache import (
+    ParsedContentTooLargeError,
+    parsed_delimited_table,
+)
 from .data_interpretation_public_projection import (
     PUBLIC_BIDS_RECOMMENDATION_RUN_SAMPLE_LIMIT,
 )
@@ -71,10 +75,23 @@ def build_label_carrier_plan(
     choices = normalize_label_carrier_choices(choices_payload)
     carrier_sources = dict(carrier_sources or {})
     label_field_recommendation: dict[str, Any] = {}
-    if recommend_bids_label_field:
+    recommendation_carriers = [
+        carrier
+        for carrier in label_carriers
+        if _is_bids_events_file(Path(carrier))
+        and not str(
+            _choice_for_label_carrier(
+                Path(carrier),
+                choices,
+                str(carrier),
+            ).get("label_field")
+            or ""
+        ).strip()
+    ]
+    if recommend_bids_label_field and recommendation_carriers:
         recommendation_guard = (
             resource_reader.guard(
-                label_carriers,
+                recommendation_carriers,
                 purpose="BIDS label-field recommendation preview",
             )
             if resource_reader is not None
@@ -82,7 +99,7 @@ def build_label_carrier_plan(
         )
         with recommendation_guard:
             label_field_recommendation = _bids_label_field_recommendation(
-                label_carriers,
+                recommendation_carriers,
                 choices,
                 sidecar_reader=sidecar_reader,
             )
@@ -571,17 +588,47 @@ def _bids_label_field_profile(
     byte_truncated = False
     row_truncated = False
     try:
-        text, sampled_byte_count, byte_truncated = _bounded_tsv_text(
-            path,
-            byte_limit=max(int(byte_limit), 0),
-        )
-        with io.StringIO(text, newline="") as handle:
-            reader = csv.DictReader(handle, delimiter="\t")
-            columns = {str(column).strip() for column in reader.fieldnames or []}
-            for row in islice(
-                reader,
-                max(int(row_limit), 0),
-            ):
+        file_bytes = max(int(path.stat().st_size), 0)
+        if file_bytes <= max(int(byte_limit), 0):
+            table = parsed_delimited_table(path, delimiter="\t")
+            sampled_byte_count = table.file_bytes
+            columns = {str(column).strip() for column in table.fieldnames}
+            rows = table.dict_rows()
+            sampled_rows = rows[: max(int(row_limit), 0)]
+            byte_truncated = False
+            row_truncated = len(rows) > len(sampled_rows)
+        else:
+            text, sampled_byte_count, byte_truncated = _bounded_tsv_text(
+                path,
+                byte_limit=max(int(byte_limit), 0),
+            )
+            with io.StringIO(text, newline="") as handle:
+                reader = csv.DictReader(handle, delimiter="\t")
+                columns = {str(column).strip() for column in reader.fieldnames or []}
+                sampled_rows = list(islice(reader, max(int(row_limit), 0)))
+                row_truncated = next(reader, None) is not None
+        for row in sampled_rows:
+            sampled_row_count += 1
+            trial_type = _clean_label_value(row.get("trial_type"))
+            value = _clean_label_value(row.get("value"))
+            if trial_type:
+                counts["trial_type"][trial_type] += 1
+            if value:
+                counts["value"][value] += 1
+            if trial_type and value:
+                pairings.setdefault(trial_type, set()).add(value)
+    except ParsedContentTooLargeError:
+        try:
+            text, sampled_byte_count, byte_truncated = _bounded_tsv_text(
+                path,
+                byte_limit=max(int(byte_limit), 0),
+            )
+            with io.StringIO(text, newline="") as handle:
+                reader = csv.DictReader(handle, delimiter="\t")
+                columns = {str(column).strip() for column in reader.fieldnames or []}
+                sampled_rows = list(islice(reader, max(int(row_limit), 0)))
+                row_truncated = next(reader, None) is not None
+            for row in sampled_rows:
                 sampled_row_count += 1
                 trial_type = _clean_label_value(row.get("trial_type"))
                 value = _clean_label_value(row.get("value"))
@@ -591,7 +638,8 @@ def _bids_label_field_profile(
                     counts["value"][value] += 1
                 if trial_type and value:
                     pairings.setdefault(trial_type, set()).add(value)
-            row_truncated = next(reader, None) is not None
+        except (OSError, UnicodeDecodeError, csv.Error):
+            columns = set()
     except (OSError, UnicodeDecodeError, csv.Error):
         columns = set()
     return {
@@ -1093,9 +1141,15 @@ def _tabular_columns(path: Path) -> list[str]:
         "\t" if path.suffix.lower() == ".tsv" or _is_bids_events_file(path) else ","
     )
     try:
-        with path.open("r", encoding="utf-8-sig", newline="") as handle:
-            reader = csv.reader(handle, delimiter=delimiter)
-            header = next(reader, [])
+        table = parsed_delimited_table(path, delimiter=delimiter)
+        header = table.fieldnames
+    except ParsedContentTooLargeError:
+        try:
+            with path.open("r", encoding="utf-8-sig", newline="") as handle:
+                reader = csv.reader(handle, delimiter=delimiter)
+                header = next(reader, [])
+        except (OSError, UnicodeDecodeError, csv.Error, StopIteration):
+            return []
     except (OSError, UnicodeDecodeError, csv.Error, StopIteration):
         return []
     return [str(column).strip() for column in header if str(column).strip()]
@@ -1181,6 +1235,41 @@ def _tabular_event_code_label_counts(
     )
     counts: dict[str, Counter[str]] = {}
     try:
+        table = parsed_delimited_table(path, delimiter=delimiter)
+        if (
+            not table.fieldnames
+            or event_code_field not in table.fieldnames
+            or label_field not in table.fieldnames
+        ):
+            return {}
+        rows = table.dict_rows()
+    except ParsedContentTooLargeError:
+        return _legacy_tabular_event_code_label_counts(
+            path,
+            event_code_field,
+            label_field,
+            delimiter=delimiter,
+        )
+    except (OSError, UnicodeDecodeError, csv.Error):
+        return {}
+    for row in rows:
+        code = _clean_label_value(row.get(event_code_field))
+        label = _clean_label_value(row.get(label_field))
+        if not code or not label:
+            continue
+        counts.setdefault(code, Counter())[label] += 1
+    return _nested_counter_dict(counts)
+
+
+def _legacy_tabular_event_code_label_counts(
+    path: Path,
+    event_code_field: str,
+    label_field: str,
+    *,
+    delimiter: str,
+) -> dict[str, dict[str, int]]:
+    counts: dict[str, Counter[str]] = {}
+    try:
         with path.open("r", encoding="utf-8-sig", newline="") as handle:
             reader = csv.DictReader(handle, delimiter=delimiter)
             if (
@@ -1261,6 +1350,45 @@ def _tabular_time_label_preview(
     )
     rows: list[dict[str, str]] = []
     try:
+        table = parsed_delimited_table(path, delimiter=delimiter)
+        if (
+            not table.fieldnames
+            or time_field not in table.fieldnames
+            or label_field not in table.fieldnames
+        ):
+            return []
+        source_rows = table.dict_rows()
+    except ParsedContentTooLargeError:
+        return _legacy_tabular_time_label_preview(
+            path,
+            time_field,
+            label_field,
+            limit=limit,
+            delimiter=delimiter,
+        )
+    except (OSError, UnicodeDecodeError, csv.Error):
+        return []
+    for row in source_rows:
+        time_value = _clean_label_value(row.get(time_field))
+        label_value = _clean_label_value(row.get(label_field))
+        if not time_value or not label_value:
+            continue
+        rows.append({"time": time_value, "label": label_value})
+        if len(rows) >= limit:
+            break
+    return rows
+
+
+def _legacy_tabular_time_label_preview(
+    path: Path,
+    time_field: str,
+    label_field: str,
+    *,
+    limit: int,
+    delimiter: str,
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    try:
         with path.open("r", encoding="utf-8-sig", newline="") as handle:
             reader = csv.DictReader(handle, delimiter=delimiter)
             if (
@@ -1339,11 +1467,19 @@ def _tabular_field_stats(path: Path, field_name: str) -> dict[str, Any]:
     )
     values: list[Any] = []
     try:
-        with path.open("r", encoding="utf-8-sig", newline="") as handle:
-            reader = csv.DictReader(handle, delimiter=delimiter)
-            if not reader.fieldnames or field_name not in reader.fieldnames:
-                return _empty_field_stats()
-            values = [row.get(field_name) for row in reader]
+        table = parsed_delimited_table(path, delimiter=delimiter)
+        if not table.fieldnames or field_name not in table.fieldnames:
+            return _empty_field_stats()
+        values = [row.get(field_name) for row in table.dict_rows()]
+    except ParsedContentTooLargeError:
+        try:
+            with path.open("r", encoding="utf-8-sig", newline="") as handle:
+                reader = csv.DictReader(handle, delimiter=delimiter)
+                if not reader.fieldnames or field_name not in reader.fieldnames:
+                    return _empty_field_stats()
+                values = [row.get(field_name) for row in reader]
+        except (OSError, UnicodeDecodeError, csv.Error):
+            return _empty_field_stats()
     except (OSError, UnicodeDecodeError, csv.Error):
         return _empty_field_stats()
     return _field_stats_from_values(values)
@@ -1406,16 +1542,25 @@ def _tabular_label_stats(path: Path, label_field: str) -> dict[str, Any]:
     )
     counts: Counter[str] = Counter()
     try:
-        with path.open("r", encoding="utf-8-sig", newline="") as handle:
-            reader = csv.DictReader(handle, delimiter=delimiter)
-            if not reader.fieldnames or label_field not in reader.fieldnames:
-                return {"row_count": 0, "value_counts": {}}
-            for row in reader:
-                value = _clean_label_value(row.get(label_field))
-                if value:
-                    counts[value] += 1
+        table = parsed_delimited_table(path, delimiter=delimiter)
+        if not table.fieldnames or label_field not in table.fieldnames:
+            return {"row_count": 0, "value_counts": {}}
+        rows = table.dict_rows()
+    except ParsedContentTooLargeError:
+        try:
+            with path.open("r", encoding="utf-8-sig", newline="") as handle:
+                reader = csv.DictReader(handle, delimiter=delimiter)
+                if not reader.fieldnames or label_field not in reader.fieldnames:
+                    return {"row_count": 0, "value_counts": {}}
+                rows = list(reader)
+        except (OSError, UnicodeDecodeError, csv.Error):
+            return {"row_count": 0, "value_counts": {}}
     except (OSError, UnicodeDecodeError, csv.Error):
         return {"row_count": 0, "value_counts": {}}
+    for row in rows:
+        value = _clean_label_value(row.get(label_field))
+        if value:
+            counts[value] += 1
     return _label_stats_from_counts(counts)
 
 

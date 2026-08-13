@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import threading
 from dataclasses import replace
-from time import monotonic, sleep
+from time import sleep
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
@@ -24,6 +25,9 @@ from XBrainLab.backend.application import (
     SaliencyRunIdentity,
 )
 from XBrainLab.backend.application.results import ChangedState, CommandResult
+from XBrainLab.backend.application.saliency_render import (
+    normalized_saliency_render_publication,
+)
 from XBrainLab.backend.application.state import (
     ApplicationStateSnapshot,
     SaliencyClassCoverageSnapshot,
@@ -153,6 +157,80 @@ def _render_data(method: str = "Gradient") -> SaliencyRenderData:
     )
 
 
+def _install_owned_render_runtime(runtime):
+    """Give a focused UI runtime the current backend-owned render contract."""
+    operation_phases: dict[str, str] = {}
+    next_operation = 0
+
+    def begin(_request):
+        nonlocal next_operation
+        next_operation += 1
+        operation_id = f"coverage-render-{next_operation}"
+        operation_phases[operation_id] = "running"
+        return SimpleNamespace(operation_id=operation_id)
+
+    def prepare_variants(operation_id, request, *, include_normalized):
+        raw = runtime.get_saliency_render(replace(request, normalize=False))
+        if not isinstance(raw, SaliencyRenderPublication):
+            return raw, None
+        raw = replace(raw, operation_id=operation_id)
+        normalized = (
+            normalized_saliency_render_publication(raw) if include_normalized else None
+        )
+        return raw, normalized
+
+    def snapshot(operation_id):
+        phase = operation_phases.get(operation_id, "running")
+        return SimpleNamespace(
+            phase=phase,
+            completed=None,
+            total=None,
+            indeterminate=True,
+            cancel_requested=False,
+            cancellable=phase not in {"completed", "cancelled", "failed"},
+            stage="Rendering saliency canvas",
+        )
+
+    def finish(operation_id, phase, *, message=""):
+        del message
+        operation_phases[operation_id] = phase
+
+    def cancel(operation_id):
+        operation_phases[operation_id] = "cancelled"
+        return True
+
+    runtime.begin_saliency_render = MagicMock(side_effect=begin)
+    runtime.prepare_saliency_render_variants = MagicMock(side_effect=prepare_variants)
+    runtime.enter_saliency_render_commit = MagicMock(return_value=True)
+    runtime.finish_saliency_render = MagicMock(side_effect=finish)
+    runtime.get_owned_operation = MagicMock(side_effect=snapshot)
+    runtime.cancel_owned_operation = MagicMock(side_effect=cancel)
+    return runtime
+
+
+def _prepare_variants_from(renderer):
+    """Adapt an existing detached-render fixture to current owned preparation."""
+
+    def prepare(
+        panel,
+        operation_id,
+        request,
+        *,
+        include_normalized,
+        **kwargs,
+    ):
+        raw = renderer(panel, replace(request, normalize=False), **kwargs)
+        if not isinstance(raw, SaliencyRenderPublication):
+            return raw, None
+        raw = replace(raw, operation_id=operation_id)
+        normalized = (
+            normalized_saliency_render_publication(raw) if include_normalized else None
+        )
+        return raw, normalized
+
+    return prepare
+
+
 def _make_panel(
     qtbot,
     *,
@@ -168,6 +246,7 @@ def _make_panel(
     runtime_port.get_view_publication = MagicMock(return_value=None)
     runtime_port.execute = MagicMock(return_value=None)
     runtime_port.get_saliency_render = MagicMock(return_value=None)
+    _install_owned_render_runtime(runtime_port)
 
     def _widget_factory(parent=None):
         widget = cast(Any, QWidget(parent))
@@ -242,6 +321,7 @@ def _make_real_saliency_panel(qtbot, *, application_runtime=None, parent=None):
             runtime.get_view_publication = MagicMock(return_value=None)
             runtime.execute = MagicMock(return_value=None)
             runtime.get_saliency_render = MagicMock(return_value=None)
+        _install_owned_render_runtime(runtime)
         publication_port = runtime if isinstance(runtime, Observable) else Observable()
         panel = VisualizationPanel(
             parent=parent,
@@ -604,6 +684,51 @@ def test_saliency_worker_requeues_active_task_after_its_result_was_discarded(
     request_render.assert_called_once_with(active)
 
 
+def test_saliency_worker_terminal_for_current_result_avoids_duplicate_render(
+    panel_and_controller,
+):
+    from XBrainLab.ui.panels.visualization.panel import _SaliencyRenderTask
+
+    panel, _controller = panel_and_controller
+    active = _SaliencyRenderTask(
+        request=SaliencyRenderRequest(
+            publication_generation=1,
+            run=SaliencyRunIdentity(
+                plan=SaliencyPlanIdentity(plan_index=0),
+                run_index=0,
+            ),
+            method="Gradient",
+        ),
+        needs_normalized_variant=False,
+    )
+    publication = SaliencyRenderPublication(
+        request=active.request,
+        generation=active.request.publication_generation,
+        training_generation=1,
+        data=_render_data(),
+    )
+    worker = MagicMock()
+    panel._saliency_render_worker = worker
+    panel._saliency_render_active_task = active
+
+    with (
+        patch.object(
+            panel,
+            "_current_saliency_render_task",
+            return_value=active,
+        ),
+        patch.object(panel, "on_update"),
+    ):
+        panel._on_saliency_render_ready(worker, (active, publication, None))
+
+    assert panel._saliency_render_cache[False] == publication
+    assert panel._saliency_render_result_seen is False
+
+    panel._request_saliency_render(active)
+
+    assert panel._saliency_render_pending_task is None
+
+
 def test_saliency_cache_miss_never_queries_backend_on_gui_thread(
     panel_and_controller,
 ):
@@ -617,13 +742,13 @@ def test_saliency_cache_miss_never_queries_backend_on_gui_thread(
         method="Gradient",
     )
 
-    with patch(
-        "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
-    ) as get_render:
-        publication = panel._saliency_render_publication(request)
+    prepare_variants = panel._query_port.prepare_saliency_render_variants
+    prepare_variants.reset_mock()
+
+    publication = panel._saliency_render_publication(request)
 
     assert publication is None
-    get_render.assert_not_called()
+    prepare_variants.assert_not_called()
 
 
 def test_panel_native_resource_finalizer_is_idempotent(panel_and_controller):
@@ -754,8 +879,10 @@ def test_cancelled_shutdown_resubmits_2d_publication_to_true_worker(
 
     monkeypatch.setattr(SaliencyMapWidget, "_render_plot", staticmethod(render))
     with patch(
-        "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
-        return_value=render_publication,
+        "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
+        side_effect=_prepare_variants_from(
+            lambda _panel, _request, **_kwargs: render_publication
+        ),
     ):
         panel.on_update()
         qtbot.waitUntil(first_started.is_set, timeout=2000)
@@ -839,8 +966,10 @@ def test_cancelled_shutdown_resubmits_3d_publication_to_true_worker(
         panel.tabs.setCurrentIndex(3)
 
     with patch(
-        "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
-        return_value=render_publication,
+        "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
+        side_effect=_prepare_variants_from(
+            lambda _panel, _request, **_kwargs: render_publication
+        ),
     ):
         panel.on_update()
         qtbot.waitUntil(first_started.is_set, timeout=2000)
@@ -1020,8 +1149,8 @@ class TestRefreshCombos:
         current_widget = _current_widget(panel)
         current_widget.update_plot.reset_mock()
         with patch(
-            "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
-            side_effect=get_render,
+            "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
+            side_effect=_prepare_variants_from(get_render),
         ):
             panel.on_update()
             qtbot.waitUntil(
@@ -1042,7 +1171,7 @@ class TestRefreshCombos:
         assert rendered.data.normalized is True
         assert rendered.data.fold_count == 2
 
-    def test_cross_fold_normalize_during_first_load_reuses_raw_pooling(
+    def test_cross_fold_normalize_during_first_load_reschedules_owned_variant(
         self,
         panel_and_controller,
         qtbot,
@@ -1102,8 +1231,8 @@ class TestRefreshCombos:
         current_widget.update_plot.reset_mock()
         try:
             with patch(
-                "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
-                side_effect=get_render,
+                "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
+                side_effect=_prepare_variants_from(get_render),
             ):
                 panel.on_update()
                 assert render_started.wait(timeout=2.0)
@@ -1117,13 +1246,13 @@ class TestRefreshCombos:
         finally:
             release_render.set()
 
-        assert requests == [
-            SaliencyRenderRequest(
-                publication_generation=publication.generation,
-                run=identity,
-                method="Gradient",
-            )
-        ]
+        expected_request = SaliencyRenderRequest(
+            publication_generation=publication.generation,
+            run=identity,
+            method="Gradient",
+        )
+        assert requests == [expected_request, expected_request]
+        assert panel._query_port.begin_saliency_render.call_count == 2
         rendered = current_widget.update_plot.call_args.args[0]
         assert rendered.request.normalize is True
         assert rendered.data.normalized is True
@@ -1400,11 +1529,11 @@ class TestOnUpdate:
         current_widget.update_plot.reset_mock()
 
         with patch(
-            "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
-        ) as get_render:
+            "XBrainLab.ui.panels.visualization.panel.begin_saliency_render_operation",
+        ) as begin_render:
             panel.on_update()
 
-        get_render.assert_not_called()
+        begin_render.assert_not_called()
         current_widget.set_saliency_coverage.assert_called_with(None)
         current_widget.update_plot.assert_not_called()
         current_widget.show_message.assert_called_once_with(
@@ -1441,11 +1570,11 @@ class TestOnUpdate:
         current_widget.update_plot.reset_mock()
 
         with patch(
-            "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
-        ) as get_render:
+            "XBrainLab.ui.panels.visualization.panel.begin_saliency_render_operation",
+        ) as begin_render:
             panel.on_update()
 
-        get_render.assert_not_called()
+        begin_render.assert_not_called()
         current_widget.set_saliency_coverage.assert_called_with(None)
         current_widget.update_plot.assert_not_called()
         current_widget.show_message.assert_called_once_with(
@@ -1485,11 +1614,11 @@ class TestOnUpdate:
         current_widget.update_plot.reset_mock()
 
         with patch(
-            "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
-        ) as get_render:
+            "XBrainLab.ui.panels.visualization.panel.begin_saliency_render_operation",
+        ) as begin_render:
             panel.on_update()
 
-        get_render.assert_not_called()
+        begin_render.assert_not_called()
         current_widget.set_saliency_coverage.assert_called_with(unavailable)
         current_widget.update_plot.assert_not_called()
         current_widget.show_message.assert_called_once_with(
@@ -1545,8 +1674,8 @@ class TestOnUpdate:
         current_widget = _current_widget(panel)
         current_widget.update_plot.reset_mock()
         with patch(
-            "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
-            side_effect=get_render,
+            "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
+            side_effect=_prepare_variants_from(get_render),
         ):
             panel.on_update()
             qtbot.waitUntil(
@@ -1565,7 +1694,7 @@ class TestOnUpdate:
         assert rendered.generation == publication.generation
         assert absolute is False
 
-    def test_display_transform_toggles_reuse_one_verified_render_publication(
+    def test_display_transform_toggles_use_fresh_owned_render_operations(
         self,
         panel_and_controller,
         qtbot,
@@ -1607,8 +1736,8 @@ class TestOnUpdate:
         current_widget = _current_widget(panel)
         current_widget.update_plot.reset_mock()
         with patch(
-            "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
-            side_effect=get_render,
+            "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
+            side_effect=_prepare_variants_from(get_render),
         ):
             panel.on_update()
             qtbot.waitUntil(
@@ -1617,7 +1746,6 @@ class TestOnUpdate:
                 timeout=3000,
             )
 
-            started = monotonic()
             for checkbox, checked in (
                 (panel.abs_check, True),
                 (panel.normalize_check, True),
@@ -1632,16 +1760,14 @@ class TestOnUpdate:
                     lambda: panel.native_render_work_idle(),
                     timeout=3000,
                 )
-            cached_elapsed = monotonic() - started
 
-        assert backend_requests == [
-            SaliencyRenderRequest(
-                publication_generation=publication.generation,
-                run=panel.run_combo.currentData(),
-                method="Gradient",
-            )
-        ]
-        assert cached_elapsed < 0.15
+        expected_request = SaliencyRenderRequest(
+            publication_generation=publication.generation,
+            run=panel.run_combo.currentData(),
+            method="Gradient",
+        )
+        assert backend_requests == [expected_request] * 5
+        assert panel._query_port.begin_saliency_render.call_count == 5
         normalized_publication = next(
             call.args[0]
             for call in current_widget.update_plot.call_args_list
@@ -1683,15 +1809,14 @@ class TestOnUpdate:
             )
 
         with patch(
-            "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
-            side_effect=get_render,
+            "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
+            side_effect=_prepare_variants_from(get_render),
         ):
             panel.on_update()
             qtbot.waitUntil(
                 lambda: len(backend_requests) == 1 and panel.native_render_work_idle(),
                 timeout=3000,
             )
-            panel.on_update()
             next_publication = replace(
                 publication,
                 generation=publication.generation + 1,
@@ -1745,8 +1870,10 @@ class TestOnUpdate:
         current_widget.update_plot.reset_mock()
 
         with patch(
-            "XBrainLab.ui.panels.visualization.panel.get_saliency_render_publication",
-            return_value=stale_render,
+            "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
+            side_effect=_prepare_variants_from(
+                lambda _panel, _request, **_kwargs: stale_render
+            ),
         ):
             panel.on_update()
             qtbot.waitUntil(

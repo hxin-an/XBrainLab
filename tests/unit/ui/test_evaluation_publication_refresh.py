@@ -1,20 +1,25 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import replace
 from typing import Any, cast
 from unittest.mock import MagicMock
 
+import numpy as np
 from PyQt6.QtWidgets import QWidget
 
-from XBrainLab.backend.application import ApplicationError, EvaluateCommand
-from XBrainLab.backend.application.commands import Command
+from XBrainLab.backend.application import ApplicationError
+from XBrainLab.backend.application.commands import Command, EvaluateCommand
 from XBrainLab.backend.application.evaluation_render import (
     EvaluationPlanIdentity,
+    EvaluationRenderData,
     EvaluationRenderPublication,
     EvaluationRenderRequest,
     EvaluationSummaryIdentity,
 )
+from XBrainLab.backend.application.evaluation_work import EvaluationWorkController
+from XBrainLab.backend.application.owned_work import OwnedWorkRegistry
 from XBrainLab.backend.application.results import ChangedState, CommandResult
 from XBrainLab.backend.application.state import (
     ApplicationStateSnapshot,
@@ -25,6 +30,7 @@ from XBrainLab.backend.application.view_publication import (
     ApplicationViewPublication,
     ApplicationViewStore,
 )
+from XBrainLab.backend.training.saliency_provenance import SaliencyProducerIdentity
 from XBrainLab.backend.training_state_contract import (
     PostTrainingSaliencyPhase,
     PostTrainingSaliencyStatus,
@@ -35,10 +41,7 @@ from XBrainLab.backend.training_state_contract import (
     TrainingTerminalOutcome,
 )
 from XBrainLab.backend.utils.observer import Observable
-from XBrainLab.ui.panels.evaluation.panel import (
-    EvaluationPanel,
-    _RetryEvaluationPublicationRenderError,
-)
+from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
 
 
 def _publication(
@@ -107,6 +110,14 @@ class _EvaluationApplicationPort(Observable):
         self.available = True
         self.query_calls = 0
         self.unsubscribe_calls = 0
+        self.render: Callable[
+            [EvaluationRenderRequest], EvaluationRenderPublication
+        ] = self._reject_render
+        self.owned_work = OwnedWorkRegistry()
+        self.evaluation_work = EvaluationWorkController(
+            registry=self.owned_work,
+            render=self.get_evaluation_render,
+        )
 
     def execute(
         self,
@@ -114,8 +125,26 @@ class _EvaluationApplicationPort(Observable):
         *,
         expected_publication_generation: int | None = None,
     ) -> CommandResult:
-        assert command == EvaluateCommand()
         assert expected_publication_generation == self.publication.generation
+        if (
+            isinstance(command, EvaluateCommand)
+            and command.summary_identity is not None
+        ):
+            return CommandResult.success_result(
+                command_name="evaluate",
+                message="Evaluation model summary pending.",
+                state={},
+                changed_state=ChangedState(),
+                diagnostics={
+                    "evaluation_publication_generation": self.publication.generation,
+                    "model_summary": {
+                        "identity": command.summary_identity.to_dict(),
+                        "status": "pending",
+                        "text": "",
+                    },
+                },
+            )
+        assert command == EvaluateCommand()
         self.query_calls += 1
         return CommandResult.success_result(
             command_name="evaluate",
@@ -147,8 +176,32 @@ class _EvaluationApplicationPort(Observable):
         self,
         request: EvaluationRenderRequest,
     ) -> EvaluationRenderPublication:
-        del request
+        return self.render(request)
+
+    @staticmethod
+    def _reject_render(
+        _request: EvaluationRenderRequest,
+    ) -> EvaluationRenderPublication:
         raise AssertionError("An empty run catalog must not request chart data.")
+
+    def begin_evaluation_render(self, request: EvaluationRenderRequest):
+        return self.evaluation_work.begin(request)
+
+    def run_evaluation_render(
+        self,
+        operation_id: str,
+        request: EvaluationRenderRequest,
+    ) -> EvaluationRenderPublication:
+        return self.evaluation_work.run(operation_id, request)
+
+    def cancel_owned_operation(self, operation_id: str) -> bool:
+        return self.owned_work.cancel(operation_id)
+
+    def get_owned_operation(self, operation_id: str):
+        return self.owned_work.snapshot(operation_id)
+
+    def fail_owned_operation(self, operation_id: str, *, message: str):
+        return self.owned_work.fail(operation_id, message=message)
 
     def unsubscribe(self, event_name, callback) -> None:
         self.unsubscribe_calls += 1
@@ -169,6 +222,39 @@ def _panel(
     )
     qtbot.addWidget(panel)
     return panel
+
+
+def _render_publication(
+    request: EvaluationRenderRequest,
+) -> EvaluationRenderPublication:
+    return EvaluationRenderPublication(
+        request=request,
+        generation=request.publication_generation,
+        training_boundary=TrainingReadBoundary(
+            trainer_identity="evaluation-publication-refresh",
+            token=TrainingStateToken(generation=4, stable=True),
+        ),
+        data=EvaluationRenderData(
+            labels=np.array([0, 1]),
+            outputs=np.array([[0.8, 0.2], [0.1, 0.9]]),
+            metrics={},
+            class_labels={0: "Left", 1: "Right"},
+            summary_identity=EvaluationSummaryIdentity(
+                plan=EvaluationPlanIdentity(plan_index=0)
+            ),
+            evaluation_split=request.split,
+        ),
+        producer_identities=(
+            SaliencyProducerIdentity.from_components(
+                dataset={"dataset": "publication-refresh"},
+                split={"split": request.split},
+                run={"selection": request.selection.to_dict()},
+                model={"state": "selected"},
+            ),
+        ),
+        split_specification_fingerprint="split-specification-sha256",
+        split_epoch_revision=3,
+    )
 
 
 def test_evaluation_instantiates_without_controller_or_controller_lookup(qtbot) -> None:
@@ -205,6 +291,7 @@ def test_evaluation_renders_once_for_one_new_application_revision(qtbot) -> None
     port = _EvaluationApplicationPort()
     panel = _panel(qtbot, port)
     panel.update_panel()
+    qtbot.waitUntil(panel.evaluation_background_work_idle)
     assert port.query_calls == 1
 
     renders: list[int] = []
@@ -232,6 +319,7 @@ def test_evaluation_ignores_duplicate_and_stale_application_revisions(qtbot) -> 
     port = _EvaluationApplicationPort()
     panel = _panel(qtbot, port)
     panel.update_panel()
+    qtbot.waitUntil(panel.evaluation_background_work_idle)
 
     renders: list[int] = []
     original_update = panel.update_panel
@@ -255,7 +343,6 @@ def test_evaluation_ignores_duplicate_and_stale_application_revisions(qtbot) -> 
 
 def test_evaluation_ignores_new_revision_when_only_last_error_changes(
     qtbot,
-    monkeypatch,
 ) -> None:
     port = _EvaluationApplicationPort()
     panel = _panel(qtbot, port)
@@ -282,20 +369,18 @@ def test_evaluation_ignores_new_revision_when_only_last_error_changes(
 
     requested_generations: list[int] = []
 
-    def render_for_current_generation(_panel, request, **_kwargs):
+    def render_for_current_generation(request):
         requested_generations.append(request.publication_generation)
+        return _render_publication(request)
 
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.evaluation.panel.get_evaluation_render_publication",
-        render_for_current_generation,
-    )
+    port.render = render_for_current_generation
     render = panel._render_for_selection(
         EvaluationPlanIdentity(plan_index=0),
         split="test",
     )
 
     assert render is None
-    assert requested_generations == [5]
+    qtbot.waitUntil(lambda: requested_generations == [5])
 
 
 def test_evaluation_ignores_progress_only_application_revision(qtbot) -> None:
@@ -613,21 +698,25 @@ def test_evaluation_render_exception_retries_internally_and_commits_on_success(
 
 def test_evaluation_stale_render_retries_without_error_log(
     qtbot,
-    monkeypatch,
     caplog,
 ) -> None:
     port = _EvaluationApplicationPort()
     panel = _panel(qtbot, port)
     panel.update_panel()
+    qtbot.waitUntil(panel.evaluation_background_work_idle)
     selection = EvaluationPlanIdentity(plan_index=0)
     panel._application_generation = port.publication.generation
+    panel.run_combo.blockSignals(True)
     panel.run_combo.clear()
     panel.run_combo.addItem("Average", selection)
+    panel.run_combo.blockSignals(False)
+    panel.split_combo.blockSignals(True)
     panel.split_combo.clear()
     panel.split_combo.addItem("Test", "test")
+    panel.split_combo.blockSignals(False)
     attempts = 0
 
-    def stale_then_available(*_args, **_kwargs):
+    def stale_then_available(request):
         nonlocal attempts
         attempts += 1
         if attempts == 1:
@@ -638,15 +727,13 @@ def test_evaluation_stale_render_retries_without_error_log(
                     "retryable": True,
                 },
             )
+        return _render_publication(request)
 
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.evaluation.panel.get_evaluation_render_publication",
-        stale_then_available,
-    )
+    port.render = stale_then_available
     caplog.set_level(logging.ERROR)
 
     assert panel._render_for_selection(selection, split="test") is None
-    assert panel._evaluation_render_retry_timer.isActive()
+    qtbot.waitUntil(lambda: panel._evaluation_render_retry_attempts == 1)
     qtbot.waitUntil(lambda: attempts == 2)
 
     assert not [
@@ -656,46 +743,40 @@ def test_evaluation_stale_render_retries_without_error_log(
     ]
 
 
-def test_evaluation_publication_ledger_silently_retries_stale_render(
+def test_evaluation_publication_ledger_does_not_wait_for_detached_chart_render(
     qtbot,
-    caplog,
 ) -> None:
     port = _EvaluationApplicationPort()
     panel = _panel(qtbot, port)
     panel.update_panel()
-    caplog.set_level(logging.ERROR)
-    panel.update_panel = MagicMock(
-        side_effect=_RetryEvaluationPublicationRenderError("stale render")
-    )
     port.publication = _publication(generation=5, revision=5)
 
     port.notify(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, port.publication)
-    qtbot.waitUntil(lambda: panel.update_panel.call_count >= 2)
-    panel.cleanup()
+    qtbot.waitUntil(lambda: panel._last_application_revision == 5)
 
-    assert not [
-        record
-        for record in caplog.records
-        if "Evaluation application publication render failed" in record.getMessage()
-    ]
+    assert panel._application_render_ledger.pending_publication is None
 
 
 def test_evaluation_cleanup_cancels_stale_render_retry(
     qtbot,
-    monkeypatch,
 ) -> None:
     port = _EvaluationApplicationPort()
     panel = _panel(qtbot, port)
     panel.update_panel()
+    qtbot.waitUntil(panel.evaluation_background_work_idle)
     selection = EvaluationPlanIdentity(plan_index=0)
     panel._application_generation = port.publication.generation
+    panel.run_combo.blockSignals(True)
     panel.run_combo.clear()
     panel.run_combo.addItem("Average", selection)
+    panel.run_combo.blockSignals(False)
+    panel.split_combo.blockSignals(True)
     panel.split_combo.clear()
     panel.split_combo.addItem("Test", "test")
+    panel.split_combo.blockSignals(False)
     attempts = 0
 
-    def always_stale(*_args, **_kwargs):
+    def always_stale(_request):
         nonlocal attempts
         attempts += 1
         raise ApplicationError(
@@ -706,13 +787,10 @@ def test_evaluation_cleanup_cancels_stale_render_retry(
             },
         )
 
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.evaluation.panel.get_evaluation_render_publication",
-        always_stale,
-    )
+    port.render = always_stale
 
     assert panel._render_for_selection(selection, split="test") is None
-    assert panel._evaluation_render_retry_timer.isActive()
+    qtbot.waitUntil(lambda: panel._evaluation_render_retry_attempts == 1)
     panel.cleanup()
     qtbot.wait(100)
 

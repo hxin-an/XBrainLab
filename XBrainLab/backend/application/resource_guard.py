@@ -33,6 +33,7 @@ from .eeglab_set_preflight import (
     inspect_eeglab_set_header,
 )
 from .errors import ApplicationError, PreconditionError
+from .owned_work import owned_work_checkpoint
 from .resource_label_estimation import (
     SUPPORTED_EXTERNAL_LABEL_EXTENSIONS,
     create_mat_preflight_read_budget,
@@ -1373,6 +1374,7 @@ def estimate_training_resources(
     model_holder: Any | None = None,
 ) -> dict[str, Any]:
     """Estimate CPU and GPU working-set sizes for selected training datasets."""
+    owned_work_checkpoint("Reading training preview datasets")
     dataset_list = list(datasets or [])
     dataset_bytes = 0
     peak_input_batch_bytes = 0
@@ -1386,7 +1388,13 @@ def estimate_training_resources(
     )
     class_count = 1
 
-    for dataset in dataset_list:
+    for dataset_index, dataset in enumerate(dataset_list):
+        owned_work_checkpoint(
+            "Reading training preview dataset "
+            f"{dataset_index + 1} of {len(dataset_list)}",
+            completed=dataset_index,
+            total=len(dataset_list),
+        )
         epoch_data = _safe_call(dataset, "get_epoch_data")
         if epoch_data is None:
             continue
@@ -1421,10 +1429,12 @@ def estimate_training_resources(
             validation_batch_samples,
         )
 
+    owned_work_checkpoint("Estimating training preview model parameters")
     model_estimate = _estimate_model_parameter_memory(
         model_holder,
         dataset_list,
     )
+    owned_work_checkpoint("Training preview model parameters ready")
     model_parameter_bytes = model_estimate.bytes
     gradient_bytes = model_parameter_bytes
     optimizer_state_multiplier = _optimizer_state_multiplier(option)
@@ -1601,7 +1611,9 @@ def preview_training_resources(
         raise TypeError("request must be a TrainingResourcePreviewRequest")
     if not isinstance(context, TrainingResourcePreviewContext):
         raise TypeError("context must be a TrainingResourcePreviewContext")
+    owned_work_checkpoint("Validating training resource preview")
     if request.device == "cpu":
+        owned_work_checkpoint("CPU training resource preview ready")
         return TrainingResourcePreviewResult(
             request_generation=request.request_generation,
             publication_generation=request.publication_generation,
@@ -1614,19 +1626,24 @@ def preview_training_resources(
             warning=None,
         )
 
+    owned_work_checkpoint("Preparing training resource estimate")
     dataset = _DraftDataset(_DraftEpochData(context))
     option = _DraftTrainingOption(
         bs=request.batch_size,
         optim=request.optimizer,
     )
+    owned_work_checkpoint("Estimating training resource working set")
     estimate = estimate_training_resources(
         [dataset],
         option,
         model_holder=model_holder,
     )
+    owned_work_checkpoint("Training resource working set ready")
     estimated_vram = int(estimate["estimated_gpu_batch_working_set_bytes"])
     gpu_index = _gpu_index_from_device(request.device)
+    owned_work_checkpoint("Reading available GPU memory")
     vram = ResourceChecker.get_gpu_vram_status(gpu_index)
+    owned_work_checkpoint("GPU memory status ready")
     available = vram.get("available_bytes")
     if available is None:
         return TrainingResourcePreviewResult(
@@ -1672,6 +1689,7 @@ def preview_training_resources(
             candidate //= 2
         candidate = max(candidate, 1)
         while candidate > 1:
+            owned_work_checkpoint("Refining preview batch size")
             candidate_estimate = math.ceil(
                 (fixed_before_margin + variable_per_sample * candidate)
                 * VRAM_SAFETY_MARGIN
@@ -2226,7 +2244,12 @@ def _estimate_model_parameter_memory(
             reliable=False,
         )
     args: dict[str, Any] = {}
-    for dataset in datasets:
+    for dataset_index, dataset in enumerate(datasets):
+        owned_work_checkpoint(
+            (f"Reading preview model inputs {dataset_index + 1} of {len(datasets)}"),
+            completed=dataset_index,
+            total=len(datasets),
+        )
         epoch_data = _safe_call(dataset, "get_epoch_data")
         if epoch_data is None:
             continue
@@ -2235,7 +2258,9 @@ def _estimate_model_parameter_memory(
             args = dict(model_args)
             break
     try:
+        owned_work_checkpoint("Instantiating training preview model")
         model = model_holder.get_model(args)
+        owned_work_checkpoint("Reading training preview model parameters")
         total = sum(
             int(parameter.numel()) * int(parameter.element_size())
             for parameter in model.parameters()
@@ -2243,6 +2268,7 @@ def _estimate_model_parameter_memory(
         with suppress(Exception):
             model.cpu()
         del model
+        owned_work_checkpoint("Training preview model estimate ready")
         return _ModelParameterMemoryEstimate(
             bytes=max(total, 0),
             source="instantiated",

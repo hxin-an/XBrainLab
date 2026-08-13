@@ -13,6 +13,10 @@ from typing import Any
 
 from mne.io.constants import FIFF
 
+from .data_interpretation_parsed_cache import (
+    ParsedContentTooLargeError,
+    parsed_delimited_table,
+)
 from .data_interpretation_resource_reader import AdmittedResourceReader
 
 
@@ -479,56 +483,72 @@ def _restore_channel_plan(plan: _ChannelApplyPlan) -> None:
 def _read_channel_semantics(
     path: Path,
 ) -> tuple[dict[str, dict[str, str]], set[str]]:
+    try:
+        table = parsed_delimited_table(path, delimiter="\t")
+    except ParsedContentTooLargeError:
+        return _read_channel_semantics_streaming(path)
+    return _channel_semantics_from_rows(table.fieldnames, table.dict_rows())
+
+
+def _read_channel_semantics_streaming(
+    path: Path,
+) -> tuple[dict[str, dict[str, str]], set[str]]:
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
-        fieldnames = {
-            str(name).strip().casefold(): name for name in reader.fieldnames or []
+        return _channel_semantics_from_rows(
+            tuple(str(name) for name in reader.fieldnames or [] if name),
+            reader,
+        )
+
+
+def _channel_semantics_from_rows(
+    source_fieldnames: Iterable[str],
+    rows: Iterable[Mapping[str, Any]],
+) -> tuple[dict[str, dict[str, str]], set[str]]:
+    fieldnames = {str(name).strip().casefold(): str(name) for name in source_fieldnames}
+    name_field = fieldnames.get("name")
+    type_field = fieldnames.get("type")
+    units_field = fieldnames.get("units")
+    status_field = fieldnames.get("status")
+    if name_field is None:
+        raise ValueError("required name column is missing.")
+    semantics: dict[str, dict[str, str]] = {}
+    for row_index, row in enumerate(rows, start=2):
+        name = str(row.get(name_field) or "").strip()
+        if not name:
+            raise ValueError(f"channel name is empty at row {row_index}.")
+        if name in semantics:
+            raise ValueError(f"channel name is duplicated: {name}.")
+        channel_type = (
+            str(row.get(type_field) or "").strip() if type_field is not None else ""
+        )
+        if type_field is not None and not channel_type:
+            raise ValueError(f"channel {name} has an empty type.")
+        channel_units = (
+            str(row.get(units_field) or "").strip() if units_field is not None else ""
+        )
+        if units_field is not None and not channel_units:
+            raise ValueError(f"channel {name} has empty units.")
+        status = (
+            str(row.get(status_field) or "").strip().casefold()
+            if status_field is not None
+            else "unspecified"
+        )
+        if status == "n/a":
+            status = "unspecified"
+        if status_field is not None and status not in {
+            "good",
+            "bad",
+            "unspecified",
+        }:
+            raise ValueError(
+                f"channel {name} has unsupported status {status or '<empty>'}."
+            )
+        semantics[name] = {
+            "status": status,
+            "type": channel_type,
+            "units": channel_units,
         }
-        name_field = fieldnames.get("name")
-        type_field = fieldnames.get("type")
-        units_field = fieldnames.get("units")
-        status_field = fieldnames.get("status")
-        if name_field is None:
-            raise ValueError("required name column is missing.")
-        semantics: dict[str, dict[str, str]] = {}
-        for row_index, row in enumerate(reader, start=2):
-            name = str(row.get(name_field) or "").strip()
-            if not name:
-                raise ValueError(f"channel name is empty at row {row_index}.")
-            if name in semantics:
-                raise ValueError(f"channel name is duplicated: {name}.")
-            channel_type = (
-                str(row.get(type_field) or "").strip() if type_field is not None else ""
-            )
-            if type_field is not None and not channel_type:
-                raise ValueError(f"channel {name} has an empty type.")
-            channel_units = (
-                str(row.get(units_field) or "").strip()
-                if units_field is not None
-                else ""
-            )
-            if units_field is not None and not channel_units:
-                raise ValueError(f"channel {name} has empty units.")
-            status = (
-                str(row.get(status_field) or "").strip().casefold()
-                if status_field is not None
-                else "unspecified"
-            )
-            if status == "n/a":
-                status = "unspecified"
-            if status_field is not None and status not in {
-                "good",
-                "bad",
-                "unspecified",
-            }:
-                raise ValueError(
-                    f"channel {name} has unsupported status {status or '<empty>'}."
-                )
-            semantics[name] = {
-                "status": status,
-                "type": channel_type,
-                "units": channel_units,
-            }
     if not semantics:
         raise ValueError("no channel rows were found.")
     return semantics, set(fieldnames)

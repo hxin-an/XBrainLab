@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QObject, QTimer
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
 
 from XBrainLab.backend.application.commands import (
@@ -37,8 +37,10 @@ from XBrainLab.ui.application_capabilities import (
     ControllerCompatibilityUnavailableError,
     application_ui_runtime,
     blocked_reason,
+    cancel_application_operation,
     execute_application_command,
     execute_application_command_async,
+    get_application_operation,
     get_application_view_publication,
     get_command_capability,
     get_command_review_context,
@@ -54,6 +56,7 @@ from XBrainLab.ui.interaction_outcome import (
     InteractionOutcome,
     reserve_interaction_continuation,
 )
+from XBrainLab.ui.owned_operation_presenter import OwnedOperationPresenter
 from XBrainLab.ui.panels.dataset.data_interpretation_recipe_reload_coordinator import (
     DataInterpretationRecipeReloadCoordinator,
 )
@@ -103,8 +106,10 @@ class DataInterpretationActionBindings:
     single_shot: Callable[..., Any]
     application_ui_runtime: Callable[..., Any]
     blocked_reason: Callable[..., str]
+    cancel_application_operation: Callable[..., bool]
     execute_application_command: Callable[..., Any]
     execute_application_command_async: Callable[..., Any]
+    get_application_operation: Callable[..., Any]
     get_application_view_publication: Callable[..., Any]
     get_command_capability: Callable[..., Any]
     get_command_review_context: Callable[..., Any]
@@ -123,8 +128,10 @@ def default_data_interpretation_action_bindings() -> DataInterpretationActionBin
         single_shot=QTimer.singleShot,
         application_ui_runtime=application_ui_runtime,
         blocked_reason=blocked_reason,
+        cancel_application_operation=cancel_application_operation,
         execute_application_command=execute_application_command,
         execute_application_command_async=execute_application_command_async,
+        get_application_operation=get_application_operation,
         get_application_view_publication=get_application_view_publication,
         get_command_capability=get_command_capability,
         get_command_review_context=get_command_review_context,
@@ -176,6 +183,15 @@ class DataInterpretationActionCoordinator:
         )
         self._active_loading_dialog: Any | None = None
         self._active_loading_token: object | None = None
+        self._active_loading_operation_id: str | None = None
+        self._operation_presenter: OwnedOperationPresenter | None = None
+        timer_parent = self.panel if isinstance(self.panel, QObject) else None
+        self._loading_progress_timer = QTimer(timer_parent)
+        self._loading_progress_timer.setInterval(250)
+        self._loading_progress_timer.timeout.connect(
+            self._refresh_loading_operation_status
+        )
+        self._busy_control_states: list[tuple[Any, bool]] = []
         self._bindings = bindings or default_data_interpretation_action_bindings()
         self._recipe_reload = DataInterpretationRecipeReloadCoordinator(
             self,
@@ -198,6 +214,8 @@ class DataInterpretationActionCoordinator:
         )
         self._active_loading_dialog = dialog
         self._active_loading_token = token
+        self._active_loading_operation_id = None
+        self._loading_progress_timer.stop()
         dialog.rejected.connect(lambda: self._cancel_loading_dialog(token))
         dialog.retry_requested.connect(
             lambda: retry() if self._loading_dialog_is_active(token) else None
@@ -227,11 +245,97 @@ class DataInterpretationActionCoordinator:
     def _cancel_loading_dialog(self, token: object) -> None:
         if self._active_loading_token is not token:
             return
+        operation_id = self._active_loading_operation_id
+        if operation_id is not None:
+            self._bindings.cancel_application_operation(
+                self.panel,
+                operation_id,
+            )
         dialog = self._active_loading_dialog
         self._active_loading_token = None
         self._active_loading_dialog = None
+        self._active_loading_operation_id = None
+        self._loading_progress_timer.stop()
         if dialog is not None:
             dialog.deleteLater()
+
+    def cancel_active_operation(self) -> bool:
+        """Request cancellation from the visible Dataset action surface."""
+        presenter = self._operation_presenter
+        return presenter.request_cancel() if presenter is not None else False
+
+    def set_busy(self, busy: bool) -> None:
+        """Fence Dataset mutations without disabling the active Import cancel action.
+
+        Async interpreter work used to mark the complete Dataset panel busy.  Qt
+        then disabled ``OwnedOperationCancelButton`` as a child of the panel,
+        leaving an admitted Apply impossible to cancel from its visible product
+        surface.  Keep every other mutable Dataset action fenced, including
+        inline table edits, while deliberately leaving the owned-operation
+        control enabled for the operation presenter.
+        """
+        if busy:
+            if self._busy_control_states:
+                return
+            sidebar = getattr(self.panel, "sidebar", None)
+            if sidebar is None:
+                set_busy = getattr(self.panel, "set_busy", None)
+                if callable(set_busy):
+                    set_busy(True)
+                    self._busy_control_states.append((self.panel, True))
+                return
+            cancel_button = getattr(sidebar, "import_cancel_btn", None)
+            controls = list(getattr(sidebar, "_action_buttons", ()) or ())
+            table = getattr(self.panel, "table", None)
+            if table is not None:
+                controls.append(table)
+            for control in controls:
+                if control is None or control is cancel_button:
+                    continue
+                is_enabled = getattr(control, "isEnabled", None)
+                set_enabled = getattr(control, "setEnabled", None)
+                if not callable(is_enabled) or not callable(set_enabled):
+                    continue
+                self._busy_control_states.append((control, bool(is_enabled())))
+                set_enabled(False)
+            return
+
+        control_states = self._busy_control_states
+        self._busy_control_states = []
+        for control, was_enabled in control_states:
+            if control is self.panel:
+                set_busy = getattr(control, "set_busy", None)
+                if callable(set_busy):
+                    set_busy(False)
+                continue
+            if self._bindings.qt_object_deleted(control):
+                continue
+            set_enabled = getattr(control, "setEnabled", None)
+            if callable(set_enabled):
+                set_enabled(was_enabled)
+
+    def _ensure_operation_presenter(self) -> OwnedOperationPresenter | None:
+        if self._operation_presenter is not None:
+            return self._operation_presenter
+        sidebar = getattr(self.panel, "sidebar", None)
+        cancel_button = getattr(sidebar, "import_cancel_btn", None)
+        if cancel_button is None or not isinstance(self.panel, QObject):
+            return None
+        self._operation_presenter = OwnedOperationPresenter(
+            self.panel,
+            cancel_button=cancel_button,
+            snapshot_getter=lambda operation_id: (
+                self._bindings.get_application_operation(
+                    self.panel,
+                    operation_id,
+                )
+            ),
+            canceller=lambda operation_id: self._bindings.cancel_application_operation(
+                self.panel,
+                operation_id,
+            ),
+        )
+        return self._operation_presenter
 
     def _close_loading_dialog(self, token: object | None = None) -> None:
         if token is not None and self._active_loading_token is not token:
@@ -239,6 +343,8 @@ class DataInterpretationActionCoordinator:
         dialog = self._active_loading_dialog
         self._active_loading_token = None
         self._active_loading_dialog = None
+        self._active_loading_operation_id = None
+        self._loading_progress_timer.stop()
         if dialog is None:
             return
         dialog.accept()
@@ -790,6 +896,7 @@ class DataInterpretationActionCoordinator:
             "preview": review_state.preview,
             "validation_decision": review_state.decision,
             "choices": dict(choices),
+            "publication_generation": review_state.publication_generation,
         }
         if initial_step:
             dialog_kwargs["initial_step"] = initial_step
@@ -866,7 +973,18 @@ class DataInterpretationActionCoordinator:
             ) or InteractionOutcome.blocked(
                 "Data interpretation review could not be refreshed."
             )
-        return self._apply_interpretation_async(review_state, dialog_result)
+
+        def _retry_cancelled_apply() -> InteractionOutcome:
+            return self.review_current_import(
+                initial_step="Review and Import",
+                expected_identity=self._review_identity(review_state),
+            )
+
+        return self._apply_interpretation_async(
+            review_state,
+            dialog_result,
+            retry_cancelled_apply=_retry_cancelled_apply,
+        )
 
     def _execute_interpretation_command_async(
         self,
@@ -898,13 +1016,34 @@ class DataInterpretationActionCoordinator:
         def _deliver_result(result) -> InteractionOutcome | None:
             return on_result(result)
 
+        def _bind_loading_operation(operation_id: str) -> None:
+            presenter = self._ensure_operation_presenter()
+            if presenter is not None:
+                presenter.bind(operation_id, stage="Preparing import")
+            if self._active_loading_token is not None:
+                self._active_loading_operation_id = operation_id
+                dialog = self._active_loading_dialog
+                progress_bar = getattr(dialog, "progress_bar", None)
+                if progress_bar is not None:
+                    progress_bar.setProperty("operationId", operation_id)
+                    progress_bar.setProperty("stage", "Preparing import")
+                    progress_bar.setProperty("progress", "indeterminate")
+                    progress_bar.setProperty("indeterminate", True)
+                    progress_bar.setProperty("operationPhase", "pending")
+                self._loading_progress_timer.start()
+
         if self._bindings.execute_application_command_async(
             self.panel,
             command,
             on_result=_deliver_result,
             on_error=_handle_error,
-            busy_target=self.panel,
+            # The coordinator's narrow busy surface fences every Dataset
+            # mutation while keeping the visible owned-operation Cancel button
+            # operable.  Passing the panel itself would disable Cancel as a Qt
+            # child and make a cancellable Apply impossible to stop.
+            busy_target=self,
             expected_publication_generation=expected_publication_generation,
+            on_operation_started=_bind_loading_operation,
         ):
             return InteractionOutcome.accepted(
                 "Data interpretation command was scheduled."
@@ -937,6 +1076,50 @@ class DataInterpretationActionCoordinator:
         if result.failed:
             return self._interaction_failure_outcome(result, result.message)
         return InteractionOutcome.completed(result.message)
+
+    def _refresh_loading_operation_status(self) -> None:
+        """Project backend stage truth into the active cancellable dialog."""
+        operation_id = self._active_loading_operation_id
+        dialog = self._active_loading_dialog
+        if operation_id is None or dialog is None:
+            self._loading_progress_timer.stop()
+            return
+        snapshot = self._bindings.get_application_operation(
+            self.panel,
+            operation_id,
+        )
+        if snapshot is None:
+            return
+        phase = str(getattr(snapshot.phase, "value", snapshot.phase))
+        if phase in {"completed", "cancelled", "failed"}:
+            self._loading_progress_timer.stop()
+        stage = str(getattr(snapshot, "stage", "") or "Working")
+        completed = getattr(snapshot, "completed", None)
+        total = getattr(snapshot, "total", None)
+        if isinstance(completed, int) and isinstance(total, int):
+            detail = f"{completed} of {total} items complete"
+        elif bool(getattr(snapshot, "cancel_requested", False)):
+            detail = "Cancelling safely…"
+        else:
+            detail = "Working…"
+        set_stage = getattr(dialog, "set_stage", None)
+        if callable(set_stage):
+            set_stage(stage, detail)
+        progress_bar = getattr(dialog, "progress_bar", None)
+        if progress_bar is not None:
+            progress_bar.setProperty("operationId", operation_id)
+            progress_bar.setProperty("stage", stage)
+            progress_bar.setProperty(
+                "progress",
+                f"{completed}/{total}"
+                if isinstance(completed, int) and isinstance(total, int)
+                else "indeterminate",
+            )
+            progress_bar.setProperty(
+                "indeterminate",
+                not (isinstance(completed, int) and isinstance(total, int)),
+            )
+            progress_bar.setProperty("operationPhase", phase)
 
     def _start_interpretation_review_async(
         self,
@@ -1341,9 +1524,17 @@ class DataInterpretationActionCoordinator:
                 )
                 _replace_preparing_status(outcome)
                 return outcome
+
+            def _retry_cancelled_apply() -> InteractionOutcome:
+                return self.review_current_import(
+                    initial_step="Review and Import",
+                    expected_identity=self._review_identity(validated_state),
+                )
+
             return self._apply_interpretation_async(
                 validated_state,
                 dialog_result,
+                retry_cancelled_apply=_retry_cancelled_apply,
             )
 
         started = self._preview_and_validate_interpretation_async(
@@ -1362,6 +1553,8 @@ class DataInterpretationActionCoordinator:
         self,
         review_state: _InterpretationReviewState,
         dialog_result: dict[str, Any],
+        *,
+        retry_cancelled_apply: Callable[[], InteractionOutcome] | None = None,
     ) -> InteractionOutcome:
         """Apply one reviewed candidate and continue to optional recipe saving."""
         candidate_id = (
@@ -1370,14 +1563,52 @@ class DataInterpretationActionCoordinator:
         )
 
         def _handle_apply_result(apply_result) -> InteractionOutcome:
+            error_type = getattr(
+                getattr(apply_result, "error_type", None),
+                "value",
+                getattr(apply_result, "error_type", None),
+            )
+            if apply_result.failed and error_type == ErrorType.CANCELLED.value:
+                self._show_status("Dataset import cancelled · Review preserved")
+                if retry_cancelled_apply is None:
+                    return InteractionOutcome.cancelled(apply_result.message)
+                retry = retry_cancelled_apply
+                continuation = self._bindings.reserve_interaction_continuation()
+
+                def _resume_cancelled_apply() -> None:
+                    main_window = getattr(self._host, "main_window", None)
+                    if self._bindings.qt_object_deleted(self.panel) or (
+                        getattr(main_window, "_closing_in_progress", False) is True
+                    ):
+                        if continuation is not None:
+                            continuation.fail(
+                                "XBrainLab started closing before the preserved "
+                                "dataset review could reopen."
+                            )
+                        return
+                    if continuation is not None:
+                        continuation.start(retry)
+                    else:
+                        retry()
+
+                try:
+                    self._bindings.single_shot(0, _resume_cancelled_apply)
+                except Exception:
+                    logger.exception("Could not reopen cancelled dataset review")
+                    message = "The preserved dataset review could not be reopened."
+                    self._show_status(
+                        "Dataset import failed · Review the import settings"
+                    )
+                    if continuation is not None:
+                        continuation.fail(message)
+                    return InteractionOutcome.failed(message)
+                return InteractionOutcome.accepted(
+                    "Dataset import was cancelled and the preserved review will reopen."
+                )
+
             resource_preflight = self._resource_preflight_view(apply_result)
             if apply_result.failed and resource_preflight:
                 risk_level = resource_preflight.risk_level
-                error_type = getattr(
-                    getattr(apply_result, "error_type", None),
-                    "value",
-                    getattr(apply_result, "error_type", None),
-                )
                 if (
                     error_type == ErrorType.CONFIRMATION_REQUIRED.value
                     and risk_level in {"warning", "unknown"}
@@ -1520,6 +1751,29 @@ class DataInterpretationActionCoordinator:
             )
 
         return _dispatch_apply()
+
+    @staticmethod
+    def _review_identity(
+        review_state: _InterpretationReviewState,
+    ) -> InterpretationReviewIdentity:
+        publication_generation = review_state.publication_generation
+        scan_id = str(review_state.scan.get("scan_id") or "").strip()
+        candidate_id = str(review_state.candidate_id or "").strip()
+        if (
+            type(publication_generation) is not int
+            or publication_generation < 0
+            or not scan_id
+            or not candidate_id
+        ):
+            raise PreconditionError(
+                "The preserved Data Import review identity is incomplete. "
+                "Review the current import again."
+            )
+        return InterpretationReviewIdentity(
+            publication_generation=publication_generation,
+            scan_id=scan_id,
+            candidate_id=candidate_id,
+        )
 
     @staticmethod
     def _resource_preflight_view(result: Any) -> ResourcePreflightView | None:

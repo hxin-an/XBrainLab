@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import stat
 from dataclasses import asdict, dataclass, is_dataclass
 from dataclasses import field as dc_field
 from pathlib import Path
 from typing import Any
 
+from . import bids_dataset_index as bids_index_module
+from .bids_dataset_index import BidsDatasetIndex
 from .data_interpretation_bids_resources import (
     bids_events_json_resources_by_carrier,
 )
@@ -39,6 +42,7 @@ from .data_interpretation_metadata import (
 )
 from .data_interpretation_pairing import label_mapping_key
 from .data_interpretation_resource_reader import AdmittedResourceReader
+from .owned_work import owned_work_checkpoint
 
 _MAX_SCAN_DEPTH = 8
 _MAX_SCAN_FILES = 5000
@@ -91,6 +95,11 @@ class ScanPreflightScope:
     bids: dict[str, Any] = dc_field(default_factory=dict)
     skipped_nested_bids_roots: list[str] = dc_field(default_factory=list)
     discovery_warnings: list[str] = dc_field(default_factory=list)
+    bids_index: BidsDatasetIndex | None = dc_field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     @property
     def paths(self) -> list[str]:
@@ -130,6 +139,20 @@ class _ScanBudget:
     _counted_files: set[str] = dc_field(default_factory=set)
     _counted_metadata_files: set[str] = dc_field(default_factory=set)
     _directory_cache: dict[str, tuple[Path, ...]] = dc_field(default_factory=dict)
+    _directory_identities: dict[str, tuple[int, ...]] = dc_field(default_factory=dict)
+
+    @property
+    def traversed_directories(self) -> tuple[str, ...]:
+        """Return directory identities already visited by this bounded walk."""
+        return tuple(sorted(self._directory_cache))
+
+    @property
+    def traversal_complete(self) -> bool:
+        """Return whether file, entry, and depth bounds retained the full tree."""
+        return not any(
+            key in {"file-limit", "entry-limit"} or key.startswith("depth:")
+            for key in self._warning_keys
+        )
 
     def warn_once(self, key: str, message: str) -> None:
         if key in self._warning_keys:
@@ -139,7 +162,7 @@ class _ScanBudget:
 
     def claim_file(self, path: Path) -> bool:
         """Count one unique file against the shared discovery budget."""
-        resolved = str(path.resolve(strict=False))
+        resolved = os.path.normcase(os.path.abspath(os.fspath(path.expanduser())))
         if resolved in self._counted_files:
             return True
         if self.files_collected >= self.max_files:
@@ -158,7 +181,9 @@ class _ScanBudget:
 
     def directory_entries(self, path: Path) -> list[Path]:
         """Return a sorted, bounded slice of one directory iterator."""
-        cache_key = str(path.resolve(strict=False))
+        cache_key = os.path.normcase(os.path.abspath(os.fspath(path.expanduser())))
+        if not self.retains_directory_identity(path):
+            return []
         cached = self._directory_cache.get(cache_key)
         if cached is not None:
             return list(cached)
@@ -194,6 +219,58 @@ class _ScanBudget:
         sorted_entries = tuple(sorted(entries, key=lambda value: value.name.lower()))
         self._directory_cache[cache_key] = sorted_entries
         return list(sorted_entries)
+
+    def retains_directory_identity(self, path: Path) -> bool:
+        """Retain one directory identity so children need no repeated realpath."""
+        key = os.path.normcase(os.path.abspath(os.fspath(path.expanduser())))
+        try:
+            status = path.lstat()
+        except OSError:
+            status = None
+        if status is None or not stat.S_ISDIR(status.st_mode):
+            self.warn_once(
+                f"directory-identity:{path}",
+                f"Source scan could not retain directory identity: {path}.",
+            )
+            return False
+        observed = _filesystem_entry_identity(status)
+        retained = self._directory_identities.setdefault(key, observed)
+        if retained == observed:
+            return True
+        self.warn_once(
+            f"directory-identity-changed:{path}",
+            f"Source scan stopped because directory identity changed: {path}.",
+        )
+        return False
+
+    def retained_directory_identity_is_current(self, path: Path) -> bool:
+        """Recheck a retained directory without silently retaining a new one."""
+        key = os.path.normcase(os.path.abspath(os.fspath(path.expanduser())))
+        retained = self._directory_identities.get(key)
+        if retained is None:
+            return False
+        try:
+            status = path.lstat()
+        except OSError:
+            return False
+        return retained == _filesystem_entry_identity(status)
+
+    def revalidate_traversed_directories(self) -> tuple[str, ...]:
+        """Return every enumerated directory whose retained contents changed."""
+        changed: list[str] = []
+        for path_text in self.traversed_directories:
+            path = Path(path_text)
+            if self.retained_directory_identity_is_current(path):
+                continue
+            changed.append(path_text)
+            self.warn_once(
+                f"directory-identity-changed:{path_text}",
+                (
+                    "Source scan stopped because directory contents changed while "
+                    f"the BIDS index was being built: {path_text}."
+                ),
+            )
+        return tuple(changed)
 
     def observe_metadata_file(self, path: Path) -> int:
         """Account metadata size by stat without opening its payload."""
@@ -339,6 +416,24 @@ def scan_source_path(
     bids["metadata_discovery"] = dict(
         scope.bids.get("metadata_discovery") or {},
     )
+    admitted_metadata = set(metadata_files)
+    for key in ("electrodes_files", "coordsystem_files", "json_sidecar_files"):
+        bids[key] = [
+            str(path)
+            for path in list(scope.bids.get(key) or [])
+            if str(path) in admitted_metadata
+        ]
+    for key in (
+        "selected_subjects",
+        "index_completeness",
+        "skipped_nested_bids_roots",
+        "nested_bids_candidates",
+    ):
+        if key in scope.bids:
+            value = scope.bids[key]
+            bids[key] = dict(value) if isinstance(value, dict) else list(value)
+    if "selection_root" in scope.bids:
+        bids["selection_root"] = str(scope.bids["selection_root"])
     metadata = [
         _metadata_for_file(Path(file_path), scan_root, source_kind)
         for file_path in eeg_files
@@ -366,6 +461,18 @@ def scan_source_path(
         source_kind=source_kind,
         bids=bids,
     )
+    index_completeness = bids.get("index_completeness")
+    if bids.get("is_bids") and isinstance(index_completeness, dict):
+        blocked_reasons = _dedupe_strings(
+            [
+                *blocked_reasons,
+                *(
+                    str(reason)
+                    for reason in index_completeness.get("blocked_reasons", [])
+                    if str(reason).strip()
+                ),
+            ]
+        )
 
     return ScanResult(
         scan_id=scan_id,
@@ -390,6 +497,7 @@ def discover_source_preflight_scope(
     source_hint: str = "auto",
     label_sources: list[str] | None = None,
     selected_bids_subjects: list[str] | tuple[str, ...] | None = None,
+    bids_index: BidsDatasetIndex | None = None,
 ) -> ScanPreflightScope:
     """Discover an exact bounded scan scope without parsing BIDS TSV rows."""
     if not str(source_path).strip():
@@ -401,23 +509,47 @@ def discover_source_preflight_scope(
     resolved = path.resolve()
     scan_root = resolved.parent if resolved.is_file() else resolved
     scan_budget = _ScanBudget()
-    looks_like_bids, bids_root_issue = _provisional_bids_root(
-        scan_root,
-        scan_budget,
-        scan_root=scan_root,
-    )
+    normalized_hint = str(source_hint or "auto").strip().casefold()
+    active_bids_index = bids_index
+    if active_bids_index is not None and (
+        not active_bids_index.matches_root(scan_root)
+        or not active_bids_index.is_current()
+    ):
+        active_bids_index = None
+    if active_bids_index is not None:
+        looks_like_bids = active_bids_index.looks_like_bids
+        bids_root_issue = active_bids_index.root_validation_issue
+    elif normalized_hint == "bids":
+        active_bids_index = bids_index_module.build_bids_dataset_index(scan_root)
+        looks_like_bids = active_bids_index.looks_like_bids
+        bids_root_issue = active_bids_index.root_validation_issue
+    else:
+        looks_like_bids, bids_root_issue = _provisional_bids_root(
+            scan_root,
+            scan_budget,
+            scan_root=scan_root,
+        )
     source_kind = _source_kind(
         resolved,
         source_hint,
         looks_like_bids=looks_like_bids,
     )
     skipped_nested_bids_roots: list[Path] = []
-    if source_kind == "bids" and selected_bids_subjects:
-        files = _selected_bids_subject_files(
-            scan_root,
-            selected_bids_subjects,
-            budget=scan_budget,
+    bids_projection = None
+    if source_kind == "bids":
+        active_bids_index = active_bids_index or (
+            bids_index_module.build_bids_dataset_index(
+                scan_root,
+                _scan_budget=scan_budget,
+            )
         )
+        bids_projection = active_bids_index.project(selected_bids_subjects)
+        # A user may select a download/container folder only when the index can
+        # prove it contains one formal BIDS root. All downstream source identity
+        # and inheritance semantics then use that resolved dataset root.
+        resolved = Path(active_bids_index.root)
+        scan_root = resolved
+        files = [Path(item) for item in bids_projection.all_files]
     else:
         files = _candidate_files(
             resolved,
@@ -425,25 +557,26 @@ def discover_source_preflight_scope(
             skipped_bids_roots=skipped_nested_bids_roots,
             budget=scan_budget,
         )
-    strict_bids_files = (
-        [item for item in files if _is_raw_bids_eeg_scope_path(item, scan_root)]
-        if source_kind == "bids" and looks_like_bids
-        else files
-    )
-    eeg_files = sorted(
-        str(item)
-        for item in strict_bids_files
-        if _has_supported_suffix(item, SUPPORTED_EEG_EXTENSIONS)
-    )
-    bids_structure_detected = _has_bids_subject_structure(scan_root, files)
-    auto_label_carriers = (
-        [item for item in strict_bids_files if _is_bids_events_file(item)]
-        if source_kind == "bids" and looks_like_bids
-        else _auto_label_carriers_for_source(
+    if bids_projection is not None and looks_like_bids:
+        strict_bids_files = [Path(item) for item in bids_projection.all_files]
+        eeg_files = list(bids_projection.eeg_files)
+        auto_label_carriers = [Path(item) for item in bids_projection.events_files]
+    else:
+        strict_bids_files = files
+        eeg_files = sorted(
+            str(item)
+            for item in strict_bids_files
+            if _has_supported_suffix(item, SUPPORTED_EEG_EXTENSIONS)
+        )
+        auto_label_carriers = _auto_label_carriers_for_source(
             resolved,
             files,
             scan_budget,
         )
+    bids_structure_detected = (
+        bool(active_bids_index and active_bids_index.subjects)
+        if source_kind == "bids"
+        else _has_bids_subject_structure(scan_root, files)
     )
     normalized_label_sources, source_label_carriers, source_warnings = (
         _label_carriers_from_sources(label_sources or [], scan_budget)
@@ -455,9 +588,20 @@ def discover_source_preflight_scope(
         for carrier in carriers:
             label_carrier_sources.setdefault(str(carrier), str(source))
     label_carriers = sorted(label_carrier_sources)
-    bids_events_json_by_carrier = bids_events_json_resources_by_carrier(
-        label_carriers,
+    indexed_events_json = (
+        bids_projection.events_json_catalog if bids_projection is not None else {}
     )
+    external_events_json = bids_events_json_resources_by_carrier(
+        str(carrier) for _, carriers in source_label_carriers for carrier in carriers
+    )
+    bids_events_json_by_carrier = {
+        carrier: indexed_events_json.get(
+            carrier,
+            external_events_json.get(carrier, ()),
+        )
+        for carrier in label_carriers
+        if _is_bids_events_file(Path(carrier))
+    }
     source_label_files = [
         carrier for _, carriers in source_label_carriers for carrier in carriers
     ]
@@ -468,6 +612,11 @@ def discover_source_preflight_scope(
         eeg_files,
         label_carriers,
         materialize=False,
+        layout=(
+            [dict(row) for row in bids_projection.layout]
+            if bids_projection is not None
+            else None
+        ),
         discovered_files=files,
     )
     bids["looks_like_bids"] = looks_like_bids
@@ -479,7 +628,31 @@ def discover_source_preflight_scope(
         or _path_entry_exists(scan_root / "dataset_description.json")
         else ""
     )
-    bids["metadata_discovery"] = scan_budget.metadata_discovery_diagnostics()
+    bids["metadata_discovery"] = (
+        active_bids_index.metadata_discovery_diagnostics
+        if active_bids_index is not None
+        else scan_budget.metadata_discovery_diagnostics()
+    )
+    if bids_projection is not None and active_bids_index is not None:
+        bids.update(
+            {
+                "selected_subjects": list(bids_projection.selected_subjects),
+                "selection_root": active_bids_index.selection_root,
+                "nested_bids_candidates": list(
+                    active_bids_index.nested_bids_candidates
+                ),
+                "electrodes_files": list(bids_projection.electrodes_files),
+                "coordsystem_files": list(bids_projection.coordsystem_files),
+                "json_sidecar_files": list(bids_projection.json_sidecar_files),
+                "index_completeness": active_bids_index.completeness.to_dict(),
+                "skipped_nested_bids_roots": list(
+                    active_bids_index.skipped_nested_bids_roots
+                ),
+            }
+        )
+    indexed_metadata_files = (
+        list(bids_projection.metadata_files) if bids_projection is not None else []
+    )
     return ScanPreflightScope(
         source_path=str(resolved),
         source_hint=source_hint,
@@ -491,7 +664,12 @@ def discover_source_preflight_scope(
         label_carrier_sources=label_carrier_sources,
         metadata_files=_dedupe_strings(
             [
-                *_bids_metadata_resource_paths(bids),
+                *indexed_metadata_files,
+                *(
+                    []
+                    if indexed_metadata_files
+                    else _bids_metadata_resource_paths(bids)
+                ),
                 *(
                     path
                     for paths in bids_events_json_by_carrier.values()
@@ -503,55 +681,16 @@ def discover_source_preflight_scope(
         all_files=[str(item) for item in all_files],
         bids=bids,
         skipped_nested_bids_roots=[str(item) for item in skipped_nested_bids_roots],
-        discovery_warnings=[*scan_budget.warnings, *source_warnings],
+        discovery_warnings=[
+            *(
+                active_bids_index.warnings
+                if active_bids_index is not None
+                else scan_budget.warnings
+            ),
+            *source_warnings,
+        ],
+        bids_index=active_bids_index,
     )
-
-
-def _selected_bids_subject_files(
-    bids_root: Path,
-    selected_subjects: list[str] | tuple[str, ...],
-    *,
-    budget: _ScanBudget,
-) -> list[Path]:
-    """Discover root metadata and only explicitly selected BIDS subjects."""
-    normalized_subjects = _dedupe_strings(
-        [
-            value[4:] if value.casefold().startswith("sub-") else value
-            for raw_value in selected_subjects
-            if (value := str(raw_value).strip())
-        ]
-    )
-    if not normalized_subjects:
-        raise ValueError("Select at least one BIDS subject before continuing.")
-
-    files: list[Path] = []
-    for item in budget.directory_entries(bids_root):
-        admitted = _admit_discovered_child(
-            item,
-            scan_root=bids_root,
-            budget=budget,
-        )
-        if admitted is not None and admitted.is_file() and budget.claim_file(admitted):
-            files.append(admitted)
-
-    missing: list[str] = []
-    for subject in normalized_subjects:
-        subject_dir = bids_root / f"sub-{subject}"
-        if not subject_dir.is_dir():
-            missing.append(f"sub-{subject}")
-            continue
-        files.extend(
-            _candidate_files(
-                subject_dir,
-                budget=budget,
-                scan_root=bids_root,
-            )
-        )
-    if missing:
-        raise ValueError(
-            "Selected BIDS subject folder was not found: " + ", ".join(missing)
-        )
-    return _dedupe_paths(files)
 
 
 def discover_explicit_file_preflight_scope(
@@ -687,26 +826,19 @@ def _source_kind(
     return "folder"
 
 
-def _path_substitution_kind(path: Path) -> str | None:
+def _path_substitution_kind(
+    path: Path,
+    *,
+    status: os.stat_result | None = None,
+) -> str | None:
     """Return the unsafe link-like kind without requiring Python 3.12 APIs."""
-    try:
-        if path.is_symlink():
-            return "symbolic link"
-    except OSError:
-        return "uninspectable filesystem entry"
-
-    is_junction = getattr(path, "is_junction", None)
-    if callable(is_junction):
+    if status is None:
         try:
-            if is_junction():
-                return "directory junction or reparse point"
+            status = path.lstat()
         except OSError:
             return "uninspectable filesystem entry"
-
-    try:
-        status = path.lstat()
-    except OSError:
-        return "uninspectable filesystem entry"
+    if stat.S_ISLNK(status.st_mode):
+        return "symbolic link"
     file_attributes = int(getattr(status, "st_file_attributes", 0) or 0)
     if (
         stat.S_ISDIR(status.st_mode)
@@ -762,19 +894,19 @@ def _admit_discovered_child(
         )
         return None
 
-    substitution_kind = _path_substitution_kind(path)
+    if not budget.retains_directory_identity(path.parent):
+        return None
+
+    try:
+        initial_status = path.lstat()
+    except OSError:
+        initial_status = None
+    substitution_kind = _path_substitution_kind(path, status=initial_status)
     if substitution_kind is not None:
         _warn_skipped_substitution(path, substitution_kind, budget)
         return None
 
-    try:
-        resolved = path.resolve(strict=True)
-    except (OSError, RuntimeError) as exc:
-        budget.warn_once(
-            f"resolve:{path}",
-            f"Source scan could not safely resolve path {path}: {exc}.",
-        )
-        return None
+    resolved = Path(os.path.abspath(os.fspath(path)))
     try:
         resolved.relative_to(scan_root)
     except ValueError:
@@ -784,11 +916,59 @@ def _admit_discovered_child(
         )
         return None
 
-    substitution_kind = _path_substitution_kind(path)
+    try:
+        retained_status = path.lstat()
+    except OSError:
+        retained_status = None
+    if (
+        not budget.retained_directory_identity_is_current(path.parent)
+        or initial_status is None
+        or retained_status is None
+        or (
+            initial_status.st_dev,
+            initial_status.st_ino,
+            initial_status.st_mode,
+            int(getattr(initial_status, "st_file_attributes", 0) or 0),
+        )
+        != (
+            retained_status.st_dev,
+            retained_status.st_ino,
+            retained_status.st_mode,
+            int(getattr(retained_status, "st_file_attributes", 0) or 0),
+        )
+    ):
+        substitution_kind = "uninspectable filesystem entry"
+    else:
+        substitution_kind = _path_substitution_kind(path, status=retained_status)
     if substitution_kind is not None:
         _warn_skipped_substitution(path, substitution_kind, budget)
         return None
     return resolved
+
+
+def _filesystem_entry_identity(status: os.stat_result) -> tuple[int, ...]:
+    """Capture substitution and entry-set signals before directory enumeration."""
+    return (
+        int(status.st_dev),
+        int(status.st_ino),
+        int(status.st_mode),
+        int(getattr(status, "st_file_attributes", 0) or 0),
+        int(status.st_size),
+        _stat_time_ns(status, nanoseconds="st_mtime_ns", seconds="st_mtime"),
+        _stat_time_ns(status, nanoseconds="st_ctime_ns", seconds="st_ctime"),
+    )
+
+
+def _stat_time_ns(
+    status: os.stat_result,
+    *,
+    nanoseconds: str,
+    seconds: str,
+) -> int:
+    value = getattr(status, nanoseconds, None)
+    if value is not None:
+        return int(value)
+    return int(float(getattr(status, seconds)) * 1_000_000_000)
 
 
 def _candidate_files(
@@ -820,8 +1000,16 @@ def _candidate_files(
             ),
         )
         return []
+    owned_work_checkpoint(
+        "Discovering source files",
+        completed=budget.entries_visited,
+    )
     result: list[Path] = []
     for item in budget.directory_entries(path):
+        owned_work_checkpoint(
+            "Discovering source files",
+            completed=budget.entries_visited,
+        )
         admitted_item = _admit_discovered_child(
             item,
             scan_root=scan_root,

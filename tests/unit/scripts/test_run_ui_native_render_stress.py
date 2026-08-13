@@ -168,8 +168,8 @@ def _passing_stress_result(
             }
             for index in range(cycles + 1)
         ],
-        "product_saliency_publications_primed": 1,
-        "product_saliency_publications_served": max(expected_2d - 1, 0),
+        "product_saliency_operations_primed": 1,
+        "product_saliency_operations_served": (expected_2d + expected_3d_updates),
         "product_2d_renders_installed": expected_2d,
         "product_2d_loading_cleared": expected_2d,
         "product_2d_replaced_resources_released": expected_2d,
@@ -215,8 +215,8 @@ def _passing_headless_macos_result(*, cycles: int = 1) -> dict[str, object]:
         {
             "native_render_scope": "headless_macos_safe_2d",
             "product_2d_view_names": ["map", "spectrogram"],
-            "product_saliency_publications_primed": 1,
-            "product_saliency_publications_served": 0,
+            "product_saliency_operations_primed": 1,
+            "product_saliency_operations_served": expected_2d,
             "product_2d_renders_installed": expected_2d,
             "product_2d_loading_cleared": expected_2d,
             "product_2d_replaced_resources_released": expected_2d,
@@ -388,7 +388,20 @@ def test_product_tab_stress_uses_public_panel_publication_path():
         for node in ast.walk(function)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
     }
-    assert called_attributes & {"on_update", "update_panel"}
+    called_helpers = {
+        node.func.id
+        for node in ast.walk(function)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    activation_function = _named_function("_activate_saliency_tab")
+    activation_attributes = {
+        node.func.attr
+        for node in ast.walk(activation_function)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+    assert "_activate_saliency_tab" in called_helpers
+    assert "on_update" in activation_attributes
+    assert "setCurrentIndex" in activation_attributes
     assert "refresh_combos" in called_attributes
     assert "_render_figure_async" not in called_attributes
     assert "_replace_figure" not in called_attributes
@@ -716,8 +729,8 @@ def test_stress_contract_fails_closed_for_required_resource_metrics(failed_metri
 @pytest.mark.parametrize(
     ("failed_metric", "failed_value"),
     [
-        ("product_saliency_publications_primed", 0),
-        ("product_saliency_publications_served", 1),
+        ("product_saliency_operations_primed", 0),
+        ("product_saliency_operations_served", 1),
         ("product_2d_replaced_resources_released", 2),
         ("product_map_renders_installed", 0),
         ("product_spectrogram_renders_installed", 0),

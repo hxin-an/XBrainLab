@@ -180,6 +180,7 @@ class ModelSelectionDialog(BaseDialog):
         setup_layout.addWidget(QLabel("Model"), 1, 0)
         model_combo = QComboBox()
         self.model_combo = model_combo
+        model_combo.setObjectName("ModelSelectionCombo")
         model_combo.addItems(self.model_list)
         if self.initial_model_name is not None:
             model_combo.setCurrentText(self.initial_model_name)

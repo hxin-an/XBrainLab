@@ -11,12 +11,15 @@ import hashlib
 import os
 import time
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
 from XBrainLab.backend.services.dataset_state_service import DatasetInterpretationPort
 
+from . import bids_dataset_index as bids_index_module
+from .bids_dataset_index import BidsDatasetIndex
 from .bids_subject_catalog import inspect_bids_subject_catalog
 from .commands import (
     ApplyInterpretationCommand,
@@ -33,6 +36,8 @@ from .data_interpretation import (
     AppliedInterpretation,
     InterpretationCandidate,
     InterpretationDecision,
+    InterpretationPreview,
+    ScanResult,
     ValidationDecision,
     build_import_recipe,
     build_interpretation_candidate,
@@ -44,11 +49,25 @@ from .data_interpretation import (
     validate_interpretation_candidate,
 )
 from .data_interpretation_apply import DataInterpretationApplyService
+from .data_interpretation_apply_preparation import (
+    ApplicationApplyBoundary,
+    InterpretationApplyPlan,
+    PipelineStateIdentity,
+    PreparedInterpretationApply,
+    assert_source_content_boundaries_match,
+    assert_source_file_boundaries_current,
+    capture_source_file_boundaries,
+)
 from .data_interpretation_bids_resources import BidsEventsJsonReader
 from .data_interpretation_candidate import InterpretationResourceScope
 from .data_interpretation_content_identity import (
     assert_review_content_unchanged,
     identity_paths,
+)
+from .data_interpretation_discovery_preparation import (
+    ApplicationDiscoveryBoundary,
+    InterpretationDiscoveryPlan,
+    PreparedInterpretationDiscovery,
 )
 from .data_interpretation_path_identity import (
     CanonicalPathIdentityScope,
@@ -75,6 +94,7 @@ from .label_resource_admission import (
     LabelResourceSpec,
     session_from_resource_preflight,
 )
+from .owned_work import owned_work_checkpoint, owned_work_commit_boundary
 from .pipeline_transaction import PipelineStateSnapshot, PipelineStateTransaction
 from .resource_guard import (
     RAM_WARNING_RATIO,
@@ -148,6 +168,46 @@ class _PreviewResourceAdmission:
         return diagnostics
 
 
+@dataclass(frozen=True)
+class _PreparedSourceScan:
+    """One detached scan plus the public result emitted after publication."""
+
+    scan: ScanResult | None
+    result: HandlerResult
+
+
+@dataclass(frozen=True)
+class _PreparedInterpretationReview:
+    """One complete detached review ready for a single state publication."""
+
+    scan: ScanResult
+    candidate: InterpretationCandidate
+    preview: InterpretationPreview
+    decision: ValidationDecision
+    result: HandlerResult
+
+
+@dataclass(frozen=True)
+class _PreparedInterpretationPreview:
+    """One detached candidate/preview and any materialized source replacement."""
+
+    scan: ScanResult
+    replace_scan: bool
+    preserve_discovery_scan: bool
+    candidate: InterpretationCandidate
+    preview: InterpretationPreview
+    result: HandlerResult
+
+
+@dataclass(frozen=True)
+class _PreparedInterpretationValidation:
+    """One detached freshness decision ready for guarded state publication."""
+
+    candidate_id: str
+    decision: ValidationDecision
+    result: HandlerResult
+
+
 class DataInterpretationCommandService:
     """Handle Data Interpretation commands and related recipe state."""
 
@@ -193,21 +253,162 @@ class DataInterpretationCommandService:
             tuple[str, str, tuple[str, ...]],
             _PreviewResourceAdmission,
         ] = {}
+        self._bids_dataset_indexes: dict[str, BidsDatasetIndex] = {}
+
+    def begin_interpretation_discovery(
+        self,
+        command: (
+            ScanSourceCommand
+            | ReviewInterpretationCommand
+            | PreviewInterpretationCommand
+            | ValidateInterpretationCommand
+        ),
+        *,
+        application_boundary: ApplicationDiscoveryBoundary,
+    ) -> InterpretationDiscoveryPlan:
+        """Capture immutable review state before detached filesystem work."""
+        owned_work_checkpoint("Admitting Data Import discovery")
+        return InterpretationDiscoveryPlan.capture(
+            command,
+            application=application_boundary,
+            state_before=self.state.checkpoint_session_state(),
+            safe_preview_admissions=self._safe_preview_admissions,
+            bids_dataset_indexes=self._bids_dataset_indexes,
+        )
+
+    def prepare_interpretation_discovery(
+        self,
+        plan: InterpretationDiscoveryPlan,
+    ) -> PreparedInterpretationDiscovery:
+        """Scan and build review state on a detached session owner."""
+        if not isinstance(plan, InterpretationDiscoveryPlan):
+            raise TypeError("plan must be InterpretationDiscoveryPlan")
+        detached = self._detached_discovery_service(plan)
+        if isinstance(plan.command, ScanSourceCommand):
+            prepared = detached._prepare_scan_source(plan.command)
+            detached._record_prepared_scan(prepared)
+            handler_result = prepared.result
+        elif isinstance(plan.command, ReviewInterpretationCommand):
+            prepared_review = detached._prepare_review_interpretation(plan.command)
+            detached._record_prepared_review(prepared_review)
+            handler_result = prepared_review.result
+        elif isinstance(plan.command, PreviewInterpretationCommand):
+            prepared_preview = detached._prepare_preview_interpretation(plan.command)
+            detached._record_prepared_preview(prepared_preview)
+            handler_result = prepared_preview.result
+        else:
+            prepared_validation = detached._prepare_validate_interpretation(
+                plan.command
+            )
+            detached._record_prepared_validation(prepared_validation)
+            handler_result = prepared_validation.result
+        message, diagnostics = self._normalize_handler_result(handler_result)
+        owned_work_checkpoint("Data Import discovery prepared")
+        return PreparedInterpretationDiscovery.create(
+            plan=plan,
+            state_after=detached.state.checkpoint_session_state(),
+            message=message,
+            diagnostics=diagnostics,
+            safe_preview_admissions=detached._safe_preview_admissions,
+            bids_dataset_indexes=detached._bids_dataset_indexes,
+        )
+
+    def commit_prepared_interpretation_discovery(
+        self,
+        prepared: PreparedInterpretationDiscovery,
+    ) -> HandlerResult:
+        """Publish one exact detached review after final cancellation admission."""
+        if not isinstance(prepared, PreparedInterpretationDiscovery):
+            raise TypeError("prepared must be PreparedInterpretationDiscovery")
+        if self.state.checkpoint_session_state() != prepared.plan.state_before:
+            raise PreconditionError(
+                "Data Import review state changed while discovery was prepared. "
+                "Review the current source and retry.",
+                diagnostics={
+                    "code": "stale_prepared_interpretation_discovery",
+                    "stale_prepared_interpretation_discovery": True,
+                    "state_preserved": True,
+                },
+            )
+        owned_work_commit_boundary("Publishing Data Import discovery")
+        rollback = self.state.checkpoint_session_state()
+        try:
+            self.state.restore_session_state(prepared.state_after)
+            self._safe_preview_admissions = dict(prepared.safe_preview_admissions)
+            self._bids_dataset_indexes = dict(prepared.bids_dataset_indexes)
+        except BaseException:
+            self.state.restore_session_state(rollback)
+            raise
+        return prepared.handler_result()
+
+    def discovery_plan_is_current(
+        self,
+        plan: InterpretationDiscoveryPlan,
+    ) -> bool:
+        """Return whether the exact review session captured by a plan still owns it."""
+        if not isinstance(plan, InterpretationDiscoveryPlan):
+            raise TypeError("plan must be InterpretationDiscoveryPlan")
+        return self.state.checkpoint_session_state() == plan.state_before
+
+    def _detached_discovery_service(
+        self,
+        plan: InterpretationDiscoveryPlan,
+    ) -> DataInterpretationCommandService:
+        """Return a private state/cache owner sharing only locked authorities."""
+        detached = DataInterpretationCommandService(
+            self.dataset,
+            data_filename=self._data_filename,
+            data_filepath=self._data_filepath,
+            pipeline_transaction=None,
+        )
+        detached.state.restore_session_state(plan.state_before)
+        detached._import_preflight_receipts = self._import_preflight_receipts
+        detached._preview_preflight_receipts = self._preview_preflight_receipts
+        detached._review_preflight_receipts = self._review_preflight_receipts
+        detached._reload_preflight_receipts = self._reload_preflight_receipts
+        detached._safe_preview_admissions = dict(plan.safe_preview_admissions)
+        detached._bids_dataset_indexes = dict(plan.bids_dataset_indexes)
+        return detached
+
+    @staticmethod
+    def _normalize_handler_result(
+        value: HandlerResult,
+    ) -> tuple[str, dict[str, Any]]:
+        if isinstance(value, tuple):
+            return str(value[0]), dict(value[1])
+        return str(value), {}
 
     def handle_scan_source(self, command: Command) -> HandlerResult:
         """Scan a file, folder, BIDS root, device export, or recipe source."""
         if not isinstance(command, ScanSourceCommand):
             raise TypeError("Invalid command for scan_source")
+        prepared = self._prepare_scan_source(command)
+        owned_work_commit_boundary("Publishing source scan")
+        self._record_prepared_scan(prepared)
+        return prepared.result
+
+    def _prepare_scan_source(
+        self,
+        command: ScanSourceCommand,
+    ) -> _PreparedSourceScan:
+        """Discover one source without publishing its interpretation state."""
         if command.catalog_only:
             if str(command.source_hint).strip().casefold() != "bids":
                 raise ValueError("Catalog-only discovery requires a BIDS source.")
-            catalog = inspect_bids_subject_catalog(command.source_path)
-            return (
-                f"Found {catalog['subject_count']} BIDS subject(s).",
-                {
-                    "payload_type": "bids_subject_catalog",
-                    "bids_subject_catalog": catalog,
-                },
+            bids_index = self._bids_index_for_source(command.source_path)
+            catalog = inspect_bids_subject_catalog(
+                command.source_path,
+                bids_index=bids_index,
+            )
+            return _PreparedSourceScan(
+                scan=None,
+                result=(
+                    f"Found {catalog['subject_count']} BIDS subject(s).",
+                    {
+                        "payload_type": "bids_subject_catalog",
+                        "bids_subject_catalog": catalog,
+                    },
+                ),
             )
         scan_id = self.state.next_id("scan")
         scope = discover_source_preflight_scope(
@@ -215,7 +416,12 @@ class DataInterpretationCommandService:
             source_hint=command.source_hint,
             label_sources=command.label_sources,
             selected_bids_subjects=command.selected_bids_subjects,
+            bids_index=self._bids_index_for_hint(
+                command.source_path,
+                command.source_hint,
+            ),
         )
+        self._remember_bids_index(scope.bids_index)
         preflight = check_import_resource_preflight(scope.paths)
         path_identity_scope = CanonicalPathIdentityScope.from_admitted_paths(
             scope.paths
@@ -266,19 +472,35 @@ class DataInterpretationCommandService:
                 ),
                 preview_admission,
             )
-        self.state.record_scan(scan)
-        return (
-            f"Scanned source and found {len(scan.eeg_files)} EEG file(s).",
-            {
-                "payload_type": "scan_result",
-                "scan_result": scan.to_dict(),
-            },
+        return _PreparedSourceScan(
+            scan=scan,
+            result=(
+                f"Scanned source and found {len(scan.eeg_files)} EEG file(s).",
+                {
+                    "payload_type": "scan_result",
+                    "scan_result": scan.to_dict(),
+                },
+            ),
         )
+
+    def _record_prepared_scan(self, prepared: _PreparedSourceScan) -> None:
+        if prepared.scan is not None:
+            self.state.record_scan(prepared.scan)
 
     def handle_review_interpretation(self, command: Command) -> HandlerResult:
         """Scan, preview, and validate one Data Interpretation candidate."""
         if not isinstance(command, ReviewInterpretationCommand):
             raise TypeError("Invalid command for review_interpretation")
+        prepared = self._prepare_review_interpretation(command)
+        owned_work_commit_boundary("Publishing interpretation review")
+        self._record_prepared_review(prepared)
+        return prepared.result
+
+    def _prepare_review_interpretation(
+        self,
+        command: ReviewInterpretationCommand,
+    ) -> _PreparedInterpretationReview:
+        """Build and validate a review without publishing session records."""
         scan, admission = self._scan_after_resource_preflight(
             scan_id=None,
             source_path=command.source_path,
@@ -307,32 +529,55 @@ class DataInterpretationCommandService:
             scan=scan,
             resource_preflight=admission.to_diagnostics(),
         )
-        self.state.record_scan(scan)
-        self.state.record_preview(candidate, preview)
-
         # Candidate construction just bound the exact admitted carrier content.
         # Explicit Validate and Apply commands perform the later freshness checks.
         decision = validate_interpretation_candidate(
             candidate,
             recheck_content_identity=False,
         )
-        self.state.record_validation(candidate.candidate_id, decision)
-        return (
-            f"Interpretation review: {decision.decision}.",
-            {
-                "payload_type": "interpretation_review",
-                "scan_result": scan.to_dict(),
-                "candidate": candidate.to_public_dict(),
-                "preview": preview.to_dict(),
-                "validation_decision": decision.to_dict(),
-                "resource_preflight": admission.to_diagnostics(),
-            },
+        return _PreparedInterpretationReview(
+            scan=scan,
+            candidate=candidate,
+            preview=preview,
+            decision=decision,
+            result=(
+                f"Interpretation review: {decision.decision}.",
+                {
+                    "payload_type": "interpretation_review",
+                    "scan_result": scan.to_dict(),
+                    "candidate": candidate.to_public_dict(),
+                    "preview": preview.to_dict(),
+                    "validation_decision": decision.to_dict(),
+                    "resource_preflight": admission.to_diagnostics(),
+                },
+            ),
+        )
+
+    def _record_prepared_review(
+        self,
+        prepared: _PreparedInterpretationReview,
+    ) -> None:
+        self.state.record_scan(prepared.scan)
+        self.state.record_preview(prepared.candidate, prepared.preview)
+        self.state.record_validation(
+            prepared.candidate.candidate_id,
+            prepared.decision,
         )
 
     def handle_preview_interpretation(self, command: Command) -> HandlerResult:
         """Build a reviewable interpretation candidate and preview."""
         if not isinstance(command, PreviewInterpretationCommand):
             raise TypeError("Invalid command for preview_interpretation")
+        prepared = self._prepare_preview_interpretation(command)
+        owned_work_commit_boundary("Publishing interpretation preview")
+        self._record_prepared_preview(prepared)
+        return prepared.result
+
+    def _prepare_preview_interpretation(
+        self,
+        command: PreviewInterpretationCommand,
+    ) -> _PreparedInterpretationPreview:
+        """Build one preview without publishing candidate/session records."""
         scan = self.state.resolve_scan(command.scan_id)
         replace_scan = False
         preserve_discovery_scan = False
@@ -396,38 +641,70 @@ class DataInterpretationCommandService:
             scan=scan,
             resource_preflight=admission.to_diagnostics(),
         )
-        if replace_scan and not preserve_discovery_scan:
-            self.state.record_scan(scan)
-        self.state.record_preview(candidate, preview)
-        return (
-            "Interpretation preview ready.",
-            {
-                "payload_type": "interpretation_preview",
-                "candidate": candidate.to_public_dict(),
-                "preview": preview.to_dict(),
-                "resource_preflight": admission.to_diagnostics(),
-            },
+        return _PreparedInterpretationPreview(
+            scan=scan,
+            replace_scan=replace_scan,
+            preserve_discovery_scan=preserve_discovery_scan,
+            candidate=candidate,
+            preview=preview,
+            result=(
+                "Interpretation preview ready.",
+                {
+                    "payload_type": "interpretation_preview",
+                    "candidate": candidate.to_public_dict(),
+                    "preview": preview.to_dict(),
+                    "resource_preflight": admission.to_diagnostics(),
+                },
+            ),
         )
+
+    def _record_prepared_preview(
+        self,
+        prepared: _PreparedInterpretationPreview,
+    ) -> None:
+        if prepared.replace_scan and not prepared.preserve_discovery_scan:
+            self.state.record_scan(prepared.scan)
+        self.state.record_preview(prepared.candidate, prepared.preview)
 
     def handle_validate_interpretation(self, command: Command) -> HandlerResult:
         """Validate an interpretation candidate against review boundaries."""
         if not isinstance(command, ValidateInterpretationCommand):
             raise TypeError("Invalid command for validate_interpretation")
+        prepared = self._prepare_validate_interpretation(command)
+        owned_work_commit_boundary("Publishing interpretation validation")
+        self._record_prepared_validation(prepared)
+        return prepared.result
+
+    def _prepare_validate_interpretation(
+        self,
+        command: ValidateInterpretationCommand,
+    ) -> _PreparedInterpretationValidation:
+        """Recheck reviewed content without publishing the decision."""
         candidate = self.state.resolve_candidate(command.candidate_id)
         decision = validate_interpretation_candidate(candidate)
-        self.state.record_validation(candidate.candidate_id, decision)
-        return (
-            f"Interpretation validation: {decision.decision}.",
-            {
-                "payload_type": "validation_decision",
-                "validation_decision": decision.to_dict(),
-            },
+        return _PreparedInterpretationValidation(
+            candidate_id=candidate.candidate_id,
+            decision=decision,
+            result=(
+                f"Interpretation validation: {decision.decision}.",
+                {
+                    "payload_type": "validation_decision",
+                    "validation_decision": decision.to_dict(),
+                },
+            ),
         )
+
+    def _record_prepared_validation(
+        self,
+        prepared: _PreparedInterpretationValidation,
+    ) -> None:
+        self.state.record_validation(prepared.candidate_id, prepared.decision)
 
     def handle_apply_interpretation(self, command: Command) -> HandlerResult:
         """Apply a validated interpretation to the active dataset."""
         if not isinstance(command, ApplyInterpretationCommand):
             raise TypeError("Invalid command for apply_interpretation")
+        owned_work_checkpoint("Preparing interpretation apply")
         candidate = self.state.resolve_candidate(command.candidate_id)
         decision = self.state.resolve_validation_decision(candidate.candidate_id)
         if decision is None:
@@ -440,6 +717,7 @@ class DataInterpretationCommandService:
             )
         )
         self._ensure_reviewed_label_content_is_current(candidate)
+        owned_work_checkpoint("Starting interpretation transaction")
         training_boundary = (
             self._pipeline_transaction.begin_raw_replacement()
             if self._pipeline_transaction is not None
@@ -448,16 +726,20 @@ class DataInterpretationCommandService:
         snapshot = self._snapshot_raw_state()
         state_checkpoint = self.state.checkpoint_apply_state()
         try:
+            owned_work_checkpoint("Loading reviewed EEG recordings")
             count, errors = self._replace_active_raw_data(
                 candidate.selected_eeg_files,
             )
+            owned_work_checkpoint("Binding reviewed source identity")
             loaded_files = self._loaded_filepaths() or list(
                 candidate.selected_eeg_files
             )
             source_identity_apply = self.apply_service.bind_source_content_identity(
                 candidate,
             )
+            owned_work_checkpoint("Applying reviewed channel metadata")
             channels_apply = self.apply_service.apply_bids_channels(candidate)
+            owned_work_checkpoint("Recording interpreted dataset state")
             interpretation_id = self.state.next_id("interpretation")
             applied = self._build_applied_interpretation(
                 interpretation_id=interpretation_id,
@@ -466,9 +748,11 @@ class DataInterpretationCommandService:
                 loaded_files=loaded_files,
             )
             self.state.record_applied(applied)
+            owned_work_checkpoint("Applying reviewed recording metadata")
             metadata_apply = self.apply_service.apply_candidate_metadata_to_loaded_data(
                 candidate,
             )
+            owned_work_checkpoint("Applying reviewed label carriers")
             label_resources = self._admitted_reviewed_label_resources(
                 candidate,
                 preflight,
@@ -477,6 +761,7 @@ class DataInterpretationCommandService:
                 candidate,
                 label_resources,
             )
+            owned_work_checkpoint("Recording reviewed epoch hints")
             internal_epoch_hints = self.apply_service.record_internal_epoch_hints(
                 candidate,
             )
@@ -484,6 +769,7 @@ class DataInterpretationCommandService:
             # were being loaded cannot become applied workflow truth.
             self._ensure_reviewed_label_content_is_current(candidate)
             self._ensure_label_apply_succeeded(candidate, label_apply)
+            owned_work_commit_boundary("Committing interpreted dataset")
             trainer_retired = (
                 self._pipeline_transaction.commit_pipeline_invalidation(
                     training_boundary,
@@ -534,11 +820,262 @@ class DataInterpretationCommandService:
             },
         )
 
+    def begin_apply_interpretation(
+        self,
+        command: ApplyInterpretationCommand,
+        *,
+        application_boundary: ApplicationApplyBoundary,
+    ) -> InterpretationApplyPlan:
+        """Capture a short immutable admission before detached materialization."""
+        if not isinstance(command, ApplyInterpretationCommand):
+            raise TypeError("Invalid command for apply_interpretation")
+        if not isinstance(application_boundary, ApplicationApplyBoundary):
+            raise TypeError("application_boundary must be an ApplicationApplyBoundary")
+        if self._pipeline_transaction is None:
+            raise RuntimeError(
+                "Interpretation apply preparation requires a pipeline transaction."
+            )
+        owned_work_checkpoint("Preparing interpretation apply")
+        candidate = deepcopy(self.state.resolve_candidate(command.candidate_id))
+        decision = deepcopy(
+            self.state.resolve_validation_decision(candidate.candidate_id)
+        )
+        if decision is None:
+            raise PreconditionError("Validate an interpretation before applying it.")
+        self._ensure_candidate_can_apply(command, candidate, decision)
+        preflight, _preflight_receipt, receipt_reused = (
+            self._resolve_apply_resource_preflight(
+                command=command,
+                candidate=candidate,
+            )
+        )
+        training_boundary = self._pipeline_transaction.begin_raw_replacement()
+        pipeline_snapshot = self._pipeline_transaction.capture()
+        interpretation_before = self.state.checkpoint_apply_state()
+        return InterpretationApplyPlan(
+            candidate=candidate,
+            decision=decision,
+            content_scope_sha256=str(
+                candidate.content_identity.get("scope_sha256") or ""
+            ),
+            application=application_boundary,
+            training=training_boundary,
+            pipeline_snapshot=pipeline_snapshot,
+            pipeline_identity=PipelineStateIdentity.from_snapshot(pipeline_snapshot),
+            interpretation_state_before=interpretation_before,
+            detached_interpretation_state=deepcopy(self.state),
+            resource_preflight=preflight,
+            resource_preflight_receipt_reused=receipt_reused,
+            label_resources=self._admitted_reviewed_label_resources(
+                candidate,
+                preflight,
+            ),
+        )
+
+    def prepare_apply_interpretation(
+        self,
+        plan: InterpretationApplyPlan,
+    ) -> PreparedInterpretationApply:
+        """Load and annotate replacement Raw holders without mutating the Study."""
+        if not isinstance(plan, InterpretationApplyPlan):
+            raise TypeError("plan must be an InterpretationApplyPlan")
+        candidate = plan.candidate
+        owned_work_checkpoint("Verifying reviewed import content")
+        self._ensure_reviewed_label_content_is_current(candidate)
+        prepared_dataset = self.dataset.prepare_replacement_import(
+            candidate.selected_eeg_files
+        )
+        expected_count = len(candidate.selected_eeg_files)
+        if prepared_dataset.errors or prepared_dataset.success_count != expected_count:
+            errors = list(prepared_dataset.errors)
+            raise ApplicationError(
+                message=(
+                    "Failed to apply interpretation without changing the active "
+                    f"dataset: loaded {prepared_dataset.success_count}/"
+                    f"{expected_count} file(s)"
+                    + (f"; errors: {errors}" if errors else ".")
+                ),
+                error_type=ErrorType.RUNTIME,
+                recoverable=True,
+                diagnostics={
+                    "errors": errors,
+                    "success_count": prepared_dataset.success_count,
+                    "expected_count": expected_count,
+                    "state_preserved": True,
+                },
+            )
+
+        detached_dataset = self.dataset.detached_interpretation_service(
+            prepared_dataset
+        )
+        detached_state = deepcopy(plan.detached_interpretation_state)
+        detached_apply = self.apply_service.detached_copy(
+            detached_dataset,
+            record_label_import=detached_state.record_label_import_for_recipe,
+        )
+        loaded_files = [
+            self._data_filepath(data) for data in prepared_dataset.loaded_data
+        ]
+        owned_work_checkpoint("Binding reviewed source identity")
+        source_identity_apply = detached_apply.bind_source_content_identity(candidate)
+        owned_work_checkpoint("Applying reviewed channel metadata")
+        channels_apply = detached_apply.apply_bids_channels(candidate)
+        owned_work_checkpoint("Recording interpreted dataset state")
+        interpretation_id = detached_state.next_id("interpretation")
+        applied = self._build_applied_interpretation(
+            interpretation_id=interpretation_id,
+            candidate=candidate,
+            decision=plan.decision,
+            loaded_files=loaded_files,
+        )
+        detached_state.record_applied(applied)
+        owned_work_checkpoint("Applying reviewed recording metadata")
+        metadata_apply = detached_apply.apply_candidate_metadata_to_loaded_data(
+            candidate
+        )
+        owned_work_checkpoint("Applying reviewed label carriers")
+        label_apply = detached_apply.apply_label_carriers(
+            candidate,
+            plan.label_resources,
+        )
+        owned_work_checkpoint("Recording reviewed epoch hints")
+        internal_epoch_hints = detached_apply.record_internal_epoch_hints(candidate)
+        self._ensure_label_apply_succeeded(candidate, label_apply)
+        owned_work_checkpoint("Interpretation apply prepared")
+        return PreparedInterpretationApply(
+            plan=plan,
+            dataset=prepared_dataset,
+            interpretation_state_after=detached_state.checkpoint_apply_state(),
+            source_files=(),
+            source_identity_apply=tuple(deepcopy(source_identity_apply)),
+            channels_apply=tuple(deepcopy(channels_apply)),
+            metadata_apply=tuple(deepcopy(metadata_apply)),
+            label_apply=deepcopy(label_apply),
+            internal_epoch_hints=tuple(deepcopy(internal_epoch_hints)),
+        )
+
+    def verify_prepared_apply_content(
+        self,
+        prepared: PreparedInterpretationApply,
+    ) -> PreparedInterpretationApply:
+        """Rehash all reviewed bytes outside the shared command lock."""
+        if not isinstance(prepared, PreparedInterpretationApply):
+            raise TypeError("prepared must be a PreparedInterpretationApply")
+        owned_work_checkpoint("Verifying prepared import content")
+        observed_identity = self._reviewed_content_identity(
+            prepared.plan.candidate,
+        )
+        return replace(
+            prepared,
+            source_files=capture_source_file_boundaries(observed_identity),
+        )
+
+    def commit_prepared_apply_interpretation(
+        self,
+        prepared: PreparedInterpretationApply,
+    ) -> HandlerResult:
+        """Revalidate every captured identity and atomically publish prepared data."""
+        if not isinstance(prepared, PreparedInterpretationApply):
+            raise TypeError("prepared must be a PreparedInterpretationApply")
+        if self._pipeline_transaction is None:
+            raise RuntimeError(
+                "Interpretation apply commit requires a pipeline transaction."
+            )
+        plan = prepared.plan
+        candidate = self.state.resolve_candidate(plan.candidate.candidate_id)
+        decision = self.state.resolve_validation_decision(candidate.candidate_id)
+        current_scope_sha256 = str(candidate.content_identity.get("scope_sha256") or "")
+        current_pipeline = self._pipeline_transaction.capture()
+        if (
+            candidate != plan.candidate
+            or decision != plan.decision
+            or current_scope_sha256 != plan.content_scope_sha256
+            or self.state.checkpoint_apply_state() != plan.interpretation_state_before
+            or PipelineStateIdentity.from_snapshot(current_pipeline)
+            != plan.pipeline_identity
+        ):
+            raise PreconditionError(
+                "Data Import state changed while recordings were prepared. "
+                "Review the current interpretation and retry.",
+                diagnostics={
+                    "code": "stale_prepared_interpretation_apply",
+                    "stale_prepared_interpretation_apply": True,
+                    "state_preserved": True,
+                },
+            )
+        assert_source_content_boundaries_match(
+            plan.candidate.content_identity,
+            prepared.source_files,
+        )
+        assert_source_file_boundaries_current(prepared.source_files)
+        owned_work_commit_boundary("Committing interpreted dataset")
+        rollback_state = self.state.checkpoint_apply_state()
+
+        def publish() -> None:
+            self.dataset.commit_prepared_import(prepared.dataset)
+            self.state.restore_apply_state(prepared.interpretation_state_after)
+
+        try:
+            trainer_retired = self._pipeline_transaction.commit_pipeline_replacement(
+                plan.training,
+                publish=publish,
+            )
+        except BaseException:
+            self.state.restore_apply_state(rollback_state)
+            self._pipeline_transaction.restore(plan.pipeline_snapshot)
+            raise
+
+        applied_payload = self.state.resolve_applied_interpretation().to_dict()
+        label_message = ""
+        if prepared.label_apply.get("status") == "applied":
+            label_message = (
+                " Imported reviewed labels for "
+                f"{prepared.label_apply.get('success_count', 0)} file(s)."
+            )
+        elif prepared.label_apply.get("status") == "failed":
+            label_message = (
+                " Reviewed labels were not applied: "
+                f"{prepared.label_apply.get('reason', 'unknown error')}."
+            )
+        return (
+            "Applied interpretation and loaded "
+            f"{prepared.dataset.success_count} file(s).{label_message}",
+            {
+                "payload_type": "applied_interpretation",
+                "success_count": prepared.dataset.success_count,
+                "errors": list(prepared.dataset.errors),
+                "applied_interpretation": applied_payload,
+                "metadata_apply": [dict(item) for item in prepared.metadata_apply],
+                "source_identity_apply": [
+                    dict(item) for item in prepared.source_identity_apply
+                ],
+                "channels_apply": [dict(item) for item in prepared.channels_apply],
+                "label_carriers_pending": list(plan.candidate.label_carriers),
+                "label_apply": deepcopy(prepared.label_apply),
+                "internal_epoch_hints": [
+                    dict(item) for item in prepared.internal_epoch_hints
+                ],
+                "trainer_retired": trainer_retired,
+                "resource_preflight": {
+                    **plan.resource_preflight.to_diagnostics(),
+                    "confirmation_receipt_reused": (
+                        plan.resource_preflight_receipt_reused
+                    ),
+                },
+            },
+        )
+
     @staticmethod
     def _ensure_reviewed_label_content_is_current(
         candidate: InterpretationCandidate,
     ) -> None:
-        assert_review_content_unchanged(
+        DataInterpretationCommandService._reviewed_content_identity(candidate)
+
+    @staticmethod
+    def _reviewed_content_identity(
+        candidate: InterpretationCandidate,
+    ) -> dict[str, Any]:
+        return assert_review_content_unchanged(
             expected=candidate.content_identity,
             label_carrier_plan=candidate.label_carrier_plan,
             selected_eeg_files=candidate.selected_eeg_files,
@@ -943,6 +1480,52 @@ class DataInterpretationCommandService:
         while len(self._safe_preview_admissions) > 8:
             self._safe_preview_admissions.pop(next(iter(self._safe_preview_admissions)))
 
+    def _bids_index_for_hint(
+        self,
+        source_path: str,
+        source_hint: str,
+    ) -> BidsDatasetIndex | None:
+        normalized_hint = str(source_hint or "auto").strip().casefold()
+        if normalized_hint == "bids":
+            return self._bids_index_for_source(source_path)
+        if normalized_hint != "auto":
+            return None
+        cache_key = os.path.normcase(
+            str(Path(source_path).expanduser().resolve(strict=False))
+        )
+        cached = self._bids_dataset_indexes.get(cache_key)
+        if cached is not None and cached.is_current():
+            return cached
+        self._bids_dataset_indexes.pop(cache_key, None)
+        registered = bids_index_module.current_bids_dataset_index_for_path(source_path)
+        if registered is not None and registered.matches_root(source_path):
+            self._remember_bids_index(registered)
+            return registered
+        return None
+
+    def _bids_index_for_source(self, source_path: str) -> BidsDatasetIndex:
+        path = Path(source_path).expanduser()
+        cache_key = os.path.normcase(str(path.resolve(strict=False)))
+        cached = self._bids_dataset_indexes.get(cache_key)
+        if cached is not None and cached.matches_root(path) and cached.is_current():
+            return cached
+        registered = bids_index_module.current_bids_dataset_index_for_path(path)
+        if registered is not None and registered.matches_root(path):
+            self._remember_bids_index(registered)
+            return registered
+        index = bids_index_module.build_bids_dataset_index(path)
+        self._remember_bids_index(index)
+        return index
+
+    def _remember_bids_index(self, index: BidsDatasetIndex | None) -> None:
+        if index is None:
+            return
+        for path in (index.selection_root, index.root):
+            cache_key = os.path.normcase(path)
+            self._bids_dataset_indexes[cache_key] = index
+        while len({item.root for item in self._bids_dataset_indexes.values()}) > 4:
+            self._bids_dataset_indexes.pop(next(iter(self._bids_dataset_indexes)))
+
     def _scan_after_resource_preflight(
         self,
         *,
@@ -972,7 +1555,9 @@ class DataInterpretationCommandService:
                 source_hint=source_hint,
                 label_sources=label_sources,
                 selected_bids_subjects=self._selected_bids_subjects(choices),
+                bids_index=self._bids_index_for_hint(source_path, source_hint),
             )
+        self._remember_bids_index(scope.bids_index)
         provisional_scan_id = scan_id or "resource-preflight"
         selection_scan = scope.selection_scan_result(scan_id=provisional_scan_id)
         selection_resource_scope = resolve_interpretation_resource_scope(

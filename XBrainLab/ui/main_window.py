@@ -7,11 +7,12 @@ and AI assistant integration.
 import contextlib
 import sys
 import weakref
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from importlib import import_module
 from threading import RLock
 from typing import Any, cast
+from uuid import uuid4
 
 from PyQt6 import sip
 from PyQt6.QtCore import (
@@ -65,6 +66,7 @@ from XBrainLab.ui.application_publication_renderer import (
     ApplicationPublicationRenderLedger,
     DesktopApplicationPublicationRenderer,
 )
+from XBrainLab.ui.async_command_runner import application_command_registry
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
@@ -305,6 +307,7 @@ class MainWindow(QMainWindow):
     # Signals to control the worker
     sig_init_agent = pyqtSignal()
     sig_generate = pyqtSignal(str, str)
+    shutdown_completed = pyqtSignal(object)
     _close_retry_requested = pyqtSignal(int)
     COMPACT_NAV_BREAKPOINT = 720
     ASSISTANT_DOCK_STANDARD_WIDTH = 420
@@ -352,6 +355,9 @@ class MainWindow(QMainWindow):
         ] = {}
         self._close_retry_pending = False
         self._closing_in_progress = False
+        self._close_attempt_id: str | None = None
+        self._pre_close_background_snapshot: dict[str, Any] | None = None
+        self._shutdown_terminal_snapshot_emitted = False
         self._desktop_render_shutdown_started = False
         self._shutdown_fence_active = False
         self._training_close_check_in_flight = False
@@ -380,6 +386,18 @@ class MainWindow(QMainWindow):
         # Central Widget & Main Layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
+
+        # This is the existing product status surface, not an automation-only
+        # widget. Long-running UI commands project their public operation
+        # identity and progress here so assistive technology and GUI drivers
+        # can observe the same state a user sees.
+        owned_operation_progress = self.statusBar()
+        owned_operation_progress.setObjectName("OwnedOperationProgress")
+        owned_operation_progress.setProperty("operationId", "")
+        owned_operation_progress.setProperty("stage", "Idle")
+        owned_operation_progress.setProperty("progress", "idle")
+        owned_operation_progress.setProperty("indeterminate", False)
+        owned_operation_progress.setProperty("operationPhase", "idle")
 
         # Vertical Layout: Top Bar | Main Content
         main_layout = QVBoxLayout(central_widget)
@@ -456,6 +474,9 @@ class MainWindow(QMainWindow):
 
         self._application_publication_renderer = None
         self._last_rendered_application_publication: (
+            ApplicationViewPublication | None
+        ) = None
+        self._last_fully_rendered_application_publication: (
             ApplicationViewPublication | None
         ) = None
         self._application_status_restore_timer = QTimer(self)
@@ -950,7 +971,10 @@ class MainWindow(QMainWindow):
             self._panel_rendered_application_revision(index, publication.revision)
             for index in tuple(self._loaded_panel_indices)
         )
-        return shell_rendered and panels_rendered
+        fully_rendered = shell_rendered and panels_rendered
+        if fully_rendered:
+            self._last_fully_rendered_application_publication = publication
+        return fully_rendered
 
     def _restore_application_publication_status(self) -> bool:
         """Restore the last shell-rendered revision after transient navigation UI."""
@@ -1448,6 +1472,17 @@ class MainWindow(QMainWindow):
         super().showEvent(event)
         self.window_geometry.handle_window_shown()
 
+    def keyPressEvent(self, event):  # noqa: N802
+        """Route the user-visible Alt+F4 shortcut through the safe close path."""
+        if (
+            event.key() == Qt.Key.Key_F4
+            and event.modifiers() & Qt.KeyboardModifier.AltModifier
+        ):
+            event.accept()
+            self.close()
+            return
+        super().keyPressEvent(event)
+
     def closeEvent(self, event):  # noqa: N802
         """Handle application close by cleaning up the agent manager.
 
@@ -1462,6 +1497,7 @@ class MainWindow(QMainWindow):
             if not self._closing_in_progress:
                 self._begin_close_attempt()
             if not self._owned_ui_background_work_idle():
+                self._pre_close_background_snapshot = None
                 event.ignore()
                 self._schedule_close_retry()
                 status_bar = self.statusBar()
@@ -1470,6 +1506,10 @@ class MainWindow(QMainWindow):
                         "Finishing background interface work before closing...",
                         3000,
                     )
+                return
+            if not self._capture_pre_close_background_snapshot():
+                event.ignore()
+                self._schedule_close_retry()
                 return
             self._begin_desktop_render_shutdown()
             if not self._finalize_visualization_native_render_resources():
@@ -1491,6 +1531,7 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 self._schedule_close_retry()
                 return
+            self._publish_terminal_shutdown_snapshot()
             self._delegate_close_event_if_alive(event)
             return
         if not self._closing_in_progress:
@@ -1514,6 +1555,7 @@ class MainWindow(QMainWindow):
                 )
             return
         if not self._owned_ui_background_work_idle():
+            self._pre_close_background_snapshot = None
             event.ignore()
             self._schedule_close_retry()
             status_bar = self.statusBar()
@@ -1522,6 +1564,10 @@ class MainWindow(QMainWindow):
                     "Finishing background interface work before closing...",
                     3000,
                 )
+            return
+        if not self._capture_pre_close_background_snapshot():
+            event.ignore()
+            self._schedule_close_retry()
             return
         self._begin_desktop_render_shutdown()
         if not self._finalize_visualization_native_render_resources():
@@ -1543,6 +1589,7 @@ class MainWindow(QMainWindow):
             event.ignore()
             self._schedule_close_retry()
             return
+        self._publish_terminal_shutdown_snapshot()
         if not self.window_geometry.persist_before_close():
             event.accept()
             return
@@ -1568,6 +1615,9 @@ class MainWindow(QMainWindow):
         if self._force_shutdown_requested:
             logger.critical("Forcing GUI shutdown after safe recovery failed.")
         self._closing_in_progress = True
+        self._close_attempt_id = uuid4().hex
+        self._pre_close_background_snapshot = None
+        self._shutdown_terminal_snapshot_emitted = False
         self._startup_prewarm_retry_pending = False
         self._training_close_ready = False
         self._shutdown_release_retry_pending = False
@@ -1576,6 +1626,9 @@ class MainWindow(QMainWindow):
         self._assistant_shutdown_pending_logged = False
         self._assistant_shutdown_slow_logged = False
         self._set_close_interaction_enabled(False)
+        self._begin_training_resource_preview_shutdown()
+        self._begin_evaluation_render_shutdown()
+        self._begin_visualization_render_shutdown()
 
     def _begin_desktop_render_shutdown(self) -> None:
         """Quiesce visible native surfaces after final publications are delivered."""
@@ -1639,13 +1692,263 @@ class MainWindow(QMainWindow):
 
     def _owned_ui_background_work_idle(self) -> bool:
         """Return whether every UI-owned background worker is terminal."""
-        return (
-            self._startup_prewarm_worker is None
-            and not self._panel_prepare_workers
-            and self._panel_prepare_active_index is None
-            and self._visualization_native_render_idle()
-            and application_background_tasks_idle(self, timeout=0.0)
+        return bool(self.background_work_snapshot()["idle"])
+
+    def _capture_pre_close_background_snapshot(self) -> bool:
+        """Bind exact idle ownership evidence to the active close attempt."""
+        attempt_id = self._close_attempt_id
+        if not isinstance(attempt_id, str) or not attempt_id.strip():
+            self._pre_close_background_snapshot = None
+            logger.error("Close ownership evidence lacks an active attempt identity.")
+            return False
+        snapshot = self.background_work_snapshot()
+        workers = snapshot.get("remaining_workers")
+        subprocesses = snapshot.get("remaining_subprocesses")
+        verified = (
+            snapshot.get("idle") is True
+            and snapshot.get("application_idle") is True
+            and isinstance(workers, int)
+            and not isinstance(workers, bool)
+            and workers == 0
+            and isinstance(subprocesses, int)
+            and not isinstance(subprocesses, bool)
+            and subprocesses == 0
         )
+        if not verified:
+            self._pre_close_background_snapshot = None
+            logger.error("Close ownership evidence was not exactly idle.")
+            return False
+        self._pre_close_background_snapshot = {
+            "close_attempt_id": attempt_id,
+            "pre_close_application_idle": True,
+            "pre_close_remaining_workers": workers,
+            "pre_close_remaining_subprocesses": subprocesses,
+        }
+        return True
+
+    def _begin_evaluation_render_shutdown(self) -> None:
+        """Cancel Evaluation render work early without blocking the GUI thread."""
+        panel = getattr(self, "evaluation_panel", None)
+        begin_shutdown = getattr(panel, "begin_evaluation_render_shutdown", None)
+        if callable(begin_shutdown):
+            begin_shutdown()
+
+    def _begin_training_resource_preview_shutdown(self) -> None:
+        """Fence Training resource previews without blocking the GUI thread."""
+        panel = getattr(self, "training_panel", None)
+        begin_shutdown = getattr(
+            panel,
+            "begin_training_resource_preview_shutdown",
+            None,
+        )
+        if callable(begin_shutdown):
+            begin_shutdown()
+
+    def _training_resource_preview_background_work_snapshot(
+        self,
+    ) -> dict[str, int | bool]:
+        """Read exact Training preview worker ownership from the loaded panel."""
+        panel = getattr(self, "training_panel", None)
+        get_snapshot = getattr(
+            panel,
+            "training_resource_preview_background_work_snapshot",
+            None,
+        )
+        if not callable(get_snapshot):
+            return {"idle": True, "remaining_workers": 0, "alive_workers": 0}
+        try:
+            snapshot = get_snapshot()
+            if not isinstance(snapshot, Mapping):
+                logger.error("Training preview worker snapshot is not a mapping.")
+                return {"idle": False, "remaining_workers": 1, "alive_workers": 0}
+            remaining = snapshot.get("remaining_workers", 0)
+            alive = snapshot.get("alive_workers", 0)
+        except Exception:
+            logger.exception("Could not verify Training resource preview cleanup.")
+            return {"idle": False, "remaining_workers": 1, "alive_workers": 0}
+        if (
+            isinstance(remaining, bool)
+            or not isinstance(remaining, int)
+            or remaining < 0
+            or isinstance(alive, bool)
+            or not isinstance(alive, int)
+            or alive < 0
+        ):
+            logger.error("Training preview worker snapshot contains invalid counts.")
+            return {"idle": False, "remaining_workers": 1, "alive_workers": 0}
+        return {
+            "idle": remaining == 0,
+            "remaining_workers": remaining,
+            "alive_workers": alive,
+        }
+
+    def _evaluation_background_work_snapshot(self) -> dict[str, int | bool]:
+        """Read exact Evaluation worker ownership from the loaded panel."""
+        panel = getattr(self, "evaluation_panel", None)
+        get_snapshot = getattr(panel, "evaluation_background_work_snapshot", None)
+        if not callable(get_snapshot):
+            return {"idle": True, "remaining_workers": 0, "alive_workers": 0}
+        try:
+            snapshot = get_snapshot()
+            if not isinstance(snapshot, Mapping):
+                logger.error("Evaluation worker snapshot is not a mapping.")
+                return {"idle": False, "remaining_workers": 1, "alive_workers": 0}
+            remaining = snapshot.get("remaining_workers", 0)
+            alive = snapshot.get("alive_workers", 0)
+        except Exception:
+            logger.exception("Could not verify Evaluation render cleanup.")
+            return {"idle": False, "remaining_workers": 1, "alive_workers": 0}
+        if (
+            isinstance(remaining, bool)
+            or not isinstance(remaining, int)
+            or remaining < 0
+            or isinstance(alive, bool)
+            or not isinstance(alive, int)
+            or alive < 0
+        ):
+            logger.error("Evaluation worker snapshot contains invalid counts.")
+            return {"idle": False, "remaining_workers": 1, "alive_workers": 0}
+        return {
+            "idle": remaining == 0,
+            "remaining_workers": remaining,
+            "alive_workers": alive,
+        }
+
+    def background_work_snapshot(self) -> dict[str, int | bool]:
+        """Expose non-blocking close ownership evidence to product diagnostics."""
+        startup_workers = int(self._startup_prewarm_worker is not None)
+        panel_workers = len(self._panel_prepare_workers) + int(
+            self._panel_prepare_active_index is not None
+        )
+        command_workers = application_command_registry().active_count()
+        visualization_idle = self._visualization_native_render_idle()
+        evaluation_snapshot = self._evaluation_background_work_snapshot()
+        evaluation_workers = int(evaluation_snapshot["remaining_workers"])
+        preview_snapshot = self._training_resource_preview_background_work_snapshot()
+        training_preview_workers = int(preview_snapshot["remaining_workers"])
+        application_idle = application_background_tasks_idle(self, timeout=0.0)
+        remaining_subprocesses = self._assistant_owned_subprocess_count()
+        remaining_workers = (
+            startup_workers
+            + panel_workers
+            + command_workers
+            + int(not visualization_idle)
+            + evaluation_workers
+            + training_preview_workers
+        )
+        return {
+            "idle": (
+                remaining_workers == 0
+                and remaining_subprocesses == 0
+                and application_idle
+            ),
+            "application_idle": application_idle,
+            "remaining_workers": remaining_workers,
+            "evaluation_workers": evaluation_workers,
+            "training_preview_workers": training_preview_workers,
+            "remaining_subprocesses": remaining_subprocesses,
+        }
+
+    def workflow_state_snapshot(self) -> dict[str, Any]:
+        """Return only fully rendered and backend-current workflow evidence."""
+        publication = self._last_fully_rendered_application_publication
+        if publication is None or not publication.usable:
+            raise RuntimeError("A verified workflow publication is not visible.")
+        runtime = application_ui_runtime(self)
+        if runtime is None:
+            raise RuntimeError("The workflow publication runtime is unavailable.")
+        current = runtime.get_view_publication()
+        if (
+            not isinstance(current, ApplicationViewPublication)
+            or not current.usable
+            or current.generation != publication.generation
+            or current.revision != publication.revision
+        ):
+            raise RuntimeError(
+                "The visible workflow publication has not acknowledged current truth."
+            )
+        return {
+            "generation": publication.generation,
+            "revision": publication.revision,
+            "state": publication.state.to_dict(),
+        }
+
+    def _publish_terminal_shutdown_snapshot(self) -> None:
+        """Emit the verified pre-close evidence after runtime teardown."""
+        if self._shutdown_terminal_snapshot_emitted:
+            return
+        attempt_id = self._close_attempt_id
+        snapshot = self._pre_close_background_snapshot
+        workers = (
+            snapshot.get("pre_close_remaining_workers")
+            if isinstance(snapshot, Mapping)
+            else None
+        )
+        subprocesses = (
+            snapshot.get("pre_close_remaining_subprocesses")
+            if isinstance(snapshot, Mapping)
+            else None
+        )
+        if (
+            not isinstance(attempt_id, str)
+            or not attempt_id.strip()
+            or not isinstance(snapshot, Mapping)
+            or snapshot.get("close_attempt_id") != attempt_id
+            or snapshot.get("pre_close_application_idle") is not True
+            or not isinstance(workers, int)
+            or isinstance(workers, bool)
+            or workers != 0
+            or not isinstance(subprocesses, int)
+            or isinstance(subprocesses, bool)
+            or subprocesses != 0
+        ):
+            logger.error(
+                "Refused to publish stale or incomplete pre-close ownership evidence."
+            )
+            return
+        self._shutdown_terminal_snapshot_emitted = True
+        self.shutdown_completed.emit({**snapshot, "application_closed": True})
+
+    def _assistant_owned_subprocess_count(self) -> int:
+        """Return exact known Assistant/model-download process ownership."""
+        agent_manager = getattr(self, "agent_manager", None)
+        if agent_manager is None:
+            return 0
+        declared_snapshot_getter = getattr(
+            type(agent_manager),
+            "background_work_snapshot",
+            None,
+        )
+        snapshot_getter = getattr(agent_manager, "background_work_snapshot", None)
+        if callable(declared_snapshot_getter) and callable(snapshot_getter):
+            try:
+                snapshot = snapshot_getter()
+                count = (
+                    snapshot.get("remaining_subprocesses", 0)
+                    if isinstance(snapshot, Mapping)
+                    else 1
+                )
+            except Exception:
+                logger.exception("Could not verify Assistant subprocess ownership.")
+                return 1
+            if type(count) is int and count >= 0:
+                return count
+        runtime = getattr(agent_manager, "assistant_runtime", None)
+        if runtime is None or not isinstance(
+            getattr(type(runtime), "controller", None),
+            property,
+        ):
+            return 0
+        controller = getattr(runtime, "controller", None)
+        worker = getattr(controller, "worker", None)
+        engine = getattr(worker, "engine", None)
+        engine_processes = int(bool(getattr(engine, "is_alive", False)))
+        rag_lifecycle = getattr(controller, "_rag_lifecycle", None)
+        has_active_process = getattr(rag_lifecycle, "has_active_process", None)
+        rag_processes = int(
+            bool(has_active_process) if isinstance(has_active_process, bool) else 0
+        )
+        return engine_processes + rag_processes
 
     def _begin_visualization_render_shutdown(self) -> None:
         """Ask the loaded Visualization panel to reject new native work."""
@@ -1896,6 +2199,9 @@ class MainWindow(QMainWindow):
     def _restore_close_interaction(self) -> None:
         """Restore the desktop shell after a cancelled close attempt."""
         self._closing_in_progress = False
+        self._close_attempt_id = None
+        self._pre_close_background_snapshot = None
+        self._shutdown_terminal_snapshot_emitted = False
         self._desktop_render_shutdown_started = False
         self._training_close_ready = False
         self._training_close_check_in_flight = False
@@ -1911,6 +2217,22 @@ class MainWindow(QMainWindow):
         )
         if callable(cancel_render_shutdown):
             cancel_render_shutdown()
+        evaluation_panel = getattr(self, "evaluation_panel", None)
+        cancel_evaluation_shutdown = getattr(
+            evaluation_panel,
+            "cancel_evaluation_render_shutdown",
+            None,
+        )
+        if callable(cancel_evaluation_shutdown):
+            cancel_evaluation_shutdown()
+        training_panel = getattr(self, "training_panel", None)
+        cancel_preview_shutdown = getattr(
+            training_panel,
+            "cancel_training_resource_preview_shutdown",
+            None,
+        )
+        if callable(cancel_preview_shutdown):
+            cancel_preview_shutdown()
         self._resume_preprocess_native_plots_after_cancelled_shutdown()
         renderer = self._application_publication_renderer
         resume = getattr(renderer, "resume_after_cancelled_shutdown", None)

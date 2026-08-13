@@ -1,0 +1,431 @@
+{
+  "schema_version": "2.0.0",
+  "profile_id": "moabb-15-gui-campaign-v2",
+  "moabb_release": {
+    "version": "1.5.0",
+    "tag": "v1.5",
+    "commit": "140809d8c48bdf2be953951ff75f688122edee34",
+    "repository": "https://github.com/NeuroTechX/moabb"
+  },
+  "journey_modes": [
+    "cold",
+    "replay"
+  ],
+  "required_stages": [
+    "import_bids_folder",
+    "select_subjects",
+    "review_metadata",
+    "match_labels",
+    "confirm_import",
+    "preprocess",
+    "epoch",
+    "split",
+    "model",
+    "training",
+    "evaluation",
+    "compute_saliency",
+    "saliency_map",
+    "spectrogram",
+    "clean_close"
+  ],
+  "driver_policy": {
+    "only_injected_boundary": "QFileDialog",
+    "visible_enabled_clicks_only": true,
+    "fresh_process_per_journey": true,
+    "dataset_name_ui_branching": false,
+    "direct_backend_commands": false,
+    "direct_dialog_construction": false,
+    "private_wizard_navigation": false,
+    "serial_gpu_execution": true,
+    "click_ack_timeout_seconds": 2,
+    "progress_heartbeat_timeout_seconds": 5,
+    "stop_handler_timeout_seconds": 0.1
+  },
+  "resource_policy": {
+    "data_root": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/data",
+    "checksum_root": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/checksums",
+    "evidence_root": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/evidence",
+    "downloads_allowed_during_campaign": false,
+    "parallel_gpu_journeys": 1
+  },
+  "ui_profiles": {
+    "product_recommended_bounded": {
+      "selection_policy": "product_recommended",
+      "preprocess": {
+        "action": "Filtering",
+        "values": "product_recommended"
+      },
+      "epoch": {
+        "values": "product_recommended"
+      },
+      "split": {
+        "values": "product_recommended",
+        "folds": 1
+      },
+      "model": {
+        "values": "product_recommended"
+      },
+      "training": {
+        "epochs": 1,
+        "repeats": 1,
+        "folds": 1
+      },
+      "saliency": {
+        "explicit_compute": true,
+        "values": "product_recommended",
+        "required_views": [
+          "Saliency Map",
+          "Spectrogram"
+        ]
+      }
+    }
+  },
+  "datasets": [
+    {
+      "moabb_class": "BNCI2014_001",
+      "subjects": [1, 2, 3, 4, 5],
+      "ui_profile": "product_recommended_bounded",
+      "cancellation_partition": "import_review",
+      "cancellation_target": "import",
+      "execution_state": "awaiting_dataset_materialization",
+      "bids": {
+        "formal_bids": true,
+        "format": "BrainVision",
+        "conversion_parent": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/data/BNCI2014_001",
+        "root": null,
+        "root_resolution": {
+          "source": "convert_to_bids_return_value",
+          "must_be_descendant_of_conversion_parent": true,
+          "required_basename_prefix": "MNE-BIDS-",
+          "required_marker": "dataset_description.json"
+        },
+        "checksum_manifest": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/checksums/BNCI2014_001.sha256",
+        "dataset_revision_sha256": null
+      },
+      "oracle": {"state": "awaiting_dataset_materialization"}
+    },
+    {
+      "moabb_class": "PhysionetMI",
+      "subjects": [1, 2, 3, 4, 5],
+      "ui_profile": "product_recommended_bounded",
+      "cancellation_partition": "import_review",
+      "cancellation_target": "review",
+      "execution_state": "awaiting_dataset_materialization",
+      "bids": {
+        "formal_bids": true,
+        "format": "EDF",
+        "conversion_parent": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/data/PhysionetMI",
+        "root": null,
+        "root_resolution": {
+          "source": "convert_to_bids_return_value",
+          "must_be_descendant_of_conversion_parent": true,
+          "required_basename_prefix": "MNE-BIDS-",
+          "required_marker": "dataset_description.json"
+        },
+        "checksum_manifest": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/checksums/PhysionetMI.sha256",
+        "dataset_revision_sha256": null
+      },
+      "oracle": {"state": "awaiting_dataset_materialization"}
+    },
+    {
+      "moabb_class": "Lee2021Mobile_ERP",
+      "subjects": [1, 2, 3, 4, 5],
+      "ui_profile": "product_recommended_bounded",
+      "cancellation_partition": "import_review",
+      "cancellation_target": "import",
+      "execution_state": "awaiting_dataset_materialization",
+      "bids": {
+        "formal_bids": true,
+        "format": "EEGLAB",
+        "conversion_parent": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/data/Lee2021Mobile_ERP",
+        "root": null,
+        "root_resolution": {
+          "source": "convert_to_bids_return_value",
+          "must_be_descendant_of_conversion_parent": true,
+          "required_basename_prefix": "MNE-BIDS-",
+          "required_marker": "dataset_description.json"
+        },
+        "checksum_manifest": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/checksums/Lee2021Mobile_ERP.sha256",
+        "dataset_revision_sha256": null
+      },
+      "oracle": {"state": "awaiting_dataset_materialization"}
+    },
+    {
+      "moabb_class": "BNCI2014_009",
+      "subjects": [1, 2, 3, 4, 5],
+      "ui_profile": "product_recommended_bounded",
+      "cancellation_partition": "import_review",
+      "cancellation_target": "review",
+      "execution_state": "awaiting_dataset_materialization",
+      "bids": {
+        "formal_bids": true,
+        "format": "BrainVision",
+        "conversion_parent": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/data/BNCI2014_009",
+        "root": null,
+        "root_resolution": {
+          "source": "convert_to_bids_return_value",
+          "must_be_descendant_of_conversion_parent": true,
+          "required_basename_prefix": "MNE-BIDS-",
+          "required_marker": "dataset_description.json"
+        },
+        "checksum_manifest": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/checksums/BNCI2014_009.sha256",
+        "dataset_revision_sha256": null
+      },
+      "oracle": {"state": "awaiting_dataset_materialization"}
+    },
+    {
+      "moabb_class": "Nakanishi2015",
+      "subjects": [1, 2, 3, 4, 5],
+      "ui_profile": "product_recommended_bounded",
+      "cancellation_partition": "import_review",
+      "cancellation_target": "import",
+      "execution_state": "awaiting_dataset_materialization",
+      "bids": {
+        "formal_bids": true,
+        "format": "EEGLAB",
+        "conversion_parent": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/data/Nakanishi2015",
+        "root": null,
+        "root_resolution": {
+          "source": "convert_to_bids_return_value",
+          "must_be_descendant_of_conversion_parent": true,
+          "required_basename_prefix": "MNE-BIDS-",
+          "required_marker": "dataset_description.json"
+        },
+        "checksum_manifest": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/checksums/Nakanishi2015.sha256",
+        "dataset_revision_sha256": null
+      },
+      "oracle": {"state": "awaiting_dataset_materialization"}
+    },
+    {
+      "moabb_class": "Ofner2017",
+      "subjects": [1, 2],
+      "ui_profile": "product_recommended_bounded",
+      "cancellation_partition": "apply_epoch",
+      "cancellation_target": "apply",
+      "execution_state": "awaiting_dataset_materialization",
+      "bids": {
+        "formal_bids": true,
+        "format": "BrainVision",
+        "conversion_parent": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/data/Ofner2017",
+        "root": null,
+        "root_resolution": {
+          "source": "convert_to_bids_return_value",
+          "must_be_descendant_of_conversion_parent": true,
+          "required_basename_prefix": "MNE-BIDS-",
+          "required_marker": "dataset_description.json"
+        },
+        "checksum_manifest": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/checksums/Ofner2017.sha256",
+        "dataset_revision_sha256": null
+      },
+      "oracle": {"state": "awaiting_dataset_materialization"}
+    },
+    {
+      "moabb_class": "Ma2020",
+      "source_mode": "formal_bids_mirror",
+      "subjects": [1, 2],
+      "ui_profile": "product_recommended_bounded",
+      "cancellation_partition": "apply_epoch",
+      "cancellation_target": "epoch",
+      "execution_state": "awaiting_dataset_materialization",
+      "bids": {
+        "formal_bids": true,
+        "format": "BDF",
+        "conversion_parent": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/data/Ma2020",
+        "root": null,
+        "root_resolution": {
+          "source": "formal_bids_mirror_receipt",
+          "must_be_descendant_of_conversion_parent": true,
+          "required_basename_prefix": "MNE-BIDS-",
+          "required_marker": "dataset_description.json"
+        },
+        "checksum_manifest": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/checksums/Ma2020.sha256",
+        "dataset_revision_sha256": null
+      },
+      "oracle": {"state": "awaiting_dataset_materialization"}
+    },
+    {
+      "moabb_class": "ErpCore2021_P3",
+      "subjects": [1, 2],
+      "ui_profile": "product_recommended_bounded",
+      "cancellation_partition": "apply_epoch",
+      "cancellation_target": "apply",
+      "execution_state": "awaiting_dataset_materialization",
+      "bids": {
+        "formal_bids": true,
+        "format": "BrainVision",
+        "conversion_parent": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/data/ErpCore2021_P3",
+        "root": null,
+        "root_resolution": {
+          "source": "convert_to_bids_return_value",
+          "must_be_descendant_of_conversion_parent": true,
+          "required_basename_prefix": "MNE-BIDS-",
+          "required_marker": "dataset_description.json"
+        },
+        "checksum_manifest": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/checksums/ErpCore2021_P3.sha256",
+        "dataset_revision_sha256": null
+      },
+      "oracle": {"state": "awaiting_dataset_materialization"}
+    },
+    {
+      "moabb_class": "Wang2016",
+      "subjects": [1, 2],
+      "ui_profile": "product_recommended_bounded",
+      "cancellation_partition": "apply_epoch",
+      "cancellation_target": "epoch",
+      "execution_state": "awaiting_dataset_materialization",
+      "bids": {
+        "formal_bids": true,
+        "format": "BrainVision",
+        "conversion_parent": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/data/Wang2016",
+        "root": null,
+        "root_resolution": {
+          "source": "convert_to_bids_return_value",
+          "must_be_descendant_of_conversion_parent": true,
+          "required_basename_prefix": "MNE-BIDS-",
+          "required_marker": "dataset_description.json"
+        },
+        "checksum_manifest": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/checksums/Wang2016.sha256",
+        "dataset_revision_sha256": null
+      },
+      "oracle": {"state": "awaiting_dataset_materialization"}
+    },
+    {
+      "moabb_class": "Chen2017SingleFlicker",
+      "subjects": [1, 2],
+      "ui_profile": "product_recommended_bounded",
+      "cancellation_partition": "apply_epoch",
+      "cancellation_target": "apply",
+      "execution_state": "awaiting_dataset_materialization",
+      "bids": {
+        "formal_bids": true,
+        "format": "EEGLAB",
+        "conversion_parent": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/data/Chen2017SingleFlicker",
+        "root": null,
+        "root_resolution": {
+          "source": "convert_to_bids_return_value",
+          "must_be_descendant_of_conversion_parent": true,
+          "required_basename_prefix": "MNE-BIDS-",
+          "required_marker": "dataset_description.json"
+        },
+        "checksum_manifest": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/checksums/Chen2017SingleFlicker.sha256",
+        "dataset_revision_sha256": null
+      },
+      "oracle": {"state": "awaiting_dataset_materialization"}
+    },
+    {
+      "moabb_class": "Thielen2021",
+      "subjects": [1, 2],
+      "ui_profile": "product_recommended_bounded",
+      "cancellation_partition": "training_saliency",
+      "cancellation_target": "training",
+      "execution_state": "awaiting_dataset_materialization",
+      "bids": {
+        "formal_bids": true,
+        "format": "BrainVision",
+        "conversion_parent": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/data/Thielen2021",
+        "root": null,
+        "root_resolution": {
+          "source": "convert_to_bids_return_value",
+          "must_be_descendant_of_conversion_parent": true,
+          "required_basename_prefix": "MNE-BIDS-",
+          "required_marker": "dataset_description.json"
+        },
+        "checksum_manifest": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/checksums/Thielen2021.sha256",
+        "dataset_revision_sha256": null
+      },
+      "oracle": {"state": "awaiting_dataset_materialization"}
+    },
+    {
+      "moabb_class": "Hinss2021",
+      "subjects": [1, 2],
+      "ui_profile": "product_recommended_bounded",
+      "cancellation_partition": "training_saliency",
+      "cancellation_target": "saliency",
+      "execution_state": "awaiting_dataset_materialization",
+      "bids": {
+        "formal_bids": true,
+        "format": "BrainVision",
+        "conversion_parent": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/data/Hinss2021",
+        "root": null,
+        "root_resolution": {
+          "source": "convert_to_bids_return_value",
+          "must_be_descendant_of_conversion_parent": true,
+          "required_basename_prefix": "MNE-BIDS-",
+          "required_marker": "dataset_description.json"
+        },
+        "checksum_manifest": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/checksums/Hinss2021.sha256",
+        "dataset_revision_sha256": null
+      },
+      "oracle": {"state": "awaiting_dataset_materialization"}
+    },
+    {
+      "moabb_class": "MAMEM1",
+      "subjects": [1, 2],
+      "ui_profile": "product_recommended_bounded",
+      "cancellation_partition": "training_saliency",
+      "cancellation_target": "training",
+      "execution_state": "awaiting_dataset_materialization",
+      "bids": {
+        "formal_bids": true,
+        "format": "EEGLAB",
+        "conversion_parent": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/data/MAMEM1",
+        "root": null,
+        "root_resolution": {
+          "source": "convert_to_bids_return_value",
+          "must_be_descendant_of_conversion_parent": true,
+          "required_basename_prefix": "MNE-BIDS-",
+          "required_marker": "dataset_description.json"
+        },
+        "checksum_manifest": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/checksums/MAMEM1.sha256",
+        "dataset_revision_sha256": null
+      },
+      "oracle": {"state": "awaiting_dataset_materialization"}
+    },
+    {
+      "moabb_class": "GuttmannFlury2025_SSVEP",
+      "subjects": [1, 2],
+      "ui_profile": "product_recommended_bounded",
+      "cancellation_partition": "training_saliency",
+      "cancellation_target": "saliency",
+      "execution_state": "awaiting_dataset_materialization",
+      "bids": {
+        "formal_bids": true,
+        "format": "BrainVision",
+        "conversion_parent": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/data/GuttmannFlury2025_SSVEP",
+        "root": null,
+        "root_resolution": {
+          "source": "convert_to_bids_return_value",
+          "must_be_descendant_of_conversion_parent": true,
+          "required_basename_prefix": "MNE-BIDS-",
+          "required_marker": "dataset_description.json"
+        },
+        "checksum_manifest": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/checksums/GuttmannFlury2025_SSVEP.sha256",
+        "dataset_revision_sha256": null
+      },
+      "oracle": {"state": "awaiting_dataset_materialization"}
+    },
+    {
+      "moabb_class": "Zhou2020",
+      "subjects": [1, 2],
+      "ui_profile": "product_recommended_bounded",
+      "cancellation_partition": "training_saliency",
+      "cancellation_target": "training",
+      "execution_state": "awaiting_dataset_materialization",
+      "bids": {
+        "formal_bids": true,
+        "format": "EDF",
+        "conversion_parent": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/data/Zhou2020",
+        "root": null,
+        "root_resolution": {
+          "source": "convert_to_bids_return_value",
+          "must_be_descendant_of_conversion_parent": true,
+          "required_basename_prefix": "MNE-BIDS-",
+          "required_marker": "dataset_description.json"
+        },
+        "checksum_manifest": "/mnt/d/workspace_v2/projects/lab/xbrainlab/build/moabb-gui-campaign-v2/checksums/Zhou2020.sha256",
+        "dataset_revision_sha256": null
+      },
+      "oracle": {"state": "awaiting_dataset_materialization"}
+    }
+  ]
+}

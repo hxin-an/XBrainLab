@@ -417,7 +417,11 @@ class PostCommandSaliencyNotificationBoundary:
 
 
 class PostTrainingSaliencyAutomation:
-    """Compute the fast baseline after a run finishes, independent of UI panels."""
+    """Legacy opt-in scheduler retained for lifecycle compatibility tests.
+
+    Product training does not arm this coordinator; saliency starts from an
+    explicit ``SaliencyCommand`` initiated by the visible Compute Saliency action.
+    """
 
     def __init__(
         self,

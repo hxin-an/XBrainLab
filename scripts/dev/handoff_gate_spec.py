@@ -16,6 +16,7 @@ from scripts.dev.pytest_completion_attestation import (
 EVIDENCE_ROOT_TOKEN: Final = "{evidence_root}"  # noqa: S105 - path placeholder
 MODEL_CACHE_DIR_TOKEN: Final = "{model_cache_dir}"  # noqa: S105 - path placeholder
 RAG_CACHE_DIR_TOKEN: Final = "{rag_cache_dir}"  # noqa: S105 - path placeholder
+MOABB_DELIVERY_DOSSIER_REVALIDATION: Final = "moabb-delivery-evidence-v1"
 _SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,79}$")
 _SAFE_ENV_NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 _PYTEST_FORBIDDEN = (
@@ -86,6 +87,7 @@ class GateSpec:
     preserved_input_artifact_paths: tuple[str, ...] = ()
     stdout_artifact_path: str | None = None
     pytest_attestation_path: str | None = None
+    dossier_revalidation: str | None = None
 
     def __post_init__(self) -> None:
         if not _SAFE_ID.fullmatch(self.check_id):
@@ -141,6 +143,48 @@ class GateSpec:
                 raise ValueError(
                     f"Gate {self.check_id!r} does not write its registered pytest "
                     "attestation path."
+                )
+        if self.dossier_revalidation not in {
+            None,
+            MOABB_DELIVERY_DOSSIER_REVALIDATION,
+        }:
+            raise ValueError(
+                f"Gate {self.check_id!r} has an unsupported dossier revalidation."
+            )
+        if self.dossier_revalidation == MOABB_DELIVERY_DOSSIER_REVALIDATION:
+            option_values: dict[str, str] = {}
+            for option in ("--plan", "--evidence-root", "--output"):
+                positions = [
+                    index for index, value in enumerate(self.argv) if value == option
+                ]
+                if len(positions) != 1 or positions[0] + 1 >= len(self.argv):
+                    raise ValueError(
+                        f"Gate {self.check_id!r} must register exactly one {option}."
+                    )
+                option_values[option] = self.argv[positions[0] + 1]
+            plan_path = PurePosixPath(option_values["--plan"])
+            if plan_path.is_absolute() or ".." in plan_path.parts:
+                raise ValueError(
+                    f"Gate {self.check_id!r} dossier plan must be repository-relative."
+                )
+            evidence_prefix = f"{EVIDENCE_ROOT_TOKEN}/"
+            evidence_value = option_values["--evidence-root"]
+            output_value = option_values["--output"]
+            if (
+                not evidence_value.startswith(evidence_prefix)
+                or evidence_value.removeprefix(evidence_prefix)
+                not in self.preserved_input_artifact_paths
+            ):
+                raise ValueError(
+                    f"Gate {self.check_id!r} dossier evidence must be preserved."
+                )
+            if (
+                not output_value.startswith(evidence_prefix)
+                or output_value.removeprefix(evidence_prefix)
+                not in self.required_artifact_paths
+            ):
+                raise ValueError(
+                    f"Gate {self.check_id!r} dossier result must be registered."
                 )
 
     def resolve_argv(self, evidence_root: Path) -> tuple[str, ...]:
@@ -923,6 +967,34 @@ _GATE_SPECS = (
         environment=_MNE,
         required_artifact_paths=("public-cross-source-training-smoke.json",),
         stdout_artifact_path="public-cross-source-training-smoke.json",
+    ),
+    GateSpec(
+        check_id="moabb-15-delivery-validation",
+        section="7",
+        argv=(
+            *_PRLIMIT,
+            *_POETRY_EXEC,
+            "python",
+            "scripts/dev/validate_moabb_gui_campaign_delivery.py",
+            "--plan",
+            "artifacts/user-journeys/moabb-gui-campaign-v2.json",
+            "--evidence-root",
+            f"{EVIDENCE_ROOT_TOKEN}/moabb-15-campaign",
+            "--output",
+            f"{EVIDENCE_ROOT_TOKEN}/moabb-15-delivery-validation.json",
+        ),
+        timeout_seconds=3600,
+        environment=_MNE,
+        required_artifact_paths=(
+            "moabb-15-campaign",
+            "moabb-15-campaign/visual-review-attestation.json",
+            "moabb-15-delivery-validation.json",
+        ),
+        preserved_input_artifact_paths=(
+            "moabb-15-campaign",
+            "moabb-15-campaign/visual-review-attestation.json",
+        ),
+        dossier_revalidation=MOABB_DELIVERY_DOSSIER_REVALIDATION,
     ),
     GateSpec(
         check_id="resource-calibration",

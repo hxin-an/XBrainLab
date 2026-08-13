@@ -1,6 +1,8 @@
 import warnings
 from unittest.mock import MagicMock, call, patch
 
+import mne
+import numpy as np
 import pytest
 
 from XBrainLab.backend.exceptions import FileCorruptedError
@@ -15,6 +17,23 @@ from XBrainLab.backend.load_data.raw_data_loader import (
     load_raw_data,
     load_set_file,
 )
+
+
+def test_real_fif_loader_retains_lazy_source_dependency(tmp_path) -> None:
+    """Characterize the source-file lifetime required by prepared imports."""
+    path = tmp_path / "subject01_raw.fif"
+    source = mne.io.RawArray(
+        np.zeros((1, 100)),
+        mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg"),
+        verbose="ERROR",
+    )
+    source.save(path, overwrite=True, verbose="ERROR")
+
+    loaded = load_fif_file(str(path))
+
+    assert isinstance(loaded, Raw)
+    assert loaded.get_mne().preload is False
+    assert str(path) in {str(item) for item in loaded.get_mne().filenames}
 
 
 class TestRawDataLoaderUnit:

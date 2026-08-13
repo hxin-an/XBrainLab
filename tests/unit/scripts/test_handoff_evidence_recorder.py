@@ -130,6 +130,9 @@ def test_recorded_command_is_bound_to_clean_sha_and_hashed_logs(tmp_path) -> Non
     assert record["passed"] is True
     assert record["source_before"]["commit_sha"] == sha
     assert record["source_before"] == record["source_after"]
+    assert record["preserved_input_stable"] is True
+    assert record["preserved_input_before"] == []
+    assert record["preserved_input_after"] == []
     assert record["stdout_log"]["sha256"]
     dossier = json.loads(
         (evidence_root / "handoff-evidence.json").read_text(encoding="utf-8")
@@ -1244,6 +1247,315 @@ def test_registered_input_artifact_can_be_preserved_for_validation_gate(
     assert record["passed"] is True
     assert input_path.exists()
     assert record["artifact_policy"]["preserved_input_paths"] == ["capture"]
+    assert record["preserved_input_before"] == record["preserved_input_after"]
+    assert validate_handoff_dossier(
+        repo_root=repo,
+        evidence_root=evidence_root,
+        required_check_ids=(spec.check_id,),
+        expected_branch=branch,
+        require_upstream=False,
+    ) == (True, "")
+
+    input_path.write_text('{"captured": false}\n', encoding="utf-8")
+    ok, reason = validate_handoff_dossier(
+        repo_root=repo,
+        evidence_root=evidence_root,
+        required_check_ids=(spec.check_id,),
+        expected_branch=branch,
+        require_upstream=False,
+    )
+
+    assert ok is False
+    assert "artifact identity is stale" in reason
+
+
+def test_final_dossier_rejects_external_frozen_byte_changed_after_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _sha, branch = _repo(tmp_path)
+    frozen_byte = tmp_path / "external-frozen-bids" / "sub-01_task-test_eeg.edf"
+    frozen_byte.parent.mkdir(parents=True)
+    frozen_byte.write_bytes(b"frozen-bids-v1")
+    plan_path = repo / "campaign-plan.json"
+    plan_path.write_text(
+        json.dumps({"external_frozen_byte": str(frozen_byte)}),
+        encoding="utf-8",
+    )
+    _git(repo, "add", "campaign-plan.json")
+    _git(repo, "commit", "-qm", "add campaign plan")
+    sha = _git(repo, "rev-parse", "HEAD")
+    evidence_root = repo / "build" / "handoff-evidence" / sha
+    campaign_root = evidence_root / "moabb-15-campaign"
+    campaign_root.mkdir(parents=True)
+    (campaign_root / "receipt.json").write_text("{}\n", encoding="utf-8")
+    recorded_result = {
+        "delivery_allowed": True,
+        "external_frozen_sha256": hashlib.sha256(frozen_byte.read_bytes()).hexdigest(),
+    }
+    command = (
+        sys.executable,
+        "-c",
+        "import sys; from pathlib import Path; "
+        "output = Path(sys.argv[sys.argv.index('--output') + 1]); "
+        "output.parent.mkdir(parents=True, exist_ok=True); "
+        "output.write_text(sys.argv[1], encoding='utf-8')",
+        json.dumps(recorded_result),
+        "--plan",
+        "campaign-plan.json",
+        "--evidence-root",
+        f"{EVIDENCE_ROOT_TOKEN}/moabb-15-campaign",
+        "--output",
+        f"{EVIDENCE_ROOT_TOKEN}/moabb-15-delivery-validation.json",
+    )
+    spec = GateSpec(
+        check_id="external-freeze-validation",
+        section="7",
+        argv=command,
+        timeout_seconds=30,
+        required_artifact_paths=(
+            "moabb-15-campaign",
+            "moabb-15-delivery-validation.json",
+        ),
+        preserved_input_artifact_paths=("moabb-15-campaign",),
+        dossier_revalidation="moabb-delivery-evidence-v1",
+    )
+    _install_test_gate(monkeypatch, spec)
+
+    def current_delivery_result(
+        *,
+        plan_path: Path,
+        evidence_root: Path,
+    ) -> dict[str, object]:
+        assert plan_path == (repo / "campaign-plan.json").resolve()
+        assert evidence_root == campaign_root.resolve()
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        current_byte = Path(plan["external_frozen_byte"])
+        return {
+            "delivery_allowed": True,
+            "external_frozen_sha256": hashlib.sha256(
+                current_byte.read_bytes()
+            ).hexdigest(),
+        }
+
+    monkeypatch.setattr(
+        recorder_module,
+        "_load_current_moabb_delivery_validation",
+        current_delivery_result,
+    )
+    record = record_handoff_command(
+        repo_root=repo,
+        evidence_root=evidence_root,
+        section=spec.section,
+        check_id=spec.check_id,
+        command=spec.resolve_argv(evidence_root),
+        timeout_seconds=spec.timeout_seconds,
+        expected_branch=branch,
+        require_upstream=False,
+    )
+
+    assert record["passed"] is True
+    assert validate_handoff_dossier(
+        repo_root=repo,
+        evidence_root=evidence_root,
+        required_check_ids=(spec.check_id,),
+        expected_branch=branch,
+        require_upstream=False,
+    ) == (True, "")
+
+    frozen_byte.write_bytes(b"frozen-bids-v2")
+    ok, reason = validate_handoff_dossier(
+        repo_root=repo,
+        evidence_root=evidence_root,
+        required_check_ids=(spec.check_id,),
+        expected_branch=branch,
+        require_upstream=False,
+    )
+
+    assert ok is False
+    assert reason == (
+        "external-freeze-validation MOABB delivery evidence changed after its "
+        "gate; final dossier revalidation failed."
+    )
+
+
+def test_validation_gate_rejects_preserved_input_changed_during_command(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, sha, branch = _repo(tmp_path)
+    evidence_root = repo / "build" / "handoff-evidence" / sha
+    input_path = evidence_root / "capture" / "result.json"
+    input_path.parent.mkdir(parents=True)
+    input_path.write_text('{"captured": true}\n', encoding="utf-8")
+    command = (
+        sys.executable,
+        "-c",
+        "from pathlib import Path; import sys; "
+        "Path(sys.argv[1]).write_text('{\"replaced\": true}\\n')",
+        str(input_path),
+    )
+    spec = GateSpec(
+        check_id="mutated-preserved-artifact",
+        section="5",
+        argv=command,
+        timeout_seconds=30,
+        required_artifact_paths=("capture",),
+        preserved_input_artifact_paths=("capture",),
+    )
+    _install_test_gate(monkeypatch, spec)
+
+    record = record_handoff_command(
+        repo_root=repo,
+        evidence_root=evidence_root,
+        section=spec.section,
+        check_id=spec.check_id,
+        command=command,
+        timeout_seconds=spec.timeout_seconds,
+        expected_branch=branch,
+        require_upstream=False,
+    )
+
+    assert record["return_code"] == 0
+    assert record["passed"] is False
+    assert record["preserved_input_stable"] is False
+    assert "preserved input changed" in record["failure_reason"].lower()
+
+    ok, reason = validate_handoff_dossier(
+        repo_root=repo,
+        evidence_root=evidence_root,
+        required_check_ids=(spec.check_id,),
+        expected_branch=branch,
+        require_upstream=False,
+    )
+
+    assert ok is False
+    assert reason == (
+        "Handoff check did not pass: mutated-preserved-artifact. "
+        "Preserved input changed during validation."
+    )
+
+
+@pytest.mark.parametrize("initial_state", ["missing", "empty-directory"])
+def test_invalid_preserved_input_refuses_to_run_gate(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    initial_state: str,
+) -> None:
+    repo, sha, branch = _repo(tmp_path)
+    evidence_root = repo / "build" / "handoff-evidence" / sha
+    input_path = evidence_root / "capture"
+    marker = tmp_path / "command-ran"
+    if initial_state == "empty-directory":
+        input_path.mkdir(parents=True)
+    command = (
+        sys.executable,
+        "-c",
+        "from pathlib import Path; import sys; Path(sys.argv[1]).touch()",
+        str(marker),
+    )
+    spec = GateSpec(
+        check_id="invalid-preserved-artifact",
+        section="5",
+        argv=command,
+        timeout_seconds=30,
+        required_artifact_paths=("capture",),
+        preserved_input_artifact_paths=("capture",),
+    )
+    _install_test_gate(monkeypatch, spec)
+
+    with pytest.raises(HandoffEvidenceError, match="preserved artifact"):
+        record_handoff_command(
+            repo_root=repo,
+            evidence_root=evidence_root,
+            section=spec.section,
+            check_id=spec.check_id,
+            command=command,
+            timeout_seconds=spec.timeout_seconds,
+            expected_branch=branch,
+            require_upstream=False,
+        )
+
+    assert not marker.exists()
+
+
+def test_validation_gate_rejects_preserved_input_type_changed_during_command(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, sha, branch = _repo(tmp_path)
+    evidence_root = repo / "build" / "handoff-evidence" / sha
+    input_path = evidence_root / "capture.json"
+    input_path.parent.mkdir(parents=True)
+    input_path.write_text('{"captured": true}\n', encoding="utf-8")
+    command = (
+        sys.executable,
+        "-c",
+        "from pathlib import Path; import sys; "
+        "path = Path(sys.argv[1]); path.unlink(); path.mkdir(); "
+        "(path / 'nested.json').write_text('{}')",
+        str(input_path),
+    )
+    spec = GateSpec(
+        check_id="type-changed-preserved-artifact",
+        section="5",
+        argv=command,
+        timeout_seconds=30,
+        required_artifact_paths=("capture.json",),
+        preserved_input_artifact_paths=("capture.json",),
+    )
+    _install_test_gate(monkeypatch, spec)
+
+    record = record_handoff_command(
+        repo_root=repo,
+        evidence_root=evidence_root,
+        section=spec.section,
+        check_id=spec.check_id,
+        command=command,
+        timeout_seconds=spec.timeout_seconds,
+        expected_branch=branch,
+        require_upstream=False,
+    )
+
+    assert record["passed"] is False
+    assert record["preserved_input_before"][0]["kind"] == "file"
+    assert record["preserved_input_after"][0]["kind"] == "directory"
+    assert "preserved input changed" in record["failure_reason"].lower()
+
+
+def test_overlapping_rebuildable_artifact_cannot_delete_preserved_input(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, sha, branch = _repo(tmp_path)
+    evidence_root = repo / "build" / "handoff-evidence" / sha
+    input_path = evidence_root / "capture" / "input.json"
+    input_path.parent.mkdir(parents=True)
+    input_path.write_text('{"captured": true}\n', encoding="utf-8")
+    command = (sys.executable, "-c", "print('must not run')")
+    spec = GateSpec(
+        check_id="overlapping-preserved-artifact",
+        section="5",
+        argv=command,
+        timeout_seconds=30,
+        required_artifact_paths=("capture", "capture/input.json"),
+        preserved_input_artifact_paths=("capture/input.json",),
+    )
+    _install_test_gate(monkeypatch, spec)
+
+    with pytest.raises(HandoffEvidenceError, match="overlaps a preserved input"):
+        record_handoff_command(
+            repo_root=repo,
+            evidence_root=evidence_root,
+            section=spec.section,
+            check_id=spec.check_id,
+            command=command,
+            timeout_seconds=spec.timeout_seconds,
+            expected_branch=branch,
+            require_upstream=False,
+        )
+
+    assert input_path.read_text(encoding="utf-8") == '{"captured": true}\n'
 
 
 def test_verifier_recursively_hashes_registered_artifact_directories(

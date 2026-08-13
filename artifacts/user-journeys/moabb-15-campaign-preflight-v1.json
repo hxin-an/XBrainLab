@@ -1,0 +1,206 @@
+{
+  "schema_version": "1.1.0",
+  "profile_id": "moabb-15-campaign-preflight-v1",
+  "moabb_release": {
+    "version": "1.5.0",
+    "tag": "v1.5",
+    "commit": "140809d8c48bdf2be953951ff75f688122edee34",
+    "repository": "https://github.com/NeuroTechX/moabb"
+  },
+  "resource_policy": {
+    "minimum_headroom_multiplier": 4,
+    "minimum_artifact_headroom_bytes": 10737418240,
+    "rationale": "Source archives, extracted native data, one BIDS output, two journey passes, screenshots, receipts, and scratch require conservative separation from download bytes."
+  },
+  "datasets": [
+    {
+      "moabb_class": "BNCI2014_001",
+      "subjects": [1, 2, 3, 4, 5],
+      "output_format": "BrainVision",
+      "source_download_bytes": 425964531,
+      "supervised_classes": ["left_hand", "right_hand", "feet", "tongue"],
+      "source_checksum_status": "ABSENT",
+      "license_status": "verified",
+      "resource_status": "verified"
+    },
+    {
+      "moabb_class": "PhysionetMI",
+      "subjects": [1, 2, 3, 4, 5],
+      "output_format": "EDF",
+      "source_download_bytes": 77163840,
+      "supervised_classes": ["left_hand", "right_hand", "feet", "hands"],
+      "source_checksum_status": "ABSENT",
+      "license_status": "verified",
+      "resource_status": "verified"
+    },
+    {
+      "moabb_class": "Lee2021Mobile_ERP",
+      "subjects": [1, 2, 3, 4, 5],
+      "output_format": "EEGLAB",
+      "source_download_bytes": 435903948,
+      "supervised_classes": ["Target", "NonTarget"],
+      "source_checksum_status": "ABSENT",
+      "license_status": "verified",
+      "resource_status": "verified"
+    },
+    {
+      "moabb_class": "BNCI2014_009",
+      "subjects": [1, 2, 3, 4, 5],
+      "output_format": "BrainVision",
+      "source_download_bytes": 92637672,
+      "supervised_classes": ["Target", "NonTarget"],
+      "source_checksum_status": "ABSENT",
+      "license_status": "verified",
+      "resource_status": "verified"
+    },
+    {
+      "moabb_class": "Nakanishi2015",
+      "subjects": [1, 2, 3, 4, 5],
+      "output_format": "EEGLAB",
+      "source_download_bytes": 76584909,
+      "supervised_classes": ["9.25", "11.25", "13.25", "9.75", "11.75", "13.75", "10.25", "12.25", "14.25", "10.75", "12.75", "14.75"],
+      "source_checksum_status": "ABSENT",
+      "license_status": "local-use-only",
+      "redistribution_allowed": false,
+      "license_note": "The pinned MOABB metadata reports the upstream dataset license as unknown. These bytes and their BIDS conversion are admitted only for this local campaign and must not be redistributed.",
+      "resource_status": "verified"
+    },
+    {
+      "moabb_class": "Ofner2017",
+      "subjects": [1, 2],
+      "output_format": "BrainVision",
+      "source_download_bytes": 1966009968,
+      "supervised_classes": ["right_elbow_flexion", "right_elbow_extension", "right_supination", "right_pronation", "right_hand_close", "right_hand_open"],
+      "source_checksum_status": "ABSENT",
+      "license_status": "verified",
+      "resource_status": "verified"
+    },
+    {
+      "moabb_class": "Ma2020",
+      "source_mode": "formal_bids_mirror",
+      "subjects": [1, 2],
+      "output_format": "BDF",
+      "source_download_bytes": 1886960128,
+      "supervised_classes": ["right_hand", "right_elbow"],
+      "source_size_status": "pinned_selected_projection",
+      "source_checksum_status": "ABSENT",
+      "license_status": "verified",
+      "resource_status": "FORMAL_BIDS_MIRROR_REQUIRED",
+      "formal_bids_mirror": {
+        "manifest_url": "https://data.nemar.org/nm000167/v1.0.0/manifest.json",
+        "manifest_hosts": ["data.nemar.org"],
+        "manifest_maximum_bytes": 2097152,
+        "download_hosts": ["data.nemar.org", "raw.githubusercontent.com"],
+        "redirect_hosts": ["nemar.s3.us-east-2.amazonaws.com", "raw.githubusercontent.com"],
+        "entries_pointer": "$",
+        "projection_fields": ["path", "size", "checksum_algorithm", "checksum", "bytes_url"],
+        "native_format": "BDF",
+        "root_basename": "MNE-BIDS-ma2020-nemar-v1.0.0",
+        "subject_path_template": "sub-{subject}",
+        "include_paths": [".bidsignore", ".gitignore", "README.md", "dataset_description.json", "participants.json", "participants.tsv"],
+        "include_prefixes": ["code/", "derivatives/"],
+        "full_projection": {
+          "entry_count": 4134,
+          "total_bytes": 24090266813,
+          "projection_sha256": "38cf57b8990c53cc2e32d659f31fdcd6b12e8e738fec38596b076964f513b830"
+        },
+        "selected_projection": {
+          "entry_count": 339,
+          "total_bytes": 1886960128,
+          "projection_sha256": "9464c4b457cc4f52504dbe68437e778e40782383b856fbb8419a5fd7583628c5"
+        },
+        "expected_trial_type_values": {"right_hand": 2, "right_elbow": 1},
+        "provenance": {
+          "dataset_id": "nm000167",
+          "version": "1.0.0",
+          "source_doi": "10.7910/DVN/RBN3XG",
+          "bids_doi": "10.82901/nemar.nm000167",
+          "repository_tag": "v1.0.0",
+          "repository_tag_object": "a99edd5fa5bc60f6d772f30cf9e32a24450e4154",
+          "repository_commit": "44c4ea239a5f5c65dd9be06ccc8fc85441754a7a",
+          "generated_by": "MOABB 1.5.0"
+        }
+      }
+    },
+    {
+      "moabb_class": "ErpCore2021_P3",
+      "subjects": [1, 2],
+      "output_format": "BrainVision",
+      "source_download_bytes": 125314929,
+      "supervised_classes": ["Target", "NonTarget"],
+      "source_checksum_status": "ABSENT",
+      "license_status": "verified",
+      "resource_status": "verified"
+    },
+    {
+      "moabb_class": "Wang2016",
+      "subjects": [1, 2],
+      "output_format": "BrainVision",
+      "source_download_bytes": 211699260,
+      "supervised_classes": ["8", "9", "10", "11", "12", "13", "14", "15", "8.2", "9.2", "10.2", "11.2", "12.2", "13.2", "14.2", "15.2", "8.4", "9.4", "10.4", "11.4", "12.4", "13.4", "14.4", "15.4", "8.6", "9.6", "10.6", "11.6", "12.6", "13.6", "14.6", "15.6", "8.8", "9.8", "10.8", "11.8", "12.8", "13.8", "14.8", "15.8"],
+      "source_checksum_status": "ABSENT",
+      "license_status": "verified",
+      "resource_status": "verified"
+    },
+    {
+      "moabb_class": "Chen2017SingleFlicker",
+      "subjects": [1, 2],
+      "output_format": "EEGLAB",
+      "source_download_bytes": 5760362073,
+      "supervised_classes": ["north", "east", "west", "south"],
+      "source_checksum_status": "ABSENT",
+      "license_status": "verified",
+      "resource_status": "verified"
+    },
+    {
+      "moabb_class": "Thielen2021",
+      "subjects": [1, 2],
+      "output_format": "BrainVision",
+      "source_download_bytes": 122851458,
+      "supervised_classes": ["1.0", "0.0"],
+      "source_checksum_status": "ABSENT",
+      "license_status": "verified",
+      "resource_status": "verified"
+    },
+    {
+      "moabb_class": "Hinss2021",
+      "subjects": [1, 2],
+      "output_format": "BrainVision",
+      "source_download_bytes": 362115366,
+      "supervised_classes": ["easy", "medium", "diff"],
+      "source_checksum_status": "ABSENT",
+      "license_status": "verified",
+      "resource_status": "verified"
+    },
+    {
+      "moabb_class": "MAMEM1",
+      "subjects": [1, 2],
+      "output_format": "EEGLAB",
+      "source_download_bytes": 1108882082,
+      "supervised_classes": ["6.66", "7.50", "8.57", "10.00", "12.00"],
+      "source_checksum_status": "ABSENT",
+      "license_status": "verified",
+      "resource_status": "verified"
+    },
+    {
+      "moabb_class": "GuttmannFlury2025_SSVEP",
+      "subjects": [1, 2],
+      "output_format": "BrainVision",
+      "source_download_bytes": 1721864484,
+      "supervised_classes": ["10.0", "11.0", "12.0", "13.0"],
+      "source_checksum_status": "ABSENT",
+      "license_status": "verified",
+      "resource_status": "verified"
+    },
+    {
+      "moabb_class": "Zhou2020",
+      "subjects": [1, 2],
+      "output_format": "EDF",
+      "source_download_bytes": 2208341942,
+      "supervised_classes": ["left_hand", "right_hand", "feet"],
+      "source_checksum_status": "ABSENT",
+      "license_status": "verified",
+      "resource_status": "verified"
+    }
+  ]
+}

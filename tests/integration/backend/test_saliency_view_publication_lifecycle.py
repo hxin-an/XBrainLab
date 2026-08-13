@@ -6,6 +6,7 @@ from threading import Event, Thread
 from time import monotonic
 from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -21,6 +22,8 @@ from XBrainLab.backend.application import (
     SaliencyRunIdentity,
 )
 from XBrainLab.backend.application.errors import PreconditionError
+from XBrainLab.backend.application.owned_work import OwnedWorkPhase
+from XBrainLab.backend.application.runtime import get_application_service
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import (
     ModelHolder,
@@ -48,6 +51,8 @@ from XBrainLab.backend.training_state_contract import (
 from XBrainLab.ui.application_capabilities import (
     release_application_shutdown_fence,
 )
+from XBrainLab.ui.async_command_runner import application_command_registry
+from XBrainLab.ui.main_window import MainWindow
 
 _THREAD_WATCHDOG_SECONDS = 3.0
 _BASELINE_METHODS = ("Gradient", "Gradient * Input")
@@ -132,6 +137,7 @@ def _bound_saliency_eval_record(
 def _completed_training_service(
     *,
     study: Study | None = None,
+    runtime_owned: bool = False,
 ) -> tuple[
     ApplicationService,
     Trainer,
@@ -184,8 +190,13 @@ def _completed_training_service(
     target_study.training_manager.set_model_holder(model_holder)
     target_study.training_manager.set_training_option(option)
     target_study.training_manager.trainer = trainer
+    service = (
+        get_application_service(target_study)
+        if runtime_owned
+        else ApplicationService(target_study)
+    )
     return (
-        ApplicationService(target_study),
+        service,
         trainer,
         holder,
         record,
@@ -277,6 +288,174 @@ def _lock_available_from_another_thread(lock) -> bool:
     thread.join(timeout=_THREAD_WATCHDOG_SECONDS)
     assert not thread.is_alive()
     return acquired == [True]
+
+
+def test_cancelled_close_reconciles_retained_terminal_after_owned_saliency_quiesces(
+    monkeypatch,
+) -> None:
+    service, trainer, holder, record, initial_eval_record = _completed_training_service(
+        runtime_owned=True
+    )
+    outcome = trainer.get_terminal_outcome()
+    assert outcome.run is not None
+    target = PostTrainingSaliencyTarget(
+        run=outcome.run,
+        finished_runs_before=0,
+        finished_runs_after=1,
+        append=True,
+    )
+    compute_started = Event()
+    release_compute = Event()
+    terminal_eval_record = _bound_saliency_eval_record(holder, record)
+
+    def bounded_compute(plan, *, should_cancel):
+        compute_started.set()
+        assert release_compute.wait(timeout=_THREAD_WATCHDOG_SECONDS)
+        assert should_cancel() is True
+        return PreparedSaliencyUpdate(
+            plan=plan,
+            eval_records=((record, initial_eval_record, terminal_eval_record),),
+        )
+
+    monkeypatch.setattr(holder, "compute_saliency_update", bounded_compute)
+    command = SaliencyCommand(
+        method="Gradient",
+        params={
+            "profile": "recommended",
+            "methods": list(_BASELINE_METHODS),
+        },
+    )
+    operation = service.begin_owned_operation(command)
+    application_events: list[TrainingLifecycleEvent] = []
+    saliency_events: list[str] = []
+    service.training.subscribe(
+        "training_analysis_published",
+        application_events.append,
+    )
+    service.visualization.subscribe(
+        "saliency_changed",
+        lambda: saliency_events.append("saliency_changed"),
+    )
+
+    with post_training_saliency_target(target):
+        scheduled = service.execute(command, operation_id=operation.operation_id)
+
+    assert scheduled.ok, scheduled.message
+    assert scheduled.diagnostics["operation_phase"] == "running"
+    assert compute_started.wait(timeout=_THREAD_WATCHDOG_SECONDS)
+    application_events.clear()
+    saliency_events.clear()
+
+    service.request_shutdown_fence()
+    release_compute.set()
+
+    assert service.owned_work.wait_for_idle(timeout=_THREAD_WATCHDOG_SECONDS)
+    assert service.training_runtime.wait_for_saliency_job(
+        timeout=_THREAD_WATCHDOG_SECONDS
+    )
+    terminal_status = service.training_runtime.saliency_status()
+    assert terminal_status.phase is PostTrainingSaliencyPhase.CANCELLED
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.CANCELLED
+    )
+    assert service.publication_lifecycle.pending_saliency_terminal() == terminal_status
+    assert service.wait_for_background_tasks(timeout=0.0)
+
+    release_deadline = monotonic() + _THREAD_WATCHDOG_SECONDS
+    released = service.release_shutdown_fence()
+    while not released and monotonic() < release_deadline:
+        Event().wait(0.01)
+        released = service.release_shutdown_fence()
+
+    assert released is True
+
+    assert service.shutdown_lifecycle.is_shutdown_fenced is False
+    assert service.publication_lifecycle.pending_saliency_terminal() is None
+    assert service.training_runtime.wait_for_saliency_delivery(
+        timeout=_THREAD_WATCHDOG_SECONDS
+    )
+    assert len(application_events) == 1
+    assert saliency_events == ["saliency_changed"]
+
+
+def test_real_main_window_close_quiesces_active_owned_saliency_without_livelock(
+    qtbot,
+    monkeypatch,
+) -> None:
+    service, trainer, holder, record, initial_eval_record = _completed_training_service(
+        runtime_owned=True
+    )
+    outcome = trainer.get_terminal_outcome()
+    assert outcome.run is not None
+    target = PostTrainingSaliencyTarget(
+        run=outcome.run,
+        finished_runs_before=0,
+        finished_runs_after=1,
+        append=True,
+    )
+    compute_started = Event()
+    compute_finished = Event()
+    terminal_eval_record = _bound_saliency_eval_record(holder, record)
+
+    def cancellation_bounded_compute(plan, *, should_cancel):
+        compute_started.set()
+        deadline = monotonic() + _THREAD_WATCHDOG_SECONDS
+        while not should_cancel() and monotonic() < deadline:
+            Event().wait(0.01)
+        assert should_cancel() is True
+        compute_finished.set()
+        return PreparedSaliencyUpdate(
+            plan=plan,
+            eval_records=((record, initial_eval_record, terminal_eval_record),),
+        )
+
+    monkeypatch.setattr(
+        holder,
+        "compute_saliency_update",
+        cancellation_bounded_compute,
+    )
+    with (
+        patch("XBrainLab.ui.main_window.MainWindow.init_panels"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_initial_panel_load"),
+        patch("XBrainLab.ui.main_window.MainWindow._schedule_startup_prewarm"),
+        patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
+    ):
+        window = MainWindow(service.study)
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.waitUntil(window.isVisible, timeout=1_000)
+    assert window._ensure_application_publication_renderer() is not None
+
+    command = SaliencyCommand(
+        method="Gradient",
+        params={
+            "profile": "recommended",
+            "methods": list(_BASELINE_METHODS),
+        },
+    )
+    operation = service.begin_owned_operation(command)
+    with post_training_saliency_target(target):
+        scheduled = service.execute(command, operation_id=operation.operation_id)
+
+    assert scheduled.ok, scheduled.message
+    assert compute_started.wait(timeout=_THREAD_WATCHDOG_SECONDS)
+
+    assert window.close() is False
+
+    qtbot.waitUntil(compute_finished.is_set, timeout=3_000)
+    qtbot.waitUntil(
+        lambda: service.get_owned_operation(operation.operation_id).phase.terminal,
+        timeout=3_000,
+    )
+    qtbot.waitUntil(lambda: service.is_closed, timeout=5_000)
+    qtbot.waitUntil(lambda: not window.isVisible(), timeout=5_000)
+
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.CANCELLED
+    )
+    with service._training_operation_lock:
+        assert service._training_operation_threads == {}
+    assert application_command_registry().active_count(window) == 0
 
 
 def test_saliency_worker_terminal_state_republishes_query_and_coverage(
