@@ -158,6 +158,17 @@ def _show_owned_operation_message(
         setattr(status_bar, _OWNED_OPERATION_ATTRIBUTE, "")
         return
 
+    if kind in {"import_review", "import_apply"} and phase.casefold() in {
+        "pending",
+        "running",
+        "cancelling",
+    }:
+        # Once backend truth has identified an active Data Import operation,
+        # it owns the primary status surface.  Deferring every typed snapshot
+        # behind an earlier transient can keep renewing an apparently idle
+        # post-confirm gap even while exact operation progress is available.
+        _clear_transient_status(status_bar)
+
     transient_remaining = transient_status_remaining_ms(status_bar)
     if transient_remaining > 0 and current_message() != previous_message:
         deferred_operation = str(

@@ -105,6 +105,8 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
                 self.rule_use_as_combo,
             )
             values_grid.addWidget(carrier_use_control, 0, 1)
+        else:
+            self.rule_use_as_combo.hide()
         self.label_values_status_label = QLabel(self._label_values_status_text())
         self.label_values_status_label.setObjectName("DataImportRuleStatus")
         self.label_values_status_label.setWordWrap(True)

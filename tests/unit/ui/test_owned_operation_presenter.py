@@ -212,7 +212,9 @@ def test_import_apply_bounds_snapshot_detail_and_preserves_cancel_terminal(
     assert status.accessibleDescription() == ""
 
 
-def test_deferred_import_apply_uses_latest_stable_projection(qtbot) -> None:
+def test_typed_import_apply_immediately_replaces_transient_and_stays_visible(
+    qtbot,
+) -> None:
     window = QMainWindow()
     owner = QWidget(window)
     cancel = QPushButton("Cancel", owner)
@@ -235,17 +237,37 @@ def test_deferred_import_apply_uses_latest_stable_projection(qtbot) -> None:
     )
     qtbot.addWidget(window)
     window.show()
-    assert show_status_message(window, "Import review ready", 5_000)
+    status = window.statusBar()
+    assert show_status_message(window, "Import review ready", 7_000)
 
     presenter.bind("operation-apply", stage="Preparing import")
 
-    qtbot.waitUntil(
-        lambda: window.statusBar().currentMessage()
-        == "Importing reviewed EEG data · 25%",
-        timeout=1_500,
-    )
-    assert window.statusBar().property("stage") == stage
-    assert window.statusBar().property("operationDetail") == stage
+    qtbot.wait(0)
+    assert status.currentMessage() == "Importing reviewed EEG data · 25%"
+    assert status.property("operationId") == "operation-apply"
+    assert status.property("operationKind") == "import_apply"
+    assert status.property("stage") == stage
+    assert status.property("operationDetail") == stage
+
+    for completed, next_stage in (
+        (2, "Loading reviewed EEG recording 2 of 4"),
+        (3, "Applying reviewed label carriers"),
+    ):
+        snapshots["operation-apply"] = _snapshot(
+            "running",
+            kind=OwnedWorkKind.IMPORT_APPLY,
+            stage=next_stage,
+            completed=completed,
+            total=4,
+        )
+        presenter.refresh()
+        qtbot.wait(0)
+        assert status.currentMessage() == (
+            f"Importing reviewed EEG data · {completed * 25}%"
+        )
+        assert status.property("operationId") == "operation-apply"
+        assert status.property("stage") == next_stage
+        assert status.property("operationDetail") == next_stage
 
 
 def test_owned_progress_does_not_overwrite_higher_priority_transient(qtbot) -> None:

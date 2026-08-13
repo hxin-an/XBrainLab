@@ -3591,6 +3591,15 @@ def test_bids_value_decisions_are_returned_to_backend_choices(qtbot):
         ),
     )
     qtbot.addWidget(dialog)
+    dialog.resize(752, 752)
+    dialog.show()
+    qtbot.wait(0)
+
+    assert dialog.rule_use_as_combo.currentData() == "external labels"
+    for step_title in ("Review Metadata", "Match Labels", "Review and Import"):
+        _show_step(dialog, step_title)
+        qtbot.wait(0)
+        assert not dialog.rule_use_as_combo.isVisibleTo(dialog)
 
     assert dialog.event_value_editor is not None
     dialog.event_value_editor.set_value_decision(
@@ -3608,6 +3617,7 @@ def test_bids_value_decisions_are_returned_to_backend_choices(qtbot):
     submission = dialog._submission_projection()
     result = dialog.get_result()
     choices = result["choices"]["label_carrier_choices"][events_path]
+    assert choices["role"] == "external labels"
     assert choices["value_decisions"]["left"]["use_as_class"] is True
     assert choices["value_decisions"]["button_press"] == {
         "role": "response",
