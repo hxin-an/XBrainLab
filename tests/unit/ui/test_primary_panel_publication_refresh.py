@@ -15,6 +15,7 @@ from XBrainLab.backend.application import (
     QueryStateCommand,
     get_application_service,
 )
+from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.results import ChangedState, CommandResult
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.observer import Observable
@@ -438,6 +439,81 @@ def test_preprocess_state_render_is_driven_only_by_application_publication(
 
     assert renders == []
     qtbot.waitUntil(lambda: renders == [port.publication.revision])
+
+
+def test_preprocess_render_uses_queued_publication_for_filtering_readiness(
+    qtbot,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A transient live read cannot override the revision being rendered."""
+    port = _PublicationPort()
+    panel = PreprocessPanel(
+        controller=Observable(),
+        dataset_controller=Observable(),
+        publication_port=port,
+    )
+    qtbot.addWidget(panel)
+    ready_state = replace(
+        port.publication.state,
+        active_dataset=replace(
+            port.publication.state.active_dataset,
+            has_raw_data=True,
+            has_preprocessed_data=True,
+        ),
+    )
+    ready = replace(
+        port.publication,
+        state=ready_state,
+        capabilities=build_capability_policy(ready_state),
+        generation=port.publication.generation + 1,
+        revision=port.publication.revision + 1,
+    )
+    transient = replace(
+        ready,
+        verified=False,
+        stale=True,
+        refresh_error="background montage publication is committing",
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.preprocess.sidebar.get_application_view_publication",
+        lambda _context: transient,
+    )
+    monkeypatch.setattr(panel, "_query_render_publication", lambda: None)
+
+    port.publication = ready
+    port.notify(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, ready)
+
+    qtbot.waitUntil(lambda: panel._last_application_revision == ready.revision)
+    assert panel.sidebar.btn_filter.isEnabled() is True
+
+    panel.sidebar.set_busy(True)
+    assert panel.sidebar.btn_filter.isEnabled() is False
+    panel.sidebar.set_busy(False)
+
+    assert panel.sidebar.btn_filter.isEnabled() is True
+
+    pending_ready = replace(ready, revision=ready.revision + 1)
+    monkeypatch.setattr(
+        panel,
+        "_query_render_publication",
+        MagicMock(side_effect=RuntimeError("forced render retry")),
+    )
+    port.publication = pending_ready
+    port.notify(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, pending_ready)
+    qtbot.waitUntil(
+        lambda: (
+            panel._application_render_ledger.pending_publication is not None
+            and panel._application_render_ledger.pending_publication.revision
+            == pending_ready.revision
+            and panel.sidebar.btn_filter.isEnabled()
+        )
+    )
+
+    panel.sidebar.set_busy(True)
+    panel.sidebar.set_busy(False)
+
+    assert panel.sidebar.btn_filter.isEnabled() is True
+    assert panel._last_application_revision == ready.revision
 
 
 def test_training_state_render_uses_publication_while_progress_stays_transient(

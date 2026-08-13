@@ -10,9 +10,10 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, call
 
+import pytest
 from PyQt6 import sip
 from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QMainWindow, QPushButton, QWidget
+from PyQt6.QtWidgets import QDialog, QMainWindow, QPushButton, QWidget
 
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
@@ -1071,7 +1072,7 @@ def test_choice_repreview_uses_existing_scan_without_rescanning(monkeypatch) -> 
     handler = DatasetActionHandler(MagicMock())
     loading = MagicMock()
     loading.cancelled_by_user = False
-    handler._data_interpretation._loading_dialog_class = lambda: (
+    cast(Any, handler._data_interpretation)._loading_dialog_class = lambda: (
         lambda *_args, **_kwargs: loading
     )
     execute = MagicMock(
@@ -1097,6 +1098,49 @@ def test_choice_repreview_uses_existing_scan_without_rescanning(monkeypatch) -> 
     assert command.scan_id == "scan-1"
     assert command.choices == {"label_carrier_choices": {}}
     assert execute.call_args.kwargs["expected_publication_generation"] == 17
+
+
+def test_repreview_hands_loading_ownership_to_the_visible_preview(
+    monkeypatch,
+) -> None:
+    handler = DatasetActionHandler(MagicMock())
+    loading = MagicMock()
+    loading.cancelled_by_user = False
+    cast(Any, handler._data_interpretation)._loading_dialog_class = lambda: (
+        lambda *_args, **_kwargs: loading
+    )
+    continue_flow = MagicMock(
+        return_value=InteractionOutcome.cancelled("Preview closed.")
+    )
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_continue_data_interpretation_import",
+        continue_flow,
+    )
+
+    def validate(*, on_validated, **_kwargs):
+        return on_validated(_review_state(publication_generation=17))
+
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_preview_and_validate_interpretation_async",
+        validate,
+    )
+
+    outcome = handler._data_interpretation._repreview_interpretation_async(
+        source_path="/data",
+        source_hint="bids",
+        choices={"label_carrier_choices": {}},
+        label_sources=[],
+        review_state=_review_state(publication_generation=17),
+        initial_step="Match Labels",
+    )
+
+    assert outcome is not None
+    assert outcome.status is InteractionStatus.CANCELLED
+    loading.accept.assert_not_called()
+    loading_token = continue_flow.call_args.kwargs["loading_token"]
+    assert loading_token is handler._data_interpretation._active_loading_token
 
 
 def test_apply_uses_the_generation_reviewed_by_the_user(qtbot, monkeypatch):
@@ -1994,10 +2038,224 @@ def test_review_flow_uses_slow_worker_without_blocking_gui(qtbot, monkeypatch):
     QTimer.singleShot(0, lambda: heartbeat.append(True))
     qtbot.waitUntil(lambda: bool(heartbeat), timeout=1000)
 
+    loading_token = handler._data_interpretation._active_loading_token
     worker_release.set()
     qtbot.waitUntil(lambda: continue_flow.call_count == 1, timeout=1000)
-    assert loading_dialogs[0].closed is True
+    assert loading_dialogs[0].closed is False
+    assert continue_flow.call_args.kwargs["loading_token"] is loading_token
     assert statuses == ["Preparing import review...", "Import review ready."]
+    handler._data_interpretation._close_loading_dialog(loading_token)
+
+
+def test_review_keeps_atomic_loading_ownership_across_slow_preview_construction(
+    qtbot,
+    monkeypatch,
+) -> None:
+    """A slow constructor must not create a loader-to-preview visibility gap."""
+    window = QMainWindow()
+    panel = QWidget(window)
+    cast(Any, panel).study = Study()
+    cast(Any, panel).set_busy = lambda _busy: None
+    qtbot.addWidget(window)
+    window.show()
+    handler = DatasetActionHandler(panel)
+    preview_results: list[int] = []
+    preview_instances: list[QDialog] = []
+    release_visibility: list[bool] = []
+    original_close_loading = handler._data_interpretation._close_loading_dialog
+
+    def record_loading_release(token=None) -> None:
+        if token is not None and preview_instances:
+            release_visibility.append(preview_instances[-1].isVisible())
+        original_close_loading(token)
+
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_close_loading_dialog",
+        record_loading_release,
+    )
+
+    class _SlowPreviewDialog(QDialog):
+        def __init__(self, parent, **_kwargs) -> None:
+            super().__init__(parent)
+            preview_instances.append(self)
+            loading = handler._data_interpretation._active_loading_dialog
+            progress = getattr(loading, "progress_bar", None)
+            assert loading is not None and loading.isVisible()
+            assert progress is not None
+            assert progress.property("operationId") == "review-operation-1"
+            time.sleep(5.1)
+            assert loading is handler._data_interpretation._active_loading_dialog
+            assert loading.isVisible()
+            assert progress.property("operationId") == "review-operation-1"
+
+        def exec(self) -> int:
+            assert self.isVisible()
+            self.reject()
+            result = self.result()
+            preview_results.append(int(result))
+            return result
+
+        @staticmethod
+        def get_result() -> dict[str, Any]:
+            return {}
+
+    result = _success_result(
+        "review_interpretation",
+        scan_result={"scan_id": "scan-1"},
+        preview={"summary": "ready"},
+        candidate={"candidate_id": "candidate-1"},
+        validation_decision={"candidate_id": "candidate-1", "decision": "safe"},
+    )
+
+    class _Service:
+        @staticmethod
+        def begin_owned_operation(command):
+            assert isinstance(command, ReviewInterpretationCommand)
+            return SimpleNamespace(operation_id="review-operation-1")
+
+        @staticmethod
+        def get_owned_operation(operation_id):
+            assert operation_id == "review-operation-1"
+            return SimpleNamespace(
+                phase=SimpleNamespace(value="running"),
+                stage="Building import review",
+                completed=None,
+                total=None,
+                cancel_requested=False,
+                cancellable=True,
+            )
+
+        @staticmethod
+        def cancel_owned_operation(_operation_id):
+            return True
+
+        @staticmethod
+        def fail_owned_operation(operation_id, *, message):
+            raise AssertionError((operation_id, message))
+
+        @staticmethod
+        def execute(
+            command,
+            *,
+            expected_publication_generation=None,
+            operation_id=None,
+        ):
+            assert isinstance(command, ReviewInterpretationCommand)
+            assert expected_publication_generation is None
+            assert operation_id == "review-operation-1"
+            return result
+
+        @staticmethod
+        def get_view_publication():
+            return _review_publication(candidate_id="candidate-1")
+
+    handler._data_interpretation._preview_dialog_class = lambda: _SlowPreviewDialog
+    monkeypatch.setattr(
+        application_capabilities,
+        "application_ui_runtime",
+        lambda _study: _Service(),
+    )
+
+    outcome = handler._data_interpretation._start_interpretation_review_async(
+        "/tmp/sub-01_raw.fif",
+        "auto",
+        {},
+        [],
+    )
+
+    assert outcome is not None
+    assert outcome.status is InteractionStatus.ACCEPTED
+    qtbot.waitUntil(lambda: bool(preview_results), timeout=8_000)
+    assert preview_results == [int(QDialog.DialogCode.Rejected)]
+    assert release_visibility == [True]
+    assert handler._data_interpretation._active_loading_dialog is None
+
+
+def test_preview_constructor_failure_keeps_recoverable_loading_error(
+    qtbot,
+) -> None:
+    window = QMainWindow()
+    panel = QWidget(window)
+    qtbot.addWidget(window)
+    window.show()
+    handler = DatasetActionHandler(panel)
+    token = handler._data_interpretation._open_loading_dialog(
+        initial_step="",
+        retry=lambda: None,
+    )
+    loading = handler._data_interpretation._active_loading_dialog
+    assert loading is not None
+
+    class _BrokenPreviewDialog:
+        def __init__(self, *_args, **_kwargs) -> None:
+            raise RuntimeError("preview fixture failed")
+
+    handler._data_interpretation._preview_dialog_class = lambda: _BrokenPreviewDialog
+
+    outcome = handler._data_interpretation._continue_data_interpretation_import(
+        source_path="/data",
+        source_hint="bids",
+        choices={},
+        label_sources=[],
+        review_state=_review_state(),
+        loading_token=token,
+    )
+
+    assert outcome.status is InteractionStatus.FAILED
+    assert handler._data_interpretation._active_loading_token is token
+    assert handler._data_interpretation._active_loading_dialog is loading
+    assert loading.isVisible()
+    assert loading.status_title.text() == "Import review could not be prepared"
+    assert loading.retry_button.isVisible()
+    assert not loading.progress_bar.isVisible()
+    handler._data_interpretation._close_loading_dialog(token)
+
+
+@pytest.mark.parametrize("transition", ("cancel", "shutdown"))
+def test_preview_does_not_exec_after_transition_context_is_invalidated(
+    transition: str,
+    qtbot,
+) -> None:
+    window = QMainWindow()
+    panel = QWidget(window)
+    qtbot.addWidget(window)
+    window.show()
+    handler = DatasetActionHandler(panel)
+    token = handler._data_interpretation._open_loading_dialog(
+        initial_step="",
+        retry=lambda: None,
+    )
+    exec_calls: list[bool] = []
+
+    class _InvalidatingPreviewDialog(QDialog):
+        def __init__(self, parent, **_kwargs) -> None:
+            super().__init__(parent)
+            if transition == "cancel":
+                handler._data_interpretation._cancel_loading_dialog(token)
+            else:
+                window._closing_in_progress = True  # type: ignore[attr-defined]
+
+        def exec(self) -> int:
+            exec_calls.append(True)
+            return int(QDialog.DialogCode.Rejected)
+
+    handler._data_interpretation._preview_dialog_class = (
+        lambda: _InvalidatingPreviewDialog
+    )
+
+    outcome = handler._data_interpretation._continue_data_interpretation_import(
+        source_path="/data",
+        source_hint="bids",
+        choices={},
+        label_sources=[],
+        review_state=_review_state(),
+        loading_token=token,
+    )
+
+    assert outcome.status is InteractionStatus.CANCELLED
+    assert exec_calls == []
+    assert handler._data_interpretation._active_loading_dialog is None
 
 
 def test_loading_dialog_is_not_disabled_with_the_busy_dataset_panel(qtbot):

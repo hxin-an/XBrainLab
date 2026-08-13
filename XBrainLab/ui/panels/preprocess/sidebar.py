@@ -65,6 +65,7 @@ _EPOCH_AVAILABILITY_UNAVAILABLE = (
 _RESET_PREPROCESS_AVAILABILITY_UNAVAILABLE = (
     "Reset preprocessing availability is unavailable right now."
 )
+_APPLICATION_PUBLICATION_UNSET = object()
 
 
 class PreprocessSidebar(QWidget):
@@ -220,8 +221,8 @@ class PreprocessSidebar(QWidget):
 
     # --- Update Logic ---
 
-    def update_sidebar(self):
-        """Update info panel and button states."""
+    def update_sidebar(self, *, publication: Any = _APPLICATION_PUBLICATION_UNSET):
+        """Update info and controls from one authoritative publication."""
         if self.controller is None and not has_real_application_context(self):
             return
 
@@ -229,7 +230,8 @@ class PreprocessSidebar(QWidget):
         # Handled by InfoPanelService
 
         is_epoched = False
-        publication = get_application_view_publication(self)
+        if publication is _APPLICATION_PUBLICATION_UNSET:
+            publication = get_application_view_publication(self)
         product_context = has_real_application_context(self)
         publication_usable = publication is not None and bool(
             getattr(publication, "usable", not product_context)
@@ -278,7 +280,15 @@ class PreprocessSidebar(QWidget):
         if busy:
             self._apply_operation_busy_state()
             return
-        self.update_sidebar()
+        publication_reader = getattr(
+            self.panel,
+            "_application_publication_for_controls",
+            None,
+        )
+        if callable(publication_reader):
+            self.update_sidebar(publication=publication_reader())
+        else:
+            self.update_sidebar()
 
     def _apply_operation_busy_state(self) -> None:
         if not self._operation_busy:

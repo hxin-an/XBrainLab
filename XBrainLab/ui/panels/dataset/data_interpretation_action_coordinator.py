@@ -890,6 +890,7 @@ class DataInterpretationActionCoordinator:
         label_sources: list[str],
         review_state: _InterpretationReviewState,
         initial_step: str = "",
+        loading_token: object | None = None,
     ) -> InteractionOutcome:
         dialog_kwargs: dict[str, Any] = {
             "scan_result": review_state.scan,
@@ -901,8 +902,53 @@ class DataInterpretationActionCoordinator:
         if initial_step:
             dialog_kwargs["initial_step"] = initial_step
         dialog_class = self._preview_dialog_class()
-        dialog = dialog_class(self.panel, **dialog_kwargs)
-        if not dialog.exec():
+        try:
+            dialog = dialog_class(self.panel, **dialog_kwargs)
+        except Exception:
+            if loading_token is None:
+                raise
+            logger.exception("Could not construct the Data Import preview")
+            message = "The import review could not be displayed. Try again."
+            self._show_loading_error(loading_token, message)
+            return InteractionOutcome.failed(message)
+        if (
+            self._bindings.qt_object_deleted(dialog)
+            or not self._preview_context_is_available()
+        ):
+            if not self._bindings.qt_object_deleted(dialog):
+                dialog.deleteLater()
+            if loading_token is not None:
+                self._close_loading_dialog(loading_token)
+            return InteractionOutcome.cancelled(
+                "Data interpretation preview was cancelled."
+            )
+        if loading_token is not None and not self._loading_dialog_is_active(
+            loading_token
+        ):
+            dialog.deleteLater()
+            return InteractionOutcome.cancelled(
+                "Data interpretation preview was cancelled."
+            )
+
+        if loading_token is not None:
+            # Construct the potentially heavy wizard while the existing owned
+            # loading surface remains visible. Show the completed wizard before
+            # releasing that surface so there is no blank transition.
+            dialog.show()
+            if (
+                self._bindings.qt_object_deleted(dialog)
+                or not self._preview_context_is_available()
+                or not self._loading_dialog_is_active(loading_token)
+            ):
+                if not self._bindings.qt_object_deleted(dialog):
+                    dialog.deleteLater()
+                self._close_loading_dialog(loading_token)
+                return InteractionOutcome.cancelled(
+                    "Data interpretation preview was cancelled."
+                )
+            self._close_loading_dialog(loading_token)
+        accepted = bool(dialog.exec())
+        if not accepted:
             return InteractionOutcome.cancelled(
                 "Data interpretation review was cancelled."
             )
@@ -984,6 +1030,25 @@ class DataInterpretationActionCoordinator:
             review_state,
             dialog_result,
             retry_cancelled_apply=_retry_cancelled_apply,
+        )
+
+    def _preview_context_is_available(self) -> bool:
+        """Return whether a newly built preview may still enter its modal loop."""
+        if self._bindings.qt_object_deleted(self.panel):
+            return False
+        window_getter = getattr(self.panel, "window", None)
+        if not callable(window_getter):
+            return True
+        try:
+            window = window_getter()
+        except RuntimeError:
+            return False
+        return bool(
+            window is None
+            or (
+                not self._bindings.qt_object_deleted(window)
+                and getattr(window, "_closing_in_progress", False) is not True
+            )
         )
 
     def _execute_interpretation_command_async(
@@ -1178,7 +1243,6 @@ class DataInterpretationActionCoordinator:
             ) as exc:
                 self._show_loading_error(loading_token, str(exc))
                 return InteractionOutcome.blocked(str(exc))
-            self._close_loading_dialog(loading_token)
             self._show_status("Import review ready.")
             return self._continue_data_interpretation_import(
                 source_path=source_path,
@@ -1187,6 +1251,7 @@ class DataInterpretationActionCoordinator:
                 label_sources=list(label_sources),
                 review_state=review_state,
                 initial_step=initial_step,
+                loading_token=loading_token,
             )
 
         def _dispatch(
@@ -1464,7 +1529,6 @@ class DataInterpretationActionCoordinator:
                 return InteractionOutcome.cancelled(
                     "Data interpretation preview was cancelled."
                 )
-            self._close_loading_dialog(loading_token)
             return self._continue_data_interpretation_import(
                 source_path=source_path,
                 source_hint=source_hint,
@@ -1472,6 +1536,7 @@ class DataInterpretationActionCoordinator:
                 label_sources=list(label_sources),
                 review_state=validated_state,
                 initial_step=initial_step,
+                loading_token=loading_token,
             )
 
         def _dispatch_preview() -> InteractionOutcome | None:
