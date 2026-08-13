@@ -698,13 +698,17 @@ def _downgrade_incomplete_head_montages(value: Any) -> None:
             positions[name] is not None for name in ("nasion", "lpa", "rpa")
         ):
             return
-        # MNE's public set_montage() estimates missing fiducials and transforms
-        # the coordinates back to ``head``.  Relabel the existing digitization
-        # points in-place instead: the numeric electrode observations remain
-        # untouched and their anatomical frame is explicitly unknown.
+        from mne.channels import make_dig_montage
+
+        unknown_montage = make_dig_montage(
+            ch_pos=positions["ch_pos"], coord_frame="unknown"
+        )
+        # Public set_montage() estimates missing fiducials and transforms the
+        # coordinates back to ``head``.  Install the equivalent unknown-frame
+        # digitization explicitly instead: numeric electrode observations stay
+        # untouched and no anatomical landmarks are invented.
         with value.info._unlock():
-            for point in value.info["dig"] or ():
-                point["coord_frame"] = coord_unknown
+            value.info["dig"] = unknown_montage.dig
             for channel in value.info["chs"]:
                 if channel["coord_frame"] == coord_head:
                     channel["coord_frame"] = coord_unknown
