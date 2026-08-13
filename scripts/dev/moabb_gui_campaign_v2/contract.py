@@ -1346,11 +1346,20 @@ def _ready_dataset_errors(dataset: Mapping[str, Any], *, prefix: str) -> list[st
             errors.append(
                 f"{prefix}.oracle BIDS event values lack a truthful crosscheck"
             )
-    elif bids_event_values != source_event_id or bids_crosscheck not in {
-        "matched",
-        "formal-bids-mirror-authoritative",
-    }:
-        errors.append(f"{prefix}.oracle BIDS event values differ from source_event_id")
+    elif not (
+        isinstance(bids_event_values, Mapping)
+        and isinstance(expected_events, list)
+        and set(bids_event_values) == _string_value_set(expected_events)
+        and all(
+            type(value) is int and value >= 0 for value in bids_event_values.values()
+        )
+        and len(set(bids_event_values.values())) == len(bids_event_values)
+        and bids_crosscheck in {"matched", "formal-bids-mirror-authoritative"}
+    ):
+        errors.append(
+            f"{prefix}.oracle BIDS event values must independently map every "
+            "event exactly once"
+        )
     return errors
 
 

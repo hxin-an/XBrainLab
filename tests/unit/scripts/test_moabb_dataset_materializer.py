@@ -18,6 +18,7 @@ from scripts.dev.moabb_campaign_preflight import (
 from scripts.dev.moabb_dataset_materializer import (
     MaterializationContractError,
     MaterializationInputs,
+    _bids_event_semantics,
     _bounded_http_resource_probe,
     _campaign_product_identity_digest,
     _conversion_identity_digest,
@@ -62,6 +63,22 @@ def test_product_class_mapping_is_separate_from_nonalphabetic_source_codes() -> 
         {"class_index": 0, "event_code": "0", "class_name": "alpha"},
         {"class_index": 1, "event_code": "1", "class_name": "zeta"},
     ]
+
+
+def test_bids_event_semantics_rejects_duplicate_values_across_labels(
+    tmp_path: Path,
+) -> None:
+    events = tmp_path / "sub-1_task-test_events.tsv"
+    events.write_text(
+        "onset\tduration\ttrial_type\tvalue\n0\t1\tleft_hand\t1\n1\t1\tright_hand\t1\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        MaterializationContractError,
+        match="mapping is missing, duplicated, or inconsistent",
+    ):
+        _bids_event_semantics(tmp_path)
 
 
 def _environment(identity_sha256: str = "e" * 64) -> dict[str, Any]:
@@ -154,6 +171,7 @@ class _FakeDataset:
         calls: list[dict[str, Any]],
         fail: bool = False,
         event_names: list[str] | None = None,
+        bids_event_id: dict[str, int] | None = None,
     ) -> None:
         self.class_name = class_name
         self.calls = calls
@@ -163,6 +181,7 @@ class _FakeDataset:
             self.event_id = {
                 label: index for index, label in enumerate(event_names, start=1)
             }
+        self.bids_event_id = bids_event_id
 
     def convert_to_bids(
         self,
@@ -197,12 +216,20 @@ class _FakeDataset:
             '{"Name":"synthetic","BIDSVersion":"1.9.0"}',
             encoding="utf-8",
         )
-        event_rows = "".join(
-            f"{index}\t1\t{label}\n"
-            for index, label in enumerate(self.event_id, start=0)
-        )
+        if self.bids_event_id is None:
+            event_header = "onset\tduration\ttrial_type\n"
+            event_rows = "".join(
+                f"{index}\t1\t{label}\n"
+                for index, label in enumerate(self.event_id, start=0)
+            )
+        else:
+            event_header = "onset\tduration\ttrial_type\tvalue\n"
+            event_rows = "".join(
+                f"{index}\t1\t{label}\t{self.bids_event_id[label]}\n"
+                for index, label in enumerate(self.event_id, start=0)
+            )
         (eeg_root / "sub-1_task-test_events.tsv").write_text(
-            f"onset\tduration\ttrial_type\n{event_rows}", encoding="utf-8"
+            f"{event_header}{event_rows}", encoding="utf-8"
         )
         stem = eeg_root / "sub-1_task-test_eeg"
         if format == "EDF":
@@ -600,6 +627,41 @@ def test_materializer_uses_generic_convert_to_bids_and_freezes_all_format_files(
     assert row["bids_validation"]["status"] == "passed"
     assert row["bids_validation"]["error_count"] == 0
     assert len(row["bids_validation"]["report_sha256"]) == 64
+
+
+def test_materializer_keeps_source_and_bids_event_codes_as_distinct_oracles(
+    tmp_path: Path,
+) -> None:
+    manifest_path, gui_plan_path = _write_contracts(tmp_path, class_names=("FakeEDF",))
+    calls: list[dict[str, Any]] = []
+
+    result = run_materialization(
+        _inputs(
+            tmp_path,
+            manifest_path=manifest_path,
+            gui_plan_path=gui_plan_path,
+            dataset_factory=lambda selected: _FakeDataset(
+                selected,
+                calls=calls,
+                bids_event_id={"non-target": 1, "target": 2},
+            ),
+        )
+    )
+
+    assert result["status"] == "ready"
+    frozen = json.loads(Path(result["freeze_manifest"]).read_text(encoding="utf-8"))
+    assert frozen["datasets"][0]["event_id"] == {"target": 1, "non-target": 2}
+    assert frozen["datasets"][0]["bids_event_values"] == {
+        "target": 2,
+        "non-target": 1,
+    }
+    ready = json.loads(Path(result["gui_plan"]).read_text(encoding="utf-8"))
+    oracle = ready["datasets"][0]["oracle"]
+    assert oracle["source_event_id"] == {"target": 1, "non-target": 2}
+    assert oracle["bids_event_values"] == {"target": 2, "non-target": 1}
+    assert oracle["expected_product_class_mapping"] == [
+        {"class_index": 0, "event_code": "0", "class_name": "target"}
+    ]
 
 
 def test_formal_bids_mirror_preserves_bdf_and_separates_upstream_from_source(

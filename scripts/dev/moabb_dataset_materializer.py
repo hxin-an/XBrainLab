@@ -1766,15 +1766,21 @@ def _bids_event_semantics(root: Path) -> tuple[list[str], dict[str, int], str]:
             "BIDS events value column is inconsistently present across recordings"
         )
     ambiguous = [label for label, values in values_by_label.items() if len(values) != 1]
-    if ambiguous or set(values_by_label) != set(labels):
+    values = {
+        label: next(iter(values_by_label[label]))
+        for label in labels
+        if len(values_by_label.get(label, ())) == 1
+    }
+    if (
+        ambiguous
+        or set(values_by_label) != set(labels)
+        or len(values) != len(labels)
+        or len(set(values.values())) != len(values)
+    ):
         raise MaterializationContractError(
-            "BIDS events value mapping is missing or inconsistent"
+            "BIDS events value mapping is missing, duplicated, or inconsistent"
         )
-    return (
-        labels,
-        {label: next(iter(values_by_label[label])) for label in labels},
-        "matched",
-    )
+    return labels, values, "matched"
 
 
 def _verified_bids_oracle(
@@ -1795,10 +1801,6 @@ def _verified_bids_oracle(
     if not set(classes).issubset(event_names):
         raise MaterializationContractError(
             "supervised class oracle is absent from frozen BIDS events"
-        )
-    if bids_event_values and bids_event_values != event_id:
-        raise MaterializationContractError(
-            "BIDS event values differ from the pinned MOABB event_id mapping"
         )
     return {
         "event_names": event_names,
