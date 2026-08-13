@@ -93,6 +93,7 @@ class MaterializationInputs:
     mne_data_root: Path
     output_root: Path
     checksum_root: Path
+    source_seed_root: Path | None
     dataset: str | None
     dry_run: bool
     allow_download: bool
@@ -115,6 +116,7 @@ class MaterializationInputs:
         mne_data_root: Path,
         output_root: Path,
         checksum_root: Path,
+        source_seed_root: Path | None,
         dataset: str | None,
         dry_run: bool,
         allow_download: bool,
@@ -137,6 +139,7 @@ class MaterializationInputs:
             mne_data_root=mne_data_root,
             output_root=output_root,
             checksum_root=checksum_root,
+            source_seed_root=source_seed_root,
             dataset=dataset,
             dry_run=dry_run,
             allow_download=allow_download,
@@ -160,6 +163,9 @@ def run_materialization(inputs: MaterializationInputs) -> dict[str, Any]:
         rows, gui_rows = _validate_contracts(spec, gui_plan)
         selected = _select_rows(rows, inputs.dataset)
         roots = _validated_roots(inputs)
+        source_seed_root = _validated_source_seed_root(
+            inputs, selected=selected, roots=roots
+        )
         environment = inputs.environment_identity()
         _validate_environment(spec, environment)
         headroom_phase = (
@@ -250,6 +256,7 @@ def run_materialization(inputs: MaterializationInputs) -> dict[str, Any]:
             inputs=inputs,
             roots=roots,
             environment=environment,
+            source_seed_root=source_seed_root,
         )
         network_used = network_used or bool(dataset_result.pop("network_used", False))
         results.append(dataset_result)
@@ -308,6 +315,7 @@ def _materialize_one(
     inputs: MaterializationInputs,
     roots: dict[str, Path],
     environment: dict[str, Any],
+    source_seed_root: Path | None,
 ) -> dict[str, Any]:
     class_name = str(row["moabb_class"])
     source_final = roots["mne_data_root"] / class_name
@@ -454,6 +462,11 @@ def _materialize_one(
     try:
         source_mode = str(row["source_mode"])
         dataset: Any | None = None
+        source_seed_receipt: dict[str, Any] | None = None
+        if source_seed_root is not None:
+            source_seed_receipt = _copy_verified_source_seed(
+                source_seed_root, source_stage
+            )
         if source_mode == SOURCE_MODE_MOABB_CONVERT:
             with _temporary_mne_environment(source_stage):
                 dataset = inputs.dataset_factory(class_name)
@@ -576,6 +589,7 @@ def _materialize_one(
             "license_note": row.get("license_note"),
             "resource_status": "verified",
             "resource_preflight_receipt": resource_receipt,
+            "source_seed_receipt": source_seed_receipt,
             "bids_validation": validation,
         }
         _write_sha256_manifest(checksum_path, bids_artifacts)
@@ -1537,6 +1551,68 @@ def _validated_roots(inputs: MaterializationInputs) -> dict[str, Path]:
                     f"{first_name} and {second_name} must be distinct and non-overlapping"
                 )
     return roots
+
+
+def _validated_source_seed_root(
+    inputs: MaterializationInputs,
+    *,
+    selected: list[dict[str, Any]],
+    roots: dict[str, Path],
+) -> Path | None:
+    raw_seed = inputs.source_seed_root
+    if raw_seed is None:
+        return None
+    if inputs.dry_run or not inputs.allow_download:
+        raise MaterializationContractError(
+            "--source-seed-root requires an executable --allow-download run"
+        )
+    if inputs.dataset is None or len(selected) != 1:
+        raise MaterializationContractError(
+            "--source-seed-root requires exactly one manifest-selected --dataset"
+        )
+    seed = raw_seed.expanduser().resolve(strict=True)
+    if not seed.is_dir() or seed.is_symlink() or not inputs.d_mount_validator(seed):
+        raise MaterializationContractError(
+            "source seed must be a real directory on the D drive"
+        )
+    for name, root in roots.items():
+        if seed == root or seed.is_relative_to(root) or root.is_relative_to(seed):
+            raise MaterializationContractError(
+                f"source seed and {name} must be distinct and non-overlapping"
+            )
+    return seed
+
+
+def _copy_verified_source_seed(seed_root: Path, source_stage: Path) -> dict[str, Any]:
+    before_artifacts, before_revision = _hash_tree(seed_root)
+    _require_source_artifacts(before_artifacts)
+    for child in sorted(seed_root.iterdir(), key=lambda path: path.name):
+        target = source_stage / child.name
+        if child.is_symlink():
+            raise MaterializationContractError(
+                f"source seed contains a symbolic link: {child}"
+            )
+        if child.is_dir():
+            shutil.copytree(child, target, copy_function=shutil.copy2)
+        elif child.is_file():
+            shutil.copy2(child, target)
+        else:
+            raise MaterializationContractError(
+                f"source seed contains a non-regular entry: {child}"
+            )
+    copied_artifacts, copied_revision = _hash_tree(source_stage)
+    if copied_artifacts != before_artifacts or copied_revision != before_revision:
+        raise MaterializationContractError(
+            "source seed changed or copied bytes differ from the verified inventory"
+        )
+    return {
+        "schema_version": "1.0.0",
+        "kind": "independent-copy",
+        "source_root": str(seed_root),
+        "revision_sha256": before_revision,
+        "artifact_count": len(before_artifacts),
+        "total_bytes": sum(int(row["size_bytes"]) for row in before_artifacts),
+    }
 
 
 def _validate_environment(spec: dict[str, Any], environment: dict[str, Any]) -> None:
@@ -3029,6 +3105,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--checksum-root", type=Path, required=True)
     parser.add_argument("--dataset")
+    parser.add_argument(
+        "--source-seed-root",
+        type=Path,
+        help=(
+            "Independently copy a pre-fetched, checksum-verified MOABB cache tree "
+            "into the atomic source stage for one selected dataset."
+        ),
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--allow-download", action="store_true")
     parser.add_argument(
@@ -3059,6 +3143,9 @@ def main(argv: list[str] | None = None) -> int:
         mne_data_root=args.mne_data_root.resolve(),
         output_root=args.output_root.resolve(),
         checksum_root=args.checksum_root.resolve(),
+        source_seed_root=(
+            args.source_seed_root.resolve() if args.source_seed_root else None
+        ),
         dataset=args.dataset,
         dry_run=args.dry_run,
         allow_download=args.allow_download,

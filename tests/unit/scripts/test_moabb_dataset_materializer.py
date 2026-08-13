@@ -541,6 +541,7 @@ def _inputs(
     gui_plan_path: Path,
     dataset_factory: Callable[[str], Any],
     dataset: str | None = None,
+    source_seed_root: Path | None = None,
     dry_run: bool = False,
     allow_download: bool = True,
     free_bytes: int = 10**9,
@@ -557,6 +558,7 @@ def _inputs(
         mne_data_root=tmp_path / "source-cache",
         output_root=tmp_path / "bids-output",
         checksum_root=tmp_path / "checksums",
+        source_seed_root=source_seed_root,
         dataset=dataset,
         dry_run=dry_run,
         allow_download=allow_download,
@@ -665,6 +667,50 @@ def test_materializer_uses_generic_convert_to_bids_and_freezes_all_format_files(
     assert row["bids_validation"]["status"] == "passed"
     assert row["bids_validation"]["error_count"] == 0
     assert len(row["bids_validation"]["report_sha256"]) == 64
+
+
+def test_materializer_independently_copies_and_seals_source_seed(
+    tmp_path: Path,
+) -> None:
+    manifest_path, gui_plan_path = _write_contracts(tmp_path, class_names=("FakeEDF",))
+    seed_root = tmp_path / "independent-seed"
+    seeded_file = seed_root / "download" / "prefetched.zip"
+    seeded_file.parent.mkdir(parents=True)
+    seeded_file.write_bytes(b"prefetched-upstream-bytes")
+    calls: list[dict[str, Any]] = []
+
+    class SeedAwareDataset(_FakeDataset):
+        def convert_to_bids(self, **kwargs: Any) -> Path:
+            staged_seed = Path(os.environ["MNE_DATA"]) / "download/prefetched.zip"
+            assert staged_seed.read_bytes() == b"prefetched-upstream-bytes"
+            return super().convert_to_bids(**kwargs)
+
+    result = run_materialization(
+        _inputs(
+            tmp_path,
+            manifest_path=manifest_path,
+            gui_plan_path=gui_plan_path,
+            dataset="FakeEDF",
+            source_seed_root=seed_root,
+            dataset_factory=lambda selected: SeedAwareDataset(selected, calls=calls),
+        )
+    )
+
+    assert result["status"] == "ready"
+    receipt = json.loads(
+        (tmp_path / "checksums/FakeEDF.freeze.json").read_text(encoding="utf-8")
+    )
+    assert receipt["source_seed_receipt"] == {
+        "schema_version": "1.0.0",
+        "kind": "independent-copy",
+        "source_root": str(seed_root),
+        "revision_sha256": receipt["source_seed_receipt"]["revision_sha256"],
+        "artifact_count": 1,
+        "total_bytes": len(b"prefetched-upstream-bytes"),
+    }
+    assert (
+        tmp_path / "source-cache/FakeEDF/download/prefetched.zip"
+    ).read_bytes() == b"prefetched-upstream-bytes"
 
 
 def test_materializer_keeps_source_and_bids_event_codes_as_distinct_oracles(
