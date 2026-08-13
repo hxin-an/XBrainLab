@@ -175,12 +175,38 @@ class ProductRecommendedJourneyScaffold:
         def interact_with_reopened_confirmation() -> None:
             try:
                 self.driver.wait_for_modal_interaction(
-                    VisibleControl.WIZARD_CONFIRM,
-                    lambda _progress: confirm_import(),
+                    VisibleControl.WIZARD_NEXT,
+                    finish_refreshed_match_labels,
                     timeout_seconds=_LONG_OPERATION_TIMEOUT_SECONDS,
                 )
             except BaseException as exc:
                 modal_failures.append(exc)
+
+        def visible_next_requests_refresh() -> bool:
+            widget = self.driver.control(
+                VisibleControl.WIZARD_NEXT,
+                timeout_seconds=0.0,
+            )
+            text_reader = getattr(widget, "text", None)
+            return bool(
+                callable(text_reader)
+                and str(text_reader()).strip() == "Refresh label preview"
+            )
+
+        def finish_refreshed_match_labels(_progress: ProgressWaitEvidence) -> None:
+            self.observed_ui_options["event_value_decisions"] = (
+                self.driver.resolve_visible_event_value_decisions(
+                    expected_events=event_oracle,
+                    expected_classes=class_oracle,
+                    timeout_seconds=30.0,
+                )
+            )
+            if visible_next_requests_refresh():
+                raise DriverContractError(
+                    "refreshed Match Labels still requires backend refresh"
+                )
+            self.driver.click(VisibleControl.WIZARD_NEXT, timeout_seconds=30.0)
+            confirm_import()
 
         def traverse_preview(progress: ProgressWaitEvidence) -> None:
             review_progress.append(progress)
@@ -207,12 +233,15 @@ class ProductRecommendedJourneyScaffold:
             )
             self._capture_visible_stage("match_labels")
             review_acknowledgements.append(match_acknowledgement)
-            # The final Next may synchronously close this preview and enter a
-            # freshly rebuilt confirmation dialog before the click returns.
-            # Arm the visible confirmation interaction first so that nested
-            # event loop can be closed without blocking this callback stack.
-            QTimer.singleShot(0, interact_with_reopened_confirmation)
+            refresh_required = visible_next_requests_refresh()
+            if refresh_required:
+                # This visible action closes the current preview and starts a
+                # new backend review before synchronously reopening Match
+                # Labels. Arm that nested dialog before the click.
+                QTimer.singleShot(0, interact_with_reopened_confirmation)
             self.driver.click(VisibleControl.WIZARD_NEXT, timeout_seconds=30.0)
+            if not refresh_required:
+                confirm_import()
 
         def interact_with_synchronous_preview() -> None:
             try:

@@ -2716,10 +2716,15 @@ def test_import_journey_traverses_and_closes_synchronous_preview_exec(qtbot) -> 
     next_button.setAccessibleName("Next: Load Labels")
     confirm_dialog = QDialog()
     confirm_layout = QVBoxLayout(confirm_dialog)
+    refreshed_next = QPushButton("Next: Review and Import", confirm_dialog)
+    refreshed_next.setObjectName("DataImportNextButton")
+    refreshed_next.setAccessibleName("Next: Review and Import")
     confirm_button = QPushButton("Confirm and Import", confirm_dialog)
     confirm_button.setObjectName("DataImportConfirmButton")
     confirm_button.setAccessibleName("Confirm and Import")
+    confirm_button.hide()
     layout.addWidget(next_button)
+    confirm_layout.addWidget(refreshed_next)
     confirm_layout.addWidget(confirm_button)
     qtbot.addWidget(dialog)
     qtbot.addWidget(confirm_dialog)
@@ -2730,17 +2735,23 @@ def test_import_journey_traverses_and_closes_synchronous_preview_exec(qtbot) -> 
         step += 1
         if step < 4:
             next_button.setAccessibleName(f"Next: step {step + 1}")
+            if step == 3:
+                next_button.setText("Refresh label preview")
             return
         dialog.accept()
         assert REAL_QDIALOG_EXEC(confirm_dialog) == QDialog.DialogCode.Accepted
 
     next_button.clicked.connect(advance)
+    refreshed_next.clicked.connect(refreshed_next.hide)
+    refreshed_next.clicked.connect(confirm_button.show)
     confirm_button.clicked.connect(confirm_dialog.accept)
     gui_driver = GuiCampaignDriver(
         poll_interval_ms=1,
         control_lookup=lambda name: (
             next_button
             if name is VisibleControl.WIZARD_NEXT and next_button.isVisible()
+            else refreshed_next
+            if name is VisibleControl.WIZARD_NEXT and refreshed_next.isVisible()
             else confirm_button
             if name is VisibleControl.WIZARD_CONFIRM and confirm_button.isVisible()
             else None
