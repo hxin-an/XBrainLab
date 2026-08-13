@@ -1564,6 +1564,11 @@ def test_selected_refresh_cannot_publish_unselected_stale_dataset_ready(
     assert selected["status"] == "ready"
     assert selected["campaign_ready"] is False
     assert republished["status"] == "partial"
+    ready_plan = json.loads(Path(selected["gui_plan"]).read_text(encoding="utf-8"))
+    assert ready_plan["materialization"]["execution_scope"] == {
+        "kind": "single_dataset_smoke",
+        "datasets": ["FakeBrainVision"],
+    }
     assert rows["FakeEDF"]["status"] == "pending"
     assert rows["FakeEDF"]["bids_checksum_status"] == "ABSENT"
     assert rows["FakeBrainVision"]["status"] == "ready"

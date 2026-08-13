@@ -377,8 +377,7 @@ def execution_preflight_errors(
     materialization = _mapping(plan.get("materialization"))
     expected_environment = str(materialization.get("environment_identity_sha256") or "")
     current_environment = str(environment.get("identity_sha256") or "")
-    if materialization.get("status") != "ready":
-        errors.append("campaign materialization is not ready")
+    errors.extend(_materialization_execution_errors(materialization, dataset=dataset))
     if not _hex_digest(expected_environment, 64):
         errors.append("campaign materialization environment identity is invalid")
     elif current_environment != expected_environment:
@@ -414,6 +413,25 @@ def execution_preflight_errors(
             if integrity_error is not None:
                 errors.append(f"{prefix} {integrity_error}")
     return list(dict.fromkeys(errors))
+
+
+def _materialization_execution_errors(
+    materialization: Mapping[str, Any], *, dataset: str | None
+) -> list[str]:
+    """Allow one explicitly sealed dataset without weakening campaign delivery."""
+    if materialization.get("status") == "ready":
+        return []
+    scope = _mapping(materialization.get("execution_scope"))
+    datasets = scope.get("datasets")
+    if (
+        dataset is not None
+        and scope.get("kind") == "single_dataset_smoke"
+        and isinstance(datasets, list)
+        and datasets == [dataset]
+        and dataset in DATASET_MATRIX
+    ):
+        return []
+    return ["campaign materialization is not ready"]
 
 
 def validate_journey_receipt(

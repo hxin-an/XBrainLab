@@ -38,6 +38,7 @@ from scripts.dev.moabb_gui_campaign_v2.contract import (
     JOURNEY_MODES,
     REQUIRED_STAGES,
     _artifact_errors,
+    _materialization_execution_errors,
     _ready_dataset_errors,
     load_campaign_plan,
     receipt_plan_binding_errors,
@@ -350,6 +351,26 @@ def test_campaign_plan_rejects_reduced_denominator() -> None:
     errors = validate_campaign_plan(plan)
 
     assert any("exact 15-dataset inventory" in error for error in errors)
+
+
+def test_partial_materialization_allows_only_its_exact_single_dataset_smoke() -> None:
+    materialization = {
+        "status": "partial",
+        "execution_scope": {
+            "kind": "single_dataset_smoke",
+            "datasets": ["Thielen2021"],
+        },
+    }
+
+    assert (
+        _materialization_execution_errors(materialization, dataset="Thielen2021") == []
+    )
+    assert _materialization_execution_errors(materialization, dataset=None) == [
+        "campaign materialization is not ready"
+    ]
+    assert _materialization_execution_errors(
+        materialization, dataset="PhysionetMI"
+    ) == ["campaign materialization is not ready"]
 
 
 def test_campaign_plan_rejects_moabb_release_drift() -> None:

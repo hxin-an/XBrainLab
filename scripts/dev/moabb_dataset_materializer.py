@@ -1159,6 +1159,14 @@ def _publish_campaign_outputs(
             }
     plan_payload["materialization"] = {
         "status": "ready" if all_ready else "partial",
+        "execution_scope": (
+            {"kind": "canonical_campaign", "datasets": list(receipt_by_dataset)}
+            if all_ready
+            else {
+                "kind": "single_dataset_smoke",
+                "datasets": sorted(verified_datasets),
+            }
+        ),
         "freeze_manifest": str(freeze_path),
         "freeze_manifest_sha256": _sha256_file(freeze_path),
         "environment_identity_sha256": environment["identity_sha256"],
