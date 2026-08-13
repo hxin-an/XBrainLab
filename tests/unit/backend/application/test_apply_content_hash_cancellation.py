@@ -40,6 +40,8 @@ from XBrainLab.backend.study import Study
 
 _THREAD_WATCHDOG_SECONDS = 5.0
 _HASH_STAGE = "Hashing reviewed import content"
+_VERIFY_STAGE = "Verifying reviewed import content"
+_FINALIZE_STAGE = "Finalizing reviewed import content"
 
 
 class _RecordingRegistry(OwnedWorkRegistry):
@@ -299,9 +301,92 @@ def test_parallel_hash_progress_is_monotonic_and_preserves_exact_content_identit
     ]
     assert completed_bytes == sorted(completed_bytes)
     assert completed_bytes[0] == 0
-    assert completed_bytes[-1] == sum(map(len, payloads))
-    assert completed.completed == completed.total == sum(map(len, payloads))
+    assert completed_bytes[-1] < sum(map(len, payloads))
+    assert completed.stage == _FINALIZE_STAGE
+    assert completed.indeterminate is True
+    assert completed.completed is None
+    assert completed.total is None
     assert completed.phase is OwnedWorkPhase.COMPLETED
+
+
+def test_content_hash_leaves_complete_byte_progress_before_final_guards_and_seal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "reviewed.set"
+    path.write_bytes(b"reviewed-content")
+    verification_started = Event()
+    release_verification = Event()
+    finalization_started = Event()
+    release_finalization = Event()
+    real_fstat = data_interpretation_content_identity.os.fstat
+    fstat_calls = 0
+
+    def blocking_fstat(file_descriptor: int):
+        nonlocal fstat_calls
+        observed = real_fstat(file_descriptor)
+        fstat_calls += 1
+        if fstat_calls == 2:
+            verification_started.set()
+            assert release_verification.wait(timeout=_THREAD_WATCHDOG_SECONDS)
+        return observed
+
+    real_files_payload = data_interpretation_content_identity._files_identity_payload
+
+    def blocking_files_payload(*args, **kwargs):
+        finalization_started.set()
+        assert release_finalization.wait(timeout=_THREAD_WATCHDOG_SECONDS)
+        return real_files_payload(*args, **kwargs)
+
+    monkeypatch.setattr(
+        data_interpretation_content_identity.os,
+        "fstat",
+        blocking_fstat,
+    )
+    monkeypatch.setattr(
+        data_interpretation_content_identity,
+        "_files_identity_payload",
+        blocking_files_payload,
+    )
+    registry = OwnedWorkRegistry()
+    operation = registry.begin(OwnedWorkKind.IMPORT_APPLY, cancellable=True)
+    failures: list[BaseException] = []
+
+    def fingerprint() -> None:
+        registry.start(operation.operation_id)
+        try:
+            with registry.bind(operation.operation_id):
+                build_review_content_identity(
+                    label_carrier_plan=[],
+                    selected_eeg_files=[str(path)],
+                )
+        except BaseException as exc:  # pragma: no branch - asserted below
+            failures.append(exc)
+
+    worker = Thread(target=fingerprint, name="apply-content-hash-owner")
+    worker.start()
+    try:
+        assert verification_started.wait(timeout=_THREAD_WATCHDOG_SECONDS)
+        verifying = registry.snapshot(operation.operation_id)
+        assert verifying.stage == _VERIFY_STAGE
+        assert verifying.indeterminate is True
+        assert verifying.completed is None
+        assert verifying.total is None
+
+        release_verification.set()
+        assert finalization_started.wait(timeout=_THREAD_WATCHDOG_SECONDS)
+        finalizing = registry.snapshot(operation.operation_id)
+        assert finalizing.stage == _FINALIZE_STAGE
+        assert finalizing.indeterminate is True
+        assert finalizing.completed is None
+        assert finalizing.total is None
+    finally:
+        release_verification.set()
+        release_finalization.set()
+        worker.join(timeout=_THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert failures == []
 
 
 def test_apply_hash_close_fence_is_immediate_preserves_state_and_allows_retry(

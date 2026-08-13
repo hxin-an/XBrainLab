@@ -1091,6 +1091,7 @@ class DataInterpretationActionCoordinator:
                 progress_bar = getattr(dialog, "progress_bar", None)
                 if progress_bar is not None:
                     progress_bar.setProperty("operationId", operation_id)
+                    progress_bar.setProperty("operationKind", "")
                     progress_bar.setProperty("stage", "Preparing import")
                     progress_bar.setProperty("progress", "indeterminate")
                     progress_bar.setProperty("indeterminate", True)
@@ -1156,6 +1157,8 @@ class DataInterpretationActionCoordinator:
         if snapshot is None:
             return
         phase = str(getattr(snapshot.phase, "value", snapshot.phase))
+        raw_kind = getattr(snapshot, "kind", "")
+        kind = str(getattr(raw_kind, "value", raw_kind) or "")
         if phase in {"completed", "cancelled", "failed"}:
             self._loading_progress_timer.stop()
         stage = str(getattr(snapshot, "stage", "") or "Working")
@@ -1173,6 +1176,7 @@ class DataInterpretationActionCoordinator:
         progress_bar = getattr(dialog, "progress_bar", None)
         if progress_bar is not None:
             progress_bar.setProperty("operationId", operation_id)
+            progress_bar.setProperty("operationKind", kind)
             progress_bar.setProperty("stage", stage)
             progress_bar.setProperty(
                 "progress",

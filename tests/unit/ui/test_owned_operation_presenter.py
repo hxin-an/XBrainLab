@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from PyQt6 import sip
 from PyQt6.QtWidgets import QMainWindow, QPushButton, QWidget
 
+from XBrainLab.backend.application.owned_work import OwnedWorkKind
 from XBrainLab.ui.owned_operation_presenter import OwnedOperationPresenter
 from XBrainLab.ui.status import publish_owned_operation_progress, show_status_message
 
@@ -12,12 +13,14 @@ from XBrainLab.ui.status import publish_owned_operation_progress, show_status_me
 def _snapshot(
     phase: str,
     *,
+    kind: OwnedWorkKind = OwnedWorkKind.PREPROCESS,
     stage: str = "Reading EEG files",
     completed: int | None = None,
     total: int | None = None,
     cancel_requested: bool = False,
 ):
     return SimpleNamespace(
+        kind=kind,
         phase=SimpleNamespace(value=phase),
         stage=stage,
         completed=completed,
@@ -50,6 +53,7 @@ def test_presenter_shows_real_stage_progress_and_nonblocking_cancel(qtbot) -> No
     status = window.statusBar()
     assert status.currentMessage() == "Reading EEG files · 2/5"
     assert status.property("operationId") == "operation-1"
+    assert status.property("operationKind") == "preprocess"
     assert status.property("progress") == "2/5"
     cancel.click()
     assert cancellations == ["operation-1"]
@@ -72,12 +76,14 @@ def test_owned_progress_does_not_overwrite_higher_priority_transient(qtbot) -> N
     assert publish_owned_operation_progress(
         window,
         operation_id="operation-1",
+        kind="saliency",
         stage="Computing saliency",
         phase="running",
     )
 
     assert window.statusBar().currentMessage() == "Training failed · Adjust settings"
     assert window.statusBar().property("stage") == "Computing saliency"
+    assert window.statusBar().property("operationKind") == "saliency"
 
     qtbot.waitUntil(
         lambda: window.statusBar().currentMessage() == "Computing saliency · Working…",

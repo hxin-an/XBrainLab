@@ -2180,6 +2180,7 @@ def test_driver_waits_past_early_stage_and_captures_meaningful_progress(qtbot) -
     status.setProperty("stage", "Preparing interpretation apply")
     status.setProperty("progress", "indeterminate")
     status.setProperty("indeterminate", True)
+    status.showMessage("Verifying reviewed import content · Working…")
     status.showMessage("Preparing interpretation apply · Working…")
     qtbot.addWidget(window)
     window.show()
@@ -2208,6 +2209,78 @@ def test_driver_waits_past_early_stage_and_captures_meaningful_progress(qtbot) -
             "indeterminate": False,
         },
     )
+
+
+def test_driver_pins_apply_by_public_kind_through_shared_content_stages(qtbot) -> None:
+    window = QMainWindow()
+    status = window.statusBar()
+    status.setObjectName("OwnedOperationProgress")
+    status.setProperty("operationId", "review-operation")
+    status.setProperty("operationKind", "import_review")
+    status.setProperty("operationPhase", "running")
+    status.setProperty("stage", "Verifying reviewed import content")
+    status.setProperty("progress", "indeterminate")
+    status.setProperty("indeterminate", True)
+    qtbot.addWidget(window)
+    window.show()
+
+    def publish_apply() -> None:
+        status.setProperty("operationId", "apply-operation")
+        status.setProperty("operationKind", "import_apply")
+        status.setProperty("stage", "Hashing reviewed import content")
+        status.showMessage("Hashing reviewed import content · Working…")
+
+    def publish_finalizing() -> None:
+        status.setProperty("stage", "Finalizing reviewed import content")
+        status.showMessage("Finalizing reviewed import content · Working…")
+
+    def publish_completed() -> None:
+        status.setProperty("operationPhase", "completed")
+
+    QTimer.singleShot(20, publish_apply)
+    QTimer.singleShot(60, publish_finalizing)
+    QTimer.singleShot(100, publish_completed)
+    driver = GuiCampaignDriver(window, poll_interval_ms=2)
+
+    active = driver.wait_for_active_operation_kind(
+        "import_apply",
+        timeout_seconds=1.0,
+        excluding_operation_id="review-operation",
+    )
+    completed = driver.wait_for_exact_owned_operation_completion(
+        active.operation_id,
+        timeout_seconds=1.0,
+    )
+
+    assert active.operation_id == "apply-operation"
+    assert active.operation_kind == "import_apply"
+    assert active.stage == "Hashing reviewed import content"
+    assert completed.operation_id == "apply-operation"
+    assert completed.heartbeat_count >= 2
+
+
+def test_exact_apply_wait_rejects_frozen_indeterminate_progress(qtbot) -> None:
+    window = QMainWindow()
+    status = window.statusBar()
+    status.setObjectName("OwnedOperationProgress")
+    status.setProperty("operationId", "apply-operation")
+    status.setProperty("operationKind", "import_apply")
+    status.setProperty("operationPhase", "running")
+    status.setProperty("stage", "Finalizing reviewed import content")
+    status.setProperty("progress", "indeterminate")
+    status.setProperty("indeterminate", True)
+    status.showMessage("Finalizing reviewed import content · Working…")
+    qtbot.addWidget(window)
+    window.show()
+
+    driver = GuiCampaignDriver(window, poll_interval_ms=1)
+
+    with pytest.raises(DriverContractError, match="no visible progress"):
+        driver.wait_for_exact_owned_operation_completion(
+            "apply-operation",
+            timeout_seconds=0.2,
+            max_progress_silence_seconds=0.03,
+        )
 
 
 def test_wait_for_transition_accepts_exact_nested_dataset_resource_check(
@@ -2772,10 +2845,23 @@ def test_import_action_and_subject_dialog_are_captured_on_distinct_surfaces() ->
             return "previous-op"
 
         @staticmethod
-        def wait_for_owned_operation_completion(
-            *, timeout_seconds, excluding_operation_id
+        def wait_for_active_operation_kind(
+            operation_kind, *, timeout_seconds, excluding_operation_id
         ):
             del timeout_seconds, excluding_operation_id
+            assert operation_kind == "import_apply"
+            return ActiveOperationEvidence(
+                "apply-op",
+                "Verifying reviewed import content",
+                "running",
+                {},
+                operation_kind="import_apply",
+            )
+
+        @staticmethod
+        def wait_for_exact_owned_operation_completion(operation_id, *, timeout_seconds):
+            del timeout_seconds
+            assert operation_id == "apply-op"
             return ProgressWaitEvidence("apply-op", 1, 0.01, 0.02)
 
         @staticmethod
@@ -2974,10 +3060,23 @@ def test_import_journey_traverses_and_closes_synchronous_preview_exec(
             return gui_driver.click(control, timeout_seconds=timeout_seconds)
 
         @staticmethod
-        def wait_for_owned_operation_completion(
-            *, timeout_seconds, excluding_operation_id
+        def wait_for_active_operation_kind(
+            operation_kind, *, timeout_seconds, excluding_operation_id
         ):
             del timeout_seconds, excluding_operation_id
+            assert operation_kind == "import_apply"
+            return ActiveOperationEvidence(
+                "apply-op",
+                "Finalizing reviewed import content",
+                "running",
+                {},
+                operation_kind="import_apply",
+            )
+
+        @staticmethod
+        def wait_for_exact_owned_operation_completion(operation_id, *, timeout_seconds):
+            del timeout_seconds
+            assert operation_id == "apply-op"
             return ProgressWaitEvidence("apply-op", 1, 0.01, 0.02)
 
         @staticmethod
@@ -3106,10 +3205,23 @@ def test_import_journey_ignores_stale_first_wait_after_refresh_confirmation(
             return "previous-op"
 
         @staticmethod
-        def wait_for_owned_operation_completion(
-            *, timeout_seconds, excluding_operation_id
+        def wait_for_active_operation_kind(
+            operation_kind, *, timeout_seconds, excluding_operation_id
         ):
             del timeout_seconds, excluding_operation_id
+            assert operation_kind == "import_apply"
+            return ActiveOperationEvidence(
+                "apply-op",
+                "Hashing reviewed import content",
+                "running",
+                {},
+                operation_kind="import_apply",
+            )
+
+        @staticmethod
+        def wait_for_exact_owned_operation_completion(operation_id, *, timeout_seconds):
+            del timeout_seconds
+            assert operation_id == "apply-op"
             return ProgressWaitEvidence("apply-op", 1, 0.01, 0.02)
 
     driver = _RefreshDriver()

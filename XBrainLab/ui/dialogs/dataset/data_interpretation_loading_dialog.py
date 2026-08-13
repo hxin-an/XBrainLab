@@ -97,6 +97,7 @@ class DataInterpretationLoadingDialog(BaseDialog):
         # properties, but only one is the active user context at a time.
         self.progress_bar.setObjectName("DataImportLoadingProgress")
         self.progress_bar.setProperty("operationId", "")
+        self.progress_bar.setProperty("operationKind", "")
         self.progress_bar.setProperty("stage", "Preparing import review")
         self.progress_bar.setProperty("progress", "indeterminate")
         self.progress_bar.setProperty("indeterminate", True)

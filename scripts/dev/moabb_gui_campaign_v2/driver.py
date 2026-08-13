@@ -444,6 +444,7 @@ class ActiveOperationEvidence:
     stage: str
     phase: str
     progress: Mapping[str, int | bool | str | None]
+    operation_kind: str = ""
 
 
 @dataclass(frozen=True)
@@ -1040,6 +1041,56 @@ class GuiCampaignDriver:
             "meaningful stage"
         )
 
+    def wait_for_active_operation_kind(
+        self,
+        operation_kind: str,
+        *,
+        timeout_seconds: float,
+        excluding_operation_id: str | None = None,
+        max_progress_silence_seconds: float = 5.0,
+    ) -> ActiveOperationEvidence:
+        """Pin a visible non-terminal owner by backend-owned work kind."""
+        expected_kind = str(operation_kind or "").strip()
+        if not expected_kind:
+            raise ValueError("operation_kind must be non-empty")
+        started = time.monotonic()
+        last_heartbeat_at = started
+        previous_signature: tuple[str, ...] | None = None
+        while True:
+            now = time.monotonic()
+            progress = self._visible_operation_progress()
+            if progress is not None:
+                operation_id = str(progress.property("operationId") or "").strip()
+                phase = str(progress.property("operationPhase") or "").casefold()
+                observed_kind = str(progress.property("operationKind") or "").strip()
+                signature = self._progress_signature(progress)
+                if phase in {"pending", "running", "cancelling"}:
+                    if signature != previous_signature:
+                        last_heartbeat_at = now
+                        previous_signature = signature
+                    if (
+                        operation_id
+                        and operation_id != excluding_operation_id
+                        and observed_kind == expected_kind
+                    ):
+                        evidence = self._active_operation_evidence(progress)
+                        if evidence.operation_kind != expected_kind:
+                            raise DriverContractError(
+                                "visible operation kind changed while it was pinned"
+                            )
+                        return evidence
+            silence = now - last_heartbeat_at
+            if silence > max_progress_silence_seconds:
+                raise DriverContractError(
+                    f"{expected_kind} operation had no visible progress for "
+                    f"{silence:.3f}s"
+                )
+            if now - started > timeout_seconds:
+                raise DriverContractError(
+                    f"no visible active {expected_kind} operation was published"
+                )
+            self._settle_once()
+
     def click_active_operation_cancel(
         self,
         name: VisibleControl,
@@ -1192,6 +1243,71 @@ class GuiCampaignDriver:
                 )
             if now - started > timeout_seconds:
                 raise DriverContractError("owned operation did not complete")
+            self._settle_once()
+
+    def wait_for_exact_owned_operation_completion(
+        self,
+        operation_id: str,
+        *,
+        timeout_seconds: float,
+        max_progress_silence_seconds: float = 5.0,
+    ) -> ProgressWaitEvidence:
+        """Observe one already-pinned visible owner through completion."""
+        expected_id = str(operation_id or "").strip()
+        if not expected_id:
+            raise ValueError("operation_id must be non-empty")
+        started = time.monotonic()
+        last_heartbeat_at = started
+        max_silence = 0.0
+        heartbeat_count = 0
+        previous_signature: tuple[str, ...] | None = None
+        while True:
+            now = time.monotonic()
+            progress = self._visible_operation_progress()
+            if progress is not None:
+                candidate = str(progress.property("operationId") or "").strip()
+                phase = str(progress.property("operationPhase") or "").casefold()
+                if (
+                    candidate
+                    and candidate != expected_id
+                    and phase
+                    in {
+                        "pending",
+                        "running",
+                        "cancelling",
+                    }
+                ):
+                    raise DriverContractError(
+                        "visible operation owner changed before the exact operation "
+                        "completed"
+                    )
+                if candidate == expected_id:
+                    signature = self._progress_signature(progress)
+                    if signature != previous_signature:
+                        max_silence = max(max_silence, now - last_heartbeat_at)
+                        last_heartbeat_at = now
+                        previous_signature = signature
+                        heartbeat_count += 1
+                    if phase == "completed":
+                        return ProgressWaitEvidence(
+                            operation_id=expected_id,
+                            heartbeat_count=heartbeat_count,
+                            max_progress_silence_seconds=max_silence,
+                            elapsed_seconds=now - started,
+                        )
+                    if phase in {"cancelled", "failed"}:
+                        raise DriverContractError(
+                            f"operation {expected_id} reached {phase!r}"
+                        )
+            silence = now - last_heartbeat_at
+            max_silence = max(max_silence, silence)
+            if silence > max_progress_silence_seconds:
+                raise DriverContractError(
+                    f"operation {expected_id} had no visible progress for "
+                    f"{silence:.3f}s"
+                )
+            if now - started > timeout_seconds:
+                raise DriverContractError(f"operation {expected_id} did not complete")
             self._settle_once()
 
     def wait_for_operation_terminal(
@@ -2066,12 +2182,14 @@ class GuiCampaignDriver:
                 "total": total,
                 "indeterminate": indeterminate,
             },
+            operation_kind=str(widget.property("operationKind") or "").strip(),
         )
 
     @staticmethod
     def _progress_signature(widget: QWidget) -> tuple[str, ...]:
         values = [
             str(widget.property("operationId") or ""),
+            str(widget.property("operationKind") or ""),
             str(widget.property("stage") or ""),
             str(widget.property("progress") or ""),
         ]

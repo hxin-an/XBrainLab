@@ -88,6 +88,8 @@ class OwnedOperationPresenter(QObject):
             return
         raw_phase = getattr(snapshot, "phase", "running")
         phase = str(getattr(raw_phase, "value", raw_phase))
+        raw_kind = getattr(snapshot, "kind", "")
+        kind = str(getattr(raw_kind, "value", raw_kind) or "")
         completed = getattr(snapshot, "completed", None)
         total = getattr(snapshot, "total", None)
         indeterminate = bool(getattr(snapshot, "indeterminate", True))
@@ -95,6 +97,7 @@ class OwnedOperationPresenter(QObject):
         publish_owned_operation_progress(
             self._owner,
             operation_id=operation_id,
+            kind=kind,
             stage=str(getattr(snapshot, "stage", "") or "Working"),
             phase=phase,
             completed=completed if isinstance(completed, int) else None,

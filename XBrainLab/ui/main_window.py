@@ -394,6 +394,7 @@ class MainWindow(QMainWindow):
         owned_operation_progress = self.statusBar()
         owned_operation_progress.setObjectName("OwnedOperationProgress")
         owned_operation_progress.setProperty("operationId", "")
+        owned_operation_progress.setProperty("operationKind", "")
         owned_operation_progress.setProperty("stage", "Idle")
         owned_operation_progress.setProperty("progress", "idle")
         owned_operation_progress.setProperty("indeterminate", False)

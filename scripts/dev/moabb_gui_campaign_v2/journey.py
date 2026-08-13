@@ -372,9 +372,14 @@ class ProductRecommendedJourneyScaffold:
                 raise DriverContractError(
                     "Apply cancellation did not retry the same review session"
                 )
-        confirm_progress = self.driver.wait_for_owned_operation_completion(
+        apply_operation = self.driver.wait_for_active_operation_kind(
+            "import_apply",
             timeout_seconds=_LONG_OPERATION_TIMEOUT_SECONDS,
             excluding_operation_id=confirm_baseline,
+        )
+        confirm_progress = self.driver.wait_for_exact_owned_operation_completion(
+            apply_operation.operation_id,
+            timeout_seconds=_LONG_OPERATION_TIMEOUT_SECONDS,
         )
         self.driver.control(VisibleControl.NAV_PREPROCESS, timeout_seconds=30.0)
         self._record(

@@ -32,6 +32,7 @@ from XBrainLab.backend.application.capabilities import (
     CommandCapability,
     build_capability_policy,
 )
+from XBrainLab.backend.application.owned_work import OwnedWorkKind
 from XBrainLab.backend.application.state import (
     ApplicationStateSnapshot,
     InterpretationStateSnapshot,
@@ -2170,6 +2171,38 @@ def test_review_keeps_atomic_loading_ownership_across_slow_preview_construction(
     assert preview_results == [int(QDialog.DialogCode.Rejected)]
     assert release_visibility == [True]
     assert handler._data_interpretation._active_loading_dialog is None
+
+
+def test_loading_dialog_projects_owned_operation_kind(qtbot) -> None:
+    window = QMainWindow()
+    panel = QWidget(window)
+    qtbot.addWidget(window)
+    window.show()
+    handler = DatasetActionHandler(panel)
+    coordinator = handler._data_interpretation
+    token = coordinator._open_loading_dialog(
+        initial_step="",
+        retry=lambda: None,
+    )
+    coordinator._active_loading_operation_id = "apply-operation-1"
+    coordinator._bindings = replace(
+        coordinator._bindings,
+        get_application_operation=lambda _owner, _operation_id: SimpleNamespace(
+            kind=OwnedWorkKind.IMPORT_APPLY,
+            phase=SimpleNamespace(value="running"),
+            stage="Loading reviewed EEG recordings",
+            completed=1,
+            total=3,
+            cancel_requested=False,
+        ),
+    )
+
+    coordinator._refresh_loading_operation_status()
+
+    loading = coordinator._active_loading_dialog
+    assert loading is not None
+    assert loading.progress_bar.property("operationKind") == "import_apply"
+    coordinator._close_loading_dialog(token)
 
 
 def test_preview_constructor_failure_keeps_recoverable_loading_error(

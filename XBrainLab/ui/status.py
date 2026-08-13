@@ -47,6 +47,7 @@ def publish_owned_operation_progress(
     owner: Any,
     *,
     operation_id: str,
+    kind: str = "",
     stage: str,
     phase: str,
     completed: int | None = None,
@@ -73,6 +74,7 @@ def publish_owned_operation_progress(
             else str(phase or "")
         )
         set_property("operationId", operation_id)
+        set_property("operationKind", str(kind or ""))
         set_property("stage", str(stage or "Working"))
         set_property("progress", progress)
         set_property("indeterminate", bool(indeterminate))

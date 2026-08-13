@@ -34,6 +34,8 @@ CONTENT_IDENTITY_ALGORITHM = "sha256"
 CONTENT_HASH_CHUNK_BYTES = 1_048_576
 CONTENT_IDENTITY_HASH_WORKERS = 4
 CONTENT_IDENTITY_HASH_STAGE = "Hashing reviewed import content"
+CONTENT_IDENTITY_VERIFY_STAGE = "Verifying reviewed import content"
+CONTENT_IDENTITY_FINALIZE_STAGE = "Finalizing reviewed import content"
 CONTENT_IDENTITY_SCOPE = (
     "selected_eeg_parser_dependencies_label_carriers_and_local_bids_sidecars"
 )
@@ -72,7 +74,14 @@ class _ContentHashProgress:
                 and self._completed_bytes > self._total_bytes
             ):
                 self._total_bytes = None
+            if self._completed_bytes == self._total_bytes:
+                owned_work_checkpoint(CONTENT_IDENTITY_VERIFY_STAGE)
+                return
             self._checkpoint_locked()
+
+    def finalizing(self) -> None:
+        with self._lock:
+            owned_work_checkpoint(CONTENT_IDENTITY_FINALIZE_STAGE)
 
     def _checkpoint_locked(self) -> None:
         if self._total_bytes is None or self._total_bytes <= 0:
@@ -440,12 +449,16 @@ def _content_file_identities(
 
     worker_count = min(CONTENT_IDENTITY_HASH_WORKERS, len(requests))
     if worker_count <= 1:
-        return [_build_with_context(request) for request in requests]
-    with ThreadPoolExecutor(
-        max_workers=worker_count,
-        thread_name_prefix="interpretation-content-identity",
-    ) as executor:
-        return list(executor.map(_build_with_context, requests))
+        identities = [_build_with_context(request) for request in requests]
+    else:
+        with ThreadPoolExecutor(
+            max_workers=worker_count,
+            thread_name_prefix="interpretation-content-identity",
+        ) as executor:
+            identities = list(executor.map(_build_with_context, requests))
+    if progress is not None:
+        progress.finalizing()
+    return identities
 
 
 def _content_hash_progress(

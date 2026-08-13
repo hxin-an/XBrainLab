@@ -19,6 +19,7 @@ def test_loading_dialog_shows_wizard_context_and_cancel(qtbot):
     )
     assert dialog.progress_bar.minimum() == 0
     assert dialog.progress_bar.maximum() == 0
+    assert dialog.progress_bar.property("operationKind") == ""
     assert dialog.cancel_button.text() == "Cancel"
     assert dialog.cancel_button.icon().isNull()
     assert all(label.isVisible() for label in dialog.step_labels)
