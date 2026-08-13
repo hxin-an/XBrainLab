@@ -1,6 +1,6 @@
 # XBrainLab Roadmap
 
-最後更新：`2026-08-12`
+最後更新：`2026-08-13`
 
 這份 roadmap 是產品主線，不是施工日誌。它用來決定：**現在先做什麼、做到什麼程度才可交給使用者測、哪些 claim 不能先講。**
 
@@ -166,83 +166,103 @@ balanced-accuracy / compatible objective scorer；split 與 preprocessing fold l
 once；History / Hyperparameters selection；100% / 125% / 150% DPI；以及 RTX 5070 Ti 上 wall time、RAM、
 VRAM cleanup、UI responsiveness 和安全停止延遲。取得實測前不得宣稱可在某時間內完成多少 trials。
 
-## Deferred Braindecode Release Catalog {#deferred-braindecode-release-catalog}
+## Deferred Braindecode Source Vendoring {#deferred-braindecode-release-catalog}
 
-> 狀態：`target design recorded; not implemented`（`2026-08-12`）。目前產品仍使用手寫的
-> curated Braindecode catalog；本節不表示 release snapshot、自動 qualification、官方 checkpoint
-> 下載或新版 model UI 已存在。等目前產品工作完成並合併後，才從當時最新 `main` 建立獨立短
-> branch 實作。
+> 狀態：`source-vendoring design approved; not implemented`（`2026-08-13`）。目前產品仍依賴
+> external Braindecode distribution 與手寫 curated catalog。只有正在進行的產品工作合併或明確
+> 關閉後，才從當時最新 `main` 建立短 task branch；不得把實作疊在未合併 candidate 上。
 
-未來不再由開發者逐一把 Braindecode model class 複製到 XBrainLab 名單。每次升級並鎖定
-Braindecode 版本時，由 release-time generator 讀取該版本的 `models_dict`、constructor / generated
-config 和 `summary.csv`，完成資格檢查後產生 deterministic product snapshot。App 啟動只讀這份
-輕量 snapshot；直到真正建立模型時才 lazy import Braindecode，不依使用者環境做 runtime catalog
-discovery。
+老師要求的 preservation boundary 是「架構原始碼內建」，不是保存 wheel、依賴 PyPI/GitHub，
+或只保存 release-time metadata snapshot。目標是乾淨安裝中沒有 external `braindecode`
+distribution，XBrainLab 仍能從隨產品出貨的 source 建構已資格化模型。
 
-### Catalog 與可選模型 contract
+### Exact source 與授權邊界
 
-- Snapshot 綁定 schema version、Braindecode exact version / package hash、constructor fingerprint 與
-  snapshot digest。UI、ApplicationService、Assistant tool schema、recipe 和 Timed Search 共用同一份
-  stable model identity，不再各自維護模型 enum。
-- `models_dict` 只作 discovery seed；constructor / generated config 提供 parameter type 和 default，
-  `summary.csv` 只補 application、type、modality、categorization 與參考 sampling frequency。這些
-  upstream metadata 都不是 XBrainLab support claim 或 executable compatibility proof。
-- 第一版只收錄能接受目前 3-D EEG epoch、輸出 per-epoch classification logits，並通過現有
-  supervised classification training / evaluation contract 的模型。Embedding、CTC、sEMG、不同
-  task semantics、缺少依賴或無法安全估算資源的模型不得進入 selectable snapshot。
-- 產品介面只顯示 `qualified / selectable` 模型，不顯示灰色或實驗性 unsupported entries。
-  Generator / CI 仍須為每個 upstream model 留下 qualified 或 rejected 結果與明確原因，不能無聲
-  遺漏。
-- Catalog query 依目前 reviewed epoch 的 class count、channels、samples、sfreq、channel names、
-  `chs_info` / montage 與資源能力做 admission。同一模型可存在於 release snapshot，卻因目前資料
-  contract 不相容而不出現在當次可選清單。
+- 唯一 upstream input 固定為 Braindecode `v1.6.1`、commit
+  `b7aa7aff944b29080754fd55fe0a8b10e5c82cd9`；reviewed wheel SHA-256 是
+  `400594d8af168453c6e826c34b8a887620d3e90c9b3fbb7d32ceb08c56f243d2`。
+- `summary.csv` 的 61 entries 中保存 57 個 permissively licensed entries：51 BSD-3-Clause、
+  4 MIT、2 Apache-2.0。`BrainModule`、`EEGMiner`、`EMG2QwertyNet`、
+  `MetaNeuromotorHand` 因 exact source header 的 CC BY-NC 4.0 排除。
+- `modules/filter.py` 是 mixed-license file；只可用 AST-reviewed transform 保留 BSD portion 的
+  `FilterBankLayer`。CC BY-NC／patent-noted `GeneralizedGaussianFilter` 及其 import、export、
+  bytecode 不得進 executable tree，不能只從 registry 隱藏。
+- XBrainLab package metadata 明確採 `GPL-3.0-only`。保留每份 BSD／MIT／Apache attribution、
+  permission、disclaimer、修改日期與 applicable NOTICE；上游 NOTICE 不完整，只作 provenance，
+  不作 license inventory authority。公開發布前仍需校方或法律授權人 sign-off。
+- 不保存或下載 pretrained weights；也不納入 Braindecode datasets、preprocessors、classifier、
+  skorch、Hub API 或 drop-in package compatibility。排除 EEGMiner code 不等於整體 patent clearance。
 
-### Model parameters 與設定
+### Vendored package 與可重建來源
 
-- `n_outputs`、`n_chans`、`n_times`、`sfreq`、`input_window_seconds`、`chs_info` 等 signal-derived
-  欄位由 Backend 從 reviewed dataset context 提供，永遠不作一般使用者輸入或搜尋欄位。
-- Model Setup 預設顯示經驗證的常用 typed scalar / finite-choice parameters，其餘安全參數收在
-  `Advanced`。Python class、callable、任意 object、不可序列化或缺乏有效 validation 的參數固定
-  使用已驗證 default，不以 free-form 字串暴露。
-- 每個模型的 Timed Search space 只能來自 snapshot 明確宣告的 type、range、scale、choice、
-  conditional constraint 與 resource hard bound；不得從 constructor default 自動猜搜尋範圍。
-- 儲存 Model Setup 前，Backend 使用目前 dataset context 建立 detached candidate，驗證 constructor、
-  forward output shape、serialization 與 resource preview。失敗不得改變 current training setup。
+- 內建 source 使用 private versioned namespace，例如
+  `XBrainLab.backend._vendor.braindecode_v1_6_1`。不得建立 top-level `braindecode` shim，避免遮蔽
+  殘留 dependency 或讓 public ID 被誤認為 Python import path。
+- 目前唯讀 closure audit 是 57 entries、49 entry modules、69 個 raw transitive Python modules。
+  69-file closure只作 generator input；upstream root／models／modules aggregators會 eager import
+  excluded或不需要的功能，不能原樣複製。
+- Deterministic generator只接受 exact local sdist/source與 hash，解析 allowlist和 AST closure，
+  改寫 internal imports並輸出 checked-in source、static registry、逐檔 original/result hash和
+  transformation record。Runtime和CI正常測試不下載或現場生成 source。
+- `models/util.py`只保留 runtime所需 symbols，移除 reflective registry、test metadata與
+  import-time CSV/pandas side effect；root `util.py`只保留實際 closure所需 helper。
+- 原本由 Braindecode transitively供應、但 vendored source直接使用的套件要提升為 XBrainLab
+  direct dependencies。實作前重新掃 exact closure；已知至少包含 `einops`、
+  `docstring-inheritance`、`pydantic`、`linear-attention-transformer`、
+  `rotary-embedding-torch`，並將 MNE contract明確提高到相容的 `>=1.11,<2`。
+- `REVE` position bank與 `STEEGFormer` channel vocabulary尚無獲准的 bundled asset contract。
+  架構 source可保存，但 constructor/name-resolution必須 fail closed或要求明確 local input；不得
+  network download、寫 package directory或 silent identity mapping。Optional Hub package不得改變
+  base class、checkpoint或runtime行為。
 
-### 官方 pretrained checkpoint contract
+### Preserved 與 product-qualified catalogs
 
-- 官方 checkpoint 使用獨立、受控的 manifest；只接受經審查的官方來源，並鎖定 repo、exact
-  revision、file hash、license、download size、model fingerprint、task、sfreq、channel / montage
-  contract 和允許不同的 classification-head keys。`from_pretrained()` 存在不代表該模型有已驗證
-  官方權重。
-- 同一模型在 UI 只出現一次，初始化方式提供 `Random initialization`、相容的
-  `Official pretrained` 與既有 `Local weights`。不接受任意 Hub repo ID，也不 silent fallback 到
-  random initialization。
-- 官方權重只在使用者選用並確認來源、license、大小、destination 與相容條件後按需下載。
-  使用可設定的獨立 EEG model cache；開發機可設在 D 槽，正式 Windows 安裝不得硬編磁碟代號。
-  預設 cache 上限為 `20 GB`，並提供取消、離線錯誤、disk preflight、hash verification、atomic
-  publication、失敗清理及逐 checkpoint / 全 cache 清理。
-- 第一版 checkpoint 只作全模型 fine-tune 初始化，不新增 inference-only、backbone freeze 或 staged
-  unfreezing workflow。輸出類別不同時，UI 必須明示 `pretrained backbone + new classification head`；
-  除 manifest 允許重建的 head keys 外，任何 missing / unexpected backbone key 都 fail closed。
-- Recipe / result 保存 checkpoint revision / hash、原始與目前 class count、head rebuild、實際載入
-  contract、catalog digest 和 model fingerprint，不能只記一個會漂移的 display name。
+- 保存兩份 immutable、可重建 inventories：`preserved` 是 exact 57 source entries；
+  `qualified_for_training` 只含真正通過 XBrainLab product contract 的 subset。
+- UI、ApplicationService、Assistant、recipe與 Timed Search只讀 qualified projection，不顯示灰色
+  unsupported rows。保存 source不等於宣稱57個模型都可訓練或具科學品質證據。
+- 既有 `braindecode.*` public IDs保持穩定，繼續作 provenance-family／recipe identity；另保存
+  versioned `implementation_id`與 `architecture_revision`，不得把 module path偶然當作相容性契約。
+- 最初 qualified subset至少保持目前10個 curated models的既有顯示、預設值與參數UI。
+  新模型必須通過3-D EEG input、per-epoch finite classification logits、constructor、backward、
+  serialization、resource和無網路 probes才可加入；constructor defaults不能自動推導可搜尋範圍。
+- Signal-derived `n_outputs`、`n_chans`、`n_times`、`sfreq`、`chs_info`仍由Backend從reviewed
+  dataset context提供；catalog不能建立第二份data/admission truth。
 
-### 升級、實作切片與驗證底線
+### Artifact identity 與舊 weights
 
-- 舊 project / recipe 的 catalog identity 與目前 release 不一致時，既有結果仍可讀；重新訓練前
-  必須顯示差異並明確遷移，遷移後建立新的 experiment lineage。不得因新版本 constructor 看似
-  相容就靜默替換。
-- 未來依序交付：release generator / version adapter / deterministic snapshot；Backend-owned catalog
-  與手寫 enum 移除；typed Common / Advanced UI 與 dataset admission；官方 checkpoint lifecycle；
-  recipe migration 和跨版本 lineage。
-- 驗收至少包含 snapshot reproducibility、upstream model completeness、qualified / rejected oracle、
-  lazy import、UI / Backend / Assistant / Timed Search identity parity、constructor / forward / backward /
-  serialization probes、montage / sfreq / output negative cases、resource timeout / OOM，以及 checkpoint
-  offline / cancel / disk-full / cache-cap / hash-tamper / revision / backbone-mismatch / head-rebuild / cleanup。
-- UI 另需 Common / Advanced、download、failure、head rebuild 與 migration artifacts，以及 Windows
-  路徑含空格 / 非 ASCII、first run、repeated launch 和 RTX 5070 Ti 真實 fine-tune acceptance。這些
-  evidence 完成前不可宣稱 full Braindecode model support 或 official pretrained support。
+- 新 checkpoint envelope至少保存 public model ID、implementation ID、architecture revision、
+  exact upstream/source digest、normalized constructor params、input contract、state-dict key／shape／
+  dtype fingerprint與tensor payload hash。Training record和saliency provenance都連結同一 identity。
+- 既有 raw tensor-only state dict只走明確 legacy import：使用者先選 public model，strict key／shape
+  load成功才接受，並標記 `legacy_unverified_provenance`；不得自動猜模型或宣稱可重現。
+- 舊 saliency producer identity與新implementation不符時fail closed並要求重算。完整model pickle
+  的module-path相容不在承諾內，不能靠top-level shadow package偷偷支援。
+
+### 分階段交付與移除條件
+
+1. License/source inventory：57 allowlist、4-model與shared-symbol denylist、notices、manifest、
+   SPDX SBOM及artifact guards；不改runtime。
+2. Vendored namespace：加入可重建source與promoted direct dependencies；產品仍走upstream，
+   對qualified subset做upstream 1.6.1 ↔ vendored parity。
+3. Identity/persistence：加入preserved／qualified projection、implementation identity、checkpoint／
+   training／saliency schema與legacy fail-closed path。
+4. Atomic switch：qualified factories一次切到vendored source；Braindecode只留reference tests，
+   不存在silent runtime fallback。
+5. Dependency removal：只有前四步exact-head evidence完成後，才從pyproject／lock移除
+   `braindecode`並跑offline package gates。
+
+移除external dependency的硬條件：目前qualified models的ordered state-dict keys、shape／dtype、
+strict雙向load、相同state forward與代表性backward parity全綠；representative
+train → checkpoint → new-process reload → evaluate通過；fresh `--no-index` install中
+`find_spec("braindecode") is None`且`pip check`通過；wheel／sdist／source bundle包含legal files、
+manifest與SBOM，且沒有weights、excluded source、tests/docs/cache/pyc；Linux automated package與
+Windows native packaged smoke分開驗收。任何一項缺少時只能稱validated checkpoint，不能先刪dependency。
+
+最窄完成claim是：XBrainLab內建由Braindecode v1.6.1衍生的57-entry source-only subset；四個
+CC BY-NC models與受限制helper未包含，產品不需要external Braindecode runtime distribution或
+pretrained weights。不得外推為官方／完整Braindecode、drop-in API、57-model scientific validation、
+pretrained support、patent clearance或release-ready。
 
 ## MCP 決策
 
@@ -266,4 +286,4 @@ client matrix 和 validation cost；不能從舊 roadmap 自動復活。
 - Workflow Recipe DSL。
 - Training Model Registry / Model Node Visualization。
 - Training timed hyperparameter search（當前只交付 deterministic recommended defaults）。
-- Braindecode release catalog / official checkpoint integration（目前只有 curated catalog）。
+- Braindecode source vendoring（已定案但尚未實作；目前仍只有 external runtime + curated catalog）。
