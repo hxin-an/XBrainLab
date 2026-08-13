@@ -1341,8 +1341,12 @@ def _ready_dataset_errors(dataset: Mapping[str, Any], *, prefix: str) -> list[st
         )
     bids_event_values = oracle.get("bids_event_values")
     bids_crosscheck = oracle.get("bids_value_crosscheck")
+    source_mode = str(dataset.get("source_mode") or "moabb_convert")
     if bids_event_values == {}:
-        if bids_crosscheck != "not-present":
+        if source_mode != "moabb_convert" or bids_crosscheck not in {
+            "not-present",
+            "run-local",
+        }:
             errors.append(
                 f"{prefix}.oracle BIDS event values lack a truthful crosscheck"
             )
@@ -1354,7 +1358,13 @@ def _ready_dataset_errors(dataset: Mapping[str, Any], *, prefix: str) -> list[st
             type(value) is int and value >= 0 for value in bids_event_values.values()
         )
         and len(set(bids_event_values.values())) == len(bids_event_values)
-        and bids_crosscheck in {"matched", "formal-bids-mirror-authoritative"}
+        and (
+            (source_mode == "moabb_convert" and bids_crosscheck == "matched")
+            or (
+                source_mode == "formal_bids_mirror"
+                and bids_crosscheck == "formal-bids-mirror-authoritative"
+            )
+        )
     ):
         errors.append(
             f"{prefix}.oracle BIDS event values must independently map every "

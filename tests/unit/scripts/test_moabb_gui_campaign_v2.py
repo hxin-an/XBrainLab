@@ -37,6 +37,7 @@ from scripts.dev.moabb_gui_campaign_v2.contract import (
     JOURNEY_MODES,
     REQUIRED_STAGES,
     _artifact_errors,
+    _ready_dataset_errors,
     load_campaign_plan,
     receipt_plan_binding_errors,
     validate_campaign_plan,
@@ -390,6 +391,39 @@ def test_campaign_plan_pins_returned_nested_bids_root_inside_conversion_parent()
         "must remain inside conversion_parent" in error
         for error in validate_campaign_plan(escaped)
     )
+
+
+def test_ready_oracle_allows_run_local_values_only_for_moabb_conversion() -> None:
+    dataset = {
+        "source_mode": "moabb_convert",
+        "bids": {"dataset_revision_sha256": "a" * 64},
+        "oracle": {
+            "state": "pinned",
+            "expected_events": ["left", "right"],
+            "expected_classes": ["left", "right"],
+            "source_event_id": {"left": 1, "right": 2},
+            "expected_product_class_mapping": [
+                {"class_index": 0, "event_code": "0", "class_name": "left"},
+                {"class_index": 1, "event_code": "1", "class_name": "right"},
+            ],
+            "bids_event_values": {},
+            "bids_value_crosscheck": "run-local",
+        },
+    }
+
+    assert _ready_dataset_errors(dataset, prefix="dataset") == []
+
+    formal_mirror = copy.deepcopy(dataset)
+    formal_mirror["source_mode"] = "formal_bids_mirror"
+    assert any(
+        "truthful crosscheck" in error
+        for error in _ready_dataset_errors(formal_mirror, prefix="dataset")
+    )
+    formal_mirror["oracle"]["bids_event_values"] = {"left": 9, "right": 7}
+    formal_mirror["oracle"]["bids_value_crosscheck"] = (
+        "formal-bids-mirror-authoritative"
+    )
+    assert _ready_dataset_errors(formal_mirror, prefix="dataset") == []
 
 
 def test_receipt_binding_requires_plan_dataset_revision_and_semantic_oracle() -> None:

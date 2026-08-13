@@ -1742,6 +1742,7 @@ def _bids_event_semantics(root: Path) -> tuple[list[str], dict[str, int], str]:
                 )
             has_value = "value" in (reader.fieldnames or ())
             value_column_presence.add(has_value)
+            table_values_by_label: dict[str, set[int]] = {}
             for row in reader:
                 label = str(row.get("trial_type") or "").strip()
                 if label and label.casefold() != "n/a" and label not in seen:
@@ -1756,7 +1757,28 @@ def _bids_event_semantics(root: Path) -> tuple[list[str], dict[str, int], str]:
                     raise MaterializationContractError(
                         f"BIDS event value is not an integer in {table}: {raw_value}"
                     ) from exc
+                table_values_by_label.setdefault(label, set()).add(value)
                 values_by_label.setdefault(label, set()).add(value)
+            if has_value:
+                ambiguous_in_table = [
+                    label
+                    for label, values in table_values_by_label.items()
+                    if len(values) != 1
+                ]
+                table_values = {
+                    label: next(iter(values))
+                    for label, values in table_values_by_label.items()
+                    if len(values) == 1
+                }
+                if (
+                    ambiguous_in_table
+                    or len(table_values) != len(table_values_by_label)
+                    or len(set(table_values.values())) != len(table_values)
+                ):
+                    raise MaterializationContractError(
+                        "BIDS events value mapping is missing, duplicated, or "
+                        f"inconsistent within {table}"
+                    )
     if not labels:
         raise MaterializationContractError("frozen BIDS event labels are empty")
     if value_column_presence == {False}:
@@ -1771,15 +1793,16 @@ def _bids_event_semantics(root: Path) -> tuple[list[str], dict[str, int], str]:
         for label in labels
         if len(values_by_label.get(label, ())) == 1
     }
+    if set(values_by_label) != set(labels):
+        raise MaterializationContractError(
+            "BIDS events value mapping is missing from one or more trial labels"
+        )
     if (
         ambiguous
-        or set(values_by_label) != set(labels)
         or len(values) != len(labels)
         or len(set(values.values())) != len(values)
     ):
-        raise MaterializationContractError(
-            "BIDS events value mapping is missing, duplicated, or inconsistent"
-        )
+        return labels, {}, "run-local"
     return labels, values, "matched"
 
 

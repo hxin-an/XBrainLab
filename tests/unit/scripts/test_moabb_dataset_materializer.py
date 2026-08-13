@@ -76,9 +76,34 @@ def test_bids_event_semantics_rejects_duplicate_values_across_labels(
 
     with pytest.raises(
         MaterializationContractError,
-        match="mapping is missing, duplicated, or inconsistent",
+        match="mapping is missing, duplicated, or inconsistent within",
     ):
         _bids_event_semantics(tmp_path)
+
+
+def test_bids_event_semantics_preserves_physionet_run_local_label_union(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "sub-1_task-feet-hands_events.tsv").write_text(
+        "onset\tduration\ttrial_type\tvalue\n"
+        "0\t1\tfeet\t1\n"
+        "1\t1\trest\t2\n"
+        "2\t1\thands\t3\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "sub-1_task-left-right_events.tsv").write_text(
+        "onset\tduration\ttrial_type\tvalue\n"
+        "0\t1\tleft_hand\t1\n"
+        "1\t1\tright_hand\t2\n"
+        "2\t1\trest\t3\n",
+        encoding="utf-8",
+    )
+
+    labels, values, crosscheck = _bids_event_semantics(tmp_path)
+
+    assert labels == ["feet", "rest", "hands", "left_hand", "right_hand"]
+    assert values == {}
+    assert crosscheck == "run-local"
 
 
 def _environment(identity_sha256: str = "e" * 64) -> dict[str, Any]:
@@ -172,6 +197,7 @@ class _FakeDataset:
         fail: bool = False,
         event_names: list[str] | None = None,
         bids_event_id: dict[str, int] | None = None,
+        bids_event_id_by_run: list[dict[str, int]] | None = None,
     ) -> None:
         self.class_name = class_name
         self.calls = calls
@@ -182,6 +208,7 @@ class _FakeDataset:
                 label: index for index, label in enumerate(event_names, start=1)
             }
         self.bids_event_id = bids_event_id
+        self.bids_event_id_by_run = bids_event_id_by_run
 
     def convert_to_bids(
         self,
@@ -216,7 +243,17 @@ class _FakeDataset:
             '{"Name":"synthetic","BIDSVersion":"1.9.0"}',
             encoding="utf-8",
         )
-        if self.bids_event_id is None:
+        if self.bids_event_id_by_run is not None:
+            for run, event_id in enumerate(self.bids_event_id_by_run, start=1):
+                event_rows = "".join(
+                    f"{index}\t1\t{label}\t{event_id[label]}\n"
+                    for index, label in enumerate(self.event_id, start=0)
+                )
+                (eeg_root / f"sub-1_task-test_run-{run}_events.tsv").write_text(
+                    "onset\tduration\ttrial_type\tvalue\n" + event_rows,
+                    encoding="utf-8",
+                )
+        elif self.bids_event_id is None:
             event_header = "onset\tduration\ttrial_type\n"
             event_rows = "".join(
                 f"{index}\t1\t{label}\n"
@@ -228,9 +265,10 @@ class _FakeDataset:
                 f"{index}\t1\t{label}\t{self.bids_event_id[label]}\n"
                 for index, label in enumerate(self.event_id, start=0)
             )
-        (eeg_root / "sub-1_task-test_events.tsv").write_text(
-            f"{event_header}{event_rows}", encoding="utf-8"
-        )
+        if self.bids_event_id_by_run is None:
+            (eeg_root / "sub-1_task-test_events.tsv").write_text(
+                f"{event_header}{event_rows}", encoding="utf-8"
+            )
         stem = eeg_root / "sub-1_task-test_eeg"
         if format == "EDF":
             stem.with_suffix(".edf").write_bytes(b"synthetic-edf")
@@ -659,6 +697,46 @@ def test_materializer_keeps_source_and_bids_event_codes_as_distinct_oracles(
     oracle = ready["datasets"][0]["oracle"]
     assert oracle["source_event_id"] == {"target": 1, "non-target": 2}
     assert oracle["bids_event_values"] == {"target": 2, "non-target": 1}
+    assert oracle["expected_product_class_mapping"] == [
+        {"class_index": 0, "event_code": "0", "class_name": "target"}
+    ]
+
+
+def test_materializer_accepts_run_local_bids_values_without_losing_labels(
+    tmp_path: Path,
+) -> None:
+    manifest_path, gui_plan_path = _write_contracts(tmp_path, class_names=("FakeEDF",))
+    calls: list[dict[str, Any]] = []
+
+    result = run_materialization(
+        _inputs(
+            tmp_path,
+            manifest_path=manifest_path,
+            gui_plan_path=gui_plan_path,
+            dataset_factory=lambda selected: _FakeDataset(
+                selected,
+                calls=calls,
+                bids_event_id_by_run=[
+                    {"target": 1, "non-target": 2},
+                    {"target": 2, "non-target": 1},
+                ],
+            ),
+        )
+    )
+
+    assert result["status"] == "ready"
+    frozen = json.loads(Path(result["freeze_manifest"]).read_text(encoding="utf-8"))
+    row = frozen["datasets"][0]
+    assert row["event_names"] == ["target", "non-target"]
+    assert row["event_id"] == {"target": 1, "non-target": 2}
+    assert row["bids_event_values"] == {}
+    assert row["bids_value_crosscheck"] == "run-local"
+    ready = json.loads(Path(result["gui_plan"]).read_text(encoding="utf-8"))
+    oracle = ready["datasets"][0]["oracle"]
+    assert oracle["expected_events"] == ["target", "non-target"]
+    assert oracle["source_event_id"] == {"target": 1, "non-target": 2}
+    assert oracle["bids_event_values"] == {}
+    assert oracle["bids_value_crosscheck"] == "run-local"
     assert oracle["expected_product_class_mapping"] == [
         {"class_index": 0, "event_code": "0", "class_name": "target"}
     ]
