@@ -2818,12 +2818,14 @@ def test_import_journey_traverses_and_closes_synchronous_preview_exec(qtbot) -> 
         ):
             del timeout_seconds
             before_confirm()
-            result = REAL_QDIALOG_EXEC(dialog)
-            assert result == QDialog.DialogCode.Accepted
-            QTimer.singleShot(
-                0,
-                lambda: REAL_QDIALOG_EXEC(confirm_dialog),
-            )
+
+            def open_preview_then_confirmation() -> None:
+                assert REAL_QDIALOG_EXEC(dialog) == QDialog.DialogCode.Accepted
+                # Production dispatches the refreshed review asynchronously
+                # after the first dialog callback has unwound.
+                QTimer.singleShot(100, lambda: REAL_QDIALOG_EXEC(confirm_dialog))
+
+            QTimer.singleShot(0, open_preview_then_confirmation)
             return (
                 self._ack(opener),
                 self._ack(confirm),

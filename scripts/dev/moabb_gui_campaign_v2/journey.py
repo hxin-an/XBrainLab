@@ -257,10 +257,6 @@ class ProductRecommendedJourneyScaffold:
                 subjects,
                 timeout_seconds=30.0,
             )
-            # Continue opens DataInterpretationPreviewDialog with synchronous
-            # QDialog.exec(). Arm the public-control interaction before that
-            # nested event loop starts so the click can return normally.
-            QTimer.singleShot(0, interact_with_synchronous_preview)
 
         (
             import_acknowledgement,
@@ -272,6 +268,10 @@ class ProductRecommendedJourneyScaffold:
             before_confirm=choose_subjects,
             timeout_seconds=_LONG_OPERATION_TIMEOUT_SECONDS,
         )
+        # Subject Continue only dispatches the asynchronous backend review.
+        # Start the timer-driven modal waiter after that click has returned;
+        # it is then already armed when the result callback enters QDialog.exec().
+        interact_with_synchronous_preview()
         if refresh_requested:
             # Production dispatches the refreshed backend review only after
             # the first synchronous preview has fully returned. Enter the
