@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -35,6 +36,9 @@ from XBrainLab.backend.application.commands import (
 from XBrainLab.backend.application.data_interpretation_candidate import (
     build_interpretation_candidate,
 )
+from XBrainLab.backend.application.data_interpretation_discovery_preparation import (
+    ApplicationDiscoveryBoundary,
+)
 from XBrainLab.backend.application.data_interpretation_resource_receipt import (
     INTERPRETATION_PREFLIGHT_RECEIPT_LIMIT,
     INTERPRETATION_PREFLIGHT_RECEIPT_TTL_SECONDS,
@@ -49,6 +53,7 @@ from XBrainLab.backend.application.errors import (
     PreconditionError,
 )
 from XBrainLab.backend.application.resource_guard import ResourcePreflightResult
+from XBrainLab.backend.application.state import ApplicationStateSnapshot
 
 
 def test_discovery_prepare_paths_cannot_publish_session_state() -> None:
@@ -70,7 +75,118 @@ def test_discovery_prepare_paths_cannot_publish_session_state() -> None:
         DataInterpretationCommandService.commit_prepared_interpretation_discovery
     )
     assert "owned_work_commit_boundary" in commit_source
-    assert "restore_session_state" in commit_source
+    assert "publish_staged_session_state" in commit_source
+
+
+def test_discovery_commit_publishes_prepared_state_without_commit_time_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
+    eeg_path.write_bytes(b"stable EEG header")
+    service, _dataset = _service()
+    plan = service.begin_interpretation_discovery(
+        ScanSourceCommand(source_path=str(eeg_path)),
+        application_boundary=ApplicationDiscoveryBoundary(
+            publication_generation=0,
+            publication_revision=0,
+            state=ApplicationStateSnapshot.empty(),
+        ),
+    )
+    prepared = service.prepare_interpretation_discovery(plan)
+
+    monkeypatch.setattr(
+        service.state,
+        "checkpoint_session_state",
+        lambda: pytest.fail("commit copied the live session checkpoint"),
+    )
+    monkeypatch.setattr(
+        service.state,
+        "restore_session_state",
+        lambda _checkpoint: pytest.fail("commit recopied prepared session state"),
+    )
+
+    _message, payload = _expect_payload(
+        service.commit_prepared_interpretation_discovery(prepared)
+    )
+
+    assert payload["payload_type"] == "scan_result"
+    assert service.state.snapshot().has_scan_result is True
+
+
+def test_discovery_commit_isolates_live_nested_state_from_prepared_receipt(
+    tmp_path: Path,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
+    eeg_path.write_bytes(b"stable EEG header")
+    service, _dataset = _service()
+    plan = service.begin_interpretation_discovery(
+        ScanSourceCommand(source_path=str(eeg_path)),
+        application_boundary=ApplicationDiscoveryBoundary(
+            publication_generation=0,
+            publication_revision=0,
+            state=ApplicationStateSnapshot.empty(),
+        ),
+    )
+    prepared = service.prepare_interpretation_discovery(plan)
+
+    service.commit_prepared_interpretation_discovery(prepared)
+    [prepared_scan] = prepared.state_after.scans.values()
+    prepared_scan.eeg_files.append(str(tmp_path / "mutated-after-commit.fif"))
+
+    live_scan = service.state.resolve_scan(None)
+    assert live_scan.eeg_files == [str(eeg_path.resolve())]
+
+
+def test_discovery_prepared_state_is_one_shot_without_second_live_mutation(
+    tmp_path: Path,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
+    eeg_path.write_bytes(b"stable EEG header")
+    service, _dataset = _service()
+    plan = service.begin_interpretation_discovery(
+        ScanSourceCommand(source_path=str(eeg_path)),
+        application_boundary=ApplicationDiscoveryBoundary(
+            publication_generation=0,
+            publication_revision=0,
+            state=ApplicationStateSnapshot.empty(),
+        ),
+    )
+    prepared = service.prepare_interpretation_discovery(plan)
+    service.commit_prepared_interpretation_discovery(prepared)
+    committed = service.state.checkpoint_session_state()
+
+    with pytest.raises(PreconditionError, match="state changed"):
+        service.commit_prepared_interpretation_discovery(prepared)
+
+    assert service.state.checkpoint_session_state() == committed
+
+
+def test_discovery_commit_validates_cache_payload_before_live_publication(
+    tmp_path: Path,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
+    eeg_path.write_bytes(b"stable EEG header")
+    service, _dataset = _service()
+    plan = service.begin_interpretation_discovery(
+        ScanSourceCommand(source_path=str(eeg_path)),
+        application_boundary=ApplicationDiscoveryBoundary(
+            publication_generation=0,
+            publication_revision=0,
+            state=ApplicationStateSnapshot.empty(),
+        ),
+    )
+    prepared = service.prepare_interpretation_discovery(plan)
+    malformed = replace(
+        prepared,
+        safe_preview_admissions=(([], object()),),
+    )
+    before = service.state.checkpoint_session_state()
+
+    with pytest.raises(TypeError, match="unhashable"):
+        service.commit_prepared_interpretation_discovery(malformed)
+
+    assert service.state.checkpoint_session_state() == before
 
 
 class _LoadedData:

@@ -303,15 +303,16 @@ class DataInterpretationCommandService:
             detached._record_prepared_validation(prepared_validation)
             handler_result = prepared_validation.result
         message, diagnostics = self._normalize_handler_result(handler_result)
-        owned_work_checkpoint("Data Import discovery prepared")
-        return PreparedInterpretationDiscovery.create(
+        prepared = PreparedInterpretationDiscovery.create(
             plan=plan,
-            state_after=detached.state.checkpoint_session_state(),
+            state_after=detached.state.stage_session_state(),
             message=message,
             diagnostics=diagnostics,
             safe_preview_admissions=detached._safe_preview_admissions,
             bids_dataset_indexes=detached._bids_dataset_indexes,
         )
+        owned_work_checkpoint("Data Import discovery prepared")
+        return prepared
 
     def commit_prepared_interpretation_discovery(
         self,
@@ -320,7 +321,7 @@ class DataInterpretationCommandService:
         """Publish one exact detached review after final cancellation admission."""
         if not isinstance(prepared, PreparedInterpretationDiscovery):
             raise TypeError("prepared must be PreparedInterpretationDiscovery")
-        if self.state.checkpoint_session_state() != prepared.plan.state_before:
+        if not self.state.session_checkpoint_is_current(prepared.plan.state_before):
             raise PreconditionError(
                 "Data Import review state changed while discovery was prepared. "
                 "Review the current source and retry.",
@@ -330,16 +331,14 @@ class DataInterpretationCommandService:
                     "state_preserved": True,
                 },
             )
+        safe_preview_admissions = dict(prepared.safe_preview_admissions)
+        bids_dataset_indexes = dict(prepared.bids_dataset_indexes)
+        handler_result = prepared.handler_result()
         owned_work_commit_boundary("Publishing Data Import discovery")
-        rollback = self.state.checkpoint_session_state()
-        try:
-            self.state.restore_session_state(prepared.state_after)
-            self._safe_preview_admissions = dict(prepared.safe_preview_admissions)
-            self._bids_dataset_indexes = dict(prepared.bids_dataset_indexes)
-        except BaseException:
-            self.state.restore_session_state(rollback)
-            raise
-        return prepared.handler_result()
+        self.state.publish_staged_session_state(prepared.take_staged_state())
+        self._safe_preview_admissions = safe_preview_admissions
+        self._bids_dataset_indexes = bids_dataset_indexes
+        return handler_result
 
     def discovery_plan_is_current(
         self,
@@ -348,7 +347,7 @@ class DataInterpretationCommandService:
         """Return whether the exact review session captured by a plan still owns it."""
         if not isinstance(plan, InterpretationDiscoveryPlan):
             raise TypeError("plan must be InterpretationDiscoveryPlan")
-        return self.state.checkpoint_session_state() == plan.state_before
+        return self.state.session_checkpoint_is_current(plan.state_before)
 
     def _detached_discovery_service(
         self,

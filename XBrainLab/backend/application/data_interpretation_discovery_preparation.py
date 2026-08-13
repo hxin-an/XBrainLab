@@ -18,6 +18,25 @@ from .data_interpretation_state import InterpretationSessionCheckpoint
 from .state import ApplicationStateSnapshot
 
 
+class StagedInterpretationSessionState:
+    """One-shot detached session ownership reserved for atomic publication."""
+
+    __slots__ = ("_checkpoint",)
+
+    def __init__(self, checkpoint: InterpretationSessionCheckpoint) -> None:
+        if not isinstance(checkpoint, InterpretationSessionCheckpoint):
+            raise TypeError("checkpoint must be InterpretationSessionCheckpoint")
+        self._checkpoint: InterpretationSessionCheckpoint | None = checkpoint
+
+    def take(self) -> InterpretationSessionCheckpoint:
+        """Transfer staged dictionaries exactly once."""
+        checkpoint = self._checkpoint
+        if checkpoint is None:
+            raise RuntimeError("prepared discovery state was already published")
+        self._checkpoint = None
+        return checkpoint
+
+
 @dataclass(frozen=True, slots=True)
 class ApplicationDiscoveryBoundary:
     """Exact committed application view consumed before detached discovery."""
@@ -92,6 +111,7 @@ class PreparedInterpretationDiscovery:
     diagnostics_json: str
     safe_preview_admissions: tuple[tuple[Any, Any], ...]
     bids_dataset_indexes: tuple[tuple[str, Any], ...]
+    _staged_state: StagedInterpretationSessionState
 
     @classmethod
     def create(
@@ -118,14 +138,20 @@ class PreparedInterpretationDiscovery:
             ),
             safe_preview_admissions=tuple(safe_preview_admissions.items()),
             bids_dataset_indexes=tuple(bids_dataset_indexes.items()),
+            _staged_state=StagedInterpretationSessionState(state_after),
         )
 
     def handler_result(self) -> tuple[str, dict[str, Any]]:
         return self.message, json_loads(self.diagnostics_json)
+
+    def take_staged_state(self) -> InterpretationSessionCheckpoint:
+        """Transfer isolated publication ownership to the live session."""
+        return self._staged_state.take()
 
 
 __all__ = [
     "ApplicationDiscoveryBoundary",
     "InterpretationDiscoveryPlan",
     "PreparedInterpretationDiscovery",
+    "StagedInterpretationSessionState",
 ]

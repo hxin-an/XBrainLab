@@ -3095,19 +3095,19 @@ def test_validate_cancel_after_commit_admission_is_rejected_and_success_publishe
         candidate_id=preview.diagnostics["candidate"]["candidate_id"]
     )
     interpretation = service.interpretation._service()
-    original_restore = interpretation.state.restore_session_state
+    original_publish = interpretation.state.publish_staged_session_state
     commit_started = Event()
     release_commit = Event()
 
-    def _blocking_restore(checkpoint) -> None:
+    def _blocking_publish(checkpoint) -> None:
         commit_started.set()
         assert release_commit.wait(timeout=THREAD_WATCHDOG_SECONDS)
-        original_restore(checkpoint)
+        original_publish(checkpoint)
 
     monkeypatch.setattr(
         interpretation.state,
-        "restore_session_state",
-        _blocking_restore,
+        "publish_staged_session_state",
+        _blocking_publish,
     )
     operation = service.begin_owned_operation(command)
     results: list[CommandResult] = []

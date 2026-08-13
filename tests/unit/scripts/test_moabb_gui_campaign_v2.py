@@ -2308,7 +2308,14 @@ def test_exact_apply_wait_rejects_frozen_indeterminate_progress(qtbot) -> None:
 
     driver = GuiCampaignDriver(window, poll_interval_ms=1)
 
-    with pytest.raises(DriverContractError, match="no visible progress"):
+    with pytest.raises(
+        DriverContractError,
+        match=(
+            r"no visible progress.*kind='import_apply'.*"
+            "stage='Finalizing reviewed import content'.*"
+            "progress='indeterminate'"
+        ),
+    ):
         driver.wait_for_exact_owned_operation_completion(
             "apply-operation",
             timeout_seconds=0.2,

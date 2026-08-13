@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -255,6 +256,97 @@ def test_apply_checkpoint_restores_applied_and_recipe_state() -> None:
     assert snapshot.latest_interpretation_id == old_applied.interpretation_id
     assert snapshot.latest_recipe_id == old_recipe.recipe_id
     assert snapshot.recipe_path == "/tmp/xbrainlab/old-recipe.json"
+
+
+def test_session_checkpoint_current_guard_tracks_lifecycle_mutations() -> None:
+    state = _state()
+    checkpoint = state.checkpoint_session_state()
+
+    assert state.session_checkpoint_is_current(checkpoint) is True
+
+    scan = _scan(state.next_id("scan"))
+    state.record_scan(scan)
+
+    assert state.session_checkpoint_is_current(checkpoint) is False
+
+
+def test_empty_legacy_invalidation_keeps_session_checkpoint_current() -> None:
+    state = _state()
+    checkpoint = state.checkpoint_session_state()
+
+    assert state.invalidate_for_legacy_raw_mutation() is False
+
+    assert state.session_checkpoint_is_current(checkpoint) is True
+
+
+def test_all_session_mutators_advance_the_lightweight_revision() -> None:
+    mutation_methods = (
+        "next_id",
+        "restore_session_state",
+        "stage_session_state",
+        "publish_staged_session_state",
+        "record_scan",
+        "record_preview",
+        "record_validation",
+        "record_applied",
+        "discard_applied",
+        "restore_apply_state",
+        "record_recipe",
+        "record_recipe_reload",
+        "clear",
+        "_record_label_import_transaction",
+        "_restore_label_import_state",
+    )
+
+    for method_name in mutation_methods:
+        source = inspect.getsource(getattr(DataInterpretationSessionState, method_name))
+        assert "_advance_session_revision" in source, method_name
+
+
+def test_resolved_nested_state_is_documented_read_only() -> None:
+    resolve_methods = (
+        "resolve_scan",
+        "resolve_candidate",
+        "resolve_validation_decision",
+        "resolve_applied_interpretation",
+        "resolve_recipe",
+    )
+
+    for method_name in resolve_methods:
+        doc = inspect.getdoc(getattr(DataInterpretationSessionState, method_name))
+        assert doc is not None
+        assert "read-only" in doc
+        assert "session mutators" in doc
+
+
+def test_restored_session_checkpoint_keeps_nested_values_isolated() -> None:
+    source = _state()
+    scan = _scan(source.next_id("scan"))
+    candidate = _candidate(scan, source.next_id("candidate"))
+    preview = _preview(candidate, source.next_id("preview"))
+    source.record_scan(scan)
+    source.record_preview(candidate, preview)
+    checkpoint = source.checkpoint_session_state()
+    restored = _state()
+
+    restored.restore_session_state(checkpoint)
+    checkpoint.previews[preview.preview_id].metadata_preview.append(
+        {"file": "mutated-after-restore.fif"}
+    )
+
+    assert restored.snapshot().metadata_preview == [{"file": "sub-01_raw.fif"}]
+
+
+def test_staged_session_checkpoint_no_longer_describes_detached_owner() -> None:
+    state = _state()
+    scan = _scan(state.next_id("scan"))
+    state.record_scan(scan)
+
+    staged = state.stage_session_state()
+
+    assert staged.scans == {scan.scan_id: scan}
+    assert state.snapshot().has_scan_result is False
+    assert state.session_checkpoint_is_current(staged) is False
 
 
 def test_new_label_import_does_not_mutate_previous_recipe() -> None:

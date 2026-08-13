@@ -1263,6 +1263,7 @@ class GuiCampaignDriver:
         max_silence = 0.0
         heartbeat_count = 0
         previous_signature: tuple[str, ...] | None = None
+        last_observed: ActiveOperationEvidence | None = None
         while True:
             now = time.monotonic()
             progress = self._visible_operation_progress()
@@ -1284,6 +1285,7 @@ class GuiCampaignDriver:
                         "completed"
                     )
                 if candidate == expected_id:
+                    last_observed = self._active_operation_evidence(progress)
                     signature = self._progress_signature(progress)
                     if signature != previous_signature:
                         max_silence = max(max_silence, now - last_heartbeat_at)
@@ -1304,9 +1306,19 @@ class GuiCampaignDriver:
             silence = now - last_heartbeat_at
             max_silence = max(max_silence, silence)
             if silence > max_progress_silence_seconds:
+                detail = (
+                    ""
+                    if last_observed is None
+                    else (
+                        f"; kind={last_observed.operation_kind!r}, "
+                        f"stage={last_observed.stage!r}, "
+                        f"phase={last_observed.phase!r}, "
+                        f"progress={last_observed.progress['display']!r}"
+                    )
+                )
                 raise DriverContractError(
                     f"operation {expected_id} had no visible progress for "
-                    f"{silence:.3f}s"
+                    f"{silence:.3f}s{detail}"
                 )
             if now - started > timeout_seconds:
                 raise DriverContractError(f"operation {expected_id} did not complete")
