@@ -207,18 +207,12 @@ class ProductRecommendedJourneyScaffold:
             )
             self._capture_visible_stage("match_labels")
             review_acknowledgements.append(match_acknowledgement)
+            # The final Next may synchronously close this preview and enter a
+            # freshly rebuilt confirmation dialog before the click returns.
+            # Arm the visible confirmation interaction first so that nested
+            # event loop can be closed without blocking this callback stack.
+            QTimer.singleShot(0, interact_with_reopened_confirmation)
             self.driver.click(VisibleControl.WIZARD_NEXT, timeout_seconds=30.0)
-            try:
-                self.driver.control(
-                    VisibleControl.WIZARD_CONFIRM,
-                    timeout_seconds=0.0,
-                )
-            except DriverContractError:
-                # Match Labels may close the synchronous preview so the backend
-                # can refresh its decision before reopening Review and Import.
-                QTimer.singleShot(0, interact_with_reopened_confirmation)
-                return
-            confirm_import()
 
         def interact_with_synchronous_preview() -> None:
             try:

@@ -2655,6 +2655,7 @@ def test_import_action_and_subject_dialog_are_captured_on_distinct_surfaces() ->
 
         def click(self, control, *, timeout_seconds):
             del timeout_seconds
+            QApplication.processEvents()
             return self._ack(control)
 
         @staticmethod
@@ -2713,13 +2714,15 @@ def test_import_journey_traverses_and_closes_synchronous_preview_exec(qtbot) -> 
     next_button = QPushButton("Next", dialog)
     next_button.setObjectName("DataImportNextButton")
     next_button.setAccessibleName("Next: Load Labels")
-    confirm_button = QPushButton("Confirm and Import", dialog)
+    confirm_dialog = QDialog()
+    confirm_layout = QVBoxLayout(confirm_dialog)
+    confirm_button = QPushButton("Confirm and Import", confirm_dialog)
     confirm_button.setObjectName("DataImportConfirmButton")
     confirm_button.setAccessibleName("Confirm and Import")
-    confirm_button.hide()
     layout.addWidget(next_button)
-    layout.addWidget(confirm_button)
+    confirm_layout.addWidget(confirm_button)
     qtbot.addWidget(dialog)
+    qtbot.addWidget(confirm_dialog)
     step = 0
 
     def advance() -> None:
@@ -2728,12 +2731,21 @@ def test_import_journey_traverses_and_closes_synchronous_preview_exec(qtbot) -> 
         if step < 4:
             next_button.setAccessibleName(f"Next: step {step + 1}")
             return
-        next_button.hide()
-        confirm_button.show()
+        dialog.accept()
+        assert REAL_QDIALOG_EXEC(confirm_dialog) == QDialog.DialogCode.Accepted
 
     next_button.clicked.connect(advance)
-    confirm_button.clicked.connect(dialog.accept)
-    gui_driver = GuiCampaignDriver(dialog, poll_interval_ms=1)
+    confirm_button.clicked.connect(confirm_dialog.accept)
+    gui_driver = GuiCampaignDriver(
+        poll_interval_ms=1,
+        control_lookup=lambda name: (
+            next_button
+            if name is VisibleControl.WIZARD_NEXT and next_button.isVisible()
+            else confirm_button
+            if name is VisibleControl.WIZARD_CONFIRM and confirm_button.isVisible()
+            else None
+        ),
+    )
 
     class _SynchronousImportDriver:
         @staticmethod
@@ -2834,6 +2846,7 @@ def test_import_journey_traverses_and_closes_synchronous_preview_exec(qtbot) -> 
 
     assert step == 4
     assert dialog.result() == QDialog.DialogCode.Accepted
+    assert confirm_dialog.result() == QDialog.DialogCode.Accepted
     assert journey.observed_stage_order()[:5] == (
         "import_bids_folder",
         "select_subjects",
