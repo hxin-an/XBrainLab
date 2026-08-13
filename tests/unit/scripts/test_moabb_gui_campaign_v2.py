@@ -2146,6 +2146,37 @@ def test_driver_waits_past_early_stage_and_captures_meaningful_progress(qtbot) -
     )
 
 
+def test_driver_accepts_bids_review_metadata_as_meaningful_progress(qtbot) -> None:
+    window = QMainWindow()
+    status = window.statusBar()
+    status.setObjectName("OwnedOperationProgress")
+    status.setProperty("operationId", "review-operation")
+    status.setProperty("operationPhase", "running")
+    status.setProperty("stage", "Materializing BIDS review metadata")
+    status.setProperty("progress", "0/2")
+    status.setProperty("indeterminate", False)
+    status.showMessage("Materializing BIDS review metadata · 0/2")
+    qtbot.addWidget(window)
+    window.show()
+
+    evidence = GuiCampaignDriver(window).wait_for_meaningful_active_operation(
+        allowed_stages=CANCELLATION_MEANINGFUL_STAGES["review"],
+        timeout_seconds=1.0,
+    )
+
+    assert evidence == ActiveOperationEvidence(
+        operation_id="review-operation",
+        stage="Materializing BIDS review metadata",
+        phase="running",
+        progress={
+            "display": "0/2",
+            "completed": 0,
+            "total": 2,
+            "indeterminate": False,
+        },
+    )
+
+
 def test_cancel_click_rechecks_the_exact_meaningful_operation(qtbot) -> None:
     window = QMainWindow()
     cancel = QPushButton("Cancel", window)
@@ -2212,6 +2243,9 @@ def test_meaningful_cancellation_stage_families_are_product_backed() -> None:
         "saliency",
     }
     assert "Hashing reviewed import content" in CANCELLATION_MEANINGFUL_STAGES["apply"]
+    assert (
+        "Materializing BIDS review metadata" in CANCELLATION_MEANINGFUL_STAGES["review"]
+    )
     assert {
         "Preparing import",
         "Preparing import review",

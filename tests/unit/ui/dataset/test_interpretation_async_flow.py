@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, call
 
 from PyQt6 import sip
 from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QPushButton, QWidget
+from PyQt6.QtWidgets import QMainWindow, QPushButton, QWidget
 
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
@@ -116,6 +116,114 @@ def test_interpretation_busy_surface_keeps_visible_cancel_enabled(qtbot) -> None
     assert reset.isEnabled() is True
     assert panel.table.isEnabled() is True
     assert cancel.isEnabled() is True
+
+
+def test_catalog_scan_publishes_owned_status_before_worker_is_scheduled(
+    qtbot,
+    monkeypatch,
+) -> None:
+    """Slow BIDS discovery stays observable from the first scheduler boundary."""
+    window = QMainWindow()
+    panel = QWidget(window)
+    cancel = QPushButton("Cancel Import", panel)
+    cast(Any, panel).main_window = window
+    cast(Any, panel).sidebar = SimpleNamespace(import_cancel_btn=cancel)
+    cast(Any, panel).set_busy = lambda _busy: None
+    qtbot.addWidget(window)
+    window.show()
+    status = window.statusBar()
+    status.setObjectName("OwnedOperationProgress")
+    status.setProperty("operationId", "")
+    status.setProperty("stage", "Idle")
+    status.setProperty("operationPhase", "idle")
+
+    result = _success_result(
+        "scan_source",
+        bids_subject_catalog={
+            "eeg_file_count": 1,
+            "subjects": [{"subject": "01", "label": "sub-01", "eeg_file_count": 1}],
+        },
+    )
+
+    class _Service:
+        def begin_owned_operation(self, command):
+            assert command.catalog_only is True
+            return SimpleNamespace(operation_id="catalog-operation-1")
+
+        def get_owned_operation(self, operation_id):
+            assert operation_id == "catalog-operation-1"
+            return SimpleNamespace(
+                phase=SimpleNamespace(value="pending"),
+                stage="Queued",
+                completed=None,
+                total=None,
+                indeterminate=True,
+                cancel_requested=False,
+                cancellable=True,
+            )
+
+        def cancel_owned_operation(self, _operation_id):
+            return True
+
+        def fail_owned_operation(self, operation_id, *, message):
+            raise AssertionError((operation_id, message))
+
+        def execute(
+            self,
+            command,
+            *,
+            expected_publication_generation=None,
+            operation_id=None,
+        ):
+            assert command.catalog_only is True
+            assert expected_publication_generation is None
+            assert operation_id == "catalog-operation-1"
+            return result
+
+    workers = []
+    status_at_schedule: list[tuple[str, str, str]] = []
+
+    class _ThreadPool:
+        def start(self, worker):
+            status_at_schedule.append(
+                (
+                    str(status.property("operationId") or ""),
+                    str(status.property("stage") or ""),
+                    str(status.property("operationPhase") or ""),
+                )
+            )
+            workers.append(worker)
+
+    monkeypatch.setattr(
+        application_capabilities,
+        "application_ui_runtime",
+        lambda _context: _Service(),
+    )
+    monkeypatch.setattr(
+        async_command_runner.QThreadPool,
+        "globalInstance",
+        lambda: _ThreadPool(),
+    )
+    handler = DatasetActionHandler(panel)
+
+    outcome = handler._data_interpretation._start_bids_subject_selection_async(
+        "/tmp/bids-root"
+    )
+
+    assert outcome is not None
+    assert outcome.status is InteractionStatus.ACCEPTED
+    assert status_at_schedule == [("catalog-operation-1", "Queued", "pending")]
+    qtbot.waitUntil(
+        lambda: status.currentMessage() == "Queued · Working…",
+        timeout=1_500,
+    )
+    assert status.property("operationId") == "catalog-operation-1"
+    assert status.property("stage") == "Queued"
+    assert status.property("operationPhase") == "pending"
+    presenter = handler._data_interpretation._operation_presenter
+    assert presenter is not None
+    presenter.abandon()
+    workers[0].signals.finished.emit()
 
 
 def test_label_configuration_merge_replaces_mutually_exclusive_source_state():

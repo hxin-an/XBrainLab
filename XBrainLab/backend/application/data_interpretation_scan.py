@@ -46,6 +46,7 @@ from .owned_work import owned_work_checkpoint
 
 _MAX_SCAN_DEPTH = 8
 _MAX_SCAN_FILES = 5000
+BIDS_REVIEW_METADATA_STAGE = "Materializing BIDS review metadata"
 _WINDOWS_FILE_ATTRIBUTE_REPARSE_POINT = getattr(
     stat,
     "FILE_ATTRIBUTE_REPARSE_POINT",
@@ -368,6 +369,9 @@ def scan_source_path(
                 for file_path in all_files
                 if resource_reader.admits(file_path)
             ]
+    bids_review_metadata_total = (
+        len(eeg_files) + 1 if materialize_metadata and source_kind == "bids" else None
+    )
     metadata_guard = (
         resource_reader.guard(
             metadata_files,
@@ -376,6 +380,12 @@ def scan_source_path(
         if materialize_metadata and resource_reader is not None and metadata_files
         else contextlib.nullcontext()
     )
+    if bids_review_metadata_total is not None:
+        owned_work_checkpoint(
+            BIDS_REVIEW_METADATA_STAGE,
+            completed=0,
+            total=bids_review_metadata_total,
+        )
     with metadata_guard:
         bids = _bids_summary(
             scan_root,
@@ -389,6 +399,12 @@ def scan_source_path(
             ],
             materialize=materialize_metadata,
             admitted_metadata_files=metadata_files,
+        )
+    if bids_review_metadata_total is not None:
+        owned_work_checkpoint(
+            BIDS_REVIEW_METADATA_STAGE,
+            completed=1,
+            total=bids_review_metadata_total,
         )
     scope_issue = str(scope.bids.get("root_validation_issue") or "")
     materialized_issue = str(bids.get("root_validation_issue") or "")
@@ -434,10 +450,15 @@ def scan_source_path(
             bids[key] = dict(value) if isinstance(value, dict) else list(value)
     if "selection_root" in scope.bids:
         bids["selection_root"] = str(scope.bids["selection_root"])
-    metadata = [
-        _metadata_for_file(Path(file_path), scan_root, source_kind)
-        for file_path in eeg_files
-    ]
+    metadata: list[FileMetadataResolution] = []
+    for index, file_path in enumerate(eeg_files, start=1):
+        metadata.append(_metadata_for_file(Path(file_path), scan_root, source_kind))
+        if bids_review_metadata_total is not None:
+            owned_work_checkpoint(
+                BIDS_REVIEW_METADATA_STAGE,
+                completed=index + 1,
+                total=bids_review_metadata_total,
+            )
     format_capabilities = _format_capabilities(
         all_files,
         resource_reader=resource_reader,

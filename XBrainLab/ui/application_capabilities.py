@@ -1603,6 +1603,21 @@ def execute_application_command_async(
         on_result=on_result,
         on_error=on_error,
     )
+    if operation_id is not None and on_operation_started is not None:
+        try:
+            # Publish the backend-owned identity before worker scheduling.  A
+            # cold Qt pool (or another slow scheduler boundary) must not leave
+            # the visible product surface looking idle after the user action.
+            on_operation_started(operation_id)
+        except Exception:
+            cancel_application_operation(
+                context,
+                operation_id,
+                runtime=application_runtime,
+            )
+            logger.exception("Async operation-start callback failed")
+            completion_callbacks.mark_started(False)
+            return False
     started = QtApplicationCommandRunner(
         context=context,
         command=command,
@@ -1628,16 +1643,6 @@ def execute_application_command_async(
             operation_id,
             message="The interface worker could not be scheduled.",
         )
-    elif operation_id is not None and on_operation_started is not None:
-        try:
-            on_operation_started(operation_id)
-        except Exception:
-            cancel_application_operation(
-                context,
-                operation_id,
-                runtime=application_runtime,
-            )
-            logger.exception("Async operation-start callback failed")
     completion_callbacks.mark_started(started)
     return started
 

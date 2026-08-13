@@ -16,6 +16,7 @@ _TRANSIENT_DEADLINE_ATTRIBUTE = "_xbrainlab_transient_status_deadline"
 _OWNED_MESSAGE_ATTRIBUTE = "_xbrainlab_owned_operation_status_message"
 _OWNED_OPERATION_ATTRIBUTE = "_xbrainlab_owned_operation_status_id"
 _OWNED_DEFERRED_ATTRIBUTE = "_xbrainlab_owned_operation_deferred_token"
+_OWNED_DEFERRED_OPERATION_ATTRIBUTE = "_xbrainlab_owned_operation_deferred_operation_id"
 
 
 def show_status_message(
@@ -111,6 +112,7 @@ def _show_owned_operation_message(
     previous_operation = str(getattr(status_bar, _OWNED_OPERATION_ATTRIBUTE, "") or "")
     terminal = phase.casefold() in {"completed", "cancelled", "failed"}
     if terminal:
+        _clear_deferred_owned_message(status_bar)
         if (
             previous_operation == operation_id
             and previous_message
@@ -124,8 +126,18 @@ def _show_owned_operation_message(
 
     transient_remaining = transient_status_remaining_ms(status_bar)
     if transient_remaining > 0 and current_message() != previous_message:
+        deferred_operation = str(
+            getattr(status_bar, _OWNED_DEFERRED_OPERATION_ATTRIBUTE, "") or ""
+        )
+        if deferred_operation == operation_id:
+            return
         token = int(getattr(status_bar, _OWNED_DEFERRED_ATTRIBUTE, 0) or 0) + 1
         setattr(status_bar, _OWNED_DEFERRED_ATTRIBUTE, token)
+        setattr(
+            status_bar,
+            _OWNED_DEFERRED_OPERATION_ATTRIBUTE,
+            operation_id,
+        )
         QTimer.singleShot(
             min(transient_remaining, MAX_TRANSIENT_BEFORE_OWNED_PROGRESS_MS),
             lambda: _publish_deferred_owned_message(
@@ -139,6 +151,7 @@ def _show_owned_operation_message(
             ),
         )
         return
+    _clear_deferred_owned_message(status_bar)
     if cancel_requested or phase.casefold() == "cancelling":
         message = f"Cancelling · {stage}"
     elif progress == "indeterminate":
@@ -176,6 +189,7 @@ def _publish_deferred_owned_message(
         current_phase = str(status_bar.property("operationPhase") or phase).casefold()
         if current_phase in {"completed", "cancelled", "failed"}:
             return
+        setattr(status_bar, _OWNED_DEFERRED_OPERATION_ATTRIBUTE, "")
         show_message = getattr(status_bar, "showMessage", None)
         if not callable(show_message):
             return
@@ -193,6 +207,18 @@ def _publish_deferred_owned_message(
         # The QStatusBar can be destroyed after the liveness probe while this
         # queued callback is being delivered during MainWindow teardown.
         return
+
+
+def _clear_deferred_owned_message(status_bar: Any) -> None:
+    """Invalidate one pending reveal without repeatedly resetting its timer."""
+    deferred_operation = str(
+        getattr(status_bar, _OWNED_DEFERRED_OPERATION_ATTRIBUTE, "") or ""
+    )
+    if not deferred_operation:
+        return
+    token = int(getattr(status_bar, _OWNED_DEFERRED_ATTRIBUTE, 0) or 0) + 1
+    setattr(status_bar, _OWNED_DEFERRED_ATTRIBUTE, token)
+    setattr(status_bar, _OWNED_DEFERRED_OPERATION_ATTRIBUTE, "")
 
 
 def transient_status_remaining_ms(status_bar: Any) -> int:
