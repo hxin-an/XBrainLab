@@ -669,6 +669,69 @@ def test_materializer_uses_generic_convert_to_bids_and_freezes_all_format_files(
     assert len(row["bids_validation"]["report_sha256"]) == 64
 
 
+def test_materializer_downgrades_incomplete_head_montage_for_generic_converter(
+    tmp_path: Path,
+) -> None:
+    import mne
+    import numpy as np
+
+    manifest_path, gui_plan_path = _write_contracts(tmp_path, class_names=("FakeEDF",))
+    calls: list[dict[str, Any]] = []
+
+    class IncompleteHeadMontageDataset(_FakeDataset):
+        def __init__(self, class_name: str, *, calls: list[dict[str, Any]]) -> None:
+            super().__init__(class_name, calls=calls)
+            raw = mne.io.RawArray(
+                np.zeros((2, 100)),
+                mne.create_info(["C3", "C4"], 100, ["eeg", "eeg"]),
+                verbose="ERROR",
+            )
+            raw.set_montage(
+                mne.channels.make_dig_montage(
+                    ch_pos={"C3": (-0.05, 0.0, 0.08), "C4": (0.05, 0.0, 0.08)},
+                    coord_frame="head",
+                )
+            )
+            with raw.info._unlock():
+                raw.info["dig"] = [
+                    point
+                    for point in raw.info["dig"]
+                    if point["kind"] != mne.io.constants.FIFF.FIFFV_POINT_CARDINAL
+                ]
+            self.raw = raw
+
+        def get_data(self, *, subjects: list[int]) -> dict[str, Any]:
+            assert subjects == [1]
+            return {"1": {"0": {"0": self.raw}}}
+
+        def convert_to_bids(self, **kwargs: Any) -> Path:
+            raw = self.get_data(subjects=kwargs["subjects"])["1"]["0"]["0"]
+            positions = raw.get_montage().get_positions()
+            if positions["coord_frame"] == "head" and any(
+                positions[name] is None for name in ("nasion", "lpa", "rpa")
+            ):
+                raise ValueError(
+                    "'head' coordinate frame must contain nasion and left/right "
+                    "pre-auricular landmarks"
+                )
+            assert positions["coord_frame"] == "unknown"
+            assert set(positions["ch_pos"]) == {"C3", "C4"}
+            return super().convert_to_bids(**kwargs)
+
+    result = run_materialization(
+        _inputs(
+            tmp_path,
+            manifest_path=manifest_path,
+            gui_plan_path=gui_plan_path,
+            dataset_factory=lambda selected: IncompleteHeadMontageDataset(
+                selected, calls=calls
+            ),
+        )
+    )
+
+    assert result["status"] == "ready", result["datasets"][0]["error"]
+
+
 def test_materializer_independently_copies_and_seals_source_seed(
     tmp_path: Path,
 ) -> None:

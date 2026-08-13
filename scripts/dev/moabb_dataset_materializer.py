@@ -470,19 +470,20 @@ def _materialize_one(
         if source_mode == SOURCE_MODE_MOABB_CONVERT:
             with _temporary_mne_environment(source_stage):
                 dataset = inputs.dataset_factory(class_name)
-                converter = _require_converter(
-                    getattr(dataset, "convert_to_bids", None), class_name
-                )
-                returned = Path(
-                    converter(
-                        path=output_stage,
-                        subjects=list(row["subjects"]),
-                        overwrite=False,
-                        format=str(row["output_format"]),
-                        verbose="ERROR",
-                        generate_figures=False,
+                with _temporary_bids_compatible_montages(dataset):
+                    converter = _require_converter(
+                        getattr(dataset, "convert_to_bids", None), class_name
                     )
-                )
+                    returned = Path(
+                        converter(
+                            path=output_stage,
+                            subjects=list(row["subjects"]),
+                            overwrite=False,
+                            format=str(row["output_format"]),
+                            verbose="ERROR",
+                            generate_figures=False,
+                        )
+                    )
             staged_bids_root = _validate_returned_bids_root(
                 returned,
                 output_stage=output_stage,
@@ -644,6 +645,78 @@ def _require_converter(
             f"{class_name} has no BaseDataset.convert_to_bids method"
         )
     return converter
+
+
+@contextmanager
+def _temporary_bids_compatible_montages(dataset: Any) -> Iterator[None]:
+    """Preserve electrode positions while avoiding invalid head coordinates.
+
+    Some MOABB loaders expose digitized channel positions in the MNE ``head``
+    frame without the three fiducials required to define that frame in BIDS.
+    MNE-BIDS rejects those raws before conversion.  Wrap the generic dataset
+    seam and relabel only that incomplete geometry as ``unknown``; this keeps
+    observed electrode positions without inventing anatomical landmarks.
+    """
+    original_get_data = getattr(dataset, "get_data", None)
+    if not callable(original_get_data):
+        yield
+        return
+
+    instance_attributes = getattr(dataset, "__dict__", {})
+    had_instance_override = "get_data" in instance_attributes
+    previous_instance_value = instance_attributes.get("get_data")
+
+    def compatible_get_data(*args: Any, **kwargs: Any) -> Any:
+        data = original_get_data(*args, **kwargs)
+        _downgrade_incomplete_head_montages(data)
+        return data
+
+    dataset.get_data = compatible_get_data
+    try:
+        yield
+    finally:
+        if had_instance_override:
+            dataset.get_data = previous_instance_value
+        else:
+            del dataset.get_data
+
+
+def _downgrade_incomplete_head_montages(value: Any) -> None:
+    """Relabel incomplete head-frame MNE montages inside MOABB session data."""
+    from mne.io import BaseRaw
+    from mne.io.constants import FIFF
+
+    coord_unknown = FIFF["FIFFV_COORD_UNKNOWN"]
+    coord_head = FIFF["FIFFV_COORD_HEAD"]
+
+    if isinstance(value, BaseRaw):
+        montage = value.get_montage()
+        if montage is None:
+            return
+        positions = montage.get_positions()
+        if positions["coord_frame"] != "head" or all(
+            positions[name] is not None for name in ("nasion", "lpa", "rpa")
+        ):
+            return
+        # MNE's public set_montage() estimates missing fiducials and transforms
+        # the coordinates back to ``head``.  Relabel the existing digitization
+        # points in-place instead: the numeric electrode observations remain
+        # untouched and their anatomical frame is explicitly unknown.
+        with value.info._unlock():
+            for point in value.info["dig"] or ():
+                point["coord_frame"] = coord_unknown
+            for channel in value.info["chs"]:
+                if channel["coord_frame"] == coord_head:
+                    channel["coord_frame"] = coord_unknown
+        value.info._check_consistency()
+        return
+    if isinstance(value, Mapping):
+        for nested in value.values():
+            _downgrade_incomplete_head_montages(nested)
+        return
+    if isinstance(value, (list, tuple)):
+        for nested in value:
+            _downgrade_incomplete_head_montages(nested)
 
 
 def _require_source_artifacts(artifacts: list[dict[str, Any]]) -> None:
