@@ -957,11 +957,6 @@ class DataInterpretationActionCoordinator:
             dict(raw_dialog_result) if isinstance(raw_dialog_result, dict) else {}
         )
         import_confirmed = dialog_result.get("confirmed") is True
-        if import_confirmed:
-            self._show_status(
-                "Preparing import...",
-                0,
-            )
         raw_dialog_choices = dialog_result.get("choices")
         dialog_choices: dict[str, Any] = (
             {str(key): value for key, value in raw_dialog_choices.items()}
@@ -1779,11 +1774,6 @@ class DataInterpretationActionCoordinator:
             resource_preflight_confirmed: bool = False,
             resource_preflight_token: str | None = None,
         ) -> InteractionOutcome:
-            if not resource_preflight_confirmed:
-                self._show_status(
-                    "Importing EEG data and labels...",
-                    0,
-                )
             apply_command = ApplyInterpretationCommand(
                 candidate_id=candidate_id,
                 confirmed=dialog_result.get("confirmed") is True,

@@ -852,6 +852,26 @@ class _BlockingVisibleApplyRuntime:
         )
 
 
+class _FastVisibleApplyRuntime(_BlockingVisibleApplyRuntime):
+    def execute(
+        self,
+        command,
+        *,
+        expected_publication_generation=None,
+        operation_id=None,
+    ):
+        assert isinstance(command, ApplyInterpretationCommand)
+        assert expected_publication_generation == 17
+        assert operation_id == self.operation_id
+        self.worker_started.set()
+        self.snapshot.phase.value = "completed"
+        self.snapshot.stage = "Dataset import complete"
+        return _success_result(
+            "apply_interpretation",
+            applied_interpretation={},
+        )
+
+
 def _visible_apply_handler(qtbot):
     window = QMainWindow()
     panel = QWidget(window)
@@ -991,6 +1011,41 @@ def test_confirmed_revalidation_to_apply_immediately_publishes_owned_status(
     _assert_visible_apply_completes(qtbot, status, runtime)
 
 
+def test_fast_apply_preserves_exact_visible_pending_then_terminal_evidence(
+    qtbot,
+    monkeypatch,
+) -> None:
+    _window, handler, status = _visible_apply_handler(qtbot)
+    runtime = _FastVisibleApplyRuntime("fast-apply-operation")
+    monkeypatch.setattr(
+        application_capabilities,
+        "application_ui_runtime",
+        lambda _context: runtime,
+    )
+
+    outcome = handler._data_interpretation._apply_interpretation_async(
+        _review_state(publication_generation=17),
+        {"confirmed": True, "save_recipe": False},
+    )
+
+    assert outcome.status is InteractionStatus.ACCEPTED
+    assert status.property("operationId") == runtime.operation_id
+    assert status.property("operationKind") == "import_apply"
+    assert status.property("operationPhase") == "pending"
+    assert status.property("stage") == "Preparing interpretation apply"
+    assert status.currentMessage() == "Preparing interpretation apply · Working…"
+
+    assert runtime.worker_started.wait(timeout=1.0)
+    qtbot.waitUntil(
+        lambda: status.property("operationId") == runtime.operation_id
+        and status.property("operationKind") == "import_apply"
+        and status.property("operationPhase") == "completed"
+        and status.property("stage") == "Dataset import complete"
+        and status.currentMessage() == "ok",
+        timeout=1_500,
+    )
+
+
 def test_label_field_repreview_reopens_match_labels_instead_of_applying(
     monkeypatch,
 ) -> None:
@@ -1051,7 +1106,7 @@ def test_label_field_repreview_reopens_match_labels_instead_of_applying(
     apply_review.assert_not_called()
 
 
-def test_confirm_import_shows_preparing_status_before_async_revalidation(
+def test_confirm_import_does_not_mask_owned_status_before_async_revalidation(
     monkeypatch,
 ) -> None:
     panel = MagicMock()
@@ -1084,7 +1139,7 @@ def test_confirm_import_shows_preparing_status_before_async_revalidation(
     )
 
     def _start_revalidation(**_kwargs):
-        assert statuses == [("Preparing import...", 0)]
+        assert statuses == []
         return InteractionOutcome.accepted("Import revalidation scheduled.")
 
     revalidate = MagicMock(side_effect=_start_revalidation)
@@ -1103,7 +1158,7 @@ def test_confirm_import_shows_preparing_status_before_async_revalidation(
     )
 
     assert outcome.status is InteractionStatus.ACCEPTED
-    assert statuses == [("Preparing import...", 0)]
+    assert statuses == []
     revalidate.assert_called_once()
 
 
@@ -1153,7 +1208,6 @@ def test_confirm_import_revalidation_worker_failure_replaces_preparing_status(
 
     assert outcome.status is InteractionStatus.ACCEPTED
     assert statuses == [
-        ("Preparing import...", 0),
         ("Dataset import failed · Review the import settings", 7000),
     ]
     handler._data_interpretation._bindings.message_box().warning.assert_called_once()
@@ -1218,7 +1272,6 @@ def test_confirm_import_revalidation_cancel_replaces_preparing_status(
     assert outcome.status is InteractionStatus.ACCEPTED
     assert terminal.status is InteractionStatus.CANCELLED
     assert statuses == [
-        ("Preparing import...", 0),
         ("Dataset import cancelled", 7000),
     ]
 
@@ -1375,7 +1428,7 @@ def test_apply_uses_the_generation_reviewed_by_the_user(qtbot, monkeypatch):
     qtbot.waitUntil(lambda: observed_generations == [17], timeout=1000)
 
 
-def test_apply_shows_loading_status_before_dataset_payload_is_loaded(monkeypatch):
+def test_apply_leaves_in_flight_status_to_owned_operation_presenter(monkeypatch):
     panel = MagicMock()
     handler = DatasetActionHandler(panel)
     statuses: list[tuple[str, int]] = []
@@ -1397,7 +1450,7 @@ def test_apply_shows_loading_status_before_dataset_payload_is_loaded(monkeypatch
     )
 
     assert outcome.status is InteractionStatus.ACCEPTED
-    assert statuses == [("Importing EEG data and labels...", 0)]
+    assert statuses == []
 
     on_result = execute.call_args.kwargs["on_result"]
     completed = _success_result(
@@ -1440,7 +1493,6 @@ def test_apply_replaces_loading_status_when_the_worker_fails(monkeypatch):
 
     assert outcome.status is InteractionStatus.ACCEPTED
     assert statuses == [
-        ("Importing EEG data and labels...", 0),
         ("Dataset import failed · Review the import settings", 7000),
     ]
     assert present_error.call_args.kwargs["error_info"] == error
@@ -1468,7 +1520,6 @@ def test_apply_replaces_loading_status_when_dispatch_cannot_start(monkeypatch):
 
     assert outcome.status is InteractionStatus.BLOCKED
     assert statuses == [
-        ("Importing EEG data and labels...", 0),
         ("Dataset import failed · Review the import settings", 7000),
     ]
 
@@ -1508,7 +1559,6 @@ def test_apply_owned_cancel_reopens_review_without_presenting_a_failure(
     retry.assert_called_once_with()
     critical.assert_not_called()
     assert statuses == [
-        ("Importing EEG data and labels...", 0),
         ("Dataset import cancelled · Review preserved", 7000),
     ]
 
@@ -3142,7 +3192,6 @@ def test_apply_warning_confirmation_resubmits_trusted_receipt_async(
     qtbot.waitUntil(lambda: len(commands) == 2, timeout=2000)
     qtbot.wait(50)
     assert status.call_args_list == [
-        call("Importing EEG data and labels...", 0),
         call("ok"),
     ]
     assert commands[0].resource_preflight_confirmed is False
@@ -3205,7 +3254,6 @@ def test_apply_warning_handoff_ack_completes_without_result_refresh(
     assert outcome.status is InteractionStatus.ACCEPTED
     qtbot.waitUntil(lambda: len(terminal) == 1, timeout=2000)
     assert status.call_args_list == [
-        call("Importing EEG data and labels...", 0),
         call("ok"),
     ]
 
@@ -3264,7 +3312,6 @@ def test_apply_warning_handoff_refusal_reports_only_cancelled(
     assert terminal[0].status is InteractionCompletionStatus.CANCELLED
     assert "cancelled" in terminal[0].message.lower()
     assert status.call_args_list == [
-        call("Importing EEG data and labels...", 0),
         call("Dataset import cancelled"),
     ]
 
