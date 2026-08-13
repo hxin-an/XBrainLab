@@ -2292,6 +2292,36 @@ def test_apply_kind_wait_allows_a_stable_preceding_review_owner(qtbot) -> None:
     assert active.operation_kind == "import_apply"
 
 
+def test_apply_kind_wait_accepts_new_visible_completed_owner(qtbot) -> None:
+    window = QMainWindow()
+    status = window.statusBar()
+    status.setObjectName("OwnedOperationProgress")
+    status.setProperty("operationId", "apply-operation")
+    status.setProperty("operationKind", "import_apply")
+    status.setProperty("operationPhase", "completed")
+    status.setProperty("stage", "Dataset import complete")
+    status.setProperty("progress", "indeterminate")
+    status.setProperty("indeterminate", True)
+    status.showMessage("Applied interpretation and loaded 10 file(s).")
+    qtbot.addWidget(window)
+    window.show()
+    driver = GuiCampaignDriver(window, poll_interval_ms=2)
+
+    published = driver.wait_for_active_operation_kind(
+        "import_apply",
+        timeout_seconds=0.2,
+        excluding_operation_id="review-operation",
+    )
+    completed = driver.wait_for_exact_owned_operation_completion(
+        published.operation_id,
+        timeout_seconds=0.2,
+    )
+
+    assert published.operation_id == "apply-operation"
+    assert published.phase == "completed"
+    assert completed.operation_id == "apply-operation"
+
+
 def test_exact_apply_wait_rejects_frozen_indeterminate_progress(qtbot) -> None:
     window = QMainWindow()
     status = window.statusBar()

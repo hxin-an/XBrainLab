@@ -1048,7 +1048,7 @@ class GuiCampaignDriver:
         timeout_seconds: float,
         excluding_operation_id: str | None = None,
     ) -> ActiveOperationEvidence:
-        """Pin a visible non-terminal owner by backend-owned work kind.
+        """Pin a newly published owner by backend-owned work kind.
 
         A preceding review/validation owner may legitimately remain visible
         while its result callback schedules Apply. Liveness for the target
@@ -1077,14 +1077,18 @@ class GuiCampaignDriver:
                         operation_id
                         and operation_id != excluding_operation_id
                         and observed_kind == expected_kind
-                        and phase in {"pending", "running", "cancelling"}
                     ):
                         evidence = self._active_operation_evidence(progress)
                         if evidence.operation_kind != expected_kind:
                             raise DriverContractError(
                                 "visible operation kind changed while it was pinned"
                             )
-                        return evidence
+                        if phase in {"pending", "running", "cancelling", "completed"}:
+                            return evidence
+                        if phase in {"cancelled", "failed"}:
+                            raise DriverContractError(
+                                f"operation {operation_id} reached {phase!r}"
+                            )
                 if time.monotonic() - started > timeout_seconds:
                     raise DriverContractError(
                         f"no visible active {expected_kind} operation was published"
