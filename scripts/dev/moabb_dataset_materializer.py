@@ -47,6 +47,7 @@ SUPPORTED_FORMATS: Final = CONVERT_OUTPUT_FORMATS | FORMAL_BIDS_MIRROR_FORMATS
 SOURCE_MODE_MOABB_CONVERT: Final = "moabb_convert"
 SOURCE_MODE_FORMAL_BIDS_MIRROR: Final = "formal_bids_mirror"
 FORMAL_BIDS_MIRROR_REQUIRED: Final = "FORMAL_BIDS_MIRROR_REQUIRED"
+SOURCE_RUNTIME_ROOT_NAMES: Final = frozenset({".mne-config"})
 _MIRROR_PROJECTION_FIELDS: Final = (
     "path",
     "size",
@@ -336,11 +337,19 @@ def _materialize_one(
     }
     receipt = _read_optional_object(receipt_path)
     receipt_error = _receipt_error(receipt, expected)
+    legacy_source_inventory: tuple[list[dict[str, Any]], str] | None = None
     if receipt_error is None and receipt is not None:
-        receipt_error = _tree_receipt_error(receipt)
+        receipt, legacy_source_inventory = _normalized_source_receipt(receipt)
+        receipt_error = _tree_receipt_error(
+            receipt,
+            compatible_source_inventory=legacy_source_inventory,
+        )
     if receipt_error is None and receipt is not None and inputs.resume:
         current_product_identity = environment["campaign_product_identity_sha256"]
-        if receipt.get("campaign_product_identity_sha256") != current_product_identity:
+        if (
+            receipt.get("campaign_product_identity_sha256") != current_product_identity
+            or legacy_source_inventory is not None
+        ):
             try:
                 bids_root = Path(str(receipt["bids_root"])).resolve(strict=True)
                 validation = _normalize_bids_validation(
@@ -348,7 +357,10 @@ def _materialize_one(
                     bids_root=bids_root,
                 )
                 _require_passed_bids_validation(validation)
-                _require_unchanged_receipt_tree_after_validation(receipt)
+                _require_unchanged_receipt_tree_after_validation(
+                    receipt,
+                    compatible_source_inventory=legacy_source_inventory,
+                )
             except (
                 MaterializationContractError,
                 OSError,
@@ -370,6 +382,9 @@ def _materialize_one(
                 "bids_validation": validation,
             }
             _atomic_write_json(validation_path, validation)
+            _write_sha256_manifest(
+                source_checksum_path, list(receipt["source_artifacts"])
+            )
             _atomic_write_json(receipt_path, receipt)
             return {
                 "dataset": class_name,
@@ -525,7 +540,7 @@ def _materialize_one(
         )
         # Bind the published tree before authoritative validation. The exact
         # aggregate is stored alongside the validator report below.
-        source_artifacts, source_revision = _hash_tree(source_final)
+        source_artifacts, source_revision = _hash_source_tree(source_final)
         bids_artifacts, bids_revision = _hash_tree(bids_final)
         _require_source_artifacts(source_artifacts)
         upstream_download_artifacts = (
@@ -539,7 +554,7 @@ def _materialize_one(
             bids_root=bids_final,
         )
         _require_passed_bids_validation(validation)
-        post_source_artifacts, post_source_revision = _hash_tree(source_final)
+        post_source_artifacts, post_source_revision = _hash_source_tree(source_final)
         post_bids_artifacts, post_bids_revision = _hash_tree(bids_final)
         _require_matching_tree_snapshots(
             before_source_artifacts=source_artifacts,
@@ -1667,9 +1682,7 @@ def _copy_verified_source_seed(seed_root: Path, source_stage: Path) -> dict[str,
         for child in sorted(seed_root.iterdir(), key=lambda path: path.name)
         if child.name != ".mne-config"
     ]
-    before_artifacts, before_revision = _hash_tree(
-        seed_root, ignored_root_names=frozenset({".mne-config"})
-    )
+    before_artifacts, before_revision = _hash_source_tree(seed_root)
     _require_source_artifacts(before_artifacts)
     for child in seed_entries:
         target = source_stage / child.name
@@ -1685,7 +1698,7 @@ def _copy_verified_source_seed(seed_root: Path, source_stage: Path) -> dict[str,
             raise MaterializationContractError(
                 f"source seed contains a non-regular entry: {child}"
             )
-    copied_artifacts, copied_revision = _hash_tree(source_stage)
+    copied_artifacts, copied_revision = _hash_source_tree(source_stage)
     if copied_artifacts != before_artifacts or copied_revision != before_revision:
         raise MaterializationContractError(
             "source seed changed or copied bytes differ from the verified inventory"
@@ -2106,6 +2119,50 @@ def _hash_tree(
     return artifacts, _canonical_sha256(artifacts)
 
 
+def _hash_source_tree(root: Path) -> tuple[list[dict[str, Any]], str]:
+    """Hash durable source bytes while excluding the isolated MNE runtime home."""
+    return _hash_tree(root, ignored_root_names=SOURCE_RUNTIME_ROOT_NAMES)
+
+
+def _normalized_source_receipt(
+    receipt: dict[str, Any],
+) -> tuple[dict[str, Any], tuple[list[dict[str, Any]], str] | None]:
+    """Project legacy receipts onto the durable source-cache boundary."""
+    raw_artifacts = receipt.get("source_artifacts")
+    if not isinstance(raw_artifacts, list) or not all(
+        isinstance(item, dict) for item in raw_artifacts
+    ):
+        return receipt, None
+    durable_artifacts = [
+        dict(item) for item in raw_artifacts if not _is_runtime_source_artifact(item)
+    ]
+    if len(durable_artifacts) == len(raw_artifacts):
+        return receipt, None
+    legacy_inventory = (
+        [dict(item) for item in raw_artifacts],
+        str(receipt.get("source_revision_sha256") or ""),
+    )
+    return (
+        {
+            **receipt,
+            "source_artifacts": durable_artifacts,
+            "source_revision_sha256": _canonical_sha256(durable_artifacts),
+            "retained_source_bytes": sum(
+                int(item.get("size_bytes") or 0) for item in durable_artifacts
+            ),
+        },
+        legacy_inventory,
+    )
+
+
+def _is_runtime_source_artifact(artifact: dict[str, Any]) -> bool:
+    relative_path = artifact.get("relative_path")
+    if not isinstance(relative_path, str):
+        return False
+    parts = PurePosixPath(relative_path).parts
+    return bool(parts) and parts[0] in SOURCE_RUNTIME_ROOT_NAMES
+
+
 def _file_identity(path: Path) -> tuple[int, int, int, int, int, int]:
     status = path.stat(follow_symlinks=False)
     return (
@@ -2118,13 +2175,17 @@ def _file_identity(path: Path) -> tuple[int, int, int, int, int, int]:
     )
 
 
-def _tree_receipt_error(receipt: dict[str, Any]) -> str | None:
+def _tree_receipt_error(
+    receipt: dict[str, Any],
+    *,
+    compatible_source_inventory: tuple[list[dict[str, Any]], str] | None = None,
+) -> str | None:
     try:
         source_root = Path(receipt["source_root"]).resolve(strict=True)
         conversion_parent = Path(receipt["conversion_parent"]).resolve(strict=True)
         bids_root = Path(receipt["bids_root"]).resolve(strict=True)
         bids_root.relative_to(conversion_parent)
-        source_artifacts, source_revision = _hash_tree(source_root)
+        source_artifacts, source_revision = _hash_source_tree(source_root)
         bids_artifacts, bids_revision = _hash_tree(bids_root)
     except ValueError:
         return "frozen BIDS root escapes its conversion parent"
@@ -2155,7 +2216,13 @@ def _tree_receipt_error(receipt: dict[str, Any]) -> str | None:
     if not source_checksum_path.is_file():
         return "source checksum manifest is missing"
     expected_source_text = _sha256_manifest_text(source_artifacts)
-    if source_checksum_path.read_text(encoding="utf-8") != expected_source_text:
+    accepted_source_texts = {expected_source_text}
+    if compatible_source_inventory is not None:
+        legacy_artifacts, legacy_revision = compatible_source_inventory
+        if legacy_revision != _canonical_sha256(legacy_artifacts):
+            return "source aggregate checksum changed"
+        accepted_source_texts.add(_sha256_manifest_text(legacy_artifacts))
+    if source_checksum_path.read_text(encoding="utf-8") not in accepted_source_texts:
         return "source checksum manifest changed"
     validation_path = Path(str(receipt.get("bids_validation_report") or ""))
     if not validation_path.is_file() or validation_path.is_symlink():
@@ -2178,8 +2245,13 @@ def _tree_receipt_error(receipt: dict[str, Any]) -> str | None:
 
 def _require_unchanged_receipt_tree_after_validation(
     receipt: dict[str, Any],
+    *,
+    compatible_source_inventory: tuple[list[dict[str, Any]], str] | None = None,
 ) -> None:
-    error = _tree_receipt_error(receipt)
+    error = _tree_receipt_error(
+        receipt,
+        compatible_source_inventory=compatible_source_inventory,
+    )
     if error is not None:
         raise MaterializationContractError(
             "frozen bytes changed during authoritative BIDS validation: " + error

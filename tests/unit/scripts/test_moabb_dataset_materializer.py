@@ -834,6 +834,150 @@ def test_materializer_independently_copies_and_seals_source_seed(
     )
 
 
+def test_materializer_excludes_runtime_mne_config_from_source_freeze(
+    tmp_path: Path,
+) -> None:
+    manifest_path, gui_plan_path = _write_contracts(tmp_path, class_names=("FakeEDF",))
+    lock_path = tmp_path / "source-cache/FakeEDF/.mne-config/.mne/mne-python.json.lock"
+
+    class RuntimeConfigDataset(_FakeDataset):
+        def convert_to_bids(self, **kwargs: Any) -> Path:
+            runtime_lock = (
+                Path(os.environ["_MNE_FAKE_HOME_DIR"]) / ".mne/mne-python.json.lock"
+            )
+            runtime_lock.parent.mkdir(parents=True, exist_ok=True)
+            runtime_lock.write_bytes(b"")
+            return super().convert_to_bids(**kwargs)
+
+    def validator(root: Path) -> dict[str, Any]:
+        staged_lock = next(
+            (tmp_path / "source-cache/FakeEDF/.mne-config").rglob("*.lock")
+        )
+        staged_lock.write_bytes(b"runtime-only-validator-state")
+        return _passed_validator(root)
+
+    result = run_materialization(
+        _inputs(
+            tmp_path,
+            manifest_path=manifest_path,
+            gui_plan_path=gui_plan_path,
+            dataset_factory=lambda selected: RuntimeConfigDataset(selected, calls=[]),
+            bids_validator=validator,
+        )
+    )
+
+    assert result["status"] == "ready"
+    assert lock_path.read_bytes() == b"runtime-only-validator-state"
+    frozen = json.loads(Path(result["freeze_manifest"]).read_text(encoding="utf-8"))
+    row = frozen["datasets"][0]
+    assert all(
+        ".mne-config" not in Path(item["relative_path"]).parts
+        for item in row["source_artifacts"]
+    )
+    assert ".mne-config" not in Path(row["source_checksum_manifest"]).read_text(
+        encoding="utf-8"
+    )
+
+    lock_path.write_bytes(b"background-runtime-update")
+    replay = run_materialization(
+        _inputs(
+            tmp_path,
+            manifest_path=manifest_path,
+            gui_plan_path=gui_plan_path,
+            dataset_factory=lambda selected: RuntimeConfigDataset(selected, calls=[]),
+            allow_download=False,
+            bids_validator=validator,
+        )
+    )
+    assert replay["status"] == "ready"
+    assert replay["datasets"][0]["action"] == "reused"
+
+    changed_environment = _environment()
+    changed_environment["git"]["commit"] = "9" * 40
+    changed_environment["campaign_product_identity_sha256"] = (
+        _campaign_product_identity_digest(changed_environment)
+    )
+    changed_environment["identity_sha256"] = changed_environment[
+        "campaign_product_identity_sha256"
+    ]
+    resealed = run_materialization(
+        _inputs(
+            tmp_path,
+            manifest_path=manifest_path,
+            gui_plan_path=gui_plan_path,
+            dataset_factory=lambda selected: RuntimeConfigDataset(selected, calls=[]),
+            environment_identity=changed_environment,
+            allow_download=False,
+            bids_validator=validator,
+        )
+    )
+    assert resealed["status"] == "ready"
+    assert resealed["datasets"][0]["action"] == "resealed"
+
+
+def test_materializer_migrates_legacy_runtime_source_inventory_without_download(
+    tmp_path: Path,
+) -> None:
+    manifest_path, gui_plan_path = _write_contracts(tmp_path, class_names=("FakeEDF",))
+    calls: list[dict[str, Any]] = []
+    common = {
+        "manifest_path": manifest_path,
+        "gui_plan_path": gui_plan_path,
+        "dataset_factory": lambda selected: _FakeDataset(selected, calls=calls),
+    }
+    cold = run_materialization(_inputs(tmp_path, **common))
+    assert cold["status"] == "ready"
+
+    receipt_path = tmp_path / "checksums/FakeEDF.freeze.json"
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    lock_path = tmp_path / "source-cache/FakeEDF/.mne-config/.mne/mne-python.json.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_bytes(b"")
+    legacy_artifact = {
+        "relative_path": ".mne-config/.mne/mne-python.json.lock",
+        "size_bytes": 0,
+        "checksum": {
+            "algorithm": "sha256",
+            "value": hashlib.sha256(b"").hexdigest(),
+        },
+    }
+    legacy_artifacts = sorted(
+        [*receipt["source_artifacts"], legacy_artifact],
+        key=lambda item: item["relative_path"],
+    )
+    receipt["source_artifacts"] = legacy_artifacts
+    receipt["source_revision_sha256"] = _canonical_sha256(legacy_artifacts)
+    receipt["retained_source_bytes"] = sum(
+        item["size_bytes"] for item in legacy_artifacts
+    )
+    receipt_path.write_text(
+        json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    Path(receipt["source_checksum_manifest"]).write_text(
+        "".join(
+            f"{item['checksum']['value']}  {item['relative_path']}\n"
+            for item in legacy_artifacts
+        ),
+        encoding="utf-8",
+    )
+
+    migrated = run_materialization(_inputs(tmp_path, allow_download=False, **common))
+
+    assert migrated["status"] == "ready"
+    assert migrated["network_used"] is False
+    assert migrated["datasets"][0]["action"] == "resealed"
+    assert len(calls) == 1
+    migrated_receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert all(
+        ".mne-config" not in Path(item["relative_path"]).parts
+        for item in migrated_receipt["source_artifacts"]
+    )
+    assert ".mne-config" not in Path(
+        migrated_receipt["source_checksum_manifest"]
+    ).read_text(encoding="utf-8")
+
+
 def test_materializer_keeps_source_and_bids_event_codes_as_distinct_oracles(
     tmp_path: Path,
 ) -> None:
@@ -1435,9 +1579,11 @@ def test_progressive_publish_rehashes_after_validation_and_again_at_final_seal(
     original_hash_tree = materializer._hash_tree
     hash_roots: list[str] = []
 
-    def _counted_hash_tree(root: Path):
+    def _counted_hash_tree(
+        root: Path, *, ignored_root_names: frozenset[str] = frozenset()
+    ):
         hash_roots.append(str(root))
-        return original_hash_tree(root)
+        return original_hash_tree(root, ignored_root_names=ignored_root_names)
 
     monkeypatch.setattr(materializer, "_hash_tree", _counted_hash_tree)
     calls: list[dict[str, Any]] = []
