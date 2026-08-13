@@ -2918,6 +2918,102 @@ def test_import_journey_traverses_and_closes_synchronous_preview_exec(qtbot) -> 
     )
 
 
+def test_import_journey_ignores_stale_first_wait_after_refresh_confirmation(
+    qtbot,
+) -> None:
+    button_parent = QWidget()
+    qtbot.addWidget(button_parent)
+
+    class _RefreshDriver:
+        wait_count = 0
+        next_click_count = 0
+
+        @staticmethod
+        def _ack(control: VisibleControl) -> ClickAcknowledgement:
+            return ClickAcknowledgement(control, control.value, "", 0.01)
+
+        def open_modal_and_click(
+            self, opener, confirm, *, before_confirm, timeout_seconds
+        ):
+            del timeout_seconds
+            before_confirm()
+            return (
+                self._ack(opener),
+                self._ack(confirm),
+                ProgressWaitEvidence("import-op", 1, 0.01, 0.02),
+            )
+
+        @staticmethod
+        def select_subjects(_subjects, *, timeout_seconds):
+            del timeout_seconds
+            return 0.01
+
+        def wait_for_modal_interaction(self, _target, interaction, *, timeout_seconds):
+            del timeout_seconds
+            self.wait_count += 1
+            interaction(
+                ProgressWaitEvidence(f"review-{self.wait_count}", 1, 0.01, 0.02)
+            )
+            if self.wait_count == 1:
+                raise DriverContractError("wizard_next is not visible")
+
+        @staticmethod
+        def resolve_visible_event_value_decisions(
+            *, expected_events, expected_classes, timeout_seconds
+        ):
+            del timeout_seconds
+            return [
+                {
+                    "event_value": value,
+                    "use": "class" if value in expected_classes else "ignore",
+                    "class_name": value if value in expected_classes else "",
+                    "selection_basis": "oracle_expected_class",
+                }
+                for value in expected_events
+            ]
+
+        def click(self, control, *, timeout_seconds):
+            del timeout_seconds
+            if control is VisibleControl.WIZARD_NEXT:
+                self.next_click_count += 1
+            return self._ack(control)
+
+        def control(self, control, *, timeout_seconds):
+            del timeout_seconds
+            if control is VisibleControl.WIZARD_NEXT:
+                text = (
+                    "Refresh label preview"
+                    if self.next_click_count == 3
+                    else "Next: Review and Import"
+                )
+                return QPushButton(text, button_parent)
+            return object()
+
+        @staticmethod
+        def visible_operation_id():
+            return "previous-op"
+
+        @staticmethod
+        def wait_for_owned_operation_completion(
+            *, timeout_seconds, excluding_operation_id
+        ):
+            del timeout_seconds, excluding_operation_id
+            return ProgressWaitEvidence("apply-op", 1, 0.01, 0.02)
+
+    driver = _RefreshDriver()
+    journey = ProductRecommendedJourneyScaffold(driver, mode="replay")  # type: ignore[arg-type]
+
+    journey.import_and_review(
+        (1,),
+        expected_events=("stimulus",),
+        expected_classes=("stimulus",),
+    )
+
+    assert driver.wait_count == 2
+    assert driver.next_click_count == 5
+    assert journey.observed_stage_order()[-1] == "confirm_import"
+
+
 @pytest.mark.parametrize(
     ("target", "expected_count"),
     (("import", 2), ("review", 2), ("apply", 1), ("epoch", 1)),

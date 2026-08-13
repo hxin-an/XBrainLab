@@ -272,13 +272,13 @@ class ProductRecommendedJourneyScaffold:
         # Start the timer-driven modal waiter after that click has returned;
         # it is then already armed when the result callback enters QDialog.exec().
         interact_with_synchronous_preview()
-        if refresh_requested:
+        if refresh_requested and not confirm_acknowledgements:
             # Production dispatches the refreshed backend review only after
             # the first synchronous preview has fully returned. Enter the
             # second modal wait from this outer boundary, never from the first
             # dialog's click callback.
             interact_with_reopened_confirmation()
-        if modal_failures:
+        if modal_failures and not confirm_acknowledgements:
             raise modal_failures[0]
         self._record(
             "import_bids_folder",
