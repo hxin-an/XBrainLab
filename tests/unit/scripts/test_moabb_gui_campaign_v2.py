@@ -2492,6 +2492,47 @@ def test_armed_apply_probe_rejects_frozen_review_predecessor(qtbot) -> None:
         driver.wait_for_operation_kind_probe(probe)
 
 
+def test_armed_apply_probe_observes_fresh_target_after_blocking_modal_unwind(
+    qtbot,
+) -> None:
+    window = QMainWindow()
+    status = window.statusBar()
+    status.setObjectName("OwnedOperationProgress")
+    status.setProperty("operationId", "baseline-review")
+    status.setProperty("operationKind", "import_review")
+    status.setProperty("operationPhase", "completed")
+    status.setProperty("stage", "Initial review complete")
+    status.setProperty("progress", "indeterminate")
+    status.setProperty("indeterminate", True)
+    qtbot.addWidget(window)
+    window.show()
+    driver = GuiCampaignDriver(window, poll_interval_ms=1)
+
+    probe = driver.arm_operation_kind_probe(
+        "import_apply",
+        predecessor_kinds=("import_review",),
+        timeout_seconds=0.5,
+        max_progress_silence_seconds=0.05,
+        excluding_operation_id="baseline-review",
+    )
+
+    def block_then_publish_apply() -> None:
+        time.sleep(0.08)
+        status.setProperty("operationId", "apply-operation")
+        status.setProperty("operationKind", "import_apply")
+        status.setProperty("operationPhase", "pending")
+        status.setProperty("stage", "Preparing interpretation apply")
+        status.showMessage("Preparing interpretation apply · Working…")
+
+    QTimer.singleShot(10, block_then_publish_apply)
+
+    captured = driver.wait_for_operation_kind_probe(probe)
+
+    assert captured.operation_id == "apply-operation"
+    assert captured.operation_kind == "import_apply"
+    assert captured.phase == "pending"
+
+
 def test_exact_apply_wait_rejects_frozen_indeterminate_progress(qtbot) -> None:
     window = QMainWindow()
     status = window.statusBar()

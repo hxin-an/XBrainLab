@@ -1167,73 +1167,80 @@ class GuiCampaignDriver:
                 probe.timer.stop()
                 probe.resource_check_timer.stop()
                 return
-            if time.monotonic() > probe.deadline:
-                probe.failures.append(
-                    DriverContractError(
-                        f"no visible active {expected_kind} operation was published"
-                    )
-                )
-                probe.timer.stop()
-                probe.resource_check_timer.stop()
-                return
-            silence = time.monotonic() - probe.last_heartbeat_at
-            if silence > probe.max_progress_silence_seconds:
-                probe.failures.append(
-                    DriverContractError(
-                        "post-confirm operation chain had no visible progress for "
-                        f"{silence:.3f}s"
-                    )
-                )
-                probe.timer.stop()
-                probe.resource_check_timer.stop()
-                return
             try:
                 progress = self._visible_operation_progress()
-                if progress is None:
-                    return
-                operation_id = str(progress.property("operationId") or "").strip()
-                phase = str(progress.property("operationPhase") or "").casefold()
-                observed_kind = str(progress.property("operationKind") or "").strip()
-                if not operation_id or operation_id == excluding_operation_id:
-                    return
-                evidence = self._active_operation_evidence(progress)
-                if observed_kind == expected_kind and phase in {
-                    "pending",
-                    "running",
-                    "cancelling",
-                    "completed",
-                }:
-                    probe.evidence = evidence
-                    probe.captured_at = time.monotonic()
-                    probe.timer.stop()
-                    probe.resource_check_timer.stop()
-                    return
-                if phase in {"cancelled", "failed"}:
-                    probe.failures.append(
-                        DriverContractError(
-                            f"operation {operation_id} reached {phase!r}"
-                        )
-                    )
-                    return
-                if observed_kind not in probe.predecessor_kinds:
-                    probe.failures.append(
-                        DriverContractError(
-                            "unexpected visible operation while awaiting "
-                            f"{expected_kind}: kind={observed_kind!r}, "
-                            f"operation_id={operation_id!r}"
-                        )
-                    )
-                    return
-                signature = self._progress_signature(progress)
-                if signature != probe.previous_signature:
-                    probe.previous_signature = signature
-                    probe.last_heartbeat_at = time.monotonic()
-                if not any(
-                    item.operation_id == operation_id for item in probe.predecessors
-                ):
-                    probe.predecessors.append(evidence)
+                if progress is not None:
+                    operation_id = str(progress.property("operationId") or "").strip()
+                    phase = str(progress.property("operationPhase") or "").casefold()
+                    observed_kind = str(
+                        progress.property("operationKind") or ""
+                    ).strip()
+                    if operation_id and operation_id != excluding_operation_id:
+                        evidence = self._active_operation_evidence(progress)
+                        if observed_kind == expected_kind and phase in {
+                            "pending",
+                            "running",
+                            "cancelling",
+                            "completed",
+                        }:
+                            probe.evidence = evidence
+                            probe.captured_at = time.monotonic()
+                            probe.timer.stop()
+                            probe.resource_check_timer.stop()
+                            return
+                        if phase in {"cancelled", "failed"}:
+                            probe.failures.append(
+                                DriverContractError(
+                                    f"operation {operation_id} reached {phase!r}"
+                                )
+                            )
+                        elif observed_kind not in probe.predecessor_kinds:
+                            probe.failures.append(
+                                DriverContractError(
+                                    "unexpected visible operation while awaiting "
+                                    f"{expected_kind}: kind={observed_kind!r}, "
+                                    f"operation_id={operation_id!r}"
+                                )
+                            )
+                        else:
+                            signature = self._progress_signature(progress)
+                            if signature != probe.previous_signature:
+                                probe.previous_signature = signature
+                                probe.last_heartbeat_at = time.monotonic()
+                            if not any(
+                                item.operation_id == operation_id
+                                for item in probe.predecessors
+                            ):
+                                probe.predecessors.append(evidence)
             except BaseException as exc:
                 probe.failures.append(exc)
+            if not probe.failures and probe.evidence is None:
+                now = time.monotonic()
+                if now > probe.deadline:
+                    probe.failures.append(
+                        DriverContractError(
+                            f"no visible active {expected_kind} operation was published"
+                        )
+                    )
+                else:
+                    silence = now - probe.last_heartbeat_at
+                    if silence > probe.max_progress_silence_seconds:
+                        last = probe.predecessors[-1] if probe.predecessors else None
+                        detail = (
+                            ""
+                            if last is None
+                            else (
+                                f"; last kind={last.operation_kind!r}, "
+                                f"operation_id={last.operation_id!r}, "
+                                f"stage={last.stage!r}, phase={last.phase!r}"
+                            )
+                        )
+                        probe.failures.append(
+                            DriverContractError(
+                                "post-confirm operation chain had no visible progress "
+                                f"for {silence:.3f}s{detail}"
+                            )
+                        )
             if probe.failures:
                 probe.timer.stop()
                 probe.resource_check_timer.stop()
