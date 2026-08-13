@@ -831,7 +831,7 @@ class GuiCampaignDriver:
                 return
             app = QApplication.instance()
             modal = app.activeModalWidget() if app is not None else None
-            if app is not None and modal is None:
+            if app is not None and not isinstance(modal, QMessageBox):
                 visible_modals = [
                     widget
                     for widget in app.topLevelWidgets()

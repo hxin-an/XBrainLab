@@ -2149,6 +2149,7 @@ def test_driver_waits_past_early_stage_and_captures_meaningful_progress(qtbot) -
 
 def test_wait_for_transition_accepts_exact_nested_dataset_resource_check(
     qtbot,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     window = QMainWindow()
     next_button = QPushButton("Next", window)
@@ -2178,6 +2179,9 @@ def test_wait_for_transition_accepts_exact_nested_dataset_resource_check(
             next_button.show()
 
     QTimer.singleShot(0, open_resource_check)
+    # Qt may continue reporting the outer loading surface as active while the
+    # synchronous resource prompt owns a deeper nested event loop.
+    monkeypatch.setattr(QApplication, "activeModalWidget", lambda _self: window)
 
     driver = GuiCampaignDriver(window)
     widget, _progress = driver.wait_for_transition(
