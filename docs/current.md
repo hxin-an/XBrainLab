@@ -12,7 +12,8 @@ XBrainLab 的 product baseline 是 `main`。目前最高優先工作是收斂 15
 datasets 的 BIDS / MainWindow reliability candidate：產品碼已有 backend-owned BIDS index、
 bounded parsed-content cache、operation ID / cooperative cancellation、重工作的 detached
 prepare / short commit 邊界，以及必須由使用者點擊的 `Compute Saliency`。這些仍是
-dirty implementation checkpoint；資料尚未完整 materialize，也還沒有 30 個 green journey
+validated materialization checkpoint；固定 15 個 datasets 已在 D 槽完成 source / formal BIDS
+freeze、checksums 與 authoritative validator，但還沒有 30 個 green journey
 receipts、clean exact-commit evidence、exact-head CI 或 Windows 人工驗收。
 
 本輪數量邊界是固定的 15 個 datasets：5 個 anchor datasets 各 5 subjects，其餘 10 個各
@@ -30,7 +31,7 @@ GUI journeys。這是本次交付的 fixed denominator，不等於長期約 80 �
 | Baseline | 以當次 Git 的 `main` / merge-base 為準，不重用舊 SHA。 |
 | Active goal | 將固定 15-dataset BIDS bytes、checksums、設定與 30 條 GUI journeys 綁在同一 clean exact commit / Poetry / CUDA identity，全綠後才進入 exact-head CI 與 Windows 人工邊界。 |
 | Historical ledger | [Product Quality Audit - 2026-07-30](records/product_quality_audit_2026-07-30.md)；只作 provenance，不是 active queue。 |
-| Delivery state | Dirty implementation checkpoint；15/15 仍 awaiting materialization，尚無 30 條 green receipts、pushed exact-head CI / Windows acceptance，不是 handoff-ready 或 release-ready。 |
+| Delivery state | 15/15 dataset-specific freeze 與 generated ready plan 已完成；30 條 green receipts、independent visual review、pushed exact-head CI / Windows acceptance 尚未完成，因此不是 handoff-ready 或 release-ready。 |
 
 其他 registered worktree 不代表 active candidate。需要 inventory 時必須執行
 `git worktree list --porcelain`，不要把數量或 branch 清單手動複製成長期 current truth。
@@ -43,10 +44,10 @@ checkpoint evidence。
 | --- | --- | --- |
 | Backend | `ApplicationService / Command API` 是 UI、assistant、headless scripts 共用的 product command spine。`BackendFacade` 與 product live-object payload 已物理移除；五個 product panels 由 narrow ports 建立。目前 candidate 又加入 lock-independent `OwnedWorkRegistry`，用 operation ID、typed kind / phase、stage 與 cooperative checkpoint 管理 import review / apply、preprocess、epoch、training、evaluation、saliency 與 render。 | 這是 source + focused-regression checkpoint，尚未由 30 條真實 GUI journeys 驗證所有 cancel / retry / close interleavings。Standalone/test compatibility constructors 仍是 P2 cleanup；不能宣稱 target architecture fully aligned。 |
 | UI | Product state-changing render 以 revisioned application publication 為單一真相；command result 只處理 acknowledgement / error / in-flight feedback，Training progress 只走 transient event。五個 workflow panels 保留舊版固定右側 `Data Summary` 表格，不另設常駐 Readiness 區塊。Assistant header 不顯示額外狀態 badge；狀態保留在 tooltip / accessibility metadata，composer 使用固定 action geometry，訊息 bubble 依 viewport 與內容重排。Source guard 會追蹤 async callback call chain，阻止 command result 重改 Start/Stop、readiness 或 terminal state。 | Dirty integration work 和 focused tests 只是 checkpoint；offscreen 100/125/150% DPI 與窄寬度 artifact 已通過 working-checkpoint review，但在 clean exact-source screenshots、happy path、edge gate 及 reviewer re-gate 完成前，不是 Windows handoff candidate。Standalone compatibility observer path仍是 P2 cleanup。 |
-| Data Interpretation | `scan -> preview -> validate -> apply -> recipe` baseline 存在。Strict BIDS 現在由 immutable、bounded `BidsDatasetIndex` 統一 nested-root resolution、subject catalog、recordings、events / channels / electrode / coordinate / JSON sidecars 與 completeness；selected-subject projection 供 scan / review / apply / montage 重用。JSON / delimited sidecar parsing 以完整 bytes SHA-256、parser ID 與 schema version 綁定 bounded immutable cache，Windows 不以 `ctime` 作內容捷徑。 | Index / cache 只是已實作的 discovery 與讀取邊界，不是 full BIDS inheritance / validator 或任意 dataset 語意支援。15 個 campaign datasets 仍未完成 materialization 與 GUI acceptance；目前真人資料主張仍只限 Graz 2a GDF 與 OpenNeuro ds003061 P300 BIDS。 |
+| Data Interpretation | `scan -> preview -> validate -> apply -> recipe` baseline 存在。Strict BIDS 現在由 immutable、bounded `BidsDatasetIndex` 統一 nested-root resolution、subject catalog、recordings、events / channels / electrode / coordinate / JSON sidecars 與 completeness；selected-subject projection 供 scan / review / apply / montage 重用。JSON / delimited sidecar parsing 以完整 bytes SHA-256、parser ID 與 schema version 綁定 bounded immutable cache，Windows 不以 `ctime` 作內容捷徑。 | Index / cache 只是已實作的 discovery 與讀取邊界，不代表任意 dataset 語意支援。15 個 campaign datasets 已完成 formal BIDS materialization / validator，但 GUI acceptance 尚未執行；目前真人 GUI 主張仍只限 Graz 2a GDF 與 OpenNeuro ds003061 P300 BIDS。 |
 | Epoch / split / training contract candidate | Epoch context 只接受 reviewed import handoff 與每段 recording 的 matching timing hints；缺少、格式錯誤、讀取失敗、source / placement 不一致，或 selected recordings 的 sampling frequency 不一致時 fail closed，且不改變既有資料；將所有 recordings resample 到同一 sampling frequency 後會重新取得 `Create Epoch` readiness。Duration / event-locked mode 由這份 reviewed handoff 綁定的 event placement 與 duration evidence 產生，不由 dialog 猜測。Split preview 會暫時建立 candidate datasets / masks 以產生摘要，完成後恢復原狀；Confirm 只保存 typed split specification、epoch revision、fingerprint 與 bounded preview summary，`Start Training` 才做 authoritative rematerialization、audit 與 publication。Training Setting 提供 deterministic starting recommendations，並逐欄位保存 trusted user edit 的 manual provenance。 | 這些是 dirty working candidate 正在收斂的 contract，尚未有 clean exact-head CI / Windows acceptance。Split Confirm 不代表 training tensors 或 masks 已發布；recommendations 不是最佳參數、AutoML 或 timed hyperparameter search。 |
 | EEG workflow baseline / current polish | BIDS subject selection、curated Braindecode catalog、test curve、cross-fold summary 與 detached Saliency Normalize 已進入 `main`。目前 candidate 的 training completion 只發布 metrics；只有明確點擊 visible `Compute Saliency` 才排程 attribution。Evaluation / Saliency / Normalize / render 有 operation identity 與 stale-result guard。 | 這不代表所有 curated models 可用、scientific model quality 或 native 3D 驗收。Map 與 Spectrogram 目前只有 source / focused test checkpoint，還沒有 15-dataset exact-source screenshots。 |
-| MOABB campaign tooling | Tracked plan 固定 15 個 datasets / subjects、EDF + BrainVision + EEGLAB（及一個 formal BDF mirror）、cold + replay、5/5/5 cancellation 分區、1 epoch / repeat / fold、Evaluation、explicit Saliency、Map、Spectrogram 與 clean close。Materializer 預設不下載；GUI driver 只在 `QFileDialog` 注入 path，其餘點擊 visible + enabled production controls。 | Tracked GUI plan 的 15 列目前全是 `awaiting_dataset_materialization`，`bids.root=null`。沒有 ready/freeze manifest 或 green receipts；runner contract / unit tests 不是真實資料成功。 |
+| MOABB campaign tooling | Tracked plan 固定 15 個 datasets / subjects、EDF + BrainVision + EEGLAB（及一個 formal BDF mirror）、cold + replay、5/5/5 cancellation 分區、1 epoch / repeat / fold、Evaluation、explicit Saliency、Map、Spectrogram 與 clean close。Materializer 預設不下載；GUI driver 只在 `QFileDialog` 注入 path，其餘點擊 visible + enabled production controls。 | D 槽 generated freeze manifest / ready plan 已有 15 個 `ready` rows，並綁定同一 clean product identity；30 條真實 GUI receipts 與 independent visual review 尚未執行。Tracked seed plan 保留 awaiting/null 是預期行為，不是 runtime ready plan。 |
 | Assistant | Local-only Assistant、IBM Granite 3.3 2B 選項、tool admission、capability、typed confirmation、decision owner、verification 和 structured result 的工程骨架存在；ApplicationService 仍控制最後 command admission。Standalone debug host 已和 product runtime 對齊 high-impact setting confirmation，walkthrough 也會區分 confirmation card 與 GUI handoff。 | Assistant 目前尚未準備好給老師使用。同一 request 仍可能向 Granite 2B 暴露多個競爭 tool schemas；現有 deterministic walkthrough 不是 real Granite tool-call accuracy、長時間使用或 Windows acceptance。 |
 | Privacy / diagnostics | Centralized public diagnostics 會從 default logs、public command/result projection、assistant feedback 和 UI interaction outcome 移除完整私人路徑、常見 subject identifiers 與不安全 control characters；local file sink 有 bounded retention 與 owner-only policy。 | Native Windows/NTFS ACL、junction/reparse replacement、packaged launcher 與 second-account denial仍是平台 acceptance boundary；exact-commit validation 前不能宣稱完整產品 closure。 |
 | Native UI lifecycle | Preprocess close/cancel work 已建立 quiesce / restore checkpoint；`tests/integration/ui/test_preprocess_native_lifecycle.py` 和 `tests/integration/ui/test_native_render_lifecycle.py` 分別保護 Preprocess 與 Visualization native ownership。 | 兩個 gate 不互相替代，也不取代 Windows/WSLg、DPI、interactive 3D、real training close 和長時間操作 acceptance。 |
@@ -97,15 +98,15 @@ generated evidence；branch、commit 或 dirty state 不吻合時，只能稱為
 - `main` 現在是後續產品工作的單一整合基線。
 - Graz 2a GDF 與 OpenNeuro ds003061 P300 BIDS 各一個資料集已完成真人 GUI 手測。
 - Local-only ds003061 P300 fixture 已有 3 subjects、9 runs，可重跑 selected-subject scope regression。
-- 15-dataset materializer / GUI campaign 的 fail-closed contract 與 runner source 已存在，但仍是
-  pending execution checkpoint。
+- 15-dataset materializer / GUI campaign 的 fail-closed contract 與 runner source 已存在；固定
+  15 個資料集的 bytes / checksums / validator receipts 已 freeze，GUI execution 尚待完成。
 
 ## 不能宣稱
 
 - 目前是 release、product-complete 或 Assistant-ready candidate。
 - 所有 GDF、所有 BIDS 或 full BIDS validator 已通過真人驗收。
 - 任一舊 dashboard、walkthrough、reviewer verdict 或手動 test total 代表 current branch。
-- 15 個 MOABB datasets 已 materialize、30 條 journeys 已通過，或目前已可供手測。
+- 30 條 MOABB journeys 已通過，或目前已可供手測。
 - backend target architecture、Data Interpretation 或 Assistant 已 final。
 - 舊 Agent gate 已對齊目前 Assistant 心智模型，或可作為 Assistant 品質結論。
 - 效能已完成打磨，或高階硬體上的流暢度可外推到其他電腦。

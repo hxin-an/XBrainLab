@@ -12,8 +12,8 @@
 candidate，再繼續效能與簡化 Assistant prototype。**
 
 目前不是 release、Assistant-ready 或 Windows handoff candidate。真人資料驗收仍只涵蓋 Graz 2a
-GDF 與 OpenNeuro ds003061 P300 BIDS 各一個資料集；新 15-dataset plan 的所有 rows 仍等待
-materialization。這一輪只有在固定 15 個 datasets 都以同一 clean exact commit / Poetry / CUDA /
+GDF 與 OpenNeuro ds003061 P300 BIDS 各一個資料集；新 15-dataset plan 的 materialization freeze
+已完成。這一輪只有在固定 15 個 datasets 都以同一 clean exact commit / Poetry / CUDA /
 checksum identity 各完成 cold + replay，共 30 條 fresh-process MainWindow journeys，且 exact-head
 CI 成功後，才可形成 Windows 人工手測候選。另一個 20-scenario gate 仍是分開的 pending scope，
 不能與這 30 條 journeys 互相冒充。
@@ -88,7 +88,7 @@ candidate 的完成條件，也不可由現有 recommended-defaults UI 暗示為
 | --- | --- | --- | --- |
 | BIDS discovery / interpretation | Formal BIDS root、nested root、subjects、recordings、sidecars、metadata、events 與 montage discovery 共用 backend index / content cache；不得新增 dataset-name production branch。 | Index/cache freshness、nested-root、selected-scope、sidecar replacement、bounded resource、same-class source guard 與 adjacent import tests 通過。 | Implementation checkpoint; combined review pending |
 | Owned work / transactions | Import review/apply、preprocess、epoch、training、evaluation、saliency、render、Model Summary 與 Training preview 的重工作離開 Qt thread / long-held command lock；Cancel / Stop / Close 有 operation identity、retry 與 stale-result guard。 | Lock-independent control-path timing、cancel-before/after-commit、rollback、retry、close worker/subprocess inventory 與 freeze stress 通過。 | Focused dirty-tree tests passed; exact-source closure pending |
-| Dataset materialization | 固定 15 rows 的 source/license/revision、subjects、formal BIDS root、validator、source + BIDS checksums、oracles、Poetry/CUDA/GPU identity 全部凍結在 D 槽。 | 15/15 ready rows；no-download replay 重新驗證相同 bytes，manifest denominator 不可替換。 | 15/15 awaiting materialization |
+| Dataset materialization | 固定 15 rows 的 source/license/revision、subjects、formal BIDS root、validator、source + BIDS checksums、oracles、Poetry/CUDA/GPU identity 全部凍結在 D 槽。 | 15/15 ready rows；no-download replay 重新驗證相同 bytes，manifest denominator 不可替換。 | 15/15 ready；generated freeze / ready plan sealed，final-commit reseal仍由 candidate gate重驗 |
 | MOABB GUI journeys | 固定 15 datasets / 30 cold+replay fresh processes，依序完成 Import BIDS -> subjects -> review/match -> apply -> preprocess -> epoch -> split -> model -> 1x1x1 training -> evaluation -> explicit Saliency -> Map -> Spectrogram -> close。 | 30/30 green receipts；runner 只允許 `QFileDialog` path injection，且 5/5/5 cancellation partitions 各覆蓋兩個 target stages並重試成功。 | 0 qualifying receipts |
 | Journey evidence | 每個 dataset 只收錄實際 cold/replay 的 screenshots、stage timings、UI options、class/event、training/evaluation/saliency result、close outcome 與 limitation，不把 format coverage 冒充 dataset diversity。 | Machine-readable receipt 與人工 checklist 都能回指 exact data/source/process artifacts；主 agent 逐圖檢查。 | Pending real campaign |
 | Integration and review | 保留目前手測衍生的 in-scope dirty fixes並收斂成 focused commits；不混入 Assistant/site/長期 campaign 工作。 | 主 agent 重讀完整 diff、跑 combined tests與 canonical handoff manifest、reviewer 重審，再從最新 `main` 形成 pushed PR exact head，所有 CI checks completed/success。 | Pending source closure |

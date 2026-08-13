@@ -137,11 +137,12 @@ stage screenshot 勾選 layout、contrast、primary action、text fit、nested s
 部分 verdict、producer identity、變更 receipt/artifact 或過期 plan 都 fail closed。Delivery validator
 和 final dossier revalidation 都重新驗證此 binding；offscreen review 仍不等於 Windows native acceptance。
 
-目前 tracked 15-dataset GUI plan 的所有 rows 都是
-`execution_state=awaiting_dataset_materialization` 且 `bids.root=null`；尚無 ready/freeze
-manifest 或 qualifying journey receipt。因此目前只能宣稱 materializer/runner/receipt validation
-source 存在且有 focused tests，不能宣稱 15/15、30/30、handoff-ready、Windows accepted 或
-scientific model quality。
+Tracked 15-dataset GUI plan 的 rows 保持
+`execution_state=awaiting_dataset_materialization` 且 `bids.root=null`，只作 seed contract；D 槽
+materializer output 已產生 15/15 `ready` 的 freeze manifest 與 generated ready plan，並完成 source /
+BIDS checksum 與 authoritative validator receipt。目前仍無 qualifying journey receipt 或 completed
+visual-review attestation，因此不能宣稱 30/30、handoff-ready、Windows accepted 或 scientific
+model quality。
 
 ## Agent Tool-Call 快速檢查
 
@@ -502,9 +503,10 @@ Sleep-EDF 和 CHB-MIT teacher fixture tests 是 optional acceptance evidence，
 
 `moabb-15-delivery-validation` 要求 canonical evidence root 先存在完整
 `moabb-15-campaign/`；recorder 將它視為 preserved input 並把完整 artifact identity 納入 dossier。
-Validator 只讀 tracked plan、frozen BIDS/checksum bytes 與既有 receipts；它不呼叫 materializer、
-campaign runner 或 worker。Tracked plan 仍為 `awaiting_dataset_materialization`、BIDS root 為
-null 或 receipts 為 `0` 時，這個 registered gate 必須失敗，因此「已註冊」不代表目前已通過。
+Validator 只讀 tracked seed plan、generated ready plan、frozen BIDS/checksum bytes 與既有 receipts；
+它不呼叫 materializer、campaign runner 或 worker。Generated ready plan 現已有 15/15 ready rows，
+但 receipts 仍為 `0` 時，這個 registered gate仍必須失敗，因此「資料 ready」不代表 delivery gate
+目前已通過。
 同樣地，存在 pending visual-review template 不代表 artifact 已被人工接受；只有 completed、完整且
 SHA-bound 的 independent attestation 才可令 delivery gate 通過。
 

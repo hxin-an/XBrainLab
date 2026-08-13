@@ -37,6 +37,19 @@
 
 ## 2026-08-13
 
+### 12:10 固定 15-dataset bytes 與 ready plan freeze
+
+- 做了什麼：依 fixed matrix 只 materialize 指定 subjects；大檔採 bounded parallel Range 下載，
+  Lee / Ofner / Chen / Guttmann 使用獨立 SHA-verified seed 避免重抓，其中 Chen 最終 seed 只保留
+  subjects 1、2 的 4 個 XDF。完成 generic incomplete-montage 與 legacy `HardwareFilters` BIDS
+  normalization，沒有 dataset-name production branch。
+- 結果：15 個 dataset-specific receipts、source / BIDS checksum manifests 與 authoritative validator
+  receipts 全部 ready；no-download final seal 產生 15-row ready freeze manifest 與 GUI ready plan。
+- 證據：freeze manifest / ready plan 位於 `build/moabb-gui-campaign-v2/checksums/`；兩者綁定同一
+  product identity。Materializer + preflight focused suite `63 passed`、Ruff / Basedpyright clean。
+- 接續 / 本輪剩餘：跑 30 條 cold / replay fresh-process MainWindow journeys、逐圖完成 independent
+  visual attestation，再跑 canonical handoff / exact-head CI。15/15 data ready 不等於 GUI delivery ready。
+
 ### 15-dataset reliability implementation checkpoint
 
 - 做了什麼：將 Data Interpretation / Preprocess / Epoch 的重 IO 與 materialization 拆成 detached
@@ -53,9 +66,9 @@
   Preprocess suite `349 passed`；focused MainWindow/Evaluation/Visualization/Training UI suite
   `260 passed`。Canonical truth sync 後 guidance audit、`git diff --check` 與
   `mkdocs build --strict` 通過。這些是 dirty checkpoint / docs-scope evidence，不是 final total。
-- 接續 / 本輪剩餘：tracked GUI plan 目前 15/15 仍是 `awaiting_dataset_materialization`、
-  `bids.root=null`，尚無 ready/freeze manifest 或 qualifying receipt。仍須在 D 槽凍結資料與
-  checksums、於同一 clean exact commit 串行跑 30 條 journeys、逐圖審查、跑 canonical handoff
+- 接續 / 本輪剩餘：此段記錄建立時 tracked GUI seed plan 的 15/15 尚為
+  `awaiting_dataset_materialization`；目前 generated freeze / ready plan 已由上方 12:10 checkpoint
+  取代該 runtime 狀態。仍須在同一 clean exact commit 串行跑 30 條 journeys、逐圖審查、跑 canonical handoff
   manifest、push/PR 並等待 exact-head CI completed/success。Cooperative cancel 不能中斷尚未返回的
   第三方 native call；Windows / native 3D / scientific quality 仍是分開的 claim boundary。
 
