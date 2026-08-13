@@ -173,7 +173,9 @@ class ProductRecommendedJourneyScaffold:
                 confirm_apply_probes.append(
                     self.driver.arm_operation_kind_probe(
                         "import_apply",
-                        timeout_seconds=_POST_CONFIRM_APPLY_START_TIMEOUT_SECONDS,
+                        predecessor_kinds=("import_review",),
+                        timeout_seconds=_LONG_OPERATION_TIMEOUT_SECONDS,
+                        max_progress_silence_seconds=5.0,
                         excluding_operation_id=confirm_baselines[-1],
                     )
                 )

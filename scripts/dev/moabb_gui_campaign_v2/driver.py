@@ -12,7 +12,7 @@ import re
 import time
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, cast
@@ -452,14 +452,19 @@ class OperationKindProbe:
     """Timer-owned capture armed before a synchronous modal action unwinds."""
 
     expected_kind: str
+    predecessor_kinds: frozenset[str]
     excluding_operation_id: str | None
     started_at: float
     deadline: float
+    max_progress_silence_seconds: float
+    last_heartbeat_at: float
     timer: QTimer
     resource_check_timer: QTimer
     failures: list[BaseException]
     evidence: ActiveOperationEvidence | None = None
     captured_at: float | None = None
+    previous_signature: tuple[str, ...] | None = None
+    predecessors: list[ActiveOperationEvidence] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -1116,7 +1121,9 @@ class GuiCampaignDriver:
         self,
         operation_kind: str,
         *,
+        predecessor_kinds: Collection[str] = (),
         timeout_seconds: float,
+        max_progress_silence_seconds: float = 5.0,
         excluding_operation_id: str | None = None,
     ) -> OperationKindProbe:
         """Arm visible owner capture before a synchronous modal callback returns.
@@ -1130,6 +1137,13 @@ class GuiCampaignDriver:
         expected_kind = str(operation_kind or "").strip()
         if not expected_kind:
             raise ValueError("operation_kind must be non-empty")
+        predecessors = frozenset(
+            str(kind or "").strip() for kind in predecessor_kinds if str(kind).strip()
+        )
+        if expected_kind in predecessors:
+            raise ValueError("target operation kind cannot also be a predecessor")
+        if max_progress_silence_seconds <= 0:
+            raise ValueError("max_progress_silence_seconds must be positive")
         failures: list[BaseException] = []
         resource_check_timer = self._start_dataset_resource_check_probe(failures)
         timer = QTimer(self.root)
@@ -1137,9 +1151,12 @@ class GuiCampaignDriver:
         started_at = time.monotonic()
         probe = OperationKindProbe(
             expected_kind=expected_kind,
+            predecessor_kinds=predecessors,
             excluding_operation_id=excluding_operation_id,
             started_at=started_at,
             deadline=started_at + max(0.0, timeout_seconds),
+            max_progress_silence_seconds=max_progress_silence_seconds,
+            last_heartbeat_at=started_at,
             timer=timer,
             resource_check_timer=resource_check_timer,
             failures=failures,
@@ -1159,6 +1176,17 @@ class GuiCampaignDriver:
                 probe.timer.stop()
                 probe.resource_check_timer.stop()
                 return
+            silence = time.monotonic() - probe.last_heartbeat_at
+            if silence > probe.max_progress_silence_seconds:
+                probe.failures.append(
+                    DriverContractError(
+                        "post-confirm operation chain had no visible progress for "
+                        f"{silence:.3f}s"
+                    )
+                )
+                probe.timer.stop()
+                probe.resource_check_timer.stop()
+                return
             try:
                 progress = self._visible_operation_progress()
                 if progress is None:
@@ -1166,14 +1194,15 @@ class GuiCampaignDriver:
                 operation_id = str(progress.property("operationId") or "").strip()
                 phase = str(progress.property("operationPhase") or "").casefold()
                 observed_kind = str(progress.property("operationKind") or "").strip()
-                if (
-                    not operation_id
-                    or operation_id == excluding_operation_id
-                    or observed_kind != expected_kind
-                ):
+                if not operation_id or operation_id == excluding_operation_id:
                     return
                 evidence = self._active_operation_evidence(progress)
-                if phase in {"pending", "running", "cancelling", "completed"}:
+                if observed_kind == expected_kind and phase in {
+                    "pending",
+                    "running",
+                    "cancelling",
+                    "completed",
+                }:
                     probe.evidence = evidence
                     probe.captured_at = time.monotonic()
                     probe.timer.stop()
@@ -1185,6 +1214,24 @@ class GuiCampaignDriver:
                             f"operation {operation_id} reached {phase!r}"
                         )
                     )
+                    return
+                if observed_kind not in probe.predecessor_kinds:
+                    probe.failures.append(
+                        DriverContractError(
+                            "unexpected visible operation while awaiting "
+                            f"{expected_kind}: kind={observed_kind!r}, "
+                            f"operation_id={operation_id!r}"
+                        )
+                    )
+                    return
+                signature = self._progress_signature(progress)
+                if signature != probe.previous_signature:
+                    probe.previous_signature = signature
+                    probe.last_heartbeat_at = time.monotonic()
+                if not any(
+                    item.operation_id == operation_id for item in probe.predecessors
+                ):
+                    probe.predecessors.append(evidence)
             except BaseException as exc:
                 probe.failures.append(exc)
             if probe.failures:

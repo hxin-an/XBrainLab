@@ -2367,6 +2367,110 @@ def test_armed_apply_probe_retains_owner_visible_only_during_modal_unwind(
     assert captured.phase == "completed"
 
 
+def test_armed_apply_probe_follows_live_review_chain_before_apply(qtbot) -> None:
+    window = QMainWindow()
+    status = window.statusBar()
+    status.setObjectName("OwnedOperationProgress")
+    status.setProperty("operationId", "baseline-review")
+    status.setProperty("operationKind", "import_review")
+    status.setProperty("operationPhase", "completed")
+    status.setProperty("stage", "Initial review complete")
+    status.setProperty("progress", "indeterminate")
+    status.setProperty("indeterminate", True)
+    qtbot.addWidget(window)
+    window.show()
+    driver = GuiCampaignDriver(window, poll_interval_ms=1)
+
+    probe = driver.arm_operation_kind_probe(
+        "import_apply",
+        predecessor_kinds=("import_review",),
+        timeout_seconds=0.5,
+        max_progress_silence_seconds=0.05,
+        excluding_operation_id="baseline-review",
+    )
+
+    def publish(kind, operation_id, phase, stage, progress="indeterminate") -> None:
+        status.setProperty("operationId", operation_id)
+        status.setProperty("operationKind", kind)
+        status.setProperty("operationPhase", phase)
+        status.setProperty("stage", stage)
+        status.setProperty("progress", progress)
+        status.setProperty("indeterminate", progress == "indeterminate")
+        status.showMessage(f"{stage} · Working…")
+
+    QTimer.singleShot(
+        10,
+        lambda: publish(
+            "import_review", "preview-operation", "running", "Updating preview", "0/3"
+        ),
+    )
+    QTimer.singleShot(
+        35,
+        lambda: publish(
+            "import_review", "preview-operation", "running", "Updating preview", "1/3"
+        ),
+    )
+    QTimer.singleShot(
+        60,
+        lambda: publish(
+            "import_review", "validate-operation", "running", "Validating preview"
+        ),
+    )
+    QTimer.singleShot(
+        85,
+        lambda: publish(
+            "import_review", "validate-operation", "completed", "Validation complete"
+        ),
+    )
+    QTimer.singleShot(
+        105,
+        lambda: publish(
+            "import_apply",
+            "apply-operation",
+            "pending",
+            "Preparing interpretation apply",
+        ),
+    )
+
+    captured = driver.wait_for_operation_kind_probe(probe)
+
+    assert captured.operation_id == "apply-operation"
+    assert captured.operation_kind == "import_apply"
+    assert [item.operation_id for item in probe.predecessors] == [
+        "preview-operation",
+        "validate-operation",
+    ]
+
+
+def test_armed_apply_probe_rejects_frozen_review_predecessor(qtbot) -> None:
+    window = QMainWindow()
+    status = window.statusBar()
+    status.setObjectName("OwnedOperationProgress")
+    status.setProperty("operationId", "validate-operation")
+    status.setProperty("operationKind", "import_review")
+    status.setProperty("operationPhase", "running")
+    status.setProperty("stage", "Validating preview")
+    status.setProperty("progress", "indeterminate")
+    status.setProperty("indeterminate", True)
+    status.showMessage("Validating preview · Working…")
+    qtbot.addWidget(window)
+    window.show()
+    driver = GuiCampaignDriver(window, poll_interval_ms=1)
+
+    probe = driver.arm_operation_kind_probe(
+        "import_apply",
+        predecessor_kinds=("import_review",),
+        timeout_seconds=0.5,
+        max_progress_silence_seconds=0.05,
+    )
+
+    with pytest.raises(
+        DriverContractError,
+        match="post-confirm operation chain had no visible progress",
+    ):
+        driver.wait_for_operation_kind_probe(probe)
+
+
 def test_exact_apply_wait_rejects_frozen_indeterminate_progress(qtbot) -> None:
     window = QMainWindow()
     status = window.statusBar()
@@ -2961,9 +3065,19 @@ def test_import_action_and_subject_dialog_are_captured_on_distinct_surfaces() ->
 
         @staticmethod
         def arm_operation_kind_probe(
-            operation_kind, *, timeout_seconds, excluding_operation_id
+            operation_kind,
+            *,
+            predecessor_kinds=(),
+            timeout_seconds,
+            max_progress_silence_seconds=5.0,
+            excluding_operation_id,
         ):
-            del timeout_seconds, excluding_operation_id
+            del (
+                predecessor_kinds,
+                timeout_seconds,
+                max_progress_silence_seconds,
+                excluding_operation_id,
+            )
             assert operation_kind == "import_apply"
             return object()
 
@@ -3194,9 +3308,19 @@ def test_import_journey_traverses_and_closes_synchronous_preview_exec(
 
         @staticmethod
         def arm_operation_kind_probe(
-            operation_kind, *, timeout_seconds, excluding_operation_id
+            operation_kind,
+            *,
+            predecessor_kinds=(),
+            timeout_seconds,
+            max_progress_silence_seconds=5.0,
+            excluding_operation_id,
         ):
-            del timeout_seconds, excluding_operation_id
+            del (
+                predecessor_kinds,
+                timeout_seconds,
+                max_progress_silence_seconds,
+                excluding_operation_id,
+            )
             assert operation_kind == "import_apply"
             return object()
 
@@ -3357,9 +3481,19 @@ def test_import_journey_ignores_stale_first_wait_after_refresh_confirmation(
 
         @staticmethod
         def arm_operation_kind_probe(
-            operation_kind, *, timeout_seconds, excluding_operation_id
+            operation_kind,
+            *,
+            predecessor_kinds=(),
+            timeout_seconds,
+            max_progress_silence_seconds=5.0,
+            excluding_operation_id,
         ):
-            del timeout_seconds, excluding_operation_id
+            del (
+                predecessor_kinds,
+                timeout_seconds,
+                max_progress_silence_seconds,
+                excluding_operation_id,
+            )
             assert operation_kind == "import_apply"
             return object()
 
