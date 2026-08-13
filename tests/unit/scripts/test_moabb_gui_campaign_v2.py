@@ -2322,6 +2322,51 @@ def test_apply_kind_wait_accepts_new_visible_completed_owner(qtbot) -> None:
     assert completed.operation_id == "apply-operation"
 
 
+def test_armed_apply_probe_retains_owner_visible_only_during_modal_unwind(
+    qtbot,
+) -> None:
+    window = QMainWindow()
+    status = window.statusBar()
+    status.setObjectName("OwnedOperationProgress")
+    status.setProperty("operationId", "review-operation")
+    status.setProperty("operationKind", "import_review")
+    status.setProperty("operationPhase", "completed")
+    status.setProperty("stage", "Interpretation validation complete")
+    status.setProperty("progress", "indeterminate")
+    status.setProperty("indeterminate", True)
+    qtbot.addWidget(window)
+    window.show()
+    driver = GuiCampaignDriver(window, poll_interval_ms=1)
+
+    probe = driver.arm_operation_kind_probe(
+        "import_apply",
+        timeout_seconds=0.2,
+        excluding_operation_id="review-operation",
+    )
+
+    def publish_fast_apply() -> None:
+        status.setProperty("operationId", "apply-operation")
+        status.setProperty("operationKind", "import_apply")
+        status.setProperty("operationPhase", "completed")
+        status.setProperty("stage", "Dataset import complete")
+
+    def restore_preceding_owner() -> None:
+        status.setProperty("operationId", "review-operation")
+        status.setProperty("operationKind", "import_review")
+        status.setProperty("operationPhase", "completed")
+        status.setProperty("stage", "Interpretation validation complete")
+
+    QTimer.singleShot(20, publish_fast_apply)
+    QTimer.singleShot(25, restore_preceding_owner)
+    qtbot.wait(50)
+
+    captured = driver.wait_for_operation_kind_probe(probe)
+
+    assert captured.operation_id == "apply-operation"
+    assert captured.operation_kind == "import_apply"
+    assert captured.phase == "completed"
+
+
 def test_exact_apply_wait_rejects_frozen_indeterminate_progress(qtbot) -> None:
     window = QMainWindow()
     status = window.statusBar()
@@ -2915,6 +2960,24 @@ def test_import_action_and_subject_dialog_are_captured_on_distinct_surfaces() ->
             return "previous-op"
 
         @staticmethod
+        def arm_operation_kind_probe(
+            operation_kind, *, timeout_seconds, excluding_operation_id
+        ):
+            del timeout_seconds, excluding_operation_id
+            assert operation_kind == "import_apply"
+            return object()
+
+        @staticmethod
+        def wait_for_operation_kind_probe(_probe):
+            return ActiveOperationEvidence(
+                "apply-op",
+                "Verifying reviewed import content",
+                "running",
+                {},
+                operation_kind="import_apply",
+            )
+
+        @staticmethod
         def wait_for_active_operation_kind(
             operation_kind, *, timeout_seconds, excluding_operation_id
         ):
@@ -3130,6 +3193,24 @@ def test_import_journey_traverses_and_closes_synchronous_preview_exec(
             return gui_driver.click(control, timeout_seconds=timeout_seconds)
 
         @staticmethod
+        def arm_operation_kind_probe(
+            operation_kind, *, timeout_seconds, excluding_operation_id
+        ):
+            del timeout_seconds, excluding_operation_id
+            assert operation_kind == "import_apply"
+            return object()
+
+        @staticmethod
+        def wait_for_operation_kind_probe(_probe):
+            return ActiveOperationEvidence(
+                "apply-op",
+                "Finalizing reviewed import content",
+                "running",
+                {},
+                operation_kind="import_apply",
+            )
+
+        @staticmethod
         def wait_for_active_operation_kind(
             operation_kind, *, timeout_seconds, excluding_operation_id
         ):
@@ -3273,6 +3354,24 @@ def test_import_journey_ignores_stale_first_wait_after_refresh_confirmation(
         @staticmethod
         def visible_operation_id():
             return "previous-op"
+
+        @staticmethod
+        def arm_operation_kind_probe(
+            operation_kind, *, timeout_seconds, excluding_operation_id
+        ):
+            del timeout_seconds, excluding_operation_id
+            assert operation_kind == "import_apply"
+            return object()
+
+        @staticmethod
+        def wait_for_operation_kind_probe(_probe):
+            return ActiveOperationEvidence(
+                "apply-op",
+                "Hashing reviewed import content",
+                "running",
+                {},
+                operation_kind="import_apply",
+            )
 
         @staticmethod
         def wait_for_active_operation_kind(

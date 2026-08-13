@@ -27,6 +27,7 @@ from XBrainLab.backend.application import (
     ReloadInterpretationRecipeCommand,
     ReviewInterpretationCommand,
     SaveInterpretationRecipeCommand,
+    ValidateInterpretationCommand,
 )
 from XBrainLab.backend.application.capabilities import (
     CommandCapability,
@@ -1009,6 +1010,124 @@ def test_confirmed_revalidation_to_apply_immediately_publishes_owned_status(
 
     assert outcome.status is InteractionStatus.ACCEPTED
     _assert_visible_apply_completes(qtbot, status, runtime)
+
+
+def test_real_async_revalidation_handoff_keeps_apply_as_visible_owner(
+    qtbot,
+    monkeypatch,
+) -> None:
+    """A terminal Validate callback cannot hide the Apply it starts."""
+    _window, handler, status = _visible_apply_handler(qtbot)
+    snapshots: dict[str, Any] = {}
+    operation_ids: dict[type[Any], str] = {
+        PreviewInterpretationCommand: "preview-operation",
+        ValidateInterpretationCommand: "validate-operation",
+        ApplyInterpretationCommand: "apply-operation",
+    }
+
+    class _Runtime:
+        def begin_owned_operation(self, command):
+            operation_id = operation_ids[type(command)]
+            kind = (
+                OwnedWorkKind.IMPORT_APPLY
+                if isinstance(command, ApplyInterpretationCommand)
+                else OwnedWorkKind.IMPORT_REVIEW
+            )
+            snapshots[operation_id] = SimpleNamespace(
+                kind=kind,
+                phase=SimpleNamespace(value="pending"),
+                stage="Queued",
+                completed=None,
+                total=None,
+                indeterminate=True,
+                cancel_requested=False,
+                cancellable=True,
+            )
+            return SimpleNamespace(operation_id=operation_id)
+
+        def get_owned_operation(self, operation_id):
+            return snapshots[operation_id]
+
+        @staticmethod
+        def cancel_owned_operation(_operation_id):
+            return True
+
+        @staticmethod
+        def fail_owned_operation(operation_id, *, message):
+            raise AssertionError((operation_id, message))
+
+        @staticmethod
+        def get_view_publication():
+            return _review_publication(
+                generation=17,
+                scan_id="scan-1",
+                candidate_id="candidate-1",
+            )
+
+        def execute(
+            self,
+            command,
+            *,
+            expected_publication_generation=None,
+            operation_id=None,
+        ):
+            assert expected_publication_generation == 17
+            assert operation_id == operation_ids[type(command)]
+            snapshot = snapshots[operation_id]
+            snapshot.phase.value = "completed"
+            if isinstance(command, PreviewInterpretationCommand):
+                snapshot.stage = "Interpretation preview complete"
+                return _success_result(
+                    "preview_interpretation",
+                    preview={"summary": "ready"},
+                    candidate={"candidate_id": "candidate-1"},
+                )
+            if isinstance(command, ValidateInterpretationCommand):
+                snapshot.stage = "Interpretation validation complete"
+                return _success_result(
+                    "validate_interpretation",
+                    validation_decision={
+                        "candidate_id": "candidate-1",
+                        "decision": "safe",
+                    },
+                )
+            assert isinstance(command, ApplyInterpretationCommand)
+            snapshot.stage = "Dataset import complete"
+            return _success_result(
+                "apply_interpretation",
+                applied_interpretation={},
+            )
+
+    monkeypatch.setattr(
+        application_capabilities,
+        "application_ui_runtime",
+        lambda _context: _Runtime(),
+    )
+    terminal = []
+    completion = InteractionCompletionSession(
+        request_id="revalidation-apply",
+        command_name="preview_interpretation",
+        on_terminal=terminal.append,
+    )
+
+    with bind_interaction_completion(completion):
+        outcome = handler._data_interpretation._review_interpretation_for_apply_async(
+            choices={"class_map": {"1": "Target"}},
+            review_state=_review_state(publication_generation=17),
+            dialog_result={"confirmed": True, "save_recipe": False},
+        )
+
+    assert outcome is not None
+    assert outcome.status is InteractionStatus.ACCEPTED
+    qtbot.waitUntil(lambda: bool(terminal), timeout=2_000)
+    assert terminal[0].status is InteractionCompletionStatus.COMPLETED
+    qtbot.waitUntil(
+        lambda: status.property("operationId") == "apply-operation"
+        and status.property("operationKind") == "import_apply"
+        and status.property("operationPhase") == "completed"
+        and status.property("stage") == "Dataset import complete",
+        timeout=1_000,
+    )
 
 
 def test_fast_apply_preserves_exact_visible_pending_then_terminal_evidence(

@@ -22,6 +22,7 @@ from .driver import (
     ClickAcknowledgement,
     DriverContractError,
     GuiCampaignDriver,
+    OperationKindProbe,
     ProgressWaitEvidence,
     VisibleControl,
 )
@@ -150,6 +151,7 @@ class ProductRecommendedJourneyScaffold:
         review_acknowledgements: list[ClickAcknowledgement] = []
         confirm_acknowledgements: list[ClickAcknowledgement] = []
         confirm_baselines: list[str | None] = []
+        confirm_apply_probes: list[OperationKindProbe] = []
         review_sessions: list[Any] = []
         apply_states_before: list[dict[str, Any]] = []
         modal_failures: list[BaseException] = []
@@ -167,6 +169,14 @@ class ProductRecommendedJourneyScaffold:
                 apply_states_before.append(self.driver.workflow_state_identity("apply"))
             confirm_baselines.append(self.driver.visible_operation_id())
             self._capture_visible_stage("confirm_import")
+            if not self._should_cancel("apply"):
+                confirm_apply_probes.append(
+                    self.driver.arm_operation_kind_probe(
+                        "import_apply",
+                        timeout_seconds=_POST_CONFIRM_APPLY_START_TIMEOUT_SECONDS,
+                        excluding_operation_id=confirm_baselines[-1],
+                    )
+                )
             confirm_acknowledgements.append(
                 self.driver.click(
                     VisibleControl.WIZARD_CONFIRM,
@@ -373,15 +383,33 @@ class ProductRecommendedJourneyScaffold:
                 raise DriverContractError(
                     "Apply cancellation did not retry the same review session"
                 )
-        apply_operation = self.driver.wait_for_active_operation_kind(
-            "import_apply",
-            timeout_seconds=_POST_CONFIRM_APPLY_START_TIMEOUT_SECONDS,
-            excluding_operation_id=confirm_baseline,
-        )
-        confirm_progress = self.driver.wait_for_exact_owned_operation_completion(
-            apply_operation.operation_id,
-            timeout_seconds=_LONG_OPERATION_TIMEOUT_SECONDS,
-        )
+        if confirm_apply_probes:
+            apply_probe = confirm_apply_probes[-1]
+            apply_operation = self.driver.wait_for_operation_kind_probe(apply_probe)
+        else:
+            apply_probe = None
+            apply_operation = self.driver.wait_for_active_operation_kind(
+                "import_apply",
+                timeout_seconds=_POST_CONFIRM_APPLY_START_TIMEOUT_SECONDS,
+                excluding_operation_id=confirm_baseline,
+            )
+        if apply_operation.phase == "completed":
+            elapsed = (
+                0.0
+                if apply_probe is None or apply_probe.captured_at is None
+                else apply_probe.captured_at - apply_probe.started_at
+            )
+            confirm_progress = ProgressWaitEvidence(
+                operation_id=apply_operation.operation_id,
+                heartbeat_count=1,
+                max_progress_silence_seconds=elapsed,
+                elapsed_seconds=elapsed,
+            )
+        else:
+            confirm_progress = self.driver.wait_for_exact_owned_operation_completion(
+                apply_operation.operation_id,
+                timeout_seconds=_LONG_OPERATION_TIMEOUT_SECONDS,
+            )
         self.driver.control(VisibleControl.NAV_PREPROCESS, timeout_seconds=30.0)
         self._record(
             "confirm_import",

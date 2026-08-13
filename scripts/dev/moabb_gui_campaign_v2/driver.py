@@ -447,6 +447,21 @@ class ActiveOperationEvidence:
     operation_kind: str = ""
 
 
+@dataclass
+class OperationKindProbe:
+    """Timer-owned capture armed before a synchronous modal action unwinds."""
+
+    expected_kind: str
+    excluding_operation_id: str | None
+    started_at: float
+    deadline: float
+    timer: QTimer
+    resource_check_timer: QTimer
+    failures: list[BaseException]
+    evidence: ActiveOperationEvidence | None = None
+    captured_at: float | None = None
+
+
 @dataclass(frozen=True)
 class OperationTerminalEvidence:
     """Visible lifecycle proof for a cancellation request."""
@@ -1096,6 +1111,114 @@ class GuiCampaignDriver:
                 self._settle_once()
         finally:
             resource_check_probe.stop()
+
+    def arm_operation_kind_probe(
+        self,
+        operation_kind: str,
+        *,
+        timeout_seconds: float,
+        excluding_operation_id: str | None = None,
+    ) -> OperationKindProbe:
+        """Arm visible owner capture before a synchronous modal callback returns.
+
+        A fast follow-up operation can be published and complete while Qt is
+        unwinding the dialog/result callback that scheduled it.  Polling must
+        therefore already be armed at the user-action boundary; observing the
+        status only after ``QDialog.exec()`` has fully unwound can miss that
+        truthful but short-lived public owner.
+        """
+        expected_kind = str(operation_kind or "").strip()
+        if not expected_kind:
+            raise ValueError("operation_kind must be non-empty")
+        failures: list[BaseException] = []
+        resource_check_timer = self._start_dataset_resource_check_probe(failures)
+        timer = QTimer(self.root)
+        timer.setInterval(max(1, min(self.poll_interval_ms, 5)))
+        started_at = time.monotonic()
+        probe = OperationKindProbe(
+            expected_kind=expected_kind,
+            excluding_operation_id=excluding_operation_id,
+            started_at=started_at,
+            deadline=started_at + max(0.0, timeout_seconds),
+            timer=timer,
+            resource_check_timer=resource_check_timer,
+            failures=failures,
+        )
+
+        def inspect() -> None:
+            if probe.evidence is not None or probe.failures:
+                probe.timer.stop()
+                probe.resource_check_timer.stop()
+                return
+            if time.monotonic() > probe.deadline:
+                probe.failures.append(
+                    DriverContractError(
+                        f"no visible active {expected_kind} operation was published"
+                    )
+                )
+                probe.timer.stop()
+                probe.resource_check_timer.stop()
+                return
+            try:
+                progress = self._visible_operation_progress()
+                if progress is None:
+                    return
+                operation_id = str(progress.property("operationId") or "").strip()
+                phase = str(progress.property("operationPhase") or "").casefold()
+                observed_kind = str(progress.property("operationKind") or "").strip()
+                if (
+                    not operation_id
+                    or operation_id == excluding_operation_id
+                    or observed_kind != expected_kind
+                ):
+                    return
+                evidence = self._active_operation_evidence(progress)
+                if phase in {"pending", "running", "cancelling", "completed"}:
+                    probe.evidence = evidence
+                    probe.captured_at = time.monotonic()
+                    probe.timer.stop()
+                    probe.resource_check_timer.stop()
+                    return
+                if phase in {"cancelled", "failed"}:
+                    probe.failures.append(
+                        DriverContractError(
+                            f"operation {operation_id} reached {phase!r}"
+                        )
+                    )
+            except BaseException as exc:
+                probe.failures.append(exc)
+            if probe.failures:
+                probe.timer.stop()
+                probe.resource_check_timer.stop()
+
+        timer.timeout.connect(inspect)
+        timer.start()
+        inspect()
+        return probe
+
+    def wait_for_operation_kind_probe(
+        self,
+        probe: OperationKindProbe,
+    ) -> ActiveOperationEvidence:
+        """Wait for one pre-armed visible owner capture without re-arming it."""
+        try:
+            while probe.evidence is None and not probe.failures:
+                if time.monotonic() > probe.deadline:
+                    raise DriverContractError(
+                        f"no visible active {probe.expected_kind} operation was "
+                        "published"
+                    )
+                self._settle_once()
+            if probe.failures:
+                raise probe.failures[0]
+            if probe.evidence is None:
+                raise DriverContractError(
+                    f"no visible active {probe.expected_kind} operation was published"
+                )
+            return probe.evidence
+        finally:
+            probe.timer.stop()
+            probe.resource_check_timer.stop()
 
     def click_active_operation_cancel(
         self,
