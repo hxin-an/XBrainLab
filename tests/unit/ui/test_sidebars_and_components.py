@@ -3658,8 +3658,6 @@ class TestDatasetSidebar:
         assert sb.reload_recipe_btn.toolTip() == (
             "Review a saved import recipe before applying it"
         )
-        assert sb.clear_btn.isEnabled() is True
-        assert sb.clear_btn.toolTip() == "Clear all loaded data and start over."
         assert sb.smart_parse_btn.isEnabled()
         assert sb.smart_parse_btn.toolTip() == (
             "Auto-extract Subject/Session from filenames"
@@ -3718,7 +3716,7 @@ class TestDatasetSidebar:
                 QMessageBox,
                 "question",
                 return_value=QMessageBox.StandardButton.Yes,
-            ),
+            ) as question,
             patch(
                 "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog",
             ) as mock_dialog,
@@ -3733,6 +3731,7 @@ class TestDatasetSidebar:
             sb.open_channel_selection()
 
         mock_dialog.assert_called_once()
+        question.assert_not_called()
         assert isinstance(mock_execute.call_args.args[1], PreprocessCommand)
         panel.controller.apply_channel_selection.assert_not_called()
         panel.update_panel.assert_not_called()
@@ -3987,111 +3986,3 @@ class TestDatasetSidebar:
         mock_info.assert_not_called()
         mock_warning.assert_called_once()
         assert mock_warning.call_args.args[1] == "Channel Selection Blocked"
-
-    def test_clear_dataset(self, sidebar):
-        from PyQt6.QtWidgets import QMessageBox
-
-        sidebar.panel.controller.is_epoched.return_value = True
-        with (
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
-            ),
-            patch.object(QMessageBox, "warning") as mock_warning,
-        ):
-            sidebar.clear_dataset()
-            sidebar.panel.controller.clean_dataset.assert_not_called()
-            mock_warning.assert_called_once()
-            assert mock_warning.call_args.args[1] == "Reset Session Blocked"
-
-    def test_reset_session_clears_loaded_eeg_instead_of_only_training_splits(
-        self,
-        qtbot,
-    ):
-        from PyQt6.QtWidgets import QMessageBox
-
-        from XBrainLab.backend.study import Study
-        from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
-
-        study = Study()
-        raw = MagicMock()
-        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
-        study.data_manager.loaded_data_list = [raw]
-        cast(Any, study).epoch_data = object()
-        panel = _make_panel_mock()
-        panel.main_window.study = study
-        sb = DatasetSidebar(panel)
-        qtbot.addWidget(sb)
-
-        with (
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
-            ) as mock_question,
-            patch.object(QMessageBox, "information") as mock_info,
-        ):
-            sb.clear_dataset()
-
-        mock_question.assert_called_once()
-        mock_info.assert_not_called()
-        assert panel.main_window.statusBar().currentMessage() == "Session reset"
-        assert study.data_manager.loaded_data_list == []
-        assert study.data_manager.epoch_data is None
-        panel.controller.clean_dataset.assert_not_called()
-        panel.update_panel.assert_not_called()
-
-    def test_clear_dataset_refuses_real_study_controller_fallback(self, sidebar):
-        from PyQt6.QtWidgets import QMessageBox
-
-        from XBrainLab.backend.application import CommandName, ResetSessionCommand
-        from XBrainLab.backend.application.capabilities import CommandCapability
-        from XBrainLab.backend.study import Study
-
-        sidebar.panel.main_window.study = Study()
-        reset_capability = CommandCapability(
-            command_name="reset_session",
-            enabled=True,
-            destructive=True,
-            confirmation_required=True,
-        )
-        publication = SimpleNamespace(
-            generation=93,
-            effective_capabilities={CommandName.RESET_SESSION: reset_capability},
-        )
-
-        def execute_for(
-            _,
-            command,
-            refresh=True,
-            expected_publication_generation=None,
-        ):
-            assert isinstance(command, ResetSessionCommand)
-            assert command.confirmed is True
-            assert expected_publication_generation == publication.generation
-
-        with (
-            patch(
-                "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
-                return_value=publication,
-            ),
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
-            ),
-            patch(
-                "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
-                side_effect=execute_for,
-            ),
-            patch.object(QMessageBox, "warning") as mock_warning,
-            patch.object(QMessageBox, "critical") as mock_critical,
-        ):
-            sidebar.clear_dataset()
-
-        sidebar.panel.controller.clean_dataset.assert_not_called()
-        mock_warning.assert_called_once()
-        assert mock_warning.call_args.args[1] == "Reset Session Blocked"
-        mock_critical.assert_not_called()
-        assert "could not safely complete" in mock_warning.call_args.args[2]

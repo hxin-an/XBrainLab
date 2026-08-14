@@ -258,12 +258,10 @@ def test_high_risk_confirmation_stays_explicit_and_emits_the_exact_request(
     width: int,
 ) -> None:
     request = AgentConfirmationRequest.for_action(
-        command_name="clear_dataset",
+        command_name="reset_preprocess",
         params={},
-        action_label=(
-            "Clear the loaded EEG dataset and all dependent workspace results"
-        ),
-        description="This removes the current dataset from the workspace.",
+        action_label=("Reset preprocessing while keeping the loaded EEG dataset"),
+        description="This restores the current workflow to raw loaded data.",
         destructive=True,
         publication_generation=12,
     )
@@ -280,7 +278,7 @@ def test_high_risk_confirmation_stays_explicit_and_emits_the_exact_request(
     assert card.description_label.isVisibleTo(card)
     assert card.reason_title.text() == "Reason"
     assert card.secondary_button.text() == "Cancel"
-    assert card.primary_button.text() == "Clear dataset"
+    assert card.primary_button.text() == "Reset Preprocess"
     assert card.property("destructive") is True
 
     card.primary_button.click()

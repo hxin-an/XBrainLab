@@ -747,7 +747,7 @@ def test_pending_interaction_resolutions_use_control_plane_after_runtime_failure
     lifecycle.mark_unavailable("runtime failed while the dialog was open")
 
     confirmation_request = AgentConfirmationRequest.for_action(
-        command_name="clear_dataset",
+        command_name="reset_preprocess",
         params={},
         action_label="Clear dataset",
         description="Clear the current dataset.",

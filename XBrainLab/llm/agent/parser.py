@@ -44,7 +44,6 @@ _BARE_COMMANDS = frozenset(
         "evaluate",
         "visualize",
         "saliency",
-        "clear_dataset",
         "query_state",
         "get_dataset_info",
     }

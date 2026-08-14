@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QEvent, QObject, Qt
 from PyQt6.QtWidgets import QBoxLayout
 
 from tests.unit.ui.data_split_test_support import dialog_context_kwargs
@@ -19,11 +19,31 @@ from XBrainLab.backend.dataset import (
     TrainingType,
     ValSplitByType,
 )
+from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
     PREVIEW_STATUS_SUCCEEDED,
     DataSplitterHolder,
     DataSplittingPreviewDialog,
 )
+
+
+class _VisibleResizeRecorder(QObject):
+    def __init__(self, target) -> None:
+        super().__init__(target)
+        self.target = target
+        self.armed = False
+        self.sizes: list[tuple[int, int]] = []
+
+    def eventFilter(self, watched, event) -> bool:
+        if (
+            self.armed
+            and watched is self.target
+            and event.type() is QEvent.Type.Resize
+            and self.target.isVisible()
+        ):
+            size = event.size()
+            self.sizes.append((size.width(), size.height()))
+        return super().eventFilter(watched, event)
 
 
 def _preview_rows(count: int) -> tuple[DatasetSplitPreviewRow, ...]:
@@ -191,6 +211,49 @@ def test_success_rows_schedule_one_refit_not_one_per_poll(qtbot, monkeypatch):
     qtbot.wait(10)
 
     assert refit_calls == 1
+
+
+def test_success_rows_do_not_resize_the_visible_wide_dialog(qtbot, monkeypatch):
+    monkeypatch.setattr(BaseDialog, "_fit_to_available_screen", lambda self: None)
+    monkeypatch.setattr(
+        BaseDialog,
+        "resize_preserving_center",
+        lambda self, size: self.resize(size),
+    )
+    release = threading.Event()
+    dialog = DataSplittingPreviewDialog(
+        None,
+        "Data Splitting Step 2",
+        config=_preview_config(),
+        **dialog_context_kwargs(
+            preview_provider=_async_preview_provider(_preview_rows(5), release)
+        ),
+    )
+    qtbot.addWidget(dialog)
+    recorder = _VisibleResizeRecorder(dialog)
+    dialog.installEventFilter(recorder)
+    dialog.show()
+    qtbot.waitUntil(lambda: dialog.isVisible())
+    initial_size = (dialog.width(), dialog.height())
+    initial_center = dialog.geometry().center()
+    recorder.armed = True
+
+    release.set()
+    qtbot.waitUntil(
+        lambda: dialog._preview_state()[0] == PREVIEW_STATUS_SUCCEEDED,
+        timeout=3000,
+    )
+    dialog.update_table()
+    qtbot.waitUntil(
+        lambda: dialog.tree is not None
+        and dialog.tree.topLevelItemCount() == 5
+        and not dialog._content_refit_pending,
+        timeout=1000,
+    )
+
+    assert (dialog.width(), dialog.height()) == initial_size
+    assert dialog.geometry().center() == initial_center
+    assert all(size == initial_size for size in recorder.sizes)
 
 
 def test_wide_resize_refits_all_header_sections_into_viewport(qtbot):

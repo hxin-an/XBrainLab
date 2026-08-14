@@ -132,9 +132,20 @@ class ChannelSelectionDialog(BaseDialog):
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         normalize_dialog_button_box(buttons)
+        buttons.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        for standard_button in (
+            QDialogButtonBox.StandardButton.Ok,
+            QDialogButtonBox.StandardButton.Cancel,
+        ):
+            button = buttons.button(standard_button)
+            if button is not None:
+                button.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        footer = QHBoxLayout()
+        footer.addStretch(1)
+        footer.addWidget(buttons)
+        layout.addLayout(footer)
 
     def set_all_checked(self, checked):
         """Set the check state for all items in the list.

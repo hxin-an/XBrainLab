@@ -475,7 +475,6 @@ CANONICAL_DELEGATING_REAL_TOOL_CLASSES = frozenset(
         "RealAttachLabelsTool",
         "RealBandPassFilterTool",
         "RealChannelSelectionTool",
-        "RealClearDatasetTool",
         "RealConfigureTrainingTool",
         "RealEpochDataTool",
         "RealEvaluateTool",

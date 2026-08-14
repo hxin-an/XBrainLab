@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-08-14`
+最後更新：`2026-08-15`
 
 這頁定義 current gates、evidence identity 和 claim boundary。Dated checkpoint output 不在這裡
 冒充 current result；歷史結果看 records 或 Git history。
@@ -11,9 +11,9 @@
 | --- | --- |
 | Candidate checkout | 由 `git rev-parse --show-toplevel` 和 generated evidence 記錄，不在 canonical docs 寫死本機 path。 |
 | Product baseline | `main` |
-| Current candidate | 從最新 `main` 建立的 dataset consolidation candidate；實際 branch / SHA 由 Git 與 generated evidence 記錄。 |
+| Current candidate | 從最新 `main` 建立的 manual UI follow-up / Reset Session surface-retirement candidate；實際 branch / SHA 由 Git 與 generated evidence 記錄。 |
 | Baseline | 以 candidate merge-base 的最新 `main` 為準，不在 canonical docs 寫死 historical SHA。 |
-| Closure state | Product foundation 已合回 `main`；dataset storage 是 short-branch checkpoint，PR exact-head CI、merge 與 cleanup acceptance 尚未完成；not handoff-ready；not release-ready |
+| Closure state | Product foundation 與 dataset storage 已合回 `main`；本輪 follow-up 是 short-branch checkpoint，PR exact-head CI 與 merge 尚未完成；not handoff-ready；not release-ready |
 | Data Import artifacts | Tracked folder is a dirty checkpoint；read its manifest for source identity and never treat it as current candidate evidence |
 | Required authority | 本頁與 [Now](../planning/now.md)；舊 product-quality goal / audit 只作歷史 provenance。 |
 
@@ -203,10 +203,10 @@ artifacts 仍是必須另行檢查的 evidence。
 - `blocked`：需要使用者決策、外部環境或無法自動取得的 evidence；
 - `handoff-ready`：只有全部 gate 從同一 clean pushed commit 完成後才可使用。
 
-Product foundation 已經由 exact-head CI 成功的 PR 合回 `main`。目前 dataset consolidation 仍是
-尚未合併的 `checkpoint`；只有該短 branch 的 focused evidence、PR exact-head CI 與 merge 完成後，
-storage contract 才能算進入產品基線。這仍不表示 cleanup、Assistant、效能、資料格式或 release
-gate 已完成。
+Product foundation 與 dataset storage 已經由 exact-head CI 成功的 PR 合回 `main`。目前 manual
+UI follow-up / Reset Session surface retirement 仍是尚未合併的 `checkpoint`；只有該短 branch 的
+focused evidence、PR exact-head CI 與 merge 完成後，變更才算進入產品基線。這仍不表示
+Assistant、效能、資料格式或 release gate 已完成。
 
 ## EEG Workflow Baseline And Historical Polish Evidence
 

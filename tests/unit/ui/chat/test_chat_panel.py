@@ -565,10 +565,10 @@ class TestChatPanelInit:
             publication_generation=3,
         )
         second = AgentConfirmationRequest.for_action(
-            command_name="clear_dataset",
+            command_name="reset_preprocess",
             params={},
-            action_label="Clear dataset",
-            description=("Remove loaded EEG data and its downstream workspace state."),
+            action_label="Reset preprocessing",
+            description="Restore the loaded EEG data to its raw state.",
             destructive=True,
             publication_generation=3,
         )
@@ -591,7 +591,7 @@ class TestChatPanelInit:
 
         chat_panel.set_confirmation_submitting(second.request_id, False)
         assert card.primary_button.isEnabled()
-        assert card.primary_button.text() == "Clear dataset"
+        assert card.primary_button.text() == "Reset Preprocess"
 
     def test_composer_caps_programmatic_oversized_prompt_before_submission(
         self,

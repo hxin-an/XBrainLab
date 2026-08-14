@@ -42,7 +42,6 @@ def test_direct_action_tool_names_do_not_drift_from_registry():
         "configure_training": frozenset({"set_model", "configure_training"}),
         "train": frozenset({"start_training"}),
         "stop_training": frozenset({"stop_training"}),
-        "reset_session": frozenset({"clear_dataset"}),
         "evaluate": frozenset({"evaluate"}),
         "visualize": frozenset({"visualize"}),
         "saliency": frozenset({"saliency"}),
@@ -187,7 +186,6 @@ def test_ambiguous_preprocess_request_requires_clarification(text: str) -> None:
 def test_explicit_navigation_exposes_only_switch_panel() -> None:
     published = frozenset(
         {
-            "clear_dataset",
             "configure_training",
             "list_files",
             "query_state",

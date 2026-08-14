@@ -109,7 +109,6 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             *_DATA_INTERPRETATION_TOOLS,
             *_PREPROCESS_TOOLS,
             "get_dataset_info",
-            "clear_dataset",
             "switch_panel",
         ],
         "system_prompt": _stage_system_prompt(
@@ -127,7 +126,6 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             *_DATA_INTERPRETATION_TOOLS,
             *_PREPROCESS_TOOLS,
             "get_dataset_info",
-            "clear_dataset",
             "switch_panel",
         ],
         "system_prompt": _stage_system_prompt(
@@ -148,7 +146,6 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             "reset_preprocess",
             "configure_dataset_split",
             "get_dataset_info",
-            "clear_dataset",
             "switch_panel",
         ],
         "system_prompt": _stage_system_prompt(
@@ -168,7 +165,6 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             *_TRAINING_TOOLS,
             *_ANALYSIS_TOOLS,
             "get_dataset_info",
-            "clear_dataset",
             "switch_panel",
         ],
         "system_prompt": _stage_system_prompt(
@@ -203,7 +199,6 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             *_TRAINING_TOOLS,
             *_ANALYSIS_TOOLS,
             "get_dataset_info",
-            "clear_dataset",
             "switch_panel",
         ],
         "system_prompt": _stage_system_prompt(

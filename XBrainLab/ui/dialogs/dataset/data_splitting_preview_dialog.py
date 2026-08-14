@@ -351,7 +351,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         # But BaseDialog calls init_ui in init.
         # So we initialize members before super.
 
-        super().__init__(parent, title=title)
+        super().__init__(parent, title=title, width=920)
         self._update_content_flow(self.width())
         self._refit_to_current_content()
 
@@ -707,9 +707,19 @@ class DataSplittingPreviewDialog(BaseDialog):
                 if self.content_scroll is not None
                 else 0
             )
+            minimum_dialog_height = chrome_height + content_height
+            if (
+                self.content_layout is not None
+                and self.content_layout.direction() == QBoxLayout.Direction.TopToBottom
+                and self.screen() is not None
+            ):
+                minimum_dialog_height = max(
+                    minimum_dialog_height,
+                    self.screen().availableGeometry().height() - 48,
+                )
             self.fit_to_content(
                 minimum_width=920,
-                minimum_height=chrome_height + content_height,
+                minimum_height=minimum_dialog_height,
             )
             self._update_content_flow(self.width())
 
@@ -1188,6 +1198,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         """Recompute row geometry after the platform style has been polished."""
         super().showEvent(event)
         self._resize_tree_to_rows()
+        self._refit_to_current_content()
         QTimer.singleShot(0, self._resize_tree_to_rows)
         QTimer.singleShot(1, self._resize_tree_to_rows)
 

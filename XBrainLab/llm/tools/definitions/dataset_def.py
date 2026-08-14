@@ -337,30 +337,6 @@ class BaseAttachLabelsTool(BaseTool):
         raise NotImplementedError
 
 
-class BaseClearDatasetTool(BaseTool):
-    """Clear all loaded data and reset the Study state."""
-
-    @property
-    def name(self) -> str:
-        return "clear_dataset"
-
-    @property
-    def description(self) -> str:
-        return "Clear all loaded data and reset Study state."
-
-    @property
-    def parameters(self) -> dict[str, Any]:
-        return {"type": "object", "properties": {}}
-
-    @property
-    def requires_confirmation(self) -> bool:
-        """Clearing data is destructive and requires user confirmation."""
-        return True
-
-    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
-        raise NotImplementedError
-
-
 class BaseGetDatasetInfoTool(BaseTool):
     """Retrieve summary information about the currently loaded dataset."""
 

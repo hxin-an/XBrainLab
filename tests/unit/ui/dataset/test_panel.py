@@ -294,7 +294,6 @@ def test_dataset_panel_empty_state_fits_840_shell_with_320_assistant_dock(
         panel.sidebar.import_bids_btn,
         panel.sidebar.reload_recipe_btn,
         panel.sidebar.chan_select_btn,
-        panel.sidebar.clear_btn,
     ):
         assert button.isVisibleTo(panel)
         assert_widget_fits_panel(button, panel)
@@ -416,7 +415,6 @@ def test_dataset_panel_empty_and_loaded_summary_scale_matrix(
             panel.sidebar.import_bids_btn,
             panel.sidebar.reload_recipe_btn,
             panel.sidebar.chan_select_btn,
-            panel.sidebar.clear_btn,
         ):
             assert button.isVisibleTo(panel)
             assert_widget_fits_scroll_width(button, panel.sidebar.scroll_area)
@@ -430,7 +428,7 @@ def test_dataset_panel_empty_and_loaded_summary_scale_matrix(
             vertical_scrollbar.setValue(vertical_scrollbar.maximum())
             qtbot.wait(0)
             assert_widget_fits_scroll_viewport(
-                panel.sidebar.clear_btn,
+                panel.sidebar.chan_select_btn,
                 panel.sidebar.scroll_area,
             )
         assert_dataset_horizontal_scroll_is_absent(panel)
@@ -463,7 +461,6 @@ def test_dataset_fixed_sidebar_ignores_wide_native_font_minimum_hints(qtbot):
             panel.sidebar.import_bids_btn,
             panel.sidebar.reload_recipe_btn,
             panel.sidebar.chan_select_btn,
-            panel.sidebar.clear_btn,
         ):
             full_label = button.property("datasetFullLabel")
             assert isinstance(full_label, str)
@@ -642,33 +639,6 @@ def test_dataset_panel_import_data_success(mock_main_window, mock_controller, qt
         mock_controller.import_files.assert_not_called()
         mock_warning.assert_called_once()
         assert mock_warning.call_args.args[1] == "Interpretation Blocked"
-        mock_info.assert_not_called()
-
-
-def test_dataset_panel_clear_dataset(mock_main_window, mock_controller, qtbot):
-    """Test clearing the dataset."""
-
-    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
-    qtbot.addWidget(panel)
-    mock_controller.has_data.return_value = True
-    mock_controller.is_epoched.return_value = True
-
-    with (
-        patch(
-            "XBrainLab.ui.panels.dataset.sidebar.QMessageBox.question",
-            return_value=QMessageBox.StandardButton.Yes,
-        ),
-        patch(
-            "XBrainLab.ui.panels.dataset.sidebar.QMessageBox.information"
-        ) as mock_info,
-        patch(
-            "XBrainLab.ui.panels.dataset.sidebar.QMessageBox.warning"
-        ) as mock_warning,
-    ):
-        panel.sidebar.clear_dataset()
-        mock_controller.clean_dataset.assert_not_called()
-        mock_warning.assert_called_once()
-        assert mock_warning.call_args.args[1] == "Reset Session Blocked"
         mock_info.assert_not_called()
 
 

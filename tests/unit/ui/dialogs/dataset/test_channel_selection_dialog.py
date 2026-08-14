@@ -41,6 +41,7 @@ def test_channel_selection_dialog_uses_current_dialog_hierarchy(qtbot) -> None:
     assert dialog.btn_none.objectName() == "SecondaryDialogButton"
     assert ok_button.objectName() == "PrimaryConfirmButton"
     assert cancel_button.objectName() == "SecondaryDialogButton"
+    assert cancel_button.geometry().right() < ok_button.geometry().left()
 
 
 def test_channel_selection_dialog_keeps_footer_and_list_usable_when_narrow(
@@ -61,6 +62,9 @@ def test_channel_selection_dialog_keeps_footer_and_list_usable_when_narrow(
     assert dialog.list_widget.horizontalScrollBar().maximum() == 0
     assert button_box.isVisible()
     assert button_box.geometry().bottom() <= dialog.contentsRect().bottom()
+    ok_button = button_box.button(QDialogButtonBox.StandardButton.Ok)
+    cancel_button = button_box.button(QDialogButtonBox.StandardButton.Cancel)
+    assert cancel_button.geometry().right() < ok_button.geometry().left()
 
 
 def test_channel_selection_behavior_and_copy_are_unchanged(qtbot) -> None:

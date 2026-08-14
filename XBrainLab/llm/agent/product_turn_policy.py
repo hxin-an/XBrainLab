@@ -49,6 +49,10 @@ _HISTORICAL_REFERENCE_CLARIFICATION_COPY = (
     "you want, such as preprocess, create EEG epochs, build a dataset, train, "
     "evaluate, or inspect saliency."
 )
+_RESET_SESSION_UNAVAILABLE_COPY = (
+    "Reset Session is not available from the interface or Assistant. "
+    "Close and reopen XBrainLab to start over. No session state was changed."
+)
 _GREETINGS = frozenset({"hello", "hi", "hey", "嗨", "你好", "您好"})
 _COMMAND_SUBJECTS: dict[CommandName, str] = {
     CommandName.SCAN_SOURCE: "Data import",
@@ -69,7 +73,6 @@ _COMMAND_SUBJECTS: dict[CommandName, str] = {
     CommandName.VISUALIZE: "Visualization",
     CommandName.SALIENCY: "Saliency analysis",
     CommandName.QUERY_STATE: "Workflow state",
-    CommandName.RESET_SESSION: "Session reset",
 }
 
 
@@ -116,9 +119,14 @@ class ProductTurnPolicy:
                 _HISTORICAL_REFERENCE_CLARIFICATION_COPY,
             )
 
+        if self._is_explicit_reset_session_request(text):
+            return self._reset_session_unavailable_decision()
+
         blocked_explanation = resolve_blocked_explanation_intent(text)
         if blocked_explanation is not None:
             command = blocked_explanation.target_command
+            if command is CommandName.RESET_SESSION:
+                return self._reset_session_unavailable_decision()
             if command is None:
                 return ProductTurnDecision(
                     ProductTurnKind.BLOCKED_EXPLANATION_AMBIGUOUS,
@@ -127,6 +135,8 @@ class ProductTurnPolicy:
             return self._workflow_readiness_decision(command)
 
         intent = infer_user_intent(text)
+        if intent == "reset_session":
+            return self._reset_session_unavailable_decision()
         if intent == "ask_clarification":
             return ProductTurnDecision(
                 ProductTurnKind.CLARIFICATION,
@@ -134,6 +144,27 @@ class ProductTurnPolicy:
                 contextual_command=self._clarification_command(),
             )
         return None
+
+    @staticmethod
+    def _reset_session_unavailable_decision() -> ProductTurnDecision:
+        return ProductTurnDecision(
+            ProductTurnKind.WORKFLOW_UNAVAILABLE,
+            _RESET_SESSION_UNAVAILABLE_COPY,
+        )
+
+    @staticmethod
+    def _is_explicit_reset_session_request(text: str) -> bool:
+        normalized = text.strip().lower()
+        if re.search(r"\b(?:preprocess|preprocessing)\b|前處理|預處理", normalized):
+            return False
+        return bool(
+            re.search(
+                r"\b(?:reset|clear|wipe|empty)\b.*\b"
+                r"(?:session|workspace|dataset|data)\b",
+                normalized,
+            )
+            or re.search(r"(?:重設|清空).*(?:工作階段|資料|數據)", normalized)
+        )
 
     def _clarification_command(self) -> CommandName | None:
         """Return the current workflow surface without guessing from user text."""

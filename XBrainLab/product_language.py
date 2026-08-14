@@ -35,8 +35,6 @@ TOOL_ACTION_LABELS: dict[str, str] = {
     "evaluate": "Review results",
     "visualize": "Open visualizations",
     "saliency": "Configure saliency analysis",
-    "clear_dataset": "Clear dataset",
-    "reset_session": "Reset session",
     "new_session": "Start new session",
     "switch_panel": "Navigation",
 }

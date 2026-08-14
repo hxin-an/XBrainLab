@@ -34,7 +34,6 @@ def test_dataset_panel_init(app, mock_main_window):
     assert isinstance(panel.sidebar.info_panel, QWidget)
     assert isinstance(panel.sidebar.import_btn, QPushButton)
     assert isinstance(panel.sidebar.chan_select_btn, QPushButton)
-    assert isinstance(panel.sidebar.clear_btn, QPushButton)
 
     # Check Theme application (check if styleSheet is not empty)
     assert "background-color" in panel.sidebar.info_panel.styleSheet()

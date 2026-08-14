@@ -8,8 +8,8 @@
 
 ## 目前焦點
 
-**先修復三個真人手測可見問題：Saliency Normalize admission、Data Split 第二步展開／primary
-action，以及 Select Channels dialog 外觀。**
+**關閉真人手測追加發現的三個 follow-up 區域：Subject／Channel action consistency、Data
+Split 第二步首幀尺寸穩定，以及 desktop／Assistant 的 Reset Session surface 退役。**
 
 Working desktop foundation 已經由 PR `#16` 合回 `main`；舊 reliability checkpoint 繼續留在 remote
 作 provenance。Repo-root `settings.json` 是使用者本機設定，永遠不 stage、commit、revert 或覆寫。
@@ -20,25 +20,27 @@ Working desktop foundation 已經由 PR `#16` 合回 `main`；舊 reliability ch
 | --- | --- |
 | Product baseline | 最新 `main`；實際 merge-base / SHA 由 Git 取得。 |
 | Candidate | Manual UI regression branch；實際 branch / pushed SHA 由 Git 與 PR 取得。 |
-| Primary goal | 關閉 Saliency Normalize operation identity、Data Split preview layout 與 Select Channels visual consistency 三個問題。 |
-| Non-goals | 不改 saliency 數學、split 演算法、channel selection 語意、label semantics 或 dataset storage；不重跑 15-dataset GUI campaign、不刪資料。 |
-| Current classification | Short-branch implementation checkpoint；使用者已明確授權三個可見 UI 修復，尚未完成 TDD、artifact、exact-head CI 或 Windows native acceptance。 |
+| Primary goal | 讓 Subject／Channel primary actions 一致、Data Split 首次顯示不跳動，並移除 desktop／Assistant 的 Reset Session 入口。 |
+| Non-goals | 不改 saliency 數學、split 演算法、channel selection 語意、Reset Preprocessing、internal ResetSessionCommand、label semantics 或 dataset storage；不重跑 15-dataset GUI campaign、不刪資料。 |
+| Current classification | 原三項修復已有使用者真人 checkpoint；本輪 follow-up 仍須完成 TDD、artifact、exact-head CI 與 Windows native acceptance。 |
 
 ## 本 branch 的產品邊界
 
-- Saliency begin / prepare 必須使用相同 canonical raw render identity；Normalized variant 在該 owned
-  operation 內產生，不放寬 registry admission。Absolute 仍是 display-only 語意。
-- Data Split 第二步在 responsive layout 與 async preview rows 穩定後 refit；1–8 rows 在螢幕允許時
-  直接可見，超過 8 rows 才由 tree scroll，Confirm 使用共用 primary style。
-- Select Channels 只統一間距、surface、按鈕層級與 bounded geometry；搜尋、checkbox、全選／取消
-  全選、OK／Cancel、空選擇警告及 command/state flow 全部不變。
+- Subject 的 `Continue` 與其他共用 confirm actions 必須在實際 render 後保有 primary style；selection
+  與 enable contract 不變。
+- Select Channels footer 固定 `Cancel` 在左、`OK` 最右；移除進 dialog 前的重複修改資料警告，
+  以 dialog `OK` 作唯一確認。空選擇、blocked、stale 與 failure 提示保留。
+- Data Split 第二步在首次 paint 前選定正確 responsive flow；async result refit 必須保持 top-level
+  geometry 不變，1–8 rows 與超過 8 rows 的既有 scroll contract 保留。
+- Dataset sidebar 與 Assistant 不再提供 Reset Session。Backend `ResetSessionCommand` 保留給 internal
+  automation；Reset Preprocessing 與未啟用的 MCP compatibility surface 不在本輪。
 
 ## 施工與 exit signal
 
 | 順序 | 工作 | Exit signal |
 | --- | --- | --- |
-| 1 | TDD | 三項 observable regression 各自先紅後綠；不以 mock choreography 取代 owned runtime / Qt behavior。 |
-| 2 | UI artifacts | Data Split 與 Select Channels 的 standard / narrow 截圖由主 agent檢查 geometry、scroll、text fit 與 primary action。 |
+| 1 | TDD | 三個 follow-up 區域的 observable regression 各自先紅後綠；不以 mock choreography 取代 Qt render、temporal geometry 或 Assistant tool exposure。 |
+| 2 | UI artifacts | Subject、Data Split、Select Channels 與 Dataset sidebar 的 standard / narrow 截圖由主 agent檢查 geometry、scroll、text fit、primary action 與 surface removal。 |
 | 3 | Regression | Focused 與直接相鄰 Qt / Visualization tests、same-class sweep、Ruff、Basedpyright、diff check通過。 |
 | 4 | Product gate | Exact-head required public multi-dataset gate 與適用 visualization evidence通過；不跑 15-dataset GUI campaign。 |
 | 5 | PR integration | Focused commit push；PR base `main`；exact-head CI 所有 non-skipped checks completed/success後才合回 `main`。 |

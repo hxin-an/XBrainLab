@@ -27,7 +27,6 @@ from .mock.analysis_mock import (
 from .mock.dataset_mock import (
     MockApplyInterpretationTool,
     MockAttachLabelsTool,
-    MockClearDatasetTool,
     MockConfigureDatasetSplitTool,
     MockGetDatasetInfoTool,
     MockListFilesTool,
@@ -192,7 +191,6 @@ def _build_real_tools() -> list[BaseTool]:
     from .real.dataset_real import (
         RealApplyInterpretationTool,
         RealAttachLabelsTool,
-        RealClearDatasetTool,
         RealConfigureDatasetSplitTool,
         RealGetDatasetInfoTool,
         RealListFilesTool,
@@ -235,7 +233,6 @@ def _build_real_tools() -> list[BaseTool]:
         RealReloadInterpretationRecipeTool(),
         RealLoadDataTool(),
         RealAttachLabelsTool(),
-        RealClearDatasetTool(),
         RealQueryStateTool(),
         RealGetDatasetInfoTool(),
         RealConfigureDatasetSplitTool(),
@@ -292,7 +289,6 @@ def get_all_tools(mode: str = "mock") -> list[BaseTool]:
             MockReloadInterpretationRecipeTool(),
             MockLoadDataTool(workflow_state),
             MockAttachLabelsTool(),
-            MockClearDatasetTool(workflow_state),
             MockQueryStateTool(workflow_state),
             MockGetDatasetInfoTool(),
             MockConfigureDatasetSplitTool(workflow_state),

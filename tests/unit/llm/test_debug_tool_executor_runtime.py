@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import replace
-from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -39,7 +38,7 @@ MAPPED_DEBUG_TOOLS = sorted(
 def test_debug_executor_surface_matches_all_canonical_real_tools() -> None:
     canonical_real_tools = [tool.name for tool in get_all_tools("real")]
 
-    assert len(canonical_real_tools) == 31
+    assert len(canonical_real_tools) == 30
     assert len(canonical_real_tools) == len(set(canonical_real_tools))
     assert set(ToolExecutor.TOOL_MAP) == set(canonical_real_tools)
 
@@ -285,31 +284,19 @@ def test_debug_schema_failure_does_not_execute_mapped_adapter_or_backend() -> No
     direct_execute.assert_not_called()
 
 
-def test_debug_confirmation_boundary_blocks_destructive_command() -> None:
+def test_retired_reset_session_tool_is_not_available_from_debug_surface() -> None:
     study = Study()
     service = get_application_service(study)
     executor = ToolExecutor(study)
 
-    with (
-        patch.object(service, "execute", wraps=service.execute) as execute,
-        patch(
-            "XBrainLab.debug.tool_executor.RealClearDatasetTool.execute",
-        ) as direct_execute,
-    ):
+    with patch.object(service, "execute", wraps=service.execute) as execute:
         result = executor.execute("clear_dataset", {})
 
     assert isinstance(result, ToolCommandResult)
     assert result.ok is False
-    assert result.error_type == "confirmation_required"
+    assert result.error_type == "input"
+    assert result.tool_name == "unknown_debug_tool"
     execute.assert_not_called()
-    direct_execute.assert_not_called()
-    evidence = executor.last_execution_evidence
-    assert evidence is not None
-    assert evidence.dispatch_count == 1
-    assert evidence.adapter_invocation_count == 0
-    assert evidence.ui_adapter_invocation_count == 0
-    assert evidence.runtime_command_invocation_count == 0
-    assert evidence.publication_read_count == 1
 
 
 def test_unknown_debug_tool_redacts_public_result_and_log(caplog) -> None:
@@ -350,48 +337,6 @@ def test_apply_interpretation_cannot_smuggle_schema_declared_confirmation() -> N
     assert result.diagnostics["policy"] == "host_confirmation_parameter"
     execute.assert_not_called()
     direct_execute.assert_not_called()
-
-
-def test_explicit_debug_confirmation_executes_destructive_command_once() -> None:
-    study = Study()
-    service = get_application_service(study)
-
-    with (
-        patch.object(service, "execute", wraps=service.execute) as execute,
-        patch(
-            "XBrainLab.debug.tool_executor.RealClearDatasetTool.execute",
-        ) as direct_execute,
-    ):
-        result = ToolExecutor(study).execute(
-            "clear_dataset",
-            {},
-            confirmed=True,
-        )
-
-    assert isinstance(result, ToolCommandResult)
-    assert result.ok is True
-    execute.assert_called_once()
-    direct_execute.assert_not_called()
-
-
-@pytest.mark.parametrize("untyped_confirmation", ["true", 1, object()])
-def test_untyped_debug_confirmation_cannot_bypass_destructive_gate(
-    untyped_confirmation,
-) -> None:
-    study = Study()
-    service = get_application_service(study)
-
-    with patch.object(service, "execute", wraps=service.execute) as execute:
-        result = ToolExecutor(study).execute(
-            "clear_dataset",
-            {},
-            confirmed=cast(Any, untyped_confirmation),
-        )
-
-    assert isinstance(result, ToolCommandResult)
-    assert result.ok is False
-    assert result.error_type == "confirmation_required"
-    execute.assert_not_called()
 
 
 def test_debug_path_policy_blocks_unattributed_direct_file_access(tmp_path) -> None:
@@ -600,7 +545,7 @@ def test_trusted_external_headless_script_covers_full_executor_surface(
     captured_tool_names = captured["tool_names"]
     assert isinstance(captured_tool_names, list)
     assert captured_tool_names == scripted_tools
-    assert len(captured_tool_names) == 31
+    assert len(captured_tool_names) == 30
     assert all(
         captured_tool_names.count(tool_name) == 1 for tool_name in expected_tools
     )
@@ -680,7 +625,7 @@ def test_headless_script_rejects_incomplete_or_unknown_surface_before_execution(
     study.assert_not_called()
 
 
-def test_headless_script_rejects_duplicate_even_when_all_31_names_are_present(
+def test_headless_script_rejects_duplicate_even_when_all_names_are_present(
     tmp_path,
     monkeypatch,
 ) -> None:

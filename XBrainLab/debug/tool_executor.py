@@ -35,7 +35,6 @@ from XBrainLab.llm.tools.real.analysis_real import (
 from XBrainLab.llm.tools.real.dataset_real import (
     RealApplyInterpretationTool,
     RealAttachLabelsTool,
-    RealClearDatasetTool,
     RealConfigureDatasetSplitTool,
     RealGetDatasetInfoTool,
     RealListFilesTool,
@@ -234,7 +233,6 @@ class ToolExecutor:
         "reload_interpretation_recipe": RealReloadInterpretationRecipeTool,
         "load_data": RealLoadDataTool,
         "attach_labels": RealAttachLabelsTool,
-        "clear_dataset": RealClearDatasetTool,
         "query_state": RealQueryStateTool,
         "get_dataset_info": RealGetDatasetInfoTool,
         "configure_dataset_split": RealConfigureDatasetSplitTool,

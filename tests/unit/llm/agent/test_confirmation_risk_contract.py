@@ -126,9 +126,9 @@ def test_backend_high_impact_boundary_survives_without_confirmation_kind() -> No
 
 def test_destructive_risk_is_not_collapsed_into_generic_confirmation() -> None:
     request = _request_for(
-        "clear_dataset",
+        "destructive_probe",
         ToolAvailability(
-            tool_name="clear_dataset",
+            tool_name="destructive_probe",
             enabled=True,
             command_name="reset_session",
             confirmation_required=True,

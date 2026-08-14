@@ -6,15 +6,9 @@ enabling offline agent testing and development.
 
 from typing import Any
 
-from XBrainLab.backend.training.input_contract import (
-    TrainingInputContractError,
-    normalize_strict_boolean,
-)
-
 from ..definitions.dataset_def import (
     BaseApplyInterpretationTool,
     BaseAttachLabelsTool,
-    BaseClearDatasetTool,
     BaseConfigureDatasetSplitTool,
     BaseGetDatasetInfoTool,
     BaseListFilesTool,
@@ -249,40 +243,6 @@ class MockAttachLabelsTool(BaseAttachLabelsTool):
             ok=True,
             message=f"Attached labels to {len(mapping)} files.",
         )
-
-
-class MockClearDatasetTool(BaseClearDatasetTool):
-    """Mock implementation of :class:`BaseClearDatasetTool`."""
-
-    def __init__(self, state: MockWorkflowState | None = None) -> None:
-        self._state = state if state is not None else MockWorkflowState()
-
-    def execute(self, study: Any, **kwargs) -> ToolResult:
-        """Return a simulated dataset-clear confirmation.
-
-        Args:
-            study: The global ``Study`` instance (unused in mock).
-            **kwargs: Additional keyword arguments.
-
-        Returns:
-            A confirmation message.
-
-        """
-        try:
-            confirmed = normalize_strict_boolean(
-                "confirmed",
-                kwargs.get("confirmed", False),
-            )
-        except TrainingInputContractError as exc:
-            return ToolResult(False, str(exc), error_type="input")
-        if not confirmed:
-            return ToolResult(
-                ok=False,
-                message="Dataset reset requires confirmation.",
-                error_type="confirmation_required",
-            )
-        self._state.clear_dataset()
-        return ToolResult(ok=True, message="Dataset cleared.")
 
 
 class MockGetDatasetInfoTool(BaseGetDatasetInfoTool):

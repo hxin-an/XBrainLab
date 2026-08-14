@@ -9,11 +9,14 @@ def test_normalizes_workflow_command_aliases_to_registered_tools():
         {"t_min": 0, "t_max": 1},
     )
     assert normalize_tool_call("train", {}) == ("start_training", {})
+
+
+def test_retired_reset_aliases_are_not_normalized_into_an_executable_tool() -> None:
     assert normalize_tool_call("reset_session", {"reason": "none"}) == (
-        "clear_dataset",
-        {},
+        "reset_session",
+        {"reason": "none"},
     )
-    assert normalize_tool_call("clear_session", {}) == ("clear_dataset", {})
+    assert normalize_tool_call("clear_session", {}) == ("clear_session", {})
 
 
 def test_train_alias_preserves_complete_training_configuration() -> None:

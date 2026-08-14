@@ -23,7 +23,6 @@ from XBrainLab.backend.application import (
     QueryStateCommand,
     ReloadInterpretationRecipeCommand,
     ResetPreprocessCommand,
-    ResetSessionCommand,
     SaliencyCommand,
     SaveDatasetSplitCommand,
     SaveInterpretationRecipeCommand,
@@ -1684,9 +1683,6 @@ def _command_for_tool(
                 params.get("resource_preflight_token")
             ),
         )
-
-    if tool_name == "clear_dataset":
-        return ResetSessionCommand(confirmed=_boolean_param(params, "confirmed"))
 
     if tool_name == "query_state":
         return QueryStateCommand(

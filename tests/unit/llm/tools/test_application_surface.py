@@ -144,7 +144,7 @@ def test_agent_action_contract_registry_has_unique_tools_and_intent_aliases():
         alias for contract in contracts for alias in contract.intent_aliases
     ]
 
-    assert len(contracts) == 31
+    assert len(contracts) == 30
     assert len(tool_names) == len(set(tool_names))
     assert len(intent_aliases) == len(set(intent_aliases))
 
@@ -177,7 +177,6 @@ def test_tool_to_command_compatibility_view_does_not_drift_from_registry():
         "evaluate": CommandName.EVALUATE,
         "visualize": CommandName.VISUALIZE,
         "saliency": CommandName.SALIENCY,
-        "clear_dataset": CommandName.RESET_SESSION,
         "query_state": CommandName.QUERY_STATE,
     }
 
@@ -241,7 +240,6 @@ def test_every_application_tool_builder_matches_its_declared_command():
         "evaluate": {},
         "visualize": {},
         "saliency": {},
-        "clear_dataset": {},
         "query_state": {},
     }
 
@@ -834,7 +832,6 @@ def test_configure_dataset_split_surface_uses_fresh_publication_for_missing_inpu
             {"confirmed": "false"},
         ),
         ("start_training", CommandName.TRAIN, {"confirmed": 1}),
-        ("clear_dataset", CommandName.RESET_SESSION, {"confirmed": "true"}),
     ],
 )
 def test_application_surface_rejects_non_boolean_confirmation_values(
@@ -899,8 +896,7 @@ def test_stale_publication_preserves_recovery_tools_with_safe_public_reason():
     if context is None:
         pytest.fail("explicit application runtime did not publish tool context")
     assert policy["query_state"].enabled is True
-    assert policy["clear_dataset"].enabled is True
-    assert policy["clear_dataset"].requires_confirmation is True
+    assert "clear_dataset" not in policy
     assert policy["scan_source"].enabled is False
     assert policy["list_files"].enabled is False
     assert context.generation == publication.generation
@@ -1113,22 +1109,6 @@ def test_mapped_tool_missing_params_returns_input_failure():
         error_type="input",
     )
     assert "Required inputs" in result.message
-
-
-def test_clear_dataset_surface_preserves_reset_confirmation_boundary():
-    study = Study()
-    raw = MagicMock()
-    raw.get_filename.return_value = "sample.fif"
-    raw.get_filepath.return_value = "/tmp/sample.fif"
-    raw.is_raw.return_value = True
-    study.data_manager.loaded_data_list = [raw]
-
-    clear_dataset = build_agent_tool_policy(study)["clear_dataset"]
-
-    assert clear_dataset.enabled is True
-    assert clear_dataset.command_name == CommandName.RESET_SESSION.value
-    assert clear_dataset.destructive is True
-    assert clear_dataset.confirmation_required is True
 
 
 def test_data_interpretation_surface_preserves_autonomy_policy(tmp_path):

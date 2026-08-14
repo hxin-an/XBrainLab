@@ -138,7 +138,7 @@ After import, check the **Data Summary** before proceeding:
 - Warnings are understood and recorded.
 
 If those facts are wrong, correct the import before preprocessing. If epochs or a
-training plan already exist, use **Reset Session** or start a new session rather than
-silently replacing upstream data.
+training plan already exist, close and reopen XBrainLab before loading a different study;
+do not silently replace upstream data.
 
 [Continue with the development-build workflow](workflow.md){ .md-button .md-button--primary }

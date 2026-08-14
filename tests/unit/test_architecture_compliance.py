@@ -1497,10 +1497,10 @@ def test_confirmation_evidence_guard_rejects_legacy_uncorrelated_payload(
         tmp_path,
         """
 def test_confirmation_required_pauses_execution(ctrl):
-    assert ctrl._pending_confirmation == ("clear_dataset", {}, [])
+    assert ctrl._pending_confirmation == ("reset_preprocess", {}, [])
     ctrl.request_user_interaction.emit.assert_called_once_with(
         "confirm_action",
-        {"tool_name": "clear_dataset", "params": {}},
+        {"tool_name": "reset_preprocess", "params": {}},
     )
 """,
     )
@@ -1522,7 +1522,7 @@ def test_confirmation_evidence_guard_allows_typed_correlated_contract(
         """
 def test_confirmation_resolution_is_correlated():
     request = AgentConfirmationRequest.for_action(
-        command_name="clear_dataset",
+        command_name="reset_preprocess",
         params={},
         action_label="Clear dataset",
         description="Clear loaded data.",
@@ -3656,9 +3656,9 @@ def test_llm_agent_confirmation_guard_flags_generic_pending_assertion(tmp_path):
     path.write_text(
         """
 def test_confirmation_required_pauses_execution(ctrl):
-    ctrl._process_tool_calls([("clear_dataset", {})], "{}")
+    ctrl._process_tool_calls([("reset_preprocess", {})], "{}")
     assert ctrl._pending_confirmation is not None
-    assert ctrl._pending_confirmation[0] == "clear_dataset"
+    assert ctrl._pending_confirmation[0] == "reset_preprocess"
 """,
         encoding="utf-8",
     )
@@ -3676,10 +3676,10 @@ def test_llm_agent_confirmation_guard_allows_typed_correlated_contract(tmp_path)
     path.write_text(
         """
 def test_confirmation_required_pauses_execution(ctrl):
-    ctrl._process_tool_calls([("clear_dataset", {})], "{}")
+    ctrl._process_tool_calls([("reset_preprocess", {})], "{}")
     request = ctrl.pending_interactions.confirmation_request
     assert isinstance(request, AgentConfirmationRequest)
-    assert request.command_name == "clear_dataset"
+    assert request.command_name == "reset_preprocess"
     assert request.publication_generation == 4
     ctrl.confirmation_requested.emit.assert_called_once_with(request)
     resolution = AgentConfirmationResolution.for_request(

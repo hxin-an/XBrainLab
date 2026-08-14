@@ -12,7 +12,6 @@ from XBrainLab.backend.study import Study
 from XBrainLab.llm.tools.authorized_paths import authorize_existing_path
 from XBrainLab.llm.tools.real.dataset_real import (
     RealAttachLabelsTool,
-    RealClearDatasetTool,
     RealGetDatasetInfoTool,
     RealListFilesTool,
 )
@@ -168,14 +167,6 @@ class TestAllRealTools:
             "source": "attached_labels",
             "scanned": True,
         }
-
-    def test_clear_dataset_tool(self, loaded_study):
-        """Test RealClearDatasetTool."""
-        assert _state(loaded_study)["raw"]["count"] == 1
-        tool = RealClearDatasetTool()
-        result = _successful_tool_result(tool.execute(loaded_study, confirmed=True))
-        assert result.message == "Session reset."
-        assert _state(loaded_study)["raw"]["count"] == 0
 
     # --- Preprocess Tools ---
 

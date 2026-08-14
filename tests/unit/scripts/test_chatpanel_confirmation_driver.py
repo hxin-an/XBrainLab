@@ -85,7 +85,7 @@ def test_resolve_visible_confirmation_card_clicks_correlated_choice_only() -> No
         resolve_visible_confirmation_card(
             panel,
             request_id="confirmation-1",
-            expected_command_name="clear_dataset",
+            expected_command_name="reset_preprocess",
             approved=True,
         )
         is False

@@ -13,7 +13,6 @@ EXPECTED_AGENT_TOOL_NAMES = {
     "apply_notch_filter",
     "apply_standard_preprocess",
     "attach_labels",
-    "clear_dataset",
     "configure_training",
     "epoch_data",
     "evaluate",

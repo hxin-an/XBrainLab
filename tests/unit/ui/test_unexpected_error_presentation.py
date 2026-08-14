@@ -75,10 +75,6 @@ _DATASET_APPLY_MESSAGE = (
     "XBrainLab could not apply the loaded EEG data because of an unexpected problem. "
     "Reopen the data source and try again."
 )
-_SESSION_RESET_MESSAGE = (
-    "XBrainLab could not reset the current session because of an unexpected problem. "
-    "Review the workflow state and try again."
-)
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _UI_ROOT = _REPO_ROOT / "XBrainLab" / "ui"
 
@@ -724,60 +720,6 @@ def test_dataset_panel_loader_exception_uses_stable_message(
         panel,
         "Dataset could not be updated",
         _DATASET_APPLY_MESSAGE,
-    )
-    assert _SENTINEL not in critical.call_args.args[2]
-    _assert_logged_exception(caplog)
-
-
-def test_dataset_sidebar_reset_exception_uses_stable_message(
-    qtbot,
-    monkeypatch,
-    caplog,
-) -> None:
-    from XBrainLab.backend.application import CommandName
-    from XBrainLab.ui.panels.dataset import sidebar as dataset_sidebar
-
-    panel = MagicMock()
-    panel.controller = MagicMock()
-    panel.action_handler = MagicMock()
-    panel.main_window = QMainWindow()
-    qtbot.addWidget(panel.main_window)
-    sidebar = dataset_sidebar.DatasetSidebar(panel)
-    qtbot.addWidget(sidebar)
-    reset_capability = SimpleNamespace(
-        enabled=True,
-        confirmation_required=True,
-        requires_confirmation=True,
-    )
-    publication = SimpleNamespace(
-        generation=23,
-        effective_capabilities={CommandName.RESET_SESSION: reset_capability},
-    )
-    monkeypatch.setattr(
-        dataset_sidebar,
-        "get_application_view_publication",
-        lambda _context: publication,
-    )
-    monkeypatch.setattr(
-        dataset_sidebar.QMessageBox,
-        "question",
-        lambda *_args: dataset_sidebar.QMessageBox.StandardButton.Yes,
-    )
-    monkeypatch.setattr(
-        dataset_sidebar,
-        "execute_application_command",
-        MagicMock(side_effect=RuntimeError(_SENTINEL)),
-    )
-    critical = MagicMock()
-    monkeypatch.setattr(dataset_sidebar.QMessageBox, "critical", critical)
-
-    with _capture_public_xbrainlab_logs(caplog):
-        sidebar.clear_dataset()
-
-    critical.assert_called_once_with(
-        sidebar,
-        "Session could not be reset",
-        _SESSION_RESET_MESSAGE,
     )
     assert _SENTINEL not in critical.call_args.args[2]
     _assert_logged_exception(caplog)

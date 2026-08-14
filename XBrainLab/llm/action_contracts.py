@@ -419,13 +419,6 @@ AGENT_ACTION_CONTRACTS = AgentActionContractRegistry(
             direct_action=True,
         ),
         AgentActionContract(
-            "clear_dataset",
-            CommandName.RESET_SESSION,
-            taxonomy="Lifecycle",
-            intent_aliases=("reset_session",),
-            direct_action=True,
-        ),
-        AgentActionContract(
             "query_state",
             CommandName.QUERY_STATE,
             taxonomy="Lifecycle",

@@ -421,7 +421,7 @@ controller method 命名。
 | Experiment Setup | `configure_dataset_split` | 保存經預覽與確認的 split specification；authoritative dataset materialization 由 `start_training` 執行。 |
 | Experiment Setup | `configure_model`、`configure_training`、`select_split_strategy`、`configure_saliency` | 設定高影響策略，通常需要使用者確認。 |
 | Execution | `start_training`、`run_evaluation`、`run_saliency`、`stop_job` | 長任務與 job lifecycle。 |
-| Lifecycle / Destructive | `reset_session`、`new_session`、`clear_dataset`、`remove_files` | 破壞性或改變 active pipeline 的操作，一律 confirmation。 |
+| Lifecycle / Destructive | `new_session`、`remove_files` | 破壞性或改變 active pipeline 的 Assistant 操作，一律 confirmation。Reset Session 不是 Assistant target surface。 |
 | UI Routing | `switch_panel`、`open_result_view`、`show_import_preview` | 純 UI 導航，不應承載 backend workflow logic。 |
 
 tool 的輸出應該是 structured result，而不是只靠自然語言。
