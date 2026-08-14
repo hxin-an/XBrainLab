@@ -3,7 +3,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PyQt6.QtWidgets import QMessageBox, QPushButton, QWidget
 
-from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
+from XBrainLab.ui.panels.dataset.sidebar import (
+    _ACTION_TEXT_HORIZONTAL_PADDING,
+    _DATASET_SIDEBAR_BUTTON_STYLE,
+    DatasetSidebar,
+)
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
@@ -64,7 +68,12 @@ def test_add_labels_compatibility_button_stays_hidden(sidebar):
 
 
 def test_channel_selection_uses_neutral_action_style(sidebar):
-    assert sidebar.chan_select_btn.styleSheet() == Stylesheets.SIDEBAR_BTN
+    style = sidebar.chan_select_btn.styleSheet()
+
+    assert style == _DATASET_SIDEBAR_BUTTON_STYLE
+    assert Stylesheets.SIDEBAR_BTN in style
+    assert f"padding-left: {_ACTION_TEXT_HORIZONTAL_PADDING // 2}px" in style
+    assert f"padding-right: {_ACTION_TEXT_HORIZONTAL_PADDING // 2}px" in style
     assert sidebar.chan_select_btn.styleSheet() != Stylesheets.BTN_SUCCESS
 
 
