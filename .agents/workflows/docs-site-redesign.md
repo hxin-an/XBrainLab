@@ -5,10 +5,10 @@ Use `docs-site-product-designer` as primary. Add `docs-curator` for content auth
 
 ## Brief
 
-1. Inspect `mkdocs.yml`, the landing page, current status page, theme overrides, and only verified
+1. Confirm the UI/docs-site mutation authorization required by root `AGENTS.md`.
+2. Inspect `mkdocs.yml`, the landing page, current status page, theme overrides, and only verified
    artifacts proposed for display.
-2. Define audiences, top tasks, first-screen questions, navigation hierarchy, and non-goals.
-3. Separate current status, guides, architecture/target, validation evidence, and history.
+3. Define audiences, top tasks, first-screen questions, navigation hierarchy, and non-goals.
 
 ## Implement
 

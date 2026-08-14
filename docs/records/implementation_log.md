@@ -1,6 +1,6 @@
 # XBrainLab Implementation Log
 
-最後更新：`2026-08-11`
+最後更新：`2026-08-14`
 
 ## 這份文件的用途
 
@@ -14,6 +14,30 @@
 - 主要 evidence 入口在哪裡
 - 還不能宣稱完成的是什麼
 - 下一手 owner 應該看哪裡
+
+## 2026-08-14 Agent Guidance Restraint Rebaseline
+
+### 狀態
+
+- Repo guidance 將使用者要求與明定 acceptance 改為 scope ceiling；adjacent finding 只在
+  會重現本次 defect、破壞 contract、導致直接安全／資料損失或使 focused evidence
+  無效時才阻擋。
+- 任何 UI 檔案或使用者可見行為修改新增事前明確確認邊界。本 rebaseline 未修改
+  UI 或產品程式。
+- Root guidance 新增輕量 complexity triggers 與 deletion/reuse-first；skills/workflows 移除重複
+  same-class、source-guard、docs-sync 與 evidence escalation 義務。
+- Product bug、feature 與 refactor 改採 plan-first：開始實作前先更新 `docs/planning/now.md` 的唯一
+  active plan，施工 checkpoint 更新 next step，完成後移出 active dispatch。
+- 舊 60/14-case routing corpus、Codex A/B orchestration 與 blind scorer 從 active tooling 移除；static
+  audit 不再要求 `AGENTS.md` 最低長度。已完成的舊 A/B 數字仍保留在下方歷史紀錄。
+
+### Evidence 與界線
+
+- Active evidence 入口為 `scripts/dev/audit_agent_guidance.py`、
+  `tests/unit/test_agent_guidance_contract.py` 與
+  `tests/unit/scripts/test_audit_agent_guidance.py`。
+- 本次只能宣稱 guidance 已靜態收斂、去重並有 deterministic contract；未執行新的外部
+  A/B，不外推為所有 Codex 5.6 任務的行為改善。
 
 ## 2026-08-11 Import / Training / Montage Polish Candidate
 

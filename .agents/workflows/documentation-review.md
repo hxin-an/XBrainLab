@@ -8,7 +8,7 @@ Use `docs-curator` as primary and `validation-runner` for build/claim evidence.
 4. Merge useful material into its one authority and delete superseded control surfaces.
 5. Remove historical records from active/dispatch labels and repair links/navigation.
 6. Run the guidance audit, `git diff --check`, and MkDocs strict build.
-7. Add a concise implementation/worklog entry when the change is operationally important.
+7. Add at most one implementation record only when the decision or long-lived provenance changed.
 
 Done means no unnecessary new top-level document, no current/target/history mixing, no broken links,
 and no reusable guidance containing mutable branch/gate truth.

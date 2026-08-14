@@ -7,6 +7,10 @@ description: "Use for XBrainLab desktop workflow clarity, visual polish, states,
 
 Review the workflow as a desktop user sees it.
 
+Read-only review may proceed directly. Before editing any UI file or user-visible layout, copy,
+interaction, state, or workflow, verify that the explicit confirmation required by root
+`AGENTS.md` already exists; otherwise stop at findings.
+
 ## Workflow
 
 1. Define the user goal, starting state, primary action, completion state, and recovery paths.
