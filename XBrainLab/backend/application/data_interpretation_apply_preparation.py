@@ -93,6 +93,7 @@ class InterpretationApplyPlan:
     content_scope_sha256: str
     application: ApplicationApplyBoundary
     training: TrainingPipelineMutationBoundary
+    training_startup_snapshot: Any
     pipeline_snapshot: PipelineStateSnapshot
     pipeline_identity: PipelineStateIdentity
     interpretation_identity: InterpretationSessionIdentity

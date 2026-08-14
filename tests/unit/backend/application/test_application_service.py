@@ -2260,6 +2260,212 @@ def test_apply_interpretation_rolls_back_when_metadata_apply_raises(
     assert result.state.interpretation.has_applied_interpretation is False
 
 
+def test_apply_retirement_failure_restores_pipeline_and_training_history(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_dir = tmp_path / "apply-retirement-failure"
+    source_dir.mkdir()
+    eeg_path = source_dir / "subject01_run1.fif"
+    eeg_path.write_bytes(b"reviewed EEG identity")
+    study = Study()
+    previous_raw = _minimal_raw(tmp_path / "previous.fif")
+    study.set_loaded_data_list([previous_raw], force_update=True)
+    trainer = Trainer([])
+    history_holder = MagicMock(name="completed_apply_training_history")
+    trainer.training_plan_holders = cast(Any, [history_holder])
+    study.training_manager.trainer = trainer
+    service = ApplicationService(study)
+    _use_test_raw_factory(service, _minimal_raw(eeg_path))
+    assert service.execute(ScanSourceCommand(source_path=str(source_dir))).ok
+    preview = service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(eeg_path)],
+                "skip_labels": True,
+            }
+        )
+    )
+    candidate_id = preview.diagnostics["candidate"]["candidate_id"]
+    assert service.execute(ValidateInterpretationCommand(candidate_id=candidate_id)).ok
+    pipeline_before = service.pipeline_transaction.capture()
+    publication_before = service.get_view_publication()
+    # Exercise the transaction invariant independently of today's capability
+    # and raw-admission policies, which both block replacement after trainer
+    # creation before the prepared commit contract is reached.
+    monkeypatch.setattr(service, "_ensure_command_allowed", lambda *_args: None)
+    monkeypatch.setattr(
+        service.pipeline_transaction,
+        "begin_raw_replacement",
+        service.pipeline_transaction.begin_downstream_replacement,
+    )
+
+    def _mutate_training_then_fail(expected, *, publish) -> bool:
+        del expected
+        publish()
+        trainer.clear_history()
+        study.training_manager.trainer = None
+        raise RuntimeError("apply trainer retirement failed after cleanup")
+
+    monkeypatch.setattr(
+        study.training_manager,
+        "commit_pipeline_replacement",
+        _mutate_training_then_fail,
+    )
+
+    result = service.execute(
+        ApplyInterpretationCommand(candidate_id=candidate_id, confirmed=True)
+    )
+
+    assert result.failed
+    assert result.error_type is ErrorType.INTERNAL
+    assert "apply trainer retirement failed after cleanup" in result.message
+    assert service.pipeline_transaction.capture() == pipeline_before
+    assert study.training_manager.trainer is trainer
+    assert trainer.get_training_plan_holders() == [history_holder]
+    assert result.state.interpretation.has_applied_interpretation is False
+    publication_after = service.get_view_publication()
+    assert (
+        replace(
+            publication_after.state.training,
+            read_generation=publication_before.state.training.read_generation,
+        )
+        == publication_before.state.training
+    )
+    assert publication_after.training_history == publication_before.training_history
+
+
+def test_apply_stale_training_boundary_preserves_newer_training_truth(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_dir = tmp_path / "apply-stale-training"
+    source_dir.mkdir()
+    eeg_path = source_dir / "subject01_run1.fif"
+    eeg_path.write_bytes(b"reviewed EEG identity")
+    study = Study()
+    previous_raw = _minimal_raw(tmp_path / "previous.fif")
+    study.set_loaded_data_list([previous_raw], force_update=True)
+    previous_trainer = Trainer([])
+    replacement_trainer = Trainer([])
+    study.training_manager.trainer = previous_trainer
+    service = ApplicationService(study)
+    _use_test_raw_factory(service, _minimal_raw(eeg_path))
+    assert service.execute(ScanSourceCommand(source_path=str(source_dir))).ok
+    preview = service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(eeg_path)],
+                "skip_labels": True,
+            }
+        )
+    )
+    candidate_id = preview.diagnostics["candidate"]["candidate_id"]
+    assert service.execute(ValidateInterpretationCommand(candidate_id=candidate_id)).ok
+    pipeline_before = service.pipeline_transaction.capture()
+    # Exercise the transaction invariant independently of today's capability
+    # and raw-admission policies, which both block replacement after trainer
+    # creation before the prepared commit contract is reached.
+    monkeypatch.setattr(service, "_ensure_command_allowed", lambda *_args: None)
+    monkeypatch.setattr(
+        service.pipeline_transaction,
+        "begin_raw_replacement",
+        service.pipeline_transaction.begin_downstream_replacement,
+    )
+    restore_training = MagicMock(
+        side_effect=AssertionError("stale boundary must not restore old training"),
+    )
+    monkeypatch.setattr(
+        study.training_manager,
+        "restore_startup_rollback_snapshot",
+        restore_training,
+    )
+
+    def _replace_training_then_reject(expected, *, publish) -> bool:
+        del expected, publish
+        study.training_manager.trainer = replacement_trainer
+        raise StaleTrainingPipelineMutationError
+
+    monkeypatch.setattr(
+        study.training_manager,
+        "commit_pipeline_replacement",
+        _replace_training_then_reject,
+    )
+
+    result = service.execute(
+        ApplyInterpretationCommand(candidate_id=candidate_id, confirmed=True)
+    )
+
+    assert result.failed
+    assert result.error_type is ErrorType.PRECONDITION
+    assert result.diagnostics["code"] == "training_pipeline_boundary_changed"
+    assert service.pipeline_transaction.capture() == pipeline_before
+    assert study.training_manager.trainer is replacement_trainer
+    assert result.state.training.has_trainer is True
+    assert result.state.interpretation.has_applied_interpretation is False
+    restore_training.assert_not_called()
+
+
+def test_apply_base_exception_survives_best_effort_rollback_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _ApplyCommitSentinel(BaseException):
+        pass
+
+    source_dir = tmp_path / "apply-base-exception"
+    source_dir.mkdir()
+    eeg_path = source_dir / "subject01_run1.fif"
+    eeg_path.write_bytes(b"reviewed EEG identity")
+    study = Study()
+    previous_raw = _minimal_raw(tmp_path / "previous.fif")
+    study.set_loaded_data_list([previous_raw], force_update=True)
+    service = ApplicationService(study)
+    _use_test_raw_factory(service, _minimal_raw(eeg_path))
+    assert service.execute(ScanSourceCommand(source_path=str(source_dir))).ok
+    preview = service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(eeg_path)],
+                "skip_labels": True,
+            }
+        )
+    )
+    candidate_id = preview.diagnostics["candidate"]["candidate_id"]
+    assert service.execute(ValidateInterpretationCommand(candidate_id=candidate_id)).ok
+    pipeline_before = service.pipeline_transaction.capture()
+    restore_training = MagicMock(
+        side_effect=RuntimeError("training rollback failed"),
+    )
+    monkeypatch.setattr(
+        study.training_manager,
+        "restore_startup_rollback_snapshot",
+        restore_training,
+    )
+    sentinel = _ApplyCommitSentinel()
+
+    def _publish_then_interrupt(expected, *, publish) -> bool:
+        del expected
+        publish()
+        raise sentinel
+
+    monkeypatch.setattr(
+        study.training_manager,
+        "commit_pipeline_replacement",
+        _publish_then_interrupt,
+    )
+
+    with pytest.raises(_ApplyCommitSentinel) as raised:
+        service.execute(
+            ApplyInterpretationCommand(candidate_id=candidate_id, confirmed=True)
+        )
+
+    assert raised.value is sentinel
+    restore_training.assert_called_once()
+    assert service.pipeline_transaction.capture() == pipeline_before
+    assert service.get_state().interpretation.has_applied_interpretation is False
+
+
 def test_apply_interpretation_cancel_preserves_real_study_and_can_retry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -3530,6 +3736,158 @@ def test_preprocess_commit_failure_rolls_back_complete_pipeline(
     assert restored.dataset_generator is snapshot.dataset_generator
     assert restored.dataset_locked is snapshot.dataset_locked
     assert all(not row.get_preprocess_history() for row in study.preprocessed_data_list)
+
+
+def test_preprocess_retirement_failure_restores_pipeline_and_training_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    study = Study()
+    raw = _minimal_raw(Path("recording.fif"))
+    study.set_loaded_data_list([raw], force_update=True)
+    trainer = Trainer([])
+    history_holder = MagicMock(name="completed_training_history")
+    trainer.training_plan_holders = cast(Any, [history_holder])
+    study.training_manager.trainer = trainer
+    service = ApplicationService(study)
+    pipeline_before = service.pipeline_transaction.capture()
+    publication_before = service.get_view_publication()
+
+    def _mutate_training_then_fail(expected, *, publish) -> bool:
+        del expected
+        publish()
+        trainer.clear_history()
+        study.training_manager.trainer = None
+        raise RuntimeError("trainer retirement failed after cleanup")
+
+    monkeypatch.setattr(
+        study.training_manager,
+        "commit_pipeline_replacement",
+        _mutate_training_then_fail,
+    )
+
+    result = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.NORMALIZE,
+            method="z-score",
+        )
+    )
+
+    assert result.failed
+    assert result.error_type is ErrorType.INTERNAL
+    assert "trainer retirement failed after cleanup" in result.message
+    pipeline_after = service.pipeline_transaction.capture()
+    assert pipeline_after == pipeline_before
+    assert study.training_manager.trainer is trainer
+    assert trainer.get_training_plan_holders() == [history_holder]
+    publication_after = service.get_view_publication()
+    assert (
+        replace(
+            publication_after.state.training,
+            read_generation=publication_before.state.training.read_generation,
+        )
+        == publication_before.state.training
+    )
+    assert publication_after.training_history == publication_before.training_history
+
+
+def test_preprocess_stale_training_boundary_preserves_newer_training_truth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    study = Study()
+    raw = _minimal_raw(Path("recording.fif"))
+    study.set_loaded_data_list([raw], force_update=True)
+    previous_trainer = Trainer([])
+    replacement_trainer = Trainer([])
+    study.training_manager.trainer = previous_trainer
+    service = ApplicationService(study)
+    pipeline_before = service.pipeline_transaction.capture()
+    restore_training = MagicMock(
+        side_effect=AssertionError("stale boundary must not restore old training"),
+    )
+    monkeypatch.setattr(
+        study.training_manager,
+        "restore_startup_rollback_snapshot",
+        restore_training,
+    )
+
+    def _replace_training_then_reject(expected, *, publish) -> bool:
+        del expected, publish
+        study.training_manager.trainer = replacement_trainer
+        raise StaleTrainingPipelineMutationError
+
+    monkeypatch.setattr(
+        study.training_manager,
+        "commit_pipeline_replacement",
+        _replace_training_then_reject,
+    )
+
+    result = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.NORMALIZE,
+            method="z-score",
+        )
+    )
+
+    assert result.failed
+    assert result.error_type is ErrorType.PRECONDITION
+    assert result.diagnostics["code"] == "training_pipeline_boundary_changed"
+    assert service.pipeline_transaction.capture() == pipeline_before
+    assert study.training_manager.trainer is replacement_trainer
+    assert result.state.training.has_trainer is True
+    restore_training.assert_not_called()
+
+
+def test_preprocess_base_exception_survives_best_effort_rollback_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _SentinelControlFlow(BaseException):
+        pass
+
+    study = Study()
+    raw = _minimal_raw(Path("recording.fif"))
+    study.set_loaded_data_list([raw], force_update=True)
+    study.training_manager.trainer = Trainer([])
+    service = ApplicationService(study)
+    pipeline_before = service.pipeline_transaction.capture()
+    sentinel = _SentinelControlFlow("stop command execution")
+
+    def _publish_then_abort(expected, *, publish) -> bool:
+        del expected
+        publish()
+        raise sentinel
+
+    monkeypatch.setattr(
+        study.training_manager,
+        "commit_pipeline_replacement",
+        _publish_then_abort,
+    )
+    restore_training = MagicMock(
+        side_effect=RuntimeError("training rollback failed"),
+    )
+    monkeypatch.setattr(
+        study.training_manager,
+        "restore_startup_rollback_snapshot",
+        restore_training,
+    )
+    restore_pipeline = MagicMock(wraps=service.pipeline_transaction.restore)
+    monkeypatch.setattr(
+        service.pipeline_transaction,
+        "restore",
+        restore_pipeline,
+    )
+
+    with pytest.raises(_SentinelControlFlow) as exc_info:
+        service.execute(
+            PreprocessCommand(
+                operation=PreprocessOperation.NORMALIZE,
+                method="z-score",
+            )
+        )
+
+    assert exc_info.value is sentinel
+    restore_training.assert_called_once()
+    restore_pipeline.assert_called_once()
+    assert service.pipeline_transaction.capture() == pipeline_before
 
 
 def test_channel_selection_heavy_prepare_cancel_preserves_and_can_retry() -> None:

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import hmac
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import suppress
 from typing import Any
 
+from XBrainLab.backend.exceptions import StaleTrainingPipelineMutationError
 from XBrainLab.backend.preprocessor.normalize import (
     NORMALIZATION_RUNTIME_KEY,
     NORMALIZATION_SCOPE,
@@ -34,7 +36,12 @@ from .epoch_context import (
     require_epoch_context_available,
     validated_epoch_handoff,
 )
-from .errors import ConfirmationRequiredError, PreconditionError
+from .errors import (
+    ApplicationError,
+    ConfirmationRequiredError,
+    PreconditionError,
+    map_exception,
+)
 from .pipeline_transaction import PipelineStateIdentity, PipelineStateTransaction
 from .preprocess_preparation import (
     ApplicationPreprocessBoundary,
@@ -89,11 +96,15 @@ class PreprocessCommandService:
         elif not isinstance(command, CreateEpochCommand):
             raise TypeError("Invalid command for prepared preprocessing")
         training_boundary = self._pipeline_transaction.begin_downstream_replacement()
+        training_startup_snapshot = (
+            self._pipeline_transaction.capture_training_startup_snapshot()
+        )
         pipeline_snapshot = self._pipeline_transaction.capture()
         return PreprocessMutationPlan.capture(
             command,
             application=application_boundary,
             training=training_boundary,
+            training_startup_snapshot=training_startup_snapshot,
             pipeline_snapshot=pipeline_snapshot,
         )
 
@@ -193,11 +204,55 @@ class PreprocessCommandService:
                 plan.training,
                 publish=publish,
             )
-        except BaseException:
-            self._pipeline_transaction.restore(plan.pipeline_snapshot)
+        except BaseException as exc:
+            if isinstance(exc, Exception) and self._is_stale_pipeline_boundary_error(
+                exc
+            ):
+                raise
+            if not isinstance(exc, Exception):
+                with suppress(BaseException):
+                    self._pipeline_transaction.restore_training_startup_snapshot(
+                        plan.training_startup_snapshot,
+                    )
+                with suppress(BaseException):
+                    self._pipeline_transaction.restore(plan.pipeline_snapshot)
+                raise
+            rollback_errors: list[str] = []
+            try:
+                self._pipeline_transaction.restore_training_startup_snapshot(
+                    plan.training_startup_snapshot,
+                )
+            except Exception as rollback_exc:
+                rollback_errors.append(map_exception(rollback_exc).message)
+            try:
+                self._pipeline_transaction.restore(plan.pipeline_snapshot)
+            except Exception as rollback_exc:
+                rollback_errors.append(map_exception(rollback_exc).message)
+            if rollback_errors:
+                mapped = map_exception(exc)
+                raise ApplicationError(
+                    message=mapped.message,
+                    error_type=mapped.error_type,
+                    recoverable=mapped.recoverable,
+                    diagnostics={
+                        **mapped.diagnostics,
+                        "state_preserved": False,
+                        "rollback_failed": True,
+                        "rollback_errors": rollback_errors,
+                    },
+                ) from exc
             raise
         message, diagnostics = self._normalize_handler_result(prepared.handler_result())
         return message, {**diagnostics, "trainer_cleared": trainer_retired}
+
+    @staticmethod
+    def _is_stale_pipeline_boundary_error(exc: Exception) -> bool:
+        if isinstance(exc, StaleTrainingPipelineMutationError):
+            return True
+        return bool(
+            isinstance(exc, PreconditionError)
+            and exc.diagnostics.get("code") == "training_pipeline_boundary_changed"
+        )
 
     def handle_preprocess(self, command: Command) -> HandlerResult:
         if not isinstance(command, PreprocessCommand):

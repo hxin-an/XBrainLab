@@ -7,6 +7,7 @@ the command/result envelope and capability gate.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import time
@@ -16,6 +17,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
+from XBrainLab.backend.exceptions import StaleTrainingPipelineMutationError
 from XBrainLab.backend.services.dataset_state_service import DatasetInterpretationPort
 
 from . import bids_dataset_index as bids_index_module
@@ -88,7 +90,12 @@ from .data_interpretation_scan import (
     discover_source_preflight_scope,
 )
 from .data_interpretation_state import DataInterpretationSessionState
-from .errors import ApplicationError, ConfirmationRequiredError, PreconditionError
+from .errors import (
+    ApplicationError,
+    ConfirmationRequiredError,
+    PreconditionError,
+    map_exception,
+)
 from .label_resource_admission import (
     AdmittedLabelResourceSession,
     LabelResourceSpec,
@@ -846,6 +853,9 @@ class DataInterpretationCommandService:
             raise PreconditionError("Validate an interpretation before applying it.")
         self._ensure_candidate_can_apply(command, candidate, decision)
         training_boundary = self._pipeline_transaction.begin_raw_replacement()
+        training_startup_snapshot = (
+            self._pipeline_transaction.capture_training_startup_snapshot()
+        )
         pipeline_snapshot = self._pipeline_transaction.capture()
         return InterpretationApplyPlan(
             command=command,
@@ -856,6 +866,7 @@ class DataInterpretationCommandService:
             ),
             application=application_boundary,
             training=training_boundary,
+            training_startup_snapshot=training_startup_snapshot,
             pipeline_snapshot=pipeline_snapshot,
             pipeline_identity=PipelineStateIdentity.from_snapshot(pipeline_snapshot),
             interpretation_identity=self.state.session_identity(),
@@ -992,7 +1003,8 @@ class DataInterpretationCommandService:
         """Revalidate every captured identity and atomically publish prepared data."""
         if not isinstance(prepared, PreparedInterpretationApply):
             raise TypeError("prepared must be a PreparedInterpretationApply")
-        if self._pipeline_transaction is None:
+        transaction = self._pipeline_transaction
+        if transaction is None:
             raise RuntimeError(
                 "Interpretation apply commit requires a pipeline transaction."
             )
@@ -1000,7 +1012,7 @@ class DataInterpretationCommandService:
         candidate = self.state.resolve_candidate(plan.candidate.candidate_id)
         decision = self.state.resolve_validation_decision(candidate.candidate_id)
         current_scope_sha256 = str(candidate.content_identity.get("scope_sha256") or "")
-        current_pipeline = self._pipeline_transaction.capture()
+        current_pipeline = transaction.capture()
         if (
             candidate != plan.candidate
             or decision != plan.decision
@@ -1031,13 +1043,63 @@ class DataInterpretationCommandService:
             self.state.restore_apply_state(prepared.interpretation_state_after)
 
         try:
-            trainer_retired = self._pipeline_transaction.commit_pipeline_replacement(
+            trainer_retired = transaction.commit_pipeline_replacement(
                 plan.training,
                 publish=publish,
             )
-        except BaseException:
-            self.state.restore_apply_state(rollback_state)
-            self._pipeline_transaction.restore(plan.pipeline_snapshot)
+        except BaseException as exc:
+            if isinstance(exc, Exception) and self._is_stale_pipeline_boundary_error(
+                exc
+            ):
+                raise
+            if not isinstance(exc, Exception):
+
+                def restore_without_replacing_control_flow(
+                    restore: Callable[[], None],
+                ) -> None:
+                    with contextlib.suppress(BaseException):
+                        restore()
+
+                restore_without_replacing_control_flow(
+                    lambda: transaction.restore_training_startup_snapshot(
+                        plan.training_startup_snapshot,
+                    )
+                )
+                restore_without_replacing_control_flow(
+                    lambda: self.state.restore_apply_state(rollback_state)
+                )
+                restore_without_replacing_control_flow(
+                    lambda: transaction.restore(plan.pipeline_snapshot)
+                )
+                raise
+            rollback_errors: list[str] = []
+
+            def restore_or_record(restore: Callable[[], None]) -> None:
+                try:
+                    restore()
+                except Exception as rollback_exc:
+                    rollback_errors.append(map_exception(rollback_exc).message)
+
+            restore_or_record(
+                lambda: transaction.restore_training_startup_snapshot(
+                    plan.training_startup_snapshot,
+                )
+            )
+            restore_or_record(lambda: self.state.restore_apply_state(rollback_state))
+            restore_or_record(lambda: transaction.restore(plan.pipeline_snapshot))
+            if rollback_errors:
+                mapped = map_exception(exc)
+                raise ApplicationError(
+                    message=mapped.message,
+                    error_type=mapped.error_type,
+                    recoverable=mapped.recoverable,
+                    diagnostics={
+                        **mapped.diagnostics,
+                        "state_preserved": False,
+                        "rollback_failed": True,
+                        "rollback_errors": rollback_errors,
+                    },
+                ) from exc
             raise
 
         applied_payload = self.state.resolve_applied_interpretation().to_dict()
@@ -1078,6 +1140,15 @@ class DataInterpretationCommandService:
                     ),
                 },
             },
+        )
+
+    @staticmethod
+    def _is_stale_pipeline_boundary_error(exc: Exception) -> bool:
+        if isinstance(exc, StaleTrainingPipelineMutationError):
+            return True
+        return bool(
+            isinstance(exc, PreconditionError)
+            and exc.diagnostics.get("code") == "training_pipeline_boundary_changed"
         )
 
     def _ensure_apply_session_is_current(

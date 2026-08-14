@@ -41,6 +41,7 @@ class PreprocessMutationPlan:
     command: PreprocessCommand | CreateEpochCommand
     application: ApplicationPreprocessBoundary
     training: TrainingPipelineMutationBoundary
+    training_startup_snapshot: Any
     pipeline_snapshot: PipelineStateSnapshot
     pipeline_identity: PipelineStateIdentity
 
@@ -51,6 +52,7 @@ class PreprocessMutationPlan:
         *,
         application: ApplicationPreprocessBoundary,
         training: TrainingPipelineMutationBoundary,
+        training_startup_snapshot: Any,
         pipeline_snapshot: PipelineStateSnapshot,
     ) -> PreprocessMutationPlan:
         if not isinstance(command, (PreprocessCommand, CreateEpochCommand)):
@@ -59,6 +61,7 @@ class PreprocessMutationPlan:
             command=deepcopy(command),
             application=application,
             training=training,
+            training_startup_snapshot=training_startup_snapshot,
             pipeline_snapshot=pipeline_snapshot,
             pipeline_identity=PipelineStateIdentity.from_snapshot(pipeline_snapshot),
         )
