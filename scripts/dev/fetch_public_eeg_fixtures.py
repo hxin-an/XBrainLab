@@ -6,11 +6,15 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import ssl
 import urllib.request
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TypedDict
 from urllib.parse import quote, urlparse
+
+from XBrainLab.platform_paths import DATA_DIR_ENV, dataset_storage_layout
 
 ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_DIR = ROOT / "tests" / "fixtures" / "data" / "public"
@@ -56,6 +60,20 @@ class FixtureGroup(TypedDict):
     source: str
     entrypoint: str
     files: list[FixtureFile]
+
+
+def resolve_public_fixture_dir(
+    *,
+    explicit: Path | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> Path:
+    """Resolve the public fixture cache without making CI machine-dependent."""
+    if explicit is not None:
+        return explicit.expanduser().absolute()
+    env = os.environ if environ is None else environ
+    if str(env.get(DATA_DIR_ENV, "")).strip():
+        return dataset_storage_layout(environ=env).public_fixtures_root
+    return PUBLIC_DIR
 
 
 def _sha256(*segments: str) -> str:
@@ -1015,11 +1033,20 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help=(
+            "Fixture destination. Defaults to XBRAINLAB_DATA_DIR/datasets/"
+            "public-fixtures when configured, otherwise the repo CI cache."
+        ),
+    )
+    parser.add_argument(
         "--verify-only",
         action="store_true",
         help="Validate the selected fixture profile without downloading.",
     )
     args = parser.parse_args()
+    public_dir = resolve_public_fixture_dir(explicit=args.output_dir)
     groups = fixture_groups_for_profile(args.profile)
     profile_size_bytes = fixture_profile_size_bytes(groups)
     if args.profile == "required-ci" and profile_size_bytes > CI_REQUIRED_MAX_BYTES:
@@ -1059,9 +1086,9 @@ def main() -> int:
         print(f"Profile total: {profile_size_bytes} bytes")
         return 0
 
-    PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
+    public_dir.mkdir(parents=True, exist_ok=True)
     if args.verify_only:
-        validate_fixture_set(PUBLIC_DIR, groups)
+        validate_fixture_set(public_dir, groups)
         print(
             f"Verified {args.profile} public EEG fixture profile "
             f"({profile_size_bytes} bytes)."
@@ -1074,7 +1101,7 @@ def main() -> int:
             f"({fixture_group['source']}, entrypoint {fixture_group['entrypoint']})...",
         )
         for fixture_file in fixture_group["files"]:
-            destination = PUBLIC_DIR / fixture_file["filename"]
+            destination = public_dir / fixture_file["filename"]
             destination.parent.mkdir(parents=True, exist_ok=True)
             if (
                 destination.exists()
@@ -1096,7 +1123,7 @@ def main() -> int:
             download_fixture_file(fixture_file, destination)
             print(f"  Saved {destination}")
 
-    validate_fixture_set(PUBLIC_DIR, groups)
+    validate_fixture_set(public_dir, groups)
     print(
         f"Verified {args.profile} public EEG fixture profile "
         f"({profile_size_bytes} bytes)."

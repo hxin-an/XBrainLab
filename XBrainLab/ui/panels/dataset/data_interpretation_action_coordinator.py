@@ -31,6 +31,7 @@ from XBrainLab.backend.application.view_publication import (
     InterpretationReviewIdentity,
 )
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.platform_paths import dataset_storage_layout
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
     CommandReviewContext,
@@ -70,6 +71,16 @@ from XBrainLab.ui.panels.dataset.data_interpretation_ui_payload import (
 _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE = (
     "Data interpretation availability is unavailable right now."
 )
+
+
+def _dataset_dialog_start_directory(*, prefer_bids: bool = False) -> str:
+    layout = dataset_storage_layout()
+    candidates = (
+        (layout.bids_root, layout.datasets_root, layout.data_root)
+        if prefer_bids
+        else (layout.datasets_root, layout.data_root)
+    )
+    return next((str(path) for path in candidates if path.is_dir()), "")
 
 
 def _default_loading_dialog_class() -> type[Any]:
@@ -469,7 +480,7 @@ class DataInterpretationActionCoordinator:
         filepaths, _ = self._bindings.file_dialog().getOpenFileNames(
             self.panel,
             "Choose EEG Source for Interpretation",
-            "",
+            _dataset_dialog_start_directory(),
             filter_str,
             options=self._bindings.file_dialog().Option.DontUseNativeDialog,
         )
@@ -705,7 +716,7 @@ class DataInterpretationActionCoordinator:
         source_path = self._bindings.file_dialog().getExistingDirectory(
             self.panel,
             "Choose Folder or BIDS Root for Interpretation",
-            "",
+            _dataset_dialog_start_directory(),
             options=(
                 self._bindings.file_dialog().Option.ShowDirsOnly
                 | self._bindings.file_dialog().Option.DontUseNativeDialog
@@ -735,7 +746,7 @@ class DataInterpretationActionCoordinator:
         source_path = self._bindings.file_dialog().getExistingDirectory(
             self.panel,
             "Choose BIDS Folder for Import",
-            "",
+            _dataset_dialog_start_directory(prefer_bids=True),
             options=(
                 self._bindings.file_dialog().Option.ShowDirsOnly
                 | self._bindings.file_dialog().Option.DontUseNativeDialog

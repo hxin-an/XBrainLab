@@ -29,6 +29,7 @@ else:
 ROOT = Path(__file__).resolve().parents[2]
 assert_active_checkout_import(ROOT)
 
+from scripts.dev.fetch_public_eeg_fixtures import resolve_public_fixture_dir
 from XBrainLab.backend.application.commands import (
     ApplyInterpretationCommand,
     PreviewInterpretationCommand,
@@ -43,6 +44,7 @@ from XBrainLab.backend.utils.logger import logger as xbrainlab_logger
 ARTIFACT_DIR = ROOT / "build" / "dev-artifacts" / "data-interpretation"
 ARTIFACT_JSON = "format-capability-matrix.json"
 ARTIFACT_MARKDOWN = "format-capability-matrix.md"
+_REPO_PUBLIC_FIXTURE_DIR = Path("tests/fixtures/data/public")
 WORKFLOW_STAGES = ("scan", "preview", "validate", "apply")
 REQUIRED_PUBLIC_SOURCE_FAMILIES = frozenset(
     {
@@ -203,6 +205,23 @@ REQUIRED_REVIEWED_LABEL_CASE_REQUIREMENTS = {
     ),
 }
 REQUIRED_REVIEWED_LABEL_CASE_IDS = frozenset(REQUIRED_REVIEWED_LABEL_CASE_REQUIREMENTS)
+
+
+def _public_fixture_dir(repo_root: Path = ROOT) -> Path:
+    """Resolve central storage while preserving isolated repo-root test fixtures."""
+    if repo_root.absolute() == ROOT:
+        return resolve_public_fixture_dir()
+    return repo_root / _REPO_PUBLIC_FIXTURE_DIR
+
+
+def _resolve_source_entry(source_entry: str, repo_root: Path = ROOT) -> Path:
+    """Resolve public entries centrally without relocating other fixture classes."""
+    relative_path = Path(source_entry)
+    try:
+        public_relative_path = relative_path.relative_to(_REPO_PUBLIC_FIXTURE_DIR)
+    except ValueError:
+        return (repo_root / relative_path).resolve()
+    return (_public_fixture_dir(repo_root) / public_relative_path).resolve()
 
 
 FORMAT_CASES: tuple[FormatCase, ...] = (
@@ -1027,7 +1046,7 @@ def capture_public_fixture_facts(
             "case_id": case_id,
             "mismatches": [],
         }
-    source_path = (repo_root / str(contract["source_entry"])).resolve()
+    source_path = _resolve_source_entry(str(contract["source_entry"]), repo_root)
     result: dict[str, Any] = {
         "status": "failed",
         "case_id": case_id,
@@ -1206,7 +1225,7 @@ def run_real_workflow_case(
     repo_root: Path = ROOT,
 ) -> dict[str, Any]:
     """Run one real file through scan, preview, validate, and apply."""
-    source_path = (repo_root / case.source_entry).resolve()
+    source_path = _resolve_source_entry(case.source_entry, repo_root)
     stages = {stage: {"ok": False, "message": "Not run."} for stage in WORKFLOW_STAGES}
     result: dict[str, Any] = {
         "case_id": case.case_id,
@@ -1926,7 +1945,7 @@ def _fixture_manifest_evidence(
             "manifest_verified": False,
             "message": f"Fixture manifest group is undefined: {case.fixture_group}",
         }
-    public_dir = repo_root / "tests" / "fixtures" / "data" / "public"
+    public_dir = _public_fixture_dir(repo_root)
     invalid_files = [
         fixture_file["filename"]
         for fixture_file in fixture_group["files"]
@@ -1957,7 +1976,7 @@ def _workflow_choices(
     case: RealWorkflowCase,
     repo_root: Path,
 ) -> dict[str, Any]:
-    source_path = (repo_root / case.source_entry).resolve()
+    source_path = _resolve_source_entry(case.source_entry, repo_root)
     if case.choice_profile == "a01t_external_labels":
         label_path = (repo_root / "tests/fixtures/data/label/A01T.mat").resolve()
         return {

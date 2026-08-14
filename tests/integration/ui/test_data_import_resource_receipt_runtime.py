@@ -12,6 +12,7 @@ from PyQt6 import sip
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QMessageBox, QWidget
 
+from scripts.dev.fetch_public_eeg_fixtures import resolve_public_fixture_dir
 from tests.integration.ui.modal_helpers import visible_modal_dialog
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
@@ -43,7 +44,7 @@ from XBrainLab.ui.panels.dataset.data_interpretation_action_coordinator import (
     _InterpretationReviewState,
 )
 
-PUBLIC_DATA_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "data" / "public"
+PUBLIC_DATA_DIR = resolve_public_fixture_dir()
 MNE_BIDS_ROOT = PUBLIC_DATA_DIR / "mne-bids-tiny-eeg"
 MNE_BIDS_EEG_DIR = MNE_BIDS_ROOT / "sub-01" / "ses-eeg" / "eeg"
 MNE_BIDS_EEG = MNE_BIDS_EEG_DIR / "sub-01_ses-eeg_task-rest_eeg.vhdr"

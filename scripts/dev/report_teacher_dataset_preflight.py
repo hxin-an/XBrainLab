@@ -23,6 +23,7 @@ from scripts.dev.fetch_public_eeg_fixtures import (
     fixture_file_is_valid,
     fixture_groups_for_profile,
     fixture_profile_size_bytes,
+    resolve_public_fixture_dir,
 )
 from XBrainLab.backend.application import (
     ApplicationService,
@@ -36,7 +37,7 @@ from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.logger import logger as xbrainlab_logger
 
 ROOT = Path(__file__).resolve().parents[2]
-PUBLIC_DIR = ROOT / "tests" / "fixtures" / "data" / "public"
+_REPO_PUBLIC_FIXTURE_DIR = Path("tests/fixtures/data/public")
 ARTIFACT_DIR = ROOT / "build" / "dev-artifacts" / "teacher-data-preflight"
 ARTIFACT_JSON = "teacher-dataset-preflight.json"
 ARTIFACT_MARKDOWN = "teacher-dataset-preflight.md"
@@ -64,6 +65,13 @@ _OPENNEURO_CLASS_VALUE_MAP = {
     "standard": "standard",
     "standard_with_reponse": "standard",
 }
+
+
+def _public_fixture_dir(repo_root: Path = ROOT) -> Path:
+    """Resolve central storage while preserving isolated repo-root test fixtures."""
+    if repo_root.absolute() == ROOT:
+        return resolve_public_fixture_dir()
+    return repo_root / _REPO_PUBLIC_FIXTURE_DIR
 
 
 def _class_decision(class_name: str) -> dict[str, Any]:
@@ -174,7 +182,7 @@ def _manifest_evidence(repo_root: Path) -> dict[str, Any]:
     groups = fixture_groups_for_profile("teacher-preflight")
     defined_groups = {str(group["name"]) for group in groups}
     missing_required_groups = sorted(TEACHER_FIXTURE_GROUP_NAMES - defined_groups)
-    public_dir = repo_root / "tests" / "fixtures" / "data" / "public"
+    public_dir = _public_fixture_dir(repo_root)
     invalid: list[str] = []
     verified_groups: list[str] = []
     for group in groups:
@@ -286,9 +294,7 @@ def run_openneuro_p300_case(repo_root: Path = ROOT) -> dict[str, Any]:
         format_name="BIDS EEG / EEGLAB SET + events.tsv",
         evidence_tier="supervised_import",
     )
-    dataset_root = (
-        repo_root / "tests" / "fixtures" / "data" / "public" / "openneuro-ds003061-p300"
-    )
+    dataset_root = _public_fixture_dir(repo_root) / "openneuro-ds003061-p300"
     eeg_dir = dataset_root / "sub-001" / "eeg"
     if not dataset_root.exists():
         result["status"] = "missing"
@@ -502,9 +508,7 @@ def _run_raw_edf_case(
         format_name="EDF",
         evidence_tier="raw_import_only",
     )
-    fixture_root = (
-        repo_root / "tests" / "fixtures" / "data" / "public" / fixture_root_name
-    )
+    fixture_root = _public_fixture_dir(repo_root) / fixture_root_name
     eeg_path = fixture_root / eeg_name
     context_path = fixture_root / context_name
     if not eeg_path.exists() or not context_path.exists():
@@ -675,13 +679,7 @@ def run_sleep_edfx_case(repo_root: Path = ROOT) -> dict[str, Any]:
     if result.get("status") != "passed":
         return result
     annotation_path = (
-        repo_root
-        / "tests"
-        / "fixtures"
-        / "data"
-        / "public"
-        / "sleep-edfx-st7011"
-        / "ST7011JP-Hypnogram.edf"
+        _public_fixture_dir(repo_root) / "sleep-edfx-st7011" / "ST7011JP-Hypnogram.edf"
     )
     try:
         with _quiet_runtime():

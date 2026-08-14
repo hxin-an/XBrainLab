@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 from mne.io.constants import FIFF
 
+from scripts.dev.fetch_public_eeg_fixtures import resolve_public_fixture_dir
 from XBrainLab.backend.application import (
     ApplicationService,
     LoadDataCommand,
@@ -29,7 +30,7 @@ TEST_DATA_DIR = os.path.abspath(
 )
 GDF_FILE = os.path.join(TEST_DATA_DIR, "A01T.gdf")
 MULTIFORMAT_DIR = os.path.join(TEST_DATA_DIR, "multiformat")
-PUBLIC_DATA_DIR = os.path.join(TEST_DATA_DIR, "public")
+PUBLIC_DATA_DIR = os.fspath(resolve_public_fixture_dir())
 REAL_DATA_FIXTURES = [
     GDF_FILE,
     os.path.join(MULTIFORMAT_DIR, "A01T-mini-real_raw.fif"),

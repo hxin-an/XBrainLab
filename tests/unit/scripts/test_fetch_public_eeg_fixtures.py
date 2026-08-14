@@ -32,9 +32,108 @@ from scripts.dev.fetch_public_eeg_fixtures import (
     fixture_file_is_valid,
     fixture_groups_for_profile,
     fixture_profile_size_bytes,
+    resolve_public_fixture_dir,
     sha256_file,
     validate_fixture_set,
 )
+
+
+def test_public_fixture_dir_uses_canonical_dataset_storage_when_configured(
+    tmp_path: Path,
+) -> None:
+    assert resolve_public_fixture_dir(
+        environ={"XBRAINLAB_DATA_DIR": str(tmp_path)}
+    ) == (tmp_path / "datasets" / "public-fixtures")
+
+
+def test_public_fixture_dir_keeps_repo_fallback_for_hermetic_ci() -> None:
+    assert resolve_public_fixture_dir(environ={}) == fixture_fetcher.PUBLIC_DIR
+
+
+def test_cli_output_dir_overrides_configured_dataset_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    explicit = tmp_path / "explicit"
+    configured = tmp_path / "configured"
+    observed: list[Path] = []
+    monkeypatch.setenv("XBRAINLAB_DATA_DIR", str(configured))
+    monkeypatch.setattr(
+        fixture_fetcher, "fixture_groups_for_profile", lambda _profile: []
+    )
+    monkeypatch.setattr(
+        fixture_fetcher, "fixture_profile_size_bytes", lambda _groups: 0
+    )
+    monkeypatch.setattr(
+        fixture_fetcher,
+        "validate_fixture_set",
+        lambda public_dir, _groups: observed.append(public_dir),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "fetch_public_eeg_fixtures.py",
+            "--profile",
+            "required-ci",
+            "--verify-only",
+            "--output-dir",
+            str(explicit),
+        ],
+    )
+
+    assert fixture_fetcher.main() == 0
+    assert observed == [explicit]
+
+
+def test_downloader_and_required_gate_consumer_share_configured_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MNE_DONTWRITE_HOME", "true")
+    from scripts.dev import report_dataset_validation_matrix as validation_matrix
+
+    payload = b"central-fixture"
+    fixture_file: FixtureFile = {
+        "filename": "group/fixture.edf",
+        "url": "https://example.invalid/fixture.edf",
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "size_bytes": len(payload),
+    }
+    groups: list[FixtureGroup] = [
+        {
+            "name": "test",
+            "description": "test fixture",
+            "source": "unit test",
+            "entrypoint": fixture_file["filename"],
+            "files": [fixture_file],
+        }
+    ]
+    monkeypatch.setenv("XBRAINLAB_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        fixture_fetcher, "fixture_groups_for_profile", lambda _profile: groups
+    )
+    monkeypatch.setattr(
+        fixture_fetcher,
+        "fixture_profile_size_bytes",
+        lambda _groups: len(payload),
+    )
+    monkeypatch.setattr(
+        fixture_fetcher,
+        "download_fixture_file",
+        lambda _fixture, destination: destination.write_bytes(payload),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["fetch_public_eeg_fixtures.py", "--profile", "required-ci"],
+    )
+
+    assert fixture_fetcher.main() == 0
+
+    consumer_root = validation_matrix._public_fixture_dir(validation_matrix.ROOT)
+    assert consumer_root == tmp_path / "datasets" / "public-fixtures"
+    assert (consumer_root / fixture_file["filename"]).read_bytes() == payload
 
 
 def test_mne_bids_tiny_downloads_are_pinned_external_bids_files():

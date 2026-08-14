@@ -11,9 +11,9 @@
 | --- | --- |
 | Candidate checkout | 由 `git rev-parse --show-toplevel` 和 generated evidence 記錄，不在 canonical docs 寫死本機 path。 |
 | Product baseline | `main` |
-| Current candidate | 從最新 `main` 建立的 product-foundation extraction；實際 branch / SHA 由 Git 與 generated evidence 記錄。 |
+| Current candidate | 從最新 `main` 建立的 dataset consolidation candidate；實際 branch / SHA 由 Git 與 generated evidence 記錄。 |
 | Baseline | 以 candidate merge-base 的最新 `main` 為準，不在 canonical docs 寫死 historical SHA。 |
-| Closure state | Dirty implementation checkpoint；focused validation 進行中，push / PR exact-head CI / merge / Windows acceptance pending；not handoff-ready；not release-ready；Assistant not ready；not product complete |
+| Closure state | Product foundation 已合回 `main`；dataset storage 是 short-branch checkpoint，PR exact-head CI、merge 與 cleanup acceptance 尚未完成；not handoff-ready；not release-ready |
 | Data Import artifacts | Tracked folder is a dirty checkpoint；read its manifest for source identity and never treat it as current candidate evidence |
 | Required authority | 本頁與 [Now](../planning/now.md)；舊 product-quality goal / audit 只作歷史 provenance。 |
 
@@ -203,35 +203,17 @@ artifacts 仍是必須另行檢查的 evidence。
 - `blocked`：需要使用者決策、外部環境或無法自動取得的 evidence；
 - `handoff-ready`：只有全部 gate 從同一 clean pushed commit 完成後才可使用。
 
-目前狀態是尚未合併到 `main` 的 integration `checkpoint`。只有目前 candidate 的 exact-head CI
-成功並完成規定 gate 後，才能經 PR 回到 `main`；這不表示 Assistant、效能、資料格式或 release
+Product foundation 已經由 exact-head CI 成功的 PR 合回 `main`。目前 dataset consolidation 仍是
+尚未合併的 `checkpoint`；只有該短 branch 的 focused evidence、PR exact-head CI 與 merge 完成後，
+storage contract 才能算進入產品基線。這仍不表示 cleanup、Assistant、效能、資料格式或 release
 gate 已完成。
 
-## EEG Workflow Baseline And Current Polish Checkpoint
+## EEG Workflow Baseline And Historical Polish Evidence
 
-先前 `integration/eeg-workflow-improvements-v1` 的 curated Braindecode model catalog、BIDS scan 前
-subject selection、training test accuracy curve、backend-admitted cross-fold Evaluation summary，
-以及 cross-fold Saliency summary / detached display normalization 已進入 `main`。目前
-`integration/import-training-montage-polish-v1` 在該基線上收斂 import terminal feedback、BIDS
-montage preparation、Epoch baseline interaction、Training draft resource preview / optimizer contract
-與 position-dependent Visualization gates。目前 working candidate 的 backend full unit `5007 passed`、
-UI full unit `2586 passed`、architecture unit `291 passed`、focused Application/BIDS/Epoch/product
-walkthrough `38 passed`、required IO/BIDS/cross-source integration `41 passed`、representative EEGNet
-pipeline `2 passed`；strict format matrix 為 `20/20` lifecycle cases、`14/14` required formats，
-strict cross-source runner 為 `4/4` required cases
-（PhysioNet EDF / BBCI GDF training；SCCN SET / MNE CNT import/preprocess boundary）。本輪後續 contract closure
-另涵蓋 selected-run BIDS label recommendation、mixed-sampling epoch fail-closed 與 resample recovery、
-deferred split publication / rollback，以及逐欄位 manual provenance 的 deterministic training
-recommendations；這些都有 focused regression，但仍等待 final pushed exact-head CI。
-Independent source review additionally found and closed stable model-ID loss at the Training UI
-boundary and subject-cohort conflation in cross-fold summaries; their red-first regressions and
-expanded adjacent suite passed before this checkpoint was updated.
-
-Ruff、Ruff format、configured product-source Basedpyright（`0 errors, 0 warnings`）、architecture
-compliance 與 current-source UI artifact generation pass locally。這些仍是 working-tree evidence；
-候選必須 commit、整合最新 `main`、push，並在該 exact head 取得成功 CI，才能形成 Windows 人工
-驗收候選。Windows interaction acceptance、Assistant readiness 與延後的 20-scenario product gate
-仍然開放。
+先前 EEG workflow 與 import/training/montage polish 的實作已透過後續 product-foundation PR 進入
+`main`。本節後續的逐次測試數字與 CI 修復只保留為歷史 evidence，不是目前 candidate 的 total，
+也不能取代 generated exact-head report。Windows interaction acceptance、Assistant readiness 與
+延後的完整 product gate 仍然開放。
 
 The first exact-head run after fixing the required fixture profile proved the public multi-dataset
 job itself, but its Windows/Linux/macOS general jobs failed on stale display-name assertions, eager

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts.dev.fetch_public_eeg_fixtures import resolve_public_fixture_dir
 from scripts.dev.report_teacher_dataset_preflight import (
     build_teacher_preflight_snapshot,
 )
@@ -13,7 +14,7 @@ from scripts.dev.report_teacher_dataset_preflight import (
 pytestmark = pytest.mark.optional_public_fixture
 
 ROOT = Path(__file__).resolve().parents[3]
-PUBLIC_DIR = ROOT / "tests" / "fixtures" / "data" / "public"
+PUBLIC_DIR = resolve_public_fixture_dir()
 TEACHER_ENTRYPOINTS = (
     PUBLIC_DIR
     / "openneuro-ds003061-p300"

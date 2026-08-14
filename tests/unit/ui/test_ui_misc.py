@@ -202,6 +202,71 @@ class TestDatasetActionHandler:
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_data_picker_starts_from_canonical_dataset_root(
+        self,
+        mock_mb,
+        mock_fd,
+        handler,
+        tmp_path,
+        monkeypatch,
+    ):
+        dataset_root = tmp_path / "datasets"
+        dataset_root.mkdir()
+        monkeypatch.setenv("XBRAINLAB_DATA_DIR", str(tmp_path))
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileNames.return_value = ([], "")
+
+        handler.import_data()
+
+        assert mock_fd.getOpenFileNames.call_args.args[2] == str(dataset_root)
+
+    def test_dataset_folder_picker_prefers_existing_canonical_bids_root(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        from XBrainLab.ui.panels.dataset.data_interpretation_action_coordinator import (
+            _dataset_dialog_start_directory,
+        )
+
+        bids_root = tmp_path / "datasets" / "bids"
+        bids_root.mkdir(parents=True)
+        monkeypatch.setenv("XBRAINLAB_DATA_DIR", str(tmp_path))
+
+        assert _dataset_dialog_start_directory() == str(tmp_path / "datasets")
+        assert _dataset_dialog_start_directory(prefer_bids=True) == str(bids_root)
+
+    @pytest.mark.parametrize(
+        ("method_name", "expected_relative"),
+        (("import_folder_source", "datasets"), ("import_bids_source", "datasets/bids")),
+    )
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_directory_pickers_use_the_canonical_dataset_hierarchy(
+        self,
+        mock_mb,
+        mock_fd,
+        method_name,
+        expected_relative,
+        handler,
+        tmp_path,
+        monkeypatch,
+    ):
+        del mock_mb
+        expected = tmp_path / expected_relative
+        expected.mkdir(parents=True)
+        monkeypatch.setenv("XBRAINLAB_DATA_DIR", str(tmp_path))
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getExistingDirectory.return_value = ""
+
+        getattr(handler, method_name)()
+
+        assert mock_fd.getExistingDirectory.call_args.args[2] == str(expected)
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_import_data_without_command_service_does_not_import_via_controller(
         self,
         mock_mb,

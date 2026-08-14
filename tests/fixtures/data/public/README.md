@@ -1,7 +1,9 @@
 # Public EEG Fixtures
 
-這個資料夾放的是「只在本地下載、不進 git」的公開 EEG fixtures，
-用途是補強 repo 內建真實資料之外的跨來源、跨格式驗證。
+這個資料夾是未設定 `XBRAINLAB_DATA_DIR` 時的 repo/CI fallback cache。一般本機可把
+`XBRAINLAB_DATA_DIR` 指到 D 槽的 durable data root；下載器會改用
+`$XBRAINLAB_DATA_DIR/datasets/public-fixtures/`，用途仍是補強 repo 內建真實資料之外的跨來源、
+跨格式驗證。
 
 下載指令：
 
@@ -21,8 +23,9 @@ poetry run -- python scripts/dev/fetch_public_eeg_fixtures.py \
   --profile required-ci --verify-only
 ```
 
-- manifest 目前總量是 `14,795,721 bytes`，程式內硬上限為 `20 MiB`
-- fixture 只存在 `tests/fixtures/data/public/`，由該目錄的 `.gitignore` 排除，不進 Git
+- manifest 目前總量是 `205,255,918 bytes`，程式內硬上限為 `220 MiB`
+- CI fixture 存在 `tests/fixtures/data/public/`；設定 data root 的本機 fixture 存在 canonical
+  `datasets/public-fixtures/`。兩者都不進 Git
 - GitHub Actions 只 cache 這個目錄；cache key 綁定下載器 manifest 的 hash
 - cache 過期或內容損壞時，下載器會逐檔驗證並修復；`--verify-only` 缺件或損壞會非零結束
 - 不包含完整公開資料集、模型權重、訓練輸出或使用者資料

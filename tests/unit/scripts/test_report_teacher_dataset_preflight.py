@@ -241,3 +241,14 @@ def test_release_service_closes_every_raw_and_application_lifecycle() -> None:
     preflight._release_service(service)
 
     assert close_calls == ["first", "second", "service"]
+
+
+def test_public_fixture_dir_uses_canonical_data_root_when_configured(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("XBRAINLAB_DATA_DIR", str(tmp_path))
+
+    assert preflight._public_fixture_dir(preflight.ROOT) == (
+        tmp_path / "datasets" / "public-fixtures"
+    )

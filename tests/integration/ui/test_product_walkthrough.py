@@ -85,6 +85,9 @@ from XBrainLab.ui.components.assistant_status_projection import (
 from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
     LocalRuntimeFirstRunDialog,
 )
+from XBrainLab.ui.panels.dataset.data_interpretation_action_coordinator import (
+    _dataset_dialog_start_directory,
+)
 
 EXPECTED_PRODUCT_WALKTHROUGH_SPLIT_SUMMARY = {
     "count": 1,
@@ -778,7 +781,7 @@ def test_visible_open_data_import_action_opens_typed_product_surface_directly(
         )
         assert chooser_parent is test_app.dataset_panel
         assert chooser_title == "Choose EEG Source for Interpretation"
-        assert chooser_directory == ""
+        assert chooser_directory == _dataset_dialog_start_directory()
         assert "EEG files" in chooser_filter
         assert test_app.stack.currentWidget() is test_app.dataset_panel
         assert controller.pending_interactions.workflow_handoff is None

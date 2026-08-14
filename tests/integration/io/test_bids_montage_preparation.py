@@ -7,14 +7,27 @@ from pathlib import Path
 
 import pytest
 
+from scripts.dev.fetch_public_eeg_fixtures import resolve_public_fixture_dir
 from XBrainLab.backend.application.bids_montage_preparation import (
     BidsMontageRecordingRequest,
     prepare_bids_montage,
     resolve_bids_montage_resource_paths,
 )
 
-PUBLIC_FIXTURES = Path("tests/fixtures/data/public")
 pytestmark = pytest.mark.optional_public_fixture
+
+
+def _public_fixtures() -> Path:
+    return resolve_public_fixture_dir()
+
+
+def test_public_fixture_root_follows_configured_dataset_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("XBRAINLAB_DATA_DIR", str(tmp_path))
+
+    assert _public_fixtures() == tmp_path / "datasets" / "public-fixtures"
 
 
 def _channel_info(path: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -33,7 +46,7 @@ def _require_fixture(path: Path) -> Path:
 
 
 def test_mne_bids_tiny_resolves_captrak_geometry_and_explicit_na_rows() -> None:
-    eeg_dir = PUBLIC_FIXTURES / "mne-bids-tiny-eeg/sub-01/ses-eeg/eeg"
+    eeg_dir = _public_fixtures() / "mne-bids-tiny-eeg/sub-01/ses-eeg/eeg"
     recording = _require_fixture(eeg_dir / "sub-01_ses-eeg_task-rest_eeg.vhdr")
     channels = _require_fixture(eeg_dir / "sub-01_ses-eeg_task-rest_channels.tsv")
     channel_names, channel_types = _channel_info(channels)
@@ -67,7 +80,7 @@ def test_mne_bids_tiny_resolves_captrak_geometry_and_explicit_na_rows() -> None:
 
 
 def test_openneuro_ctf_geometry_requires_verified_head_transform() -> None:
-    root = PUBLIC_FIXTURES / "openneuro-ds003061-p300"
+    root = _public_fixtures() / "openneuro-ds003061-p300"
     requests: list[BidsMontageRecordingRequest] = []
     for subject in ("001", "002"):
         eeg_dir = root / f"sub-{subject}" / "eeg"

@@ -34,6 +34,7 @@ from pytestqt.exceptions import TimeoutError as QtBotTimeoutError
 from scripts.dev.fetch_public_eeg_fixtures import (
     FIXTURE_GROUPS,
     fixture_file_is_valid,
+    resolve_public_fixture_dir,
 )
 from tests.integration.ui.modal_helpers import visible_modal_dialog
 from XBrainLab.backend.application import get_application_service
@@ -52,7 +53,7 @@ from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
 from XBrainLab.ui.panels.dataset.panel import DatasetPanel
 
 TEST_DATA_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "data"
-PUBLIC_ROOT = TEST_DATA_ROOT / "public"
+PUBLIC_ROOT = resolve_public_fixture_dir()
 PHYSIONET_REST_EDF = PUBLIC_ROOT / "physionet-eegmmidb-S008R01.edf"
 PHYSIONET_MOTOR_EDF = PUBLIC_ROOT / "physionet-eegmmidb-S008R04.edf"
 BBCI_GDF = PUBLIC_ROOT / "bbci-competition-iii-O3VR.gdf"

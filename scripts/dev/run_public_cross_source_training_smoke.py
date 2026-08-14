@@ -23,6 +23,7 @@ else:
 ROOT = Path(__file__).resolve().parents[2]
 assert_active_checkout_import(ROOT)
 
+from scripts.dev.fetch_public_eeg_fixtures import resolve_public_fixture_dir
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
     ConfigureTrainingCommand,
@@ -42,7 +43,15 @@ from XBrainLab.backend.study import Study
 from XBrainLab.backend.training.record import EvalRecord, RecordKey
 from XBrainLab.backend.training.record.artifact_store import load_model_state_dict
 
-PUBLIC_DATA_DIR = ROOT / "tests" / "fixtures" / "data" / "public"
+_REPO_PUBLIC_FIXTURE_DIR = Path("tests/fixtures/data/public")
+
+
+def _public_data_dir(repo_root: Path = ROOT) -> Path:
+    """Resolve central storage while preserving isolated repo-root test fixtures."""
+    if repo_root.absolute() == ROOT:
+        return resolve_public_fixture_dir()
+    return repo_root / _REPO_PUBLIC_FIXTURE_DIR
+
 
 PUBLIC_TRAINING_FIXTURES = (
     {
@@ -270,7 +279,7 @@ def _apply_reviewed_internal_event_import(
 
 def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
     """Execute one public-fixture training smoke and return structured status."""
-    filepath = PUBLIC_DATA_DIR / str(fixture["filename"])
+    filepath = _public_data_dir() / str(fixture["filename"])
     if not filepath.exists():
         return SmokeResult(
             name=str(fixture["name"]),
@@ -456,7 +465,7 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
 
 def run_fixture_boundary_smoke(fixture: dict[str, object]) -> SmokeResult:
     """Prove import/preprocess support without inventing supervised class semantics."""
-    filepath = PUBLIC_DATA_DIR / str(fixture["filename"])
+    filepath = _public_data_dir() / str(fixture["filename"])
     if not filepath.exists():
         return SmokeResult(
             name=str(fixture["name"]),
@@ -630,7 +639,7 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, Any]:
     )
     return {
         "repo_root": str(repo_root),
-        "public_data_dir": str(repo_root / "tests" / "fixtures" / "data" / "public"),
+        "public_data_dir": str(_public_data_dir(repo_root)),
         "results": results,
         "summary": {
             "passed": passed,

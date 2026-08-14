@@ -7,6 +7,7 @@ from typing import NotRequired, TypedDict
 
 import pytest
 
+from scripts.dev.fetch_public_eeg_fixtures import resolve_public_fixture_dir
 from scripts.dev.report_data_interpretation_format_matrix import (
     capture_public_fixture_facts,
 )
@@ -32,7 +33,7 @@ from XBrainLab.backend.training.record.artifact_store import load_model_state_di
 pytestmark = pytest.mark.optional_public_fixture
 
 ROOT = Path(__file__).resolve().parents[2]
-PUBLIC_DATA_DIR = ROOT / "fixtures" / "data" / "public"
+PUBLIC_DATA_DIR = resolve_public_fixture_dir()
 
 
 class PublicTrainingFixture(TypedDict):

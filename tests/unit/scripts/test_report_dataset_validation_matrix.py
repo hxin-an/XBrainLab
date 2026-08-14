@@ -4,6 +4,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+from scripts.dev import report_dataset_validation_matrix as validation_matrix
 from scripts.dev.report_data_interpretation_format_matrix import (
     REQUIRED_EXTERNAL_LABEL_CONTRACTS,
     REQUIRED_INTERNAL_EVENT_PROFILES,
@@ -29,6 +32,20 @@ from scripts.dev.run_public_cross_source_training_smoke import (
 def _touch(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("fixture", encoding="utf-8")
+
+
+def test_public_fixture_dir_uses_canonical_data_root_without_moving_tracked_data(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("XBRAINLAB_DATA_DIR", str(tmp_path))
+
+    assert validation_matrix._public_fixture_dir(validation_matrix.ROOT) == (
+        tmp_path / "datasets/public-fixtures"
+    )
+    assert validation_matrix.TEST_DATA_DIR == (
+        validation_matrix.ROOT / "tests/fixtures/data"
+    )
 
 
 def test_canonical_direct_script_entrypoint_can_start_from_repo_root() -> None:
