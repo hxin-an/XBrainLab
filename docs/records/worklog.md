@@ -17331,3 +17331,32 @@
   probabilistic loader check with exact mask-index and Random/Sequential sampler assertions.
 - Local evidence: focused regression `9 passed`; adjacent integration backend and training-plan
   suite `171 passed`; no product command or metric semantics were relaxed.
+
+## 2026-08-14 - Product-foundation draft PR integration
+
+- Created the product-foundation candidate from current `main`, preserved the old reliability
+  checkpoint remotely, and opened draft PR `#16`. The candidate keeps the desktop product runtime
+  and matching product regressions while excluding MOABB campaign/materializer/driver code,
+  generated datasets and campaign delivery gates. Repo-root `settings.json` remains an unstaged,
+  protected local setting.
+- The first exact-head CI run passed lint/docs, the required public multi-dataset gate, Linux agent
+  timing/LLM shards, macOS core/lifecycle and Windows core. It exposed three bounded integration
+  areas rather than a dataset-delivery failure:
+  - strict-BIDS review repeated four filesystem canonicalizations already owned by the admitted
+    BIDS index;
+  - Apply resource-confirmation tests replaced the preflight result after Review while leaving the
+    current SAFE admission valid;
+  - Windows UI rendering counted a hidden Cancel control in toolbar width, and one Saliency test
+    asserted before the queued Qt render ledger reached the active Map tab.
+- Local fixes retain the original contracts: BIDS path comparison is lexical after admission;
+  resource confirmation forces a fresh check only when the cached resource boundary is no longer
+  reusable; Saliency remains explicit user action; hidden controls no longer consume responsive
+  packing width. A same-class transaction sweep also made failed Preprocess and interpretation
+  Apply commits restore trainer/history with their data state while preserving newer training truth
+  on stale-boundary rejection.
+- Local evidence after integration: ApplicationService `244 passed`; resource-confirmation
+  integration `47 passed`; affected UI/BIDS `133 passed`; focused Ruff/format/Basedpyright and
+  `git diff --check` passed. These are dirty working-tree checkpoint results, not exact-head closure.
+- Claim boundary: the fixes still require a focused commit, push and a completely successful CI run
+  for the new PR head. Windows native CI does not replace later human DPI/interaction acceptance,
+  and this branch still does not move datasets or fix P300 Saliency computation.

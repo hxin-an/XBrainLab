@@ -23,7 +23,7 @@ push、PR exact-head CI 與合併，才會成為新的 `main`；在此之前只�
 | Baseline | 以 candidate merge-base 的最新 `main` 為準，不在文件寫死 historical SHA。 |
 | Active goal | 先把 working desktop foundation 以 product-only PR 合回 `main`；接受後再集中 datasets，最後另開 P300 Saliency fix。 |
 | Historical ledger | [Product Quality Audit - 2026-07-30](records/product_quality_audit_2026-07-30.md)；只作 provenance，不是 active queue。 |
-| Delivery state | Product-only extraction 施工中；舊工作 checkpoint 已保留，尚無本輪 pushed exact-head CI / PR merge，不是 release-ready。 |
+| Delivery state | Product-only extraction 已 push 並建立 draft PR `#16`。第一輪 exact-head CI 已揭露 Linux integration/backend 與 Windows UI lifecycle failures；bounded fixes 已在本機通過，仍須 push 新 exact head、等待所有 non-skipped checks completed/success 並經 PR merge，才可成為 `main`。 |
 
 其他 registered worktree 不代表 active candidate。需要 inventory 時必須執行
 `git worktree list --porcelain`，不要把數量或 branch 清單手動複製成長期 current truth。
@@ -83,7 +83,7 @@ generated evidence；branch、commit 或 dirty state 不吻合時，只能稱為
 - `ApplicationService / Command API` 是 active product command spine。
 - `BackendFacade` 已物理移除，回流必須被 architecture guard 擋下。
 - Product assistant runtime 是 local-only，MCP 不是 active roadmap。
-- `main` 是產品工作的唯一整合基線；目前 product foundation 仍在 PR 前候選。
+- `main` 是產品工作的唯一整合基線；目前 product foundation 仍是 draft PR 候選。
 - Graz 2a GDF、OpenNeuro ds003061 P300 BIDS 與使用者回報的 PhysionetMI 流程有人工 checkpoint；三者 evidence identity 不同，不能合併成 cross-dataset gate PASS。
 - Local-only ds003061 P300 fixture 已有 3 subjects、9 runs，可重跑 selected-subject scope regression。
 
