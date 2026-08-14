@@ -1582,10 +1582,11 @@ class VisualizationPanel(BasePanel):
         runtime,
         task: _SaliencyRenderTask,
     ):
+        raw_request = replace(task.request, normalize=False)
         variants = prepare_saliency_render_variants_operation(
             None,
             task.operation_id,
-            task.request,
+            raw_request,
             include_normalized=task.needs_normalized_variant,
             runtime=runtime,
         )

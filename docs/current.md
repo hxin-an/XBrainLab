@@ -8,22 +8,22 @@
 
 ## 一句話
 
-XBrainLab 的可運作 desktop product foundation 已經由 PR `#16` 合回 `main`。目前工作從該
-`main` 建立短 branch，把散落在 repo build、public fixture cache 與 legacy cache 的 EEG datasets
-收斂到 `XBRAINLAB_DATA_DIR/datasets/`；第一階段只 copy、checksum verify 與保留 rollback，不刪舊
-來源，也不把 model、RAG、output 或 logs 混進 dataset hierarchy。
+XBrainLab 的可運作 desktop product foundation 與 dataset-storage consolidation 已合回 `main`。
+目前從最新 `main` 建立短 branch，修復真人手測確認的三個可見 regression：Saliency
+Normalize render admission、Data Split 第二步結果展開／primary action，以及 Select Channels
+dialog 外觀。這條 branch 不改科學計算、split 演算法、channel selection 語意或 dataset storage。
 
 ## Current Integration Context
 
 | 項目 | Current truth |
 | --- | --- |
-| Active worktree | Dataset consolidation candidate；實際 branch / SHA 由 Git 取得。repo-root `settings.json` 是不得納入版本控制的使用者本機設定。 |
+| Active worktree | Manual UI regression candidate；實際 branch / SHA 由 Git 取得。repo-root `settings.json` 是不得納入版本控制的使用者本機設定。 |
 | Product baseline | `main` |
-| Current candidate | 從最新 `main` 建立的 dataset-storage consolidation branch；不是 release。 |
+| Current candidate | 從最新 `main` 建立的 Saliency / Data Split / Select Channels focused branch；不是 release。 |
 | Baseline | 以 candidate merge-base 的最新 `main` 為準，不在文件寫死 historical SHA。 |
-| Active goal | 建立單一 dataset hierarchy、relocation-aware manifest 與 copy/verify cutover；P300 Saliency 仍是下一條獨立產品 branch。 |
+| Active goal | 關閉三個真人手測 UI regression，保留既有 application command/state 與資料語意。 |
 | Historical ledger | [Product Quality Audit - 2026-07-30](records/product_quality_audit_2026-07-30.md)；只作 provenance，不是 active queue。 |
-| Delivery state | Product-foundation PR `#16` 已以 merge commit 進入 `main`，main exact-head CI 成功。Dataset consolidation 目前是 short-branch checkpoint；只有 PR exact-head CI 成功並 merge 後才進入 baseline，且尚未授權刪除任何舊 dataset source。 |
+| Delivery state | Product foundation 與 dataset storage 已進入 `main`。本輪三項修復仍是 short-branch checkpoint；只有 focused evidence、可見 artifact、PR exact-head CI 成功並 merge 後才進入 baseline。舊 dataset source cleanup 仍未授權。 |
 
 其他 registered worktree 不代表 active candidate。需要 inventory 時必須執行
 `git worktree list --porcelain`，不要把數量或 branch 清單手動複製成長期 current truth。

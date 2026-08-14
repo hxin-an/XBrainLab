@@ -541,11 +541,19 @@ class TestDataSplittingPreviewDialogSplitters:
         assert payload["test_splitters"][0]["value"] == "5"
         assert payload["val_splitters"][0]["split_unit"] == "Ratio"
 
-    def test_step2_layout_shrinks_to_content_without_footer_stretch(self, dlg):
+    def test_step2_layout_fits_available_screen_without_footer_stretch(self, dlg):
         assert dlg.layout().sizeConstraint().name != "SetDefaultConstraint"
         assert dlg.minimumHeight() < 500
-        assert dlg.height() <= 520
+        assert dlg.screen() is not None
+        available = dlg.screen().availableGeometry()
+        assert dlg.height() <= available.height() - 48
         assert dlg.tree.height() <= 84
+        assert dlg.btn_confirm is not None
+        confirm_bounds = QRect(
+            dlg.btn_confirm.mapTo(dlg, QPoint(0, 0)),
+            dlg.btn_confirm.size(),
+        )
+        assert dlg.rect().contains(confirm_bounds)
 
         right_panel_heights = [
             panel.sizePolicy().verticalPolicy()

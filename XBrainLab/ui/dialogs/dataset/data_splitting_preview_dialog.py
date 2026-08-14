@@ -331,6 +331,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         self._preview_close_started_at: float | None = None
         self._preview_pending_close_action: str | None = None
         self._preview_close_warning_shown = False
+        self._content_refit_pending = False
 
         # UI
         self.tree: QTreeWidget | None = None
@@ -351,8 +352,8 @@ class DataSplittingPreviewDialog(BaseDialog):
         # So we initialize members before super.
 
         super().__init__(parent, title=title)
-        self.fit_to_content(minimum_width=920)
         self._update_content_flow(self.width())
+        self._refit_to_current_content()
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_table)
@@ -372,7 +373,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         layout = QVBoxLayout(self)
         layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(12)
+        layout.setSpacing(10)
 
         content_scroll = QScrollArea(self)
         self.content_scroll = content_scroll
@@ -645,7 +646,7 @@ class DataSplittingPreviewDialog(BaseDialog):
 
         btn_confirm = QPushButton("Confirm")
         self.btn_confirm = btn_confirm
-        btn_confirm.setObjectName("DataSplitPreviewConfirmButton")
+        btn_confirm.setObjectName("PrimaryConfirmButton")
         btn_confirm.setAutoDefault(False)
         btn_confirm.setDefault(False)
         btn_confirm.setMinimumWidth(128)
@@ -657,6 +658,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         """Reflow the two Step 2 columns before compact windows can clip them."""
         self._update_content_flow(event.size().width())
         super().resizeEvent(event)
+        QTimer.singleShot(0, self._fit_tree_columns_to_viewport)
 
     def _update_content_flow(self, width: int) -> None:
         if self.content_layout is None or self.controls_column is None:
@@ -682,6 +684,47 @@ class DataSplittingPreviewDialog(BaseDialog):
                 QSizePolicy.Policy.Maximum,
             )
         self.content_layout.invalidate()
+
+    def _refit_to_current_content(self) -> None:
+        """Fit the active responsive layout without drifting off screen."""
+        for _ in range(2):
+            self._update_content_flow(self.width())
+            content_height = 0
+            if self.content_scroll is not None:
+                content = self.content_scroll.widget()
+                if content is not None:
+                    content_layout = content.layout()
+                    if content_layout is not None:
+                        content_layout.activate()
+                    content.updateGeometry()
+                    content_height = max(
+                        content.sizeHint().height(),
+                        content.minimumSizeHint().height(),
+                    )
+                self.content_scroll.updateGeometry()
+            chrome_height = (
+                max(self.height() - self.content_scroll.height(), 0)
+                if self.content_scroll is not None
+                else 0
+            )
+            self.fit_to_content(
+                minimum_width=920,
+                minimum_height=chrome_height + content_height,
+            )
+            self._update_content_flow(self.width())
+
+    def _schedule_content_refit(self) -> None:
+        """Coalesce one dynamic-row layout pass onto the Qt event loop."""
+        if self._content_refit_pending:
+            return
+        self._content_refit_pending = True
+        QTimer.singleShot(0, self._apply_scheduled_content_refit)
+
+    def _apply_scheduled_content_refit(self) -> None:
+        self._content_refit_pending = False
+        if sip.isdeleted(self):
+            return
+        self._refit_to_current_content()
 
     @staticmethod
     def _panel_grid(title: str) -> tuple[QFrame, QGridLayout]:
@@ -971,6 +1014,7 @@ class DataSplittingPreviewDialog(BaseDialog):
                 self.btn_confirm.setEnabled(False)
         elif rows:
             self._set_preview_feedback("")
+            rows_changed = False
             item0 = self.tree.topLevelItem(0)
             if (
                 self.tree.topLevelItemCount() == 1
@@ -981,6 +1025,7 @@ class DataSplittingPreviewDialog(BaseDialog):
 
             current_count = self.tree.topLevelItemCount()
             if current_count < len(rows):
+                rows_changed = True
                 for i in range(current_count, len(rows)):
                     row = rows[i]
                     item = QTreeWidgetItem(self.tree)
@@ -1002,6 +1047,8 @@ class DataSplittingPreviewDialog(BaseDialog):
                         item.setText(col, str(val))
             self._clear_tree_current_item()
             self._resize_tree_to_rows()
+            if rows_changed and status == PREVIEW_STATUS_SUCCEEDED:
+                self._schedule_content_refit()
             if (
                 status == PREVIEW_STATUS_SUCCEEDED
                 and self.btn_confirm is not None
