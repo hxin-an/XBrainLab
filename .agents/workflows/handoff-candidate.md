@@ -24,10 +24,11 @@ the change.
 
 ## 3. Same-class sweep
 
-Search the relevant class across call sites and workflows. Examples include duplicated readiness,
+Search the changed owner and directly coupled call sites for the relevant class. Examples include duplicated readiness,
 manual refresh, direct/private mutation, async stale callbacks, label/event variants, figure/thread
-cleanup, and repeated layout components. Add a source guard when a stable static rule can prevent
-recurrence. Fix blocking matches or report `blocked`.
+cleanup, and repeated layout components. A match blocks only when it can reproduce the same defect,
+break the declared contract, create direct safety/data loss, or invalidate the handoff evidence.
+Keep independent matches as advisory follow-up. Add a source guard only for a stable static rule.
 
 ## 4. Happy path and edges
 

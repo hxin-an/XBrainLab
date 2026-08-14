@@ -15,14 +15,13 @@ them through the canonical manifest runner. Do not copy or weaken commands in th
 
 ## Workflow
 
-1. Define changed areas, expected behavior, same-class risk, environment, and intended claim.
+1. Define changed areas, expected behavior, environment, and intended claim.
 2. Select the smallest focused test that directly protects the change.
-3. Add the applicable source guard and adjacent workflow regression.
-4. For visible UI, inspect screenshots/walkthroughs; for data workflow handoff, use the required
-   source-diverse dataset gate.
-5. Record command, exact source identity, result, artifact, and dirty-state boundary.
-6. Distinguish complete bounded work from product handoff: a docs-only or narrow internal scope may
-   be complete when all its declared gates pass; handoff-ready requires the full handoff workflow.
+3. Add a source guard or adjacent regression only when it directly protects the declared contract.
+4. Run UI artifacts, source-diverse data gates, exact-source dossiers, and full manifests only when
+   the claim or handoff workflow requires them.
+5. Distinguish scope-complete work from checkpoint and handoff-ready; do not escalate one into the
+   next evidence tier automatically.
 
 ## Interpretation
 
@@ -33,4 +32,5 @@ them through the canonical manifest runner. Do not copy or weaken commands in th
 - Evidence from a different SHA, dirty source, stale branch, or reduced denominator cannot certify
   the candidate.
 
-Report command, result, supported claim, unsupported claim, completion label, and follow-up.
+Report the minimum relevant command/result, supported and unsupported claims, completion label, and
+advisory follow-up. Persist a receipt only when the evidence contract requires one.

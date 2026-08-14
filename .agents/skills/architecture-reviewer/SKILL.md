@@ -15,7 +15,7 @@ Evaluate architecture from source and runtime evidence before accepting design c
 4. Compare current and target boundaries without treating target prose as implemented fact.
 5. Check responsibility placement, dependency direction, lifecycle ownership, and error semantics.
 6. Find parallel state machines, compatibility fallbacks, duplicated policy, and direct private access.
-7. Propose the smallest coherent migration slice with call sites, tests, rollback, and non-goals.
+7. Identify deletion candidates and owner count, then propose one bounded migration slice.
 
 ## Design rules
 
@@ -24,9 +24,11 @@ Evaluate architecture from source and runtime evidence before accepting design c
   explicit.
 - Make state publication immutable or revisioned when multiple consumers observe it.
 - Do not add an abstraction unless it removes a measured coupling or enables a required seam.
+- Treat new owners, state machines, receipts, and compatibility paths as root complexity triggers;
+  a target document alone does not justify them.
 - Do not preserve mutable current facts, branch names, or completion status in reusable guidance.
 
 ## Output
 
-Return current evidence, target gap, severity-ranked risks, accepted boundaries, first slice,
-validation floor, and claim boundary.
+Return current evidence, target gap, at most three in-scope blocking risks, deletion/owner delta,
+first slice, validation floor, advisory follow-ups, and claim boundary.

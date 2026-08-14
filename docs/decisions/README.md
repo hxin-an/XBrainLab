@@ -1,6 +1,6 @@
 # XBrainLab Decisions
 
-最後更新：`2026-08-11`
+最後更新：`2026-08-14`
 
 ## 這份文件的用途
 
@@ -23,8 +23,11 @@
 | tool surface 可重設計 | active | 不被舊工具 taxonomy 綁住，應以 workflow intent 設計。 |
 | validation 是 thesis-critical | active | 測試和 evidence 是論文主張的一部分。 |
 | 文件要少數 canonical 化 | active | 短期 AI / agent 文件整合後刪除，只保留少數 canonical 文件。 |
-| Agent guidance 採 lean single-authority contract | active | 依官方 GPT-5.6、Skills 與 AGENTS.md guidance，repo root 只保留安全/交付不變量，mutable product truth 回到 canonical docs，skill frontmatter 負責 routing、workflow 負責多步驟程序；MCP skill 以 machine policy explicit-only。任何精簡必須通過 60-case、三次重跑的 baseline/candidate A/B，而不是只靠主觀 token 感受。 |
-| product delivery milestone 是最低門檻 | active | 目前已進入 product-delivery engineering；milestone 不是工作上限，agent 應把程式做到可用、可維護、可驗證。 |
+| Agent guidance 採 lean single-authority contract | active | Root 保存授權、safety、scope ceiling、complexity trigger 與 handoff 不變量；skills 只保存 routing/方法，workflows 保存多步程序。Static audit 只限制上限與 authority integrity，不再要求最低篇幅或大量外部 A/B。 |
+| Declared scope 是 delivery ceiling | active | 使用者要求、明定 acceptance 與直接必要依賴是本 slice 上限。Independent findings 預設只回報，不自動實作或阻擋 scope-complete；完整 closure 只由明確 handoff claim 啟動。 |
+| Product repair 採 plan-first | active | Product bug、feature 與 refactor 在實作前先收斂到 `docs/planning/now.md` 的唯一 active plan，包含證據、邊界、修理步驟、驗證與 stop condition；不以聊天上下文或分散 planning files 承擔 durable truth。 |
+| UI 修改需使用者事前確認 | active | 任何 `XBrainLab/ui/` 修改，或會改變可見 layout、文案、互動、狀態或流程的修改，即使是 bug fix，實作前也必須先取得使用者明確確認。唯讀診斷與無可見行為變化的 backend 修正除外。 |
+| product delivery milestone 是最低門檻 | superseded 2026-08-14 | 這個語意會讓 finding 無限重新定義 scope，已由 declared scope ceiling 與獨立 handoff-ready gate 取代。 |
 | tool-call eval 等產品主線穩定後再做 | active | Eval / thesis evidence 應測穩定產品主線，不應太早測半成品 bug。 |
 | local LLM 下載需受容量邊界控制 | active | 可下載模型，但單模型原則 10GB 內、總 cache 原則 20GB 內；27B+ 需使用者明確同意。 |
 | local LLM 不使用中國模型 | active | 不使用中國公司或中國來源模型；Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 等不列入 primary / fallback 選型。 |
@@ -33,7 +36,7 @@
 | Roadmap 五階段定型 | active | 產品主線固定為 Rebaseline -> Desktop MVP -> Product Polish / Release Candidate -> Assistant MVP -> Thesis Evidence。阻礙使用或理解的 UI/UX 屬於 Desktop MVP blocker；美感、一致性和低風險 polish 屬於 Product Polish / Release Candidate。 |
 | Product-Quality Closure Delivery Flow | superseded 2026-08-04 | `stabilize/product-quality-closure` 已依使用者決定收斂到 `main` 作 development checkpoint。這不代表 release 或 product completion；後續以短 task branch 回到 `main`，並由 current Now / Validation 定義下一個 candidate gate。 |
 | Desktop MVP Delivery Flow | superseded | `stabilize/desktop-mvp` 是較早 delivery flow，保留作決策歷史，不再是 current branch、task base、merge destination 或 validation authority。 |
-| User bug report triggers audit | active | 使用者回報的是 audit trigger，不是唯一 symptom。Product-quality closure 期間，agent 應主動盤點相鄰產品 bug、code quality、architecture drift、test quality、performance/resource 和 UI artifact 問題，並回寫 current audit ledger；不另建 `AQ-*`、`Prep Gate` 或 `Repair Loop` queue。 |
+| User bug report triggers broad audit | superseded 2026-08-14 | 舊 product-quality closure 模式會把單一回報擴張為跨產品盤點。現在只掃描改動 owner 與直接耦合 call sites；獨立問題只作 advisory follow-up。 |
 
 ## 目前工作方向
 

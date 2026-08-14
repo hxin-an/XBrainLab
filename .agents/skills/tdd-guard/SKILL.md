@@ -7,23 +7,12 @@ description: "Use for XBrainLab bug/core behavior test-first loops and passing c
 
 Choose the baseline that matches the change.
 
-## Bug or behavior change
-
-1. State the observable expected behavior.
-2. Add the smallest test that fails for the intended reason before implementation.
-3. Confirm the failure is caused by the target defect, not fixture/environment noise.
-4. Implement the minimum coherent change.
-5. Make the test pass, then run same-class and adjacent regression.
-
-## Behavior-preserving refactor
-
-1. Identify public behavior and risky side effects.
-2. Add or select characterization tests and confirm they pass before refactoring.
-3. Change one bounded slice.
-4. Re-run the identical baseline and relevant source guard.
-5. Add a failing test only if the refactor uncovers an actual missing behavior contract.
+Use `workflows/tdd-change.md` for the procedure. A bug needs the smallest red reproduction for the
+observable defect; a behavior-preserving refactor needs a passing characterization baseline, not an
+artificial red test. After the change, run the same protection and only directly relevant adjacent
+evidence.
 
 Prefer public results, state transitions, recipe traces, UI-observable states, and real side effects.
-Use mocks only to isolate expensive/external dependencies. Stop and reassess when a test cannot
-observe the requirement or fails for an unrelated reason; never weaken assertions to manufacture
-green.
+Use mocks only to isolate expensive/external dependencies. Stop when a test cannot observe the
+requirement or fails for an unrelated reason; never weaken assertions or expand the scope to
+manufacture green.

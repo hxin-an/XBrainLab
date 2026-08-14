@@ -9,14 +9,13 @@ Design the Assistant tool surface as a projection of product backend truth.
 
 ## Workflow
 
-1. Identify the user intent, owning backend command, observable preconditions, and side effects.
-2. Read only the relevant Assistant/backend architecture and command specification.
-3. Define an immutable state snapshot containing facts the model may rely on.
-4. Derive tool availability and blocked reasons from backend capability policy.
-5. Keep schemas narrow; avoid competing tools that express the same action.
-6. Route state-changing calls through the owning application command and structured result.
-7. Verify postconditions from a fresh snapshot or explicit result evidence.
-8. Add positive, blocked, confirmation, recovery, and ambiguity cases.
+1. Identify the intent, existing owning command, preconditions, side effects, and current snapshot.
+2. Reuse the owning command, capability policy, structured result, and verification path when they
+   already express the requirement.
+3. Add or change snapshot/schema fields only for an observable contract gap; never create a second
+   readiness owner.
+4. Verify the smallest risk-relevant set of positive, blocked, confirmation, recovery, or ambiguity
+   cases. Do not add every category by default.
 
 ## Contract checks
 
@@ -28,5 +27,5 @@ Design the Assistant tool surface as a projection of product backend truth.
 
 ## Output
 
-Report the intent-to-command mapping, snapshot fields, admission owner, schema delta, verification
-rule, cases, and claims the evidence cannot support.
+Report the existing contract, necessary delta, admission owner, verification rule, selected cases,
+and unsupported claims.
