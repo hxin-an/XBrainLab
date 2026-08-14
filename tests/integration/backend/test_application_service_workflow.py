@@ -429,6 +429,7 @@ def test_application_service_resource_block_precedes_real_label_loader_and_mutat
     assert review.state.raw == raw_before
     assert review.state.dataset == dataset_before
     monkeypatch.setattr(resource_guard, "available_ram_bytes", lambda: 1_000_000)
+    monkeypatch.setattr(service_module, "available_ram_bytes", lambda: None)
     loadmat_calls = 0
     read_csv_calls = 0
     real_loadmat = data_interpretation_label_carriers.loadmat

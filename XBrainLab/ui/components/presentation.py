@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from PyQt6.QtCore import QSize, Qt, QTimer
+from PyQt6.QtCore import QEvent, QSize, Qt, QTimer
 from PyQt6.QtGui import QPaintEvent, QResizeEvent
 from PyQt6.QtWidgets import (
     QAbstractScrollArea,
@@ -109,6 +109,8 @@ class ResponsiveControlsBar(QWidget):
         self._greedy_reflowing = False
         self._settled_reflow_pending = False
         self._horizontal_spacing = 10
+        self._product_widgets = [widget for pair in self._fields for widget in pair]
+        self._product_widgets.extend(self._trailing_widgets)
         self._layout = QVBoxLayout(self) if greedy_wrap else QGridLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 8)
         if isinstance(self._layout, QGridLayout):
@@ -116,6 +118,9 @@ class ResponsiveControlsBar(QWidget):
             self._layout.setVerticalSpacing(8)
         else:
             self._layout.setSpacing(8)
+        if greedy_wrap:
+            for widget in self._product_widgets:
+                widget.installEventFilter(self)
         # Start from the smallest valid geometry. QWidget's constructor width
         # is a desktop-sized placeholder; building the wide row first lets its
         # layout minimum prevent a narrow parent from ever reaching the stacked
@@ -144,6 +149,19 @@ class ResponsiveControlsBar(QWidget):
         if self._greedy_wrap and not self._settled_reflow_pending:
             self._settled_reflow_pending = True
             QTimer.singleShot(0, self._refresh_settled_layout)
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802
+        """Repack greedy rows when an optional control is shown or hidden."""
+        if (
+            self._greedy_wrap
+            and not self._greedy_reflowing
+            and watched in self._product_widgets
+            and event.type() in {QEvent.Type.Show, QEvent.Type.Hide}
+            and not self._settled_reflow_pending
+        ):
+            self._settled_reflow_pending = True
+            QTimer.singleShot(0, self._refresh_settled_layout)
+        return super().eventFilter(watched, event)
 
     def _refresh_settled_layout(self) -> None:
         self._settled_reflow_pending = False
@@ -241,6 +259,8 @@ class ResponsiveControlsBar(QWidget):
         units: list[tuple[tuple[QWidget, ...], int]] = []
         spacing = self._horizontal_spacing
         for label, control in self._fields:
+            if label.isHidden() or control.isHidden():
+                continue
             # Packing is based on the usable compressed width. Preferred widths
             # may contain a long current selection and would trigger wrapping
             # even though ElidingComboBox can render it safely.
@@ -249,7 +269,9 @@ class ResponsiveControlsBar(QWidget):
                 ((label, control), label.sizeHint().width() + spacing + control_width)
             )
         units.extend(
-            ((widget,), widget.sizeHint().width()) for widget in self._trailing_widgets
+            ((widget,), widget.sizeHint().width())
+            for widget in self._trailing_widgets
+            if not widget.isHidden()
         )
         available = max(
             width
@@ -276,8 +298,7 @@ class ResponsiveControlsBar(QWidget):
         self._wrapped = len(rows) > 1
         if not isinstance(self._layout, QVBoxLayout):
             raise TypeError("Greedy controls require a vertical row layout")
-        product_widgets = [item for pair in self._fields for item in pair]
-        product_widgets.extend(self._trailing_widgets)
+        product_widgets = self._product_widgets
         for row_widget in self._greedy_rows:
             row_layout = row_widget.layout()
             if row_layout is not None:

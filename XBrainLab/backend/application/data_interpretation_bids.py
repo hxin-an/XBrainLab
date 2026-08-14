@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import csv
 import math
+import os
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -911,4 +912,9 @@ def _issue(code: str, row: int | None, message: str) -> dict[str, Any]:
 
 
 def _path_key(path: str) -> str:
-    return str(Path(path).resolve()) if path else ""
+    if not path:
+        return ""
+    # Scan and admission already anchor BIDS paths below the canonical dataset
+    # root. Keep equivalent lexical spellings comparable without another
+    # filesystem walk for every selected/layout/plan lookup.
+    return os.path.normcase(os.path.abspath(os.path.expanduser(path)))

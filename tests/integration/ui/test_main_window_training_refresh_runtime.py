@@ -490,6 +490,9 @@ def test_training_refreshes_metrics_before_explicit_saliency_click(
         coverage = _cached_gradient_coverage(window)
         assert coverage is not None
         assert coverage.complete
+        # Application publication acceptance precedes the queued Qt render.
+        # Wait for the terminal coverage to reach the active view as well.
+        assert visualization.tab_map._saliency_coverage == coverage
 
     qtbot.waitUntil(assert_terminal_ui, timeout=20_000)
 

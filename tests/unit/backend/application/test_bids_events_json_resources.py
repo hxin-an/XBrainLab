@@ -14,6 +14,7 @@ from XBrainLab.backend.application import (
     PreviewInterpretationCommand,
     ReviewInterpretationCommand,
     ScanSourceCommand,
+    data_interpretation_bids,
     data_interpretation_content_identity,
     data_interpretation_resource_reader,
 )
@@ -390,6 +391,65 @@ def test_review_admits_parses_and_rechecks_each_materializable_events_json(
         "admitted_path_count": 2,
         "cached_path_count": 2,
     }
+
+
+def test_strict_bids_review_matches_equivalent_lexical_path_spellings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_path = tmp_path / "bids" / "sub-01" / "eeg" / "run_eeg.fif"
+    events_path = eeg_path.with_name("run_events.tsv")
+    equivalent_eeg = eeg_path.parent / "detour" / ".." / eeg_path.name
+    equivalent_events = events_path.parent / "detour" / ".." / events_path.name
+    monkeypatch.setattr(
+        data_interpretation_bids,
+        "_review_one_run",
+        lambda **_kwargs: (
+            {
+                "event_count": 0,
+                "row_evidence": [],
+                "placement": {
+                    "status": "blocked",
+                    "usable_event_count": 0,
+                    "excluded_event_count": 0,
+                },
+                "issues": [
+                    {
+                        "code": "fixture_issue",
+                        "row": None,
+                        "message": "fixture issue",
+                    }
+                ],
+                "bids_schema": {"issues": [{"code": "fixture_issue"}]},
+            },
+            {},
+        ),
+    )
+
+    review = data_interpretation_bids.review_strict_bids_event_runs(
+        bids={
+            "is_bids": True,
+            "layout": [
+                {
+                    "file": str(eeg_path),
+                    "events_file": str(events_path),
+                }
+            ],
+        },
+        selected_eeg_files=[str(equivalent_eeg)],
+        label_carrier_plan=[
+            {
+                "path": str(equivalent_events),
+                "selected_target_file": str(equivalent_eeg),
+            }
+        ],
+    )
+
+    assert review.evidence["pairing_issues"] == []
+    assert review.evidence["file_mapping"] == {
+        str(eeg_path): str(events_path),
+    }
+    assert review.label_carrier_plan[0]["selected_target_file"] == str(eeg_path)
 
 
 def test_repeated_bids_preview_bounds_canonicalization_and_freshness_calls(

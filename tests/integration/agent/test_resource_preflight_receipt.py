@@ -355,6 +355,9 @@ def receipt_runtime(
         "check_import_resource_preflight",
         _warning_preflight,
     )
+    # Review owns one SAFE admission. Simulate a changed runtime resource
+    # boundary so Apply must obtain a fresh preflight before issuing a receipt.
+    monkeypatch.setattr(service_module, "available_ram_bytes", lambda: None)
     return study, service, first, second, first_candidate, load_raw
 
 
