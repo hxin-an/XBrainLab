@@ -5,8 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtWidgets import QApplication, QDialog
+from PyQt6.QtWidgets import QDialog
 
+from tests.integration.ui.modal_helpers import visible_modal_dialog
 from tests.qt_lifecycle import close_controller_and_wait
 from XBrainLab.backend.application import (
     PreviewInterpretationCommand,
@@ -88,7 +89,7 @@ def test_assistant_exact_import_review_cancel_leaves_product_unchanged(
     cancel_clicks: list[None] = []
 
     def _cancel_exact_dialog(attempt: int = 0) -> None:
-        dialog = QApplication.activeModalWidget()
+        dialog = visible_modal_dialog()
         if not isinstance(dialog, DataInterpretationPreviewDialog):
             if attempt < 20:
                 QTimer.singleShot(10, lambda: _cancel_exact_dialog(attempt + 1))

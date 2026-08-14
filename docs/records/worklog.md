@@ -51,6 +51,19 @@
 - 接續 / 本輪剩餘：完成 docs/source guard、相鄰與 real-data validation、focused commits/push、PR
   exact-head CI 與 merge。合併並由使用者確認後，才另做 dataset consolidation 與 P300 Saliency fix。
 
+### Product foundation exact-head CI modal driver 修正
+
+- 做了什麼：追查 PR `#16` aggregate 唯一失敗的 `linux-integration-ui` shard。Backend review worker
+  已完成，實際可見的 `DataInterpretationPreviewDialog` 也是 application-modal；但 Loading→Preview
+  原子交接後 Qt offscreen 的 `activeModalWidget()` 回傳空值，舊 integration driver 因此不會按下
+  下一步並在 1,200 秒 shard timeout。測試共用 helper 現在優先使用可見 active modal，只有它缺失
+  時才接受唯一可見且 modal 的 top-level dialog；未修改產品 workflow、timeout 或資料處理。
+- 結果：原本卡住的 exact GDF + external MAT node `1 passed`；四個同類真實 UI/fixture 檔案
+  `20 passed`；完整 Linux UI shard `133 passed`，約 5 分 48 秒。Ruff、format、same-class
+  `activeModalWidget()` sweep、strict docs build 與 diff hygiene 均通過。
+- 證據邊界：這是 Linux offscreen CI driver 修正，不是新的產品 runtime claim，也不取代 Windows
+  native 人工 acceptance。仍須 push exact head 並等待所有 PR checks completed/success。
+
 ## 2026-08-11
 
 ### 17:45 Import / Training / Montage integration closure

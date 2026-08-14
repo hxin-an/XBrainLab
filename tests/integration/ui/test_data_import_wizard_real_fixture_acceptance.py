@@ -35,6 +35,7 @@ from scripts.dev.fetch_public_eeg_fixtures import (
     FIXTURE_GROUPS,
     fixture_file_is_valid,
 )
+from tests.integration.ui.modal_helpers import visible_modal_dialog
 from XBrainLab.backend.application import get_application_service
 from XBrainLab.backend.application.owned_work import OwnedWorkPhase
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
@@ -683,7 +684,7 @@ def _start_wizard_driver(
             driver.max_heartbeat_gap_context = driver.last_heartbeat_context
         driver.last_heartbeat_at = heartbeat_at
         driver.heartbeat_count += 1
-        modal = QApplication.activeModalWidget()
+        modal = visible_modal_dialog()
         progress_key = (
             driver.phase,
             driver.dialog_count,
@@ -971,7 +972,7 @@ def _wait_for_blocked_cancel(
             or (
                 driver.phase == 5
                 and not isinstance(
-                    QApplication.activeModalWidget(),
+                    visible_modal_dialog(),
                     DataInterpretationPreviewDialog,
                 )
             ),
@@ -992,7 +993,7 @@ def _fail_with_runtime_state(
     panel: DatasetPanel,
     reason: str,
 ) -> None:
-    modal = QApplication.activeModalWidget()
+    modal = visible_modal_dialog()
     modal_name = type(modal).__name__ if modal is not None else "None"
     step_index = (
         modal.step_stack.currentIndex()
@@ -1373,7 +1374,7 @@ def test_visible_bids_apply_cancel_reopens_identical_review_and_retries(
     retry_timer = QTimer()
 
     def _accept_reopened_review() -> None:
-        modal = QApplication.activeModalWidget()
+        modal = visible_modal_dialog()
         if not isinstance(modal, DataInterpretationPreviewDialog):
             return
         reopened_identities.append(

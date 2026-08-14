@@ -10,8 +10,9 @@ from typing import Any
 import pytest
 from PyQt6 import sip
 from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QApplication, QMessageBox, QWidget
+from PyQt6.QtWidgets import QMessageBox, QWidget
 
+from tests.integration.ui.modal_helpers import visible_modal_dialog
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
     ErrorType,
@@ -272,7 +273,7 @@ def _answer_next_message_box(
     answer.timer.setInterval(5)
 
     def _poll() -> None:
-        widget = QApplication.activeModalWidget()
+        widget = visible_modal_dialog()
         if not isinstance(widget, QMessageBox):
             return
         target = widget.button(button)
