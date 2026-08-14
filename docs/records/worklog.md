@@ -17360,3 +17360,8 @@
 - Claim boundary: the fixes still require a focused commit, push and a completely successful CI run
   for the new PR head. Windows native CI does not replace later human DPI/interaction acceptance,
   and this branch still does not move datasets or fix P300 Saliency computation.
+- The next exact-head run passed platform, unit, UI and required public multi-dataset gates. Its only
+  failing shard exposed a test-side publication race: the stale-preview test compared a command
+  result captured while the application-owned BIDS montage worker was pending with a later final
+  publication. The regression now waits on the public background-task boundary before capturing its
+  stable baseline; it does not add a sleep, accept multiple outcomes or change product behavior.

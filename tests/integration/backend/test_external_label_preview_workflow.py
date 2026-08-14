@@ -276,6 +276,7 @@ def test_preview_is_unavailable_after_session_reset_and_same_path_reload() -> No
         LoadDataCommand(paths=[str(GDF_PATH)], allow_append=False)
     )
     assert reloaded.ok is True, reloaded.message
+    assert service.wait_for_background_tasks(timeout=10.0)
     replacement_target = _loaded_target(service)
     assert replacement_target is not original_target
     before_events, before_event_id, before_labels_imported = _event_signature(

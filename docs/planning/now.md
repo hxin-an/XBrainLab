@@ -23,7 +23,7 @@ driver、delivery receipts、generated BIDS 或 build artifacts 合回 `main`。
 | Candidate | Product-foundation extraction branch；實際 branch / pushed SHA 由 Git 與 PR 取得。 |
 | Primary goal | 保留完整 current `XBrainLab/**` runtime 與 matching product tests，排除 campaign-only code/dependencies，經 PR 合回 `main`。 |
 | Non-goals | 不在本 branch 搬 datasets、不刪 76GB build corpus、不修 P300 Saliency、不增加 trial-label產品複雜度、不做 MOABB delivery automation。 |
-| Current classification | Draft PR `#16` validated checkpoint；第一輪 exact-head CI 已揭露並定責三個 failing shards，本機修復已通過；新 exact-head CI 與 merge 尚未完成。 |
+| Current classification | Draft PR `#16` validated checkpoint；第二輪 exact-head CI 的 platform、unit、UI 與 required public multi-dataset gates 已通過，剩餘 integration publication-race test 已本機修正；新 exact-head CI 與 merge 尚未完成。 |
 
 ## 本 branch 的產品邊界
 
