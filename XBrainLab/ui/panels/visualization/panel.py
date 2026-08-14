@@ -3,7 +3,8 @@
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, cast
 
-from PyQt6.QtCore import QEvent, QThread
+import numpy as np
+from PyQt6.QtCore import QEvent, Qt, QThread
 from PyQt6.QtGui import QStandardItemModel
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -44,7 +45,6 @@ from XBrainLab.backend.application.saliency_policy import (
 )
 from XBrainLab.backend.application.saliency_render import (
     SaliencyRenderView,
-    normalized_saliency_render_publication,
 )
 from XBrainLab.backend.application.state import (
     EpochStateSnapshot,
@@ -74,10 +74,16 @@ from XBrainLab.ui.application_capabilities import (
     VisualizationPublicationPort,
     VisualizationQueryPort,
     application_ui_runtime,
+    begin_saliency_render_operation,
+    cancel_application_operation,
+    enter_saliency_render_commit_operation,
     execute_application_command,
     execute_application_command_async,
-    get_saliency_render_publication,
+    fail_application_operation,
+    finish_saliency_render_operation,
+    get_application_operation,
     is_stale_publication_result,
+    prepare_saliency_render_variants_operation,
 )
 from XBrainLab.ui.application_publication_renderer import (
     ApplicationPublicationRenderLedger,
@@ -85,6 +91,7 @@ from XBrainLab.ui.application_publication_renderer import (
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.core.worker import PythonThreadWorker
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
+from XBrainLab.ui.owned_operation_presenter import OwnedOperationPresenter
 from XBrainLab.ui.product_language import fold_display_label, run_display_label
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
@@ -229,6 +236,7 @@ class _SaliencyRenderTask:
 
     request: SaliencyRenderRequest
     needs_normalized_variant: bool
+    operation_id: str = ""
 
 
 class VisualizationPanel(BasePanel):
@@ -274,11 +282,16 @@ class VisualizationPanel(BasePanel):
         self._application_summary_dirty = True
         self._saliency_summary_dirty = True
         self._saliency_compute_in_progress = False
+        self._saliency_command_busy = False
+        self._saliency_busy_control_states: list[tuple[QWidget, bool]] = []
         self._saliency_compute_attempted: set[tuple[object, ...]] = set()
         self._pending_saliency_params: dict[str, object] | None = None
         self._pending_saliency_target: _SaliencySettingsTarget | None = None
         self._saliency_settings_review_required = False
         self._saliency_settings_review_detail = ""
+        self._active_saliency_operation_id: str | None = None
+        self._active_saliency_minimum_generation: int | None = None
+        self._active_saliency_generation: int | None = None
         self._current_saliency_coverage: dict[
             str,
             SaliencyMethodCoverageSnapshot,
@@ -290,6 +303,16 @@ class VisualizationPanel(BasePanel):
         self._saliency_render_active_task: _SaliencyRenderTask | None = None
         self._saliency_render_pending_task: _SaliencyRenderTask | None = None
         self._saliency_render_result_seen = False
+        self._native_render_bindings: dict[
+            QWidget,
+            tuple[
+                int,
+                int,
+                str,
+                SaliencyRenderPublication,
+                tuple[bool, bool],
+            ],
+        ] = {}
 
         super().__init__(parent=parent, controller=None)
 
@@ -332,7 +355,24 @@ class VisualizationPanel(BasePanel):
         if typed_publication.revision <= self._last_application_revision:
             return True
         signature = self._visualization_publication_signature(typed_publication)
-        self._accept_application_publication(typed_publication)
+        accepted = self._accept_application_publication(typed_publication)
+        explicit_status = typed_publication.state.visualization.post_training_saliency
+        if (
+            accepted
+            and self._saliency_compute_in_progress
+            and self._active_saliency_operation_id is not None
+            and explicit_status.phase
+            in {
+                PostTrainingSaliencyPhase.PENDING,
+                PostTrainingSaliencyPhase.RUNNING,
+            }
+            and self._saliency_status_matches_active_operation(explicit_status)
+        ):
+            # The click receipt and OwnedOperationPresenter already own this
+            # visible busy state.  Commit backend progress revisions without
+            # rebuilding every saliency view; the generation-bound terminal
+            # publication below still performs the result render.
+            return self._application_render_ledger.record_rendered(typed_publication)
         if signature == self._last_visualization_publication_signature:
             return self._application_render_ledger.record_rendered(typed_publication)
         self._mark_application_summaries_dirty()
@@ -423,6 +463,7 @@ class VisualizationPanel(BasePanel):
 
         # Tabs
         self.tabs = QTabWidget()
+        self.tabs.setObjectName("SaliencyViewTabs")
         self.tabs.setStyleSheet(Stylesheets.TAB_WIDGET_CLEAN)
         # Signal connected at the end of init_ui to avoid early triggering
 
@@ -430,10 +471,66 @@ class VisualizationPanel(BasePanel):
 
         # Tab 1: Saliency Map
         self.tab_map = SaliencyMapWidget(self)
+        self.tab_map.setObjectName("SaliencyMapRenderStatus")
+        self.tab_map.setProperty("renderStatus", "idle")
+        self.tab_map.setProperty("operationId", "")
+        map_commit_guard = getattr(self.tab_map, "set_render_commit_guard", None)
+        if callable(map_commit_guard):
+            map_commit_guard(
+                lambda generation, publication_generation: (
+                    self._admit_native_render_commit(
+                        self.tab_map,
+                        generation,
+                        publication_generation,
+                    )
+                )
+            )
+        map_terminal = getattr(self.tab_map, "render_terminal", None)
+        if map_terminal is not None:
+            map_terminal.connect(
+                lambda generation, publication_generation, phase: (
+                    self._on_native_render_terminal(
+                        self.tab_map,
+                        generation,
+                        publication_generation,
+                        phase,
+                    )
+                )
+            )
         self.tabs.addTab(self.tab_map, "Saliency Map")
 
         # Tab 2: Spectrogram (Swapped order)
         self.tab_spectro = SaliencySpectrogramWidget(self)
+        self.tab_spectro.setObjectName("SpectrogramRenderStatus")
+        self.tab_spectro.setProperty("renderStatus", "idle")
+        self.tab_spectro.setProperty("operationId", "")
+        spectro_commit_guard = getattr(
+            self.tab_spectro,
+            "set_render_commit_guard",
+            None,
+        )
+        if callable(spectro_commit_guard):
+            spectro_commit_guard(
+                lambda generation, publication_generation: (
+                    self._admit_native_render_commit(
+                        self.tab_spectro,
+                        generation,
+                        publication_generation,
+                    )
+                )
+            )
+        spectro_terminal = getattr(self.tab_spectro, "render_terminal", None)
+        if spectro_terminal is not None:
+            spectro_terminal.connect(
+                lambda generation, publication_generation, phase: (
+                    self._on_native_render_terminal(
+                        self.tab_spectro,
+                        generation,
+                        publication_generation,
+                        phase,
+                    )
+                )
+            )
         self.tabs.addTab(self.tab_spectro, "Spectrogram")
 
         # Tab 3: Topographic Map
@@ -501,6 +598,9 @@ class VisualizationPanel(BasePanel):
         text_layout.addWidget(self.saliency_action_detail)
 
         self.compute_saliency_btn = QPushButton("Compute Saliency")
+        self.compute_saliency_btn.setObjectName("ComputeSaliencyButton")
+        self.compute_saliency_btn.setProperty("operationId", "")
+        self.compute_saliency_btn.setProperty("operationPhase", "idle")
         self.compute_saliency_btn.setMinimumWidth(140)
         self.compute_saliency_btn.setStyleSheet(
             Stylesheets.BTN_PRIMARY
@@ -515,15 +615,76 @@ class VisualizationPanel(BasePanel):
             self._compute_saliency_from_action_bar
         )
 
+        self.cancel_saliency_btn = QPushButton("Cancel")
+        self.cancel_saliency_btn.setObjectName("OwnedOperationCancelButton")
+        self.cancel_saliency_btn.setMinimumWidth(86)
+        self.cancel_saliency_btn.setToolTip("Cancel the active saliency computation")
+        self.cancel_saliency_btn.setStyleSheet(Stylesheets.BTN_WARNING)
+
+        self._saliency_operation_presenter = OwnedOperationPresenter(
+            self,
+            cancel_button=self.cancel_saliency_btn,
+            snapshot_getter=lambda operation_id: get_application_operation(
+                self,
+                operation_id,
+                runtime=cast("ApplicationUiRuntime", self._action_port),
+            ),
+            canceller=self._cancel_owned_saliency_operation,
+        )
+        self._saliency_operation_presenter.terminal.connect(
+            self._on_saliency_operation_terminal
+        )
+
         self.saliency_settings_btn = QPushButton("Settings")
         self.saliency_settings_btn.setMinimumWidth(86)
         self.saliency_settings_btn.setStyleSheet(Stylesheets.BTN_GHOST)
         self.saliency_settings_btn.clicked.connect(self._open_saliency_settings)
 
         layout.addLayout(text_layout, stretch=1)
+        layout.addWidget(self.cancel_saliency_btn)
         layout.addWidget(self.saliency_settings_btn)
         layout.addWidget(self.compute_saliency_btn)
         return frame
+
+    def set_busy(self, busy: bool) -> None:
+        """Fence saliency target mutations without disabling visible Cancel."""
+        self._saliency_command_busy = bool(busy)
+        self._sync_saliency_busy_controls()
+
+    def _sync_saliency_busy_controls(self) -> None:
+        """Keep the reviewed target stable for the complete owned operation."""
+        if not hasattr(self, "plan_combo"):
+            return
+        active = self._saliency_command_busy or self._saliency_compute_in_progress
+        self.setCursor(
+            Qt.CursorShape.WaitCursor if active else Qt.CursorShape.ArrowCursor
+        )
+        controls: list[QWidget] = [
+            self.plan_combo,
+            self.run_combo,
+            self.method_combo,
+            self.abs_check,
+            self.normalize_check,
+            self.saliency_settings_btn,
+        ]
+        sidebar = getattr(self, "sidebar", None)
+        for name in ("btn_montage", "btn_saliency"):
+            control = getattr(sidebar, name, None)
+            if isinstance(control, QWidget):
+                controls.append(control)
+        if active:
+            if not self._saliency_busy_control_states:
+                self._saliency_busy_control_states = [
+                    (control, control.isEnabled()) for control in controls
+                ]
+            for control in controls:
+                control.setEnabled(False)
+            return
+
+        control_states = self._saliency_busy_control_states
+        self._saliency_busy_control_states = []
+        for control, was_enabled in control_states:
+            control.setEnabled(was_enabled)
 
     def resizeEvent(self, event):  # noqa: N802
         """Switch visualization controls between compact and full-width layouts."""
@@ -855,9 +1016,15 @@ class VisualizationPanel(BasePanel):
         current_widget = self.tabs.currentWidget()
         previous_widget = self._last_active_saliency_view
         if previous_widget is not current_widget:
-            invalidate = getattr(previous_widget, "invalidate_render_publication", None)
-            if callable(invalidate):
-                invalidate()
+            cancelled = self._cancel_native_render_binding(previous_widget)
+            if cancelled:
+                invalidate = getattr(
+                    previous_widget,
+                    "invalidate_render_publication",
+                    None,
+                )
+                if callable(invalidate):
+                    invalidate()
         self._last_active_saliency_view = current_widget
         self._refresh_explanation_context()
         self._refresh_absolute_control()
@@ -874,7 +1041,23 @@ class VisualizationPanel(BasePanel):
         ):
             return
         self._native_render_shutdown_requested = True
+        operation_id = self._active_saliency_operation_id
+        if operation_id is not None:
+            cancel_application_operation(
+                self,
+                operation_id,
+                runtime=cast("ApplicationUiRuntime", self._action_port),
+            )
         self._saliency_render_pending_task = None
+        active_task = self._saliency_render_active_task
+        if active_task is not None and active_task.operation_id:
+            cancel_application_operation(
+                self,
+                active_task.operation_id,
+                runtime=cast("ApplicationUiRuntime", self._query_port),
+            )
+        for widget in tuple(self._native_render_bindings):
+            self._cancel_native_render_binding(widget)
         for view in self._saliency_views():
             begin_shutdown = getattr(view, "begin_render_shutdown", None)
             if callable(begin_shutdown):
@@ -1152,6 +1335,18 @@ class VisualizationPanel(BasePanel):
             if current_widget is self.tab_spectro
             else request
         )
+        display_key = (bool(absolute), bool(normalize))
+        active_binding = self._native_render_bindings.get(current_widget)
+        if (
+            active_binding is not None
+            and active_binding[3].request == publication_request
+            and active_binding[4] == display_key
+        ):
+            return
+        if active_binding is not None and not self._cancel_native_render_binding(
+            current_widget
+        ):
+            return
         if not self._saliency_render_is_cached(publication_request):
             task = _SaliencyRenderTask(
                 request=publication_request,
@@ -1219,14 +1414,33 @@ class VisualizationPanel(BasePanel):
                 "Visualization results changed. Refresh Visualization and try again.",
             )
             return
+        self._clear_saliency_render_cache()
         if current_widget is self.tab_spectro:
             self.tab_spectro.update_plot(
                 typed_render_publication,
                 absolute,
                 display_normalized=normalize,
             )
+            self._publish_saliency_render_identity(
+                self.tab_spectro,
+                typed_render_publication,
+            )
+            self._bind_native_render_terminal(
+                self.tab_spectro,
+                typed_render_publication,
+                display_key=display_key,
+            )
         elif current_widget and hasattr(current_widget, "update_plot"):
             current_widget.update_plot(typed_render_publication, absolute)
+            self._publish_saliency_render_identity(
+                current_widget,
+                typed_render_publication,
+            )
+            self._bind_native_render_terminal(
+                current_widget,
+                typed_render_publication,
+                display_key=display_key,
+            )
 
     def _saliency_render_publication(
         self,
@@ -1276,32 +1490,37 @@ class VisualizationPanel(BasePanel):
             return
         runtime = self._query_port
         if runtime is None:
+            self._set_saliency_render_status(self.tabs.currentWidget(), "failed")
             self._show_widget_error(
                 self.tabs.currentWidget(),
                 _VISUALIZATION_LOAD_FAILED_MESSAGE,
             )
             return
+        operation = begin_saliency_render_operation(
+            self,
+            replace(task.request, normalize=False),
+            runtime=cast("ApplicationUiRuntime", runtime),
+        )
+        if operation is None:
+            self._set_saliency_render_status(self.tabs.currentWidget(), "failed")
+            return
+        task = replace(task, operation_id=operation.operation_id)
         self._saliency_render_active_task = task
+        self._set_saliency_render_status(
+            self.tabs.currentWidget(),
+            "running",
+            operation_id=task.operation_id,
+        )
+        self._saliency_operation_presenter.bind(
+            task.operation_id,
+            stage="Queued saliency render",
+        )
         self._saliency_render_pending_task = None
         self._saliency_render_result_seen = False
-        raw_request = replace(task.request, normalize=False)
-        cached_raw_publication = (
-            cast(
-                SaliencyRenderPublication,
-                self._saliency_render_cache.get(False),
-            )
-            if self._saliency_render_cache_request == raw_request
-            and isinstance(
-                self._saliency_render_cache.get(False),
-                SaliencyRenderPublication,
-            )
-            else None
-        )
         worker = PythonThreadWorker(
             self._load_saliency_render,
             runtime,
             task,
-            cached_raw_publication,
             name="xbrainlab-saliency-publication",
         )
         self._saliency_render_worker = worker
@@ -1320,35 +1539,64 @@ class VisualizationPanel(BasePanel):
         worker.signals.finished.connect(
             lambda owned_worker=worker: self._on_saliency_render_finished(owned_worker)
         )
-        worker.start()
+        try:
+            worker.start()
+        except Exception:
+            logger.error("Saliency render worker could not start.", exc_info=True)
+            failure_message = "Saliency render worker could not start."
+            try:
+                terminalized = self._finish_render_operation(
+                    task.operation_id,
+                    "failed",
+                    failure_message,
+                )
+            except Exception:
+                logger.error(
+                    "Saliency render startup failure could not publish terminal state.",
+                    exc_info=True,
+                )
+                terminalized = False
+            if not terminalized:
+                fail_application_operation(
+                    self,
+                    task.operation_id,
+                    message=failure_message,
+                    runtime=cast("ApplicationUiRuntime", runtime),
+                )
+            self._saliency_render_worker = None
+            self._saliency_render_active_task = None
+            self._saliency_render_result_seen = False
+            self._saliency_operation_presenter.refresh()
+            self._set_saliency_render_status(
+                self.tabs.currentWidget(),
+                "failed",
+                operation_id=task.operation_id,
+            )
+            self._show_widget_error(
+                self.tabs.currentWidget(),
+                _VISUALIZATION_LOAD_FAILED_MESSAGE,
+            )
 
     @staticmethod
     def _load_saliency_render(
         runtime,
         task: _SaliencyRenderTask,
-        cached_raw_publication: SaliencyRenderPublication | None,
     ):
-        raw_request = replace(task.request, normalize=False)
-        raw_publication = cached_raw_publication
-        if not VisualizationPanel._render_publication_matches_request(
-            raw_publication,
-            raw_request,
-        ):
-            raw_publication = get_saliency_render_publication(
-                None,
-                raw_request,
-                runtime=runtime,
-            )
+        variants = prepare_saliency_render_variants_operation(
+            None,
+            task.operation_id,
+            task.request,
+            include_normalized=task.needs_normalized_variant,
+            runtime=runtime,
+        )
+        if variants is None:
+            raise RuntimeError("Saliency render publication is unavailable")
+        raw_publication, normalized_publication = variants
         if not isinstance(raw_publication, SaliencyRenderPublication):
             raise RuntimeError("Saliency render publication is unavailable")
         verified_raw_publication = cast(
             SaliencyRenderPublication,
             raw_publication,
-        )
-        normalized_publication = (
-            normalized_saliency_render_publication(verified_raw_publication)
-            if task.needs_normalized_variant
-            else None
         )
         return task, verified_raw_publication, normalized_publication
 
@@ -1398,10 +1646,15 @@ class VisualizationPanel(BasePanel):
         worker: PythonThreadWorker,
         result: object,
     ) -> None:
-        if (
-            self._native_render_shutdown_requested
-            or self._saliency_render_worker is not worker
-        ):
+        if self._saliency_render_worker is not worker:
+            return
+        active_task = self._saliency_render_active_task
+        if self._native_render_shutdown_requested:
+            if active_task is not None and active_task.operation_id:
+                self._finish_render_operation(
+                    active_task.operation_id,
+                    "cancelled",
+                )
             return
         self._saliency_render_result_seen = True
         if (
@@ -1410,6 +1663,12 @@ class VisualizationPanel(BasePanel):
             or not isinstance(result[0], _SaliencyRenderTask)
             or not isinstance(result[1], SaliencyRenderPublication)
         ):
+            if active_task is not None and active_task.operation_id:
+                self._finish_render_operation(
+                    active_task.operation_id,
+                    "failed",
+                    "Saliency render worker returned an invalid result.",
+                )
             self._show_widget_error(
                 self.tabs.currentWidget(),
                 _VISUALIZATION_LOAD_FAILED_MESSAGE,
@@ -1431,6 +1690,11 @@ class VisualizationPanel(BasePanel):
             )
             or not normalized_matches
         ):
+            self._finish_render_operation(
+                task.operation_id,
+                "failed",
+                "Saliency render publication identity changed.",
+            )
             self._application_summary_dirty = True
             self._clear_application_view_publication(
                 invalidate_render_publications=True,
@@ -1445,12 +1709,18 @@ class VisualizationPanel(BasePanel):
             task,
             current_task,
         ):
+            self._finish_render_operation(task.operation_id, "cancelled")
             return
         self._clear_saliency_render_cache()
         self._saliency_render_cache_request = raw_publication.request
         self._saliency_render_cache[False] = raw_publication
         if isinstance(normalized_publication, SaliencyRenderPublication):
             self._saliency_render_cache[True] = normalized_publication
+        # The active result is now accepted into the exact-lineage cache. A
+        # synchronous ``on_update`` may request the same task while the worker's
+        # queued ``finished`` signal still owns cleanup; that is not a discarded
+        # result and must not schedule a duplicate backend publication.
+        self._saliency_render_result_seen = False
         self.on_update()
 
     def _on_saliency_render_error(
@@ -1458,29 +1728,47 @@ class VisualizationPanel(BasePanel):
         worker: PythonThreadWorker,
         error: tuple,
     ) -> None:
-        if (
-            self._native_render_shutdown_requested
-            or self._saliency_render_worker is not worker
-        ):
+        if self._saliency_render_worker is not worker:
             return
         self._saliency_render_result_seen = True
         task = self._saliency_render_active_task
+        if self._native_render_shutdown_requested:
+            if task is not None and task.operation_id:
+                self._finish_render_operation(task.operation_id, "cancelled")
+            return
         detail = error[1] if len(error) > 1 else error
         logger.error("Saliency render publication failed: %s", detail)
-        if task == self._current_saliency_render_task():
+        if task is not None and task == self._current_saliency_render_task():
+            self._finish_render_operation(task.operation_id, "failed", str(detail))
+            self._set_saliency_render_status(self.tabs.currentWidget(), "failed")
             self._show_widget_error(
                 self.tabs.currentWidget(),
                 _VISUALIZATION_LOAD_FAILED_MESSAGE,
             )
+        elif task is not None and task.operation_id:
+            self._finish_render_operation(task.operation_id, "cancelled")
 
     def _on_saliency_render_finished(self, worker: PythonThreadWorker) -> None:
         if self._saliency_render_worker is not worker:
             return
+        active_task = self._saliency_render_active_task
         self._saliency_render_worker = None
         self._saliency_render_active_task = None
         self._saliency_render_result_seen = False
         pending = self._saliency_render_pending_task
         self._saliency_render_pending_task = None
+        if (
+            active_task is not None
+            and active_task.operation_id
+            and not any(
+                binding[2] == active_task.operation_id
+                for binding in self._native_render_bindings.values()
+            )
+        ):
+            self._finish_render_operation(
+                active_task.operation_id,
+                "cancelled",
+            )
         if pending is not None and not self._native_render_shutdown_requested:
             self._request_saliency_render(pending)
 
@@ -1563,14 +1851,7 @@ class VisualizationPanel(BasePanel):
         method_name = (
             self.method_combo.currentText() if hasattr(self, "method_combo") else ""
         ) or "Gradient"
-        params = dict(
-            self._pending_saliency_params or self._configured_saliency_params()
-        )
-        configured_methods = (
-            selected_saliency_methods_from_params(params) if params else set()
-        )
-        if not params or method_name not in configured_methods:
-            params = recommended_saliency_params_for_method(method_name)
+        params = self._effective_saliency_params(method_name)
         methods = params.get("methods")
         methods_key = tuple(methods) if isinstance(methods, (list, tuple, set)) else ()
         started = self._start_saliency_compute(
@@ -1727,12 +2008,23 @@ class VisualizationPanel(BasePanel):
             self.saliency_action_title.setText("Saliency is incomplete")
             detail = self._incomplete_saliency_message(coverage)
         elif is_recommended_saliency_method(method_name):
-            self.saliency_action_title.setText("Preparing saliency baseline")
-            detail = "XBrainLab prepares Gradient + Gradient * Input automatically."
+            self.saliency_action_title.setText("Saliency not computed yet")
+            detail = "Use Compute Saliency to prepare Gradient + Gradient * Input."
         else:
             self.saliency_action_title.setText("Advanced saliency not computed")
             detail = f"{method_name} uses default noise settings. Adjust in Settings."
         self.saliency_action_detail.setText(detail)
+        params = self._effective_saliency_params(method_name)
+        self.compute_saliency_btn.setProperty("saliencyMethod", method_name)
+        self.compute_saliency_btn.setProperty("saliencyParameters", params)
+        self.compute_saliency_btn.setProperty(
+            "saliencyNormalize",
+            bool(
+                self.normalize_check.isChecked()
+                if hasattr(self, "normalize_check")
+                else False
+            ),
+        )
         self._set_saliency_action_busy(self._saliency_compute_in_progress)
         self.saliency_action_bar.setVisible(True)
 
@@ -1758,6 +2050,7 @@ class VisualizationPanel(BasePanel):
             if self._saliency_action_requires_recompute
             else "Compute Saliency"
         )
+        self._sync_saliency_busy_controls()
 
     def _training_is_running(self) -> bool:
         """Read training liveness only from the accepted Application publication."""
@@ -1896,6 +2189,9 @@ class VisualizationPanel(BasePanel):
 
         self._saliency_compute_attempted.add(attempt_key)
         self._saliency_compute_in_progress = True
+        current_status = self._post_training_saliency_status()
+        self._active_saliency_minimum_generation = current_status.generation + 1
+        self._active_saliency_generation = None
         self._show_saliency_action_bar(method_name)
         self._set_saliency_action_busy(True)
         if current_widget is not None:
@@ -1954,9 +2250,10 @@ class VisualizationPanel(BasePanel):
                 on_result=handle_result,
                 on_error=handle_error,
                 refresh=False,
-                busy_target=self.main_window,
+                busy_target=self,
                 runtime=cast("ApplicationUiRuntime", self._action_port),
                 expected_publication_generation=expected_publication_generation,
+                on_operation_started=self._bind_saliency_operation,
             )
         except Exception:
             logger.exception("Could not set up the saliency compute worker")
@@ -1974,6 +2271,257 @@ class VisualizationPanel(BasePanel):
             )
             return False
         return True
+
+    def _bind_saliency_operation(self, operation_id: str) -> None:
+        """Retain backend ownership for explicit cancel/close control."""
+        if self._active_saliency_minimum_generation is None:
+            current_status = self._post_training_saliency_status()
+            self._active_saliency_minimum_generation = current_status.generation + 1
+        self._active_saliency_operation_id = operation_id
+        self.compute_saliency_btn.setProperty("operationId", operation_id)
+        self.compute_saliency_btn.setProperty("operationPhase", "pending")
+        self._saliency_operation_presenter.bind(
+            operation_id,
+            stage="Computing saliency",
+        )
+        self._set_saliency_render_status(
+            self.tab_map,
+            "computing",
+            operation_id=operation_id,
+        )
+        self._set_saliency_render_status(
+            self.tab_spectro,
+            "computing",
+            operation_id=operation_id,
+        )
+
+    def _on_saliency_operation_terminal(
+        self,
+        operation_id: str,
+        phase: str,
+    ) -> None:
+        if phase not in {"cancelled", "failed"}:
+            return
+        if operation_id != self._active_saliency_operation_id:
+            return
+        self.compute_saliency_btn.setProperty("operationPhase", phase)
+        for widget in (self.tab_map, self.tab_spectro):
+            if str(widget.property("operationId") or "") == operation_id:
+                self._set_saliency_render_status(widget, phase)
+
+    def _set_saliency_render_status(
+        self,
+        widget: QWidget | None,
+        status: str,
+        *,
+        operation_id: str | None = None,
+    ) -> None:
+        """Expose lifecycle truth on the two required visible result views."""
+        if widget is None or widget not in {self.tab_map, self.tab_spectro}:
+            return
+        if operation_id is not None:
+            widget.setProperty("operationId", operation_id)
+        publication = self._application_view_publication
+        widget.setProperty(
+            "publicationGeneration",
+            publication.generation if publication is not None else None,
+        )
+        run_identity = self.run_combo.currentData()
+        if isinstance(run_identity, SaliencyRunIdentity):
+            plan_index = run_identity.plan.plan_index
+            widget.setProperty("fold", plan_index)
+            widget.setProperty(
+                "runId",
+                f"plan-{plan_index}:run-{run_identity.run_index}",
+            )
+        widget.setProperty("renderStatus", status)
+        widget.setProperty("indeterminate", status in {"computing", "running"})
+        widget.repaint()
+
+    def _publish_saliency_render_identity(
+        self,
+        widget: QWidget,
+        publication: SaliencyRenderPublication,
+    ) -> None:
+        """Publish only the immutable identity rendered by the visible view."""
+        widget.setProperty("evaluationSplit", publication.data.source_split)
+        widget.setProperty(
+            "classLabels",
+            [str(name) for _key, name in publication.data.class_map],
+        )
+        widget.setProperty(
+            "classMapping",
+            [
+                {
+                    "class_index": index,
+                    "event_code": str(event_code),
+                    "class_name": str(class_name),
+                }
+                for index, (event_code, class_name) in enumerate(
+                    publication.data.class_map
+                )
+            ],
+        )
+        widget.setProperty(
+            "eventLabels",
+            [str(name) for name in publication.data.event_ids],
+        )
+        widget.setProperty("trainingGeneration", publication.training_generation)
+        # SaliencyRenderPublisher accepts the DTO only across a stable captured
+        # training boundary; expose that product truth beside the generation.
+        widget.setProperty("trainingBoundaryStable", True)
+        widget.setProperty(
+            "splitSpecificationFingerprint",
+            publication.split_specification_fingerprint or "",
+        )
+        widget.setProperty("splitEpochRevision", publication.split_epoch_revision or 0)
+        producer_payloads = [
+            identity.to_payload() for identity in publication.data.producer_identities
+        ]
+        widget.setProperty("producerIdentities", producer_payloads)
+        widget.setProperty(
+            "producerFingerprints",
+            [str(payload["fingerprint"]) for payload in producer_payloads],
+        )
+        values = tuple(
+            np.asarray(array) for array in publication.data.saliency_by_class.values()
+        )
+        sample_count = sum(int(array.size) for array in values)
+        finite_count = sum(int(np.isfinite(array).sum()) for array in values)
+        widget.setProperty(
+            "saliencyNumericSummary",
+            {
+                "count": sample_count,
+                "finite_count": finite_count,
+                "nonfinite_count": sample_count - finite_count,
+                "minimum": min(float(np.min(array)) for array in values),
+                "maximum": max(float(np.max(array)) for array in values),
+            },
+        )
+
+    def _bind_native_render_terminal(
+        self,
+        widget: QWidget,
+        publication: SaliencyRenderPublication,
+        *,
+        display_key: tuple[bool, bool],
+    ) -> None:
+        operation_id = str(publication.operation_id or "").strip()
+        generation = getattr(widget, "active_render_generation", None)
+        publication_generation = getattr(
+            widget,
+            "active_render_publication_generation",
+            None,
+        )
+        if (
+            not operation_id
+            or not isinstance(generation, int)
+            or publication_generation != publication.generation
+        ):
+            if operation_id:
+                self._finish_render_operation(
+                    operation_id,
+                    "failed",
+                    "Native saliency render was not scheduled.",
+                )
+            self._set_saliency_render_status(widget, "failed")
+            return
+        self._native_render_bindings[widget] = (
+            generation,
+            publication.generation,
+            operation_id,
+            publication,
+            display_key,
+        )
+        self._set_saliency_render_status(
+            widget,
+            "running",
+            operation_id=operation_id,
+        )
+
+    def _admit_native_render_commit(
+        self,
+        widget: QWidget,
+        generation: int,
+        publication_generation: int,
+    ) -> bool:
+        """Admit only the exact visible native request before canvas mutation."""
+        binding = self._native_render_bindings.get(widget)
+        if binding is None or binding[:2] != (generation, publication_generation):
+            return False
+        return enter_saliency_render_commit_operation(
+            self,
+            binding[2],
+            runtime=cast("ApplicationUiRuntime", self._query_port),
+        )
+
+    def _on_native_render_terminal(
+        self,
+        widget: QWidget,
+        generation: int,
+        publication_generation: int,
+        phase: str,
+    ) -> None:
+        binding = self._native_render_bindings.get(widget)
+        if binding is None or binding[:2] != (generation, publication_generation):
+            return
+        self._native_render_bindings.pop(widget, None)
+        operation_id = binding[2]
+        self._finish_render_operation(operation_id, phase)
+        self._set_saliency_render_status(
+            widget,
+            phase,
+            operation_id=operation_id,
+        )
+
+    def _cancel_native_render_binding(self, widget: QWidget | None) -> bool:
+        binding = self._native_render_bindings.get(widget)
+        if binding is None:
+            return True
+        operation_id = binding[2]
+        return self._cancel_owned_saliency_operation(operation_id)
+
+    def _cancel_owned_saliency_operation(self, operation_id: str) -> bool:
+        """Cancel registry ownership and the matching native worker together."""
+        accepted = cancel_application_operation(
+            self,
+            operation_id,
+            runtime=cast("ApplicationUiRuntime", self._action_port),
+        )
+        if not accepted:
+            return False
+        for widget, binding in tuple(self._native_render_bindings.items()):
+            if binding[2] != operation_id:
+                continue
+            self._native_render_bindings.pop(widget, None)
+            invalidate = getattr(widget, "invalidate_render_publication", None)
+            if callable(invalidate):
+                invalidate()
+            self._finish_render_operation(operation_id, "cancelled")
+            self._set_saliency_render_status(
+                widget,
+                "cancelled",
+                operation_id=operation_id,
+            )
+            break
+        return True
+
+    def _finish_render_operation(
+        self,
+        operation_id: str,
+        phase: str,
+        message: str = "",
+    ) -> bool:
+        normalized_operation_id = str(operation_id or "").strip()
+        if not normalized_operation_id:
+            return False
+        return finish_saliency_render_operation(
+            self,
+            normalized_operation_id,
+            phase,
+            message=message,
+            runtime=cast("ApplicationUiRuntime", self._query_port),
+        )
 
     def _on_lazy_saliency_configured(
         self,
@@ -1993,6 +2541,40 @@ class VisualizationPanel(BasePanel):
                 current_widget=current_widget,
             )
             return InteractionOutcome.failed(_SALIENCY_COMPUTE_INVALID_RESULT_MESSAGE)
+
+        if result.ok and result.diagnostics.get("action") == "schedule":
+            if (
+                not self._saliency_compute_in_progress
+                and self._active_saliency_operation_id is None
+            ):
+                # A very small job can publish its terminal generation before
+                # the queued command receipt reaches Qt.  The terminal
+                # publication already released the action; never resurrect a
+                # stale busy state from the older schedule receipt.
+                return InteractionOutcome.completed(result.message)
+            schedule = result.diagnostics.get("post_training_saliency_schedule")
+            status = schedule.get("status") if isinstance(schedule, dict) else None
+            generation = status.get("generation") if isinstance(status, dict) else None
+            minimum_generation = self._active_saliency_minimum_generation
+            if (
+                isinstance(generation, bool)
+                or not isinstance(generation, int)
+                or minimum_generation is None
+                or generation < minimum_generation
+            ):
+                self._finish_saliency_compute_failure(
+                    message=_SALIENCY_COMPUTE_INVALID_RESULT_MESSAGE,
+                    attempt_key=attempt_key,
+                    current_widget=current_widget,
+                )
+                return InteractionOutcome.failed(
+                    _SALIENCY_COMPUTE_INVALID_RESULT_MESSAGE
+                )
+            self._active_saliency_generation = generation
+            self.compute_saliency_btn.setProperty("operationPhase", "running")
+            self._set_saliency_action_busy(True)
+            show_status_message(self, "Computing saliency...")
+            return InteractionOutcome.accepted(result.message)
 
         if result.failed:
             logger.error(
@@ -2042,6 +2624,7 @@ class VisualizationPanel(BasePanel):
             )
             return InteractionOutcome.failed(message)
         self._saliency_compute_in_progress = False
+        self._clear_active_saliency_operation()
         self._set_saliency_action_busy(False)
         self._pending_saliency_params = None
         self._pending_saliency_target = None
@@ -2179,7 +2762,10 @@ class VisualizationPanel(BasePanel):
         current_widget,
     ) -> None:
         """Restore a retryable, visibly failed saliency action."""
+        if hasattr(self, "compute_saliency_btn"):
+            self.compute_saliency_btn.setProperty("operationPhase", "failed")
         self._saliency_compute_in_progress = False
+        self._clear_active_saliency_operation()
         if attempt_key is None:
             self._saliency_compute_attempted.clear()
         else:
@@ -2201,7 +2787,10 @@ class VisualizationPanel(BasePanel):
         current_widget,
     ) -> None:
         """Restore the retryable action without presenting cancellation as failure."""
+        if hasattr(self, "compute_saliency_btn"):
+            self.compute_saliency_btn.setProperty("operationPhase", "cancelled")
         self._saliency_compute_in_progress = False
+        self._clear_active_saliency_operation()
         if attempt_key is None:
             self._saliency_compute_attempted.clear()
         else:
@@ -2255,6 +2844,7 @@ class VisualizationPanel(BasePanel):
     ) -> None:
         """Discard stale settings and expose one actionable recovery state."""
         self._saliency_compute_in_progress = False
+        self._clear_active_saliency_operation()
         self._pending_saliency_params = None
         self._pending_saliency_target = None
         self._saliency_settings_review_required = True
@@ -2346,7 +2936,7 @@ class VisualizationPanel(BasePanel):
                 f"{method_name} saliency is waiting to start in the background."
                 if targeted
                 else (
-                    f"Automatic saliency for {methods_text} is waiting to start. "
+                    f"Saliency for {methods_text} is waiting to start. "
                     f"{method_name} is not part of this job; wait before computing it."
                 )
             )
@@ -2356,28 +2946,28 @@ class VisualizationPanel(BasePanel):
                 f"{method_name} saliency is being computed in the background."
                 if targeted
                 else (
-                    f"Automatic saliency for {methods_text} is being computed. "
+                    f"Saliency for {methods_text} is being computed. "
                     f"{method_name} is not part of this job; wait before computing it."
                 )
             )
         elif phase is PostTrainingSaliencyPhase.FAILED:
-            title = "Automatic saliency failed"
+            title = "Saliency computation failed"
             detail = self._terminal_saliency_detail(
-                "Automatic saliency failed to complete.",
+                "Saliency computation failed to complete.",
                 method_name,
                 coverage,
             )
         elif phase is PostTrainingSaliencyPhase.CANCELLED:
-            title = "Automatic saliency was cancelled"
+            title = "Saliency computation was cancelled"
             detail = self._terminal_saliency_detail(
-                "Automatic saliency computation was cancelled.",
+                "Saliency computation was cancelled.",
                 method_name,
                 coverage,
             )
         else:
             title = "Saliency output is incomplete"
             detail = self._terminal_saliency_detail(
-                "Automatic saliency finished, but no complete renderable output "
+                "Saliency computation finished, but no complete renderable output "
                 "was published.",
                 method_name,
                 coverage,
@@ -2495,6 +3085,18 @@ class VisualizationPanel(BasePanel):
             else {}
         )
 
+    def _effective_saliency_params(self, method_name: str) -> dict[str, object]:
+        """Return the exact settings represented by the visible compute action."""
+        params = dict(
+            self._pending_saliency_params or self._configured_saliency_params()
+        )
+        configured_methods = (
+            selected_saliency_methods_from_params(params) if params else set()
+        )
+        if not params or method_name not in configured_methods:
+            return recommended_saliency_params_for_method(method_name)
+        return params
+
     def _has_service_saliency_summary(self) -> bool:
         diagnostics: dict[str, object] = (
             getattr(self.last_saliency_query, "diagnostics", {})
@@ -2578,6 +3180,36 @@ class VisualizationPanel(BasePanel):
         if previous is not None and previous.generation != publication.generation:
             self._invalidate_view_render_publications()
         self._application_view_publication = publication
+        explicit_status = publication.state.visualization.post_training_saliency
+        if (
+            self._saliency_compute_in_progress
+            and explicit_status.phase.terminal
+            and self._active_saliency_operation_id is not None
+            and self._saliency_status_matches_active_operation(explicit_status)
+        ):
+            if explicit_status.phase is PostTrainingSaliencyPhase.SUCCEEDED:
+                self.compute_saliency_btn.setProperty("operationPhase", "completed")
+                self._saliency_compute_in_progress = False
+                self._clear_active_saliency_operation()
+                self._set_saliency_action_busy(False)
+                show_status_message(self, "Saliency ready")
+            elif explicit_status.phase is PostTrainingSaliencyPhase.CANCELLED:
+                self.compute_saliency_btn.setProperty("operationPhase", "cancelled")
+                self._finish_saliency_compute_cancelled(
+                    attempt_key=None,
+                    current_widget=(
+                        self.tabs.currentWidget() if hasattr(self, "tabs") else None
+                    ),
+                )
+            elif explicit_status.phase is PostTrainingSaliencyPhase.FAILED:
+                self.compute_saliency_btn.setProperty("operationPhase", "failed")
+                self._finish_saliency_compute_failure(
+                    message=explicit_status.message or _SALIENCY_COMPUTE_FAILED_MESSAGE,
+                    attempt_key=None,
+                    current_widget=(
+                        self.tabs.currentWidget() if hasattr(self, "tabs") else None
+                    ),
+                )
         self._refresh_explanation_context()
         pending_target = self._pending_saliency_target
         if (
@@ -2588,6 +3220,23 @@ class VisualizationPanel(BasePanel):
                 _SALIENCY_RESULTS_CHANGED_DETAIL,
             )
         return True
+
+    def _saliency_status_matches_active_operation(
+        self,
+        status: PostTrainingSaliencyStatus,
+    ) -> bool:
+        """Admit only the saliency generation owned by the current user click."""
+        scheduled = self._active_saliency_generation
+        if scheduled is not None:
+            return status.generation == scheduled
+        minimum = self._active_saliency_minimum_generation
+        return minimum is not None and status.generation == minimum
+
+    def _clear_active_saliency_operation(self) -> None:
+        """Release operation and generation identity as one UI transition."""
+        self._active_saliency_operation_id = None
+        self._active_saliency_minimum_generation = None
+        self._active_saliency_generation = None
 
     @staticmethod
     def _valid_application_publication(publication: object) -> bool:

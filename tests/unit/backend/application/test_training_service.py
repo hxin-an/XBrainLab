@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import fields
-from threading import Barrier
+from threading import Barrier, Event, Thread
 from time import sleep
 from types import SimpleNamespace
 from typing import Any, cast
@@ -24,6 +24,12 @@ from XBrainLab.backend.application.commands import (
     TrainCommand,
 )
 from XBrainLab.backend.application.errors import ApplicationError, PreconditionError
+from XBrainLab.backend.application.owned_work import (
+    OwnedOperationCancelledError,
+    OwnedWorkKind,
+    OwnedWorkPhase,
+    OwnedWorkRegistry,
+)
 from XBrainLab.backend.application.resource_guard import (
     TrainingResourcePreviewRequest,
     TrainingResourcePreviewResult,
@@ -667,6 +673,75 @@ def test_training_service_draft_resource_preview_does_not_commit_configuration(
     assert captured["model_holder"] is not existing_model
     assert training.model_holder is existing_model
     assert training.training_option is existing_option
+
+
+def test_training_service_preview_cancel_after_blocked_model_build_skips_estimate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, _training = _service()
+    request = TrainingResourcePreviewRequest(
+        request_generation=3,
+        publication_generation=9,
+        model_name="EEGNet",
+        model_params={},
+        device="cuda:0",
+        batch_size=16,
+        optimizer="Adam",
+    )
+    context = resource_guard.TrainingResourcePreviewContext(
+        input_shape=(2, 64),
+        sample_count=8,
+        class_count=2,
+        sampling_frequency=128.0,
+    )
+    model_build_started = Event()
+    release_model_build = Event()
+    preview = MagicMock(return_value=MagicMock())
+
+    def blocked_model_build(_request):
+        model_build_started.set()
+        assert release_model_build.wait(timeout=2.0)
+        return object()
+
+    monkeypatch.setattr(
+        service,
+        "_build_resource_preview_model_holder",
+        blocked_model_build,
+    )
+    monkeypatch.setattr(training_service_module, "preview_training_resources", preview)
+    registry = OwnedWorkRegistry()
+    operation = registry.begin(
+        OwnedWorkKind.TRAINING_RESOURCE_PREVIEW,
+        cancellable=True,
+        command_identity="training_resource_preview",
+    )
+    errors: list[BaseException] = []
+
+    def run_preview() -> None:
+        registry.claim_start(
+            operation.operation_id,
+            kind=OwnedWorkKind.TRAINING_RESOURCE_PREVIEW,
+            command_identity="training_resource_preview",
+        )
+        try:
+            with registry.bind(operation.operation_id):
+                service.get_resource_preview(request, context)
+        except BaseException as exc:
+            errors.append(exc)
+
+    worker = Thread(target=run_preview, name="blocked-training-preview-model")
+    worker.start()
+    assert model_build_started.wait(timeout=2.0)
+
+    assert registry.cancel(operation.operation_id) is True
+    release_model_build.set()
+    worker.join(timeout=2.0)
+
+    assert not worker.is_alive()
+    assert len(errors) == 1
+    assert isinstance(errors[0], OwnedOperationCancelledError)
+    assert registry.snapshot(operation.operation_id).phase is OwnedWorkPhase.CANCELLED
+    preview.assert_not_called()
 
 
 def test_training_service_preview_instantiates_tiny_real_eegnet_estimate(

@@ -201,7 +201,7 @@ class PostTrainingSaliencyStatus:
             run=run,
             training_generation=training_generation,
             methods=methods,
-            message="Automatic saliency is waiting to start.",
+            message="Saliency is waiting to start.",
         )
 
     def transition(

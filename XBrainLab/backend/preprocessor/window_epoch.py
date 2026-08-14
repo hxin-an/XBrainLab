@@ -2,6 +2,7 @@
 
 import mne
 
+from ..application.owned_work import owned_work_checkpoint
 from ..load_data import Raw
 from .base import PreprocessBase
 from .normalize import Normalize
@@ -23,7 +24,13 @@ class WindowEpoch(PreprocessBase):
 
         """
         super().check_data()
-        for preprocessed_data in self.preprocessed_data_list:
+        total = len(self.preprocessed_data_list)
+        for index, preprocessed_data in enumerate(self.preprocessed_data_list):
+            owned_work_checkpoint(
+                "Validating sliding-window EEG recordings",
+                completed=index,
+                total=total,
+            )
             if not preprocessed_data.is_raw():
                 raise ValueError("Only raw data can be epoched, got epochs")
             events, event_id = preprocessed_data.get_event_list()
@@ -36,6 +43,11 @@ class WindowEpoch(PreprocessBase):
                     "Should only contain single event label, "
                     f"found events={len(events)}, event_id={len(event_id)}",
                 )
+            owned_work_checkpoint(
+                "Validating sliding-window EEG recordings",
+                completed=index + 1,
+                total=total,
+            )
 
     def get_preprocess_desc(self, duration: float, overlap: float):
         """Returns a description of the window-epoch step.
@@ -57,8 +69,19 @@ class WindowEpoch(PreprocessBase):
     ) -> list[Raw]:
         """Create windows, then apply any leakage-safe normalization request."""
         result = super().data_preprocess(duration, overlap)
-        for preprocessed_data in result:
+        total = len(result)
+        for index, preprocessed_data in enumerate(result):
+            owned_work_checkpoint(
+                "Applying queued EEG epoch normalization",
+                completed=index,
+                total=total,
+            )
             Normalize.apply_pending_epoch_normalization(preprocessed_data)
+            owned_work_checkpoint(
+                "Applying queued EEG epoch normalization",
+                completed=index + 1,
+                total=total,
+            )
         return result
 
     def _data_preprocess(

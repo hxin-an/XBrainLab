@@ -595,6 +595,21 @@ class DatasetPanel(BasePanel):
             ]
         else:
             data_rows = []
+        event_labels = sorted(
+            {
+                str(label).strip()
+                for data in data_rows
+                for label in (
+                    data.get("event", {}).get("labels", [])
+                    if isinstance(data.get("event"), dict)
+                    else []
+                )
+                if str(label).strip()
+            },
+            key=str.casefold,
+        )
+        self.table.setProperty("eventLabels", event_labels)
+        self.table.setProperty("publicationGeneration", render_generation)
         if publication is not None:
             metadata_capability = publication.effective_capabilities.get(
                 CommandName.UPDATE_METADATA

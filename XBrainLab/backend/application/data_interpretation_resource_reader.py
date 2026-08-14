@@ -265,7 +265,19 @@ class AdmittedResourceReader:
         resource_paths = self._expanded_guard_paths(paths)
         for path in resource_paths:
             self.assert_unchanged(path, purpose=purpose, parse_started=False)
-        yield
+        # Lazy import keeps the identity reader independent at module import
+        # while allowing every admitted parser group to share one freshness
+        # boundary with the backend-owned immutable parsed-content cache.
+        from .data_interpretation_parsed_cache import (  # noqa: PLC0415
+            verified_parsed_content_paths,
+        )
+
+        verified_identities: dict[str | Path, object] = {
+            path: self.admitted_files[self.canonical_key(path)]
+            for path in resource_paths
+        }
+        with verified_parsed_content_paths(verified_identities):
+            yield
         for path in resource_paths:
             self.assert_unchanged(path, purpose=purpose, parse_started=True)
 

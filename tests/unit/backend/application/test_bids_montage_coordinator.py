@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from threading import Event
+from threading import Event, Thread
 from types import SimpleNamespace
 
 import pytest
 
+from XBrainLab.backend.application import bids_montage_coordinator
+from XBrainLab.backend.application.bids_dataset_index import build_bids_dataset_index
 from XBrainLab.backend.application.bids_montage_coordinator import (
     BidsMontagePreparationCoordinator,
 )
@@ -73,6 +75,103 @@ def test_coordinator_does_not_start_idle_worker_during_construction() -> None:
         assert coordinator._worker is None
     finally:
         coordinator.close()
+
+
+def test_worker_start_failure_is_terminal_and_retryable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_thread = Thread
+    attempts = 0
+    published: list[MontagePreparationSnapshot] = []
+
+    class _UnstartedThread:
+        def start(self) -> None:
+            raise RuntimeError("fault injection: thread start failed")
+
+        @staticmethod
+        def is_alive() -> bool:
+            return False
+
+        @staticmethod
+        def join(*, timeout: float | None = None) -> None:
+            del timeout
+            pytest.fail("an unstarted montage worker must not be retained or joined")
+
+    def thread_factory(*args, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return _UnstartedThread()
+        return real_thread(*args, **kwargs)
+
+    monkeypatch.setattr(bids_montage_coordinator, "Thread", thread_factory)
+    coordinator = BidsMontagePreparationCoordinator(
+        prepare=lambda recordings, *, generation, **_kwargs: _ready(
+            recordings,
+            generation=generation,
+        ),
+        admit=_empty_receipt,
+        on_publication=published.append,
+    )
+    try:
+        failed = coordinator.start((_request("/tmp/start-failed_eeg.fif"),))
+
+        assert failed.state == "failed"
+        assert failed.import_blocking is False
+        assert failed.reason is not None and "RuntimeError" in failed.reason
+        assert {item.state for item in failed.recordings} == {"failed"}
+        assert coordinator.snapshot() == failed
+        assert coordinator.worker_thread is None
+        assert coordinator.wait_for_idle(timeout=0.0)
+        assert [item.state for item in published] == ["failed"]
+
+        retried = coordinator.start((_request("/tmp/retry_eeg.fif"),))
+
+        assert retried.state == "pending"
+        assert coordinator.wait_for_idle(timeout=2.0)
+        assert coordinator.snapshot().state == "ready"
+        assert [item.state for item in published] == ["failed", "ready"]
+    finally:
+        assert coordinator.close(timeout=2.0)
+
+
+def test_application_service_closes_after_montage_worker_start_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from XBrainLab.backend.application.service import ApplicationService
+    from XBrainLab.backend.study import Study
+
+    class _UnstartedThread:
+        def start(self) -> None:
+            raise RuntimeError("fault injection: thread start failed")
+
+        @staticmethod
+        def is_alive() -> bool:
+            return False
+
+        @staticmethod
+        def join(*, timeout: float | None = None) -> None:
+            del timeout
+            pytest.fail("application close must not join an unstarted montage worker")
+
+    monkeypatch.setattr(
+        bids_montage_coordinator,
+        "Thread",
+        lambda *_args, **_kwargs: _UnstartedThread(),
+    )
+    service = ApplicationService(Study())
+    try:
+        failed = service.bids_montage_preparation.start(
+            (_request("/tmp/service-close-start-failed_eeg.fif"),)
+        )
+
+        assert failed.state == "failed"
+        assert service.bids_montage_preparation.worker_thread is None
+        service.close()
+        assert service.is_closed is True
+    finally:
+        if not service.is_closed:
+            service.close()
 
 
 def test_coordinator_publishes_latest_ready_result_without_blocking_start() -> None:
@@ -148,6 +247,48 @@ def test_coordinator_supplies_admitted_resources_to_background_parser(
         assert resource_reader.admits(electrodes)
         assert resource_reader.admits(coordsystem)
         assert resource_receipt is not None
+    finally:
+        coordinator.close()
+
+
+def test_default_coordinator_consumes_registered_index_without_tree_rewalk(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "bids"
+    eeg_dir = root / "sub-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    (root / "dataset_description.json").write_text(
+        json.dumps({"Name": "indexed-montage", "BIDSVersion": "1.11.1"}),
+        encoding="utf-8",
+    )
+    recording = eeg_dir / "sub-01_task-rest_eeg.fif"
+    recording.write_bytes(b"recording identity only")
+    (eeg_dir / "sub-01_task-rest_electrodes.tsv").write_text(
+        "name\tx\ty\tz\nCz\t0\t0\t1\n",
+        encoding="utf-8",
+    )
+    (eeg_dir / "sub-01_task-rest_coordsystem.json").write_text(
+        json.dumps(
+            {
+                "EEGCoordinateSystem": "CapTrak",
+                "EEGCoordinateUnits": "m",
+            }
+        ),
+        encoding="utf-8",
+    )
+    build_bids_dataset_index(root)
+
+    def _forbid_rewalk(_path: Path):
+        pytest.fail("default montage coordinator re-walked the BIDS dataset")
+
+    monkeypatch.setattr(Path, "iterdir", _forbid_rewalk)
+    coordinator = BidsMontagePreparationCoordinator()
+    try:
+        coordinator.start((_request(str(recording)),))
+
+        assert coordinator.wait_for_idle(timeout=2.0)
+        assert coordinator.snapshot().state == "ready"
     finally:
         coordinator.close()
 

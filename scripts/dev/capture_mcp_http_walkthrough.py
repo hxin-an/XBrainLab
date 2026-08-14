@@ -15,10 +15,25 @@ from typing import Any, cast
 import numpy as np
 import torch
 
-from XBrainLab.backend.application import ApplicationService, get_application_service
-from XBrainLab.backend.dataset.epochs import EpochWindowProvenance
+from XBrainLab.backend.application import (
+    ApplicationService,
+    SaveDatasetSplitCommand,
+    get_application_service,
+)
+from XBrainLab.backend.dataset import (
+    Dataset,
+    DataSplittingConfig,
+    Epochs,
+    EpochWindowProvenance,
+    TrainingType,
+)
 from XBrainLab.backend.study import Study
-from XBrainLab.backend.training import ModelHolder, TrainingEvaluation, TrainingOption
+from XBrainLab.backend.training import (
+    ModelHolder,
+    Trainer,
+    TrainingEvaluation,
+    TrainingOption,
+)
 from XBrainLab.mcp.http_server import build_http_server
 from XBrainLab.mcp.server import PROTOCOL_VERSION
 
@@ -298,11 +313,14 @@ def _sanitized(value: Any, source_dir: Path) -> Any:
 
 def _training_ready_service(source: Path) -> ApplicationService:
     """Build a service state where train capability reaches job boundary."""
-    service = get_application_service(Study())
-    cast(Any, service.study).loaded_data_list = [_RawStub(source)]
-    cast(Any, service.study).datasets = [_DatasetStub()]
-    service.study.model_holder = ModelHolder(torch.nn.Identity, {})
-    service.study.training_option = TrainingOption(
+    study = Study()
+    cast(Any, study).loaded_data_list = [_RawStub(source)]
+    epoch_data = _training_epoch_data()
+    dataset = _training_dataset(epoch_data)
+    study.epoch_data = epoch_data
+    study.get_datasets_generator = lambda _config: _PreparedDatasetGenerator(dataset)  # type: ignore[method-assign]
+    study.model_holder = ModelHolder(torch.nn.Identity, {})
+    study.training_option = TrainingOption(
         str(Path(tempfile.gettempdir()) / "xbrainlab-mcp-walkthrough"),
         torch.optim.Adam,
         {},
@@ -315,16 +333,31 @@ def _training_ready_service(source: Path) -> ApplicationService:
         TrainingEvaluation.VAL_ACC,
         1,
     )
+    service = get_application_service(study)
+    split = service.execute(
+        SaveDatasetSplitCommand(
+            test_ratio=0.25,
+            val_ratio=0.25,
+            split_strategy="trial",
+            training_mode="individual",
+        )
+    )
+    if split.failed:
+        raise RuntimeError(f"Could not prepare HTTP walkthrough split: {split.message}")
     service.get_state()
     running = {"value": False, "generation": 0}
 
     def start_training(*_args: Any, **_kwargs: Any) -> int:
         running["generation"] += 1
         running["value"] = True
+        trainer = Trainer([])
+        trainer.run(interact=False)
+        study.training_manager.trainer = trainer
         return int(running["generation"])
 
     def stop_training(*_args: Any, **_kwargs: Any) -> bool:
         running["value"] = False
+        service.publication_lifecycle.publish_training_terminal_state()
         return True
 
     def is_training() -> bool:
@@ -338,53 +371,61 @@ def _training_ready_service(source: Path) -> ApplicationService:
     return service
 
 
-class _EpochDataStub:
-    def __init__(self) -> None:
-        self._data = np.zeros((4, 1, 8), dtype=np.float32)
-
-    def get_data(self) -> np.ndarray:
-        return self._data
-
-    def get_label_list(self) -> np.ndarray:
-        return np.asarray([0, 1, 0, 1])
-
-    def get_label_number(self) -> int:
-        return 2
-
-    def get_model_args(self) -> dict[str, Any]:
-        return {}
-
-    def get_epoch_window_provenance(
-        self,
-    ) -> tuple[EpochWindowProvenance, ...]:
-        return tuple(
-            EpochWindowProvenance(
-                source_recording_id=f"path-sha256:{'a' * 64}",
-                event_sample=index * 20,
-                window_start_sample=index * 20,
-                window_end_sample_exclusive=index * 20 + 8,
-                source_sfreq=100.0,
-                epoch_sfreq=100.0,
-                tmin_seconds=0.0,
-                tmax_seconds=0.07,
-                source_coordinates_verified=True,
-            )
-            for index in range(len(self._data))
+def _training_epoch_data() -> Epochs:
+    labels = np.asarray([0, 1] * 6, dtype=int)
+    epoch_data = Epochs([])
+    epoch_data.data = np.zeros((len(labels), 1, 8), dtype=np.float32)
+    epoch_data.event_id = {"left": 0, "right": 1}
+    epoch_data.label_map = {0: "left", 1: "right"}
+    epoch_data.label = labels
+    epoch_data.subject = np.zeros(len(labels), dtype=int)
+    epoch_data.session = np.zeros(len(labels), dtype=int)
+    epoch_data.idx = np.arange(len(labels), dtype=int)
+    epoch_data.trial_group = np.arange(len(labels), dtype=int)
+    epoch_data.subject_map = {0: "S01"}
+    epoch_data.session_map = {0: "session-01"}
+    epoch_data.ch_names = ["Cz"]
+    epoch_data.sfreq = 128.0
+    epoch_data.epoch_window_provenance = tuple(
+        EpochWindowProvenance(
+            source_recording_id=f"content-sha256:{index:064x}",
+            event_sample=index * 8,
+            window_start_sample=index * 8,
+            window_end_sample_exclusive=(index + 1) * 8,
+            source_sfreq=128.0,
+            epoch_sfreq=128.0,
+            tmin_seconds=0.0,
+            tmax_seconds=7 / 128,
+            source_coordinates_verified=True,
         )
+        for index in range(len(labels))
+    )
+    return epoch_data
 
 
-class _DatasetStub:
-    def __init__(self) -> None:
-        self._epoch_data = _EpochDataStub()
-        self.train_mask = np.asarray([True, True, False, False])
-        self.val_mask = np.asarray([False, False, True, False])
-        self.test_mask = np.asarray([False, False, False, True])
+def _training_dataset(epoch_data: Epochs) -> Dataset:
+    dataset = Dataset(
+        epoch_data,
+        DataSplittingConfig(
+            train_type=TrainingType.IND,
+            is_cross_validation=False,
+            val_splitter_list=[],
+            test_splitter_list=[],
+        ),
+    )
+    dataset.name = "walkthrough dataset"
+    dataset.train_mask[:6] = True
+    dataset.val_mask[6:9] = True
+    dataset.test_mask[9:] = True
+    return dataset
 
-    def get_epoch_data(self) -> _EpochDataStub:
-        return self._epoch_data
 
-    def get_name(self) -> str:
-        return "walkthrough dataset"
+class _PreparedDatasetGenerator:
+    def __init__(self, dataset: Dataset) -> None:
+        self._dataset = dataset
+
+    def prepare_result(self) -> list[Dataset]:
+        return [self._dataset]
 
 
 class _RawStub:

@@ -528,6 +528,7 @@ class DataSplittingDialog(BaseDialog):
         # Training Type
         train_type_combo = QComboBox()
         self.train_type_combo = train_type_combo
+        train_type_combo.setObjectName("DataSplitTrainingModeInput")
         train_type_combo.addItems([i.value for i in TrainingType])
         self._configure_split_combo(train_type_combo)
         train_type_combo.currentTextChanged.connect(self.update_preview)
@@ -537,6 +538,7 @@ class DataSplittingDialog(BaseDialog):
         # Testing Set
         test_combo = QComboBox()
         self.test_combo = test_combo
+        test_combo.setObjectName("DataSplitTestingStrategyInput")
         test_combo.addItems([i.value for i in SplitByType])
         self._configure_split_combo(test_combo)
         test_combo.setCurrentText(SplitByType.TRIAL.value)
@@ -547,6 +549,7 @@ class DataSplittingDialog(BaseDialog):
         # Validation Set
         val_combo = QComboBox()
         self.val_combo = val_combo
+        val_combo.setObjectName("DataSplitValidationStrategyInput")
         val_combo.addItems([i.value for i in ValSplitByType])
         self._configure_split_combo(val_combo)
         val_combo.setCurrentText(ValSplitByType.TRIAL.value)

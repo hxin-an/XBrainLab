@@ -27,8 +27,10 @@ from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
     ControllerCompatibilityUnavailableError,
     blocked_reason,
+    cancel_application_operation,
     execute_application_command,
     execute_application_command_async,
+    get_application_operation,
     get_application_view_publication,
     get_command_capability,
     get_command_review_context,
@@ -50,6 +52,7 @@ from XBrainLab.ui.dialogs.preprocess import (
     ResampleDialog,
 )
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
+from XBrainLab.ui.owned_operation_presenter import OwnedOperationPresenter
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
@@ -62,6 +65,7 @@ _EPOCH_AVAILABILITY_UNAVAILABLE = (
 _RESET_PREPROCESS_AVAILABILITY_UNAVAILABLE = (
     "Reset preprocessing availability is unavailable right now."
 )
+_APPLICATION_PUBLICATION_UNSET = object()
 
 
 class PreprocessSidebar(QWidget):
@@ -93,6 +97,7 @@ class PreprocessSidebar(QWidget):
         """
         super().__init__(parent)
         self.panel = panel
+        self._operation_busy = False
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         self.init_ui()
@@ -184,6 +189,27 @@ class PreprocessSidebar(QWidget):
         self.btn_epoch.clicked.connect(self.open_epoching)
         exec_layout.addWidget(self.btn_epoch)
 
+        self.btn_cancel_operation = QPushButton("Cancel Current Operation")
+        self.btn_cancel_operation.setObjectName("OwnedOperationCancelButton")
+        self.btn_cancel_operation.setToolTip(
+            "Cancel the active preprocessing operation safely"
+        )
+        self.btn_cancel_operation.setStyleSheet(Stylesheets.BTN_WARNING)
+        exec_layout.addWidget(self.btn_cancel_operation)
+
+        self._operation_presenter = OwnedOperationPresenter(
+            self,
+            cancel_button=self.btn_cancel_operation,
+            snapshot_getter=lambda operation_id: get_application_operation(
+                self,
+                operation_id,
+            ),
+            canceller=lambda operation_id: cancel_application_operation(
+                self,
+                operation_id,
+            ),
+        )
+
         self.btn_reset = QPushButton("Reset All Preprocessing")
         self.btn_reset.setStyleSheet(Stylesheets.BTN_DANGER)
         self.btn_reset.clicked.connect(self.reset_preprocess)
@@ -195,8 +221,8 @@ class PreprocessSidebar(QWidget):
 
     # --- Update Logic ---
 
-    def update_sidebar(self):
-        """Update info panel and button states."""
+    def update_sidebar(self, *, publication: Any = _APPLICATION_PUBLICATION_UNSET):
+        """Update info and controls from one authoritative publication."""
         if self.controller is None and not has_real_application_context(self):
             return
 
@@ -204,7 +230,8 @@ class PreprocessSidebar(QWidget):
         # Handled by InfoPanelService
 
         is_epoched = False
-        publication = get_application_view_publication(self)
+        if publication is _APPLICATION_PUBLICATION_UNSET:
+            publication = get_application_view_publication(self)
         product_context = has_real_application_context(self)
         publication_usable = publication is not None and bool(
             getattr(publication, "usable", not product_context)
@@ -243,6 +270,38 @@ class PreprocessSidebar(QWidget):
             is_epoched,
             publication=publication,
         )
+
+    def set_busy(self, busy: bool) -> None:
+        """Fence preprocessing mutations while leaving Cancel operable."""
+        self._operation_busy = bool(busy)
+        self.setCursor(
+            Qt.CursorShape.WaitCursor if busy else Qt.CursorShape.ArrowCursor
+        )
+        if busy:
+            self._apply_operation_busy_state()
+            return
+        publication_reader = getattr(
+            self.panel,
+            "_application_publication_for_controls",
+            None,
+        )
+        if callable(publication_reader):
+            self.update_sidebar(publication=publication_reader())
+        else:
+            self.update_sidebar()
+
+    def _apply_operation_busy_state(self) -> None:
+        if not self._operation_busy:
+            return
+        for control in (
+            self.btn_filter,
+            self.btn_resample,
+            self.btn_rereference,
+            self.btn_normalize,
+            self.btn_epoch,
+            self.btn_reset,
+        ):
+            control.setEnabled(False)
 
     def _compatibility_preprocessed_data_list_for_render(self) -> list[Any]:
         """Return compatibility render data only for mock UI contexts."""
@@ -484,6 +543,7 @@ class PreprocessSidebar(QWidget):
         else:
             self.btn_epoch.setText("Create EEG Epochs")
             self.btn_epoch.setToolTip("Segment continuous EEG into EEG epochs")
+        self._apply_operation_busy_state()
 
     # --- Action Logic ---
 
@@ -689,13 +749,22 @@ class PreprocessSidebar(QWidget):
                 error_info=error,
             )
 
+        def _bind_operation(operation_id: str) -> None:
+            stage = (
+                "Creating EEG epochs"
+                if isinstance(command, CreateEpochCommand)
+                else "Applying preprocessing"
+            )
+            self._operation_presenter.bind(operation_id, stage=stage)
+
         if execute_application_command_async(
             self,
             command,
             on_result=_handle_result,
             on_error=_handle_error,
-            busy_target=self.panel,
+            busy_target=self,
             expected_publication_generation=expected_publication_generation,
+            on_operation_started=_bind_operation,
         ):
             return InteractionOutcome.accepted("Preprocessing command was scheduled.")
 

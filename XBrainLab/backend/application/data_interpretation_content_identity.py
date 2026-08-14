@@ -6,10 +6,12 @@ import hashlib
 import json
 import os
 import stat
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
+from contextvars import ContextVar
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from .data_interpretation_path_identity import (
@@ -20,13 +22,81 @@ from .data_interpretation_path_identity import (
 )
 from .data_interpretation_resource_reader import AdmittedResourceReader
 from .errors import PreconditionError
+from .owned_work import (
+    CapturedOwnedWork,
+    bind_captured_owned_work,
+    capture_owned_work,
+    owned_work_checkpoint,
+)
 
 CONTENT_IDENTITY_VERSION = 3
 CONTENT_IDENTITY_ALGORITHM = "sha256"
 CONTENT_HASH_CHUNK_BYTES = 1_048_576
 CONTENT_IDENTITY_HASH_WORKERS = 4
+CONTENT_IDENTITY_HASH_STAGE = "Hashing reviewed import content"
+CONTENT_IDENTITY_VERIFY_STAGE = "Verifying reviewed import content"
+CONTENT_IDENTITY_FINALIZE_STAGE = "Finalizing reviewed import content"
 CONTENT_IDENTITY_SCOPE = (
     "selected_eeg_parser_dependencies_label_carriers_and_local_bids_sidecars"
+)
+
+
+class _ContentHashProgress:
+    """Serialize aggregate byte progress shared by independent hash workers."""
+
+    def __init__(
+        self,
+        *,
+        expected_sizes: Mapping[str, int],
+        total_bytes: int | None,
+    ) -> None:
+        self._expected_sizes = dict(expected_sizes)
+        self._total_bytes = total_bytes
+        self._completed_bytes = 0
+        self._lock = Lock()
+
+    def start(self) -> None:
+        with self._lock:
+            self._checkpoint_locked()
+
+    def begin_file(self, path: Path, *, file_bytes: int) -> None:
+        with self._lock:
+            expected = self._expected_sizes.get(str(path))
+            if expected is None or expected != file_bytes:
+                self._total_bytes = None
+            self._checkpoint_locked()
+
+    def advance(self, chunk_bytes: int) -> None:
+        with self._lock:
+            self._completed_bytes += max(int(chunk_bytes), 0)
+            if (
+                self._total_bytes is not None
+                and self._completed_bytes > self._total_bytes
+            ):
+                self._total_bytes = None
+            if self._completed_bytes == self._total_bytes:
+                owned_work_checkpoint(CONTENT_IDENTITY_VERIFY_STAGE)
+                return
+            self._checkpoint_locked()
+
+    def finalizing(self) -> None:
+        with self._lock:
+            owned_work_checkpoint(CONTENT_IDENTITY_FINALIZE_STAGE)
+
+    def _checkpoint_locked(self) -> None:
+        if self._total_bytes is None or self._total_bytes <= 0:
+            owned_work_checkpoint(CONTENT_IDENTITY_HASH_STAGE)
+            return
+        owned_work_checkpoint(
+            CONTENT_IDENTITY_HASH_STAGE,
+            completed=self._completed_bytes,
+            total=self._total_bytes,
+        )
+
+
+_CURRENT_CONTENT_HASH_PROGRESS: ContextVar[_ContentHashProgress | None] = ContextVar(
+    "xbrainlab_content_hash_progress",
+    default=None,
 )
 
 _PLAN_BINDING_FIELDS = (
@@ -351,6 +421,11 @@ def _content_file_identities(
 ) -> list[dict[str, Any]]:
     """Fingerprint independent admitted files with bounded parallel I/O."""
 
+    captured_work = capture_owned_work()
+    progress = _content_hash_progress(requests, captured_work=captured_work)
+    if progress is not None:
+        progress.start()
+
     def _build(
         request: tuple[Path, str, Mapping[str, Any] | None],
     ) -> dict[str, Any]:
@@ -363,14 +438,74 @@ def _content_file_identities(
             path_identity_scope=path_identity_scope,
         )
 
+    def _build_with_context(
+        request: tuple[Path, str, Mapping[str, Any] | None],
+    ) -> dict[str, Any]:
+        with (
+            bind_captured_owned_work(captured_work),
+            _bind_content_hash_progress(progress),
+        ):
+            return _build(request)
+
     worker_count = min(CONTENT_IDENTITY_HASH_WORKERS, len(requests))
     if worker_count <= 1:
-        return [_build(request) for request in requests]
-    with ThreadPoolExecutor(
-        max_workers=worker_count,
-        thread_name_prefix="interpretation-content-identity",
-    ) as executor:
-        return list(executor.map(_build, requests))
+        identities = [_build_with_context(request) for request in requests]
+    else:
+        with ThreadPoolExecutor(
+            max_workers=worker_count,
+            thread_name_prefix="interpretation-content-identity",
+        ) as executor:
+            identities = list(executor.map(_build_with_context, requests))
+    if progress is not None:
+        progress.finalizing()
+    return identities
+
+
+def _content_hash_progress(
+    requests: Iterable[tuple[Path, str, Mapping[str, Any] | None]],
+    *,
+    captured_work: CapturedOwnedWork | None,
+) -> _ContentHashProgress | None:
+    """Build progress only when these hashes belong to an admitted operation."""
+    if captured_work is None:
+        return None
+    expected_sizes: dict[str, int] = {}
+    total_bytes = 0
+    total_known = True
+    for path, _role, admitted_identity in requests:
+        if admitted_identity is not None:
+            continue
+        try:
+            observed = path.stat()
+        except OSError:
+            total_known = False
+            continue
+        if not stat.S_ISREG(observed.st_mode):
+            total_known = False
+            continue
+        file_bytes = max(int(observed.st_size), 0)
+        expected_sizes[str(path)] = file_bytes
+        total_bytes += file_bytes
+    if not expected_sizes and total_known:
+        return None
+    return _ContentHashProgress(
+        expected_sizes=expected_sizes,
+        total_bytes=total_bytes if total_known and total_bytes > 0 else None,
+    )
+
+
+@contextmanager
+def _bind_content_hash_progress(
+    progress: _ContentHashProgress | None,
+) -> Iterator[None]:
+    if progress is None:
+        yield
+        return
+    token = _CURRENT_CONTENT_HASH_PROGRESS.set(progress)
+    try:
+        yield
+    finally:
+        _CURRENT_CONTENT_HASH_PROGRESS.reset(token)
 
 
 def _normalized_admitted_file_identities(
@@ -417,8 +552,13 @@ def _stable_stream_sha256(path: Path) -> tuple[int, str]:
                     "path": str(path),
                 },
             )
+        progress = _CURRENT_CONTENT_HASH_PROGRESS.get()
+        if progress is not None:
+            progress.begin_file(path, file_bytes=max(int(opened.st_size), 0))
         while chunk := handle.read(CONTENT_HASH_CHUNK_BYTES):
             digest.update(chunk)
+            if progress is not None:
+                progress.advance(len(chunk))
         finished = os.fstat(handle.fileno())
     current = path.stat()
     opened_identity = _stat_identity(opened)

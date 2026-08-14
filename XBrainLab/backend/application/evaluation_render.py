@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -13,10 +14,19 @@ from XBrainLab.backend.training_state_contract import TrainingReadBoundary
 from XBrainLab.backend.utils.logger import logger
 
 from .errors import PreconditionError
+from .owned_work import (
+    OwnedOperationCancelledError,
+    owned_work_checkpoint,
+)
 from .training_runtime import TrainingProjectionReadPort
 from .view_publication import ApplicationViewPublication
 
 AVAILABLE_EVALUATION_SPLITS = frozenset({"training", "validation", "test"})
+
+if TYPE_CHECKING:
+    from XBrainLab.backend.training.saliency_provenance import (
+        SaliencyProducerIdentity,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,6 +172,39 @@ class EvaluationModelSummary:
 
 
 @dataclass(frozen=True, slots=True)
+class EvaluationModelSummaryPreparation:
+    """Lightweight selected inputs captured before expensive model inspection."""
+
+    identity: EvaluationSummaryIdentity
+    dataset: Any | None = None
+    model_instance: Any | None = None
+    model_holder: Any | None = None
+    run_name: str | None = None
+    terminal: EvaluationModelSummary | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.identity, EvaluationSummaryIdentity):
+            raise TypeError("identity must be an EvaluationSummaryIdentity")
+        if self.terminal is not None:
+            if not isinstance(self.terminal, EvaluationModelSummary):
+                raise TypeError("terminal must be an EvaluationModelSummary or None")
+            if self.terminal.status == "ready":
+                raise ValueError("a prepared terminal model summary cannot be ready")
+            if any(
+                value is not None
+                for value in (
+                    self.dataset,
+                    self.model_instance,
+                    self.model_holder,
+                    self.run_name,
+                )
+            ):
+                raise ValueError(
+                    "terminal model summary preparation cannot retain build inputs"
+                )
+
+
+@dataclass(frozen=True, slots=True)
 class EvaluationRenderRequest:
     """Request detached render data from one exact application generation."""
 
@@ -210,10 +253,14 @@ def _metric_scalar(value: Any) -> MetricScalar:
         value = value.item()
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise TypeError("Evaluation metric values must be numeric")
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError("Evaluation metric values must be finite")
     return int(value) if isinstance(value, int) else float(value)
 
 
 def _freeze_metrics(value: Mapping[Any, Any]) -> EvaluationMetrics:
+    if not isinstance(value, Mapping):
+        raise TypeError("Evaluation metrics must be a mapping")
     frozen: dict[int | str, Mapping[str, MetricScalar]] = {}
     for raw_key, raw_metrics in value.items():
         key: int | str
@@ -231,19 +278,124 @@ def _freeze_metrics(value: Mapping[Any, Any]) -> EvaluationMetrics:
     return MappingProxyType(frozen)
 
 
-def _freeze_class_labels(value: Mapping[Any, Any]) -> Mapping[int, str]:
+def _freeze_class_labels(
+    value: Mapping[Any, Any],
+    *,
+    class_count: int,
+) -> Mapping[int, str]:
+    if not isinstance(value, Mapping):
+        raise TypeError("Evaluation class labels must be a mapping")
     copied: dict[int, str] = {}
     for raw_key, raw_name in value.items():
-        if isinstance(raw_key, bool):
-            continue
-        try:
-            key = int(raw_key)
-        except (TypeError, ValueError):
-            continue
-        if key < 0:
-            continue
-        copied[key] = str(raw_name)
+        if isinstance(raw_key, bool) or not isinstance(raw_key, (int, np.integer)):
+            raise TypeError("Evaluation class label keys must be integer indices")
+        key = int(raw_key)
+        if key in copied:
+            raise ValueError("Evaluation class label indices must be unique")
+        if not isinstance(raw_name, str) or not raw_name.strip():
+            raise TypeError("Evaluation class label names must be non-empty strings")
+        copied[key] = raw_name.strip()
+    expected = set(range(class_count))
+    if set(copied) != expected:
+        raise ValueError(
+            "Evaluation class label mapping must exactly cover the output classes"
+        )
+    if len(set(copied.values())) != class_count:
+        raise ValueError("Evaluation class label names must be unique")
     return MappingProxyType(copied)
+
+
+def _require_finite_real_array(value: np.ndarray, *, field_name: str) -> None:
+    if not (
+        np.issubdtype(value.dtype, np.integer)
+        or np.issubdtype(value.dtype, np.floating)
+    ):
+        raise TypeError(f"Evaluation {field_name} must contain real numeric values")
+    if not bool(np.isfinite(value).all()):
+        raise ValueError(f"Evaluation {field_name} must contain only finite values")
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationNumericSummary:
+    """Bounded public evidence describing one validated numeric array."""
+
+    shape: tuple[int, ...]
+    dtype: str
+    count: int
+    finite_count: int
+    nonfinite_count: int
+    minimum: float
+    maximum: float
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.shape, tuple)
+            or not self.shape
+            or any(
+                isinstance(dimension, bool)
+                or not isinstance(dimension, int)
+                or dimension < 1
+                for dimension in self.shape
+            )
+        ):
+            raise ValueError("Evaluation numeric summary shape must be positive")
+        if not isinstance(self.dtype, str) or not self.dtype.strip():
+            raise TypeError("Evaluation numeric summary dtype must be non-empty")
+        expected_count = math.prod(self.shape)
+        if (
+            isinstance(self.count, bool)
+            or not isinstance(self.count, int)
+            or self.count != expected_count
+            or isinstance(self.finite_count, bool)
+            or not isinstance(self.finite_count, int)
+            or self.finite_count != self.count
+            or isinstance(self.nonfinite_count, bool)
+            or not isinstance(self.nonfinite_count, int)
+            or self.nonfinite_count != 0
+        ):
+            raise ValueError("Evaluation numeric summary counts are inconsistent")
+        if (
+            isinstance(self.minimum, bool)
+            or not isinstance(self.minimum, (int, float))
+            or not math.isfinite(float(self.minimum))
+            or isinstance(self.maximum, bool)
+            or not isinstance(self.maximum, (int, float))
+            or not math.isfinite(float(self.maximum))
+            or float(self.minimum) > float(self.maximum)
+        ):
+            raise ValueError("Evaluation numeric summary bounds must be finite")
+
+    @classmethod
+    def from_finite_array(cls, value: np.ndarray) -> EvaluationNumericSummary:
+        """Summarize an already validated, non-empty finite numeric array."""
+        count = int(value.size)
+        finite_count = int(np.count_nonzero(np.isfinite(value)))
+        if count < 1 or finite_count != count:
+            raise ValueError("Evaluation numeric summary requires finite values")
+        minimum = float(np.min(value))
+        maximum = float(np.max(value))
+        if not math.isfinite(minimum) or not math.isfinite(maximum):
+            raise ValueError("Evaluation numeric summary bounds must be finite floats")
+        return cls(
+            shape=tuple(int(dimension) for dimension in value.shape),
+            dtype=value.dtype.name,
+            count=count,
+            finite_count=finite_count,
+            nonfinite_count=count - finite_count,
+            minimum=minimum,
+            maximum=maximum,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "shape": list(self.shape),
+            "dtype": self.dtype,
+            "count": self.count,
+            "finite_count": self.finite_count,
+            "nonfinite_count": self.nonfinite_count,
+            "minimum": self.minimum,
+            "maximum": self.maximum,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,9 +408,12 @@ class EvaluationRenderData:
     class_labels: Mapping[int, str]
     summary_identity: EvaluationSummaryIdentity | None
     evaluation_split: str
+    output_numeric_summary: EvaluationNumericSummary = field(init=False)
 
     def __post_init__(self) -> None:
+        owned_work_checkpoint("Copying evaluation labels")
         labels = _copy_array_readonly(self.labels)
+        owned_work_checkpoint("Copying evaluation predictions")
         outputs = _copy_array_readonly(self.outputs)
         if labels.ndim != 1:
             raise ValueError("Evaluation labels must be one-dimensional")
@@ -266,6 +421,18 @@ class EvaluationRenderData:
             raise ValueError("Evaluation outputs must be two-dimensional")
         if labels.shape[0] != outputs.shape[0] or labels.shape[0] == 0:
             raise ValueError("Evaluation labels and outputs must have matching samples")
+        if outputs.shape[1] < 1:
+            raise ValueError("Evaluation outputs must contain at least one class")
+        _require_finite_real_array(labels, field_name="labels")
+        _require_finite_real_array(outputs, field_name="outputs")
+        if np.issubdtype(labels.dtype, np.floating) and not bool(
+            np.equal(labels, np.trunc(labels)).all()
+        ):
+            raise ValueError("Evaluation labels must be integer class indices")
+        if bool(np.any(labels < 0)) or bool(np.any(labels >= outputs.shape[1])):
+            raise ValueError(
+                "Evaluation labels must be within the model output class range"
+            )
         if self.summary_identity is not None and not isinstance(
             self.summary_identity,
             EvaluationSummaryIdentity,
@@ -280,9 +447,24 @@ class EvaluationRenderData:
         object.__setattr__(
             self,
             "class_labels",
-            _freeze_class_labels(self.class_labels),
+            _freeze_class_labels(
+                self.class_labels,
+                class_count=outputs.shape[1],
+            ),
         )
         object.__setattr__(self, "evaluation_split", evaluation_split)
+        object.__setattr__(
+            self,
+            "output_numeric_summary",
+            EvaluationNumericSummary.from_finite_array(outputs),
+        )
+        owned_work_checkpoint("Freezing evaluation render")
+
+
+@dataclass(frozen=True, slots=True)
+class _EvaluationRenderMaterialization:
+    data: EvaluationRenderData
+    producer_identities: tuple[SaliencyProducerIdentity, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -293,6 +475,10 @@ class EvaluationRenderPublication:
     generation: int
     training_boundary: TrainingReadBoundary
     data: EvaluationRenderData
+    operation_id: str | None = None
+    producer_identities: tuple[SaliencyProducerIdentity, ...] = ()
+    split_specification_fingerprint: str | None = None
+    split_epoch_revision: int | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.request, EvaluationRenderRequest):
@@ -305,6 +491,37 @@ class EvaluationRenderPublication:
             raise ValueError("training_boundary must be stable")
         if not isinstance(self.data, EvaluationRenderData):
             raise TypeError("data must be EvaluationRenderData")
+        if self.operation_id is not None and (
+            not isinstance(self.operation_id, str) or not self.operation_id.strip()
+        ):
+            raise TypeError("operation_id must be a non-empty string or None")
+        if not isinstance(self.producer_identities, tuple):
+            raise TypeError("producer_identities must be a tuple")
+        if self.producer_identities:
+            from XBrainLab.backend.training.saliency_provenance import (  # noqa: PLC0415
+                SaliencyProducerIdentity,
+            )
+
+            if any(
+                not isinstance(identity, SaliencyProducerIdentity)
+                for identity in self.producer_identities
+            ):
+                raise TypeError(
+                    "producer_identities must contain SaliencyProducerIdentity values"
+                )
+        if self.split_specification_fingerprint is not None and (
+            not isinstance(self.split_specification_fingerprint, str)
+            or not self.split_specification_fingerprint.strip()
+        ):
+            raise TypeError(
+                "split_specification_fingerprint must be a non-empty string or None"
+            )
+        if self.split_epoch_revision is not None and (
+            isinstance(self.split_epoch_revision, bool)
+            or not isinstance(self.split_epoch_revision, int)
+            or self.split_epoch_revision < 1
+        ):
+            raise TypeError("split_epoch_revision must be a positive integer or None")
 
 
 class EvaluationRenderPublisher:
@@ -328,6 +545,7 @@ class EvaluationRenderPublisher:
         """Return detached render data or reject stale/invalid identity."""
         if not isinstance(request, EvaluationRenderRequest):
             raise TypeError("request must be an EvaluationRenderRequest")
+        owned_work_checkpoint("Capturing evaluation identity")
         before_publication = self._get_publication()
         before_boundary = self._capture_training_boundary()
         self._validate_guard(
@@ -336,8 +554,13 @@ class EvaluationRenderPublisher:
             boundary=before_boundary,
         )
 
-        data = self._copy_render_data(request.selection, split=request.split)
+        owned_work_checkpoint("Reading evaluation results")
+        materialization = self._copy_render_data(
+            request.selection,
+            split=request.split,
+        )
 
+        owned_work_checkpoint("Verifying evaluation identity")
         after_boundary = self._capture_training_boundary()
         after_publication = self._get_publication()
         if (
@@ -358,11 +581,15 @@ class EvaluationRenderPublisher:
             publication=after_publication,
             boundary=after_boundary,
         )
+        split_fingerprint, split_epoch_revision = _split_provenance(after_publication)
         return EvaluationRenderPublication(
             request=request,
             generation=after_publication.generation,
             training_boundary=after_boundary,
-            data=data,
+            data=materialization.data,
+            producer_identities=materialization.producer_identities,
+            split_specification_fingerprint=split_fingerprint,
+            split_epoch_revision=split_epoch_revision,
         )
 
     def _validate_guard(
@@ -391,7 +618,8 @@ class EvaluationRenderPublisher:
         selection: EvaluationSelectionIdentity,
         *,
         split: str,
-    ) -> EvaluationRenderData:
+    ) -> _EvaluationRenderMaterialization:
+        owned_work_checkpoint("Reading evaluation plans")
         plans = _iterable_items(
             self._training_runtime.training_plan_holders(),
             "Training plan collection",
@@ -433,24 +661,59 @@ class EvaluationRenderPublisher:
                 raise self._target_error(
                     "The selected training run has incomplete evaluation results"
                 )
-            return EvaluationRenderData(
-                labels=np.asarray(labels),
-                outputs=np.asarray(outputs),
-                metrics=_record_metrics(eval_record),
-                class_labels=_class_labels(selected_run, selected_plan),
-                summary_identity=EvaluationSummaryIdentity(
-                    plan=selection.plan,
-                    run=selection,
+            producer_identity = _evaluation_producer_identity(
+                selected_plan,
+                selected_run,
+                split=split,
+            )
+            return _EvaluationRenderMaterialization(
+                data=EvaluationRenderData(
+                    labels=np.asarray(labels),
+                    outputs=np.asarray(outputs),
+                    metrics=_record_metrics(eval_record),
+                    class_labels=_class_labels(selected_run, selected_plan),
+                    summary_identity=EvaluationSummaryIdentity(
+                        plan=selection.plan,
+                        run=selection,
+                    ),
+                    evaluation_split=split,
                 ),
-                evaluation_split=split,
+                producer_identities=(producer_identity,),
             )
 
-        finished = [run for run in runs if _run_finished(run)]
+        finished: list[Any] = []
+        total_runs = len(runs)
+        for index, run in enumerate(runs):
+            owned_work_checkpoint(
+                "Checking completed evaluation runs",
+                completed=index,
+                total=total_runs or None,
+            )
+            if _run_finished(run):
+                finished.append(run)
+        if total_runs:
+            owned_work_checkpoint(
+                "Checking completed evaluation runs",
+                completed=total_runs,
+                total=total_runs,
+            )
         if not finished:
             raise self._target_error(
                 "The selected training plan has no completed evaluation results"
             )
-        eval_records = [self._record_for_split(run, split) for run in finished]
+        eval_records: list[Any | None] = []
+        for index, run in enumerate(finished):
+            owned_work_checkpoint(
+                "Selecting evaluation predictions",
+                completed=index,
+                total=len(finished),
+            )
+            eval_records.append(self._record_for_split(run, split))
+        owned_work_checkpoint(
+            "Selecting evaluation predictions",
+            completed=len(finished),
+            total=len(finished),
+        )
         if any(record is None for record in eval_records):
             raise self._split_unavailable_error(
                 f"The selected aggregate is missing saved {split} predictions "
@@ -458,13 +721,22 @@ class EvaluationRenderPublisher:
             )
         selected_records = [record for record in eval_records if record is not None]
         labels, outputs, metrics = self._pool_evaluation_records(selected_records)
-        return EvaluationRenderData(
-            labels=labels,
-            outputs=outputs,
-            metrics=metrics,
-            class_labels=_class_labels(finished[0], selected_plan),
-            summary_identity=EvaluationSummaryIdentity(plan=selection),
-            evaluation_split=split,
+        producer_identities = tuple(
+            _evaluation_producer_identity(selected_plan, run, split=split)
+            for run in finished
+        )
+        return _EvaluationRenderMaterialization(
+            data=EvaluationRenderData(
+                labels=labels,
+                outputs=outputs,
+                metrics=metrics,
+                class_labels=self._consistent_class_labels(
+                    [(run, selected_plan) for run in finished]
+                ),
+                summary_identity=EvaluationSummaryIdentity(plan=selection),
+                evaluation_split=split,
+            ),
+            producer_identities=producer_identities,
         )
 
     def _copy_cross_fold_render_data(
@@ -473,7 +745,7 @@ class EvaluationRenderPublisher:
         *,
         selection: EvaluationCrossFoldIdentity,
         split: str,
-    ) -> EvaluationRenderData:
+    ) -> _EvaluationRenderMaterialization:
         if split != "test":
             raise self._split_unavailable_error(
                 "Cross-fold summaries are available only for saved test predictions"
@@ -488,7 +760,14 @@ class EvaluationRenderPublisher:
             )
         selected_records: list[Any] = []
         label_sources: list[tuple[Any, Any]] = []
-        for member in selection.members:
+        producer_identities: list[SaliencyProducerIdentity] = []
+        total_members = len(selection.members)
+        for index, member in enumerate(selection.members):
+            owned_work_checkpoint(
+                "Collecting evaluation folds",
+                completed=index,
+                total=total_members,
+            )
             plan = plans[member.plan.plan_index]
             run = _plan_runs(plan)[member.run_index]
             record = self._record_for_split(run, split)
@@ -498,32 +777,66 @@ class EvaluationRenderPublisher:
                 )
             selected_records.append(record)
             label_sources.append((run, plan))
+            producer_identities.append(
+                _evaluation_producer_identity(
+                    plan,
+                    run,
+                    split=split,
+                )
+            )
+        owned_work_checkpoint(
+            "Collecting evaluation folds",
+            completed=total_members,
+            total=total_members,
+        )
 
         labels, outputs, metrics = self._pool_evaluation_records(selected_records)
-        return EvaluationRenderData(
-            labels=labels,
-            outputs=outputs,
-            metrics=metrics,
-            class_labels=self._consistent_class_labels(label_sources),
-            summary_identity=None,
-            evaluation_split=split,
+        return _EvaluationRenderMaterialization(
+            data=EvaluationRenderData(
+                labels=labels,
+                outputs=outputs,
+                metrics=metrics,
+                class_labels=self._consistent_class_labels(label_sources),
+                summary_identity=None,
+                evaluation_split=split,
+            ),
+            producer_identities=tuple(producer_identities),
         )
 
     def _pool_evaluation_records(
         self,
         records: list[Any],
     ) -> tuple[np.ndarray, np.ndarray, Mapping[Any, Any]]:
+        label_parts: list[Any] = []
+        output_parts: list[Any] = []
+        total_records = len(records)
+        for index, record in enumerate(records):
+            owned_work_checkpoint(
+                "Pooling evaluation predictions",
+                completed=index,
+                total=total_records,
+            )
+            label_parts.append(record.label)
+            output_parts.append(record.output)
+        owned_work_checkpoint(
+            "Pooling evaluation predictions",
+            completed=total_records,
+            total=total_records,
+        )
         try:
-            labels = np.concatenate([record.label for record in records])
-            outputs = np.concatenate([record.output for record in records])
+            labels = np.concatenate(label_parts)
+            outputs = np.concatenate(output_parts)
             from XBrainLab.backend.training.record import EvalRecord  # noqa: PLC0415
 
             pooled_record = EvalRecord(labels, outputs, {}, {}, {}, {}, {})
             metrics = pooled_record.get_per_class_metrics()
+        except OwnedOperationCancelledError:
+            raise
         except Exception as exc:
             raise self._target_error(
                 "The selected evaluation results could not be combined"
             ) from exc
+        owned_work_checkpoint("Computing evaluation metrics")
         return labels, outputs, metrics
 
     def _consistent_class_labels(
@@ -531,11 +844,8 @@ class EvaluationRenderPublisher:
         sources: list[tuple[Any, Any]],
     ) -> Mapping[Any, Any]:
         mappings = [dict(_class_labels(run, plan)) for run, plan in sources]
-        non_empty = [mapping for mapping in mappings if mapping]
-        if not non_empty:
-            return {}
-        expected = non_empty[0]
-        if any(mapping != expected for mapping in non_empty[1:]):
+        expected = mappings[0] if mappings else {}
+        if any(mapping != expected for mapping in mappings[1:]):
             raise self._target_error(
                 "Class label mappings differ across training folds"
             )
@@ -638,25 +948,45 @@ def build_evaluation_model_summary_result(
     """Build one model summary together with explicit readiness semantics."""
     if not isinstance(identity, EvaluationSummaryIdentity):
         raise TypeError("identity must be an EvaluationSummaryIdentity")
+    owned_work_checkpoint("Reading model summary plans")
     plans = _iterable_items(
         training_runtime.training_plan_holders(),
         "Training plan collection",
     )
-    if identity.plan.plan_index >= len(plans):
+    owned_work_checkpoint("Model summary plans ready")
+    preparation = prepare_evaluation_model_summary(plans, identity)
+    return build_prepared_evaluation_model_summary(preparation)
+
+
+def prepare_evaluation_model_summary(
+    plans: Iterable[Any],
+    identity: EvaluationSummaryIdentity,
+) -> EvaluationModelSummaryPreparation:
+    """Capture one selected model target without constructing or inspecting it."""
+    if not isinstance(identity, EvaluationSummaryIdentity):
+        raise TypeError("identity must be an EvaluationSummaryIdentity")
+    selected_plans = _iterable_items(plans, "Training plan collection")
+    if identity.plan.plan_index >= len(selected_plans):
         raise EvaluationRenderPublisher._target_error(
             "The selected training plan is no longer available"
         )
-    selected_plan = plans[identity.plan.plan_index]
+    selected_plan = selected_plans[identity.plan.plan_index]
+    owned_work_checkpoint("Selecting model summary plan")
     selected_run: Any | None = None
     if identity.run is not None:
+        owned_work_checkpoint("Reading model summary runs")
         runs = _plan_runs(selected_plan)
         if identity.run.run_index >= len(runs):
             raise EvaluationRenderPublisher._target_error(
                 "The selected training run is no longer available"
             )
         selected_run = runs[identity.run.run_index]
+        owned_work_checkpoint("Selected model summary run")
         if not _run_finished(selected_run):
-            return EvaluationModelSummary(status="pending")
+            return EvaluationModelSummaryPreparation(
+                identity=identity,
+                terminal=EvaluationModelSummary(status="pending"),
+            )
 
     dataset = getattr(selected_run, "dataset", None) or getattr(
         selected_plan,
@@ -664,10 +994,42 @@ def build_evaluation_model_summary_result(
         None,
     )
     if selected_run is not None:
+        owned_work_checkpoint("Reading trained model instance")
         model_instance = getattr(selected_run, "model", None)
         if model_instance is None:
-            return EvaluationModelSummary(status="unavailable")
-    else:
+            return EvaluationModelSummaryPreparation(
+                identity=identity,
+                terminal=EvaluationModelSummary(status="unavailable"),
+            )
+        get_name = getattr(selected_run, "get_name", None)
+        run_name = str(get_name()) if callable(get_name) else "Selected run"
+        return EvaluationModelSummaryPreparation(
+            identity=identity,
+            dataset=dataset,
+            model_instance=model_instance,
+            run_name=run_name,
+        )
+    return EvaluationModelSummaryPreparation(
+        identity=identity,
+        dataset=dataset,
+        model_holder=getattr(selected_plan, "model_holder", None),
+    )
+
+
+def build_prepared_evaluation_model_summary(
+    preparation: EvaluationModelSummaryPreparation,
+) -> EvaluationModelSummary:
+    """Construct and inspect one prepared model outside application command locks."""
+    if not isinstance(preparation, EvaluationModelSummaryPreparation):
+        raise TypeError("preparation must be an EvaluationModelSummaryPreparation")
+    if preparation.terminal is not None:
+        owned_work_checkpoint("Model summary terminal state ready")
+        return preparation.terminal
+
+    dataset = preparation.dataset
+    model_instance = preparation.model_instance
+    if model_instance is None:
+        owned_work_checkpoint("Reading model summary input metadata")
         epoch_getter = getattr(dataset, "get_epoch_data", None)
         if not callable(epoch_getter):
             raise ValueError("The selected model input metadata is unavailable")
@@ -678,12 +1040,21 @@ def build_evaluation_model_summary_result(
         model_args = model_args_getter()
         if not isinstance(model_args, dict):
             raise ValueError("The selected model input metadata is unavailable")
-        model_instance = selected_plan.model_holder.get_model(model_args)
+        model_builder = getattr(preparation.model_holder, "get_model", None)
+        if not callable(model_builder):
+            raise ValueError("The selected model configuration is unavailable")
+        owned_work_checkpoint("Constructing model summary instance")
+        model_instance = model_builder(model_args)
+        owned_work_checkpoint("Model summary instance ready")
+    owned_work_checkpoint("Reading model summary input shape")
     input_shape = _model_summary_input_shape(dataset)
+    owned_work_checkpoint("Model summary input shape ready")
     try:
+        owned_work_checkpoint("Loading detailed model summary")
         from torchinfo import summary  # noqa: PLC0415
 
         try:
+            owned_work_checkpoint("Building detailed model summary")
             summary_text = str(
                 summary(
                     model_instance,
@@ -692,21 +1063,27 @@ def build_evaluation_model_summary_result(
                     verbose=0,
                 )
             )
+            owned_work_checkpoint("Detailed model summary ready")
+        except OwnedOperationCancelledError:
+            raise
         except Exception:
             logger.warning(
                 "Detailed Evaluation model summary failed; using basic model details",
                 exc_info=True,
             )
+            owned_work_checkpoint("Building fallback model summary")
             summary_text = _fallback_model_summary(model_instance, input_shape)
+            owned_work_checkpoint("Fallback model summary ready")
     except ModuleNotFoundError:
         logger.warning(
             "Required torchinfo dependency is unavailable; using basic model details"
         )
+        owned_work_checkpoint("Building fallback model summary")
         summary_text = _fallback_model_summary(model_instance, input_shape)
-    if selected_run is not None:
-        get_name = getattr(selected_run, "get_name", None)
-        run_name = str(get_name()) if callable(get_name) else "Selected run"
-        summary_text = f"=== Run: {run_name} ===\n{summary_text}"
+        owned_work_checkpoint("Fallback model summary ready")
+    if preparation.run_name is not None:
+        summary_text = f"=== Run: {preparation.run_name} ===\n{summary_text}"
+    owned_work_checkpoint("Model summary publication ready")
     return EvaluationModelSummary(status="ready", text=summary_text)
 
 
@@ -805,6 +1182,51 @@ def _record_metrics(eval_record: Any) -> Mapping[Any, Any]:
             "The selected evaluation metrics are invalid"
         )
     return metrics
+
+
+def _evaluation_producer_identity(
+    plan: Any,
+    run: Any,
+    *,
+    split: str,
+) -> SaliencyProducerIdentity:
+    """Return the backend-generated dataset/split/run/model identity."""
+    builder = getattr(plan, "build_saliency_producer_identity", None)
+    if not callable(builder):
+        raise EvaluationRenderPublisher._target_error(
+            "Evaluation producer identity is unavailable"
+        )
+    identity = builder(run, evaluation_split=split)
+    from XBrainLab.backend.training.saliency_provenance import (  # noqa: PLC0415
+        SaliencyProducerIdentity,
+    )
+
+    if not isinstance(identity, SaliencyProducerIdentity):
+        raise EvaluationRenderPublisher._target_error(
+            "Evaluation producer identity is invalid"
+        )
+    return identity
+
+
+def _split_provenance(
+    publication: ApplicationViewPublication,
+) -> tuple[str, int]:
+    """Require the saved split identity from the exact verified publication."""
+    state = getattr(publication, "state", None)
+    dataset = getattr(state, "dataset", None)
+    fingerprint = getattr(dataset, "split_specification_fingerprint", None)
+    revision = getattr(dataset, "split_epoch_revision", None)
+    if (
+        not isinstance(fingerprint, str)
+        or not fingerprint.strip()
+        or isinstance(revision, bool)
+        or not isinstance(revision, int)
+        or revision < 1
+    ):
+        raise EvaluationRenderPublisher._target_error(
+            "Evaluation split provenance is unavailable"
+        )
+    return fingerprint, revision
 
 
 def _class_labels(run: Any, plan: Any) -> Mapping[Any, Any]:
@@ -942,6 +1364,7 @@ __all__ = [
     "EvaluationCrossFoldChoice",
     "EvaluationCrossFoldIdentity",
     "EvaluationModelSummary",
+    "EvaluationModelSummaryPreparation",
     "EvaluationPlanIdentity",
     "EvaluationRenderData",
     "EvaluationRenderPublication",
@@ -953,4 +1376,6 @@ __all__ = [
     "build_evaluation_cross_fold_choices",
     "build_evaluation_model_summary",
     "build_evaluation_model_summary_result",
+    "build_prepared_evaluation_model_summary",
+    "prepare_evaluation_model_summary",
 ]

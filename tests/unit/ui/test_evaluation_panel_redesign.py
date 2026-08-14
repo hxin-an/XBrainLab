@@ -1,7 +1,6 @@
 import threading
 import time
 from dataclasses import replace
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -12,6 +11,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QGroupBox,
+    QMainWindow,
     QSizePolicy,
     QSplitter,
     QTableWidget,
@@ -27,6 +27,7 @@ from XBrainLab.backend.application import (
     EvaluationCrossFoldIdentity,
     EvaluationPlanIdentity,
     EvaluationRenderData,
+    EvaluationRenderPublication,
     EvaluationRenderRequest,
     EvaluationRunIdentity,
     EvaluationSummaryIdentity,
@@ -36,7 +37,11 @@ from XBrainLab.backend.application.results import ChangedState, CommandResult
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.application.view_publication import ApplicationViewStore
 from XBrainLab.backend.study import Study
-from XBrainLab.backend.training_state_contract import TrainingReadBoundary
+from XBrainLab.backend.training.saliency_provenance import SaliencyProducerIdentity
+from XBrainLab.backend.training_state_contract import (
+    TrainingReadBoundary,
+    TrainingStateToken,
+)
 from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.panels.evaluation.confusion_matrix import ConfusionMatrixWidget
 from XBrainLab.ui.panels.evaluation.metrics_bar_chart import MetricsBarChartWidget
@@ -754,8 +759,19 @@ def _detached_render(request: EvaluationRenderRequest):
     metrics = MockEvalRecord().get_per_class_metrics()
     metrics[0]["support"] = support
     metrics["macro_avg"]["support"] = support * 2
-    return SimpleNamespace(
+    producer_identity = SaliencyProducerIdentity.from_components(
+        dataset={"epoch": "exact-eeg-content"},
+        split={"name": request.split, "masks": "exact-split-masks"},
+        run={"selection": request.selection.to_dict()},
+        model={"selected_state": "exact-model-state"},
+    )
+    return EvaluationRenderPublication(
         request=request,
+        generation=request.publication_generation,
+        training_boundary=TrainingReadBoundary(
+            trainer_identity="evaluation-panel-test",
+            token=TrainingStateToken(generation=9, stable=True),
+        ),
         data=EvaluationRenderData(
             labels=np.array([0, 1]),
             outputs=np.array([[0.9, 0.1], [0.2, 0.8]]),
@@ -764,6 +780,9 @@ def _detached_render(request: EvaluationRenderRequest):
             summary_identity=summary_identity,
             evaluation_split=request.split,
         ),
+        producer_identities=(producer_identity,),
+        split_specification_fingerprint="split-specification-sha256",
+        split_epoch_revision=12,
     )
 
 
@@ -772,6 +791,7 @@ class _EvaluationReadSideRuntime(Observable):
         super().__init__()
         self._execute = execute
         self._publication = publication
+        self.render = _detached_render
 
     def execute(self, command, **kwargs):
         return self._execute(None, command, **kwargs)
@@ -780,7 +800,35 @@ class _EvaluationReadSideRuntime(Observable):
         return self._publication["value"]
 
     def get_evaluation_render(self, request):
-        return _detached_render(request)
+        return self.render(request)
+
+    def begin_evaluation_render(self, request):
+        from XBrainLab.backend.application.evaluation_work import (
+            EvaluationWorkController,
+        )
+        from XBrainLab.backend.application.owned_work import (
+            OwnedWorkRegistry,
+        )
+
+        if not hasattr(self, "_evaluation_work"):
+            self._evaluation_registry = OwnedWorkRegistry()
+            self._evaluation_work = EvaluationWorkController(
+                registry=self._evaluation_registry,
+                render=self.get_evaluation_render,
+            )
+        return self._evaluation_work.begin(request)
+
+    def run_evaluation_render(self, operation_id, request):
+        return self._evaluation_work.run(operation_id, request)
+
+    def cancel_owned_operation(self, operation_id):
+        return self._evaluation_registry.cancel(operation_id)
+
+    def get_owned_operation(self, operation_id):
+        return self._evaluation_registry.snapshot(operation_id)
+
+    def fail_owned_operation(self, operation_id, *, message):
+        return self._evaluation_registry.fail(operation_id, message=message)
 
 
 def _application_publication(
@@ -824,10 +872,6 @@ def _install_evaluation_read_side(monkeypatch, execute):
         "XBrainLab.ui.panels.evaluation.panel.get_application_view_publication",
         lambda _panel, **_kwargs: publication["value"],
     )
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.evaluation.panel.get_evaluation_render_publication",
-        lambda _panel, request, **_kwargs: _detached_render(request),
-    )
     return runtime, publication
 
 
@@ -842,11 +886,20 @@ def test_evaluation_panel_logic_uses_detached_identity_bound_render(
         calls.append(command)
         return _serialized_evaluation_result()
 
-    _install_evaluation_read_side(monkeypatch, fake_execute)
+    runtime, _publication = _install_evaluation_read_side(monkeypatch, fake_execute)
+    main_thread_id = threading.get_ident()
+    render_thread_ids: list[int] = []
+
+    def capture_render_thread(request):
+        render_thread_ids.append(threading.get_ident())
+        return _detached_render(request)
+
+    runtime.render = capture_render_thread
     panel = EvaluationPanel(parent=MockMainWindow())
     qtbot.addWidget(panel)
 
     panel.update_panel()
+    qtbot.waitUntil(lambda: panel.metrics_table.rowCount() == 3, timeout=1_000)
 
     assert panel.model_combo.count() == 3
     assert panel.model_combo.itemText(0) == "Fold 1 (Plan A)"
@@ -857,6 +910,8 @@ def test_evaluation_panel_logic_uses_detached_identity_bound_render(
     assert isinstance(panel.run_combo.itemData(0), EvaluationRunIdentity)
     assert panel.metrics_table.rowCount() == 3
     assert panel.metrics_table.item(0, 0).text() == "Left hand"
+    assert render_thread_ids
+    assert all(thread_id != main_thread_id for thread_id in render_thread_ids)
     assert panel.split_combo.currentData() == "test"
     assert [
         panel.split_combo.itemData(i) for i in range(panel.split_combo.count())
@@ -865,7 +920,18 @@ def test_evaluation_panel_logic_uses_detached_identity_bound_render(
         "validation",
         "test",
     ]
-    assert calls == [EvaluateCommand()]
+    assert calls[0] == EvaluateCommand()
+    assert calls[1:] == [
+        EvaluateCommand(
+            summary_identity=EvaluationSummaryIdentity(
+                plan=EvaluationPlanIdentity(plan_index=0),
+                run=EvaluationRunIdentity(
+                    plan=EvaluationPlanIdentity(plan_index=0),
+                    run_index=0,
+                ),
+            )
+        )
+    ]
 
     panel.bar_chart.update_plot = MagicMock()
     panel.run_combo.setCurrentIndex(1)
@@ -883,19 +949,16 @@ def test_evaluation_panel_exposes_explicit_cross_fold_summary(
 ):
     requests = []
 
-    _install_evaluation_read_side(
+    runtime, _publication = _install_evaluation_read_side(
         monkeypatch,
         lambda *_args, **_kwargs: _serialized_evaluation_result(),
     )
 
-    def capture_render(_panel, request, **_kwargs):
+    def capture_render(request):
         requests.append(request)
         return _detached_render(request)
 
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.evaluation.panel.get_evaluation_render_publication",
-        capture_render,
-    )
+    runtime.render = capture_render
     panel = EvaluationPanel(parent=MockMainWindow())
     qtbot.addWidget(panel)
     panel.update_panel()
@@ -929,7 +992,7 @@ def test_all_folds_preparation_keeps_gui_responsive_and_drops_stale_result(
     monkeypatch,
 ):
     """All Folds preparation must not block or repaint after selection changes."""
-    _install_evaluation_read_side(
+    runtime, _publication = _install_evaluation_read_side(
         monkeypatch,
         lambda *_args, **_kwargs: _serialized_evaluation_result(),
     )
@@ -939,7 +1002,7 @@ def test_all_folds_preparation_keeps_gui_responsive_and_drops_stale_result(
     worker_thread_ids = []
     preparation_finished_at = []
 
-    def delayed_cross_fold_render(_panel, request, **_kwargs):
+    def delayed_cross_fold_render(request):
         if isinstance(request.selection, EvaluationCrossFoldIdentity):
             worker_thread_ids.append(threading.get_ident())
             started.set()
@@ -947,10 +1010,7 @@ def test_all_folds_preparation_keeps_gui_responsive_and_drops_stale_result(
             preparation_finished_at.append(time.monotonic())
         return _detached_render(request)
 
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.evaluation.panel.get_evaluation_render_publication",
-        delayed_cross_fold_render,
-    )
+    runtime.render = delayed_cross_fold_render
     panel = EvaluationPanel(parent=MockMainWindow())
     qtbot.addWidget(panel)
     panel.update_panel()
@@ -991,6 +1051,220 @@ def test_all_folds_preparation_keeps_gui_responsive_and_drops_stale_result(
         panel._evaluation_render.request.selection,
         EvaluationCrossFoldIdentity,
     )
+
+
+def test_all_folds_cancel_releases_owned_worker_and_retry_publishes_new_identity(
+    qtbot,
+    monkeypatch,
+) -> None:
+    runtime, _publication = _install_evaluation_read_side(
+        monkeypatch,
+        lambda *_args, **_kwargs: _serialized_evaluation_result(),
+    )
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocking_render(request):
+        if isinstance(request.selection, EvaluationCrossFoldIdentity):
+            started.set()
+            release.wait(timeout=1.0)
+        return _detached_render(request)
+
+    runtime.render = blocking_render
+    panel = EvaluationPanel(parent=MockMainWindow())
+    qtbot.addWidget(panel)
+    panel.show()
+    panel.update_panel()
+    panel.model_combo.setCurrentIndex(panel.model_combo.findText("All Folds"))
+    qtbot.waitUntil(started.is_set, timeout=1_000)
+
+    first_operation_id = panel._evaluation_render_active_operation_id
+    assert first_operation_id
+    assert panel.evaluation_background_work_snapshot() == {
+        "idle": False,
+        "remaining_workers": 1,
+        "alive_workers": 1,
+        "operation_id": first_operation_id,
+    }
+    assert panel.btn_cancel_evaluation.isVisibleTo(panel)
+
+    qtbot.mouseClick(panel.btn_cancel_evaluation, Qt.MouseButton.LeftButton)
+    assert (
+        runtime._evaluation_registry.snapshot(first_operation_id).cancel_requested
+        is True
+    )
+    release.set()
+    qtbot.waitUntil(panel.evaluation_background_work_idle, timeout=1_000)
+
+    assert runtime._evaluation_registry.active_snapshots() == ()
+    runtime.render = _detached_render
+    panel.update_views()
+    qtbot.waitUntil(
+        lambda: panel._evaluation_render is not None
+        and panel._evaluation_render.operation_id != first_operation_id,
+        timeout=1_000,
+    )
+
+    assert panel.metrics_table.property("operationId") == (
+        panel._evaluation_render.operation_id
+    )
+    assert panel.metrics_table.property("publicationGeneration") == 4
+    assert panel.metrics_table.property("trainingGeneration") == 9
+    assert panel.metrics_table.property("splitSpecificationFingerprint") == (
+        "split-specification-sha256"
+    )
+    assert panel.metrics_table.property("splitEpochRevision") == 12
+    assert panel.metrics_table.property("evaluationOutputNumericSummary") == {
+        "shape": [2, 2],
+        "dtype": "float64",
+        "count": 4,
+        "finite_count": 4,
+        "nonfinite_count": 0,
+        "minimum": 0.1,
+        "maximum": 0.9,
+    }
+    expected_producer = panel._evaluation_render.producer_identities[0].to_payload()
+    assert panel.metrics_table.property("producerIdentities") == [expected_producer]
+    assert panel.metrics_table.property("producerDatasetFingerprints") == [
+        expected_producer["dataset_fingerprint"]
+    ]
+    assert panel.metrics_table.property("producerSplitFingerprints") == [
+        expected_producer["split_fingerprint"]
+    ]
+    assert panel.metrics_table.property("producerRunFingerprints") == [
+        expected_producer["run_fingerprint"]
+    ]
+    assert panel.metrics_table.property("producerModelFingerprints") == [
+        expected_producer["model_fingerprint"]
+    ]
+    assert runtime._evaluation_registry.active_snapshots() == ()
+
+
+def test_all_folds_owned_operation_is_visible_on_product_status_surface(
+    qtbot,
+    monkeypatch,
+) -> None:
+    runtime, _publication = _install_evaluation_read_side(
+        monkeypatch,
+        lambda *_args, **_kwargs: _serialized_evaluation_result(),
+    )
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocking_render(request):
+        if isinstance(request.selection, EvaluationCrossFoldIdentity):
+            started.set()
+            release.wait(timeout=1.0)
+        return _detached_render(request)
+
+    runtime.render = blocking_render
+    host = QMainWindow()
+    host.study = MockStudy()
+    panel = EvaluationPanel(parent=host)
+    host.setCentralWidget(panel)
+    qtbot.addWidget(host)
+    host.show()
+    panel.update_panel()
+    panel.model_combo.setCurrentIndex(panel.model_combo.findText("All Folds"))
+    qtbot.waitUntil(started.is_set, timeout=1_000)
+    operation_id = panel._evaluation_render_active_operation_id
+    assert operation_id
+
+    status_bar = host.statusBar()
+    assert status_bar.property("operationId") == operation_id
+    assert status_bar.property("stage")
+    assert status_bar.property("operationPhase") in {"pending", "running"}
+    assert status_bar.property("indeterminate") is True
+
+    release.set()
+    qtbot.waitUntil(panel.evaluation_background_work_idle, timeout=1_000)
+    assert runtime._evaluation_registry.active_snapshots() == ()
+
+
+def test_evaluation_close_cancels_but_retains_worker_until_terminal_cleanup(
+    qtbot,
+    monkeypatch,
+) -> None:
+    runtime, _publication = _install_evaluation_read_side(
+        monkeypatch,
+        lambda *_args, **_kwargs: _serialized_evaluation_result(),
+    )
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocking_render(request):
+        if isinstance(request.selection, EvaluationCrossFoldIdentity):
+            started.set()
+            release.wait(timeout=1.0)
+        return _detached_render(request)
+
+    runtime.render = blocking_render
+    panel = EvaluationPanel(parent=MockMainWindow())
+    qtbot.addWidget(panel)
+    panel.show()
+    panel.update_panel()
+    panel.model_combo.setCurrentIndex(panel.model_combo.findText("All Folds"))
+    qtbot.waitUntil(started.is_set, timeout=1_000)
+    operation_id = panel._evaluation_render_active_operation_id
+    assert operation_id
+
+    panel.close()
+
+    assert panel._evaluation_render_worker is not None
+    assert runtime._evaluation_registry.snapshot(operation_id).cancel_requested is True
+    release.set()
+    assert panel.wait_for_evaluation_background_work(timeout=1.0) is True
+    qtbot.waitUntil(panel.evaluation_background_work_idle, timeout=1_000)
+
+    assert runtime._evaluation_registry.active_snapshots() == ()
+    assert panel._evaluation_render_worker is None
+
+
+def test_cancelled_desktop_close_retries_real_evaluation_panel_render(
+    qtbot,
+    monkeypatch,
+) -> None:
+    runtime, _publication = _install_evaluation_read_side(
+        monkeypatch,
+        lambda *_args, **_kwargs: _serialized_evaluation_result(),
+    )
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocking_render(request):
+        if isinstance(request.selection, EvaluationCrossFoldIdentity):
+            started.set()
+            release.wait(timeout=1.0)
+        return _detached_render(request)
+
+    runtime.render = blocking_render
+    panel = EvaluationPanel(parent=MockMainWindow())
+    qtbot.addWidget(panel)
+    panel.update_panel()
+    panel.model_combo.setCurrentIndex(panel.model_combo.findText("All Folds"))
+    qtbot.waitUntil(started.is_set, timeout=1_000)
+    first_operation_id = panel._evaluation_render_active_operation_id
+    assert first_operation_id
+
+    panel.begin_evaluation_render_shutdown()
+
+    assert (
+        runtime._evaluation_registry.snapshot(first_operation_id).cancel_requested
+        is True
+    )
+    assert panel.evaluation_background_work_idle() is False
+
+    panel.cancel_evaluation_render_shutdown()
+    assert panel._evaluation_render_pending_request is not None
+    release.set()
+    qtbot.waitUntil(
+        lambda: panel._evaluation_render is not None
+        and panel._evaluation_render.operation_id != first_operation_id,
+        timeout=1_000,
+    )
+
+    assert panel.evaluation_background_work_idle() is True
+    assert runtime._evaluation_registry.active_snapshots() == ()
 
 
 def test_all_folds_worker_requeues_active_request_after_discarded_result(
@@ -1053,21 +1327,18 @@ def test_all_folds_worker_requeues_active_request_after_discarded_result(
 
 def test_cross_fold_run_selector_keeps_repeats_separate(qtbot, monkeypatch) -> None:
     requests = []
-    _install_evaluation_read_side(
+    runtime, _publication = _install_evaluation_read_side(
         monkeypatch,
         lambda *_args, **_kwargs: _serialized_evaluation_result(
             second_run_finished=True
         ),
     )
 
-    def capture_render(_panel, request, **_kwargs):
+    def capture_render(request):
         requests.append(request)
         return _detached_render(request)
 
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.evaluation.panel.get_evaluation_render_publication",
-        capture_render,
-    )
+    runtime.render = capture_render
     panel = EvaluationPanel(parent=MockMainWindow())
     qtbot.addWidget(panel)
     panel.update_panel()
@@ -1107,25 +1378,32 @@ def test_evaluation_split_selector_requests_and_renders_the_exact_split(
     def fake_execute(_panel, _command, **_kwargs):
         return _serialized_evaluation_result()
 
-    _install_evaluation_read_side(monkeypatch, fake_execute)
+    runtime, _publication = _install_evaluation_read_side(monkeypatch, fake_execute)
 
-    def capture_render(_panel, request, **_kwargs):
+    def capture_render(request):
         requests.append(request)
         return _detached_render(request)
 
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.evaluation.panel.get_evaluation_render_publication",
-        capture_render,
-    )
+    runtime.render = capture_render
     panel = EvaluationPanel(parent=MockMainWindow())
     qtbot.addWidget(panel)
     panel.update_panel()
 
-    assert requests[-1].split == "test"
+    qtbot.waitUntil(
+        lambda: bool(requests)
+        and requests[-1].split == "test"
+        and panel.evaluation_background_work_idle(),
+        timeout=1_000,
+    )
     training_index = panel.split_combo.findData("training")
     panel.split_combo.setCurrentIndex(training_index)
 
-    assert requests[-1].split == "training"
+    qtbot.waitUntil(
+        lambda: requests[-1].split == "training"
+        and panel._evaluation_render is not None
+        and panel._evaluation_render.data.evaluation_split == "training",
+        timeout=1_000,
+    )
     assert panel.metrics_table.item(0, 4).text() == "30"
     assert panel._evaluation_render.data.evaluation_split == "training"
 
@@ -1144,6 +1422,7 @@ def test_aggregate_offers_only_splits_saved_for_every_finished_run(
     panel = EvaluationPanel(parent=MockMainWindow())
     qtbot.addWidget(panel)
     panel.update_panel()
+    qtbot.waitUntil(panel.evaluation_background_work_idle, timeout=1_000)
 
     panel.split_combo.setCurrentIndex(panel.split_combo.findData("validation"))
     assert panel.split_combo.currentData() == "validation"
@@ -1151,6 +1430,11 @@ def test_aggregate_offers_only_splits_saved_for_every_finished_run(
     aggregate_index = panel.run_combo.findText("Summary (Finished Runs)")
     assert aggregate_index >= 0
     panel.run_combo.setCurrentIndex(aggregate_index)
+    qtbot.waitUntil(
+        lambda: panel._evaluation_render is not None
+        and panel._evaluation_render.data.evaluation_split == "test",
+        timeout=1_000,
+    )
 
     assert [
         panel.split_combo.itemData(index) for index in range(panel.split_combo.count())
@@ -1167,7 +1451,10 @@ def test_invalid_evaluation_selection_clears_cached_split_render(qtbot, monkeypa
     panel = EvaluationPanel(parent=MockMainWindow())
     qtbot.addWidget(panel)
     panel.update_panel()
-    assert panel._evaluation_render is not None
+    qtbot.waitUntil(
+        lambda: panel._evaluation_render is not None,
+        timeout=1_000,
+    )
 
     panel.run_combo.setCurrentIndex(1)
 
@@ -1185,6 +1472,10 @@ def test_show_percentages_redraws_only_the_confusion_matrix(qtbot, monkeypatch):
     panel = EvaluationPanel(parent=MockMainWindow())
     qtbot.addWidget(panel)
     panel.update_panel()
+    qtbot.waitUntil(
+        lambda: panel._evaluation_render is not None,
+        timeout=1_000,
+    )
 
     panel.matrix_widget.update_plot = MagicMock()
     panel.metrics_table.update_data = MagicMock()
@@ -1212,17 +1503,19 @@ def test_evaluation_panel_blocks_non_held_out_render_without_retrying(
             },
         )
 
-    _install_evaluation_read_side(monkeypatch, fake_execute)
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.evaluation.panel.get_evaluation_render_publication",
-        unavailable_render,
-    )
+    runtime, _publication = _install_evaluation_read_side(monkeypatch, fake_execute)
+    runtime.render = unavailable_render
     panel = EvaluationPanel(parent=MockMainWindow())
     qtbot.addWidget(panel)
 
     panel.update_panel()
 
     assert panel.plot_stack.currentIndex() == 1
+    qtbot.waitUntil(
+        lambda: panel.no_data_label.text()
+        == "Training-split metrics are diagnostics, not final evaluation.",
+        timeout=1_000,
+    )
     assert panel.no_data_label.text() == (
         "Training-split metrics are diagnostics, not final evaluation."
     )
@@ -1616,15 +1909,12 @@ def test_evaluation_panel_rejects_non_identity_combo_state(
         "XBrainLab.ui.panels.evaluation.panel.execute_application_command",
         lambda *_args, **_kwargs: None,
     )
-    render = MagicMock(
-        side_effect=AssertionError("invalid selection must not request a render"),
-    )
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.evaluation.panel.get_evaluation_render_publication",
-        render,
-    )
     panel = EvaluationPanel(parent=RealMainWindow())
     qtbot.addWidget(panel)
+    request_render = MagicMock(
+        side_effect=AssertionError("invalid selection must not request a render"),
+    )
+    monkeypatch.setattr(panel, "_request_evaluation_render", request_render)
     stale_plan = MockPlanHolder("Stale Plan")
     panel.model_combo.clear()
     panel.model_combo.addItem("Fold 1: Stale Plan", stale_plan)
@@ -1633,7 +1923,7 @@ def test_evaluation_panel_rejects_non_identity_combo_state(
 
     panel.update_views()
 
-    render.assert_not_called()
+    request_render.assert_not_called()
     assert panel.metrics_table.rowCount() == 0
     assert panel.summary_text.toPlainText() == ""
 
@@ -1649,30 +1939,31 @@ def test_evaluation_panel_clears_metrics_when_detached_average_is_unavailable(
             super().__init__()
             self.study = Study()
 
-    _install_evaluation_read_side(
+    runtime, _publication = _install_evaluation_read_side(
         monkeypatch,
         lambda *_args, **_kwargs: _serialized_evaluation_result(),
     )
-    monkeypatch.setattr(
-        "XBrainLab.ui.panels.evaluation.panel.get_evaluation_render_publication",
-        lambda _panel, request, **_kwargs: (
-            None
-            if isinstance(request.selection, EvaluationPlanIdentity)
-            else _detached_render(request)
-        ),
+    runtime.render = lambda request: (
+        None
+        if isinstance(request.selection, EvaluationPlanIdentity)
+        else _detached_render(request)
     )
 
     panel = EvaluationPanel(parent=RealMainWindow())
     qtbot.addWidget(panel)
 
     panel.update_panel()
-    assert panel.metrics_table.rowCount() > 0
+    qtbot.waitUntil(lambda: panel.metrics_table.rowCount() > 0, timeout=1_000)
 
     average_index = panel.run_combo.findText("Summary (Finished Runs)")
     assert average_index >= 0
     panel.run_combo.setCurrentIndex(average_index)
 
-    assert panel.metrics_table.rowCount() == 0
+    qtbot.waitUntil(
+        lambda: panel.metrics_table.rowCount() == 0
+        and panel.evaluation_background_work_idle(),
+        timeout=1_000,
+    )
 
 
 def test_evaluation_panel_clears_stale_plans_on_new_application_revision(

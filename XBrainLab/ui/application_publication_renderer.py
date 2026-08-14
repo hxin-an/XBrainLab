@@ -31,7 +31,10 @@ class ApplicationPublicationRenderLedger(QObject):
         self,
         *,
         panel_name: str,
-        render_publication: Callable[[ApplicationViewPublication], bool | None],
+        render_publication: Callable[
+            [ApplicationViewPublication],
+            bool | None | ObserverDeliveryStatus,
+        ],
         commit_publication: Callable[[ApplicationViewPublication], None],
         parent: QObject,
     ) -> None:
@@ -125,17 +128,22 @@ class ApplicationPublicationRenderLedger(QObject):
 
         self._render_in_progress = True
         try:
-            rendered = self._render_publication(publication)
+            render_status = self._panel_render_status(
+                self._render_publication(publication)
+            )
         except Exception:
             self._record_failed_attempt(publication, render_exception=True)
         else:
-            if rendered is False:
+            if render_status is ObserverDeliveryStatus.DEFERRED:
                 self._record_failed_attempt(
                     publication,
                     render_exception=False,
                     report_failure=False,
                 )
-            elif not self.record_rendered(publication):
+            elif (
+                render_status is ObserverDeliveryStatus.FAILED
+                or not self.record_rendered(publication)
+            ):
                 self._record_failed_attempt(publication, render_exception=False)
         finally:
             self._render_in_progress = False
@@ -179,6 +187,19 @@ class ApplicationPublicationRenderLedger(QObject):
             or self._attempts % 120 == 0
         )
 
+    @staticmethod
+    def _panel_render_status(result: object) -> ObserverDeliveryStatus:
+        """Normalize typed results while preserving legacy panel callbacks."""
+        if result is ObserverDeliveryStatus.DELIVERED:
+            return ObserverDeliveryStatus.DELIVERED
+        if result is ObserverDeliveryStatus.DEFERRED or result is False:
+            return ObserverDeliveryStatus.DEFERRED
+        if isinstance(result, ObserverDeliveryStatus):
+            return ObserverDeliveryStatus.FAILED
+        if result is None or result is True:
+            return ObserverDeliveryStatus.DELIVERED
+        return ObserverDeliveryStatus.FAILED
+
     def cleanup(self) -> None:
         """Cancel queued and retry work without rendering during teardown."""
         self._disposed = True
@@ -194,7 +215,10 @@ class DesktopApplicationPublicationRenderer(QObject):
         self,
         *,
         service: ApplicationService,
-        render_publication: Callable[[ApplicationViewPublication], bool],
+        render_publication: Callable[
+            [ApplicationViewPublication],
+            bool | None | ObserverDeliveryStatus,
+        ],
         parent: QObject,
     ) -> None:
         super().__init__(parent)
@@ -202,6 +226,7 @@ class DesktopApplicationPublicationRenderer(QObject):
         self._render_publication = render_publication
         self._pending_publication: ApplicationViewPublication | None = None
         self._render_attempts = 0
+        self._render_failures = 0
         self._paused_for_shutdown = False
         self._disposed = False
         self._delivery_owner = object()
@@ -247,6 +272,7 @@ class DesktopApplicationPublicationRenderer(QObject):
         if pending is None or publication.revision > pending.revision:
             self._pending_publication = publication
             self._render_attempts = 0
+            self._render_failures = 0
         if self._paused_for_shutdown:
             return ObserverDeliveryStatus.DEFERRED
         if self._attempt_pending_render():
@@ -268,22 +294,22 @@ class DesktopApplicationPublicationRenderer(QObject):
         if publication is None:
             return True
         try:
-            rendered = self._render_publication(publication)
+            render_status = self._desktop_render_status(
+                self._render_publication(publication)
+            )
         except Exception:
             self._schedule_retry()
-            logger.exception(
-                "Desktop application publication render failed for revision %s",
-                publication.revision,
+            self._record_render_failure(
+                publication,
+                render_exception=True,
             )
             return False
-        if rendered is not True:
+        if render_status is not ObserverDeliveryStatus.DELIVERED:
             self._schedule_retry()
-            if self._render_attempts == DESKTOP_PUBLICATION_RENDER_MAX_ATTEMPTS:
-                logger.error(
-                    "Desktop application publication was not rendered after %s "
-                    "attempts for revision %s; continuing low-frequency recovery",
-                    self._render_attempts,
-                    publication.revision,
+            if render_status is ObserverDeliveryStatus.FAILED:
+                self._record_render_failure(
+                    publication,
+                    render_exception=False,
                 )
             return False
         try:
@@ -313,8 +339,41 @@ class DesktopApplicationPublicationRenderer(QObject):
             return True
         self._pending_publication = None
         self._render_attempts = 0
+        self._render_failures = 0
         self._retry_timer.stop()
         return True
+
+    @staticmethod
+    def _desktop_render_status(result: object) -> ObserverDeliveryStatus:
+        """Treat legacy False/None render results as retryable deferral."""
+        if result is ObserverDeliveryStatus.DELIVERED or result is True:
+            return ObserverDeliveryStatus.DELIVERED
+        if (
+            result is ObserverDeliveryStatus.DEFERRED
+            or result is False
+            or result is None
+        ):
+            return ObserverDeliveryStatus.DEFERRED
+        return ObserverDeliveryStatus.FAILED
+
+    def _record_render_failure(
+        self,
+        publication: ApplicationViewPublication,
+        *,
+        render_exception: bool,
+    ) -> None:
+        """Report genuine failures while retaining the revision for recovery."""
+        self._render_failures += 1
+        if self._render_failures > 3 and self._render_failures % 120 != 0:
+            return
+        log_failure = logger.exception if render_exception else logger.error
+        log_failure(
+            "Desktop application publication render failed for revision %s "
+            "(failure %s; retry attempt %s)",
+            publication.revision,
+            self._render_failures,
+            self._render_attempts,
+        )
 
     def _retain_publication_for_retry(
         self,
@@ -365,4 +424,5 @@ class DesktopApplicationPublicationRenderer(QObject):
         self._retry_timer.stop()
         self._pending_publication = None
         self._render_attempts = 0
+        self._render_failures = 0
         self._bridge.cleanup()

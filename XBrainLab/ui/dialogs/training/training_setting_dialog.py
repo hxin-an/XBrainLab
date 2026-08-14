@@ -725,26 +725,36 @@ class TrainingSettingDialog(BaseDialog):
             form_layout.addWidget(button, row, 2)
 
         # Entries with default values for easier testing
-        self.epoch_entry = QLineEdit("10")
-        add_simple_row(0, "Training epochs", self.epoch_entry)
+        epoch_entry = QLineEdit("10")
+        self.epoch_entry = epoch_entry
+        epoch_entry.setObjectName("TrainingEpochsInput")
+        add_simple_row(0, "Training epochs", epoch_entry)
 
-        self.bs_entry = QLineEdit("32")
-        add_simple_row(1, "Batch size", self.bs_entry)
+        bs_entry = QLineEdit("32")
+        self.bs_entry = bs_entry
+        bs_entry.setObjectName("TrainingBatchSizeInput")
+        add_simple_row(1, "Batch size", bs_entry)
 
-        self.lr_entry = QLineEdit("0.001")
-        add_simple_row(2, "Learning rate", self.lr_entry)
+        lr_entry = QLineEdit("0.001")
+        self.lr_entry = lr_entry
+        lr_entry.setObjectName("TrainingLearningRateInput")
+        add_simple_row(2, "Learning rate", lr_entry)
 
         # Optimizer
-        self.opt_label = QLabel("")
+        opt_label = QLabel("")
+        self.opt_label = opt_label
+        opt_label.setObjectName("TrainingOptimizerValue")
         self.opt_btn = QPushButton("Set")
         self.opt_btn.clicked.connect(self.set_optimizer)
-        add_set_row(3, "Optimizer", self.opt_label, self.opt_btn)
+        add_set_row(3, "Optimizer", opt_label, self.opt_btn)
 
         # Device
-        self.dev_label = QLabel("")
+        dev_label = QLabel("")
+        self.dev_label = dev_label
+        dev_label.setObjectName("TrainingDeviceValue")
         self.dev_btn = QPushButton("Set")
         self.dev_btn.clicked.connect(self.set_device)
-        add_set_row(4, "Device", self.dev_label, self.dev_btn)
+        add_set_row(4, "Device", dev_label, self.dev_btn)
 
         # Output Directory
         output_dir_label = QLabel("")
@@ -766,6 +776,7 @@ class TrainingSettingDialog(BaseDialog):
         # Evaluation
         evaluation_combo = QComboBox()
         self.evaluation_combo = evaluation_combo
+        evaluation_combo.setObjectName("TrainingEvaluationInput")
         self.evaluation_list = [
             self._EVALUATION_DISPLAY_LABELS[option] for option in TrainingEvaluation
         ]
@@ -777,8 +788,10 @@ class TrainingSettingDialog(BaseDialog):
         self._set_evaluation_option(TrainingEvaluation.VAL_LOSS)
         add_simple_row(7, "Evaluation", evaluation_combo)
 
-        self.repeat_entry = QLineEdit("1")
-        add_simple_row(8, "Repeat number", self.repeat_entry)
+        repeat_entry = QLineEdit("1")
+        self.repeat_entry = repeat_entry
+        repeat_entry.setObjectName("TrainingRepeatsInput")
+        add_simple_row(8, "Repeat number", repeat_entry)
 
         resource_preview_note = QLabel("")
         self.resource_preview_note = resource_preview_note

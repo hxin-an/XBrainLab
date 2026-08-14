@@ -351,12 +351,18 @@ def _normalize_timestamp_rows(
         seen.add(key)
         unique_rows.append(row)
 
+    class_rows = [row for row in unique_rows if row.use_as_class]
+    relative_samples = (
+        raw_mne.time_as_index(
+            [row.onset for row in class_rows],
+            use_rounding=True,
+        )
+        if class_rows
+        else ()
+    )
     class_rows_by_sample: dict[int, list[_TimestampRow]] = {}
-    for row in unique_rows:
-        if not row.use_as_class:
-            continue
-        relative_sample = int(raw_mne.time_as_index([row.onset], use_rounding=True)[0])
-        absolute_sample = int(raw_mne.first_samp) + relative_sample
+    for row, relative_sample in zip(class_rows, relative_samples, strict=True):
+        absolute_sample = int(raw_mne.first_samp) + int(relative_sample)
         if absolute_sample < int(raw_mne.first_samp) or absolute_sample > int(
             raw_mne.last_samp
         ):
@@ -491,14 +497,21 @@ def _events_from_timestamp_rows(
     class_rows = [row for row in rows if row.use_as_class]
     descriptions = sorted({row.description for row in class_rows})
     event_id = {description: index for index, description in enumerate(descriptions, 1)}
+    relative_samples = (
+        raw_mne.time_as_index(
+            [row.onset for row in class_rows],
+            use_rounding=True,
+        )
+        if class_rows
+        else ()
+    )
     event_rows = [
         [
-            int(raw_mne.first_samp)
-            + int(raw_mne.time_as_index([row.onset], use_rounding=True)[0]),
+            int(raw_mne.first_samp) + int(relative_sample),
             0,
             event_id[row.description],
         ]
-        for row in class_rows
+        for row, relative_sample in zip(class_rows, relative_samples, strict=True)
     ]
     event_rows.sort(key=lambda row: (row[0], row[2]))
     events = np.asarray(event_rows, dtype=int).reshape((-1, 3))

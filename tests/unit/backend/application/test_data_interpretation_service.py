@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -34,6 +36,9 @@ from XBrainLab.backend.application.commands import (
 from XBrainLab.backend.application.data_interpretation_candidate import (
     build_interpretation_candidate,
 )
+from XBrainLab.backend.application.data_interpretation_discovery_preparation import (
+    ApplicationDiscoveryBoundary,
+)
 from XBrainLab.backend.application.data_interpretation_resource_receipt import (
     INTERPRETATION_PREFLIGHT_RECEIPT_LIMIT,
     INTERPRETATION_PREFLIGHT_RECEIPT_TTL_SECONDS,
@@ -48,6 +53,162 @@ from XBrainLab.backend.application.errors import (
     PreconditionError,
 )
 from XBrainLab.backend.application.resource_guard import ResourcePreflightResult
+from XBrainLab.backend.application.state import ApplicationStateSnapshot
+
+
+def test_discovery_prepare_paths_cannot_publish_session_state() -> None:
+    prepare_names = (
+        "_prepare_scan_source",
+        "_prepare_review_interpretation",
+        "_prepare_preview_interpretation",
+        "_prepare_validate_interpretation",
+    )
+
+    for name in prepare_names:
+        source = inspect.getsource(getattr(DataInterpretationCommandService, name))
+        assert "owned_work_commit_boundary" not in source
+        assert ".record_scan(" not in source
+        assert ".record_preview(" not in source
+        assert ".record_validation(" not in source
+
+    commit_source = inspect.getsource(
+        DataInterpretationCommandService.commit_prepared_interpretation_discovery
+    )
+    assert "owned_work_commit_boundary" in commit_source
+    assert "publish_staged_session_state" in commit_source
+
+
+def test_apply_begin_only_captures_short_state_and_prepare_owns_resources() -> None:
+    begin_source = inspect.getsource(
+        DataInterpretationCommandService.begin_apply_interpretation
+    )
+    prepare_source = inspect.getsource(
+        DataInterpretationCommandService.prepare_apply_interpretation
+    )
+    guard_source = inspect.getsource(
+        DataInterpretationCommandService._ensure_apply_session_is_current
+    )
+
+    assert "_resolve_apply_resource_preflight" not in begin_source
+    assert "_admitted_reviewed_label_resources" not in begin_source
+    assert "checkpoint_apply_state" not in begin_source
+    assert "deepcopy(self.state)" not in begin_source
+    assert "session_identity" in begin_source
+    assert "_resolve_apply_resource_preflight" in prepare_source
+    assert "_admitted_reviewed_label_resources" in prepare_source
+    assert "_ensure_apply_session_is_current" in prepare_source
+    assert "session_identity_is_current" in guard_source
+
+
+def test_discovery_commit_publishes_prepared_state_without_commit_time_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
+    eeg_path.write_bytes(b"stable EEG header")
+    service, _dataset = _service()
+    plan = service.begin_interpretation_discovery(
+        ScanSourceCommand(source_path=str(eeg_path)),
+        application_boundary=ApplicationDiscoveryBoundary(
+            publication_generation=0,
+            publication_revision=0,
+            state=ApplicationStateSnapshot.empty(),
+        ),
+    )
+    prepared = service.prepare_interpretation_discovery(plan)
+
+    monkeypatch.setattr(
+        service.state,
+        "checkpoint_session_state",
+        lambda: pytest.fail("commit copied the live session checkpoint"),
+    )
+    monkeypatch.setattr(
+        service.state,
+        "restore_session_state",
+        lambda _checkpoint: pytest.fail("commit recopied prepared session state"),
+    )
+
+    _message, payload = _expect_payload(
+        service.commit_prepared_interpretation_discovery(prepared)
+    )
+
+    assert payload["payload_type"] == "scan_result"
+    assert service.state.snapshot().has_scan_result is True
+
+
+def test_discovery_commit_isolates_live_nested_state_from_prepared_receipt(
+    tmp_path: Path,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
+    eeg_path.write_bytes(b"stable EEG header")
+    service, _dataset = _service()
+    plan = service.begin_interpretation_discovery(
+        ScanSourceCommand(source_path=str(eeg_path)),
+        application_boundary=ApplicationDiscoveryBoundary(
+            publication_generation=0,
+            publication_revision=0,
+            state=ApplicationStateSnapshot.empty(),
+        ),
+    )
+    prepared = service.prepare_interpretation_discovery(plan)
+
+    service.commit_prepared_interpretation_discovery(prepared)
+    [prepared_scan] = prepared.state_after.scans.values()
+    prepared_scan.eeg_files.append(str(tmp_path / "mutated-after-commit.fif"))
+
+    live_scan = service.state.resolve_scan(None)
+    assert live_scan.eeg_files == [str(eeg_path.resolve())]
+
+
+def test_discovery_prepared_state_is_one_shot_without_second_live_mutation(
+    tmp_path: Path,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
+    eeg_path.write_bytes(b"stable EEG header")
+    service, _dataset = _service()
+    plan = service.begin_interpretation_discovery(
+        ScanSourceCommand(source_path=str(eeg_path)),
+        application_boundary=ApplicationDiscoveryBoundary(
+            publication_generation=0,
+            publication_revision=0,
+            state=ApplicationStateSnapshot.empty(),
+        ),
+    )
+    prepared = service.prepare_interpretation_discovery(plan)
+    service.commit_prepared_interpretation_discovery(prepared)
+    committed = service.state.checkpoint_session_state()
+
+    with pytest.raises(PreconditionError, match="state changed"):
+        service.commit_prepared_interpretation_discovery(prepared)
+
+    assert service.state.checkpoint_session_state() == committed
+
+
+def test_discovery_commit_validates_cache_payload_before_live_publication(
+    tmp_path: Path,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
+    eeg_path.write_bytes(b"stable EEG header")
+    service, _dataset = _service()
+    plan = service.begin_interpretation_discovery(
+        ScanSourceCommand(source_path=str(eeg_path)),
+        application_boundary=ApplicationDiscoveryBoundary(
+            publication_generation=0,
+            publication_revision=0,
+            state=ApplicationStateSnapshot.empty(),
+        ),
+    )
+    prepared = service.prepare_interpretation_discovery(plan)
+    malformed = replace(
+        prepared,
+        safe_preview_admissions=(([], object()),),
+    )
+    before = service.state.checkpoint_session_state()
+
+    with pytest.raises(TypeError, match="unhashable"):
+        service.commit_prepared_interpretation_discovery(malformed)
+
+    assert service.state.checkpoint_session_state() == before
 
 
 class _LoadedData:
@@ -192,6 +353,46 @@ def _resource_challenge(exc: resource_guard.ResourceConfirmationRequiredError) -
     assert isinstance(challenge, dict)
     assert challenge["challenge_id"]
     return challenge
+
+
+def test_apply_resource_preflight_publishes_scope_estimate_and_finalize_stages(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_path = tmp_path / "subject.bdf"
+    eeg_path.write_bytes(b"header")
+    service, _dataset = _service()
+    candidate = SimpleNamespace(
+        candidate_id="candidate-1",
+        selected_eeg_files=[str(eeg_path)],
+        label_carriers=[],
+        content_identity={},
+    )
+    stages: list[str] = []
+    monkeypatch.setattr(
+        service_module,
+        "owned_work_checkpoint",
+        lambda stage, **_kwargs: stages.append(stage),
+    )
+    monkeypatch.setattr(
+        service_module,
+        "check_import_resource_preflight",
+        lambda paths: _resource_preflight("safe", paths),
+    )
+
+    preflight, receipt, reused = service._resolve_apply_resource_preflight(
+        command=ApplyInterpretationCommand(candidate_id="candidate-1"),
+        candidate=candidate,
+    )
+
+    assert preflight.risk_level is resource_guard.ResourceRiskLevel.SAFE
+    assert receipt is None
+    assert reused is False
+    assert stages == [
+        "Binding reviewed import resource scope",
+        "Estimating reviewed import resources",
+        "Finalizing reviewed import resource preflight",
+    ]
 
 
 def _mutate_same_size(path: Path) -> None:
@@ -3032,6 +3233,135 @@ def test_repeated_safe_preview_reuses_admission_after_identity_check(
 
     assert checks == 0
     assert payload["resource_preflight"]["admission_cache_reused"] is True
+
+
+def test_apply_rechecks_resources_when_current_ram_invalidates_safe_review(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
+    eeg_path.write_bytes(b"stable EEG header")
+    service, _dataset = _service()
+    service.handle_review_interpretation(
+        ReviewInterpretationCommand(
+            source_path=str(eeg_path),
+            choices={"selected_eeg_files": [str(eeg_path.resolve())]},
+        )
+    )
+    candidate = service.state.resolve_candidate(None)
+    checks = 0
+
+    def _blocking_check(paths: list[str]) -> ResourcePreflightResult:
+        nonlocal checks
+        checks += 1
+        return _resource_preflight("blocking", paths)
+
+    monkeypatch.setattr(service_module, "available_ram_bytes", lambda: 0)
+    monkeypatch.setattr(
+        service_module,
+        "check_import_resource_preflight",
+        _blocking_check,
+    )
+
+    with pytest.raises(ApplicationError):
+        service._resolve_apply_resource_preflight(
+            command=ApplyInterpretationCommand(candidate_id=candidate.candidate_id),
+            candidate=candidate,
+            reuse_safe_preview_admission=True,
+        )
+
+    assert checks == 1
+
+
+def test_apply_rechecks_resources_when_platform_change_time_is_unreliable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
+    eeg_path.write_bytes(b"stable EEG header")
+    service, _dataset = _service()
+    service.handle_review_interpretation(
+        ReviewInterpretationCommand(
+            source_path=str(eeg_path),
+            choices={"selected_eeg_files": [str(eeg_path.resolve())]},
+        )
+    )
+    candidate = service.state.resolve_candidate(None)
+    original_check = service_module.check_import_resource_preflight
+    checks = 0
+
+    def _counted_check(paths: list[str]) -> ResourcePreflightResult:
+        nonlocal checks
+        checks += 1
+        return original_check(paths)
+
+    monkeypatch.setattr(
+        service_module,
+        "_stat_change_time_is_reliable",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        service_module,
+        "check_import_resource_preflight",
+        _counted_check,
+    )
+
+    preflight, receipt, reused = service._resolve_apply_resource_preflight(
+        command=ApplyInterpretationCommand(candidate_id=candidate.candidate_id),
+        candidate=candidate,
+        reuse_safe_preview_admission=True,
+    )
+
+    assert preflight.risk_level is resource_guard.ResourceRiskLevel.SAFE
+    assert receipt is None
+    assert reused is False
+    assert checks == 1
+
+
+def test_apply_does_not_reuse_safe_review_for_different_resource_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
+    extra_path = tmp_path / "sub-01_task-mi_run-02_raw.fif"
+    eeg_path.write_bytes(b"stable EEG header")
+    extra_path.write_bytes(b"different EEG header")
+    service, _dataset = _service()
+    service.handle_review_interpretation(
+        ReviewInterpretationCommand(
+            source_path=str(eeg_path),
+            choices={"selected_eeg_files": [str(eeg_path.resolve())]},
+        )
+    )
+    candidate = service.state.resolve_candidate(None)
+    changed_scope_candidate = replace(
+        candidate,
+        selected_eeg_files=[*candidate.selected_eeg_files, str(extra_path.resolve())],
+    )
+    original_check = service_module.check_import_resource_preflight
+    checks = 0
+
+    def _counted_check(paths: list[str]) -> ResourcePreflightResult:
+        nonlocal checks
+        checks += 1
+        return original_check(paths)
+
+    monkeypatch.setattr(
+        service_module,
+        "check_import_resource_preflight",
+        _counted_check,
+    )
+
+    preflight, receipt, reused = service._resolve_apply_resource_preflight(
+        command=ApplyInterpretationCommand(candidate_id=candidate.candidate_id),
+        candidate=changed_scope_candidate,
+        reuse_safe_preview_admission=True,
+    )
+
+    assert preflight.risk_level is resource_guard.ResourceRiskLevel.SAFE
+    assert receipt is None
+    assert reused is False
+    assert checks == 1
 
 
 def test_first_safe_preview_reuses_matching_scan_admission(

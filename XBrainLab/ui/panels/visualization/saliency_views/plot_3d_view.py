@@ -706,18 +706,19 @@ class Saliency3DPlotWidget(QWidget):
                 return f"{method} saliency is being computed in the background."
             if status.phase is PostTrainingSaliencyPhase.FAILED:
                 if status.message:
-                    logger.error("Automatic saliency failed: %s", status.message)
+                    logger.error("Saliency computation failed: %s", status.message)
                 return (
-                    "Automatic saliency could not be completed. "
+                    "Saliency computation could not be completed. "
                     "Recompute saliency to try again."
                 )
             if status.phase is PostTrainingSaliencyPhase.CANCELLED:
                 return (
-                    "Automatic saliency was cancelled. Recompute saliency to try again."
+                    "Saliency computation was cancelled. "
+                    "Recompute saliency to try again."
                 )
             if status.phase is PostTrainingSaliencyPhase.SUCCEEDED:
                 return (
-                    f"Automatic saliency finished without renderable {method} output "
+                    f"Saliency computation finished without renderable {method} output "
                     "for this class. Recompute saliency to try again."
                 )
         if coverage is not None and coverage.reason:

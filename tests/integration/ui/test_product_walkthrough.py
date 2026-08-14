@@ -10,7 +10,6 @@ import mne
 import numpy as np
 import pytest
 import torch
-from matplotlib.figure import Figure
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractButton,
@@ -56,7 +55,7 @@ from XBrainLab.backend.training import (
     TrainingOption,
     TrainingPlanHolder,
 )
-from XBrainLab.backend.training.record import RecordKey, TrainRecordKey
+from XBrainLab.backend.training.record import EvalRecord, RecordKey, TrainRecordKey
 from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.agent.response_presentation import AssistantResponsePresentation
 from XBrainLab.llm.agent.runtime_state import (
@@ -955,76 +954,60 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         assert defer_synchronous_completion is False
         assert service.get_state().dataset.split_materialized is True
         fake_train_calls.append(command)
-        eval_record = SimpleNamespace(
+        eval_record = EvalRecord(
             label=np.array([0, 1, 0, 1]),
-            output=np.array([0, 1, 0, 1]),
+            output=np.array(
+                [
+                    [4.0, -4.0],
+                    [-4.0, 4.0],
+                    [4.0, -4.0],
+                    [-4.0, 4.0],
+                ]
+            ),
             evaluation_split="test",
             gradient={},
             gradient_input={},
             smoothgrad={},
             smoothgrad_sq={},
             vargrad={},
-            get_per_class_metrics=lambda: {
-                0: {"precision": 1.0, "recall": 1.0, "f1-score": 1.0, "support": 2},
-                1: {"precision": 1.0, "recall": 1.0, "f1-score": 1.0, "support": 2},
-                "macro_avg": {
-                    "precision": 1.0,
-                    "recall": 1.0,
-                    "f1-score": 1.0,
-                    "support": 4,
-                },
-            },
-            get_acc=lambda: 1.0,
-            get_auc=lambda: None,
-            get_kappa=lambda: 1.0,
-        )
-        record = SimpleNamespace(
-            epoch=1,
-            repeat=0,
-            train={
-                TrainRecordKey.LOSS: [0.25],
-                TrainRecordKey.ACC: [100.0],
-                TrainRecordKey.AUC: [None],
-                TrainRecordKey.LR: [0.001],
-                TrainRecordKey.TIME: [0.1],
-            },
-            val={
-                RecordKey.LOSS: [0.2],
-                RecordKey.ACC: [100.0],
-                RecordKey.AUC: [None],
-            },
-            eval_record=eval_record,
-            is_finished=lambda: True,
-            get_epoch=lambda: 1,
-            get_eval_record=lambda: eval_record,
-            get_confusion_figure=lambda show_percentage=False: Figure(figsize=(3, 2)),
         )
         model_holder = ModelHolder(EEGNet, {}, None)
         option = training_option_holder["option"]
-
-        class _CompletedWalkthroughPlan(TrainingPlanHolder):
-            def __init__(self):
-                self.model_holder = model_holder
-                self.option = option
-                self.train_record_list = [record]
-                self._state_tracker = None
-                self._interrupt = False
-                self.error = None
-                self.status = "Finished"
-
-            def bind_state_tracker(self, tracker) -> None:
-                self._state_tracker = tracker
-
-            def get_name(self) -> str:
-                return "Product walkthrough dry-run"
-
-            def get_plans(self):
-                return list(self.train_record_list)
-
-            def get_training_repeat(self) -> int:
-                return 0
-
-        test_app.study.trainer = Trainer([_CompletedWalkthroughPlan()])
+        admitted_datasets = (
+            _training_commands.training_runtime.resource_context().datasets
+        )
+        assert len(admitted_datasets) == 1
+        completed_plan = TrainingPlanHolder(
+            model_holder,
+            admitted_datasets[0],
+            option,
+            None,
+        )
+        record = completed_plan.train_record_list[0]
+        record.update_train(
+            {
+                TrainRecordKey.LOSS: 0.25,
+                TrainRecordKey.ACC: 100.0,
+                TrainRecordKey.AUC: None,
+            }
+        )
+        record.update_statistic(
+            {
+                TrainRecordKey.LR: 0.001,
+                TrainRecordKey.TIME: 0.1,
+            }
+        )
+        record.update_validation(
+            {
+                RecordKey.LOSS: 0.2,
+                RecordKey.ACC: 100.0,
+                RecordKey.AUC: None,
+            }
+        )
+        record.step()
+        record.set_eval_record(eval_record)
+        completed_plan.status = "Finished"
+        test_app.study.trainer = Trainer([completed_plan])
         return (
             "Training started.",
             {
@@ -1044,7 +1027,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
     test_app.init_agent()
     manager = test_app.agent_manager
     assert service._command_handlers[CommandName.TRAIN] == (
-        service._handle_train_with_automation
+        service._handle_train_with_saved_split
     )
 
     test_app.switch_page(0)
@@ -1345,3 +1328,20 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
     _wait_for_workflow_panel(qtbot, test_app, 3, "evaluation_panel")
     assert test_app.evaluation_panel.model_combo.currentText().startswith("Fold 1")
     assert "Finished" in test_app.evaluation_panel.run_combo.currentText()
+    qtbot.waitUntil(
+        lambda: test_app.evaluation_panel._evaluation_render is not None,
+        timeout=10_000,
+    )
+    qtbot.waitUntil(
+        lambda: test_app.evaluation_panel._evaluation_render_worker is None,
+        timeout=10_000,
+    )
+    producer_identities = test_app.evaluation_panel.metrics_table.property(
+        "producerIdentities"
+    )
+    assert isinstance(producer_identities, list)
+    assert len(producer_identities) == 1
+    assert producer_identities[0]["dataset_fingerprint"]
+    assert producer_identities[0]["split_fingerprint"]
+    assert producer_identities[0]["run_fingerprint"]
+    assert producer_identities[0]["model_fingerprint"]

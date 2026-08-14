@@ -271,9 +271,9 @@ def build_benchmark_rag(train_path: Path, tmp_dir: str):
 
     Returns ``(client, embeddings, collection_name)`` for retrieval.
     """
-    from langchain.docstore.document import Document
-    from langchain_community.embeddings import HuggingFaceEmbeddings
-    from langchain_community.vectorstores import Qdrant
+    from langchain_core.documents import Document
+    from langchain_huggingface import HuggingFaceEmbeddings
+    from langchain_qdrant import Qdrant
     from qdrant_client import QdrantClient
     from qdrant_client.http import models as rest
 

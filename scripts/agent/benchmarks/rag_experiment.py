@@ -54,9 +54,9 @@ def build_index(train_path: Path, tmp_dir: str):
     *index_metadata* is a dict mapping each indexed doc's page_content
     to its metadata (tool_calls, category, id) for later evaluation.
     """
-    from langchain.docstore.document import Document
-    from langchain_community.embeddings import HuggingFaceEmbeddings
-    from langchain_community.vectorstores import Qdrant
+    from langchain_core.documents import Document
+    from langchain_huggingface import HuggingFaceEmbeddings
+    from langchain_qdrant import Qdrant
     from qdrant_client import QdrantClient
     from qdrant_client.http import models as rest
 

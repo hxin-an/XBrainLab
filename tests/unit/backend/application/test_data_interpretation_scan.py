@@ -1124,7 +1124,7 @@ def test_scan_source_path_skips_symbolic_links(tmp_path: Path):
     assert any("Skipped symbolic link" in warning for warning in scan.warnings)
 
 
-def test_regular_folder_scan_rejects_child_resolved_outside_selected_root(
+def test_regular_folder_scan_rejects_changed_parent_directory_identity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1132,16 +1132,22 @@ def test_regular_folder_scan_rejects_child_resolved_outside_selected_root(
     selected_root.mkdir()
     substituted_child = selected_root / "substituted.gdf"
     substituted_child.write_bytes(b"inside before resolution")
-    outside_eeg = tmp_path / "outside.gdf"
-    outside_eeg.write_bytes(b"outside")
-    original_resolve = Path.resolve
+    original_lstat = Path.lstat
+    root_observations = 0
 
-    def _resolve_substituted_child(path: Path, strict: bool = False) -> Path:
-        if path == substituted_child:
-            return original_resolve(outside_eeg, strict=strict)
-        return original_resolve(path, strict=strict)
+    def _changed_parent_identity(path: Path):
+        nonlocal root_observations
+        status = original_lstat(path)
+        if path != selected_root:
+            return status
+        root_observations += 1
+        if root_observations == 1:
+            return status
+        values = list(status)
+        values[1] += 1
+        return status.__class__(values)
 
-    monkeypatch.setattr(Path, "resolve", _resolve_substituted_child)
+    monkeypatch.setattr(Path, "lstat", _changed_parent_identity)
 
     scope = discover_source_preflight_scope(
         source_path=str(selected_root),
@@ -1151,8 +1157,7 @@ def test_regular_folder_scan_rejects_child_resolved_outside_selected_root(
     assert scope.eeg_files == []
     assert scope.all_files == []
     assert any(
-        "resolved outside the selected source root" in warning
-        for warning in scope.discovery_warnings
+        "directory identity changed" in warning for warning in scope.discovery_warnings
     )
 
 

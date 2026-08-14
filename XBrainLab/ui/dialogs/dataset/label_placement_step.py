@@ -87,10 +87,6 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             "Read labels from",
             self.rule_label_field_combo,
         )
-        carrier_use_control = self._rule_control(
-            "Use as",
-            self.rule_use_as_combo,
-        )
         has_value_decisions = any(
             isinstance(plan.get("value_decisions"), dict)
             and bool(plan.get("value_decisions"))
@@ -104,9 +100,13 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             2 if has_value_decisions else 1,
         )
         if not has_value_decisions:
+            carrier_use_control = self._rule_control(
+                "Use as",
+                self.rule_use_as_combo,
+            )
             values_grid.addWidget(carrier_use_control, 0, 1)
         else:
-            carrier_use_control.deleteLater()
+            self.rule_use_as_combo.hide()
         self.label_values_status_label = QLabel(self._label_values_status_text())
         self.label_values_status_label.setObjectName("DataImportRuleStatus")
         self.label_values_status_label.setWordWrap(True)

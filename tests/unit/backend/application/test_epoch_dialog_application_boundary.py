@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from threading import Event, Thread
+from time import monotonic
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -82,3 +84,29 @@ def test_mixed_sampling_epoch_context_disables_create_epoch_capability() -> None
     assert dialog_context.capability == capability
     first_recording.get_data.assert_not_called()
     second_recording.get_data.assert_not_called()
+
+
+def test_epoch_context_absorbs_brief_background_publication_commit() -> None:
+    service = ApplicationService()
+    lock_held = Event()
+    brief_delay = Event()
+
+    def _brief_publication_commit() -> None:
+        with service._command_lock:
+            lock_held.set()
+            brief_delay.wait(timeout=0.02)
+
+    worker = Thread(target=_brief_publication_commit)
+    worker.start()
+    assert lock_held.wait(timeout=1.0)
+
+    started = monotonic()
+    context = service.get_epoch_dialog_context()
+    elapsed = monotonic() - started
+    worker.join(timeout=1.0)
+
+    assert worker.is_alive() is False
+    assert context.unavailable_reason != (
+        "EEG epoch setup is busy. Wait for the current action and retry."
+    )
+    assert elapsed < 0.2

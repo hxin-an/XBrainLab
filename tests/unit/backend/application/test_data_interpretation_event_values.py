@@ -256,6 +256,18 @@ def test_filtering_keeps_non_class_events_but_class_targets_only_include_classes
     ]
 
 
+def test_filtering_excludes_canonical_missing_values_absent_from_review() -> None:
+    decisions = {
+        "None": _class_decision("None category", count=1),
+        "#N/A": _class_decision("Hash N/A category", count=1),
+    }
+
+    assert filter_kept_label_values(
+        ["None", "n/a", "#N/A", "null", "nan", "na"],
+        decisions,
+    ) == ["None", "#N/A"]
+
+
 def _class_decision(name: str, *, count: int = 1) -> dict[str, object]:
     return {
         "role": "unknown",

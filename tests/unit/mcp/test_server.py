@@ -7,7 +7,12 @@ from unittest.mock import MagicMock
 import numpy as np
 import torch
 
-from XBrainLab.backend.application import ApplicationService, CommandName
+from XBrainLab.backend.application import (
+    ApplicationService,
+    CommandName,
+    SaveDatasetSplitCommand,
+)
+from XBrainLab.backend.dataset import Epochs
 from XBrainLab.backend.dataset.epochs import EpochWindowProvenance
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import ModelHolder, TrainingEvaluation, TrainingOption
@@ -208,7 +213,7 @@ def test_stdio_mcp_reports_precondition_before_long_running_job_boundary():
 
     result = _jsonrpc_result(response, 2)
     assert result["isError"] is True
-    assert "Generate datasets before training" in result["content"][0]["text"]
+    assert "Save a valid data splitting specification" in result["content"][0]["text"]
     structured = result["structuredContent"]
     assert structured["accepted"] is True
     assert structured["verification"]["schema_valid"] is True
@@ -224,26 +229,33 @@ def test_stdio_mcp_blocks_enabled_long_running_commands_until_job_api_exists():
     raw.get_filename.return_value = "sample.fif"
     raw.get_filepath.return_value = "/tmp/sample.fif"
     service.study.loaded_data_list = [raw]
-    epoch_data = MagicMock()
-    epoch_data.get_data.return_value = np.zeros((4, 1, 8), dtype=np.float32)
-    labels = np.asarray([0, 1, 0, 1])
-    epoch_data.get_label_list.return_value = labels
-    epoch_data.get_label_list_by_mask.side_effect = lambda mask: labels[mask]
-    epoch_data.get_label_number.return_value = 2
-    epoch_data.get_model_args.return_value = {}
-    epoch_data.get_epoch_window_provenance.return_value = tuple(
+    labels = np.asarray([0, 1] * 6)
+    epoch_data = Epochs([])
+    epoch_data.data = np.zeros((len(labels), 2, 512), dtype=np.float32)
+    epoch_data.event_id = {"Left": 0, "Right": 1}
+    epoch_data.label_map = {0: "Left", 1: "Right"}
+    epoch_data.label = labels
+    epoch_data.subject = np.zeros(len(labels), dtype=int)
+    epoch_data.session = np.zeros(len(labels), dtype=int)
+    epoch_data.idx = np.arange(len(labels), dtype=int)
+    epoch_data.trial_group = np.arange(len(labels), dtype=int)
+    epoch_data.subject_map = {0: "S01"}
+    epoch_data.session_map = {0: "001"}
+    epoch_data.ch_names = ["C3", "C4"]
+    epoch_data.sfreq = 128.0
+    epoch_data.epoch_window_provenance = tuple(
         EpochWindowProvenance(
-            source_recording_id=f"path-sha256:{'a' * 64}",
-            event_sample=index * 20,
-            window_start_sample=index * 20,
-            window_end_sample_exclusive=index * 20 + 8,
-            source_sfreq=100.0,
-            epoch_sfreq=100.0,
+            source_recording_id=f"content-sha256:{index:064x}",
+            event_sample=index * 512,
+            window_start_sample=index * 512,
+            window_end_sample_exclusive=index * 512 + 512,
+            source_sfreq=128.0,
+            epoch_sfreq=128.0,
             tmin_seconds=0.0,
-            tmax_seconds=0.07,
+            tmax_seconds=511 / 128,
             source_coordinates_verified=True,
         )
-        for index in range(4)
+        for index in range(len(labels))
     )
     dataset = MagicMock()
     dataset.get_epoch_data.return_value = epoch_data
@@ -252,6 +264,7 @@ def test_stdio_mcp_blocks_enabled_long_running_commands_until_job_api_exists():
     dataset.val_mask = np.asarray([False, False, True, False])
     dataset.test_mask = np.asarray([False, False, False, True])
     cast(Any, service.study).datasets = [dataset]
+    service.study.data_manager.epoch_data = epoch_data
     service.study.model_holder = ModelHolder(torch.nn.Identity, {})
     service.study.training_option = TrainingOption(
         "/tmp/xbrainlab-mcp-test",
@@ -266,7 +279,9 @@ def test_stdio_mcp_blocks_enabled_long_running_commands_until_job_api_exists():
         TrainingEvaluation.VAL_ACC,
         1,
     )
-    service.get_state()
+    saved_split = service.execute(SaveDatasetSplitCommand(split_strategy="trial"))
+    assert saved_split.ok is True
+    assert saved_split.state.active_dataset.has_saved_split is True
     server = MCPServer(service)
     server.handle_message(
         {

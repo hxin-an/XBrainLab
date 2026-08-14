@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from types import SimpleNamespace
 
+import matplotlib
 import pytest
 import torch
 
 from XBrainLab.backend import model_base
+from XBrainLab.backend.model_base import model_catalog
 from XBrainLab.backend.model_base.model_catalog import (
     default_model_id,
     discover_model_specs,
@@ -54,6 +57,27 @@ def test_catalog_import_does_not_eagerly_import_braindecode_models() -> None:
     )
 
     assert process.returncode == 0, process.stderr
+
+
+def test_braindecode_factory_contains_third_party_matplotlib_style_changes(
+    monkeypatch,
+) -> None:
+    spec = get_model_spec("braindecode.eegnet")
+    original_import_module = model_catalog.importlib.import_module
+    original_font_size = matplotlib.rcParams["font.size"]
+
+    def import_module(name: str):
+        if name == "braindecode.models":
+            matplotlib.rcParams["font.size"] = float(original_font_size) + 7.0
+            return SimpleNamespace(EEGNet=lambda **kwargs: kwargs)
+        return original_import_module(name)
+
+    monkeypatch.setattr(model_catalog.importlib, "import_module", import_module)
+
+    built = spec.factory(n_classes=2, channels=4, samples=128, sfreq=128.0)
+
+    assert built["n_outputs"] == 2
+    assert matplotlib.rcParams["font.size"] == original_font_size
 
 
 @pytest.mark.parametrize("model_id", BRAINDECODE_MODEL_IDS)

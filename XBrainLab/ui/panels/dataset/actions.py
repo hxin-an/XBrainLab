@@ -33,8 +33,10 @@ from XBrainLab.ui.application_capabilities import (
     ControllerCompatibilityUnavailableError,
     application_ui_runtime,
     blocked_reason,
+    cancel_application_operation,
     execute_application_command,
     execute_application_command_async,
+    get_application_operation,
     get_application_view_publication,
     get_command_capability,
     get_command_review_context,
@@ -193,11 +195,17 @@ class DatasetActionHandler:
                     *args,
                     **kwargs,
                 ),
+                cancel_application_operation=lambda *args, **kwargs: (
+                    cancel_application_operation(*args, **kwargs)
+                ),
                 execute_application_command=lambda *args, **kwargs: (
                     execute_application_command(*args, **kwargs)
                 ),
                 execute_application_command_async=lambda *args, **kwargs: (
                     execute_application_command_async(*args, **kwargs)
+                ),
+                get_application_operation=lambda *args, **kwargs: (
+                    get_application_operation(*args, **kwargs)
                 ),
                 get_application_view_publication=lambda *args, **kwargs: (
                     get_application_view_publication(*args, **kwargs)

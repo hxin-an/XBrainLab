@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -69,8 +70,16 @@ from XBrainLab.backend.application.bids_montage_preparation import (
 )
 from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.errors import ApplicationError
+from XBrainLab.backend.application.evaluation_render import (
+    EvaluationPlanIdentity,
+    EvaluationSummaryIdentity,
+)
 from XBrainLab.backend.application.montage_preparation_lifecycle import (
     ManualMontageOverride,
+)
+from XBrainLab.backend.application.owned_work import (
+    OwnedOperationCancelledError,
+    OwnedWorkPhase,
 )
 from XBrainLab.backend.application.resource_guard import (
     ResourceChecker,
@@ -83,6 +92,7 @@ from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ActiveTrainingSnapshot,
     ApplicationStateSnapshot,
+    ErrorSnapshot,
     EvaluationStateSnapshot,
     TrainingStateSnapshot,
 )
@@ -99,6 +109,9 @@ from XBrainLab.backend.dataset import (
 )
 from XBrainLab.backend.exceptions import StaleTrainingPipelineMutationError
 from XBrainLab.backend.load_data.raw import Raw
+from XBrainLab.backend.preprocessor.channel_selection import ChannelSelection
+from XBrainLab.backend.preprocessor.normalize import Normalize
+from XBrainLab.backend.preprocessor.time_epoch import TimeEpoch
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import (
     ModelHolder,
@@ -170,6 +183,90 @@ def _minimal_raw(
             verbose="ERROR",
         ),
     )
+
+
+def _raw_with_event_codes(filepath: Path, event_codes: list[int]) -> Raw:
+    """Build a real Raw wrapper with deterministic reviewed EEG triggers."""
+    raw = _minimal_raw(filepath)
+    events = np.asarray(
+        [[index * 100, 0, code] for index, code in enumerate(event_codes)],
+        dtype=int,
+    )
+    raw.set_event(
+        events,
+        {str(code): code for code in dict.fromkeys(event_codes)},
+    )
+    return raw
+
+
+def _write_reviewed_epoch_fixture(path: Path) -> None:
+    """Write one real FIF recording accepted by the interpretation workflow."""
+    sfreq = 100.0
+    raw = mne.io.RawArray(
+        np.zeros((1, 600)),
+        mne.create_info(["Cz"], sfreq=sfreq, ch_types="eeg"),
+        verbose="ERROR",
+    )
+    events = np.asarray(
+        [
+            [100, 0, 1],
+            [250, 0, 2],
+            [400, 0, 1],
+        ],
+        dtype=int,
+    )
+    raw.set_annotations(
+        mne.annotations_from_events(
+            events,
+            sfreq=sfreq,
+            event_desc={1: "left", 2: "right"},
+        )
+    )
+    raw.save(path, overwrite=True, verbose="ERROR")
+
+
+def _apply_reviewed_epoch_fixture(
+    service: ApplicationService,
+    path: Path,
+) -> None:
+    """Run the public interpretation commands needed for epoch admission."""
+    assert service.execute(ScanSourceCommand(source_path=str(path))).ok
+    assert service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(path)],
+                "internal_event_selection": {
+                    "label_event_codes": ["left", "right"],
+                    "class_map": {"left": "left", "right": "right"},
+                },
+                "label_carrier": "embedded_events",
+                "event_roles": {"internal_events": "class cue"},
+                "class_map": {"1": "left", "2": "right"},
+            },
+        )
+    ).ok
+    assert service.execute(ValidateInterpretationCommand()).ok
+    assert service.execute(ApplyInterpretationCommand(confirmed=True)).ok
+
+
+def _use_test_raw_factory(
+    service: ApplicationService,
+    loaded: Raw | dict[str, Raw] | None = None,
+) -> MagicMock:
+    """Install the real detached-import seam without mocking Study mutation."""
+
+    def load(path: str) -> Raw:
+        if isinstance(loaded, dict):
+            selected = loaded.get(str(path)) or loaded.get(Path(path).name)
+            if selected is not None:
+                return selected
+        elif loaded is not None:
+            return loaded
+        return _minimal_raw(Path(path))
+
+    load_mock = MagicMock(side_effect=load)
+    service.dataset._raw_factory_provider = lambda: SimpleNamespace(load=load_mock)
+    return load_mock
 
 
 def _valid_model_holder() -> ModelHolder:
@@ -302,7 +399,7 @@ def test_application_service_binds_every_command_handler_at_initialization():
         CommandName.CONFIGURE_TRAINING: (
             service.training_commands.handle_configure_training
         ),
-        CommandName.TRAIN: service._handle_train_with_automation,
+        CommandName.TRAIN: service._handle_train_with_saved_split,
         CommandName.DISCARD_TRAINING_PREPARATION: (
             service._handle_discard_training_preparation
         ),
@@ -393,6 +490,75 @@ def test_training_resource_preview_is_typed_generation_bound_and_non_mutating():
     stale = replace(request, request_generation=2, publication_generation=999)
     with pytest.raises(ApplicationError, match="Training context changed"):
         service.get_training_resource_preview(stale)
+
+
+def test_training_resource_preview_begin_is_nonblocking_and_exactly_owned() -> None:
+    estimate_started = Event()
+    release_estimate = Event()
+    service = ApplicationService(Study())
+    service.study.data_manager.epoch_data = _positive_epoch_data()
+    service.get_state()
+    publication = service.get_view_publication()
+    request = TrainingResourcePreviewRequest(
+        request_generation=1,
+        publication_generation=publication.generation,
+        model_name=None,
+        model_params={},
+        device="cpu",
+        batch_size=16,
+        optimizer="Adam",
+    )
+
+    def estimate(draft, _context):
+        estimate_started.set()
+        assert release_estimate.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        return TrainingResourcePreviewResult(
+            request_generation=draft.request_generation,
+            publication_generation=draft.publication_generation,
+            requested_batch_size=draft.batch_size,
+            suggested_batch_size=draft.batch_size,
+            estimated_vram_bytes=0,
+            available_vram_bytes=None,
+            risk_level="safe",
+            vram_known=False,
+        )
+
+    service.training_resource_preview._estimate = estimate
+    ticket = service.begin_training_resource_preview(request)
+    assert estimate_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    snapshot = service.training_resource_preview_background_work_snapshot()
+
+    assert ticket.done is False
+    assert service.get_owned_operation(ticket.operation_id).kind.value == (
+        "training_resource_preview"
+    )
+    assert service.get_owned_operation(ticket.operation_id).phase is (
+        OwnedWorkPhase.RUNNING
+    )
+    assert snapshot["remaining_workers"] == 1
+    assert snapshot["alive_workers"] == 1
+    assert snapshot["active_jobs"] == 1
+
+    service.begin_training_resource_preview_shutdown()
+    release_estimate.set()
+    with pytest.raises(ApplicationError, match="closing"):
+        ticket.result(timeout=THREAD_WATCHDOG_SECONDS)
+    assert service.get_owned_operation(ticket.operation_id).phase is (
+        OwnedWorkPhase.CANCELLED
+    )
+    assert service.training_resource_preview.wait_for_idle(
+        timeout=THREAD_WATCHDOG_SECONDS
+    )
+    assert service.cancel_training_resource_preview_shutdown() is True
+
+    retried = service.begin_training_resource_preview(
+        replace(request, request_generation=2)
+    )
+    assert retried.result(timeout=THREAD_WATCHDOG_SECONDS).request_generation == 2
+    assert service.get_owned_operation(retried.operation_id).phase is (
+        OwnedWorkPhase.COMPLETED
+    )
+    service.close()
 
 
 def test_lazy_training_service_import_configures_after_epoch_preparation() -> None:
@@ -2044,7 +2210,6 @@ def test_apply_interpretation_rolls_back_when_metadata_apply_raises(
     eeg_path = source_dir / "subject01_run1.fif"
     eeg_path.write_bytes(b"scan-only fixture")
     study = Study()
-    service = ApplicationService(study)
     manager = study.data_manager
     old_raw = _raw_mock()
     old_raw.get_filepath.return_value = "/previous/active.fif"
@@ -2054,20 +2219,13 @@ def test_apply_interpretation_rolls_back_when_metadata_apply_raises(
     manager.loaded_data_list = [old_raw]
     manager.backup_loaded_data_list = [old_backup]
     manager.preprocessed_data_list = [old_preprocessed]
+    service = ApplicationService(study)
     imported_raw = _raw_mock()
     imported_raw.get_filename.return_value = eeg_path.name
     imported_raw.get_filepath.return_value = str(eeg_path)
 
-    def import_files(_paths: list[str]) -> tuple[int, list[str]]:
-        manager.loaded_data_list = [imported_raw]
-        manager.preprocessed_data_list = [imported_raw]
-        return 1, []
-
-    service.dataset.import_files = MagicMock(side_effect=import_files)
     interpretation = service.interpretation._service()
-    interpretation.apply_service.apply_candidate_metadata_to_loaded_data = MagicMock(
-        side_effect=RuntimeError("metadata write failed"),
-    )
+    _use_test_raw_factory(service, cast(Raw, imported_raw))
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
         PreviewInterpretationCommand(
@@ -2086,7 +2244,12 @@ def test_apply_interpretation_rolls_back_when_metadata_apply_raises(
     service.execute(ValidateInterpretationCommand())
     service.dataset.notify = MagicMock(side_effect=RuntimeError("notify failed"))
 
-    result = service.execute(ApplyInterpretationCommand(confirmed=True))
+    with patch.object(
+        type(interpretation.apply_service),
+        "apply_candidate_metadata_to_loaded_data",
+        side_effect=RuntimeError("metadata write failed"),
+    ):
+        result = service.execute(ApplyInterpretationCommand(confirmed=True))
 
     assert result.failed is True
     assert result.error_type == ErrorType.INTERNAL
@@ -2095,6 +2258,1909 @@ def test_apply_interpretation_rolls_back_when_metadata_apply_raises(
     assert manager.backup_loaded_data_list == [old_backup]
     assert manager.preprocessed_data_list == [old_preprocessed]
     assert result.state.interpretation.has_applied_interpretation is False
+
+
+def test_apply_interpretation_cancel_preserves_real_study_and_can_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_dir = tmp_path / "reviewed"
+    source_dir.mkdir()
+    recording_paths = [
+        source_dir / "subject01_run1.fif",
+        source_dir / "subject01_run2.fif",
+    ]
+    for path in recording_paths:
+        path.write_bytes(b"reviewed EEG identity")
+
+    old_path = tmp_path / "previous.fif"
+    old_path.write_bytes(b"previous EEG identity")
+    old_raw = _minimal_raw(old_path)
+    study = Study()
+    study.set_loaded_data_list([old_raw], force_update=True)
+    service = ApplicationService(study)
+    publications = []
+    service.subscribe(
+        APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+        publications.append,
+    )
+
+    assert service.execute(ScanSourceCommand(source_path=str(source_dir))).ok
+    preview = service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(path) for path in recording_paths],
+                "skip_labels": True,
+            },
+        )
+    )
+    assert preview.ok
+    candidate_id = preview.diagnostics["candidate"]["candidate_id"]
+    assert service.execute(ValidateInterpretationCommand(candidate_id=candidate_id)).ok
+    before_apply = service.get_view_publication()
+    assert service._last_error is None
+
+    second_load_started = Event()
+    release_second_load = Event()
+    load_count = 0
+
+    class _BlockingFactory:
+        @staticmethod
+        def load(path: str) -> Raw:
+            nonlocal load_count
+            load_count += 1
+            if load_count == 2:
+                second_load_started.set()
+                assert release_second_load.wait(timeout=THREAD_WATCHDOG_SECONDS)
+            return _minimal_raw(Path(path))
+
+    service.dataset._raw_factory_provider = lambda: _BlockingFactory
+    command = ApplyInterpretationCommand(
+        candidate_id=candidate_id,
+        confirmed=True,
+    )
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="apply-interpretation-cancel",
+    )
+    publications_before_apply = len(publications)
+
+    worker.start()
+    assert second_load_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    progress_during_second_load = service.get_owned_operation(operation.operation_id)
+    command_lock_available = service._command_lock.acquire(blocking=False)
+    if command_lock_available:
+        service._command_lock.release()
+    started_at = time.monotonic()
+    cancelled = service.cancel_owned_operation(operation.operation_id)
+    cancel_elapsed = time.monotonic() - started_at
+    release_second_load.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert command_lock_available is True
+    assert cancelled is True
+    assert cancel_elapsed < 0.1
+    assert progress_during_second_load.stage == "Loading EEG recording 2 of 2"
+    assert progress_during_second_load.completed == 1
+    assert progress_during_second_load.total is None
+    assert progress_during_second_load.indeterminate is True
+    assert len(results) == 1
+    cancelled_result = results[0]
+    assert cancelled_result.failed
+    assert cancelled_result.error_type is ErrorType.CANCELLED
+    assert cancelled_result.recoverable is True
+    assert cancelled_result.diagnostics["operation_cancelled"] is True
+    assert cancelled_result.diagnostics["state_preserved"] is True
+    assert cancelled_result.diagnostics["control_flow_outcome"] is True
+    assert cancelled_result.changed_state == ChangedState()
+    assert cancelled_result.state == before_apply.state
+    assert service._last_error is None
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.CANCELLED
+    )
+    assert study.data_manager.loaded_data_list == [old_raw]
+    assert study.data_manager.preprocessed_data_list == [old_raw]
+    assert cancelled_result.state.interpretation.has_applied_interpretation is False
+    assert cancelled_result.state.interpretation.latest_candidate_id == candidate_id
+    assert cancelled_result.state.interpretation.validation_decision is not None
+    cancelled_publication = service.get_view_publication()
+    assert cancelled_publication == before_apply
+    assert all(
+        not publication.state.interpretation.has_applied_interpretation
+        for publication in publications[publications_before_apply:]
+    )
+
+    interpretation = service.interpretation._service()
+    original_label_verification = interpretation._ensure_label_apply_succeeded
+    ready_to_commit = Event()
+    release_commit_admission = Event()
+
+    def _block_before_commit(candidate, label_apply):
+        original_label_verification(candidate, label_apply)
+        ready_to_commit.set()
+        assert release_commit_admission.wait(timeout=THREAD_WATCHDOG_SECONDS)
+
+    monkeypatch.setattr(
+        interpretation,
+        "_ensure_label_apply_succeeded",
+        _block_before_commit,
+    )
+    commit_operation = service.begin_owned_operation(command)
+    commit_results: list[CommandResult] = []
+    commit_worker = Thread(
+        target=lambda: commit_results.append(
+            service.execute(command, operation_id=commit_operation.operation_id)
+        ),
+        name="apply-interpretation-commit-admission-cancel",
+    )
+
+    commit_worker.start()
+    assert ready_to_commit.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    assert study.data_manager.loaded_data_list == [old_raw]
+    assert service.cancel_owned_operation(commit_operation.operation_id) is True
+    release_commit_admission.set()
+    commit_worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not commit_worker.is_alive()
+    assert len(commit_results) == 1
+    assert commit_results[0].error_type is ErrorType.CANCELLED
+    assert commit_results[0].changed_state == ChangedState()
+    assert commit_results[0].state == before_apply.state
+    assert service._last_error is None
+    assert service.get_owned_operation(commit_operation.operation_id).phase is (
+        OwnedWorkPhase.CANCELLED
+    )
+    assert study.data_manager.loaded_data_list == [old_raw]
+    assert study.data_manager.preprocessed_data_list == [old_raw]
+    assert commit_results[0].state.interpretation.has_applied_interpretation is False
+    commit_cancelled_publication = service.get_view_publication()
+    assert commit_cancelled_publication.generation == before_apply.generation
+    assert commit_cancelled_publication.state == before_apply.state
+    assert all(
+        not publication.state.interpretation.has_applied_interpretation
+        for publication in publications[publications_before_apply:]
+    )
+
+    monkeypatch.setattr(
+        interpretation,
+        "_ensure_label_apply_succeeded",
+        original_label_verification,
+    )
+    retry_operation = service.begin_owned_operation(command)
+    retried = service.execute(
+        command,
+        operation_id=retry_operation.operation_id,
+    )
+
+    assert retried.ok
+    assert retried.state.interpretation.has_applied_interpretation is True
+    assert service.get_owned_operation(retry_operation.operation_id).phase is (
+        OwnedWorkPhase.COMPLETED
+    )
+    assert [raw.get_filepath() for raw in study.data_manager.loaded_data_list] == [
+        str(path) for path in recording_paths
+    ]
+
+
+def test_apply_interpretation_rejects_preparation_staled_by_concurrent_mutation(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "reviewed"
+    source_dir.mkdir()
+    recording_paths = [
+        source_dir / "subject01_run1.fif",
+        source_dir / "subject01_run2.fif",
+    ]
+    for path in recording_paths:
+        path.write_bytes(b"reviewed EEG identity")
+    old_path = tmp_path / "previous.fif"
+    old_path.write_bytes(b"previous EEG identity")
+    old_raw = _minimal_raw(old_path)
+    study = Study()
+    study.set_loaded_data_list([old_raw], force_update=True)
+    service = ApplicationService(study)
+
+    assert service.execute(ScanSourceCommand(source_path=str(source_dir))).ok
+    preview = service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(path) for path in recording_paths],
+                "skip_labels": True,
+            },
+        )
+    )
+    assert preview.ok
+    candidate_id = preview.diagnostics["candidate"]["candidate_id"]
+    assert service.execute(ValidateInterpretationCommand(candidate_id=candidate_id)).ok
+
+    second_load_started = Event()
+    release_second_load = Event()
+    load_count = 0
+
+    class _BlockingFactory:
+        @staticmethod
+        def load(path: str) -> Raw:
+            nonlocal load_count
+            load_count += 1
+            if load_count == 2:
+                second_load_started.set()
+                assert release_second_load.wait(timeout=THREAD_WATCHDOG_SECONDS)
+            return _minimal_raw(Path(path))
+
+    service.dataset._raw_factory_provider = lambda: _BlockingFactory
+    command = ApplyInterpretationCommand(
+        candidate_id=candidate_id,
+        confirmed=True,
+    )
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="apply-interpretation-stale-prepare",
+    )
+
+    worker.start()
+    assert second_load_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    assert service._command_lock.acquire(blocking=False) is True
+    service._command_lock.release()
+    concurrent = service.execute(UpdateMetadataCommand(index=0, subject="S99"))
+    assert concurrent.ok
+    concurrent_raw = study.data_manager.loaded_data_list[0]
+    assert concurrent_raw.get_subject_name() == "S99"
+    release_second_load.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert len(results) == 1
+    stale = results[0]
+    assert stale.failed
+    assert stale.error_type is ErrorType.PRECONDITION
+    assert stale.recoverable is True
+    assert stale.diagnostics["stale_prepared_interpretation_apply"] is True
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.FAILED
+    )
+    assert study.data_manager.loaded_data_list == [concurrent_raw]
+    assert concurrent_raw.get_subject_name() == "S99"
+    assert stale.state.interpretation.has_applied_interpretation is False
+
+
+@pytest.mark.parametrize("blocked_phase", ["resource_preflight", "label_admission"])
+def test_apply_resource_admission_runs_without_holding_command_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    blocked_phase: str,
+) -> None:
+    source_dir = tmp_path / "reviewed"
+    source_dir.mkdir()
+    eeg_path = source_dir / "subject01_run1.fif"
+    eeg_path.write_bytes(b"reviewed EEG identity")
+    service = ApplicationService(Study())
+    _use_test_raw_factory(service)
+    assert service.execute(ScanSourceCommand(source_path=str(source_dir))).ok
+    preview = service.execute(
+        PreviewInterpretationCommand(
+            choices={"selected_eeg_files": [str(eeg_path)], "skip_labels": True}
+        )
+    )
+    candidate_id = preview.diagnostics["candidate"]["candidate_id"]
+    assert service.execute(ValidateInterpretationCommand(candidate_id=candidate_id)).ok
+    from XBrainLab.backend.application import data_interpretation_service
+
+    admission_started = Event()
+    release_admission = Event()
+
+    if blocked_phase == "resource_preflight":
+        original_preflight = data_interpretation_service.check_import_resource_preflight
+        monkeypatch.setattr(
+            data_interpretation_service,
+            "available_ram_bytes",
+            lambda: 0,
+        )
+
+        def _blocking_preflight(paths):
+            admission_started.set()
+            assert release_admission.wait(timeout=THREAD_WATCHDOG_SECONDS)
+            return original_preflight(paths)
+
+        monkeypatch.setattr(
+            data_interpretation_service,
+            "check_import_resource_preflight",
+            _blocking_preflight,
+        )
+    else:
+        interpretation = service.interpretation._service()
+        original_label_admission = interpretation._admitted_reviewed_label_resources
+
+        def _blocking_label_admission(candidate, preflight):
+            admission_started.set()
+            assert release_admission.wait(timeout=THREAD_WATCHDOG_SECONDS)
+            return original_label_admission(candidate, preflight)
+
+        monkeypatch.setattr(
+            interpretation,
+            "_admitted_reviewed_label_resources",
+            _blocking_label_admission,
+        )
+    command = ApplyInterpretationCommand(candidate_id=candidate_id, confirmed=True)
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="apply-interpretation-resource-preflight",
+    )
+
+    worker.start()
+    assert admission_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    assert service._command_lock.acquire(blocking=False) is True
+    service._command_lock.release()
+    release_admission.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert len(results) == 1
+    assert results[0].ok
+
+
+def test_apply_commit_rejects_same_value_interpretation_revision_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_dir = tmp_path / "reviewed"
+    source_dir.mkdir()
+    eeg_path = source_dir / "subject01_run1.fif"
+    eeg_path.write_bytes(b"reviewed EEG identity")
+    old_path = tmp_path / "previous.fif"
+    old_path.write_bytes(b"previous EEG identity")
+    old_raw = _minimal_raw(old_path)
+    study = Study()
+    study.set_loaded_data_list([old_raw], force_update=True)
+    service = ApplicationService(study)
+    _use_test_raw_factory(service)
+    assert service.execute(ScanSourceCommand(source_path=str(source_dir))).ok
+    preview = service.execute(
+        PreviewInterpretationCommand(
+            choices={"selected_eeg_files": [str(eeg_path)], "skip_labels": True}
+        )
+    )
+    candidate_id = preview.diagnostics["candidate"]["candidate_id"]
+    assert service.execute(ValidateInterpretationCommand(candidate_id=candidate_id)).ok
+    interpretation = service.interpretation._service()
+    original_prepare = interpretation.prepare_apply_interpretation
+
+    def _mutate_same_value_after_prepare(plan):
+        prepared = original_prepare(plan)
+        decision = interpretation.state.resolve_validation_decision(candidate_id)
+        assert decision is not None
+        interpretation.state.record_validation(candidate_id, decision)
+        return prepared
+
+    monkeypatch.setattr(
+        interpretation,
+        "prepare_apply_interpretation",
+        _mutate_same_value_after_prepare,
+    )
+
+    result = service.execute(
+        ApplyInterpretationCommand(candidate_id=candidate_id, confirmed=True)
+    )
+
+    assert result.failed
+    assert result.error_type is ErrorType.PRECONDITION
+    assert result.diagnostics["stale_prepared_interpretation_apply"] is True
+    assert study.data_manager.loaded_data_list == [old_raw]
+    assert result.state.interpretation.has_applied_interpretation is False
+
+
+@pytest.mark.parametrize("failure_mode", ["cancel", "load_error"])
+def test_detached_apply_failure_preserves_concurrent_publication_truth(
+    tmp_path: Path,
+    failure_mode: str,
+) -> None:
+    source_dir = tmp_path / "reviewed"
+    source_dir.mkdir()
+    recording_paths = [
+        source_dir / "subject01_run1.fif",
+        source_dir / "subject01_run2.fif",
+    ]
+    for path in recording_paths:
+        path.write_bytes(b"reviewed EEG identity")
+    old_path = tmp_path / "previous.fif"
+    old_path.write_bytes(b"previous EEG identity")
+    old_raw = _minimal_raw(old_path)
+    study = Study()
+    study.set_loaded_data_list([old_raw], force_update=True)
+    service = ApplicationService(study)
+
+    assert service.execute(ScanSourceCommand(source_path=str(source_dir))).ok
+    preview = service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(path) for path in recording_paths],
+                "skip_labels": True,
+            },
+        )
+    )
+    candidate_id = preview.diagnostics["candidate"]["candidate_id"]
+    assert service.execute(ValidateInterpretationCommand(candidate_id=candidate_id)).ok
+
+    second_load_started = Event()
+    release_second_load = Event()
+    load_count = 0
+
+    class _BlockingFactory:
+        @staticmethod
+        def load(path: str) -> Raw:
+            nonlocal load_count
+            load_count += 1
+            if load_count == 2:
+                second_load_started.set()
+                assert release_second_load.wait(timeout=THREAD_WATCHDOG_SECONDS)
+                if failure_mode == "load_error":
+                    raise RuntimeError("detached loader failed")
+            return _minimal_raw(Path(path))
+
+    service.dataset._raw_factory_provider = lambda: _BlockingFactory
+    command = ApplyInterpretationCommand(
+        candidate_id=candidate_id,
+        confirmed=True,
+    )
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name=f"apply-interpretation-{failure_mode}-after-concurrent-command",
+    )
+
+    worker.start()
+    assert second_load_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    concurrent = service.execute(UpdateMetadataCommand(index=0, subject="S99"))
+    assert concurrent.ok
+    concurrent_publication = service.get_view_publication()
+    if failure_mode == "cancel":
+        assert service.cancel_owned_operation(operation.operation_id) is True
+    release_second_load.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert len(results) == 1
+    failed = results[0]
+    assert failed.failed
+    assert failed.error_type is (
+        ErrorType.CANCELLED if failure_mode == "cancel" else ErrorType.RUNTIME
+    )
+    assert failed.state == concurrent_publication.state
+    assert failed.changed_state == ChangedState()
+    assert failed.diagnostics["detached_prepare_failed_after_concurrent_change"]
+    assert failed.diagnostics["state_preserved"] is True
+    assert service.get_view_publication() == concurrent_publication
+    assert service._last_error is None
+    assert study.data_manager.loaded_data_list[0].get_subject_name() == "S99"
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.CANCELLED if failure_mode == "cancel" else OwnedWorkPhase.FAILED
+    )
+
+
+@pytest.mark.parametrize(
+    "command_factory",
+    [
+        lambda path: ScanSourceCommand(source_path=str(path)),
+        lambda path: ReviewInterpretationCommand(
+            source_path=str(path),
+            choices={"skip_labels": True},
+        ),
+    ],
+    ids=("scan", "review"),
+)
+def test_import_discovery_heavy_prepare_cancel_preserves_and_can_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    command_factory,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "subject01_run1.fif").write_bytes(b"scan fixture one")
+    (source / "subject01_run2.fif").write_bytes(b"scan fixture two")
+    service = ApplicationService(Study())
+    before = service.get_view_publication()
+    scan_started = Event()
+    release_scan = Event()
+    should_block = Event()
+    should_block.set()
+    from XBrainLab.backend.application import data_interpretation_service
+
+    original_scan = data_interpretation_service.scan_source_path
+
+    def _blocking_scan(*args, **kwargs):
+        if should_block.is_set():
+            scan_started.set()
+            assert release_scan.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        return original_scan(*args, **kwargs)
+
+    monkeypatch.setattr(
+        data_interpretation_service,
+        "scan_source_path",
+        _blocking_scan,
+    )
+    command = command_factory(source)
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="import-discovery-cancel",
+    )
+
+    worker.start()
+    assert scan_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    command_lock_available = service._command_lock.acquire(blocking=False)
+    if command_lock_available:
+        service._command_lock.release()
+    started_at = time.monotonic()
+    cancelled = service.cancel_owned_operation(operation.operation_id)
+    cancel_elapsed = time.monotonic() - started_at
+    release_scan.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert command_lock_available is True
+    assert cancelled is True
+    assert cancel_elapsed < 0.1
+    assert len(results) == 1
+    cancelled_result = results[0]
+    assert cancelled_result.failed
+    assert cancelled_result.error_type is ErrorType.CANCELLED
+    assert cancelled_result.changed_state == ChangedState()
+    assert cancelled_result.state == before.state
+    assert cancelled_result.diagnostics["state_preserved"] is True
+    assert service._last_error is None
+    assert service.get_view_publication() == before
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.CANCELLED
+    )
+    assert service.get_state().interpretation == before.state.interpretation
+
+    should_block.clear()
+    retry = service.begin_owned_operation(command)
+    retried = service.execute(command, operation_id=retry.operation_id)
+
+    assert retried.ok
+    assert service.get_owned_operation(retry.operation_id).phase is (
+        OwnedWorkPhase.COMPLETED
+    )
+    assert retried.state.interpretation.has_scan_result is True
+    if isinstance(command, ReviewInterpretationCommand):
+        assert retried.state.interpretation.has_candidate is True
+        assert retried.state.interpretation.has_validation_decision is True
+
+
+@pytest.mark.parametrize(
+    "command_factory",
+    [
+        lambda path: ScanSourceCommand(source_path=str(path)),
+        lambda path: ReviewInterpretationCommand(
+            source_path=str(path),
+            choices={"skip_labels": True},
+        ),
+    ],
+    ids=("scan", "review"),
+)
+def test_import_discovery_rejects_prepare_staled_by_concurrent_session_reset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    command_factory,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "subject01_run1.fif").write_bytes(b"scan fixture")
+    service = ApplicationService(Study())
+    scan_started = Event()
+    release_scan = Event()
+    from XBrainLab.backend.application import data_interpretation_service
+
+    original_scan = data_interpretation_service.scan_source_path
+
+    def _blocking_scan(*args, **kwargs):
+        scan_started.set()
+        assert release_scan.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        return original_scan(*args, **kwargs)
+
+    monkeypatch.setattr(
+        data_interpretation_service,
+        "scan_source_path",
+        _blocking_scan,
+    )
+    command = command_factory(source)
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="interpretation-review-stale",
+    )
+
+    worker.start()
+    assert scan_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    assert service._command_lock.acquire(blocking=False) is True
+    service._command_lock.release()
+    concurrent = service.execute(NewSessionCommand(confirmed=True))
+    assert concurrent.ok
+    release_scan.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert len(results) == 1
+    stale = results[0]
+    assert stale.failed
+    assert stale.error_type is ErrorType.PRECONDITION
+    assert stale.diagnostics["stale_prepared_interpretation_discovery"] is True
+    assert stale.changed_state == ChangedState()
+    assert stale.state == concurrent.state
+    assert stale.state.interpretation.has_scan_result is False
+    assert stale.state.interpretation.has_candidate is False
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.FAILED
+    )
+
+
+def test_import_discovery_merges_unrelated_concurrent_metadata_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    active_path = tmp_path / "active.fif"
+    active_path.write_bytes(b"active fixture")
+    study = Study()
+    study.set_loaded_data_list([_minimal_raw(active_path)], force_update=True)
+    service = ApplicationService(study)
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "subject01_run1.fif").write_bytes(b"scan fixture")
+    scan_started = Event()
+    release_scan = Event()
+    from XBrainLab.backend.application import data_interpretation_service
+
+    original_scan = data_interpretation_service.scan_source_path
+
+    def _blocking_scan(*args, **kwargs):
+        scan_started.set()
+        assert release_scan.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        return original_scan(*args, **kwargs)
+
+    monkeypatch.setattr(
+        data_interpretation_service,
+        "scan_source_path",
+        _blocking_scan,
+    )
+    command = ScanSourceCommand(source_path=str(source))
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="interpretation-scan-concurrent-metadata",
+    )
+
+    worker.start()
+    assert scan_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    concurrent = service.execute(UpdateMetadataCommand(index=0, subject="S99"))
+    assert concurrent.ok
+    release_scan.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert len(results) == 1
+    merged = results[0]
+    assert merged.ok
+    assert merged.state.raw.metadata[0]["subject"] == "S99"
+    assert merged.state.interpretation.has_scan_result is True
+    assert study.data_manager.loaded_data_list[0].get_subject_name() == "S99"
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.COMPLETED
+    )
+
+
+@pytest.mark.parametrize("command_kind", ["preview", "validate"])
+def test_interpretation_review_heavy_prepare_cancel_preserves_and_can_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    command_kind: str,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "subject01_run1.fif").write_bytes(b"review fixture")
+    service = ApplicationService(Study())
+    assert service.execute(ScanSourceCommand(source_path=str(source))).ok
+    if command_kind == "preview":
+        command = PreviewInterpretationCommand(choices={"skip_labels": True})
+        target_name = "build_interpretation_candidate"
+    else:
+        preview = service.execute(
+            PreviewInterpretationCommand(choices={"skip_labels": True})
+        )
+        assert preview.ok
+        command = ValidateInterpretationCommand(
+            candidate_id=preview.diagnostics["candidate"]["candidate_id"]
+        )
+        target_name = "validate_interpretation_candidate"
+    before = service.get_view_publication()
+    processing_started = Event()
+    release_processing = Event()
+    should_block = Event()
+    should_block.set()
+    from XBrainLab.backend.application import data_interpretation_service
+
+    original = getattr(data_interpretation_service, target_name)
+
+    def _blocking_review_work(*args, **kwargs):
+        if should_block.is_set():
+            processing_started.set()
+            assert release_processing.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        data_interpretation_service,
+        target_name,
+        _blocking_review_work,
+    )
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name=f"interpretation-{command_kind}-cancel",
+    )
+
+    worker.start()
+    assert processing_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    command_lock_available = service._command_lock.acquire(blocking=False)
+    if command_lock_available:
+        service._command_lock.release()
+    started_at = time.monotonic()
+    cancelled = service.cancel_owned_operation(operation.operation_id)
+    cancel_elapsed = time.monotonic() - started_at
+    release_processing.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert command_lock_available is True
+    assert operation.cancellable is True
+    assert cancelled is True
+    assert cancel_elapsed < 0.1
+    assert len(results) == 1
+    cancelled_result = results[0]
+    assert cancelled_result.failed
+    assert cancelled_result.error_type is ErrorType.CANCELLED
+    assert cancelled_result.changed_state == ChangedState()
+    assert cancelled_result.state == before.state
+    assert cancelled_result.diagnostics["state_preserved"] is True
+    assert service._last_error is None
+    assert service.get_view_publication() == before
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.CANCELLED
+    )
+
+    should_block.clear()
+    retry = service.begin_owned_operation(command)
+    retried = service.execute(command, operation_id=retry.operation_id)
+
+    assert retried.ok
+    assert service.get_owned_operation(retry.operation_id).phase is (
+        OwnedWorkPhase.COMPLETED
+    )
+    assert retried.state.interpretation.has_candidate is True
+    assert retried.state.interpretation.has_validation_decision is (
+        command_kind == "validate"
+    )
+
+
+@pytest.mark.parametrize("command_kind", ["preview", "validate"])
+def test_interpretation_review_rejects_prepare_staled_by_concurrent_reset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    command_kind: str,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "subject01_run1.fif").write_bytes(b"review fixture")
+    service = ApplicationService(Study())
+    assert service.execute(ScanSourceCommand(source_path=str(source))).ok
+    if command_kind == "preview":
+        command = PreviewInterpretationCommand(choices={"skip_labels": True})
+        target_name = "build_interpretation_candidate"
+    else:
+        preview = service.execute(
+            PreviewInterpretationCommand(choices={"skip_labels": True})
+        )
+        assert preview.ok
+        command = ValidateInterpretationCommand(
+            candidate_id=preview.diagnostics["candidate"]["candidate_id"]
+        )
+        target_name = "validate_interpretation_candidate"
+    processing_started = Event()
+    release_processing = Event()
+    from XBrainLab.backend.application import data_interpretation_service
+
+    original = getattr(data_interpretation_service, target_name)
+
+    def _blocking_review_work(*args, **kwargs):
+        processing_started.set()
+        assert release_processing.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        data_interpretation_service,
+        target_name,
+        _blocking_review_work,
+    )
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name=f"interpretation-{command_kind}-stale",
+    )
+
+    worker.start()
+    assert processing_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    command_lock_available = service._command_lock.acquire(blocking=False)
+    if command_lock_available:
+        service._command_lock.release()
+    if not command_lock_available:
+        release_processing.set()
+        worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+        pytest.fail("review preparation retained the shared command lock")
+    concurrent = service.execute(NewSessionCommand(confirmed=True))
+    assert concurrent.ok
+    release_processing.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert len(results) == 1
+    stale = results[0]
+    assert stale.failed
+    assert stale.error_type is ErrorType.PRECONDITION
+    assert stale.diagnostics["stale_prepared_interpretation_discovery"] is True
+    assert stale.changed_state == ChangedState()
+    assert stale.state == concurrent.state
+    assert stale.state.interpretation.has_scan_result is False
+    assert stale.state.interpretation.has_candidate is False
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.FAILED
+    )
+
+
+def test_interpretation_review_failure_after_concurrent_reset_keeps_current_truth(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "subject01_run1.fif").write_bytes(b"review fixture")
+    service = ApplicationService(Study())
+    processing_started = Event()
+    release_processing = Event()
+    from XBrainLab.backend.application import data_interpretation_service
+
+    original_scan = data_interpretation_service.scan_source_path
+
+    def _failing_scan(*args, **kwargs):
+        processing_started.set()
+        assert release_processing.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        original_scan(*args, **kwargs)
+        raise RuntimeError("detached review failed")
+
+    monkeypatch.setattr(
+        data_interpretation_service,
+        "scan_source_path",
+        _failing_scan,
+    )
+    command = ReviewInterpretationCommand(
+        source_path=str(source),
+        choices={"skip_labels": True},
+    )
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="interpretation-review-failure-after-reset",
+    )
+
+    worker.start()
+    assert processing_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    concurrent = service.execute(NewSessionCommand(confirmed=True))
+    assert concurrent.ok
+    concurrent_publication = service.get_view_publication()
+    release_processing.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert len(results) == 1
+    failed = results[0]
+    assert failed.failed
+    assert failed.error_type is ErrorType.INTERNAL
+    assert failed.state == concurrent.state
+    assert failed.changed_state == ChangedState()
+    assert failed.diagnostics["detached_prepare_failed_after_concurrent_change"]
+    assert failed.diagnostics["state_preserved"] is True
+    assert service.get_view_publication() == concurrent_publication
+    assert service._last_error is None
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.FAILED
+    )
+
+
+def test_validate_cancel_after_commit_admission_is_rejected_and_success_publishes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "subject01_run1.fif").write_bytes(b"review fixture")
+    service = ApplicationService(Study())
+    assert service.execute(ScanSourceCommand(source_path=str(source))).ok
+    preview = service.execute(
+        PreviewInterpretationCommand(choices={"skip_labels": True})
+    )
+    assert preview.ok
+    command = ValidateInterpretationCommand(
+        candidate_id=preview.diagnostics["candidate"]["candidate_id"]
+    )
+    interpretation = service.interpretation._service()
+    original_publish = interpretation.state.publish_staged_session_state
+    commit_started = Event()
+    release_commit = Event()
+
+    def _blocking_publish(checkpoint) -> None:
+        commit_started.set()
+        assert release_commit.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        original_publish(checkpoint)
+
+    monkeypatch.setattr(
+        interpretation.state,
+        "publish_staged_session_state",
+        _blocking_publish,
+    )
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="interpretation-validate-commit-admitted",
+    )
+
+    worker.start()
+    assert commit_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    assert service.cancel_owned_operation(operation.operation_id) is False
+    release_commit.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert len(results) == 1
+    committed = results[0]
+    assert committed.ok
+    assert committed.state.interpretation.has_validation_decision is True
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.COMPLETED
+    )
+
+
+def test_preprocess_heavy_prepare_releases_command_lock_and_cancel_can_retry() -> None:
+    study = Study()
+    rows = [_minimal_raw(Path(f"recording-{index}.fif")) for index in range(2)]
+    study.set_loaded_data_list(rows, force_update=True)
+    service = ApplicationService(study)
+    original = study.preprocessed_data_list
+    before = service.get_view_publication()
+    processing_started = Event()
+    release_processing = Event()
+    should_block = Event()
+    should_block.set()
+
+    class _BlockingNormalize(Normalize):
+        def data_preprocess(self, norm: str) -> list[Raw]:
+            if should_block.is_set():
+                processing_started.set()
+                assert release_processing.wait(timeout=THREAD_WATCHDOG_SECONDS)
+            return super().data_preprocess(norm)
+
+    original_provider = service.preprocess._processor_provider
+    service.preprocess._processor_provider = (
+        lambda name: _BlockingNormalize
+        if name == "Normalize"
+        else original_provider(name)
+    )
+    command = PreprocessCommand(
+        operation=PreprocessOperation.NORMALIZE,
+        method="z-score",
+    )
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="preprocess-cancel",
+    )
+
+    worker.start()
+    assert processing_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    progress = service.get_owned_operation(operation.operation_id)
+    command_lock_available = service._command_lock.acquire(blocking=False)
+    if command_lock_available:
+        service._command_lock.release()
+    started_at = time.monotonic()
+    cancelled = service.cancel_owned_operation(operation.operation_id)
+    cancel_elapsed = time.monotonic() - started_at
+    release_processing.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert command_lock_available is True
+    assert cancelled is True
+    assert cancel_elapsed < 0.1
+    assert progress.stage == "Preparing working EEG recordings"
+    assert progress.completed == 2
+    assert progress.total == 2
+    assert len(results) == 1
+    cancelled_result = results[0]
+    assert cancelled_result.failed
+    assert cancelled_result.error_type is ErrorType.CANCELLED
+    assert cancelled_result.changed_state == ChangedState()
+    assert cancelled_result.state == before.state
+    assert service._last_error is None
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.CANCELLED
+    )
+    assert study.preprocessed_data_list is original
+    assert all(not row.get_preprocess_history() for row in original)
+
+    should_block.clear()
+    retry = service.begin_owned_operation(command)
+    retried = service.execute(command, operation_id=retry.operation_id)
+
+    assert retried.ok
+    assert service.get_owned_operation(retry.operation_id).phase is (
+        OwnedWorkPhase.COMPLETED
+    )
+    assert study.preprocessed_data_list is not original
+    assert all(
+        "normalization requested" in row.get_preprocess_history()[-1]
+        for row in study.preprocessed_data_list
+    )
+
+
+def test_preprocess_rejects_prepare_staled_by_concurrent_mutation() -> None:
+    study = Study()
+    raw = _minimal_raw(Path("recording.fif"))
+    study.set_loaded_data_list([raw], force_update=True)
+    service = ApplicationService(study)
+    processing_started = Event()
+    release_processing = Event()
+
+    class _BlockingNormalize(Normalize):
+        def data_preprocess(self, norm: str) -> list[Raw]:
+            processing_started.set()
+            assert release_processing.wait(timeout=THREAD_WATCHDOG_SECONDS)
+            return super().data_preprocess(norm)
+
+    original_provider = service.preprocess._processor_provider
+    service.preprocess._processor_provider = (
+        lambda name: _BlockingNormalize
+        if name == "Normalize"
+        else original_provider(name)
+    )
+    command = PreprocessCommand(
+        operation=PreprocessOperation.NORMALIZE,
+        method="z-score",
+    )
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="preprocess-stale-prepare",
+    )
+    concurrent_results: list[CommandResult] = []
+    concurrent_done = Event()
+
+    def _update_metadata() -> None:
+        concurrent_results.append(
+            service.execute(UpdateMetadataCommand(index=0, subject="S99"))
+        )
+        concurrent_done.set()
+
+    worker.start()
+    assert processing_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    command_lock_available = service._command_lock.acquire(blocking=False)
+    if command_lock_available:
+        service._command_lock.release()
+    concurrent_worker = Thread(target=_update_metadata, name="concurrent-metadata")
+    concurrent_worker.start()
+    concurrent_committed_while_prepare_blocked = concurrent_done.wait(timeout=0.5)
+    release_processing.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+    concurrent_worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert not concurrent_worker.is_alive()
+    assert command_lock_available is True
+    assert concurrent_committed_while_prepare_blocked is True
+    assert len(concurrent_results) == 1
+    assert concurrent_results[0].ok
+    assert study.loaded_data_list[0].get_subject_name() == "S99"
+    assert len(results) == 1
+    stale = results[0]
+    assert stale.failed
+    assert stale.error_type is ErrorType.PRECONDITION
+    assert stale.diagnostics["stale_prepared_preprocess"] is True
+    assert stale.changed_state == ChangedState()
+    assert stale.state == concurrent_results[0].state
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.FAILED
+    )
+    assert all(
+        "normalization requested" not in " ".join(row.get_preprocess_history())
+        for row in study.preprocessed_data_list
+    )
+
+
+def test_preprocess_allows_background_montage_status_to_settle_during_prepare() -> None:
+    study = Study()
+    raw = _minimal_raw(Path("recording.fif"))
+    study.set_loaded_data_list([raw], force_update=True)
+    service = ApplicationService(study)
+    processing_started = Event()
+    release_processing = Event()
+
+    class _BlockingNormalize(Normalize):
+        def data_preprocess(self, norm: str) -> list[Raw]:
+            processing_started.set()
+            assert release_processing.wait(timeout=THREAD_WATCHDOG_SECONDS)
+            return super().data_preprocess(norm)
+
+    original_provider = service.preprocess._processor_provider
+    service.preprocess._processor_provider = (
+        lambda name: _BlockingNormalize
+        if name == "Normalize"
+        else original_provider(name)
+    )
+    montage_status = [
+        MontagePreparationSnapshot.pending(
+            generation=1,
+            recording_paths=("recording.fif",),
+        )
+    ]
+    service.state_snapshot.montage_snapshot_provider = lambda: montage_status[0]
+    pending_state = service.get_state()
+    assert pending_state.visualization.montage_preparation_state == "pending"
+
+    command = PreprocessCommand(
+        operation=PreprocessOperation.NORMALIZE,
+        method="z-score",
+    )
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="preprocess-montage-status-transition",
+    )
+
+    worker.start()
+    assert processing_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    montage_status[0] = MontagePreparationSnapshot.not_applicable(
+        generation=1,
+        reason="No BIDS electrode-position sidecars apply to this recording.",
+    )
+    settled_state = service.get_state()
+    assert settled_state.visualization.montage_preparation_state == "not_applicable"
+    release_processing.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert len(results) == 1
+    completed = results[0]
+    assert completed.ok
+    assert completed.state.visualization.montage_preparation_state == "not_applicable"
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.COMPLETED
+    )
+    assert all(
+        "normalization requested" in row.get_preprocess_history()[-1]
+        for row in study.preprocessed_data_list
+    )
+
+
+def test_preprocess_commit_failure_rolls_back_complete_pipeline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    study = Study()
+    raw = _minimal_raw(Path("recording.fif"))
+    study.set_loaded_data_list([raw], force_update=True)
+    service = ApplicationService(study)
+    snapshot = service.pipeline_transaction.capture()
+    original_set = study.set_preprocessed_data_list
+
+    def _mutate_then_fail(
+        rows: list[Raw],
+        force_update: bool = False,
+    ) -> None:
+        original_set(rows, force_update=force_update)
+        raise RuntimeError("preprocess publication failed")
+
+    monkeypatch.setattr(study, "set_preprocessed_data_list", _mutate_then_fail)
+
+    result = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.NORMALIZE,
+            method="z-score",
+        )
+    )
+
+    assert result.failed
+    assert result.error_type is ErrorType.INTERNAL
+    assert "preprocess publication failed" in result.message
+    restored = service.pipeline_transaction.capture()
+    assert restored.loaded_data == snapshot.loaded_data
+    assert restored.backup_loaded_data == snapshot.backup_loaded_data
+    assert restored.preprocessed_data == snapshot.preprocessed_data
+    assert restored.epoch_data is snapshot.epoch_data
+    assert restored.datasets == snapshot.datasets
+    assert restored.dataset_generator is snapshot.dataset_generator
+    assert restored.dataset_locked is snapshot.dataset_locked
+    assert all(not row.get_preprocess_history() for row in study.preprocessed_data_list)
+
+
+def test_channel_selection_heavy_prepare_cancel_preserves_and_can_retry() -> None:
+    study = Study()
+    raw = Raw(
+        "channels.fif",
+        mne.io.RawArray(
+            np.zeros((2, 500)),
+            mne.create_info(["C3", "C4"], sfreq=100.0, ch_types="eeg"),
+            verbose="ERROR",
+        ),
+    )
+    study.set_loaded_data_list([raw], force_update=True)
+    service = ApplicationService(study)
+    original_loaded = study.loaded_data_list
+    original_preprocessed = study.preprocessed_data_list
+    before = service.get_view_publication()
+    processing_started = Event()
+    release_processing = Event()
+    should_block = Event()
+    should_block.set()
+
+    class _BlockingChannelSelection(ChannelSelection):
+        def data_preprocess(self, selected_channels: list[str]) -> list[Raw]:
+            if should_block.is_set():
+                processing_started.set()
+                assert release_processing.wait(timeout=THREAD_WATCHDOG_SECONDS)
+            return super().data_preprocess(selected_channels)
+
+    service.dataset._channel_selection_provider = lambda: _BlockingChannelSelection
+    command = PreprocessCommand(
+        operation=PreprocessOperation.CHANNEL_SELECTION,
+        channels=["C3"],
+    )
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="channel-selection-cancel",
+    )
+
+    worker.start()
+    assert processing_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    command_lock_available = service._command_lock.acquire(blocking=False)
+    if command_lock_available:
+        service._command_lock.release()
+    started_at = time.monotonic()
+    cancelled = service.cancel_owned_operation(operation.operation_id)
+    cancel_elapsed = time.monotonic() - started_at
+    release_processing.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert command_lock_available is True
+    assert cancelled is True
+    assert cancel_elapsed < 0.1
+    assert len(results) == 1
+    assert results[0].error_type is ErrorType.CANCELLED
+    assert results[0].changed_state == ChangedState()
+    assert results[0].state == before.state
+    assert service._last_error is None
+    assert study.loaded_data_list is original_loaded
+    assert study.preprocessed_data_list is original_preprocessed
+    assert study.data_manager.backup_loaded_data_list is None
+    assert study.loaded_data_list[0].get_mne().ch_names == ["C3", "C4"]
+    assert study.is_locked() is False
+
+    should_block.clear()
+    retry = service.begin_owned_operation(command)
+    retried = service.execute(command, operation_id=retry.operation_id)
+
+    assert retried.ok
+    assert service.get_owned_operation(retry.operation_id).phase is (
+        OwnedWorkPhase.COMPLETED
+    )
+    assert study.loaded_data_list is not original_loaded
+    assert study.loaded_data_list[0].get_mne().ch_names == ["C3"]
+    assert study.preprocessed_data_list[0] is study.loaded_data_list[0]
+    assert study.data_manager.backup_loaded_data_list is not None
+    assert study.data_manager.backup_loaded_data_list[0].get_mne().ch_names == [
+        "C3",
+        "C4",
+    ]
+    assert study.is_locked() is True
+
+
+def test_channel_selection_rejects_prepare_staled_by_concurrent_metadata() -> None:
+    study = Study()
+    raw = Raw(
+        "channels.fif",
+        mne.io.RawArray(
+            np.zeros((2, 500)),
+            mne.create_info(["C3", "C4"], sfreq=100.0, ch_types="eeg"),
+            verbose="ERROR",
+        ),
+    )
+    study.set_loaded_data_list([raw], force_update=True)
+    service = ApplicationService(study)
+    processing_started = Event()
+    release_processing = Event()
+
+    class _BlockingChannelSelection(ChannelSelection):
+        def data_preprocess(self, selected_channels: list[str]) -> list[Raw]:
+            processing_started.set()
+            assert release_processing.wait(timeout=THREAD_WATCHDOG_SECONDS)
+            return super().data_preprocess(selected_channels)
+
+    service.dataset._channel_selection_provider = lambda: _BlockingChannelSelection
+    command = PreprocessCommand(
+        operation=PreprocessOperation.SELECT_CHANNELS,
+        channels=["C3"],
+    )
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="channel-selection-stale",
+    )
+
+    worker.start()
+    assert processing_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    assert service._command_lock.acquire(blocking=False) is True
+    service._command_lock.release()
+    concurrent = service.execute(UpdateMetadataCommand(index=0, subject="S99"))
+    assert concurrent.ok
+    release_processing.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert len(results) == 1
+    stale = results[0]
+    assert stale.failed
+    assert stale.error_type is ErrorType.PRECONDITION
+    assert stale.diagnostics["stale_prepared_preprocess"] is True
+    assert stale.changed_state == ChangedState()
+    assert stale.state == concurrent.state
+    assert study.loaded_data_list[0].get_subject_name() == "S99"
+    assert study.loaded_data_list[0].get_mne().ch_names == ["C3", "C4"]
+    assert study.data_manager.backup_loaded_data_list is None
+    assert study.is_locked() is False
+
+
+def test_channel_selection_commit_failure_restores_backup_and_pipeline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    study = Study()
+    raw = Raw(
+        "channels.fif",
+        mne.io.RawArray(
+            np.zeros((2, 500)),
+            mne.create_info(["C3", "C4"], sfreq=100.0, ch_types="eeg"),
+            verbose="ERROR",
+        ),
+    )
+    study.set_loaded_data_list([raw], force_update=True)
+    service = ApplicationService(study)
+    snapshot = service.pipeline_transaction.capture()
+    original_set = study.set_loaded_data_list
+
+    def _mutate_then_fail(
+        rows: list[Raw],
+        force_update: bool = False,
+    ) -> None:
+        original_set(rows, force_update=force_update)
+        study.data_manager.backup_loaded_data_list = list(rows)
+        raise RuntimeError("channel publication failed")
+
+    monkeypatch.setattr(study, "set_loaded_data_list", _mutate_then_fail)
+
+    result = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.CHANNEL_SELECTION,
+            channels=["C3"],
+        )
+    )
+
+    assert result.failed
+    assert result.error_type is ErrorType.INTERNAL
+    assert "channel publication failed" in result.message
+    restored = service.pipeline_transaction.capture()
+    assert restored.loaded_data == snapshot.loaded_data
+    assert restored.backup_loaded_data == snapshot.backup_loaded_data
+    assert restored.preprocessed_data == snapshot.preprocessed_data
+    assert restored.epoch_data is snapshot.epoch_data
+    assert restored.datasets == snapshot.datasets
+    assert restored.dataset_generator is snapshot.dataset_generator
+    assert restored.dataset_locked is snapshot.dataset_locked
+    assert study.loaded_data_list[0].get_mne().ch_names == ["C3", "C4"]
+
+
+def test_epoch_heavy_prepare_releases_command_lock_and_cancel_can_retry(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "reviewed-epoch_raw.fif"
+    _write_reviewed_epoch_fixture(path)
+    service = ApplicationService(Study())
+    _apply_reviewed_epoch_fixture(service, path)
+    original = service.study.preprocessed_data_list
+    before = service.get_view_publication()
+    processing_started = Event()
+    release_processing = Event()
+    should_block = Event()
+    should_block.set()
+
+    class _BlockingTimeEpoch(TimeEpoch):
+        def data_preprocess(
+            self,
+            baseline,
+            selected_event_names,
+            tmin,
+            tmax,
+            allow_boundary_drop=False,
+            *,
+            event_label_aliases_by_source=None,
+        ) -> list[Raw]:
+            if should_block.is_set():
+                processing_started.set()
+                assert release_processing.wait(timeout=THREAD_WATCHDOG_SECONDS)
+            return super().data_preprocess(
+                baseline,
+                selected_event_names,
+                tmin,
+                tmax,
+                allow_boundary_drop,
+                event_label_aliases_by_source=event_label_aliases_by_source,
+            )
+
+    original_provider = service.preprocess._processor_provider
+    service.preprocess._processor_provider = (
+        lambda name: _BlockingTimeEpoch
+        if name == "TimeEpoch"
+        else original_provider(name)
+    )
+    command = CreateEpochCommand(
+        t_min=0.0,
+        t_max=0.2,
+        event_ids=["left", "right"],
+    )
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="epoch-cancel",
+    )
+
+    worker.start()
+    assert processing_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    command_lock_available = service._command_lock.acquire(blocking=False)
+    if command_lock_available:
+        service._command_lock.release()
+    started_at = time.monotonic()
+    cancelled = service.cancel_owned_operation(operation.operation_id)
+    cancel_elapsed = time.monotonic() - started_at
+    release_processing.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert command_lock_available is True
+    assert cancelled is True
+    assert cancel_elapsed < 0.1
+    assert len(results) == 1
+    cancelled_result = results[0]
+    assert cancelled_result.failed
+    assert cancelled_result.error_type is ErrorType.CANCELLED
+    assert cancelled_result.changed_state == ChangedState()
+    assert cancelled_result.state == before.state
+    assert service._last_error is None
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.CANCELLED
+    )
+    assert service.study.preprocessed_data_list is original
+    assert service.study.epoch_data is None
+    assert service.study.is_locked() is False
+
+    should_block.clear()
+    retry = service.begin_owned_operation(command)
+    retried = service.execute(command, operation_id=retry.operation_id)
+
+    assert retried.ok
+    assert service.get_owned_operation(retry.operation_id).phase is (
+        OwnedWorkPhase.COMPLETED
+    )
+    assert service.study.preprocessed_data_list is not original
+    assert service.study.epoch_data is not None
+    assert service.study.is_locked() is True
+
+
+def test_epoch_rejects_prepare_staled_by_concurrent_mutation(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "stale-epoch_raw.fif"
+    _write_reviewed_epoch_fixture(path)
+    service = ApplicationService(Study())
+    _apply_reviewed_epoch_fixture(service, path)
+    processing_started = Event()
+    release_processing = Event()
+
+    class _BlockingTimeEpoch(TimeEpoch):
+        def data_preprocess(
+            self,
+            baseline,
+            selected_event_names,
+            tmin,
+            tmax,
+            allow_boundary_drop=False,
+            *,
+            event_label_aliases_by_source=None,
+        ) -> list[Raw]:
+            processing_started.set()
+            assert release_processing.wait(timeout=THREAD_WATCHDOG_SECONDS)
+            return super().data_preprocess(
+                baseline,
+                selected_event_names,
+                tmin,
+                tmax,
+                allow_boundary_drop,
+                event_label_aliases_by_source=event_label_aliases_by_source,
+            )
+
+    original_provider = service.preprocess._processor_provider
+    service.preprocess._processor_provider = (
+        lambda name: _BlockingTimeEpoch
+        if name == "TimeEpoch"
+        else original_provider(name)
+    )
+    command = CreateEpochCommand(
+        t_min=0.0,
+        t_max=0.2,
+        event_ids=["left", "right"],
+    )
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="epoch-stale-prepare",
+    )
+
+    worker.start()
+    assert processing_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    assert service._command_lock.acquire(blocking=False) is True
+    service._command_lock.release()
+    concurrent = service.execute(UpdateMetadataCommand(index=0, subject="S99"))
+    assert concurrent.ok
+    release_processing.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert len(results) == 1
+    stale = results[0]
+    assert stale.failed
+    assert stale.error_type is ErrorType.PRECONDITION
+    assert stale.diagnostics["stale_prepared_preprocess"] is True
+    assert stale.changed_state == ChangedState()
+    assert stale.state == concurrent.state
+    assert service.study.loaded_data_list[0].get_subject_name() == "S99"
+    assert service.study.epoch_data is None
+    assert service.study.is_locked() is False
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.FAILED
+    )
+
+
+def test_apply_interpretation_rehashes_content_before_short_commit_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from XBrainLab.backend.application.data_interpretation_apply_preparation import (
+        SourceFileBoundary,
+    )
+
+    source_dir = tmp_path / "reviewed"
+    source_dir.mkdir()
+    eeg_path = source_dir / "subject01_run1.fif"
+    reviewed_bytes = b"reviewed EEG identity a"
+    rewritten_bytes = b"reviewed EEG identity b"
+    assert len(reviewed_bytes) == len(rewritten_bytes)
+    eeg_path.write_bytes(reviewed_bytes)
+    old_path = tmp_path / "previous.fif"
+    old_path.write_bytes(b"previous EEG identity")
+    old_raw = _minimal_raw(old_path)
+    study = Study()
+    study.set_loaded_data_list([old_raw], force_update=True)
+    service = ApplicationService(study)
+    _use_test_raw_factory(service)
+
+    assert service.execute(ScanSourceCommand(source_path=str(source_dir))).ok
+    preview = service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "selected_eeg_files": [str(eeg_path)],
+                "skip_labels": True,
+            },
+        )
+    )
+    candidate_id = preview.diagnostics["candidate"]["candidate_id"]
+    assert service.execute(ValidateInterpretationCommand(candidate_id=candidate_id)).ok
+    candidate = service.interpretation._service().state.resolve_candidate(candidate_id)
+    identity_row = next(
+        item
+        for item in candidate.content_identity["files"]
+        if item["role"] == "selected_eeg"
+    )
+    initial_stat = eeg_path.stat()
+    untrusted_stat_boundary = SourceFileBoundary(
+        path=str(eeg_path.resolve()),
+        role=str(identity_row["role"]),
+        sha256=str(identity_row["sha256"]),
+        device=int(initial_stat.st_dev),
+        inode=int(initial_stat.st_ino),
+        file_bytes=int(initial_stat.st_size),
+        modified_ns=int(initial_stat.st_mtime_ns),
+        changed_ns=int(initial_stat.st_ctime_ns),
+    )
+    monkeypatch.setattr(
+        SourceFileBoundary,
+        "capture",
+        classmethod(lambda _cls, _path, **_kwargs: untrusted_stat_boundary),
+    )
+
+    interpretation = service.interpretation._service()
+    original_prepare = interpretation.prepare_apply_interpretation
+    preparation_ready = Event()
+    release_preparation = Event()
+
+    def _block_after_prepare(plan):
+        prepared = original_prepare(plan)
+        preparation_ready.set()
+        assert release_preparation.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        return prepared
+
+    monkeypatch.setattr(
+        interpretation,
+        "prepare_apply_interpretation",
+        _block_after_prepare,
+    )
+    command = ApplyInterpretationCommand(
+        candidate_id=candidate_id,
+        confirmed=True,
+    )
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="apply-interpretation-content-rehash",
+    )
+
+    worker.start()
+    assert preparation_ready.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    eeg_path.write_bytes(rewritten_bytes)
+    os.utime(
+        eeg_path,
+        ns=(initial_stat.st_atime_ns, initial_stat.st_mtime_ns),
+    )
+    assert eeg_path.stat().st_size == initial_stat.st_size
+    assert eeg_path.stat().st_mtime_ns == initial_stat.st_mtime_ns
+    release_preparation.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert len(results) == 1
+    rejected = results[0]
+    assert rejected.failed
+    assert rejected.error_type is ErrorType.PRECONDITION
+    assert rejected.diagnostics["reason"] == "reviewed_content_or_contract_changed"
+    assert study.data_manager.loaded_data_list == [old_raw]
+    assert rejected.state.interpretation.has_applied_interpretation is False
+
+    monkeypatch.setattr(
+        interpretation,
+        "prepare_apply_interpretation",
+        original_prepare,
+    )
+    eeg_path.write_bytes(reviewed_bytes)
+    retry = service.execute(
+        command,
+        operation_id=service.begin_owned_operation(command).operation_id,
+    )
+
+    assert retry.ok
+    assert retry.state.interpretation.has_applied_interpretation is True
+    assert study.data_manager.loaded_data_list[0].get_filepath() == str(eeg_path)
+
+
+def test_apply_reuses_safe_review_preflight_and_hashes_reviewed_content_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from XBrainLab.backend.application import data_interpretation_service
+
+    source_dir = tmp_path / "reviewed"
+    source_dir.mkdir()
+    eeg_path = source_dir / "subject01_run1.fif"
+    eeg_path.write_bytes(b"reviewed EEG identity")
+    service = ApplicationService(Study())
+    _use_test_raw_factory(service)
+    assert service.execute(ScanSourceCommand(source_path=str(source_dir))).ok
+
+    original_preflight = data_interpretation_service.check_import_resource_preflight
+    original_identity = data_interpretation_service.DataInterpretationCommandService._reviewed_content_identity
+    preflight_calls = 0
+    identity_calls = 0
+
+    def _counted_preflight(paths: list[str]) -> ResourcePreflightResult:
+        nonlocal preflight_calls
+        preflight_calls += 1
+        return original_preflight(paths)
+
+    def _counted_identity(candidate: Any) -> dict[str, Any]:
+        nonlocal identity_calls
+        identity_calls += 1
+        return original_identity(candidate)
+
+    monkeypatch.setattr(
+        data_interpretation_service,
+        "check_import_resource_preflight",
+        _counted_preflight,
+    )
+    monkeypatch.setattr(
+        data_interpretation_service.DataInterpretationCommandService,
+        "_reviewed_content_identity",
+        staticmethod(_counted_identity),
+    )
+
+    review = service.execute(
+        ReviewInterpretationCommand(
+            source_path=str(source_dir),
+            choices={
+                "selected_eeg_files": [str(eeg_path)],
+                "skip_labels": True,
+            },
+        )
+    )
+    candidate_id = review.diagnostics["candidate"]["candidate_id"]
+    assert service.execute(ValidateInterpretationCommand(candidate_id=candidate_id)).ok
+
+    applied = service.execute(
+        ApplyInterpretationCommand(candidate_id=candidate_id, confirmed=True)
+    )
+
+    assert applied.ok
+    assert preflight_calls == 1
+    assert identity_calls == 1
+
+
+def test_apply_invalidates_safe_review_admission_when_content_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from XBrainLab.backend.application import data_interpretation_service
+
+    source_dir = tmp_path / "reviewed"
+    source_dir.mkdir()
+    eeg_path = source_dir / "subject01_run1.fif"
+    eeg_path.write_bytes(b"reviewed EEG identity a")
+    study = Study()
+    service = ApplicationService(study)
+    _use_test_raw_factory(service)
+    review = service.execute(
+        ReviewInterpretationCommand(
+            source_path=str(source_dir),
+            choices={
+                "selected_eeg_files": [str(eeg_path)],
+                "skip_labels": True,
+            },
+        )
+    )
+    candidate_id = review.diagnostics["candidate"]["candidate_id"]
+    assert service.execute(ValidateInterpretationCommand(candidate_id=candidate_id)).ok
+    original_preflight = data_interpretation_service.check_import_resource_preflight
+    preflight_calls = 0
+
+    def _counted_preflight(paths: list[str]) -> ResourcePreflightResult:
+        nonlocal preflight_calls
+        preflight_calls += 1
+        return original_preflight(paths)
+
+    monkeypatch.setattr(
+        data_interpretation_service,
+        "check_import_resource_preflight",
+        _counted_preflight,
+    )
+    eeg_path.write_bytes(b"reviewed EEG identity b")
+
+    rejected = service.execute(
+        ApplyInterpretationCommand(candidate_id=candidate_id, confirmed=True)
+    )
+
+    assert rejected.failed
+    assert rejected.error_type is ErrorType.PRECONDITION
+    assert rejected.diagnostics["reason"] == "reviewed_content_or_contract_changed"
+    assert preflight_calls == 1
+    assert study.data_manager.loaded_data_list == []
+    assert rejected.state.interpretation.has_applied_interpretation is False
+
+
+def test_cancelled_command_fails_closed_when_rollback_state_does_not_match(
+    tmp_path: Path,
+) -> None:
+    service = ApplicationService(Study())
+    before_apply = service.get_view_publication()
+    service._view_coordinator.mark_stale("ApplyInterpretation mutation in progress")
+    changed_raw = _minimal_raw(tmp_path / "unreverted-cancel.fif")
+    service.study.set_loaded_data_list([changed_raw], force_update=True)
+
+    result = service._handler_failure_result(
+        CommandName.APPLY_INTERPRETATION,
+        before_apply.state,
+        before_apply,
+        OwnedOperationCancelledError(
+            "operation-1",
+            "Committing interpreted dataset",
+        ),
+    )
+
+    assert result.failed
+    assert result.error_type is ErrorType.CANCELLED
+    assert "control_flow_outcome" not in result.diagnostics
+    assert result.changed_state != ChangedState()
+    assert result.state != before_apply.state
+    assert service._last_error is not None
+    assert service._last_error.error_type == ErrorType.CANCELLED.value
 
 
 def test_failed_replacement_restores_raw_interpretation_and_recipe(
@@ -2112,18 +4178,11 @@ def test_failed_replacement_restores_raw_interpretation_and_recipe(
     service = ApplicationService(Study())
     manager = service.study.data_manager
 
-    def import_files(paths: list[str]) -> tuple[int, list[str]]:
-        imported = []
-        for path in paths:
-            raw = _raw_mock()
-            raw.get_filename.return_value = Path(path).name
-            raw.get_filepath.return_value = path
-            imported.append(raw)
-        manager.loaded_data_list = imported
-        manager.preprocessed_data_list = list(imported)
-        return len(imported), []
-
-    service.dataset.import_files = MagicMock(side_effect=import_files)
+    prepared_by_path: dict[str, Raw] = {}
+    for path in (old_eeg, new_eeg):
+        prepared = _minimal_raw(path)
+        prepared_by_path[str(path)] = prepared
+    _use_test_raw_factory(service, prepared_by_path)
     service.execute(ScanSourceCommand(source_path=str(old_source)))
     service.execute(
         PreviewInterpretationCommand(
@@ -2316,20 +4375,28 @@ def test_serialized_query_uses_committed_state_when_fresh_builder_is_unavailable
     service.state_snapshot.build.assert_not_called()
 
 
-def test_state_fallback_never_reuses_stale_idle_training_liveness() -> None:
+def test_stop_control_uses_detached_publication_and_preserves_concurrent_error() -> (
+    None
+):
     service = ApplicationService(Study())
-    idle_state = service.get_state()
-    assert idle_state.active_training.is_running is False
+    committed = service.get_view_publication()
+    retained_error = ErrorSnapshot(
+        error_type=ErrorType.INTERNAL.value,
+        message="concurrent command failure",
+        recoverable=True,
+    )
+    service._last_error = retained_error
     service.state_snapshot.build = MagicMock(
-        side_effect=RuntimeError("state backend unavailable"),
+        side_effect=AssertionError("control acknowledgement rebuilt mutable state"),
     )
 
     result = service.execute(StopTrainingCommand(wait_timeout=0.0))
 
-    assert result.failed is True
-    assert result.state.training_liveness_reliable is False
-    assert result.state.active_training.is_running is True
-    assert result.state.training.is_running is True
+    assert result.ok is True
+    assert result.state == committed.state
+    assert result.changed_state == ChangedState()
+    assert service._last_error is retained_error
+    service.state_snapshot.build.assert_not_called()
 
 
 def test_handler_error_and_refresh_failure_fails_closed_without_retry() -> None:
@@ -2586,6 +4653,7 @@ def test_stop_command_reports_requested_until_real_worker_exit() -> None:
     service.study.training_manager.trainer = trainer
     trainer.run(interact=True)
     assert plan.started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    committed_before_stop = service.get_view_publication().state
 
     try:
         result = service.execute(StopTrainingCommand(wait_timeout=0.01))
@@ -2594,10 +4662,8 @@ def test_stop_command_reports_requested_until_real_worker_exit() -> None:
         assert result.message == "Training stop requested."
         assert result.diagnostics["stopped"] is False
         assert result.diagnostics["terminal_outcome"] == "stop_requested"
-        assert result.state.training.terminal_outcome.state is (
-            TrainingOutcomeState.STOP_REQUESTED
-        )
-        assert result.state.active_training.is_running is True
+        assert result.diagnostics["state_publication_deferred"] is True
+        assert result.state == committed_before_stop
         assert trainer.is_running() is True
     finally:
         plan.release.set()
@@ -2611,39 +4677,29 @@ def test_stop_command_reports_requested_until_real_worker_exit() -> None:
 
 @pytest.mark.parametrize(
     "recovery_command",
-    ["stop_training", "reset_session", "new_session"],
+    ["reset_session", "new_session"],
 )
 def test_recovery_command_executes_real_handler_after_initial_snapshot_failure(
     recovery_command: str,
 ) -> None:
     study = Study()
     service = ApplicationService(study)
-    plan: _RecoveryBlockingPlan | None = None
-    trainer: Trainer | None = None
-    if recovery_command == "stop_training":
-        plan = _RecoveryBlockingPlan()
-        trainer = Trainer([cast(TrainingPlanHolder, plan)])
-        study.training_manager.trainer = trainer
-        trainer.run(interact=True)
-        assert plan.started.wait(timeout=THREAD_WATCHDOG_SECONDS)
-        command = StopTrainingCommand(wait_timeout=THREAD_WATCHDOG_SECONDS)
-    else:
-        study.data_manager.loaded_data_list = [cast(Any, object())]
-        study.data_manager.preprocessed_data_list = [cast(Any, object())]
-        study.data_manager.epoch_data = cast(Any, object())
-        study.data_manager.datasets = [cast(Any, object())]
-        study.data_manager.dataset_generator = cast(Any, object())
-        study.data_manager.dataset_locked = True
-        # Deliberately corrupt private state to exercise recovery after a failed read.
-        study.training_manager._model_holder = cast(Any, object())
-        study.training_manager._training_option = cast(Any, object())
-        study.training_manager.saliency_params = {"SmoothGrad": {"nt_samples": 5}}
-        study.training_manager.trainer = Trainer([])
-        command = (
-            ResetSessionCommand(confirmed=True)
-            if recovery_command == "reset_session"
-            else NewSessionCommand(confirmed=True)
-        )
+    study.data_manager.loaded_data_list = [cast(Any, object())]
+    study.data_manager.preprocessed_data_list = [cast(Any, object())]
+    study.data_manager.epoch_data = cast(Any, object())
+    study.data_manager.datasets = [cast(Any, object())]
+    study.data_manager.dataset_generator = cast(Any, object())
+    study.data_manager.dataset_locked = True
+    # Deliberately corrupt private state to exercise recovery after a failed read.
+    study.training_manager._model_holder = cast(Any, object())
+    study.training_manager._training_option = cast(Any, object())
+    study.training_manager.saliency_params = {"SmoothGrad": {"nt_samples": 5}}
+    study.training_manager.trainer = Trainer([])
+    command = (
+        ResetSessionCommand(confirmed=True)
+        if recovery_command == "reset_session"
+        else NewSessionCommand(confirmed=True)
+    )
     real_build = service.state_snapshot.build
     calls = 0
 
@@ -2656,35 +4712,23 @@ def test_recovery_command_executes_real_handler_after_initial_snapshot_failure(
 
     service.state_snapshot.build = MagicMock(side_effect=fail_once_then_build)
 
-    try:
-        result = service.execute(command)
+    result = service.execute(command)
 
-        assert result.ok is True
-        assert result.command_name == command.name.value
-        assert result.state.state_reliable is True
-        assert service.state_snapshot.build.call_count == 2
-        if recovery_command == "stop_training":
-            assert result.message == "Training stopped."
-            assert result.diagnostics["stopped"] is True
-            assert result.state.active_training.is_running is False
-            assert plan is not None and plan.interrupt is True
-            assert trainer is not None and not trainer.is_running()
-            assert study.training_manager.trainer is trainer
-        else:
-            assert result.state.pipeline_stage == "empty"
-            assert study.data_manager.loaded_data_list == []
-            assert study.data_manager.preprocessed_data_list == []
-            assert study.data_manager.epoch_data is None
-            assert study.data_manager.datasets == []
-            assert study.data_manager.dataset_generator is None
-            assert study.data_manager.dataset_locked is False
-            assert study.training_manager.model_holder is None
-            assert study.training_manager.training_option is None
-            assert study.training_manager.saliency_params is None
-            assert study.training_manager.trainer is None
-    finally:
-        if trainer is not None and trainer.is_running():
-            trainer.stop(wait_timeout=THREAD_WATCHDOG_SECONDS)
+    assert result.ok is True
+    assert result.command_name == command.name.value
+    assert result.state.state_reliable is True
+    assert service.state_snapshot.build.call_count == 2
+    assert result.state.pipeline_stage == "empty"
+    assert study.data_manager.loaded_data_list == []
+    assert study.data_manager.preprocessed_data_list == []
+    assert study.data_manager.epoch_data is None
+    assert study.data_manager.datasets == []
+    assert study.data_manager.dataset_generator is None
+    assert study.data_manager.dataset_locked is False
+    assert study.training_manager.model_holder is None
+    assert study.training_manager.training_option is None
+    assert study.training_manager.saliency_params is None
+    assert study.training_manager.trainer is None
 
 
 @pytest.mark.parametrize(
@@ -2981,6 +5025,7 @@ def test_training_history_query_returns_detached_json_rows(monkeypatch):
             },
             "test": {"accuracy": []},
         },
+        "runtime_device": "",
     }
     assert returned_row == expected_row
 
@@ -3073,7 +5118,7 @@ def test_data_interpretation_choices_flow_into_recipe(tmp_path):
     eeg_path.write_bytes(b"not loaded during scan")
     recipe_path = tmp_path / "reviewed_recipe.json"
     service = ApplicationService(Study())
-    service.dataset.import_files = MagicMock(return_value=(1, []))
+    _use_test_raw_factory(service)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     preview = service.execute(
@@ -3120,7 +5165,7 @@ def test_safe_data_interpretation_cannot_be_applied_twice(tmp_path):
     eeg_path = source_dir / "subject01_run1.fif"
     eeg_path.write_bytes(b"not loaded during scan")
     service = ApplicationService(Study())
-    service.dataset.import_files = MagicMock(return_value=(1, []))
+    load_raw = _use_test_raw_factory(service)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -3150,7 +5195,7 @@ def test_safe_data_interpretation_cannot_be_applied_twice(tmp_path):
     assert "Interpretation has already been applied." in apply_capability.reasons
     assert second_apply.failed is True
     assert second_apply.error_type == ErrorType.PRECONDITION
-    assert service.dataset.import_files.call_count == 1
+    assert load_raw.call_count == 1
 
 
 def test_data_interpretation_preview_exposes_internal_event_evidence(
@@ -3205,32 +5250,8 @@ def test_data_interpretation_apply_updates_loaded_metadata(tmp_path):
     eeg_path.write_bytes(b"not loaded during scan")
     service = ApplicationService(Study())
 
-    class LoadedData:
-        def __init__(self, filepath: str) -> None:
-            self.filepath = filepath
-            self.subject = "0"
-            self.session = "0"
-            self.runtime_details: dict[str, dict[str, str]] = {}
-
-        def get_filepath(self) -> str:
-            return self.filepath
-
-        def set_subject_name(self, subject: str) -> None:
-            self.subject = subject
-
-        def set_session_name(self, session: str) -> None:
-            self.session = session
-
-        def set_runtime_detail(self, name: str, detail: dict[str, str]) -> None:
-            self.runtime_details[name] = detail
-
-    loaded = LoadedData(str(eeg_path))
-
-    def import_files(_filepaths: object) -> tuple[int, list[str]]:
-        cast(Any, service.study).loaded_data_list = [loaded]
-        return 1, []
-
-    service.dataset.import_files = MagicMock(side_effect=import_files)
+    loaded = _minimal_raw(eeg_path)
+    _use_test_raw_factory(service, loaded)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -3250,9 +5271,10 @@ def test_data_interpretation_apply_updates_loaded_metadata(tmp_path):
     service.execute(ValidateInterpretationCommand())
     apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
 
-    assert loaded.subject == "S01"
-    assert loaded.session == "session-01"
-    assert loaded.runtime_details["data_interpretation_metadata"] == {
+    committed = service.study.data_manager.loaded_data_list[0]
+    assert committed.get_subject_name() == "S01"
+    assert committed.get_session_name() == "session-01"
+    assert committed.get_runtime_detail("data_interpretation_metadata") == {
         "subject": "S01",
         "session": "session-01",
         "task": "motor-imagery",
@@ -3295,9 +5317,7 @@ def test_data_interpretation_label_carrier_choices_flow_into_recipe(tmp_path):
             verbose="ERROR",
         ),
     )
-    service.dataset.import_files = MagicMock(return_value=(1, []))
-    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
-    service.dataset.apply_labels_batch = MagicMock(return_value=1)
+    _use_test_raw_factory(service, raw)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     initial_preview = service.execute(PreviewInterpretationCommand())
@@ -3367,7 +5387,7 @@ def test_data_interpretation_state_snapshot_preserves_import_review_truth(tmp_pa
     eeg_path.write_bytes(b"not loaded during scan")
     savemat(label_path, {"classlabel": [1, 2], "cue_onset": [100, 200]})
     service = ApplicationService(Study())
-    service.dataset.import_files = MagicMock(return_value=(1, []))
+    _use_test_raw_factory(service)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -3498,8 +5518,7 @@ def test_apply_interpretation_applies_reviewed_timestamp_label_carrier(tmp_path)
     )
     service = ApplicationService(Study())
     raw = _minimal_raw(eeg_path)
-    service.dataset.import_files = MagicMock(return_value=(1, []))
-    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    _use_test_raw_factory(service, raw)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -3558,8 +5577,7 @@ def test_apply_interpretation_converts_sample_index_csv_labels_to_seconds(tmp_pa
     )
     service = ApplicationService(Study())
     raw = _minimal_raw(eeg_path, sfreq=128.0)
-    service.dataset.import_files = MagicMock(return_value=(1, []))
-    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    _use_test_raw_factory(service, raw)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -3627,12 +5645,8 @@ def test_apply_interpretation_applies_reviewed_csv_tsv_event_order_labels(
             {"A01T.gdf": {"768": {"count": 2, "description": "trial start"}}},
         )
         service = ApplicationService(Study())
-        raw = _raw_mock()
-        raw.get_filepath.return_value = str(eeg_path)
-        raw.get_filename.return_value = eeg_path.name
-        service.dataset.import_files = MagicMock(return_value=(1, []))
-        service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
-        service.dataset.apply_labels_batch = MagicMock(return_value=1)
+        raw = _raw_with_event_codes(eeg_path, [768, 768])
+        _use_test_raw_factory(service, raw)
 
         service.execute(ScanSourceCommand(source_path=str(source_dir)))
         service.execute(
@@ -3658,9 +5672,9 @@ def test_apply_interpretation_applies_reviewed_csv_tsv_event_order_labels(
 
         assert apply_result.ok is True
         assert apply_result.diagnostics["label_apply"]["mode"] == "sequence"
-        label_map = service.dataset.apply_labels_batch.call_args.args[1]
-        np.testing.assert_array_equal(label_map[str(labels_path)], np.array([1, 2]))
-        assert service.dataset.apply_labels_batch.call_args.args[4] == {"768"}
+        assert apply_result.state.interpretation.label_imports[0][
+            "selected_event_names"
+        ] == ["768"]
 
 
 def test_apply_interpretation_applies_reviewed_timestamp_label_carriers_by_stem(
@@ -3685,8 +5699,10 @@ def test_apply_interpretation_applies_reviewed_timestamp_label_carriers_by_stem(
     service = ApplicationService(Study())
     raw_1 = _minimal_raw(eeg_1)
     raw_2 = _minimal_raw(eeg_2)
-    service.dataset.import_files = MagicMock(return_value=(2, []))
-    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw_1, raw_2])
+    _use_test_raw_factory(
+        service,
+        {str(eeg_1): raw_1, str(eeg_2): raw_2},
+    )
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -3751,7 +5767,6 @@ def test_apply_interpretation_skips_ambiguous_multi_file_timestamp_labels(tmp_pa
     raw_2 = _raw_mock()
     raw_2.get_filepath.return_value = str(eeg_2)
     service.dataset.import_files = MagicMock(return_value=(2, []))
-    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw_1, raw_2])
     service.dataset.apply_labels_batch = MagicMock(return_value=2)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
@@ -3799,7 +5814,6 @@ def test_apply_interpretation_blocks_partial_manual_timestamp_label_mapping(
     raw_2.get_filepath.return_value = str(eeg_2)
     raw_2.get_filename.return_value = eeg_2.name
     service.dataset.import_files = MagicMock(return_value=(2, []))
-    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw_1, raw_2])
     service.dataset.apply_labels_batch = MagicMock(return_value=1)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
@@ -3849,12 +5863,8 @@ def test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier(
         {"A01T.gdf": {"768": {"count": 4, "description": "768"}}},
     )
     service = ApplicationService(Study())
-    raw = _raw_mock()
-    raw.get_filepath.return_value = str(eeg_path)
-    raw.get_filename.return_value = eeg_path.name
-    service.dataset.import_files = MagicMock(return_value=(1, []))
-    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
-    service.dataset.apply_labels_batch = MagicMock(return_value=1)
+    raw = _raw_with_event_codes(eeg_path, [768, 768, 768, 768])
+    _use_test_raw_factory(service, raw)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -3881,10 +5891,6 @@ def test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier(
     assert apply_result.ok is True
     assert apply_result.diagnostics["label_apply"]["status"] == "applied"
     assert apply_result.diagnostics["label_apply"]["mode"] == "sequence"
-    args = service.dataset.apply_labels_batch.call_args.args
-    assert args[0] == [raw]
-    np.testing.assert_array_equal(args[1][str(label_path)], np.array([1, 2, 1, 2]))
-    assert args[3] == {1: "left hand", 2: "right hand"}
     assert apply_result.state.interpretation.label_imports[0]["mode"] == "sequence"
     assert (
         "label_import:sequence:1"
@@ -3911,20 +5917,48 @@ def test_apply_interpretation_blocks_mixed_label_placement_modes(
         "onset\ttrial_type\n0.5\tleft\n1.5\tright\n",
         encoding="utf-8",
     )
+    sentinel_path = tmp_path / "existing_interpretation.fif"
+    sentinel_path.write_bytes(b"existing reviewed EEG identity")
     _patch_internal_events(
         monkeypatch,
         {"A01T.gdf": {"768": {"count": 2, "description": "768"}}},
     )
     service = ApplicationService(Study())
-    raw = _raw_mock()
-    raw.get_filepath.return_value = str(eeg_path)
-    raw.get_filename.return_value = eeg_path.name
-    second_raw = _raw_mock()
-    second_raw.get_filepath.return_value = str(second_eeg_path)
-    second_raw.get_filename.return_value = second_eeg_path.name
-    service.dataset.import_files = MagicMock(return_value=(2, []))
-    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw, second_raw])
-    service.dataset.apply_labels_batch = MagicMock(return_value=2)
+    sentinel_raw = _minimal_raw(sentinel_path)
+    raw = _raw_with_event_codes(eeg_path, [768, 768])
+    second_raw = _minimal_raw(second_eeg_path)
+    load_raw = _use_test_raw_factory(
+        service,
+        {
+            str(sentinel_path): sentinel_raw,
+            str(eeg_path): raw,
+            str(second_eeg_path): second_raw,
+        },
+    )
+
+    baseline_review = service.execute(
+        ReviewInterpretationCommand(
+            source_path=str(sentinel_path),
+            choices={
+                "selected_eeg_files": [str(sentinel_path)],
+                "skip_labels": True,
+            },
+        )
+    )
+    baseline_candidate_id = baseline_review.diagnostics["candidate"]["candidate_id"]
+    assert service.execute(
+        ValidateInterpretationCommand(candidate_id=baseline_candidate_id)
+    ).ok
+    baseline_apply = service.execute(
+        ApplyInterpretationCommand(
+            candidate_id=baseline_candidate_id,
+            confirmed=True,
+        )
+    )
+    assert baseline_apply.ok
+    source_identity_before = dict(
+        sentinel_raw.runtime_details["source_content_identity"]
+    )
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -3956,14 +5990,37 @@ def test_apply_interpretation_blocks_mixed_label_placement_modes(
         ),
     )
     service.execute(ValidateInterpretationCommand())
+    state_before = service.get_state()
+    loaded_before = service.study.data_manager.loaded_data_list
+    applied_before = (
+        service.interpretation._service().state.resolve_applied_interpretation()
+    )
+    assert loaded_before == [sentinel_raw]
+    assert state_before.interpretation.has_applied_interpretation is True
     apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+    state_after = service.get_state()
+    loaded_after = service.study.data_manager.loaded_data_list
+    applied_after = (
+        service.interpretation._service().state.resolve_applied_interpretation()
+    )
 
     assert apply_result.failed is True
     assert apply_result.error_type == ErrorType.VALIDATION
     assert apply_result.diagnostics["label_apply"]["status"] == "failed"
+    assert apply_result.diagnostics["state_preserved"] is True
     assert "mixed placement modes" in apply_result.diagnostics["label_apply"]["reason"]
-    assert apply_result.state.interpretation.has_applied_interpretation is False
-    service.dataset.apply_labels_batch.assert_not_called()
+    assert apply_result.state.raw == state_before.raw
+    assert apply_result.state.interpretation == state_before.interpretation
+    assert state_after.raw == state_before.raw
+    assert state_after.interpretation == state_before.interpretation
+    assert loaded_after is loaded_before
+    assert loaded_after == [sentinel_raw]
+    assert loaded_after[0] is sentinel_raw
+    assert applied_after is applied_before
+    assert sentinel_raw.runtime_details["source_content_identity"] == (
+        source_identity_before
+    )
+    assert load_raw.call_count == 3
 
 
 def test_apply_interpretation_blocks_sequence_label_apply_count_mismatch(
@@ -3983,12 +6040,11 @@ def test_apply_interpretation_blocks_sequence_label_apply_count_mismatch(
         {"A01T.gdf": {"768": {"count": 2, "description": "768"}}},
     )
     service = ApplicationService(Study())
-    raw = _raw_mock()
-    raw.get_filepath.return_value = str(eeg_path)
-    raw.get_filename.return_value = eeg_path.name
-    service.dataset.import_files = MagicMock(return_value=(1, []))
-    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
-    service.dataset.apply_labels_batch = MagicMock(return_value=0)
+    raw = _raw_with_event_codes(eeg_path, [768, 768])
+    _use_test_raw_factory(service, raw)
+    label_service = MagicMock()
+    label_service.apply_labels_batch_checked.return_value = 0
+    service.dataset._label_service_provider = lambda: lambda: label_service
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -4013,6 +6069,7 @@ def test_apply_interpretation_blocks_sequence_label_apply_count_mismatch(
     assert apply_result.failed is True
     assert apply_result.error_type == ErrorType.VALIDATION
     assert apply_result.diagnostics["label_apply"]["status"] == "failed"
+    assert apply_result.diagnostics["state_preserved"] is True
     assert "Applied labels to 0/1" in apply_result.diagnostics["label_apply"]["reason"]
     assert apply_result.state.interpretation.has_applied_interpretation is False
 
@@ -4041,12 +6098,8 @@ def test_apply_interpretation_filters_sequence_labels_to_selected_event_codes(
         },
     )
     service = ApplicationService(Study())
-    raw = _raw_mock()
-    raw.get_filepath.return_value = str(eeg_path)
-    raw.get_filename.return_value = eeg_path.name
-    service.dataset.import_files = MagicMock(return_value=(1, []))
-    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
-    service.dataset.apply_labels_batch = MagicMock(return_value=1)
+    raw = _raw_with_event_codes(eeg_path, [768, 768, 769, 770])
+    _use_test_raw_factory(service, raw)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -4071,8 +6124,6 @@ def test_apply_interpretation_filters_sequence_labels_to_selected_event_codes(
     apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
 
     assert apply_result.ok is True
-    call = service.dataset.apply_labels_batch.call_args
-    assert call.args[4] == {"768"}
     assert apply_result.state.interpretation.label_imports[0][
         "selected_event_names"
     ] == ["768"]
@@ -4098,8 +6149,7 @@ def test_apply_interpretation_applies_reviewed_mat_sample_anchor_label_carrier(
     )
     service = ApplicationService(Study())
     raw = _minimal_raw(eeg_path)
-    service.dataset.import_files = MagicMock(return_value=(1, []))
-    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    _use_test_raw_factory(service, raw)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -4183,8 +6233,7 @@ def test_apply_interpretation_applies_reviewed_event_code_label_carrier(
         np.array([[100, 0, 11], [200, 0, 12], [300, 0, 11]], dtype=np.int32),
         {"11": 11, "12": 12},
     )
-    service.dataset.import_files = MagicMock(return_value=(1, []))
-    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    _use_test_raw_factory(service, cast(Raw, raw))
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -4236,8 +6285,7 @@ def test_apply_interpretation_honors_interval_end_field(
     )
     service = ApplicationService(Study())
     raw = _minimal_raw(eeg_path)
-    service.dataset.import_files = MagicMock(return_value=(1, []))
-    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    _use_test_raw_factory(service, raw)
 
     scan_result = service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -4319,8 +6367,7 @@ def test_apply_interpretation_records_internal_event_epoch_hint(
     raw = _raw_mock()
     raw.get_filepath.return_value = str(eeg_path)
     raw.get_filename.return_value = eeg_path.name
-    service.dataset.import_files = MagicMock(return_value=(1, []))
-    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    _use_test_raw_factory(service, cast(Raw, raw))
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -4374,15 +6421,12 @@ def test_apply_interpretation_applies_reviewed_sequence_label_carriers_by_stem(
         },
     )
     service = ApplicationService(Study())
-    raw_1 = _raw_mock()
-    raw_1.get_filepath.return_value = str(eeg_1)
-    raw_1.get_filename.return_value = eeg_1.name
-    raw_2 = _raw_mock()
-    raw_2.get_filepath.return_value = str(eeg_2)
-    raw_2.get_filename.return_value = eeg_2.name
-    service.dataset.import_files = MagicMock(return_value=(2, []))
-    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw_1, raw_2])
-    service.dataset.apply_labels_batch = MagicMock(return_value=2)
+    raw_1 = _raw_with_event_codes(eeg_1, [768, 768])
+    raw_2 = _raw_with_event_codes(eeg_2, [768, 768])
+    _use_test_raw_factory(
+        service,
+        {str(eeg_1): raw_1, str(eeg_2): raw_2},
+    )
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(
@@ -4419,15 +6463,6 @@ def test_apply_interpretation_applies_reviewed_sequence_label_carriers_by_stem(
     assert apply_result.ok is True
     assert apply_result.diagnostics["label_apply"]["status"] == "applied"
     assert apply_result.diagnostics["label_apply"]["success_count"] == 2
-    calls = service.dataset.apply_labels_batch.call_args_list
-    assert len(calls) == 1
-    assert calls[0].args[0] == [raw_1, raw_2]
-    np.testing.assert_array_equal(calls[0].args[1][str(label_1)], np.array([1, 2]))
-    np.testing.assert_array_equal(calls[0].args[1][str(label_2)], np.array([2, 1]))
-    assert calls[0].args[2] == {
-        str(eeg_1): str(label_1),
-        str(eeg_2): str(label_2),
-    }
     assert apply_result.state.interpretation.label_imports[0]["file_mapping"] == {
         str(eeg_1): str(label_1),
         str(eeg_2): str(label_2),
@@ -4461,7 +6496,6 @@ def test_apply_interpretation_blocks_ambiguous_multi_file_sequence_labels(
     raw_2 = _raw_mock()
     raw_2.get_filepath.return_value = str(eeg_2)
     service.dataset.import_files = MagicMock(return_value=(2, []))
-    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw_1, raw_2])
     service.dataset.apply_labels_batch = MagicMock(return_value=2)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
@@ -4522,7 +6556,6 @@ def test_apply_interpretation_blocks_partial_manual_sequence_label_mapping(
     raw_2.get_filepath.return_value = str(eeg_2)
     raw_2.get_filename.return_value = eeg_2.name
     service.dataset.import_files = MagicMock(return_value=(2, []))
-    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw_1, raw_2])
     service.dataset.apply_labels_batch = MagicMock(return_value=1)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
@@ -4561,7 +6594,7 @@ def test_data_interpretation_blocks_sources_without_eeg_files(tmp_path):
     source_dir.mkdir()
     (source_dir / "labels.csv").write_text("label\n1\n2\n", encoding="utf-8")
     service = ApplicationService(Study())
-    service.dataset.import_files = MagicMock(return_value=(1, []))
+    load_raw = _use_test_raw_factory(service)
 
     scan = service.execute(ScanSourceCommand(source_path=str(source_dir)))
     preview = service.execute(PreviewInterpretationCommand())
@@ -4575,7 +6608,7 @@ def test_data_interpretation_blocks_sources_without_eeg_files(tmp_path):
     assert apply_result.failed is True
     assert apply_result.error_type == ErrorType.PRECONDITION
     assert "blocked" in apply_result.message.lower()
-    service.dataset.import_files.assert_not_called()
+    load_raw.assert_not_called()
 
 
 def test_data_interpretation_recipe_save_and_reload_rescans_without_apply(tmp_path):
@@ -4585,7 +6618,7 @@ def test_data_interpretation_recipe_save_and_reload_rescans_without_apply(tmp_pa
     eeg_path.write_bytes(b"not loaded during scan")
     recipe_path = tmp_path / "recipe.json"
     service = ApplicationService(Study())
-    service.dataset.import_files = MagicMock(return_value=(1, []))
+    _use_test_raw_factory(service)
 
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(PreviewInterpretationCommand())
@@ -4601,7 +6634,7 @@ def test_data_interpretation_recipe_save_and_reload_rescans_without_apply(tmp_pa
     assert save_result.state.interpretation.has_recipe is True
 
     fresh_service = ApplicationService(Study())
-    fresh_service.dataset.import_files = MagicMock(return_value=(1, []))
+    fresh_load = _use_test_raw_factory(fresh_service)
     reload_result = fresh_service.execute(
         ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path)),
     )
@@ -4611,7 +6644,7 @@ def test_data_interpretation_recipe_save_and_reload_rescans_without_apply(tmp_pa
     assert reload_result.diagnostics["scan_result"]["eeg_files"] == [str(eeg_path)]
     assert reload_result.state.interpretation.has_recipe is True
     assert reload_result.state.interpretation.has_applied_interpretation is False
-    fresh_service.dataset.import_files.assert_not_called()
+    fresh_load.assert_not_called()
 
 
 def test_preprocess_capability_requires_raw_data_not_existing_preprocessed_copy():
@@ -4697,6 +6730,249 @@ def test_evaluate_command_returns_typed_service_backed_summary():
     assert result.diagnostics["training_read_verified"] is True
     assert isinstance(result.diagnostics["training_read_generation"], int)
     assert result.state.last_error is None
+
+
+def test_model_summary_shutdown_cancel_is_terminal_and_retryable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    study = Study()
+    epoch_data = SimpleNamespace(
+        get_model_args=lambda: {
+            "n_classes": 2,
+            "channels": 2,
+            "samples": 16,
+            "sfreq": 128,
+        },
+        get_data=lambda: SimpleNamespace(shape=(8, 2, 16)),
+    )
+    dataset = SimpleNamespace(get_epoch_data=lambda: epoch_data)
+    model = SimpleNamespace(parameters=list)
+    run = MagicMock()
+    run.is_finished.return_value = True
+    run.get_name.return_value = "Repeat-0"
+    run.eval_record.evaluation_split = "test"
+    plan = MagicMock()
+    plan.dataset = dataset
+    plan.model_holder = SimpleNamespace(get_model=lambda _args: model)
+    plan.get_name.return_value = "Plan A"
+    plan.get_plans.return_value = [run]
+    trainer = Trainer([])
+    trainer.get_training_plan_holders = MagicMock(return_value=[plan])
+    study.training_manager.trainer = trainer
+    service = ApplicationService(study)
+    service.training_runtime.training_plan_holders = MagicMock(return_value=(plan,))
+    summary_started = Event()
+    release_summary = Event()
+    summary_calls = 0
+
+    def blocked_summary(*_args: Any, **_kwargs: Any) -> str:
+        nonlocal summary_calls
+        summary_calls += 1
+        if summary_calls == 1:
+            summary_started.set()
+            assert release_summary.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        return "Model summary"
+
+    monkeypatch.setattr("torchinfo.summary", blocked_summary)
+    command = EvaluateCommand(
+        summary_identity=EvaluationSummaryIdentity(
+            plan=EvaluationPlanIdentity(plan_index=0),
+        )
+    )
+    operation = service.begin_owned_operation(command)
+    before = service.get_view_publication()
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="model-summary-shutdown-cancel",
+    )
+    worker.start()
+    assert summary_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+    assert service.get_owned_operation(operation.operation_id).stage == (
+        "Building detailed model summary"
+    )
+
+    command_lock_available = service._command_lock.acquire(False)
+    if command_lock_available:
+        service._command_lock.release()
+    assert command_lock_available is True
+
+    started_at = time.monotonic()
+    stop_result = service.execute(StopTrainingCommand())
+    stop_elapsed = time.monotonic() - started_at
+    assert stop_elapsed < 0.1
+    assert stop_result.ok
+
+    started_at = time.monotonic()
+    assert service.cancel_owned_operation(operation.operation_id) is True
+    owned_cancel_elapsed = time.monotonic() - started_at
+    assert owned_cancel_elapsed < 0.1
+
+    started_at = time.monotonic()
+    service.request_shutdown_fence()
+    fence_elapsed = time.monotonic() - started_at
+    release_summary.set()
+    worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert fence_elapsed < 0.1
+    assert not worker.is_alive()
+    assert len(results) == 1
+    cancelled = results[0]
+    assert cancelled.error_type is ErrorType.CANCELLED
+    assert cancelled.diagnostics["operation_cancelled"] is True
+    assert "model_summary" not in cancelled.diagnostics
+    assert service.get_view_publication() == before
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.CANCELLED
+    )
+
+    assert service.release_shutdown_fence()
+    retry_operation = service.begin_owned_operation(command)
+    retried = service.execute(command, operation_id=retry_operation.operation_id)
+
+    assert retried.ok
+    assert retried.diagnostics["model_summary"]["text"] == "Model summary"
+    assert service.get_owned_operation(retry_operation.operation_id).phase is (
+        OwnedWorkPhase.COMPLETED
+    )
+    assert summary_calls == 2
+
+
+def test_model_summary_model_construction_does_not_hold_command_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    study = Study()
+    epoch_data = SimpleNamespace(
+        get_model_args=lambda: {
+            "n_classes": 2,
+            "channels": 2,
+            "samples": 16,
+            "sfreq": 128,
+        },
+        get_data=lambda: SimpleNamespace(shape=(8, 2, 16)),
+    )
+    dataset = SimpleNamespace(get_epoch_data=lambda: epoch_data)
+    model = SimpleNamespace(parameters=list)
+    constructor_started = Event()
+    release_constructor = Event()
+
+    def build_model(_args: dict[str, int]) -> Any:
+        constructor_started.set()
+        assert release_constructor.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        return model
+
+    run = MagicMock()
+    run.is_finished.return_value = True
+    run.eval_record.evaluation_split = "test"
+    plan = MagicMock()
+    plan.dataset = dataset
+    plan.model_holder = SimpleNamespace(get_model=build_model)
+    plan.get_name.return_value = "Plan A"
+    plan.get_plans.return_value = [run]
+    trainer = Trainer([])
+    trainer.get_training_plan_holders = MagicMock(return_value=[plan])
+    study.training_manager.trainer = trainer
+    service = ApplicationService(study)
+    service.training_runtime.training_plan_holders = MagicMock(return_value=(plan,))
+    monkeypatch.setattr("torchinfo.summary", lambda *_args, **_kwargs: "Summary")
+    command = EvaluateCommand(
+        summary_identity=EvaluationSummaryIdentity(
+            plan=EvaluationPlanIdentity(plan_index=0),
+        )
+    )
+    operation = service.begin_owned_operation(command)
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="model-summary-construction-lock-boundary",
+    )
+    worker.start()
+    try:
+        assert constructor_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        acquired = service._command_lock.acquire(False)
+        if acquired:
+            service._command_lock.release()
+        assert acquired is True
+    finally:
+        release_constructor.set()
+        worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert len(results) == 1
+    assert results[0].ok
+    assert results[0].diagnostics["model_summary"]["text"] == "Summary"
+
+
+def test_model_summary_rejects_result_after_training_identity_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    study = Study()
+    epoch_data = SimpleNamespace(
+        get_model_args=dict,
+        get_data=lambda: SimpleNamespace(shape=(8, 2, 16)),
+    )
+    dataset = SimpleNamespace(get_epoch_data=lambda: epoch_data)
+    model = SimpleNamespace(parameters=list)
+    run = MagicMock()
+    run.is_finished.return_value = True
+    run.eval_record.evaluation_split = "test"
+    plan = MagicMock()
+    plan.dataset = dataset
+    plan.model_holder = SimpleNamespace(get_model=lambda _args: model)
+    plan.get_name.return_value = "Plan A"
+    plan.get_plans.return_value = [run]
+    trainer = Trainer([])
+    trainer.get_training_plan_holders = MagicMock(return_value=[plan])
+    study.training_manager.trainer = trainer
+    service = ApplicationService(study)
+    service.training_runtime.training_plan_holders = MagicMock(return_value=(plan,))
+    summary_started = Event()
+    release_summary = Event()
+
+    def blocked_summary(*_args: Any, **_kwargs: Any) -> str:
+        summary_started.set()
+        assert release_summary.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        return "Stale summary"
+
+    monkeypatch.setattr("torchinfo.summary", blocked_summary)
+    command = EvaluateCommand(
+        summary_identity=EvaluationSummaryIdentity(
+            plan=EvaluationPlanIdentity(plan_index=0),
+        )
+    )
+    operation = service.begin_owned_operation(command)
+    before = service.get_view_publication()
+    results: list[CommandResult] = []
+    worker = Thread(
+        target=lambda: results.append(
+            service.execute(command, operation_id=operation.operation_id)
+        ),
+        name="model-summary-stale-publication",
+    )
+    worker.start()
+    try:
+        assert summary_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        cleared = service.execute(ClearTrainingHistoryCommand(confirmed=True))
+        assert cleared.ok
+        assert service.get_view_publication().generation > before.generation
+    finally:
+        release_summary.set()
+        worker.join(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert not worker.is_alive()
+    assert len(results) == 1
+    stale = results[0]
+    assert stale.error_type is ErrorType.PRECONDITION
+    assert stale.diagnostics["stale_evaluation_summary"] is True
+    assert stale.diagnostics["state_preserved"] is True
+    assert "model_summary" not in stale.diagnostics
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.FAILED
+    )
 
 
 def test_evaluation_query_fails_when_training_generation_changes_mid_read() -> None:
@@ -5098,6 +7374,92 @@ def _saliency_recompute_service() -> tuple[
     service.study.training_manager.trainer = trainer
     service.study.training_manager.saliency_params = holder.saliency_params
     return service, trainer, holder, record, old_eval_record
+
+
+def test_explicit_saliency_compute_runs_outside_shared_command_lock() -> None:
+    service, trainer, _holder, _record, _old_eval_record = _saliency_recompute_service()
+    run = TrainingRunIdentity(
+        trainer_id=trainer.get_state_snapshot_identity(),
+        run_id=1,
+    )
+    trainer._terminal_outcome = TrainingTerminalOutcome(
+        state=TrainingOutcomeState.COMPLETED,
+        run=run,
+    )
+    compute_started = Event()
+    release_compute = Event()
+    replacement = MagicMock()
+
+    def evaluate(*_args, **_kwargs):
+        compute_started.set()
+        assert release_compute.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        return replacement
+
+    with patch.object(Evaluator, "evaluate_with_saliency", side_effect=evaluate):
+        result = service.execute(
+            SaliencyCommand(
+                method="Gradient",
+                params={
+                    "profile": "recommended",
+                    "methods": ["Gradient", "Gradient * Input"],
+                },
+            )
+        )
+
+        assert result.ok is True
+        assert result.diagnostics["action"] == "schedule"
+        assert compute_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        assert service._command_lock.acquire(blocking=False)
+        service._command_lock.release()
+        release_compute.set()
+        assert service.wait_for_background_tasks(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert service.training_runtime.saliency_status().phase is (
+        PostTrainingSaliencyPhase.SUCCEEDED
+    )
+
+
+def test_explicit_saliency_operation_cancel_is_immediate_and_terminal() -> None:
+    service, trainer, _holder, _record, _old_eval_record = _saliency_recompute_service()
+    run = TrainingRunIdentity(
+        trainer_id=trainer.get_state_snapshot_identity(),
+        run_id=1,
+    )
+    trainer._terminal_outcome = TrainingTerminalOutcome(
+        state=TrainingOutcomeState.COMPLETED,
+        run=run,
+    )
+    compute_started = Event()
+    release_compute = Event()
+    command = SaliencyCommand(
+        method="Gradient",
+        params={
+            "profile": "recommended",
+            "methods": ["Gradient", "Gradient * Input"],
+        },
+    )
+    operation = service.begin_owned_operation(command)
+
+    def evaluate(*_args, **_kwargs):
+        compute_started.set()
+        assert release_compute.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        return MagicMock()
+
+    with patch.object(Evaluator, "evaluate_with_saliency", side_effect=evaluate):
+        result = service.execute(command, operation_id=operation.operation_id)
+
+        assert result.ok is True
+        assert result.diagnostics["operation_phase"] == "running"
+        assert compute_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        started_at = time.monotonic()
+        assert service.cancel_owned_operation(operation.operation_id) is True
+        assert time.monotonic() - started_at < 0.1
+        release_compute.set()
+        assert service.owned_work.wait_for_idle(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert service.get_owned_operation(operation.operation_id).phase is (
+        OwnedWorkPhase.CANCELLED
+    )
 
 
 def test_saliency_configuration_is_blocked_while_training_but_query_remains_usable():
@@ -5736,7 +8098,7 @@ def test_train_restart_cleanup_waits_before_command_lock_and_fails_recoverably(
     execute_with_lock.assert_not_called()
 
 
-def test_training_automation_commits_split_after_resource_admission() -> None:
+def test_training_commits_split_without_scheduling_saliency() -> None:
     service = ApplicationService(Study())
     split_preparation: dict[str, object] = {
         "materialized": False,
@@ -5762,7 +8124,7 @@ def test_training_automation_commits_split_after_resource_admission() -> None:
     )
     command = TrainCommand(append=False, interactive=False)
 
-    result = service._handle_train_with_automation(command)
+    result = service._handle_train_with_saved_split(command)
 
     assert result == (
         "Training completed.",
@@ -5780,7 +8142,7 @@ def test_training_automation_commits_split_after_resource_admission() -> None:
         receipt_reused=False,
         defer_synchronous_completion=True,
     )
-    service.post_training_saliency.arm.assert_called_once_with(append=False)
+    service.post_training_saliency.arm.assert_not_called()
     service.post_training_saliency.cancel.assert_not_called()
 
 
@@ -6292,6 +8654,28 @@ def test_close_stop_exception_keeps_service_open_and_runtime_owned(monkeypatch) 
 
     monkeypatch.setattr(service.training_runtime, "stop_training", original_stop)
     service.close()
+
+
+def test_close_retries_without_releasing_runtime_when_preview_is_not_quiescent(
+    monkeypatch,
+) -> None:
+    study = Study()
+    service = get_application_service(study)
+    close_results = iter((False, True))
+    monkeypatch.setattr(
+        service.training_resource_preview,
+        "close",
+        lambda timeout=2.0: next(close_results),
+    )
+
+    service.close()
+
+    assert service.is_closed is False
+    assert get_application_service(study) is service
+
+    service.close()
+
+    assert service.is_closed is True
 
 
 def test_close_waits_for_synchronous_completion_publication_to_quiesce(
@@ -7122,7 +9506,7 @@ def test_import_labels_plan_routes_batch_import(tmp_path):
             plan=LabelImportPlan(
                 target_indices=[0],
                 label_paths=[str(label_path)],
-                file_mapping={"/tmp/sample.fif": str(label_path)},
+                file_mapping={raw.get_filepath(): str(label_path)},
                 mapping={1: "left", 2: "right"},
                 mode="batch",
             ),
@@ -7142,8 +9526,9 @@ def test_import_labels_updates_applied_interpretation_recipe_trace(tmp_path):
     recipe_path = tmp_path / "recipe_with_labels.json"
     service = ApplicationService(Study())
     raw = _raw_mock()
-    service.dataset.import_files = MagicMock(return_value=(1, []))
-    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    raw.get_filepath.return_value = str(eeg_path)
+    raw.get_filename.return_value = eeg_path.name
+    _use_test_raw_factory(service, cast(Raw, raw))
     service.dataset.apply_labels_batch = MagicMock(return_value=1)
     label_path = tmp_path / "labels.tsv"
     label_path.write_text("label\n1\n2\n", encoding="utf-8")
@@ -7151,14 +9536,14 @@ def test_import_labels_updates_applied_interpretation_recipe_trace(tmp_path):
     service.execute(ScanSourceCommand(source_path=str(source_dir)))
     service.execute(PreviewInterpretationCommand())
     service.execute(ValidateInterpretationCommand())
-    service.execute(ApplyInterpretationCommand(confirmed=True))
-    service.study.data_manager.loaded_data_list = [raw]
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+    assert apply_result.ok
     import_result = service.execute(
         ImportLabelsCommand(
             plan=LabelImportPlan(
                 target_indices=[0],
                 label_paths=[str(label_path)],
-                file_mapping={"/tmp/sample.fif": str(label_path)},
+                file_mapping={str(eeg_path): str(label_path)},
                 mapping={1: "left", 2: "right"},
                 mode="batch",
                 selected_event_names=["cue"],
@@ -7507,11 +9892,14 @@ def _patch_internal_events(
 
 
 def _raw_mock():
-    raw = MagicMock()
+    raw = MagicMock(spec=Raw)
     raw.get_filename.return_value = "sample.fif"
     raw.get_filepath.return_value = "/tmp/sample.fif"
     raw.get_subject_name.return_value = "S01"
     raw.get_session_name.return_value = "001"
+    raw.get_nchan.return_value = 2
+    raw.get_sfreq.return_value = 100.0
+    raw.get_epoch_duration.return_value = 100
     raw.is_raw.return_value = True
     mne_raw = MagicMock()
     mne_raw.ch_names = ["C3", "C4"]

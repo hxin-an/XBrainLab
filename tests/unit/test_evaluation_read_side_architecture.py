@@ -57,6 +57,41 @@ def test_evaluation_read_side_does_not_reintroduce_controller_dependencies() -> 
     assert "_create_refresh_bridge" not in panel_source
 
 
+def test_evaluation_long_work_has_one_owned_python_worker_path() -> None:
+    panel_source = (ROOT / "XBrainLab/ui/panels/evaluation/panel.py").read_text(
+        encoding="utf-8"
+    )
+    work_source = (ROOT / "XBrainLab/backend/application/evaluation_work.py").read_text(
+        encoding="utf-8"
+    )
+    service_source = (ROOT / "XBrainLab/backend/application/service.py").read_text(
+        encoding="utf-8"
+    )
+    main_window_source = (ROOT / "XBrainLab/ui/main_window.py").read_text(
+        encoding="utf-8"
+    )
+    render_source = (
+        ROOT / "XBrainLab/backend/application/evaluation_render.py"
+    ).read_text(encoding="utf-8")
+
+    assert "QThreadPool.globalInstance" not in panel_source
+    assert "Worker(self._load_evaluation_render" not in panel_source
+    assert "PythonThreadWorker(" in panel_source
+    assert "begin_evaluation_render_operation(" in panel_source
+    assert "cancel_application_operation(" in panel_source
+    assert "get_evaluation_render_publication" not in panel_source
+    assert "EvaluationWorkController(" in service_source
+    assert "registry=self.owned_work" in service_source
+    assert "OwnedWorkRegistry()" not in work_source
+    assert "Thread(" not in work_source
+    assert "threading" not in work_source
+    assert "evaluation_background_work_snapshot" in main_window_source
+    assert "begin_evaluation_render_shutdown" in main_window_source
+    assert "build_saliency_producer_identity" in render_source
+    assert "producerModelFingerprints" in panel_source
+    assert "hashlib" not in panel_source
+
+
 def test_evaluation_publication_refresh_architecture_guard_is_clean() -> None:
     assert check_evaluation_publication_refresh_boundary(ROOT) == []
 

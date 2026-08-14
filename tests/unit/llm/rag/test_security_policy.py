@@ -674,7 +674,7 @@ def test_runtime_embedding_constructor_uses_verified_local_snapshot(
     with (
         patch.object(RAGConfig, "get_embedding_cache_path", return_value=str(tmp_path)),
         patch(
-            "langchain_community.embeddings.HuggingFaceEmbeddings",
+            "langchain_huggingface.HuggingFaceEmbeddings",
             return_value=MagicMock(),
         ) as embeddings,
     ):
@@ -711,7 +711,7 @@ def test_missing_embedding_cache_disables_rag_without_loading_or_raising(
     with (
         patch.object(RAGConfig, "get_embedding_cache_path", return_value=str(tmp_path)),
         patch(
-            "langchain_community.embeddings.HuggingFaceEmbeddings",
+            "langchain_huggingface.HuggingFaceEmbeddings",
         ) as embeddings,
     ):
         retriever.initialize()

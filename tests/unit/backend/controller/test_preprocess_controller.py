@@ -128,10 +128,16 @@ def test_apply_resample(controller, mock_study):
         "XBrainLab.backend.controller.preprocess_controller.preprocessor.Resample"
     ) as MockProc:
         instance = MockProc.return_value
+        processed_data = [MagicMock()]
+        instance.data_preprocess.return_value = processed_data
         result = controller.apply_resample(256.0)
 
         assert result is True
         instance.data_preprocess.assert_called_with(256.0)
+        mock_study.set_preprocessed_data_list.assert_called_once_with(
+            processed_data,
+            force_update=True,
+        )
 
 
 def test_apply_rereference(controller, mock_study):
@@ -141,10 +147,16 @@ def test_apply_rereference(controller, mock_study):
         "XBrainLab.backend.controller.preprocess_controller.preprocessor.Rereference"
     ) as MockProc:
         instance = MockProc.return_value
+        processed_data = [MagicMock()]
+        instance.data_preprocess.return_value = processed_data
         result = controller.apply_rereference(["Cz"])
 
         assert result is True
         instance.data_preprocess.assert_called_with(ref_channels=["Cz"])
+        mock_study.set_preprocessed_data_list.assert_called_once_with(
+            processed_data,
+            force_update=True,
+        )
 
 
 def test_apply_normalization(controller, mock_study):
@@ -154,10 +166,16 @@ def test_apply_normalization(controller, mock_study):
         "XBrainLab.backend.controller.preprocess_controller.preprocessor.Normalize"
     ) as MockProc:
         instance = MockProc.return_value
+        processed_data = [MagicMock()]
+        instance.data_preprocess.return_value = processed_data
         result = controller.apply_normalization("z-score")
 
         assert result is True
         instance.data_preprocess.assert_called_with(norm="z-score")
+        mock_study.set_preprocessed_data_list.assert_called_once_with(
+            processed_data,
+            force_update=True,
+        )
 
 
 def test_standard_pipeline_failure_does_not_commit_or_notify(

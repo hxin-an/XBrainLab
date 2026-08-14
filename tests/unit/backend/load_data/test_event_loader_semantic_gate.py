@@ -163,6 +163,69 @@ def test_same_sample_class_ambiguity_is_rejected_without_state_mutation() -> Non
     assert event_id == {"original": 7}
 
 
+def test_timestamp_sample_conversion_is_batched_without_changing_semantics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_mne = _raw(first_samp=500)
+    wrapped = Raw("batched-timestamps.fif", raw_mne)
+    loader = EventLoader(wrapped)
+    loader.label_list = [
+        {
+            "onset": 0.1001,
+            "duration": 0.2,
+            "label": "left",
+            "ch_names": ["Cz"],
+        },
+        {
+            "onset": 0.2049,
+            "duration": 0.0,
+            "label": "right",
+        },
+        {
+            "onset": 0.2049,
+            "duration": 0.0,
+            "label": "right",
+        },
+        {
+            "onset": 0.3,
+            "duration": 0.1,
+            "label": "ocular",
+            "role": "artifact",
+            "use_as_class": False,
+        },
+    ]
+    original_time_as_index = raw_mne.time_as_index
+    converted_onsets: list[tuple[float, ...]] = []
+
+    def tracked_time_as_index(
+        times: list[float] | np.ndarray,
+        *,
+        use_rounding: bool = False,
+        origin: datetime | None = None,
+    ) -> np.ndarray:
+        converted_onsets.append(tuple(float(value) for value in times))
+        return original_time_as_index(
+            times,
+            use_rounding=use_rounding,
+            origin=origin,
+        )
+
+    monkeypatch.setattr(raw_mne, "time_as_index", tracked_time_as_index)
+
+    events, event_id = loader.create_event({"left": "Left", "right": "Right"})
+    loader.apply()
+
+    assert converted_onsets == [(0.1001, 0.2049), (0.1001, 0.2049)]
+    assert events is not None
+    assert events.tolist() == [[510, 0, 1], [520, 0, 2]]
+    assert event_id == {"Left": 1, "Right": 2}
+    left_row = _row_for(raw_mne.annotations, "Left")
+    assert left_row[0] == pytest.approx(raw_mne.first_time + 0.1001, abs=1e-6)
+    assert left_row[1:] == (0.2, "Left", ("Cz",))
+    assert raw_mne.annotations.description.tolist().count("Right") == 1
+    assert "BAD_artifact/ocular" in raw_mne.annotations.description
+
+
 def test_distinct_reviewed_rows_normalized_to_same_annotation_are_not_deleted() -> None:
     raw_mne = _raw()
     wrapped = Raw("distinct-system-rows.fif", raw_mne)

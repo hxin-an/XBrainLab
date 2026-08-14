@@ -423,7 +423,7 @@ def test_training_runtime_blocks_downstream_replacement_during_saliency(
     )
     manager.saliency_work_active = True
 
-    with pytest.raises(PreconditionError, match="saliency"):
+    with pytest.raises(PreconditionError, match=r"(?i)saliency"):
         runtime.begin_downstream_replacement()
 
 

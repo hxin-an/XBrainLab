@@ -343,16 +343,24 @@ def test_apply_smart_parse(controller, mock_study):
 
 
 def test_apply_channel_selection(controller, mock_study):
+    source = MagicMock()
+    mock_study.loaded_data_list = [source]
     with patch(
         "XBrainLab.backend.controller.dataset_controller.preprocessor.ChannelSelection"
     ) as MockCS:
         instance = MockCS.return_value
-        instance.data_preprocess.return_value = True
+        selected = MagicMock()
+        instance.data_preprocess.return_value = [selected]
 
         result = controller.apply_channel_selection(["C3", "C4"])
 
         assert result is True
         instance.data_preprocess.assert_called_with(["C3", "C4"])
+        mock_study.backup_loaded_data.assert_called_once_with()
+        mock_study.set_loaded_data_list.assert_called_once_with(
+            [selected],
+            force_update=True,
+        )
 
 
 def test_channel_selection_keeps_compatibility_observer_notifications(

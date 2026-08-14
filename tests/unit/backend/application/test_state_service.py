@@ -1857,6 +1857,7 @@ def test_query_state_service_returns_readonly_summaries() -> None:
         "group_name": "Group 1",
         "run_name": "1",
         "model_name": "EEGNet",
+        "runtime_device": "",
         "status": "Running",
         "status_detail": None,
         "epoch": 2,

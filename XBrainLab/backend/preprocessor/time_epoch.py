@@ -9,6 +9,7 @@ from typing import Any
 import mne
 import numpy as np
 
+from ..application.owned_work import owned_work_checkpoint
 from ..load_data import Raw
 from .base import PreprocessBase
 from .normalize import Normalize
@@ -61,33 +62,44 @@ def summarize_epoch_boundaries(
         else None
     )
 
-    for data in data_list:
+    total = len(data_list)
+    for index, data in enumerate(data_list):
+        owned_work_checkpoint(
+            "Checking EEG epoch boundaries",
+            completed=index,
+            total=total,
+        )
         events, event_id = data.get_event_list()
         event_array = np.asarray(events)
-        if event_array.ndim != 2 or event_array.shape[1] < 3:
-            continue
-        selected_codes = {
-            int(code)
-            for name, code in event_id.items()
-            if requested_names is None or str(name) in requested_names
-        }
-        if not selected_codes:
-            continue
-        selected = event_array[
-            np.isin(event_array[:, -1].astype(int, copy=False), list(selected_codes))
-        ]
-        selected_total += len(selected)
-        if not len(selected):
-            continue
-        raw = data.get_mne()
-        excluded = TimeEpoch._boundary_drop_count(
-            raw,
-            selected,
-            tmin=tmin,
-            tmax=tmax,
+        if event_array.ndim == 2 and event_array.shape[1] >= 3:
+            selected_codes = {
+                int(code)
+                for name, code in event_id.items()
+                if requested_names is None or str(name) in requested_names
+            }
+            if selected_codes:
+                selected = event_array[
+                    np.isin(
+                        event_array[:, -1].astype(int, copy=False),
+                        list(selected_codes),
+                    )
+                ]
+                selected_total += len(selected)
+                if len(selected):
+                    raw = data.get_mne()
+                    excluded = TimeEpoch._boundary_drop_count(
+                        raw,
+                        selected,
+                        tmin=tmin,
+                        tmax=tmax,
+                    )
+                    excluded_total += excluded
+                    affected_recordings += int(excluded > 0)
+        owned_work_checkpoint(
+            "Checking EEG epoch boundaries",
+            completed=index + 1,
+            total=total,
         )
-        excluded_total += excluded
-        affected_recordings += int(excluded > 0)
 
     return EpochBoundarySummary(
         selected_event_count=selected_total,
@@ -131,7 +143,13 @@ class TimeEpoch(PreprocessBase):
                 f"({frequencies}). Resample them to one shared rate before "
                 "creating epochs."
             )
-        for preprocessed_data in self.preprocessed_data_list:
+        total = len(self.preprocessed_data_list)
+        for index, preprocessed_data in enumerate(self.preprocessed_data_list):
+            owned_work_checkpoint(
+                "Validating EEG epoch recordings",
+                completed=index,
+                total=total,
+            )
             if not preprocessed_data.is_raw():
                 raise ValueError("Only raw data can be epoched, got epochs")
             _, event_id = preprocessed_data.get_event_list()
@@ -139,6 +157,11 @@ class TimeEpoch(PreprocessBase):
                 raise ValueError(
                     f"No event markers found for {preprocessed_data.get_filename()}",
                 )
+            owned_work_checkpoint(
+                "Validating EEG epoch recordings",
+                completed=index + 1,
+                total=total,
+            )
 
     def get_preprocess_desc(
         self,
@@ -182,7 +205,13 @@ class TimeEpoch(PreprocessBase):
         aliases_by_source = self._validated_aliases_by_source(
             event_label_aliases_by_source
         )
+        total = len(self.preprocessed_data_list)
         for index, preprocessed_data in enumerate(self.preprocessed_data_list):
+            owned_work_checkpoint(
+                "Creating EEG epochs",
+                completed=index,
+                total=total,
+            )
             self._data_preprocess(
                 preprocessed_data,
                 baseline,
@@ -201,9 +230,24 @@ class TimeEpoch(PreprocessBase):
                     allow_boundary_drop,
                 )
             )
+            owned_work_checkpoint(
+                "Creating EEG epochs",
+                completed=index + 1,
+                total=total,
+            )
         result = self.preprocessed_data_list
-        for preprocessed_data in result:
+        for index, preprocessed_data in enumerate(result):
+            owned_work_checkpoint(
+                "Applying queued EEG epoch normalization",
+                completed=index,
+                total=total,
+            )
             Normalize.apply_pending_epoch_normalization(preprocessed_data)
+            owned_work_checkpoint(
+                "Applying queued EEG epoch normalization",
+                completed=index + 1,
+                total=total,
+            )
         return result
 
     def _data_preprocess(

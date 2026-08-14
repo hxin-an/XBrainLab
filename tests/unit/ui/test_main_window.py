@@ -40,6 +40,7 @@ def test_mainwindow_launch(main_window, qtbot):
     main_window.show()
     qtbot.waitUntil(main_window.isVisible)
     assert main_window.isVisible()
+    assert main_window.statusBar().property("operationKind") == ""
 
 
 def test_mainwindow_owns_publication_renderer_before_assistant_init(main_window):
