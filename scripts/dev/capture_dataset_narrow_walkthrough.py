@@ -657,7 +657,6 @@ def _scenario_evidence(
             sidebar.import_bids_btn,
             sidebar.reload_recipe_btn,
             sidebar.chan_select_btn,
-            sidebar.clear_btn,
         )
     ]
     info = (

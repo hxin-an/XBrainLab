@@ -21,7 +21,7 @@ _AGENT_CASE_IDS = (
     "import.scan_source",
     "blocked.preprocess_without_data",
     "settings.model_approved",
-    "navigation.reset_cancelled",
+    "training.start_cancelled",
     "import.apply_review_handoff",
     "safety.stale_revision",
     "recovery.runtime_error_retry",
@@ -617,10 +617,10 @@ _SCENARIOS += (
     _agent_scenario(
         scenario_id="agent.confirmation-cancelled",
         title="Agent confirmation cancellation",
-        case_id="navigation.reset_cancelled",
-        scope="A destructive session reset is cancelled without applying the command.",
+        case_id="training.start_cancelled",
+        scope="A training request is cancelled without applying the command.",
         tags=("agent", "agent-confirmation"),
-        boundary="One cancellation path, not every destructive command or UI gesture.",
+        boundary="One confirmation cancellation path, not every command or UI gesture.",
     ),
     _agent_scenario(
         scenario_id="agent.import-ui-handoff",

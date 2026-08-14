@@ -238,7 +238,6 @@ def test_dataset_sidebar_state_records_button_tooltips(qtbot) -> None:
         "import_label_btn": "Add labels",
         "smart_parse_btn": "Smart Parse Metadata",
         "chan_select_btn": "Channel Selection",
-        "clear_btn": "Clear Dataset",
     }.items():
         button = QPushButton(text)
         qtbot.addWidget(button)

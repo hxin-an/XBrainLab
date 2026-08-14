@@ -688,8 +688,8 @@ def test_real_boundaries_cover_success_block_confirmation_stale_and_retry(
     selected = [
         _case("navigation.list_source_folder"),
         _case("blocked.preprocess_without_data"),
-        _case("navigation.reset_cancelled"),
         _case("settings.model_approved"),
+        _case("training.start_cancelled"),
         _case("safety.stale_revision"),
         _case("recovery.runtime_error_retry"),
     ]
@@ -712,7 +712,7 @@ def test_real_boundaries_cover_success_block_confirmation_stale_and_retry(
         results["blocked.preprocess_without_data"]["command_result"]["error_type"]
         == "precondition"
     )
-    assert results["navigation.reset_cancelled"]["confirmation"]["resolution"] == (
+    assert results["training.start_cancelled"]["confirmation"]["resolution"] == (
         "cancelled"
     )
     assert results["safety.stale_revision"]["command_result"]["error_type"] == (
@@ -738,10 +738,10 @@ def test_real_boundaries_cover_success_block_confirmation_stale_and_retry(
         uncorrelated_model_confirmation,
     )
 
-    fake_cancellation = deepcopy(results["navigation.reset_cancelled"])
+    fake_cancellation = deepcopy(results["training.start_cancelled"])
     fake_cancellation["confirmation"]["resolution"] = "approved"
     assert not resume_case_matches(
-        _case("navigation.reset_cancelled"),
+        _case("training.start_cancelled"),
         fake_cancellation,
     )
 

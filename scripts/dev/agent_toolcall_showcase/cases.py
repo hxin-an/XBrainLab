@@ -184,18 +184,6 @@ SHOWCASE_CASES: tuple[ShowcaseCase, ...] = (
         tags=("import", "handoff", "review"),
     ),
     ShowcaseCase(
-        case_id="navigation.reset_cancelled",
-        title="Cancel a session reset",
-        area="data import/navigation",
-        prompt="Reset the current XBrainLab session and clear the imported data.",
-        tool_name="clear_dataset",
-        params={},
-        preparation="validated",
-        expected_terminal="confirmation_cancelled",
-        confirmation="cancel",
-        tags=("navigation", "confirmation", "cancellation"),
-    ),
-    ShowcaseCase(
         case_id="preprocess.standard",
         title="Apply standard preprocessing",
         area="preprocess",

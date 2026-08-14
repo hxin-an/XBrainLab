@@ -266,7 +266,6 @@ TOOL_INTENTS: dict[str, str] = {
     "set_model": "configure_training",
     "configure_training": "configure_training",
     "start_training": "train",
-    "clear_dataset": "reset_session",
     "query_state": "query_state",
     "get_dataset_info": "query_state",
     "visualize": "visualize",
