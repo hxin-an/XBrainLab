@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-08-11`
+最後更新：`2026-08-14`
 
 ## 這份文件的用途
 
@@ -34,6 +34,22 @@
 - 證據：
 - 接續 / 本輪剩餘：
 ```
+
+## 2026-08-14
+
+### Product foundation 從 fresh main 擷取
+
+- 做了什麼：保留舊 reliability branch 作 remote checkpoint，從最新 `main` 建立 product-only
+  candidate；搬入完整 `XBrainLab/**` final runtime、79 個非 campaign product tests、必要 validation
+  scripts與 maintained RAG dependencies。明確排除 MOABB materializer、GUI campaign driver、delivery
+  receipts、campaign handoff registry delta 與 generated build data；`settings.json` 未碰。
+- 結果：checkpoint Ruff clean、完整 `XBrainLab` Basedpyright `0`；backend/import focused
+  `153 passed`、ApplicationService `238 passed`、Qt/UI focused `108 passed`。這些在未 commit dirty
+  candidate 上執行，只能支撐搬移中的 focused parity，不能當 final handoff evidence。
+- 證據：Git diff、preserved checkpoint tree parity、pytest terminal output；舊 branch 仍是 rollback
+  provenance，datasets 尚未移動或刪除。
+- 接續 / 本輪剩餘：完成 docs/source guard、相鄰與 real-data validation、focused commits/push、PR
+  exact-head CI 與 merge。合併並由使用者確認後，才另做 dataset consolidation 與 P300 Saliency fix。
 
 ## 2026-08-11
 

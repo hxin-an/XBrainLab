@@ -1,6 +1,6 @@
 # Data Pipeline Architecture
 
-最後更新：`2026-08-11`
+最後更新：`2026-08-13`
 
 ## 可信度
 
@@ -40,10 +40,11 @@ EEG file
 
 最重要的判斷是：`import 成功`、`label/event 正確`、`dataset generation 成功`、`training smoke 成功` 是不同層級的 evidence，不能混成同一個 claim。
 
-目前 import / training polish 還有三個明確邊界：BIDS electrode geometry 在 import 後以
-generation-bound background preparation 發布，不阻塞資料載入；Training Setting 的 RAM/VRAM
-結果是 draft recommendation preview，Start Training 仍執行 authoritative preflight；Epoch 的
-baseline 是獨立 On/Off 設定，不改變 reviewed event/window handoff。
+目前 reliability candidate 加入四個明確邊界：formal BIDS discovery 共用 immutable bounded
+index 與 content-identified parsed cache；import / preprocess / epoch heavy preparation 不長期持有
+shared command lock；長工作以 backend-owned operation ID 發布 stage / cancel / terminal truth；
+Training completion 只發布 metrics，Saliency 必須由 visible `Compute Saliency` 明確啟動。
+這些 source contract 仍等待 canonical multi-dataset gate 與 Windows 真人流程，不能先寫成資料接受完成。
 
 ## 支援格式
 
@@ -84,6 +85,17 @@ DatasetController.import_files(...)
 ```
 
 `RawDataLoaderFactory` 以副檔名 dispatch loader。如果副檔名沒有註冊，會 raise `UnsupportedFormatError`。如果 loader 失敗，會包成 `FileCorruptedError` 或由原始錯誤往外傳。
+
+Strict `Import BIDS folder` 在 loader 前先使用 `BidsDatasetIndex`。Index 對使用者明確選取的
+root 做 bounded walk，解析唯一 nested formal root，記錄 subject catalog、selected EEG recordings、
+entities、events / channels / electrodes / coordsystem / JSON sidecars、warnings 與 completeness。
+Scan、subject selection、review/apply、EEGLAB dependency preflight 和 montage preparation 只重用
+仍通過 retained directory identities 的同一 index；subject projection 不再各自重掃整棵資料樹。
+
+Small BIDS metadata、JSON、CSV / TSV sidecars 使用 content-identified parsed cache。Cache key 包含
+完整 bytes SHA-256、parser ID、schema version、payload size / kind，保留 immutable value 並限制
+單檔、總 bytes 與 entry 數。Path/stat 只可作安全捷徑；Windows 仍重新讀完整 payload 再以 content
+identity reuse。這個 cache 不略過 resource limit、freshness 或 apply-time source verification。
 
 GDF 有一個目前比較重要的特殊處理：
 
@@ -164,7 +176,7 @@ preprocess 目前是 controller + processor classes 的組合。
 - window epoch
 - export
 
-`PreprocessController` 的重要行為是：
+`PreprocessController` 的 domain 行為仍是：
 
 ```text
 read study.preprocessed_data_list
@@ -174,7 +186,12 @@ read study.preprocessed_data_list
   -> notify preprocess_changed
 ```
 
-這代表 preprocess layer 目前不是直接 in-place 修改 `Study` 裡正在被 UI 讀取的 list，而是先 copy，再把結果換回 `Study`。
+Product command path 再把這個 copy/swap 包進 two-phase transaction：先 snapshot generation /
+revision / source fingerprint，在 command lock 外執行 copy、processor / MNE work 與 cooperative
+checkpoints；提交前短暫取得 lock，重驗 current state 和 cancel intent，再 atomic swap。Stale、
+cancelled 或 preparation failure 不發布 partial preprocess state。Channel selection、filter /
+resample / rereference / normalize 與 epoch materialization 共用這個方向；`SET_MONTAGE` 仍是
+獨立 confirmed command 邊界。
 
 ## Epoch / Dataset Layer
 
@@ -267,9 +284,12 @@ materialized summary 與所選 model family 產生保守 starting point。每個
 Training 前的 resource preflight；timed search 只有 future roadmap contract，沒有現行 service /
 command / tool implementation。
 
-Training completion now writes metric-only evaluation by default. Saliency maps
-are computed only after `saliency` parameters are explicitly configured, so a
-normal training run does not silently run SmoothGrad / VarGrad work at the end.
+Training completion 預設只寫入 metric-only evaluation，不再 arm 或自動執行 Saliency。
+Visualization 的 visible `Compute Saliency` 會送出 explicit `SaliencyCommand`，將 operation
+綁到 exact completed run / generation / finished-run count；只有 matching terminal publication
+成功後才可顯示 Saliency Map / Spectrogram。取消、較舊 generation 或 producer mismatch 不得覆蓋
+目前 selection。Normalize、All Folds 與 plot preparation 仍各自執行 bounded cancel / stale checks；
+這不代表 attribution 的 scientific validity 已驗證。
 
 目前 tiny smoke 和 checked-in real-data smoke 都會 patch file outputs，例如 `torch.save`、`numpy.savetxt`、`matplotlib.pyplot.savefig`，避免測試污染 workspace。
 
