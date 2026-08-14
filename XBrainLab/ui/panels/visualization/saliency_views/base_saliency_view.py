@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PyQt6 import sip
-from PyQt6.QtCore import QEvent, QObject, Qt, QThread, QThreadPool, pyqtSlot
+from PyQt6.QtCore import QEvent, QObject, Qt, QThread, QThreadPool, pyqtSignal, pyqtSlot
 from PyQt6.QtWidgets import QApplication, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from XBrainLab.backend.application.state import SaliencyMethodCoverageSnapshot
@@ -832,6 +832,7 @@ class BaseSaliencyView(QWidget):
         self._native_plot_cleanup_owner: _NativePlotCleanupOwner | None = None
         self._native_plot_cleanup_state: _NativePlotCleanupState | None = None
         self._saliency_coverage: SaliencyMethodCoverageSnapshot | None = None
+        self._render_commit_guard: Callable[[int, int], bool] | None = None
 
         self.init_ui()
 
@@ -1097,7 +1098,8 @@ class BaseSaliencyView(QWidget):
         self._plot_generation += 1
         generation = self._plot_generation
         self._render_publication_generation = publication_generation
-        self._display_message("Rendering saliency...")
+        if publication_generation is None or self.canvas is None:
+            self._display_message("Rendering saliency...")
 
         request = _RenderRequest(
             generation=generation,
@@ -1110,12 +1112,14 @@ class BaseSaliencyView(QWidget):
         _MATPLOTLIB_RENDER_COORDINATOR.submit_render(self, request)
 
     def _prepare_for_render_request(self, request: _RenderRequest) -> None:
-        """Release the previous canvas before the coordinator starts a worker."""
+        """Keep the committed canvas visible while a replacement is prepared."""
         if not self._is_current_render_request(request):
             return
-        self._release_canvas()
-        self._close_current_figure()
-        self._display_message("Rendering saliency...")
+        if request.publication_generation is None:
+            self._release_canvas()
+            self._close_current_figure()
+        if self.canvas is None:
+            self._display_message("Rendering saliency...")
 
     def _start_render_request(self, request: _RenderRequest) -> bool:
         cancellation = threading.Event()
@@ -1150,6 +1154,7 @@ class BaseSaliencyView(QWidget):
                         "Try again or switch to another saliency view.",
                     ),
                 )
+                self._emit_render_terminal(request.generation, "failed")
             return False
         return True
 
@@ -1219,8 +1224,25 @@ class BaseSaliencyView(QWidget):
             return
         if figure is None:
             self._display_error("No Data Available")
+            self._emit_render_terminal(generation, "failed")
             return
-        self._replace_figure(figure)
+        publication_generation = self._render_publication_generation
+        guard = self._render_commit_guard
+        if publication_generation is None and guard is not None:
+            _dispose_figure(figure)
+            return
+        if guard is not None and publication_generation is not None:
+            try:
+                admitted = bool(guard(generation, publication_generation))
+            except Exception:
+                logger.exception("Saliency native commit admission failed")
+                admitted = False
+            if not admitted:
+                _dispose_figure(figure)
+                self._emit_render_terminal(generation, "cancelled")
+                return
+        phase = "completed" if self._replace_figure(figure) else "failed"
+        self._emit_render_terminal(generation, phase)
 
     def _handle_plot_error(self, generation: int, context: str, error: tuple) -> None:
         if generation != self._plot_generation:
@@ -1228,6 +1250,32 @@ class BaseSaliencyView(QWidget):
         _, value, formatted_traceback = error
         logger.error("Error rendering %s: %s\n%s", context, value, formatted_traceback)
         self._display_error(SALIENCY_RENDER_FAILED_TEXT)
+        self._emit_render_terminal(generation, "failed")
+
+    def _emit_render_terminal(self, generation: int, phase: str) -> None:
+        publication_generation = self._render_publication_generation
+        if publication_generation is None:
+            return
+        self.render_terminal.emit(generation, publication_generation, phase)
+
+    @property
+    def active_render_generation(self) -> int:
+        """Return the current native generation for exact parent binding."""
+        return self._plot_generation
+
+    @property
+    def active_render_publication_generation(self) -> int | None:
+        """Return the publication generation owned by the native request."""
+        return self._render_publication_generation
+
+    def set_render_commit_guard(
+        self,
+        guard: Callable[[int, int], bool] | None,
+    ) -> None:
+        """Install the parent-owned atomic commit admission callback."""
+        if guard is not None and not callable(guard):
+            raise TypeError("render commit guard must be callable")
+        self._render_commit_guard = guard
 
     def _cancel_pending_render(self) -> None:
         self._plot_generation += 1
@@ -1345,3 +1393,5 @@ class BaseSaliencyView(QWidget):
         """Release matplotlib figure and canvas widgets to prevent leaks."""
         self.finalize_native_render_resources()
         super().closeEvent(event)
+
+    render_terminal = pyqtSignal(int, int, str)

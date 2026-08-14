@@ -33,6 +33,7 @@ class ErrorType(str, Enum):
     """Serializable error categories for command failures."""
 
     NONE = "none"
+    CANCELLED = "cancelled"
     PRECONDITION = "precondition"
     CONFIRMATION_REQUIRED = "confirmation_required"
     VALIDATION = "validation"

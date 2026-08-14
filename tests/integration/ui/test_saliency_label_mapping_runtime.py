@@ -143,13 +143,20 @@ def test_data_import_label_mapping_renders_saliency_maps(qtbot, tmp_path) -> Non
             output_dir=str(tmp_path / "training-output"),
         ),
         TrainCommand(confirmed=True, interactive=False),
-        SaliencyCommand(method="Gradient"),
     ]
     for command in commands:
         result = service.execute(command)
         assert result.ok is True, result.message
 
     holder = service.study.trainer.get_training_plan_holders()[0]
+    eval_record = holder.get_plans()[0].get_eval_record()
+    assert eval_record.gradient == {}
+
+    saliency_result = service.execute(SaliencyCommand(method="Gradient"))
+    assert saliency_result.ok is True, saliency_result.message
+    assert saliency_result.diagnostics["action"] == "schedule"
+    assert service.wait_for_background_tasks(timeout=30.0)
+
     eval_record = holder.get_plans()[0].get_eval_record()
     assert sorted(eval_record.gradient) == [0, 1, 2, 3]
     assert all(len(value) > 0 for value in eval_record.gradient.values())
@@ -214,10 +221,10 @@ def test_data_import_label_mapping_renders_saliency_maps(qtbot, tmp_path) -> Non
     not GDF_PATH.exists() or not LABEL_PATH.exists(),
     reason="Graz label-mapping fixtures are not available.",
 )
-def test_post_training_saliency_configuration_recomputes_metric_only_run(
+def test_training_is_metric_only_until_explicit_saliency_command(
     tmp_path,
 ) -> None:
-    """Training computes the fast baseline before advanced on-demand saliency."""
+    """Training publishes metrics without computing saliency on its own."""
 
     service = ApplicationService()
     scan_result = service.execute(
@@ -273,16 +280,16 @@ def test_post_training_saliency_configuration_recomputes_metric_only_run(
     holder = service.study.trainer.get_training_plan_holders()[0]
     eval_record = holder.get_plans()[0].get_eval_record()
     assert eval_record is not None
-    assert sorted(eval_record.gradient) == [0, 1, 2, 3]
-    assert sorted(eval_record.gradient_input) == [0, 1, 2, 3]
+    assert eval_record.gradient == {}
+    assert eval_record.gradient_input == {}
     assert eval_record.smoothgrad == {}
     publication = service.get_view_publication()
     assert publication.state.visualization.post_training_saliency.phase is (
-        PostTrainingSaliencyPhase.SUCCEEDED
+        PostTrainingSaliencyPhase.IDLE
     )
-    assert publication.state.visualization.saliency_available is True
-    assert any(
-        method.method == "Gradient" and method.complete
+    assert publication.state.visualization.saliency_available is False
+    assert all(
+        not method.complete
         for run in publication.state.visualization.saliency_coverage
         for method in run.methods
     )
@@ -295,8 +302,11 @@ def test_post_training_saliency_configuration_recomputes_metric_only_run(
     )
 
     assert saliency.ok is True, saliency.message
-    assert saliency.diagnostics["saliency_available"] is True
+    assert saliency.diagnostics["action"] == "schedule"
+    assert service.wait_for_background_tasks(timeout=30.0)
     assert service.get_state().visualization.saliency_available is True
     eval_record = holder.get_plans()[0].get_eval_record()
+    assert eval_record.gradient == {}
+    assert eval_record.gradient_input == {}
     assert sorted(eval_record.smoothgrad) == [0, 1, 2, 3]
     assert all(len(value) > 0 for value in eval_record.smoothgrad.values())

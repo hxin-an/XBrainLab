@@ -3,16 +3,24 @@
 from __future__ import annotations
 
 import hmac
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
+from contextlib import suppress
 from typing import Any
 
+from XBrainLab.backend.exceptions import StaleTrainingPipelineMutationError
 from XBrainLab.backend.preprocessor.normalize import (
     NORMALIZATION_RUNTIME_KEY,
     NORMALIZATION_SCOPE,
 )
 from XBrainLab.backend.preprocessor.time_epoch import summarize_epoch_boundaries
-from XBrainLab.backend.services.dataset_state_service import DatasetChannelSelectionPort
-from XBrainLab.backend.services.preprocess_state_service import PreprocessProductPort
+from XBrainLab.backend.services.dataset_state_service import (
+    DatasetChannelSelectionPort,
+    PreparedChannelSelection,
+)
+from XBrainLab.backend.services.preprocess_state_service import (
+    PreparedPreprocessData,
+    PreprocessProductPort,
+)
 
 from .commands import (
     ApplyMontageCommand,
@@ -28,7 +36,18 @@ from .epoch_context import (
     require_epoch_context_available,
     validated_epoch_handoff,
 )
-from .errors import ConfirmationRequiredError, PreconditionError
+from .errors import (
+    ApplicationError,
+    ConfirmationRequiredError,
+    PreconditionError,
+    map_exception,
+)
+from .pipeline_transaction import PipelineStateIdentity, PipelineStateTransaction
+from .preprocess_preparation import (
+    ApplicationPreprocessBoundary,
+    PreparedPreprocessCommand,
+    PreprocessMutationPlan,
+)
 from .resource_guard import RISK_UNKNOWN, ResourceChecker
 from .state import ApplicationStateSnapshot, InterpretationStateSnapshot
 
@@ -46,10 +65,194 @@ class PreprocessCommandService:
         preprocess: PreprocessProductPort,
         dataset: DatasetChannelSelectionPort,
         get_state: Callable[[], ApplicationStateSnapshot],
+        pipeline_transaction: PipelineStateTransaction | None = None,
     ) -> None:
         self.preprocess = preprocess
         self.dataset = dataset
         self._get_state = get_state
+        self._pipeline_transaction = pipeline_transaction
+
+    def begin_prepared_command(
+        self,
+        command: PreprocessCommand | CreateEpochCommand,
+        *,
+        application_boundary: ApplicationPreprocessBoundary,
+    ) -> PreprocessMutationPlan:
+        """Capture identities for a transform that will run outside the lock."""
+        if self._pipeline_transaction is None:
+            raise RuntimeError(
+                "Prepared preprocessing requires a pipeline transaction."
+            )
+        if not isinstance(application_boundary, ApplicationPreprocessBoundary):
+            raise TypeError(
+                "application_boundary must be ApplicationPreprocessBoundary"
+            )
+        if isinstance(command, PreprocessCommand):
+            operation = PreprocessOperation(command.operation)
+            if operation is PreprocessOperation.SET_MONTAGE:
+                raise TypeError(
+                    f"{operation.value} does not use prepared preprocessing."
+                )
+        elif not isinstance(command, CreateEpochCommand):
+            raise TypeError("Invalid command for prepared preprocessing")
+        training_boundary = self._pipeline_transaction.begin_downstream_replacement()
+        training_startup_snapshot = (
+            self._pipeline_transaction.capture_training_startup_snapshot()
+        )
+        pipeline_snapshot = self._pipeline_transaction.capture()
+        return PreprocessMutationPlan.capture(
+            command,
+            application=application_boundary,
+            training=training_boundary,
+            training_startup_snapshot=training_startup_snapshot,
+            pipeline_snapshot=pipeline_snapshot,
+        )
+
+    def prepare_command(
+        self,
+        plan: PreprocessMutationPlan,
+    ) -> PreparedPreprocessCommand:
+        """Transform captured EEG holders without touching the active Study."""
+        if not isinstance(plan, PreprocessMutationPlan):
+            raise TypeError("plan must be PreprocessMutationPlan")
+        detached = self.preprocess.detached_preparation_service(
+            plan.pipeline_snapshot.preprocessed_data
+        )
+        if isinstance(plan.command, PreprocessCommand):
+            operation = PreprocessOperation(plan.command.operation)
+            if operation in {
+                PreprocessOperation.CHANNEL_SELECTION,
+                PreprocessOperation.SELECT_CHANNELS,
+            }:
+                channels = self._require(plan.command.channels, "channels")
+                prepared_data = self.dataset.prepare_channel_selection(
+                    channels,
+                    source_data=plan.pipeline_snapshot.loaded_data,
+                )
+                handler_result = f"Selected {len(channels)} channel(s)."
+            else:
+                prepared_data, handler_result = self._prepare_preprocess(
+                    detached,
+                    plan.command,
+                    source_data=plan.pipeline_snapshot.preprocessed_data,
+                )
+        else:
+            prepared_data, handler_result = self._prepare_epoch(
+                detached,
+                plan.command,
+                state=plan.application.state,
+                source_data=plan.pipeline_snapshot.preprocessed_data,
+            )
+        message, diagnostics = self._normalize_handler_result(handler_result)
+        return PreparedPreprocessCommand.create(
+            plan=plan,
+            prepared_data=prepared_data,
+            message=message,
+            diagnostics=diagnostics,
+        )
+
+    def commit_prepared_command(
+        self,
+        prepared: PreparedPreprocessCommand,
+    ) -> HandlerResult:
+        """Revalidate captured pipeline identity and publish one short commit."""
+        if not isinstance(prepared, PreparedPreprocessCommand):
+            raise TypeError("prepared must be PreparedPreprocessCommand")
+        if self._pipeline_transaction is None:
+            raise RuntimeError(
+                "Prepared preprocessing commit requires a pipeline transaction."
+            )
+        plan = prepared.plan
+        current_pipeline = self._pipeline_transaction.capture()
+        if (
+            PipelineStateIdentity.from_snapshot(current_pipeline)
+            != plan.pipeline_identity
+        ):
+            raise PreconditionError(
+                "EEG pipeline state changed while preprocessing was prepared. "
+                "Review the current data and retry.",
+                diagnostics={
+                    "code": "stale_prepared_preprocess",
+                    "stale_prepared_preprocess": True,
+                    "state_preserved": True,
+                },
+            )
+
+        expected_source_identity = (
+            plan.pipeline_identity.loaded_data
+            if isinstance(prepared.prepared_data, PreparedChannelSelection)
+            else plan.pipeline_identity.preprocessed_data
+        )
+        if prepared.prepared_data.source_identity != expected_source_identity:
+            raise PreconditionError(
+                "Prepared EEG source identity no longer matches the active pipeline.",
+                diagnostics={
+                    "code": "stale_prepared_preprocess",
+                    "stale_prepared_preprocess": True,
+                    "state_preserved": True,
+                },
+            )
+
+        def publish() -> None:
+            if isinstance(prepared.prepared_data, PreparedChannelSelection):
+                self.dataset.commit_prepared_channel_selection(prepared.prepared_data)
+            else:
+                self.preprocess.commit_prepared(prepared.prepared_data)
+
+        try:
+            trainer_retired = self._pipeline_transaction.commit_pipeline_replacement(
+                plan.training,
+                publish=publish,
+            )
+        except BaseException as exc:
+            if isinstance(exc, Exception) and self._is_stale_pipeline_boundary_error(
+                exc
+            ):
+                raise
+            if not isinstance(exc, Exception):
+                with suppress(BaseException):
+                    self._pipeline_transaction.restore_training_startup_snapshot(
+                        plan.training_startup_snapshot,
+                    )
+                with suppress(BaseException):
+                    self._pipeline_transaction.restore(plan.pipeline_snapshot)
+                raise
+            rollback_errors: list[str] = []
+            try:
+                self._pipeline_transaction.restore_training_startup_snapshot(
+                    plan.training_startup_snapshot,
+                )
+            except Exception as rollback_exc:
+                rollback_errors.append(map_exception(rollback_exc).message)
+            try:
+                self._pipeline_transaction.restore(plan.pipeline_snapshot)
+            except Exception as rollback_exc:
+                rollback_errors.append(map_exception(rollback_exc).message)
+            if rollback_errors:
+                mapped = map_exception(exc)
+                raise ApplicationError(
+                    message=mapped.message,
+                    error_type=mapped.error_type,
+                    recoverable=mapped.recoverable,
+                    diagnostics={
+                        **mapped.diagnostics,
+                        "state_preserved": False,
+                        "rollback_failed": True,
+                        "rollback_errors": rollback_errors,
+                    },
+                ) from exc
+            raise
+        message, diagnostics = self._normalize_handler_result(prepared.handler_result())
+        return message, {**diagnostics, "trainer_cleared": trainer_retired}
+
+    @staticmethod
+    def _is_stale_pipeline_boundary_error(exc: Exception) -> bool:
+        if isinstance(exc, StaleTrainingPipelineMutationError):
+            return True
+        return bool(
+            isinstance(exc, PreconditionError)
+            and exc.diagnostics.get("code") == "training_pipeline_boundary_changed"
+        )
 
     def handle_preprocess(self, command: Command) -> HandlerResult:
         if not isinstance(command, PreprocessCommand):
@@ -104,6 +307,192 @@ class PreprocessCommandService:
         if operation == PreprocessOperation.STANDARD:
             return self._handle_standard_preprocess(command)
         raise ValueError(f"Unsupported preprocess operation: {operation}")
+
+    def _prepare_preprocess(
+        self,
+        target: PreprocessProductPort,
+        command: PreprocessCommand,
+        *,
+        source_data: Sequence[Any],
+    ) -> tuple[PreparedPreprocessData, HandlerResult]:
+        """Prepare one non-raw preprocessing command without publication."""
+        operation = PreprocessOperation(command.operation)
+        if operation == PreprocessOperation.BANDPASS:
+            low_freq = self._require(command.low_freq, "low_freq")
+            high_freq = self._require(command.high_freq, "high_freq")
+            notch_freqs = [command.notch_freq] if command.notch_freq else None
+            return (
+                target.prepare_filter(low_freq, high_freq, notch_freqs),
+                f"Applied bandpass filter ({low_freq}-{high_freq} Hz).",
+            )
+        if operation == PreprocessOperation.NOTCH:
+            freq = self._require(command.notch_freq, "notch_freq")
+            return (
+                target.prepare_filter(None, None, [freq]),
+                f"Applied notch filter ({freq} Hz).",
+            )
+        if operation == PreprocessOperation.RESAMPLE:
+            rate = self._require(command.rate, "rate")
+            return target.prepare_resample(rate), f"Resampled data to {rate} Hz."
+        if operation == PreprocessOperation.NORMALIZE:
+            method = self._require(command.method, "method")
+            raw_count, epoch_count = self._normalization_target_counts_for(source_data)
+            return (
+                target.prepare_normalization(method),
+                self._normalization_result(
+                    str(method),
+                    raw_count=raw_count,
+                    epoch_count=epoch_count,
+                ),
+            )
+        if operation == PreprocessOperation.REREFERENCE:
+            ref_channels: str | list[str]
+            if command.channels:
+                ref_channels = command.channels
+                method = ", ".join(command.channels)
+            else:
+                method = self._require(command.method, "method")
+                ref_channels = "average" if method == "average" else [method]
+            return (
+                target.prepare_rereference(ref_channels),
+                f"Applied reference: {method}.",
+            )
+        if operation == PreprocessOperation.STANDARD:
+            low_freq = command.low_freq if command.low_freq is not None else 4
+            high_freq = command.high_freq if command.high_freq is not None else 40
+            reference: str | list[str] | None = None
+            if command.channels:
+                is_average = (
+                    len(command.channels) == 1
+                    and command.channels[0].lower() == "average"
+                )
+                reference = "average" if is_average else list(command.channels)
+            prepared = target.prepare_standard_pipeline(
+                l_freq=low_freq,
+                h_freq=high_freq,
+                notch_freq=command.notch_freq,
+                rate=command.rate,
+                ref_channels=reference,
+                normalization=command.method,
+            )
+            if command.method:
+                raw_count, epoch_count = self._normalization_target_counts_for(
+                    source_data
+                )
+                message, diagnostics = self._normalization_result(
+                    command.method,
+                    raw_count=raw_count,
+                    epoch_count=epoch_count,
+                )
+                return prepared, (
+                    f"Standard preprocessing applied. {message}",
+                    diagnostics,
+                )
+            return prepared, "Standard preprocessing applied."
+        raise ValueError(
+            f"Unsupported prepared preprocess operation: {operation.value}"
+        )
+
+    def _prepare_epoch(
+        self,
+        target: PreprocessProductPort,
+        command: CreateEpochCommand,
+        *,
+        state: ApplicationStateSnapshot,
+        source_data: Sequence[Any],
+    ) -> tuple[PreparedPreprocessData, HandlerResult]:
+        """Validate and materialize epochs against the admitted state snapshot."""
+        handoff = self._epoch_handoff_from_state(state)
+        preprocessed_data = list(source_data)
+        epoch_context = build_epoching_context(
+            preprocessed_data,
+            epoch_handoff=handoff,
+        )
+        require_epoch_context_available(epoch_context)
+        event_ids = self._event_ids_for_epoch_command(command, handoff=handoff)
+        self._enforce_epoch_confirmation(
+            command,
+            epoch_context=epoch_context,
+            effective_event_ids=event_ids,
+        )
+        resource_check = ResourceChecker.check_epoch_materialization_safe(
+            preprocessed_data,
+            selected_event_names=event_ids,
+            tmin=command.t_min,
+            tmax=command.t_max,
+        )
+        if resource_check.blocking or resource_check.risk_level == RISK_UNKNOWN:
+            raise PreconditionError(
+                resource_check.message,
+                diagnostics={
+                    "resource_preflight": resource_check.to_diagnostics(),
+                },
+            )
+        boundary_summary = summarize_epoch_boundaries(
+            preprocessed_data,
+            event_ids,
+            tmin=command.t_min,
+            tmax=command.t_max,
+        )
+        event_label_aliases_by_source = self._event_label_aliases_by_source(
+            handoff,
+            preprocessed_data,
+        )
+        boundary_diagnostics = boundary_summary.to_diagnostics()
+        if boundary_summary.excluded_event_count:
+            if boundary_summary.remaining_event_count <= 0:
+                raise PreconditionError(
+                    "The selected epoch window exceeds recording bounds for every "
+                    "selected event. Shorten the EEG epoch window before continuing.",
+                    diagnostics={"epoch_boundary_check": boundary_diagnostics},
+                )
+            if boundary_summary.excluded_ratio > EPOCH_BOUNDARY_AUTO_EXCLUDE_MAX_RATIO:
+                raise PreconditionError(
+                    "The selected epoch window would exclude "
+                    f"{boundary_summary.excluded_event_count} of "
+                    f"{boundary_summary.selected_event_count} selected events "
+                    "because they are too close to a recording boundary. Shorten "
+                    "the epoch window or review the selected events.",
+                    diagnostics={"epoch_boundary_check": boundary_diagnostics},
+                )
+        prepared = target.prepare_epoching(
+            command.baseline,
+            event_ids,
+            command.t_min,
+            command.t_max,
+            bool(boundary_summary.excluded_event_count),
+            event_label_aliases_by_source=event_label_aliases_by_source,
+        )
+        message = f"Created EEG epochs from {command.t_min}s to {command.t_max}s."
+        diagnostics: dict[str, Any] = {
+            "epoch_boundary_check": boundary_diagnostics,
+        }
+        if boundary_summary.excluded_event_count:
+            message += (
+                f" Excluded {boundary_summary.excluded_event_count} boundary "
+                "event(s) that could not contain the complete window."
+            )
+        applied = self._applied_deferred_normalization_count_for(prepared.data)
+        if not applied and not boundary_summary.excluded_event_count:
+            return prepared, message
+        if not applied:
+            return prepared, (message, diagnostics)
+        diagnostics.update(
+            {
+                "normalization_scope": NORMALIZATION_SCOPE,
+                "deferred_normalization_applied_count": applied,
+                "recording_statistics_used": False,
+            }
+        )
+        return prepared, (message, diagnostics)
+
+    @staticmethod
+    def _normalize_handler_result(
+        value: HandlerResult,
+    ) -> tuple[str, dict[str, Any]]:
+        if isinstance(value, tuple):
+            return str(value[0]), dict(value[1])
+        return str(value), {}
 
     def handle_apply_montage(self, command: Command) -> HandlerResult:
         if not isinstance(command, ApplyMontageCommand):
@@ -315,21 +704,30 @@ class PreprocessCommandService:
         except Exception as exc:
             raise self._epoch_handoff_precondition("state_read_failed") from exc
 
+        return self._epoch_handoff_from_state(state)
+
+    @classmethod
+    def _epoch_handoff_from_state(
+        cls,
+        state: ApplicationStateSnapshot,
+    ) -> dict[str, Any]:
+        """Validate one already-admitted immutable application state."""
+
         if not isinstance(state, ApplicationStateSnapshot):
-            raise self._epoch_handoff_precondition("invalid_state")
+            raise cls._epoch_handoff_precondition("invalid_state")
         read_errors = state.read_errors
         if not isinstance(read_errors, list) or any(
             not isinstance(error, str) for error in read_errors
         ):
-            raise self._epoch_handoff_precondition("invalid_state")
+            raise cls._epoch_handoff_precondition("invalid_state")
         if state.state_reliable is not True or read_errors:
-            raise self._epoch_handoff_precondition("state_unreliable")
+            raise cls._epoch_handoff_precondition("state_unreliable")
         if not isinstance(state.interpretation, InterpretationStateSnapshot):
-            raise self._epoch_handoff_precondition("invalid_state")
+            raise cls._epoch_handoff_precondition("invalid_state")
         try:
             return validated_epoch_handoff(state.interpretation.epoch_handoff)
         except (TypeError, ValueError) as exc:
-            raise self._epoch_handoff_precondition("invalid_handoff") from exc
+            raise cls._epoch_handoff_precondition("invalid_handoff") from exc
 
     @staticmethod
     def _epoch_handoff_precondition(reason: str) -> PreconditionError:
@@ -474,6 +872,12 @@ class PreprocessCommandService:
 
     def _normalization_target_counts(self) -> tuple[int, int]:
         data_list = self.preprocess.get_preprocessed_data_list()
+        return self._normalization_target_counts_for(data_list)
+
+    @staticmethod
+    def _normalization_target_counts_for(
+        data_list: Sequence[Any],
+    ) -> tuple[int, int]:
         raw_count = sum(bool(data.is_raw()) for data in data_list)
         return raw_count, len(data_list) - raw_count
 
@@ -510,8 +914,16 @@ class PreprocessCommandService:
         )
 
     def _applied_deferred_normalization_count(self) -> int:
+        return self._applied_deferred_normalization_count_for(
+            self.preprocess.get_preprocessed_data_list()
+        )
+
+    @staticmethod
+    def _applied_deferred_normalization_count_for(
+        data_list: Sequence[Any],
+    ) -> int:
         applied = 0
-        for data in self.preprocess.get_preprocessed_data_list():
+        for data in data_list:
             get_detail = getattr(data, "get_runtime_detail", None)
             if not callable(get_detail):
                 continue

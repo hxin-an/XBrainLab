@@ -22,6 +22,7 @@ from XBrainLab.backend.utils.public_diagnostics import (
     public_diagnostic_text,
 )
 
+from .owned_work import OwnedOperationCancelledError
 from .results import ErrorType
 
 SAFE_INTERNAL_ERROR_MESSAGE = "An unexpected application error occurred."
@@ -93,6 +94,18 @@ def map_exception(exc: Exception) -> ApplicationError:
     """Convert arbitrary exceptions to an application error."""
     if isinstance(exc, ApplicationError):
         return _copy_application_error(exc)
+    if type(exc) is OwnedOperationCancelledError:
+        return ApplicationError(
+            message="The operation was cancelled.",
+            error_type=ErrorType.CANCELLED,
+            recoverable=True,
+            diagnostics={
+                "operation_id": exc.operation_id,
+                "operation_stage": exc.stage,
+                "operation_cancelled": True,
+                "state_preserved": True,
+            },
+        )
     if type(exc) is AtomicLabelApplyError:
         return ApplicationError(
             message=exc.user_message,

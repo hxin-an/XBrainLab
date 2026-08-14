@@ -14,9 +14,9 @@ from XBrainLab.llm.rag.retriever import RAGRetriever
 @pytest.fixture
 def mock_retriever():
     with (
-        patch("langchain_community.embeddings.HuggingFaceEmbeddings"),
+        patch("langchain_huggingface.HuggingFaceEmbeddings"),
         patch("qdrant_client.QdrantClient") as mock_client_cls,
-        patch("langchain_community.vectorstores.Qdrant"),
+        patch("langchain_qdrant.Qdrant"),
         patch.object(RAGRetriever, "_auto_initialize", return_value=MagicMock()),
         patch.object(RAGRetriever, "_build_bm25_index", return_value=None),
         patch.object(RAGConfig, "embedding_cache_ready", return_value=True),
@@ -314,9 +314,9 @@ def test_close_fences_in_flight_initialize_and_prevents_resource_republish():
     retriever = RAGRetriever()
 
     with (
-        patch("langchain_community.embeddings.HuggingFaceEmbeddings"),
+        patch("langchain_huggingface.HuggingFaceEmbeddings"),
         patch("qdrant_client.QdrantClient", _FakeClient),
-        patch("langchain_community.vectorstores.Qdrant", return_value=object()),
+        patch("langchain_qdrant.Qdrant", return_value=object()),
         patch.object(RAGRetriever, "_collection_exists", return_value=True),
         patch.object(RAGRetriever, "_build_bm25_index", return_value=None),
         patch.object(RAGConfig, "embedding_cache_ready", return_value=True),
@@ -358,9 +358,9 @@ def test_concurrent_initialize_has_single_initializer():
     threads = [threading.Thread(target=retriever.initialize) for _ in range(4)]
 
     with (
-        patch("langchain_community.embeddings.HuggingFaceEmbeddings", _fake_embeddings),
+        patch("langchain_huggingface.HuggingFaceEmbeddings", _fake_embeddings),
         patch("qdrant_client.QdrantClient") as mock_client_cls,
-        patch("langchain_community.vectorstores.Qdrant", return_value=object()),
+        patch("langchain_qdrant.Qdrant", return_value=object()),
         patch.object(RAGRetriever, "_auto_initialize", return_value=object()),
         patch.object(RAGRetriever, "_build_bm25_index", return_value=None),
         patch.object(RAGConfig, "embedding_cache_ready", return_value=True),

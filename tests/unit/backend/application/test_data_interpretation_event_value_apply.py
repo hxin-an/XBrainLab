@@ -9,6 +9,9 @@ from XBrainLab.backend.application.data_interpretation_apply import (
 from XBrainLab.backend.application.data_interpretation_candidate import (
     InterpretationCandidate,
 )
+from XBrainLab.backend.application.data_interpretation_label_carriers import (
+    build_label_carrier_plan,
+)
 from XBrainLab.backend.application.label_resource_admission import (
     LabelResourceAdmissionService,
     LabelResourceSpec,
@@ -126,6 +129,177 @@ def test_generic_timestamp_apply_keeps_semantic_annotations_and_class_only_event
         "response/button",
         "BAD_artifact/bad_segment",
     ]
+    assert raw.is_labels_imported() is True
+
+
+def test_numeric_bids_preview_decisions_apply_through_admitted_pandas_reader(
+    tmp_path: Path,
+) -> None:
+    eeg = tmp_path / "sub-1_task-cvep_eeg.fif"
+    events = tmp_path / "sub-1_task-cvep_events.tsv"
+    events.write_text(
+        "onset\tduration\ttrial_type\tvalue\n0.5\t0.3\t0.0\t1\n1.0\t0.3\t1.0\t2\n",
+        encoding="utf-8",
+    )
+    carrier_choices = {
+        "label_field": "trial_type",
+        "anchor": "onset",
+        "duration_field": "duration",
+        "time_model": "seconds",
+        "placement_method": "interval",
+        "granularity": "event",
+        "target_file": str(eeg),
+    }
+    preview_plan = build_label_carrier_plan(
+        [str(events)],
+        {str(events): carrier_choices},
+    )[0]
+    observed_values = list(preview_plan["value_decisions"])
+    assert observed_values == ["0.0", "1.0"]
+    reviewed_plan = build_label_carrier_plan(
+        [str(events)],
+        {
+            str(events): {
+                **carrier_choices,
+                "value_decisions": {
+                    value: _decision("stimulus", True, f"Class {value}")
+                    for value in observed_values
+                },
+            }
+        },
+    )[0]
+    assert reviewed_plan["run_class_map"] == {
+        "0.0": "Class 0.0",
+        "1.0": "Class 1.0",
+    }
+    reviewed_plan["placement_review"] = {"status": "ready"}
+    candidate = InterpretationCandidate(
+        candidate_id="candidate-numeric-bids",
+        scan_id="scan-numeric-bids",
+        source_path=str(tmp_path),
+        source_kind="bids",
+        selected_eeg_files=[str(eeg)],
+        label_carriers=[str(events)],
+        label_carrier_plan=[reviewed_plan],
+        class_map=dict(reviewed_plan["run_class_map"]),
+    )
+    info = mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg")
+    raw = Raw(
+        str(eeg),
+        mne.io.RawArray(np.zeros((1, 300)), info, verbose=False),
+    )
+    service = DataInterpretationApplyService(
+        _RealLabelDataset([raw]),
+        data_filename=lambda item: item.get_filename(),
+        data_filepath=lambda item: item.get_filepath(),
+        record_label_import=lambda **_kwargs: None,
+    )
+    label_resources = LabelResourceAdmissionService(
+        command_name="test_apply_interpretation"
+    ).admit(
+        [
+            LabelResourceSpec(
+                path=str(events),
+                label_field="trial_type",
+                anchor="onset",
+                duration_field="duration",
+            )
+        ],
+        confirmed=False,
+        token=None,
+    )
+
+    result = service.apply_label_carriers(candidate, label_resources)
+
+    assert result["status"] == "applied"
+    assert result["success_count"] == 1
+    applied_events, event_id = raw.get_event_list()
+    assert applied_events[:, 0].tolist() == [50, 100]
+    assert set(event_id) == {f"Class {value}" for value in observed_values}
+
+
+def test_bids_apply_preserves_na_like_categories_and_excludes_canonical_na(
+    tmp_path: Path,
+) -> None:
+    eeg = tmp_path / "sub-1_task-categories_eeg.fif"
+    events = tmp_path / "sub-1_task-categories_events.tsv"
+    events.write_text(
+        "onset\tduration\ttrial_type\n0.5\t0.1\tNone\n1.0\t0.1\t#N/A\n1.5\t0.1\tn/a\n",
+        encoding="utf-8",
+    )
+    carrier_choices = {
+        "label_field": "trial_type",
+        "anchor": "onset",
+        "duration_field": "duration",
+        "time_model": "seconds",
+        "placement_method": "interval",
+        "granularity": "event",
+        "target_file": str(eeg),
+    }
+    preview_plan = build_label_carrier_plan(
+        [str(events)],
+        {str(events): carrier_choices},
+    )[0]
+    assert set(preview_plan["value_decisions"]) == {"None", "#N/A"}
+    reviewed_plan = build_label_carrier_plan(
+        [str(events)],
+        {
+            str(events): {
+                **carrier_choices,
+                "value_decisions": {
+                    "None": _decision("stimulus", True, "None category"),
+                    "#N/A": _decision("stimulus", True, "Hash N/A category"),
+                },
+            }
+        },
+    )[0]
+    reviewed_plan["placement_review"] = {"status": "ready"}
+    candidate = InterpretationCandidate(
+        candidate_id="candidate-na-like",
+        scan_id="scan-na-like",
+        source_path=str(tmp_path),
+        source_kind="bids",
+        selected_eeg_files=[str(eeg)],
+        label_carriers=[str(events)],
+        label_carrier_plan=[reviewed_plan],
+        class_map=dict(reviewed_plan["run_class_map"]),
+    )
+    info = mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg")
+    raw = Raw(
+        str(eeg),
+        mne.io.RawArray(np.zeros((1, 300)), info, verbose=False),
+    )
+    service = DataInterpretationApplyService(
+        _RealLabelDataset([raw]),
+        data_filename=lambda item: item.get_filename(),
+        data_filepath=lambda item: item.get_filepath(),
+        record_label_import=lambda **_kwargs: None,
+    )
+    label_resources = LabelResourceAdmissionService(
+        command_name="test_apply_interpretation"
+    ).admit(
+        [
+            LabelResourceSpec(
+                path=str(events),
+                label_field="trial_type",
+                anchor="onset",
+                duration_field="duration",
+            )
+        ],
+        confirmed=False,
+        token=None,
+    )
+
+    loaded_rows = label_resources.load(str(events))
+    assert [row["label"] for row in loaded_rows] == ["None", "#N/A", "n/a"]
+
+    result = service.apply_label_carriers(candidate, label_resources)
+
+    assert result["status"] == "applied"
+    assert result["success_count"] == 1
+    applied_events, event_id = raw.get_event_list()
+    assert applied_events[:, 0].tolist() == [50, 100]
+    assert set(event_id) == {"None category", "Hash N/A category"}
     assert raw.is_labels_imported() is True
 
 

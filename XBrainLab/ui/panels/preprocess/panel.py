@@ -188,6 +188,15 @@ class PreprocessPanel(BasePanel):
             self._application_view_publication = typed_publication
         return self._application_view_publication
 
+    def _application_publication_for_controls(
+        self,
+    ) -> ApplicationViewPublication | None:
+        """Return ledger-owned truth without starting another runtime read."""
+        pending = self._application_render_ledger.pending_publication
+        if pending is not None and pending.revision > self._last_application_revision:
+            return pending
+        return self._application_view_publication
+
     def init_ui(self):
         """Build the panel layout with preview, history, and sidebar widgets."""
         main_layout = QHBoxLayout(self)
@@ -231,11 +240,11 @@ class PreprocessPanel(BasePanel):
 
     def _update_panel_content(self, *args):
         """Refresh the sidebar, history, and preview from application truth."""
+        application_publication = self._read_application_publication()
         # Update Sidebar
         if hasattr(self, "sidebar"):
-            self.sidebar.update_sidebar()
+            self.sidebar.update_sidebar(publication=application_publication)
 
-        application_publication = self._read_application_publication()
         if self._publication_port is not None and (
             application_publication is None or not application_publication.usable
         ):

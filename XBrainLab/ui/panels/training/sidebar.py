@@ -1,11 +1,10 @@
 """Sidebar widget for the training panel with configuration and execution controls."""
 
 from collections.abc import Callable, Iterable
-from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, cast
 
-from PyQt6.QtCore import QEvent, Qt
+from PyQt6.QtCore import QEvent, Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication,
     QFrame,
@@ -47,6 +46,9 @@ from XBrainLab.backend.application.training_recommendation import (
     TrainingRecommendation,
     TrainingRecommendationField,
 )
+from XBrainLab.backend.application.training_resource_preview_coordinator import (
+    TrainingResourcePreviewTicket,
+)
 from XBrainLab.backend.application.training_submission import (
     attach_training_submission_provenance,
 )
@@ -57,8 +59,10 @@ from XBrainLab.ui.application_capabilities import (
     ControllerCompatibilityUnavailableError,
     DatasetSplitDialogBinding,
     blocked_reason,
+    cancel_application_operation,
     execute_application_command,
     execute_application_command_async,
+    get_application_operation,
     get_application_view_publication,
     get_command_capability,
     get_command_review_context,
@@ -72,7 +76,6 @@ from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
 )
-from XBrainLab.ui.core.worker import PythonThreadWorker
 
 # Dialog imports will be local to avoid circular deps if needed,
 # or top level if no circular dep.
@@ -81,6 +84,7 @@ from XBrainLab.ui.core.worker import PythonThreadWorker
 from XBrainLab.ui.dialogs.dataset import DataSplittingDialog
 from XBrainLab.ui.dialogs.training import ModelSelectionDialog, TrainingSettingDialog
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
+from XBrainLab.ui.owned_operation_presenter import OwnedOperationPresenter
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
@@ -143,13 +147,17 @@ class TrainingSidebar(QWidget):
         """
         super().__init__()
         self.panel = panel
-        self._training_resource_preview_worker: PythonThreadWorker | None = None
+        self._training_resource_preview_ticket: TrainingResourcePreviewTicket | None = (
+            None
+        )
         self._training_resource_preview_active_task: (
             _TrainingResourcePreviewTask | None
         ) = None
-        self._training_resource_preview_pending_task: (
-            _TrainingResourcePreviewTask | None
-        ) = None
+        self._training_resource_preview_timer = QTimer(self)
+        self._training_resource_preview_timer.setInterval(25)
+        self._training_resource_preview_timer.timeout.connect(
+            self._poll_training_resource_preview
+        )
         self._training_resource_preview_token = 0
         self._training_resource_preview_shutdown_requested = False
         if isinstance(panel, QWidget):
@@ -165,7 +173,7 @@ class TrainingSidebar(QWidget):
     def eventFilter(self, watched, event):  # noqa: N802
         """Stop advisory preview delivery when the owning panel closes."""
         if (
-            watched is self.panel
+            watched is getattr(self, "panel", None)
             and event is not None
             and event.type() == QEvent.Type.Close
         ):
@@ -349,16 +357,33 @@ class TrainingSidebar(QWidget):
         exec_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.btn_start = QPushButton("Start Training")
+        self.btn_start.setObjectName("TrainingStartButton")
         self.btn_start.setStyleSheet(Stylesheets.BTN_PRIMARY)
         self.btn_start.clicked.connect(self.start_training_ui_action)
         self.btn_start.setEnabled(False)
         exec_layout.addWidget(self.btn_start)
 
         self.btn_stop = QPushButton("Stop Training")
+        self.btn_stop.setObjectName("TrainingStopButton")
         self.btn_stop.setStyleSheet(Stylesheets.BTN_WARNING)
         self.btn_stop.setEnabled(False)
         self.btn_stop.clicked.connect(self.stop_training)
         exec_layout.addWidget(self.btn_stop)
+
+        self._training_operation_presenter = OwnedOperationPresenter(
+            self,
+            cancel_button=self.btn_stop,
+            snapshot_getter=lambda operation_id: get_application_operation(
+                self,
+                operation_id,
+            ),
+            canceller=lambda operation_id: cancel_application_operation(
+                self,
+                operation_id,
+            ),
+            connect_button=False,
+            hide_when_idle=False,
+        )
 
         self.btn_clear = QPushButton("Clear History")
         self.btn_clear.setStyleSheet(Stylesheets.BTN_DANGER)
@@ -1400,9 +1425,6 @@ class TrainingSidebar(QWidget):
             callback=callback,
             token=self._training_resource_preview_token,
         )
-        if self._training_resource_preview_worker is not None:
-            self._training_resource_preview_pending_task = task
-            return True
         return self._start_training_resource_preview(query_port, task)
 
     def _start_training_resource_preview(
@@ -1417,66 +1439,50 @@ class TrainingSidebar(QWidget):
         ):
             return False
 
-        def query() -> TrainingResourcePreviewResult:
-            getter = getattr(query_port, "get_training_resource_preview", None)
-            if not callable(getter):
-                raise RuntimeError("Training resource preview query is unavailable.")
-            result = getter(task.request)
-            if not isinstance(result, TrainingResourcePreviewResult):
-                raise TypeError(
-                    "Training resource preview returned an invalid contract."
-                )
-            return result
-
-        worker = PythonThreadWorker(
-            query,
-            name="xbrainlab-training-resource-preview",
-            daemon=True,
-        )
-        self._training_resource_preview_worker = worker
-        self._training_resource_preview_active_task = task
-        worker.signals.result.connect(
-            lambda result, owned=worker, owned_task=task: (
-                self._deliver_training_resource_preview(
-                    owned,
-                    owned_task,
-                    result,
-                )
-            )
-        )
-        worker.signals.error.connect(
-            lambda error, owned=worker, owned_task=task: (
-                self._report_training_resource_preview_error(
-                    owned,
-                    owned_task,
-                    error,
-                )
-            )
-        )
-        worker.signals.finished.connect(
-            lambda owned=worker: self._finish_training_resource_preview(owned)
-        )
-        try:
-            worker.start()
-        except RuntimeError:
-            self._disconnect_training_resource_preview_worker(worker)
-            self._training_resource_preview_worker = None
-            self._training_resource_preview_active_task = None
-            logger.info("Training resource preview worker could not start.")
+        submit = getattr(query_port, "begin_training_resource_preview", None)
+        if not callable(submit):
+            logger.info("Training resource preview query is unavailable.")
             return False
+        try:
+            ticket = submit(task.request)
+        except Exception as exc:
+            logger.info("Training resource preview could not start: %s", exc)
+            return False
+        if not isinstance(ticket, TrainingResourcePreviewTicket):
+            logger.info("Training resource preview returned an invalid ticket.")
+            return False
+        self._training_resource_preview_ticket = ticket
+        self._training_resource_preview_active_task = task
+        self._training_resource_preview_timer.start()
         return True
+
+    def _poll_training_resource_preview(self) -> None:
+        """Observe backend completion without introducing a second UI worker."""
+        ticket = self._training_resource_preview_ticket
+        task = self._training_resource_preview_active_task
+        if ticket is None or task is None:
+            self._training_resource_preview_timer.stop()
+            return
+        if not ticket.done:
+            return
+        self._training_resource_preview_timer.stop()
+        self._training_resource_preview_ticket = None
+        self._training_resource_preview_active_task = None
+        try:
+            result = ticket.result(timeout=0.0)
+        except Exception as exc:
+            self._report_training_resource_preview_error(task, exc)
+            return
+        self._deliver_training_resource_preview(task, result)
 
     def _deliver_training_resource_preview(
         self,
-        worker: PythonThreadWorker,
         task: _TrainingResourcePreviewTask,
         result: TrainingResourcePreviewResult,
     ) -> None:
         """Deliver a result only while its task is still the newest draft."""
         if (
             self._training_resource_preview_shutdown_requested
-            or worker is not self._training_resource_preview_worker
-            or task is not self._training_resource_preview_active_task
             or task.token != self._training_resource_preview_token
         ):
             return
@@ -1487,64 +1493,49 @@ class TrainingSidebar(QWidget):
 
     def _report_training_resource_preview_error(
         self,
-        worker: PythonThreadWorker,
         task: _TrainingResourcePreviewTask,
-        error: tuple,
+        error: BaseException,
     ) -> None:
         if (
             self._training_resource_preview_shutdown_requested
-            or worker is not self._training_resource_preview_worker
-            or task is not self._training_resource_preview_active_task
             or task.token != self._training_resource_preview_token
         ):
             return
         logger.info(
             "Training resource preview unavailable: %s",
-            error[1] if len(error) > 1 else "unknown error",
+            error,
         )
 
-    def _finish_training_resource_preview(
-        self,
-        worker: PythonThreadWorker,
-    ) -> None:
-        """Release the active task and start only the newest queued draft."""
-        if worker is not self._training_resource_preview_worker:
-            return
-        self._disconnect_training_resource_preview_worker(worker)
-        self._training_resource_preview_worker = None
-        self._training_resource_preview_active_task = None
-        pending = self._training_resource_preview_pending_task
-        self._training_resource_preview_pending_task = None
-        if self._training_resource_preview_shutdown_requested or pending is None:
-            return
-        query_port = self._panel_port("_query_port")
-        if query_port is not None:
-            self._start_training_resource_preview(query_port, pending)
-
-    @staticmethod
-    def _disconnect_training_resource_preview_worker(
-        worker: PythonThreadWorker,
-    ) -> None:
-        for signal in (
-            worker.signals.result,
-            worker.signals.error,
-            worker.signals.finished,
-        ):
-            with suppress(TypeError, RuntimeError):
-                signal.disconnect()
-
     def _shutdown_training_resource_previews(self, *_args: Any) -> None:
-        """Invalidate callbacks and abandon daemon preview work during close."""
+        """Fence backend previews and invalidate callback delivery during close."""
         if self._training_resource_preview_shutdown_requested:
             return
         self._training_resource_preview_shutdown_requested = True
         self._training_resource_preview_token += 1
-        self._training_resource_preview_pending_task = None
-        worker = self._training_resource_preview_worker
-        self._training_resource_preview_worker = None
+        self._training_resource_preview_timer.stop()
+        self._training_resource_preview_ticket = None
         self._training_resource_preview_active_task = None
-        if worker is not None:
-            self._disconnect_training_resource_preview_worker(worker)
+        query_port = self._panel_port("_query_port")
+        begin_shutdown = getattr(
+            query_port,
+            "begin_training_resource_preview_shutdown",
+            None,
+        )
+        if callable(begin_shutdown):
+            begin_shutdown()
+
+    def _cancel_training_resource_preview_shutdown(self) -> None:
+        """Reopen backend preview admission after a cancelled close attempt."""
+        if not self._training_resource_preview_shutdown_requested:
+            return
+        query_port = self._panel_port("_query_port")
+        cancel_shutdown = getattr(
+            query_port,
+            "cancel_training_resource_preview_shutdown",
+            None,
+        )
+        if callable(cancel_shutdown) and cancel_shutdown():
+            self._training_resource_preview_shutdown_requested = False
 
     @staticmethod
     def _positive_summary_count(
@@ -1817,12 +1808,20 @@ class TrainingSidebar(QWidget):
             )
 
         self._show_status("Preparing data split")
+
+        def operation_callback(operation_id: str) -> None:
+            self._training_operation_presenter.bind(
+                operation_id,
+                stage="Preparing training",
+            )
+
         if expected_publication_generation is None:
             started = self._execute_action_async(
                 command,
                 on_result=_handle_result,
                 on_error=_handle_error,
                 busy_target=self,
+                on_operation_started=operation_callback,
             )
         else:
             started = self._execute_action_async(
@@ -1831,6 +1830,7 @@ class TrainingSidebar(QWidget):
                 on_error=_handle_error,
                 busy_target=self,
                 expected_publication_generation=expected_publication_generation,
+                on_operation_started=operation_callback,
             )
         if started:
             return True
@@ -1965,6 +1965,12 @@ class TrainingSidebar(QWidget):
 
     def stop_training(self):
         """Request ApplicationService to stop the current training run."""
+        if (
+            self._training_operation_presenter.active_operation_id is not None
+            and self._training_operation_presenter.request_cancel()
+        ):
+            self._show_status("Training stop requested")
+            return
         stop_capability = self._command_capability(CommandName.STOP_TRAINING)
         if stop_capability is not None and not stop_capability.enabled:
             QMessageBox.warning(

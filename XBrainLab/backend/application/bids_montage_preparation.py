@@ -15,6 +15,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
 
+from .bids_dataset_index import (
+    BidsDatasetIndex,
+    build_bids_dataset_index,
+    current_bids_dataset_index_for_path,
+)
 from .data_interpretation_resource_reader import AdmittedResourceReader
 from .errors import PreconditionError
 from .montage_capability import (
@@ -298,12 +303,17 @@ class _MontageResourceError(Exception):
     pass
 
 
+class _StaleBidsIndexError(_MontageResourceError):
+    pass
+
+
 def prepare_bids_montage(
     recordings: Iterable[BidsMontageRecordingRequest],
     *,
     generation: int,
     resource_reader: AdmittedResourceReader | None = None,
     resource_receipt: BidsMontageResourceReceipt | None = None,
+    bids_index: BidsDatasetIndex | None = None,
 ) -> MontagePreparationSnapshot:
     """Resolve and parse per-recording BIDS geometry without mutating import state."""
     requests = tuple(recordings)
@@ -333,6 +343,7 @@ def prepare_bids_montage(
     for request in requests:
         result, not_applicable = _prepare_one_recording(
             request,
+            bids_index=bids_index,
             resource_reader=resource_reader,
             expected_resource_paths=(
                 resource_receipt.resources_for(request.recording_path)
@@ -382,6 +393,8 @@ def prepare_bids_montage(
 
 def admit_bids_montage_resources(
     recordings: Iterable[BidsMontageRecordingRequest],
+    *,
+    bids_index: BidsDatasetIndex | None = None,
 ) -> BidsMontageResourceReceipt:
     """Capture an exact sidecar receipt before any montage payload is parsed."""
     requests = tuple(recordings)
@@ -391,7 +404,10 @@ def admit_bids_montage_resources(
     admitted_paths: list[str] = []
     for request in requests:
         recording_path = _canonical_or_lexical(request.recording_path)
-        resolved = _resolve_resources(Path(request.recording_path))
+        resolved = _resolve_resources(
+            Path(request.recording_path),
+            bids_index=bids_index,
+        )
         resources = _resolved_resource_paths(resolved)
         recording_resources.append((recording_path, resources))
         admitted_paths.extend(resources)
@@ -425,9 +441,18 @@ def admit_bids_montage_resources(
 
 def resolve_bids_montage_resource_paths(
     recording_path: str | Path,
+    *,
+    bids_index: BidsDatasetIndex | None = None,
 ) -> tuple[str, ...]:
     """Discover the exact inherited pair for preflight before content reads."""
-    return _resolved_resource_paths(_resolve_resources(Path(recording_path)))
+    try:
+        resolved = _resolve_resources(
+            Path(recording_path),
+            bids_index=bids_index,
+        )
+    except _StaleBidsIndexError as exc:
+        raise PreconditionError(str(exc)) from exc
+    return _resolved_resource_paths(resolved)
 
 
 def _resolved_resource_paths(resolved: _ResolvedResources) -> tuple[str, ...]:
@@ -439,6 +464,7 @@ def _resolved_resource_paths(resolved: _ResolvedResources) -> tuple[str, ...]:
 def _prepare_one_recording(
     request: BidsMontageRecordingRequest,
     *,
+    bids_index: BidsDatasetIndex | None,
     resource_reader: AdmittedResourceReader | None,
     expected_resource_paths: tuple[str, ...] | None,
     expected_resource_sha256: tuple[str, ...] | None,
@@ -449,7 +475,10 @@ def _prepare_one_recording(
         "recording_channel_names": request.channel_names,
     }
     try:
-        resolved = _resolve_resources(Path(request.recording_path))
+        resolved = _resolve_resources(
+            Path(request.recording_path),
+            bids_index=bids_index,
+        )
     except _MontageResourceError as exc:
         reason = str(exc)
         if expected_resource_paths is not None:
@@ -882,20 +911,55 @@ def _aggregate_compatibility(
     )
 
 
-def _resolve_resources(recording_path: Path) -> _ResolvedResources:
+def _resolve_resources(
+    recording_path: Path,
+    *,
+    bids_index: BidsDatasetIndex | None = None,
+) -> _ResolvedResources:
     try:
         recording = recording_path.expanduser().resolve(strict=True)
     except OSError as exc:
         raise _MontageResourceError(
             f"Selected recording identity is unavailable: {recording_path}."
         ) from exc
-    dataset_root = _find_dataset_root(recording)
-    if dataset_root is None:
-        return _ResolvedResources(
-            dataset_root=None,
-            reason="Selected recording is not inside a BIDS dataset.",
-            not_applicable=True,
-        )
+    active_index = bids_index
+    if active_index is not None:
+        dataset_root = Path(active_index.root)
+        if not active_index.looks_like_bids:
+            raise _MontageResourceError(
+                "The supplied dataset index is not a valid BIDS root."
+            )
+        try:
+            recording.relative_to(dataset_root)
+        except ValueError as exc:
+            raise _MontageResourceError(
+                "Selected recording is outside the supplied BIDS dataset index."
+            ) from exc
+        if not active_index.is_current():
+            raise _StaleBidsIndexError(
+                "BIDS dataset index changed before montage inheritance resolution."
+            )
+        if not _index_contains_recording(active_index, recording):
+            raise _MontageResourceError(
+                "Selected recording is outside the supplied BIDS recording index."
+            )
+    else:
+        active_index = current_bids_dataset_index_for_path(recording)
+        if active_index is not None and not _index_contains_recording(
+            active_index,
+            recording,
+        ):
+            active_index = None
+        if active_index is None:
+            dataset_root = _find_dataset_root(recording)
+            if dataset_root is None:
+                return _ResolvedResources(
+                    dataset_root=None,
+                    reason="Selected recording is not inside a BIDS dataset.",
+                    not_applicable=True,
+                )
+            active_index = build_bids_dataset_index(dataset_root)
+        dataset_root = Path(active_index.root)
     try:
         recording.relative_to(dataset_root)
     except ValueError as exc:
@@ -908,6 +972,7 @@ def _resolve_resources(recording_path: Path) -> _ResolvedResources:
         dataset_root=dataset_root,
         recording=recording,
         recording_entities=recording_entities,
+        indexed_files=active_index.indexed_files,
     )
     electrodes = [item for item in candidates if item.kind == "electrodes"]
     coordsystems = [item for item in candidates if item.kind == "coordsystem"]
@@ -951,55 +1016,75 @@ def _resolve_resources(recording_path: Path) -> _ResolvedResources:
     )
 
 
+def _index_contains_recording(index: BidsDatasetIndex, recording: Path) -> bool:
+    return index.contains_recording(recording)
+
+
 def _discover_candidates(
     *,
     dataset_root: Path,
     recording: Path,
     recording_entities: dict[str, str],
+    indexed_files: Iterable[str],
 ) -> tuple[_ResourceCandidate, ...]:
     directories = _inheritance_directories(dataset_root, recording.parent)
+    directory_depths = {directory: depth for depth, directory in enumerate(directories)}
+    directory_entry_counts: dict[Path, int] = {}
+    for path_text in indexed_files:
+        path = Path(path_text)
+        if path.parent in directory_depths:
+            directory_entry_counts[path.parent] = (
+                directory_entry_counts.get(path.parent, 0) + 1
+            )
+    oversized = next(
+        (
+            directory
+            for directory, count in directory_entry_counts.items()
+            if count > _MAX_INHERITANCE_DIRECTORY_ENTRIES
+        ),
+        None,
+    )
+    if oversized is not None:
+        raise _MontageResourceError(
+            f"BIDS inheritance directory has too many entries: {oversized}."
+        )
     candidates: list[_ResourceCandidate] = []
-    for depth, directory in enumerate(directories):
+    for entry in sorted(
+        (Path(path) for path in indexed_files), key=lambda path: str(path)
+    ):
+        directory = entry.parent
+        depth = directory_depths.get(directory)
+        if depth is None:
+            continue
+        kind = _resource_kind(entry.name)
+        if kind is None:
+            continue
+        entities = _filename_entities(entry.name, suffix=kind)
+        if not _entities_apply(entities, recording_entities):
+            continue
         try:
-            entries = sorted(directory.iterdir(), key=lambda path: path.name)
-        except OSError as exc:
+            resolved = entry.resolve(strict=True)
+            resolved.relative_to(dataset_root)
+            file_stat = resolved.stat()
+        except (OSError, ValueError) as exc:
             raise _MontageResourceError(
-                f"BIDS inheritance directory could not be inspected: {directory}."
+                f"BIDS montage resource identity is unsafe: {entry}."
             ) from exc
-        if len(entries) > _MAX_INHERITANCE_DIRECTORY_ENTRIES:
-            raise _MontageResourceError(
-                f"BIDS inheritance directory has too many entries: {directory}."
+        if not stat.S_ISREG(file_stat.st_mode):
+            continue
+        candidates.append(
+            _ResourceCandidate(
+                path=resolved,
+                kind=kind,
+                entities=tuple(sorted(entities.items())),
+                directory_depth=depth,
+                inheritance_level=_inheritance_level(
+                    directory,
+                    dataset_root=dataset_root,
+                    recording_directory=recording.parent,
+                ),
             )
-        for entry in entries:
-            kind = _resource_kind(entry.name)
-            if kind is None:
-                continue
-            entities = _filename_entities(entry.name, suffix=kind)
-            if not _entities_apply(entities, recording_entities):
-                continue
-            try:
-                resolved = entry.resolve(strict=True)
-                resolved.relative_to(dataset_root)
-                file_stat = resolved.stat()
-            except (OSError, ValueError) as exc:
-                raise _MontageResourceError(
-                    f"BIDS montage resource identity is unsafe: {entry}."
-                ) from exc
-            if not stat.S_ISREG(file_stat.st_mode):
-                continue
-            candidates.append(
-                _ResourceCandidate(
-                    path=resolved,
-                    kind=kind,
-                    entities=tuple(sorted(entities.items())),
-                    directory_depth=depth,
-                    inheritance_level=_inheritance_level(
-                        directory,
-                        dataset_root=dataset_root,
-                        recording_directory=recording.parent,
-                    ),
-                )
-            )
+        )
     return tuple(candidates)
 
 

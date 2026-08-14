@@ -56,12 +56,12 @@ def _service_with_applied_interpretation(
     study = Study()
     service = ApplicationService(study)
 
-    def import_files(selected_paths: list[str]) -> tuple[int, list[str]]:
-        selected = [raws_by_path[path] for path in selected_paths]
-        study.set_loaded_data_list(selected, force_update=True)
-        return len(selected), []
-
-    service.dataset.import_files = MagicMock(side_effect=import_files)
+    # Interpretation Apply prepares a detached replacement batch before it
+    # commits the Study.  Supply real Raw holders at that public loader seam;
+    # mocking the retired mutation API would bypass the two-phase contract.
+    service.dataset._raw_factory_provider = lambda: MagicMock(
+        load=lambda path: raws_by_path[str(path)]
+    )
     assert service.execute(ScanSourceCommand(source_path=str(source))).ok
     assert service.execute(PreviewInterpretationCommand()).ok
     assert service.execute(ValidateInterpretationCommand()).ok

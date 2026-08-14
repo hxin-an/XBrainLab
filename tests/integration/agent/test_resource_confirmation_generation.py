@@ -97,6 +97,11 @@ def test_agent_resource_confirmation_survives_warning_but_not_domain_mutation(
         "check_import_resource_preflight",
         _warning_preflight,
     )
+    monkeypatch.setattr(
+        data_interpretation_service,
+        "available_ram_bytes",
+        lambda: None,
+    )
     context_source = ApplicationToolContextSource(study)
     context = context_source.get_context("apply_interpretation")
     assert context is not None

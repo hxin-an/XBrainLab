@@ -8,8 +8,11 @@ import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from threading import Event
 from typing import Any
 
+import mne
+import numpy as np
 import pytest
 from PyQt6.QtCore import QPoint, QRect, Qt, QThreadPool, QTimer
 from PyQt6.QtTest import QTest
@@ -32,7 +35,11 @@ from scripts.dev.fetch_public_eeg_fixtures import (
     FIXTURE_GROUPS,
     fixture_file_is_valid,
 )
+from tests.integration.ui.modal_helpers import visible_modal_dialog
+from XBrainLab.backend.application import get_application_service
+from XBrainLab.backend.application.owned_work import OwnedWorkPhase
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
+from XBrainLab.backend.load_data.raw import Raw
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.application_capabilities import application_ui_runtime
 from XBrainLab.ui.async_command_runner import application_command_registry
@@ -677,7 +684,7 @@ def _start_wizard_driver(
             driver.max_heartbeat_gap_context = driver.last_heartbeat_context
         driver.last_heartbeat_at = heartbeat_at
         driver.heartbeat_count += 1
-        modal = QApplication.activeModalWidget()
+        modal = visible_modal_dialog()
         progress_key = (
             driver.phase,
             driver.dialog_count,
@@ -965,7 +972,7 @@ def _wait_for_blocked_cancel(
             or (
                 driver.phase == 5
                 and not isinstance(
-                    QApplication.activeModalWidget(),
+                    visible_modal_dialog(),
                     DataInterpretationPreviewDialog,
                 )
             ),
@@ -986,7 +993,7 @@ def _fail_with_runtime_state(
     panel: DatasetPanel,
     reason: str,
 ) -> None:
-    modal = QApplication.activeModalWidget()
+    modal = visible_modal_dialog()
     modal_name = type(modal).__name__ if modal is not None else "None"
     step_index = (
         modal.step_stack.currentIndex()
@@ -1016,6 +1023,43 @@ def _non_interpretation_state(
     serialized = state.to_dict()
     serialized.pop("interpretation")
     return serialized
+
+
+def _block_first_apply_raw_load(service: Any) -> tuple[Event, Event]:
+    """Pause the first detached Raw prepare without altering the BIDS review.
+
+    The review itself is built from the pinned BIDS fixture.  The cancelled
+    operation deliberately returns a tiny in-memory ``Raw`` after it is
+    released: it is never committed, while avoiding native BrainVision I/O
+    after cancellation in an offscreen Qt worker.  The retry uses the real
+    production loader for the same selected BIDS recording.
+    """
+    load_started = Event()
+    release_load = Event()
+    original_factory = service.dataset._raw_factory_provider()
+    should_block = True
+
+    class _BlockingRawFactory:
+        @staticmethod
+        def load(path: str):
+            nonlocal should_block
+            if should_block:
+                should_block = False
+                load_started.set()
+                if not release_load.wait(timeout=20.0):
+                    raise TimeoutError("Timed out waiting to release BIDS Raw load.")
+                return Raw(
+                    str(path),
+                    mne.io.RawArray(
+                        np.zeros((1, 200)),
+                        mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg"),
+                        verbose="ERROR",
+                    ),
+                )
+            return original_factory.load(path)
+
+    service.dataset._raw_factory_provider = lambda: _BlockingRawFactory
+    return load_started, release_load
 
 
 @pytest.mark.parametrize(
@@ -1282,6 +1326,105 @@ def test_openneuro_p300_import_bids_trial_type_excludes_na_and_applies(
         "stimulus"
     ]
     assert panel.table.rowCount() == 3
+
+
+def test_visible_bids_apply_cancel_reopens_identical_review_and_retries(
+    qtbot: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The real BIDS Apply Cancel preserves and reopens its exact review."""
+    _require_manifest_group("mne-bids-tiny-eeg")
+    monkeypatch.setattr(
+        QFileDialog,
+        "getExistingDirectory",
+        staticmethod(
+            lambda _parent, _title, _directory, **_kwargs: str(PUBLIC_BIDS_ROOT)
+        ),
+    )
+    host, panel, runtime = _build_dataset_panel(qtbot)
+    service = get_application_service(host.study)
+    load_started, release_load = _block_first_apply_raw_load(service)
+    driver = _start_wizard_driver(resolve_bids_values=True)
+
+    QTEST.mouseClick(panel.sidebar.import_bids_btn, Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(load_started.is_set, timeout=45_000)
+    driver.timer.stop()
+
+    before = runtime.get_view_publication()
+    review_before = runtime.get_interpretation_review()
+    expected_identity = {
+        "scan_id": review_before["scan_result"]["scan_id"],
+        "candidate_id": review_before["candidate"]["candidate_id"],
+        "preview_id": review_before["preview"]["preview_id"],
+        "publication_generation": before.generation,
+    }
+    presenter = panel.action_handler._data_interpretation._operation_presenter
+    assert presenter is not None
+    cancelled_operation_id = presenter.active_operation_id
+    assert isinstance(cancelled_operation_id, str) and cancelled_operation_id
+    assert panel.sidebar.import_cancel_btn.isVisibleTo(panel)
+    assert panel.sidebar.import_cancel_btn.isEnabled()
+    assert service.get_owned_operation(cancelled_operation_id).phase.value in {
+        "pending",
+        "running",
+        "cancelling",
+    }
+
+    reopened_identities: list[dict[str, Any]] = []
+    retry_timer = QTimer()
+
+    def _accept_reopened_review() -> None:
+        modal = visible_modal_dialog()
+        if not isinstance(modal, DataInterpretationPreviewDialog):
+            return
+        reopened_identities.append(
+            dict(modal.apply_button.property("reviewSessionIdentity") or {})
+        )
+        assert modal.apply_button.isEnabled()
+        QTEST.mouseClick(modal.apply_button, Qt.MouseButton.LeftButton)
+        retry_timer.stop()
+
+    retry_timer.timeout.connect(_accept_reopened_review)
+    retry_timer.start(10)
+    cancel_started_at = time.monotonic()
+    QTEST.mouseClick(panel.sidebar.import_cancel_btn, Qt.MouseButton.LeftButton)
+    assert time.monotonic() - cancel_started_at <= 0.1
+    release_load.set()
+    qtbot.waitUntil(
+        lambda: service.get_owned_operation(cancelled_operation_id).phase
+        is OwnedWorkPhase.CANCELLED,
+        timeout=20_000,
+    )
+    qtbot.waitUntil(
+        lambda: bool(reopened_identities),
+        timeout=20_000,
+    )
+    assert reopened_identities == [expected_identity]
+    assert runtime.get_view_publication() == before
+    assert runtime.get_interpretation_review() == review_before
+    assert host.study.loaded_data_list == []
+
+    qtbot.waitUntil(
+        lambda: presenter.active_operation_id is not None
+        and presenter.active_operation_id != cancelled_operation_id,
+        timeout=10_000,
+    )
+    retry_operation_id = presenter.active_operation_id
+    assert isinstance(retry_operation_id, str) and retry_operation_id
+    qtbot.waitUntil(
+        lambda: runtime.get_view_publication().state.interpretation.has_applied_interpretation,
+        timeout=45_000,
+    )
+    qtbot.waitUntil(
+        lambda: application_command_registry().active_count(panel) == 0,
+        timeout=20_000,
+    )
+    assert service.get_owned_operation(cancelled_operation_id).phase is (
+        OwnedWorkPhase.CANCELLED
+    )
+    assert service.get_owned_operation(retry_operation_id).phase is (
+        OwnedWorkPhase.COMPLETED
+    )
 
 
 def test_bids_missing_events_preserves_data_state_then_valid_root_recovers(

@@ -199,6 +199,11 @@ def _prepare_apply(
         "check_import_resource_preflight",
         _warning_import_preflight,
     )
+    monkeypatch.setattr(
+        data_interpretation_service,
+        "available_ram_bytes",
+        lambda: None,
+    )
     return _ConfirmationScenario(
         service=service,
         command=ApplyInterpretationCommand(

@@ -52,6 +52,7 @@ class TrainingHistoryTable(QTableWidget):
 
         """
         super().__init__(parent)
+        self.setObjectName("TrainingHistoryTable")
         self._syncing_geometry = False
         self._syncing_columns = False
         self.row_identity_by_index = {}
@@ -258,6 +259,7 @@ class TrainingHistoryTable(QTableWidget):
         if self.rowCount() != len(target_rows):
             self.setRowCount(len(target_rows))
         self.row_identity_by_index.clear()
+        terminal_devices: list[str] = []
 
         for row_idx, data in enumerate(target_rows):
             group_name = data["group_name"]
@@ -271,6 +273,9 @@ class TrainingHistoryTable(QTableWidget):
             epoch = int(data.get("epoch", 0))
             max_epochs = int(data.get("max_epochs", 0))
             status = str(data.get("status", "Pending"))
+            runtime_device = str(data.get("runtime_device") or "").strip()
+            if status == "Completed" and runtime_device:
+                terminal_devices.append(runtime_device)
 
             def set_item(col, text, r=row_idx):
                 item = self.item(r, col)
@@ -349,6 +354,8 @@ class TrainingHistoryTable(QTableWidget):
                 time_str = f"{h:02d}:{m:02d}:{s:02d}"
 
             set_item(11, time_str)
+
+        self.setProperty("terminalTrainingDevices", terminal_devices)
 
         self._fit_key_columns_to_content()
         self._sync_content_height()

@@ -11,7 +11,6 @@ import pytest
 from PyQt6.QtCore import Qt, QThreadPool, QTimer
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import (
-    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -26,6 +25,7 @@ from PyQt6.QtWidgets import (
 )
 from pytestqt.exceptions import TimeoutError as QtBotTimeoutError
 
+from tests.integration.ui.modal_helpers import visible_modal_dialog
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.application_capabilities import application_ui_runtime
 from XBrainLab.ui.async_command_runner import application_command_registry
@@ -214,7 +214,7 @@ def _start_wizard_driver(*, save_recipe: bool) -> _WizardDriver:
             modal.reject()
 
     def _poll() -> None:
-        modal = QApplication.activeModalWidget()
+        modal = visible_modal_dialog()
         try:
             if isinstance(modal, QMessageBox):
                 if modal.windowTitle() != "Dataset Resource Check":
@@ -353,7 +353,7 @@ def _wait_for_interpretation_publication(
             timeout=timeout,
         )
     except QtBotTimeoutError:
-        modal = QApplication.activeModalWidget()
+        modal = visible_modal_dialog()
         modal_name = type(modal).__name__ if modal is not None else "None"
         step_index = (
             modal.step_stack.currentIndex()
@@ -383,7 +383,7 @@ def _start_auto_detected_label_driver() -> _AutoDetectedLabelDriver:
             modal.reject()
 
     def _poll() -> None:
-        modal = QApplication.activeModalWidget()
+        modal = visible_modal_dialog()
         try:
             if isinstance(modal, QMessageBox):
                 driver.unexpected_messages.append(
@@ -489,7 +489,7 @@ def _start_label_source_lifecycle_driver(
             modal.reject()
 
     def _poll() -> None:
-        modal = QApplication.activeModalWidget()
+        modal = visible_modal_dialog()
         try:
             if isinstance(modal, QMessageBox):
                 if modal.windowTitle() != "Dataset Resource Check":

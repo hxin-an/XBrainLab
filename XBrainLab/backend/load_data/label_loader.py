@@ -398,7 +398,16 @@ def _load_csv_tsv(
     """
     try:
         sep = "\t" if Path(display_path).suffix.lower() == ".tsv" else ","
-        df = pd.read_csv(source, sep=sep)
+        preserve_label_lexemes = bool(str(label_field or "").strip())
+        df = pd.read_csv(
+            source,
+            sep=sep,
+            **(
+                {"dtype": str, "keep_default_na": False}
+                if preserve_label_lexemes
+                else {}
+            ),
+        )
 
         # Normalize column names
         df.columns = [c.lower().strip() for c in df.columns]
@@ -429,7 +438,7 @@ def _load_csv_tsv(
             result = []
             for _, row in df.iterrows():
                 item = {
-                    "onset": row[found_time],
+                    "onset": _tabular_numeric_value(row[found_time]),
                     "label": row[found_label],
                     "duration": _duration_value(
                         row,
@@ -481,4 +490,23 @@ def _duration_value(row: Any, *, onset_field: str, duration_field: str | None) -
             return round(float(value) - float(row[onset_field]), 10)
         except (TypeError, ValueError):
             return value
-    return value
+    return _tabular_numeric_value(value)
+
+
+def _tabular_numeric_value(value: Any) -> Any:
+    """Restore pandas-style numeric values after lexeme-preserving table parsing."""
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if not text:
+        return value
+    if not any(token in text.casefold() for token in (".", "e")):
+        try:
+            return int(text)
+        except ValueError:
+            pass
+    try:
+        numeric = float(text)
+    except ValueError:
+        return value
+    return numeric

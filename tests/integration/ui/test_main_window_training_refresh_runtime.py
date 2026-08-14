@@ -334,7 +334,7 @@ def _emit_lifecycle_events_from_distinct_threads(
     assert errors == []
 
 
-def test_start_training_click_refreshes_all_runtime_panels_and_saliency(
+def test_training_refreshes_metrics_before_explicit_saliency_click(
     qtbot,
     tmp_path: Path,
     monkeypatch,
@@ -386,8 +386,6 @@ def test_start_training_click_refreshes_all_runtime_panels_and_saliency(
 
     qtbot.mouseClick(training.sidebar.btn_start, Qt.MouseButton.LeftButton)
 
-    qtbot.waitUntil(saliency_started.is_set, timeout=15_000)
-
     def training_terminal_rendered() -> bool:
         status_item = training.history_table.item(0, 3)
         return bool(
@@ -399,23 +397,78 @@ def test_start_training_click_refreshes_all_runtime_panels_and_saliency(
             and application_command_registry().active_count(training.sidebar) == 0
         )
 
-    analysis_update_counts: dict[str, int] | None = None
-    terminal_evaluation_query = None
-    terminal_visualization_query = None
+    qtbot.waitUntil(training_terminal_rendered, timeout=15_000)
+    assert saliency_started.is_set() is False
+    assert analysis_publications == []
+    qtbot.waitUntil(
+        lambda: _analysis_panels_show_training_state(
+            window,
+            TrainingOutcomeState.COMPLETED,
+        ),
+        timeout=10_000,
+    )
+    _deliver_pending_qt_events()
+    metric_publication = visualization._application_view_publication
+    assert metric_publication is not None
+    assert metric_publication.state.visualization.post_training_saliency.phase is (
+        PostTrainingSaliencyPhase.IDLE
+    )
+    metric_coverage = _cached_gradient_coverage(window)
+    assert metric_coverage is not None
+    assert metric_coverage.complete is False
+
+    ready_panels = []
+    window.switch_page(4, on_ready=ready_panels.append)
+    qtbot.waitUntil(lambda: len(ready_panels) == 1, timeout=5_000)
+    assert ready_panels[0] is visualization
+    qtbot.waitUntil(
+        lambda: visualization.compute_saliency_btn.isVisible()
+        and visualization.compute_saliency_btn.isEnabled()
+        and visualization.compute_saliency_btn.text() == "Compute Saliency",
+        timeout=5_000,
+    )
+
+    terminal_evaluation_query = evaluation._application_generation
+    terminal_visualization_query = visualization.last_application_query
+    analysis_update_counts = _install_panel_update_probes(monkeypatch, window)
+    evaluation_rendered_saliency_phases: list[PostTrainingSaliencyPhase] = []
+    counted_evaluation_update = evaluation.update_panel
+
+    def record_evaluation_saliency_phase(*args, **kwargs):
+        publication = evaluation._application_view_publication
+        if publication is not None:
+            evaluation_rendered_saliency_phases.append(
+                publication.state.visualization.post_training_saliency.phase
+            )
+        return counted_evaluation_update(*args, **kwargs)
+
+    monkeypatch.setattr(
+        evaluation,
+        "update_panel",
+        record_evaluation_saliency_phase,
+    )
+    visualization_rendered_saliency_phases: list[PostTrainingSaliencyPhase] = []
+    counted_visualization_update = visualization.update_panel
+
+    def record_visualization_saliency_phase(*args, **kwargs):
+        publication = visualization._application_view_publication
+        if publication is not None:
+            visualization_rendered_saliency_phases.append(
+                publication.state.visualization.post_training_saliency.phase
+            )
+        return counted_visualization_update(*args, **kwargs)
+
+    monkeypatch.setattr(
+        visualization,
+        "update_panel",
+        record_visualization_saliency_phase,
+    )
     try:
-        qtbot.waitUntil(training_terminal_rendered, timeout=10_000)
-        assert analysis_publications == []
-        qtbot.waitUntil(
-            lambda: _analysis_panels_show_training_state(
-                window,
-                TrainingOutcomeState.COMPLETED,
-            ),
-            timeout=10_000,
+        qtbot.mouseClick(
+            visualization.compute_saliency_btn,
+            Qt.MouseButton.LeftButton,
         )
-        _deliver_pending_qt_events()
-        terminal_evaluation_query = evaluation._application_generation
-        terminal_visualization_query = visualization.last_application_query
-        analysis_update_counts = _install_panel_update_probes(monkeypatch, window)
+        qtbot.waitUntil(saliency_started.is_set, timeout=10_000)
     finally:
         release_saliency.set()
 
@@ -437,6 +490,9 @@ def test_start_training_click_refreshes_all_runtime_panels_and_saliency(
         coverage = _cached_gradient_coverage(window)
         assert coverage is not None
         assert coverage.complete
+        # Application publication acceptance precedes the queued Qt render.
+        # Wait for the terminal coverage to reach the active view as well.
+        assert visualization.tab_map._saliency_coverage == coverage
 
     qtbot.waitUntil(assert_terminal_ui, timeout=20_000)
 
@@ -491,9 +547,18 @@ def test_start_training_click_refreshes_all_runtime_panels_and_saliency(
     assert all(item.available for item in gradient.classes)
     assert visualization.tab_map._saliency_coverage == gradient
     _deliver_pending_qt_events()
-    assert analysis_update_counts is not None
     assert analysis_update_counts["training"] == 0
-    assert analysis_update_counts["evaluation"] == 1
+    # Evaluation renders the pending and terminal publications. The RUNNING
+    # publication has the same Evaluation projection as PENDING and must be
+    # committed without rebuilding the metrics surface.
+    assert evaluation_rendered_saliency_phases == [
+        PostTrainingSaliencyPhase.PENDING,
+        PostTrainingSaliencyPhase.SUCCEEDED,
+    ]
+    assert analysis_update_counts["evaluation"] == 2
+    assert visualization_rendered_saliency_phases == [
+        PostTrainingSaliencyPhase.SUCCEEDED
+    ]
     assert analysis_update_counts["visualization"] == 1
     assert evaluation._application_generation != terminal_evaluation_query
     assert visualization.last_application_query is not terminal_visualization_query
@@ -501,7 +566,7 @@ def test_start_training_click_refreshes_all_runtime_panels_and_saliency(
     assert len(analysis_publications) == 1
 
 
-def test_saliency_completion_publishes_once_during_unrelated_nested_commands(
+def test_explicit_saliency_publishes_once_during_unrelated_nested_commands(
     qtbot,
     tmp_path: Path,
     monkeypatch,
@@ -514,7 +579,6 @@ def test_saliency_completion_publishes_once_during_unrelated_nested_commands(
     visualization = window.visualization_panel
     saliency_started = Event()
     release_saliency = Event()
-    analysis_published = Event()
     saliency_published = Event()
     compute_saliency_update = TrainingPlanHolder.compute_saliency_update
 
@@ -537,17 +601,12 @@ def test_saliency_completion_publishes_once_during_unrelated_nested_commands(
         "compute_saliency_update",
         compute_behind_barrier,
     )
-    service.training.subscribe(
-        "training_analysis_published",
-        lambda _event: analysis_published.set(),
-    )
     service.visualization.subscribe(
         "saliency_changed",
         saliency_published.set,
     )
 
     qtbot.mouseClick(training.sidebar.btn_start, Qt.MouseButton.LeftButton)
-    qtbot.waitUntil(saliency_started.is_set, timeout=15_000)
     qtbot.waitUntil(
         lambda: (
             training.history_table.item(0, 3) is not None
@@ -560,7 +619,36 @@ def test_saliency_completion_publishes_once_during_unrelated_nested_commands(
         ),
         timeout=10_000,
     )
+    assert saliency_started.is_set() is False
     _deliver_pending_qt_events()
+
+    ready_panels = []
+    window.switch_page(4, on_ready=ready_panels.append)
+    qtbot.waitUntil(lambda: len(ready_panels) == 1, timeout=5_000)
+    assert ready_panels[0] is visualization
+    qtbot.waitUntil(
+        lambda: visualization.compute_saliency_btn.isVisible()
+        and visualization.compute_saliency_btn.isEnabled(),
+        timeout=5_000,
+    )
+    qtbot.mouseClick(
+        visualization.compute_saliency_btn,
+        Qt.MouseButton.LeftButton,
+    )
+    qtbot.waitUntil(saliency_started.is_set, timeout=10_000)
+    qtbot.waitUntil(
+        lambda: (
+            visualization._application_view_publication is not None
+            and visualization._application_view_publication.state.visualization.post_training_saliency.phase
+            in {
+                PostTrainingSaliencyPhase.PENDING,
+                PostTrainingSaliencyPhase.RUNNING,
+            }
+        ),
+        timeout=5_000,
+    )
+    _deliver_pending_qt_events()
+    saliency_published.clear()
 
     pending_evaluation_query = evaluation._application_generation
     pending_visualization_query = visualization.last_application_query
@@ -609,7 +697,6 @@ def test_saliency_completion_publishes_once_during_unrelated_nested_commands(
         assert id(window) not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
 
         release_saliency.set()
-        qtbot.waitUntil(analysis_published.is_set, timeout=20_000)
         qtbot.waitUntil(saliency_published.is_set, timeout=5_000)
         qtbot.waitUntil(
             lambda: (

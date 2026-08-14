@@ -8,6 +8,7 @@ from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from . import data_interpretation_internal_events as _internal_events
+from .bids_dataset_index import current_bids_dataset_index_for_path
 from .data_interpretation_bids import review_strict_bids_event_runs
 from .data_interpretation_bids_channels import review_bids_channel_sidecars
 from .data_interpretation_bids_resources import (
@@ -736,6 +737,26 @@ def _resolve_brainvision_reference(
         )
 
     root = header_path.parent.resolve()
+    bids_index = current_bids_dataset_index_for_path(header_path)
+    if bids_index is not None and bids_index.contains_recording(header_path):
+        indexed = bids_index.indexed_file_in_recording_directory(
+            header_path,
+            relative,
+        )
+        if indexed is None:
+            raise _brainvision_dependency_error(
+                header_path,
+                reference,
+                "The dependency was not listed in the BIDS dataset index.",
+            )
+        resolved = Path(indexed)
+        if resolved.suffix.casefold() != expected_suffix:
+            raise _brainvision_dependency_error(
+                header_path,
+                reference,
+                f"The dependency reference must name a {expected_suffix} file.",
+            )
+        return resolved
     current = root
     for part in relative.parts:
         exact = current / part

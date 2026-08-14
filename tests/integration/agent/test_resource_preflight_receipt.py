@@ -10,6 +10,8 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
+import mne
+import numpy as np
 import pytest
 
 from tests.integration.agent.deferred_split_support import (
@@ -44,6 +46,7 @@ from XBrainLab.backend.application.training_runtime import (
 )
 from XBrainLab.backend.application.training_service import TrainingCommandService
 from XBrainLab.backend.application.view_publication import ApplicationViewPublication
+from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training_state_contract import (
     TrainingOutcomeState,
@@ -101,6 +104,19 @@ def _unknown_preflight(paths: list[str]) -> ResourcePreflightResult:
             "message": "Import memory could not be estimated reliably.",
             "files": files,
         },
+    )
+
+
+def _detached_raw(path: str) -> Raw:
+    """Return one real holder for the detached interpretation-import seam."""
+    info = mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg")
+    return Raw(
+        path,
+        mne.io.RawArray(
+            np.zeros((1, 200), dtype=np.float64),
+            info,
+            verbose="ERROR",
+        ),
     )
 
 
@@ -324,25 +340,29 @@ def _replay_adversarial_candidate(
 def receipt_runtime(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-) -> tuple[Study, Any, Path, Path, str]:
+) -> tuple[Study, Any, Path, Path, str, MagicMock]:
     first = tmp_path / "first.fif"
     second = tmp_path / "second.fif"
     first.write_bytes(b"first EEG header")
     second.write_bytes(b"second EEG header")
     study = Study()
     service = get_application_service(study)
-    service.dataset.import_files = MagicMock(return_value=(1, []))
+    load_raw = MagicMock(side_effect=_detached_raw)
+    service.dataset._raw_factory_provider = lambda: SimpleNamespace(load=load_raw)
     first_candidate = _prepare_candidate(study, first)
     monkeypatch.setattr(
         service_module,
         "check_import_resource_preflight",
         _warning_preflight,
     )
-    return study, service, first, second, first_candidate
+    # Review owns one SAFE admission. Simulate a changed runtime resource
+    # boundary so Apply must obtain a fresh preflight before issuing a receipt.
+    monkeypatch.setattr(service_module, "available_ram_bytes", lambda: None)
+    return study, service, first, second, first_candidate, load_raw
 
 
 def test_agent_replays_exact_backend_resource_receipt(receipt_runtime) -> None:
-    study, service, _first, _second, candidate_id = receipt_runtime
+    study, _service, _first, _second, candidate_id, load_raw = receipt_runtime
     pending = _request_receipt(study, candidate_id)
 
     result = _replay(study, pending)
@@ -351,7 +371,7 @@ def test_agent_replays_exact_backend_resource_receipt(receipt_runtime) -> None:
     assert (
         result.diagnostics["resource_preflight"]["confirmation_receipt_reused"] is True
     )
-    service.dataset.import_files.assert_called_once()
+    load_raw.assert_called_once_with(str(_first.resolve()))
 
 
 def test_agent_legacy_load_data_is_denied_before_resource_receipt(
@@ -361,7 +381,8 @@ def test_agent_legacy_load_data_is_denied_before_resource_receipt(
     eeg_path.write_bytes(b"EEG header")
     study = Study()
     service = get_application_service(study)
-    service.dataset.import_files = MagicMock(return_value=(1, []))
+    load_raw = MagicMock()
+    service.dataset._raw_factory_provider = lambda: SimpleNamespace(load=load_raw)
     context_source = ApplicationToolContextSource(study)
     context = context_source.get_context("load_data")
     assert context is not None
@@ -379,13 +400,13 @@ def test_agent_legacy_load_data_is_denied_before_resource_receipt(
     assert denied.error_code == "assistant_direct_load_disabled"
     assert denied.error_type == "precondition"
     assert "scan_source" in str(denied.recovery_action)
-    service.dataset.import_files.assert_not_called()
+    load_raw.assert_not_called()
 
 
 def test_agent_receipt_rejects_stale_candidate_with_same_scope(
     receipt_runtime,
 ) -> None:
-    study, service, first, _second, first_candidate = receipt_runtime
+    study, _service, first, _second, first_candidate, load_raw = receipt_runtime
     pending = _request_receipt(study, first_candidate)
     second_candidate = _prepare_candidate(
         study,
@@ -414,11 +435,11 @@ def test_agent_receipt_rejects_stale_candidate_with_same_scope(
         result.diagnostics["resource_preflight"]["confirmation_token"]
         != _required_receipt(pending).token
     )
-    service.dataset.import_files.assert_not_called()
+    load_raw.assert_not_called()
 
 
 def test_agent_receipt_rejects_changed_selected_scope(receipt_runtime) -> None:
-    study, service, _first, second, first_candidate = receipt_runtime
+    study, _service, _first, second, first_candidate, load_raw = receipt_runtime
     pending = _request_receipt(study, first_candidate)
     second_candidate = _prepare_candidate(
         study,
@@ -435,13 +456,13 @@ def test_agent_receipt_rejects_changed_selected_scope(receipt_runtime) -> None:
         result.diagnostics["resource_preflight"]["scope_fingerprint"]
         != _required_receipt(pending).scope_fingerprint
     )
-    service.dataset.import_files.assert_not_called()
+    load_raw.assert_not_called()
 
 
 def test_agent_receipt_rejects_file_changed_after_confirmation(
     receipt_runtime,
 ) -> None:
-    study, service, first, _second, candidate_id = receipt_runtime
+    study, _service, first, _second, candidate_id, load_raw = receipt_runtime
     pending = _request_receipt(study, candidate_id)
     first.write_bytes(b"changed file invalidates the resource scope fingerprint")
 
@@ -452,14 +473,14 @@ def test_agent_receipt_rejects_file_changed_after_confirmation(
         result.diagnostics["resource_preflight"]["confirmation_token"]
         != _required_receipt(pending).token
     )
-    service.dataset.import_files.assert_not_called()
+    load_raw.assert_not_called()
 
 
 def test_agent_receipt_rejects_expired_confirmation(
     receipt_runtime,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    study, service, _first, _second, candidate_id = receipt_runtime
+    study, _service, _first, _second, candidate_id, load_raw = receipt_runtime
     monotonic_now = 100.0
     monkeypatch.setattr(service_module.time, "monotonic", lambda: monotonic_now)
     pending = _request_receipt(study, candidate_id)
@@ -472,7 +493,7 @@ def test_agent_receipt_rejects_expired_confirmation(
         result.diagnostics["resource_preflight"]["confirmation_token"]
         != _required_receipt(pending).token
     )
-    service.dataset.import_files.assert_not_called()
+    load_raw.assert_not_called()
 
 
 @pytest.mark.parametrize(

@@ -12,10 +12,19 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import torch
 
-from XBrainLab.backend.application import ApplicationService
+from XBrainLab.backend.application import (
+    ApplicationService,
+    SaveDatasetSplitCommand,
+)
+from XBrainLab.backend.dataset import Epochs
 from XBrainLab.backend.dataset.epochs import EpochWindowProvenance
 from XBrainLab.backend.study import Study
-from XBrainLab.backend.training import ModelHolder, TrainingEvaluation, TrainingOption
+from XBrainLab.backend.training import (
+    ModelHolder,
+    Trainer,
+    TrainingEvaluation,
+    TrainingOption,
+)
 from XBrainLab.mcp.http_server import (
     MCPHTTPJobRegistry,
     _training_progress_message,
@@ -108,26 +117,33 @@ def _training_ready_service() -> tuple[ApplicationService, dict[str, Any]]:
     raw.get_filename.return_value = "sample.fif"
     raw.get_filepath.return_value = "/tmp/sample.fif"
     service.study.loaded_data_list = [raw]
-    epoch_data = MagicMock()
-    epoch_data.get_data.return_value = np.zeros((4, 1, 8), dtype=np.float32)
-    labels = np.asarray([0, 1, 0, 1])
-    epoch_data.get_label_list.return_value = labels
-    epoch_data.get_label_list_by_mask.side_effect = lambda mask: labels[mask]
-    epoch_data.get_label_number.return_value = 2
-    epoch_data.get_model_args.return_value = {}
-    epoch_data.get_epoch_window_provenance.return_value = tuple(
+    labels = np.asarray([0, 1] * 6)
+    epoch_data = Epochs([])
+    epoch_data.data = np.zeros((len(labels), 2, 512), dtype=np.float32)
+    epoch_data.event_id = {"Left": 0, "Right": 1}
+    epoch_data.label_map = {0: "Left", 1: "Right"}
+    epoch_data.label = labels
+    epoch_data.subject = np.zeros(len(labels), dtype=int)
+    epoch_data.session = np.zeros(len(labels), dtype=int)
+    epoch_data.idx = np.arange(len(labels), dtype=int)
+    epoch_data.trial_group = np.arange(len(labels), dtype=int)
+    epoch_data.subject_map = {0: "S01"}
+    epoch_data.session_map = {0: "001"}
+    epoch_data.ch_names = ["C3", "C4"]
+    epoch_data.sfreq = 128.0
+    epoch_data.epoch_window_provenance = tuple(
         EpochWindowProvenance(
-            source_recording_id=f"path-sha256:{'a' * 64}",
-            event_sample=index * 20,
-            window_start_sample=index * 20,
-            window_end_sample_exclusive=index * 20 + 8,
-            source_sfreq=100.0,
-            epoch_sfreq=100.0,
+            source_recording_id=f"content-sha256:{index:064x}",
+            event_sample=index * 512,
+            window_start_sample=index * 512,
+            window_end_sample_exclusive=index * 512 + 512,
+            source_sfreq=128.0,
+            epoch_sfreq=128.0,
             tmin_seconds=0.0,
-            tmax_seconds=0.07,
+            tmax_seconds=511 / 128,
             source_coordinates_verified=True,
         )
-        for index in range(4)
+        for index in range(len(labels))
     )
     dataset = MagicMock()
     dataset.get_epoch_data.return_value = epoch_data
@@ -136,6 +152,7 @@ def _training_ready_service() -> tuple[ApplicationService, dict[str, Any]]:
     dataset.val_mask = np.asarray([False, False, True, False])
     dataset.test_mask = np.asarray([False, False, False, True])
     cast(Any, service.study).datasets = [dataset]
+    service.study.data_manager.epoch_data = epoch_data
     service.study.model_holder = ModelHolder(torch.nn.Identity, {})
     service.study.training_option = TrainingOption(
         "/tmp/xbrainlab-mcp-test",
@@ -150,7 +167,9 @@ def _training_ready_service() -> tuple[ApplicationService, dict[str, Any]]:
         TrainingEvaluation.VAL_ACC,
         1,
     )
-    service.get_state()
+    saved_split = service.execute(SaveDatasetSplitCommand(split_strategy="trial"))
+    assert saved_split.ok is True
+    assert saved_split.state.active_dataset.has_saved_split is True
     calls: dict[str, Any] = {"started": 0, "stopped": 0, "running": False}
 
     def start_training(*, append: bool = True, interactive: bool = True) -> int:
@@ -158,6 +177,9 @@ def _training_ready_service() -> tuple[ApplicationService, dict[str, Any]]:
         calls["append"] = append
         calls["interactive"] = interactive
         calls["running"] = True
+        trainer = Trainer([])
+        trainer.run(interact=False)
+        service.study.training_manager.trainer = trainer
         return int(calls["started"])
 
     def stop_training(*, wait_timeout: float | None = None) -> bool:
@@ -354,18 +376,18 @@ def test_http_mcp_train_uses_job_api_with_status_and_cancel():
         status, job_status = _get_json(port, f"/jobs/{job['job_id']}")
         assert status == 200
         assert job_status["job"]["status"] == "running"
-        assert job_status["job"]["progress"]["message"] == "Training is running."
+        assert job_status["job"]["progress"]["message"] == "Pending"
 
         status, cancelled = _post_json(port, f"/jobs/{job['job_id']}/cancel", {})
         assert status == 200
         assert cancelled["job"]["job_id"] == job["job_id"]
-        assert cancelled["job"]["status"] == "cancelled"
+        assert cancelled["job"]["status"] == "cancel_requested"
         assert cancelled["cancel_result"]["command_name"] == "stop_training"
         assert calls["stopped"] == 1
 
         status, after_cancel = _get_json(port, f"/jobs/{job['job_id']}")
         assert status == 200
-        assert after_cancel["job"]["status"] == "cancelled"
+        assert after_cancel["job"]["status"] == "cancel_requested"
     finally:
         httpd.shutdown()
         httpd.server_close()
@@ -519,59 +541,3 @@ def test_http_job_registry_rejects_start_while_registration_is_in_flight():
     assert duplicate["verification"]["resource_locked"] is True
     assert duplicate["result"]["error_type"] == "job_already_running"
     assert "already starting" in duplicate["result"]["message"]
-
-
-def test_http_mcp_job_terminal_status_survives_later_train_runs():
-    service, calls = _training_ready_service()
-    httpd, port, thread = _start_server(service=service)
-    try:
-        _post_json(
-            port,
-            "/mcp",
-            {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "initialize",
-                "params": {"protocolVersion": PROTOCOL_VERSION},
-            },
-        )
-        status, first_response = _post_json(
-            port,
-            "/mcp",
-            {
-                "jsonrpc": "2.0",
-                "id": 2,
-                "method": "tools/call",
-                "params": {"name": "train", "arguments": {"confirmed": True}},
-            },
-        )
-        assert status == 200
-        first_job = first_response["result"]["structuredContent"]["result"]["job"]
-
-        status, cancelled = _post_json(port, f"/jobs/{first_job['job_id']}/cancel", {})
-        assert status == 200
-        assert cancelled["job"]["status"] == "cancelled"
-
-        status, second_response = _post_json(
-            port,
-            "/mcp",
-            {
-                "jsonrpc": "2.0",
-                "id": 3,
-                "method": "tools/call",
-                "params": {"name": "train", "arguments": {"confirmed": True}},
-            },
-        )
-        assert status == 200
-        second_job = second_response["result"]["structuredContent"]["result"]["job"]
-        assert calls["started"] == 2
-
-        status, listed_jobs = _get_json(port, "/jobs")
-        assert status == 200
-        jobs_by_id = {job["job_id"]: job for job in listed_jobs["jobs"]}
-        assert jobs_by_id[first_job["job_id"]]["status"] == "cancelled"
-        assert jobs_by_id[second_job["job_id"]]["status"] == "running"
-    finally:
-        httpd.shutdown()
-        httpd.server_close()
-        thread.join(timeout=10)

@@ -64,6 +64,16 @@ def test_editor_requires_explicit_role_and_use_before_complete(qtbot) -> None:
             }
         }
     }
+    assert editor.evidence_rows() == [
+        {
+            "event_value": "left_hand",
+            "event_role": "stimulus",
+            "keep_event": True,
+            "use_as_class": True,
+            "class_name": "Left hand",
+            "sources": ["/data/run-01_events.tsv"],
+        }
+    ]
 
 
 def test_use_as_only_offers_training_class_and_do_not_use(qtbot) -> None:

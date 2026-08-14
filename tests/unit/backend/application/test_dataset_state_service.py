@@ -90,6 +90,9 @@ class _DatasetRaw:
     def get_filepath(self) -> str:
         return self.filepath
 
+    def copy(self) -> _DatasetRaw:
+        return _DatasetRaw(self.filepath)
+
 
 class _LabelTargetRaw(_DatasetRaw):
     def get_filename(self) -> str:
@@ -251,6 +254,41 @@ def test_dataset_state_service_owns_import_label_channel_and_reset_mutations() -
     assert study.locked is True
     assert study.reset_count == 2
     assert study.cleaned is True
+
+
+def test_channel_selection_refuses_missing_backup_owner_before_publication() -> None:
+    class _StudyWithoutBackup:
+        def __init__(self) -> None:
+            self.loaded_data_list = [_DatasetRaw("/data/source.fif")]
+            self.published: list[list[object]] = []
+            self.locked = False
+
+        def set_loaded_data_list(
+            self,
+            rows: list[object],
+            *,
+            force_update: bool,
+        ) -> None:
+            assert force_update is True
+            self.published.append(rows)
+            self.loaded_data_list = rows
+
+        def lock_dataset(self) -> None:
+            self.locked = True
+
+    study = _StudyWithoutBackup()
+    original = study.loaded_data_list
+    state = DatasetStateService(
+        study,
+        channel_selection_provider=lambda: _ChannelSelection,
+    )
+
+    with pytest.raises(RuntimeError, match="backup owner is unavailable"):
+        state.apply_channel_selection(["C3", "C4"])
+
+    assert study.loaded_data_list is original
+    assert study.published == []
+    assert study.locked is False
 
 
 def test_dataset_state_projects_label_targets_without_exposing_live_raw_objects() -> (

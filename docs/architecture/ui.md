@@ -1,6 +1,6 @@
 # UI 目前架構
 
-最後更新：`2026-08-11`
+最後更新：`2026-08-13`
 
 ## 範圍
 
@@ -19,6 +19,7 @@ compatibility constructors，不能把這些殘留誤寫成 repo-wide zero-contr
 | --- | --- |
 | UI 是否統一走 command？ | Product action、readiness 與 state render 走 `ApplicationService / Command API` 和 typed ports；Training progress tick 走獨立 transient port。 |
 | UI refresh 是否統一？ | Product state-changing repaint 只認 revisioned `ApplicationViewPublication`；navigation refresh 和 Training transient progress 分開，mock / compatibility context 才保留 observer/local refresh。 |
+| 長工作進度與取消從哪裡來？ | UI 先向 application runtime 配置 operation ID，再由 `OwnedOperationPresenter` 把 backend snapshot 的 stage / determinate-or-indeterminate progress / phase 投影到 owning control 與 status bar；Cancel 不等待 shared command lock。 |
 | 產品路徑還能偷走 legacy mutation 嗎？ | 已被 architecture guard 大幅限制；product UI method 不能直接呼叫 controller compatibility helper，也不能用 controller echo 判定 service success。 |
 | 是否 full zero-controller UI？ | Product MainWindow wiring 已不使用 controller bundle；但 standalone/test compatibility constructors 與 outer controller adapters 尚未物理移除。 |
 | 讀者應看哪裡？ | 先看本頁的例外地圖，再看 [validation](../validation/README.md) 的 checkpoint 摘要；不要從長串歷史紀錄倒推現況。 |
@@ -75,6 +76,7 @@ Windows desktop acceptance。
 | `XBrainLab/ui/components/agent_manager.py` | UI 與 assistant / LLM controller 的接線層。 |
 | `XBrainLab/ui/components/assistant_command_dispatcher.py` | 把 assistant command 放進專用 Qt thread，管理 shutdown / retry ownership，不讓失敗 teardown 的 thread reference 被提前釋放。 |
 | `XBrainLab/ui/components/info_panel_service.py` | aggregate info panel 的集中更新服務；product runtime 由 command/navigation/observer shared refresh 呼叫 `MainWindow.update_info_panel()` -> `notify_all()`，mock / compatibility context 才可直接訂閱 `data_changed` / `preprocess_changed`。 |
+| `XBrainLab/ui/owned_operation_presenter.py` | 只呈現 backend-owned operation snapshot，轉送 cancel intent，並防止較舊 operation 更新目前 control / status。 |
 | `XBrainLab/ui/chat/` | in-app assistant 的 chat UI。 |
 
 ## 啟動與主視窗
@@ -150,12 +152,18 @@ blocked reason copy、command execution、post-command refresh，以及 mock / c
 | --- | --- | --- |
 | Data Import / recipe | `scan_source`、`preview_interpretation`、`validate_interpretation`、`apply_interpretation`、`reload_interpretation_recipe` | real `Study` 走 command sequence；BIDS label-field 建議顯示 selected-run bounded evidence，不從單一 run 或 UI 欄位順序猜測。direct file import fallback 只留給 no-service mock / compatibility context。 |
 | Dataset edit actions | `update_metadata`、`apply_smart_parse`、`remove_files`、`import_labels`、`reset_session` | confirmed mutation 走 command；table render 和 channel dialog 在 real `Study` 讀 `QueryStateCommand(data_lists)`。 |
-| Preprocess / epoch | `preprocess`、`create_epoch` | filter / resample / rereference / normalize / epoch 走 command；epoch dialog 只讀 reviewed import handoff 綁定的 context，missing / malformed / mismatched context 會 blocked，不用 widget fallback 猜 duration / event-locked mode。 |
+| Preprocess / epoch | `preprocess`、`create_epoch` | filter / resample / rereference / normalize / epoch 走 owned command；epoch dialog 只讀 reviewed import handoff 綁定的 context。Visible action / status bar 顯示 matching operation stage，Cancel 後同一 workflow 可重試。 |
 | Dataset split / training config | `configure_dataset_split`、`clear_datasets`、`configure_training` | split Confirm 只保存 specification / fingerprint / preview receipt；model selection 與 training settings defaults 不再以 stale controller echo 判定 service success。 |
-| Training | `train`、`stop_training` | enabled capability 直接 dispatch confirmed command；desktop button click is the user confirmation, while agent/headless paths still obey backend confirmation policy。controller running checks 只在 no-capability fallback。 |
-| Evaluation / visualization / saliency | `evaluate`、`visualize`、`saliency` | typed readonly command 先決定 display gate；blocked/unavailable 會清空 stale controller display。 |
+| Training | `train`、`stop_training` | enabled capability 直接 dispatch confirmed owned command；Stop 是 lock-independent control acknowledgement，terminal state仍由 matching training publication 決定。controller running checks 只在 no-capability fallback。 |
+| Evaluation / visualization / saliency | `evaluate`、`visualize`、`saliency` | Model Summary、metrics、Saliency publication 與 render preparation 在 background work 執行，以 request / generation / producer identity 擋 stale result。Training terminal 不自動算 Saliency；visible `Compute Saliency` 是唯一 product admission。 |
 | Montage | `QueryStateCommand(state)`、`apply_montage` | dialog channel defaults 走 state query；confirmed positions 走 `ApplyMontageCommand`；picker/matching 仍是 UI request。 |
 | Chat diagnostics | `ApplicationViewPublication` | assistant status、decision context、tool policy 讀同一 generation 的 state/capability，不把 missing capability 顯示成 debug error。 |
+
+MainWindow close 先 fence application work、送出 cancellable-operation intents，再等待 backend
+registry、training/evaluation/saliency/render workers、Qt owners 與 product subprocess inventory 收斂。
+這條路徑不得在 Qt thread 阻塞等待 shared command lock；等待逾時會拒絕 clean-close claim，而不是
+把仍存活 worker 當成成功。這是 source contract，仍需 canonical native lifecycle evidence 與 Windows
+native lifecycle acceptance。
 
 Data Splitting dialog 的 `Confirm` 成功只代表 lightweight specification 已保存；UI 不得顯示成
 datasets、masks 或 training tensors 已建立，也不在此時清除既有 trainer。使用者按下
@@ -248,7 +256,7 @@ signal 寫進 backend controller。
 
 | panel | 主要監聽事件 | refresh / handler |
 | --- | --- | --- |
-| `DatasetPanel` | revisioned application publication | publication owns loaded-data rows、capability 與 workflow state；import result只顯示 acknowledgement / warning |
+| `DatasetPanel` | revisioned application publication | publication owns loaded-data rows、capability 與 workflow state；import result 只顯示 acknowledgement / warning |
 | `PreprocessPanel` | revisioned application publication | publication owns loaded/preprocessed render state與 readiness |
 | `TrainingPanel` | revisioned application publication；transient `training_updated` progress | publication owns Start/Stop、terminal outcome、history 與 readiness；`training_updated` 只更新 live progress，不改 application revision 或 state controls |
 | `EvaluationPanel` | revisioned application publication | publication owns available result identities、controls 與 render readiness |

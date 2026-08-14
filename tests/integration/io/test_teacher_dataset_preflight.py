@@ -53,6 +53,9 @@ def test_teacher_dataset_preflight_real_application_workflows() -> None:
     assert snapshot["manifest"]["size_bytes"] == 277_106_963
     assert snapshot["summary"]["strict_ok"] is True
     assert snapshot["summary"]["passed_required_case_count"] == 3
+    assert (
+        results["openneuro_p300_bids"]["stages"]["post_apply_background"]["ok"] is True
+    )
     assert results["openneuro_p300_bids"]["observations"]["usable_events_by_run"] == [
         747,
         750,

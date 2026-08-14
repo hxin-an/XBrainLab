@@ -136,6 +136,20 @@ class DataInterpretationApplyService:
 
         return updated
 
+    def detached_copy(
+        self,
+        dataset_controller: DatasetInterpretationPort,
+        *,
+        record_label_import: LabelImportRecorder,
+    ) -> DataInterpretationApplyService:
+        """Create the same apply policy over a detached Dataset holder."""
+        return type(self)(
+            dataset_controller,
+            data_filename=self._data_filename,
+            data_filepath=self._data_filepath,
+            record_label_import=record_label_import,
+        )
+
     def bind_source_content_identity(
         self,
         candidate: InterpretationCandidate,
@@ -204,6 +218,8 @@ class DataInterpretationApplyService:
         self,
         candidate: InterpretationCandidate,
         label_resources: AdmittedLabelResourceSession | None = None,
+        *,
+        recheck_content_identity: bool = True,
     ) -> dict[str, Any]:
         """Apply reviewed label carriers after interpretation apply."""
         if not candidate.label_carrier_plan:
@@ -321,7 +337,8 @@ class DataInterpretationApplyService:
             }
 
         try:
-            self._assert_reviewed_label_content_is_current(candidate)
+            if recheck_content_identity:
+                self._assert_reviewed_label_content_is_current(candidate)
             bids_placement: list[dict[str, Any]] = []
             mapping = self._label_import_mapping_from_class_map(candidate.class_map)
             if mode == "event_code":

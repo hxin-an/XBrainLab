@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-08-11`
+最後更新：`2026-08-14`
 
 ## 這份文件的用途
 
@@ -34,6 +34,35 @@
 - 證據：
 - 接續 / 本輪剩餘：
 ```
+
+## 2026-08-14
+
+### Product foundation 從 fresh main 擷取
+
+- 做了什麼：保留舊 reliability branch 作 remote checkpoint，從最新 `main` 建立 product-only
+  candidate；搬入完整 `XBrainLab/**` final runtime、79 個非 campaign product tests、必要 validation
+  scripts與 maintained RAG dependencies。明確排除 MOABB materializer、GUI campaign driver、delivery
+  receipts、campaign handoff registry delta 與 generated build data；`settings.json` 未碰。
+- 結果：checkpoint Ruff clean、完整 `XBrainLab` Basedpyright `0`；backend/import focused
+  `153 passed`、ApplicationService `238 passed`、Qt/UI focused `108 passed`。這些在未 commit dirty
+  candidate 上執行，只能支撐搬移中的 focused parity，不能當 final handoff evidence。
+- 證據：Git diff、preserved checkpoint tree parity、pytest terminal output；舊 branch 仍是 rollback
+  provenance，datasets 尚未移動或刪除。
+- 接續 / 本輪剩餘：完成 docs/source guard、相鄰與 real-data validation、focused commits/push、PR
+  exact-head CI 與 merge。合併並由使用者確認後，才另做 dataset consolidation 與 P300 Saliency fix。
+
+### Product foundation exact-head CI modal driver 修正
+
+- 做了什麼：追查 PR `#16` aggregate 唯一失敗的 `linux-integration-ui` shard。Backend review worker
+  已完成，實際可見的 `DataInterpretationPreviewDialog` 也是 application-modal；但 Loading→Preview
+  原子交接後 Qt offscreen 的 `activeModalWidget()` 回傳空值，舊 integration driver 因此不會按下
+  下一步並在 1,200 秒 shard timeout。測試共用 helper 現在優先使用可見 active modal，只有它缺失
+  時才接受唯一可見且 modal 的 top-level dialog；未修改產品 workflow、timeout 或資料處理。
+- 結果：原本卡住的 exact GDF + external MAT node `1 passed`；四個同類真實 UI/fixture 檔案
+  `20 passed`；完整 Linux UI shard `133 passed`，約 5 分 48 秒。Ruff、format、same-class
+  `activeModalWidget()` sweep、strict docs build 與 diff hygiene 均通過。
+- 證據邊界：這是 Linux offscreen CI driver 修正，不是新的產品 runtime claim，也不取代 Windows
+  native 人工 acceptance。仍須 push exact head 並等待所有 PR checks completed/success。
 
 ## 2026-08-11
 
@@ -17315,3 +17344,42 @@
   probabilistic loader check with exact mask-index and Random/Sequential sampler assertions.
 - Local evidence: focused regression `9 passed`; adjacent integration backend and training-plan
   suite `171 passed`; no product command or metric semantics were relaxed.
+
+## 2026-08-14 - Product-foundation draft PR integration
+
+- Created the product-foundation candidate from current `main`, preserved the old reliability
+  checkpoint remotely, and opened draft PR `#16`. The candidate keeps the desktop product runtime
+  and matching product regressions while excluding MOABB campaign/materializer/driver code,
+  generated datasets and campaign delivery gates. Repo-root `settings.json` remains an unstaged,
+  protected local setting.
+- The first exact-head CI run passed lint/docs, the required public multi-dataset gate, Linux agent
+  timing/LLM shards, macOS core/lifecycle and Windows core. It exposed three bounded integration
+  areas rather than a dataset-delivery failure:
+  - strict-BIDS review repeated four filesystem canonicalizations already owned by the admitted
+    BIDS index;
+  - Apply resource-confirmation tests replaced the preflight result after Review while leaving the
+    current SAFE admission valid;
+  - Windows UI rendering counted a hidden Cancel control in toolbar width, and one Saliency test
+    asserted before the queued Qt render ledger reached the active Map tab.
+- Local fixes retain the original contracts: BIDS path comparison is lexical after admission;
+  resource confirmation forces a fresh check only when the cached resource boundary is no longer
+  reusable; Saliency remains explicit user action; hidden controls no longer consume responsive
+  packing width. A same-class transaction sweep also made failed Preprocess and interpretation
+  Apply commits restore trainer/history with their data state while preserving newer training truth
+  on stale-boundary rejection.
+- Local evidence after integration: ApplicationService `244 passed`; resource-confirmation
+  integration `47 passed`; affected UI/BIDS `133 passed`; focused Ruff/format/Basedpyright and
+  `git diff --check` passed. These are dirty working-tree checkpoint results, not exact-head closure.
+- Claim boundary: the fixes still require a focused commit, push and a completely successful CI run
+  for the new PR head. Windows native CI does not replace later human DPI/interaction acceptance,
+  and this branch still does not move datasets or fix P300 Saliency computation.
+- The next exact-head run passed platform, unit, UI and required public multi-dataset gates. Its only
+  failing shard exposed a test-side publication race: the stale-preview test compared a command
+  result captured while the application-owned BIDS montage worker was pending with a later final
+  publication. The regression now waits on the public background-task boundary before capturing its
+  stable baseline; it does not add a sleep, accept multiple outcomes or change product behavior.
+- That fix passed the next Linux integration shard. The same exact-head run exposed one unrelated
+  Windows test defect: its cache-cleanup failure injection patched every `Path.resolve` call while
+  the Qt event loop was active, including logging and diagnostic infrastructure. The injection is
+  now limited to the intended cache root while all other paths delegate to the real resolver;
+  exactly-once terminal, thread deletion, redaction and idle assertions remain unchanged.

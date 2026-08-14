@@ -674,6 +674,12 @@ class TestPreprocessSidebar:
         self,
         sidebar,
     ):
+        busy_targets: list[object] = []
+
+        def schedule(*_args, **kwargs):
+            busy_targets.append(kwargs["busy_target"])
+            return True
+
         with (
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.get_epoch_dialog_context",
@@ -683,7 +689,7 @@ class TestPreprocessSidebar:
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar."
                 "execute_application_command_async",
-                return_value=True,
+                side_effect=schedule,
             ),
         ):
             dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
@@ -696,6 +702,25 @@ class TestPreprocessSidebar:
             outcome = sidebar.open_epoching()
 
         assert outcome.status is InteractionStatus.ACCEPTED
+        assert busy_targets == [sidebar]
+
+    def test_preprocess_busy_surface_keeps_visible_cancel_enabled(self, sidebar):
+        protected_controls = (
+            sidebar.btn_filter,
+            sidebar.btn_resample,
+            sidebar.btn_rereference,
+            sidebar.btn_normalize,
+            sidebar.btn_epoch,
+            sidebar.btn_reset,
+        )
+        for control in protected_controls:
+            control.setEnabled(True)
+        sidebar.btn_cancel_operation.setEnabled(True)
+
+        sidebar.set_busy(True)
+
+        assert sidebar.btn_cancel_operation.isEnabled() is True
+        assert all(control.isEnabled() is False for control in protected_controls)
 
     def test_open_epoching_nonrecoverable_command_failure_returns_failed(
         self,

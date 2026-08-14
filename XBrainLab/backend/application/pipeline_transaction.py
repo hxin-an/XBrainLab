@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
@@ -26,6 +27,41 @@ class PipelineStateSnapshot:
     epoch_trial_selection_evidence_present: bool
     epoch_trial_selection_evidence: Any
     epoch_trial_selection_evidence_dropped: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class PipelineStateIdentity:
+    """Object identity boundary for one captured EEG pipeline state."""
+
+    loaded_data: tuple[int, ...]
+    backup_loaded_data: tuple[int, ...] | None
+    preprocessed_data: tuple[int, ...]
+    epoch_data: int | None
+    datasets: tuple[int, ...]
+    dataset_generator: int | None
+    dataset_locked: bool
+    dataset_sequence: int
+
+    @classmethod
+    def from_snapshot(cls, snapshot: PipelineStateSnapshot) -> PipelineStateIdentity:
+        return cls(
+            loaded_data=tuple(id(item) for item in snapshot.loaded_data),
+            backup_loaded_data=(
+                None
+                if snapshot.backup_loaded_data is None
+                else tuple(id(item) for item in snapshot.backup_loaded_data)
+            ),
+            preprocessed_data=tuple(id(item) for item in snapshot.preprocessed_data),
+            epoch_data=None if snapshot.epoch_data is None else id(snapshot.epoch_data),
+            datasets=tuple(id(item) for item in snapshot.datasets),
+            dataset_generator=(
+                None
+                if snapshot.dataset_generator is None
+                else id(snapshot.dataset_generator)
+            ),
+            dataset_locked=snapshot.dataset_locked,
+            dataset_sequence=snapshot.dataset_sequence,
+        )
 
 
 @dataclass(frozen=True)
@@ -262,3 +298,17 @@ class PipelineStateTransaction:
     ) -> bool:
         """Compare-and-retire training truth after data mutation succeeds."""
         return self._training_runtime.commit_pipeline_invalidation(expected)
+
+    def commit_pipeline_replacement(
+        self,
+        expected: TrainingPipelineMutationBoundary,
+        *,
+        publish: Callable[[], None],
+    ) -> bool:
+        """Publish prepared raw state under the training-runtime mutation lease."""
+        if not callable(publish):
+            raise TypeError("publish must be callable")
+        return self._training_runtime.commit_pipeline_replacement(
+            expected,
+            publish=publish,
+        )

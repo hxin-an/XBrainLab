@@ -42,7 +42,7 @@ def test_capture_mcp_stdio_walkthrough_writes_client_artifact(tmp_path: Path):
     assert payload["summary"]["long_running_boundary"]["job_boundary_reached"] is False
     assert payload["summary"]["long_running_boundary"]["supported"] is False
     assert (
-        "Generate datasets before training"
+        "Load raw data before training"
         in (payload["summary"]["tool_results"]["train"]["text"])
     )
     assert "MCP Stdio Walkthrough" in markdown

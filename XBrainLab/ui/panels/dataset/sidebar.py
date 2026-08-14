@@ -199,6 +199,7 @@ class DatasetSidebar(QWidget):
         self.ops_layout.addWidget(self.import_folder_btn, 1, 0)
 
         self.import_bids_btn = QPushButton("Import BIDS")
+        self.import_bids_btn.setObjectName("DatasetImportBidsButton")
         self.import_bids_btn.setToolTip(
             "Choose a BIDS EEG folder and review detected metadata and events",
         )
@@ -217,6 +218,14 @@ class DatasetSidebar(QWidget):
             self.panel.action_handler.reload_interpretation_recipe,
         )
         self.ops_layout.addWidget(self.reload_recipe_btn, 3, 0)
+
+        self.import_cancel_btn = QPushButton("Cancel Import")
+        self.import_cancel_btn.setObjectName("OwnedOperationCancelButton")
+        self.import_cancel_btn.setToolTip("Cancel the active import safely")
+        self.import_cancel_btn.setStyleSheet(Stylesheets.BTN_WARNING)
+        self.import_cancel_btn.setVisible(False)
+        self.import_cancel_btn.setEnabled(False)
+        self.ops_layout.addWidget(self.import_cancel_btn, 4, 0)
 
         self.smart_parse_btn = QPushButton("Smart Parse Metadata", self.ops_group)
         self.smart_parse_btn.setToolTip("Auto-extract Subject/Session from filenames")
@@ -263,6 +272,7 @@ class DatasetSidebar(QWidget):
             self.import_folder_btn,
             self.import_bids_btn,
             self.reload_recipe_btn,
+            self.import_cancel_btn,
             self.smart_parse_btn,
             self.import_label_btn,
             self.chan_select_btn,

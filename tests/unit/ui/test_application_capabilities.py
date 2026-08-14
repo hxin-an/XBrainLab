@@ -42,6 +42,7 @@ from XBrainLab.ui import (
 )
 from XBrainLab.ui.application_capabilities import (
     application_background_tasks_idle,
+    cancel_application_operation,
     execute_application_command,
     execute_application_command_async,
     get_command_capability,
@@ -82,6 +83,10 @@ class _ApplicationRuntimeFake:
         self.background_idle = True
         self.interpretation_review: dict[str, Any] = {}
         self.expected_publication_generations: list[int | None] = []
+        self.operation_ids: list[str | None] = []
+        self.begun_operations: list[tuple[str, Command]] = []
+        self.cancelled_operations: list[str] = []
+        self.failed_operations: list[tuple[str, str]] = []
 
     def get_view_publication(self) -> ApplicationViewPublication:
         self.publication_reads += 1
@@ -94,14 +99,29 @@ class _ApplicationRuntimeFake:
         command: Command,
         *,
         expected_publication_generation: int | None = None,
+        operation_id: str | None = None,
     ) -> CommandResult:
         self.commands.append(command)
         self.expected_publication_generations.append(
             expected_publication_generation,
         )
+        self.operation_ids.append(operation_id)
         if self._execute is None:
             raise AssertionError("command execution was not configured for this fake")
         return self._execute(command)
+
+    def begin_owned_operation(self, command: Command) -> Any:
+        operation_id = f"operation-{len(self.begun_operations) + 1}"
+        self.begun_operations.append((operation_id, command))
+        return SimpleNamespace(operation_id=operation_id)
+
+    def cancel_owned_operation(self, operation_id: str) -> bool:
+        self.cancelled_operations.append(operation_id)
+        return True
+
+    def fail_owned_operation(self, operation_id: str, *, message: str) -> Any:
+        self.failed_operations.append((operation_id, message))
+        return SimpleNamespace(operation_id=operation_id)
 
     def get_interpretation_review(
         self,
@@ -797,6 +817,7 @@ def test_execute_application_command_async_runs_service_off_gui_call_stack(
     assert executed == []
     assert len(started_workers) == 1
     assert application_command_registry().active_count(widget) == 1
+    assert runtime.begun_operations == [("operation-1", QueryStateCommand())]
 
     started_workers[0].run()
 
@@ -805,6 +826,52 @@ def test_execute_application_command_async_runs_service_off_gui_call_stack(
     assert refresh_calls == []
     assert busy_states == [True, False]
     assert application_command_registry().active_count(widget) == 0
+    assert runtime.operation_ids == ["operation-1"]
+
+
+def test_async_operation_identity_is_visible_and_cancel_uses_runtime(
+    qtbot, monkeypatch
+):
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    command = QueryStateCommand()
+    result = CommandResult.success_result(
+        command_name=command.name.value,
+        message="ok",
+        state=None,
+        changed_state=ChangedState(),
+    )
+    runtime = _ApplicationRuntimeFake(execute=lambda _command: result)
+    workers = []
+    started_operations: list[str] = []
+
+    class _ThreadPool:
+        def start(self, worker) -> None:
+            workers.append(worker)
+
+    monkeypatch.setattr(
+        async_command_runner.QThreadPool,
+        "globalInstance",
+        lambda: _ThreadPool(),
+    )
+
+    assert execute_application_command_async(
+        widget,
+        command,
+        on_result=lambda _result: None,
+        on_operation_started=started_operations.append,
+        runtime=runtime,
+    )
+    assert started_operations == ["operation-1"]
+    assert cancel_application_operation(
+        widget,
+        "operation-1",
+        runtime=runtime,
+    )
+    assert runtime.cancelled_operations == ["operation-1"]
+
+    workers[0].run()
+    assert runtime.operation_ids == ["operation-1"]
 
 
 def test_async_preprocess_uses_python_owned_worker_instead_of_qt_pool(
@@ -1267,6 +1334,9 @@ def test_async_pool_lookup_failure_releases_all_ui_ownership(qtbot, monkeypatch)
     assert started is False
     assert busy_states == [True, False]
     assert application_command_registry().active_count(widget) == 0
+    assert runtime.failed_operations == [
+        ("operation-1", "The interface worker could not be scheduled."),
+    ]
     assert id(main_window) not in refresh_coordinator._COMMAND_EXECUTING_MAIN_WINDOWS
 
 
@@ -1596,6 +1666,9 @@ def test_execute_application_command_async_returns_false_without_thread_pool(
     assert started is False
     assert busy_states == [True, False]
     assert application_command_registry().active_count(widget) == 0
+    assert runtime.failed_operations == [
+        ("operation-1", "The interface worker could not be scheduled."),
+    ]
 
 
 def test_execute_application_command_async_returns_false_when_worker_start_fails(

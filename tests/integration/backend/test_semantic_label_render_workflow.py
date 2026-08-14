@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import json
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
@@ -33,8 +35,10 @@ from XBrainLab.backend.application.saliency_render import SaliencyRenderPublishe
 from XBrainLab.backend.training import Trainer
 from XBrainLab.backend.training.record.eval import EvalRecord
 from XBrainLab.backend.training.record.train import TrainRecord
-from XBrainLab.backend.training.saliency_provenance import SaliencyProducerIdentity
-from XBrainLab.backend.training_state_contract import TrainingReadBoundary
+from XBrainLab.backend.training.saliency_provenance import (
+    SaliencyArtifactContext,
+    SaliencyProducerIdentity,
+)
 
 OFNER_CLASS_MAP = {
     "1536": "right elbow flexion",
@@ -112,7 +116,9 @@ def _write_internal_event_run(
     raw.save(path, overwrite=True, verbose=False)
 
 
-def _publish_final_labels(service: ApplicationService) -> tuple[set[str], set[str]]:
+def _publish_final_label_maps(
+    service: ApplicationService,
+) -> tuple[dict[int, str], tuple[tuple[int, str], ...]]:
     dataset = service.study.datasets[0]
     epoch_data = dataset.get_epoch_data()
     class_count = len(epoch_data.label_map)
@@ -154,12 +160,8 @@ def _publish_final_labels(service: ApplicationService) -> tuple[set[str], set[st
     assert record.dataset.get_epoch_data().label_map == epoch_data.label_map
 
     holder = _TrainingHolder(dataset, record, producer)
-    boundary = TrainingReadBoundary.no_trainer()
-    publication: Any = SimpleNamespace(
-        generation=1,
-        usable=True,
-        training_boundary=boundary,
-    )
+    publication = service.get_view_publication()
+    boundary = publication.training_boundary
     runtime: Any = SimpleNamespace(
         has_trainer=lambda: True,
         training_plan_holders=lambda: [holder],
@@ -170,7 +172,7 @@ def _publish_final_labels(service: ApplicationService) -> tuple[set[str], set[st
         capture_training_boundary=lambda: boundary,
     ).publish(
         EvaluationRenderRequest(
-            publication_generation=1,
+            publication_generation=publication.generation,
             selection=EvaluationRunIdentity(
                 plan=EvaluationPlanIdentity(plan_index=0),
                 run_index=0,
@@ -183,7 +185,7 @@ def _publish_final_labels(service: ApplicationService) -> tuple[set[str], set[st
         capture_training_boundary=lambda: boundary,
     ).publish(
         SaliencyRenderRequest(
-            publication_generation=1,
+            publication_generation=publication.generation,
             run=SaliencyRunIdentity(
                 plan=SaliencyPlanIdentity(plan_index=0),
                 run_index=0,
@@ -191,10 +193,14 @@ def _publish_final_labels(service: ApplicationService) -> tuple[set[str], set[st
             method="Gradient",
         )
     )
-    return (
-        set(evaluation.data.class_labels.values()),
-        {display_name for _class_index, display_name in visualization.data.class_map},
-    )
+    return dict(evaluation.data.class_labels), tuple(visualization.data.class_map)
+
+
+def _publish_final_labels(service: ApplicationService) -> tuple[set[str], set[str]]:
+    evaluation_labels, saliency_labels = _publish_final_label_maps(service)
+    return set(evaluation_labels.values()), {
+        display_name for _class_index, display_name in saliency_labels
+    }
 
 
 def _run_reviewed_workflow(
@@ -204,11 +210,16 @@ def _run_reviewed_workflow(
     files: list,
     choices: dict[str, Any],
     expected_labels: set[str],
+    source_path=None,
+    source_hint: str = "folder",
 ) -> tuple[ApplicationService, dict[str, Any]]:
     service = ApplicationService()
     try:
         scan = service.execute(
-            ScanSourceCommand(source_path=str(tmp_path), source_hint="folder")
+            ScanSourceCommand(
+                source_path=str(source_path or tmp_path),
+                source_hint=source_hint,
+            )
         )
         preview = service.execute(PreviewInterpretationCommand(choices=choices))
         validation = service.execute(ValidateInterpretationCommand())
@@ -366,3 +377,157 @@ def test_run_specific_t1_t2_meanings_stay_distinct_in_final_labels(
         assert not ({"T1", "T2"} & saliency_labels)
     finally:
         service.close()
+
+
+def test_bids_source_event_codes_stay_separate_from_runtime_class_indices(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Reviewed BIDS codes are provenance, not the model's class indices.
+
+    The TSV deliberately puts ``zeta`` before ``alpha`` and gives both values
+    non-contiguous source codes.  The runtime contract may canonicalize the
+    supervised classes, but must never leak those source codes into the
+    contiguous Epochs/Evaluation/Saliency class-index space.
+    """
+    bids_root, eeg_path, events_path = _write_bids_event_value_run(tmp_path)
+    choices = {
+        "selected_eeg_files": [str(eeg_path)],
+        "label_carrier_choices": {
+            str(events_path): {
+                "label_field": "trial_type",
+                "anchor": "onset",
+                "duration_field": "duration",
+                "time_model": "seconds",
+                "placement_method": "interval",
+                "granularity": "event",
+                "value_decisions": {
+                    "zeta": {
+                        "role": "stimulus",
+                        "keep_event": True,
+                        "use_as_class": True,
+                        "class_name": "zeta",
+                    },
+                    "alpha": {
+                        "role": "stimulus",
+                        "keep_event": True,
+                        "use_as_class": True,
+                        "class_name": "alpha",
+                    },
+                    "nuisance": {
+                        "role": "response",
+                        "keep_event": True,
+                        "use_as_class": False,
+                    },
+                },
+            }
+        },
+    }
+
+    service, handoff = _run_reviewed_workflow(
+        tmp_path,
+        monkeypatch,
+        files=[eeg_path],
+        choices=choices,
+        expected_labels={"alpha", "zeta"},
+        source_path=bids_root,
+        source_hint="bids",
+    )
+    try:
+        # The formal BIDS source owns its non-contiguous source codes and source
+        # row order.  Runtime class indices are deliberately a separate contract.
+        with events_path.open(newline="", encoding="utf-8") as source_file:
+            source_rows = list(csv.DictReader(source_file, delimiter="\t"))
+        assert [row["trial_type"] for row in source_rows[:3]] == [
+            "zeta",
+            "alpha",
+            "nuisance",
+        ]
+        assert {row["trial_type"]: row["value"] for row in source_rows} == {
+            "zeta": "7",
+            "alpha": "9",
+            "nuisance": "42",
+        }
+
+        # Applied interpretation retains all reviewed values, including the
+        # excluded nuisance event, without treating source codes as class IDs.
+        catalog = handoff["event_catalog"]
+        assert {row["raw_value"] for row in catalog} == {
+            "zeta",
+            "alpha",
+            "nuisance",
+        }
+        assert {
+            row["raw_value"]
+            for row in catalog
+            if row["keep_event"] is True and row["use_as_class"] is False
+        } == {"nuisance"}
+
+        epoch_data = service.study.datasets[0].get_epoch_data()
+        assert epoch_data.label_map == {0: "alpha", 1: "zeta"}
+        assert epoch_data.event_id == {"alpha": 0, "zeta": 1}
+
+        producer = SaliencyProducerIdentity.from_components(
+            dataset={"name": "bids-event-value-probe"},
+            split={"name": "test"},
+            run={"index": 0},
+            model={"name": "semantic-label-probe"},
+        )
+        context = SaliencyArtifactContext.from_epoch_data(
+            epoch_data,
+            class_count=2,
+            producer_identity=producer,
+        )
+        assert context.class_map == ((0, "alpha"), (1, "zeta"))
+
+        evaluation_labels, saliency_labels = _publish_final_label_maps(service)
+        assert evaluation_labels == {0: "alpha", 1: "zeta"}
+        assert saliency_labels == ((0, "alpha"), (1, "zeta"))
+    finally:
+        service.close()
+
+
+def _write_bids_event_value_run(tmp_path):
+    root = tmp_path / "bids-event-values"
+    eeg_dir = root / "sub-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    (root / "dataset_description.json").write_text(
+        json.dumps({"Name": "event value contract", "BIDSVersion": "1.9.0"}),
+        encoding="utf-8",
+    )
+    eeg_path = eeg_dir / "sub-01_task-mi_eeg.fif"
+    raw = mne.io.RawArray(
+        np.zeros((2, 1000)),
+        mne.create_info(["C3", "C4"], sfreq=100.0, ch_types="eeg"),
+        verbose=False,
+    )
+    raw.save(eeg_path, overwrite=True, verbose=False)
+    events_path = eeg_dir / "sub-01_task-mi_events.tsv"
+    event_rows = [
+        "0.5\t0\tzeta\t7",
+        "1.0\t0\talpha\t9",
+        "1.5\t0\tnuisance\t42",
+        *(
+            f"{2.0 + 0.5 * index:.1f}\t0\t{label}\t{code}"
+            for index, (label, code) in enumerate([("zeta", "7"), ("alpha", "9")] * 5)
+        ),
+    ]
+    events_path.write_text(
+        "onset\tduration\ttrial_type\tvalue\n" + "\n".join(event_rows) + "\n",
+        encoding="utf-8",
+    )
+    (eeg_dir / "sub-01_task-mi_events.json").write_text(
+        json.dumps(
+            {
+                "trial_type": {
+                    "Levels": {
+                        "zeta": "Zeta trial",
+                        "alpha": "Alpha trial",
+                        "nuisance": "Nuisance response",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    return root, eeg_path.resolve(), events_path.resolve()

@@ -64,6 +64,7 @@ class BidsMontagePreparationCoordinator:
     ) -> MontagePreparationSnapshot:
         """Publish pending state immediately and prepare the latest request."""
         requested = tuple(recordings)
+        scheduling_failure: MontagePreparationSnapshot | None = None
         with self._idle:
             if self._closed:
                 return self._lifecycle.snapshot()
@@ -74,8 +75,25 @@ class BidsMontagePreparationCoordinator:
             self._pending_work = work
             self._validation_candidate = None
             self._retry_candidate = None
-            self._ensure_worker_locked()
+            try:
+                self._ensure_worker_locked()
+            except Exception as exc:
+                logger.exception("BIDS montage preparation worker could not start")
+                if self._pending_work == work:
+                    self._pending_work = None
+                failure = self._failure_snapshot(
+                    work,
+                    reason=(
+                        "BIDS electrode position preparation could not start: "
+                        f"{type(exc).__name__}."
+                    ),
+                )
+                publication = self._lifecycle.publish(work, failure)
+                scheduling_failure = publication.snapshot
             self._idle.notify_all()
+        if scheduling_failure is not None:
+            self._notify_publication(scheduling_failure)
+            return scheduling_failure
         return pending
 
     def reset(self) -> MontagePreparationSnapshot:
@@ -256,7 +274,7 @@ class BidsMontagePreparationCoordinator:
                 self._lifecycle.reset()
                 self._idle.notify_all()
             worker = self._worker
-        if worker is not None and worker is not current_thread():
+        if worker is not None and worker is not current_thread() and worker.is_alive():
             remaining = None if deadline is None else max(0.0, deadline - monotonic())
             worker.join(timeout=remaining)
         with self._idle:
@@ -270,12 +288,19 @@ class BidsMontagePreparationCoordinator:
         """Start one worker only when preparation work actually exists."""
         if self._worker is not None and self._worker.is_alive():
             return
-        self._worker = Thread(
+        worker = Thread(
             target=self._worker_loop,
             name="xbrainlab-bids-montage",
             daemon=False,
         )
-        self._worker.start()
+        self._worker = worker
+        try:
+            worker.start()
+        except BaseException:
+            if self._worker is worker:
+                self._worker = None
+            self._idle.notify_all()
+            raise
 
     def _run(
         self,
@@ -293,26 +318,37 @@ class BidsMontagePreparationCoordinator:
             )
         except Exception as exc:
             logger.exception("BIDS montage preparation failed unexpectedly")
-            reason = (
-                f"BIDS electrode positions could not be prepared: {type(exc).__name__}."
-            )
-            return MontagePreparationSnapshot(
-                state="failed",
-                generation=work.generation,
-                requested_recording_paths=tuple(
-                    item.recording_path for item in work.recordings
+            return self._failure_snapshot(
+                work,
+                reason=(
+                    "BIDS electrode positions could not be prepared: "
+                    f"{type(exc).__name__}."
                 ),
-                recordings=tuple(
-                    RecordingMontagePreparation(
-                        recording_path=item.recording_path,
-                        state="failed",
-                        recording_channel_names=item.channel_names,
-                        reason=reason,
-                    )
-                    for item in work.recordings
-                ),
-                reason=reason,
             )
+
+    @staticmethod
+    def _failure_snapshot(
+        work: MontagePreparationWork,
+        *,
+        reason: str,
+    ) -> MontagePreparationSnapshot:
+        return MontagePreparationSnapshot(
+            state="failed",
+            generation=work.generation,
+            requested_recording_paths=tuple(
+                item.recording_path for item in work.recordings
+            ),
+            recordings=tuple(
+                RecordingMontagePreparation(
+                    recording_path=item.recording_path,
+                    state="failed",
+                    recording_channel_names=item.channel_names,
+                    reason=reason,
+                )
+                for item in work.recordings
+            ),
+            reason=reason,
+        )
 
     def _worker_loop(self) -> None:
         while True:
@@ -390,8 +426,13 @@ class BidsMontagePreparationCoordinator:
                 logger.exception("BIDS montage application commit failed")
             return
         publication = self._lifecycle.publish(work, result)
-        if publication.accepted and self._on_publication is not None:
-            try:
-                self._on_publication(publication.snapshot)
-            except Exception:
-                logger.exception("BIDS montage publication callback failed")
+        if publication.accepted:
+            self._notify_publication(publication.snapshot)
+
+    def _notify_publication(self, snapshot: MontagePreparationSnapshot) -> None:
+        if self._on_publication is None:
+            return
+        try:
+            self._on_publication(snapshot)
+        except Exception:
+            logger.exception("BIDS montage publication callback failed")

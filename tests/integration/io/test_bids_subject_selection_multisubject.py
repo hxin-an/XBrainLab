@@ -173,6 +173,9 @@ def test_catalog_reports_three_complete_subjects_and_nine_recordings() -> None:
     catalog = result.diagnostics["bids_subject_catalog"]
     assert catalog == {
         "root": str(OPENNEURO_P300_ROOT.resolve()),
+        "selection_root": str(OPENNEURO_P300_ROOT.resolve()),
+        "resolved_nested_root": False,
+        "nested_bids_candidates": [],
         "subject_count": 3,
         "eeg_file_count": 9,
         "subjects": [
@@ -303,6 +306,7 @@ def test_selected_subjects_reach_epochs_and_deferred_split_without_scope_leakage
         ]
         assert set(handoff_paths) == {*expected_eeg_files, *expected_events_files}
         assert _subjects_in_paths(handoff_paths) == set(subjects)
+        assert service.wait_for_background_tasks(timeout=30.0)
 
         normalized = service.execute(
             PreprocessCommand(

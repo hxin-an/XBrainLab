@@ -5,12 +5,16 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import InitVar, dataclass, replace
 from types import MappingProxyType
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
 from XBrainLab.backend.training_state_contract import TrainingReadBoundary
 
+if TYPE_CHECKING:
+    from XBrainLab.backend.training.saliency_provenance import (
+        SaliencyProducerIdentity,
+    )
 from .errors import PreconditionError
 from .evaluation_render import build_evaluation_cross_fold_choices
 from .montage_capability import (
@@ -19,6 +23,16 @@ from .montage_capability import (
 )
 from .training_runtime import TrainingRuntimePort
 from .view_publication import ApplicationViewPublication
+
+
+def _saliency_producer_identity_class() -> type[SaliencyProducerIdentity]:
+    """Load training provenance only when a saliency render is requested."""
+    from XBrainLab.backend.training.saliency_provenance import (  # noqa: PLC0415
+        SaliencyProducerIdentity,
+    )
+
+    return SaliencyProducerIdentity
+
 
 SALIENCY_METHOD_ATTRIBUTES = {
     "Gradient": "gradient",
@@ -221,22 +235,36 @@ class SaliencyRenderData:
     aggregation: str = "per-epoch"
     fold_count: int = 1
     normalized: bool = False
+    producer_identities: tuple[SaliencyProducerIdentity, ...] = ()
     _detached_arrays: InitVar[object | None] = None
 
     def __post_init__(self, _detached_arrays: object | None) -> None:
         method = str(self.method).strip()
         if not method:
             raise ValueError("render method must be a non-empty string")
-        if _detached_arrays is _DETACHED_SALIENCY_ARRAYS:
-            copied_store = {
-                key: self._adopt_detached_array(value)
-                for key, value in self.saliency_by_class.items()
-            }
-        else:
-            copied_store = {
-                key: _copy_array_readonly(value)
-                for key, value in self.saliency_by_class.items()
-            }
+        # DTO construction is part of the owned RENDER read boundary. Keep a
+        # cancellation point on both sides of every potentially large class
+        # copy; ordinary non-owned callers observe these as no-ops.
+        from .owned_work import owned_work_checkpoint  # noqa: PLC0415
+
+        copied_store: dict[object, np.ndarray] = {}
+        total_classes = len(self.saliency_by_class)
+        for index, (key, value) in enumerate(self.saliency_by_class.items()):
+            owned_work_checkpoint(
+                "Copying saliency classes",
+                completed=index,
+                total=total_classes,
+            )
+            copied_store[key] = (
+                self._adopt_detached_array(value)
+                if _detached_arrays is _DETACHED_SALIENCY_ARRAYS
+                else _copy_array_readonly(value)
+            )
+            owned_work_checkpoint(
+                "Copying saliency classes",
+                completed=index + 1,
+                total=total_classes,
+            )
         if not copied_store:
             raise ValueError(f"No {method} saliency is available for this run")
         sfreq = float(self.sfreq)
@@ -255,6 +283,20 @@ class SaliencyRenderData:
             raise ValueError("fold_count must be a positive integer")
         if type(self.normalized) is not bool:
             raise TypeError("normalized must be a bool")
+        if not isinstance(self.producer_identities, tuple):
+            raise TypeError(
+                "producer_identities must contain SaliencyProducerIdentity values"
+            )
+        identity_class = (
+            _saliency_producer_identity_class() if self.producer_identities else None
+        )
+        if identity_class is not None and any(
+            not isinstance(identity, identity_class)
+            for identity in self.producer_identities
+        ):
+            raise TypeError(
+                "producer_identities must contain SaliencyProducerIdentity values"
+            )
         object.__setattr__(self, "method", method)
         object.__setattr__(
             self,
@@ -339,6 +381,9 @@ class SaliencyRenderPublication:
     generation: int
     training_generation: int
     data: SaliencyRenderData
+    operation_id: str | None = None
+    split_specification_fingerprint: str | None = None
+    split_epoch_revision: int | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.request, SaliencyRenderRequest):
@@ -353,6 +398,23 @@ class SaliencyRenderPublication:
             raise ValueError("training_generation must be a non-negative integer")
         if not isinstance(self.data, SaliencyRenderData):
             raise TypeError("data must be SaliencyRenderData")
+        if self.operation_id is not None and (
+            not isinstance(self.operation_id, str) or not self.operation_id.strip()
+        ):
+            raise TypeError("operation_id must be a non-empty string or None")
+        if self.split_specification_fingerprint is not None and (
+            not isinstance(self.split_specification_fingerprint, str)
+            or not self.split_specification_fingerprint.strip()
+        ):
+            raise TypeError(
+                "split_specification_fingerprint must be a non-empty string or None"
+            )
+        if self.split_epoch_revision is not None and (
+            isinstance(self.split_epoch_revision, bool)
+            or not isinstance(self.split_epoch_revision, int)
+            or self.split_epoch_revision < 1
+        ):
+            raise TypeError("split_epoch_revision must be a positive integer or None")
 
 
 def _plan_runs(holder: Any) -> list[Any]:
@@ -612,24 +674,56 @@ def _validate_saliency_cross_fold_choice(
 def _normalize_saliency_store(
     store: Mapping[object, Any],
 ) -> dict[object, np.ndarray]:
-    arrays = {key: np.asarray(value) for key, value in store.items()}
+    # Normalization is also used by the owned RENDER path.  These checkpoints
+    # are no-ops for ordinary callers and become cooperative cancellation
+    # boundaries when the controller has bound an operation to this thread.
+    from .owned_work import owned_work_checkpoint  # noqa: PLC0415
+
+    arrays: dict[object, np.ndarray] = {}
+    total = len(store)
+    for index, (key, value) in enumerate(store.items()):
+        owned_work_checkpoint(
+            "Inspecting saliency values",
+            completed=index,
+            total=total,
+        )
+        arrays[key] = np.asarray(value)
     if not arrays:
         raise PreconditionError(
             "Saliency data is unavailable for normalization",
             diagnostics={"retryable": False},
         )
-    if any(not np.isfinite(values).all() for values in arrays.values()):
-        raise PreconditionError(
-            "Saliency data contains non-finite values",
-            diagnostics={"retryable": False},
+    maxima: list[float] = []
+    for index, values in enumerate(arrays.values()):
+        owned_work_checkpoint(
+            "Validating saliency values",
+            completed=index,
+            total=total,
         )
-    scale = max(
-        float(np.max(np.abs(values), initial=0.0)) for values in arrays.values()
-    )
+        if not np.isfinite(values).all():
+            raise PreconditionError(
+                "Saliency data contains non-finite values",
+                diagnostics={"retryable": False},
+            )
+        maxima.append(float(np.max(np.abs(values), initial=0.0)))
+    scale = max(maxima)
     if scale <= np.finfo(np.float64).eps:
-        return {key: np.array(values, copy=True) for key, values in arrays.items()}
+        copied: dict[object, np.ndarray] = {}
+        for index, (key, values) in enumerate(arrays.items(), start=1):
+            owned_work_checkpoint(
+                "Normalizing saliency values",
+                completed=index,
+                total=total,
+            )
+            copied[key] = np.array(values, copy=True)
+        return copied
     normalized: dict[object, np.ndarray] = {}
-    for key, values in arrays.items():
+    for index, (key, values) in enumerate(arrays.items(), start=1):
+        owned_work_checkpoint(
+            "Normalizing saliency values",
+            completed=index - 1,
+            total=total,
+        )
         output_dtype = (
             values.dtype
             if np.issubdtype(values.dtype, np.floating)
@@ -642,6 +736,11 @@ def _normalize_saliency_store(
             out=destination,
         )
         normalized[key] = destination
+        owned_work_checkpoint(
+            "Normalizing saliency values",
+            completed=index,
+            total=total,
+        )
     return normalized
 
 
@@ -652,29 +751,69 @@ def _pool_cross_fold_saliency(
     normalize: bool,
 ) -> dict[object, np.ndarray]:
     """Pool every admitted fold once into final owned render arrays."""
-    arrays_by_key = {
-        item.store_key: tuple(
-            np.asarray(store[item.store_key]) for store in fold_stores
-        )
-        for item in classes
-    }
-    if not normalize:
-        return {
-            key: np.concatenate(arrays, axis=0) for key, arrays in arrays_by_key.items()
-        }
+    from .owned_work import owned_work_checkpoint  # noqa: PLC0415
 
-    scale = max(
-        float(np.max(np.abs(values), initial=0.0))
-        for arrays in arrays_by_key.values()
-        for values in arrays
-    )
+    arrays_by_key: dict[object, tuple[np.ndarray, ...]] = {}
+    read_total = len(classes) * len(fold_stores)
+    read_count = 0
+    for item in classes:
+        class_arrays: list[np.ndarray] = []
+        for store in fold_stores:
+            owned_work_checkpoint(
+                "Reading cross-fold saliency",
+                completed=read_count,
+                total=read_total,
+            )
+            class_arrays.append(np.asarray(store[item.store_key]))
+            read_count += 1
+            owned_work_checkpoint(
+                "Reading cross-fold saliency",
+                completed=read_count,
+                total=read_total,
+            )
+        arrays_by_key[item.store_key] = tuple(class_arrays)
+
+    def concatenate_classes(stage: str) -> dict[object, np.ndarray]:
+        pooled: dict[object, np.ndarray] = {}
+        total = len(arrays_by_key)
+        for index, (key, arrays) in enumerate(arrays_by_key.items()):
+            owned_work_checkpoint(stage, completed=index, total=total)
+            pooled[key] = np.concatenate(arrays, axis=0)
+            owned_work_checkpoint(stage, completed=index + 1, total=total)
+        return pooled
+
+    if not normalize:
+        return concatenate_classes("Pooling cross-fold saliency classes")
+
+    maxima: list[float] = []
+    scale_total = sum(len(arrays) for arrays in arrays_by_key.values())
+    scale_count = 0
+    for arrays in arrays_by_key.values():
+        for values in arrays:
+            owned_work_checkpoint(
+                "Scaling cross-fold saliency",
+                completed=scale_count,
+                total=scale_total,
+            )
+            maxima.append(float(np.max(np.abs(values), initial=0.0)))
+            scale_count += 1
+            owned_work_checkpoint(
+                "Scaling cross-fold saliency",
+                completed=scale_count,
+                total=scale_total,
+            )
+    scale = max(maxima)
     if scale <= np.finfo(np.float64).eps:
-        return {
-            key: np.concatenate(arrays, axis=0) for key, arrays in arrays_by_key.items()
-        }
+        return concatenate_classes("Pooling cross-fold saliency classes")
 
     pooled: dict[object, np.ndarray] = {}
-    for key, arrays in arrays_by_key.items():
+    class_total = len(arrays_by_key)
+    for class_index, (key, arrays) in enumerate(arrays_by_key.items()):
+        owned_work_checkpoint(
+            "Normalizing cross-fold saliency classes",
+            completed=class_index,
+            total=class_total,
+        )
         total_epochs = sum(int(values.shape[0]) for values in arrays)
         source_dtype = np.result_type(*(values.dtype for values in arrays))
         output_dtype = (
@@ -687,7 +826,13 @@ def _pool_cross_fold_saliency(
             dtype=output_dtype,
         )
         offset = 0
-        for values in arrays:
+        fold_total = len(arrays)
+        for fold_index, values in enumerate(arrays):
+            owned_work_checkpoint(
+                "Normalizing cross-fold saliency folds",
+                completed=fold_index,
+                total=fold_total,
+            )
             next_offset = offset + int(values.shape[0])
             np.divide(
                 values,
@@ -695,7 +840,17 @@ def _pool_cross_fold_saliency(
                 out=destination[offset:next_offset],
             )
             offset = next_offset
+            owned_work_checkpoint(
+                "Normalizing cross-fold saliency folds",
+                completed=fold_index + 1,
+                total=fold_total,
+            )
         pooled[key] = destination
+        owned_work_checkpoint(
+            "Normalizing cross-fold saliency classes",
+            completed=class_index + 1,
+            total=class_total,
+        )
     return pooled
 
 
@@ -726,6 +881,7 @@ def normalized_saliency_render_publication(
         aggregation=source.aggregation,
         fold_count=source.fold_count,
         normalized=True,
+        producer_identities=source.producer_identities,
         _detached_arrays=_DETACHED_SALIENCY_ARRAYS,
     )
     return SaliencyRenderPublication(
@@ -733,6 +889,9 @@ def normalized_saliency_render_publication(
         generation=publication.generation,
         training_generation=publication.training_generation,
         data=normalized_data,
+        operation_id=publication.operation_id,
+        split_specification_fingerprint=publication.split_specification_fingerprint,
+        split_epoch_revision=publication.split_epoch_revision,
     )
 
 
@@ -786,11 +945,29 @@ class SaliencyRenderPublisher:
             publication=after_publication,
             boundary=after_boundary,
         )
+        publication_state = getattr(after_publication, "state", None)
+        dataset_state = getattr(publication_state, "dataset", None)
+        split_fingerprint = getattr(
+            dataset_state, "split_specification_fingerprint", None
+        )
+        split_epoch_revision = getattr(dataset_state, "split_epoch_revision", None)
         return SaliencyRenderPublication(
             request=request,
             generation=after_publication.generation,
             training_generation=after_boundary.token.generation,
             data=data,
+            split_specification_fingerprint=(
+                split_fingerprint
+                if isinstance(split_fingerprint, str) and split_fingerprint.strip()
+                else None
+            ),
+            split_epoch_revision=(
+                split_epoch_revision
+                if isinstance(split_epoch_revision, int)
+                and not isinstance(split_epoch_revision, bool)
+                and split_epoch_revision > 0
+                else None
+            ),
         )
 
     def _validate_guard(
@@ -863,7 +1040,7 @@ class SaliencyRenderPublisher:
             raise self._target_error("EEG epoch data is no longer available")
 
         saliency_store = self._saliency_store(eval_record, request.method)
-        class_map = self._validated_class_map(
+        class_map, producer_identities = self._validated_class_map(
             eval_record,
             epoch_data,
             producer_identity=_saliency_producer_identity(holder, run, eval_record),
@@ -878,6 +1055,7 @@ class SaliencyRenderPublisher:
             source_split=_record_source_split(eval_record),
             aggregation="per-epoch",
             fold_count=1,
+            producer_identities=producer_identities,
         )
 
     def _copy_cross_fold_render_data(
@@ -933,6 +1111,7 @@ class SaliencyRenderPublisher:
         )
         if not first_class_map:
             raise self._target_error("Cross-fold class metadata is unavailable")
+        identity_class = _saliency_producer_identity_class()
         return self._render_data_from_epoch(
             request=request,
             epoch_data=validated.epoch_data[0],
@@ -941,6 +1120,14 @@ class SaliencyRenderPublisher:
             source_split=choice.source_split,
             aggregation="pooled out-of-fold epochs",
             fold_count=len(choice.identity.members),
+            producer_identities=tuple(
+                identity
+                for context in validated.contexts
+                if isinstance(
+                    (identity := getattr(context, "producer_identity", None)),
+                    identity_class,
+                )
+            ),
             adopt_saliency_store=True,
         )
 
@@ -954,6 +1141,7 @@ class SaliencyRenderPublisher:
         source_split: str,
         aggregation: str,
         fold_count: int,
+        producer_identities: tuple[SaliencyProducerIdentity, ...] = (),
         adopt_saliency_store: bool = False,
     ) -> SaliencyRenderData:
         event_ids = getattr(epoch_data, "event_id", {}) or {}
@@ -1023,6 +1211,7 @@ class SaliencyRenderPublisher:
             aggregation=aggregation,
             fold_count=fold_count,
             normalized=request.normalize,
+            producer_identities=producer_identities,
             _detached_arrays=(
                 _DETACHED_SALIENCY_ARRAYS if adopt_saliency_store else None
             ),
@@ -1135,7 +1324,10 @@ class SaliencyRenderPublisher:
         epoch_data: Any,
         *,
         producer_identity: Any | None = None,
-    ) -> tuple[tuple[object, str], ...]:
+    ) -> tuple[
+        tuple[tuple[object, str], ...],
+        tuple[SaliencyProducerIdentity, ...],
+    ]:
         validator = getattr(eval_record, "validate_saliency_context", None)
         if not callable(validator):
             raise PreconditionError(
@@ -1151,7 +1343,12 @@ class SaliencyRenderPublisher:
                 "saliency before rendering.",
                 diagnostics={"retryable": False},
             )
-        return tuple((key, str(name)) for key, name in class_map)
+        context_identity = getattr(context, "producer_identity", None)
+        identity_class = _saliency_producer_identity_class()
+        typed_identities = (
+            (context_identity,) if isinstance(context_identity, identity_class) else ()
+        )
+        return tuple((key, str(name)) for key, name in class_map), typed_identities
 
     @staticmethod
     def _saliency_store(eval_record: Any, method: str) -> Mapping[object, Any]:

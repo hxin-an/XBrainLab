@@ -28,6 +28,7 @@ from .commands import (
     TrainCommand,
 )
 from .errors import ApplicationError, PreconditionError
+from .owned_work import owned_work_checkpoint
 from .resource_guard import (
     ResourcePreflightResult,
     TrainingResourcePreviewContext,
@@ -360,16 +361,32 @@ class TrainingCommandService:
             raise TypeError("request must be a TrainingResourcePreviewRequest")
         if not isinstance(context, TrainingResourcePreviewContext):
             raise TypeError("context must be a TrainingResourcePreviewContext")
+        owned_work_checkpoint("Preparing training preview model")
         model_holder = (
-            self.build_model_holder(request.model_name, dict(request.model_params))
+            self._build_resource_preview_model_holder(request)
             if request.model_name is not None
             else None
         )
-        return preview_training_resources(
+        owned_work_checkpoint("Training preview model ready")
+        result = preview_training_resources(
             request,
             context,
             model_holder=model_holder,
         )
+        owned_work_checkpoint("Training resource preview ready")
+        return result
+
+    def _build_resource_preview_model_holder(
+        self,
+        request: TrainingResourcePreviewRequest,
+    ) -> ModelHolder:
+        owned_work_checkpoint("Building training preview model holder")
+        holder = self.build_model_holder(
+            str(request.model_name),
+            dict(request.model_params),
+        )
+        owned_work_checkpoint("Training preview model holder ready")
+        return holder
 
     def _build_resource_preflight(
         self,

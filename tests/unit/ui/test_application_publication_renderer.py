@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from PyQt6.QtCore import QObject
 
@@ -154,6 +154,55 @@ def test_transient_render_exception_retains_revision_until_success(qtbot) -> Non
 
     renderer.cleanup()
     service.close()
+
+
+def test_explicit_render_failure_is_observable_and_recovers(qtbot) -> None:
+    service = ApplicationService(Study())
+    initial = service.get_view_publication()
+    publication = replace(initial, revision=initial.revision + 1)
+    render = MagicMock(
+        side_effect=[
+            ObserverDeliveryStatus.FAILED,
+            ObserverDeliveryStatus.DELIVERED,
+        ]
+    )
+    owner = QObject()
+    renderer = DesktopApplicationPublicationRenderer(
+        service=service,
+        render_publication=render,
+        parent=owner,
+    )
+
+    try:
+        with patch(
+            "XBrainLab.ui.application_publication_renderer.logger.error"
+        ) as log_error:
+            assert (
+                renderer._render_and_acknowledge(publication)
+                is ObserverDeliveryStatus.DEFERRED
+            )
+
+            log_error.assert_called_once()
+            assert log_error.call_args.args[1] == publication.revision
+            assert renderer.pending_publication == publication
+            assert renderer.retry_timer.isActive() is True
+            assert (
+                service._view_event_publisher.has_delivered_revision(
+                    publication.revision
+                )
+                is False
+            )
+
+            assert renderer._attempt_pending_render() is True
+
+        assert renderer.pending_publication is None
+        assert renderer.retry_timer.isActive() is False
+        assert service._view_event_publisher.has_delivered_revision(
+            publication.revision
+        )
+    finally:
+        renderer.cleanup()
+        service.close()
 
 
 def test_aggregate_render_runtime_error_does_not_acknowledge_revision(qtbot) -> None:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -9,14 +11,17 @@ import pytest
 from XBrainLab.backend.application import (
     ApplicationService,
     ApplyInterpretationCommand,
+    CommandName,
     CreateEpochCommand,
     PreprocessCommand,
     PreprocessOperation,
     PreviewInterpretationCommand,
+    QueryStateCommand,
     ReloadInterpretationRecipeCommand,
     SaveInterpretationRecipeCommand,
     ScanSourceCommand,
     ValidateInterpretationCommand,
+    build_capability_policy,
 )
 
 PUBLIC_DATA_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "data" / "public"
@@ -29,6 +34,108 @@ OPENNEURO_P300_ROOT = PUBLIC_DATA_DIR / "openneuro-ds003061-p300"
 OPENNEURO_P300_EEG_DIR = OPENNEURO_P300_ROOT / "sub-001" / "eeg"
 
 pytestmark = pytest.mark.optional_public_fixture
+
+
+def test_public_mne_bids_numeric_trial_type_applies_and_publishes(
+    tmp_path: Path,
+) -> None:
+    """Preview and Apply must share one identity for numeric-looking labels."""
+    if not MNE_BIDS_EEG.exists():
+        pytest.skip(
+            "MNE-BIDS tiny fixture not downloaded; run "
+            "scripts/dev/fetch_public_eeg_fixtures.py first."
+        )
+
+    bids_root = tmp_path / "numeric-label-bids"
+    shutil.copytree(MNE_BIDS_ROOT, bids_root)
+    eeg_dir = bids_root / "sub-01" / "ses-eeg" / "eeg"
+    eeg_path = eeg_dir / MNE_BIDS_EEG.name
+    events_path = eeg_dir / MNE_BIDS_EVENTS.name
+    events_json = eeg_dir / "sub-01_ses-eeg_task-rest_events.json"
+    events_path.write_text(
+        "onset\tduration\ttrial_type\tvalue\tsample\n"
+        "0.0\t0.0\t0.0\t1\t0\n"
+        "0.2\t0.0\t1.0\t2\t1000\n",
+        encoding="utf-8",
+    )
+    events_json.write_text(
+        json.dumps(
+            {
+                "trial_type": {
+                    "Description": "Numeric-looking categorical trial label.",
+                    "Levels": {"0.0": "Rest", "1.0": "Target"},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    choices = {
+        "selected_eeg_files": [str(eeg_path.resolve())],
+        "label_carrier_choices": {
+            str(events_path.resolve()): {
+                "label_field": "trial_type",
+                "anchor": "onset",
+                "duration_field": "duration",
+                "time_model": "seconds",
+                "placement_method": "interval",
+                "value_decisions": {
+                    "0.0": {
+                        "role": "stimulus",
+                        "keep_event": True,
+                        "use_as_class": True,
+                        "class_name": "Rest",
+                    },
+                    "1.0": {
+                        "role": "stimulus",
+                        "keep_event": True,
+                        "use_as_class": True,
+                        "class_name": "Target",
+                    },
+                },
+            }
+        },
+    }
+
+    service = ApplicationService()
+    try:
+        scan = service.execute(
+            ScanSourceCommand(source_path=str(bids_root), source_hint="bids")
+        )
+        preview = service.execute(PreviewInterpretationCommand(choices=choices))
+        validation = service.execute(ValidateInterpretationCommand())
+        applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+        assert scan.ok, scan.message
+        assert preview.ok, preview.message
+        assert validation.ok, validation.message
+        assert applied.ok, applied.message
+        assert applied.state.raw.count == 1
+        assert applied.state.interpretation.class_map == {
+            "0.0": "Rest",
+            "1.0": "Target",
+        }
+        assert applied.state.interpretation.epoch_handoff["default_epoch_events"] == [
+            "Rest",
+            "Target",
+        ]
+        summary = service.execute(QueryStateCommand(query="data_summary"))
+        assert summary.ok, summary.message
+        assert summary.diagnostics["count"] == 1
+        assert summary.diagnostics["files"] == [eeg_path.name]
+        assert applied.diagnostics["label_apply"]["status"] == "applied"
+        assert (
+            build_capability_policy(applied.state).get(CommandName.PREPROCESS).enabled
+            is True
+        )
+        preprocessed = service.execute(
+            PreprocessCommand(
+                operation=PreprocessOperation.NORMALIZE,
+                method="z-score",
+            )
+        )
+        assert preprocessed.ok, preprocessed.message
+    finally:
+        service.close()
 
 
 def test_public_mne_bids_import_apply_recipe_and_epoch(tmp_path: Path) -> None:

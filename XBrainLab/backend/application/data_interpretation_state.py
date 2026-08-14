@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
@@ -62,11 +63,15 @@ logger = logging.getLogger(__name__)
 class InterpretationApplyCheckpoint:
     """Interpretation records that must roll back with an apply failure."""
 
+    candidates: dict[str, InterpretationCandidate]
+    previews: dict[str, InterpretationPreview]
+    validation_decisions: dict[str, ValidationDecision]
     applied_interpretations: dict[str, AppliedInterpretation]
     recipes: dict[str, ImportRecipe]
     latest_interpretation_id: str | None
     latest_recipe_id: str | None
     latest_recipe_path: str | None
+    interpretation_counter: int
 
 
 @dataclass(frozen=True)
@@ -78,6 +83,35 @@ class InterpretationLabelImportCheckpoint:
     validation_decisions: dict[str, ValidationDecision]
     applied_interpretations: dict[str, AppliedInterpretation]
     recipes: dict[str, ImportRecipe]
+
+
+@dataclass(frozen=True)
+class InterpretationSessionCheckpoint:
+    """Complete review/session state for a generation-bound detached prepare."""
+
+    session_generation: int
+    session_revision: int
+    scans: dict[str, ScanResult]
+    candidates: dict[str, InterpretationCandidate]
+    previews: dict[str, InterpretationPreview]
+    validation_decisions: dict[str, ValidationDecision]
+    applied_interpretations: dict[str, AppliedInterpretation]
+    recipes: dict[str, ImportRecipe]
+    latest_scan_id: str | None
+    latest_candidate_id: str | None
+    latest_preview_id: str | None
+    latest_interpretation_id: str | None
+    latest_recipe_id: str | None
+    latest_recipe_path: str | None
+    interpretation_counter: int
+
+
+@dataclass(frozen=True, slots=True)
+class InterpretationSessionIdentity:
+    """Immutable scalar identity for one interpretation-session revision."""
+
+    session_generation: int
+    session_revision: int
 
 
 class DataInterpretationSessionState:
@@ -98,11 +132,201 @@ class DataInterpretationSessionState:
         self._latest_recipe_id: str | None = None
         self._latest_recipe_path: str | None = None
         self._interpretation_counter = 0
+        self._session_generation = 0
+        self._session_revision = 0
+
+    def _advance_session_revision(self) -> None:
+        """Invalidate lightweight guards for every lifecycle mutation."""
+        self._session_revision += 1
 
     def next_id(self, prefix: str) -> str:
         """Return the next lifecycle identifier for a Data Interpretation object."""
         self._interpretation_counter += 1
+        self._advance_session_revision()
         return f"{prefix}-{self._interpretation_counter}"
+
+    def checkpoint_session_state(self) -> InterpretationSessionCheckpoint:
+        """Capture all lifecycle records consumed by import discovery commands."""
+        return InterpretationSessionCheckpoint(
+            session_generation=self._session_generation,
+            session_revision=self._session_revision,
+            scans=deepcopy(self._scan_results),
+            candidates=deepcopy(self._candidates),
+            previews=deepcopy(self._previews),
+            validation_decisions=deepcopy(self._validation_decisions),
+            applied_interpretations=deepcopy(self._applied_interpretations),
+            recipes=deepcopy(self._recipes),
+            latest_scan_id=self._latest_scan_id,
+            latest_candidate_id=self._latest_candidate_id,
+            latest_preview_id=self._latest_preview_id,
+            latest_interpretation_id=self._latest_interpretation_id,
+            latest_recipe_id=self._latest_recipe_id,
+            latest_recipe_path=self._latest_recipe_path,
+            interpretation_counter=self._interpretation_counter,
+        )
+
+    def session_identity(self) -> InterpretationSessionIdentity:
+        """Capture the current lifecycle identity without copying its payloads."""
+        return InterpretationSessionIdentity(
+            session_generation=self._session_generation,
+            session_revision=self._session_revision,
+        )
+
+    def session_identity_is_current(
+        self,
+        identity: InterpretationSessionIdentity,
+    ) -> bool:
+        """Return whether no interpretation-session mutation followed identity."""
+        if not isinstance(identity, InterpretationSessionIdentity):
+            raise TypeError("identity must be InterpretationSessionIdentity")
+        return (
+            self._session_generation == identity.session_generation
+            and self._session_revision == identity.session_revision
+        )
+
+    def restore_session_state(
+        self,
+        checkpoint: InterpretationSessionCheckpoint,
+    ) -> None:
+        """Atomically replace all review/session records from a detached result."""
+        if not isinstance(checkpoint, InterpretationSessionCheckpoint):
+            raise TypeError("checkpoint must be InterpretationSessionCheckpoint")
+        scans = deepcopy(checkpoint.scans)
+        candidates = deepcopy(checkpoint.candidates)
+        previews = deepcopy(checkpoint.previews)
+        validation_decisions = deepcopy(checkpoint.validation_decisions)
+        applied_interpretations = deepcopy(checkpoint.applied_interpretations)
+        recipes = deepcopy(checkpoint.recipes)
+        self._session_revision = max(
+            self._session_revision,
+            checkpoint.session_revision,
+        )
+        self._advance_session_revision()
+        self._session_generation = checkpoint.session_generation
+        self._scan_results = scans
+        self._candidates = candidates
+        self._previews = previews
+        self._validation_decisions = validation_decisions
+        self._applied_interpretations = applied_interpretations
+        self._recipes = recipes
+        self._latest_scan_id = checkpoint.latest_scan_id
+        self._latest_candidate_id = checkpoint.latest_candidate_id
+        self._latest_preview_id = checkpoint.latest_preview_id
+        self._latest_interpretation_id = checkpoint.latest_interpretation_id
+        self._latest_recipe_id = checkpoint.latest_recipe_id
+        self._latest_recipe_path = checkpoint.latest_recipe_path
+        self._interpretation_counter = checkpoint.interpretation_counter
+
+    def session_checkpoint_is_current(
+        self,
+        checkpoint: InterpretationSessionCheckpoint,
+    ) -> bool:
+        """Check detached ownership without copying or comparing lifecycle payloads."""
+        if not isinstance(checkpoint, InterpretationSessionCheckpoint):
+            raise TypeError("checkpoint must be InterpretationSessionCheckpoint")
+        return (
+            self._session_generation == checkpoint.session_generation
+            and self._session_revision == checkpoint.session_revision
+        )
+
+    def stage_session_state(self) -> InterpretationSessionCheckpoint:
+        """Detach the complete session dictionaries for an ownership transfer."""
+        checkpoint = InterpretationSessionCheckpoint(
+            session_generation=self._session_generation,
+            session_revision=self._session_revision,
+            scans=self._scan_results,
+            candidates=self._candidates,
+            previews=self._previews,
+            validation_decisions=self._validation_decisions,
+            applied_interpretations=self._applied_interpretations,
+            recipes=self._recipes,
+            latest_scan_id=self._latest_scan_id,
+            latest_candidate_id=self._latest_candidate_id,
+            latest_preview_id=self._latest_preview_id,
+            latest_interpretation_id=self._latest_interpretation_id,
+            latest_recipe_id=self._latest_recipe_id,
+            latest_recipe_path=self._latest_recipe_path,
+            interpretation_counter=self._interpretation_counter,
+        )
+        self._scan_results = {}
+        self._candidates = {}
+        self._previews = {}
+        self._validation_decisions = {}
+        self._applied_interpretations = {}
+        self._recipes = {}
+        self._latest_scan_id = None
+        self._latest_candidate_id = None
+        self._latest_preview_id = None
+        self._latest_interpretation_id = None
+        self._latest_recipe_id = None
+        self._latest_recipe_path = None
+        self._interpretation_counter = 0
+        self._advance_session_revision()
+        return checkpoint
+
+    def publish_staged_session_state(
+        self,
+        checkpoint: InterpretationSessionCheckpoint,
+    ) -> None:
+        """Atomically adopt isolated detached dictionaries without copying them."""
+        if not isinstance(checkpoint, InterpretationSessionCheckpoint):
+            raise TypeError("checkpoint must be InterpretationSessionCheckpoint")
+        previous = (
+            self._session_generation,
+            self._session_revision,
+            self._scan_results,
+            self._candidates,
+            self._previews,
+            self._validation_decisions,
+            self._applied_interpretations,
+            self._recipes,
+            self._latest_scan_id,
+            self._latest_candidate_id,
+            self._latest_preview_id,
+            self._latest_interpretation_id,
+            self._latest_recipe_id,
+            self._latest_recipe_path,
+            self._interpretation_counter,
+        )
+        try:
+            self._session_generation = checkpoint.session_generation
+            self._session_revision = max(
+                self._session_revision,
+                checkpoint.session_revision,
+            )
+            self._advance_session_revision()
+            self._scan_results = checkpoint.scans
+            self._candidates = checkpoint.candidates
+            self._previews = checkpoint.previews
+            self._validation_decisions = checkpoint.validation_decisions
+            self._applied_interpretations = checkpoint.applied_interpretations
+            self._recipes = checkpoint.recipes
+            self._latest_scan_id = checkpoint.latest_scan_id
+            self._latest_candidate_id = checkpoint.latest_candidate_id
+            self._latest_preview_id = checkpoint.latest_preview_id
+            self._latest_interpretation_id = checkpoint.latest_interpretation_id
+            self._latest_recipe_id = checkpoint.latest_recipe_id
+            self._latest_recipe_path = checkpoint.latest_recipe_path
+            self._interpretation_counter = checkpoint.interpretation_counter
+        except BaseException:
+            (
+                self._session_generation,
+                self._session_revision,
+                self._scan_results,
+                self._candidates,
+                self._previews,
+                self._validation_decisions,
+                self._applied_interpretations,
+                self._recipes,
+                self._latest_scan_id,
+                self._latest_candidate_id,
+                self._latest_preview_id,
+                self._latest_interpretation_id,
+                self._latest_recipe_id,
+                self._latest_recipe_path,
+                self._interpretation_counter,
+            ) = previous
+            raise
 
     def record_scan(self, scan: ScanResult) -> None:
         """Store a scan result and make it the latest review source."""
@@ -110,6 +334,7 @@ class DataInterpretationSessionState:
         self._latest_scan_id = scan.scan_id
         self._latest_candidate_id = None
         self._latest_preview_id = None
+        self._advance_session_revision()
 
     def record_preview(
         self,
@@ -121,6 +346,7 @@ class DataInterpretationSessionState:
         self._previews[preview.preview_id] = preview
         self._latest_candidate_id = candidate.candidate_id
         self._latest_preview_id = preview.preview_id
+        self._advance_session_revision()
 
     def record_validation(
         self,
@@ -129,11 +355,13 @@ class DataInterpretationSessionState:
     ) -> None:
         """Store a validation decision for a candidate."""
         self._validation_decisions[candidate_id] = decision
+        self._advance_session_revision()
 
     def record_applied(self, applied: AppliedInterpretation) -> None:
         """Store an applied interpretation as downstream workflow truth."""
         self._applied_interpretations[applied.interpretation_id] = applied
         self._latest_interpretation_id = applied.interpretation_id
+        self._advance_session_revision()
 
     def discard_applied(self, interpretation_id: str) -> None:
         """Remove an applied interpretation that failed during post-load apply."""
@@ -143,24 +371,34 @@ class DataInterpretationSessionState:
                 reversed(self._applied_interpretations),
                 None,
             )
+        self._advance_session_revision()
 
     def checkpoint_apply_state(self) -> InterpretationApplyCheckpoint:
         """Capture interpretation records changed by the apply transaction."""
         return InterpretationApplyCheckpoint(
-            applied_interpretations=dict(self._applied_interpretations),
-            recipes=dict(self._recipes),
+            candidates=deepcopy(self._candidates),
+            previews=deepcopy(self._previews),
+            validation_decisions=deepcopy(self._validation_decisions),
+            applied_interpretations=deepcopy(self._applied_interpretations),
+            recipes=deepcopy(self._recipes),
             latest_interpretation_id=self._latest_interpretation_id,
             latest_recipe_id=self._latest_recipe_id,
             latest_recipe_path=self._latest_recipe_path,
+            interpretation_counter=self._interpretation_counter,
         )
 
     def restore_apply_state(self, checkpoint: InterpretationApplyCheckpoint) -> None:
         """Restore interpretation records after an apply transaction fails."""
-        self._applied_interpretations = dict(checkpoint.applied_interpretations)
-        self._recipes = dict(checkpoint.recipes)
+        self._candidates = deepcopy(checkpoint.candidates)
+        self._previews = deepcopy(checkpoint.previews)
+        self._validation_decisions = deepcopy(checkpoint.validation_decisions)
+        self._applied_interpretations = deepcopy(checkpoint.applied_interpretations)
+        self._recipes = deepcopy(checkpoint.recipes)
         self._latest_interpretation_id = checkpoint.latest_interpretation_id
         self._latest_recipe_id = checkpoint.latest_recipe_id
         self._latest_recipe_path = checkpoint.latest_recipe_path
+        self._interpretation_counter = checkpoint.interpretation_counter
+        self._advance_session_revision()
 
     def record_recipe(
         self,
@@ -173,6 +411,7 @@ class DataInterpretationSessionState:
         self._latest_recipe_id = recipe.recipe_id
         if recipe_path:
             self._latest_recipe_path = recipe_path
+        self._advance_session_revision()
 
     def record_recipe_reload(
         self,
@@ -195,9 +434,10 @@ class DataInterpretationSessionState:
         self._latest_preview_id = preview.preview_id
         self._latest_recipe_id = recipe.recipe_id
         self._latest_recipe_path = recipe_path
+        self._advance_session_revision()
 
     def resolve_scan(self, scan_id: str | None) -> ScanResult:
-        """Return a requested or latest scan result."""
+        """Return owned read-only state; mutations must use session mutators."""
         target_id = scan_id or self._latest_scan_id
         if not target_id or target_id not in self._scan_results:
             raise PreconditionError(
@@ -209,7 +449,7 @@ class DataInterpretationSessionState:
         self,
         candidate_id: str | None,
     ) -> InterpretationCandidate:
-        """Return a requested or latest interpretation candidate."""
+        """Return owned read-only state; mutations must use session mutators."""
         target_id = candidate_id or self._latest_candidate_id
         if not target_id or target_id not in self._candidates:
             raise PreconditionError("Preview an interpretation candidate first.")
@@ -219,18 +459,18 @@ class DataInterpretationSessionState:
         self,
         candidate_id: str,
     ) -> ValidationDecision | None:
-        """Return the validation decision recorded for a candidate."""
+        """Return owned read-only state; mutations must use session mutators."""
         return self._validation_decisions.get(candidate_id)
 
     def resolve_applied_interpretation(self) -> AppliedInterpretation:
-        """Return the latest applied interpretation."""
+        """Return owned read-only state; mutations must use session mutators."""
         target_id = self._latest_interpretation_id
         if not target_id or target_id not in self._applied_interpretations:
             raise PreconditionError("Apply an interpretation before saving a recipe.")
         return self._applied_interpretations[target_id]
 
     def resolve_recipe(self, recipe_id: str | None) -> ImportRecipe:
-        """Return a requested or latest import recipe."""
+        """Return owned read-only state; mutations must use session mutators."""
         target_id = recipe_id or self._latest_recipe_id
         if not target_id or target_id not in self._recipes:
             raise PreconditionError("Save or reload an interpretation recipe first.")
@@ -379,8 +619,26 @@ class DataInterpretationSessionState:
             recipe_path=self._latest_recipe_path,
         )
 
-    def clear(self) -> None:
+    def clear(self, *, advance_generation: bool = True) -> None:
         """Clear Data Interpretation lifecycle state."""
+        had_lifecycle_state = any(
+            (
+                self._scan_results,
+                self._candidates,
+                self._previews,
+                self._validation_decisions,
+                self._applied_interpretations,
+                self._recipes,
+                self._latest_scan_id,
+                self._latest_candidate_id,
+                self._latest_preview_id,
+                self._latest_interpretation_id,
+                self._latest_recipe_id,
+                self._latest_recipe_path,
+            )
+        )
+        if advance_generation:
+            self._session_generation += 1
         self._scan_results.clear()
         self._candidates.clear()
         self._previews.clear()
@@ -393,6 +651,8 @@ class DataInterpretationSessionState:
         self._latest_interpretation_id = None
         self._latest_recipe_id = None
         self._latest_recipe_path = None
+        if advance_generation or had_lifecycle_state:
+            self._advance_session_revision()
 
     def invalidate_for_legacy_raw_mutation(self) -> bool:
         """Drop interpretation truth that no longer describes the active raw data."""
@@ -412,7 +672,7 @@ class DataInterpretationSessionState:
                 self._latest_recipe_path,
             )
         )
-        self.clear()
+        self.clear(advance_generation=had_lifecycle_state)
         return had_lifecycle_state
 
     def record_label_import_for_recipe(
@@ -648,6 +908,7 @@ class DataInterpretationSessionState:
         self._applied_interpretations[updated.interpretation_id] = updated
         if updated_recipe is not None and self._latest_recipe_id is not None:
             self._recipes[self._latest_recipe_id] = updated_recipe
+        self._advance_session_revision()
         return record
 
     def _checkpoint_label_import_state(
@@ -670,6 +931,7 @@ class DataInterpretationSessionState:
         self._validation_decisions = dict(checkpoint.validation_decisions)
         self._applied_interpretations = dict(checkpoint.applied_interpretations)
         self._recipes = dict(checkpoint.recipes)
+        self._advance_session_revision()
 
     def _preview_for_candidate(
         self,

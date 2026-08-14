@@ -1,3 +1,5 @@
+import io
+
 import numpy as np
 import pytest
 import scipy.io
@@ -261,3 +263,75 @@ def test_tsv_reviewed_columns_override_automatic_selection(tmp_path):
         {"onset": 128, "label": "left", "duration": 0.0},
         {"onset": 256, "label": "right", "duration": 0.0},
     ]
+
+
+def test_tsv_reviewed_label_preserves_numeric_category_lexemes(tmp_path):
+    path = tmp_path / "events.tsv"
+    path.write_text(
+        "onset\tduration\tTrial_Type\n0.5\t0.3\t0.0\n1.0\t0.4\t1.0\n1.5\t0.5\t001\n",
+        encoding="utf-8",
+    )
+
+    events = load_label_file(
+        str(path),
+        label_field="trial_type",
+        anchor="onset",
+        duration_field="duration",
+    )
+
+    assert events == [
+        {"onset": 0.5, "label": "0.0", "duration": 0.3},
+        {"onset": 1.0, "label": "1.0", "duration": 0.4},
+        {"onset": 1.5, "label": "001", "duration": 0.5},
+    ]
+
+
+def test_non_seekable_csv_preserves_reviewed_category_lexemes() -> None:
+    source = _NonSeekableBytesIO(
+        b"onset,duration,Label\n0.5,0.3,001\n1.0,0.4,None\n1.5,0.5,#N/A\n"
+    )
+
+    events = load_label_file(
+        "events.csv",
+        label_field="label",
+        anchor="onset",
+        duration_field="duration",
+        resource_reader=_StreamResourceReader(source),
+    )
+
+    assert events == [
+        {"onset": 0.5, "label": "001", "duration": 0.3},
+        {"onset": 1.0, "label": "None", "duration": 0.4},
+        {"onset": 1.5, "label": "#N/A", "duration": 0.5},
+    ]
+
+
+class _NonSeekableBytesIO(io.BytesIO):
+    def seekable(self) -> bool:
+        return False
+
+    def tell(self) -> int:
+        raise OSError("stream is not seekable")
+
+    def seek(self, *_args) -> int:
+        raise OSError("stream is not seekable")
+
+
+class _StreamResourceReader:
+    def __init__(self, source: io.BytesIO) -> None:
+        self.source = source
+
+    def open_binary(self, _path: str, *, purpose: str):
+        del purpose
+        return _StreamContext(self.source)
+
+
+class _StreamContext:
+    def __init__(self, source: io.BytesIO) -> None:
+        self.source = source
+
+    def __enter__(self) -> io.BytesIO:
+        return self.source
+
+    def __exit__(self, *_args) -> None:
+        return None

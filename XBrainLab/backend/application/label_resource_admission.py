@@ -19,6 +19,7 @@ from .errors import PreconditionError
 from .label_import_policy import enforce_label_file_count
 from .label_resource_reader import AdmittedLabelResourceReader
 from .label_resource_receipt import LabelResourceReceiptAuthority
+from .owned_work import owned_work_checkpoint
 from .resource_guard import check_import_resource_preflight
 from .resource_label_estimation import SUPPORTED_EXTERNAL_LABEL_EXTENSIONS
 from .resource_receipt import (
@@ -176,9 +177,18 @@ def session_from_resource_preflight(
     resource_preflight: Any,
 ) -> AdmittedLabelResourceSession:
     """Bind reviewed label specs to an already-authorized application preflight."""
+    owned_work_checkpoint("Normalizing reviewed label resource scope")
     normalized_specs = _normalized_specs(specs)
     paths = [spec.path for spec in normalized_specs]
-    _inspect_label_resource_paths(paths)
+    resource_count = len(paths)
+    for index, path in enumerate(paths):
+        owned_work_checkpoint(
+            f"Inspecting reviewed label resource {index + 1} of {resource_count}",
+            completed=index,
+            total=resource_count,
+        )
+        _inspect_label_resource_paths((path,))
+    owned_work_checkpoint("Binding reviewed label resource reader")
     resource_reader = AdmittedResourceReader.from_resource_preflight(
         paths,
         resource_preflight,
@@ -189,8 +199,18 @@ def session_from_resource_preflight(
             _path_key(spec.path): spec.to_scope() for spec in normalized_specs
         },
     )
-    content_identities = tuple(
-        _content_identity(path, reader=admitted_reader) for path in paths
+    content_identities: list[dict[str, Any]] = []
+    for index, path in enumerate(paths):
+        owned_work_checkpoint(
+            f"Verifying reviewed label resource {index + 1} of {resource_count}",
+            completed=index,
+            total=resource_count,
+        )
+        content_identities.append(_content_identity(path, reader=admitted_reader))
+    owned_work_checkpoint(
+        "Reviewed label resources admitted",
+        completed=resource_count,
+        total=resource_count,
     )
     return AdmittedLabelResourceSession(
         reader=admitted_reader,
@@ -199,7 +219,7 @@ def session_from_resource_preflight(
             **resource_preflight.to_diagnostics(),
             "parser_admission": admitted_reader.diagnostics(),
         },
-        _content_identities=content_identities,
+        _content_identities=tuple(content_identities),
     )
 
 

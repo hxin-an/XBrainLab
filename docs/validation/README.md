@@ -1,6 +1,6 @@
 # XBrainLab 驗證策略
 
-最後更新：`2026-08-11`
+最後更新：`2026-08-14`
 
 這頁定義 current gates、evidence identity 和 claim boundary。Dated checkpoint output 不在這裡
 冒充 current result；歷史結果看 records 或 Git history。
@@ -11,9 +11,9 @@
 | --- | --- |
 | Candidate checkout | 由 `git rev-parse --show-toplevel` 和 generated evidence 記錄，不在 canonical docs 寫死本機 path。 |
 | Product baseline | `main` |
-| Current candidate | `integration/import-training-montage-polish-v1`；未合併 checkpoint；只有 exact-head push / CI 可以提升證據狀態。 |
-| Baseline | `main@b3a87e3996585ebb09ae46335da82d234ae70249` |
-| Closure state | Local validation candidate；exact-head CI / Windows acceptance pending；not release-ready；Assistant not ready；not product complete |
+| Current candidate | 從最新 `main` 建立的 product-foundation extraction；實際 branch / SHA 由 Git 與 generated evidence 記錄。 |
+| Baseline | 以 candidate merge-base 的最新 `main` 為準，不在 canonical docs 寫死 historical SHA。 |
+| Closure state | Dirty implementation checkpoint；focused validation 進行中，push / PR exact-head CI / merge / Windows acceptance pending；not handoff-ready；not release-ready；Assistant not ready；not product complete |
 | Data Import artifacts | Tracked folder is a dirty checkpoint；read its manifest for source identity and never treat it as current candidate evidence |
 | Required authority | 本頁與 [Now](../planning/now.md)；舊 product-quality goal / audit 只作歷史 provenance。 |
 
