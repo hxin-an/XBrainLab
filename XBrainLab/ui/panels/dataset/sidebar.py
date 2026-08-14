@@ -45,9 +45,14 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 ChannelSelectionDialog: Any | None = None
 _SIDEBAR_WIDTH = 260
-# The stylesheet uses 15 px on each side. Keep a small native-font safety
-# reserve so late Windows font metric changes elide instead of clipping text.
-_ACTION_TEXT_HORIZONTAL_PADDING = 34
+_ACTION_TEXT_HORIZONTAL_PADDING = 26
+_DATASET_SIDEBAR_BUTTON_STYLE = f"""
+    {Stylesheets.SIDEBAR_BTN}
+    QPushButton {{
+        padding-left: {_ACTION_TEXT_HORIZONTAL_PADDING // 2}px;
+        padding-right: {_ACTION_TEXT_HORIZONTAL_PADDING // 2}px;
+    }}
+"""
 _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE = (
     "Data interpretation availability is unavailable right now."
 )
@@ -175,7 +180,7 @@ class DatasetSidebar(QWidget):
         self.import_btn.setToolTip(
             "Choose EEG files, review metadata and labels, then import"
         )
-        self.import_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.import_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
         self.import_btn.clicked.connect(self.panel.action_handler.import_data)
         self.ops_layout.addWidget(self.import_btn, 0, 0)
 
@@ -183,7 +188,7 @@ class DatasetSidebar(QWidget):
         self.import_folder_btn.setToolTip(
             "Choose an EEG folder, review metadata and labels, then import",
         )
-        self.import_folder_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.import_folder_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
         self.import_folder_btn.clicked.connect(
             self.panel.action_handler.import_folder_source,
         )
@@ -194,7 +199,7 @@ class DatasetSidebar(QWidget):
         self.import_bids_btn.setToolTip(
             "Choose a BIDS EEG folder and review detected metadata and events",
         )
-        self.import_bids_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.import_bids_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
         self.import_bids_btn.clicked.connect(
             self.panel.action_handler.import_bids_source,
         )
@@ -204,7 +209,7 @@ class DatasetSidebar(QWidget):
         self.reload_recipe_btn.setToolTip(
             "Review a saved import recipe before applying it",
         )
-        self.reload_recipe_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.reload_recipe_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
         self.reload_recipe_btn.clicked.connect(
             self.panel.action_handler.reload_interpretation_recipe,
         )
@@ -220,7 +225,7 @@ class DatasetSidebar(QWidget):
 
         self.smart_parse_btn = QPushButton("Smart Parse Metadata", self.ops_group)
         self.smart_parse_btn.setToolTip("Auto-extract Subject/Session from filenames")
-        self.smart_parse_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.smart_parse_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
         self.smart_parse_btn.clicked.connect(
             self.panel.action_handler.open_smart_parser,
         )
@@ -238,14 +243,14 @@ class DatasetSidebar(QWidget):
 
         self.import_label_btn = QPushButton("Add labels")
         self.import_label_btn.setToolTip("Attach labels to the loaded EEG data")
-        self.import_label_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.import_label_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
         self.import_label_btn.clicked.connect(self.panel.action_handler.import_label)
         self.import_label_btn.setVisible(False)
         self.exec_layout.addWidget(self.import_label_btn)
 
         self.chan_select_btn = QPushButton("Channels")
         self.chan_select_btn.setToolTip("Select specific channels to keep")
-        self.chan_select_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.chan_select_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
         self.chan_select_btn.clicked.connect(self.open_channel_selection)
         self.exec_layout.addWidget(self.chan_select_btn)
 

@@ -26,6 +26,7 @@ from XBrainLab.ui.panels.dataset.actions import (
     DatasetTableRowIdentity,
 )
 from XBrainLab.ui.panels.dataset.panel import DatasetPanel
+from XBrainLab.ui.panels.dataset.sidebar import _ACTION_TEXT_HORIZONTAL_PADDING
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
 
@@ -419,7 +420,8 @@ def test_dataset_panel_empty_and_loaded_summary_scale_matrix(
             assert button.isVisibleTo(panel)
             assert_widget_fits_scroll_width(button, panel.sidebar.scroll_area)
             assert (
-                button.fontMetrics().horizontalAdvance(button.text()) + 30
+                button.fontMetrics().horizontalAdvance(button.text())
+                + _ACTION_TEXT_HORIZONTAL_PADDING
                 <= button.contentsRect().width()
             )
         vertical_scrollbar = panel.sidebar.scroll_area.verticalScrollBar()
@@ -464,8 +466,10 @@ def test_dataset_fixed_sidebar_ignores_wide_native_font_minimum_hints(qtbot):
         ):
             full_label = button.property("datasetFullLabel")
             assert isinstance(full_label, str)
-            assert button.fontMetrics().horizontalAdvance(button.text()) + 30 <= (
-                button.contentsRect().width()
+            assert (
+                button.fontMetrics().horizontalAdvance(button.text())
+                + _ACTION_TEXT_HORIZONTAL_PADDING
+                <= button.contentsRect().width()
             )
             if button.text() != full_label:
                 assert "…" in button.text()
