@@ -17365,3 +17365,8 @@
   result captured while the application-owned BIDS montage worker was pending with a later final
   publication. The regression now waits on the public background-task boundary before capturing its
   stable baseline; it does not add a sleep, accept multiple outcomes or change product behavior.
+- That fix passed the next Linux integration shard. The same exact-head run exposed one unrelated
+  Windows test defect: its cache-cleanup failure injection patched every `Path.resolve` call while
+  the Qt event loop was active, including logging and diagnostic infrastructure. The injection is
+  now limited to the intended cache root while all other paths delegate to the real resolver;
+  exactly-once terminal, thread deletion, redaction and idle assertions remain unchanged.

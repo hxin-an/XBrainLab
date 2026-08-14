@@ -23,7 +23,7 @@ push、PR exact-head CI 與合併，才會成為新的 `main`；在此之前只�
 | Baseline | 以 candidate merge-base 的最新 `main` 為準，不在文件寫死 historical SHA。 |
 | Active goal | 先把 working desktop foundation 以 product-only PR 合回 `main`；接受後再集中 datasets，最後另開 P300 Saliency fix。 |
 | Historical ledger | [Product Quality Audit - 2026-07-30](records/product_quality_audit_2026-07-30.md)；只作 provenance，不是 active queue。 |
-| Delivery state | Product-only extraction 已 push 並建立 draft PR `#16`。第二輪 exact-head CI 已通過 platform、unit、UI 與 required public multi-dataset gates，只留下 integration test 在 BIDS montage background publication 尚未穩定時比較整份 state；測試已改用公開 background-idle boundary 並在本機通過，仍須 push 新 exact head、等待所有 non-skipped checks completed/success 並經 PR merge，才可成為 `main`。 |
+| Delivery state | Product-only extraction 已 push 並建立 draft PR `#16`。最新 exact-head CI 已驗證 BIDS montage publication-race 修正，並通過已完成的 platform、unit、integration 與 required public multi-dataset gates；Windows core test 另揭露 cache-cleanup fault injection 全域攔截 `Path.resolve`，已收斂為只使目標 cache root 失敗且本機通過。仍須 push 新 exact head、等待所有 non-skipped checks completed/success 並經 PR merge，才可成為 `main`。 |
 
 其他 registered worktree 不代表 active candidate。需要 inventory 時必須執行
 `git worktree list --porcelain`，不要把數量或 branch 清單手動複製成長期 current truth。

@@ -341,8 +341,17 @@ def test_cache_root_resolve_failure_emits_exactly_once_and_thread_terminates(
         r"RuntimeError: symlink loop at \\server\private\model "
         r"C:\Users\alice\.cache token=hf_secret"
     )
+    original_resolve = Path.resolve
 
-    with patch.object(Path, "resolve", side_effect=RuntimeError(sensitive)):
+    def fail_only_cache_root_resolve(
+        path: Path,
+        strict: bool = False,
+    ) -> Path:
+        if path == tmp_path:
+            raise RuntimeError(sensitive)
+        return original_resolve(path, strict=strict)
+
+    with patch.object(Path, "resolve", fail_only_cache_root_resolve):
         assert lifecycle.request_cache_removal(
             "repo/id",
             str(tmp_path),
