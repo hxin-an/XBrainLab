@@ -562,7 +562,7 @@ class TestDataSplittingPreviewDialogSplitters:
         ]
         assert QSizePolicy.Policy.Maximum in right_panel_heights
 
-    def test_step2_reflows_and_keeps_actions_reachable_at_672px(
+    def test_step2_uses_stable_screen_bounded_width_and_keeps_actions_reachable(
         self,
         dlg,
         qtbot,
@@ -571,9 +571,17 @@ class TestDataSplittingPreviewDialogSplitters:
         dlg.show()
         qtbot.wait(0)
 
-        assert dlg.width() == 672
+        screen = dlg.screen()
+        assert screen is not None
+        expected_width = min(920, screen.availableGeometry().width() - 48)
+        assert dlg.width() == expected_width
         assert dlg.content_layout is not None
-        assert dlg.content_layout.direction() == QBoxLayout.Direction.TopToBottom
+        expected_direction = (
+            QBoxLayout.Direction.TopToBottom
+            if expected_width <= 760
+            else QBoxLayout.Direction.LeftToRight
+        )
+        assert dlg.content_layout.direction() == expected_direction
         assert dlg.content_scroll is not None
         assert dlg.content_scroll.horizontalScrollBar().maximum() == 0
         assert dlg.btn_confirm is not None

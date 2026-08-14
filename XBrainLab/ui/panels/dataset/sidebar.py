@@ -45,7 +45,9 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 ChannelSelectionDialog: Any | None = None
 _SIDEBAR_WIDTH = 260
-_ACTION_TEXT_HORIZONTAL_PADDING = 30
+# The stylesheet uses 15 px on each side. Keep a small native-font safety
+# reserve so late Windows font metric changes elide instead of clipping text.
+_ACTION_TEXT_HORIZONTAL_PADDING = 34
 _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE = (
     "Data interpretation availability is unavailable right now."
 )
