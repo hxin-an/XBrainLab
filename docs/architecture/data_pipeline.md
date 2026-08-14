@@ -40,7 +40,21 @@ EEG file
 
 最重要的判斷是：`import 成功`、`label/event 正確`、`dataset generation 成功`、`training smoke 成功` 是不同層級的 evidence，不能混成同一個 claim。
 
-目前 reliability candidate 加入四個明確邊界：formal BIDS discovery 共用 immutable bounded
+## Local Dataset Storage
+
+`XBrainLab.platform_paths.dataset_storage_layout()` 是本機 dataset hierarchy 的唯一 resolver。
+`XBRAINLAB_DATA_DIR` 指向 durable application-data root；所有 EEG corpus 放在其 `datasets/`
+child，分為 `source/`、`bids/`、`public-fixtures/`、`manifests/` 與 `quarantine/`。Model cache、
+RAG、training output 與 logs 不是 dataset，不得放進這些目錄。
+
+Installed UI 只把這個 hierarchy 當 file dialog 起始位置，不能把它變成 import admission boundary。
+CI 未設定 `XBRAINLAB_DATA_DIR` 時，public fixture downloader 仍使用 repo-local ignored cache，保持
+clean clone 可重建；本機設定後則使用 central `public-fixtures/`。Migration 採 copy-first：formal
+BIDS 以 dataset-relative SHA-256 manifest 驗證，public fixtures 只接受 pinned manifest entries，
+staging 完整通過才 atomic publish。工具沒有 delete mode；舊 source 必須留到 product acceptance
+與另一次明確 cleanup 授權。
+
+目前 `main` 的 product foundation 有四個明確邊界：formal BIDS discovery 共用 immutable bounded
 index 與 content-identified parsed cache；import / preprocess / epoch heavy preparation 不長期持有
 shared command lock；長工作以 backend-owned operation ID 發布 stage / cancel / terminal truth；
 Training completion 只發布 metrics，Saliency 必須由 visible `Compute Saliency` 明確啟動。

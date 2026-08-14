@@ -18,6 +18,17 @@ from scripts.dev.run_public_cross_source_training_smoke import (
 )
 
 
+def test_public_data_dir_uses_canonical_data_root_when_configured(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("XBRAINLAB_DATA_DIR", str(tmp_path))
+
+    assert smoke_script._public_data_dir() == (
+        tmp_path / "datasets" / "public-fixtures"
+    )
+
+
 def test_build_snapshot_summarizes_runner_results(monkeypatch):
     fixture_names = {fixture["name"] for fixture in PUBLIC_TRAINING_FIXTURES}
 

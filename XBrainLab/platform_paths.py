@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import platform
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 CONFIG_DIR_ENV = "XBRAINLAB_CONFIG_DIR"
@@ -13,6 +14,19 @@ CACHE_DIR_ENV = "XBRAINLAB_CACHE_DIR"
 LOG_DIR_ENV = "XBRAINLAB_LOG_DIR"
 MODEL_CACHE_DIR_ENV = "XBRAINLAB_MODEL_CACHE_DIR"
 SETTINGS_FILENAME = "settings.json"
+
+
+@dataclass(frozen=True)
+class DatasetStorageLayout:
+    """Canonical durable locations for local EEG dataset payloads."""
+
+    data_root: Path
+    datasets_root: Path
+    source_root: Path
+    bids_root: Path
+    public_fixtures_root: Path
+    manifests_root: Path
+    quarantine_root: Path
 
 
 def _user_home(home: str | Path | None) -> Path:
@@ -103,6 +117,35 @@ def user_data_dir(
         user_home / ".local" / "share",
     )
     return xdg_data / "xbrainlab"
+
+
+def dataset_storage_layout(
+    *,
+    environ: Mapping[str, str] | None = None,
+    system_name: str | None = None,
+    home: str | Path | None = None,
+) -> DatasetStorageLayout:
+    """Return the single hierarchy for durable local EEG datasets.
+
+    ``XBRAINLAB_DATA_DIR`` remains the application data root. Dataset payloads
+    are kept below its ``datasets`` child so they cannot be confused with
+    models, logs, generated outputs, or other application state.
+    """
+    data_root = user_data_dir(
+        environ=environ,
+        system_name=system_name,
+        home=home,
+    )
+    datasets_root = data_root / "datasets"
+    return DatasetStorageLayout(
+        data_root=data_root,
+        datasets_root=datasets_root,
+        source_root=datasets_root / "source",
+        bids_root=datasets_root / "bids",
+        public_fixtures_root=datasets_root / "public-fixtures",
+        manifests_root=datasets_root / "manifests",
+        quarantine_root=datasets_root / "quarantine",
+    )
 
 
 def user_cache_dir(

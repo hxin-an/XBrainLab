@@ -37,6 +37,32 @@
 
 ## 2026-08-14
 
+### Dataset storage consolidation 第一批 copy/verify
+
+- 做了什麼：從合併後的 `main` 建立獨立 dataset branch；新增
+  `XBRAINLAB_DATA_DIR/datasets/{source,bids,public-fixtures,manifests,quarantine}` 單一 layout、
+  copy-only migration command、public fixture central-root resolver，並讓 Dataset import picker 從
+  canonical root 起始。Dry-run inventory 只列 authority、source/target、bytes、checksum 與 rollback，
+  沒有 delete mode。
+- 結果：第一批只複製 PhysionetMI formal BIDS（211 files / 76,941,333 bytes）與 manifest 內全部
+  pinned public fixtures（99 files / 655,817,832 bytes）到
+  `/mnt/d/workspace_v2/.xbrainlab-data/datasets/`；兩者皆在 staging 後驗證並 atomic publish。舊來源
+  保留；未驗證 Zenodo orphan 未被複製；15-dataset reseal、GUI campaign與 cleanup 都未執行。
+- 證據：central public 與 PhysionetMI 第二次驗證都回報 `already_present_and_verified`；focused
+  platform/migration/scripts/UI `190 passed`，central-root BIDS montage `3 passed`；Ruff、Basedpyright、
+  diff check 與 MkDocs strict 通過。
+- 接續 / 本輪剩餘：完成 reviewer、focused commit/push/PR exact-head CI。其餘 14 個 formal BIDS
+  仍待逐批 copy；任何 orphan/quarantine/seed/舊 source 刪除都要另行使用者授權。
+
+### Product foundation 已合回 main
+
+- 做了什麼：修正 Linux offscreen Loading→Preview modal driver 後，push PR `#16` exact head，等待
+  所有 non-skipped checks completed/success，再以明確 merge commit 合回 `main`。
+- 結果：PR head 與 main merge commit 的 GitHub Actions 均成功；working desktop foundation 現在是
+  `main` 的產品基線，舊 reliability branch 繼續留作 rollback provenance。
+- 證據：PR `#16`、merge commit 與 main exact-head CI；本機完整 integration UI `133 passed`。
+- 接續 / 本輪剩餘：dataset consolidation 與 P300 Saliency 分別使用新的短 branch，不疊回舊 branch。
+
 ### Product foundation 從 fresh main 擷取
 
 - 做了什麼：保留舊 reliability branch 作 remote checkpoint，從最新 `main` 建立 product-only

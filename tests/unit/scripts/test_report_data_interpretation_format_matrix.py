@@ -29,6 +29,35 @@ from scripts.dev.report_data_interpretation_format_matrix import (
 )
 
 
+def test_source_entry_resolution_rewrites_only_repo_public_fixture_prefix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("XBRAINLAB_DATA_DIR", str(tmp_path))
+
+    assert (
+        format_matrix._resolve_source_entry(
+            "tests/fixtures/data/public/example.edf",
+            format_matrix.ROOT,
+        )
+        == (tmp_path / "datasets/public-fixtures/example.edf").resolve()
+    )
+    assert (
+        format_matrix._resolve_source_entry(
+            "tests/fixtures/data/A01T.gdf",
+            format_matrix.ROOT,
+        )
+        == (format_matrix.ROOT / "tests/fixtures/data/A01T.gdf").resolve()
+    )
+    assert (
+        format_matrix._resolve_source_entry(
+            "generated_csv_event_order",
+            tmp_path / "generated-workflows",
+        )
+        == (tmp_path / "generated-workflows/generated_csv_event_order").resolve()
+    )
+
+
 def test_build_format_capability_snapshot_covers_import_boundary_formats():
     snapshot = build_format_capability_snapshot()
 

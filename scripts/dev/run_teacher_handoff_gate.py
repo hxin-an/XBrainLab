@@ -18,6 +18,7 @@ from scripts.dev.fetch_public_eeg_fixtures import (
     fixture_file_is_valid,
     fixture_groups_for_profile,
     fixture_profile_size_bytes,
+    resolve_public_fixture_dir,
 )
 from scripts.dev.report_teacher_dataset_preflight import (
     TEACHER_FIXTURE_GROUP_COUNT,
@@ -25,7 +26,6 @@ from scripts.dev.report_teacher_dataset_preflight import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-PUBLIC_DIR = ROOT / "tests" / "fixtures" / "data" / "public"
 DATA_ARTIFACT_DIR = ROOT / "build" / "dev-artifacts" / "teacher-data-preflight"
 UI_ARTIFACT_DIR = DATA_ARTIFACT_DIR / "ui"
 EVIDENCE_JSON = UI_ARTIFACT_DIR / "teacher-handoff-gate.json"
@@ -41,12 +41,13 @@ _PROTECTED_LOCAL_PATHS = {"settings.json"}
 def verify_teacher_fixture_profile() -> dict[str, Any]:
     """Fail closed unless every exact teacher fixture byte is present."""
     groups = fixture_groups_for_profile("teacher-preflight")
+    public_dir = resolve_public_fixture_dir()
     invalid_files = sorted(
         str(fixture_file["filename"])
         for group in groups
         for fixture_file in group["files"]
         if not fixture_file_is_valid(
-            PUBLIC_DIR / str(fixture_file["filename"]),
+            public_dir / str(fixture_file["filename"]),
             str(fixture_file["sha256"]),
             int(fixture_file["size_bytes"]),
         )

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, cast
 
 if __package__:
+    from scripts.dev.fetch_public_eeg_fixtures import resolve_public_fixture_dir
     from scripts.dev.report_data_interpretation_format_matrix import (
         REQUIRED_EXTERNAL_LABEL_CONTRACTS,
         REQUIRED_INTERNAL_EVENT_PROFILES,
@@ -20,6 +21,7 @@ if __package__:
         build_real_workflow_snapshot,
     )
 else:
+    from fetch_public_eeg_fixtures import resolve_public_fixture_dir
     from report_data_interpretation_format_matrix import (
         REQUIRED_EXTERNAL_LABEL_CONTRACTS,
         REQUIRED_INTERNAL_EVENT_PROFILES,
@@ -32,6 +34,7 @@ else:
 
 ROOT = Path(__file__).resolve().parents[2]
 TEST_DATA_DIR = ROOT / "tests" / "fixtures" / "data"
+_REPO_PUBLIC_FIXTURE_DIR = Path("tests/fixtures/data/public")
 
 CHECKED_IN_GDF_STEMS = ("A01T", "A02T", "A03T")
 MULTIFORMAT_FILES = (
@@ -122,6 +125,13 @@ def _nonempty_file(path: Path) -> bool:
     return path.exists() and path.is_file() and path.stat().st_size > 0
 
 
+def _public_fixture_dir(repo_root: Path = ROOT) -> Path:
+    """Resolve central storage while preserving isolated repo-root test fixtures."""
+    if repo_root.absolute() == ROOT:
+        return resolve_public_fixture_dir()
+    return repo_root / _REPO_PUBLIC_FIXTURE_DIR
+
+
 def build_dataset_validation_rows(
     repo_root: Path = ROOT,
     *,
@@ -129,6 +139,7 @@ def build_dataset_validation_rows(
 ) -> list[DatasetLayerRow]:
     """Build the current dataset validation matrix from known repo fixtures."""
     tests_data_dir = repo_root / "tests" / "fixtures" / "data"
+    public_dir = _public_fixture_dir(repo_root)
     checked_in_stems = [
         stem
         for stem in CHECKED_IN_GDF_STEMS
@@ -143,22 +154,22 @@ def build_dataset_validation_rows(
     public_training_fixtures = [
         fixture
         for fixture in PUBLIC_EVENT_RICH_TRAINING_FIXTURES
-        if _nonempty_file(tests_data_dir / "public" / fixture["filename"])
+        if _nonempty_file(public_dir / fixture["filename"])
     ]
     public_epoch_only_fixtures = [
         fixture
         for fixture in PUBLIC_EPOCH_ONLY_FIXTURES
-        if _nonempty_file(tests_data_dir / "public" / fixture["filename"])
+        if _nonempty_file(public_dir / fixture["filename"])
     ]
     public_import_only_fixtures = [
         fixture
         for fixture in PUBLIC_IMPORT_ONLY_FIXTURES
-        if _nonempty_file(tests_data_dir / "public" / fixture["filename"])
+        if _nonempty_file(public_dir / fixture["filename"])
     ]
     public_bids_fixtures = [
         fixture
         for fixture in PUBLIC_BIDS_FIXTURES
-        if _nonempty_file(tests_data_dir / "public" / fixture["entrypoint"])
+        if _nonempty_file(public_dir / fixture["entrypoint"])
     ]
     public_training_source_families = sorted(
         {str(fixture["source_family"]) for fixture in public_training_fixtures}
@@ -406,6 +417,7 @@ def validate_required_dataset_matrix(
     but it is not enough evidence before handing a branch to a human tester.
     """
     tests_data_dir = repo_root / "tests" / "fixtures" / "data"
+    public_dir = _public_fixture_dir(repo_root)
     if workflow_snapshot is None:
         workflow_snapshot = build_real_workflow_snapshot(repo_root)
     workflow_summary = cast(dict[str, Any], workflow_snapshot["summary"])
@@ -423,7 +435,7 @@ def validate_required_dataset_matrix(
     public_training_fixtures = [
         fixture
         for fixture in PUBLIC_EVENT_RICH_TRAINING_FIXTURES
-        if _nonempty_file(tests_data_dir / "public" / fixture["filename"])
+        if _nonempty_file(public_dir / fixture["filename"])
     ]
     public_training_source_families = sorted(
         {str(fixture["source_family"]) for fixture in public_training_fixtures}
@@ -431,12 +443,12 @@ def validate_required_dataset_matrix(
     public_epoch_only_fixtures = [
         fixture
         for fixture in PUBLIC_EPOCH_ONLY_FIXTURES
-        if _nonempty_file(tests_data_dir / "public" / fixture["filename"])
+        if _nonempty_file(public_dir / fixture["filename"])
     ]
     public_bids_fixtures = [
         fixture
         for fixture in PUBLIC_BIDS_FIXTURES
-        if _nonempty_file(tests_data_dir / "public" / fixture["entrypoint"])
+        if _nonempty_file(public_dir / fixture["entrypoint"])
     ]
     return [
         DatasetMatrixRequirement(
