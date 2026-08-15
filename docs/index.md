@@ -3,6 +3,9 @@
 這個站只提供目前工程權威與目標入口，不展示 mutable dashboard、tracked screenshot 或歷史
 checkpoint。
 
+桌面操作與資料集流程請前往 <a href="guide/">使用者指南</a>；本頁只維護工程現況、架構與驗證
+入口。
+
 | 問題 | 唯一入口 |
 | --- | --- |
 | 現在能相信什麼 | [Current](current.md) |
