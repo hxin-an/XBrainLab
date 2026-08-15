@@ -114,12 +114,6 @@ _MAPPED_TOOL_CASES = (
     ),
     (
         dataset_real,
-        dataset_real.RealClearDatasetTool(),
-        {"confirmed": True},
-        {"confirmed": True},
-    ),
-    (
-        dataset_real,
         dataset_real.RealQueryStateTool(),
         {"query": "state"},
         {"query": "state"},

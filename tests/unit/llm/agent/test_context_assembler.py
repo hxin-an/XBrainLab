@@ -640,7 +640,7 @@ def test_reset_preprocess_prompt_exposes_only_narrow_reset_tool(text: str) -> No
     )
     registry = ToolRegistry()
     registry.register(_NamedTool("reset_preprocess"))
-    registry.register(_NamedTool("clear_dataset"))
+    registry.register(_NamedTool("retired_reset_tool"))
     assembler = ContextAssembler(
         registry,
         Study(),
@@ -653,7 +653,7 @@ def test_reset_preprocess_prompt_exposes_only_narrow_reset_tool(text: str) -> No
         {"reset_preprocess"}
     )
     assert "unique description for reset_preprocess" in prompt
-    assert "unique description for clear_dataset" not in prompt
+    assert "unique description for retired_reset_tool" not in prompt
 
 
 @pytest.mark.parametrize("text", ("Stop training.", "停止訓練"))
@@ -1019,7 +1019,7 @@ def test_stale_publication_prompt_redacts_relevant_scan_source_blocker():
     registry = ToolRegistry()
     registry.register(_NamedTool("scan_source"))
     registry.register(_NamedTool("query_state"))
-    registry.register(_NamedTool("clear_dataset"))
+    registry.register(_NamedTool("retired_reset_tool"))
     runtime = _ApplicationRuntimeFake(publication)
     assembler = ContextAssembler(
         registry,
@@ -1055,7 +1055,7 @@ def test_stale_publication_prompt_redacts_relevant_scan_source_blocker():
     assert "## Workflow Status Unavailable" not in prompt
     assert "## Current Stage: Empty (No Data)" not in prompt
     assert "unique description for query_state" not in prompt
-    assert "unique description for clear_dataset" not in prompt
+    assert "unique description for retired_reset_tool" not in prompt
     assert "unique description for scan_source" not in prompt
 
 

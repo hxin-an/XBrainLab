@@ -17,8 +17,6 @@ _TOOL_ALIASES: dict[str, str] = {
     "create_epochs": "epoch_data",
     "train": "start_training",
     "train_model": "start_training",
-    "reset_session": "clear_dataset",
-    "clear_session": "clear_dataset",
     "get_dataset_info": "query_state",
     "get_state": "query_state",
     "state_query": "query_state",
@@ -101,9 +99,6 @@ def normalize_tool_call(
 
     if normalized_name == "reload_interpretation_recipe":
         _normalize_recipe_reload_args(normalized_params, latest_user_text)
-
-    if normalized_name == "clear_dataset":
-        normalized_params = {}
 
     if normalized_name == "saliency":
         _normalize_saliency_args(normalized_params, latest_user_text)

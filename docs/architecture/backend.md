@@ -493,7 +493,6 @@ ApplicationService command names：
 | `configure_dataset_split` | `configure_dataset_split` |
 | `set_model` / `configure_training` | `configure_training` |
 | `start_training` | `train` |
-| `clear_dataset` | `reset_session` |
 
 `list_files`、`get_dataset_info`、`switch_panel` 是 read-only / UI routing tools；
 其中 `get_dataset_info` 會依 state 判斷是否已有 raw data。
@@ -514,7 +513,7 @@ snake_case command 只留在 history / diagnostics / logs。
 
 Mapped agent workflow tools 會優先直接執行 ApplicationService command，包含
 Data Interpretation、`attach_labels`、preprocess tools、`epoch_data`、
-`configure_dataset_split`、`set_model`、`configure_training`、`start_training`、`clear_dataset`。
+`configure_dataset_split`、`set_model`、`configure_training`、`start_training`。
 舊 `load_data` tool definition 只保留 compatibility identity；產品 policy 與 executor
 一律 fail closed，要求改走 `scan_source -> preview_interpretation ->
 validate_interpretation -> apply_interpretation`。這避免把 identity-bound 授權目錄重新
@@ -758,9 +757,10 @@ compatibility path 顯示的是固定的 public unavailable message，不是 bac
 - `set_montage` 仍是 UI confirmation request path；agent tool 的 availability 讀
   `apply_montage` capability，confirmation 後由 `ApplyMontageCommand` 實際寫入 channel
   positions。
-- `reset_session` 目前代表清掉 active backend session：raw / preprocess / epoch /
-  dataset / trainer / model option / saliency config 都會失效；有既有 state 時需要
-  confirmation。
+- `reset_session` 仍是 internal backend lifecycle command；它目前代表清掉 active backend
+  session：raw / preprocess / epoch / dataset / trainer / model option / saliency config 都會失效。
+  Desktop UI 與 Assistant 不發布這個操作，automation / internal integration 仍可直接使用 typed
+  command。
 - `new_session` 目前是同一個 single-backend session 的 lifecycle boundary，不是 multi-document
   project shell；它清掉目前 state 後回傳 `single_session_backend=True` diagnostics。
 

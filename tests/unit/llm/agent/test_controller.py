@@ -3595,15 +3595,15 @@ class TestExecuteDebugTool:
     def test_typed_debug_request_keeps_confirmation_outside_tool_params(self):
         request = AssistantDebugToolRequest.from_params(
             correlation=AssistantTurnCorrelation(generation=7, turn_id=9),
-            tool_name="clear_dataset",
+            tool_name="reset_preprocess",
             params={},
             confirmed=True,
-            authorization_text="The host approved clearing the current dataset.",
+            authorization_text="The host approved resetting preprocessing.",
         )
 
         assert request.confirmed is True
         assert request.authorization_text == (
-            "The host approved clearing the current dataset."
+            "The host approved resetting preprocessing."
         )
         assert request.to_params() == {}
 
@@ -3624,7 +3624,7 @@ class TestExecuteDebugTool:
         ctrl._turn_orchestrator.host_turn_id = None
         request = AssistantDebugToolRequest.from_params(
             correlation=AssistantTurnCorrelation(generation=7, turn_id=9),
-            tool_name="clear_dataset",
+            tool_name="reset_preprocess",
             params={"confirmed": True},
         )
 
@@ -3689,38 +3689,6 @@ class TestExecuteDebugTool:
         assert '"error_type": "input"' in ctrl.history[-1]["content"]
         assert "trusted debug transport" in ctrl.history[-1]["content"]
 
-    def test_top_level_debug_confirmation_executes_real_admitted_command_once(
-        self,
-        ctrl,
-    ):
-        from XBrainLab.backend.application import get_application_service
-        from XBrainLab.backend.study import Study
-        from XBrainLab.llm.tools import get_all_tools
-        from XBrainLab.llm.tools.tool_registry import ToolRegistry
-
-        study = Study()
-        service = get_application_service(study)
-        registry = ToolRegistry()
-        for tool in get_all_tools("real"):
-            registry.register(tool)
-        ctrl.study = study
-        ctrl.registry = registry
-        ctrl._turn_orchestrator.host_turn_generation = None
-        ctrl._turn_orchestrator.host_turn_id = None
-        request = AssistantDebugToolRequest.from_params(
-            correlation=AssistantTurnCorrelation(generation=7, turn_id=9),
-            tool_name="clear_dataset",
-            params={},
-            confirmed=True,
-        )
-
-        with patch.object(service, "execute", wraps=service.execute) as execute:
-            acknowledgement = ctrl.execute_debug_tool(request)
-
-        assert acknowledgement.phase is AssistantTurnDeliveryPhase.ACCEPTED
-        execute.assert_called_once()
-        assert '"ok": true' in ctrl.history[-1]["content"]
-
     def test_ui_debug_path_admission_fails_closed_without_authorization(
         self,
         ctrl,
@@ -3762,14 +3730,14 @@ class TestExecuteDebugTool:
 class TestOnUserConfirmed:
     def test_approved_executes_and_finalises(self, ctrl):
         """When user approves, the pending tool should execute."""
-        context = _enabled_tool_context("clear_dataset", generation=31)
+        context = _enabled_tool_context("reset_preprocess", generation=31)
         context_reader = _set_context_reader(ctrl, return_value=context)
         _begin_confirmation(
             ctrl,
-            _pending_decision("clear_dataset", {}, context=context),
+            _pending_decision("reset_preprocess", {}, context=context),
         )
         ctrl._execute_tool_no_loop = MagicMock(
-            return_value=_tool_outcome("Dataset cleared.")
+            return_value=_tool_outcome("Preprocessing reset.")
         )
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl.metrics.finish_turn = MagicMock()
@@ -3777,12 +3745,12 @@ class TestOnUserConfirmed:
         _resolve_confirmation(ctrl, approved=True)
 
         ctrl._execute_tool_no_loop.assert_called_once_with(
-            "clear_dataset",
+            "reset_preprocess",
             {"confirmed": True},
             context=context,
             expected_publication_generation=context.generation,
         )
-        context_reader.assert_called_once_with("clear_dataset")
+        context_reader.assert_called_once_with("reset_preprocess")
         assert ctrl.pending_interactions.confirmation_decision is None
         assert ctrl._tool_attempt_session.tool_failure_count == 0
 
@@ -4241,7 +4209,7 @@ class TestOnUserConfirmed:
 
     def test_rejected_appends_rejection(self, ctrl):
         """When user rejects, no execution should happen."""
-        _begin_confirmation(ctrl, _pending_decision("clear_dataset", {}))
+        _begin_confirmation(ctrl, _pending_decision("reset_preprocess", {}))
         ctrl._execute_tool_no_loop = MagicMock()
         ctrl.metrics.finish_turn = MagicMock()
 
@@ -4253,7 +4221,7 @@ class TestOnUserConfirmed:
 
     def test_rejected_confirmation_emits_one_structured_terminal_outcome(self, ctrl):
         """Cancellation cannot reuse a stale tool summary or continue the turn."""
-        _begin_confirmation(ctrl, _pending_decision("clear_dataset", {}))
+        _begin_confirmation(ctrl, _pending_decision("reset_preprocess", {}))
         ctrl._tool_attempt_session.last_tool_summary = (
             "The assistant completed a background action."
         )
@@ -4265,7 +4233,7 @@ class TestOnUserConfirmed:
         ctrl.interaction_resolved.emit.assert_called_once_with(
             AgentInteractionOutcome(
                 status=AgentInteractionStatus.CANCELLED,
-                command_name="clear_dataset",
+                command_name="reset_preprocess",
                 request_id=request.request_id,
             )
         )
@@ -4275,20 +4243,22 @@ class TestOnUserConfirmed:
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
         assert isinstance(presentation, AssistantResponsePresentation)
         assert presentation.text == (
-            "Dataset removal cancelled. Your current workspace is unchanged."
+            "Preprocessing reset cancelled. Your current workflow is unchanged."
         )
         assert ctrl._turn_orchestrator.cancelled is True
 
     def test_confirmed_confirmation_emits_acceptance_and_executes_once(self, ctrl):
         """Approval is acknowledged once and executes exactly one pending command."""
-        context = _enabled_tool_context("clear_dataset", generation=88)
+        context = _enabled_tool_context("reset_preprocess", generation=88)
         _set_context_reader(ctrl, return_value=context)
         _begin_confirmation(
             ctrl,
-            _pending_decision("clear_dataset", {}, context=context),
+            _pending_decision("reset_preprocess", {}, context=context),
         )
         ctrl._execute_tool_no_loop = MagicMock(
-            return_value=_tool_outcome("Session cleared.", tool_name="clear_dataset")
+            return_value=_tool_outcome(
+                "Preprocessing reset.", tool_name="reset_preprocess"
+            )
         )
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._handle_tool_success = MagicMock()
@@ -4298,12 +4268,12 @@ class TestOnUserConfirmed:
         ctrl.interaction_resolved.emit.assert_called_once_with(
             AgentInteractionOutcome(
                 status=AgentInteractionStatus.CONFIRMED,
-                command_name="clear_dataset",
+                command_name="reset_preprocess",
                 request_id=request.request_id,
             )
         )
         ctrl._execute_tool_no_loop.assert_called_once_with(
-            "clear_dataset",
+            "reset_preprocess",
             {"confirmed": True},
             context=context,
             expected_publication_generation=context.generation,
@@ -4670,7 +4640,7 @@ class TestOnUserConfirmed:
         history_before = list(ctrl.history)
         ctrl._execute_tool_no_loop = MagicMock()
         request = AgentConfirmationRequest.for_action(
-            command_name="clear_dataset",
+            command_name="reset_preprocess",
             params={},
             action_label="Clear dataset",
             description="Clear dataset",
@@ -4690,12 +4660,12 @@ class TestOnUserConfirmed:
 
     def test_untyped_confirmation_cannot_approve_pending_action(self, ctrl):
         pending = _pending_decision(
-            "clear_dataset",
+            "reset_preprocess",
             {},
-            context=_enabled_tool_context("clear_dataset", generation=51),
+            context=_enabled_tool_context("reset_preprocess", generation=51),
         )
         request = AgentConfirmationRequest.for_action(
-            command_name="clear_dataset",
+            command_name="reset_preprocess",
             params={},
             action_label="Clear dataset",
             description="Clear dataset",
@@ -4715,10 +4685,10 @@ class TestOnUserConfirmed:
         ctrl._execute_tool_no_loop.assert_not_called()
 
     def test_mismatched_confirmation_keeps_exact_pending_action(self, ctrl):
-        context = _enabled_tool_context("clear_dataset", generation=52)
-        pending = _pending_decision("clear_dataset", {}, context=context)
+        context = _enabled_tool_context("reset_preprocess", generation=52)
+        pending = _pending_decision("reset_preprocess", {}, context=context)
         active_request = AgentConfirmationRequest.for_action(
-            command_name="clear_dataset",
+            command_name="reset_preprocess",
             params={},
             action_label="Clear dataset",
             description="Clear dataset",
@@ -4726,7 +4696,7 @@ class TestOnUserConfirmed:
             publication_generation=52,
         )
         stale_request = AgentConfirmationRequest.for_action(
-            command_name="clear_dataset",
+            command_name="reset_preprocess",
             params={},
             action_label="Clear dataset",
             description="Clear dataset",
@@ -4748,10 +4718,10 @@ class TestOnUserConfirmed:
         ctrl._execute_tool_no_loop.assert_not_called()
 
     def test_confirmation_is_rejected_when_publication_generation_changes(self, ctrl):
-        context = _enabled_tool_context("clear_dataset", generation=53)
-        pending = _pending_decision("clear_dataset", {}, context=context)
+        context = _enabled_tool_context("reset_preprocess", generation=53)
+        pending = _pending_decision("reset_preprocess", {}, context=context)
         request = AgentConfirmationRequest.for_action(
-            command_name="clear_dataset",
+            command_name="reset_preprocess",
             params={},
             action_label="Clear dataset",
             description="Clear dataset",
@@ -4761,7 +4731,7 @@ class TestOnUserConfirmed:
         _begin_confirmation(ctrl, pending, request)
         _set_context_reader(
             ctrl,
-            return_value=_enabled_tool_context("clear_dataset", generation=54),
+            return_value=_enabled_tool_context("reset_preprocess", generation=54),
         )
         ctrl._execute_tool_no_loop = MagicMock()
         ctrl._handle_tool_attempt_blocked = MagicMock()
@@ -4789,14 +4759,14 @@ class TestOnUserConfirmed:
         assert ctrl.pending_interactions.confirmation_request is None
 
     def test_duplicate_confirmation_cannot_execute_twice(self, ctrl):
-        context = _enabled_tool_context("clear_dataset", generation=55)
+        context = _enabled_tool_context("reset_preprocess", generation=55)
         _set_context_reader(ctrl, return_value=context)
         _begin_confirmation(
             ctrl,
-            _pending_decision("clear_dataset", {}, context=context),
+            _pending_decision("reset_preprocess", {}, context=context),
         )
         ctrl._execute_tool_no_loop = MagicMock(
-            return_value=_tool_outcome("Dataset cleared.")
+            return_value=_tool_outcome("Preprocessing reset.")
         )
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._handle_tool_success = MagicMock()
@@ -4844,9 +4814,9 @@ class TestOnUserConfirmed:
 
     def test_reset_conversation_clears_pending(self, ctrl):
         """reset_conversation should also clear any pending confirmation."""
-        pending = _pending_decision("clear_dataset", {})
+        pending = _pending_decision("reset_preprocess", {})
         request = AgentConfirmationRequest.for_action(
-            command_name="clear_dataset",
+            command_name="reset_preprocess",
             params={},
             action_label="Clear dataset",
             description="Clear dataset",
@@ -4942,7 +4912,7 @@ class TestProcessToolCallsConfirmation:
     def test_confirmation_required_pauses_execution(self, ctrl):
         """Tool with requires_confirmation should emit signal and pause."""
         context = _enabled_tool_context(
-            "clear_dataset",
+            "reset_preprocess",
             generation=40,
             destructive=True,
         )
@@ -4958,24 +4928,24 @@ class TestProcessToolCallsConfirmation:
         ):
             ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
             ctrl._process_tool_calls(
-                [("clear_dataset", {})],
-                '{"tool_name": "clear_dataset"}',
+                [("reset_preprocess", {})],
+                '{"tool_name": "reset_preprocess"}',
             )
 
         pending = _assert_confirmation_prompt(
             ctrl,
-            tool_name="clear_dataset",
+            tool_name="reset_preprocess",
             params={},
             description="Clear data",
             destructive=True,
         )
         assert pending.context is context
-        context_reader.assert_called_once_with("clear_dataset")
+        context_reader.assert_called_once_with("reset_preprocess")
 
     def test_confirmed_execution_uses_fresh_context_for_same_publication(self, ctrl):
         """Approval re-reads context instead of reusing the pending snapshot."""
-        prompt_context = _tool_context_with_generation("clear_dataset", 41)
-        current_context = _tool_context_with_generation("clear_dataset", 41)
+        prompt_context = _tool_context_with_generation("reset_preprocess", 41)
+        current_context = _tool_context_with_generation("reset_preprocess", 41)
         context_reader = _set_context_reader(
             ctrl,
             side_effect=[prompt_context, current_context],
@@ -4984,20 +4954,20 @@ class TestProcessToolCallsConfirmation:
         ctrl.registry.get_tool.return_value = tool
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
         ctrl._execute_tool_no_loop = MagicMock(
-            return_value=_tool_outcome("Dataset cleared.")
+            return_value=_tool_outcome("Preprocessing reset.")
         )
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._handle_tool_success = MagicMock()
 
-        ctrl._process_tool_calls([("clear_dataset", {})], "json")
+        ctrl._process_tool_calls([("reset_preprocess", {})], "json")
         pending = ctrl.pending_interactions.confirmation_decision
         assert isinstance(pending, ToolAttemptDecision)
         assert pending.context is prompt_context
         _resolve_confirmation(ctrl, approved=True)
 
         assert context_reader.call_args_list == [
-            call("clear_dataset"),
-            call("clear_dataset"),
+            call("reset_preprocess"),
+            call("reset_preprocess"),
         ]
         execution_kwargs = ctrl._execute_tool_no_loop.call_args.kwargs
         assert execution_kwargs["context"] is current_context

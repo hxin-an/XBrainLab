@@ -472,7 +472,7 @@ def test_typed_confirmation_resolution_runs_on_controller_command_thread(qtbot):
     command_thread = dispatcher.command_thread
     assert isinstance(command_thread, QThread)
     request = AgentConfirmationRequest.for_action(
-        command_name="clear_dataset",
+        command_name="reset_preprocess",
         params={},
         action_label="Clear dataset",
         description="Clear the current dataset",

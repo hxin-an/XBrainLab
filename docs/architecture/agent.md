@@ -406,7 +406,7 @@ ApplicationService command name 的對映層。`ContextAssembler` 用它決定�
   `validate_interpretation`、`apply_interpretation`、`save_interpretation_recipe`、
   `reload_interpretation_recipe`）、`attach_labels`、preprocess tools、
   `epoch_data`、`configure_dataset_split`、`set_model`、`configure_training`、`start_training`、
-  `evaluate`、`visualize`、`saliency`、`clear_dataset`。
+  `evaluate`、`visualize`、`saliency`。
 - Data Interpretation tools 仍只透過 `ApplicationService.execute()` 進入 backend；實際
   scan / preview / validate / apply / recipe lifecycle 已在 backend
   `DataInterpretationCommandService` 中，reviewed metadata / label carrier side effects 已在
@@ -418,7 +418,11 @@ ApplicationService command name 的對映層。`ContextAssembler` 用它決定�
 - `LLMController` 對 `apply_interpretation` 這類 dynamic decision boundary 不再只看 static
   `BaseTool.requires_confirmation`；若 backend capability 回報 `requires_confirmation` /
   `confirmation_required`，controller 會暫停並等待 UI confirmation，確認後才對
-  `apply_interpretation`、`clear_dataset`、`start_training` 帶 `confirmed=True` 執行。
+  `apply_interpretation`、`start_training` 帶 `confirmed=True` 執行。
+
+Reset Session 不在 Assistant action contract、real/mock registry、prompt publication 或 debug tool
+surface。明確要求 reset session 時，`ProductTurnPolicy` 直接回覆 unavailable；不讀 application
+publication、不建立 confirmation，也不呼叫 backend。Backend internal command 不因此移除。
 - real `Study` 下，mapped workflow tool 如果缺少必要參數而無法建立 ApplicationService
   command，`application_surface` 會回 typed input failure，要求使用者補資訊；它不再退回
   legacy real-tool execution。`set_montage` 仍是明確 UI confirmation request path，mock /

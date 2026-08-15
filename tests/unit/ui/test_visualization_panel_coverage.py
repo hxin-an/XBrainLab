@@ -344,6 +344,73 @@ def _current_widget(panel) -> Any:
     return cast(Any, widget)
 
 
+@pytest.mark.parametrize(
+    "view",
+    ("channel_time", "topographic_map", "three_dimensional"),
+)
+def test_normalized_render_worker_claims_the_raw_operation_identity(view) -> None:
+    from XBrainLab.backend.application.owned_work import (
+        OwnedWorkPhase,
+        OwnedWorkRegistry,
+    )
+    from XBrainLab.backend.application.saliency_render_work import (
+        SaliencyRenderWorkController,
+    )
+    from XBrainLab.ui.panels.visualization.panel import (
+        VisualizationPanel,
+        _SaliencyRenderTask,
+    )
+
+    registry = OwnedWorkRegistry()
+
+    def publish(request: SaliencyRenderRequest) -> SaliencyRenderPublication:
+        return SaliencyRenderPublication(
+            request=request,
+            generation=request.publication_generation,
+            training_generation=8,
+            data=_render_data(request.method),
+        )
+
+    controller = SaliencyRenderWorkController(
+        registry=registry,
+        publish=publish,
+    )
+
+    class _OwnedRuntime:
+        begin_saliency_render = controller.begin
+        prepare_saliency_render_variants = controller.prepare_variants
+
+    normalized_request = SaliencyRenderRequest(
+        publication_generation=7,
+        run=SaliencyRunIdentity(
+            plan=SaliencyPlanIdentity(plan_index=0),
+            run_index=1,
+        ),
+        method="Gradient",
+        normalize=True,
+        view=cast(Any, view),
+    )
+    raw_request = replace(normalized_request, normalize=False)
+    operation = controller.begin(raw_request)
+    task = _SaliencyRenderTask(
+        request=normalized_request,
+        needs_normalized_variant=True,
+        operation_id=operation.operation_id,
+    )
+
+    returned_task, raw_publication, normalized_publication = (
+        VisualizationPanel._load_saliency_render(_OwnedRuntime(), task)
+    )
+
+    assert returned_task == task
+    assert raw_publication.request == raw_request
+    assert raw_publication.operation_id == operation.operation_id
+    assert normalized_publication is not None
+    assert normalized_publication.request == normalized_request
+    assert normalized_publication.operation_id == operation.operation_id
+    assert registry.snapshot(operation.operation_id).phase is OwnedWorkPhase.RUNNING
+
+
 def test_publication_runtime_composes_through_active_real_map_view(qtbot):
     result = _visualization_result(
         _run_coverage(plan_index=0, run_index=0, model_name="EEGNet"),
@@ -1768,6 +1835,13 @@ class TestOnUpdate:
         )
         assert backend_requests == [expected_request] * 5
         assert panel._query_port.begin_saliency_render.call_count == 5
+        assert [call.args[1] for call in current_widget.update_plot.call_args_list] == [
+            False,
+            True,
+            True,
+            False,
+            False,
+        ]
         normalized_publication = next(
             call.args[0]
             for call in current_widget.update_plot.call_args_list

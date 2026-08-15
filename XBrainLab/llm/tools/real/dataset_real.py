@@ -17,7 +17,6 @@ from ..authorized_paths import AuthorizedPathError, open_authorized_path
 from ..definitions.dataset_def import (
     BaseApplyInterpretationTool,
     BaseAttachLabelsTool,
-    BaseClearDatasetTool,
     BaseConfigureDatasetSplitTool,
     BaseGetDatasetInfoTool,
     BaseListFilesTool,
@@ -368,27 +367,6 @@ class RealAttachLabelsTool(BaseAttachLabelsTool):
                 ),
                 "resource_preflight_token": kwargs.get("resource_preflight_token"),
             },
-        )
-
-
-class RealClearDatasetTool(BaseClearDatasetTool):
-    """Real implementation of :class:`BaseClearDatasetTool`."""
-
-    def execute(self, study: Any, **kwargs) -> ToolResult:
-        """Clear all loaded data and reset Study state.
-
-        Args:
-            study: The global ``Study`` instance.
-            **kwargs: Additional keyword arguments.
-
-        Returns:
-            A confirmation message.
-
-        """
-        return execute_real_application_tool(
-            study,
-            self.name,
-            {"confirmed": kwargs.get("confirmed", False)},
         )
 
 

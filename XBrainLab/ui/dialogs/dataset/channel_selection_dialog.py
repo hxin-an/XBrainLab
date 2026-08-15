@@ -44,15 +44,23 @@ class ChannelSelectionDialog(BaseDialog):
         self.btn_all: QPushButton | None = None
         self.btn_none: QPushButton | None = None
 
-        super().__init__(parent, title="Channel Selection")
-        self.resize(300, 400)
+        super().__init__(
+            parent,
+            title="Channel Selection",
+            width=480,
+            height=500,
+        )
 
     def init_ui(self):
         """Initialize the dialog UI with search bar, channel list, and buttons."""
+        self.setObjectName("ChannelSelectionDialog")
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 18, 20, 16)
+        layout.setSpacing(10)
 
         # Search Filter
         self.search_bar = QLineEdit()
+        self.search_bar.setObjectName("ChannelSearchInput")
         self.search_bar.setPlaceholderText("Search channels...")
         self.search_bar.textChanged.connect(self.filter_channels)
         layout.addWidget(self.search_bar)
@@ -60,7 +68,17 @@ class ChannelSelectionDialog(BaseDialog):
         # Channel List
         list_widget = QListWidget()
         self.list_widget = list_widget
+        list_widget.setObjectName("ChannelSelectionList")
         list_widget.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        list_widget.setAlternatingRowColors(True)
+        list_widget.setUniformItemSizes(True)
+        list_widget.setTextElideMode(Qt.TextElideMode.ElideRight)
+        list_widget.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+        )
+        list_widget.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded,
+        )
 
         if self.channels:
             for ch in self.channels:
@@ -69,7 +87,7 @@ class ChannelSelectionDialog(BaseDialog):
                 item.setCheckState(Qt.CheckState.Checked)
                 list_widget.addItem(item)
 
-        layout.addWidget(list_widget)
+        layout.addWidget(list_widget, 1)
         self.create_buttons(layout)
 
     def filter_channels(self, text: str):
@@ -98,12 +116,15 @@ class ChannelSelectionDialog(BaseDialog):
         btn_layout = QHBoxLayout()
         btn_all = QPushButton("Select All")
         self.btn_all = btn_all
+        btn_all.setObjectName("SecondaryDialogButton")
         btn_all.clicked.connect(lambda: self.set_all_checked(True))
         btn_none = QPushButton("Deselect All")
         self.btn_none = btn_none
+        btn_none.setObjectName("SecondaryDialogButton")
         btn_none.clicked.connect(lambda: self.set_all_checked(False))
         btn_layout.addWidget(btn_all)
         btn_layout.addWidget(btn_none)
+        btn_layout.addStretch(1)
         layout.addLayout(btn_layout)
 
         # Dialog Buttons
@@ -111,9 +132,20 @@ class ChannelSelectionDialog(BaseDialog):
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         normalize_dialog_button_box(buttons)
+        buttons.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        for standard_button in (
+            QDialogButtonBox.StandardButton.Ok,
+            QDialogButtonBox.StandardButton.Cancel,
+        ):
+            button = buttons.button(standard_button)
+            if button is not None:
+                button.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        footer = QHBoxLayout()
+        footer.addStretch(1)
+        footer.addWidget(buttons)
+        layout.addLayout(footer)
 
     def set_all_checked(self, checked):
         """Set the check state for all items in the list.

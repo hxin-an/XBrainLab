@@ -204,66 +204,6 @@
         "expected_tool_calls": [{"tool_name": "attach_labels", "parameters": {"mapping": {"sess1.edf": "/data/labels/stim.csv"}}}]
     },
     {
-        "id": "clear_dataset_01",
-        "category": "dataset",
-        "input": "Clear the current dataset.",
-        "expected_tool_calls": [{"tool_name": "clear_dataset", "parameters": {}}]
-    },
-    {
-        "id": "clear_dataset_02",
-        "category": "dataset",
-        "input": "Reset the workspace by clearing all data.",
-        "expected_tool_calls": [{"tool_name": "clear_dataset", "parameters": {}}]
-    },
-    {
-        "id": "clear_dataset_03",
-        "category": "dataset",
-        "input": "Remove all loaded recordings.",
-        "expected_tool_calls": [{"tool_name": "clear_dataset", "parameters": {}}]
-    },
-    {
-        "id": "clear_dataset_04",
-        "category": "dataset",
-        "input": "Delete everything and start fresh.",
-        "expected_tool_calls": [{"tool_name": "clear_dataset", "parameters": {}}]
-    },
-    {
-        "id": "clear_dataset_05",
-        "category": "dataset",
-        "input": "Wipe the study clean so I can import new data.",
-        "expected_tool_calls": [{"tool_name": "clear_dataset", "parameters": {}}]
-    },
-    {
-        "id": "clear_dataset_06",
-        "category": "dataset",
-        "input": "Empty all data from the project.",
-        "expected_tool_calls": [{"tool_name": "clear_dataset", "parameters": {}}]
-    },
-    {
-        "id": "clear_dataset_07",
-        "category": "dataset",
-        "input": "Discard the current session data.",
-        "expected_tool_calls": [{"tool_name": "clear_dataset", "parameters": {}}]
-    },
-    {
-        "id": "clear_dataset_08",
-        "category": "dataset",
-        "input": "Clean up everything before starting the new experiment.",
-        "expected_tool_calls": [{"tool_name": "clear_dataset", "parameters": {}}]
-    },
-    {
-        "id": "clear_dataset_09",
-        "category": "dataset",
-        "input": "Drop all data to re-import.",
-        "expected_tool_calls": [{"tool_name": "clear_dataset", "parameters": {}}]
-    },
-    {
-        "id": "clear_dataset_10",
-        "category": "dataset",
-        "input": "Flush the loaded dataset from memory.",
-        "expected_tool_calls": [{"tool_name": "clear_dataset", "parameters": {}}]
-    },
-    {
         "id": "get_dataset_info_01",
         "category": "dataset",
         "input": "Tell me about the loaded dataset info.",
@@ -1210,15 +1150,6 @@
         ]
     },
     {
-        "id": "complex_06",
-        "category": "complex",
-        "input": "Clear dataset and load new file data.gdf.",
-        "expected_tool_calls": [
-            {"tool_name": "clear_dataset", "parameters": {}},
-            {"tool_name": "load_data", "parameters": {"paths": ["data.gdf"]}}
-        ]
-    },
-    {
         "id": "complex_07",
         "category": "complex",
         "input": "Set epoch 100, batch 16, lr 0.01, device cuda.",
@@ -1301,16 +1232,6 @@
             {"tool_name": "configure_dataset_split", "parameters": {"split_strategy": "trial"}},
             {"tool_name": "set_model", "parameters": {"model_name": "ShallowConvNet"}},
             {"tool_name": "start_training", "parameters": {}}
-        ]
-    },
-    {
-        "id": "complex_16",
-        "category": "complex",
-        "input": "Clear data, load /exp/new.gdf, and show dataset info.",
-        "expected_tool_calls": [
-            {"tool_name": "clear_dataset", "parameters": {}},
-            {"tool_name": "load_data", "parameters": {"paths": ["/exp/new.gdf"]}},
-            {"tool_name": "get_dataset_info", "parameters": {}}
         ]
     },
     {

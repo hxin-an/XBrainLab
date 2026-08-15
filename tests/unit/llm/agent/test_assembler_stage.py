@@ -111,11 +111,11 @@ class TestStageBasedFiltering:
     def test_training_only_switch_panel(self):
         prompt = self._build(
             PipelineStage.TRAINING,
-            ["switch_panel", "set_model", "clear_dataset", "list_files"],
+            ["switch_panel", "set_model", "retired_reset_tool", "list_files"],
         )
         assert "switch_panel" in prompt
         assert "set_model" not in prompt
-        assert "clear_dataset" not in prompt
+        assert "retired_reset_tool" not in prompt
 
     def test_trained_allows_retraining(self):
         prompt = self._build(

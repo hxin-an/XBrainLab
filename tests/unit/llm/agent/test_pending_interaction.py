@@ -29,7 +29,7 @@ from XBrainLab.llm.agent.ui_handoff import (
 
 
 def _confirmation_pair(
-    command_name: str = "clear_dataset",
+    command_name: str = "destructive_probe",
 ) -> tuple[ToolAttemptDecision, AgentConfirmationRequest]:
     decision = ToolAttemptDecision(
         action=ToolAttemptAction.CONFIRMATION_REQUIRED,
@@ -39,8 +39,8 @@ def _confirmation_pair(
     request = AgentConfirmationRequest.for_action(
         command_name=command_name,
         params=decision.params,
-        action_label="Clear dataset",
-        description="Clear the current dataset",
+        action_label="Run destructive probe",
+        description="Exercise destructive confirmation ownership",
         destructive=True,
         publication_generation=7,
     )
@@ -63,7 +63,7 @@ def test_confirmation_is_created_and_exposed_as_one_pair() -> None:
 
 def test_confirmation_pair_rejects_mismatched_command() -> None:
     session = PendingInteractionCoordinator()
-    decision, _request = _confirmation_pair("clear_dataset")
+    decision, _request = _confirmation_pair("destructive_probe")
     _other_decision, other_request = _confirmation_pair("start_training")
 
     with pytest.raises(ValueError, match="same command"):

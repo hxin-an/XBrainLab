@@ -37,6 +37,20 @@
 
 ## 2026-08-14
 
+### Manual UI regressions v1 啟動
+
+- 做了什麼：從最新 `main` 建立 `fix/manual-ui-regressions-v1`，只處理使用者手測記錄的
+  Saliency Normalize owned-operation mismatch／安全 scale log、Data Split 第二步 async row refit與
+  primary action，以及 Select Channels 外觀一致性。三個切片以 TDD 分開施工。
+- 結果：三項 regression 都已 RED→GREEN。Normalize 的 begin／prepare 共用 raw request identity；
+  Data Split async rows 只 coalesce 一次 refit且 Confirm 使用 primary style；Select Channels 只改
+  bounded geometry與視覺層級。`settings.json` 保留且不納入版本控制。
+- 證據：主 agent 整合 Qt `140 passed`，直接相鄰 workflow `157 passed`；Ruff、Basedpyright與
+  diff check通過。四張 standard/narrow artifact 已人工檢查；configured logger 顯示 bounded scalar
+  scale資訊，不再輸出 `[UNSUPPORTED_VALUE]`。這些仍是 commit 前 checkpoint evidence。
+- 接續 / 本輪剩餘：完成 strict docs、exact-commit required public multi-dataset gate、focused
+  commit/push與 PR exact-head CI。Windows native DPI／interactive 3D仍由真人驗收。
+
 ### Dataset storage consolidation 第一批 copy/verify
 
 - 做了什麼：從合併後的 `main` 建立獨立 dataset branch；新增

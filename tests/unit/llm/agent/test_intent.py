@@ -30,7 +30,6 @@ def test_intent_to_command_compatibility_view_does_not_drift_from_registry():
         "train": CommandName.TRAIN,
         "stop_training": CommandName.STOP_TRAINING,
         "evaluate": CommandName.EVALUATE,
-        "reset_session": CommandName.RESET_SESSION,
         "query_state": CommandName.QUERY_STATE,
         "visualize": CommandName.VISUALIZE,
         "saliency": CommandName.SALIENCY,
@@ -292,7 +291,6 @@ def test_blocked_explanation_resolves_exact_workflow_target(
         ("Why can't I configure training?", "configure_training"),
         ("Why can't I stop training?", "stop_training"),
         ("Why can't I query workflow state?", "query_state"),
-        ("Why can't I reset the session?", "reset_session"),
     ),
 )
 def test_blocked_explanation_covers_agent_command_intents(

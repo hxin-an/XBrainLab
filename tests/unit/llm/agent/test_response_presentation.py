@@ -61,7 +61,7 @@ def test_panel_navigation_request_is_typed_and_bounded() -> None:
 @pytest.mark.parametrize(
     ("status", "expected"),
     [
-        (AgentInteractionStatus.CANCELLED, "workspace is unchanged"),
+        (AgentInteractionStatus.CANCELLED, "workflow is unchanged"),
         (AgentInteractionStatus.CONFIRMED, "Approved"),
         (AgentInteractionStatus.DEFERRED_TO_UI, "open in the main window"),
         (AgentInteractionStatus.BLOCKED, "blocked"),
@@ -70,7 +70,7 @@ def test_panel_navigation_request_is_typed_and_bounded() -> None:
     ],
 )
 def test_interaction_copy_is_derived_from_structured_outcome(status, expected):
-    outcome = AgentInteractionOutcome(status=status, command_name="clear_dataset")
+    outcome = AgentInteractionOutcome(status=status, command_name="reset_preprocess")
 
     assert expected in interaction_outcome_message(outcome)
 
@@ -144,12 +144,12 @@ def test_cancelled_interaction_copy_never_claims_completion_or_success() -> None
     visible = interaction_outcome_message(
         AgentInteractionOutcome(
             status=AgentInteractionStatus.CANCELLED,
-            command_name="clear_dataset",
+            command_name="reset_preprocess",
         )
     )
 
     lowered = visible.lower()
-    assert "workspace is unchanged" in lowered
+    assert "workflow is unchanged" in lowered
     assert "background action completed" not in lowered
     assert "success" not in lowered
 

@@ -27,15 +27,6 @@ class MockWorkflowState:
         self.epochs_ready = True
         self.split_spec_saved = False
 
-    def clear_dataset(self) -> None:
-        """Reset the mock session like the real reset-session command."""
-        self.data_loaded = False
-        self.epochs_ready = False
-        self.split_spec_saved = False
-        self.model_name = None
-        self.training_options_configured = False
-        self.training_running = False
-
     def reset_preprocess(self) -> None:
         """Retain loaded raw data while clearing all downstream mock state."""
         self.epochs_ready = False

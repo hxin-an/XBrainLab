@@ -13,7 +13,6 @@ from XBrainLab.llm.tools.mock.analysis_mock import (
 from XBrainLab.llm.tools.mock.dataset_mock import (
     MockApplyInterpretationTool,
     MockAttachLabelsTool,
-    MockClearDatasetTool,
     MockConfigureDatasetSplitTool,
     MockGetDatasetInfoTool,
     MockListFilesTool,
@@ -199,40 +198,6 @@ class TestDatasetMocks:
             message="Error: mapping is required",
             error_type="input",
         )
-
-    def test_clear_dataset(self, study):
-        state = MockWorkflowState(
-            data_loaded=True,
-            epochs_ready=True,
-            split_spec_saved=True,
-            model_name="EEGNet",
-            training_options_configured=True,
-        )
-
-        unconfirmed = MockClearDatasetTool(state).execute(study)
-
-        assert unconfirmed.ok is False
-        assert unconfirmed.error_type == "confirmation_required"
-        assert state.data_loaded is True
-        assert state.split_spec_saved is True
-
-        result = MockClearDatasetTool(state).execute(study, confirmed=True)
-        _assert_tool_result(result, ok=True, message="Dataset cleared.")
-        assert state.data_loaded is False
-        assert state.epochs_ready is False
-        assert state.split_spec_saved is False
-        assert state.model_name is None
-        assert state.training_options_configured is False
-
-    def test_clear_dataset_rejects_non_boolean_confirmation(self, study):
-        state = MockWorkflowState(data_loaded=True)
-
-        result = MockClearDatasetTool(state).execute(study, confirmed="true")
-
-        assert result.ok is False
-        assert result.error_type == "input"
-        assert "must be a boolean" in result.message
-        assert state.data_loaded is True
 
     def test_get_dataset_info(self, study):
         result = MockGetDatasetInfoTool().execute(study)
@@ -662,11 +627,11 @@ class TestTrainingMocks:
             tools["start_training"].execute(study, confirmed=True)
         ).ok
         assert _require_tool_result(
-            tools["clear_dataset"].execute(study, confirmed=True)
+            tools["reset_preprocess"].execute(study, confirmed=True)
         ).ok
-        cleared_start = _require_tool_result(tools["start_training"].execute(study))
-        assert cleared_start.ok is False
-        assert cleared_start.error_type == "precondition"
+        reset_start = _require_tool_result(tools["start_training"].execute(study))
+        assert reset_start.ok is False
+        assert reset_start.error_type == "precondition"
 
 
 class TestAnalysisMocks:

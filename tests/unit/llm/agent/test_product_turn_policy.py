@@ -36,6 +36,10 @@ HISTORICAL_REFERENCE_CLARIFICATION_COPY = (
     "you want, such as preprocess, create EEG epochs, build a dataset, train, evaluate, "
     "or inspect saliency."
 )
+RESET_SESSION_UNAVAILABLE_COPY = (
+    "Reset Session is not available from the interface or Assistant. "
+    "Close and reopen XBrainLab to start over. No session state was changed."
+)
 
 
 def _publication(
@@ -113,6 +117,30 @@ def test_ordinary_no_tool_question_remains_for_language_generation() -> None:
         raise AssertionError("ordinary no-tool questions must not read workflow state")
 
     assert _policy(unexpected_read).evaluate("什麼是 epoch?") is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
+        "Reset the session.",
+        "Clear the dataset and start over.",
+        "請重設工作階段",
+        "幫我清空目前的資料",
+        "Why can't I reset the session?",
+    ),
+)
+def test_reset_session_request_is_unavailable_without_reading_product_state(
+    text: str,
+) -> None:
+    def unexpected_read() -> ApplicationViewPublication:
+        raise AssertionError("retired Reset Session must not read workflow state")
+
+    decision = _policy(unexpected_read).evaluate(text)
+
+    assert decision is not None
+    assert decision.kind is ProductTurnKind.WORKFLOW_UNAVAILABLE
+    assert decision.message == RESET_SESSION_UNAVAILABLE_COPY
+    assert decision.contextual_command is None
 
 
 @pytest.mark.parametrize(

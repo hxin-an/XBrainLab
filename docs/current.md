@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-08-14`
+最後更新：`2026-08-15`
 
 這頁只回答三件事：目前在哪一條整合線、現在能相信什麼、離 handoff 還缺什麼。
 短期施工看 [Now](planning/now.md)，驗證規則看
@@ -8,22 +8,23 @@
 
 ## 一句話
 
-XBrainLab 的可運作 desktop product foundation 已經由 PR `#16` 合回 `main`。目前工作從該
-`main` 建立短 branch，把散落在 repo build、public fixture cache 與 legacy cache 的 EEG datasets
-收斂到 `XBRAINLAB_DATA_DIR/datasets/`；第一階段只 copy、checksum verify 與保留 rollback，不刪舊
-來源，也不把 model、RAG、output 或 logs 混進 dataset hierarchy。
+XBrainLab 的可運作 desktop product foundation 與 dataset-storage consolidation 已合回 `main`。
+目前從最新 `main` 建立短 branch，修復真人手測後續確認的 Subject／Channel primary action、
+Data Split 第二步首次顯示跳動，並從 desktop 與 Assistant 退役會卡住的 Reset Session 入口。
+Backend internal ResetSession command 保留；這條 branch 不改科學計算、split 演算法、channel
+selection 語意或 dataset storage。
 
 ## Current Integration Context
 
 | 項目 | Current truth |
 | --- | --- |
-| Active worktree | Dataset consolidation candidate；實際 branch / SHA 由 Git 取得。repo-root `settings.json` 是不得納入版本控制的使用者本機設定。 |
+| Active worktree | Manual UI regression candidate；實際 branch / SHA 由 Git 取得。repo-root `settings.json` 是不得納入版本控制的使用者本機設定。 |
 | Product baseline | `main` |
-| Current candidate | 從最新 `main` 建立的 dataset-storage consolidation branch；不是 release。 |
+| Current candidate | 從最新 `main` 建立的 manual UI follow-up / Reset Session surface-retirement branch；不是 release。 |
 | Baseline | 以 candidate merge-base 的最新 `main` 為準，不在文件寫死 historical SHA。 |
-| Active goal | 建立單一 dataset hierarchy、relocation-aware manifest 與 copy/verify cutover；P300 Saliency 仍是下一條獨立產品 branch。 |
+| Active goal | 關閉三個真人手測 follow-up：primary/footer truth、Data Split 首幀穩定、desktop／Assistant Reset Session surface 退役。 |
 | Historical ledger | [Product Quality Audit - 2026-07-30](records/product_quality_audit_2026-07-30.md)；只作 provenance，不是 active queue。 |
-| Delivery state | Product-foundation PR `#16` 已以 merge commit 進入 `main`，main exact-head CI 成功。Dataset consolidation 目前是 short-branch checkpoint；只有 PR exact-head CI 成功並 merge 後才進入 baseline，且尚未授權刪除任何舊 dataset source。 |
+| Delivery state | Product foundation 與 dataset storage 已進入 `main`。本輪 follow-up 仍是 short-branch checkpoint；只有 focused evidence、可見 artifact、PR exact-head CI 成功並 merge 後才進入 baseline。舊 dataset source cleanup 仍未授權。 |
 
 其他 registered worktree 不代表 active candidate。需要 inventory 時必須執行
 `git worktree list --porcelain`，不要把數量或 branch 清單手動複製成長期 current truth。
@@ -39,7 +40,7 @@ checkpoint evidence。
 | Data Interpretation | `scan -> preview -> validate -> apply -> recipe` baseline 存在。Selected EEG scope、label-carrier pairing、reviewed placement 和 BIDS task-import boundary 已有實作。BIDS label-field recommendation 以 selected runs 的 bounded row/sidecar evidence、run coverage 與跨 run consistency 為依據；只要任一 selected events table 超過 row 或 byte inspection bound，就停止自動推薦並要求 review。明確使用者選擇仍優先。外部 event values 的第一層 `Use as` 已收斂成 `Training class` / `Do not use`；等待 scan 或重新 matching 時先顯示完整 wizard loading surface。Local-only `p300-multisubject` profile 保存 ds003061 的 `sub-001` 到 `sub-003`、共 9 runs，並保護 exact selected-subject scope；真人手測仍只確認 Graz 2a GDF（A01T/A02T/A03T）與 OpenNeuro ds003061 P300 BIDS。 | Recommendation 是可審查建議，不是 BIDS schema 猜測或自動確認。`Do not use` 只排除 supervised class，不刪除 EEG event。多 subject fixture 與自動化 review 不是三位 subject 的 Windows 真人 acceptance；一個 GDF dataset family 和一個 BIDS dataset 也不能外推為所有 GDF/BIDS、full BIDS validator、任意 P300/SSVEP/clinical/XDF/LSL/MOABB 或 proprietary format 支援。 |
 | Epoch / split / training contract | Epoch context 只接受 reviewed import handoff 與每段 recording 的 matching timing hints；缺少、格式錯誤、讀取失敗、source / placement 不一致，或 selected recordings 的 sampling frequency 不一致時 fail closed，且不改變既有資料；將所有 recordings resample 到同一 sampling frequency 後會重新取得 `Create Epoch` readiness。Duration / event-locked mode 由這份 reviewed handoff 綁定的 event placement 與 duration evidence 產生，不由 dialog 猜測。Split preview 會暫時建立 candidate datasets / masks 以產生摘要，完成後恢復原狀；Confirm 只保存 typed split specification、epoch revision、fingerprint 與 bounded preview summary，`Start Training` 才做 authoritative rematerialization、audit 與 publication。Training Setting 提供 deterministic starting recommendations，並逐欄位保存 trusted user edit 的 manual provenance。 | 這些 contract 已隨 product foundation 合回 `main`，但仍沒有 Windows 真人 acceptance。Split Confirm 不代表 training tensors 或 masks 已發布；recommendations 不是最佳參數、AutoML 或 timed hyperparameter search。 |
 | EEG workflow foundation | `main` 包含 formal BIDS inventory / subject projection、reviewed import、owned long-running work、detached preprocess / epoch preparation、Training preview、Evaluation publication 與 explicit Saliency operation。使用者已回報 PhysionetMI 手動流程可完成；這是重要人工 checkpoint。 | Foundation 已合併不等於完整產品 handoff；該手測不是 exact-head automated receipt，也不能外推為所有 BIDS、所有模型、P300 Saliency 或 Windows native acceptance。 |
-| Assistant | Local-only Assistant、IBM Granite 3.3 2B 選項、tool admission、capability、typed confirmation、decision owner、verification 和 structured result 的工程骨架存在；ApplicationService 仍控制最後 command admission。Standalone debug host 已和 product runtime 對齊 high-impact setting confirmation，walkthrough 也會區分 confirmation card 與 GUI handoff。 | Assistant 目前尚未準備好給老師使用。同一 request 仍可能向 Granite 2B 暴露多個競爭 tool schemas；現有 deterministic walkthrough 不是 real Granite tool-call accuracy、長時間使用或 Windows acceptance。 |
+| Assistant | Local-only Assistant、IBM Granite 3.3 2B 選項、tool admission、capability、typed confirmation、decision owner、verification 和 structured result 的工程骨架存在；ApplicationService 仍控制最後 command admission。Desktop Assistant 不再發布 Reset Session tool；明確 reset session 請求會固定回覆 unavailable 且不讀狀態、不送 confirmation、不執行 mutation。 | Assistant 目前尚未準備好給老師使用。同一 request 仍可能向 Granite 2B 暴露多個競爭 tool schemas；現有 deterministic walkthrough 不是 real Granite tool-call accuracy、長時間使用或 Windows acceptance。Internal backend ResetSession command 與 opt-in MCP compatibility 不屬於本次 surface-retirement claim。 |
 | Privacy / diagnostics | Centralized public diagnostics 會從 default logs、public command/result projection、assistant feedback 和 UI interaction outcome 移除完整私人路徑、常見 subject identifiers 與不安全 control characters；local file sink 有 bounded retention 與 owner-only policy。 | Native Windows/NTFS ACL、junction/reparse replacement、packaged launcher 與 second-account denial仍是平台 acceptance boundary；exact-commit validation 前不能宣稱完整產品 closure。 |
 | Native UI lifecycle | Preprocess close/cancel work 已建立 quiesce / restore checkpoint；`tests/integration/ui/test_preprocess_native_lifecycle.py` 和 `tests/integration/ui/test_native_render_lifecycle.py` 分別保護 Preprocess 與 Visualization native ownership。 | 兩個 gate 不互相替代，也不取代 Windows/WSLg、DPI、interactive 3D、real training close 和長時間操作 acceptance。 |
 | Packaging | Windows launcher / startup automation 存在。 | 不是 signed installer；release sign-off 與真人 click-through 尚未完成。 |

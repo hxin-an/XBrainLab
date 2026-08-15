@@ -575,7 +575,14 @@ class SaliencySpectrogramMapViz(Visualizer):
         self.spectrogram_display_scale = dict(scale_details)
         for diagnostic in prepared.diagnostics:
             logger.debug("Attribution spectrogram diagnostics: %s", diagnostic)
-        logger.info("Attribution spectrogram shared display scale: %s", scale_details)
+        logger.info(
+            "Attribution spectrogram shared display scale: "
+            "scale=%s vmin=%.6g vmax=%.6g over_range_ratio=%.6g",
+            str(scale_details["scale"]),
+            float(scale_details["vmin"]),
+            float(scale_details["vmax"]),
+            float(scale_details["over_range_ratio"]),
+        )
         display_cmap = attribution_colormap(SALIENCY_RED_BLUE_CMAP)
         fig.subplots_adjust(
             left=0.10,

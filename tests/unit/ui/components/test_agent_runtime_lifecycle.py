@@ -1199,14 +1199,14 @@ def test_cancelled_confirmation_has_one_terminal_manager_presentation(
         correlation = _install_host_turn_lease(harness)
         decision = ToolAttemptDecision(
             action=ToolAttemptAction.CONFIRMATION_REQUIRED,
-            command_name="clear_dataset",
+            command_name="reset_preprocess",
             params={},
         )
         request = AgentConfirmationRequest.for_action(
-            command_name="clear_dataset",
+            command_name="reset_preprocess",
             params={},
-            action_label="Clear dataset",
-            description="Start a new session.",
+            action_label="Reset preprocessing",
+            description="Restore the loaded EEG data to its raw state.",
             destructive=True,
             publication_generation=None,
         )
@@ -1240,14 +1240,14 @@ def test_cancelled_confirmation_has_one_terminal_manager_presentation(
         assert len(outcome_spy) == 1
         assert outcome_spy[0][0] == AgentInteractionOutcome(
             status=AgentInteractionStatus.CANCELLED,
-            command_name="clear_dataset",
+            command_name="reset_preprocess",
             request_id=request.request_id,
         )
         visible = harness.manager.chat_controller.messages[0]["content"]
         assert visible == (
-            "Dataset removal cancelled. Your current workspace is unchanged."
+            "Preprocessing reset cancelled. Your current workflow is unchanged."
         )
-        assert "workspace is unchanged" in visible
+        assert "workflow is unchanged" in visible
         assert "background action completed" not in visible.lower()
         assert controller._tool_attempt_session.execution_count == 0
 

@@ -18,7 +18,6 @@ from XBrainLab.llm.tools.definitions.analysis_def import (
 from XBrainLab.llm.tools.definitions.dataset_def import (
     BaseApplyInterpretationTool,
     BaseAttachLabelsTool,
-    BaseClearDatasetTool,
     BaseConfigureDatasetSplitTool,
     BaseGetDatasetInfoTool,
     BaseListFilesTool,
@@ -69,7 +68,6 @@ def _get_all_def_classes():
         BaseReloadInterpretationRecipeTool,
         BaseLoadDataTool,
         BaseAttachLabelsTool,
-        BaseClearDatasetTool,
         BaseQueryStateTool,
         BaseGetDatasetInfoTool,
         BaseConfigureDatasetSplitTool,
@@ -148,12 +146,6 @@ EXPECTED_TOOL_CONTRACTS = {
         "description_markers": ("Legacy compatibility", "labels/events"),
         "properties": ("mapping", "label_format", "selected_event_names"),
         "required": ("mapping",),
-    },
-    BaseClearDatasetTool: {
-        "name": "clear_dataset",
-        "description_markers": ("Clear all loaded data", "Study state"),
-        "properties": (),
-        "required": (),
     },
     BaseQueryStateTool: {
         "name": "query_state",
@@ -515,10 +507,6 @@ class TestDataInterpretationDefinitions:
 
 class TestRequiresConfirmation:
     """Verify that dangerous tools require user confirmation."""
-
-    def test_clear_dataset_requires_confirmation(self):
-        val = _property_value(BaseClearDatasetTool.requires_confirmation)
-        assert val is True
 
     def test_start_training_requires_confirmation(self):
         val = _property_value(BaseStartTrainingTool.requires_confirmation)

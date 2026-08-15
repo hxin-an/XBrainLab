@@ -90,8 +90,8 @@ def test_workflow_status_uses_typed_turn_activity(activity, expected):
 def test_activity_message_cannot_override_the_typed_phase() -> None:
     activity = AssistantTurnActivity(
         phase=AssistantTurnActivityPhase.THINKING,
-        command_name="clear_dataset",
-        message="Executing: clear_dataset failed while waiting for confirmation",
+        command_name="reset_preprocess",
+        message="Executing: reset_preprocess failed while waiting for confirmation",
     )
 
     assert AgentPresentationService.workflow_status(activity) == "Thinking"

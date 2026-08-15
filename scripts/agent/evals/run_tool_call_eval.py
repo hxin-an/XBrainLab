@@ -497,14 +497,15 @@ def build_eval_cases() -> list[EvalCase]:
         ),
         EvalCase(
             "reset-request-confirmation",
-            "Reset request is destructive and asks for confirmation",
+            "Reset request explains the retired product surface",
             "dataset_without_training_config",
             ["Reset this session and clear the dataset."],
             "reset_session",
-            [ExpectedToolCall("clear_dataset", {})],
             expected_blocked=True,
-            expected_confirmation_required=True,
-            expected_reason_terms=["requires confirmation"],
+            expected_reason_terms=[
+                "not available from the interface or Assistant",
+                "No session state was changed",
+            ],
         ),
         EvalCase(
             "saliency-before-trained-block",
@@ -1410,14 +1411,15 @@ def build_eval_cases() -> list[EvalCase]:
         ),
         EvalCase(
             "training-ready-reset-confirmation",
-            "Reset from training-ready state is a confirmation boundary",
+            "Reset from training-ready state explains the retired product surface",
             "training_ready",
             ["Reset this session."],
             "reset_session",
-            [ExpectedToolCall("clear_dataset", {})],
             expected_blocked=True,
-            expected_confirmation_required=True,
-            expected_reason_terms=["requires confirmation"],
+            expected_reason_terms=[
+                "not available from the interface or Assistant",
+                "No session state was changed",
+            ],
         ),
         EvalCase(
             "trained-visualize-ready-summary",
@@ -1655,15 +1657,16 @@ def build_eval_cases() -> list[EvalCase]:
         ),
         EvalCase(
             "zh-reset-confirmation",
-            "Chinese reset request reaches confirmation boundary",
+            "Chinese reset request explains the retired product surface",
             "training_ready",
             ["重設這個 session"],
             "reset_session",
-            [ExpectedToolCall("clear_dataset", {})],
             expected_blocked=True,
-            expected_confirmation_required=True,
-            expected_reason_terms=["requires confirmation"],
-            families=("chinese", "confirmation_boundary", "destructive"),
+            expected_reason_terms=[
+                "not available from the interface or Assistant",
+                "No session state was changed",
+            ],
+            families=("chinese", "blocked_state", "destructive"),
         ),
         EvalCase(
             "mixed-preview-subject-session",
@@ -2305,16 +2308,18 @@ def predict_case(case: EvalCase) -> Prediction:
         )
 
     if intent == "reset_session":
-        capability = policy.get(CommandName.RESET_SESSION)
         return Prediction(
             intent=intent,
-            tool_calls=[PredictedToolCall("clear_dataset", {})],
-            blocked=capability.confirmation_required,
-            confirmation_required=capability.confirmation_required,
+            tool_calls=[],
+            blocked=True,
             blocked_reason=(
-                "Resetting the session requires confirmation."
-                if capability.confirmation_required
-                else ""
+                "Reset Session is not available from the interface or Assistant. "
+                "No session state was changed."
+            ),
+            final_message=(
+                "Reset Session is not available from the interface or Assistant. "
+                "Close and reopen XBrainLab to start over. "
+                "No session state was changed."
             ),
         )
 

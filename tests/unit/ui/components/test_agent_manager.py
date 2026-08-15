@@ -3168,7 +3168,7 @@ class TestAgentManagerMethods:
         agent_mgr.chat_panel = MagicMock()
         correlation = _admit_ui_turn(agent_mgr)
         request = AgentConfirmationRequest.for_action(
-            command_name="clear_dataset",
+            command_name="reset_preprocess",
             params={},
             action_label="Clear dataset",
             description="Clear the current dataset.",

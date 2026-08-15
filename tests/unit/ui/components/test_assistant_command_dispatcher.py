@@ -53,7 +53,7 @@ def _launch_spec() -> AssistantRuntimeLaunchSpec:
 
 def _confirmation() -> AgentConfirmationResolution:
     request = AgentConfirmationRequest.for_action(
-        command_name="clear_dataset",
+        command_name="reset_preprocess",
         params={},
         action_label="Clear dataset",
         description="Clear the current dataset.",

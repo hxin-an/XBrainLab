@@ -56,10 +56,10 @@ def test_confirmation_request_never_hides_reviewable_parameter_values() -> None:
 
 def test_confirmation_resolution_preserves_request_correlation() -> None:
     request = AgentConfirmationRequest.for_action(
-        command_name="clear_dataset",
+        command_name="destructive_probe",
         params={"confirmed": False},
-        action_label="Clear dataset",
-        description="Remove loaded data from this workspace.",
+        action_label="Run destructive probe",
+        description="Exercise destructive confirmation correlation.",
         destructive=True,
         publication_generation=4,
         request_id="confirmation-1",
@@ -78,10 +78,10 @@ def test_confirmation_resolution_preserves_request_correlation() -> None:
 
 def test_confirmation_resolution_rejects_stale_request_or_generation() -> None:
     request = AgentConfirmationRequest.for_action(
-        command_name="clear_dataset",
+        command_name="destructive_probe",
         params={},
-        action_label="Clear dataset",
-        description="Remove loaded data.",
+        action_label="Run destructive probe",
+        description="Exercise destructive confirmation correlation.",
         destructive=True,
         publication_generation=4,
         request_id="confirmation-1",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from time import monotonic, sleep
@@ -93,6 +94,32 @@ def test_normalized_spectrogram_uses_one_zero_to_one_scale() -> None:
     assert norm.vmax == pytest.approx(1.0)
     assert label == "Normalized attribution magnitude"
     assert details["scale"] == "normalized"
+
+
+def test_spectrogram_shared_scale_log_uses_bounded_scalar_fields() -> None:
+    rendered_messages: list[str] = []
+
+    class _MessageHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            rendered_messages.append(record.getMessage())
+
+    handler = _MessageHandler()
+    spectrogram_module.logger.addHandler(handler)
+    figure = None
+
+    try:
+        figure = SaliencySpectrogramMapViz(_render_data()).get_plt(method="Gradient")
+        rendered = "\n".join(rendered_messages)
+        assert "Attribution spectrogram shared display scale" in rendered
+        assert "scale=" in rendered
+        assert "vmin=" in rendered
+        assert "vmax=" in rendered
+        assert "over_range_ratio=" in rendered
+        assert "[UNSUPPORTED_VALUE]" not in rendered
+    finally:
+        spectrogram_module.logger.removeHandler(handler)
+        if figure is not None:
+            plt.close(figure)
 
 
 def test_spectrogram_normalize_toggle_reuses_stft_and_preserves_dtype() -> None:

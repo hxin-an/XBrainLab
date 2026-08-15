@@ -415,27 +415,6 @@
                     "view_mode": "saliency_map"
                 }
             }
-        },
-        {
-            "tool": "clear_dataset",
-            "params": {},
-            "confirmed": true,
-            "expected": {
-                "ok": true,
-                "command_name": "reset_session",
-                "changed_state": {
-                    "raw_changed": true,
-                    "preprocessed_changed": true,
-                    "epoch_changed": true,
-                    "datasets_changed": true,
-                    "training_changed": true,
-                    "visualization_changed": true
-                },
-                "state": {
-                    "pipeline_stage": "empty",
-                    "raw.loaded": false
-                }
-            }
         }
     ]
 }

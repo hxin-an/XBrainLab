@@ -319,7 +319,7 @@ class TestStageConfig:
         assert "set_model" in tools
         assert "configure_training" in tools
         assert "start_training" in tools
-        assert "clear_dataset" in tools
+        assert "clear_dataset" not in tools
         # No preprocess tools
         assert "apply_bandpass_filter" not in tools
         assert "apply_standard_preprocess" not in tools

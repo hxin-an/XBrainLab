@@ -146,6 +146,31 @@ def test_state_questions_are_answer_cases_without_unpublished_query_tool() -> No
         assert case.expected_verification_result == "no_tool"
 
 
+def test_reset_requests_are_blocked_without_exposing_the_retired_tool() -> None:
+    cases = {case.case_id: case for case in build_eval_cases()}
+
+    for case_id in (
+        "reset-request-confirmation",
+        "training-ready-reset-confirmation",
+        "zh-reset-confirmation",
+    ):
+        case = cases[case_id]
+        prediction = predict_case(case)
+
+        assert case.expected_intent == "reset_session"
+        assert case.expected_tools == []
+        assert case.expected_blocked is True
+        assert case.expected_confirmation_required is False
+        assert prediction.intent == "reset_session"
+        assert prediction.tool_calls == []
+        assert prediction.blocked is True
+        assert prediction.confirmation_required is False
+        assert "not available from the interface or Assistant" in (
+            prediction.final_message
+        )
+        assert "No session state was changed" in prediction.final_message
+
+
 def test_blocked_workflow_question_keeps_target_intent_without_calling_tool() -> None:
     case = {case.case_id: case for case in build_eval_cases()}[
         "no-tool-why-train-blocked"

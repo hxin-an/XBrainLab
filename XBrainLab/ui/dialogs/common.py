@@ -45,6 +45,11 @@ def normalize_dialog_button_box(
                 button.setObjectName("PrimaryConfirmButton")
             else:
                 button.setObjectName("SecondaryDialogButton")
+            style = button.style()
+            if style is not None:
+                style.unpolish(button)
+                style.polish(button)
+            button.update()
 
 
 def configure_dark_table(

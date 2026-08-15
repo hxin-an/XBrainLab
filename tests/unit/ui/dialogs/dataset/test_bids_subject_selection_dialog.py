@@ -1,9 +1,11 @@
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QAbstractItemView
 
 from XBrainLab.ui.dialogs.dataset.bids_subject_selection_dialog import (
     BidsSubjectSelectionDialog,
 )
+from XBrainLab.ui.styles.theme import Theme
 
 
 def _subject(
@@ -33,6 +35,47 @@ def _catalog(*subjects: dict[str, object]) -> dict[str, object]:
         "subjects": list(subjects),
         "warnings": [],
     }
+
+
+def _button_contains_color(button, color: str) -> bool:
+    image = button.grab().toImage()
+    expected = QColor(color)
+    matching = 0
+    sampled = 0
+    for x in range(4, max(image.width() - 4, 4)):
+        for y in range(4, max(image.height() - 4, 4)):
+            sampled += 1
+            pixel = image.pixelColor(x, y)
+            if (
+                abs(pixel.red() - expected.red()) <= 3
+                and abs(pixel.green() - expected.green()) <= 3
+                and abs(pixel.blue() - expected.blue()) <= 3
+            ):
+                matching += 1
+    return sampled > 0 and matching / sampled >= 0.2
+
+
+def test_continue_renders_as_the_primary_action_across_enabled_states(qtbot) -> None:
+    dialog = BidsSubjectSelectionDialog(
+        None,
+        catalog=_catalog(_subject("01", eeg_file_count=1, runs=["1"])),
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.waitUntil(lambda: dialog.continue_button.isVisible())
+
+    assert dialog.continue_button.text() == "Continue"
+    assert dialog.continue_button.objectName() == "PrimaryConfirmButton"
+    assert dialog.continue_button.isEnabled()
+    assert _button_contains_color(dialog.continue_button, Theme.BLUE_PRIMARY)
+
+    dialog.subject_table.item(0, 0).setCheckState(Qt.CheckState.Unchecked)
+    qtbot.waitUntil(lambda: not dialog.continue_button.isEnabled())
+    assert not _button_contains_color(dialog.continue_button, Theme.BLUE_PRIMARY)
+
+    dialog.subject_table.item(0, 0).setCheckState(Qt.CheckState.Checked)
+    qtbot.waitUntil(lambda: dialog.continue_button.isEnabled())
+    assert _button_contains_color(dialog.continue_button, Theme.BLUE_PRIMARY)
 
 
 def test_one_subject_is_the_conservative_default_and_keyboard_operable(qtbot) -> None:

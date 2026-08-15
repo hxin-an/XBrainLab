@@ -48,9 +48,9 @@ _SAFETY_DIAGNOSTIC_STATES = frozenset(
         "unknown",
     }
 )
-if len(EXPECTED_TOOL_NAMES) != 31 or len(EXPECTED_TOOL_NAME_SET) != 31:
+if len(EXPECTED_TOOL_NAMES) != 30 or len(EXPECTED_TOOL_NAME_SET) != 30:
     raise RuntimeError(
-        "Canonical Real tool surface must contain exactly 31 unique tools."
+        "Canonical Real tool surface must contain exactly 30 unique tools."
     )
 
 

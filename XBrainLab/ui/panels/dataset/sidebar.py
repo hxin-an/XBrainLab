@@ -1,7 +1,7 @@
 """Sidebar widget for the dataset panel: info and primary dataset actions."""
 
 from collections.abc import Callable
-from typing import Any, Protocol, cast
+from typing import Any
 
 from PyQt6.QtCore import QEvent, Qt, QTimer
 from PyQt6.QtWidgets import (
@@ -21,7 +21,6 @@ from XBrainLab.backend.application.commands import (
     PreprocessCommand,
     PreprocessOperation,
     QueryStateCommand,
-    ResetSessionCommand,
 )
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
@@ -46,7 +45,14 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 ChannelSelectionDialog: Any | None = None
 _SIDEBAR_WIDTH = 260
-_ACTION_TEXT_HORIZONTAL_PADDING = 30
+_ACTION_TEXT_HORIZONTAL_PADDING = 26
+_DATASET_SIDEBAR_BUTTON_STYLE = f"""
+    {Stylesheets.SIDEBAR_BTN}
+    QPushButton {{
+        padding-left: {_ACTION_TEXT_HORIZONTAL_PADDING // 2}px;
+        padding-right: {_ACTION_TEXT_HORIZONTAL_PADDING // 2}px;
+    }}
+"""
 _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE = (
     "Data interpretation availability is unavailable right now."
 )
@@ -62,15 +68,6 @@ _SMART_PARSE_AVAILABILITY_UNAVAILABLE = (
 _LABEL_IMPORT_AVAILABILITY_UNAVAILABLE = (
     "Label import availability is unavailable right now."
 )
-_SESSION_RESET_AVAILABILITY_UNAVAILABLE = (
-    "Session reset availability is unavailable right now."
-)
-
-
-class _EpochStatePort(Protocol):
-    """Compatibility controller contract for reading epoch availability."""
-
-    def is_epoched(self) -> bool: ...
 
 
 def _channel_selection_dialog_class():
@@ -87,8 +84,8 @@ def _channel_selection_dialog_class():
 class DatasetSidebar(QWidget):
     """Sidebar for ``DatasetPanel`` containing information and action controls.
 
-    Hosts an aggregate info panel, primary import buttons, channel selection,
-    and a reset-session button. Metadata parsing and external labels live in
+    Hosts an aggregate info panel, primary import buttons, and channel selection.
+    Metadata parsing and external labels live in
     the Data Import wizard; the old post-load label button is retained only as
     hidden compatibility wiring for tests and compatibility adapters.
 
@@ -102,7 +99,6 @@ class DatasetSidebar(QWidget):
         import_label_btn: Hidden compatibility button for old label attachment.
         smart_parse_btn: Hidden compatibility button to auto-extract metadata.
         chan_select_btn: Button to open channel selection dialog.
-        clear_btn: Destructive button that resets the active EEG session.
 
     """
 
@@ -184,7 +180,7 @@ class DatasetSidebar(QWidget):
         self.import_btn.setToolTip(
             "Choose EEG files, review metadata and labels, then import"
         )
-        self.import_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.import_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
         self.import_btn.clicked.connect(self.panel.action_handler.import_data)
         self.ops_layout.addWidget(self.import_btn, 0, 0)
 
@@ -192,7 +188,7 @@ class DatasetSidebar(QWidget):
         self.import_folder_btn.setToolTip(
             "Choose an EEG folder, review metadata and labels, then import",
         )
-        self.import_folder_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.import_folder_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
         self.import_folder_btn.clicked.connect(
             self.panel.action_handler.import_folder_source,
         )
@@ -203,7 +199,7 @@ class DatasetSidebar(QWidget):
         self.import_bids_btn.setToolTip(
             "Choose a BIDS EEG folder and review detected metadata and events",
         )
-        self.import_bids_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.import_bids_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
         self.import_bids_btn.clicked.connect(
             self.panel.action_handler.import_bids_source,
         )
@@ -213,7 +209,7 @@ class DatasetSidebar(QWidget):
         self.reload_recipe_btn.setToolTip(
             "Review a saved import recipe before applying it",
         )
-        self.reload_recipe_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.reload_recipe_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
         self.reload_recipe_btn.clicked.connect(
             self.panel.action_handler.reload_interpretation_recipe,
         )
@@ -229,7 +225,7 @@ class DatasetSidebar(QWidget):
 
         self.smart_parse_btn = QPushButton("Smart Parse Metadata", self.ops_group)
         self.smart_parse_btn.setToolTip("Auto-extract Subject/Session from filenames")
-        self.smart_parse_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.smart_parse_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
         self.smart_parse_btn.clicked.connect(
             self.panel.action_handler.open_smart_parser,
         )
@@ -247,22 +243,16 @@ class DatasetSidebar(QWidget):
 
         self.import_label_btn = QPushButton("Add labels")
         self.import_label_btn.setToolTip("Attach labels to the loaded EEG data")
-        self.import_label_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.import_label_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
         self.import_label_btn.clicked.connect(self.panel.action_handler.import_label)
         self.import_label_btn.setVisible(False)
         self.exec_layout.addWidget(self.import_label_btn)
 
         self.chan_select_btn = QPushButton("Channels")
         self.chan_select_btn.setToolTip("Select specific channels to keep")
-        self.chan_select_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.chan_select_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
         self.chan_select_btn.clicked.connect(self.open_channel_selection)
         self.exec_layout.addWidget(self.chan_select_btn)
-
-        self.clear_btn = QPushButton("Reset Session")
-        self.clear_btn.setStyleSheet(Stylesheets.BTN_DANGER)
-        self.clear_btn.setToolTip("No active session to reset.")
-        self.clear_btn.clicked.connect(self.clear_dataset)
-        self.exec_layout.addWidget(self.clear_btn)
 
         layout.addWidget(exec_group)
 
@@ -276,7 +266,6 @@ class DatasetSidebar(QWidget):
             self.smart_parse_btn,
             self.import_label_btn,
             self.chan_select_btn,
-            self.clear_btn,
         )
         for button in self._action_buttons:
             full_label = button.text()
@@ -359,7 +348,6 @@ class DatasetSidebar(QWidget):
                 self.smart_parse_btn: _SMART_PARSE_AVAILABILITY_UNAVAILABLE,
                 self.import_label_btn: _LABEL_IMPORT_AVAILABILITY_UNAVAILABLE,
                 self.chan_select_btn: _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE,
-                self.clear_btn: _SESSION_RESET_AVAILABILITY_UNAVAILABLE,
             }
             for button, tooltip in unavailable_actions.items():
                 button.setEnabled(False)
@@ -375,8 +363,6 @@ class DatasetSidebar(QWidget):
             button.setEnabled(True)
         self.chan_select_btn.setEnabled(False)
         self.chan_select_btn.setToolTip("Import EEG data before selecting channels.")
-        self.clear_btn.setEnabled(False)
-        self.clear_btn.setToolTip("No active session to reset.")
 
     def _uses_startup_bootstrap_state(self) -> bool:
         """Avoid constructing the full command spine for first-paint decoration."""
@@ -446,11 +432,6 @@ class DatasetSidebar(QWidget):
             )
             import_label_capability = (
                 capabilities.get(CommandName.IMPORT_LABELS)
-                if capabilities is not None
-                else None
-            )
-            reset_capability = (
-                capabilities.get(CommandName.RESET_SESSION)
                 if capabilities is not None
                 else None
             )
@@ -644,65 +625,9 @@ class DatasetSidebar(QWidget):
                     "Add labels to loaded data and update the current recipe trace.",
                 )
 
-            clear_enabled, clear_tooltip = (
-                self._clear_dataset_availability_for_capability(reset_capability)
-            )
-            self.clear_btn.setEnabled(clear_enabled)
-            self.clear_btn.setToolTip(clear_tooltip)
             self._fit_action_labels()
 
     # --- Actions moved from Panel ---
-
-    def _clear_dataset_availability(self) -> tuple[bool, str]:
-        reset_capability = get_command_capability(self, CommandName.RESET_SESSION)
-        return self._clear_dataset_availability_for_capability(reset_capability)
-
-    def _clear_dataset_availability_for_capability(
-        self,
-        reset_capability,
-    ) -> tuple[bool, str]:
-        if reset_capability is None:
-            if has_real_application_context(self):
-                return False, _SESSION_RESET_AVAILABILITY_UNAVAILABLE
-            available, has_data = self._compatibility_controller_value(
-                self._compatibility_has_clearable_data,
-            )
-            if not available:
-                return False, "Dataset state is unavailable right now."
-            return (
-                bool(has_data),
-                "Clear all loaded data and start over."
-                if has_data
-                else "No active session to reset.",
-            )
-        if not reset_capability.enabled:
-            return False, blocked_reason(
-                reset_capability,
-                "Session cannot be reset right now.",
-            )
-        has_active_session = bool(
-            reset_capability.confirmation_required
-            or reset_capability.requires_confirmation
-        )
-        return (
-            has_active_session,
-            "Clear all loaded data and start over."
-            if has_active_session
-            else "No active session to reset.",
-        )
-
-    def _compatibility_has_clearable_data(self) -> bool:
-        return self._compatibility_has_epoch_data()
-
-    def _compatibility_has_epoch_data(self) -> bool:
-        if self.controller is None:
-            return False
-        controller = cast(_EpochStatePort, self.controller)
-        is_epoched = getattr(controller, "is_epoched", None)
-        if callable(is_epoched):
-            result = is_epoched()
-            return result if isinstance(result, bool) else False
-        return False
 
     def _compatibility_loaded_data_list_for_channel_selection(self) -> list[str] | None:
         available, data_list = self._compatibility_controller_value(
@@ -727,7 +652,7 @@ class DatasetSidebar(QWidget):
         """Open the channel selection dialog.
 
         Blocked if the dataset is locked or no data is loaded.
-        Shows a confirmation prompt before applying.
+        The dialog's OK action is the single confirmation before applying.
         """
         if self.controller is None and not has_real_application_context(self):
             return
@@ -786,21 +711,9 @@ class DatasetSidebar(QWidget):
                     "Action Blocked",
                     "Dataset is locked because a data operation has "
                     "been applied.\n"
-                    "Please 'Reset All Preprocessing' to undo Channel Selection or "
-                    "'Reset Session' to start over.",
+                    "Use 'Reset All Preprocessing' before changing channels.",
                 )
                 return
-
-        reply = QMessageBox.question(
-            self,
-            "Warning",
-            "Performing Channel Selection will modify the dataset.\n"
-            "You can undo this later using 'Reset All Preprocessing'.\n\n"
-            "Do you want to proceed?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if reply == QMessageBox.StandardButton.No:
-            return
 
         channels = self._loaded_data_list_for_channel_selection(
             preprocess_capability,
@@ -886,82 +799,3 @@ class DatasetSidebar(QWidget):
         return (
             [str(channel) for channel in channels] if isinstance(channels, list) else []
         )
-
-    def clear_dataset(self):
-        """Prompt the user and reset the entire active EEG session."""
-        publication = get_application_view_publication(self)
-        if publication is None and has_real_application_context(self):
-            self._show_status(_SESSION_RESET_AVAILABILITY_UNAVAILABLE)
-            return
-        reset_capability = (
-            publication.effective_capabilities.get(CommandName.RESET_SESSION)
-            if publication is not None
-            else get_command_capability(self, CommandName.RESET_SESSION)
-        )
-        clear_enabled, clear_tooltip = self._clear_dataset_availability_for_capability(
-            reset_capability
-        )
-        if not clear_enabled:
-            self._show_status(clear_tooltip)
-            return
-
-        if reset_capability is not None and not reset_capability.enabled:
-            QMessageBox.warning(
-                self,
-                "Reset Session Blocked",
-                blocked_reason(
-                    reset_capability,
-                    "Session cannot be reset right now.",
-                ),
-            )
-            return
-
-        needs_confirmation = reset_capability is None or (
-            reset_capability.confirmation_required
-            or reset_capability.requires_confirmation
-        )
-        if needs_confirmation:
-            reply = QMessageBox.question(
-                self,
-                "Confirm Reset",
-                "Clear all loaded data and start over?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            )
-            if reply != QMessageBox.StandardButton.Yes:
-                return
-
-        try:
-            result = execute_application_command(
-                self,
-                ResetSessionCommand(confirmed=True),
-                expected_publication_generation=(
-                    publication.generation if publication is not None else None
-                ),
-            )
-            if result is None:
-                QMessageBox.warning(
-                    self,
-                    "Reset Session Blocked",
-                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-                )
-                return
-            elif is_stale_publication_result(result):
-                QMessageBox.warning(
-                    self,
-                    "Review Reset Session Again",
-                    result.message,
-                )
-                return
-            elif result.failed:
-                QMessageBox.critical(
-                    self,
-                    "Error",
-                    f"Failed to reset session: {result.message}",
-                )
-                return
-            self._show_status("Session reset")
-        except Exception:
-            present_unexpected_error(
-                self,
-                UnexpectedErrorContext.DATASET_SESSION_RESET,
-            )

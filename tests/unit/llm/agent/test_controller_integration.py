@@ -37,7 +37,6 @@ EXPECTED_CONTROLLER_TOOL_NAMES = (
     "reload_interpretation_recipe",
     "load_data",
     "attach_labels",
-    "clear_dataset",
     "query_state",
     "get_dataset_info",
     "configure_dataset_split",
@@ -97,7 +96,7 @@ class _LateGenerationEmitter(QThread):
         self._release.wait(timeout=2.0)
         self.chunk.emit(
             self._generation_id,
-            '{"tool_name":"clear_dataset","parameters":{}}',
+            '{"tool_name":"query_state","parameters":{"query":"state"}}',
         )
         self.generation_finished.emit(self._generation_id, [])
         self.generation_error.emit(self._generation_id, "late turn A failure")
@@ -448,7 +447,7 @@ def test_late_generation_events_cannot_mutate_the_next_host_turn(
     controller.handle_user_turn(
         AssistantTurnRequest.single_action(
             correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
-            text="clear the current dataset",
+            text="summarize the current dataset",
         )
     )
     qtbot.waitUntil(lambda: len(generation_requests) == 1, timeout=2_000)

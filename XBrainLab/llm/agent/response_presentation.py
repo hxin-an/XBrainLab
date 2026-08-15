@@ -232,9 +232,6 @@ def interaction_outcome_message(outcome: AgentInteractionOutcome) -> str:
         return f"Approved: {label}. XBrainLab is starting the action."
     if outcome.status is AgentInteractionStatus.CANCELLED:
         cancelled_copy = {
-            "clear_dataset": (
-                "Dataset removal cancelled. Your current workspace is unchanged."
-            ),
             "clear_datasets": (
                 "Dataset removal cancelled. Your current workspace is unchanged."
             ),
@@ -243,9 +240,6 @@ def interaction_outcome_message(outcome: AgentInteractionOutcome) -> str:
             ),
             "reset_preprocess": (
                 "Preprocessing reset cancelled. Your current workflow is unchanged."
-            ),
-            "reset_session": (
-                "Session reset cancelled. Your current workflow is unchanged."
             ),
             "new_session": (
                 "Session reset cancelled. Your current workflow is unchanged."

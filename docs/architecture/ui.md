@@ -151,7 +151,7 @@ blocked reason copy、command execution、post-command refresh，以及 mock / c
 | UI area | Backend truth | 現況 |
 | --- | --- | --- |
 | Data Import / recipe | `scan_source`、`preview_interpretation`、`validate_interpretation`、`apply_interpretation`、`reload_interpretation_recipe` | real `Study` 走 command sequence；BIDS label-field 建議顯示 selected-run bounded evidence，不從單一 run 或 UI 欄位順序猜測。direct file import fallback 只留給 no-service mock / compatibility context。 |
-| Dataset edit actions | `update_metadata`、`apply_smart_parse`、`remove_files`、`import_labels`、`reset_session` | confirmed mutation 走 command；table render 和 channel dialog 在 real `Study` 讀 `QueryStateCommand(data_lists)`。 |
+| Dataset edit actions | `update_metadata`、`apply_smart_parse`、`remove_files`、`import_labels` | confirmed mutation 走 command；table render 和 channel dialog 在 real `Study` 讀 `QueryStateCommand(data_lists)`。Dataset sidebar 不再提供 Reset Session。 |
 | Preprocess / epoch | `preprocess`、`create_epoch` | filter / resample / rereference / normalize / epoch 走 owned command；epoch dialog 只讀 reviewed import handoff 綁定的 context。Visible action / status bar 顯示 matching operation stage，Cancel 後同一 workflow 可重試。 |
 | Dataset split / training config | `configure_dataset_split`、`clear_datasets`、`configure_training` | split Confirm 只保存 specification / fingerprint / preview receipt；model selection 與 training settings defaults 不再以 stale controller echo 判定 service success。 |
 | Training | `train`、`stop_training` | enabled capability 直接 dispatch confirmed owned command；Stop 是 lock-independent control acknowledgement，terminal state仍由 matching training publication 決定。controller running checks 只在 no-capability fallback。 |
@@ -318,8 +318,8 @@ Assistant 不是直接塞在 `MainWindow` 內部，而是由 `AgentManager` 管�
 - 第一層 controls 收斂到 dock title bar：`XBrainLab`、retry icon、new conversation、
   settings menu、float/dock。`Clear conversation` 收進 settings menu；workflow / runtime
   details 放在 main status bar、tooltip、settings 或非 transcript diagnostics。
-- 第一層 UI 不顯示 raw command names，例如 `load_data`、`configure_training`、
-  `reset_session`；主介面顯示 `Load EEG data`、`Train model` 這類使用者語言。raw command
+- 第一層 UI 不顯示 raw command names，例如 `load_data`、`configure_training`；主介面顯示
+  `Load EEG data`、`Train model` 這類使用者語言。Reset Session 已從 desktop surface 移除；raw command
   diagnostics 只放在 tooltip / advanced details。
 - `Coder / Local / Multi`、`Assistant mode`、`Step behavior`、`Step by step`、
   `Continue safely` 這類尚未成為正式產品 workflow 的開發者語言，不得出現在第一層 UI。
