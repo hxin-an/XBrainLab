@@ -17423,3 +17423,24 @@
   the Qt event loop was active, including logging and diagnostic infrastructure. The injection is
   now limited to the intended cache root while all other paths delegate to the real resolver;
   exactly-once terminal, thread deletion, redaction and idle assertions remain unchanged.
+
+## 2026-08-15 - Manual UI follow-ups v2 checkpoint
+
+- PR `#19` passed every non-skipped exact-head check and was merged into `main`; this new short
+  branch starts from that merge and preserves repo-root `settings.json` as an unstaged local setting.
+- Four user-observed follow-ups were reproduced test-first and kept within three bounded owners:
+  Training Settings, BIDS Subject and Channel Selection opt into Cancel-left / primary-right footer
+  ordering; Visualization projects only publication-backed computed Saliency methods while keeping
+  pending compute intent separate; Channel Selection tolerates only BIDS montage advisory drift and
+  retains fail-closed behavior for material dataset changes.
+- Independent review found and then closed two Channel race/copy gaps: the dialog now reads channels
+  from the same captured publication instead of issuing a second generation-bound query, and true
+  stale results distinguish changed raw/source identity from metadata-only dataset changes. A real
+  `execute_application_command` regression protects the reviewed-boundary runtime seam.
+- Dirty-tree integration evidence after review: ApplicationService/runtime `298 passed`; directly
+  affected Dataset/UI/Visualization suites `326 passed`; focused reviewer follow-ups `14 passed`;
+  scoped Ruff, Ruff format, Basedpyright (`0 errors, 0 warnings`) and `git diff --check` passed; strict
+  MkDocs build passed.
+- Claim boundary: these are pre-commit Linux/offscreen results. Exact-commit artifacts, canonical
+  required multi-dataset evidence, pushed PR CI and Windows native 100%/125% DPI acceptance remain
+  required before handoff-ready status.

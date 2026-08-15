@@ -8,11 +8,11 @@
 
 ## 一句話
 
-XBrainLab 的可運作 desktop product foundation 與 dataset-storage consolidation 已合回 `main`。
-目前從最新 `main` 建立短 branch，修復真人手測後續確認的 Subject／Channel primary action、
-Data Split 第二步首次顯示跳動，並從 desktop 與 Assistant 退役會卡住的 Reset Session 入口。
-Backend internal ResetSession command 保留；這條 branch 不改科學計算、split 演算法、channel
-selection 語意或 dataset storage。
+XBrainLab 的可運作 desktop product foundation、dataset-storage consolidation 與第一輪 manual UI
+regressions 已合回 `main`。目前從最新 `main` 建立短 branch，修復 Training／BIDS／Channel 三個
+明確 dialog 的 primary action 順序、Visualization 已計算 Saliency method 的精準投影，以及 BIDS
+montage 背景 publication 對 Channel Selection 造成的假 stale rejection。這條 branch 不改 Saliency
+數學、channel selection 語意、Reset Session、Data Split 或 dataset storage。
 
 ## Current Integration Context
 
@@ -20,9 +20,9 @@ selection 語意或 dataset storage。
 | --- | --- |
 | Active worktree | Manual UI regression candidate；實際 branch / SHA 由 Git 取得。repo-root `settings.json` 是不得納入版本控制的使用者本機設定。 |
 | Product baseline | `main` |
-| Current candidate | 從最新 `main` 建立的 manual UI follow-up / Reset Session surface-retirement branch；不是 release。 |
+| Current candidate | 從最新 `main` 建立的 manual UI follow-up v2 branch；不是 release。 |
 | Baseline | 以 candidate merge-base 的最新 `main` 為準，不在文件寫死 historical SHA。 |
-| Active goal | 關閉三個真人手測 follow-up：primary/footer truth、Data Split 首幀穩定、desktop／Assistant Reset Session surface 退役。 |
+| Active goal | 關閉四個真人手測 follow-up：三個 opt-in footer 順序、computed Saliency method projection、Channel montage-only false stale rejection。 |
 | Historical ledger | [Product Quality Audit - 2026-07-30](records/product_quality_audit_2026-07-30.md)；只作 provenance，不是 active queue。 |
 | Delivery state | Product foundation 與 dataset storage 已進入 `main`。本輪 follow-up 仍是 short-branch checkpoint；只有 focused evidence、可見 artifact、PR exact-head CI 成功並 merge 後才進入 baseline。舊 dataset source cleanup 仍未授權。 |
 
