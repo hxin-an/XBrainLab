@@ -38,6 +38,15 @@ geometry、empty/loading/error/blocked state，以及相關width/DPI。主agent�
 
 ## Handoff gates
 
+完整 dossier 由 `scripts/dev/run_handoff_validation_manifest.py` 執行；命令、timeout 與 artifact
+policy 只讀 `scripts/dev/handoff_gate_spec.py`。Runner 的 `--model-cache-dir` 與
+`--rag-cache-dir` 必須指向 D-mounted local caches，寫入 evidence 的 cache paths 必須 redacted。
+Evidence root 預設必須是 repo-contained 且 ignored；只有明確傳入
+`--allow-external-evidence-root` 才能使用 external root。
+
+完整 runner 會執行所有註冊 sections；只重跑 sections 3-6 或其他子集 does not run or certify
+完整 handoff dossier。Windows automated checks 也不取代 Windows native acceptance。
+
 - Identity/scope：Git branch、HEAD/upstream、worktree inventory、dirty ownership與non-goals。
 - Focused protection：bug red/green或refactor characterization。
 - Same-class sweep：直接相關call sites與必要source guard。
