@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
+from copy import deepcopy
 from typing import Any
 
 from XBrainLab.backend.saliency_methods import (
@@ -78,6 +79,42 @@ def selected_saliency_methods_from_params(
         for method in ADVANCED_SALIENCY_METHODS
         if isinstance(params.get(method), dict)
     }
+
+
+def merge_saliency_recompute_params(
+    incoming_params: Mapping[str, Any],
+    *,
+    completed_methods: set[str],
+    retained_method_params: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Merge one explicit request with verified completed artifact methods."""
+    incoming_methods = selected_saliency_methods_from_params(incoming_params)
+    merged_methods = incoming_methods | {
+        method for method in completed_methods if method in ALL_SALIENCY_METHODS
+    }
+    merged = deepcopy(dict(incoming_params))
+    for method in ADVANCED_SALIENCY_METHODS:
+        if method in incoming_methods or method not in merged_methods:
+            continue
+        method_params = retained_method_params.get(method)
+        if method_params is None:
+            raise ValueError(
+                f"Completed saliency parameters are unavailable for {method}."
+            )
+        merged[method] = deepcopy(dict(method_params))
+
+    ordered_methods = [
+        method for method in ALL_SALIENCY_METHODS if method in merged_methods
+    ]
+    merged["_methods"] = ordered_methods
+    merged.pop("_profile", None)
+    if ordered_methods == list(RECOMMENDED_SALIENCY_METHODS):
+        merged["_profile"] = "recommended"
+    elif ordered_methods and all(
+        method in ADVANCED_SALIENCY_METHODS for method in ordered_methods
+    ):
+        merged["_profile"] = "advanced"
+    return merged
 
 
 def saliency_command_params_from_configured(
