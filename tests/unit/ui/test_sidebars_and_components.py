@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
@@ -3737,16 +3738,15 @@ class TestDatasetSidebar:
         panel.update_panel.assert_not_called()
         mock_warning.assert_not_called()
 
-    def test_open_channel_selection_uses_query_data_before_stale_controller(
+    def test_open_channel_selection_uses_publication_data_before_stale_controller(
         self,
         qtbot,
     ):
         from PyQt6.QtWidgets import QMessageBox
 
         from XBrainLab.backend.application import (
-            CommandName,
             PreprocessCommand,
-            QueryStateCommand,
+            get_application_service,
         )
         from XBrainLab.backend.study import Study
         from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
@@ -3763,11 +3763,13 @@ class TestDatasetSidebar:
         )
         sb = DatasetSidebar(panel)
         qtbot.addWidget(sb)
-        publication = SimpleNamespace(
-            generation=91,
-            effective_capabilities={
-                CommandName.PREPROCESS: SimpleNamespace(enabled=True, reasons=[]),
-            },
+        publication = get_application_service(study).get_view_publication()
+        publication = replace(
+            publication,
+            state=replace(
+                publication.state,
+                raw=replace(publication.state.raw, channels=channels),
+            ),
         )
 
         def execute_for(
@@ -3775,12 +3777,12 @@ class TestDatasetSidebar:
             command,
             refresh=True,
             expected_publication_generation=None,
+            reviewed_preprocess_boundary=None,
         ):
             assert expected_publication_generation == publication.generation
-            if isinstance(command, QueryStateCommand):
-                assert refresh is False
-                return _command_result(raw_rows=[{"channels": channels}])
             if isinstance(command, PreprocessCommand):
+                assert reviewed_preprocess_boundary is not None
+                assert reviewed_preprocess_boundary.state == publication.state
                 return _command_result()
             raise AssertionError(f"unexpected command: {command!r}")
 
@@ -3808,8 +3810,8 @@ class TestDatasetSidebar:
             sb.open_channel_selection()
 
         mock_dialog.assert_called_once_with(sb, channels)
-        assert isinstance(mock_execute.call_args_list[0].args[1], QueryStateCommand)
-        assert isinstance(mock_execute.call_args_list[1].args[1], PreprocessCommand)
+        mock_execute.assert_called_once()
+        assert isinstance(mock_execute.call_args.args[1], PreprocessCommand)
         panel.controller.get_loaded_data_list.assert_not_called()
         panel.controller.apply_channel_selection.assert_not_called()
         mock_warning.assert_not_called()
@@ -3821,9 +3823,8 @@ class TestDatasetSidebar:
         from PyQt6.QtWidgets import QMessageBox
 
         from XBrainLab.backend.application import (
-            CommandName,
             PreprocessCommand,
-            QueryStateCommand,
+            get_application_service,
         )
         from XBrainLab.backend.study import Study
         from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
@@ -3837,11 +3838,13 @@ class TestDatasetSidebar:
         panel.main_window.study = study
         sb = DatasetSidebar(panel)
         qtbot.addWidget(sb)
-        publication = SimpleNamespace(
-            generation=92,
-            effective_capabilities={
-                CommandName.PREPROCESS: SimpleNamespace(enabled=True, reasons=[]),
-            },
+        publication = get_application_service(study).get_view_publication()
+        publication = replace(
+            publication,
+            state=replace(
+                publication.state,
+                raw=replace(publication.state.raw, channels=channels),
+            ),
         )
 
         def execute_for(
@@ -3849,12 +3852,12 @@ class TestDatasetSidebar:
             command,
             refresh=True,
             expected_publication_generation=None,
+            reviewed_preprocess_boundary=None,
         ):
             assert expected_publication_generation == publication.generation
-            if isinstance(command, QueryStateCommand):
-                assert refresh is False
-                return _command_result(raw_rows=[{"channels": channels}])
             if isinstance(command, PreprocessCommand):
+                assert reviewed_preprocess_boundary is not None
+                assert reviewed_preprocess_boundary.state == publication.state
                 return None
             raise AssertionError(f"unexpected command: {command!r}")
 
@@ -3945,7 +3948,7 @@ class TestDatasetSidebar:
     ):
         from PyQt6.QtWidgets import QMessageBox
 
-        from XBrainLab.backend.application import PreprocessCommand, QueryStateCommand
+        from XBrainLab.backend.application import PreprocessCommand
 
         raw = MagicMock()
         raw.get_mne.return_value.ch_names = ["Fp1", "Fp2"]
@@ -3976,8 +3979,8 @@ class TestDatasetSidebar:
             MockDlg.return_value.get_result.return_value = ["Fp1", "Fp2"]
             sidebar.open_channel_selection()
 
-        assert isinstance(mock_execute.call_args_list[0].args[1], QueryStateCommand)
-        command = mock_execute.call_args_list[1].args[1]
+        mock_execute.assert_called_once()
+        command = mock_execute.call_args.args[1]
         assert isinstance(command, PreprocessCommand)
         assert command.channels == ["Fp1", "Fp2"]
         MockDlg.assert_called_once_with(sidebar, ["Fp1", "Fp2"])

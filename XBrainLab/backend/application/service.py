@@ -45,6 +45,7 @@ from .bids_montage_preparation import MontagePreparationSnapshot
 from .capabilities import (
     RECOVERY_COMMAND_NAMES,
     CapabilityPolicy,
+    build_capability_policy,
 )
 from .command_gate import ensure_command_allowed
 from .commands import (
@@ -1943,6 +1944,7 @@ class ApplicationService(Observable):
         command: Command | Any,
         *,
         expected_publication_generation: int | None = None,
+        reviewed_preprocess_boundary: ApplicationPreprocessBoundary | None = None,
         operation_id: str | None = None,
     ) -> CommandResult:
         """Execute one command inside the typed notification boundary."""
@@ -1951,10 +1953,12 @@ class ApplicationService(Observable):
                 command,
                 operation_id=operation_id,
                 expected_publication_generation=expected_publication_generation,
+                reviewed_preprocess_boundary=reviewed_preprocess_boundary,
             )
         return self._execute_command(
             command,
             expected_publication_generation=expected_publication_generation,
+            reviewed_preprocess_boundary=reviewed_preprocess_boundary,
         )
 
     def _execute_owned_operation(
@@ -1963,6 +1967,7 @@ class ApplicationService(Observable):
         *,
         operation_id: str,
         expected_publication_generation: int | None,
+        reviewed_preprocess_boundary: ApplicationPreprocessBoundary | None,
     ) -> CommandResult:
         """Bind one scheduled operation to command execution and its receipt."""
         try:
@@ -1979,6 +1984,7 @@ class ApplicationService(Observable):
                 result = self._execute_command(
                     command,
                     expected_publication_generation=(expected_publication_generation),
+                    reviewed_preprocess_boundary=reviewed_preprocess_boundary,
                 )
             except OwnedOperationCancelledError:
                 snapshot = self.owned_work.finish_cancelled(operation_id)
@@ -2034,6 +2040,7 @@ class ApplicationService(Observable):
         command: Command | Any,
         *,
         expected_publication_generation: int | None = None,
+        reviewed_preprocess_boundary: ApplicationPreprocessBoundary | None = None,
     ) -> CommandResult:
         """Execute one command after any async operation ownership is bound."""
         closed = self._closed_command_result_if_any(command)
@@ -2045,6 +2052,7 @@ class ApplicationService(Observable):
             result, completion_release = self._execute_at_command_boundary(
                 command,
                 expected_publication_generation=expected_publication_generation,
+                reviewed_preprocess_boundary=reviewed_preprocess_boundary,
             )
             try:
                 self._publish_committed_view()
@@ -2082,6 +2090,7 @@ class ApplicationService(Observable):
                 result, completion_release = self._execute_at_command_boundary(
                     command,
                     expected_publication_generation=expected_publication_generation,
+                    reviewed_preprocess_boundary=reviewed_preprocess_boundary,
                 )
             result = self._retry_failed_manual_saliency_delivery(
                 command,
@@ -2623,6 +2632,7 @@ class ApplicationService(Observable):
         command: Command | Any,
         *,
         expected_publication_generation: int | None = None,
+        reviewed_preprocess_boundary: ApplicationPreprocessBoundary | None = None,
     ) -> tuple[CommandResult, Callable[[], None] | None]:
         """Execute a command and return a result envelope."""
         closed = self._closed_command_result_if_any(command)
@@ -2640,6 +2650,7 @@ class ApplicationService(Observable):
                 self._execute_preprocess_two_phase(
                     cast(PreprocessCommand | CreateEpochCommand, command),
                     expected_publication_generation=(expected_publication_generation),
+                    reviewed_preprocess_boundary=reviewed_preprocess_boundary,
                 ),
                 None,
             )
@@ -3473,6 +3484,7 @@ class ApplicationService(Observable):
         command: PreprocessCommand | CreateEpochCommand,
         *,
         expected_publication_generation: int | None,
+        reviewed_preprocess_boundary: ApplicationPreprocessBoundary | None,
     ) -> CommandResult:
         """Prepare EEG transforms outside the lock, then commit if still current."""
         name = command_name(command)
@@ -3490,7 +3502,14 @@ class ApplicationService(Observable):
                     expected_publication_generation,
                     publication,
                 )
-                if rejection is not None:
+                if rejection is not None and not (
+                    self._reviewed_channel_selection_boundary_matches(
+                        command,
+                        expected_generation=expected_publication_generation,
+                        reviewed_boundary=reviewed_preprocess_boundary,
+                        publication=publication,
+                    )
+                ):
                     return rejection
             try:
                 before = self.get_state()
@@ -3626,6 +3645,43 @@ class ApplicationService(Observable):
                     raise RuntimeError(
                         "Application publication delivery fence became unbalanced."
                     )
+
+    @staticmethod
+    def _reviewed_channel_selection_boundary_matches(
+        command: PreprocessCommand | CreateEpochCommand,
+        *,
+        expected_generation: int,
+        reviewed_boundary: ApplicationPreprocessBoundary | None,
+        publication: ApplicationViewPublication,
+    ) -> bool:
+        """Allow only advisory montage drift from one reviewed channel dialog."""
+        if reviewed_boundary is None or not isinstance(command, PreprocessCommand):
+            return False
+        try:
+            operation = PreprocessOperation(command.operation)
+        except ValueError:
+            return False
+        if operation is not PreprocessOperation.SELECT_CHANNELS:
+            return False
+        if (
+            reviewed_boundary.publication_generation != expected_generation
+            or not reviewed_boundary.state.state_reliable
+            or not publication.usable
+            or not publication.state.state_reliable
+        ):
+            return False
+        reviewed_capability = build_capability_policy(
+            reviewed_boundary.state,
+        ).get(CommandName.PREPROCESS)
+        current_capability = publication.effective_capabilities.get(
+            CommandName.PREPROCESS,
+        )
+        if not reviewed_capability.enabled or not current_capability.enabled:
+            return False
+        return ApplicationService._only_montage_preparation_status_changed(
+            reviewed_boundary.state,
+            publication.state,
+        )
 
     @staticmethod
     def _preprocess_application_boundary_matches(

@@ -42,6 +42,9 @@ if TYPE_CHECKING:
         EvaluationRenderRequest,
     )
     from XBrainLab.backend.application.owned_work import OwnedOperationSnapshot
+    from XBrainLab.backend.application.preprocess_preparation import (
+        ApplicationPreprocessBoundary,
+    )
     from XBrainLab.backend.application.preprocess_render import (
         PreprocessRenderPublication,
         PreprocessRenderRequest,
@@ -390,6 +393,7 @@ class ApplicationUiRuntime(
         command: Command,
         *,
         expected_publication_generation: int | None = None,
+        reviewed_preprocess_boundary: ApplicationPreprocessBoundary | None = None,
         operation_id: str | None = None,
     ) -> CommandResult:
         """Execute a command, optionally bound to scheduled operation identity."""
@@ -525,16 +529,30 @@ class _StudyApplicationUiRuntime:
         command: Command,
         *,
         expected_publication_generation: int | None = None,
+        reviewed_preprocess_boundary: ApplicationPreprocessBoundary | None = None,
         operation_id: str | None = None,
     ) -> CommandResult:
         if operation_id is None:
+            if reviewed_preprocess_boundary is None:
+                return self._service().execute(
+                    command,
+                    expected_publication_generation=expected_publication_generation,
+                )
             return self._service().execute(
                 command,
                 expected_publication_generation=expected_publication_generation,
+                reviewed_preprocess_boundary=reviewed_preprocess_boundary,
+            )
+        if reviewed_preprocess_boundary is None:
+            return self._service().execute(
+                command,
+                expected_publication_generation=expected_publication_generation,
+                operation_id=operation_id,
             )
         return self._service().execute(
             command,
             expected_publication_generation=expected_publication_generation,
+            reviewed_preprocess_boundary=reviewed_preprocess_boundary,
             operation_id=operation_id,
         )
 
@@ -1351,18 +1369,32 @@ def _execute_runtime_command(
     command: Command,
     *,
     expected_publication_generation: int | None,
+    reviewed_preprocess_boundary: ApplicationPreprocessBoundary | None = None,
     operation_id: str | None = None,
 ) -> CommandResult:
     if operation_id is None:
+        if reviewed_preprocess_boundary is not None:
+            return runtime.execute(
+                command,
+                expected_publication_generation=expected_publication_generation,
+                reviewed_preprocess_boundary=reviewed_preprocess_boundary,
+            )
         if expected_publication_generation is None:
             return runtime.execute(command)
         return runtime.execute(
             command,
             expected_publication_generation=expected_publication_generation,
         )
+    if reviewed_preprocess_boundary is None:
+        return runtime.execute(
+            command,
+            expected_publication_generation=expected_publication_generation,
+            operation_id=operation_id,
+        )
     return runtime.execute(
         command,
         expected_publication_generation=expected_publication_generation,
+        reviewed_preprocess_boundary=reviewed_preprocess_boundary,
         operation_id=operation_id,
     )
 
@@ -1467,6 +1499,7 @@ def execute_application_command(
     *,
     refresh: bool = True,
     expected_publication_generation: int | None = None,
+    reviewed_preprocess_boundary: ApplicationPreprocessBoundary | None = None,
     runtime: ApplicationUiRuntime | None = None,
 ) -> CommandResult | None:
     """Execute an ApplicationService command for real Study-backed UI paths.
@@ -1486,6 +1519,7 @@ def execute_application_command(
         application_runtime,
         command,
         expected_publication_generation=expected_publication_generation,
+        reviewed_preprocess_boundary=reviewed_preprocess_boundary,
     )
 
 

@@ -1,5 +1,8 @@
+from dataclasses import replace
 from unittest.mock import MagicMock, patch
 
+import mne
+import numpy as np
 import pytest
 from PyQt6.QtWidgets import QMessageBox, QPushButton, QWidget
 
@@ -347,8 +350,144 @@ def test_open_channel_selection_refuses_real_study_preflight_fallback(qtbot):
     )
 
 
-def test_channel_selection_binds_reviewed_publication_and_skips_stale_success(
+def test_channel_selection_binds_reviewed_publication_without_false_warning(
     qtbot,
+):
+    from XBrainLab.backend.application import (
+        PreprocessCommand,
+        QueryStateCommand,
+        get_application_service,
+    )
+    from XBrainLab.backend.study import Study
+
+    study = Study()
+    raw = MagicMock()
+    raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
+    study.data_manager.loaded_data_list = [raw]
+    panel = MagicMock()
+    panel.action_handler = MagicMock()
+    panel.controller = MagicMock()
+    panel.main_window = QWidget()
+    panel.main_window.study = study
+    widget = DatasetSidebar(panel, parent=None)
+    qtbot.addWidget(widget)
+    publication = get_application_service(study).get_view_publication()
+    success_result = MagicMock(failed=False)
+
+    def execute(_context, command, **kwargs):
+        if isinstance(command, QueryStateCommand):
+            assert kwargs["expected_publication_generation"] == publication.generation
+            return MagicMock(
+                failed=False,
+                diagnostics={"loaded_data_list": [raw]},
+                runtime={},
+            )
+        assert isinstance(command, PreprocessCommand)
+        assert kwargs["expected_publication_generation"] == publication.generation
+        boundary = kwargs["reviewed_preprocess_boundary"]
+        assert boundary.publication_generation == publication.generation
+        assert boundary.publication_revision == publication.revision
+        assert boundary.state == publication.state
+        return success_result
+
+    with (
+        patch.object(
+            QMessageBox,
+            "question",
+            return_value=QMessageBox.StandardButton.Yes,
+        ),
+        patch(
+            "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog",
+        ) as dialog,
+        patch(
+            "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
+            side_effect=execute,
+        ),
+        patch.object(QMessageBox, "warning") as warning,
+        patch.object(QMessageBox, "critical") as critical,
+        patch.object(widget, "_show_status") as show_status,
+    ):
+        dialog.return_value.exec.return_value = True
+        dialog.return_value.get_result.return_value = ["C3", "C4"]
+        widget.open_channel_selection()
+
+    warning.assert_not_called()
+    critical.assert_not_called()
+    show_status.assert_called_once_with("Channel selection applied")
+    panel.update_panel.assert_not_called()
+
+
+def test_channel_selection_uses_captured_channels_when_montage_settles(
+    qtbot,
+):
+    from XBrainLab.backend.application import get_application_service
+    from XBrainLab.backend.application.bids_montage_preparation import (
+        MontagePreparationSnapshot,
+    )
+    from XBrainLab.backend.load_data.raw import Raw
+    from XBrainLab.backend.study import Study
+
+    study = Study()
+    raw = Raw(
+        "channels.fif",
+        mne.io.RawArray(
+            np.zeros((2, 500)),
+            mne.create_info(["C3", "C4"], sfreq=100.0, ch_types="eeg"),
+            verbose="ERROR",
+        ),
+    )
+    study.set_loaded_data_list([raw], force_update=True)
+    panel = MagicMock()
+    panel.action_handler = MagicMock()
+    panel.controller = MagicMock()
+    panel.main_window = QWidget()
+    panel.main_window.study = study
+    widget = DatasetSidebar(panel, parent=None)
+    qtbot.addWidget(widget)
+    service = get_application_service(study)
+    montage_status = [
+        MontagePreparationSnapshot.pending(
+            generation=1,
+            recording_paths=("channels.fif",),
+        )
+    ]
+    service.state_snapshot.montage_snapshot_provider = lambda: montage_status[0]
+    reviewed = service._view_coordinator.refresh_opportunistic()
+
+    def capture_then_settle(_context):
+        montage_status[0] = MontagePreparationSnapshot(
+            state="ready",
+            generation=1,
+            requested_recording_paths=("channels.fif",),
+        )
+        current = service._view_coordinator.refresh_opportunistic()
+        assert current.generation > reviewed.generation
+        return reviewed
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
+            side_effect=capture_then_settle,
+        ),
+        patch(
+            "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog",
+        ) as dialog,
+        patch.object(QMessageBox, "warning") as warning,
+    ):
+        dialog.return_value.exec.return_value = False
+        widget.open_channel_selection()
+
+    dialog.assert_called_once_with(widget, ["C3", "C4"])
+    warning.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "stale_diagnostic",
+    ["stale_publication", "stale_prepared_preprocess"],
+)
+def test_channel_selection_metadata_change_uses_dataset_warning(
+    qtbot,
+    stale_diagnostic,
 ):
     from XBrainLab.backend.application import (
         ChangedState,
@@ -375,35 +514,25 @@ def test_channel_selection_binds_reviewed_publication_and_skips_stale_success(
     publication = get_application_service(study).get_view_publication()
     stale_result = CommandResult.failure_result(
         command_name=CommandName.PREPROCESS.value,
-        message=(
-            "Workflow state changed while this confirmed action was pending. "
-            "Review the action again before continuing."
-        ),
+        message="generic backend stale message",
         state=publication.state,
         changed_state=ChangedState(),
         error_type=ErrorType.PRECONDITION,
         recoverable=True,
-        diagnostics={"stale_publication": True},
+        diagnostics={stale_diagnostic: True},
     )
 
     def execute(_context, command, **kwargs):
         if isinstance(command, QueryStateCommand):
-            assert kwargs["expected_publication_generation"] == publication.generation
             return MagicMock(
                 failed=False,
                 diagnostics={"loaded_data_list": [raw]},
                 runtime={},
             )
         assert isinstance(command, PreprocessCommand)
-        assert kwargs["expected_publication_generation"] == publication.generation
         return stale_result
 
     with (
-        patch.object(
-            QMessageBox,
-            "question",
-            return_value=QMessageBox.StandardButton.Yes,
-        ),
         patch(
             "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog",
         ) as dialog,
@@ -421,12 +550,84 @@ def test_channel_selection_binds_reviewed_publication_and_skips_stale_success(
 
     warning.assert_called_once_with(
         widget,
-        "Review Channel Selection Again",
-        stale_result.message,
+        "Dataset Changed",
+        "Nothing was applied. Review the latest dataset and try again.",
     )
     critical.assert_not_called()
     show_status.assert_not_called()
-    panel.update_panel.assert_not_called()
+
+
+@pytest.mark.parametrize("raw_change", ["channels", "source"])
+def test_channel_selection_raw_change_uses_channels_warning(qtbot, raw_change):
+    from XBrainLab.backend.application import (
+        ChangedState,
+        CommandName,
+        CommandResult,
+        ErrorType,
+        PreprocessCommand,
+        QueryStateCommand,
+        get_application_service,
+    )
+    from XBrainLab.backend.study import Study
+
+    study = Study()
+    raw = MagicMock()
+    raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
+    study.data_manager.loaded_data_list = [raw]
+    panel = MagicMock()
+    panel.action_handler = MagicMock()
+    panel.controller = MagicMock()
+    panel.main_window = QWidget()
+    panel.main_window.study = study
+    widget = DatasetSidebar(panel, parent=None)
+    qtbot.addWidget(widget)
+    publication = get_application_service(study).get_view_publication()
+    changed_raw = (
+        replace(publication.state.raw, channels=["C3"])
+        if raw_change == "channels"
+        else replace(publication.state.raw, files=["sub-02_task-mi_raw.fif"])
+    )
+    stale_result = CommandResult.failure_result(
+        command_name=CommandName.PREPROCESS.value,
+        message="generic backend stale message",
+        state=replace(publication.state, raw=changed_raw),
+        changed_state=ChangedState(),
+        error_type=ErrorType.PRECONDITION,
+        recoverable=True,
+        diagnostics={"stale_publication": True},
+    )
+
+    def execute(_context, command, **kwargs):
+        if isinstance(command, QueryStateCommand):
+            return MagicMock(
+                failed=False,
+                diagnostics={"loaded_data_list": [raw]},
+                runtime={},
+            )
+        assert isinstance(command, PreprocessCommand)
+        return stale_result
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog",
+        ) as dialog,
+        patch(
+            "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
+            side_effect=execute,
+        ),
+        patch.object(QMessageBox, "warning") as warning,
+        patch.object(QMessageBox, "critical") as critical,
+    ):
+        dialog.return_value.exec.return_value = True
+        dialog.return_value.get_result.return_value = ["C3", "C4"]
+        widget.open_channel_selection()
+
+    warning.assert_called_once_with(
+        widget,
+        "Channels Changed",
+        "Nothing was applied. Review the latest channels and try again.",
+    )
+    critical.assert_not_called()
 
 
 def test_button_connections(sidebar):
