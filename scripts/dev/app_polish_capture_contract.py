@@ -569,7 +569,7 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
                 "Events inside EEG files",
                 "Events",
                 "Time Window",
-                "Apply baseline correction",
+                "Baseline Correction",
                 "Cancel",
             ),
             "preprocess-epoching-bids-interval-duration-dialog.png": (
@@ -585,7 +585,6 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
                 "Events",
                 "Time Window",
                 "Baseline Correction",
-                "Apply baseline correction",
                 "Cancel",
             ),
         }[filename]
@@ -596,6 +595,12 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
         ]
         if missing_controls:
             return False, f"Epoch visible-control contract is incomplete: {filename}."
+        expected_baseline_state = {
+            "preprocess-epoching-internal-events-dialog.png": "On",
+            "preprocess-epoching-bids-interval-duration-dialog.png": "Off",
+        }[filename]
+        if contract.get("baseline_toggle_state") != expected_baseline_state:
+            return False, f"Epoch baseline toggle state is invalid: {filename}."
         if filename == "preprocess-epoching-internal-events-dialog.png" and (
             contract.get("source") != "labels inside EEG files"
             or contract.get("placement_method") != "internal_events"

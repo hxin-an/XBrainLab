@@ -35,6 +35,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QGroupBox,
     QLabel,
+    QScrollArea,
     QStyleOptionViewItem,
     QTableWidget,
     QWidget,
@@ -1082,8 +1083,7 @@ def _required_reference_controls(widget: QWidget) -> dict[str, QWidget]:
     for index, control in enumerate(widget.findChildren(QAbstractItemView)):
         if not control.isVisibleTo(widget):
             continue
-        top_left = control.mapTo(widget, QPoint(0, 0))
-        if not widget.rect().contains(QRect(top_left, control.size())):
+        if not _control_is_fully_visible_in_capture(widget, control):
             # Scroll-area children can be intentionally clipped by their viewport;
             # comparing a full child grab with only its visible slice is invalid.
             continue
@@ -1099,9 +1099,31 @@ def _required_reference_controls(widget: QWidget) -> dict[str, QWidget]:
         text = _control_text(control)
         if not text or not control.isVisibleTo(widget):
             continue
+        if not _control_is_fully_visible_in_capture(widget, control):
+            # The complete-surface reference above covers the viewport.  A
+            # child below an owned scroll-area fold cannot be compared with a
+            # full isolated child grab until it is actually scrolled onscreen.
+            continue
         name = control.objectName() or type(control).__name__
         required.setdefault(f"{name} text {index}: {text[:48]}", control)
     return required
+
+
+def _control_is_fully_visible_in_capture(widget: QWidget, control: QWidget) -> bool:
+    top_left = control.mapTo(widget, QPoint(0, 0))
+    if not widget.rect().contains(QRect(top_left, control.size())):
+        return False
+    if not control.visibleRegion().contains(control.rect()):
+        return False
+    for scroll in widget.findChildren(QScrollArea):
+        content = scroll.widget()
+        if content is None or not (control is content or content.isAncestorOf(control)):
+            continue
+        viewport = scroll.viewport()
+        viewport_top_left = control.mapTo(viewport, QPoint(0, 0))
+        if not viewport.rect().contains(QRect(viewport_top_left, control.size())):
+            return False
+    return True
 
 
 def _control_text(control: QWidget) -> str:
@@ -1154,6 +1176,25 @@ def _qt_image_to_pil(qt_image: QImage) -> Image.Image:
     return pil_image
 
 
+def _crop_logical_reference(
+    rendered: Image.Image,
+    owner: QWidget,
+    logical_bounds: tuple[int, int, int, int],
+) -> Image.Image:
+    """Crop a DPR-aware widget grab using the owner's logical coordinates."""
+    scale_x = rendered.width / max(owner.width(), 1)
+    scale_y = rendered.height / max(owner.height(), 1)
+    left, top, right, bottom = logical_bounds
+    return rendered.crop(
+        (
+            round(left * scale_x),
+            round(top * scale_y),
+            round(right * scale_x),
+            round(bottom * scale_y),
+        )
+    )
+
+
 def _assert_training_history_reference_pixels(
     panel: TrainingPanel,
     screenshot: Path,
@@ -1162,6 +1203,10 @@ def _assert_training_history_reference_pixels(
     with Image.open(screenshot) as captured:
         scale_x = captured.width / max(panel.width(), 1)
         scale_y = captured.height / max(panel.height(), 1)
+    fractional_scale = any(
+        abs(scale - round(scale)) > 0.01 for scale in (scale_x, scale_y)
+    )
+    minimum_edge_recall = 0.50 if fractional_scale else 0.55
     matches: list[dict[str, object]] = []
     for surface_name, logical_bounds, reference in _training_history_reference_regions(
         panel
@@ -1184,7 +1229,7 @@ def _assert_training_history_reference_pixels(
                 bounds,
                 reference,
                 surface_name=surface_name,
-                minimum_edge_recall=0.55,
+                minimum_edge_recall=minimum_edge_recall,
                 maximum_changed_pixel_ratio=0.70,
                 content_inset=1,
             )
@@ -1213,7 +1258,7 @@ def _training_history_reference_regions(
                     top_left.x() + width,
                     top_left.y() + height,
                 ),
-                rendered.crop((0, 0, width, height)),
+                _crop_logical_reference(rendered, group, (0, 0, width, height)),
             )
         )
 
@@ -1236,13 +1281,15 @@ def _training_history_reference_regions(
                 top_left.x() + width,
                 top_left.y() + height,
             ),
-            rendered.crop(
+            _crop_logical_reference(
+                rendered,
+                panel.history_group,
                 (
                     title_in_section.x(),
                     title_in_section.y(),
                     title_in_section.x() + width,
                     title_in_section.y() + height,
-                )
+                ),
             ),
         )
     )
@@ -1261,13 +1308,15 @@ def _training_history_reference_regions(
                     top_left.x() + rect.width(),
                     top_left.y() + rect.height(),
                 ),
-                rendered_tabs.crop(
+                _crop_logical_reference(
+                    rendered_tabs,
+                    tab_bar,
                     (
                         rect.x(),
                         rect.y(),
                         rect.x() + rect.width(),
                         rect.y() + rect.height(),
-                    )
+                    ),
                 ),
             )
         )
@@ -1762,10 +1811,7 @@ def _epoch_control_is_visible_or_scroll_reachable(
     """Accept a visible control or prove the dialog's one scroll owner can reveal it."""
 
     def _fully_visible() -> bool:
-        control_rect = QRect(control.mapTo(dialog, QPoint(0, 0)), control.size())
-        return dialog.rect().contains(
-            control_rect
-        ) and control.visibleRegion().contains(control.rect())
+        return _control_is_fully_visible_in_capture(dialog, control)
 
     if _fully_visible():
         return True
@@ -1780,6 +1826,16 @@ def _epoch_control_is_visible_or_scroll_reachable(
     app = QApplication.instance()
     if isinstance(app, QApplication):
         app.processEvents()
+    if not _fully_visible():
+        viewport = scroll.viewport()
+        control_top = control.mapTo(viewport, QPoint(0, 0)).y()
+        overflow = control_top + control.height() - viewport.rect().bottom()
+        if overflow > 0:
+            scrollbar.setValue(
+                min(scrollbar.value() + overflow + 4, scrollbar.maximum())
+            )
+            if isinstance(app, QApplication):
+                app.processEvents()
     reachable = _fully_visible()
     scrollbar.setValue(original_value)
     if isinstance(app, QApplication):
@@ -1892,6 +1948,11 @@ def _surface_contract(
                 "primary_action_enabled": bool(
                     widget.create_button is not None
                     and widget.create_button.isEnabled()
+                ),
+                "baseline_toggle_state": (
+                    widget.baseline_check.text()
+                    if widget.baseline_check is not None
+                    else None
                 ),
                 "cancel_action": "Cancel",
             }

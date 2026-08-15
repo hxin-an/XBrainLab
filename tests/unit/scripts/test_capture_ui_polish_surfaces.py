@@ -27,6 +27,7 @@ from scripts.dev.capture_ui_polish_surfaces import (
     _assistant_recovery_standard,
     _assistant_setup_required_narrow,
     _capture,
+    _crop_logical_reference,
     _data_splitting_preview_dialog,
     _data_splitting_preview_semantics,
     _epoching_bids_interval_duration_dialog,
@@ -123,6 +124,9 @@ def test_epoch_capture_contract_requires_complete_visible_controls(
     assert contract["cancel_action"] == "Cancel"
     assert contract["window_mode_valid"] is True
     assert contract["primary_action_enabled"] is True
+    assert contract["baseline_toggle_state"] == (
+        "On" if scenario == "internal_events" else "Off"
+    )
     assert "Create EEG Epochs" in contract["verified_controls"]
     assert "Confirm" in contract["verified_controls"]
     assert "Cancel" in contract["verified_controls"]
@@ -137,6 +141,7 @@ def test_epoch_capture_contract_requires_complete_visible_controls(
 
 def test_epoch_capture_accepts_controls_reachable_through_the_owned_outer_scroll(
     qtbot,
+    tmp_path,
 ) -> None:
     dialog = _epoching_internal_events_dialog()
     qtbot.addWidget(dialog)
@@ -150,6 +155,11 @@ def test_epoch_capture_accepts_controls_reachable_through_the_owned_outer_scroll
     assert not dialog.b_min_spin.visibleRegion().contains(dialog.b_min_spin.rect())
 
     _assert_capture_geometry(INTERNAL_EPOCH_SCREENSHOT, dialog)
+    frame = _capture(dialog, tmp_path / INTERNAL_EPOCH_SCREENSHOT)
+
+    assert not any(
+        "When enabled, the average signal" in name for name in frame["required_regions"]
+    )
 
 
 def test_bids_epoch_capture_rejects_missing_primary_action(qtbot) -> None:
@@ -384,6 +394,21 @@ def test_training_history_capture_contract_is_coherent_and_readable(
     else:
         assert set(semantics["statuses"]) == {"Completed"}
     assert semantics["key_columns_fit"] is True
+
+
+def test_reference_crop_scales_logical_widget_bounds_to_capture_pixels(qtbot) -> None:
+    owner = QApplication.instance().activeWindow()
+    if owner is None:
+        from PyQt6.QtWidgets import QWidget
+
+        owner = QWidget()
+        qtbot.addWidget(owner)
+    owner.resize(100, 50)
+    rendered = Image.new("RGB", (200, 100), "#202020")
+
+    cropped = _crop_logical_reference(rendered, owner, (10, 5, 30, 15))
+
+    assert cropped.size == (40, 20)
 
 
 def test_training_history_pixel_gate_rejects_erased_chrome_and_row_cells(
@@ -825,6 +850,35 @@ def test_app_polish_validator_rejects_incomplete_epoch_control_contract(
 
     assert ok is False
     assert "visible-control contract is incomplete" in reason
+
+
+def test_app_polish_validator_rejects_wrong_epoch_baseline_toggle_state(
+    qtbot,
+    tmp_path,
+) -> None:
+    now = datetime(2026, 7, 16, 8, 0, tzinfo=UTC)
+    dialog = _epoching_internal_events_dialog()
+    qtbot.addWidget(dialog)
+    payload, identity = _single_surface_payload(
+        tmp_path,
+        filename=INTERNAL_EPOCH_SCREENSHOT,
+        widget=dialog,
+        generated_at=now,
+    )
+    payload["surface_contracts"][INTERNAL_EPOCH_SCREENSHOT]["baseline_toggle_state"] = (
+        "Off"
+    )
+
+    ok, reason = _validate_test_evidence(
+        payload,
+        tmp_path,
+        identity,
+        now=now,
+        expected_surfaces=(INTERNAL_EPOCH_SCREENSHOT,),
+    )
+
+    assert ok is False
+    assert "baseline toggle" in reason.lower()
 
 
 def test_app_polish_validator_rejects_k_fold_manifest_row_mismatch(
