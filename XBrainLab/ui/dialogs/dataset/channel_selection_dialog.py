@@ -131,7 +131,7 @@ class ChannelSelectionDialog(BaseDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
-        normalize_dialog_button_box(buttons, confirm_rightmost=True)
+        normalize_dialog_button_box(buttons)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         footer = QHBoxLayout()

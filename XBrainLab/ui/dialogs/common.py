@@ -19,7 +19,7 @@ from XBrainLab.ui.styles.theme import Theme
 
 
 class _ConfirmRightmostButtonStyle(QProxyStyle):
-    """Use Qt's supported macOS dialog ordering for an opted-in button box."""
+    """Use Qt's supported macOS ordering for standard dialog actions."""
 
     def styleHint(  # noqa: N802 - Qt virtual method name
         self,
@@ -45,18 +45,12 @@ def normalize_dialog_button_box(
     *,
     ok_text: str = "OK",
     cancel_text: str = "Cancel",
-    confirm_rightmost: bool = False,
 ) -> None:
-    """Normalize OK/Cancel presentation for a dialog button box.
-
-    ``confirm_rightmost`` opts a dialog into ``Cancel, OK`` ordering without
-    changing the layout direction used to render the button labels.
-    """
-    if confirm_rightmost:
-        button_box.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
-        style = _ConfirmRightmostButtonStyle()
-        style.setParent(button_box)
-        button_box.setStyle(style)
+    """Normalize standard actions with Cancel left and primary rightmost."""
+    button_box.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+    style = _ConfirmRightmostButtonStyle()
+    style.setParent(button_box)
+    button_box.setStyle(style)
 
     for standard_button, text in (
         (QDialogButtonBox.StandardButton.Ok, ok_text),
