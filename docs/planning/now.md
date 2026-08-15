@@ -4,17 +4,18 @@
 
 ## 目前焦點
 
-**保留 `v0.6.0` 作為唯一 Desktop GUI/source baseline，先完成本機 dataset/worktree consolidation，
-再建立 UI visual-regression guard，之後才進入 Assistant task branch。**
+**保留 `v0.6.0` 作為唯一 Desktop GUI/source baseline，完成本機dataset/worktree cleanup的PR與CI，
+再建立UI visual-regression guard，之後才進入Assistant task branch。**
 
-本輪 storage slice 不修改產品行為。它把已驗證 BIDS、public fixtures、唯一 raw source 與 manifests
-集中到 durable data root，移除使用者已明確批准丟棄的舊 worktrees、branches、quarantine、seeds、
-duplicate datasets 與 stale build outputs。下一個獨立 slice 才處理 UI baseline/DPI evidence。
+本輪storage slice不修改產品行為。中央root已驗證BIDS、public fixtures、唯一raw source、legacy
+compact source與manifests；舊worktrees/branches、quarantine、seeds、duplicate datasets與stale
+build outputs已依使用者授權永久移除。`build/`目前不再承擔durable storage，下一個獨立slice才處理
+UI baseline/DPI evidence。
 
 ## 後續順序
 
-1. Storage consolidation：central authority、cleanup receipt、worktree/branch retirement。
-2. UI regression guard：default-scale visual baseline；layout/theme/font/dialog 變更另跑 Windows
+1. Storage consolidation：完成focused commit、PR、exact-head CI與merge。
+2. UI regression guard：default-scale visual baseline；layout/theme/font/dialog變更另跑Windows
    100/125/150% evidence。
 3. Assistant：從完成上述兩個 checkpoint 的最新 `main` 建短 branch。
 
@@ -37,10 +38,12 @@ duplicate datasets 與 stale build outputs。下一個獨立 slice 才處理 UI 
 
 Desktop baseline只有在下列條件全部成立後才算完成：
 
-1. Current tree只保留canonical docs與policy artifacts。
-2. Product source與使用者手測版本一致，PR記錄manual acceptance。
-3. Final PR exact-head所有non-skipped CI成功並合入`main`。
-4. 實際main integration SHA的CI成功。
-5. Annotated `v0.6.0` tag與Latest GitHub Release指向該main SHA。
+Storage slice只在下列條件全部成立後完成：
+
+1. Central datasets、完整cleanup receipt與legacy copy receipt由同一final committed tool重新驗證；
+   copy-only receipt不得冒充完整cleanup。
+2. `build/` durable-storage audit無findings，retired worktree/branch不存在。
+3. Focused tests、static checks與docs build成功。
+4. PR exact-head所有non-skipped CI成功並合入`main`。
 
 驗證規則只讀[Validation](../validation/README.md)；長期目標讀[Roadmap](roadmap.md)。

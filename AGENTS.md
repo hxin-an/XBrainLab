@@ -61,6 +61,9 @@ blocker 與 plan 變更；plan 不會擴大 scope ceiling。完成後從 active 
   `completed/success`。Missing、pending、stale、cancelled 或 failed 都 fail closed。
 - Product 行為只能在使用者明確表示手測通過並同意 merge 後合併；PR 的 `Manual acceptance`
   記錄日期、範圍與 source。Source 再改即失效；自動證據不取代批准。純 docs/tests/CI/guidance 可豁免。
+- Durable datasets、download seeds、model/RAG authority與retired worktrees不得存入ignored `build/`。
+  Dataset只進`XBRAINLAB_DATA_DIR/datasets/`，模型/RAG只進platform cache；`build/`只放可重建、可丟棄
+  的當次artifact。Task branch關閉或合併後要移除其worktree，不能讓ignored目錄成為第二份archive。
 
 ## 複雜度與刪除優先
 

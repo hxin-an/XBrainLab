@@ -41,6 +41,29 @@ ACTIVE_SOURCE = Path("build/moabb-gui-campaign-v2/mne-data")
 ACTIVE_SOURCE_DATASET_ID = "moabb-15-source"
 ACTIVE_SOURCE_EXCLUDED_TOP_LEVEL = (".quarantine", ".staging")
 ACTIVE_SOURCE_MANIFEST_NAME = ".xbrainlab-source.sha256"
+DURABLE_BUILD_STORAGE = (
+    (FORMAL_BIDS_SOURCE, "durable_dataset_storage"),
+    (ACTIVE_SOURCE, "durable_dataset_storage"),
+    (COMPACT_SOURCE, "durable_dataset_storage"),
+    (Path("build/moabb-download-seeds"), "durable_dataset_storage"),
+    (Path("build/worktrees"), "retained_worktree_storage"),
+)
+
+
+def audit_build_storage(repo_root: Path) -> list[dict[str, str]]:
+    """Return durable dataset/worktree roots that must not live under build/."""
+    findings: list[dict[str, str]] = []
+    for relative_path, reason in DURABLE_BUILD_STORAGE:
+        candidate = repo_root / relative_path
+        if not candidate.exists():
+            continue
+        if candidate.is_dir() and not candidate.is_symlink():
+            try:
+                next(candidate.iterdir())
+            except StopIteration:
+                continue
+        findings.append({"path": relative_path.as_posix(), "reason": reason})
+    return findings
 
 
 def _git_head(repo_root: Path) -> str:
@@ -640,20 +663,87 @@ def finalize_verified_cleanup_receipt(plan: dict[str, Any]) -> dict[str, Any]:
     finalized = copy.deepcopy(plan)
     if finalized.get("copy_state") != "complete":
         raise ValueError("Cleanup receipt requires a complete copy operation")
+    canonical_root = Path(str(finalized.get("canonical_root", "")))
     for entry in finalized.get("entries", []):
-        if entry.get("cutover_status") != "copied_not_cut_over":
+        source = Path(str(entry.get("source_path", "")))
+        cutover_status = entry.get("cutover_status")
+        if entry.get("authority") == "rebuildable" and cutover_status in {
+            "not_started",
+            "retired_rebuildable",
+        }:
+            if source.exists():
+                raise ValueError(f"Rebuildable cleanup source still exists: {source}")
+            target = Path(str(entry.get("target_path", "")))
+            if target.exists() and entry.get("role") == "source-cache":
+                verify_active_source_cache(target)
+            entry["cutover_status"] = "retired_rebuildable"
+            entry["old_source_retained"] = False
+            entry["deletion_authorized"] = True
+            continue
+        if cutover_status not in {"copied_not_cut_over", "cut_over"}:
             continue
         target = Path(str(entry.get("target_path", "")))
-        source = Path(str(entry.get("source_path", "")))
         if not target.exists():
             raise ValueError(f"Verified cleanup target is missing: {target}")
-        if source.exists():
+        role = str(entry.get("role", ""))
+        if role == "formal-bids":
+            relocated_manifest = (
+                canonical_root
+                / "manifests"
+                / "moabb-15"
+                / f"{entry['dataset_id']}.sha256"
+            )
+            verify_formal_bids_dataset(
+                dataset_root=target,
+                checksum_manifest=relocated_manifest,
+            )
+            entry["checksum"]["manifest_path"] = str(relocated_manifest)
+        elif role == "source-cache":
+            verify_active_source_cache(target)
+        elif role == "public-fixtures":
+            groups = fixture_groups_for_profile("all")
+            validate_fixture_set(target, groups)
+            pinned_paths = {
+                Path(str(fixture_file["filename"]))
+                for group in groups
+                for fixture_file in group["files"]
+            }
+            actual_paths = {
+                path.relative_to(target)
+                for path in target.rglob("*")
+                if path.is_file() and not path.is_symlink()
+            }
+            if actual_paths != pinned_paths:
+                raise ValueError("Public fixture target inventory mismatch")
+            source_has_payload = any((source / path).exists() for path in pinned_paths)
+            if source_has_payload:
+                raise ValueError(f"Old public fixture payload still exists: {source}")
+        elif source.exists():
+            raise ValueError(f"Old cleanup source still exists: {source}")
+        if role != "public-fixtures" and source.exists():
             raise ValueError(f"Old cleanup source still exists: {source}")
         entry["cutover_status"] = "cut_over"
         entry["old_source_retained"] = False
         entry["deletion_authorized"] = True
-    finalized["cleanup_state"] = "complete"
+    for candidate in finalized.get("cleanup_candidates", []):
+        path = Path(str(candidate.get("path", "")))
+        if path.exists():
+            raise ValueError(f"Cleanup candidate still exists: {path}")
+        candidate["exists"] = False
+        candidate["action"] = "removed_after_verified_cutover"
+        candidate["deletion_authorized"] = True
+    pending_dataset_ids = sorted(
+        str(entry.get("dataset_id", "unknown"))
+        for entry in finalized.get("entries", [])
+        if entry.get("old_source_retained")
+        or not entry.get("deletion_authorized", False)
+    )
+    finalized["cleanup_state"] = "partial" if pending_dataset_ids else "complete"
+    finalized["pending_dataset_ids"] = pending_dataset_ids
     finalized["cleanup_completed_at"] = datetime.now(UTC).isoformat()
+    repo_root = finalized.get("repo_root")
+    if isinstance(repo_root, str) and repo_root:
+        finalized["source_head"] = _git_head(Path(repo_root))
     return finalized
 
 
@@ -808,16 +898,33 @@ def main() -> int:
         help="Copy the accepted non-quarantine MOABB raw source cache.",
     )
     parser.add_argument(
+        "--copy-legacy-compact-source",
+        action="store_true",
+        help="Copy the legacy compact MOABB source subset with an exact manifest.",
+    )
+    parser.add_argument(
         "--finalize-cleanup",
         action="store_true",
         help="Verify old sources are absent and finalize an existing plan receipt.",
+    )
+    parser.add_argument(
+        "--audit-build-storage",
+        action="store_true",
+        help="Fail if durable datasets or retained worktrees exist below build/.",
     )
     args = parser.parse_args()
     copy_action_count = (
         len(args.copy_formal_bids)
         + int(args.copy_public_profile is not None)
         + int(args.copy_active_source)
+        + int(args.copy_legacy_compact_source)
     )
+    if args.audit_build_storage:
+        if args.finalize_cleanup or copy_action_count:
+            parser.error("--audit-build-storage cannot be combined with copy actions")
+        findings = audit_build_storage(args.repo_root)
+        print(json.dumps({"findings": findings}, indent=2, sort_keys=True))
+        return 1 if findings else 0
     if args.finalize_cleanup:
         if args.write_plan is None:
             parser.error("--finalize-cleanup requires --write-plan")
@@ -883,6 +990,28 @@ def main() -> int:
             copy_results[ACTIVE_SOURCE_DATASET_ID] = copy_result
             entry["copy_status"] = copy_result["status"]
             entry["cutover_status"] = "copied_not_cut_over"
+            if args.write_plan is not None:
+                _write_json(args.write_plan, plan)
+        if args.copy_legacy_compact_source:
+            entry = _require_copy_entry(
+                by_id=by_id,
+                dataset_id="legacy-compact-moabb",
+                role="source-cache",
+            )
+            copy_result = copy_verified_active_source_cache(
+                source=Path(entry["source_path"]),
+                target=Path(entry["target_path"]),
+            )
+            copy_results["legacy-compact-moabb"] = copy_result
+            entry["copy_status"] = copy_result["status"]
+            entry["cutover_status"] = "copied_not_cut_over"
+            entry["checksum"] = {
+                "algorithm": "sha256",
+                "manifest_path": str(
+                    Path(entry["target_path"]) / ACTIVE_SOURCE_MANIFEST_NAME
+                ),
+                "path_basis": "source-relative",
+            }
             if args.write_plan is not None:
                 _write_json(args.write_plan, plan)
     except BaseException as exc:

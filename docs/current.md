@@ -26,16 +26,20 @@ Preprocess、Epoch、Split/Training、Evaluation 到 Saliency visualization。As
 
 - Current product baseline永遠是Git的`main`；branch、SHA與dirty state從Git取得，不寫死在文件。
 - Generated evidence只寫入ignored `build/dev-artifacts/`或
-  `build/handoff-evidence/<full-SHA>/`；`artifacts/`不保存current evidence。
+  `build/handoff-evidence/<full-SHA>/`；這些是可丟棄的當次輸出，不是durable storage。
+  `artifacts/`不保存current evidence。
 - Offscreen Qt、dashboard與自動journey是工程證據，不取代Windows真人操作。
 - 任何產品行為變更都必須由使用者手測通過並明確同意merge；product source變更後須重新批准。
 - Repo-root `settings.json`是本機設定，不屬於release tree。
 
 ## Dataset storage boundary
 
-`XBRAINLAB_DATA_DIR/datasets/`是central local hierarchy，分為source、bids、public-fixtures、manifests
-與quarantine。Import dialog只把它當起始位置，仍可選外部路徑。既有MOABB source/seeds尚未取得
-deletion authorization，不能因中央copy存在就刪除。
+`XBRAINLAB_DATA_DIR/datasets/`是唯一central local hierarchy，分為source、bids、public-fixtures、
+manifests與quarantine。這台開發機目前使用
+`/mnt/d/workspace_v2/.xbrainlab-data/datasets/`；其中保存15個formal BIDS、唯一MOABB raw source、
+legacy compact source、pinned public fixtures與relocation-aware checksums/receipts。Import dialog只把
+它當起始位置，仍可選外部路徑。Repo `build/`只允許可重建、可丟棄的當次artifact，不再保存dataset、
+seed、cache authority或retired worktree。
 
 ## Release boundary
 
