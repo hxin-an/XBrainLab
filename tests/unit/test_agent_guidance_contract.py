@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import tomllib
 import yaml
 
 from scripts.dev.audit_agent_guidance import (
     AGENTS_MAX_BYTES,
     OPERATIONS_MAX_BYTES,
+    _audit_model_dispatch_config,
     audit_guidance,
 )
 
@@ -26,6 +28,57 @@ def test_root_guidance_is_lean_and_scope_bounded() -> None:
     assert "scope ceiling" in agents
     assert "Milestone 是最低門檻" not in agents
     assert "300" in agents and "800" in agents and "1,500" in agents
+
+
+def test_project_model_dispatch_defaults_are_cost_bounded() -> None:
+    config = tomllib.loads(
+        (REPO_ROOT / ".codex" / "config.toml").read_text(encoding="utf-8")
+    )
+    operations = (REPO_ROOT / ".agents" / "README.md").read_text(encoding="utf-8")
+
+    assert config["model"] == "gpt-5.6-terra"
+    assert config["model_reasoning_effort"] == "medium"
+    assert config["agents"] == {
+        "default_subagent_model": "gpt-5.6-terra",
+        "default_subagent_reasoning_effort": "medium",
+    }
+    assert "service_tier" not in config
+    assert all(
+        token in operations
+        for token in (
+            "gpt-5.6-luna",
+            "gpt-5.6-terra",
+            "gpt-5.6-sol",
+            "S1",
+            "S6",
+            "one complete attempt",
+            "never persists Fast",
+        )
+    )
+
+
+def test_model_dispatch_audit_rejects_costly_project_defaults(
+    tmp_path: Path,
+) -> None:
+    config_dir = tmp_path / ".codex"
+    config_dir.mkdir()
+    (config_dir / "config.toml").write_text(
+        """\
+model = "gpt-5.6-sol"
+model_reasoning_effort = "medium"
+service_tier = "fast"
+
+[agents]
+default_subagent_model = "gpt-5.6-terra"
+default_subagent_reasoning_effort = "medium"
+""",
+        encoding="utf-8",
+    )
+
+    assert _audit_model_dispatch_config(tmp_path) == [
+        ".codex/config.toml must set model='gpt-5.6-terra'",
+        ".codex/config.toml must not persist service_tier; Fast is foreground-only",
+    ]
 
 
 def test_ui_mutation_requires_explicit_user_confirmation() -> None:

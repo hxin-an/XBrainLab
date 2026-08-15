@@ -1,0 +1,8 @@
+# XBrainLab keeps one balanced coordinator default. Plans explicitly select cheaper
+# or stronger workers when the bounded task contract justifies that choice.
+model = "gpt-5.6-terra"
+model_reasoning_effort = "medium"
+
+[agents]
+default_subagent_model = "gpt-5.6-terra"
+default_subagent_reasoning_effort = "medium"

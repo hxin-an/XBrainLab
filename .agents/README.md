@@ -51,13 +51,24 @@ Skill frontmatter 是 routing authority；body 只定義專業方法與邊界。
 
 ## Model dispatch
 
-- 例行 status/docs/read-only review 或單一檔小修正：`gpt-5.6-terra` / `medium`。
-- 複雜但 bounded 的 implementation、data integrity、security 或跨 owner 分析：`gpt-5.6-sol` / `high`。
-- `xhigh` 只在使用者明確要求，或代表性任務已量測到收益時使用。Reasoning effort 只改變
-  分析深度，不改變授權、scope 或 completion semantics。
+`gpt-5.6-terra` / `medium` is coordinator and worker fallback. Delegated plans emit:
+`Dispatch: coordinator; workers; Sol trigger; Fast; escalation`.
 
-這是後續 worker/eval dispatch policy，無法改變已啟動 session 的 host model。不以未量測的大量
-A/B 作為 guidance merge gate。
+- `gpt-5.6-luna` / `medium` / Standard：repeatable single-owner work with an exact oracle.
+  Tiny work stays with Terra when delegation would duplicate more context than it saves.
+- Terra：bounded work using an existing owner/contract; use `high` for a difficult trace below Sol.
+- `gpt-5.6-sol` / `high` only for: `S1` authority/contract conflict; `S2` owner/state-truth migration;
+  `S3` novel safety/state/rollback/cancel protocol; `S4` inseparable coupled risks; `S5` valid designs with
+  different public/failure semantics; `S6` scientific/thesis/tool-call evidence protocol design.
+- LOC/files, keywords, unfamiliarity, red CI or deadline are not Sol triggers. Split broad work; return
+  implementation to Terra/Luna after a Sol decision.
+- Fast is foreground Luna only when the user waits on model generation. Background stays Standard; repo
+  config never persists Fast or changes a host model.
+- A cheaper model gets one complete attempt. Escalate for a demonstrated capability/understanding gap;
+  diagnose tool, test, CI, download or environment failures without changing model.
+
+`xhigh` requires explicit direction or measured benefit. No bulk A/B is a merge gate;
+model choice never changes authorization, scope or completion semantics.
 
 ## Retired surfaces
 

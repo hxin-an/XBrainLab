@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+import tomllib
 import yaml
 
 RETIRED_SKILLS = (
@@ -41,8 +42,13 @@ REQUIRED_ROOT_TOKENS = (
     "1,500",
 )
 REQUIRED_OPERATIONS_TOKENS = (
+    "gpt-5.6-luna",
     "gpt-5.6-terra",
     "gpt-5.6-sol",
+    "S1",
+    "S6",
+    "one complete attempt",
+    "never persists Fast",
     "xhigh",
 )
 AGENTS_MAX_BYTES = 7_500
@@ -217,6 +223,41 @@ def _audit_mcp_policy(root: Path) -> list[str]:
     return errors
 
 
+def _audit_model_dispatch_config(root: Path) -> list[str]:
+    path = root / ".codex" / "config.toml"
+    if not path.is_file():
+        return ["missing .codex/config.toml model-dispatch defaults"]
+    try:
+        config = tomllib.loads(path.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError as exc:
+        return [f".codex/config.toml contains invalid TOML: {exc}"]
+
+    errors: list[str] = []
+    expected_root = {
+        "model": "gpt-5.6-terra",
+        "model_reasoning_effort": "medium",
+    }
+    for key, expected in expected_root.items():
+        if config.get(key) != expected:
+            errors.append(f".codex/config.toml must set {key}={expected!r}")
+    if "service_tier" in config:
+        errors.append(
+            ".codex/config.toml must not persist service_tier; Fast is foreground-only"
+        )
+
+    agents = config.get("agents")
+    if not isinstance(agents, dict):
+        return [*errors, ".codex/config.toml must define an [agents] table"]
+    expected_agents = {
+        "default_subagent_model": "gpt-5.6-terra",
+        "default_subagent_reasoning_effort": "medium",
+    }
+    for key, expected in expected_agents.items():
+        if agents.get(key) != expected:
+            errors.append(f".codex/config.toml [agents] must set {key}={expected!r}")
+    return errors
+
+
 def audit_guidance(root: Path) -> list[str]:
     """Return static contract violations for the guidance tree."""
     errors: list[str] = []
@@ -233,6 +274,7 @@ def audit_guidance(root: Path) -> list[str]:
     )
     errors.extend(_audit_skills(root))
     errors.extend(_audit_workflows(root))
+    errors.extend(_audit_model_dispatch_config(root))
 
     if agents_path.is_file():
         agents_text = agents_path.read_text(encoding="utf-8")

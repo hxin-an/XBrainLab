@@ -4,54 +4,41 @@
 
 ## 目前焦點
 
-**建立 quota-aware Codex model dispatch，讓 Terra 擔任預設 coordinator，只有符合明確條件的
-bounded worker 使用 Luna，只有客觀高風險決策使用 Sol。**
+**從已驗證的 Desktop GUI baseline 進入 Assistant runtime 量測，先確認 real Granite、chat lifecycle
+與 backend command spine 的實際失敗，再制定一個 bounded repair slice。**
 
-本輪從 `main@30dabdb2` 建立短 guidance branch。前一個 UI visual-regression slice 已由 PR #24
-合入 `main`，不再是 active candidate。本輪只修改 repo-local Codex config、agent operations、
-guidance audit/tests 與這份 current plan；不修改產品 runtime、UI 或 `settings.json`。
+UI visual-regression guard 已由 PR #24 合入 `main`。Quota-aware Codex dispatch 已收斂到
+`.agents/README.md` 與 project `.codex/config.toml`：Terra 是 coordinator/default，Luna 只處理有
+exact oracle 的 bounded worker，Sol 只處理客觀 high-risk decision；它不再是 product active work。
 
 ## 問題與證據
 
-- 現行 model dispatch 只有 Terra/Sol，沒有低成本 Luna lane，也把「複雜但 bounded」直接導向 Sol。
-- Project 尚無 `.codex/config.toml`，新 thread 與未明確指定的 worker 沒有 repo-local Terra fallback。
-- Fast mode 若變成 project default 會放大所有 turn 的額度消耗；它只適合使用者正在等待、且模型生成
-  是主要 latency 的 foreground task。
-- 舊外部 guidance A/B surface 已退役；本輪不能以新的大量 paid eval 或 routing control plane 取代它。
+- 使用者目前不能可靠使用 Assistant；已知 claim 不能由 mock tool-call eval 或舊 artifact 支撐。
+- Assistant 必須和 UI 共用 `ApplicationService / Command API` 的 state、capability 與 error semantics，
+  不能建立第二套 readiness truth。
+- 下一個 repair scope 尚不能在沒有 real runtime evidence 前決定；先量測不是授權廣泛重寫。
 
-## Observable outcome
+## 下一步
 
-1. Trusted XBrainLab project 的新 Codex thread 與 unspecified subagent 預設為 Terra/medium。
-2. `.agents/README.md` 成為 Luna/Terra/Sol、Fast 與一次嘗試後升級規則的唯一 dispatch authority。
-3. Plan 對非 trivial change/build 產生一筆短 dispatch record；小任務不為了便宜而額外複製 context。
-4. Static audit 能拒絕缺少 model lane、錯誤 project default 或全域 persisted Fast 的變更。
+1. 從最新 `main` 建立一條 Assistant task branch，先確認 repo/Git/runtime identity 與 real Granite health。
+2. 唯讀重現 chat startup、unavailable/error、tool selection、confirmation、retry/cancel 與長 session；
+   保存最小可重跑 evidence，不先改 UI。
+3. 將第一個 confirmed root cause、observable outcome、scope/non-goals、修理步驟與 focused validation
+   寫回本文件，再開始實作。
+4. 若修復需要任何 `XBrainLab/ui/` 或使用者可見互動變更，先取得使用者明確確認。
 
-## Scope / non-goals
+## Non-goals
 
-- In scope：`.codex/config.toml`、model-dispatch guidance、static audit、focused contract tests。
-- 不新增 custom agent profiles、model router、telemetry、paid A/B、第二份 planning 文件或 runtime receipt。
-- 不改 `AGENTS.md` 的 repo invariants，不動產品、UI、Assistant、EEG pipeline、CI workflow 或 release。
-- 不宣稱 repo guidance 能替已啟動的 host thread 自動換模型或自動切換 Fast tier。
+- 不把 tool-call eval、thesis evidence、MCP、packaging 或任意 dataset support 拉進第一個 Assistant slice。
+- 不因 agent 不可用就替換 product model、加入 silent fallback、建立第二套 state owner 或重寫整個 panel。
+- 不修改 `v0.6.0` tag/release、既有 UI layout、EEG pipeline、training outputs 或 repo-root
+  `settings.json`。
+- 不以 deterministic mock、dashboard PASS 或 Linux offscreen 冒充 real Granite／Windows product evidence。
 
-## 修理步驟
+## Entry condition
 
-1. 新增最小 project config：main 與 unspecified subagent fallback 為 Terra/medium，不 persist Fast。
-2. 將 model dispatch 收斂成 Luna eligibility、Terra default、Sol hard triggers、non-triggers 與 escalation。
-3. 擴充 guidance audit 與 unit contract，驗證 config、三個 model lane 和 cost-control boundary。
-4. 跑 config-load smoke、focused tests、guidance audit、MkDocs strict 與 diff hygiene。
-5. 完成後把 active priority 推進回 Assistant；本次 routing policy 留在 `.agents/README.md`。
-
-## Focused validation / stop condition
-
-- `python3 scripts/dev/audit_agent_guidance.py check --format json`
-- `poetry run pytest --capture=sys tests/unit/test_agent_guidance_contract.py -q`
-- 無 model turn 的 Codex config-load smoke、`poetry run mkdocs build --strict`、`git diff --check`
-- Stop：同一 exact commit 上述檢查成功、`settings.json` 未 stage，且 diff 沒有產品或 UI 檔案。
-
-## 後續順序
-
-1. 完成本輪 model dispatch guidance。
-2. 從最新 `main` 建立 Assistant task branch，先量測 real Granite 的 tool selection、confirmation、
-   retry/cancel 與長 session，再決定最小修復。
+- Quota-aware guidance PR exact-head checks 成功並合入 `main`。
+- 新 Assistant branch 的 initial state 只有允許保留的 `settings.json` dirty path。
+- 第一輪只讀量測有明確 timeout、資源上限與單一 PID/session ownership。
 
 長期目標讀 [Roadmap](roadmap.md)，evidence contract 只讀 [Validation](../validation/README.md)。
