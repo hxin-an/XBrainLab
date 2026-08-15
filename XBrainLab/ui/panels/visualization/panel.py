@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from PyQt6.QtCore import QEvent, Qt, QThread
-from PyQt6.QtGui import QStandardItemModel
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -143,6 +142,7 @@ _SALIENCY_SELECTION_CHANGED_DETAIL = (
 _VISUALIZATION_LOAD_FAILED_MESSAGE = (
     "Visualization could not be loaded. Refresh Visualization and try again."
 )
+_NO_COMPUTED_METHODS = "No computed methods"
 
 
 def explanation_provenance_text(
@@ -287,6 +287,7 @@ class VisualizationPanel(BasePanel):
         self._saliency_compute_attempted: set[tuple[object, ...]] = set()
         self._pending_saliency_params: dict[str, object] | None = None
         self._pending_saliency_target: _SaliencySettingsTarget | None = None
+        self._pending_saliency_method: str | None = None
         self._saliency_settings_review_required = False
         self._saliency_settings_review_detail = ""
         self._active_saliency_operation_id: str | None = None
@@ -427,7 +428,8 @@ class VisualizationPanel(BasePanel):
         # Method Selector
         self.method_label = QLabel("Method:")
         self.method_combo = QComboBox()
-        self.method_combo.addItems(all_saliency_methods)
+        self.method_combo.addItem(_NO_COMPUTED_METHODS)
+        self.method_combo.setEnabled(False)
         self.method_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
         )
@@ -1209,6 +1211,7 @@ class VisualizationPanel(BasePanel):
         self._refresh_explanation_context()
 
         if self._application_query_blocks_display(self.last_application_query):
+            self._sync_method_options({})
             message = self._application_query_message()
             if self._application_query_is_readiness_block(self.last_application_query):
                 self._show_widget_message(current_widget, message)
@@ -1218,6 +1221,7 @@ class VisualizationPanel(BasePanel):
 
         blocked_view_message = self._selected_view_blocked_message()
         if blocked_view_message:
+            self._sync_method_options({})
             self._show_widget_message(current_widget, blocked_view_message)
             return
 
@@ -1237,6 +1241,7 @@ class VisualizationPanel(BasePanel):
             _SaliencyCrossFoldGroup,
         ) and isinstance(run_identity, SaliencyCrossFoldIdentity)
         if not single_selection and not cross_fold_selection:
+            self._sync_method_options({})
             setup_message = self._setup_only_message()
             if setup_message:
                 self._show_widget_message(current_widget, setup_message)
@@ -1250,6 +1255,7 @@ class VisualizationPanel(BasePanel):
 
         publication = self._application_view_publication
         if publication is None:
+            self._sync_method_options({})
             self._publish_saliency_view_state(
                 current_widget,
                 coverage=None,
@@ -1263,6 +1269,7 @@ class VisualizationPanel(BasePanel):
 
         method_coverage = self._published_coverage_for_selection()
         if method_coverage is None:
+            self._sync_method_options({})
             self._publish_saliency_view_state(
                 current_widget,
                 coverage=None,
@@ -1849,9 +1856,7 @@ class VisualizationPanel(BasePanel):
             )
             return
 
-        method_name = (
-            self.method_combo.currentText() if hasattr(self, "method_combo") else ""
-        ) or "Gradient"
+        method_name = self._saliency_compute_method_name()
         params = self._effective_saliency_params(method_name)
         methods = params.get("methods")
         methods_key = tuple(methods) if isinstance(methods, (list, tuple, set)) else ()
@@ -1954,14 +1959,14 @@ class VisualizationPanel(BasePanel):
         self._saliency_compute_attempted.clear()
         selected_methods = selected_saliency_methods_from_params(params)
         selected_method = next(
+            (method for method in all_saliency_methods if method in selected_methods),
             (
-                self.method_combo.itemText(index)
-                for index in range(self.method_combo.count())
-                if self.method_combo.itemText(index) in selected_methods
+                self.method_combo.currentText()
+                if self.method_combo.currentText() in all_saliency_methods
+                else "Gradient"
             ),
-            self.method_combo.currentText() or "Gradient",
         )
-        self.method_combo.setCurrentText(selected_method)
+        self._pending_saliency_method = selected_method
         self._show_saliency_action_bar(
             selected_method,
             self._current_saliency_coverage.get(selected_method),
@@ -2629,6 +2634,7 @@ class VisualizationPanel(BasePanel):
         self._set_saliency_action_busy(False)
         self._pending_saliency_params = None
         self._pending_saliency_target = None
+        self._pending_saliency_method = None
         self._saliency_settings_review_required = False
         self._saliency_settings_review_detail = ""
         show_status_message(self, "Saliency ready")
@@ -2848,6 +2854,7 @@ class VisualizationPanel(BasePanel):
         self._clear_active_saliency_operation()
         self._pending_saliency_params = None
         self._pending_saliency_target = None
+        self._pending_saliency_method = None
         self._saliency_settings_review_required = True
         self._saliency_settings_review_detail = detail
         self._saliency_summary_dirty = True
@@ -3016,49 +3023,39 @@ class VisualizationPanel(BasePanel):
         self,
         coverage: dict[str, SaliencyMethodCoverageSnapshot],
     ) -> str:
-        """Disable method/view combinations that cannot reach a renderer."""
+        """Project only computed methods that can reach the active renderer."""
         self._current_saliency_coverage = dict(coverage)
         allow_partial = self.tabs.currentIndex() == 3
-        model = self.method_combo.model()
-        standard_model = model if isinstance(model, QStandardItemModel) else None
         current_method = self.method_combo.currentText()
-        enabled_indices: list[int] = []
+        renderable_methods = [
+            method
+            for method in all_saliency_methods
+            if (
+                (method_coverage := coverage.get(method)) is not None
+                and method_coverage.available
+                and (allow_partial or method_coverage.complete)
+            )
+        ]
         self.method_combo.blockSignals(True)
         try:
-            for index in range(self.method_combo.count()):
-                method = self.method_combo.itemText(index)
-                method_coverage = coverage.get(
-                    method,
-                    SaliencyMethodCoverageSnapshot(method=method),
-                )
-                enabled = method_coverage.available and (
-                    allow_partial or method_coverage.complete
-                )
-                if enabled:
-                    enabled_indices.append(index)
-                if standard_model is not None:
-                    item = standard_model.item(index)
-                    if item is not None:
-                        item.setEnabled(enabled)
-                        item.setToolTip(
-                            "Saliency is ready."
-                            if enabled
-                            else self._method_unavailable_reason(method_coverage)
-                        )
-            current_index = self.method_combo.findText(current_method)
-            if enabled_indices and current_index not in enabled_indices:
-                self.method_combo.setCurrentIndex(enabled_indices[0])
+            self.method_combo.clear()
+            if renderable_methods:
+                self.method_combo.addItems(renderable_methods)
+                if current_method in renderable_methods:
+                    self.method_combo.setCurrentText(current_method)
+            else:
+                self.method_combo.addItem(_NO_COMPUTED_METHODS)
+            self.method_combo.setEnabled(
+                bool(renderable_methods)
+                and not self._saliency_command_busy
+                and not self._saliency_compute_in_progress
+            )
         finally:
             self.method_combo.blockSignals(False)
-        return self.method_combo.currentText()
-
-    @staticmethod
-    def _method_unavailable_reason(
-        coverage: SaliencyMethodCoverageSnapshot,
-    ) -> str:
-        if coverage.available and not coverage.complete:
-            return VisualizationPanel._incomplete_saliency_message(coverage)
-        return f"{coverage.method} has not been computed for this run."
+        self._refresh_absolute_control()
+        if renderable_methods:
+            return self.method_combo.currentText()
+        return self._saliency_compute_method_name()
 
     @staticmethod
     def _incomplete_saliency_message(
@@ -3097,6 +3094,32 @@ class VisualizationPanel(BasePanel):
         if not params or method_name not in configured_methods:
             return recommended_saliency_params_for_method(method_name)
         return params
+
+    def _saliency_compute_method_name(self) -> str:
+        """Resolve compute intent without admitting it to the render selector."""
+        if self._pending_saliency_method in all_saliency_methods:
+            return cast(str, self._pending_saliency_method)
+        visible_method = (
+            self.method_combo.currentText() if hasattr(self, "method_combo") else ""
+        )
+        if visible_method in all_saliency_methods:
+            return visible_method
+        configured = self._configured_saliency_params()
+        configured_methods = selected_saliency_methods_from_params(configured)
+        configured_method = next(
+            (method for method in all_saliency_methods if method in configured_methods),
+            None,
+        )
+        if configured_method is not None:
+            return configured_method
+        return next(
+            (
+                method
+                for method in all_saliency_methods
+                if method in self._current_saliency_coverage
+            ),
+            "Gradient",
+        )
 
     def _has_service_saliency_summary(self) -> bool:
         diagnostics: dict[str, object] = (
@@ -3313,6 +3336,8 @@ class VisualizationPanel(BasePanel):
         if invalidate_render_publications:
             self._invalidate_view_render_publications()
         self._application_view_publication = None
+        if hasattr(self, "method_combo") and hasattr(self, "tabs"):
+            self._sync_method_options({})
         self._refresh_explanation_context()
 
     def _refresh_application_publication(self) -> bool:
@@ -3401,6 +3426,7 @@ class VisualizationPanel(BasePanel):
         self.run_combo.clear()
         self._runs_by_plan = {}
         self._cross_fold_choice_by_identity = {}
+        self._sync_method_options({})
         self.plan_combo.blockSignals(False)
         self.run_combo.blockSignals(False)
         if hasattr(self, "tabs"):

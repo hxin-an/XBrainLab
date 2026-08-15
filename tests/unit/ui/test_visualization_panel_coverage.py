@@ -1233,6 +1233,10 @@ class TestRefreshCombos:
             )
         ]
         assert render_thread_ids and render_thread_ids[0] != gui_thread_id
+        assert [
+            panel.method_combo.itemText(index)
+            for index in range(panel.method_combo.count())
+        ] == ["Gradient"]
         rendered = current_widget.update_plot.call_args.args[0]
         assert rendered.request.normalize is True
         assert rendered.data.normalized is True

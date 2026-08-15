@@ -40,7 +40,6 @@ from XBrainLab.backend.training_state_contract import (
     TrainingRunIdentity,
 )
 from XBrainLab.backend.utils.observer import Observable
-from XBrainLab.backend.visualization import all_saliency_methods
 from XBrainLab.ui.interaction_outcome import InteractionStatus
 
 
@@ -564,9 +563,9 @@ def test_visualization_panel_layout_and_sidebar(qtbot):
         group.title() == "EXPLANATION PLOTS" for group in panel.findChildren(QGroupBox)
     )
     assert panel.plan_combo.itemText(0) == "Select a fold"
-    assert [
-        panel.method_combo.itemText(i) for i in range(panel.method_combo.count())
-    ] == (all_saliency_methods)
+    assert panel.method_combo.count() == 1
+    assert panel.method_combo.currentText() == "No computed methods"
+    assert panel.method_combo.isEnabled() is False
     assert panel.saliency_action_bar.isHidden()
     assert panel.compute_saliency_btn.text() == "Compute Saliency"
     assert panel.sidebar.btn_montage.text() == "Set Montage"
@@ -648,6 +647,9 @@ def test_visualization_panel_clears_result_identity_after_publication_rejection(
     publication = panel._application_view_publication
     assert publication is not None
     assert "motor-imagery" in panel.tabs.toolTip()
+    with patch.object(panel, "_request_saliency_render"):
+        panel.on_update()
+    assert panel.method_combo.currentText() == "Gradient"
 
     assert (
         panel._accept_application_publication(replace(publication, stale=True)) is False
@@ -655,6 +657,8 @@ def test_visualization_panel_clears_result_identity_after_publication_rejection(
 
     assert panel.tabs.toolTip() == "True class · Mean over EEG epochs"
     assert "motor-imagery" not in panel.tabs.toolTip()
+    assert panel.method_combo.currentText() == "No computed methods"
+    assert panel.method_combo.isEnabled() is False
 
 
 def test_visualization_panel_invalidates_rendered_views_when_runtime_disappears(
@@ -749,8 +753,19 @@ def test_visualization_panel_keeps_nonnegative_method_absolute_visible_but_disab
     qtbot,
 ):
     panel, _ctrl = _make_panel(qtbot)
+    _publish_panel_state(
+        panel,
+        _result_with_run_coverages(
+            SaliencyRunCoverageSnapshot(
+                plan_index=0,
+                run_index=0,
+                methods=[_complete_coverage("SmoothGrad_Squared")],
+            ),
+        ),
+    )
+    with patch.object(panel, "_request_saliency_render"):
+        panel.on_update()
 
-    panel.method_combo.setCurrentText("SmoothGrad_Squared")
     for tab_index in (0, 2, 3):
         panel.tabs.setCurrentIndex(tab_index)
         assert not panel.abs_check.isHidden()
@@ -1247,14 +1262,11 @@ def test_visualization_panel_filters_methods_by_selected_run_coverage(qtbot):
         panel.on_update()
         qtbot.waitUntil(panel.native_render_work_idle, timeout=3000)
 
-    model = cast(Any, panel.method_combo.model())
-    gradient_item = model.item(panel.method_combo.findText("Gradient"))
-    gradient_input_item = model.item(
-        panel.method_combo.findText("Gradient * Input"),
-    )
-    assert gradient_item.isEnabled() is False
-    assert "missing for: right" in gradient_item.toolTip()
-    assert gradient_input_item.isEnabled() is True
+    assert [
+        panel.method_combo.itemText(index)
+        for index in range(panel.method_combo.count())
+    ] == ["Gradient * Input"]
+    assert panel.method_combo.isEnabled() is True
     assert panel.method_combo.currentText() == "Gradient * Input"
 
     with patch(
@@ -1262,8 +1274,10 @@ def test_visualization_panel_filters_methods_by_selected_run_coverage(qtbot):
         side_effect=_prepare_render_variants,
     ):
         panel.tabs.setCurrentIndex(3)
-        gradient_item = model.item(panel.method_combo.findText("Gradient"))
-        assert gradient_item.isEnabled() is True
+        assert [
+            panel.method_combo.itemText(index)
+            for index in range(panel.method_combo.count())
+        ] == ["Gradient", "Gradient * Input"]
         panel.method_combo.setCurrentText("Gradient")
         current_widget = _current_mock_widget(panel)
         current_widget.update_plot.reset_mock()
@@ -1275,6 +1289,50 @@ def test_visualization_panel_filters_methods_by_selected_run_coverage(qtbot):
         )
 
     current_widget.update_plot.assert_called_once()
+
+
+def test_visualization_panel_replaces_computed_methods_in_canonical_order(qtbot):
+    panel, _ctrl = _make_panel(qtbot)
+    _publish_panel_state(
+        panel,
+        _result_with_run_coverages(
+            SaliencyRunCoverageSnapshot(
+                plan_index=0,
+                run_index=0,
+                methods=[
+                    _complete_coverage("VarGrad"),
+                    _complete_coverage("Gradient * Input"),
+                    _complete_coverage("Gradient"),
+                ],
+            ),
+        ),
+    )
+
+    with patch.object(panel, "_request_saliency_render"):
+        panel.on_update()
+
+    assert [
+        panel.method_combo.itemText(index)
+        for index in range(panel.method_combo.count())
+    ] == ["Gradient", "Gradient * Input", "VarGrad"]
+
+    _publish_panel_state(
+        panel,
+        _result_with_run_coverages(
+            SaliencyRunCoverageSnapshot(
+                plan_index=0,
+                run_index=0,
+                methods=[_complete_coverage("SmoothGrad")],
+            ),
+        ),
+    )
+    with patch.object(panel, "_request_saliency_render"):
+        panel.on_update()
+
+    assert [
+        panel.method_combo.itemText(index)
+        for index in range(panel.method_combo.count())
+    ] == ["SmoothGrad"]
 
 
 def test_visualization_panel_prefers_published_run_coverage(qtbot):
@@ -1820,7 +1878,7 @@ def test_explicit_saliency_busy_state_keeps_visible_cancel_operable(
 
     assert panel.plan_combo.isEnabled()
     assert panel.run_combo.isEnabled()
-    assert panel.method_combo.isEnabled()
+    assert not panel.method_combo.isEnabled()
     assert panel.sidebar.btn_montage.isEnabled()
     assert panel.sidebar.btn_saliency.isEnabled()
 
@@ -1929,6 +1987,7 @@ def test_staged_saliency_settings_run_only_from_explicit_compute(
     monkeypatch,
 ):
     panel, _ctrl = _make_panel(qtbot)
+    committed = _complete_coverage("Gradient")
     _publish_panel_state(
         panel,
         _result_with_run_coverages(
@@ -1936,10 +1995,11 @@ def test_staged_saliency_settings_run_only_from_explicit_compute(
                 plan_index=0,
                 run_index=0,
                 model_name="EEGNet",
-                methods=[SaliencyMethodCoverageSnapshot(method="VarGrad")],
+                methods=[committed],
             ),
         ),
     )
+    panel.on_update()
     publication = panel._application_view_publication
     assert publication is not None
     run_identity = panel.run_combo.currentData()
@@ -1964,7 +2024,11 @@ def test_staged_saliency_settings_run_only_from_explicit_compute(
     )
 
     assert starts == []
-    assert panel.method_combo.currentText() == "VarGrad"
+    assert [
+        panel.method_combo.itemText(index)
+        for index in range(panel.method_combo.count())
+    ] == ["Gradient"]
+    assert panel.method_combo.currentText() == "Gradient"
     assert panel.compute_saliency_btn.text() == "Recompute Saliency"
 
     panel._compute_saliency_from_action_bar()
@@ -1972,6 +2036,155 @@ def test_staged_saliency_settings_run_only_from_explicit_compute(
     assert len(starts) == 1
     assert starts[0]["method_name"] == "VarGrad"
     assert starts[0]["params"] == params
+
+    panel._finish_saliency_compute_failure(
+        message="compute failed",
+        attempt_key=None,
+        current_widget=None,
+    )
+    assert [
+        panel.method_combo.itemText(index)
+        for index in range(panel.method_combo.count())
+    ] == ["Gradient"]
+
+    panel._finish_saliency_compute_cancelled(
+        attempt_key=None,
+        current_widget=None,
+    )
+    assert [
+        panel.method_combo.itemText(index)
+        for index in range(panel.method_combo.count())
+    ] == ["Gradient"]
+
+
+def test_staged_uncomputed_method_stays_out_of_render_combo_through_real_lifecycle(
+    qtbot,
+    monkeypatch,
+):
+    panel, _ctrl = _make_panel(qtbot)
+
+    def publish(*methods: SaliencyMethodCoverageSnapshot) -> None:
+        result = _result_with_run_coverages(
+            SaliencyRunCoverageSnapshot(
+                plan_index=0,
+                run_index=0,
+                model_name="EEGNet",
+                methods=list(methods),
+            ),
+        )
+        assert isinstance(result.state, ApplicationStateSnapshot)
+        publication = ApplicationViewStore(
+            result.state,
+            TrainingReadBoundary.no_trainer(),
+        ).read()
+        assert panel._accept_application_publication(publication) is True
+        panel.last_application_query = result
+        panel._application_summary_dirty = False
+        panel.refresh_combos()
+        qtbot.waitUntil(panel.native_render_work_idle, timeout=3000)
+
+    def rendered_methods() -> list[str]:
+        return [
+            panel.method_combo.itemText(index)
+            for index in range(panel.method_combo.count())
+        ]
+
+    publish(_complete_coverage("Gradient"))
+    publication = panel._application_view_publication
+    assert publication is not None
+    run_identity = panel.run_combo.currentData()
+    assert isinstance(run_identity, SaliencyRunIdentity)
+
+    params = {
+        "profile": "advanced",
+        "methods": ["VarGrad"],
+        "VarGrad": {"nt_samples": 7},
+    }
+    assert panel.stage_saliency_params(
+        params,
+        publication_generation=publication.generation,
+        run_identity=run_identity,
+        model_name="EEGNet",
+    )
+    assert rendered_methods() == ["Gradient"]
+
+    async_calls: list[tuple[SaliencyCommand, Any, Any]] = []
+
+    def execute_async(
+        _panel,
+        command,
+        *,
+        on_result,
+        on_error,
+        on_operation_started,
+        **_kwargs,
+    ) -> bool:
+        assert isinstance(command, SaliencyCommand)
+        async_calls.append((command, on_result, on_error))
+        on_operation_started(f"saliency-operation-{len(async_calls)}")
+        return True
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+        execute_async,
+    )
+
+    panel.compute_saliency_btn.click()
+
+    assert len(async_calls) == 1
+    command, on_result, on_error = async_calls[0]
+    assert command.method == "VarGrad"
+    assert command.params == params
+    assert panel.compute_saliency_btn.property("operationPhase") == "pending"
+    assert rendered_methods() == ["Gradient"]
+
+    minimum_generation = panel._active_saliency_minimum_generation
+    assert minimum_generation is not None
+    outcome = on_result(
+        CommandResult.success_result(
+            command_name="saliency",
+            message="Saliency computation scheduled.",
+            state={},
+            changed_state=ChangedState(),
+            diagnostics={
+                "action": "schedule",
+                "post_training_saliency_schedule": {
+                    "status": {"generation": minimum_generation},
+                },
+            },
+        )
+    )
+
+    assert outcome.status is InteractionStatus.ACCEPTED
+    assert panel.compute_saliency_btn.property("operationPhase") == "running"
+    assert rendered_methods() == ["Gradient"]
+
+    on_error((RuntimeError, RuntimeError("compute failed"), "traceback"))
+
+    assert panel.compute_saliency_btn.property("operationPhase") == "failed"
+    assert rendered_methods() == ["Gradient"]
+
+    panel.compute_saliency_btn.click()
+
+    assert len(async_calls) == 2
+    assert async_calls[1][0].method == "VarGrad"
+    assert panel.compute_saliency_btn.property("operationPhase") == "pending"
+    assert rendered_methods() == ["Gradient"]
+
+    panel._finish_saliency_compute_cancelled(
+        attempt_key=None,
+        current_widget=panel.tabs.currentWidget(),
+    )
+
+    assert panel.compute_saliency_btn.property("operationPhase") == "cancelled"
+    assert rendered_methods() == ["Gradient"]
+
+    publish(
+        _complete_coverage("VarGrad"),
+        _complete_coverage("Gradient"),
+    )
+
+    assert rendered_methods() == ["Gradient", "VarGrad"]
 
 
 def test_staged_saliency_settings_dispatch_with_reviewed_generation(
@@ -3017,7 +3230,7 @@ def test_visualization_panel_missing_saliency_worker_shows_actionable_message(
 
     current_widget.update_plot.assert_not_called()
     current_widget.show_message.assert_called_with(
-        "Gradient saliency has not been computed for this run. "
+        "SmoothGrad saliency has not been computed for this run. "
         "Use Compute Saliency to continue."
     )
     assert panel.saliency_action_bar.isVisibleTo(panel)
