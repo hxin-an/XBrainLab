@@ -41,7 +41,11 @@ def test_channel_selection_dialog_uses_current_dialog_hierarchy(qtbot) -> None:
     assert dialog.btn_none.objectName() == "SecondaryDialogButton"
     assert ok_button.objectName() == "PrimaryConfirmButton"
     assert cancel_button.objectName() == "SecondaryDialogButton"
+    assert button_box.layoutDirection() is Qt.LayoutDirection.LeftToRight
     assert cancel_button.geometry().right() < ok_button.geometry().left()
+    assert button_box.geometry().right() == (
+        dialog.contentsRect().right() - dialog.layout().contentsMargins().right()
+    )
 
 
 def test_channel_selection_dialog_keeps_footer_and_list_usable_when_narrow(

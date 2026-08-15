@@ -146,7 +146,11 @@ class BidsSubjectSelectionDialog(BaseDialog):
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             parent=self,
         )
-        normalize_dialog_button_box(buttons, ok_text="Continue")
+        normalize_dialog_button_box(
+            buttons,
+            ok_text="Continue",
+            confirm_rightmost=True,
+        )
         self.continue_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
