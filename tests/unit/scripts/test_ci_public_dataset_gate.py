@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from scripts.dev.ci_change_scope import classify_changed_paths
 from scripts.dev.fetch_public_eeg_fixtures import CI_REQUIRED_MANIFEST_SHA256
 from scripts.dev.handoff_gate_spec import HANDOFF_GATE_SPECS
 
@@ -53,4 +54,5 @@ def test_ci_public_fixture_cache_is_bounded_and_invalidated_by_manifest() -> Non
     assert "path: tests/fixtures/data/public" in workflow
     assert f"public-eeg-required-ci-{CI_REQUIRED_MANIFEST_SHA256}" in workflow
     assert "hashFiles('scripts/dev/fetch_public_eeg_fixtures.py')" not in workflow
-    assert ".github/workflows/ci.yml|pyproject.toml" in workflow
+    assert classify_changed_paths((".github/workflows/ci.yml",)).product is True
+    assert classify_changed_paths(("pyproject.toml",)).product is True
