@@ -81,6 +81,9 @@ from XBrainLab.backend.application.owned_work import (
     OwnedOperationCancelledError,
     OwnedWorkPhase,
 )
+from XBrainLab.backend.application.preprocess_preparation import (
+    ApplicationPreprocessBoundary,
+)
 from XBrainLab.backend.application.resource_guard import (
     ResourceChecker,
     ResourcePreflightResult,
@@ -3696,6 +3699,144 @@ def test_preprocess_allows_background_montage_status_to_settle_during_prepare() 
         "normalization requested" in row.get_preprocess_history()[-1]
         for row in study.preprocessed_data_list
     )
+
+
+def test_channel_selection_allows_reviewed_montage_settle_before_admission() -> None:
+    study = Study()
+    raw = Raw(
+        "channels.fif",
+        mne.io.RawArray(
+            np.zeros((2, 500)),
+            mne.create_info(["C3", "C4"], sfreq=100.0, ch_types="eeg"),
+            verbose="ERROR",
+        ),
+    )
+    study.set_loaded_data_list([raw], force_update=True)
+    service = ApplicationService(study)
+    montage_status = [
+        MontagePreparationSnapshot.pending(
+            generation=1,
+            recording_paths=("channels.fif",),
+        )
+    ]
+    service.state_snapshot.montage_snapshot_provider = lambda: montage_status[0]
+    reviewed = service._view_coordinator.refresh_opportunistic()
+    reviewed_boundary = ApplicationPreprocessBoundary(
+        publication_generation=reviewed.generation,
+        publication_revision=reviewed.revision,
+        state=reviewed.state,
+    )
+    montage_status[0] = MontagePreparationSnapshot(
+        state="ready",
+        generation=1,
+        requested_recording_paths=("channels.fif",),
+    )
+    current = service._view_coordinator.refresh_opportunistic()
+    assert current.generation > reviewed.generation
+    loaded_publications = 0
+    original_set_loaded_data_list = study.set_loaded_data_list
+
+    def set_loaded_data_list_once(rows, force_update=False) -> None:
+        nonlocal loaded_publications
+        loaded_publications += 1
+        original_set_loaded_data_list(rows, force_update=force_update)
+
+    study.set_loaded_data_list = set_loaded_data_list_once
+
+    result = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.SELECT_CHANNELS,
+            channels=["C3"],
+        ),
+        expected_publication_generation=reviewed.generation,
+        reviewed_preprocess_boundary=reviewed_boundary,
+    )
+
+    assert result.ok
+    assert loaded_publications == 1
+    assert study.loaded_data_list[0].get_mne().ch_names == ["C3"]
+    assert study.preprocessed_data_list[0] is study.loaded_data_list[0]
+    assert study.data_manager.backup_loaded_data_list is not None
+    assert study.data_manager.backup_loaded_data_list[0].get_mne().ch_names == [
+        "C3",
+        "C4",
+    ]
+
+
+def test_channel_selection_reviewed_boundary_rejects_material_state_change() -> None:
+    study = Study()
+    raw = Raw(
+        "channels.fif",
+        mne.io.RawArray(
+            np.zeros((2, 500)),
+            mne.create_info(["C3", "C4"], sfreq=100.0, ch_types="eeg"),
+            verbose="ERROR",
+        ),
+    )
+    study.set_loaded_data_list([raw], force_update=True)
+    service = ApplicationService(study)
+    reviewed = service.get_view_publication()
+    reviewed_boundary = ApplicationPreprocessBoundary(
+        publication_generation=reviewed.generation,
+        publication_revision=reviewed.revision,
+        state=reviewed.state,
+    )
+    changed = service.execute(UpdateMetadataCommand(index=0, subject="S99"))
+    assert changed.ok
+
+    result = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.SELECT_CHANNELS,
+            channels=["C3"],
+        ),
+        expected_publication_generation=reviewed.generation,
+        reviewed_preprocess_boundary=reviewed_boundary,
+    )
+
+    assert result.failed
+    assert result.error_type is ErrorType.PRECONDITION
+    assert result.diagnostics["stale_publication"] is True
+    assert study.loaded_data_list[0].get_subject_name() == "S99"
+    assert study.loaded_data_list[0].get_mne().ch_names == ["C3", "C4"]
+    assert study.data_manager.backup_loaded_data_list is None
+    assert study.is_locked() is False
+
+
+def test_channel_selection_reviewed_boundary_rejects_unusable_publication() -> None:
+    study = Study()
+    raw = Raw(
+        "channels.fif",
+        mne.io.RawArray(
+            np.zeros((2, 500)),
+            mne.create_info(["C3", "C4"], sfreq=100.0, ch_types="eeg"),
+            verbose="ERROR",
+        ),
+    )
+    study.set_loaded_data_list([raw], force_update=True)
+    service = ApplicationService(study)
+    reviewed = service.get_view_publication()
+    reviewed_boundary = ApplicationPreprocessBoundary(
+        publication_generation=reviewed.generation,
+        publication_revision=reviewed.revision,
+        state=reviewed.state,
+    )
+    service._view_coordinator.mark_stale("publication unavailable")
+
+    result = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.SELECT_CHANNELS,
+            channels=["C3"],
+        ),
+        expected_publication_generation=reviewed.generation,
+        reviewed_preprocess_boundary=reviewed_boundary,
+    )
+
+    assert result.failed
+    assert result.error_type is ErrorType.PRECONDITION
+    assert result.diagnostics["publication_usable"] is False
+    assert study.loaded_data_list[0].get_mne().ch_names == ["C3", "C4"]
+    assert study.data_manager.backup_loaded_data_list is None
+    assert study.is_locked() is False
 
 
 def test_preprocess_commit_failure_rolls_back_complete_pipeline(

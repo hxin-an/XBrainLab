@@ -1,6 +1,6 @@
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QAbstractItemView
+from PyQt6.QtWidgets import QAbstractItemView, QDialogButtonBox
 
 from XBrainLab.ui.dialogs.dataset.bids_subject_selection_dialog import (
     BidsSubjectSelectionDialog,
@@ -64,10 +64,20 @@ def test_continue_renders_as_the_primary_action_across_enabled_states(qtbot) -> 
     dialog.show()
     qtbot.waitUntil(lambda: dialog.continue_button.isVisible())
 
+    button_box = dialog.findChild(QDialogButtonBox)
+    assert button_box is not None
+    cancel_button = button_box.button(QDialogButtonBox.StandardButton.Cancel)
+    assert cancel_button is not None
+
     assert dialog.continue_button.text() == "Continue"
     assert dialog.continue_button.objectName() == "PrimaryConfirmButton"
     assert dialog.continue_button.isEnabled()
     assert _button_contains_color(dialog.continue_button, Theme.BLUE_PRIMARY)
+    assert button_box.layoutDirection() is Qt.LayoutDirection.LeftToRight
+    assert cancel_button.geometry().right() < dialog.continue_button.geometry().left()
+    assert button_box.geometry().right() == (
+        dialog.contentsRect().right() - dialog.layout().contentsMargins().right()
+    )
 
     dialog.subject_table.item(0, 0).setCheckState(Qt.CheckState.Unchecked)
     qtbot.waitUntil(lambda: not dialog.continue_button.isEnabled())

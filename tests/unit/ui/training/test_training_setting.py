@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
-from PyQt6.QtCore import QPoint, QRect, QSize
+from PyQt6.QtCore import QPoint, QRect, QSize, Qt
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QApplication,
@@ -122,6 +122,23 @@ class TestTrainingSetting:
             button = buttons.button(standard)
             assert button is not None
             assert button.icon().isNull()
+
+    def test_footer_renders_cancel_left_and_ok_rightmost(self, window, qtbot):
+        window.show()
+        qtbot.waitUntil(lambda: window.isVisible())
+
+        buttons = window.findChild(QDialogButtonBox)
+        assert buttons is not None
+        ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        cancel_button = buttons.button(QDialogButtonBox.StandardButton.Cancel)
+        assert ok_button is not None
+        assert cancel_button is not None
+
+        assert buttons.layoutDirection() is Qt.LayoutDirection.LeftToRight
+        assert cancel_button.geometry().right() < ok_button.geometry().left()
+        assert buttons.geometry().right() == (
+            window.contentsRect().right() - window.layout().contentsMargins().right()
+        )
 
     @pytest.mark.parametrize("font_scale", [1.0, 1.25, 1.5])
     def test_training_setting_labels_fit_at_supported_font_scales(

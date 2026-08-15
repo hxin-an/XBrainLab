@@ -20,8 +20,11 @@ from XBrainLab.backend.application.commands import (
     CommandName,
     PreprocessCommand,
     PreprocessOperation,
-    QueryStateCommand,
 )
+from XBrainLab.backend.application.preprocess_preparation import (
+    ApplicationPreprocessBoundary,
+)
+from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -62,6 +65,12 @@ _RECIPE_RELOAD_AVAILABILITY_UNAVAILABLE = (
 _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE = (
     "Channel selection availability is unavailable right now."
 )
+_CHANNELS_CHANGED_MESSAGE = (
+    "Nothing was applied. Review the latest channels and try again."
+)
+_DATASET_CHANGED_MESSAGE = (
+    "Nothing was applied. Review the latest dataset and try again."
+)
 _SMART_PARSE_AVAILABILITY_UNAVAILABLE = (
     "Smart parse availability is unavailable right now."
 )
@@ -79,6 +88,13 @@ def _channel_selection_dialog_class():
     )
 
     return ChannelSelectionDialog
+
+
+def _channel_selection_raw_identity(
+    state: ApplicationStateSnapshot,
+) -> tuple[int, tuple[str, ...], tuple[str, ...]]:
+    raw = state.raw
+    return raw.count, tuple(raw.files), tuple(raw.channels)
 
 
 class DatasetSidebar(QWidget):
@@ -715,16 +731,24 @@ class DatasetSidebar(QWidget):
                 )
                 return
 
-        channels = self._loaded_data_list_for_channel_selection(
-            preprocess_capability,
-            expected_publication_generation=(
-                publication.generation if publication is not None else None
-            ),
+        channels = (
+            [str(channel) for channel in publication.state.raw.channels]
+            if publication is not None
+            else self._compatibility_loaded_data_list_for_channel_selection()
         )
         if channels is None:
             return
         dialog_class = _channel_selection_dialog_class()
         dialog = dialog_class(self, channels)
+        reviewed_boundary = (
+            ApplicationPreprocessBoundary(
+                publication_generation=publication.generation,
+                publication_revision=publication.revision,
+                state=publication.state,
+            )
+            if publication is not None
+            else None
+        )
         if dialog.exec():
             result = dialog.get_result()
             if result:
@@ -738,6 +762,7 @@ class DatasetSidebar(QWidget):
                         expected_publication_generation=(
                             publication.generation if publication is not None else None
                         ),
+                        reviewed_preprocess_boundary=reviewed_boundary,
                     )
                     if command_result is None:
                         QMessageBox.warning(
@@ -746,11 +771,36 @@ class DatasetSidebar(QWidget):
                             CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                         )
                         return
-                    elif is_stale_publication_result(command_result):
+                    elif is_stale_publication_result(command_result) or (
+                        isinstance(command_result.diagnostics, dict)
+                        and command_result.diagnostics.get(
+                            "stale_prepared_preprocess",
+                        )
+                        is True
+                    ):
+                        raw_identity_changed = (
+                            reviewed_boundary is not None
+                            and isinstance(
+                                command_result.state,
+                                ApplicationStateSnapshot,
+                            )
+                            and _channel_selection_raw_identity(
+                                reviewed_boundary.state,
+                            )
+                            != _channel_selection_raw_identity(command_result.state)
+                        )
                         QMessageBox.warning(
                             self,
-                            "Review Channel Selection Again",
-                            command_result.message,
+                            (
+                                "Channels Changed"
+                                if raw_identity_changed
+                                else "Dataset Changed"
+                            ),
+                            (
+                                _CHANNELS_CHANGED_MESSAGE
+                                if raw_identity_changed
+                                else _DATASET_CHANGED_MESSAGE
+                            ),
                         )
                         return
                     elif command_result.failed:
@@ -766,36 +816,3 @@ class DatasetSidebar(QWidget):
                         self,
                         UnexpectedErrorContext.DATASET_CHANNEL_SELECTION,
                     )
-
-    def _loaded_data_list_for_channel_selection(
-        self,
-        preprocess_capability,
-        *,
-        expected_publication_generation: int | None = None,
-    ) -> list[str] | None:
-        command_kwargs: dict[str, Any] = {"refresh": False}
-        if expected_publication_generation is not None:
-            command_kwargs["expected_publication_generation"] = (
-                expected_publication_generation
-            )
-        result = execute_application_command(
-            self,
-            QueryStateCommand(query="data_lists"),
-            **command_kwargs,
-        )
-        if result is None:
-            if preprocess_capability is None and not has_real_application_context(self):
-                return self._compatibility_loaded_data_list_for_channel_selection()
-            return []
-        if result.failed:
-            return []
-        rows = result.diagnostics.get("raw_rows")
-        if not isinstance(rows, list) or not rows:
-            return []
-        first = rows[0]
-        if not isinstance(first, dict):
-            return []
-        channels = first.get("channels")
-        return (
-            [str(channel) for channel in channels] if isinstance(channels, list) else []
-        )

@@ -131,15 +131,7 @@ class ChannelSelectionDialog(BaseDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
-        normalize_dialog_button_box(buttons)
-        buttons.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        for standard_button in (
-            QDialogButtonBox.StandardButton.Ok,
-            QDialogButtonBox.StandardButton.Cancel,
-        ):
-            button = buttons.button(standard_button)
-            if button is not None:
-                button.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+        normalize_dialog_button_box(buttons, confirm_rightmost=True)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         footer = QHBoxLayout()

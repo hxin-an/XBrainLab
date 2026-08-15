@@ -10,6 +10,8 @@ from typing import Any, cast
 from unittest.mock import MagicMock
 from weakref import ref
 
+import mne
+import numpy as np
 import pytest
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QThread, QTimer
@@ -28,12 +30,19 @@ from XBrainLab.backend.application import (
     TrainCommand,
     get_application_service,
 )
+from XBrainLab.backend.application.bids_montage_preparation import (
+    MontagePreparationSnapshot,
+)
 from XBrainLab.backend.application.epoch_context import EpochDialogContext
 from XBrainLab.backend.application.errors import PreconditionError
+from XBrainLab.backend.application.preprocess_preparation import (
+    ApplicationPreprocessBoundary,
+)
 from XBrainLab.backend.application.view_publication import (
     APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
     PUBLIC_VIEW_UNAVAILABLE_MESSAGE,
 )
+from XBrainLab.backend.load_data.raw import Raw
 from XBrainLab.backend.study import Study
 from XBrainLab.ui import (
     application_capabilities,
@@ -521,6 +530,62 @@ def test_execute_application_command_forwards_expected_publication_generation(
         command,
         expected_publication_generation=37,
     )
+
+
+def test_execute_application_command_preserves_reviewed_preprocess_boundary(qtbot):
+    study = Study()
+    raw = Raw(
+        "channels.fif",
+        mne.io.RawArray(
+            np.zeros((2, 500)),
+            mne.create_info(["C3", "C4"], sfreq=100.0, ch_types="eeg"),
+            verbose="ERROR",
+        ),
+    )
+    study.set_loaded_data_list([raw], force_update=True)
+    widget = QWidget()
+    cast(Any, widget).main_window = SimpleNamespace(study=study)
+    qtbot.addWidget(widget)
+    service = get_application_service(study)
+    montage_status = [
+        MontagePreparationSnapshot.pending(
+            generation=1,
+            recording_paths=("channels.fif",),
+        )
+    ]
+    service.state_snapshot.montage_snapshot_provider = lambda: montage_status[0]
+    reviewed = service._view_coordinator.refresh_opportunistic()
+    reviewed_boundary = ApplicationPreprocessBoundary(
+        publication_generation=reviewed.generation,
+        publication_revision=reviewed.revision,
+        state=reviewed.state,
+    )
+    montage_status[0] = MontagePreparationSnapshot(
+        state="ready",
+        generation=1,
+        requested_recording_paths=("channels.fif",),
+    )
+    current = service._view_coordinator.refresh_opportunistic()
+    assert current.generation > reviewed.generation
+
+    result = execute_application_command(
+        widget,
+        PreprocessCommand(
+            operation=PreprocessOperation.SELECT_CHANNELS,
+            channels=["C3"],
+        ),
+        expected_publication_generation=reviewed.generation,
+        reviewed_preprocess_boundary=reviewed_boundary,
+    )
+
+    assert result is not None
+    assert result.ok
+    assert study.loaded_data_list[0].get_mne().ch_names == ["C3"]
+    assert study.data_manager.backup_loaded_data_list is not None
+    assert study.data_manager.backup_loaded_data_list[0].get_mne().ch_names == [
+        "C3",
+        "C4",
+    ]
 
 
 def test_ui_stale_publication_rejection_does_not_execute_handler(qtbot):
