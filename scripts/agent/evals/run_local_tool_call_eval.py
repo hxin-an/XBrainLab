@@ -2454,7 +2454,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--output-dir",
-        default="artifacts/agent_evals",
+        default="build/dev-artifacts/agent-evals",
         help="Directory for local eval artifacts.",
     )
     args = parser.parse_args(argv)

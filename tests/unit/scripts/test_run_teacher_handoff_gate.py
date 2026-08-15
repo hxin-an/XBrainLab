@@ -90,7 +90,7 @@ def test_source_dirty_paths_excludes_only_root_settings(
                 " M settings.json",
                 " M .vscode/settings.json",
                 " M XBrainLab/backend/service.py",
-                "?? artifacts/ui/current.png",
+                "?? build/dev-artifacts/ui/current.png",
                 "?? tests/unit/test_current.py",
             )
         ),
@@ -99,7 +99,7 @@ def test_source_dirty_paths_excludes_only_root_settings(
     assert gate._source_dirty_paths() == [
         ".vscode/settings.json",
         "XBrainLab/backend/service.py",
-        "artifacts/ui/current.png",
+        "build/dev-artifacts/ui/current.png",
         "tests/unit/test_current.py",
     ]
 
@@ -108,7 +108,7 @@ def test_git_output_preserves_first_porcelain_status_column(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class Completed:
-        stdout = " M .vscode/settings.json\n?? artifacts/ui/current.png\n"
+        stdout = " M .vscode/settings.json\n?? build/dev-artifacts/ui/current.png\n"
 
     monkeypatch.setattr(gate.shutil, "which", lambda _name: "/usr/bin/git")
     monkeypatch.setattr(gate.subprocess, "run", lambda *_args, **_kwargs: Completed())

@@ -3447,7 +3447,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--output-dir",
-        default="artifacts/agent_evals",
+        default="build/dev-artifacts/agent-evals",
         help="Directory for latest.json/latest.md",
     )
     parser.add_argument(

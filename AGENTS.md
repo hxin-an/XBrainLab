@@ -59,6 +59,8 @@ blocker 與 plan 變更；plan 不會擴大 scope ceiling。完成後從 active 
 - 禁止未經要求使用 `git reset --hard`、`git checkout --` 或廣泛清理。
 - 合併一律經 PR；PR base 與 head SHA 必須精確對應，CI 及 non-skipped checks 必須
   `completed/success`。Missing、pending、stale、cancelled 或 failed 都 fail closed。
+- Product 行為只能在使用者明確表示手測通過並同意 merge 後合併；PR 的 `Manual acceptance`
+  記錄日期、範圍與 source。Source 再改即失效；自動證據不取代批准。純 docs/tests/CI/guidance 可豁免。
 
 ## 複雜度與刪除優先
 

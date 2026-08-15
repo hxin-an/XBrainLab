@@ -20,6 +20,9 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageStat
 
+from scripts.dev.capture_ui_baseline import (
+    ARTIFACTS_DIR as UI_CAPTURE_DIR,
+)
 from scripts.dev.capture_ui_baseline import CAPTURE_STEPS, is_nearly_black
 from scripts.dev.owned_process_group import spawn_owned_process, terminate_and_collect
 from scripts.dev.pytest_completion_attestation import (
@@ -33,7 +36,7 @@ from scripts.dev.resource_calibration_contract import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-QUALITY_DIR = ROOT / "artifacts" / "quality"
+QUALITY_DIR = ROOT / "build" / "dev-artifacts" / "quality-dashboard"
 LATEST_JSON = QUALITY_DIR / "latest.json"
 LATEST_MD = QUALITY_DIR / "latest.md"
 HISTORY_JSONL = QUALITY_DIR / "history.jsonl"
@@ -51,7 +54,9 @@ PIXEL_DIFF_THRESHOLD = 12
 DEFAULT_CHECK_TIMEOUT_SECONDS = 300
 UI_UNIT_SUITE_TIMEOUT_SECONDS = 900
 CHECK_TERMINATION_GRACE_SECONDS = 5
-RESOURCE_CALIBRATION_PATH = ROOT / "artifacts" / "resource_guard" / "calibration.json"
+RESOURCE_CALIBRATION_PATH = (
+    ROOT / "build" / "dev-artifacts" / "resource-guard" / "calibration.json"
+)
 DEFAULT_HANDOFF_BRANCH = "main"
 PROTECTED_LOCAL_CONFIG_PATHS = frozenset({"settings.json"})
 REQUIRED_PUBLIC_IO_TEST_NODES = (
@@ -1240,8 +1245,9 @@ def render_markdown(report: dict) -> str:
             "",
         ]
     )
+    ui_capture_root = UI_CAPTURE_DIR.relative_to(ROOT).as_posix()
     for filename in EXPECTED_UI_ARTIFACTS:
-        lines.append(f"- `artifacts/ui/{filename}`")
+        lines.append(f"- `{ui_capture_root}/{filename}`")
 
     lines.extend(
         [

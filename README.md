@@ -1,78 +1,55 @@
 # XBrainLab
 
-XBrainLab 是一個整合 `tool-calling agent` 的 EEG 分析桌面應用程式。
+XBrainLab 是本地優先的 EEG/BCI 桌面分析工具。主要 workflow 是：
 
-這個 repo 目前同時承擔兩件事：
-
-1. 把現有 PyQt 應用穩定到可實際使用
-2. 支撐碩論中的 `tool-call agent` 架構重設與驗證
-
-## 先看這裡
-
-- 文件入口：
-  [docs/index.md](docs/index.md)
-- 目前狀態：
-  [docs/current.md](docs/current.md)
-- 目標態：
-  [docs/target/README.md](docs/target/README.md)
-- 架構總覽：
-  [docs/architecture/README.md](docs/architecture/README.md)
-- 實作紀錄：
-  [docs/records/implementation_log.md](docs/records/implementation_log.md)
-
-## Repo 結構
-
-- `XBrainLab/`
-  - 主程式碼
-- `tests/`
-  - unit、integration、regression 與 real-data validation
-- `scripts/`
-  - 開發、驗證、agent benchmark 相關輔助腳本
-- `docs/`
-  - 給人看的專案文件
-- `.agents/`
-  - Codex / autopilot 用的 agent 操作文件
-
-## 文件導覽
-
-可以先這樣理解各資料夾：
-
-- `docs/`
-  - 目前狀態、目標、規劃、驗證、決策、紀錄。
-- `docs/target/`
-  - 需求與理想架構。
-- `docs/architecture/`
-  - 目前實際系統架構。
-
-舊文件已整合後刪除，不再保留 `docs/legacy/` 閱讀面。
-
-文件入口在這裡：
-
-- [docs/index.md](docs/index.md)
-
-## 快速開始
-
-安裝依賴：
-
-```bash
-poetry install --with dev,test
+```text
+Import and review EEG data
+  -> Preprocess
+  -> Create epochs
+  -> Split and train
+  -> Evaluate
+  -> Visualize saliency
 ```
 
-啟動程式：
+`ApplicationService / Command API` 是 GUI、Assistant 與開發 scripts 共用的產品命令邊界。
+Assistant 仍是下一階段工作，不屬於 `v0.6.0` Desktop GUI baseline 的完成主張；MCP 只保留為明確
+opt-in compatibility。
+
+## 啟動
+
+使用 Poetry 管理的環境：
 
 ```bash
+poetry install
 poetry run python run.py
 ```
 
-如果要啟用本地 LLM 支援：
+目前發行物是 source/GUI baseline，不是 signed installer。Windows launcher 只適用於已配置的開發
+機器，不能視為一般使用者安裝程式。
 
-```bash
-poetry install --with llm
-```
+## 文件入口
 
-## 其他重要檔案
+- [目前產品真相](docs/current.md)
+- [目前工作與下一階段](docs/planning/now.md)
+- [目前架構](docs/architecture/README.md)
+- [驗證與 evidence contract](docs/validation/README.md)
+- [目標態](docs/target/README.md)
+- [使用者操作指南](user_docs/index.md)
+- [版本紀錄](CHANGELOG.md)
 
-- `docs/planning/roadmap.md`
-  - 目前階段路線與下一步
-- `CHANGELOG.md`
-  - 歷史版本紀錄；目前工程整理以 `docs/records/implementation_log.md` 為準
+詳細歷史不再維護第二份流水帳；需要時由 Git history、合併 PR、tag 與 GitHub Release 追溯。
+
+## 開發邊界
+
+- `main` 是唯一產品基線，變更以短 branch + PR 整合。
+- `settings.json` 是本機 runtime 設定，不得提交或覆寫。
+- Dataset、model/RAG cache、training output 與 generated evidence 各有獨立 storage owner。
+- 開發 artifact 寫到 ignored `build/dev-artifacts/`；exact handoff evidence 寫到
+  `build/handoff-evidence/<full-SHA>/`。
+- 任何改變產品行為的 PR，必須先由使用者手測通過並明確同意 merge；CI 和自動 screenshot 不能
+  取代人工批准。
+
+## 準確的 release claim
+
+`v0.6.0` 代表 Windows Desktop GUI/source baseline。它不代表 signed installer、Assistant-ready、
+任意 EEG dataset 全面支援、scientific model-quality certification 或整體產品 1.0。

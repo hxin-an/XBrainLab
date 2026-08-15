@@ -24,7 +24,7 @@ from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_DIR = ROOT / "build" / "dev-artifacts" / "mcp"
-DEFAULT_CONFIG = Path("artifacts/mcp/xbrainlab-mcp.json")
+DEFAULT_CONFIG = DEFAULT_OUTPUT_DIR / "xbrainlab-mcp.json"
 DEFAULT_SERVER_NAME = "xbrainlab-windows-wsl"
 WINDOWS_NPX = Path("/mnt/c/Program Files/nodejs/npx")
 WINDOWS_NODE = Path("/mnt/c/Program Files/nodejs/node.exe")

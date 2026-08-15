@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import json
-from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -19,25 +17,13 @@ from scripts.dev.data_import_capture_contract import (
 )
 
 
-def _historical_capture_spec(spec):
-    manifest_path = (
-        capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR
-        / "data-import-wizard-steps-evidence.json"
-    )
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    dimensions = tuple(manifest["screenshots"][spec.filename]["dimensions"])
-    return replace(spec, expected_size=dimensions)
-
-
 def test_default_data_import_evidence_uses_dev_artifact_namespace() -> None:
     expected = (
         capture_script.ROOT / "build" / "dev-artifacts" / "data-import-wizard-steps"
     )
 
     assert expected == capture_script.DEFAULT_OUTPUT_DIR
-    assert capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR == (
-        capture_script.ROOT / "artifacts" / "ui" / "data-import-wizard-steps"
-    )
+    assert "HISTORICAL_CHECKPOINT_OUTPUT_DIR" not in vars(capture_script)
 
 
 def test_nested_placement_capture_keeps_full_logical_artifact_name(
@@ -150,30 +136,12 @@ def test_placement_mode_states_are_bound_in_the_root_manifest(tmp_path: Path) ->
     assert "placement screenshot metadata/hash mismatch" in reason
 
 
-@pytest.mark.parametrize(
-    "spec",
-    capture_script._canonical_capture_specs(),
-    ids=lambda spec: spec.filename,
-)
-def test_every_canonical_artifact_renders_required_text(spec):
-    screenshot = capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR / spec.filename
-    assert screenshot.is_file()
-    capture_script._assert_canonical_png_artifact(
-        screenshot,
-        _historical_capture_spec(spec),
-    )
-
-
-def test_canonical_capture_specs_cover_the_complete_png_inventory():
+def test_canonical_capture_specs_define_unique_complete_inventory():
     specs = capture_script._canonical_capture_specs()
     specified_names = {spec.filename for spec in specs}
-    artifact_names = {
-        path.name
-        for path in capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR.glob("*.png")
-    }
 
     assert len(specs) == len(specified_names)
-    assert specified_names == artifact_names
+    assert len(specs) >= 10
     assert [spec.filename for spec in specs if not spec.has_wizard_chrome] == [
         "04-match-labels-conversion-table-format-dialog.png"
     ]
@@ -258,43 +226,6 @@ def test_reference_crop_guard_rejects_two_identical_same_theme_damaged_frames(
                 reference,
                 surface_name="Required action text",
             )
-
-
-@pytest.mark.parametrize(
-    ("damage", "bounds", "expected_error"),
-    [
-        ("first step", (20, 18, 250, 52), "step label '1. Choose EEG Data'"),
-        ("summary prefix", (20, 68, 80, 86), "summary prefix"),
-        ("title", (20, 98, 450, 123), "title 'Load Labels'"),
-        ("Cancel", (20, 1268, 90, 1306), "Cancel action"),
-        (
-            "primary action",
-            (940, 1268, 1200, 1306),
-            "primary action 'Next: Review Metadata'",
-        ),
-    ],
-)
-def test_many_labels_artifact_guard_rejects_missing_required_text(
-    tmp_path,
-    damage,
-    bounds,
-    expected_error,
-):
-    spec = next(
-        spec
-        for spec in capture_script._canonical_capture_specs()
-        if spec.filename == "02-load-labels-many.png"
-    )
-    damaged = tmp_path / spec.filename
-    with Image.open(
-        capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR / spec.filename
-    ) as source:
-        image = source.convert("RGB")
-    ImageDraw.Draw(image).rectangle(bounds, fill="#1e1e1e")
-    image.save(damaged)
-
-    with pytest.raises(RuntimeError, match=expected_error):
-        capture_script._assert_canonical_png_artifact(damaged, spec)
 
 
 def test_data_import_capture_script_only_targets_canonical_step_folder():
@@ -400,7 +331,7 @@ def test_capture_png_normalization_writes_plain_rgb(tmp_path):
     assert "optimize=True" in normalization_source
 
 
-def test_review_import_capture_has_no_unresolved_primary_decision(qtbot):
+def test_review_import_capture_has_no_unresolved_primary_decision(qtbot, tmp_path):
     dialog = capture_script._review_import_dialog()
     qtbot.addWidget(dialog)
     dialog.resize(capture_script.WINDOW_SIZE)
@@ -424,7 +355,7 @@ def test_review_import_capture_has_no_unresolved_primary_decision(qtbot):
     assert vertical.isVisible() is False
     capture_script._assert_single_vertical_scroll_owner(
         dialog,
-        capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR / "test-review.png",
+        tmp_path / "test-review.png",
     )
     assert (
         dialog._review_summary_value_labels["Resource check"].text()
@@ -474,7 +405,7 @@ def test_review_import_releases_stale_conservative_summary_row_height(qtbot):
     assert layout.rowMinimumHeight(row) == summary.minimumHeight()
 
 
-def test_capture_step_navigation_resets_hidden_horizontal_scroll(qtbot):
+def test_capture_step_navigation_resets_hidden_horizontal_scroll(qtbot, tmp_path):
     dialog = capture_script._review_import_dialog()
     qtbot.addWidget(dialog)
     dialog.resize(capture_script.WINDOW_SIZE)
@@ -490,7 +421,7 @@ def test_capture_step_navigation_resets_hidden_horizontal_scroll(qtbot):
     assert horizontal.value() == horizontal.minimum()
     capture_script._assert_step_navigation_visible(
         dialog,
-        capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR / "test-review.png",
+        tmp_path / "test-review.png",
     )
 
 
@@ -557,20 +488,6 @@ def test_required_region_guard_rejects_large_same_theme_content_erasure(
 
     with pytest.raises(RuntimeError, match="reference render"):
         capture_script._assert_required_capture_regions(dialog, screenshot)
-
-
-def test_historical_review_import_artifact_preserves_canonical_visual_contract():
-    spec = next(
-        spec
-        for spec in capture_script._canonical_capture_specs()
-        if spec.filename == "05-review-and-import.png"
-    )
-    historical = capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR / spec.filename
-
-    capture_script._assert_canonical_png_artifact(
-        historical,
-        _historical_capture_spec(spec),
-    )
 
 
 def test_review_import_live_action_matches_current_platform_control(qtbot, tmp_path):
@@ -656,20 +573,32 @@ def test_expanded_report_guard_rejects_blank_review_header(qtbot, tmp_path):
         "05-review-and-import-report.png",
     ],
 )
-def test_canonical_review_artifacts_have_full_review_header(filename):
-    screenshot = capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR / filename
-    assert screenshot.is_file()
+def test_canonical_review_artifacts_have_full_review_header(qtbot, tmp_path, filename):
+    spec = next(
+        spec
+        for spec in capture_script._canonical_capture_specs()
+        if spec.filename == filename
+    )
+    dialog = spec.dialog_factory()
+    qtbot.addWidget(dialog)
+    expected_size = QSize(*spec.expected_size)
+    dialog.resize(expected_size)
+    dialog.show()
+    dialog.resize(expected_size)
+    dialog._go_to_step(dialog._step_titles.index("Review and Import"))
+    if spec.expanded_report:
+        dialog.import_report_toggle.click()
+    qtbot.wait(20)
+
+    screenshot = tmp_path / filename
+    assert dialog.grab().save(str(screenshot))
+    capture_script._normalize_png_for_artifact(screenshot)
     capture_script._assert_canonical_review_artifact(screenshot)
 
 
 def test_review_artifact_guard_rejects_qt_dpi_metadata(tmp_path):
-    source = (
-        capture_script.HISTORICAL_CHECKPOINT_OUTPUT_DIR
-        / "05-review-and-import-report.png"
-    )
     screenshot = tmp_path / "qt-encoded-report.png"
-    with Image.open(source) as captured:
-        captured.convert("RGB").save(screenshot, dpi=(96, 96))
+    Image.new("RGB", (1220, 926), "#eeeeee").save(screenshot, dpi=(96, 96))
 
     with pytest.raises(RuntimeError, match="DPI metadata"):
         capture_script._assert_canonical_review_artifact(screenshot)

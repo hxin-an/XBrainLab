@@ -32,7 +32,7 @@ class AppConfig:
     """
 
     APP_NAME = "XBrainLab"
-    VERSION = "0.5.6"
+    VERSION = "0.6.0"
 
     # Determine base path (handle frozen executable vs. development script)
     if getattr(sys, "frozen", False):

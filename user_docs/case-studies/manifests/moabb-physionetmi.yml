@@ -3,7 +3,7 @@ case_id: moabb-physionetmi
 page: case-studies/moabb-physionetmi.md
 publication_status: unverified
 generated_from:
-  source: artifacts/user-journeys/moabb-datasets-v1.json
+  source: scripts/dev/moabb_user_journeys/data/moabb-datasets-v1.json
   site_copy: assets/manifests/moabb-datasets-v1.json
   schema_version: 1.0.0
   profile_id: moabb-compact-user-journeys-v1

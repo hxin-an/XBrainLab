@@ -483,7 +483,7 @@ def test_render_markdown_lists_checks_and_artifacts():
     assert "Dirty summary: `2` path(s)" in rendered
     assert "`M app.py`" in rendered
     assert "Generated capture paths (transient, git-ignored)" in rendered
-    assert "artifacts/ui/main-window-initial.png" in rendered
+    assert "build/dev-artifacts/ui-baseline/main-window-initial.png" in rendered
     assert "tests/baselines/ui/main-window-initial.png" in rendered
 
 

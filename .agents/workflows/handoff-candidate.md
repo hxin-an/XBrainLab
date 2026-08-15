@@ -24,17 +24,15 @@ the change.
 
 ## 3. Same-class sweep
 
-Search the changed owner and directly coupled call sites for the relevant class. Examples include duplicated readiness,
-manual refresh, direct/private mutation, async stale callbacks, label/event variants, figure/thread
-cleanup, and repeated layout components. A match blocks only when it can reproduce the same defect,
-break the declared contract, create direct safety/data loss, or invalidate the handoff evidence.
+Search the changed owner and directly coupled call sites for duplicated readiness, direct/private
+mutation, stale callbacks, label/event variants, cleanup, and repeated layout. A match blocks only
+when it reproduces the defect, creates direct safety/data loss, or invalidates handoff evidence.
 Keep independent matches as advisory follow-up. Add a source guard only for a stable static rule.
 
 ## 4. Happy path and edges
 
-Exercise one user-like path and the adjacent failures/cancellation/repeat behavior for the changed
-area. Select commands from `docs/validation/README.md`; executable handoff gates come only from
-`scripts/dev/handoff_gate_spec.py` via its canonical runner.
+Exercise one user-like path and adjacent failure/cancel/repeat behavior. Select commands from
+`docs/validation/README.md`; executable gates come only from `scripts/dev/handoff_gate_spec.py`.
 
 - Visible UI: behavior test plus screenshot/walkthrough.
 - Data/import/label/epoch/training/evaluation/visualization: required source-diverse dataset gate.
@@ -57,11 +55,13 @@ Require a focused commit, pushed exact SHA, PR to the intended `main`, and CI wh
 matches the PR head. CI and every non-skipped reported check must be completed/successful. Missing,
 pending, stale, cancelled, or failed evidence fails closed; do not use auto-merge as a substitute.
 
+Product behavior PRs require the user's explicit manual-test pass and merge approval. Record date,
+scope, and source under `Manual acceptance`; later source changes require retest. Automation does not substitute.
+
 ## 7. Final report
 
-Report branch/SHA/upstream, scope/non-goals, focused result, same-class sweep/guard, happy path,
-edge/regression, artifacts reviewed, dirty-state explanation, CI status, and claim boundary. End
-with exactly one label: `handoff-ready`, `checkpoint`, or `blocked`.
+Report identity, scope, focused/adjacent evidence, sweep/guard, artifacts, dirty state, CI, and claim
+boundary. End with exactly one label: `handoff-ready`, `checkpoint`, or `blocked`.
 
 Final totals or PASS claims must come from the same exact commit and canonical evidence identity,
 never from chat notes, stale dashboards, different SHAs, hidden skips, or reduced denominators.

@@ -27,7 +27,9 @@ CONFIG_PATH = ROOT / "mkdocs.user.yml"
 DOCS_DIR = ROOT / "user_docs"
 CASE_DIR = DOCS_DIR / "case-studies"
 MANIFEST_DIR = CASE_DIR / "manifests"
-MOABB_SOURCE = ROOT / "artifacts/user-journeys/moabb-datasets-v1.json"
+MOABB_SOURCE = (
+    ROOT / "scripts" / "dev" / "moabb_user_journeys" / "data" / "moabb-datasets-v1.json"
+)
 MOABB_SITE_COPY = DOCS_DIR / "assets/manifests/moabb-datasets-v1.json"
 
 MOABB_CASES = {
@@ -1033,7 +1035,7 @@ def _new_moabb_record(
         "page": metadata["page"],
         "publication_status": publication_status,
         "generated_from": {
-            "source": "artifacts/user-journeys/moabb-datasets-v1.json",
+            "source": ("scripts/dev/moabb_user_journeys/data/moabb-datasets-v1.json"),
             "site_copy": "assets/manifests/moabb-datasets-v1.json",
             "schema_version": source["schema_version"],
             "profile_id": source["profile_id"],
@@ -1321,7 +1323,7 @@ def _check_moabb_generated_cases(source: dict[str, Any], failures: list[str]) ->
         record = _read_yaml(record_path, failures)
         generated_from = record.get("generated_from")
         expected_source = {
-            "source": "artifacts/user-journeys/moabb-datasets-v1.json",
+            "source": ("scripts/dev/moabb_user_journeys/data/moabb-datasets-v1.json"),
             "site_copy": "assets/manifests/moabb-datasets-v1.json",
             "schema_version": source["schema_version"],
             "profile_id": source["profile_id"],

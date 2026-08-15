@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ast
+import shutil
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -8,17 +10,23 @@ DEV_SCRIPTS = ROOT / "scripts" / "dev"
 CAPTURE_SOURCES = (
     *sorted(DEV_SCRIPTS.glob("capture_*.py")),
     *sorted(DEV_SCRIPTS.glob("chatpanel_*/*.py")),
+    *sorted((ROOT / "scripts" / "agent" / "evals").glob("*.py")),
     DEV_SCRIPTS / "probe_pyvistaqt_runtime.py",
     DEV_SCRIPTS / "report_data_interpretation_format_matrix.py",
     DEV_SCRIPTS / "report_teacher_dataset_preflight.py",
     DEV_SCRIPTS / "run_chatpanel_ui_dpi_gate.py",
     DEV_SCRIPTS / "run_teacher_handoff_gate.py",
+    DEV_SCRIPTS / "update_quality_dashboard.py",
+    DEV_SCRIPTS / "write_mcp_client_config.py",
 )
-TRACKED_DEFAULT_ALLOWLIST = {
-    ("scripts/dev/capture_ui_baseline.py", "ARTIFACTS_DIR"),
-}
-OUTPUT_OPTIONS = {"--artifact-dir", "--artifacts-dir", "--output-dir"}
+TRACKED_DEFAULT_ALLOWLIST: set[tuple[str, str]] = set()
+OUTPUT_OPTIONS = {"--artifact-dir", "--artifacts-dir", "--eval-dir", "--output-dir"}
 FORBIDDEN_SEGMENTS = {"artifacts", "handoff-evidence"}
+TRACKED_ARTIFACT_ALLOWLIST = {
+    "artifacts/README.md",
+    "artifacts/quality/.gitignore",
+    "artifacts/ui/.gitignore",
+}
 
 
 def _assignment_name(node: ast.Assign | ast.AnnAssign) -> str | None:
@@ -122,3 +130,18 @@ def test_active_capture_defaults_avoid_tracked_and_final_handoff_namespaces() ->
     ]
 
     assert violations == [], "\n".join(violations)
+
+
+def test_tracked_artifact_namespace_contains_policy_files_only() -> None:
+    git_executable = shutil.which("git")
+    assert git_executable is not None
+    completed = subprocess.run(  # noqa: S603 - resolved Git binary with fixed argv.
+        [git_executable, "ls-files", "artifacts"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    tracked = {line for line in completed.stdout.splitlines() if line}
+
+    assert tracked == TRACKED_ARTIFACT_ALLOWLIST
