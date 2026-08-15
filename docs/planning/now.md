@@ -4,14 +4,22 @@
 
 ## 目前焦點
 
-**以 `v0.6.0` 凍結 Desktop GUI/source baseline，接著從 tagged `main` 建立新的 Assistant task
-branch。**
+**保留 `v0.6.0` 作為唯一 Desktop GUI/source baseline，完成本機dataset/worktree cleanup的PR與CI，
+再建立UI visual-regression guard，之後才進入Assistant task branch。**
 
-Desktop baseline的release closure只包含：清除誤導文件/artifacts、統一version metadata、完成
-exact-head validation、經PR合回`main`並建立tag/GitHub Release。Release closure期間不再修改已由
-使用者手測通過的產品行為；若product source改動，必須重新手測並取得merge同意。
+本輪storage slice不修改產品行為。中央root已驗證BIDS、public fixtures、唯一raw source、legacy
+compact source與manifests；舊worktrees/branches、quarantine、seeds、duplicate datasets與stale
+build outputs已依使用者授權永久移除。`build/`目前不再承擔durable storage，下一個獨立slice才處理
+UI baseline/DPI evidence。
 
-## 下一階段：Assistant
+## 後續順序
+
+1. Storage consolidation：完成focused commit、PR、exact-head CI與merge。
+2. UI regression guard：default-scale visual baseline；layout/theme/font/dialog變更另跑Windows
+   100/125/150% evidence。
+3. Assistant：從完成上述兩個 checkpoint 的最新 `main` 建短 branch。
+
+## Assistant boundary
 
 - 只走既有`ApplicationService / Command API`，不建立第二套state或capability policy。
 - 先量測real Granite的tool selection、confirmation、retry/cancel與長session，再決定最小修復。
@@ -21,7 +29,8 @@ exact-head validation、經PR合回`main`並建立tag/GitHub Release。Release c
 ## Non-goals
 
 - 不在GUI release branch加入新的Assistant功能。
-- 不刪dataset、MOABB source/seeds、models、RAG、training outputs或registered worktrees。
+- 不修改 `v0.6.0` tag/release、產品runtime行為、models、training outputs或repo-root `settings.json`。
+- 不從 retired worktrees 搬回 validation control plane、teacher campaign 或未提交中間版本。
 - 不宣稱signed installer、scientific model quality、任意dataset support或product 1.0。
 - 不恢復historical dashboard、tracked screenshots、舊Agent benchmark或第二份planning queue。
 
@@ -29,10 +38,12 @@ exact-head validation、經PR合回`main`並建立tag/GitHub Release。Release c
 
 Desktop baseline只有在下列條件全部成立後才算完成：
 
-1. Current tree只保留canonical docs與policy artifacts。
-2. Product source與使用者手測版本一致，PR記錄manual acceptance。
-3. Final PR exact-head所有non-skipped CI成功並合入`main`。
-4. 實際main integration SHA的CI成功。
-5. Annotated `v0.6.0` tag與Latest GitHub Release指向該main SHA。
+Storage slice只在下列條件全部成立後完成：
+
+1. Central datasets、完整cleanup receipt與legacy copy receipt由同一final committed tool重新驗證；
+   copy-only receipt不得冒充完整cleanup。
+2. `build/` durable-storage audit無findings，retired worktree/branch不存在。
+3. Focused tests、static checks與docs build成功。
+4. PR exact-head所有non-skipped CI成功並合入`main`。
 
 驗證規則只讀[Validation](../validation/README.md)；長期目標讀[Roadmap](roadmap.md)。

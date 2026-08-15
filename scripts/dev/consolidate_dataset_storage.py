@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import copy
 import hashlib
 import json
 import os
@@ -36,6 +37,33 @@ FORMAL_BIDS_SOURCE = Path("build/moabb-gui-campaign-v2/data")
 FORMAL_BIDS_CHECKSUMS = Path("build/moabb-gui-campaign-v2/checksums")
 PUBLIC_FIXTURE_SOURCE = Path("tests/fixtures/data/public")
 COMPACT_SOURCE = Path("build/moabb-data")
+ACTIVE_SOURCE = Path("build/moabb-gui-campaign-v2/mne-data")
+ACTIVE_SOURCE_DATASET_ID = "moabb-15-source"
+ACTIVE_SOURCE_EXCLUDED_TOP_LEVEL = (".quarantine", ".staging")
+ACTIVE_SOURCE_MANIFEST_NAME = ".xbrainlab-source.sha256"
+DURABLE_BUILD_STORAGE = (
+    (FORMAL_BIDS_SOURCE, "durable_dataset_storage"),
+    (ACTIVE_SOURCE, "durable_dataset_storage"),
+    (COMPACT_SOURCE, "durable_dataset_storage"),
+    (Path("build/moabb-download-seeds"), "durable_dataset_storage"),
+    (Path("build/worktrees"), "retained_worktree_storage"),
+)
+
+
+def audit_build_storage(repo_root: Path) -> list[dict[str, str]]:
+    """Return durable dataset/worktree roots that must not live under build/."""
+    findings: list[dict[str, str]] = []
+    for relative_path, reason in DURABLE_BUILD_STORAGE:
+        candidate = repo_root / relative_path
+        if not candidate.exists():
+            continue
+        if candidate.is_dir() and not candidate.is_symlink():
+            try:
+                next(candidate.iterdir())
+            except StopIteration:
+                continue
+        findings.append({"path": relative_path.as_posix(), "reason": reason})
+    return findings
 
 
 def _git_head(repo_root: Path) -> str:
@@ -62,6 +90,38 @@ def _tree_size(path: Path) -> tuple[int, int]:
             file_count += 1
             size_bytes += candidate.stat().st_size
     return file_count, size_bytes
+
+
+def _active_source_relative_files(root: Path) -> tuple[Path, ...]:
+    """Return exact active-source files while excluding rollback/staging roots."""
+    if not root.is_dir() or root.is_symlink():
+        raise ValueError(f"Active source root must be a real directory: {root}")
+    _reject_symlink_components(root)
+    files: list[Path] = []
+    excluded = set(ACTIVE_SOURCE_EXCLUDED_TOP_LEVEL)
+    for top_level in sorted(root.iterdir(), key=lambda path: path.name):
+        if top_level.name in excluded:
+            continue
+        if top_level.is_symlink():
+            raise ValueError(f"Active source tree contains a symlink: {top_level}")
+        if top_level.is_file():
+            files.append(top_level.relative_to(root))
+            continue
+        if not top_level.is_dir():
+            raise ValueError(f"Active source entry is not regular: {top_level}")
+        for candidate in sorted(top_level.rglob("*")):
+            if candidate.is_symlink():
+                raise ValueError(f"Active source tree contains a symlink: {candidate}")
+            if candidate.is_file():
+                files.append(candidate.relative_to(root))
+    return tuple(files)
+
+
+def _active_source_tree_size(root: Path) -> tuple[int, int]:
+    files = _active_source_relative_files(root)
+    return len(files), sum(
+        (root / relative_path).stat().st_size for relative_path in files
+    )
 
 
 def _formal_bids_payload_root(
@@ -228,6 +288,36 @@ def build_migration_plan(*, repo_root: Path, data_root: Path) -> dict[str, Any]:
     data_root = data_root.expanduser().absolute()
     layout = dataset_storage_layout(environ={"XBRAINLAB_DATA_DIR": str(data_root)})
     entries = _formal_bids_entries(repo_root, data_root)
+    active_source = repo_root / ACTIVE_SOURCE
+    if active_source.is_dir() and not active_source.is_symlink():
+        file_count, size_bytes = _active_source_tree_size(active_source)
+        entries.append(
+            {
+                "dataset_id": ACTIVE_SOURCE_DATASET_ID,
+                "role": "source-cache",
+                "authority": "accepted-active-source",
+                "source_path": str(active_source),
+                "target_path": str(layout.source_root / "moabb-15"),
+                "expected_file_count": file_count,
+                "expected_bytes": size_bytes,
+                "excluded_top_level": list(ACTIVE_SOURCE_EXCLUDED_TOP_LEVEL),
+                "checksum": {
+                    "algorithm": "sha256",
+                    "manifest_path": str(
+                        layout.source_root / "moabb-15" / ACTIVE_SOURCE_MANIFEST_NAME
+                    ),
+                    "path_basis": "source-relative",
+                },
+                "copy_status": (
+                    "target_present_unverified"
+                    if (layout.source_root / "moabb-15").exists()
+                    else "source_present_unverified"
+                ),
+                "cutover_status": "not_started",
+                "old_source_retained": True,
+                "deletion_authorized": False,
+            }
+        )
     for entry in (
         _public_fixture_entry(
             source=repo_root / PUBLIC_FIXTURE_SOURCE,
@@ -453,6 +543,210 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _copy_and_hash_manifest_file(
+    *, source: Path, staging: Path, relative_path: Path
+) -> tuple[str, int]:
+    destination = _resolved_child(root=staging, relative_path=relative_path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256()
+    size_bytes = 0
+    with (
+        _open_regular_file_no_follow(
+            root=source,
+            relative_path=relative_path,
+        ) as source_handle,
+        destination.open("xb") as destination_handle,
+    ):
+        while chunk := source_handle.read(1024 * 1024):
+            digest.update(chunk)
+            destination_handle.write(chunk)
+            size_bytes += len(chunk)
+    return digest.hexdigest(), size_bytes
+
+
+def _write_source_manifest(root: Path, entries: dict[Path, str]) -> None:
+    manifest = root / ACTIVE_SOURCE_MANIFEST_NAME
+    manifest.write_text(
+        "".join(
+            f"{digest}  {relative_path.as_posix()}\n"
+            for relative_path, digest in sorted(
+                entries.items(), key=lambda item: item[0].as_posix()
+            )
+        ),
+        encoding="utf-8",
+    )
+
+
+def verify_active_source_cache(source_root: Path) -> dict[str, int]:
+    """Verify one exact active source cache against its internal manifest."""
+    if not source_root.is_dir() or source_root.is_symlink():
+        raise ValueError(
+            f"Active source target must be a real directory: {source_root}"
+        )
+    _reject_tree_symlinks(source_root)
+    manifest = source_root / ACTIVE_SOURCE_MANIFEST_NAME
+    if not manifest.is_file() or manifest.is_symlink():
+        raise ValueError("Active source target has no trusted checksum manifest")
+    expected = _read_sha256_manifest(manifest)
+    actual = {
+        path.relative_to(source_root)
+        for path in source_root.rglob("*")
+        if path.is_file() and path.name != ACTIVE_SOURCE_MANIFEST_NAME
+    }
+    if actual != set(expected):
+        missing = sorted(str(path) for path in set(expected) - actual)
+        extra = sorted(str(path) for path in actual - set(expected))
+        raise ValueError(
+            f"Active source inventory mismatch: missing={missing[:5]}, extra={extra[:5]}"
+        )
+    size_bytes = 0
+    for relative_path, expected_digest in expected.items():
+        candidate = source_root / relative_path
+        if _sha256_file(candidate) != expected_digest:
+            raise ValueError(f"Active source checksum mismatch: {relative_path}")
+        size_bytes += candidate.stat().st_size
+    return {"file_count": len(expected), "size_bytes": size_bytes}
+
+
+def copy_verified_active_source_cache(*, source: Path, target: Path) -> dict[str, Any]:
+    """Copy the accepted non-quarantine raw source cache as one exact authority."""
+    source = source.expanduser().absolute()
+    target = target.expanduser().absolute()
+    _reject_symlink_components(source)
+    _reject_symlink_components(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    _reject_symlink_components(target)
+    resolved_source = source.resolve(strict=True)
+    resolved_target = target.parent.resolve(strict=True) / target.name
+    if (
+        resolved_source == resolved_target
+        or resolved_source in resolved_target.parents
+        or resolved_target in resolved_source.parents
+    ):
+        raise ValueError("Source and target roots must be distinct and non-nested")
+    relative_paths = _active_source_relative_files(resolved_source)
+    if target.exists():
+        target_result = verify_active_source_cache(target)
+        expected = _read_sha256_manifest(target / ACTIVE_SOURCE_MANIFEST_NAME)
+        if set(relative_paths) != set(expected):
+            raise ValueError("Active source inventory differs from the central target")
+        for relative_path, expected_digest in expected.items():
+            if _sha256_file(resolved_source / relative_path) != expected_digest:
+                raise ValueError(f"Active source checksum mismatch: {relative_path}")
+        return {"status": "already_present_and_verified", **target_result}
+    with _owned_copy_staging(target) as staging:
+        digests: dict[Path, str] = {}
+        size_bytes = 0
+        for relative_path in relative_paths:
+            digest, copied_bytes = _copy_and_hash_manifest_file(
+                source=resolved_source,
+                staging=staging,
+                relative_path=relative_path,
+            )
+            digests[relative_path] = digest
+            size_bytes += copied_bytes
+        _write_source_manifest(staging, digests)
+        target_result = verify_active_source_cache(staging)
+        if target_result != {
+            "file_count": len(relative_paths),
+            "size_bytes": size_bytes,
+        }:
+            raise AssertionError("Verified active source inventory changed during copy")
+        if target.exists():
+            raise ValueError(f"Migration target appeared before publish: {target}")
+        staging.replace(target)
+    return {"status": "copied_and_verified", **target_result}
+
+
+def finalize_verified_cleanup_receipt(plan: dict[str, Any]) -> dict[str, Any]:
+    """Record a completed cutover only after copied targets exist and sources do not."""
+    finalized = copy.deepcopy(plan)
+    if finalized.get("copy_state") != "complete":
+        raise ValueError("Cleanup receipt requires a complete copy operation")
+    canonical_root = Path(str(finalized.get("canonical_root", "")))
+    for entry in finalized.get("entries", []):
+        source = Path(str(entry.get("source_path", "")))
+        cutover_status = entry.get("cutover_status")
+        if entry.get("authority") == "rebuildable" and cutover_status in {
+            "not_started",
+            "retired_rebuildable",
+        }:
+            if source.exists():
+                raise ValueError(f"Rebuildable cleanup source still exists: {source}")
+            target = Path(str(entry.get("target_path", "")))
+            if target.exists() and entry.get("role") == "source-cache":
+                verify_active_source_cache(target)
+            entry["cutover_status"] = "retired_rebuildable"
+            entry["old_source_retained"] = False
+            entry["deletion_authorized"] = True
+            continue
+        if cutover_status not in {"copied_not_cut_over", "cut_over"}:
+            continue
+        target = Path(str(entry.get("target_path", "")))
+        if not target.exists():
+            raise ValueError(f"Verified cleanup target is missing: {target}")
+        role = str(entry.get("role", ""))
+        if role == "formal-bids":
+            relocated_manifest = (
+                canonical_root
+                / "manifests"
+                / "moabb-15"
+                / f"{entry['dataset_id']}.sha256"
+            )
+            verify_formal_bids_dataset(
+                dataset_root=target,
+                checksum_manifest=relocated_manifest,
+            )
+            entry["checksum"]["manifest_path"] = str(relocated_manifest)
+        elif role == "source-cache":
+            verify_active_source_cache(target)
+        elif role == "public-fixtures":
+            groups = fixture_groups_for_profile("all")
+            validate_fixture_set(target, groups)
+            pinned_paths = {
+                Path(str(fixture_file["filename"]))
+                for group in groups
+                for fixture_file in group["files"]
+            }
+            actual_paths = {
+                path.relative_to(target)
+                for path in target.rglob("*")
+                if path.is_file() and not path.is_symlink()
+            }
+            if actual_paths != pinned_paths:
+                raise ValueError("Public fixture target inventory mismatch")
+            source_has_payload = any((source / path).exists() for path in pinned_paths)
+            if source_has_payload:
+                raise ValueError(f"Old public fixture payload still exists: {source}")
+        elif source.exists():
+            raise ValueError(f"Old cleanup source still exists: {source}")
+        if role != "public-fixtures" and source.exists():
+            raise ValueError(f"Old cleanup source still exists: {source}")
+        entry["cutover_status"] = "cut_over"
+        entry["old_source_retained"] = False
+        entry["deletion_authorized"] = True
+    for candidate in finalized.get("cleanup_candidates", []):
+        path = Path(str(candidate.get("path", "")))
+        if path.exists():
+            raise ValueError(f"Cleanup candidate still exists: {path}")
+        candidate["exists"] = False
+        candidate["action"] = "removed_after_verified_cutover"
+        candidate["deletion_authorized"] = True
+    pending_dataset_ids = sorted(
+        str(entry.get("dataset_id", "unknown"))
+        for entry in finalized.get("entries", [])
+        if entry.get("old_source_retained")
+        or not entry.get("deletion_authorized", False)
+    )
+    finalized["cleanup_state"] = "partial" if pending_dataset_ids else "complete"
+    finalized["pending_dataset_ids"] = pending_dataset_ids
+    finalized["cleanup_completed_at"] = datetime.now(UTC).isoformat()
+    repo_root = finalized.get("repo_root")
+    if isinstance(repo_root, str) and repo_root:
+        finalized["source_head"] = _git_head(Path(repo_root))
+    return finalized
+
+
 def verify_formal_bids_dataset(
     *, dataset_root: Path, checksum_manifest: Path
 ) -> dict[str, int]:
@@ -598,10 +892,49 @@ def main() -> int:
         choices=("all", "required-ci", "teacher-preflight", "p300-multisubject"),
         help="Copy only the pinned files in one public fixture profile.",
     )
-    args = parser.parse_args()
-    copy_action_count = len(args.copy_formal_bids) + int(
-        args.copy_public_profile is not None
+    parser.add_argument(
+        "--copy-active-source",
+        action="store_true",
+        help="Copy the accepted non-quarantine MOABB raw source cache.",
     )
+    parser.add_argument(
+        "--copy-legacy-compact-source",
+        action="store_true",
+        help="Copy the legacy compact MOABB source subset with an exact manifest.",
+    )
+    parser.add_argument(
+        "--finalize-cleanup",
+        action="store_true",
+        help="Verify old sources are absent and finalize an existing plan receipt.",
+    )
+    parser.add_argument(
+        "--audit-build-storage",
+        action="store_true",
+        help="Fail if durable datasets or retained worktrees exist below build/.",
+    )
+    args = parser.parse_args()
+    copy_action_count = (
+        len(args.copy_formal_bids)
+        + int(args.copy_public_profile is not None)
+        + int(args.copy_active_source)
+        + int(args.copy_legacy_compact_source)
+    )
+    if args.audit_build_storage:
+        if args.finalize_cleanup or copy_action_count:
+            parser.error("--audit-build-storage cannot be combined with copy actions")
+        findings = audit_build_storage(args.repo_root)
+        print(json.dumps({"findings": findings}, indent=2, sort_keys=True))
+        return 1 if findings else 0
+    if args.finalize_cleanup:
+        if args.write_plan is None:
+            parser.error("--finalize-cleanup requires --write-plan")
+        if copy_action_count:
+            parser.error("--finalize-cleanup cannot be combined with copy actions")
+        existing = json.loads(args.write_plan.read_text(encoding="utf-8"))
+        finalized = finalize_verified_cleanup_receipt(existing)
+        _write_json(args.write_plan, finalized)
+        print(json.dumps(finalized, indent=2, sort_keys=True))
+        return 0
     if copy_action_count and args.write_plan is None:
         parser.error("Copy actions require --write-plan for durable recovery evidence.")
     plan = build_migration_plan(repo_root=args.repo_root, data_root=args.data_root)
@@ -642,6 +975,43 @@ def main() -> int:
             copy_results["pinned-public-fixtures"] = copy_result
             entry["copy_status"] = copy_result["status"]
             entry["cutover_status"] = "copied_not_cut_over"
+            if args.write_plan is not None:
+                _write_json(args.write_plan, plan)
+        if args.copy_active_source:
+            entry = _require_copy_entry(
+                by_id=by_id,
+                dataset_id=ACTIVE_SOURCE_DATASET_ID,
+                role="source-cache",
+            )
+            copy_result = copy_verified_active_source_cache(
+                source=Path(entry["source_path"]),
+                target=Path(entry["target_path"]),
+            )
+            copy_results[ACTIVE_SOURCE_DATASET_ID] = copy_result
+            entry["copy_status"] = copy_result["status"]
+            entry["cutover_status"] = "copied_not_cut_over"
+            if args.write_plan is not None:
+                _write_json(args.write_plan, plan)
+        if args.copy_legacy_compact_source:
+            entry = _require_copy_entry(
+                by_id=by_id,
+                dataset_id="legacy-compact-moabb",
+                role="source-cache",
+            )
+            copy_result = copy_verified_active_source_cache(
+                source=Path(entry["source_path"]),
+                target=Path(entry["target_path"]),
+            )
+            copy_results["legacy-compact-moabb"] = copy_result
+            entry["copy_status"] = copy_result["status"]
+            entry["cutover_status"] = "copied_not_cut_over"
+            entry["checksum"] = {
+                "algorithm": "sha256",
+                "manifest_path": str(
+                    Path(entry["target_path"]) / ACTIVE_SOURCE_MANIFEST_NAME
+                ),
+                "path_basis": "source-relative",
+            }
             if args.write_plan is not None:
                 _write_json(args.write_plan, plan)
     except BaseException as exc:
