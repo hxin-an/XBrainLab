@@ -330,7 +330,7 @@ jobs:
 
       - name: Capture and compare approved default-scale UI
         run: |
-          poetry run python scripts/dev/capture_ui_baseline.py \
+          poetry run -- python scripts/dev/capture_ui_baseline.py \
             --output-dir build/dev-artifacts/ui-baseline \
             --reference-dir tests/baselines/ui
 
@@ -379,7 +379,7 @@ jobs:
 
       - name: Capture Windows 100/125/150 percent UI matrix
         run: |
-          poetry run python scripts/dev/run_app_polish_ui_dpi_gate.py \
+          poetry run -- python scripts/dev/run_app_polish_ui_dpi_gate.py \
             --output-dir build/dev-artifacts/app-polish-dpi \
             --scale 1.0 --scale 1.25 --scale 1.5
 
