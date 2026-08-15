@@ -26,18 +26,26 @@ exact oracle 的 bounded worker，Sol 只處理客觀 high-risk decision；它�
 - 使用者目前不能可靠使用 Assistant；已知 claim 不能由 mock tool-call eval 或舊 artifact 支撐。
 - Assistant 必須和 UI 共用 `ApplicationService / Command API` 的 state、capability 與 error semantics，
   不能建立第二套 readiness truth。
-- 下一個 repair scope 尚不能在沒有 real runtime evidence 前決定；先量測不是授權廣泛重寫。
+- `assistant/runtime-measurement-v1` 的唯讀 host probe 已確認：protected `settings.json` 仍選擇已退役的
+  `microsoft/Phi-4-mini-instruct`，local policy 在 model load 前正確阻擋它；不改設定地指定
+  `ibm-granite/granite-3.3-2b-instruct` 時，runtime package 齊全但 local cache 缺失。這是目前
+  Assistant 不可用的第一個直接 blocker，尚未到可判定 chat lifecycle 或 tool dispatch 的階段。
+- Granite 預估下載 5.08 GB、VRAM 約 6 GB，仍在既定 10 GB 單模型 / 20 GB cache boundary 內；但不得
+  silent migration、覆寫使用者設定或未經同意下載。使用者選擇/安裝後，才可做有 timeout 的 prompt、
+  structured-envelope、ChatPanel lifecycle 與 cancel/retry 量測。
 
 ## 下一步
 
 1. 從最新 `main` 建立一條 CI task branch，以 red-first classifier truth table 實作並驗證 agent-guidance lane；
    exact-head CI 成功後直接 merge。
 2. 接著從更新後的 `main` 建立 Assistant task branch，先確認 repo/Git/runtime identity 與 real Granite health。
-3. 唯讀重現 chat startup、unavailable/error、tool selection、confirmation、retry/cancel 與長 session；
+3. 取得使用者對 Granite local selection / 約 5.08 GB download 的明確同意，或由使用者先在 Settings 完成
+   安裝；不得自動替換已退役模型。
+4. 唯讀重現 chat startup、unavailable/error、tool selection、confirmation、retry/cancel 與長 session；
    保存最小可重跑 evidence，不先改 UI。
-4. 將第一個 confirmed root cause、observable outcome、scope/non-goals、修理步驟與 focused validation
+5. 將第一個 confirmed root cause、observable outcome、scope/non-goals、修理步驟與 focused validation
    寫回本文件，再開始實作。
-5. 若修復需要任何 `XBrainLab/ui/` 或使用者可見互動變更，先取得使用者明確確認。
+6. 若修復需要任何 `XBrainLab/ui/` 或使用者可見互動變更，先取得使用者明確確認。
 
 ## Non-goals
 
