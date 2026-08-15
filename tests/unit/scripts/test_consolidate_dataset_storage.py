@@ -10,8 +10,10 @@ import pytest
 import scripts.dev.consolidate_dataset_storage as consolidation
 from scripts.dev.consolidate_dataset_storage import (
     build_migration_plan,
+    copy_verified_active_source_cache,
     copy_verified_formal_bids_dataset,
     copy_verified_public_fixture_profile,
+    finalize_verified_cleanup_receipt,
     main,
 )
 from scripts.dev.fetch_public_eeg_fixtures import FixtureFile, FixtureGroup
@@ -56,6 +58,116 @@ def test_plan_keeps_frozen_sources_and_excludes_build_quarantine(
     assert entry["old_source_retained"] is True
     assert entry["deletion_authorized"] is False
     assert not any(".quarantine" in item["target_path"] for item in plan["entries"])
+
+
+def test_plan_includes_one_active_source_cache_and_excludes_quarantine(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    data_root = tmp_path / "central"
+    active_source = repo_root / "build/moabb-gui-campaign-v2/mne-data"
+    (active_source / "PhysionetMI").mkdir(parents=True)
+    (active_source / "PhysionetMI/raw.edf").write_bytes(b"active")
+    (active_source / ".quarantine/orphan").mkdir(parents=True)
+    (active_source / ".quarantine/orphan/raw.edf").write_bytes(b"discard")
+
+    plan = build_migration_plan(repo_root=repo_root, data_root=data_root)
+
+    entry = next(
+        item for item in plan["entries"] if item["dataset_id"] == "moabb-15-source"
+    )
+    assert entry["role"] == "source-cache"
+    assert entry["authority"] == "accepted-active-source"
+    assert entry["expected_file_count"] == 1
+    assert entry["expected_bytes"] == len(b"active")
+    assert entry["target_path"] == str(data_root / "datasets/source/moabb-15")
+    assert entry["excluded_top_level"] == [".quarantine", ".staging"]
+
+
+def test_active_source_copy_is_exact_and_excludes_quarantine(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    target = tmp_path / "central" / "source" / "moabb-15"
+    (source / "PhysionetMI").mkdir(parents=True)
+    (source / "PhysionetMI/raw.edf").write_bytes(b"active-source")
+    (source / ".quarantine/orphan").mkdir(parents=True)
+    (source / ".quarantine/orphan/raw.edf").write_bytes(b"discard")
+
+    result = copy_verified_active_source_cache(source=source, target=target)
+
+    assert result == {
+        "status": "copied_and_verified",
+        "file_count": 1,
+        "size_bytes": len(b"active-source"),
+    }
+    assert (target / "PhysionetMI/raw.edf").read_bytes() == b"active-source"
+    assert not (target / ".quarantine").exists()
+    assert (target / ".xbrainlab-source.sha256").is_file()
+
+
+def test_active_source_existing_target_rejects_unmanaged_file(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    target = tmp_path / "central" / "source" / "moabb-15"
+    (source / "PhysionetMI").mkdir(parents=True)
+    (source / "PhysionetMI/raw.edf").write_bytes(b"active-source")
+    copy_verified_active_source_cache(source=source, target=target)
+    (target / "unmanaged.bin").write_bytes(b"unexpected")
+
+    with pytest.raises(ValueError, match="inventory mismatch"):
+        copy_verified_active_source_cache(source=source, target=target)
+
+
+def test_finalize_cleanup_requires_verified_targets_and_absent_sources(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "old-source"
+    target = tmp_path / "target"
+    source.mkdir()
+    target.mkdir()
+    plan = {
+        "copy_state": "complete",
+        "entries": [
+            {
+                "dataset_id": "Demo",
+                "source_path": str(source),
+                "target_path": str(target),
+                "copy_status": "copied_and_verified",
+                "cutover_status": "copied_not_cut_over",
+                "old_source_retained": True,
+                "deletion_authorized": False,
+            }
+        ],
+    }
+
+    with pytest.raises(ValueError, match="still exists"):
+        finalize_verified_cleanup_receipt(plan)
+
+
+def test_finalize_cleanup_records_completed_source_removal(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    plan = {
+        "copy_state": "complete",
+        "entries": [
+            {
+                "dataset_id": "Demo",
+                "source_path": str(tmp_path / "removed-source"),
+                "target_path": str(target),
+                "copy_status": "copied_and_verified",
+                "cutover_status": "copied_not_cut_over",
+                "old_source_retained": True,
+                "deletion_authorized": False,
+            }
+        ],
+    }
+
+    finalized = finalize_verified_cleanup_receipt(plan)
+
+    assert finalized["cleanup_state"] == "complete"
+    assert finalized["entries"][0]["cutover_status"] == "cut_over"
+    assert finalized["entries"][0]["old_source_retained"] is False
+    assert finalized["entries"][0]["deletion_authorized"] is True
 
 
 def test_verified_copy_is_atomic_and_never_deletes_the_source(tmp_path: Path) -> None:

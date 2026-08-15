@@ -4,14 +4,21 @@
 
 ## 目前焦點
 
-**以 `v0.6.0` 凍結 Desktop GUI/source baseline，接著從 tagged `main` 建立新的 Assistant task
-branch。**
+**保留 `v0.6.0` 作為唯一 Desktop GUI/source baseline，先完成本機 dataset/worktree consolidation，
+再建立 UI visual-regression guard，之後才進入 Assistant task branch。**
 
-Desktop baseline的release closure只包含：清除誤導文件/artifacts、統一version metadata、完成
-exact-head validation、經PR合回`main`並建立tag/GitHub Release。Release closure期間不再修改已由
-使用者手測通過的產品行為；若product source改動，必須重新手測並取得merge同意。
+本輪 storage slice 不修改產品行為。它把已驗證 BIDS、public fixtures、唯一 raw source 與 manifests
+集中到 durable data root，移除使用者已明確批准丟棄的舊 worktrees、branches、quarantine、seeds、
+duplicate datasets 與 stale build outputs。下一個獨立 slice 才處理 UI baseline/DPI evidence。
 
-## 下一階段：Assistant
+## 後續順序
+
+1. Storage consolidation：central authority、cleanup receipt、worktree/branch retirement。
+2. UI regression guard：default-scale visual baseline；layout/theme/font/dialog 變更另跑 Windows
+   100/125/150% evidence。
+3. Assistant：從完成上述兩個 checkpoint 的最新 `main` 建短 branch。
+
+## Assistant boundary
 
 - 只走既有`ApplicationService / Command API`，不建立第二套state或capability policy。
 - 先量測real Granite的tool selection、confirmation、retry/cancel與長session，再決定最小修復。
@@ -21,7 +28,8 @@ exact-head validation、經PR合回`main`並建立tag/GitHub Release。Release c
 ## Non-goals
 
 - 不在GUI release branch加入新的Assistant功能。
-- 不刪dataset、MOABB source/seeds、models、RAG、training outputs或registered worktrees。
+- 不修改 `v0.6.0` tag/release、產品runtime行為、models、training outputs或repo-root `settings.json`。
+- 不從 retired worktrees 搬回 validation control plane、teacher campaign 或未提交中間版本。
 - 不宣稱signed installer、scientific model quality、任意dataset support或product 1.0。
 - 不恢復historical dashboard、tracked screenshots、舊Agent benchmark或第二份planning queue。
 
