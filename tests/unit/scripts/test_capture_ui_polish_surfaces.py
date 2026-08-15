@@ -555,6 +555,68 @@ def test_app_polish_validator_requires_many_row_cell_pixel_evidence(
     assert "cell evidence is incomplete" in reason
 
 
+def test_app_polish_validator_accepts_cells_hidden_by_horizontal_scroll(
+    qtbot,
+    tmp_path,
+) -> None:
+    filename = "training-history-few-rows.png"
+    panel = _training_history_few_rows()
+    qtbot.addWidget(panel)
+    panel.show()
+    qtbot.wait(20)
+    frame_readiness = _capture(panel, tmp_path / filename)
+    identity = collect_source_identity()
+    generated_at = datetime.now(UTC)
+    payload = build_app_polish_evidence(
+        tmp_path,
+        expected_surfaces=[filename],
+        selected_surfaces=[filename],
+        surface_contracts={
+            filename: _surface_contract(
+                filename,
+                panel,
+                frame_readiness=frame_readiness,
+            )
+        },
+        generated_at=generated_at,
+        source_identity=identity,
+        qt_platform="offscreen",
+    )
+    contract = payload["surface_contracts"][filename]
+    contract["horizontal_scroll_maximum"] = 120
+    contract["horizontal_scroll_visible"] = True
+    contract["all_columns_visible_without_scroll"] = False
+    frame = contract["frame_readiness"]
+    hidden_suffix = ": Test Acc"
+    frame["required_regions"] = [
+        name for name in frame["required_regions"] if not name.endswith(hidden_suffix)
+    ]
+    frame["reference_regions"] = [
+        region
+        for region in frame["reference_regions"]
+        if not region["surface_name"].endswith(hidden_suffix)
+    ]
+    frame["reference_comparison_count"] = len(frame["reference_regions"])
+    frame["minimum_reference_edge_recall"] = round(
+        min(region["edge_recall"] for region in frame["reference_regions"]),
+        6,
+    )
+    frame["maximum_reference_changed_pixel_ratio"] = round(
+        max(region["changed_pixel_ratio"] for region in frame["reference_regions"]),
+        6,
+    )
+
+    ok, reason = _validate_test_evidence(
+        payload,
+        tmp_path,
+        identity,
+        now=generated_at,
+        expected_surfaces=(filename,),
+    )
+
+    assert ok is True, reason
+
+
 def test_capture_readme_can_be_written_outside_tracked_artifacts(tmp_path) -> None:
     _write_readme(tmp_path)
 

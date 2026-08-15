@@ -695,9 +695,16 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
         required_cell_names = {
             f"Training History cell row {row}: {column}"
             for row in ((1, 2, 3) if expected_running else (1, 2))
-            for column in ("Group", "Run", "Model", "Status", "Test Acc")
+            for column in ("Group", "Run", "Model", "Status")
         }
-        if expected_running:
+        if horizontal_scroll == 0:
+            required_cell_names.update(
+                {
+                    f"Training History cell row {row}: Test Acc"
+                    for row in ((1, 2, 3) if expected_running else (1, 2))
+                }
+            )
+        if expected_running and horizontal_scroll == 0:
             required_cell_names.update(
                 {
                     f"Training History cell row {row}: {column}"
