@@ -115,16 +115,17 @@ class _Run:
         dataset: _Dataset | None = None,
         model: Any | None = None,
         repeat: int = 0,
+        finished: bool = True,
     ) -> None:
         self.dataset = dataset or _Dataset()
         self.eval_record = _EvalRecord(labels, outputs)
         self.evaluation_records = {"test": self.eval_record}
         self.model = model
         self.repeat = repeat
+        self.finished = finished
 
-    @staticmethod
-    def is_finished() -> bool:
-        return True
+    def is_finished(self) -> bool:
+        return self.finished
 
     def get_name(self) -> str:
         return f"Repeat-{self.repeat}"
@@ -136,10 +137,13 @@ class _Plan:
         runs: list[_Run],
         *,
         dataset: _Dataset | None = None,
+        training_round_id: str | None = None,
     ) -> None:
         self.dataset = dataset or (runs[0].dataset if runs else _Dataset())
         self._runs = runs
         self.option = SimpleNamespace(bs=32, get_device=lambda: "cpu")
+        if training_round_id is not None:
+            self.training_round_id = training_round_id
 
     @staticmethod
     def get_name() -> str:
@@ -617,6 +621,66 @@ def test_cross_fold_choices_keep_repeats_as_distinct_summaries() -> None:
         "Run 1 (Summary)",
         "Run 2 (Summary)",
     ]
+
+
+def test_cross_fold_choices_keep_appended_training_rounds_separate() -> None:
+    epoch_data = _EpochData()
+    config = SimpleNamespace(is_cross_validation=True)
+    first_dataset = _Dataset(
+        epoch_data=epoch_data,
+        config=config,
+        test_mask=np.array([True, False]),
+    )
+    second_dataset = _Dataset(
+        epoch_data=epoch_data,
+        config=config,
+        test_mask=np.array([False, True]),
+    )
+
+    def round_plans(round_id: str, *, finished: bool) -> list[_Plan]:
+        return [
+            _Plan(
+                [
+                    _Run(
+                        np.array([label]),
+                        np.array([[0.8, 0.2] if label == 0 else [0.1, 0.9]]),
+                        dataset=dataset,
+                        finished=finished,
+                    )
+                ],
+                dataset=dataset,
+                training_round_id=round_id,
+            )
+            for label, dataset in enumerate((first_dataset, second_dataset))
+        ]
+
+    first_round = round_plans("training-round-1", finished=True)
+    pending_second_round = round_plans("training-round-2", finished=False)
+
+    while_second_round_is_pending = build_evaluation_cross_fold_choices(
+        [*first_round, *pending_second_round]
+    )
+
+    assert len(while_second_round_is_pending) == 1
+    assert while_second_round_is_pending[0].display_name == "Fold Set 1"
+    assert tuple(
+        member.plan.plan_index
+        for member in while_second_round_is_pending[0].identity.members
+    ) == (0, 1)
+
+    completed_second_round = round_plans("training-round-2", finished=True)
+    after_second_round_finishes = build_evaluation_cross_fold_choices(
+        [*first_round, *completed_second_round]
+    )
+
+    assert [choice.display_name for choice in after_second_round_finishes] == [
+        "Fold Set 1",
+        "Fold Set 2",
+    ]
+    assert [
+        tuple(member.plan.plan_index for member in choice.identity.members)
+        for choice in after_second_round_finishes
+    ] == [(0, 1), (2, 3)]
 
 
 def test_cross_fold_choices_do_not_merge_distinct_subject_cohorts() -> None:

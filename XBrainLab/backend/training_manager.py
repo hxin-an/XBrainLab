@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from threading import Event, Lock, RLock, Thread, Timer, current_thread
 from time import monotonic
 from typing import TYPE_CHECKING, Any, cast
+from uuid import uuid4
 
 from .exceptions import (
     SaliencyCancellationTimeoutError,
@@ -502,8 +503,15 @@ class TrainingManager:
         try:
             from .training import Trainer, TrainingPlanHolder  # noqa: PLC0415
 
+            training_round_id = uuid4().hex
             training_plan_holders = [
-                TrainingPlanHolder(model_holder, dataset, option, saliency_params)
+                TrainingPlanHolder(
+                    model_holder,
+                    dataset,
+                    option,
+                    saliency_params,
+                    training_round_id=training_round_id,
+                )
                 for dataset in datasets
             ]
             replacement = None if append_to_existing else Trainer(training_plan_holders)

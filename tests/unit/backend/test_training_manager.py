@@ -613,7 +613,7 @@ class TestGeneratePlan:
         existing_trainer = MagicMock()
         tm.trainer = existing_trainer
 
-        def construct_plan(*_args):
+        def construct_plan(*_args, **_kwargs):
             construction_started.set()
             assert release_construction.wait(timeout=2.0)
             return MagicMock()

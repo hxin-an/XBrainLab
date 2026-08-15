@@ -490,6 +490,69 @@ def test_analysis_service_publishes_only_admitted_cross_fold_runs() -> None:
     ]
 
 
+def test_analysis_service_keeps_appended_fold_round_summaries_independent() -> None:
+    epoch_data = SimpleNamespace(label_map={0: "Left", 1: "Right"})
+    config = SimpleNamespace(is_cross_validation=True)
+
+    class Dataset:
+        def __init__(self, mask: list[bool]) -> None:
+            self.epoch_data = epoch_data
+            self.config = config
+            self.cross_validation_cohort_id = "cohort-1"
+            self.test_mask = np.asarray(mask, dtype=bool)
+
+        def get_epoch_data(self):
+            return self.epoch_data
+
+    fold_datasets = (Dataset([True, False]), Dataset([False, True]))
+
+    def make_round(round_id: str):
+        plans = []
+        for fold_index, dataset in enumerate(fold_datasets):
+            label = fold_index
+            record = SimpleNamespace(
+                label=np.asarray([label]),
+                output=np.asarray([[0.8, 0.2] if label == 0 else [0.1, 0.9]]),
+                evaluation_split="test",
+            )
+            run = SimpleNamespace(
+                dataset=dataset,
+                eval_record=record,
+                evaluation_records={"test": record},
+                is_finished=lambda: True,
+                get_name=lambda: "Repeat-0",
+            )
+            plans.append(
+                SimpleNamespace(
+                    dataset=dataset,
+                    training_round_id=round_id,
+                    get_plans=lambda run=run: [run],
+                    get_name=lambda: "Fold",
+                )
+            )
+        return plans
+
+    service, _visualization = _service(
+        plans=[*make_round("training-round-1"), *make_round("training-round-2")]
+    )
+
+    _first_message, first_diagnostics = _expect_payload(
+        service.handle_evaluate(EvaluateCommand()),
+    )
+    _second_message, second_diagnostics = _expect_payload(
+        service.handle_evaluate(EvaluateCommand()),
+    )
+
+    assert second_diagnostics == first_diagnostics
+    assert [
+        choice["display_name"] for choice in first_diagnostics["cross_fold_choices"]
+    ] == ["Fold Set 1", "Fold Set 2"]
+    assert [
+        tuple(member["plan_index"] for member in choice["identity"]["members"])
+        for choice in first_diagnostics["cross_fold_choices"]
+    ] == [(0, 1), (2, 3)]
+
+
 def test_analysis_service_reports_validation_fallback_provenance() -> None:
     plan = _Plan(
         "Plan A",

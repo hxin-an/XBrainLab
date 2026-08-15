@@ -128,6 +128,7 @@ class _Holder:
         plan_index: int,
         test_mask: tuple[bool, ...],
         cross_validation_cohort_id: str = "cohort-1",
+        training_round_id: str | None = None,
     ) -> None:
         self.dataset = SimpleNamespace(
             epoch_data=epoch_data,
@@ -139,6 +140,8 @@ class _Holder:
         self._run = run
         run.dataset = self.dataset
         self._plan_index = plan_index
+        if training_round_id is not None:
+            self.training_round_id = training_round_id
 
     def get_plans(self) -> list[_Run]:
         return [self._run]
@@ -253,6 +256,32 @@ def test_cross_fold_choices_require_matching_verified_runs_and_split() -> None:
         == ()
     )
     assert build_saliency_cross_fold_choices(_fold_holders(second_repeat=1)) == ()
+
+
+def test_cross_fold_saliency_keeps_appended_training_rounds_separate() -> None:
+    first_round = _fold_holders()
+    for holder in first_round:
+        holder.training_round_id = "training-round-1"
+
+    second_round = _fold_holders()
+    for second, first in zip(second_round, first_round, strict=True):
+        second.dataset.epoch_data = first.dataset.epoch_data
+        second.dataset.config = first.dataset.config
+        second.dataset.cross_validation_cohort_id = (
+            first.dataset.cross_validation_cohort_id
+        )
+        second.training_round_id = "training-round-2"
+
+    choices = build_saliency_cross_fold_choices((*first_round, *second_round))
+
+    assert [choice.display_name for choice in choices] == [
+        "Fold Set 1",
+        "Fold Set 2",
+    ]
+    assert [
+        tuple(member.plan.plan_index for member in choice.identity.members)
+        for choice in choices
+    ] == [(0, 1), (2, 3)]
 
 
 def test_bids_geometry_subsets_only_position_dependent_render_views() -> None:

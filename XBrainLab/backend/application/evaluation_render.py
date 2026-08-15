@@ -1244,12 +1244,13 @@ def build_evaluation_cross_fold_choices(
 ) -> tuple[EvaluationCrossFoldChoice, ...]:
     """Return exact test-only cross-fold runs admitted by backend evidence."""
     indexed_plans = list(enumerate(plans))
-    cohorts: dict[tuple[int, int, str], list[tuple[int, Any]]] = {}
+    cohorts: dict[tuple[int, int, str, str], list[tuple[int, Any]]] = {}
     for plan_index, plan in indexed_plans:
         dataset = getattr(plan, "dataset", None)
         epoch_data = getattr(dataset, "epoch_data", None)
         config = getattr(dataset, "config", None)
         cohort_id = getattr(dataset, "cross_validation_cohort_id", None)
+        training_round_id = getattr(plan, "training_round_id", None)
         if (
             dataset is None
             or epoch_data is None
@@ -1259,9 +1260,15 @@ def build_evaluation_cross_fold_choices(
             or getattr(config, "is_cross_validation", False) is not True
         ):
             continue
-        cohorts.setdefault((id(epoch_data), id(config), cohort_id), []).append(
-            (plan_index, plan)
+        round_key = (
+            training_round_id
+            if isinstance(training_round_id, str) and training_round_id
+            else "legacy-training-round"
         )
+        cohorts.setdefault(
+            (id(epoch_data), id(config), cohort_id, round_key),
+            [],
+        ).append((plan_index, plan))
 
     admitted_cohorts = [
         cohort

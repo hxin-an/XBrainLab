@@ -306,6 +306,8 @@ class TrainingPlanHolder:
         dataset: Dataset,
         option: TrainingOption,
         saliency_params: dict | None,
+        *,
+        training_round_id: str | None = None,
     ):
         """Initialize the training plan holder.
 
@@ -319,6 +321,9 @@ class TrainingPlanHolder:
             option: Training configuration options.
             saliency_params: Parameters for saliency computation methods.
                 If ``None`` or empty, training performs metric evaluation only.
+            training_round_id: Opaque identity shared by every fold plan created
+                by one training-plan generation. Direct construction may omit it
+                for compatibility; the product TrainingManager always supplies it.
 
         Raises:
             ValueError: If the dataset, option, or model holder is invalid,
@@ -328,6 +333,12 @@ class TrainingPlanHolder:
         self.model_holder = model_holder
         self.dataset = dataset
         self.option = option
+
+        if training_round_id is not None and (
+            not isinstance(training_round_id, str) or not training_round_id.strip()
+        ):
+            raise ValueError("training_round_id must be a non-empty string")
+        self.training_round_id = training_round_id
 
         self.saliency_params: dict = dict(saliency_params or {})
 

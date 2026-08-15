@@ -344,8 +344,19 @@ class EvaluationPanel(BasePanel):
             pass  # Handled by InfoPanelService
 
         previous_generation = self._application_generation
+        previous_signature = self._last_evaluation_publication_signature
+        previous_trainer_identity = (
+            previous_signature.trainer_identity
+            if previous_signature is not None
+            else None
+        )
         previous_plan_identity = (
             self.model_combo.currentData() if hasattr(self, "model_combo") else None
+        )
+        previous_cross_fold_plan_indexes = (
+            previous_plan_identity.plan_indexes
+            if isinstance(previous_plan_identity, _EvaluationCrossFoldGroup)
+            else None
         )
         previous_run_identity = (
             self.run_combo.currentData() if hasattr(self, "run_combo") else None
@@ -367,7 +378,23 @@ class EvaluationPanel(BasePanel):
             self._show_no_data_available()
             return
 
-        if previous_generation != self._application_generation:
+        current_publication = self._application_view_publication
+        current_trainer_identity = (
+            current_publication.training_boundary.trainer_identity
+            if current_publication is not None
+            else None
+        )
+        preserve_cross_fold_selection = (
+            previous_generation != self._application_generation
+            and previous_cross_fold_plan_indexes is not None
+            and isinstance(previous_run_identity, EvaluationCrossFoldIdentity)
+            and previous_trainer_identity is not None
+            and previous_trainer_identity == current_trainer_identity
+        )
+        if (
+            previous_generation != self._application_generation
+            and not preserve_cross_fold_selection
+        ):
             previous_plan_identity = None
             previous_run_identity = None
 
@@ -391,7 +418,13 @@ class EvaluationPanel(BasePanel):
             if self.model_combo.count() > 0:
                 selected_index = 0
                 for i in range(self.model_combo.count()):
-                    if self.model_combo.itemData(i) == previous_plan_identity:
+                    candidate_identity = self.model_combo.itemData(i)
+                    if candidate_identity == previous_plan_identity or (
+                        preserve_cross_fold_selection
+                        and isinstance(candidate_identity, _EvaluationCrossFoldGroup)
+                        and candidate_identity.plan_indexes
+                        == previous_cross_fold_plan_indexes
+                    ):
                         selected_index = i
                         break
 
