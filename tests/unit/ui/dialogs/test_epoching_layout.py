@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PyQt6.QtCore import QPoint, QRect, QSize, Qt
 from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import QDialogButtonBox, QScrollArea
+from PyQt6.QtWidgets import QDialogButtonBox, QPushButton, QScrollArea
 
 from XBrainLab.backend.application.epoch_context import (
     EpochContextAvailability,
@@ -90,6 +90,37 @@ def _assert_footer_is_fixed_and_visible(dialog: EpochingDialog) -> None:
     assert footer.isVisibleTo(dialog)
     assert dialog.contentsRect().contains(footer_rect)
     assert footer_rect.top() > scroll_rect.top()
+
+
+def test_epoching_primary_action_uses_short_confirm_copy_at_larger_font(qapp, qtbot):
+    original_font = QFont(qapp.font())
+    larger_font = QFont(original_font)
+    larger_font.setPointSizeF(max(original_font.pointSizeF() + 2.0, 11.0))
+    qapp.setFont(larger_font)
+    dialog = None
+    try:
+        dialog = _ScreenBoundEpochingDialog(
+            None,
+            epoch_context=_epoch_context(7),
+            available_geometry=QRect(0, 0, 800, 620),
+        )
+        qtbot.addWidget(dialog)
+        dialog.show()
+        qtbot.wait(0)
+
+        button = dialog.findChild(QPushButton, "EpochPrimaryButton")
+        assert button is not None
+        assert button.text() == "Confirm"
+        assert button.fontMetrics().horizontalAdvance(button.text()) <= (
+            button.contentsRect().width()
+        )
+        _assert_footer_is_fixed_and_visible(dialog)
+    finally:
+        if dialog is not None:
+            dialog.close()
+            dialog.deleteLater()
+            qapp.processEvents()
+        qapp.setFont(original_font)
 
 
 def test_epoching_expands_seven_event_content_before_first_frame_when_space_allows(

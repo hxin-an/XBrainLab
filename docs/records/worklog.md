@@ -39,18 +39,22 @@
 
 ### Manual UI / Saliency follow-up v3 checkpoint
 
-- 做了什麼：從最新 `main` 建立 `fix/manual-ui-saliency-followup-v3`，只處理三項真人手測
+- 做了什麼：從最新 `main` 建立 `fix/manual-ui-saliency-followup-v3`，先處理三項真人手測
   regression：標準 OK／Cancel dialog 的 primary action 實際排列、同一 completed training lineage
   明確選擇新 Saliency method 時被 terminal owner 誤判為 superseded，以及 Time Epoching 有可用高度
-  卻留下數像素內容捲動。`settings.json` 全程保留且不納入變更。
+  卻留下數像素內容捲動。Windows 真人檢查再確認 Epoch footer 的完整功能名稱會在部分 DPI 下裁切，
+  因此最後只把該主按鈕縮短為 `Confirm`；標題、側欄與 backend 語意不變。`settings.json` 全程保留且
+  不納入變更。
 - 結果：shared dialog helper 現在統一實體 `Cancel` 在左、primary 在右；explicit Saliency recompute
   在 resource admission 前形成 verified-complete 舊 methods 與本次選擇的 canonical union，fresh
   generation 完整重算後 atomic publish；Epoch dialog 在首幀前依 polished content 只向上擴張，短螢幕
-  仍由固定 footer 上方的單一 content scroll 承接。
+  仍由固定 footer 上方的單一 content scroll 承接，footer 主按鈕固定顯示 `Confirm`。
 - 證據：三項都先以 observable RED 重現再轉綠；主 agent 整合 slice `395 passed`，Dialog capture
   contract `6 passed`，完整產品 Basedpyright `0 errors`，Ruff、diff check 與 MkDocs strict 通過。
   Standard/narrow dialog contact sheets共 34 個 rendered observations，Epoch full/bounded artifacts 已由
-  主 agent 檢查；目前仍是 commit 前 source-digest checkpoint。
+  主 agent 檢查。最後的 Confirm 補修另有 Epoch UI／integration `48 passed`、capture contract
+  `41 passed`、scoped Basedpyright `0 errors`，以及 8 個 state/layout artifact 全部
+  `primary_text_fits=true`；目前仍是 commit 前 source-digest checkpoint。
 - 接續 / 本輪剩餘：建立 focused commits，在 exact clean/explained HEAD 重生 artifacts，執行 required
   public multi-dataset／適用 visualization evidence，push PR 並核對 exact-head CI。Windows native DPI、
   interactive Saliency 與真人 usability 仍是 acceptance boundary。

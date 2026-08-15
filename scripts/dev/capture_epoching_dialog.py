@@ -517,6 +517,11 @@ def _geometry_evidence(
     )
     footer_below_content = min(cancel_rect.top(), create_rect.top()) > scroll_rect.top()
     footer_visible = cancel.isVisibleTo(dialog) and create.isVisibleTo(dialog)
+    primary_action = create.text()
+    primary_text_fits = (
+        create.fontMetrics().horizontalAdvance(primary_action)
+        <= create.contentsRect().width()
+    )
     horizontal_scroll_hidden = not scroll.horizontalScrollBar().isVisibleTo(dialog)
     vertical_scroll_max = scroll.verticalScrollBar().maximum()
     vertical_scroll_matches = (vertical_scroll_max > 0) is expected_vertical_scroll
@@ -528,6 +533,8 @@ def _geometry_evidence(
             controls_contained
             and footer_below_content
             and footer_visible
+            and primary_action == "Confirm"
+            and primary_text_fits
             and horizontal_scroll_hidden
             and vertical_scroll_matches
         ),
@@ -538,6 +545,8 @@ def _geometry_evidence(
         "controls_contained": controls_contained,
         "footer_below_content": footer_below_content,
         "footer_visible": footer_visible,
+        "primary_action": primary_action,
+        "primary_text_fits": primary_text_fits,
         "horizontal_scroll_hidden": horizontal_scroll_hidden,
         "expected_vertical_scroll": expected_vertical_scroll,
         "vertical_scroll_matches": vertical_scroll_matches,

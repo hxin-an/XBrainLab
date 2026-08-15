@@ -8,9 +8,9 @@
 
 ## 目前焦點
 
-**關閉真人手測追加確認的三個 product follow-up：所有標準 edit/settings dialogs 的 primary
-action 順序、同一 completed training lineage 的累加式 Saliency 明確重算，以及 Time Epoching
-在可用螢幕空間內完整展開。**
+**完成這條 manual UI candidate 的最後一個真人手測修正：Time Epoching footer 主按鈕改用
+`Confirm`，避免較大字型／DPI 下完整功能名稱被裁切。前三個 Dialog order、Saliency recompute
+與 Epoch available-space follow-up 已保留在同一 candidate。**
 
 Working desktop foundation 已經由 PR `#16` 合回 `main`；前兩輪真人 UI follow-up 已由 PR `#19`
 與 `#20` 合回 `main`。本輪從最新 `main` 建立短 branch；舊 checkpoint 繼續留在 remote 作
@@ -22,9 +22,9 @@ provenance。Repo-root `settings.json` 是使用者本機設定，永遠不 stag
 | --- | --- |
 | Product baseline | 最新 `main`；實際 merge-base / SHA 由 Git 取得。 |
 | Candidate | Manual UI / Saliency follow-up v3 branch；實際 branch / pushed SHA 由 Git 與 PR 取得。 |
-| Primary goal | 統一標準 Dialog 的 Cancel／primary 順序、讓 explicit Saliency 重算累加已完成 methods，並讓 Time Epoching 在有空間時完整展開。 |
+| Primary goal | 關閉 Time Epoching footer 主按鈕文案裁切，同時保留本 candidate 已完成的 Dialog order、Saliency recompute 與 Epoch available-space 行為。 |
 | Non-goals | 不改 attribution 數學或公開 state schema、不合併舊 attribution arrays、不放寬 active/newer Saliency ownership、不重排 QMessageBox 或特殊 multi-role footer、不改 Epoch backend 語意、dataset storage 或其他 workflow；不重跑 15-dataset GUI campaign、不刪資料。 |
-| Current classification | 前一輪修復已有使用者真人 checkpoint 並合回 `main`；這三項須完成 TDD、artifact、exact-head CI 與 Windows native acceptance。 |
+| Current classification | 前一輪修復已有使用者真人 checkpoint 並合回 `main`；這個 candidate 須完成 TDD、artifact、exact-head CI 與 Windows native acceptance。 |
 
 ## 本 branch 的產品邊界
 
@@ -35,7 +35,8 @@ provenance。Repo-root `settings.json` 是使用者本機設定，永遠不 stag
   的 canonical union，對所有 targeted finished records 完整重算並 atomic publish；partial/stale method
   不累加，失敗／取消／OOM／stale 保留舊結果。Automatic baseline 行為不變。
 - Time Epoching 在首幀前依 polished content 只向上擴張到螢幕安全邊界；有空間時完整顯示，真正
-  超出螢幕時才由固定 footer 上方的單一 content scroll 承接。
+  超出螢幕時才由固定 footer 上方的單一 content scroll 承接。Dialog 標題與側欄功能名稱維持
+  `Create EEG Epochs`，footer 主動作固定為短文案 `Confirm`。
 
 ## 施工與 exit signal
 
@@ -62,7 +63,7 @@ provenance。Repo-root `settings.json` 是使用者本機設定，永遠不 stag
 ## 本輪不做
 
 - 不重新打開前一輪已合併的 computed-only selector、Channel stale handling、Data Split first-frame、
-  Reset Session surface-retirement 或其他 workflow；只有本頁列出的三個 observable defects 進入本 branch。
+  Reset Session surface-retirement 或其他 workflow；只有本頁列出的 candidate defects 進入本 branch。
 - 不重新引入舊 reliability campaign。
 - 不刪除 datasets、outputs、logs 或 worktrees。
 - 不新增 facade、silent fallback、第二套 capability / state / status truth。

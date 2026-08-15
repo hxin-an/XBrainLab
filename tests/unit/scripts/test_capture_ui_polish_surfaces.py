@@ -119,11 +119,12 @@ def test_epoch_capture_contract_requires_complete_visible_controls(
 
     assert contract["scenario"] == scenario
     assert contract["selected_event_count"] > 0
-    assert contract["primary_action"] == "Create EEG Epochs"
+    assert contract["primary_action"] == "Confirm"
     assert contract["cancel_action"] == "Cancel"
     assert contract["window_mode_valid"] is True
     assert contract["primary_action_enabled"] is True
     assert "Create EEG Epochs" in contract["verified_controls"]
+    assert "Confirm" in contract["verified_controls"]
     assert "Cancel" in contract["verified_controls"]
     if scenario == "internal_events":
         assert contract["placement_method"] == "internal_events"
@@ -142,7 +143,7 @@ def test_bids_epoch_capture_rejects_missing_primary_action(qtbot) -> None:
     assert primary is not None
     primary.hide()
 
-    with pytest.raises(RuntimeError, match="Create EEG Epochs"):
+    with pytest.raises(RuntimeError, match="Confirm"):
         _assert_capture_geometry(BIDS_EPOCH_SCREENSHOT, dialog)
 
 

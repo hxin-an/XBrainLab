@@ -1640,6 +1640,7 @@ def _assert_epoching_dialog_contract(
     expected_text = {
         INTERNAL_EPOCH_SCREENSHOT: (
             "Create EEG Epochs",
+            "Confirm",
             "Suggested from import",
             "labels inside EEG files",
             "Events inside EEG files",
@@ -1650,6 +1651,7 @@ def _assert_epoching_dialog_contract(
         ),
         BIDS_EPOCH_SCREENSHOT: (
             "Create EEG Epochs",
+            "Confirm",
             "BIDS events from import",
             "trial_type",
             "Epoch anchor",
@@ -1709,8 +1711,8 @@ def _assert_epoching_dialog_contract(
     }
     primary = buttons.get("EpochPrimaryButton")
     cancel = buttons.get("EpochSecondaryButton")
-    if primary is None or primary.text() != "Create EEG Epochs":
-        raise RuntimeError(f"{filename} does not expose Create EEG Epochs.")
+    if primary is None or primary.text() != "Confirm":
+        raise RuntimeError(f"{filename} does not expose Confirm.")
     if not primary.isEnabled() or dialog.window_mode is None:
         raise RuntimeError(f"{filename} does not expose a valid Epoch window mode.")
     if cancel is None or cancel.text() != "Cancel":
@@ -1825,7 +1827,7 @@ def _surface_contract(
                 "duration_field": context.get("duration_field"),
                 "window_evidence": context.get("window_evidence"),
                 "selected_event_count": selected_event_count,
-                "primary_action": "Create EEG Epochs",
+                "primary_action": "Confirm",
                 "primary_action_enabled": bool(
                     widget.create_button is not None
                     and widget.create_button.isEnabled()

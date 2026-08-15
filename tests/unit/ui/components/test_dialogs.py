@@ -154,7 +154,7 @@ def test_epoching_dialog_baseline_and_primary_button_are_product_styled(qtbot):
 
     create_button = dialog.findChild(QPushButton, "EpochPrimaryButton")
     assert create_button is not None
-    assert create_button.text() == "Create EEG Epochs"
+    assert create_button.text() == "Confirm"
     assert not create_button.autoDefault()
     assert not create_button.isDefault()
 

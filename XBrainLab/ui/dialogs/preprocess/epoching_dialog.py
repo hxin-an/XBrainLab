@@ -607,7 +607,7 @@ class EpochingDialog(BaseDialog):
         footer.addStretch()
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-        normalize_dialog_button_box(buttons, ok_text="Create EEG Epochs")
+        normalize_dialog_button_box(buttons, ok_text="Confirm")
         ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
         if ok_button is not None:
             ok_button.setObjectName("EpochPrimaryButton")
