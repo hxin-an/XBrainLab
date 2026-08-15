@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QAbstractSpinBox,
     QDialogButtonBox,
@@ -20,6 +21,25 @@ from XBrainLab.ui.dialogs.preprocess import (
     RereferenceDialog,
     ResampleDialog,
 )
+from XBrainLab.ui.styles.theme import Theme
+
+
+def _button_contains_color(button: QPushButton, color: str) -> bool:
+    image = button.grab().toImage()
+    expected = QColor(color)
+    matching = 0
+    sampled = 0
+    for x in range(4, max(image.width() - 4, 4)):
+        for y in range(4, max(image.height() - 4, 4)):
+            sampled += 1
+            pixel = image.pixelColor(x, y)
+            if (
+                abs(pixel.red() - expected.red()) <= 3
+                and abs(pixel.green() - expected.green()) <= 3
+                and abs(pixel.blue() - expected.blue()) <= 3
+            ):
+                matching += 1
+    return sampled > 0 and matching / sampled >= 0.2
 
 
 def test_channel_selection_dialog(qtbot):
@@ -234,6 +254,37 @@ def test_filtering_dialog_uses_section_toggles_and_inline_validation(qtbot):
     dialog.h_freq_spin.setValue(40.0)
     assert dialog.ok_button.isEnabled()
     assert not dialog.validation_label.isVisibleTo(dialog)
+
+
+def test_filtering_toggles_match_epoch_visual_and_interaction_contract(qtbot):
+    dialog = FilteringDialog(None, sampling_rate_hz=250.0)
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.waitUntil(lambda: dialog.bandpass_check.isVisible())
+
+    bandpass = dialog.bandpass_check
+    notch = dialog.notch_check
+    assert bandpass.text() == "On"
+    assert notch.text() == "Off"
+    assert abs(bandpass.width() - notch.width()) <= 1
+    assert bandpass.height() == notch.height()
+    assert bandpass.height() <= 30
+    assert _button_contains_color(bandpass, Theme.BLUE_PRIMARY)
+    assert not _button_contains_color(notch, Theme.BLUE_PRIMARY)
+
+    bandpass.click()
+    qtbot.waitUntil(lambda: not dialog.ok_button.isEnabled())
+    assert bandpass.text() == "Off"
+    assert not dialog.l_freq_spin.isEnabled()
+    assert not dialog.h_freq_spin.isEnabled()
+    assert not _button_contains_color(bandpass, Theme.BLUE_PRIMARY)
+    assert dialog.validation_label.text() == "Enable at least one filter."
+
+    notch.click()
+    qtbot.waitUntil(lambda: dialog.ok_button.isEnabled())
+    assert notch.text() == "On"
+    assert dialog.notch_mode_combo.isEnabled()
+    assert _button_contains_color(notch, Theme.BLUE_PRIMARY)
 
 
 def test_filtering_dialog_preserves_values_when_sections_are_disabled(qtbot):

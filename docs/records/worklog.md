@@ -17468,3 +17468,19 @@
 - Claim boundary: these are pre-commit Linux/offscreen results. Exact-commit artifacts, canonical
   required multi-dataset evidence, pushed PR CI and Windows native 100%/125% DPI acceptance remain
   required before handoff-ready status.
+
+## 2026-08-15 - Filtering toggle visual-state checkpoint
+
+- Reproduced the final Windows manual-review issue with a real rendered Filtering dialog: Band-pass
+  started checked with `On`, but both Filter toggles rendered as tall neutral buttons because their
+  Filter-specific object names overrode the shared `PreprocessToggle` selector used by Epoch.
+- Removed only those duplicate object-name overrides. Filtering now uses the same compact pill
+  contract as Epoch: checked `On` is blue and unchecked `Off` is neutral; toggling still preserves
+  frequency values, field enablement, validation and the existing command payload.
+- Added a rendered-pixel and interaction regression plus fresh initial/toggled capture surfaces.
+  Focused local evidence currently includes `25 passed` for Filter/Epoch dialog behavior and
+  `28 passed` for the UI capture contract. Static checks and exact-source artifact regeneration are
+  recorded after this local checkpoint is committed.
+- Claim boundary: this is intentionally local/offscreen and does not run CI. Windows native manual
+  acceptance is still required before the final push, exact-head gates, merge, annotated
+  `desktop-gui-v1` tag and public GitHub pre-release. Package metadata remains `0.5.6`.

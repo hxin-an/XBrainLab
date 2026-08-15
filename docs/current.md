@@ -12,8 +12,9 @@ XBrainLab 的可運作 desktop product foundation、dataset-storage consolidatio
 regressions 已合回 `main`。目前從最新 `main` 建立短 branch，統一標準產品 Dialog 的 primary
 action 順序，修復同一 completed training lineage 的累加式 Saliency 明確重算，並讓 Time Epoching
 在可用螢幕空間內完整展開；Windows 真人檢查新增的最後修正是把 Epoch footer 主動作縮短為
-`Confirm`。這條 branch 不改 attribution 數學、公開 state schema、Epoch backend 語意、dataset
-storage 或其他 workflow。
+`Confirm`，以及讓 Filtering 的 Band-pass／Notch On/Off toggle 復用 Epoch 的 compact blue-on
+visual contract。這條 branch 不改 attribution 數學、公開 state schema、Filter／Epoch backend
+語意、dataset storage 或其他 workflow。
 
 ## Current Integration Context
 
@@ -23,7 +24,7 @@ storage 或其他 workflow。
 | Product baseline | `main` |
 | Current candidate | 從最新 `main` 建立的 manual UI / Saliency follow-up v3 branch；不是 release。 |
 | Baseline | 以 candidate merge-base 的最新 `main` 為準，不在文件寫死 historical SHA。 |
-| Active goal | 關閉 Windows 真人檢查新增的最後一項：Time Epoching footer 主按鈕使用不裁切的 `Confirm` 文案；同 candidate 既有三項行為保持不變。 |
+| Active goal | 關閉 Windows 真人檢查新增的最後一項：Filtering 的 checked `On` 使用與 Epoch 相同的 compact blue pill；同 candidate 既有 Dialog order、Saliency recompute、Epoch sizing／`Confirm` 行為保持不變。 |
 | Historical ledger | [Product Quality Audit - 2026-07-30](records/product_quality_audit_2026-07-30.md)；只作 provenance，不是 active queue。 |
 | Delivery state | Product foundation 與 dataset storage 已進入 `main`。本輪 follow-up 仍是 short-branch checkpoint；只有 focused evidence、可見 artifact、PR exact-head CI 成功並 merge 後才進入 baseline。舊 dataset source cleanup 仍未授權。 |
 

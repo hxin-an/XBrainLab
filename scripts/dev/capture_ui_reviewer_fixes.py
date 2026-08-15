@@ -126,6 +126,7 @@ LEGACY_REVIEWER_FIX_SURFACES = (
     "preprocessing-history-no-data.png",
     "preprocessing-history-locked.png",
     "preprocess-filtering-dialog.png",
+    "preprocess-filtering-toggled.png",
     "preprocess-filtering-invalid.png",
     "preprocess-rereference-average.png",
     "preprocess-rereference-selected.png",
@@ -483,6 +484,16 @@ def _capture_preprocess_dialogs(app: QApplication, output_dir: Path) -> None:
     )
 
     filtering = FilteringDialog(None, sampling_rate_hz=250.0)
+    filtering.bandpass_check.click()
+    filtering.notch_check.click()
+    _capture(
+        app,
+        filtering,
+        "preprocess-filtering-toggled.png",
+        output_dir=output_dir,
+    )
+
+    filtering = FilteringDialog(None, sampling_rate_hz=250.0)
     filtering.h_freq_spin.setValue(130.0)
     _capture(
         app,
@@ -729,7 +740,7 @@ def _observe_training_setting_geometry(
         rows.append(
             {
                 "row": row_index,
-                "label": " ".join(label.text().split()),
+                "label": " ".join(cast(QLabel, label).text().split()),
                 "label_geometry": _rect_payload(label_rect),
                 "input_type": type(input_widget).__name__,
                 "input_geometry": _rect_payload(input_rect),
