@@ -14,6 +14,7 @@ import pytest
 from PIL import Image
 
 import scripts.dev.update_quality_dashboard as dashboard
+from scripts.dev.capture_ui_baseline import compare_ui_images
 from scripts.dev.pytest_completion_attestation import (
     REQUIRED_PYTEST_RUNNER_ID,
     build_attestation,
@@ -21,8 +22,9 @@ from scripts.dev.pytest_completion_attestation import (
 )
 from scripts.dev.update_quality_dashboard import (
     EXPECTED_UI_ARTIFACTS,
+    REFERENCE_UI_DIR,
+    UI_CAPTURE_DIR,
     GitState,
-    compare_ui_images,
     compute_overall_status,
     configure_headless_env,
     latest_is_fresh,
@@ -30,6 +32,7 @@ from scripts.dev.update_quality_dashboard import (
     resource_calibration_evidence_check,
     validate_pytest_like,
     validate_ui_artifacts,
+    validate_ui_baseline,
     workspace_traceability_check,
 )
 
@@ -492,6 +495,26 @@ def test_validate_ui_artifacts_detects_missing_files(tmp_path: Path):
 
     assert status == "fail"
     assert "Missing UI artifacts" in summary
+
+
+def test_validate_ui_baseline_uses_canonical_candidate_directory(monkeypatch):
+    observed = {}
+
+    def fake_validate(path, *, reference_dir=REFERENCE_UI_DIR):
+        observed["path"] = path
+        observed["reference_dir"] = reference_dir
+        return "pass", "ok"
+
+    monkeypatch.setattr(
+        "scripts.dev.update_quality_dashboard.validate_ui_artifacts",
+        fake_validate,
+    )
+
+    assert validate_ui_baseline(0, "") == ("pass", "ok")
+    assert observed == {
+        "path": UI_CAPTURE_DIR,
+        "reference_dir": REFERENCE_UI_DIR,
+    }
 
 
 def test_validate_ui_artifacts_accepts_visible_files(tmp_path: Path):

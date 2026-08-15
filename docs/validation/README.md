@@ -36,6 +36,11 @@ checkpoint。Dashboard是summary，不是dossier。
 UI evidence必須檢查hierarchy、contrast、text fit、primary action、overlap、nested scroll、dialog
 geometry、empty/loading/error/blocked state，以及相關width/DPI。主agent必須實際查看畫面。
 
+Visible UI變更的default-scale candidate必須由`capture_ui_baseline.py`產生exact-source manifest並和
+approved references比較；CI不得自行更新reference。Layout、theme、font或dialog路徑另跑Windows Qt
+platform的100/125/150% app-polish matrix。Linux/WSL offscreen scale不能冒充Windows結果；automated
+Windows capture也不取代真人native DPI、多螢幕或remote-desktop acceptance。
+
 ## Handoff gates
 
 完整 dossier 由 `scripts/dev/run_handoff_validation_manifest.py` 執行；命令、timeout 與 artifact

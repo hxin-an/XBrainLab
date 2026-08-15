@@ -10,5 +10,9 @@ References detect visual drift; they do not certify product aesthetics, Windows-
 human acceptance. A candidate must produce two consecutive fully repainted frames within the
 stability threshold before comparison.
 
+The candidate directory also contains `ui-baseline-evidence.json`, binding the source digest,
+capture environment, candidate hashes, reference hashes, and per-image comparison result. The
+capture command never updates this directory; reference changes are an explicit reviewed commit.
+
 The approved set covers the main shell, five workflow panels, and the Assistant open-shell state.
 Updates are intentional review decisions, never copies from a mutable `latest` artifact.

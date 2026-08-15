@@ -68,6 +68,9 @@ def build_app_polish_evidence(
     source_identity: Mapping[str, Any] | None = None,
     source_identity_at_start: Mapping[str, Any] | None = None,
     qt_platform: str = "",
+    platform_system: str = "",
+    requested_scale_factor: float = 1.0,
+    observed_device_pixel_ratio: float = 1.0,
 ) -> dict[str, Any]:
     """Build a content-addressed manifest after every capture has settled."""
     root = output_dir.expanduser().resolve()
@@ -93,6 +96,9 @@ def build_app_polish_evidence(
         "generator": GENERATOR,
         "capture_environment": {
             "qt_platform": str(qt_platform),
+            "platform_system": str(platform_system),
+            "requested_scale_factor": float(requested_scale_factor),
+            "observed_device_pixel_ratio": float(observed_device_pixel_ratio),
             "capture_kind": "deterministic_qt_widget",
             "qt_style": "Fusion",
             "application_stylesheet": "Stylesheets.MAIN_WINDOW",
@@ -563,7 +569,7 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
                 "Events inside EEG files",
                 "Events",
                 "Time Window",
-                "Apply baseline correction",
+                "Baseline Correction",
                 "Cancel",
             ),
             "preprocess-epoching-bids-interval-duration-dialog.png": (
@@ -579,7 +585,6 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
                 "Events",
                 "Time Window",
                 "Baseline Correction",
-                "Apply baseline correction",
                 "Cancel",
             ),
         }[filename]
@@ -590,6 +595,12 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
         ]
         if missing_controls:
             return False, f"Epoch visible-control contract is incomplete: {filename}."
+        expected_baseline_state = {
+            "preprocess-epoching-internal-events-dialog.png": "On",
+            "preprocess-epoching-bids-interval-duration-dialog.png": "Off",
+        }[filename]
+        if contract.get("baseline_toggle_state") != expected_baseline_state:
+            return False, f"Epoch baseline toggle state is invalid: {filename}."
         if filename == "preprocess-epoching-internal-events-dialog.png" and (
             contract.get("source") != "labels inside EEG files"
             or contract.get("placement_method") != "internal_events"
@@ -684,9 +695,16 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
         required_cell_names = {
             f"Training History cell row {row}: {column}"
             for row in ((1, 2, 3) if expected_running else (1, 2))
-            for column in ("Group", "Run", "Model", "Status", "Test Acc")
+            for column in ("Group", "Run", "Model", "Status")
         }
-        if expected_running:
+        if horizontal_scroll == 0:
+            required_cell_names.update(
+                {
+                    f"Training History cell row {row}: Test Acc"
+                    for row in ((1, 2, 3) if expected_running else (1, 2))
+                }
+            )
+        if expected_running and horizontal_scroll == 0:
             required_cell_names.update(
                 {
                     f"Training History cell row {row}: {column}"
