@@ -1726,12 +1726,11 @@ def _assert_epoching_dialog_contract(
     for control in controls:
         if control is None or not control.isVisibleTo(dialog):
             raise RuntimeError(f"{filename} hides an Epoch configuration control.")
-        control_rect = QRect(control.mapTo(dialog, QPoint(0, 0)), control.size())
-        fully_visible = control.visibleRegion().contains(control.rect())
-        if not dialog.rect().contains(control_rect) or not fully_visible:
+        if not _epoch_control_is_visible_or_scroll_reachable(dialog, control):
             name = control.objectName() or type(control).__name__
             raise RuntimeError(
-                f"{filename} clips an Epoch configuration control: {name}."
+                f"{filename} cannot reveal an Epoch configuration control through "
+                f"its owned content scroll: {name}."
             )
 
     buttons = {
@@ -1754,6 +1753,38 @@ def _assert_epoching_dialog_contract(
     selected = _selected_epoch_event_count(event_list)
     if selected <= 0:
         raise RuntimeError(f"{filename} has no selected Epoch events.")
+
+
+def _epoch_control_is_visible_or_scroll_reachable(
+    dialog: EpochingDialog,
+    control: QWidget,
+) -> bool:
+    """Accept a visible control or prove the dialog's one scroll owner can reveal it."""
+
+    def _fully_visible() -> bool:
+        control_rect = QRect(control.mapTo(dialog, QPoint(0, 0)), control.size())
+        return dialog.rect().contains(
+            control_rect
+        ) and control.visibleRegion().contains(control.rect())
+
+    if _fully_visible():
+        return True
+    scroll = dialog.content_scroll
+    if scroll is None:
+        return False
+    scrollbar = scroll.verticalScrollBar()
+    if scrollbar is None or scrollbar.maximum() <= 0:
+        return False
+    original_value = scrollbar.value()
+    scroll.ensureWidgetVisible(control, 0, 4)
+    app = QApplication.instance()
+    if isinstance(app, QApplication):
+        app.processEvents()
+    reachable = _fully_visible()
+    scrollbar.setValue(original_value)
+    if isinstance(app, QApplication):
+        app.processEvents()
+    return reachable
 
 
 def _selected_epoch_event_count(event_list: QTableWidget | None) -> int:

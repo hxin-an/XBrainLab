@@ -135,6 +135,23 @@ def test_epoch_capture_contract_requires_complete_visible_controls(
         assert contract["window_mode"] == "duration"
 
 
+def test_epoch_capture_accepts_controls_reachable_through_the_owned_outer_scroll(
+    qtbot,
+) -> None:
+    dialog = _epoching_internal_events_dialog()
+    qtbot.addWidget(dialog)
+    dialog.resize(dialog.width(), 560)
+    dialog.show()
+    qtbot.wait(20)
+
+    assert dialog.content_scroll is not None
+    assert dialog.content_scroll.verticalScrollBar().maximum() > 0
+    assert dialog.b_min_spin is not None
+    assert not dialog.b_min_spin.visibleRegion().contains(dialog.b_min_spin.rect())
+
+    _assert_capture_geometry(INTERNAL_EPOCH_SCREENSHOT, dialog)
+
+
 def test_bids_epoch_capture_rejects_missing_primary_action(qtbot) -> None:
     dialog = _epoching_bids_interval_duration_dialog()
     qtbot.addWidget(dialog)
