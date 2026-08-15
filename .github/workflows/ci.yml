@@ -28,10 +28,16 @@ jobs:
     outputs:
       product: ${{ steps.scope.outputs.product }}
       ui_visual: ${{ steps.scope.outputs.ui_visual }}
+      agent_guidance: ${{ steps.scope.outputs.agent_guidance }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Detect product-relevant changes
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Detect CI change scope
         id: scope
         shell: bash
         run: |
@@ -42,48 +48,72 @@ jobs:
           else
             base_sha="${{ github.event.before }}"
             if [[ "$base_sha" == "0000000000000000000000000000000000000000" ]]; then
-              echo "product=true" >> "$GITHUB_OUTPUT"
-              echo "ui_visual=true" >> "$GITHUB_OUTPUT"
-              exit 0
+              changed_files=""
+            else
+              git fetch --no-tags origin "$base_sha" --depth=1
+              changed_files="$(git diff --name-only "$base_sha" "${{ github.sha }}")"
             fi
-            git fetch --no-tags origin "$base_sha" --depth=1
-            changed_files="$(git diff --name-only "$base_sha" "${{ github.sha }}")"
           fi
-
-          if [[ -z "$changed_files" ]]; then
-            echo "product=true" >> "$GITHUB_OUTPUT"
-            echo "ui_visual=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          product=false
-          ui_visual=false
-          while IFS= read -r file; do
-            case "$file" in
-              XBrainLab/*|tests/*|scripts/*|.github/workflows/ci.yml|pyproject.toml|poetry.lock)
-                product=true
-                ;;
-            esac
-            case "$file" in
-              XBrainLab/ui/*|tests/baselines/ui/*|scripts/dev/capture_ui_baseline.py|scripts/dev/capture_ui_polish_surfaces.py|scripts/dev/app_polish_capture_contract.py|scripts/dev/run_app_polish_ui_dpi_gate.py|scripts/dev/update_quality_dashboard.py|.github/workflows/ci.yml)
-                ui_visual=true
-                ;;
-            esac
-          done <<< "$changed_files"
 
           echo "Changed files:"
           printf '%s\n' "$changed_files"
-          echo "product=$product" >> "$GITHUB_OUTPUT"
-          echo "ui_visual=$ui_visual" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$changed_files" | python scripts/dev/ci_change_scope.py >> "$GITHUB_OUTPUT"
 
   docs-only:
     name: Docs-only CI Scope
     needs: changes
-    if: needs.changes.outputs.product != 'true'
+    if: needs.changes.outputs.product != 'true' && needs.changes.outputs.agent_guidance != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Skip product checks
         run: echo "No product code, tests, dependency, script, or CI pipeline files changed."
+
+  agent-guidance:
+    name: Agent Guidance Contract
+    needs: changes
+    if: needs.changes.outputs.agent_guidance == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install focused validation dependencies
+        run: >-
+          python -m pip install
+          "PyYAML>=6,<7"
+          "pytest>=8,<9"
+          "ruff>=0.14.0,<0.15"
+
+      - name: Audit agent guidance
+        run: python scripts/dev/audit_agent_guidance.py check --format json
+
+      - name: Run guidance contract tests
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: >-
+          python -m pytest
+          tests/unit/test_agent_guidance_contract.py
+          tests/unit/scripts/test_audit_agent_guidance.py
+          -q
+
+      - name: Check focused Python formatting
+        run: >-
+          ruff check
+          scripts/dev/audit_agent_guidance.py
+          tests/unit/test_agent_guidance_contract.py
+          tests/unit/scripts/test_audit_agent_guidance.py
+
+      - name: Check focused Python format
+        run: >-
+          ruff format --check
+          scripts/dev/audit_agent_guidance.py
+          tests/unit/test_agent_guidance_contract.py
+          tests/unit/scripts/test_audit_agent_guidance.py
 
   lint:
     name: Lint & Format

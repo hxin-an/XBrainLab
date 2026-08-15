@@ -4,14 +4,24 @@
 
 ## 目前焦點
 
-**從已驗證的 Desktop GUI baseline 進入 Assistant runtime 量測，先確認 real Granite、chat lifecycle
-與 backend command spine 的實際失敗，再制定一個 bounded repair slice。**
+**先收斂 CI change-scope：純 agent-guidance 變更不可再觸發完整產品矩陣；完成並合併後，才進入
+Assistant runtime 量測，確認 real Granite、chat lifecycle 與 backend command spine 的實際失敗。**
 
 UI visual-regression guard 已由 PR #24 合入 `main`。Quota-aware Codex dispatch 已收斂到
 `.agents/README.md` 與 project `.codex/config.toml`：Terra 是 coordinator/default，Luna 只處理有
 exact oracle 的 bounded worker，Sol 只處理客觀 high-risk decision；它不再是 product active work。
 
-## 問題與證據
+## CI change-scope repair
+
+- PR #25 只有 agent-guidance、其 static audit 與 focused test，卻因 CI 將全部 `scripts/*`、`tests/*`
+  視為 product path，而跑了 Linux shards、跨平台與 public multi-dataset gate。
+- 修理範圍只新增窄的 `agent_guidance` scope：`AGENTS.md`、`.agents/**`、project `.codex/config.toml`、
+  guidance audit 與它的兩個 exact tests 可走 focused audit/test/lint lane；一般 script、test、產品、依賴、
+  workflow 或未知 path 均 fail closed 為完整 product CI。
+- classifier 必須是可單元測試的純 helper；混合 scope、空 diff、首次 push 與未知 path 不可降級。
+- 此為 CI/docs/test-only repair，不改產品或 UI；exact-head CI 成功後可直接 merge，無需 manual acceptance。
+
+## Assistant runtime evidence
 
 - 使用者目前不能可靠使用 Assistant；已知 claim 不能由 mock tool-call eval 或舊 artifact 支撐。
 - Assistant 必須和 UI 共用 `ApplicationService / Command API` 的 state、capability 與 error semantics，
@@ -20,12 +30,14 @@ exact oracle 的 bounded worker，Sol 只處理客觀 high-risk decision；它�
 
 ## 下一步
 
-1. 從最新 `main` 建立一條 Assistant task branch，先確認 repo/Git/runtime identity 與 real Granite health。
-2. 唯讀重現 chat startup、unavailable/error、tool selection、confirmation、retry/cancel 與長 session；
+1. 從最新 `main` 建立一條 CI task branch，以 red-first classifier truth table 實作並驗證 agent-guidance lane；
+   exact-head CI 成功後直接 merge。
+2. 接著從更新後的 `main` 建立 Assistant task branch，先確認 repo/Git/runtime identity 與 real Granite health。
+3. 唯讀重現 chat startup、unavailable/error、tool selection、confirmation、retry/cancel 與長 session；
    保存最小可重跑 evidence，不先改 UI。
-3. 將第一個 confirmed root cause、observable outcome、scope/non-goals、修理步驟與 focused validation
+4. 將第一個 confirmed root cause、observable outcome、scope/non-goals、修理步驟與 focused validation
    寫回本文件，再開始實作。
-4. 若修復需要任何 `XBrainLab/ui/` 或使用者可見互動變更，先取得使用者明確確認。
+5. 若修復需要任何 `XBrainLab/ui/` 或使用者可見互動變更，先取得使用者明確確認。
 
 ## Non-goals
 
