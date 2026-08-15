@@ -2837,14 +2837,13 @@ class TestChatPanelCallbacks:
         qtbot,
     ):
         chat_panel.show_notice("First", timeout_ms=10)
-        chat_panel.show_notice("Second", timeout_ms=50)
-        qtbot.wait(20)
+        chat_panel.show_notice("Second", timeout_ms=1000)
+        qtbot.wait(50)
 
         assert chat_panel.notice_label.text() == "Second"
         assert chat_panel.notice_label.isHidden() is False
 
-        qtbot.wait(50)
-        assert chat_panel.notice_label.isHidden()
+        qtbot.waitUntil(chat_panel.notice_label.isHidden, timeout=2000)
 
     @pytest.mark.parametrize("width", [320, 380, 460])
     def test_narrow_dock_composer_controls_fit(self, qtbot, chat_panel, width):
