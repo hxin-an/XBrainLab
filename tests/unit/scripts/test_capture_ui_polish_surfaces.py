@@ -27,6 +27,7 @@ from scripts.dev.capture_ui_polish_surfaces import (
     _assistant_recovery_standard,
     _assistant_setup_required_narrow,
     _capture,
+    _control_is_fully_visible_in_capture,
     _crop_logical_reference,
     _data_splitting_preview_dialog,
     _data_splitting_preview_semantics,
@@ -394,6 +395,23 @@ def test_training_history_capture_contract_is_coherent_and_readable(
     else:
         assert set(semantics["statuses"]) == {"Completed"}
     assert semantics["key_columns_fit"] is True
+
+
+def test_training_history_settle_reveals_execution_actions_in_short_viewport(
+    qtbot,
+) -> None:
+    panel = _training_history_few_rows()
+    qtbot.addWidget(panel)
+    panel.resize(panel.width(), 520)
+    panel.show()
+    app = QApplication.instance()
+    assert isinstance(app, QApplication)
+
+    _settle_capture_widget(app, panel)
+
+    assert _control_is_fully_visible_in_capture(panel, panel.sidebar.btn_start)
+    assert _control_is_fully_visible_in_capture(panel, panel.sidebar.btn_stop)
+    assert panel.sidebar.scroll_area.verticalScrollBar().value() > 0
 
 
 def test_reference_crop_scales_logical_widget_bounds_to_capture_pixels(qtbot) -> None:

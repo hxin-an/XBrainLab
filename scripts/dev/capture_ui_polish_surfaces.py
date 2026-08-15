@@ -951,6 +951,14 @@ def _settle_capture_widget(app: QApplication, widget: QWidget) -> None:
         widget.updateGeometry()
         widget.repaint()
         app.processEvents()
+        if isinstance(widget, TrainingPanel):
+            widget.sidebar.scroll_area.ensureWidgetVisible(
+                widget.sidebar.btn_stop,
+                0,
+                8,
+            )
+            app.processEvents()
+            widget.repaint()
         time.sleep(0.04)
         app.processEvents()
 
