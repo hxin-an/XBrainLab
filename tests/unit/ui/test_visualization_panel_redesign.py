@@ -564,8 +564,16 @@ def test_visualization_panel_layout_and_sidebar(qtbot):
     )
     assert panel.plan_combo.itemText(0) == "Select a fold"
     assert panel.method_combo.count() == 1
-    assert panel.method_combo.currentText() == "No computed methods"
+    assert panel.method_combo.currentText() == "No results"
     assert panel.method_combo.isEnabled() is False
+    panel.method_combo.resize(150, panel.method_combo.height())
+    assert (
+        panel.method_combo.fontMetrics().horizontalAdvance(
+            panel.method_combo.currentText(),
+        )
+        + 32
+        <= panel.method_combo.width()
+    )
     assert panel.saliency_action_bar.isHidden()
     assert panel.compute_saliency_btn.text() == "Compute Saliency"
     assert panel.sidebar.btn_montage.text() == "Set Montage"
@@ -657,7 +665,7 @@ def test_visualization_panel_clears_result_identity_after_publication_rejection(
 
     assert panel.tabs.toolTip() == "True class · Mean over EEG epochs"
     assert "motor-imagery" not in panel.tabs.toolTip()
-    assert panel.method_combo.currentText() == "No computed methods"
+    assert panel.method_combo.currentText() == "No results"
     assert panel.method_combo.isEnabled() is False
 
 

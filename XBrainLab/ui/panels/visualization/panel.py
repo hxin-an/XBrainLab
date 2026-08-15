@@ -142,7 +142,7 @@ _SALIENCY_SELECTION_CHANGED_DETAIL = (
 _VISUALIZATION_LOAD_FAILED_MESSAGE = (
     "Visualization could not be loaded. Refresh Visualization and try again."
 )
-_NO_COMPUTED_METHODS = "No computed methods"
+_NO_COMPUTED_METHODS = "No results"
 
 
 def explanation_provenance_text(
