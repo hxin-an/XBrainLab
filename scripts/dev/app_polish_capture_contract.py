@@ -544,7 +544,7 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
             return False, f"Epoch surface contract kind is invalid: {filename}."
         if contract.get("scenario") != epoch_scenarios[filename]:
             return False, f"Epoch scenario identity is invalid: {filename}."
-        if contract.get("primary_action") != "Create EEG Epochs":
+        if contract.get("primary_action") != "Confirm":
             return False, f"Epoch primary action is missing: {filename}."
         if contract.get("cancel_action") != "Cancel":
             return False, f"Epoch cancel action is missing: {filename}."
@@ -557,6 +557,7 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
         required_controls = {
             "preprocess-epoching-internal-events-dialog.png": (
                 "Create EEG Epochs",
+                "Confirm",
                 "Suggested from import",
                 "labels inside EEG files",
                 "Events inside EEG files",
@@ -567,6 +568,7 @@ def _validate_surface_contract(filename: str, value: object) -> tuple[bool, str]
             ),
             "preprocess-epoching-bids-interval-duration-dialog.png": (
                 "Create EEG Epochs",
+                "Confirm",
                 "BIDS events from import",
                 "trial_type",
                 "Epoch anchor",

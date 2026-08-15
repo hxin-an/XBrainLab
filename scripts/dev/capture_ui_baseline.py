@@ -3,7 +3,7 @@
 
 This helper launches the real application stack, waits for the main window to
 settle, and captures the rendered main-window widget across the shell and the
-five primary panels into transient ``artifacts/ui/`` PNGs. Approved references
+five primary panels into transient ``build/dev-artifacts/ui-baseline/`` PNGs. Approved references
 live in ``tests/baselines/ui/``.
 
 Expected usage in WSL/headless environments:
@@ -32,7 +32,7 @@ from scripts.dev.human_like_walkthrough.readiness import (
 from scripts.dev.ui_navigation import open_workflow_panel
 
 ROOT = Path(__file__).resolve().parents[2]
-ARTIFACTS_DIR = ROOT / "artifacts" / "ui"
+ARTIFACTS_DIR = ROOT / "build" / "dev-artifacts" / "ui-baseline"
 OUTPUT_PATH = ARTIFACTS_DIR / "main-window-initial.png"
 AI_DOCK_STEP = "ai-dock"
 BASELINE_WINDOW_SIZE = QSize(1280, 800)

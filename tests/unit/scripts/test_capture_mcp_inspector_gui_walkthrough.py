@@ -58,10 +58,12 @@ def test_extracts_and_sanitizes_inspector_url() -> None:
 
 
 def test_wsl_path_to_windows_converts_mounted_drive() -> None:
-    path = Path("/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/mcp/x.png")
+    path = Path(
+        "/mnt/d/workspace_v2/projects/lab/XBrainLab/build/dev-artifacts/mcp/x.png"
+    )
 
     assert wsl_path_to_windows(path) == (
-        r"D:\workspace_v2\projects\lab\XBrainLab\artifacts\mcp\x.png"
+        r"D:\workspace_v2\projects\lab\XBrainLab\build\dev-artifacts\mcp\x.png"
     )
 
 

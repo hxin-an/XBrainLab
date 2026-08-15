@@ -53,11 +53,6 @@ Before import, the screen should show:
 - placement: EEG event order with cue codes `769`–`772`;
 - no unresolved blocker in **Review and Import**.
 
-<figure class="product-shot desktop-shot" markdown>
-  [![Final import review for three EEG files with label source and event-order placement visible](../assets/screenshots/import-review.png)](../assets/screenshots/import-review.png)
-  <figcaption>Open the original image to read the controls. It illustrates the values to check and is not identified completion evidence.</figcaption>
-</figure>
-
 <div class="screen-checks" markdown>
   <strong>Check values without relying on the screenshot</strong>
 

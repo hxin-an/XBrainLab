@@ -88,4 +88,4 @@ product evidence claim boundary。讀本頁時先看下方「目前距離目標�
 | [ui.md](ui.md) | PyQt panels、refresh、observer boundary。 |
 | [agent.md](agent.md) | in-app assistant、local-only runtime、tool calls。 |
 | [data_pipeline.md](data_pipeline.md) | EEG import / preprocess / dataset / training pipeline。 |
-| [validation.md](validation.md) | 測試層級與 evidence 邊界。 |
+| [Validation](../validation/README.md) | 測試層級、artifact identity 與 evidence 邊界。 |

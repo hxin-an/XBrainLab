@@ -124,7 +124,12 @@ from XBrainLab.backend.training import (
     TrainingPlanHolder,
 )
 from XBrainLab.backend.training.evaluator import Evaluator
-from XBrainLab.backend.training.record import RecordKey, TrainRecord, TrainRecordKey
+from XBrainLab.backend.training.record import (
+    EvalRecord,
+    RecordKey,
+    TrainRecord,
+    TrainRecordKey,
+)
 from XBrainLab.backend.training_manager import (
     PostTrainingSaliencyTarget,
     post_training_saliency_target,
@@ -7916,6 +7921,120 @@ def test_explicit_saliency_compute_runs_outside_shared_command_lock() -> None:
     assert service.training_runtime.saliency_status().phase is (
         PostTrainingSaliencyPhase.SUCCEEDED
     )
+
+
+def test_application_service_explicit_saliency_recompute_accumulates_committed_methods() -> (
+    None
+):
+    service, trainer, holder, _record, _old_eval_record = _saliency_recompute_service()
+    run = TrainingRunIdentity(
+        trainer_id=trainer.get_state_snapshot_identity(),
+        run_id=1,
+    )
+    trainer._terminal_outcome = TrainingTerminalOutcome(
+        state=TrainingOutcomeState.COMPLETED,
+        run=run,
+    )
+    labels = np.array([0, 1, 0, 1], dtype=np.int64)
+    output = np.array(
+        [[0.8, 0.2], [0.2, 0.8], [0.7, 0.3], [0.3, 0.7]],
+        dtype=np.float32,
+    )
+
+    def class_store(scale: float) -> dict[int, np.ndarray]:
+        values = np.full((4, 2, 16), scale, dtype=np.float32)
+        return {class_index: values[labels == class_index] for class_index in (0, 1)}
+
+    baseline_record = EvalRecord(
+        labels,
+        output,
+        class_store(1.0),
+        class_store(2.0),
+        {},
+        {},
+        {},
+        evaluation_split="test",
+        saliency_method_parameters={
+            "Gradient": {},
+            "Gradient * Input": {},
+        },
+    )
+    accumulated_record = EvalRecord(
+        labels,
+        output,
+        class_store(1.0),
+        class_store(2.0),
+        {},
+        {},
+        class_store(3.0),
+        evaluation_split="test",
+        saliency_method_parameters={
+            "Gradient": {},
+            "Gradient * Input": {},
+            "VarGrad": {
+                "nt_samples": 7,
+                "nt_samples_batch_size": 2,
+                "stdevs": 0.25,
+            },
+        },
+        saliency_noise_seeds={"VarGrad": 1234},
+    )
+
+    with patch.object(
+        Evaluator,
+        "evaluate_with_saliency",
+        side_effect=[baseline_record, accumulated_record],
+    ) as evaluate:
+        baseline = service.execute(
+            SaliencyCommand(
+                method="Gradient",
+                params={
+                    "profile": "recommended",
+                    "methods": ["Gradient", "Gradient * Input"],
+                },
+            )
+        )
+        assert baseline.ok is True
+        assert service.wait_for_background_tasks(timeout=THREAD_WATCHDOG_SECONDS)
+
+        advanced = service.execute(
+            SaliencyCommand(
+                method="VarGrad",
+                params={
+                    "nt_samples": 7,
+                    "nt_samples_batch_size": 2,
+                    "stdevs": 0.25,
+                },
+            )
+        )
+        assert advanced.ok is True
+        assert advanced.diagnostics["params"]["_methods"] == [
+            "Gradient",
+            "Gradient * Input",
+            "VarGrad",
+        ]
+        assert service.wait_for_background_tasks(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert evaluate.call_count == 2
+    assert evaluate.call_args_list[1].args[2]["_methods"] == [
+        "Gradient",
+        "Gradient * Input",
+        "VarGrad",
+    ]
+    state = service.get_state()
+    assert state.visualization.saliency_params["_methods"] == [
+        "Gradient",
+        "Gradient * Input",
+        "VarGrad",
+    ]
+    complete_methods = {
+        method.method
+        for coverage in state.visualization.saliency_coverage
+        for method in coverage.methods
+        if method.available and method.complete
+    }
+    assert complete_methods == {"Gradient", "Gradient * Input", "VarGrad"}
+    assert holder.get_plans()[0].get_saliency_eval_record() is accumulated_record
 
 
 def test_explicit_saliency_operation_cancel_is_immediate_and_terminal() -> None:

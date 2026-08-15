@@ -74,17 +74,33 @@ def test_dispose_widget_tolerates_an_already_deleted_qt_wrapper(qapp) -> None:
 def test_surface_inventory_preserves_existing_artifacts_and_adds_review_states() -> (
     None
 ):
-    assert len(capture_script.LEGACY_REVIEWER_FIX_SURFACES) == 25
-    assert capture_script.REVIEWER_FIX_SURFACES[:25] == (
+    assert len(capture_script.LEGACY_REVIEWER_FIX_SURFACES) == 26
+    assert "preprocess-filtering-toggled.png" in (
         capture_script.LEGACY_REVIEWER_FIX_SURFACES
     )
-    assert capture_script.REVIEWER_FIX_SURFACES[25:] == (
+    assert capture_script.REVIEWER_FIX_SURFACES[:26] == (
+        capture_script.LEGACY_REVIEWER_FIX_SURFACES
+    )
+    assert capture_script.REVIEWER_FIX_SURFACES[26:] == (
         "saliency-setting-empty.png",
         "saliency-setting-single-method.png",
         "saliency-setting-multi-method.png",
         "data-splitting-step-2-ratio.png",
         "data-splitting-step-2-cross-validation.png",
     )
+
+
+def test_preprocess_dialog_capture_records_both_filter_toggle_states(
+    qapp,
+    tmp_path,
+) -> None:
+    capture_script._capture_preprocess_dialogs(qapp, tmp_path)
+
+    initial = tmp_path / "preprocess-filtering-dialog.png"
+    toggled = tmp_path / "preprocess-filtering-toggled.png"
+    assert initial.is_file()
+    assert toggled.is_file()
+    assert initial.read_bytes() != toggled.read_bytes()
 
 
 @pytest.mark.parametrize(

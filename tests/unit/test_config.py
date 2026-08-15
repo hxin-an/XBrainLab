@@ -4,6 +4,8 @@ import platform
 import re
 from pathlib import Path
 
+import tomllib
+
 from XBrainLab.config import AppConfig
 
 
@@ -18,6 +20,18 @@ class TestAppConfig:
         assert len(parts) == 3
         for p in parts:
             assert p.isdigit()
+
+    def test_release_version_contract_is_single_sourced(self):
+        pyproject = tomllib.loads(
+            (AppConfig.BASE_DIR / "pyproject.toml").read_text(encoding="utf-8")
+        )
+        commitizen = pyproject["tool"]["commitizen"]
+
+        assert AppConfig.VERSION == "0.6.0"
+        assert pyproject["tool"]["poetry"]["version"] == AppConfig.VERSION
+        assert commitizen["version"] == AppConfig.VERSION
+        assert commitizen["changelog_file"] == "CHANGELOG.md"
+        assert "XBrainLab/__init__.py:FALLBACK_VERSION" in commitizen["version_files"]
 
     def test_base_dir_exists(self):
         assert isinstance(AppConfig.BASE_DIR, Path)

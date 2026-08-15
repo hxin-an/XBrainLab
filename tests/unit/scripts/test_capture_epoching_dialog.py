@@ -72,6 +72,13 @@ def test_epoch_capture_manifest_records_exact_source_and_invalid_states(
     assert states["time-window-invalid"]["semantic_checks"]["invalid"] is True
     assert states["time-window-invalid"]["semantic_checks"]["create_enabled"] is False
     assert all(item["geometry_checks"]["passed"] for item in states.values())
+    assert all(
+        item["geometry_checks"]["primary_action"] == "Confirm"
+        for item in states.values()
+    )
+    assert all(
+        item["geometry_checks"]["primary_text_fits"] is True for item in states.values()
+    )
     assert states["baseline-enabled"]["baseline_surface"]["passed"] is True
     assert states["baseline-disabled"]["baseline_surface"]["passed"] is True
     assert states["baseline-disabled"]["baseline_surface"]["near_black_fraction"] < 0.01

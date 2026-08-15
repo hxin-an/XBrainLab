@@ -282,7 +282,7 @@ class TestAppendPlan:
 
     def test_append_doubles_plans(self, tmp_path):
         study = Study()
-        study.datasets = [_make_tiny_dataset()]
+        study.datasets = [_make_tiny_dataset(), _make_tiny_dataset()]
         study.set_training_option(_make_option(tmp_path))
         study.set_model_holder(ModelHolder(EEGNet, {}))
 
@@ -293,9 +293,23 @@ class TestAppendPlan:
             _FS_PATCHES[3],
         ):
             study.generate_plan(force_update=True)
-            assert len(study.trainer.get_training_plan_holders()) == 1
+            first_round = study.trainer.get_training_plan_holders()
+            assert len(first_round) == 2
+            first_round_ids = {holder.training_round_id for holder in first_round}
+            assert len(first_round_ids) == 1
+            first_round_id = next(iter(first_round_ids))
+            assert first_round_id
             study.generate_plan(append=True)
-            assert len(study.trainer.get_training_plan_holders()) == 2
+            both_rounds = study.trainer.get_training_plan_holders()
+            assert len(both_rounds) == 4
+            assert {holder.training_round_id for holder in both_rounds[:2]} == {
+                first_round_id
+            }
+            second_round_ids = {holder.training_round_id for holder in both_rounds[2:]}
+            assert len(second_round_ids) == 1
+            second_round_id = next(iter(second_round_ids))
+            assert second_round_id
+            assert second_round_id != first_round_id
 
 
 class TestCleanCascade:

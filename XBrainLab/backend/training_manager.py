@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from threading import Event, Lock, RLock, Thread, Timer, current_thread
 from time import monotonic
 from typing import TYPE_CHECKING, Any, cast
+from uuid import uuid4
 
 from .exceptions import (
     SaliencyCancellationTimeoutError,
@@ -502,8 +503,15 @@ class TrainingManager:
         try:
             from .training import Trainer, TrainingPlanHolder  # noqa: PLC0415
 
+            training_round_id = uuid4().hex
             training_plan_holders = [
-                TrainingPlanHolder(model_holder, dataset, option, saliency_params)
+                TrainingPlanHolder(
+                    model_holder,
+                    dataset,
+                    option,
+                    saliency_params,
+                    training_round_id=training_round_id,
+                )
                 for dataset in datasets
             ]
             replacement = None if append_to_existing else Trainer(training_plan_holders)
@@ -1424,13 +1432,23 @@ class TrainingManager:
         ):
             return None
         incumbent = self._saliency_request_owner or self._saliency_job_owner
-        if incumbent is not None and not self._target_supersedes_owner(
-            target=target,
-            trainer=trainer,
-            training_generation=training_generation,
-            owner=incumbent,
-        ):
-            return None
+        if incumbent is not None:
+            supersedes = self._target_supersedes_owner(
+                target=target,
+                trainer=trainer,
+                training_generation=training_generation,
+                owner=incumbent,
+            )
+            explicit_terminal_retry = (
+                incumbent is self._saliency_job_owner
+                and self._explicit_target_retries_terminal_owner_locked(
+                    target=target,
+                    trainer=trainer,
+                    owner=incumbent,
+                )
+            )
+            if not supersedes and not explicit_terminal_retry:
+                return None
         self._saliency_request_sequence = request_generation
         self._saliency_request_owner = _PostTrainingSaliencyOwnership(
             generation=request_generation,
@@ -1441,6 +1459,31 @@ class TrainingManager:
         )
         self._saliency_request_cleanup_events[request_generation] = Event()
         return request_generation
+
+    def _explicit_target_retries_terminal_owner_locked(
+        self,
+        *,
+        target: PostTrainingSaliencyTarget,
+        trainer: object,
+        owner: _PostTrainingSaliencyOwnership,
+    ) -> bool:
+        """Allow a fresh explicit retry only after the exact owner is terminal."""
+        status = self._post_training_saliency_status
+        return bool(
+            target.explicit
+            and not target.append
+            and target.finished_runs_before == 0
+            and trainer is owner.trainer
+            and target.run == owner.target.run
+            and target.finished_runs_after == owner.target.finished_runs_after
+            and status.generation == owner.generation
+            and status.phase
+            in {
+                PostTrainingSaliencyPhase.SUCCEEDED,
+                PostTrainingSaliencyPhase.FAILED,
+                PostTrainingSaliencyPhase.CANCELLED,
+            }
+        )
 
     def _complete_post_training_saliency_request(self, generation: int) -> None:
         """Release preparation ownership after worker publication or rejection."""

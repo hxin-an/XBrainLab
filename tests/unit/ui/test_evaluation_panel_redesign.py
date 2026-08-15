@@ -674,11 +674,16 @@ def _serialized_evaluation_result(
     model_summary: tuple[EvaluationSummaryIdentity, str] | None = None,
     model_summary_status: str | None = None,
     generation: int = 4,
+    fold_set_count: int = 1,
+    ready_fold_set_count: int | None = None,
 ) -> CommandResult:
+    ready_count = (
+        fold_set_count if ready_fold_set_count is None else ready_fold_set_count
+    )
     plans = [
         {
             "identity": {"plan_index": plan_index},
-            "name": f"Plan {'AB'[plan_index]}",
+            "name": f"Plan {chr(ord('A') + plan_index)}",
             "run_count": 2,
             "finished_run_count": 1 + int(second_run_finished),
             "evaluation_splits": ["test"],
@@ -702,7 +707,7 @@ def _serialized_evaluation_result(
                 for run_index in range(2)
             ],
         }
-        for plan_index in range(2)
+        for plan_index in range(2 * fold_set_count)
     ]
     diagnostics = {
         "payload_type": "evaluation_summary",
@@ -713,16 +718,24 @@ def _serialized_evaluation_result(
                 {
                     "identity": {
                         "members": [
-                            {"plan_index": 0, "run_index": run_index},
-                            {"plan_index": 1, "run_index": run_index},
+                            {
+                                "plan_index": fold_set_index * 2 + member_offset,
+                                "run_index": run_index,
+                            }
+                            for member_offset in range(2)
                         ]
                     },
-                    "display_name": "All Folds",
+                    "display_name": (
+                        "All Folds"
+                        if fold_set_count == 1
+                        else f"Fold Set {fold_set_index + 1}"
+                    ),
                     "run_label": f"Run {run_index + 1} (Summary)",
                     "evaluation_splits": ["test"],
                     "fold_count": 2,
                     "sample_count": 40,
                 }
+                for fold_set_index in range(ready_count)
                 for run_index in range(1 + int(second_run_finished))
             ]
             if available
@@ -835,6 +848,7 @@ def _application_publication(
     *,
     generation: int = 4,
     revision: int | None = None,
+    trainer_identity: str | None = None,
 ) -> ApplicationViewPublication:
     initial = ApplicationViewStore(
         ApplicationStateSnapshot.empty(),
@@ -854,6 +868,17 @@ def _application_publication(
         generation=generation,
         revision=effective_revision,
         state=state,
+        training_boundary=(
+            TrainingReadBoundary(
+                trainer_identity=trainer_identity,
+                token=TrainingStateToken(
+                    generation=generation,
+                    stable=True,
+                ),
+            )
+            if trainer_identity is not None
+            else TrainingReadBoundary.no_trainer()
+        ),
     )
 
 
@@ -984,6 +1009,113 @@ def test_evaluation_panel_exposes_explicit_cross_fold_summary(
     assert isinstance(requests[-1].selection, EvaluationCrossFoldIdentity)
     assert panel.summary_text.toPlainText() == (
         "Model details are available for an individual fold or run."
+    )
+
+
+def test_same_trainer_append_preserves_selected_cross_fold_round(
+    qtbot,
+    monkeypatch,
+) -> None:
+    catalog = {"fold_set_count": 1, "ready_fold_set_count": 1}
+    runtime, publication = _install_evaluation_read_side(
+        monkeypatch,
+        lambda *_args, **_kwargs: _serialized_evaluation_result(
+            generation=publication["value"].generation,
+            fold_set_count=catalog["fold_set_count"],
+            ready_fold_set_count=catalog["ready_fold_set_count"],
+        ),
+    )
+    publication["value"] = _application_publication(
+        generation=4,
+        revision=4,
+        trainer_identity="trainer-1",
+    )
+    requests: list[EvaluationRenderRequest] = []
+
+    def capture_render(request: EvaluationRenderRequest):
+        requests.append(request)
+        return _detached_render(request)
+
+    runtime.render = capture_render
+    panel = EvaluationPanel(parent=MockMainWindow())
+    qtbot.addWidget(panel)
+    panel.update_panel()
+    panel.model_combo.setCurrentIndex(panel.model_combo.findText("All Folds"))
+    qtbot.waitUntil(
+        lambda: bool(requests)
+        and isinstance(requests[-1].selection, EvaluationCrossFoldIdentity)
+    )
+    first_round_identity = panel.run_combo.currentData()
+    assert isinstance(first_round_identity, EvaluationCrossFoldIdentity)
+
+    catalog["fold_set_count"] = 2
+    catalog["ready_fold_set_count"] = 1
+    publication["value"] = _application_publication(
+        generation=5,
+        revision=5,
+        trainer_identity="trainer-1",
+    )
+    runtime.notify(
+        APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+        publication["value"],
+    )
+
+    qtbot.waitUntil(
+        lambda: panel._application_generation == 5
+        and panel.model_combo.currentText() == "Fold Set 1"
+        and panel.run_combo.currentData() == first_round_identity
+        and bool(requests)
+        and requests[-1].publication_generation == 5,
+        timeout=1_000,
+    )
+
+    assert panel.model_combo.findText("Fold Set 2") == -1
+
+    catalog["ready_fold_set_count"] = 2
+    publication["value"] = _application_publication(
+        generation=6,
+        revision=6,
+        trainer_identity="trainer-1",
+    )
+    runtime.notify(
+        APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+        publication["value"],
+    )
+    qtbot.waitUntil(
+        lambda: panel._application_generation == 6
+        and panel.model_combo.currentText() == "Fold Set 1"
+        and panel.run_combo.currentData() == first_round_identity
+        and panel.model_combo.findText("Fold Set 2") >= 0
+        and bool(requests)
+        and requests[-1].publication_generation == 6,
+        timeout=1_000,
+    )
+
+    assert [
+        panel.model_combo.itemText(index)
+        for index in range(panel.model_combo.count() - 2, panel.model_combo.count())
+    ] == ["Fold Set 1", "Fold Set 2"]
+    panel.model_combo.setCurrentIndex(panel.model_combo.findText("Fold Set 2"))
+    second_round_identity = panel.run_combo.currentData()
+    assert isinstance(second_round_identity, EvaluationCrossFoldIdentity)
+    assert tuple(
+        member.plan.plan_index for member in second_round_identity.members
+    ) == (2, 3)
+
+    publication["value"] = _application_publication(
+        generation=7,
+        revision=7,
+        trainer_identity="trainer-2",
+    )
+    runtime.notify(
+        APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+        publication["value"],
+    )
+
+    qtbot.waitUntil(
+        lambda: panel._application_generation == 7
+        and panel.model_combo.currentText() == "Fold 1 (Plan A)",
+        timeout=1_000,
     )
 
 

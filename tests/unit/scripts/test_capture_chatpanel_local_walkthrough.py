@@ -62,8 +62,8 @@ def test_render_markdown_includes_visible_transcript() -> None:
             "TRANSFORMERS_OFFLINE": "1",
         },
         "screenshots": {
-            "ready": "artifacts/ui/chatpanel-local-ready.png",
-            "response": "artifacts/ui/chatpanel-local-response.png",
+            "ready": "build/dev-artifacts/ui/chatpanel-local-ready.png",
+            "response": "build/dev-artifacts/ui/chatpanel-local-response.png",
         },
         "elapsed_seconds": 12.3,
         "visible_messages": [

@@ -53,5 +53,5 @@ training / evaluation 是產品 workflow 的任務環境與 sanity check，用�
 
 - [Validation](../../docs/validation/README.md)
 - [agent.md](../../docs/architecture/agent.md)
-- [validation.md](../../docs/architecture/validation.md)
+- [Validation](../../docs/validation/README.md)
 - [Decisions](../../docs/decisions/README.md)

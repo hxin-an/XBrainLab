@@ -10,10 +10,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .backend.study import Study
 
+FALLBACK_VERSION = "0.6.0"
+
 try:
     __version__ = version("xbrainlab")
 except PackageNotFoundError:
-    __version__ = "0.5.6"  # fallback for editable / non-installed mode
+    __version__ = FALLBACK_VERSION
 
 __all__ = ["Study", "__version__"]
 

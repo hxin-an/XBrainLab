@@ -337,7 +337,7 @@ Assistant 不是直接塞在 `MainWindow` 內部，而是由 `AgentManager` 管�
 - `tests/integration/ui/test_product_walkthrough.py` 已新增 assistant click-through layout
   regression，覆蓋 header / status / controls 不重疊、command diagnostics 不污染主 UI、
   user bubble 不截字、composer / Send button fit，以及五個 panel navigation 基本控制。
-- `scripts/dev/capture_ui_baseline.py` 會產出 top-level `artifacts/ui/*.png` live captures
+- `scripts/dev/capture_ui_baseline.py` 會產出 ignored `build/dev-artifacts/ui-baseline/*.png` live captures
   並比對 `tests/baselines/ui/` approved baseline；top-level captures 是 local generated
   output，不再 tracked。這是 visual regression evidence，不等於人工一定滿意，仍需人工
   UI 審核。

@@ -461,7 +461,7 @@ def _metric_cell(result: dict[str, Any], metric: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--eval-dir", default="artifacts/agent_evals")
+    parser.add_argument("--eval-dir", default="build/dev-artifacts/agent-evals")
     parser.add_argument("--output", default=None)
     args = parser.parse_args()
     output = write_dashboard(

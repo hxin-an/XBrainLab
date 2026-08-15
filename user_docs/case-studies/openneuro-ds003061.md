@@ -52,11 +52,6 @@ Before the full import scan, the subject selector should show:
 - **3 EEG files**;
 - session `01`, task `P300`, runs `1, 2, 3` for `sub-001`.
 
-<figure class="product-shot product-shot--compact desktop-shot" markdown>
-  [![BIDS subject selector with sub-001 selected and three P300 runs summarized](../assets/screenshots/bids-subject-scope.png)](../assets/screenshots/bids-subject-scope.png)
-  <figcaption>Open the original image to read the selector. It illustrates the scope checkpoint and is not identified completion evidence.</figcaption>
-</figure>
-
 <div class="screen-checks" markdown>
   <strong>Check values without relying on the screenshot</strong>
 

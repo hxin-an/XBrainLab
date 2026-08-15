@@ -46,8 +46,6 @@ nav:
   - 首頁: index.md
   - 專案現況:
       - 目前真相: current.md
-      - Historical Product Audit: records/product_quality_audit_2026-07-30.md
-      - 操作方式: operations.md
   - 決策:
       - 決策紀錄: decisions/README.md
   - 產品計畫:
@@ -58,26 +56,20 @@ nav:
       - 目標架構: target/architecture.md
       - 產品需求: target/requirements.md
       - Data Interpretation 目標: target/data_interpretation_system.md
-      - Agent 目標: target/agent.md
+      - Assistant 目標: target/agent.md
   - 目前架構:
       - 架構總覽: architecture/README.md
       - Data Pipeline: architecture/data_pipeline.md
       - UI 現況: architecture/ui.md
       - Backend 現況: architecture/backend.md
-      - Agent 現況: architecture/agent.md
-      - Validation Architecture: architecture/validation.md
+      - Assistant 現況: architecture/agent.md
   - 驗證:
       - 驗證策略: validation/README.md
       - Thesis Protocol: validation/thesis_protocol.md
+  - 歷史:
+      - 歷史索引: records/README.md
   - 研究:
       - EEG Import / Label Design: research/bci_eeg_import_label_design_source.md
-      - Tool-Call Agent Practices: research/tool_call_agent_best_practices.md
-  - Records:
-      - Product Feedback Record: records/product_feedback.md
-      - 2026-05-31 Lab Meeting: records/lab_meeting_2026-05-31.md
-      - Logs:
-          - Implementation Log: records/implementation_log.md
-          - Worklog: records/worklog.md
 plugins:
   - search
   - mkdocstrings:

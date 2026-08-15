@@ -399,7 +399,7 @@ Data Import wizard baseline 和仍未完成的產品化差距，不是新增目�
 | --- | --- | --- |
 | Metadata review step + Smart Parse | dialog button opens the Smart Parser helper and writes overrides into choices, but parser rule provenance is still basic. | Record parser rule / manual edit provenance more explicitly in recipe trace. |
 | Internal event semantics | internal EEG events 已有 candidate label events / not-used events / coverage / evidence preview；response、comment、artifact、boundary 類 markers 不會預設當 class label。PhysioNet-style `T1` / `T2` run-dependent semantics 會產生 review warning。 | Class semantics 仍要靠 sidecar、recipe、preset 或使用者確認；epoch anchor / response / artifact 的 downstream contract 還要和 epoch UI 對齊。 |
-| Wizard polish | Current implementation is a task-oriented step-panel dialog with step-specific cards, left-side Cancel, right-side navigation/apply, and screenshot evidence under `artifacts/ui/data-import-wizard-steps/`. | Human Windows desktop acceptance is still needed; offscreen screenshots are product evidence but not release approval. |
+| Wizard polish | Current implementation is a task-oriented step-panel dialog with step-specific cards, left-side Cancel and right-side navigation/apply. Exact-source screenshots are generated under ignored handoff evidence. | Human Windows desktop acceptance is still needed; offscreen screenshots are product evidence but not release approval. |
 | Grouped checklist hierarchy | action items are structured and rendered as target-step review cards. | Very long review text may still need a detail drawer or row expansion after human walkthrough. |
 
 ### 建議下一個 backend slice

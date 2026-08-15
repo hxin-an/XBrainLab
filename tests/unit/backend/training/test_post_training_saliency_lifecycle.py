@@ -50,6 +50,7 @@ class _Holder:
         self.records = [_FinishedRecord(eval_record=object())]
         self.compute = compute
         self.generation = 7
+        self.last_params: dict[str, Any] = {}
 
     def get_plans(self) -> list[_FinishedRecord]:
         return self.records
@@ -865,6 +866,186 @@ def test_newer_training_run_supersedes_terminal_saliency_owner() -> None:
     assert second_status.run == second_run
     assert second_status.generation > first_status.generation
     assert compute_calls == [first_run, second_run]
+
+
+def test_explicit_same_lineage_recompute_supersedes_terminal_owner() -> None:
+    compute_calls: list[tuple[str, ...]] = []
+
+    def compute(plan, _should_cancel):
+        methods = tuple(plan.holder.last_params["_methods"])
+        compute_calls.append(methods)
+        return object()
+
+    manager, run = _manager_with_compute(compute)
+    trainer = cast(_Trainer, manager.trainer)
+    original_prepare = trainer.holder.prepare_saliency_update_plan
+
+    def remember_params(params, *, records):
+        trainer.holder.last_params = params
+        return original_prepare(params, records=records)
+
+    trainer.holder.prepare_saliency_update_plan = remember_params  # type: ignore[method-assign]
+    explicit_target = PostTrainingSaliencyTarget(
+        run=run,
+        finished_runs_before=0,
+        finished_runs_after=1,
+        append=False,
+        explicit=True,
+    )
+    accumulated_params = {
+        "_methods": ["Gradient", "VarGrad"],
+        "VarGrad": {
+            "nt_samples": 7,
+            "nt_samples_batch_size": 2,
+            "stdevs": 0.25,
+        },
+    }
+
+    with patch(
+        "XBrainLab.backend.training.training_plan.publish_prepared_saliency_updates",
+        side_effect=_publish_updates,
+    ):
+        with post_training_saliency_target(_target(run)):
+            first_schedule = manager.set_saliency_params(_BASELINE_PARAMS)
+        assert manager.wait_for_saliency_job(timeout=2.0)
+        first_status = manager.get_post_training_saliency_status()
+
+        with post_training_saliency_target(explicit_target):
+            second_schedule = manager.set_saliency_params(accumulated_params)
+        assert manager.wait_for_saliency_job(timeout=2.0)
+
+    second_status = manager.get_post_training_saliency_status()
+    assert isinstance(first_schedule, PostTrainingSaliencyScheduleOutcome)
+    assert isinstance(second_schedule, PostTrainingSaliencyScheduleOutcome)
+    assert first_status.phase is PostTrainingSaliencyPhase.SUCCEEDED
+    assert second_schedule.disposition is (
+        PostTrainingSaliencyScheduleDisposition.SCHEDULED
+    )
+    assert second_status.phase is PostTrainingSaliencyPhase.SUCCEEDED
+    assert second_status.generation > first_status.generation
+    assert second_status.methods == ("Gradient", "VarGrad")
+    assert compute_calls == [
+        ("Gradient", "Gradient * Input"),
+        ("Gradient", "VarGrad"),
+    ]
+
+
+def test_explicit_same_lineage_failure_preserves_previous_committed_params() -> None:
+    compute_count = 0
+
+    def compute(_plan, _should_cancel):
+        nonlocal compute_count
+        compute_count += 1
+        if compute_count == 2:
+            raise RuntimeError("advanced attribution failed")
+        return object()
+
+    manager, run = _manager_with_compute(compute)
+    explicit_target = PostTrainingSaliencyTarget(
+        run=run,
+        finished_runs_before=0,
+        finished_runs_after=1,
+        append=False,
+        explicit=True,
+    )
+    accumulated_params = {
+        "_methods": ["Gradient", "VarGrad"],
+        "VarGrad": {
+            "nt_samples": 7,
+            "nt_samples_batch_size": 2,
+            "stdevs": 0.25,
+        },
+    }
+
+    with patch(
+        "XBrainLab.backend.training.training_plan.publish_prepared_saliency_updates",
+        side_effect=_publish_updates,
+    ):
+        with post_training_saliency_target(_target(run)):
+            manager.set_saliency_params(_BASELINE_PARAMS)
+        assert manager.wait_for_saliency_job(timeout=2.0)
+        assert manager.saliency_params == _BASELINE_PARAMS
+
+        with post_training_saliency_target(explicit_target):
+            schedule = manager.set_saliency_params(accumulated_params)
+        assert manager.wait_for_saliency_job(timeout=2.0)
+
+    assert isinstance(schedule, PostTrainingSaliencyScheduleOutcome)
+    assert schedule.disposition is PostTrainingSaliencyScheduleDisposition.SCHEDULED
+    assert manager.get_post_training_saliency_status().phase is (
+        PostTrainingSaliencyPhase.FAILED
+    )
+    assert manager.saliency_params == _BASELINE_PARAMS
+
+
+def test_explicit_same_lineage_recompute_does_not_supersede_active_owner() -> None:
+    compute_started = Event()
+    release_compute = Event()
+
+    def compute(_plan, _should_cancel):
+        compute_started.set()
+        assert release_compute.wait(timeout=2.0)
+        return object()
+
+    manager, run = _manager_with_compute(compute)
+    explicit_target = PostTrainingSaliencyTarget(
+        run=run,
+        finished_runs_before=0,
+        finished_runs_after=1,
+        append=False,
+        explicit=True,
+    )
+
+    with patch(
+        "XBrainLab.backend.training.training_plan.publish_prepared_saliency_updates",
+        side_effect=_publish_updates,
+    ):
+        with post_training_saliency_target(_target(run)):
+            first = manager.set_saliency_params(_BASELINE_PARAMS)
+        assert compute_started.wait(timeout=2.0)
+
+        with post_training_saliency_target(explicit_target):
+            blocked = manager.set_saliency_params({"_methods": ["Gradient", "VarGrad"]})
+
+        assert isinstance(blocked, PostTrainingSaliencyScheduleOutcome)
+        assert blocked.disposition is PostTrainingSaliencyScheduleDisposition.STALE
+        assert blocked.reason is PostTrainingSaliencyScheduleReason.REQUEST_SUPERSEDED
+        assert manager.get_post_training_saliency_status().phase is (
+            PostTrainingSaliencyPhase.RUNNING
+        )
+        release_compute.set()
+        assert manager.wait_for_saliency_job(timeout=2.0)
+
+    assert isinstance(first, PostTrainingSaliencyScheduleOutcome)
+    assert manager.get_post_training_saliency_status().phase is (
+        PostTrainingSaliencyPhase.SUCCEEDED
+    )
+
+
+def test_non_explicit_same_lineage_request_remains_blocked_after_terminal() -> None:
+    manager, run = _manager_with_compute(lambda _plan, _should_cancel: object())
+    duplicate_target = PostTrainingSaliencyTarget(
+        run=run,
+        finished_runs_before=0,
+        finished_runs_after=1,
+        append=False,
+        explicit=False,
+    )
+
+    with patch(
+        "XBrainLab.backend.training.training_plan.publish_prepared_saliency_updates",
+        side_effect=_publish_updates,
+    ):
+        with post_training_saliency_target(_target(run)):
+            manager.set_saliency_params(_BASELINE_PARAMS)
+        assert manager.wait_for_saliency_job(timeout=2.0)
+
+        with post_training_saliency_target(duplicate_target):
+            blocked = manager.set_saliency_params(_BASELINE_PARAMS)
+
+    assert isinstance(blocked, PostTrainingSaliencyScheduleOutcome)
+    assert blocked.disposition is PostTrainingSaliencyScheduleDisposition.STALE
+    assert blocked.reason is PostTrainingSaliencyScheduleReason.REQUEST_SUPERSEDED
 
 
 def test_terminal_delivery_remains_monotonic_when_older_notify_is_delayed() -> None:

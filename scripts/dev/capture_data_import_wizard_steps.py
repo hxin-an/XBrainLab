@@ -69,10 +69,6 @@ from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-HISTORICAL_CHECKPOINT_OUTPUT_DIR = (
-    ROOT / "artifacts" / "ui" / "data-import-wizard-steps"
-)
-
 DEFAULT_OUTPUT_DIR = Path(
     os.environ.get(
         "XBRAINLAB_UI_CAPTURE_DIR",
@@ -187,10 +183,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"Validated {output_dir / MANIFEST_NAME}")
         return 0
-    if args.only and output_dir in {
-        HISTORICAL_CHECKPOINT_OUTPUT_DIR.resolve(),
-        DEFAULT_OUTPUT_DIR.resolve(),
-    }:
+    if args.only and output_dir == DEFAULT_OUTPUT_DIR.resolve():
         parser.error("--only requires an explicitly separate --output-dir")
 
     selected_specs = [spec for spec in specs if spec.filename in selected_set]

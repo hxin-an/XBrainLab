@@ -8,7 +8,8 @@ from contextlib import suppress
 from dataclasses import dataclass
 from enum import Enum
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QEvent, QSize, Qt
+from PyQt6.QtGui import QShowEvent
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QAbstractSpinBox,
@@ -80,6 +81,7 @@ _WINDOW_MODE_REVIEW_MESSAGE = (
     "The epoch window mode needs review before EEG epochs can be created. "
     "Return to Data Import and review the event timing, then reopen this dialog."
 )
+_EPOCH_DIALOG_MINIMUM_SIZE = QSize(700, 740)
 
 
 def validate_epoch_baseline(
@@ -259,10 +261,30 @@ class EpochingDialog(BaseDialog):
         self.b_max_spin: QDoubleSpinBox | None = None
         self.baseline_error_label: QLabel | None = None
         self.create_button: QPushButton | None = None
+        self.content_scroll: QScrollArea | None = None
+        self._content_fit_ready = False
 
         super().__init__(parent, title="Time Epoching")
-        self.resize(700, 740)
+        self.resize(_EPOCH_DIALOG_MINIMUM_SIZE)
         self.setStyleSheet(self._dialog_style())
+        self._content_fit_ready = True
+        self._grow_to_visible_content()
+
+    def showEvent(self, event: QShowEvent | None) -> None:  # noqa: N802
+        """Finish native content fitting before the first visible paint."""
+        self._grow_to_visible_content()
+        super().showEvent(event)
+
+    def changeEvent(self, event: QEvent | None) -> None:  # noqa: N802
+        """Grow again when native font or style metrics change."""
+        super().changeEvent(event)
+        if event is not None and event.type() in {
+            QEvent.Type.ApplicationFontChange,
+            QEvent.Type.DevicePixelRatioChange,
+            QEvent.Type.FontChange,
+            QEvent.Type.StyleChange,
+        }:
+            self._grow_to_visible_content()
 
     def init_ui(self):
         """Initialize the dialog UI with event list, parameter controls, and buttons."""
@@ -283,6 +305,7 @@ class EpochingDialog(BaseDialog):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setWidget(content)
+        self.content_scroll = scroll
 
         header = QLabel("Create EEG Epochs")
         header.setObjectName("EpochDialogTitle")
@@ -584,7 +607,7 @@ class EpochingDialog(BaseDialog):
         footer.addStretch()
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-        normalize_dialog_button_box(buttons, ok_text="Create EEG Epochs")
+        normalize_dialog_button_box(buttons, ok_text="Confirm")
         ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
         if ok_button is not None:
             ok_button.setObjectName("EpochPrimaryButton")
@@ -593,6 +616,57 @@ class EpochingDialog(BaseDialog):
         footer.addWidget(buttons)
         layout.addLayout(footer)
         self._refresh_submit_validity()
+
+    def _grow_to_visible_content(self) -> None:
+        """Use spare screen height before asking users to scroll the content."""
+        scroll = self.content_scroll
+        if not self._content_fit_ready or scroll is None:
+            return
+        content = scroll.widget()
+        if content is None:
+            return
+
+        self.ensurePolished()
+        content.ensurePolished()
+        content_layout = content.layout()
+        if content_layout is not None:
+            content_layout.activate()
+        content.updateGeometry()
+        scroll.updateGeometry()
+        root_layout = self.layout()
+        if root_layout is not None:
+            root_layout.activate()
+
+        content_height = max(
+            content.sizeHint().height(),
+            content.minimumSizeHint().height(),
+        )
+        chrome_height = 0
+        if root_layout is not None:
+            margins = root_layout.contentsMargins()
+            chrome_height = margins.top() + margins.bottom()
+            for index in range(root_layout.count()):
+                item = root_layout.itemAt(index)
+                if item is None or item.widget() is scroll:
+                    continue
+                chrome_height += max(
+                    item.sizeHint().height(),
+                    item.minimumSize().height(),
+                )
+            chrome_height += max(root_layout.count() - 1, 0) * max(
+                root_layout.spacing(),
+                0,
+            )
+        target_size = QSize(
+            max(self.width(), _EPOCH_DIALOG_MINIMUM_SIZE.width()),
+            max(
+                self.height(),
+                _EPOCH_DIALOG_MINIMUM_SIZE.height(),
+                content_height + chrome_height,
+            ),
+        )
+        if target_size != self.size():
+            self.resize_preserving_center(target_size)
 
     def _build_section_card(
         self,
@@ -1221,6 +1295,7 @@ class EpochingDialog(BaseDialog):
             self.warning_label.setVisible(bool(notice))
         if self.create_button is not None:
             self.create_button.setEnabled(validation.allowed)
+        self._grow_to_visible_content()
 
     def update_duration_info(self):
         """Update duration information and show warning if duration is too short."""

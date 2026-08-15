@@ -11,7 +11,12 @@ from urllib.parse import urlparse
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_REGISTRY_PATH = (
-    REPO_ROOT / "artifacts" / "user-journeys" / "moabb-datasets-v1.json"
+    REPO_ROOT
+    / "scripts"
+    / "dev"
+    / "moabb_user_journeys"
+    / "data"
+    / "moabb-datasets-v1.json"
 )
 SUPPORTED_CHECKSUMS = frozenset({"md5", "sha256"})
 ALLOWED_SOURCE_HOSTS = frozenset(

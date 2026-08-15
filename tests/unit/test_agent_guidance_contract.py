@@ -46,6 +46,18 @@ def test_product_repairs_follow_one_durable_plan_before_implementation() -> None
     assert "開始實作" in agents
 
 
+def test_product_merge_requires_user_manual_acceptance() -> None:
+    agents = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    handoff = (REPO_ROOT / ".agents" / "workflows" / "handoff-candidate.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "手測通過並同意 merge" in agents
+    assert "Manual acceptance" in agents
+    assert "later source changes require retest" in handoff
+    assert "Automation does not substitute" in handoff
+
+
 def test_external_guidance_ab_surface_is_retired() -> None:
     assert not (REPO_ROOT / ".agents" / "evals" / "skill-routing-cases.yaml").exists()
     assert not (REPO_ROOT / ".agents" / "evals" / "authority-cases.yaml").exists()

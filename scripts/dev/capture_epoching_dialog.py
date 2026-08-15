@@ -54,6 +54,11 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_OUTPUT_DIR,
         help="Directory for epoching screenshots and evidence JSON.",
     )
+    parser.add_argument(
+        "--include-layout-variants",
+        action="store_true",
+        help="Also capture available-space and intentionally narrow layouts.",
+    )
     args = parser.parse_args(argv)
     output_dir = args.output_dir.expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -61,13 +66,15 @@ def main(argv: list[str] | None = None) -> int:
     instance = QApplication.instance()
     app = instance if isinstance(instance, QApplication) else QApplication(sys.argv)
     source_identity_at_start = collect_source_identity(ROOT, refresh=True)
-    capture_specs = (
+    capture_specs = [
         (
             "interval-import",
             "epoching-interval-import.png",
             _interval_epoch_data,
             False,
             None,
+            "production",
+            False,
         ),
         (
             "internal-events",
@@ -75,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
             _internal_event_epoch_data,
             True,
             None,
+            "production",
+            False,
         ),
         (
             "baseline-enabled",
@@ -82,6 +91,8 @@ def main(argv: list[str] | None = None) -> int:
             _internal_event_epoch_data,
             True,
             None,
+            "production",
+            False,
         ),
         (
             "baseline-disabled",
@@ -89,6 +100,8 @@ def main(argv: list[str] | None = None) -> int:
             _internal_event_epoch_data,
             False,
             None,
+            "production",
+            False,
         ),
         (
             "baseline-order-invalid",
@@ -96,6 +109,8 @@ def main(argv: list[str] | None = None) -> int:
             _internal_event_epoch_data,
             True,
             "baseline-order",
+            "production",
+            False,
         ),
         (
             "time-window-invalid",
@@ -103,11 +118,44 @@ def main(argv: list[str] | None = None) -> int:
             _internal_event_epoch_data,
             False,
             "time-window",
+            "production",
+            False,
         ),
-    )
+    ]
+    if args.include_layout_variants:
+        capture_specs.extend(
+            (
+                (
+                    "available-space",
+                    "epoching-available-space.png",
+                    _available_space_epoch_data,
+                    True,
+                    None,
+                    "production",
+                    False,
+                ),
+                (
+                    "bounded-overflow",
+                    "epoching-bounded-overflow.png",
+                    _many_event_epoch_data,
+                    True,
+                    None,
+                    "narrow",
+                    True,
+                ),
+            )
+        )
 
     captures: list[dict[str, Any]] = []
-    for state, filename, data_factory, baseline_enabled, invalid_state in capture_specs:
+    for (
+        state,
+        filename,
+        data_factory,
+        baseline_enabled,
+        invalid_state,
+        layout_mode,
+        expected_vertical_scroll,
+    ) in capture_specs:
         data = data_factory()
         dialog = EpochingDialog(
             None,
@@ -121,8 +169,15 @@ def main(argv: list[str] | None = None) -> int:
             baseline_enabled=baseline_enabled,
             invalid_state=invalid_state,
         )
-        dialog.resize(QSize(720, 860))
         _settle_layout(app, dialog)
+        if layout_mode == "narrow":
+            dialog.resize(QSize(620, 520))
+            _settle_layout(app, dialog)
+            scroll = dialog.findChild(QScrollArea, "EpochDialogContentScroll")
+            if scroll is None:
+                raise RuntimeError("Epoch content scroll is unavailable for capture.")
+            scroll.verticalScrollBar().setValue(scroll.verticalScrollBar().maximum())
+            _settle_layout(app, dialog)
 
         screenshot = output_dir / filename
         screenshot_evidence = _capture(dialog, screenshot)
@@ -132,7 +187,10 @@ def main(argv: list[str] | None = None) -> int:
             expected_baseline_enabled=baseline_enabled,
             invalid_state=invalid_state,
         )
-        geometry_checks = _geometry_evidence(dialog)
+        geometry_checks = _geometry_evidence(
+            dialog,
+            expected_vertical_scroll=expected_vertical_scroll,
+        )
         if not semantic_checks["passed"]:
             raise RuntimeError(f"Epoch semantic evidence failed for {state}.")
         if not geometry_checks["passed"]:
@@ -142,6 +200,7 @@ def main(argv: list[str] | None = None) -> int:
         captures.append(
             {
                 "state": state,
+                "layout_mode": layout_mode,
                 "screenshot": filename,
                 "screenshot_evidence": screenshot_evidence,
                 "dpi": _dpi_evidence(dialog),
@@ -220,6 +279,28 @@ def _internal_event_epoch_data() -> _EpochData:
                 "770": "770",
                 "771": "771",
                 "772": "772",
+            },
+        },
+    )
+
+
+def _available_space_epoch_data() -> _EpochData:
+    return _internal_event_data(6)
+
+
+def _many_event_epoch_data() -> _EpochData:
+    return _internal_event_data(16)
+
+
+def _internal_event_data(event_count: int) -> _EpochData:
+    event_ids = {f"event_{index:02d}": index + 1 for index in range(event_count)}
+    return _EpochData(
+        event_ids,
+        {
+            "source": "Labels inside EEG files",
+            "placement_method": "internal_events",
+            "class_map": {
+                name: name for name in list(event_ids)[: min(event_count, 4)]
             },
         },
     )
@@ -417,7 +498,11 @@ def _label_text_not_clipped(label: Any) -> bool:
     return required_height <= label.contentsRect().height()
 
 
-def _geometry_evidence(dialog: EpochingDialog) -> dict[str, Any]:
+def _geometry_evidence(
+    dialog: EpochingDialog,
+    *,
+    expected_vertical_scroll: bool = False,
+) -> dict[str, Any]:
     scroll = dialog.findChild(QScrollArea, "EpochDialogContentScroll")
     cancel = dialog.findChild(QPushButton, "EpochSecondaryButton")
     create = dialog.create_button
@@ -432,13 +517,26 @@ def _geometry_evidence(dialog: EpochingDialog) -> dict[str, Any]:
     )
     footer_below_content = min(cancel_rect.top(), create_rect.top()) > scroll_rect.top()
     footer_visible = cancel.isVisibleTo(dialog) and create.isVisibleTo(dialog)
+    primary_action = create.text()
+    primary_text_fits = (
+        create.fontMetrics().horizontalAdvance(primary_action)
+        <= create.contentsRect().width()
+    )
     horizontal_scroll_hidden = not scroll.horizontalScrollBar().isVisibleTo(dialog)
+    vertical_scroll_max = scroll.verticalScrollBar().maximum()
+    vertical_scroll_matches = (vertical_scroll_max > 0) is expected_vertical_scroll
+    screen = dialog.screen()
+    available_height = screen.availableGeometry().height() if screen is not None else 0
+    safe_max_height = max(available_height - 48, 0)
     return {
         "passed": bool(
             controls_contained
             and footer_below_content
             and footer_visible
+            and primary_action == "Confirm"
+            and primary_text_fits
             and horizontal_scroll_hidden
+            and vertical_scroll_matches
         ),
         "dialog": _rect_payload(dialog_rect),
         "content_scroll": _rect_payload(scroll_rect),
@@ -447,7 +545,16 @@ def _geometry_evidence(dialog: EpochingDialog) -> dict[str, Any]:
         "controls_contained": controls_contained,
         "footer_below_content": footer_below_content,
         "footer_visible": footer_visible,
+        "primary_action": primary_action,
+        "primary_text_fits": primary_text_fits,
         "horizontal_scroll_hidden": horizontal_scroll_hidden,
+        "expected_vertical_scroll": expected_vertical_scroll,
+        "vertical_scroll_matches": vertical_scroll_matches,
+        "vertical_scroll_max": vertical_scroll_max,
+        "content_fully_expanded": vertical_scroll_max == 0,
+        "available_height": available_height,
+        "safe_max_height": safe_max_height,
+        "unused_safe_height": max(safe_max_height - dialog.height(), 0),
     }
 
 

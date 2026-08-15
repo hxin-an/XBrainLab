@@ -14,13 +14,14 @@ LOCAL_SERVER_NAME = "default-server"
 WINDOWS_WSL_SERVER_NAME = "xbrainlab-windows-wsl"
 WRAPPER_RELATIVE_PATH = Path("scripts/dev/run_mcp_server_for_client.sh")
 WRAPPER_CLIENT_ARG = "scripts/dev/run_mcp_server_for_client.sh"
+DEFAULT_OUTPUT_DIR = Path("build/dev-artifacts/mcp")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--output-dir",
-        default="artifacts/mcp",
+        default=str(DEFAULT_OUTPUT_DIR),
         help="Directory for MCP client config artifacts.",
     )
     parser.add_argument(

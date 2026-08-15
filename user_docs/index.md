@@ -47,11 +47,6 @@ a reviewed import; each later stage depends on the decisions made before it.</p>
     runs. Every page remains **Unverified** until a manifest ID, app revision, run ID,
     and evidence files are published together.
 
-<figure class="product-shot product-shot--wide desktop-shot" markdown>
-  [![XBrainLab desktop application at the Dataset stage before EEG data is imported](assets/screenshots/desktop-start.png)](assets/screenshots/desktop-start.png)
-  <figcaption>Open the image at full size. This is an empty Dataset view and does not show a completed dataset run.</figcaption>
-</figure>
-
 <div class="screen-checks" markdown>
   <strong>Check the desktop view</strong>
 

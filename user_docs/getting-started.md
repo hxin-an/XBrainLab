@@ -67,11 +67,6 @@ When the window opens, confirm that you can see the five workflow tabs:
 
 `Dataset` · `Preprocess` · `Training` · `Evaluation` · `Visualization`
 
-<figure class="product-shot desktop-shot" markdown>
-  [![Empty XBrainLab Dataset workspace with import actions and workflow tabs](assets/screenshots/desktop-start.png)](assets/screenshots/desktop-start.png)
-  <figcaption>Open the original image to read the controls. A new session begins in Dataset; disabled downstream actions are expected.</figcaption>
-</figure>
-
 <div class="screen-checks" markdown>
   <strong>Startup check values</strong>
 
@@ -112,11 +107,6 @@ The import review contains five tasks:
 3. **Review Metadata**: inspect subject, session, task, and run identity.
 4. **Match Labels**: confirm carrier pairing, class source, and placement.
 5. **Review and Import**: resolve blockers and confirm only when the summary matches the study.
-
-<figure class="product-shot desktop-shot" markdown>
-  [![XBrainLab Review and Import step showing readiness for EEG data, metadata, labels, resource use, and recipe](assets/screenshots/import-review.png)](assets/screenshots/import-review.png)
-  <figcaption>Open the original image to inspect the review rows. Required readiness is separate from optional recipe saving.</figcaption>
-</figure>
 
 <div class="screen-checks" markdown>
   <strong>Import review check values</strong>

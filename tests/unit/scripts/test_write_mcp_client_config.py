@@ -7,6 +7,7 @@ from pathlib import Path
 
 from scripts.dev.write_mcp_client_config import (
     CONFIG_FILENAME,
+    DEFAULT_OUTPUT_DIR,
     LOCAL_SERVER_NAME,
     WINDOWS_WSL_SERVER_NAME,
     build_mcp_client_config,
@@ -70,18 +71,8 @@ def test_build_server_command_extracts_config_command(tmp_path: Path):
     assert command == ["bash", "scripts/dev/run_mcp_server_for_client.sh"]
 
 
-def test_committed_mcp_config_matches_generator_contract():
-    root = Path(__file__).parents[3]
-    config_path = root / "artifacts" / "mcp" / CONFIG_FILENAME
-
-    config = json.loads(config_path.read_text(encoding="utf-8"))
-    ok, reason = validate_mcp_client_config(config, repo_root=root)
-
-    assert ok is True, reason
-    assert build_server_command(config, LOCAL_SERVER_NAME) == [
-        "bash",
-        "scripts/dev/run_mcp_server_for_client.sh",
-    ]
+def test_default_mcp_config_output_is_untracked_developer_evidence():
+    assert Path("build/dev-artifacts/mcp") == DEFAULT_OUTPUT_DIR
 
 
 def test_mcp_config_writer_cli_writes_valid_config(tmp_path: Path):

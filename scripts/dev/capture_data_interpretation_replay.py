@@ -7,8 +7,8 @@ Expected usage in WSL/headless environments:
         --output-dir /tmp/xbrainlab-data-interpretation-replay
 
 The current tree keeps Data Import wizard screenshots under
-``artifacts/ui/data-import-wizard-steps/``. This replay helper is kept for
-targeted debugging and should not repopulate top-level ``artifacts/ui`` legacy
+``build/dev-artifacts/data-import-wizard-steps/``. This replay helper is kept for
+targeted debugging and must not repopulate the tracked ``artifacts/`` namespace
 screenshots as canonical evidence.
 """
 

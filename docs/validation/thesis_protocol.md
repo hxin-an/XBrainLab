@@ -328,7 +328,7 @@ scripts/dev/validate_split_artifact.py
 審計命令：
 
 ```bash
-poetry run -- python scripts/dev/validate_split_artifact.py artifacts/thesis/splits.json
+poetry run -- python scripts/dev/validate_split_artifact.py build/dev-artifacts/thesis/splits.json
 ```
 
 目前相關 tests：
@@ -344,7 +344,7 @@ poetry run -- pytest --capture=sys \
 EEG pipeline experiment artifact directory 應長成：
 
 ```text
-artifacts/thesis/<run_id>/
+build/dev-artifacts/thesis/<run_id>/
   split_artifact.json
   config.json
   metrics.json

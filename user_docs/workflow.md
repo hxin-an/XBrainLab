@@ -61,11 +61,6 @@ Pay particular attention to:
 The review may be **Ready**, **Ready with notes**, require a decision, or be blocked.
 Do not treat a warning as harmless until its downstream effect is understood.
 
-<figure class="product-shot desktop-shot" markdown>
-  [![Review and Import summary with ready states and a metadata note](assets/screenshots/import-review.png)](assets/screenshots/import-review.png)
-  <figcaption>Open the original image to read every row. Confirm only after scope and label semantics match the study.</figcaption>
-</figure>
-
 <div class="screen-checks" markdown>
   <strong>Import screen checks</strong>
 
@@ -135,11 +130,6 @@ In **Training**:
 4. Start training and monitor the accuracy, loss, log, and history views.
 5. Stop the run if the configuration, resource use, or data provenance is wrong.
 
-<figure class="product-shot desktop-shot" markdown>
-  [![XBrainLab Training workspace with plot tabs, training history, configuration, and execution controls](assets/screenshots/training-workspace.png)](assets/screenshots/training-workspace.png)
-  <figcaption>Open the original image to inspect the empty controls. This illustrates prerequisites, not a completed result.</figcaption>
-</figure>
-
 <div class="screen-checks" markdown>
   <strong>Training screen checks</strong>
 
@@ -155,11 +145,6 @@ or suitability for a scientific claim.
 
 Open **Evaluation** after a compatible training result exists. Select the fold, run,
 and split before reading the matrix, class-level values, metrics, or model details.
-
-<figure class="product-shot product-shot--compact desktop-shot" markdown>
-  [![Evaluation controls for fold, run, split, percentage display, and result tabs](assets/screenshots/evaluation-scope.png)](assets/screenshots/evaluation-scope.png)
-  <figcaption>Open the original image to read the selectors. It illustrates result scope controls, not a dataset metric.</figcaption>
-</figure>
 
 <div class="screen-checks" markdown>
   <strong>Evaluation screen checks</strong>
