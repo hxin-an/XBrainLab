@@ -1,50 +1,44 @@
 # XBrainLab Now
 
-最後更新：`2026-08-15`
+最後更新：`2026-08-16`
 
 ## 目前焦點
 
-**保留 `v0.6.0` 作為唯一 Desktop GUI/source baseline，建立可阻擋明顯跑版的 UI visual-regression
-guard；完成後才進入 Assistant task branch。**
+**從已驗證的 Desktop GUI baseline 進入 Assistant runtime 量測，先確認 real Granite、chat lifecycle
+與 backend command spine 的實際失敗，再制定一個 bounded repair slice。**
 
-本輪從 `main@665ce8e5` 建立 `test/ui-visual-regression-v1`。使用者要求 default-scale UI 變更必須
-和 approved references 比對；layout、theme、font 或 dialog 變更另需 Windows 100/125/150% evidence。
-本輪只修改 validation scripts、tests、CI 與 canonical docs，不修改產品 runtime、既有 UI layout 或
-approved screenshot 內容，也不自動接受 visual drift。Repo-root `settings.json` 保留且不納入 commit。
+UI visual-regression guard 已由 PR #24 合入 `main`。Quota-aware Codex dispatch 已收斂到
+`.agents/README.md` 與 project `.codex/config.toml`：Terra 是 coordinator/default，Luna 只處理有
+exact oracle 的 bounded worker，Sol 只處理客觀 high-risk decision；它不再是 product active work。
 
-## 後續順序
+## 問題與證據
 
-1. UI default-scale guard：capture exact-source candidate，對 `tests/baselines/ui/` 做 fail-closed 比對。
-2. Windows DPI guard：layout/theme/font/dialog 變更時跑 100/125/150% capture 與 geometry contract。
-3. Assistant：從完成上述 checkpoint 的最新 `main` 建短 branch。
+- 使用者目前不能可靠使用 Assistant；已知 claim 不能由 mock tool-call eval 或舊 artifact 支撐。
+- Assistant 必須和 UI 共用 `ApplicationService / Command API` 的 state、capability 與 error semantics，
+  不能建立第二套 readiness truth。
+- 下一個 repair scope 尚不能在沒有 real runtime evidence 前決定；先量測不是授權廣泛重寫。
 
-## Assistant boundary
+## 下一步
 
-- 只走既有`ApplicationService / Command API`，不建立第二套state或capability policy。
-- 先量測real Granite的tool selection、confirmation、retry/cancel與長session，再決定最小修復。
-- MCP維持明確opt-in compatibility，不成為Assistant或thesis前置。
-- 每個Assistant slice從tagged main另開短branch，完成focused evidence與使用者手測後才merge。
+1. 從最新 `main` 建立一條 Assistant task branch，先確認 repo/Git/runtime identity 與 real Granite health。
+2. 唯讀重現 chat startup、unavailable/error、tool selection、confirmation、retry/cancel 與長 session；
+   保存最小可重跑 evidence，不先改 UI。
+3. 將第一個 confirmed root cause、observable outcome、scope/non-goals、修理步驟與 focused validation
+   寫回本文件，再開始實作。
+4. 若修復需要任何 `XBrainLab/ui/` 或使用者可見互動變更，先取得使用者明確確認。
 
 ## Non-goals
 
-- 不在GUI release branch加入新的Assistant功能。
-- 不修改 `v0.6.0` tag/release、產品runtime行為、UI layout、models、training outputs或repo-root
+- 不把 tool-call eval、thesis evidence、MCP、packaging 或任意 dataset support 拉進第一個 Assistant slice。
+- 不因 agent 不可用就替換 product model、加入 silent fallback、建立第二套 state owner 或重寫整個 panel。
+- 不修改 `v0.6.0` tag/release、既有 UI layout、EEG pipeline、training outputs 或 repo-root
   `settings.json`。
-- 不從 retired worktrees 搬回 validation control plane、teacher campaign 或未提交中間版本。
-- 不讓 offscreen capture 冒充 Windows native acceptance，也不因 CI 自動改寫 approved references。
-- 不宣稱signed installer、scientific model quality、任意dataset support或product 1.0。
-- 不恢復historical dashboard、tracked screenshots、舊Agent benchmark或第二份planning queue。
+- 不以 deterministic mock、dashboard PASS 或 Linux offscreen 冒充 real Granite／Windows product evidence。
 
-## Exit condition
+## Entry condition
 
-UI regression slice只在下列條件全部成立後完成：
+- Quota-aware guidance PR exact-head checks 成功並合入 `main`。
+- 新 Assistant branch 的 initial state 只有允許保留的 `settings.json` dirty path。
+- 第一輪只讀量測有明確 timeout、資源上限與單一 PID/session ownership。
 
-1. Default-scale candidate與approved reference使用同一 canonical path contract，缺圖、stale source或
-   超出容許值的 drift都fail closed。
-2. Default-scale gate覆蓋主視窗與五個panel；Windows 100/125/150% gate覆蓋靜態app-polish
-   dialog/panel contract。Linux offscreen只作checkpoint，不冒充native Windows evidence。
-3. Same-class source guard、focused/adjacent tests、static checks與strict docs build成功；主agent實際
-   查看生成 artifact。
-4. PR exact-head所有non-skipped CI成功並合入`main`。本輪不改產品行為，因此不要求額外產品手測。
-
-驗證規則只讀[Validation](../validation/README.md)；長期目標讀[Roadmap](roadmap.md)。
+長期目標讀 [Roadmap](roadmap.md)，evidence contract 只讀 [Validation](../validation/README.md)。
