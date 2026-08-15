@@ -29,6 +29,10 @@ Preprocess、Epoch、Split/Training、Evaluation 到 Saliency visualization。As
   `build/handoff-evidence/<full-SHA>/`；這些是可丟棄的當次輸出，不是durable storage。
   `artifacts/`不保存current evidence。
 - Offscreen Qt、dashboard與自動journey是工程證據，不取代Windows真人操作。
+- Visible UI source變更會產生exact-source default-scale candidate，並和
+  `tests/baselines/ui/` approved references做fail-closed比對。UI layout/theme/font/dialog路徑另由
+  Windows Qt platform在100/125/150%跑app-polish geometry/pixel contract；它仍不取代真人Windows
+  DPI、多螢幕或remote-desktop acceptance。
 - 任何產品行為變更都必須由使用者手測通過並明確同意merge；product source變更後須重新批准。
 - Repo-root `settings.json`是本機設定，不屬於release tree。
 

@@ -4,20 +4,19 @@
 
 ## 目前焦點
 
-**保留 `v0.6.0` 作為唯一 Desktop GUI/source baseline，完成本機dataset/worktree cleanup的PR與CI，
-再建立UI visual-regression guard，之後才進入Assistant task branch。**
+**保留 `v0.6.0` 作為唯一 Desktop GUI/source baseline，建立可阻擋明顯跑版的 UI visual-regression
+guard；完成後才進入 Assistant task branch。**
 
-本輪storage slice不修改產品行為。中央root已驗證BIDS、public fixtures、唯一raw source、legacy
-compact source與manifests；舊worktrees/branches、quarantine、seeds、duplicate datasets與stale
-build outputs已依使用者授權永久移除。`build/`目前不再承擔durable storage，下一個獨立slice才處理
-UI baseline/DPI evidence。
+本輪從 `main@665ce8e5` 建立 `test/ui-visual-regression-v1`。使用者要求 default-scale UI 變更必須
+和 approved references 比對；layout、theme、font 或 dialog 變更另需 Windows 100/125/150% evidence。
+本輪只修改 validation scripts、tests、CI 與 canonical docs，不修改產品 runtime、既有 UI layout 或
+approved screenshot 內容，也不自動接受 visual drift。Repo-root `settings.json` 保留且不納入 commit。
 
 ## 後續順序
 
-1. Storage consolidation：完成focused commit、PR、exact-head CI與merge。
-2. UI regression guard：default-scale visual baseline；layout/theme/font/dialog變更另跑Windows
-   100/125/150% evidence。
-3. Assistant：從完成上述兩個 checkpoint 的最新 `main` 建短 branch。
+1. UI default-scale guard：capture exact-source candidate，對 `tests/baselines/ui/` 做 fail-closed 比對。
+2. Windows DPI guard：layout/theme/font/dialog 變更時跑 100/125/150% capture 與 geometry contract。
+3. Assistant：從完成上述 checkpoint 的最新 `main` 建短 branch。
 
 ## Assistant boundary
 
@@ -29,21 +28,23 @@ UI baseline/DPI evidence。
 ## Non-goals
 
 - 不在GUI release branch加入新的Assistant功能。
-- 不修改 `v0.6.0` tag/release、產品runtime行為、models、training outputs或repo-root `settings.json`。
+- 不修改 `v0.6.0` tag/release、產品runtime行為、UI layout、models、training outputs或repo-root
+  `settings.json`。
 - 不從 retired worktrees 搬回 validation control plane、teacher campaign 或未提交中間版本。
+- 不讓 offscreen capture 冒充 Windows native acceptance，也不因 CI 自動改寫 approved references。
 - 不宣稱signed installer、scientific model quality、任意dataset support或product 1.0。
 - 不恢復historical dashboard、tracked screenshots、舊Agent benchmark或第二份planning queue。
 
 ## Exit condition
 
-Desktop baseline只有在下列條件全部成立後才算完成：
+UI regression slice只在下列條件全部成立後完成：
 
-Storage slice只在下列條件全部成立後完成：
-
-1. Central datasets、完整cleanup receipt與legacy copy receipt由同一final committed tool重新驗證；
-   copy-only receipt不得冒充完整cleanup。
-2. `build/` durable-storage audit無findings，retired worktree/branch不存在。
-3. Focused tests、static checks與docs build成功。
-4. PR exact-head所有non-skipped CI成功並合入`main`。
+1. Default-scale candidate與approved reference使用同一 canonical path contract，缺圖、stale source或
+   超出容許值的 drift都fail closed。
+2. Default-scale gate覆蓋主視窗與五個panel；Windows 100/125/150% gate覆蓋靜態app-polish
+   dialog/panel contract。Linux offscreen只作checkpoint，不冒充native Windows evidence。
+3. Same-class source guard、focused/adjacent tests、static checks與strict docs build成功；主agent實際
+   查看生成 artifact。
+4. PR exact-head所有non-skipped CI成功並合入`main`。本輪不改產品行為，因此不要求額外產品手測。
 
 驗證規則只讀[Validation](../validation/README.md)；長期目標讀[Roadmap](roadmap.md)。

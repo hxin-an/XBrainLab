@@ -338,9 +338,13 @@ Assistant 不是直接塞在 `MainWindow` 內部，而是由 `AgentManager` 管�
   regression，覆蓋 header / status / controls 不重疊、command diagnostics 不污染主 UI、
   user bubble 不截字、composer / Send button fit，以及五個 panel navigation 基本控制。
 - `scripts/dev/capture_ui_baseline.py` 會產出 ignored `build/dev-artifacts/ui-baseline/*.png` live captures
-  並比對 `tests/baselines/ui/` approved baseline；top-level captures 是 local generated
-  output，不再 tracked。這是 visual regression evidence，不等於人工一定滿意，仍需人工
-  UI 審核。
+  與exact-source `ui-baseline-evidence.json`，並比對 `tests/baselines/ui/` approved baseline；缺圖、
+  source/reference hash drift、尺寸差異或超出pixel threshold都fail closed。top-level captures是local
+  generated output，不再tracked；approved reference不由capture自動改寫。
+- `scripts/dev/run_app_polish_ui_dpi_gate.py` 只接受Windows + Qt `windows` platform，依序建立
+  100/125/150% app-polish evidence。每個scale沿用`capture_ui_polish_surfaces.py`的visible-control、
+  text-fit、primary action、geometry、scroll與consecutive-frame contract；aggregate拒絕缺scale、
+  observed DPR不符或stale source。這是automated Windows-runtime evidence，不等於真人DPI/多螢幕驗收。
 
 目前仍未完成的 UI product evidence：
 

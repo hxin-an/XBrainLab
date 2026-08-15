@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import platform
 import sys
 import time
 from collections.abc import Callable
@@ -11,7 +13,7 @@ from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 from unittest.mock import MagicMock, patch
 
 from PIL import Image, ImageStat
@@ -210,6 +212,13 @@ def main(argv: list[str] | None = None) -> int:
             source_identity=source_identity_at_end,
             source_identity_at_start=source_identity_at_start,
             qt_platform=QApplication.platformName(),
+            platform_system=platform.system(),
+            requested_scale_factor=float(os.environ.get("QT_SCALE_FACTOR", "1.0")),
+            observed_device_pixel_ratio=(
+                app.primaryScreen().devicePixelRatio()
+                if app.primaryScreen() is not None
+                else 0.0
+            ),
         )
         ok, reason = validate_app_polish_evidence(
             evidence,
@@ -314,7 +323,26 @@ def _training_setting_dialog() -> QWidget:
             controller,
             recommendation=recommendation,
         )
-    dialog.resize(QSize(560, 420))
+    # Keep the production content-aware size. A fixed 560x420 viewport can clip
+    # the final form rows once Qt renders at 125/150% DPR, which would make the
+    # evidence runner test an artificial capture layout instead of the dialog.
+    _fit_dialog_to_native_layout(dialog, QSize(560, 420))
+    if dialog.content_scroll is not None:
+        scrollbar = dialog.content_scroll.verticalScrollBar()
+        screen = dialog.screen()
+        available_height = (
+            screen.availableGeometry().height() - 48
+            if screen is not None
+            else dialog.height() + scrollbar.maximum() + 24
+        )
+        if scrollbar.maximum() > 0 and dialog.height() < available_height:
+            dialog.resize(
+                dialog.width(),
+                min(
+                    dialog.height() + scrollbar.maximum() + 24,
+                    available_height,
+                ),
+            )
     return dialog
 
 
@@ -873,7 +901,10 @@ def _capture_factories() -> tuple[tuple[str, Callable[[], QWidget]], ...]:
 
 def _capture(widget: QWidget, output_path: Path) -> dict[str, object]:
     """Publish only after two consecutive complete widget frames settle."""
-    app = QApplication.instance()
+    instance = QApplication.instance()
+    if instance is None:
+        raise RuntimeError("App-polish capture requires a QApplication instance.")
+    app = cast(QApplication, instance)
     first_frame = output_path.with_name(f".{output_path.stem}-frame-1.png")
     last_error: RuntimeError | None = None
     for _attempt in range(3):
@@ -911,17 +942,16 @@ def _capture(widget: QWidget, output_path: Path) -> dict[str, object]:
     raise RuntimeError(f"Could not capture {output_path}.")
 
 
-def _settle_capture_widget(app: object, widget: QWidget) -> None:
-    if isinstance(app, QApplication):
-        if isinstance(widget, ChatPanel):
-            _settle_chat_panel_capture(app, widget)
-        else:
-            widget.ensurePolished()
-            widget.updateGeometry()
-            widget.repaint()
-            app.processEvents()
-            time.sleep(0.04)
-            app.processEvents()
+def _settle_capture_widget(app: QApplication, widget: QWidget) -> None:
+    if isinstance(widget, ChatPanel):
+        _settle_chat_panel_capture(app, widget)
+    else:
+        widget.ensurePolished()
+        widget.updateGeometry()
+        widget.repaint()
+        app.processEvents()
+        time.sleep(0.04)
+        app.processEvents()
 
 
 def _save_widget_grab(widget: QWidget, output_path: Path) -> None:

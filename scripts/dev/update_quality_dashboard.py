@@ -18,12 +18,14 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageStat
-
 from scripts.dev.capture_ui_baseline import (
     ARTIFACTS_DIR as UI_CAPTURE_DIR,
 )
-from scripts.dev.capture_ui_baseline import CAPTURE_STEPS, is_nearly_black
+from scripts.dev.capture_ui_baseline import (
+    EXPECTED_UI_ARTIFACTS,
+    REFERENCE_UI_DIR,
+    validate_ui_artifacts,
+)
 from scripts.dev.owned_process_group import spawn_owned_process, terminate_and_collect
 from scripts.dev.pytest_completion_attestation import (
     REQUIRED_PYTEST_RUNNER_ID,
@@ -40,17 +42,12 @@ QUALITY_DIR = ROOT / "build" / "dev-artifacts" / "quality-dashboard"
 LATEST_JSON = QUALITY_DIR / "latest.json"
 LATEST_MD = QUALITY_DIR / "latest.md"
 HISTORY_JSONL = QUALITY_DIR / "history.jsonl"
-EXPECTED_UI_ARTIFACTS = [filename for filename, _ in CAPTURE_STEPS]
-REFERENCE_UI_DIR = ROOT / "tests" / "baselines" / "ui"
 HEADLESS_CACHE_DIR = Path(tempfile.gettempdir()) / "matplotlib-codex"
 POETRY = "/home/administrator/.local/bin/poetry"
 POETRY_RUN = f"{POETRY} run --"
 POETRY_PYTHON = f"{POETRY_RUN} python"
 UI_WRAPPER = str(ROOT / "scripts" / "dev" / "run_ui_pytest.sh")
 DEFAULT_FRESH_MINUTES = 60
-MAX_UI_MEAN_DIFF = 1.5
-MAX_UI_CHANGED_RATIO = 0.02
-PIXEL_DIFF_THRESHOLD = 12
 DEFAULT_CHECK_TIMEOUT_SECONDS = 300
 UI_UNIT_SUITE_TIMEOUT_SECONDS = 900
 CHECK_TERMINATION_GRACE_SECONDS = 5
@@ -684,109 +681,6 @@ def compute_overall_status(checks: list[CheckResult]) -> str:
     return "pass"
 
 
-def compare_ui_images(
-    reference_path: Path, candidate_path: Path
-) -> tuple[str, dict[str, float | str]]:
-    """Compare a captured UI artifact against an approved reference image."""
-    with (
-        Image.open(reference_path) as reference_image,
-        Image.open(candidate_path) as candidate_image,
-    ):
-        reference_rgb = reference_image.convert("RGB")
-        candidate_rgb = candidate_image.convert("RGB")
-
-    if reference_rgb.size != candidate_rgb.size:
-        return (
-            "fail",
-            {
-                "reason": "size mismatch",
-                "reference_size": str(reference_rgb.size),
-                "candidate_size": str(candidate_rgb.size),
-            },
-        )
-
-    diff = ImageChops.difference(reference_rgb, candidate_rgb)
-    stat = ImageStat.Stat(diff)
-    mean_diff = sum(stat.mean) / len(stat.mean)
-
-    def threshold_pixel(value: int) -> int:
-        return 255 if value > PIXEL_DIFF_THRESHOLD else 0
-
-    diff_mask = diff.convert("L").point(threshold_pixel)
-    histogram = diff_mask.histogram()
-    total_pixels = sum(histogram)
-    changed_pixels = total_pixels - histogram[0]
-    changed_ratio = changed_pixels / total_pixels if total_pixels else 0.0
-
-    status = (
-        "pass"
-        if mean_diff <= MAX_UI_MEAN_DIFF and changed_ratio <= MAX_UI_CHANGED_RATIO
-        else "fail"
-    )
-    return (
-        status,
-        {
-            "mean_diff": round(mean_diff, 3),
-            "changed_ratio": round(changed_ratio, 4),
-        },
-    )
-
-
-def validate_ui_artifacts(
-    artifacts_dir: Path,
-    *,
-    reference_dir: Path = REFERENCE_UI_DIR,
-) -> tuple[str, str]:
-    """Validate that the expected UI artifacts exist and are not black."""
-    missing = [
-        name for name in EXPECTED_UI_ARTIFACTS if not (artifacts_dir / name).exists()
-    ]
-    if missing:
-        return "fail", f"Missing UI artifacts: {', '.join(missing)}"
-
-    unusable = [
-        name for name in EXPECTED_UI_ARTIFACTS if is_nearly_black(artifacts_dir / name)
-    ]
-    if unusable:
-        return "fail", f"Nearly black UI artifacts: {', '.join(unusable)}"
-
-    missing_references = [
-        name for name in EXPECTED_UI_ARTIFACTS if not (reference_dir / name).exists()
-    ]
-    if missing_references:
-        return "fail", f"Missing UI references: {', '.join(missing_references)}"
-
-    mismatches: list[str] = []
-    matched_metrics: list[tuple[float, float]] = []
-    for filename in EXPECTED_UI_ARTIFACTS:
-        status, metrics = compare_ui_images(
-            reference_dir / filename, artifacts_dir / filename
-        )
-        if status != "pass":
-            if metrics.get("reason") == "size mismatch":
-                mismatches.append(
-                    f"{filename} (size {metrics['candidate_size']} vs ref {metrics['reference_size']})"
-                )
-                continue
-            mismatches.append(
-                f"{filename} (mean diff {metrics['mean_diff']}, changed {metrics['changed_ratio']:.2%})"
-            )
-            continue
-        matched_metrics.append(
-            (float(metrics["mean_diff"]), float(metrics["changed_ratio"]))
-        )
-
-    if mismatches:
-        return "fail", f"UI baseline drift: {', '.join(mismatches[:3])}"
-
-    max_mean = max((mean for mean, _ in matched_metrics), default=0.0)
-    max_changed_ratio = max((ratio for _, ratio in matched_metrics), default=0.0)
-    return (
-        "pass",
-        f"{len(EXPECTED_UI_ARTIFACTS)} UI artifacts match approved references (max mean diff {max_mean:.3f}, max changed {max_changed_ratio:.2%}).",
-    )
-
-
 def run_check(
     *,
     key: str,
@@ -924,7 +818,10 @@ def validate_ui_baseline(returncode: int, output: str) -> tuple[str, str]:
     """Interpret baseline capture plus artifact quality."""
     if returncode != 0:
         return "fail", f"Baseline capture failed with exit code {returncode}."
-    return validate_ui_artifacts(ROOT / "artifacts" / "ui")
+    return validate_ui_artifacts(
+        UI_CAPTURE_DIR,
+        reference_dir=REFERENCE_UI_DIR,
+    )
 
 
 def validate_pytest_like(returncode: int, output: str) -> tuple[str, str]:

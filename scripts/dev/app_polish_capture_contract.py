@@ -68,6 +68,9 @@ def build_app_polish_evidence(
     source_identity: Mapping[str, Any] | None = None,
     source_identity_at_start: Mapping[str, Any] | None = None,
     qt_platform: str = "",
+    platform_system: str = "",
+    requested_scale_factor: float = 1.0,
+    observed_device_pixel_ratio: float = 1.0,
 ) -> dict[str, Any]:
     """Build a content-addressed manifest after every capture has settled."""
     root = output_dir.expanduser().resolve()
@@ -93,6 +96,9 @@ def build_app_polish_evidence(
         "generator": GENERATOR,
         "capture_environment": {
             "qt_platform": str(qt_platform),
+            "platform_system": str(platform_system),
+            "requested_scale_factor": float(requested_scale_factor),
+            "observed_device_pixel_ratio": float(observed_device_pixel_ratio),
             "capture_kind": "deterministic_qt_widget",
             "qt_style": "Fusion",
             "application_stylesheet": "Stylesheets.MAIN_WINDOW",
