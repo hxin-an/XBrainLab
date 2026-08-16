@@ -293,11 +293,35 @@ def test_geometry_persistence_runs_after_every_shutdown_gate(qtbot):
     assert call_order == [
         "fence",
         "training",
-        "owned-workers",
         "assistant",
+        "owned-workers",
         "geometry",
         "qt-close",
     ]
+
+
+def test_forced_close_releases_assistant_before_global_idle_gate(qtbot):
+    window = _make_window(qtbot)
+    call_order: list[str] = []
+    event = QCloseEvent()
+
+    with (
+        patch.object(
+            window,
+            "_close_assistant_for_shutdown",
+            side_effect=lambda: call_order.append("assistant") or True,
+        ),
+        patch.object(
+            window,
+            "_owned_ui_background_work_idle",
+            side_effect=lambda: call_order.append("owned-workers") or False,
+        ),
+        patch.object(window, "_schedule_close_retry"),
+    ):
+        window.closeEvent(event)
+
+    assert call_order == ["assistant", "owned-workers"]
+    assert event.isAccepted() is False
 
 
 def test_close_uses_watchdog_while_waiting_for_assistant_terminal_signal(qtbot):

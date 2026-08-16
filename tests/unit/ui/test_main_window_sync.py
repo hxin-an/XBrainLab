@@ -483,7 +483,7 @@ def test_close_waits_for_owned_ui_background_work(
         main_window.closeEvent(event)
 
     assert event.isAccepted() is False
-    close_assistant.assert_not_called()
+    close_assistant.assert_called_once_with()
     begin_render_shutdown.assert_not_called()
     retry.assert_called_once_with()
     assert "background interface work" in main_window.statusBar().currentMessage()
@@ -897,7 +897,7 @@ def test_close_waits_for_active_visualization_native_render(main_window):
     assert event.isAccepted() is False
     visualization_panel.begin_native_render_shutdown.assert_called_once_with()
     visualization_panel.native_render_work_idle.assert_called()
-    close_assistant.assert_not_called()
+    close_assistant.assert_called_once_with()
     retry.assert_called_once_with()
 
 
@@ -951,7 +951,7 @@ def test_close_finalizes_native_resources_after_workers_idle_before_accept(
     ):
         main_window.closeEvent(event)
 
-    assert call_order == ["finalize", "assistant", "accept"]
+    assert call_order == ["assistant", "finalize", "accept"]
     visualization_panel.finalize_native_render_resources.assert_called_once_with()
 
 
@@ -1042,7 +1042,7 @@ def test_close_retries_when_native_resource_finalizer_is_not_terminal(main_windo
 
     assert event.isAccepted() is False
     visualization_panel.finalize_native_render_resources.assert_called_once_with()
-    close_assistant.assert_not_called()
+    close_assistant.assert_called_once_with()
     accept_close.assert_not_called()
     retry.assert_called_once_with()
 
@@ -1081,7 +1081,7 @@ def test_force_close_still_waits_for_owned_ui_background_work(main_window):
         main_window.closeEvent(event)
 
     assert event.isAccepted() is False
-    close_assistant.assert_not_called()
+    close_assistant.assert_called_once_with()
     delegate.assert_not_called()
     retry.assert_called_once_with()
 
