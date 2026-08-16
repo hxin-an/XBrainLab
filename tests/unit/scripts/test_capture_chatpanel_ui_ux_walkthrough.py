@@ -103,6 +103,7 @@ def test_scenario_contract_covers_required_surfaces_once() -> None:
         "assistant-settings-failed.png",
         "assistant-settings-ready.png",
         "assistant-settings-advanced.png",
+        "assistant-settings-disabled.png",
     )
 
 

@@ -30,12 +30,16 @@ from XBrainLab.llm.core.model_catalog import (
 )
 
 snapshot_download: Callable[..., Any] | None
+disable_hf_progress_bars: Callable[[], None] | None
 try:
     from huggingface_hub import snapshot_download as _snapshot_download
+    from huggingface_hub.utils import disable_progress_bars as _disable_progress_bars
 except ImportError:
     snapshot_download = None
+    disable_hf_progress_bars = None
 else:
     snapshot_download = _snapshot_download
+    disable_hf_progress_bars = _disable_progress_bars
 
 
 PROCESS_JOIN_TIMEOUT_SEC = 2.0
@@ -221,8 +225,11 @@ def run_download_task(repo_id, cache_dir, result_queue: _DownloadQueue):
             result_queue.put(("error", f"Unsupported local model: {repo_id}."))
             return
 
-        # Disable HF Hub progress bars to prevent messy terminal output
+        # The environment variable is retained for child imports; the programmatic
+        # switch is required because huggingface_hub may already be imported.
         os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+        if disable_hf_progress_bars is not None:
+            disable_hf_progress_bars()
 
         result_queue.put(("progress", (0, preflight.message)))
 
@@ -231,7 +238,6 @@ def run_download_task(repo_id, cache_dir, result_queue: _DownloadQueue):
             repo_id=repo_id,
             cache_dir=cache_dir,
             revision=spec.revision,
-            resume_download=True,
         )
 
         validation = validate_downloaded_model_cache(
@@ -302,6 +308,11 @@ class DownloadWorker(QObject):
         self._pending_terminal_payload = ""
         self._terminal_emitted = False
         self._next_consumption_check_at = 0.0
+        spec = local_model_spec(str(repo_id))
+        self._estimated_download_bytes = (
+            int(spec.estimated_download_gb * 1_000_000_000) if spec is not None else 0
+        )
+        self._last_reported_progress = -1
 
     def run(self):
         """Starts the download subprocess and polls its status queue.
@@ -388,7 +399,7 @@ class DownloadWorker(QObject):
 
                 if msg_type == "progress":
                     pct, msg = data
-                    self.progress_update.emit(pct, msg)
+                    self._publish_progress(int(pct), str(msg))
 
                 elif msg_type == "finished":
                     self._record_pending_success(str(data))
@@ -417,13 +428,29 @@ class DownloadWorker(QObject):
             completed_at + DOWNLOAD_CONSUMPTION_POLL_INTERVAL_SEC
         )
         if consumption.ok:
+            if self._estimated_download_bytes > 0:
+                percent = min(
+                    99,
+                    int(
+                        consumption.model_cache_bytes
+                        * 100
+                        // self._estimated_download_bytes
+                    ),
+                )
+                self._publish_progress(percent, "Downloading model files...")
             return True
-        if consumption.public_message:
-            self.progress_update.emit(0, consumption.public_message)
         self._record_pending_failure(
             consumption.diagnostic_message or consumption.public_message
         )
         return False
+
+    def _publish_progress(self, percent: int, message: str) -> None:
+        """Publish only monotonic, bounded progress for the active attempt."""
+        bounded = max(0, min(100, int(percent)))
+        if bounded <= self._last_reported_progress:
+            return
+        self._last_reported_progress = bounded
+        self.progress_update.emit(bounded, message)
 
     def _download_deadline_exceeded(self, *, now: float | None = None) -> bool:
         """Return whether this owned download exceeded its wall-clock budget."""

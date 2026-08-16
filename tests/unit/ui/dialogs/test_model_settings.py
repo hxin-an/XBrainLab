@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtWidgets import QPushButton
+from PyQt6.QtWidgets import QMessageBox, QPushButton
 
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.downloader import (
@@ -23,6 +23,10 @@ from XBrainLab.llm.core.model_download_lifecycle import (
     ModelCacheCleanupResult,
     ModelStatusInspectionRequest,
     ModelStatusInspectionResult,
+)
+from XBrainLab.ui.components.assistant_runtime_lifecycle import (
+    RuntimeCommandAdmissionResult,
+    RuntimeCommandAdmissionStatus,
 )
 
 
@@ -113,6 +117,22 @@ class _FakeDownloadLifecycle(QObject):
         )
         self.inspection_finished.emit(result)
         return result
+
+
+class _FakeAgentManager(QObject):
+    assistant_deactivation_finished = pyqtSignal(bool, str)
+
+    def __init__(self, result: RuntimeCommandAdmissionResult) -> None:
+        super().__init__()
+        self.result = result
+        self.deactivation_configs: list[LLMConfig] = []
+
+    def request_assistant_deactivation(
+        self,
+        config: LLMConfig,
+    ) -> RuntimeCommandAdmissionResult:
+        self.deactivation_configs.append(config)
+        return self.result
 
 
 @pytest.fixture
@@ -260,9 +280,9 @@ class TestModelSettingsInit:
         assert not hasattr(dialog, "gemini_group")
         assert not hasattr(dialog, "gemini_model_combo")
 
-    def test_uses_one_enable_setting_and_a_save_action(self, dialog):
-        assert dialog.local_enable_chk.text() == "Use local assistant"
-        assert dialog.btn_activate.text() == "Save"
+    def test_local_only_runtime_uses_a_dynamic_primary_action(self, dialog):
+        assert not hasattr(dialog, "local_enable_chk")
+        assert dialog.btn_activate.text() == "Save Changes"
         assert not any(
             button.text() == "Activate" for button in dialog.findChildren(QPushButton)
         )
@@ -296,7 +316,7 @@ class TestModelSettingsInit:
         dialog.temperature_spin.setValue(0.31)
 
         assert dialog.response_style_control.selected_key() is None
-        assert dialog.advanced_toggle.text() == "Advanced settings · Custom"
+        assert dialog.advanced_toggle.text() == "Advanced · Custom"
 
     def test_settings_sections_and_footer_follow_product_hierarchy(self, dialog):
         assert dialog.heading_label.text() == "Assistant Settings"
@@ -304,7 +324,12 @@ class TestModelSettingsInit:
         assert dialog.response_style_label.text() == "Response style"
         assert dialog.response_length_label.text() == "Response length"
         assert dialog.btn_cancel.text() == "Cancel"
-        assert dialog.btn_activate.text() == "Save"
+        assert dialog.advanced_toggle.text() == "Advanced"
+        assert dialog.runtime_group_label.text() == "Runtime"
+        assert dialog.exact_values_group_label.text() == "Exact response values"
+        assert dialog.assistant_group_label.text() == "Assistant"
+        assert dialog.disable_assistant_btn.text() == "Disable Assistant…"
+        assert dialog.btn_activate.text() == "Save Changes"
         assert dialog.btn_cancel.icon().isNull()
         assert dialog.btn_activate.icon().isNull()
 
@@ -425,6 +450,25 @@ class TestModelSettingsInit:
         assert dialog.rect().contains(
             dialog.btn_cancel.mapTo(dialog, dialog.btn_cancel.rect().center())
         )
+
+    def test_collapsing_advanced_restores_primary_content_to_viewport(
+        self,
+        dialog,
+        qtbot,
+    ):
+        dialog.show()
+        dialog.resize(520, 552)
+        dialog.advanced_toggle.setChecked(True)
+        qtbot.wait(20)
+        scrollbar = dialog.settings_body_scroll.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+        assert scrollbar.value() > 0
+
+        dialog.advanced_toggle.setChecked(False)
+        qtbot.wait(20)
+
+        assert scrollbar.value() == 0
+        assert dialog.heading_label.isVisibleTo(dialog)
 
     def test_legacy_remote_config_loads_as_local_only(self, qtbot, config):
         config.inference_mode = "gemini"
@@ -807,19 +851,15 @@ class TestLocalModelSection:
         assert dialog.is_downloading is True
         mock_rmtree.assert_not_called()
 
-    def test_on_local_enable_toggled(self, dialog):
-        dialog.check_local_model_status()
-        dialog.download_lifecycle.complete_inspection(
-            installed=False,
-            runtime_ready=False,
-            runtime_message="Local runtime unavailable. Model cache not found.",
-        )
-        dialog.local_enable_chk.setChecked(False)
-        dialog._on_local_enable_toggled(False)
+    def test_disable_action_is_kept_inside_advanced_settings(self, dialog, qtbot):
+        dialog.show()
+        qtbot.wait(0)
+        assert not dialog.disable_assistant_btn.isVisibleTo(dialog)
 
-        assert dialog.local_model_combo.isEnabled()
-        assert dialog.local_action_btn.isEnabled()
-        assert dialog.btn_activate.isEnabled()
+        dialog.advanced_toggle.setChecked(True)
+        qtbot.wait(0)
+
+        assert dialog.disable_assistant_btn.isVisibleTo(dialog)
 
 
 class TestActivateAndSave:
@@ -830,14 +870,15 @@ class TestActivateAndSave:
 
         assert not dialog.btn_activate.isEnabled()
 
-    def test_update_validation_state_allows_saving_disabled_assistant(self, dialog):
-        dialog.local_enable_chk.setChecked(False)
+    def test_disabled_assistant_requires_ready_runtime_before_enable(self, dialog):
+        dialog.config.local_model_enabled = False
         dialog.local_downloaded = False
         dialog.is_downloading = False
 
         dialog.update_validation_state()
 
-        assert dialog.btn_activate.isEnabled()
+        assert dialog.btn_activate.text() == "Enable Assistant"
+        assert not dialog.btn_activate.isEnabled()
 
     def test_update_validation_state_ready(self, dialog):
         dialog.check_local_model_status()
@@ -859,7 +900,6 @@ class TestActivateAndSave:
             runtime_message="Local runtime unavailable. Missing accelerate.",
         )
         dialog.is_downloading = False
-        dialog.local_enable_chk.setChecked(True)
         dialog.update_validation_state()
 
         assert not dialog.btn_activate.isEnabled()
@@ -891,7 +931,78 @@ class TestActivateAndSave:
         save.assert_called_once()
         assert dialog.config.inference_mode == "local"
         assert dialog.config.active_mode == "local"
+        assert dialog.config.local_model_enabled is True
         assert not hasattr(dialog.config, "gemini_enabled")
+
+    def test_disable_confirmation_waits_for_runtime_terminal(self, qtbot, config):
+        from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
+
+        lifecycle = _FakeDownloadLifecycle()
+        manager = _FakeAgentManager(
+            RuntimeCommandAdmissionResult(
+                command_name="deactivate",
+                status=RuntimeCommandAdmissionStatus.ACCEPTED,
+            )
+        )
+        created = ModelSettingsDialog(
+            parent=None,
+            config=config,
+            agent_manager=manager,
+            download_lifecycle=lifecycle,
+        )
+        qtbot.addWidget(created)
+
+        with patch.object(
+            QMessageBox,
+            "question",
+            return_value=QMessageBox.StandardButton.Yes,
+        ):
+            created.on_disable_assistant_clicked()
+
+        assert manager.deactivation_configs == [config]
+        assert config.local_model_enabled is True
+        assert created.disable_assistant_btn.text() == "Disabling…"
+        assert not created.disable_assistant_btn.isEnabled()
+
+        config.local_model_enabled = False
+        manager.assistant_deactivation_finished.emit(True, "Assistant disabled.")
+
+        assert created.btn_activate.text() == "Enable Assistant"
+        assert created.disable_assistant_btn.text() == "Disable Assistant…"
+        assert not created.disable_assistant_btn.isEnabled()
+
+    def test_disable_busy_requires_stop_without_mutating_config(self, qtbot, config):
+        from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
+
+        manager = _FakeAgentManager(
+            RuntimeCommandAdmissionResult(
+                command_name="deactivate",
+                status=RuntimeCommandAdmissionStatus.BUSY,
+                message="Press Stop before disabling Assistant.",
+            )
+        )
+        created = ModelSettingsDialog(
+            parent=None,
+            config=config,
+            agent_manager=manager,
+            download_lifecycle=_FakeDownloadLifecycle(),
+        )
+        qtbot.addWidget(created)
+
+        with (
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch.object(QMessageBox, "information") as information,
+        ):
+            created.on_disable_assistant_clicked()
+
+        assert config.local_model_enabled is True
+        assert created.disable_assistant_btn.text() == "Disable Assistant…"
+        information.assert_called_once()
+        assert "Stop" in str(information.call_args.args[2])
 
     def test_save_failure_stays_open_and_shows_actionable_inline_error(self, dialog):
         dialog.check_local_model_status()
@@ -931,9 +1042,9 @@ class TestActivateAndSave:
         qtbot.addWidget(created)
         qtbot.waitUntil(lambda: len(lifecycle.inspection_requests) == 1, timeout=1000)
         lifecycle.complete_inspection(
-            installed=False,
-            runtime_ready=False,
-            runtime_message="Local runtime unavailable. Model cache not found.",
+            installed=True,
+            runtime_ready=True,
+            runtime_message="Local runtime ready.",
             resolved_config=first_run_config,
         )
         accepted = MagicMock()
@@ -957,7 +1068,6 @@ class TestActivateAndSave:
             runtime_ready=False,
             runtime_message="Missing accelerate",
         )
-        dialog.local_enable_chk.setChecked(True)
         with (
             patch.object(LLMConfig, "save_to_file") as mock_save,
             patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,

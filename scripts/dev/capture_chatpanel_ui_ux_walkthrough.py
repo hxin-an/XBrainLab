@@ -115,7 +115,7 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 DEFAULT_OUTPUT_DIR = ROOT / "build" / "dev-artifacts" / "chatpanel-ui-ux"
 JSON_ARTIFACT = "walkthrough.json"
 README_ARTIFACT = "README.md"
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 GENERATOR = "scripts/dev/capture_chatpanel_ui_ux_walkthrough.py"
 CLAIM_BOUNDARY = (
     "Linux/Qt offscreen rendering and geometry evidence, including a real "
@@ -178,6 +178,7 @@ ASSISTANT_SETTINGS_SCREEN_FILES = (
     "assistant-settings-failed.png",
     "assistant-settings-ready.png",
     "assistant-settings-advanced.png",
+    "assistant-settings-disabled.png",
 )
 
 EXPECTED_STATE_LABELS = {
@@ -2897,6 +2898,7 @@ def _capture_assistant_settings(
         expected_action: str,
         advanced: bool = False,
         save_enabled: bool = False,
+        expected_primary_action: str = "Save Changes",
     ) -> dict[str, Any]:
         body_viewport = dialog.settings_body_scroll.viewport()
         if body_viewport is None:
@@ -2959,6 +2961,13 @@ def _capture_assistant_settings(
                 and horizontal_scroll.maximum() == 0
             ),
             "footer_inside_dialog": footer_inside,
+            "primary_content_inside_viewport": (
+                advanced
+                or human_evidence._widget_inside(
+                    body_viewport,
+                    dialog.heading_label,
+                )
+            ),
             "model_action_inside_dialog": (
                 advanced
                 or human_evidence._widget_inside(dialog, dialog.local_action_btn)
@@ -2966,6 +2975,10 @@ def _capture_assistant_settings(
             "buttons_text_only": (
                 dialog.btn_activate.icon().isNull()
                 and dialog.btn_cancel.icon().isNull()
+            ),
+            "local_only_primary_action": (
+                not hasattr(dialog, "local_enable_chk")
+                and dialog.btn_activate.text() == expected_primary_action
             ),
             "save_state_matches": (
                 dialog.btn_activate.objectName() == "AssistantPrimaryButton"
@@ -2977,6 +2990,13 @@ def _capture_assistant_settings(
             "runtime_detail_visibility_matches": (
                 dialog.local_runtime_label.isVisibleTo(dialog) is advanced
                 and dialog.check_runtime_btn.isVisibleTo(dialog) is advanced
+            ),
+            "advanced_groups_match": (
+                dialog.runtime_group_label.text() == "Runtime"
+                and dialog.exact_values_group_label.text() == "Exact response values"
+                and dialog.assistant_group_label.text() == "Assistant"
+                and dialog.disable_assistant_btn.text() == "Disable Assistant…"
+                and dialog.disable_assistant_btn.isVisibleTo(dialog) is advanced
             ),
             "advanced_fields_inside_viewport": fields_inside_viewport,
             "spinbox_strips_absent": (
@@ -3071,7 +3091,19 @@ def _capture_assistant_settings(
         advanced=True,
         save_enabled=True,
     )
-    screens = [not_installed, installing, failed, ready, advanced]
+    dialog.advanced_toggle.setChecked(False)
+    config.local_model_enabled = False
+    dialog.update_validation_state()
+    _settle_layout(app, dialog)
+    disabled = record(
+        ASSISTANT_SETTINGS_SCREEN_FILES[5],
+        state="disabled",
+        expected_status="Ready",
+        expected_action="Delete",
+        save_enabled=True,
+        expected_primary_action="Enable Assistant",
+    )
+    screens = [not_installed, installing, failed, ready, advanced, disabled]
     result = {
         "screens": screens,
         "passed": all(
@@ -3535,7 +3567,9 @@ def render_readme(payload: dict[str, Any]) -> str:
             f"- collapsed frame: "
             f"`{payload['assistant_settings']['screens'][0]['file']}`",
             f"- advanced frame: "
-            f"`{payload['assistant_settings']['screens'][1]['file']}`",
+            f"`{payload['assistant_settings']['screens'][4]['file']}`",
+            f"- disabled frame: "
+            f"`{payload['assistant_settings']['screens'][5]['file']}`",
             "",
             "## Teardown",
             "",

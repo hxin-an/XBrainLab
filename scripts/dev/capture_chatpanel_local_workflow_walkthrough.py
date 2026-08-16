@@ -8,7 +8,9 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -58,10 +60,28 @@ def main() -> int:
         default="",
         help="Optional approved local model id to prefer for this process.",
     )
+    parser.add_argument(
+        "--exercise-deactivation",
+        action="store_true",
+        help="Unload and re-enable Assistant before the two-turn workflow.",
+    )
+    parser.add_argument(
+        "--isolated-settings-path",
+        default="",
+        help="Required temp settings path when exercising deactivation.",
+    )
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.exercise_deactivation:
+        if not args.isolated_settings_path:
+            parser.error("--exercise-deactivation requires --isolated-settings-path")
+        _prepare_isolated_settings(
+            Path(args.isolated_settings_path),
+            model_id=args.model,
+        )
 
     _force_offline_hf_runtime()
     config = _load_capture_config(args.model)
@@ -77,7 +97,12 @@ def main() -> int:
     if args.model:
         app.setProperty("model_override", args.model)
 
-    payload = run_workflow(app, output_dir, args.timeout_seconds)
+    payload = run_workflow(
+        app,
+        output_dir,
+        args.timeout_seconds,
+        exercise_deactivation=bool(args.exercise_deactivation),
+    )
     _write_artifacts(output_dir, payload)
     print(f"Wrote {output_dir / JSON_ARTIFACT}")
     print(f"Wrote {output_dir / MD_ARTIFACT}")
@@ -88,6 +113,8 @@ def run_workflow(
     app: QApplication,
     output_dir: Path,
     timeout_seconds: int,
+    *,
+    exercise_deactivation: bool = False,
 ) -> dict[str, Any]:
     """Run a two-turn ChatPanel workflow and return the artifact payload."""
     from XBrainLab.backend.study import Study
@@ -115,6 +142,14 @@ def run_workflow(
         "input_enabled": False,
         "chat_processing": True,
         "controller_processing": True,
+        "deactivation": {
+            "requested": False,
+            "terminal_ok": False,
+            "controller_released": False,
+            "conversation_cleared": False,
+            "cache_retained": False,
+            "reenabled": False,
+        },
         "elapsed_seconds": 0.0,
     }
 
@@ -176,6 +211,71 @@ def run_workflow(
         if not _assistant_is_ready(manager):
             QTimer.singleShot(250, wait_for_assistant_ready)
             return
+        if exercise_deactivation and not state["deactivation"]["requested"]:
+            begin_deactivation(manager)
+            return
+        capture_ready()
+
+    def begin_deactivation(manager: Any) -> None:
+        config = LLMConfig.load_from_file() or LLMConfig()
+        cache_ready_before = config.has_local_model_cache(config.model_name)
+        state["deactivation"]["requested"] = True
+
+        def on_terminal(ok: bool, message: str) -> None:
+            signal = manager.assistant_deactivation_finished
+            with suppress(RuntimeError, TypeError):
+                signal.disconnect(on_terminal)
+            if not ok:
+                fail(message or "Assistant deactivation did not complete.")
+                return
+            state["deactivation"].update(
+                {
+                    "terminal_ok": True,
+                    "controller_released": manager.agent_controller is None,
+                    "conversation_cleared": not manager.chat_controller.messages,
+                    "cache_retained": (
+                        cache_ready_before
+                        and config.has_local_model_cache(config.model_name)
+                    ),
+                }
+            )
+            if not all(
+                state["deactivation"][name]
+                for name in (
+                    "controller_released",
+                    "conversation_cleared",
+                    "cache_retained",
+                )
+            ):
+                fail("Assistant deactivation did not preserve its product boundary.")
+                return
+            config.local_model_enabled = True
+            config.local_runtime_notice_acknowledged = True
+            if not config.save_to_file():
+                fail("Isolated Assistant settings could not be re-enabled.")
+                return
+            activation = manager.assistant_runtime.activate(config)
+            if not activation.available:
+                fail(activation.message or "Assistant could not be re-enabled.")
+                return
+            QTimer.singleShot(250, wait_for_reenabled)
+
+        manager.assistant_deactivation_finished.connect(on_terminal)
+        admission = manager.request_assistant_deactivation(config)
+        if not admission.accepted:
+            with suppress(RuntimeError, TypeError):
+                manager.assistant_deactivation_finished.disconnect(on_terminal)
+            fail(admission.message or "Assistant deactivation was rejected.")
+
+    def wait_for_reenabled() -> None:
+        if time.monotonic() - started_at > timeout_seconds:
+            fail(f"Assistant did not re-enable within {timeout_seconds} seconds.")
+            return
+        manager = window.agent_manager
+        if manager is None or not _assistant_is_ready(manager):
+            QTimer.singleShot(250, wait_for_reenabled)
+            return
+        state["deactivation"]["reenabled"] = True
         capture_ready()
 
     def capture_ready() -> None:
@@ -336,12 +436,36 @@ def run_workflow(
 
     config = LLMConfig.load_from_file() or LLMConfig()
     runtime = classify_runtime(config)
+    state["deactivation"]["config_final_enabled"] = bool(config.local_model_enabled)
+    if (
+        exercise_deactivation
+        and state["status"] == "passed"
+        and not all(
+            state["deactivation"].get(name) is True
+            for name in (
+                "terminal_ok",
+                "controller_released",
+                "conversation_cleared",
+                "cache_retained",
+                "reenabled",
+                "config_final_enabled",
+            )
+        )
+    ):
+        state["status"] = "failed"
+        state["failure_reason"] = (
+            "Assistant deactivation/re-enable evidence was incomplete."
+        )
     return {
         "status": state["status"],
         "failure_reason": state["failure_reason"],
         "prompts": DEFAULT_PROMPTS,
         "runtime": _runtime_summary(runtime),
-        "capture_first_run_policy": "bypassed_without_persisting_settings",
+        "capture_first_run_policy": (
+            "isolated_temp_settings_deactivation"
+            if exercise_deactivation
+            else "bypassed_without_persisting_settings"
+        ),
         "hf_offline": {
             "HF_HUB_OFFLINE": os.environ.get("HF_HUB_OFFLINE"),
             "TRANSFORMERS_OFFLINE": os.environ.get("TRANSFORMERS_OFFLINE"),
@@ -358,8 +482,32 @@ def run_workflow(
             "controller_processing": state["controller_processing"],
         },
         "post_close": post_close,
+        "deactivation": state["deactivation"],
         "elapsed_seconds": state["elapsed_seconds"],
     }
+
+
+def _prepare_isolated_settings(path: Path, *, model_id: str) -> None:
+    """Bind mutable capture settings to an explicit OS temp path."""
+    resolved = path.expanduser().resolve()
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    if resolved == temp_root or temp_root not in resolved.parents:
+        raise ValueError(
+            "Isolated settings must be a file below the OS temp directory."
+        )
+    LLMConfig._default_settings_path = staticmethod(  # type: ignore[method-assign]
+        lambda: str(resolved)
+    )
+    config = LLMConfig(model_name=model_id or LLMConfig.default_local_model_id())
+    config.local_model_enabled = True
+    config.local_runtime_notice_acknowledged = True
+    config.apply_runtime_selection(
+        "local",
+        model_id=config.model_name,
+        ui_active_mode="local",
+    )
+    if not config.save_to_file(str(resolved)):
+        raise RuntimeError("Could not create isolated Assistant settings.")
 
 
 def render_markdown(payload: dict[str, Any]) -> str:
@@ -378,6 +526,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- Transformers offline: `{payload['hf_offline']['TRANSFORMERS_OFFLINE']}`",
         f"- ready screenshot: `{payload['screenshots']['ready']}`",
         f"- elapsed seconds: `{payload['elapsed_seconds']}`",
+        f"- deactivation/re-enable: `{payload.get('deactivation', {})}`",
         "",
         "## Turns",
         "",

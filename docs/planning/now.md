@@ -4,8 +4,9 @@
 
 ## 目前焦點
 
-**修復真實 Assistant 使用流程中已確認的兩個 UI/lifecycle defect：Settings 安裝狀態不得被長訊息
-撐出畫面或用舊失敗黃字誤導，MainWindow 關閉必須先釋放 Assistant-owned subprocess 再判定全域 idle。**
+**在 PR #27／`assistant/runtime-measurement-v1` 完成第一輪 Assistant Settings 修復：下載要有可信進度且
+不污染 terminal，local-only 啟用語意要清楚，Advanced 要收斂成輕量分組，並能在同一程序真正停用、
+卸載及重新啟用 Assistant。**
 
 UI visual-regression guard 已由 PR #24 合入 `main`。Quota-aware Codex dispatch 已收斂到
 `.agents/README.md` 與 project `.codex/config.toml`：Terra 是 coordinator/default，Luna 只處理有
@@ -97,18 +98,107 @@ exact oracle 的 bounded worker，Sol 只處理客觀 high-risk decision；它�
   comparison pass locally. This is WSL evidence, not Windows manual acceptance. Existing required CI, including
   cross-platform/Windows jobs, remains mandatory and must not be skipped, weakened or made optional.
 
+### Assistant Settings completion slice (authorized 2026-08-16)
+
+#### Problem and evidence
+
+- Hugging Face progress suppression is currently applied through an environment variable after the library has already
+  been imported, so concurrent tqdm rows still flood and interleave in the terminal. The downloader also passes the
+  deprecated `resume_download` argument even though current Hub downloads resume automatically.
+- Production download progress only publishes 0 and validated 100. The parent already measures exact model-cache bytes
+  every 0.5 seconds for resource limits, but discards that measurement; the existing UI test that injects 42% therefore
+  proves only rendering, not the real producer path.
+- The only product backend is local. `Use local assistant` is therefore a misleading legacy checkbox rather than a
+  backend choice, and unchecking it does not itself prove that the loaded controller/model and CPU/GPU memory were
+  released.
+- The current bordered Advanced card visually competes with the two primary segmented controls and leaves runtime,
+  cache and exact response values without clear grouping.
+- Cache chronology is now calibrated: the Granite 5 GB weight blob completed at 13:24 local time and the offline
+  walkthrough was recorded at 14:27. The walkthrough reused the already-complete cache in offline mode; it did not
+  download or prove that it had created the cache.
+
+#### Observable outcome
+
+- The download child programmatically disables Hub progress rendering before `snapshot_download` and does not pass the
+  deprecated resume argument. Application logs retain bounded lifecycle/error messages without concurrent transfer rows.
+- The existing consumption poll emits monotonic integer progress from observed model bytes and the catalog estimate;
+  it never exceeds 99 before exact snapshot validation, while only validated success emits 100. Resume starts from
+  existing bytes; cancel, failure and timeout never claim completion.
+- Remove the local-assistant checkbox. When persisted local Assistant is disabled, the footer primary action reads
+  `Enable Assistant`; otherwise it reads `Save Changes`. Both require a ready selected runtime and neither introduces
+  a dirty-state `Close` mode. The one-model dropdown remains unchanged.
+- Advanced becomes a thin divider/chevron row labelled `Advanced`, with inline `Runtime`, `Exact response values`, and
+  `Assistant` groups. `Disable Assistant…` lives only in the Assistant group and requires confirmation.
+- Disable is rejected while a turn is active with an instruction to press Stop first. On success the existing runtime
+  owner closes the dispatcher/controller, releases the model, clears controller and visible conversation context,
+  persists `local.enabled=false`, retains model cache/response settings/EEG workflow state, and can create a fresh
+  dispatcher/controller when re-enabled in the same process. Cleanup or persistence failure must not claim disabled;
+  application shutdown during deactivation escalates to the existing terminal CLOSED path.
+
+#### Scope, ownership, and non-goals
+
+- Extend `AssistantRuntimeLifecycle`; do not add another owner, state machine, receipt, downloader, cache scanner or
+  compatibility path. `AgentManager` remains the UI adapter and clears only Assistant conversation presentation after a
+  successful lifecycle terminal. `ModelSettingsDialog` remains presentation/admission only.
+- Reuse the existing consumption scan and local model estimate. Do not add network byte instrumentation, parallel
+  downloads, alternate models/backends, cache deletion, first-run redesign, ChatPanel redesign, EEG changes or CI
+  weakening. Root `settings.json` remains protected from Git and agent-authored runtime writes.
+- Expected change is at most six production/support files and roughly +120–250 net production LOC. Stop for explicit
+  complexity review before continuing if the bug fix exceeds +300 net production LOC, eight production files, or adds
+  a production module/public class/authoritative owner.
+
+#### Ordered repair and validation
+
+1. Add red producer tests for Hub progress suppression/deprecated argv and observed-byte monotonic 0–99 progress; add
+   red UI/lifecycle tests for removed checkbox, dynamic CTA, lightweight Advanced grouping, busy rejection, async
+   deactivation, failure, shutdown race, conversation clear and same-process re-enable.
+2. Implement downloader changes by reusing the consumption poll. Extend the existing lifecycle with a deactivation
+   transition and terminal signal, then adapt `AgentManager` and the confirmed Settings layout without changing other UI.
+3. Re-run identical focused tests plus directly adjacent downloader, lifecycle, manager and Settings suites; run Ruff,
+   Basedpyright and strict MkDocs. Capture collapsed/expanded, disabled/enabled, installing/error/ready UI at 520 px and
+   relevant DPI, checking no horizontal scroll, clipping or inaccessible focus.
+4. With an isolated temporary config and the existing Granite cache, run an offline Disable → Enable → ordinary answer
+   → strict `query_state` → close walkthrough. Do not mutate repo-root `settings.json`, redownload, or delete the cache.
+5. Push the exact source to PR #27 and rerun every required existing CI check, including Windows/macOS/Linux/UI and
+   multi-dataset lanes. Source changes invalidate prior evidence. Handoff remains pending until the user manually tests
+   that exact head and explicitly approves merge; then merge the PR and delete the short branch.
+
+#### Stop conditions
+
+- Stop as `checkpoint` if true unloading cannot be expressed by the existing lifecycle owner, if persisted-disable
+  failure cannot be rolled back without a second state owner, if progress requires a second cache scan, or if the real
+  offline walkthrough would require changing/deleting the user's cache or protected settings.
+- This slice is `scope-complete` only when the observable UI/runtime behavior and focused validation pass. Automated
+  WSL/offscreen evidence does not constitute Windows native or user manual acceptance.
+
+#### Implementation checkpoint (2026-08-16)
+
+- Downloader now calls the Hub progress-disable API before the pinned snapshot request, omits the deprecated resume
+  argument, and publishes monotonic observed-cache progress capped at 99 until exact validation publishes 100.
+- Settings now has no local-only enable checkbox. The footer exposes `Save Changes` or `Enable Assistant`; Advanced is
+  a lightweight expandable row with Runtime, Exact response values, and Assistant groups plus confirmed
+  `Disable Assistant…`.
+- The existing runtime lifecycle owns deactivation, including active-turn rejection, async cleanup, persistence rollback,
+  shutdown escalation and a fresh dispatcher for same-process re-enable. AgentManager clears only Assistant conversation
+  presentation after the successful terminal; cache, response values and EEG workflow remain outside that mutation.
+- Directly related downloader/dispatcher/lifecycle/threading/manager/Settings/capture tests pass (372 tests). The UI
+  capture contract passes for not-installed, installing, failed, ready, advanced and disabled states at 520 px, including
+  no horizontal scroll and restoring primary content after Advanced collapses. Actual production delta remains four
+  production files and below the +300 net bug-fix review trigger; no module, public class or owner was added.
+- Ruff check/format, Basedpyright and strict MkDocs pass. An isolated `/tmp` settings workflow with existing Granite cache
+  and Hugging Face offline flags passed real unload → controller release/cache retention → same-process reload, then one
+  successful `query_state`-only turn (about 40 ms), one zero-tool EEG explanation, and terminal application close with no
+  controller/dispatcher/generation thread left. It did not download or alter repo-root/user production settings.
+- Remaining before user handoff: exact-source push and every existing required PR check. Native/manual acceptance is still
+  pending and prior PR #27 evidence is stale because source changed.
+
 ## 下一步
 
-1. Red-first 固定長 progress message／舊黃字／520 px geometry，以及 Assistant subprocess 先於 global-idle
-   gate 關閉的 observable contract。
-2. 以 deletion/reuse-first 修改既有 Settings renderer 與 MainWindow close ordering；不新增 owner、state
-   machine、receipt、downloader 或 compatibility path。
-3. 重跑相同 focused tests、直接相鄰 lifecycle tests、Ruff 與 Assistant Settings automated UI artifact；主
-   agent 檢查 loading/error/cancel/success/narrow states。
-4. 用既有 Granite cache 重跑 offline two-turn ChatPanel walkthrough，要求 terminal artifact 可保存且視窗在
-   bounded time 關閉；不刪除或重下載約 5 GB cache。
-5. Push/PR/CI 後交使用者以目前實際使用的 WSL Poetry workflow 手測。產品 source 未取得手測通過與
-   merge 同意前不得合入 `main`；本 slice 不宣稱 Windows UI acceptance。
+1. 建立 completion slice 的 downloader、Settings、lifecycle 與 manager red tests。
+2. 依上述順序完成最小實作並守住 owner/LOC/files complexity boundary。
+3. 執行 focused、static、UI artifact 與 isolated offline Granite walkthrough。
+4. Push PR #27 exact head、等待全部既有 required CI，再交使用者手測；未取得 exact-source 手測通過與
+   merge 同意前不得合入 `main`。
 
 ## Non-goals
 

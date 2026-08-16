@@ -329,6 +329,36 @@ class TestAgentManagerInit:
     def test_not_initialized_by_default(self, agent_mgr):
         assert not agent_mgr.agent_initialized
 
+    def test_deactivation_request_is_delegated_to_runtime_owner(self, agent_mgr):
+        config = LLMConfig()
+        expected = RuntimeCommandAdmissionResult(
+            command_name="deactivate",
+            status=RuntimeCommandAdmissionStatus.ACCEPTED,
+        )
+        agent_mgr._assistant_runtime.request_deactivation.return_value = expected
+
+        result = agent_mgr.request_assistant_deactivation(config)
+
+        assert result is expected
+        agent_mgr._assistant_runtime.request_deactivation.assert_called_once_with(
+            config
+        )
+
+    def test_successful_deactivation_clears_only_assistant_presentation(
+        self,
+        agent_mgr,
+    ):
+        completed: list[tuple[bool, str]] = []
+        agent_mgr.assistant_deactivation_finished.connect(
+            lambda ok, message: completed.append((ok, message))
+        )
+        agent_mgr.chat_controller.clear_conversation.reset_mock()
+
+        agent_mgr._on_assistant_deactivation_finished(True, "Assistant disabled.")
+
+        agent_mgr.chat_controller.clear_conversation.assert_called_once_with()
+        assert completed == [(True, "Assistant disabled.")]
+
     def test_constructor_does_not_resolve_legacy_study_controllers(self, qtbot):
         from XBrainLab.backend.study import Study
         from XBrainLab.ui.components.agent_manager import AgentManager

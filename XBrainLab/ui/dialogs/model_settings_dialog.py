@@ -18,7 +18,6 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtWidgets import (
     QAbstractSpinBox,
-    QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
@@ -56,6 +55,10 @@ from XBrainLab.llm.core.model_download_lifecycle import (
     ModelStatusInspectionResult,
 )
 from XBrainLab.ui.chat.segmented_control import AssistantSegmentedControl
+from XBrainLab.ui.components.assistant_runtime_lifecycle import (
+    RuntimeCommandAdmissionResult,
+    RuntimeCommandAdmissionStatus,
+)
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.styles.theme import Theme
 
@@ -149,25 +152,20 @@ _ASSISTANT_SETTINGS_STYLE = f"""
     QFrame#AssistantModelStatusDot[statusTone="error"] {{
         background-color: {Theme.LOG_ERROR};
     }}
-    QCheckBox#AssistantLocalEnabled {{
-        color: {Theme.TEXT_MUTED};
-        spacing: 8px;
-    }}
     QToolButton#AssistantAdvancedToggle {{
-        min-height: 38px;
+        min-height: 30px;
         color: {Theme.TEXT_MUTED};
-        background-color: {Theme.METRICS_TABLE_BG};
-        border: 1px solid {Theme.METRICS_TABLE_GRID};
-        border-radius: 5px;
-        padding: 4px 11px;
+        background: transparent;
+        border: none;
+        border-top: 1px solid {Theme.METRICS_TABLE_GRID};
+        padding: 7px 2px 1px 2px;
         text-align: left;
         font-size: 13px;
         font-weight: 600;
     }}
     QToolButton#AssistantAdvancedToggle:hover {{
         color: {Theme.TEXT_PRIMARY};
-        background-color: {Theme.METRICS_TABLE_ALT_BG};
-        border-color: {Theme.BORDER};
+        background: transparent;
     }}
     QWidget#AssistantAdvancedContent {{
         background: transparent;
@@ -193,6 +191,18 @@ _ASSISTANT_SETTINGS_STYLE = f"""
         color: {Theme.LOG_ERROR};
         background-color: {Theme.BTN_DANGER_BG};
         border-color: {Theme.BTN_DANGER_BORDER};
+    }}
+    QPushButton#AssistantDisableButton {{
+        min-height: 32px;
+        color: {Theme.LOG_ERROR};
+        background: transparent;
+        border: 1px solid {Theme.BTN_DANGER_BORDER};
+        border-radius: 5px;
+        padding: 3px 12px;
+    }}
+    QPushButton#AssistantDisableButton:hover {{
+        color: {Theme.TEXT_PRIMARY};
+        background-color: {Theme.BTN_DANGER_HOVER};
     }}
     QPushButton#AssistantModelAction[destructive="true"]:hover {{
         color: {Theme.TEXT_PRIMARY};
@@ -305,6 +315,7 @@ class ModelSettingsDialog(BaseDialog):
         self._current_local_model_state: ModelStatusInspectionResult | None = None
         self._updating_response_presets = False
         self._download_observers_attached = False
+        self._deactivation_observer_attached = False
 
         super().__init__(
             parent=parent,
@@ -327,6 +338,15 @@ class ModelSettingsDialog(BaseDialog):
             self._on_model_inspection_finished
         )
         self._download_observers_attached = True
+        deactivation_signal = getattr(
+            self.agent_manager,
+            "assistant_deactivation_finished",
+            None,
+        )
+        connect_deactivation = getattr(deactivation_signal, "connect", None)
+        if callable(connect_deactivation):
+            connect_deactivation(self.on_assistant_deactivation_finished)
+            self._deactivation_observer_attached = True
         self.load_state()
         self._schedule_fit()
 
@@ -437,11 +457,6 @@ class ModelSettingsDialog(BaseDialog):
         self.download_progress.setVisible(False)
         layout.addWidget(self.download_progress)
 
-        self.local_enable_chk = QCheckBox("Use local assistant")
-        self.local_enable_chk.setObjectName("AssistantLocalEnabled")
-        self.local_enable_chk.toggled.connect(self._on_local_enable_toggled)
-        layout.addWidget(self.local_enable_chk)
-
         self.response_style_label = self._section_label("Response style")
         layout.addWidget(self.response_style_label)
         self.response_style_control = AssistantSegmentedControl(
@@ -484,7 +499,7 @@ class ModelSettingsDialog(BaseDialog):
 
         self.advanced_toggle = QToolButton(self)
         self.advanced_toggle.setObjectName("AssistantAdvancedToggle")
-        self.advanced_toggle.setText("Advanced settings")
+        self.advanced_toggle.setText("Advanced")
         self.advanced_toggle.setCheckable(True)
         self.advanced_toggle.setChecked(False)
         self.advanced_toggle.setArrowType(Qt.ArrowType.RightArrow)
@@ -501,8 +516,11 @@ class ModelSettingsDialog(BaseDialog):
         self.advanced_content = QWidget(self.settings_body)
         self.advanced_content.setObjectName("AssistantAdvancedContent")
         advanced_layout = QVBoxLayout(self.advanced_content)
-        advanced_layout.setContentsMargins(10, 8, 10, 8)
-        advanced_layout.setSpacing(7)
+        advanced_layout.setContentsMargins(2, 8, 2, 4)
+        advanced_layout.setSpacing(8)
+
+        self.runtime_group_label = self._section_label("Runtime")
+        advanced_layout.addWidget(self.runtime_group_label)
 
         runtime_layout = QHBoxLayout()
         runtime_layout.setContentsMargins(2, 0, 0, 0)
@@ -519,6 +537,14 @@ class ModelSettingsDialog(BaseDialog):
         self.check_runtime_btn.clicked.connect(self.check_local_model_status)
         runtime_layout.addWidget(self.check_runtime_btn)
         advanced_layout.addLayout(runtime_layout)
+
+        self.local_resource_label = QLabel("", self.advanced_content)
+        self.local_resource_label.setObjectName("AssistantSettingsMuted")
+        self.local_resource_label.setWordWrap(True)
+        advanced_layout.addWidget(self.local_resource_label)
+
+        self.exact_values_group_label = self._section_label("Exact response values")
+        advanced_layout.addWidget(self.exact_values_group_label)
 
         exact_form = QFormLayout()
         exact_form.setContentsMargins(0, 0, 0, 0)
@@ -568,10 +594,20 @@ class ModelSettingsDialog(BaseDialog):
         exact_form.addRow("Maximum tokens", self.max_tokens_spin)
         advanced_layout.addLayout(exact_form)
 
-        self.local_resource_label = QLabel("", self.advanced_content)
-        self.local_resource_label.setObjectName("AssistantSettingsMuted")
-        self.local_resource_label.setWordWrap(True)
-        advanced_layout.addWidget(self.local_resource_label)
+        self.assistant_group_label = self._section_label("Assistant")
+        advanced_layout.addWidget(self.assistant_group_label)
+        self.disable_assistant_btn = QPushButton(
+            "Disable Assistant…",
+            self.advanced_content,
+        )
+        self.disable_assistant_btn.setObjectName("AssistantDisableButton")
+        self.disable_assistant_btn.clicked.connect(
+            self.on_disable_assistant_clicked,
+        )
+        advanced_layout.addWidget(
+            self.disable_assistant_btn,
+            alignment=Qt.AlignmentFlag.AlignLeft,
+        )
         self.advanced_content.setVisible(False)
         layout.addWidget(self.advanced_content)
 
@@ -616,7 +652,7 @@ class ModelSettingsDialog(BaseDialog):
         self.btn_cancel.setMinimumWidth(94)
         self.btn_cancel.clicked.connect(self.reject)
 
-        self.btn_activate = QPushButton("Save")
+        self.btn_activate = QPushButton("Save Changes")
         self.btn_activate.setObjectName("AssistantPrimaryButton")
         self.btn_activate.setMinimumWidth(94)
         self.btn_activate.setEnabled(False)
@@ -694,7 +730,7 @@ class ModelSettingsDialog(BaseDialog):
         self.response_length_control.set_selected(length_key)
         custom_values = style_key is None or length_key is None
         self.advanced_toggle.setText(
-            "Advanced settings · Custom" if custom_values else "Advanced settings"
+            "Advanced · Custom" if custom_values else "Advanced"
         )
 
     def _set_advanced_visible(self, visible: bool) -> None:
@@ -702,6 +738,10 @@ class ModelSettingsDialog(BaseDialog):
         self.advanced_toggle.setArrowType(
             Qt.ArrowType.DownArrow if visible else Qt.ArrowType.RightArrow
         )
+        if not visible:
+            scrollbar = self.settings_body_scroll.verticalScrollBar()
+            if scrollbar is not None:
+                scrollbar.setValue(scrollbar.minimum())
         self._schedule_fit()
 
     def _schedule_fit(self) -> None:
@@ -758,8 +798,6 @@ class ModelSettingsDialog(BaseDialog):
                 self.local_model_combo.setCurrentIndex(index)
         self._update_model_migration_notice()
 
-        with QSignalBlocker(self.local_enable_chk):
-            self.local_enable_chk.setChecked(self.config.local_model_enabled)
         self.config.active_mode = selection.ui_active_mode
         self.config.inference_mode = selection.backend_mode
 
@@ -927,8 +965,6 @@ class ModelSettingsDialog(BaseDialog):
             if index >= 0:
                 self.local_model_combo.setCurrentIndex(index)
         self._update_model_migration_notice()
-        with QSignalBlocker(self.local_enable_chk):
-            self.local_enable_chk.setChecked(self.config.local_model_enabled)
         self.temperature_spin.setValue(self.config.temperature)
         self.top_p_spin.setValue(self.config.top_p)
         self.max_tokens_spin.setValue(self.config.max_new_tokens)
@@ -953,11 +989,6 @@ class ModelSettingsDialog(BaseDialog):
             self._delete_model()
         else:
             self._start_download()
-
-    def _on_local_enable_toggled(self, checked):
-        """Update whether the current assistant preference can be saved."""
-        del checked
-        self.update_validation_state()
 
     def _start_download(self):
         """Begin downloading the selected local model."""
@@ -1169,27 +1200,28 @@ class ModelSettingsDialog(BaseDialog):
             )
 
     def update_validation_state(self):
-        """Allow Save when disabled, or when the enabled runtime is available."""
+        """Require one ready local runtime for Save or Enable."""
         model_name = self._selected_model_id()
         state = self._current_local_model_state
-        enabled_runtime_ready = (
+        runtime_ready = (
             state is not None
             and state.request.model_name == model_name
             and state.installed
             and state.runtime_ready
         )
-        is_ready = not self.is_downloading and (
-            not self.local_enable_chk.isChecked() or enabled_runtime_ready
+        self.btn_activate.setText(
+            "Save Changes" if self.config.local_model_enabled else "Enable Assistant"
         )
-
-        self.btn_activate.setEnabled(is_ready)
+        self.btn_activate.setEnabled(not self.is_downloading and runtime_ready)
+        self.disable_assistant_btn.setEnabled(
+            bool(self.config.local_model_enabled) and not self.is_downloading
+        )
 
     def on_activate_clicked(self):
         """Save settings, persist configuration, and accept the dialog."""
         # Save to config object
-        self.config.local_model_enabled = self.local_enable_chk.isChecked()
-        if self.config.local_model_enabled:
-            self.config.local_runtime_notice_acknowledged = True
+        self.config.local_model_enabled = True
+        self.config.local_runtime_notice_acknowledged = True
         self.config.model_name = self._selected_model_id()
         # Generation parameters
         self.config.temperature = self.temperature_spin.value()
@@ -1247,6 +1279,79 @@ class ModelSettingsDialog(BaseDialog):
         self.save_error_label.setVisible(False)
         self.accept()
 
+    def on_disable_assistant_clicked(self) -> None:
+        """Confirm and request true runtime deactivation from the existing owner."""
+        if not self.config.local_model_enabled:
+            return
+        reply = QMessageBox.question(
+            self,
+            "Disable Assistant",
+            (
+                "Disable Assistant and unload the local model?\n\n"
+                "The model cache, response settings, and EEG workflow will be kept. "
+                "The current Assistant conversation will be cleared."
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        request = getattr(
+            self.agent_manager,
+            "request_assistant_deactivation",
+            None,
+        )
+        if not callable(request):
+            QMessageBox.warning(
+                self,
+                "Assistant Unavailable",
+                "Assistant cannot be disabled safely from this dialog.",
+            )
+            return
+        result = request(self.config)
+        if not isinstance(result, RuntimeCommandAdmissionResult):
+            QMessageBox.warning(
+                self,
+                "Assistant Could Not Be Disabled",
+                "Assistant returned an invalid disable result.",
+            )
+            return
+        if result.status is RuntimeCommandAdmissionStatus.BUSY:
+            QMessageBox.information(
+                self,
+                "Assistant Is Busy",
+                result.message,
+            )
+            return
+        if not result.accepted:
+            QMessageBox.warning(
+                self,
+                "Assistant Could Not Be Disabled",
+                result.message or "Assistant could not be disabled safely.",
+            )
+            return
+        if self.config.local_model_enabled:
+            self.disable_assistant_btn.setText("Disabling…")
+            self.disable_assistant_btn.setEnabled(False)
+            self.btn_activate.setEnabled(False)
+        else:
+            self.update_validation_state()
+
+    def on_assistant_deactivation_finished(self, ok: bool, message: str) -> None:
+        """Render only the terminal result published by the runtime owner."""
+        self.disable_assistant_btn.setText("Disable Assistant…")
+        if ok:
+            self.config.local_model_enabled = False
+            self.save_error_label.clear()
+            self.save_error_label.setVisible(False)
+        else:
+            self.save_error_label.setText(
+                message or "Assistant could not be disabled safely."
+            )
+            self.save_error_label.setVisible(True)
+            self._schedule_fit()
+        self.update_validation_state()
+
     def accept(self) -> None:
         """Accept without retaining this dialog through lifecycle signals."""
         self._shutdown_active_download()
@@ -1296,6 +1401,19 @@ class ModelSettingsDialog(BaseDialog):
                 signal.disconnect(slot)
         self._download_observers_attached = False
         self._pending_inspection_request_id = None
+        if self._deactivation_observer_attached:
+            signal = getattr(
+                self.agent_manager,
+                "assistant_deactivation_finished",
+                None,
+            )
+            disconnect_deactivation = getattr(signal, "disconnect", None)
+            with contextlib.suppress(AttributeError, RuntimeError, TypeError):
+                if callable(disconnect_deactivation):
+                    disconnect_deactivation(
+                        self.on_assistant_deactivation_finished,
+                    )
+            self._deactivation_observer_attached = False
 
     def get_config(self):
         """Return the current LLM configuration.
