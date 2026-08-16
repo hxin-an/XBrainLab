@@ -167,21 +167,6 @@ def test_arbitrary_exception_text_is_never_reflected_to_user():
         assert "/private/runtime" not in rendered
 
 
-def test_runtime_settings_notice_does_not_reopen_current_dialog() -> None:
-    notice = AgentPresentationService.runtime_settings_notice(
-        "ValueError: secret-token-123 at /private/model.bin"
-    )
-
-    assert notice == (
-        "The local model could not start. Check the installed model and runtime, "
-        "then try again."
-    )
-    assert "Open assistant settings" not in notice
-    assert "ValueError" not in notice
-    assert "secret-token-123" not in notice
-    assert "/private/model.bin" not in notice
-
-
 def test_legacy_cancelled_turn_copy_is_concise_and_actionable() -> None:
     visible = AgentPresentationService.assistant_transcript_message(
         "The assistant stopped this request. No further response or action will run."

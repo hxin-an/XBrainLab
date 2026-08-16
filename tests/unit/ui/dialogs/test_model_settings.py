@@ -185,7 +185,7 @@ class TestModelSettingsInit:
             qtbot.addWidget(created)
 
         assert lifecycle.inspection_requests == []
-        assert created.local_status_label.text() == "Model: Checking..."
+        assert created.local_status_label.text() == "Checking..."
         qtbot.waitUntil(lambda: len(lifecycle.inspection_requests) == 1, timeout=1000)
 
     def test_constructor_defers_persisted_config_and_torch_defaults(self, qtbot):
@@ -356,6 +356,39 @@ class TestModelSettingsInit:
         ):
             assert dialog.rect().contains(widget.geometry().center())
 
+    def test_long_install_progress_preserves_narrow_dialog_geometry(
+        self,
+        dialog,
+        qtbot,
+    ):
+        dialog.show()
+        dialog.resize(520, 560)
+        dialog.check_local_model_status()
+        dialog.download_lifecycle.complete_inspection(
+            installed=False,
+            runtime_ready=False,
+            runtime_message="Local runtime unavailable. Model cache not found.",
+        )
+
+        dialog._start_download()
+        dialog.on_download_progress(
+            42,
+            "Download allowed for ibm-granite/granite-3.3-2b-instruct: "
+            "estimated 5.08 GB; projected cache 5.08 GB.",
+        )
+        qtbot.wait(20)
+
+        assert dialog.width() == 520
+        assert dialog.local_status_label.text() == "Installing... 42%"
+        assert "ibm-granite" not in dialog.local_status_label.text()
+        assert dialog.settings_body_scroll.horizontalScrollBar().maximum() == 0
+        assert dialog.rect().contains(
+            dialog.local_action_btn.mapTo(
+                dialog,
+                dialog.local_action_btn.rect().center(),
+            )
+        )
+
     def test_expanded_advanced_settings_keep_footer_on_constrained_screen(
         self,
         dialog,
@@ -424,10 +457,8 @@ class TestLocalModelSection:
             runtime_message="Local runtime unavailable. Model cache not found.",
         )
 
-        assert (
-            "not downloaded" in dialog.local_status_label.text().lower()
-            or "install" in dialog.local_action_btn.text().lower()
-        )
+        assert dialog.local_status_label.text() == "Not installed"
+        assert dialog.local_action_btn.text() == "Install Model"
 
     def test_check_local_model_status_downloaded(self, dialog):
         dialog.check_local_model_status()
@@ -438,7 +469,7 @@ class TestLocalModelSection:
         )
 
         assert dialog.local_downloaded is True
-        assert dialog.local_status_label.text() == "Model: Installed"
+        assert dialog.local_status_label.text() == "Ready"
         assert dialog.local_action_btn.text() == "Delete"
         assert dialog.local_action_btn.property("destructive") is True
 
@@ -453,7 +484,7 @@ class TestLocalModelSection:
             projected_cache_bytes=10_940_000_000,
         )
 
-        assert dialog.local_status_label.text() == "Model: Installed"
+        assert dialog.local_status_label.text() == "Ready"
         assert dialog.local_runtime_label.text() == "Environment check: Ready"
         assert "3.25 GB" in dialog.local_resource_label.text()
         assert "[+]" not in dialog.local_status_label.text()
@@ -478,16 +509,13 @@ class TestLocalModelSection:
         )
         assert sensitive_cache not in visible
 
-    def test_environment_readiness_keeps_last_start_failure_visible(
+    def test_settings_omit_unbound_last_start_failure(
         self,
         qtbot,
         config,
     ):
         lifecycle = _FakeDownloadLifecycle()
         manager = MagicMock()
-        manager.assistant_runtime_settings_notice.return_value = (
-            "The local model could not start. Check the installed model and runtime."
-        )
         with patch.object(LLMConfig, "load_from_file", return_value=config):
             from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
 
@@ -507,10 +535,29 @@ class TestLocalModelSection:
         )
 
         assert created.local_runtime_label.text() == "Environment check: Ready"
-        assert created.last_runtime_attempt_label.isHidden() is False
-        assert created.last_runtime_attempt_label.text().startswith(
-            "Last start attempt failed:"
+        assert not hasattr(created, "last_runtime_attempt_label")
+
+    def test_runtime_details_are_available_only_in_advanced_settings(
+        self,
+        dialog,
+        qtbot,
+    ):
+        dialog.show()
+        dialog.check_local_model_status()
+        dialog.download_lifecycle.complete_inspection(
+            installed=False,
+            runtime_ready=False,
+            runtime_message="Local runtime unavailable. Model cache not found.",
         )
+
+        assert not dialog.local_runtime_label.isVisibleTo(dialog)
+        assert not dialog.check_runtime_btn.isVisibleTo(dialog)
+
+        dialog.advanced_toggle.setChecked(True)
+        qtbot.wait(20)
+
+        assert dialog.local_runtime_label.isVisibleTo(dialog)
+        assert dialog.check_runtime_btn.isVisibleTo(dialog)
 
     def test_start_download(self, dialog):
         dialog.is_downloading = False
@@ -535,7 +582,8 @@ class TestLocalModelSection:
 
         assert dialog.download_progress.maximum() == 100
         assert dialog.download_progress.value() == 42
-        assert dialog.local_status_label.text() == "Downloading model files..."
+        assert dialog.local_status_label.text() == "Installing... 42%"
+        assert dialog.model_status_dot.property("statusTone") == "neutral"
 
     def test_start_failure_is_not_misreported_as_an_active_download(self, dialog):
         dialog.is_downloading = False
@@ -554,7 +602,7 @@ class TestLocalModelSection:
             dialog._start_download()
 
         assert dialog.is_downloading is False
-        assert dialog.local_status_label.text() == "Download could not start."
+        assert dialog.local_status_label.text() == "Install could not start"
         assert "another" not in dialog.local_status_label.text().lower()
 
     def test_start_download_blocks_failed_preflight(self, dialog):
@@ -637,7 +685,7 @@ class TestLocalModelSection:
         assert MODEL_DOWNLOAD_TIMEOUT_PUBLIC_MESSAGE in rendered
         assert "/private/cache" not in rendered
         assert "hf_super_secret" not in rendered
-        assert dialog.local_status_label.text() == "Download timed out"
+        assert dialog.local_status_label.text() == "Install timed out"
         assert dialog.local_action_btn.text() == "Retry"
 
     @pytest.mark.parametrize(

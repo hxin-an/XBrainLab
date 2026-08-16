@@ -417,13 +417,6 @@ class AgentManager(QObject):
         """Expose the focused runtime contract for diagnostics and integration."""
         return self._assistant_runtime
 
-    def assistant_runtime_settings_notice(self) -> str:
-        """Return a safe last-start failure for Assistant Settings."""
-        snapshot = self._assistant_runtime.current
-        if snapshot.phase is not AssistantRuntimePhase.FAILED:
-            return ""
-        return self._presentation.runtime_settings_notice(snapshot.error)
-
     @property
     def model_download_lifecycle(self) -> ModelDownloadLifecycle:
         """Expose app-owned model download state without transferring ownership."""

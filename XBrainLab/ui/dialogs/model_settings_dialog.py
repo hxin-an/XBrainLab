@@ -414,9 +414,13 @@ class ModelSettingsDialog(BaseDialog):
         self.model_status_dot.setObjectName("AssistantModelStatusDot")
         self.model_status_dot.setProperty("statusTone", "neutral")
         status_layout.addWidget(self.model_status_dot)
-        self.local_status_label = QLabel("Status: Checking...")
-        status_layout.addWidget(self.local_status_label)
-        status_layout.addStretch()
+        self.local_status_label = QLabel("Checking...")
+        self.local_status_label.setMinimumWidth(0)
+        self.local_status_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
+        status_layout.addWidget(self.local_status_label, 1)
 
         self.local_action_btn = QPushButton("Install Model")
         self.local_action_btn.setObjectName("AssistantModelAction")
@@ -424,31 +428,6 @@ class ModelSettingsDialog(BaseDialog):
         self.local_action_btn.clicked.connect(self.on_local_action_clicked)
         status_layout.addWidget(self.local_action_btn)
         layout.addLayout(status_layout)
-
-        runtime_layout = QHBoxLayout()
-        runtime_layout.setContentsMargins(2, 0, 0, 0)
-        runtime_layout.setSpacing(8)
-        self.local_runtime_label = QLabel(
-            "Environment check: Checking...",
-            self.settings_body,
-        )
-        self.local_runtime_label.setObjectName("AssistantSettingsMuted")
-        self.local_runtime_label.setWordWrap(True)
-        runtime_layout.addWidget(self.local_runtime_label, 1)
-        self.check_runtime_btn = QPushButton("Check again", self.settings_body)
-        self.check_runtime_btn.setObjectName("AssistantSecondaryButton")
-        self.check_runtime_btn.clicked.connect(self.check_local_model_status)
-        runtime_layout.addWidget(self.check_runtime_btn)
-        layout.addLayout(runtime_layout)
-
-        self.last_runtime_attempt_label = QLabel(self.settings_body)
-        self.last_runtime_attempt_label.setObjectName("AssistantSettingsMuted")
-        self.last_runtime_attempt_label.setWordWrap(True)
-        self.last_runtime_attempt_label.setStyleSheet(
-            f"color: {Theme.LOG_WARNING}; background: transparent; border: none;"
-        )
-        self.last_runtime_attempt_label.setVisible(False)
-        layout.addWidget(self.last_runtime_attempt_label)
 
         self.download_progress = QProgressBar(self)
         self.download_progress.setObjectName("AssistantDownloadProgress")
@@ -524,6 +503,22 @@ class ModelSettingsDialog(BaseDialog):
         advanced_layout = QVBoxLayout(self.advanced_content)
         advanced_layout.setContentsMargins(10, 8, 10, 8)
         advanced_layout.setSpacing(7)
+
+        runtime_layout = QHBoxLayout()
+        runtime_layout.setContentsMargins(2, 0, 0, 0)
+        runtime_layout.setSpacing(8)
+        self.local_runtime_label = QLabel(
+            "Environment check: Checking...",
+            self.advanced_content,
+        )
+        self.local_runtime_label.setObjectName("AssistantSettingsMuted")
+        self.local_runtime_label.setWordWrap(True)
+        runtime_layout.addWidget(self.local_runtime_label, 1)
+        self.check_runtime_btn = QPushButton("Check again", self.advanced_content)
+        self.check_runtime_btn.setObjectName("AssistantSecondaryButton")
+        self.check_runtime_btn.clicked.connect(self.check_local_model_status)
+        runtime_layout.addWidget(self.check_runtime_btn)
+        advanced_layout.addLayout(runtime_layout)
 
         exact_form = QFormLayout()
         exact_form.setContentsMargins(0, 0, 0, 0)
@@ -726,7 +721,7 @@ class ModelSettingsDialog(BaseDialog):
         footer_hint = self.footer_widget.sizeHint()
         self.resize_preserving_center(
             QSize(
-                min(max(520, body_hint.width()), 700),
+                self.width(),
                 min(
                     max(
                         body_hint.height()
@@ -792,12 +787,11 @@ class ModelSettingsDialog(BaseDialog):
         """Render a non-blocking placeholder while inspection runs."""
         self._current_local_model_state = None
         self.local_downloaded = False
-        self.local_status_label.setText("Model: Checking...")
+        self.local_status_label.setText("Checking...")
         self._set_status_text_color(self.local_status_label, Theme.TEXT_SECONDARY)
         self._set_model_status_tone("neutral")
         self.local_runtime_label.setText("Environment check: Checking...")
         self._set_status_text_color(self.local_runtime_label, Theme.TEXT_SECONDARY)
-        self._render_runtime_attempt_notice()
         self.local_resource_label.setText("")
         self.local_action_btn.setText("Checking...")
         self._set_model_action_destructive(False)
@@ -811,13 +805,10 @@ class ModelSettingsDialog(BaseDialog):
         self._current_local_model_state = state
         self.local_downloaded = state.installed
         if state.installed:
-            self.local_status_label.setText("Model: Installed")
-            self._set_status_text_color(self.local_status_label, Theme.LOG_INFO)
-            self._set_model_status_tone("warning")
             self.local_action_btn.setText("Delete")
             self._set_model_action_destructive(True)
         else:
-            self.local_status_label.setText("Model: Not installed")
+            self.local_status_label.setText("Not installed")
             self._set_status_text_color(
                 self.local_status_label,
                 Theme.TEXT_SECONDARY,
@@ -841,6 +832,8 @@ class ModelSettingsDialog(BaseDialog):
             )
 
         if state.runtime_ready:
+            self.local_status_label.setText("Ready")
+            self._set_status_text_color(self.local_status_label, Theme.LOG_INFO)
             self._set_model_status_tone("ready")
             detail = state.runtime_message.removeprefix("Local runtime ready.").strip()
             if not detail:
@@ -857,9 +850,12 @@ class ModelSettingsDialog(BaseDialog):
                     self.local_runtime_label,
                     Theme.LOG_WARNING,
                 )
-            self._render_runtime_attempt_notice()
             return
 
+        if state.installed:
+            self.local_status_label.setText("Runtime unavailable")
+            self._set_status_text_color(self.local_status_label, Theme.LOG_ERROR)
+            self._set_model_status_tone("error")
         detail = state.runtime_message.removeprefix("Local runtime unavailable. ")
         self.local_runtime_label.setText(f"Environment check: Not ready — {detail}")
         if "Missing optional packages" in state.runtime_message:
@@ -873,25 +869,8 @@ class ModelSettingsDialog(BaseDialog):
                 self.local_runtime_label,
                 Theme.LOG_WARNING,
             )
-            self._set_model_status_tone("warning")
-        self._render_runtime_attempt_notice()
-
-    def _render_runtime_attempt_notice(self) -> None:
-        """Keep a failed start distinct from prerequisite readiness."""
-        notice_reader = getattr(
-            self.agent_manager,
-            "assistant_runtime_settings_notice",
-            None,
-        )
-        notice = notice_reader() if callable(notice_reader) else ""
-        if not isinstance(notice, str) or not notice.strip():
-            self.last_runtime_attempt_label.clear()
-            self.last_runtime_attempt_label.setVisible(False)
-            return
-        self.last_runtime_attempt_label.setText(
-            f"Last start attempt failed: {notice.strip()}"
-        )
-        self.last_runtime_attempt_label.setVisible(True)
+            if not state.installed:
+                self._set_model_status_tone("neutral")
 
     def check_local_model_status(self, *_args):
         """Request one coherent status snapshot without blocking the GUI."""
@@ -1027,16 +1006,21 @@ class ModelSettingsDialog(BaseDialog):
         if not started:
             self.is_downloading = not self.download_lifecycle.is_idle()
             self.local_status_label.setText(
-                "Another model download is still active."
+                "Another install is active"
                 if self.is_downloading
-                else "Download could not start."
+                else "Install could not start"
             )
+            self._set_status_text_color(self.local_status_label, Theme.LOG_ERROR)
+            self._set_model_status_tone("error")
+            if not self.is_downloading:
+                self.local_action_btn.setText("Retry")
             self.update_validation_state()
             return
         self.is_downloading = True
         self.local_action_btn.setText("Cancel")
-        self.local_status_label.setText("Downloading...")
-        self._set_model_status_tone("warning")
+        self.local_status_label.setText("Installing...")
+        self._set_status_text_color(self.local_status_label, Theme.TEXT_SECONDARY)
+        self._set_model_status_tone("neutral")
         self.download_progress.setRange(0, 0)
         self.download_progress.setVisible(True)
         self._schedule_fit()
@@ -1071,8 +1055,9 @@ class ModelSettingsDialog(BaseDialog):
                 )
                 return
             self.is_downloading = True
-            self.local_status_label.setText("Deleting model...")
-            self._set_model_status_tone("warning")
+            self.local_status_label.setText("Removing...")
+            self._set_status_text_color(self.local_status_label, Theme.TEXT_SECONDARY)
+            self._set_model_status_tone("neutral")
             self.download_progress.setRange(0, 0)
             self.download_progress.setVisible(True)
             self._schedule_fit()
@@ -1084,17 +1069,21 @@ class ModelSettingsDialog(BaseDialog):
 
         Args:
             percent: Download completion percentage.
-            msg: Progress message to display.
+            msg: Backend progress detail intentionally kept out of the compact UI.
 
         """
+        del msg
         target = self.download_lifecycle.active_target
         if target is None or target.repo_id == self._selected_model_id():
-            self.local_status_label.setText(msg)
             if 0 <= int(percent) <= 100:
+                self.local_status_label.setText(f"Installing... {int(percent)}%")
                 self.download_progress.setRange(0, 100)
                 self.download_progress.setValue(int(percent))
             else:
+                self.local_status_label.setText("Installing...")
                 self.download_progress.setRange(0, 0)
+            self._set_status_text_color(self.local_status_label, Theme.TEXT_SECONDARY)
+            self._set_model_status_tone("neutral")
             self.download_progress.setVisible(True)
 
     def on_download_finished(self, outcome: object):
@@ -1124,8 +1113,8 @@ class ModelSettingsDialog(BaseDialog):
         self.download_progress.setVisible(False)
         self._schedule_fit()
         selected_target = outcome.target.repo_id == self._selected_model_id()
-        self.check_local_model_status()
         if outcome.cancelled:
+            self.check_local_model_status()
             return
         logger.error(
             "Model download failed model=%s diagnostic=%s",
@@ -1134,15 +1123,17 @@ class ModelSettingsDialog(BaseDialog):
         )
         if selected_target:
             self.local_status_label.setText(
-                "Download timed out"
+                "Install timed out"
                 if outcome.failure_code is ModelDownloadFailureCode.TIMEOUT
-                else "Download failed"
+                else "Install failed"
             )
             self._set_status_text_color(self.local_status_label, Theme.LOG_ERROR)
             self._set_model_status_tone("error")
             self.local_action_btn.setText("Retry")
             self.download_progress.setVisible(False)
             self._schedule_fit()
+        else:
+            self.check_local_model_status()
         QMessageBox.critical(
             self,
             "Download Failed",

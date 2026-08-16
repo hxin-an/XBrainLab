@@ -92,32 +92,6 @@ class AgentPresentationService:
         )
 
     @classmethod
-    def runtime_settings_notice(cls, message: str) -> str:
-        """Describe a failed start from inside Assistant Settings."""
-        issue = cls._runtime_issue(message)
-        if issue is _RuntimeIssue.MODEL_CACHE:
-            return (
-                "The selected local model is missing. Install it or choose another "
-                "model."
-            )
-        if issue is _RuntimeIssue.CUDA_UNAVAILABLE:
-            return (
-                "CUDA is unavailable. Check the GPU runtime or select a "
-                "CPU-compatible setup."
-            )
-        if issue is _RuntimeIssue.GPU_MEMORY:
-            return (
-                "The local model ran out of GPU memory. Close other GPU applications "
-                "or select a smaller model."
-            )
-        if issue is _RuntimeIssue.DISABLED:
-            return "Assistant is disabled. Enable Use local assistant to continue."
-        return (
-            "The local model could not start. Check the installed model and runtime, "
-            "then try again."
-        )
-
-    @classmethod
     def runtime_setup_message(cls, message: str) -> str:
         """Return stable setup copy for an intentionally inactive runtime."""
         normalized = " ".join(str(message or "").split()).lower()

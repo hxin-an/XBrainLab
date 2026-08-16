@@ -2931,21 +2931,6 @@ class TestAgentManagerMethods:
         assert "secret-token-123" not in visible
         assert "/private/cache" not in visible
 
-    def test_settings_notice_retains_sanitized_runtime_failure(self, agent_mgr):
-        agent_mgr._assistant_runtime.current = AssistantRuntimeSnapshot(
-            phase=AssistantRuntimePhase.FAILED,
-            initialized=False,
-            error="ValueError: secret-token-123 at /private/cache/model.bin",
-        )
-
-        notice = agent_mgr.assistant_runtime_settings_notice()
-
-        assert notice
-        assert "could not start" in notice
-        assert "ValueError" not in notice
-        assert "secret-token-123" not in notice
-        assert "/private/cache" not in notice
-
     @pytest.mark.parametrize(
         "raw_status",
         [
