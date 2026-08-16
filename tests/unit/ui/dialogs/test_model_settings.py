@@ -328,7 +328,8 @@ class TestModelSettingsInit:
         assert dialog.runtime_group_label.text() == "Runtime"
         assert dialog.exact_values_group_label.text() == "Exact response values"
         assert dialog.assistant_group_label.text() == "Assistant"
-        assert dialog.disable_assistant_btn.text() == "Disable Assistant…"
+        assert dialog.assistant_state_label.text() == "Assistant is enabled"
+        assert dialog.disable_assistant_btn.text() == "Disable"
         assert dialog.btn_activate.text() == "Save Changes"
         assert dialog.btn_cancel.icon().isNull()
         assert dialog.btn_activate.icon().isNull()
@@ -961,6 +962,7 @@ class TestActivateAndSave:
 
         assert manager.deactivation_configs == [config]
         assert config.local_model_enabled is True
+        assert created.assistant_state_label.text() == "Assistant is enabled"
         assert created.disable_assistant_btn.text() == "Disabling…"
         assert not created.disable_assistant_btn.isEnabled()
 
@@ -968,7 +970,8 @@ class TestActivateAndSave:
         manager.assistant_deactivation_finished.emit(True, "Assistant disabled.")
 
         assert created.btn_activate.text() == "Enable Assistant"
-        assert created.disable_assistant_btn.text() == "Disable Assistant…"
+        assert created.assistant_state_label.text() == "Assistant is disabled"
+        assert created.disable_assistant_btn.text() == "Disable"
         assert not created.disable_assistant_btn.isEnabled()
 
     def test_disable_busy_requires_stop_without_mutating_config(self, qtbot, config):
@@ -1000,7 +1003,8 @@ class TestActivateAndSave:
             created.on_disable_assistant_clicked()
 
         assert config.local_model_enabled is True
-        assert created.disable_assistant_btn.text() == "Disable Assistant…"
+        assert created.assistant_state_label.text() == "Assistant is enabled"
+        assert created.disable_assistant_btn.text() == "Disable"
         information.assert_called_once()
         assert "Stop" in str(information.call_args.args[2])
 

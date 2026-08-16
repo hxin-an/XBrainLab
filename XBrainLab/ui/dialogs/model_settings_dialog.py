@@ -596,18 +596,22 @@ class ModelSettingsDialog(BaseDialog):
 
         self.assistant_group_label = self._section_label("Assistant")
         advanced_layout.addWidget(self.assistant_group_label)
+        assistant_state_layout = QHBoxLayout()
+        assistant_state_layout.setContentsMargins(2, 0, 0, 0)
+        assistant_state_layout.setSpacing(8)
+        self.assistant_state_label = QLabel("", self.advanced_content)
+        self.assistant_state_label.setObjectName("AssistantSettingsMuted")
+        assistant_state_layout.addWidget(self.assistant_state_label, 1)
         self.disable_assistant_btn = QPushButton(
-            "Disable Assistant…",
+            "Disable",
             self.advanced_content,
         )
         self.disable_assistant_btn.setObjectName("AssistantDisableButton")
         self.disable_assistant_btn.clicked.connect(
             self.on_disable_assistant_clicked,
         )
-        advanced_layout.addWidget(
-            self.disable_assistant_btn,
-            alignment=Qt.AlignmentFlag.AlignLeft,
-        )
+        assistant_state_layout.addWidget(self.disable_assistant_btn)
+        advanced_layout.addLayout(assistant_state_layout)
         self.advanced_content.setVisible(False)
         layout.addWidget(self.advanced_content)
 
@@ -1212,6 +1216,11 @@ class ModelSettingsDialog(BaseDialog):
         self.btn_activate.setText(
             "Save Changes" if self.config.local_model_enabled else "Enable Assistant"
         )
+        self.assistant_state_label.setText(
+            "Assistant is enabled"
+            if self.config.local_model_enabled
+            else "Assistant is disabled"
+        )
         self.btn_activate.setEnabled(not self.is_downloading and runtime_ready)
         self.disable_assistant_btn.setEnabled(
             bool(self.config.local_model_enabled) and not self.is_downloading
@@ -1339,7 +1348,7 @@ class ModelSettingsDialog(BaseDialog):
 
     def on_assistant_deactivation_finished(self, ok: bool, message: str) -> None:
         """Render only the terminal result published by the runtime owner."""
-        self.disable_assistant_btn.setText("Disable Assistant…")
+        self.disable_assistant_btn.setText("Disable")
         if ok:
             self.config.local_model_enabled = False
             self.save_error_label.clear()

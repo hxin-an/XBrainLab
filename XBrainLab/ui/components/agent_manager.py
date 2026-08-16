@@ -5,20 +5,20 @@ from typing import Any, cast
 
 from PyQt6.QtCore import (
     QObject,
+    QPoint,
     QRect,
     QSize,
     Qt,
     QTimer,
     pyqtSignal,
 )
-from PyQt6.QtGui import QAction, QIcon
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication,
     QDockWidget,
     QFrame,
     QHBoxLayout,
     QLabel,
-    QMenu,
     QMessageBox,
     QPushButton,
     QStyle,
@@ -206,9 +206,9 @@ class AssistantDockTitleBar(QWidget):
         self.status_indicator: QWidget | None = None
         self.status_dot: QFrame | None = None
         self.status_badge: QLabel | None = None
-        self.retry_button: QPushButton | None = None
-        self._retry_available = False
-        self._retry_enabled = False
+        self._drag_origin_global: QPoint | None = None
+        self._drag_origin_window: QPoint | None = None
+        self._system_move_started = False
 
     def set_assistant_status(self, text: str) -> None:
         """Expose runtime status without adding a competing header badge."""
@@ -230,31 +230,12 @@ class AssistantDockTitleBar(QWidget):
     def resizeEvent(self, event):  # noqa: N802
         """Keep essential title actions readable at narrow dock widths."""
         super().resizeEvent(event)
-        self._sync_responsive_actions()
         QTimer.singleShot(0, self._finalize_title_layout)
 
     def showEvent(self, event):  # noqa: N802
         """Settle action geometry after the dock installs its title bar."""
         super().showEvent(event)
-        self._sync_responsive_actions()
         QTimer.singleShot(0, self._finalize_title_layout)
-
-    def set_retry_available(self, available: bool, *, enabled: bool) -> None:
-        """Show title-bar Retry only when space and request state allow it."""
-        self._retry_available = bool(available)
-        self._retry_enabled = bool(enabled)
-        self._sync_responsive_actions()
-
-    def _sync_responsive_actions(self) -> None:
-        """Hide optional controls before allowing the product title to clip."""
-        compact = self.width() < 470
-        if self.retry_button is not None:
-            self.retry_button.setVisible(self._retry_available and not compact)
-            self.retry_button.setEnabled(self._retry_enabled and not compact)
-        layout = self.layout()
-        if layout is not None:
-            layout.invalidate()
-            layout.activate()
 
     def _finalize_title_layout(self) -> None:
         """Reflow once after Qt applies the parent dock geometry."""
@@ -266,23 +247,66 @@ class AssistantDockTitleBar(QWidget):
         self.updateGeometry()
 
     def mousePressEvent(self, event):  # noqa: N802
-        """Let QDockWidget handle title-bar drags from empty title space."""
+        """Begin a floating-window drag from empty title space."""
+        dock = self.parentWidget()
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and isinstance(dock, QDockWidget)
+            and dock.isFloating()
+        ):
+            self._drag_origin_global = event.globalPosition().toPoint()
+            self._drag_origin_window = dock.pos()
+            self._system_move_started = False
+            event.accept()
+            return
         if event.button() == Qt.MouseButton.LeftButton:
             event.ignore()
             return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):  # noqa: N802
-        """Let QDockWidget continue native dock drag handling."""
+        """Move a floating dock using native system move or a manual fallback."""
+        dock = self.parentWidget()
+        if (
+            isinstance(dock, QDockWidget)
+            and dock.isFloating()
+            and self._drag_origin_global is not None
+            and self._drag_origin_window is not None
+            and event.buttons() & Qt.MouseButton.LeftButton
+        ):
+            if not self._system_move_started and self._start_system_move():
+                self._system_move_started = True
+            elif not self._system_move_started:
+                delta = event.globalPosition().toPoint() - self._drag_origin_global
+                dock.move(self._drag_origin_window + delta)
+            event.accept()
+            return
         event.ignore()
 
     def mouseReleaseEvent(self, event):  # noqa: N802
-        """Let QDockWidget finish native dock drag handling."""
+        """Finish one owned floating-window drag."""
+        if self._drag_origin_global is not None:
+            self._drag_origin_global = None
+            self._drag_origin_window = None
+            self._system_move_started = False
+            event.accept()
+            return
         event.ignore()
+
+    def _start_system_move(self) -> bool:
+        """Ask the active window system to own a native floating-window move."""
+        dock = self.parentWidget()
+        if not isinstance(dock, QDockWidget):
+            return False
+        handle = dock.windowHandle()
+        return bool(handle is not None and handle.startSystemMove())
 
     def mouseDoubleClickEvent(self, event):  # noqa: N802
         """Mirror native title-bar double-click float/dock behavior."""
         if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_origin_global = None
+            self._drag_origin_window = None
+            self._system_move_started = False
             self._on_float_toggle()
             event.accept()
             return
@@ -367,7 +391,6 @@ class AgentManager(QObject):
         self.chat_controller.processing_state_changed.connect(
             self.on_processing_state_changed,
         )
-        self._last_user_input: str | None = None
         self._pending_prune_notice = False
         self._runtime_unavailable_notice: str | None = None
         self._assistant_status_projection: AssistantStatusProjection | None = None
@@ -532,30 +555,8 @@ class AgentManager(QObject):
         if title_style is None:
             raise RuntimeError("Qt application style is unavailable.")
 
-        self.retry_title_btn = QPushButton()
-        self.retry_title_btn.setIcon(
-            title_style.standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
-        )
-        self.retry_title_btn.setIconSize(QSize(16, 16))
-        self.retry_title_btn.setFixedSize(30, 30)
-        self.retry_title_btn.setToolTip("Send a request before retrying.")
-        self.retry_title_btn.setAccessibleName("Retry last request")
-        self.retry_title_btn.setAccessibleDescription(
-            "Retry the most recent Assistant request."
-        )
-        self.retry_title_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
-        self.retry_title_btn.setEnabled(False)
-        self.retry_title_btn.setVisible(False)
-        self.retry_title_btn.clicked.connect(self.retry_last_user_input)
-        title_bar.retry_button = self.retry_title_btn
-        title_layout.addWidget(self.retry_title_btn)
-
         # New chat clears only the assistant conversation, never workflow state.
-        self.new_conv_title_btn = QPushButton()
-        new_chat_icon = QIcon.fromTheme(QIcon.ThemeIcon.DocumentNew)
-        if new_chat_icon.isNull():
-            new_chat_icon = title_style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
-        self.new_conv_title_btn.setIcon(new_chat_icon)
+        self.new_conv_title_btn = QPushButton("+")
         self.new_conv_title_btn.setIconSize(QSize(16, 16))
         self.new_conv_title_btn.setFixedSize(30, 30)
         self.new_conv_title_btn.setToolTip("New chat")
@@ -567,7 +568,26 @@ class AgentManager(QObject):
         self.new_conv_title_btn.clicked.connect(self.start_new_conversation)
         title_layout.addWidget(self.new_conv_title_btn)
 
-        # Options menu. Keep it to real, implemented actions.
+        self._float_icon = QIcon.fromTheme(QIcon.ThemeIcon.WindowNew)
+        if self._float_icon.isNull():
+            self._float_icon = title_style.standardIcon(
+                QStyle.StandardPixmap.SP_TitleBarMaxButton
+            )
+        self._dock_icon = QIcon.fromTheme(QIcon.ThemeIcon.ViewRestore)
+        if self._dock_icon.isNull():
+            self._dock_icon = title_style.standardIcon(
+                QStyle.StandardPixmap.SP_TitleBarNormalButton
+            )
+        self.float_btn = QPushButton()
+        self.float_btn.setIcon(self._float_icon)
+        self.float_btn.setIconSize(QSize(16, 16))
+        self.float_btn.setFixedSize(30, 30)
+        self.float_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
+        self.float_btn.clicked.connect(self._toggle_float)
+        self._render_float_button_state(False)
+        title_layout.addWidget(self.float_btn)
+
+        # Settings is a direct action; dock controls have their own buttons.
         self.settings_btn = QPushButton()
         settings_icon = QIcon(Icons.SETTINGS.path)
         if settings_icon.isNull():
@@ -577,34 +597,13 @@ class AgentManager(QObject):
         self.settings_btn.setIcon(settings_icon)
         self.settings_btn.setIconSize(QSize(16, 16))
         self.settings_btn.setFixedSize(30, 30)
-        self.settings_btn.setToolTip("Assistant options")
-        self.settings_btn.setAccessibleName("Assistant options")
-        self.settings_btn.setAccessibleDescription(
-            "Open Assistant settings and dock options."
-        )
+        self.settings_btn.setToolTip("Assistant settings")
+        self.settings_btn.setAccessibleName("Assistant settings")
+        self.settings_btn.setAccessibleDescription("Open Assistant settings.")
         self.settings_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
-        self.settings_menu = QMenu(self.settings_btn)
-        self.settings_action = QAction("Assistant settings", self.settings_btn)
-        self.settings_action.triggered.connect(
+        self.settings_btn.clicked.connect(
             lambda _checked=False: self.open_settings_dialog()
         )
-        self.settings_menu.addAction(self.settings_action)
-        self.float_action = QAction("Float assistant", self.settings_btn)
-        self.float_action.triggered.connect(lambda _checked=False: self._toggle_float())
-        self.settings_menu.addAction(self.float_action)
-        self.clear_conversation_title_action = QAction(
-            "New chat",
-            self.settings_btn,
-        )
-        self.clear_conversation_title_action.setToolTip(
-            "Clear the assistant conversation without changing the EEG workflow."
-        )
-        self.clear_conversation_title_action.setEnabled(False)
-        self.clear_conversation_title_action.triggered.connect(
-            lambda _checked=False: self.start_new_conversation()
-        )
-        self.settings_menu.addAction(self.clear_conversation_title_action)
-        self.settings_btn.setMenu(self.settings_menu)
         title_layout.addWidget(self.settings_btn)
 
         self.close_btn = QPushButton()
@@ -623,7 +622,6 @@ class AgentManager(QObject):
         title_layout.addWidget(self.close_btn)
 
         chat_dock.setTitleBarWidget(title_bar)
-        title_bar._sync_responsive_actions()
         chat_dock.topLevelChanged.connect(self._on_dock_top_level_changed)
 
         self.main_window.addDockWidget(
@@ -652,17 +650,31 @@ class AgentManager(QObject):
         if self.chat_dock:
             should_float = not self.chat_dock.isFloating()
             self.chat_dock.setFloating(should_float)
-            if should_float:
-                self._place_floating_dock()
 
     def _on_dock_top_level_changed(self, floating: bool) -> None:
         """Keep the assistant dock usable when it becomes a floating window."""
-        action = "Dock assistant" if floating else "Float assistant"
-        if hasattr(self, "float_action"):
-            self.float_action.setText(action)
-            self.float_action.setToolTip(action)
+        self._render_float_button_state(floating)
         if floating:
             self._place_floating_dock()
+
+    def _render_float_button_state(self, floating: bool) -> None:
+        """Render the direct Float/Dock action from the dock's actual state."""
+        if not hasattr(self, "float_btn"):
+            return
+        if floating:
+            self.float_btn.setIcon(self._dock_icon)
+            self.float_btn.setToolTip("Dock assistant")
+            self.float_btn.setAccessibleName("Dock assistant")
+            self.float_btn.setAccessibleDescription(
+                "Return the Assistant to the main window."
+            )
+            return
+        self.float_btn.setIcon(self._float_icon)
+        self.float_btn.setToolTip("Float assistant")
+        self.float_btn.setAccessibleName("Float assistant")
+        self.float_btn.setAccessibleDescription(
+            "Move the Assistant into a separate movable window."
+        )
 
     def _place_floating_dock(self) -> None:
         """Size and clamp the floating assistant dock within the active screen."""
@@ -1048,8 +1060,6 @@ class AgentManager(QObject):
             self.chat_panel, "accept_composer_submission"
         ):
             self.chat_panel.accept_composer_submission(text)
-        self._last_user_input = text
-        self._set_retry_available(True)
         self._replay_deferred_submission_events(deferred_events)
         return AssistantTurnAdmissionResult(correlation=correlation)
 
@@ -1479,13 +1489,6 @@ class AgentManager(QObject):
             status_bar.showMessage(f"Opening {target.value.title()}...")
         return panel_index
 
-    def retry_last_user_input(self):
-        """Retry the most recent user request if the assistant is idle."""
-        if not self._last_user_input:
-            self._show_low_priority_notice("Send a request before using Retry.")
-            return
-        self.handle_user_input(self._last_user_input)
-
     def retry_local_assistant(self) -> None:
         """Retry the persisted local runtime after a visible startup failure."""
         if self._assistant_runtime.current.phase is AssistantRuntimePhase.LOADING:
@@ -1597,35 +1600,6 @@ class AgentManager(QObject):
         """
         if self.chat_panel:
             self.chat_panel.set_processing_state(is_processing)
-        self._update_title_action_buttons()
-
-    def _set_retry_available(self, available: bool) -> None:
-        """Synchronize retry/clear affordances in the dock title bar."""
-        self._update_title_action_buttons()
-
-    def _update_title_action_buttons(self) -> None:
-        """Keep title-bar actions enabled only when they can run."""
-        is_processing = bool(
-            self.chat_controller
-            and getattr(self.chat_controller, "is_processing", False)
-        )
-        retry_available = bool(self._last_user_input)
-        enabled = retry_available and not is_processing
-
-        if hasattr(self, "retry_title_btn"):
-            header = getattr(self, "assistant_header", None)
-            if isinstance(header, AssistantDockTitleBar):
-                header.set_retry_available(retry_available, enabled=enabled)
-            else:
-                self.retry_title_btn.setEnabled(enabled)
-                self.retry_title_btn.setVisible(retry_available)
-            self.retry_title_btn.setToolTip(
-                "Retry the last request"
-                if retry_available
-                else "Send a request before retrying."
-            )
-        if hasattr(self, "clear_conversation_title_action"):
-            self.clear_conversation_title_action.setEnabled(enabled)
 
     def start_new_conversation(self):
         """Start a new chat without mutating the application workflow state."""
@@ -1656,13 +1630,11 @@ class AgentManager(QObject):
         self._application_publication_coordinator.clear_training()
         if self.chat_panel:
             self.chat_panel.clear_confirmation_request()
-        self._last_user_input = None
         self._on_active_response_presentation_changed(None)
         if not self._assistant_turn_state.reset_idle():
             logger.error(
                 "Runtime reset accepted while an assistant turn still owned UI"
             )
-        self._set_retry_available(False)
         if self.chat_panel and hasattr(self.chat_panel, "show_notice"):
             self.chat_panel.show_notice("")
 

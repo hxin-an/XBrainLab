@@ -2995,7 +2995,13 @@ def _capture_assistant_settings(
                 dialog.runtime_group_label.text() == "Runtime"
                 and dialog.exact_values_group_label.text() == "Exact response values"
                 and dialog.assistant_group_label.text() == "Assistant"
-                and dialog.disable_assistant_btn.text() == "Disable Assistant…"
+                and dialog.assistant_state_label.text()
+                == (
+                    "Assistant is disabled"
+                    if state == "disabled"
+                    else "Assistant is enabled"
+                )
+                and dialog.disable_assistant_btn.text() == "Disable"
                 and dialog.disable_assistant_btn.isVisibleTo(dialog) is advanced
             ),
             "advanced_fields_inside_viewport": fields_inside_viewport,

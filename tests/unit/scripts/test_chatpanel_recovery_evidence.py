@@ -89,7 +89,7 @@ def _strict_payload() -> dict[str, object]:
             "actions": [
                 "submitted the blocked prompt through ChatPanel",
                 "prepared dataset-ready state through ApplicationService",
-                "clicked the visible Retry last request control",
+                "resubmitted the same prompt through the visible ChatPanel composer",
                 "submitted and stopped one informational ChatPanel turn",
             ],
         },
@@ -131,10 +131,10 @@ def _strict_payload() -> dict[str, object]:
                 ),
                 "new_tools": [],
                 "terminal_outcome": "completed",
-                "retry_control": {
+                "resubmit_control": {
                     "visible": True,
                     "enabled": True,
-                    "accessible_name": "Retry last request",
+                    "accessible_name": "Assistant message",
                 },
             },
             "host_recovery": {
@@ -156,7 +156,7 @@ def _strict_payload() -> dict[str, object]:
             "retry": {
                 "prompt": BLOCKED_PROMPT,
                 "same_prompt": True,
-                "invoked_via": "Retry last request",
+                "invoked_via": "ChatPanel composer",
                 "presentation_kind": "assistant",
                 "assistant_text": "Evaluation summary ready.",
                 "model_proposals": [{"tool_name": "evaluate", "parameters": {}}],
@@ -245,14 +245,14 @@ def test_finalize_walkthrough_status_runs_after_completed_shutdown() -> None:
     assert payload["failure_reason"] == ""
 
 
-def test_validate_recovery_evidence_requires_visible_block_and_retry() -> None:
+def test_validate_recovery_evidence_requires_visible_block_and_composer() -> None:
     payload = _strict_payload()
-    payload["scenario"]["blocked"]["retry_control"]["visible"] = False  # type: ignore[index]
+    payload["scenario"]["blocked"]["resubmit_control"]["visible"] = False  # type: ignore[index]
 
     ok, reason = validate_recovery_evidence(payload)
 
     assert ok is False
-    assert "retry" in reason.lower()
+    assert "composer" in reason.lower()
 
 
 def test_validate_recovery_evidence_requires_same_prompt_model_owned_recovery() -> None:
@@ -340,7 +340,7 @@ def test_render_markdown_records_identity_observations_and_limits() -> None:
     assert "# ChatPanel Exact Granite Recovery Walkthrough" in markdown
     assert PRIMARY_LOCAL_MODEL_ID in markdown
     assert PRIMARY_LOCAL_MODEL_REVISION in markdown
-    assert "Blocked command and visible Retry" in markdown
+    assert "Blocked command and visible recovery" in markdown
     assert "Cancellable in-flight turn" in markdown
     assert "Host Assistance" in markdown
     assert "bounded terminal shutdown" in markdown.lower()

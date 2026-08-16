@@ -391,22 +391,25 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
 
     assert dock_title_text.count("XBrainLab") == 1
 
-    assert manager.retry_title_btn.text() == ""
-    assert not manager.retry_title_btn.icon().isNull()
+    assert manager.new_conv_title_btn.text() == "+"
+    assert manager.new_conv_title_btn.icon().isNull()
+    assert manager.float_btn.text() == ""
+    assert not manager.float_btn.icon().isNull()
     assert manager.settings_btn.text() == ""
     assert not manager.settings_btn.icon().isNull()
-    assert manager.settings_btn.accessibleName() == "Assistant options"
-    assert not hasattr(manager, "float_btn")
-    assert manager.retry_title_btn.isEnabled() is False
+    assert manager.settings_btn.accessibleName() == "Assistant settings"
+    assert not hasattr(manager, "retry_title_btn")
+    assert not hasattr(manager, "settings_menu")
     assert not hasattr(manager, "clear_title_btn")
-    assert manager.retry_title_btn.geometry().right() <= (
-        manager.new_conv_title_btn.geometry().left()
+    assert manager.new_conv_title_btn.geometry().right() <= (
+        manager.float_btn.geometry().left()
     )
-    menu_text = [
-        action.text() for action in manager.settings_menu.actions() if action.text()
-    ]
-    assert menu_text == ["Assistant settings", "Float assistant", "New chat"]
-    assert manager.clear_conversation_title_action.isEnabled() is False
+    assert (
+        manager.float_btn.geometry().right() <= manager.settings_btn.geometry().left()
+    )
+    assert (
+        manager.settings_btn.geometry().right() <= manager.close_btn.geometry().left()
+    )
 
     visible_title_text = " ".join(
         child.text()
@@ -441,8 +444,8 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
         ),
     ):
         manager.handle_user_input("hello")
-    assert manager.retry_title_btn.isEnabled() is False
-    assert manager.clear_conversation_title_action.isEnabled() is False
+    assert not hasattr(manager, "retry_title_btn")
+    assert not hasattr(manager, "settings_menu")
 
     assert panel.send_btn.toolButtonStyle() is (Qt.ToolButtonStyle.ToolButtonTextOnly)
     assert panel.send_btn.icon().isNull() is True
