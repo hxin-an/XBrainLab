@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shutil
 import threading
 import time
 from pathlib import Path
@@ -103,7 +102,7 @@ class _FakeDownloader(QObject):
         return outcome
 
 
-def test_cancel_timeout_retains_app_ownership_through_partial_cleanup(
+def test_cancel_terminal_preserves_partial_cache_for_retry(
     qtbot,
     tmp_path,
 ) -> None:
@@ -127,7 +126,7 @@ def test_cancel_timeout_retains_app_ownership_through_partial_cleanup(
 
     assert blocker.args[0] is False
     assert lifecycle.is_idle() is True
-    assert partial_path.exists() is False
+    assert partial_path.exists() is True
 
 
 def test_success_path_forwards_one_target_aware_terminal_outcome(qtbot) -> None:
@@ -214,7 +213,7 @@ def test_recursive_cache_cleanup_is_background_owned_and_in_close_fence(
         qtbot.waitUntil(lifecycle.is_idle, timeout=2000)
 
 
-def test_cancel_cleanup_uses_immutable_target_and_preserves_other_model(
+def test_cancel_preserves_partial_target_and_other_model(
     qtbot,
     tmp_path,
 ) -> None:
@@ -237,12 +236,12 @@ def test_cancel_cleanup_uses_immutable_target_and_preserves_other_model(
             message="Cancelled by user",
         )
 
-    assert model_a_path.exists() is False
+    assert model_a_path.exists() is True
     assert model_b_path.exists() is True
     assert (model_b_path / "model.bin").read_bytes() == b"installed"
 
 
-def test_failed_download_cleans_only_target_before_terminal_publication(
+def test_failed_download_preserves_partial_target_for_retry(
     qtbot,
     tmp_path,
 ) -> None:
@@ -261,38 +260,26 @@ def test_failed_download_cleans_only_target_before_terminal_publication(
     unrelated_path.mkdir()
     (unrelated_path / "keep.bin").write_bytes(b"keep")
 
-    entered_cleanup = threading.Event()
-    release_cleanup = threading.Event()
-    original_rmtree = shutil.rmtree
-
-    def slow_rmtree(path: str) -> None:
-        assert Path(path) == target_path
-        entered_cleanup.set()
-        release_cleanup.wait(timeout=2.0)
-        original_rmtree(path)
-
-    with patch(
-        "XBrainLab.llm.core.model_download_lifecycle.shutil.rmtree",
-        side_effect=slow_rmtree,
-    ):
+    with qtbot.waitSignal(lifecycle.terminal, timeout=1000):
         downloader.complete(
             status=ModelDownloadStatus.FAILED,
             message="Model download failed.",
         )
-        qtbot.waitUntil(entered_cleanup.is_set, timeout=1000)
-
-        assert terminals == []
-        assert lifecycle.is_idle() is False
-        assert target_path.exists() is True
-
-        release_cleanup.set()
-        qtbot.waitUntil(lambda: bool(terminals), timeout=2000)
 
     assert terminals == [(False, "Model download failed.")]
-    assert len(cleanup_results) == 1
-    assert cleanup_results[0].reason is ModelCacheCleanupReason.FAILED_DOWNLOAD
-    assert target_path.exists() is False
+    assert cleanup_results == []
+    assert target_path.exists() is True
     assert (unrelated_path / "keep.bin").read_bytes() == b"keep"
+
+    assert lifecycle.start_download(PRIMARY_MODEL_ID, str(tmp_path)) is True
+    assert downloader.target is not None
+    assert Path(downloader.target.cache_candidates[0]) == target_path
+    assert target_path.exists() is True
+    with qtbot.waitSignal(lifecycle.terminal, timeout=1000):
+        downloader.complete(
+            status=ModelDownloadStatus.CANCELLED,
+            message="Cancelled by user",
+        )
 
 
 @pytest.mark.parametrize(

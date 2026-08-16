@@ -393,8 +393,7 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
 
     assert manager.new_conv_title_btn.text() == "+"
     assert manager.new_conv_title_btn.icon().isNull()
-    assert manager.float_btn.text() == ""
-    assert not manager.float_btn.icon().isNull()
+    assert not hasattr(manager, "float_btn")
     assert manager.settings_btn.text() == ""
     assert not manager.settings_btn.icon().isNull()
     assert manager.settings_btn.accessibleName() == "Assistant settings"
@@ -402,10 +401,7 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
     assert not hasattr(manager, "settings_menu")
     assert not hasattr(manager, "clear_title_btn")
     assert manager.new_conv_title_btn.geometry().right() <= (
-        manager.float_btn.geometry().left()
-    )
-    assert (
-        manager.float_btn.geometry().right() <= manager.settings_btn.geometry().left()
+        manager.settings_btn.geometry().left()
     )
     assert (
         manager.settings_btn.geometry().right() <= manager.close_btn.geometry().left()
@@ -563,10 +559,10 @@ def test_assistant_dock_restores_product_width_across_states_and_reopens(
         assert panel.width() == 420
         panel.set_processing_state(False)
 
-        dock.setFixedWidth(320)
+        test_app.resizeDocks([dock], [320], Qt.Orientation.Horizontal)
         qtbot.waitUntil(lambda: dock.width() == 420, timeout=2_000)
         assert panel.width() == 420
-        assert dock.minimumWidth() == 420
+        assert panel.minimumWidth() == 320
 
         for _cycle in range(2):
             _click(qtbot, test_app.ai_btn)

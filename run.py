@@ -20,6 +20,7 @@ from typing import Protocol
 # WSLg. Hugging Face reads this switch at import time, so set it before any
 # product module can import huggingface_hub. Standard HTTP still resumes files.
 os.environ["HF_HUB_DISABLE_XET"] = "1"
+os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "60")
 
 # Ensure the project root is importable when running the script directly.
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))

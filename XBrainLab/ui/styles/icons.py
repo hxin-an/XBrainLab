@@ -22,8 +22,6 @@ class Icons(Enum):
     PLAY = "play.svg"
     STOP = "stop.svg"
     SETTINGS = "settings.svg"
-    FLOAT = "float.svg"
-    DOCK = "dock.svg"
     REFRESH = "refresh.svg"
     SAVE = "save.svg"
     TRASH = "trash.svg"

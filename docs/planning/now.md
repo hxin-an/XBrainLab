@@ -4,128 +4,122 @@
 
 ## 目前焦點
 
-**在 `assistant/toolbar-floating-polish-v1` 修復 PR #28 exact head `202a7b53` 手測暴露的
-Assistant model install terminal、Settings confirmation 與 WSLg floating freeze；四項全部在新
-exact source 手測通過前不合併。**
+**收尾 `assistant/toolbar-floating-polish-v1` / PR #28：保留可續傳的 model partial cache、
+將 Assistant 收旂為固定右側 panel，並在新 exact source 手測通過前不合併。**
 
-使用者已於 `2026-08-16` 明確授權實作本輪 UI 行為與必要的 backend lifecycle 修正，並選擇：
+使用者已於 `2026-08-16` 明確授權本輪 UI 修改，並選擇：
 
-- model deletion success 改為行內 `Not installed / Install Model`，不再彈 blocking success dialog；
-- 若 `QDockWidget.setFloating()` 在 WSLg/xcb 仍是原生阻塞點，改用 AgentManager-owned 獨立浮動視窗，
-  不停用目前主要環境的 Float。
+- Hugging Face standard HTTP 讀取 timeout 提高為 60 秒，保留外層 180 秒無 byte
+  成長的 bounded terminal；
+- timeout、network failure 或 Cancel 後保留 partial cache 供 Retry 續傳；只有明確
+  Delete 或資源 policy 阻擋才清理；
+- 取消 Float 功能，Assistant 固定在主視窗右側。
 
 ## 問題與證據
 
-- **Install terminal blocker**：本次冷安裝約 `22:11` 開始，UI 到 99% 後直到 `22:21` 關閉都沒有
-  success、failure 或 cancel terminal。現有進度不是 Hugging Face 真實總量，而是每 0.5 秒用 model
-  cache bytes 除以固定 `5.08 GB` 估算並封頂 99%；現有 unit test 也只鎖定 99 可被發出，沒有鎖定其後
-  必須 terminal。Xet log 顯示 HTTP 416、最長約 315 秒 reconstruction，最後停止活動；app 關閉後
-  pinned snapshot 已被現有 product validator 判為 complete，實際 cache 約 `5.07 GB`。
-- **Delete→Install interaction blocker**：`on_cache_cleanup_finished()` 先排程 async inspection，再同步開
-  blocking `Model Deleted` QMessageBox；modal 開啟期間背後已可顯示 Install，但第一個 click 只會被
-  dialog 攔截，使用者必須關閉訊息再點一次。
-- **Confirmation visual inconsistency**：Delete Model 與 Disable Assistant 仍使用平台 `Yes/No`
-  QMessageBox，沒有 Settings 既有 danger/secondary palette、Confirm/Cancel hierarchy與一致 default
-  focus。
-- **Floating blocker**：點 Float 後整個 app 仍凍結。現有 real-dock heartbeat test 只使用 plain
-  `QMainWindow` 與 offscreen Qt，沒有進入 product `MainWindow` 的 dock sizing/event-filter policy；產品
-  shell 仍直接對 `QDockWidget` 設 minimum width，與 Qt 對 child-owned size constraints 的 contract
-  衝突。上一輪延後 `setFloating()`、刪 geometry placement 與加入 manual system move 未解 native
-  WSLg/xcb defect，因此不再以同類 callback 調整猜測原因。
-- Branch 僅有 repo-root `settings.json` 的使用者本機修改，受保護且不得 stage、commit、revert或隱藏。
+- 本次 Granite 安裝遇到 `us.aws.cdn.hf.co` standard HTTP `Read timed out` 後多次
+  `Trying to resume download...`。Hugging Face Hub 0.36.0 預設 download read timeout 為 10 秒；
+  任一 chunk 成功又會重置 retry，不穩定連線可長時間反覆 resume。
+- 使用者最後已重新下載成功；目前 pinned revision
+  `707f574c62054322f6b5b04b6d075f0a8f05e0f0` cache 約 5.07 GB，現有 product validator
+  已通過，不需要刪除或重新下載。
+- `ModelDownloadLifecycle` 在失敗或 Cancel 後會自動遞迴刪除 target partial cache，
+  讓 Hugging Face 原本的 cross-attempt resume 失效，並多出 pending outcome/cleanup state。
+- WSLg 實際操作 Float 仍反覆凍結。現有路徑包含 button、icon、manual drag、
+  double-click、transition flag、dock top-level signals 與 MainWindow sizing 分支；使用者已取消
+  此功能，不再繼續疊疊 native workaround。
+- Worktree 只有 repo-root `settings.json` 是使用者本機 runtime 修改；不得 stage、
+  commit、revert 或隱藏。
 
 ## Observable outcome
 
-- Delete success 不開 modal；同一列完成 inspection 後明確顯示 `Not installed` 與 enabled
-  `Install Model`，第一次 click 只產生一次 install request。Delete failure 才顯示錯誤。
-- Delete Model 與 Disable Assistant confirmation 使用同一個 Settings-owned presentation：action-specific
-  dangerous Confirm、neutral Cancel、Cancel default，顏色、hover、focus與目前 Settings theme一致。
-- Download progress 不把 cache estimate 冒充精確完成率：傳輸中顯示 downloaded bytes／約略總量；達
-  estimate 後切為 indeterminate `Finalizing and verifying model…`。只有 pinned snapshot validation與
-  subprocess cleanup 都完成才可呈現 terminal success；180 秒沒有 cache-byte 成長時必須 bounded
-  success recovery或typed timeout，不能等滿兩小時。
-- Product runtime 在 Hugging Face import 前停用已於本機證實會 stall 的 Xet transport，使用可 resume 的
-  standard HTTP path；不改 model、revision、cache boundary或 10/20 GB policy。
-- WSLg/xcb 下 Float/Dock 連續 10 次、拖動、resize、Hide/Show、Settings與application close都保持 Qt
-  heartbeat。先移除違反 Qt contract 的 dock-owned size constraint；若 exact native probe仍卡在
-  `setFloating()`，QDockWidget收斂為 dock-only，AgentManager以一個 native-decorated view container移動
-  同一份 ChatPanel/header，controller、conversation與runtime state不複製。
+- GUI entry 在任何 product/Hugging Face import 前預設 `HF_HUB_DOWNLOAD_TIMEOUT=60`，並
+  繼續停用已在 WSLg stall 的 Xet transport。
+- Download child 終止並被 reap 後才發佈 terminal。Failed/timeout/cancelled target partial
+  保留在同一 cache path；Retry 使用同一 model/revision/path，但只有 complete pinned
+  snapshot validation 通過才顯示 Installed。
+- Explicit Delete 仍只刪除選定 model target；10 GB single-model、20 GB total-cache 與磁碟預留
+  policy 不變。
+- Assistant 是 right-only QDockWidget；無 Float/Dock button、無拖曳/雙擊切換、無 left
+  docking。Header 只有 New Chat、Settings、Hide，Hide/Show/resize/close 不會變成
+  floating window。
 
 ## Scope、ownership 與 non-goals
 
-- `ModelDownloadLifecycle / ModelDownloader` 繼續擁有 download child、deadline、cleanup與 terminal；
-  `ModelSettingsDialog` 只投影 state與發出既有 request；`AgentManager` 繼續擁有 dock/floating
-  presentation。Owner before/after不變。
-- 保留 `ModelDownloader.progress(int, str)` 與既有 public command contracts；不新增 model state machine、
-  receipt、compatibility path、production module或 public class。
-- 不改 Assistant tool calls、LLM controller、model choice、RAG policy、cache位置、EEG workflow或
-  `settings.json`。CI不下載 5 GB model；真實 cold download由 exact-head manual acceptance證明。
-- 優先刪除 blocking success modal、舊 `Yes/No` duplication、違規 dock constraint；只有 native matrix
-  證明必要時才刪除 QDockWidget float/manual-drag path並換成單一獨立 container。
-- 預期最多五個既有 production files；若 bug-fix production net LOC超過 300、觸及超過 8 files或新增
-  production class/module，先回報 deletion candidates、owners與 LOC，再決定拆 PR。
+- `ModelDownloadLifecycle / ModelDownloader` 仍是 download child、deadline、validation 與 explicit
+  deletion owner；不新增 state machine、receipt、module 或 public class。
+- Owner before：AgentManager、QDockWidget 與 MainWindow 共同處理 float transition/sizing。Owner after：
+  AgentManager 建立固定右側 dock，MainWindow 只依 visibility 處理 shell width；沒有 floating
+  lifecycle owner。
+- Deletion candidates：float/dock button、icons/assets、manual title drag/double-click、transition state、
+  top-level callbacks、float-only capture/test paths，以及 failed/cancelled automatic cleanup reason/pending outcome。
+- 不改 model、revision、cache location、Assistant controller/tool calls/RAG/EEG workflow 或
+  `settings.json`。不在 CI 重下 5 GB model。
+- 使用 skill 時實際暴露的 `tdd-guard` / `refactor-slicer` workflow 相對路徑斷鏈依使用者
+  明確要求同步修正；只改這兩個 locator，不擴張為 guidance 全盤審查。
+- 本 slice 預期使用現有 production files 並淨減 LOC；若反而觸發 complexity threshold，
+  停止並重新拆分。
 
 ## Ordered repair
 
-1. 建立 exact red tests：delete success 無 blocking modal且首次 Install有效；兩個 confirmation 的
-   action/cancel role與theme；estimated bytes到99後 stalled child必須 terminal；100不得早於 validation；
-   product MainWindow＋AgentManager Float heartbeat而非 plain fixture。
-2. 以 Settings 內部共用 confirmation builder 取代兩個 `Yes/No` call；success cleanup只觸發 inspection與
-   inline state，不顯示 `Model Deleted`。
-3. 在 desktop entry於任何 Hugging Face import前固定 `HF_HUB_DISABLE_XET=1`。保留 cache byte
-   observability但改為 reviewed stage/bytes copy；加入180秒 inactivity budget。若 budget到期時 pinned
-   snapshot已通過現有 validator，先 revalidate並發布 success；否則發布 timeout並沿用target-only cleanup。
-4. 先用獨立process、5秒 timeout跑 WSLg/xcb matrix：plain/product MainWindow、default/custom title bar、
-   dock constraint/child-only constraint，記錄 `setFloating` 前後 heartbeat。移除 MainWindow 對 dock 的
-   minimum-width mutation並重測。
-5. 若 step 4仍卡在 `QDockWidget.setFloating()`，執行已授權 fallback：QDockWidget dock-only；
-   AgentManager-owned native floating container承載同一 ChatPanel/header；Float/Dock/Hide/toggle/window
-   close/shutdown全由AgentManager路由，舊 `setFloating`、manual system move與duplicate float state刪除。
-6. 重跑 identical focused tests、直接相鄰 UI/download lifecycle sweep、Ruff與Basedpyright。產生並由主
-   agent查看 Settings confirmations、download terminal及 floating/docked candidates；只在要交使用者新
-   exact source手測時再跑 applicable handoff workflow與required CI。
+1. 新增 exact red tests：failed/timeout/cancelled 後 partial 存在且 lifecycle terminal；固定右側
+   dock 不得 movable/floatable，header 無 float action。
+2. 刪除 unsuccessful-download automatic cleanup reasons、pending outcome 與 cleanup branches；explicit
+   `USER_DELETE` 仍使用既有 background cleanup owner。
+3. 在 desktop entry 加入 60 秒 Hugging Face read timeout，順序必須早於任何 product
+   import；保留 180 秒 inactivity 與 two-hour absolute deadline。
+4. 刪除 Float 產品路徑、assets與不再可達的 branches；MainWindow/capture 改為固定右側
+   invariant。
+5. 更新 directly relevant tests、approved UI baseline 與 `docs/architecture/ui.md`，產生並
+   實際查看 default-scale/narrow-width artifact。
+6. 修正兩個 repo-local skill 對 canonical workflow 的相對路徑，並以 locator existence guard
+   驗證。
+7. 跑 focused unit/integration、Ruff、Basedpyright 與 applicable CI；交付新 exact SHA 給使用者
+   手測，批准前不合併。
 
 ## Focused validation
 
-- Unit：downloader、model download lifecycle、Model Settings、AgentManager、MainWindow dock policy。
-- Lower-mock integration：spawned download child stall/reap/terminal；product MainWindow實際 container
-  transition與Qt heartbeat；不以只驗 signal callback的mock取代。
-- UI artifact：default scale＋320 px；loading、delete confirmation、disable confirmation、download
-  finalizing、floating/docked states。Linux offscreen/xvfb不冒充WSLg或Windows native acceptance。
-- Manual：同一 exact SHA 執行 delete→一次install、cold download terminal、兩個 confirmations、Float/Dock
-  10 cycles與drag/resize/hide/show。Source再改即失效；使用者另行明確同意才可merge。
+- TDD red/green：`test_model_download_lifecycle.py`、`test_run_splash_geometry.py`、AgentManager/
+  Assistant toolbar/MainWindow dock policy tests。
+- Same-class sweep：downloader inactivity/reap/validator，explicit model deletion，Settings retry/cancel，
+  product walkthrough 與 fixed-dock recovery capture。
+- UI artifact：default scale 與 320 px 最小寬度，查看 header 操作、Settings、Hide/Show 與
+  無 clipping/overlap；Linux/WSL automated artifact 不取代 native manual acceptance。
+- Manual exact SHA：Settings 顯示已完整安裝而不啟動下載；Local Assistant 回答一個
+  簡單問題；panel 始終固定右側，Settings、Hide/Show 與關閉程式皆可終止。
 
 ## Implementation checkpoint
 
-- Exact red/green已完成：delete success不再開blocking modal；第一次Install會直接送出唯一request；Delete
-  Model與Disable Assistant共用action-specific danger Confirm、neutral Cancel且Cancel為default/escape；實際
-  screenshot確認top-level QMessageBox明確套用Settings palette。
-- Download transport在desktop entry任何product/Hugging Face import前固定停用Xet；cache觀測改顯示bytes，
-  estimate到99後切indeterminate finalizing。180秒無byte成長時，只有既有pinned snapshot validator通過才
-  recovery success，否則typed timeout；lower-mock lifecycle已證明success terminal一定晚於child
-  terminate/join/close。
-- WSLg/xcb exact product MainWindow 10次Float/Dock、resize與hide/show heartbeat在30秒硬上限內通過；
-  `setFloating()`不是目前阻塞點，未建立獨立視窗。真正拖曳風險收斂為上一輪新增的native
-  `startSystemMove()` grab，該路徑與相關state已刪除，浮動窗只走既有pointer-delta move；dock minimum
-  constraint也已從QDockWidget移回content-owned floor。
-- 相鄰sweep為419 tests passed；Ruff check/format與targeted Basedpyright皆通過。ChatPanel UI/UX capture
-  gate通過；主agent已查看520px installing、finalizing、advanced、Delete confirmation與Disable
-  confirmation candidates，未見clipping、overflow或舊灰色danger action。
-- Production觸及五個既有files，167 additions／92 deletions、net `+75` LOC；沒有新增module、public
-  class、owner、state machine、receipt或compatibility path，未觸發complexity review。受保護的
-  `settings.json`未修改或stage。
-- PR #28遠端仍是舊head `202a7b53`；目前是local checkpoint。尚未以新exact source執行使用者cold
-  install與Float/drag手測，故不稱handoff-ready、不合併。
+- Exact red/green 已完成：舊 lifecycle 會在 failed/cancelled terminal 後刪除 partial cache；
+  新 contract 保留同一 model/revision/path 並由 Retry 續傳，explicit Delete 仍走既有
+  target-only background cleanup。Desktop entry 也已鎖定 product import 前設定 60 秒
+  Hugging Face read timeout。
+- Assistant 已收斂為 fixed-right dock；Float/Dock actions、兩個 SVG、manual drag/double-click、
+  top-level transition state/callback 與 MainWindow floating sizing branch 都已刪除。Header 只保留
+  New Chat、Settings、Hide。
+- Focused unit/integration sweep 為 433 passed；後續單點 MainWindow regression 為 1 passed。
+  Ruff check/format、targeted Basedpyright、`git diff --check` 與 agent guidance audit 均通過。
+- ChatPanel recovery artifact 已實際查看 420 px、320 px 與 Settings ready states；canonical UI
+  baseline 重新產生並 validate，7 artifacts 全部通過，最大 mean diff 0.305、changed 0.90%，
+  Assistant approved reference 已更新為 fixed-right header。這是 Linux offscreen evidence，
+  不取代使用者 native 手測。
+- Production 觸及 9 個既有 paths（其中兩個是刪除的 SVG），23 additions／245 deletions，
+  net `-222` LOC；沒有新增 module、public class、owner、state machine、receipt 或 compatibility
+  path，符合 deletion-first。兩個 skill 的 canonical workflow locator 已修正，guidance audit 通過。
+- 受保護的 root `settings.json` 仍是使用者既有本機修改，未被本 slice 修改、stage 或隱藏。
+  MkDocs strict build 已通過。目前仍是未提交 checkpoint；尚缺 exact commit/CI 與使用者手測，
+  因此不稱 handoff-ready、不合併。
 
 ## Stop conditions
 
-- 若 standard HTTP cold download仍在180秒無byte progress後無法bounded terminal，保留checkpoint並記錄
-  exact transport/child cleanup evidence，不以動畫或假100%掩蓋。
-- 若 child被判 stalled但 snapshot validation不通過，不得發布success或保留為installed；只能typed
-  failure與target-only cleanup。
-- 若 child-only constraint後 native `setFloating()`仍凍結，禁止再堆疊timer/geometry/system-move補丁，
-  直接走已授權獨立container fallback。
-- 若任何 visual candidate未由主agent查看、required CI非success或新exact source未由使用者手測通過，
-  不稱handoff-ready、不合入`main`。
+- Partial cache 不得被當成 Installed；validator 未通過只能顯示 Retry/failure。
+- 若保留 partial 導致 retry 新增第二份 cache truth、繞過 resource policy 或無法
+  explicit Delete，停止並修正，不加 compatibility state。
+- 若 fixed-right 後仍有任何 reachable `setFloating()`/manual drag/Float action，不交付手測。
+- 若 artifact 未由主 agent 查看、required CI 未 success 或新 exact source 未由使用者手測
+  通過，只稱 checkpoint，不合入 `main`。
+
+本 branch 完成後才從合併後 `main` 建立獨立 Agent real-runtime smoke slice；不在本 UI/
+download diff 修改 Assistant controller 架構。
 
 長期目標讀 [Roadmap](roadmap.md)，evidence contract只讀 [Validation](../validation/README.md)。

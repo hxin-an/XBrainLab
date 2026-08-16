@@ -227,7 +227,7 @@ def test_assistant_dock_width_keeps_constraints_on_content(main_window, qtbot):
     assert content.minimumWidth() == main_window.ASSISTANT_DOCK_MINIMUM_WIDTH
 
 
-def test_product_shell_repeated_float_dock_keeps_qt_heartbeat(
+def test_product_shell_repeated_hide_show_keeps_fixed_right_dock_and_heartbeat(
     main_window,
     qtbot,
 ):
@@ -237,35 +237,28 @@ def test_product_shell_repeated_float_dock_keeps_qt_heartbeat(
     main_window.agent_manager = manager
     manager.init_ui()
     main_window._bind_assistant_dock_presentation()
-    assert manager.chat_dock is not None
+    dock = manager.chat_dock
+    assert dock is not None
     main_window.resize(1_200, 800)
     main_window.show()
-    manager.chat_dock.show()
+    dock.show()
     main_window._apply_assistant_dock_width()
     heartbeats: list[tuple[int, str]] = []
 
     for cycle in range(10):
-        manager.float_btn.click()
-        QTimer.singleShot(0, lambda index=cycle: heartbeats.append((index, "float")))
+        dock.hide()
+        QTimer.singleShot(0, lambda index=cycle: heartbeats.append((index, "hidden")))
         qtbot.waitUntil(
-            lambda index=cycle: (
-                manager.chat_dock.isFloating()
-                and manager.float_btn.isEnabled()
-                and (index, "float") in heartbeats
-            ),
+            lambda index=cycle: (dock.isHidden() and (index, "hidden") in heartbeats),
             timeout=2_000,
         )
-        manager.chat_dock.resize(440, 600)
-        manager.chat_dock.hide()
-        manager.chat_dock.show()
-
-        manager.float_btn.click()
-        QTimer.singleShot(0, lambda index=cycle: heartbeats.append((index, "dock")))
+        dock.show()
+        QTimer.singleShot(0, lambda index=cycle: heartbeats.append((index, "shown")))
         qtbot.waitUntil(
             lambda index=cycle: (
-                not manager.chat_dock.isFloating()
-                and manager.float_btn.isEnabled()
-                and (index, "dock") in heartbeats
+                not dock.isFloating()
+                and dock.isVisible()
+                and (index, "shown") in heartbeats
             ),
             timeout=2_000,
         )

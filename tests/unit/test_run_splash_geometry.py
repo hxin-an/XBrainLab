@@ -163,6 +163,8 @@ def test_entrypoint_disables_xet_before_any_product_import() -> None:
     source = Path("run.py").read_text(encoding="utf-8")
 
     disable_at = source.index('os.environ["HF_HUB_DISABLE_XET"] = "1"')
+    timeout_at = source.index('os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "60")')
     first_product_import_at = source.index("from XBrainLab")
 
     assert disable_at < first_product_import_at
+    assert timeout_at < first_product_import_at

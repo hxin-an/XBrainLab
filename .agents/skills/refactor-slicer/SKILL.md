@@ -7,7 +7,7 @@ description: "Use for bounded XBrainLab backend, UI, or Assistant refactor slice
 
 Turn an architectural concern into independently reviewable behavior-preserving slices.
 
-Use `workflows/refactor-slice.md` for the procedure. One invocation owns one authorized slice and
+Use `../../workflows/refactor-slice.md` for the procedure. One invocation owns one authorized slice and
 stops after its focused evidence; it does not automatically continue into the next migration.
 
 For state-changing backend/Assistant work, specify command/service shape and publication contract.

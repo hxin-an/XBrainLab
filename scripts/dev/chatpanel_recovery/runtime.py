@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from PIL import Image
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import QApplication, QDockWidget
 
 from scripts.dev.bounded_qt_shutdown import BoundedQtShutdown
@@ -96,7 +96,7 @@ _ACTION_PREPARE_PRECONDITION = (
     "real ApplicationService.execute commands"
 )
 _ACTION_OPEN_ASSISTANT = (
-    "opened and floated the real Assistant dock at capture width so Retry was visible"
+    "opened the fixed-right Assistant dock at capture width so Retry was visible"
 )
 _ACTION_SUBMIT_BLOCKED = (
     "submitted the bounded evaluation request through the ChatPanel composer"
@@ -419,19 +419,19 @@ class _RecoveryWalkthroughDriver:
         if not self._generation_signal_connected:
             controller.generation_event.connect(self._record_generation_event)
             self._generation_signal_connected = True
-        manager.float_btn.click()
         QTimer.singleShot(250, self._size_and_capture_ready)
 
     def _size_and_capture_ready(self) -> None:
         manager = self.window.agent_manager
         dock = manager.chat_dock if manager is not None else None
-        if manager is None or dock is None or not dock.isFloating():
-            self.fail("Assistant dock did not enter the observable floating state.")
+        if manager is None or dock is None or dock.isFloating():
+            self.fail("Assistant dock did not remain in the fixed-right state.")
             return
-        dock.setMinimumSize(560, 700)
-        dock.resize(620, 760)
-        dock.move(0, 0)
+        self.window.resize(
+            max(self.window.width(), 1500), max(self.window.height(), 850)
+        )
         dock.show()
+        self.window.resizeDocks([dock], [620], Qt.Orientation.Horizontal)
         self._record_host_action(_ACTION_OPEN_ASSISTANT)
         title_bar = dock.titleBarWidget()
         if title_bar is not None:

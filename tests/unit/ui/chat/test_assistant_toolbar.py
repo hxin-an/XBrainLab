@@ -8,9 +8,8 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtCore import QEvent, QPoint, QPointF, QSize, Qt
-from PyQt6.QtGui import QMouseEvent
-from PyQt6.QtWidgets import QApplication, QMainWindow
+from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtWidgets import QMainWindow
 
 from XBrainLab.ui.components.agent_manager import AgentManager
 
@@ -65,11 +64,6 @@ def test_assistant_toolbar_direct_buttons_have_one_accessible_contract(
             "Clear the assistant conversation without changing the EEG workflow.",
         ),
         (
-            assistant_manager.float_btn,
-            "Float assistant",
-            "Move the Assistant into a separate movable window.",
-        ),
-        (
             assistant_manager.settings_btn,
             "Assistant settings",
             "Open Assistant settings.",
@@ -120,7 +114,6 @@ def test_assistant_toolbar_narrow_layout_keeps_essential_actions_reachable(
 
     essential = (
         assistant_manager.new_conv_title_btn,
-        assistant_manager.float_btn,
         assistant_manager.settings_btn,
         assistant_manager.close_btn,
     )
@@ -149,73 +142,8 @@ def test_assistant_toolbar_buttons_trigger_their_own_actions(
         assistant_manager.settings_btn.click()
     open_settings.assert_called_once_with()
 
-    assistant_manager.float_btn.click()
-    qtbot.waitUntil(dock.isFloating, timeout=1000)
-    assert assistant_manager.float_btn.toolTip() == "Dock assistant"
-    assert assistant_manager.float_btn.accessibleName() == "Dock assistant"
-
-    assistant_manager.float_btn.click()
-    qtbot.waitUntil(lambda: not dock.isFloating(), timeout=1000)
-    assert assistant_manager.float_btn.toolTip() == "Float assistant"
+    assert dock.isFloating() is False
+    assert not hasattr(assistant_manager, "float_btn")
 
     assistant_manager.close_btn.click()
     assert dock.isHidden()
-
-
-def test_floating_assistant_title_drag_changes_window_geometry(
-    assistant_manager,
-    qtbot,
-    monkeypatch,
-) -> None:
-    dock = assistant_manager.chat_dock
-    title_bar = assistant_manager.assistant_header
-    assert dock is not None
-    dock.show()
-    dock.setFloating(True)
-    dock.move(100, 100)
-    QApplication.processEvents()
-    qtbot.wait(10)
-
-    monkeypatch.setattr(
-        title_bar,
-        "_start_system_move",
-        lambda: False,
-        raising=False,
-    )
-    start = dock.pos()
-    local = QPoint(12, 12)
-    global_start = start + local
-    delta = QPoint(60, 40)
-
-    title_bar.mousePressEvent(
-        QMouseEvent(
-            QEvent.Type.MouseButtonPress,
-            QPointF(local),
-            QPointF(global_start),
-            Qt.MouseButton.LeftButton,
-            Qt.MouseButton.LeftButton,
-            Qt.KeyboardModifier.NoModifier,
-        )
-    )
-    title_bar.mouseMoveEvent(
-        QMouseEvent(
-            QEvent.Type.MouseMove,
-            QPointF(local + delta),
-            QPointF(global_start + delta),
-            Qt.MouseButton.NoButton,
-            Qt.MouseButton.LeftButton,
-            Qt.KeyboardModifier.NoModifier,
-        )
-    )
-    title_bar.mouseReleaseEvent(
-        QMouseEvent(
-            QEvent.Type.MouseButtonRelease,
-            QPointF(local + delta),
-            QPointF(global_start + delta),
-            Qt.MouseButton.LeftButton,
-            Qt.MouseButton.NoButton,
-            Qt.KeyboardModifier.NoModifier,
-        )
-    )
-
-    assert dock.pos() == start + delta

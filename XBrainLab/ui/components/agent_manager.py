@@ -5,7 +5,6 @@ from typing import Any, cast
 
 from PyQt6.QtCore import (
     QObject,
-    QPoint,
     QSize,
     Qt,
     QTimer,
@@ -193,19 +192,16 @@ _ASSISTANT_TERMINAL_RENDER_RETRY_INTERVAL_MS = 500
 
 
 class AssistantDockTitleBar(QWidget):
-    """Product header for the assistant dock with native drag behavior."""
+    """Product header for the fixed-right assistant dock."""
 
     MINIMUM_DOCK_WIDTH = 320
 
-    def __init__(self, on_float_toggle, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self._on_float_toggle = on_float_toggle
         self.title_label: QLabel | None = None
         self.status_indicator: QWidget | None = None
         self.status_dot: QFrame | None = None
         self.status_badge: QLabel | None = None
-        self._drag_origin_global: QPoint | None = None
-        self._drag_origin_window: QPoint | None = None
 
     def set_assistant_status(self, text: str) -> None:
         """Expose runtime status without adding a competing header badge."""
@@ -242,58 +238,6 @@ class AssistantDockTitleBar(QWidget):
         layout.invalidate()
         layout.activate()
         self.updateGeometry()
-
-    def mousePressEvent(self, event):  # noqa: N802
-        """Begin a floating-window drag from empty title space."""
-        dock = self.parentWidget()
-        if (
-            event.button() == Qt.MouseButton.LeftButton
-            and isinstance(dock, QDockWidget)
-            and dock.isFloating()
-        ):
-            self._drag_origin_global = event.globalPosition().toPoint()
-            self._drag_origin_window = dock.pos()
-            event.accept()
-            return
-        if event.button() == Qt.MouseButton.LeftButton:
-            event.ignore()
-            return
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):  # noqa: N802
-        """Move a floating dock from the pointer delta owned by this title bar."""
-        dock = self.parentWidget()
-        if (
-            isinstance(dock, QDockWidget)
-            and dock.isFloating()
-            and event.buttons() & Qt.MouseButton.LeftButton
-            and self._drag_origin_global is not None
-            and self._drag_origin_window is not None
-        ):
-            delta = event.globalPosition().toPoint() - self._drag_origin_global
-            dock.move(self._drag_origin_window + delta)
-            event.accept()
-            return
-        event.ignore()
-
-    def mouseReleaseEvent(self, event):  # noqa: N802
-        """Finish one owned floating-window drag."""
-        if self._drag_origin_global is not None:
-            self._drag_origin_global = None
-            self._drag_origin_window = None
-            event.accept()
-            return
-        event.ignore()
-
-    def mouseDoubleClickEvent(self, event):  # noqa: N802
-        """Mirror native title-bar double-click float/dock behavior."""
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_origin_global = None
-            self._drag_origin_window = None
-            self._on_float_toggle()
-            event.accept()
-            return
-        super().mouseDoubleClickEvent(event)
 
 
 class AgentManager(QObject):
@@ -368,8 +312,6 @@ class AgentManager(QObject):
 
         self.chat_panel: ChatPanel | None = None
         self.chat_dock: QDockWidget | None = None
-        self._float_transition_pending = False
-
         self.chat_controller = ChatController()
         # Connect Chat Controller Signals
         self.chat_controller.processing_state_changed.connect(
@@ -464,7 +406,7 @@ class AgentManager(QObject):
         """Initialize the chat dock widget and panel UI components.
 
         Creates the ``ChatPanel``, wires its signals, builds the dock
-        title bar with float/settings/new-conversation buttons, and
+        title bar with settings/new-conversation buttons, and
         adds the dock to the main window's right area.
         """
         chat_panel = ChatPanel()
@@ -503,17 +445,12 @@ class AgentManager(QObject):
         # chrome. Keep the supported 320 px floor on the actual assistant
         # surface so Windows does not receive a narrower first layout.
         chat_panel.setMinimumWidth(320)
-        chat_dock.setAllowedAreas(
-            Qt.DockWidgetArea.RightDockWidgetArea
-            | Qt.DockWidgetArea.LeftDockWidgetArea,
-        )
+        chat_dock.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
         chat_dock.setFeatures(
-            QDockWidget.DockWidgetFeature.DockWidgetClosable
-            | QDockWidget.DockWidgetFeature.DockWidgetMovable
-            | QDockWidget.DockWidgetFeature.DockWidgetFloatable,
+            QDockWidget.DockWidgetFeature.DockWidgetClosable,
         )
-        # Custom title bar with conversation controls and native dock dragging.
-        title_bar = AssistantDockTitleBar(self._toggle_float, chat_dock)
+        # Custom title bar for the fixed-right Assistant surface.
+        title_bar = AssistantDockTitleBar(chat_dock)
         self.assistant_header = title_bar
         title_bar.setStyleSheet(Stylesheets.AGENT_TITLE_BAR)
         title_layout = QHBoxLayout(title_bar)
@@ -550,25 +487,6 @@ class AgentManager(QObject):
         self.new_conv_title_btn.clicked.connect(self.start_new_conversation)
         title_layout.addWidget(self.new_conv_title_btn)
 
-        self._float_icon = QIcon(Icons.FLOAT.path)
-        if self._float_icon.isNull():
-            self._float_icon = title_style.standardIcon(
-                QStyle.StandardPixmap.SP_TitleBarMaxButton
-            )
-        self._dock_icon = QIcon(Icons.DOCK.path)
-        if self._dock_icon.isNull():
-            self._dock_icon = title_style.standardIcon(
-                QStyle.StandardPixmap.SP_TitleBarNormalButton
-            )
-        self.float_btn = QPushButton()
-        self.float_btn.setIcon(self._float_icon)
-        self.float_btn.setIconSize(QSize(16, 16))
-        self.float_btn.setFixedSize(30, 30)
-        self.float_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
-        self.float_btn.clicked.connect(self._toggle_float)
-        self._render_float_button_state(False)
-        title_layout.addWidget(self.float_btn)
-
         # Settings is a direct action; dock controls have their own buttons.
         self.settings_btn = QPushButton()
         settings_icon = QIcon(Icons.SETTINGS.path)
@@ -604,8 +522,6 @@ class AgentManager(QObject):
         title_layout.addWidget(self.close_btn)
 
         chat_dock.setTitleBarWidget(title_bar)
-        chat_dock.topLevelChanged.connect(self._on_dock_top_level_changed)
-
         self.main_window.addDockWidget(
             Qt.DockWidgetArea.RightDockWidgetArea,
             chat_dock,
@@ -626,58 +542,6 @@ class AgentManager(QObject):
             self.main_window.ai_btn.blockSignals(True)
             self.main_window.ai_btn.setChecked(visible)
             self.main_window.ai_btn.blockSignals(False)
-
-    def _toggle_float(self):
-        """Queue one floating/docked transition after the click dispatch."""
-        dock = self.chat_dock
-        if dock is None or self._float_transition_pending:
-            return
-        self._float_transition_pending = True
-        if hasattr(self, "float_btn"):
-            self.float_btn.setEnabled(False)
-        should_float = not dock.isFloating()
-        QTimer.singleShot(
-            0,
-            lambda owned_dock=dock, target=should_float: self._apply_float_state(
-                owned_dock,
-                target,
-            ),
-        )
-
-    def _apply_float_state(self, dock: QDockWidget, should_float: bool) -> None:
-        """Apply a queued transition only to the still-owned dock."""
-        if self.chat_dock is dock:
-            dock.setFloating(should_float)
-        QTimer.singleShot(0, self._finish_float_transition)
-
-    def _finish_float_transition(self) -> None:
-        """Release the view-local transition guard on a settled event loop."""
-        self._float_transition_pending = False
-        if hasattr(self, "float_btn"):
-            self.float_btn.setEnabled(True)
-
-    def _on_dock_top_level_changed(self, floating: bool) -> None:
-        """Keep the assistant dock usable when it becomes a floating window."""
-        self._render_float_button_state(floating)
-
-    def _render_float_button_state(self, floating: bool) -> None:
-        """Render the direct Float/Dock action from the dock's actual state."""
-        if not hasattr(self, "float_btn"):
-            return
-        if floating:
-            self.float_btn.setIcon(self._dock_icon)
-            self.float_btn.setToolTip("Dock assistant")
-            self.float_btn.setAccessibleName("Dock assistant")
-            self.float_btn.setAccessibleDescription(
-                "Return the Assistant to the main window."
-            )
-            return
-        self.float_btn.setIcon(self._float_icon)
-        self.float_btn.setToolTip("Float assistant")
-        self.float_btn.setAccessibleName("Float assistant")
-        self.float_btn.setAccessibleDescription(
-            "Move the Assistant into a separate movable window."
-        )
 
     def toggle(self):
         """Toggle the Agent dock visibility, initializing on first open."""

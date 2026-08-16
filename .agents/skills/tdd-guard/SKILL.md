@@ -7,7 +7,7 @@ description: "Use for XBrainLab bug/core behavior test-first loops and passing c
 
 Choose the baseline that matches the change.
 
-Use `workflows/tdd-change.md` for the procedure. A bug needs the smallest red reproduction for the
+Use `../../workflows/tdd-change.md` for the procedure. A bug needs the smallest red reproduction for the
 observable defect; a behavior-preserving refactor needs a passing characterization baseline, not an
 artificial red test. After the change, run the same protection and only directly relevant adjacent
 evidence.

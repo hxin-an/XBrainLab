@@ -55,10 +55,11 @@ MODEL_DOWNLOAD_INACTIVITY_SEC = 3 * 60
 MODEL_DOWNLOAD_DEADLINE_SEC = 2 * 60 * 60
 MODEL_DOWNLOAD_TIMEOUT_PUBLIC_MESSAGE = (
     "Model download stopped after making no progress within the allowed time. "
-    "Check your internet connection, then try again."
+    "Check your internet connection, then retry to resume the saved download."
 )
 MODEL_DOWNLOAD_FAILURE_PUBLIC_MESSAGE = (
-    "Model download failed. Check the application log and try again."
+    "Model download failed. Check the application log, then retry to resume "
+    "the saved download."
 )
 MODEL_DOWNLOAD_TIMEOUT_DIAGNOSTIC = "model_download_deadline_exceeded"
 MODEL_DOWNLOAD_INACTIVITY_DIAGNOSTIC = "model_download_inactivity_timeout"
