@@ -21,10 +21,12 @@ from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.core.model_catalog import (
+    format_bytes,
     inspect_model_download_consumption,
     local_model_spec,
     model_cache_candidates,
     model_cache_complete,
+    model_snapshot_path,
     plan_model_download,
     validate_downloaded_model_cache,
 )
@@ -49,15 +51,18 @@ PROCESS_CLEANUP_MAX_ATTEMPTS = 3
 PROCESS_CLEANUP_RETRY_DELAY_SEC = 0.05
 DOWNLOAD_PROCESS_START_METHOD = "spawn"
 DOWNLOAD_CONSUMPTION_POLL_INTERVAL_SEC = 0.5
+MODEL_DOWNLOAD_INACTIVITY_SEC = 3 * 60
 MODEL_DOWNLOAD_DEADLINE_SEC = 2 * 60 * 60
 MODEL_DOWNLOAD_TIMEOUT_PUBLIC_MESSAGE = (
-    "Model download reached the two-hour time limit and was stopped safely. "
-    "Check your internet connection, then try again."
+    "Model download stopped after making no progress within the allowed time. "
+    "Check your internet connection, then retry to resume the saved download."
 )
 MODEL_DOWNLOAD_FAILURE_PUBLIC_MESSAGE = (
-    "Model download failed. Check the application log and try again."
+    "Model download failed. Check the application log, then retry to resume "
+    "the saved download."
 )
 MODEL_DOWNLOAD_TIMEOUT_DIAGNOSTIC = "model_download_deadline_exceeded"
+MODEL_DOWNLOAD_INACTIVITY_DIAGNOSTIC = "model_download_inactivity_timeout"
 
 
 class _DownloadQueue(Protocol):
@@ -308,6 +313,8 @@ class DownloadWorker(QObject):
         self._pending_terminal_payload = ""
         self._terminal_emitted = False
         self._next_consumption_check_at = 0.0
+        self._last_consumption_bytes: int | None = None
+        self._last_consumption_growth_at = 0.0
         spec = local_model_spec(str(repo_id))
         self._estimated_download_bytes = (
             int(spec.estimated_download_gb * 1_000_000_000) if spec is not None else 0
@@ -339,6 +346,7 @@ class DownloadWorker(QObject):
                 process.start()
                 self._child_start_confirmed = True
                 self._started_at = time.monotonic()
+                self._last_consumption_growth_at = self._started_at
                 self._next_consumption_check_at = (
                     self._started_at + DOWNLOAD_CONSUMPTION_POLL_INTERVAL_SEC
                 )
@@ -428,16 +436,43 @@ class DownloadWorker(QObject):
             completed_at + DOWNLOAD_CONSUMPTION_POLL_INTERVAL_SEC
         )
         if consumption.ok:
+            model_bytes = max(0, int(consumption.model_cache_bytes))
+            if (
+                self._last_consumption_bytes is None
+                or model_bytes > self._last_consumption_bytes
+            ):
+                self._last_consumption_growth_at = completed_at
+            self._last_consumption_bytes = model_bytes
             if self._estimated_download_bytes > 0:
                 percent = min(
                     99,
-                    int(
-                        consumption.model_cache_bytes
-                        * 100
-                        // self._estimated_download_bytes
-                    ),
+                    int(model_bytes * 100 // self._estimated_download_bytes),
                 )
-                self._publish_progress(percent, "Downloading model files...")
+                message = (
+                    "Finalizing and verifying model…"
+                    if percent >= 99
+                    else (
+                        f"Downloaded {format_bytes(model_bytes)} of about "
+                        f"{format_bytes(self._estimated_download_bytes)}."
+                    )
+                )
+                self._publish_progress(percent, message)
+            if (
+                completed_at - self._last_consumption_growth_at
+                >= MODEL_DOWNLOAD_INACTIVITY_SEC
+            ):
+                snapshot = model_snapshot_path(self.cache_dir, self.repo_id)
+                if snapshot is not None:
+                    validation = validate_downloaded_model_cache(
+                        self.repo_id,
+                        self.cache_dir,
+                        str(snapshot),
+                    )
+                    if validation.ok and validation.snapshot_path:
+                        self._record_pending_success(validation.snapshot_path)
+                        return False
+                self._record_pending_failure(MODEL_DOWNLOAD_INACTIVITY_DIAGNOSTIC)
+                return False
             return True
         self._record_pending_failure(
             consumption.diagnostic_message or consumption.public_message
@@ -971,7 +1006,11 @@ class ModelDownloader(QObject):
             if error == "Cancelled by user"
             else (
                 ModelDownloadFailureCode.TIMEOUT
-                if error == MODEL_DOWNLOAD_TIMEOUT_DIAGNOSTIC
+                if error
+                in {
+                    MODEL_DOWNLOAD_TIMEOUT_DIAGNOSTIC,
+                    MODEL_DOWNLOAD_INACTIVITY_DIAGNOSTIC,
+                }
                 else ModelDownloadFailureCode.FAILED
             )
         )

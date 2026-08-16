@@ -12,9 +12,12 @@ from typing import Any, cast
 from unittest.mock import MagicMock, call, patch
 
 import pytest
-from PyQt6.QtCore import QEvent, QObject, QPointF, Qt, pyqtSignal
-from PyQt6.QtGui import QMouseEvent
-from PyQt6.QtWidgets import QApplication, QMainWindow, QToolButton
+from PyQt6.QtCore import QObject, Qt, pyqtSignal
+from PyQt6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QToolButton,
+)
 
 from XBrainLab.backend.application import (
     APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
@@ -430,14 +433,6 @@ class TestAgentManagerMethods:
     def test_update_ai_btn_state(self, agent_mgr):
         agent_mgr.update_ai_btn_state(True)
         agent_mgr.main_window.ai_btn.setChecked.assert_called()
-
-    def test_toggle_float_no_dock(self, agent_mgr):
-        agent_mgr.chat_dock = None
-        agent_mgr._place_floating_dock = MagicMock()
-
-        agent_mgr._toggle_float()
-
-        agent_mgr._place_floating_dock.assert_not_called()
 
     def test_backend_publication_events_ignore_only_old_or_equal_revisions(
         self,
@@ -1122,7 +1117,6 @@ class TestAgentManagerMethods:
         self,
         agent_mgr,
     ) -> None:
-        agent_mgr._last_user_input = "Review the training configuration"
         correlation = _admit_ui_turn(agent_mgr)
         presentation = AssistantResponsePresentation(
             text="The assistant could not complete the request.",
@@ -1141,7 +1135,6 @@ class TestAgentManagerMethods:
         self,
         agent_mgr,
     ) -> None:
-        agent_mgr._last_user_input = "Review the training configuration"
         correlation = _admit_ui_turn(agent_mgr)
         presentation = AssistantResponsePresentation(
             text="Open settings before retrying.",
@@ -2857,7 +2850,6 @@ class TestAgentManagerMethods:
         agent_mgr,
     ):
         agent_mgr.chat_panel = MagicMock()
-        agent_mgr._last_user_input = "active request"
         agent_mgr._assistant_runtime.reset_conversation.return_value = (
             RuntimeCommandAdmissionResult(
                 command_name="reset",
@@ -2869,7 +2861,6 @@ class TestAgentManagerMethods:
         agent_mgr.start_new_conversation()
 
         agent_mgr.chat_controller.clear_conversation.assert_not_called()
-        assert agent_mgr._last_user_input == "active request"
         agent_mgr.chat_panel.show_notice.assert_called_once_with(
             "The assistant is still processing the previous request."
         )
@@ -3501,9 +3492,10 @@ class TestAgentManagerMethods:
 
     def test_prepare_model_deletion_no_controller(self, agent_mgr):
         agent_mgr._assistant_runtime.controller = None
+        agent_mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.return_value = False
 
         assert agent_mgr.prepare_model_deletion("test") is True
-        agent_mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.assert_not_called()
+        agent_mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.assert_called_once_with()
 
     def test_prepare_model_deletion_allows_inactive_runtime(self, agent_mgr):
         agent_mgr._assistant_runtime.controller = MagicMock()
@@ -3515,18 +3507,9 @@ class TestAgentManagerMethods:
     def test_prepare_model_deletion_blocks_active_local_runtime(self, agent_mgr):
         agent_mgr._assistant_runtime.controller = MagicMock()
         agent_mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.return_value = True
-        with patch(
-            "XBrainLab.ui.components.agent_manager.QMessageBox.warning"
-        ) as warning:
-            assert agent_mgr.prepare_model_deletion("test") is False
+        assert agent_mgr.prepare_model_deletion("test") is False
 
         agent_mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.assert_called_once_with()
-        warning.assert_called_once_with(
-            agent_mgr.main_window,
-            "Assistant Model In Use",
-            "The AI assistant is currently using this local model.\n"
-            "Close the assistant or select a different model before deleting it.",
-        )
 
     def test_on_processing_state_changed(self, agent_mgr):
         agent_mgr.chat_panel = MagicMock()
@@ -3775,7 +3758,7 @@ class TestAgentManagerMethods:
         agent_mgr._assistant_runtime.activate_persisted.assert_called_once_with()
         assert agent_mgr._runtime_unavailable_notice is None
 
-    def test_init_ui_uses_draggable_product_dock_titlebar(self, qtbot):
+    def test_init_ui_uses_fixed_right_product_dock_titlebar(self, qtbot):
         from PyQt6.QtWidgets import QDockWidget, QLabel
 
         from XBrainLab.ui.components.agent_manager import (
@@ -3796,9 +3779,10 @@ class TestAgentManagerMethods:
 
         assert isinstance(manager.chat_dock.titleBarWidget(), AssistantDockTitleBar)
         features = manager.chat_dock.features()
-        assert features & QDockWidget.DockWidgetFeature.DockWidgetMovable
-        assert features & QDockWidget.DockWidgetFeature.DockWidgetFloatable
-        assert manager.chat_dock.minimumWidth() >= 320
+        assert features & QDockWidget.DockWidgetFeature.DockWidgetClosable
+        assert not features & QDockWidget.DockWidgetFeature.DockWidgetMovable
+        assert not features & QDockWidget.DockWidgetFeature.DockWidgetFloatable
+        assert manager.chat_dock.allowedAreas() == Qt.DockWidgetArea.RightDockWidgetArea
         assert manager.chat_panel.minimumWidth() >= 320
         title = manager.chat_dock.findChild(QLabel, "AssistantDockTitle")
         assert title is not None
@@ -3816,7 +3800,6 @@ class TestAgentManagerMethods:
         manager.chat_panel.retry_local_assistant_requested.emit()
         manager.retry_local_assistant.assert_called_once_with()
         for control in (
-            manager.retry_title_btn,
             manager.new_conv_title_btn,
             manager.settings_btn,
             manager.close_btn,
@@ -3824,72 +3807,45 @@ class TestAgentManagerMethods:
             assert control.width() >= 30
             assert control.height() >= 30
             assert control.focusPolicy() == Qt.FocusPolicy.StrongFocus
-        assert not hasattr(manager, "float_btn")
+        assert not hasattr(manager, "retry_title_btn")
+        assert not hasattr(manager, "settings_menu")
         assert manager.close_btn.text() == ""
         assert not manager.close_btn.icon().isNull()
         assert manager.close_btn.accessibleName() == "Hide assistant"
-        assert manager.new_conv_title_btn.text() == ""
-        assert not manager.new_conv_title_btn.icon().isNull()
+        assert manager.new_conv_title_btn.text() == "+"
+        assert manager.new_conv_title_btn.icon().isNull()
         assert manager.new_conv_title_btn.toolTip() == "New chat"
         assert manager.new_conv_title_btn.accessibleName() == "New chat"
+        assert not hasattr(manager, "float_btn")
         assert manager.settings_btn.text() == ""
         assert not manager.settings_btn.icon().isNull()
-        assert manager.settings_btn.toolTip() == "Assistant options"
-        assert manager.settings_btn.accessibleName() == "Assistant options"
+        assert manager.settings_btn.toolTip() == "Assistant settings"
+        assert manager.settings_btn.accessibleName() == "Assistant settings"
         assert manager.settings_btn.isCheckable() is False
-        menu_text = [
-            action.text() for action in manager.settings_menu.actions() if action.text()
-        ]
-        assert menu_text == ["Assistant settings", "Float assistant", "New chat"]
-        assert manager.float_action.text() == "Float assistant"
-        assert manager.clear_conversation_title_action.text() == "New chat"
         manager.chat_dock.show()
         manager.close_btn.click()
         assert manager.chat_dock.isHidden()
 
-    def test_dock_titlebar_empty_space_preserves_native_drag_events(self, qtbot):
-        from XBrainLab.ui.components.agent_manager import AssistantDockTitleBar
+    def test_fixed_right_dock_ignores_titlebar_double_click_and_reopens(self, qtbot):
+        from XBrainLab.ui.components.agent_manager import AgentManager
 
-        toggle = MagicMock()
-        title_bar = AssistantDockTitleBar(toggle)
-        qtbot.addWidget(title_bar)
-
-        for event_type in (
-            QEvent.Type.MouseButtonPress,
-            QEvent.Type.MouseMove,
-            QEvent.Type.MouseButtonRelease,
-        ):
-            event = QMouseEvent(
-                event_type,
-                QPointF(8, 8),
-                QPointF(8, 8),
-                Qt.MouseButton.LeftButton,
-                Qt.MouseButton.LeftButton,
-                Qt.KeyboardModifier.NoModifier,
-            )
-            event.accept()
-
-            if event_type == QEvent.Type.MouseButtonPress:
-                title_bar.mousePressEvent(event)
-            elif event_type == QEvent.Type.MouseMove:
-                title_bar.mouseMoveEvent(event)
-            else:
-                title_bar.mouseReleaseEvent(event)
-
-            assert not event.isAccepted()
-
-        double_click = QMouseEvent(
-            QEvent.Type.MouseButtonDblClick,
-            QPointF(8, 8),
-            QPointF(8, 8),
-            Qt.MouseButton.LeftButton,
-            Qt.MouseButton.LeftButton,
-            Qt.KeyboardModifier.NoModifier,
-        )
-        title_bar.mouseDoubleClickEvent(double_click)
-
-        toggle.assert_called_once()
-        assert double_click.isAccepted()
+        main_window = cast(Any, QMainWindow())
+        main_window.ai_btn = MagicMock()
+        qtbot.addWidget(main_window)
+        study = MagicMock()
+        study.get_controller.return_value = MagicMock()
+        manager = cast(Any, AgentManager(main_window, study))
+        manager.init_ui()
+        assert manager.chat_dock is not None
+        main_window.show()
+        manager.chat_dock.show()
+        qtbot.mouseDClick(manager.assistant_header, Qt.MouseButton.LeftButton)
+        qtbot.wait(10)
+        assert manager.chat_dock.isFloating() is False
+        manager.chat_dock.hide()
+        manager.chat_dock.show()
+        assert manager.chat_dock.isFloating() is False
+        assert manager.chat_dock.allowedAreas() == Qt.DockWidgetArea.RightDockWidgetArea
 
     def test_toggle_first_open_unavailable_keeps_panel_open(self, agent_mgr):
         agent_mgr._assistant_runtime.initialized = False
@@ -4309,10 +4265,9 @@ class TestAgentManagerProductChatFlow:
         try:
             assert manager.chat_panel is not None
             assert manager.assistant_header is not None
-            manager._last_user_input = "Configure training for 20 epochs."
+            prompt = "Configure training for 20 epochs."
             correlation = _admit_ui_turn(manager, turn_id=902)
             manager.assistant_header.resize(320, manager.assistant_header.height())
-            manager.assistant_header._sync_responsive_actions()
 
             manager._handle_response_presentation(
                 AssistantResponsePresentation(
@@ -4322,14 +4277,13 @@ class TestAgentManagerProductChatFlow:
                     actions=(
                         AssistantResponseAction.send_message(
                             "Try again",
-                            manager._last_user_input,
+                            prompt,
                         ),
                     ),
                 )
             )
             QApplication.processEvents()
 
-            assert manager.retry_title_btn.isHidden()
             retry_buttons = [
                 button
                 for button in manager.chat_panel.response_actions_widget.findChildren(
@@ -4342,7 +4296,7 @@ class TestAgentManagerProductChatFlow:
             retry_buttons[0].click()
             QApplication.processEvents()
 
-            assert fake.received_inputs == [manager._last_user_input]
+            assert fake.received_inputs == [prompt]
         finally:
             manager.close()
 
@@ -4490,23 +4444,6 @@ class TestAgentManagerProductChatFlow:
         assert manager.chat_controller.is_processing is False
         assert manager.chat_panel.is_processing is False
 
-    def test_retry_replays_last_request_through_real_panel_admission(self, qtbot):
-        manager, fake = _make_real_manager_with_fake_controller(qtbot, "normal")
-        manager.chat_panel.input_field.setText("inspect the loaded EEG")
-        manager.chat_panel._on_send()
-
-        manager.retry_last_user_input()
-
-        assert fake.received_inputs == [
-            "inspect the loaded EEG",
-            "inspect the loaded EEG",
-        ]
-        assert [
-            message["content"]
-            for message in manager.chat_controller.messages
-            if message["role"] == "user"
-        ] == ["inspect the loaded EEG", "inspect the loaded EEG"]
-
     def test_empty_response_fallback_is_visible(self, qtbot):
         manager, _fake = _make_real_manager_with_fake_controller(qtbot, "empty")
 
@@ -4537,16 +4474,6 @@ class TestAgentManagerProductChatFlow:
         )
         assert all("Model load failed" not in message for message in assistant_messages)
         assert manager.chat_panel.is_processing is False
-
-    def test_retry_without_prior_request_uses_notice_not_transcript(self, qtbot):
-        manager, _fake = _make_real_manager_with_fake_controller(qtbot, "normal")
-
-        manager.retry_last_user_input()
-
-        assert manager.chat_controller.messages == []
-        assert manager.chat_panel.notice_label.isHidden() is False
-        assert "Retry" in manager.chat_panel.notice_label.text()
-        assert manager.retry_title_btn.isEnabled() is False
 
     def test_local_unavailable_first_open_is_visible_with_real_panel(self, qtbot):
         from XBrainLab.backend.study import Study

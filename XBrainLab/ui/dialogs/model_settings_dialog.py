@@ -36,6 +36,10 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.llm.agent.runtime_state import (
+    AssistantRuntimePhase,
+    AssistantRuntimeSnapshot,
+)
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.downloader import (
     ModelDownloadFailureCode,
@@ -192,6 +196,19 @@ _ASSISTANT_SETTINGS_STYLE = f"""
         background-color: {Theme.BTN_DANGER_BG};
         border-color: {Theme.BTN_DANGER_BORDER};
     }}
+    QPushButton#AssistantDestructiveConfirmButton {{
+        min-height: 32px;
+        color: {Theme.LOG_ERROR};
+        background-color: {Theme.BTN_DANGER_BG};
+        border: 1px solid {Theme.BTN_DANGER_BORDER};
+        border-radius: 5px;
+        padding: 3px 12px;
+    }}
+    QPushButton#AssistantDestructiveConfirmButton:hover {{
+        color: {Theme.TEXT_PRIMARY};
+        background-color: {Theme.BTN_DANGER_HOVER};
+        border-color: {Theme.ACCENT_ERROR};
+    }}
     QPushButton#AssistantDisableButton {{
         min-height: 32px;
         color: {Theme.LOG_ERROR};
@@ -316,6 +333,8 @@ class ModelSettingsDialog(BaseDialog):
         self._updating_response_presets = False
         self._download_observers_attached = False
         self._deactivation_observer_attached = False
+        self._runtime_observer_attached = False
+        self._assistant_runtime_snapshot: AssistantRuntimeSnapshot | None = None
 
         super().__init__(
             parent=parent,
@@ -347,6 +366,19 @@ class ModelSettingsDialog(BaseDialog):
         if callable(connect_deactivation):
             connect_deactivation(self.on_assistant_deactivation_finished)
             self._deactivation_observer_attached = True
+        assistant_runtime = getattr(self.agent_manager, "assistant_runtime", None)
+        runtime_signal = getattr(
+            assistant_runtime,
+            "runtime_snapshot_changed",
+            None,
+        )
+        connect_runtime = getattr(runtime_signal, "connect", None)
+        if callable(connect_runtime):
+            connect_runtime(self._on_assistant_runtime_snapshot_changed)
+            self._runtime_observer_attached = True
+        current_runtime = getattr(assistant_runtime, "current", None)
+        if isinstance(current_runtime, AssistantRuntimeSnapshot):
+            self._assistant_runtime_snapshot = current_runtime
         self.load_state()
         self._schedule_fit()
 
@@ -596,18 +628,22 @@ class ModelSettingsDialog(BaseDialog):
 
         self.assistant_group_label = self._section_label("Assistant")
         advanced_layout.addWidget(self.assistant_group_label)
+        assistant_state_layout = QHBoxLayout()
+        assistant_state_layout.setContentsMargins(2, 0, 0, 0)
+        assistant_state_layout.setSpacing(8)
+        self.assistant_state_label = QLabel("", self.advanced_content)
+        self.assistant_state_label.setObjectName("AssistantSettingsMuted")
+        assistant_state_layout.addWidget(self.assistant_state_label, 1)
         self.disable_assistant_btn = QPushButton(
-            "Disable Assistant…",
+            "Disable",
             self.advanced_content,
         )
         self.disable_assistant_btn.setObjectName("AssistantDisableButton")
         self.disable_assistant_btn.clicked.connect(
             self.on_disable_assistant_clicked,
         )
-        advanced_layout.addWidget(
-            self.disable_assistant_btn,
-            alignment=Qt.AlignmentFlag.AlignLeft,
-        )
+        assistant_state_layout.addWidget(self.disable_assistant_btn)
+        advanced_layout.addLayout(assistant_state_layout)
         self.advanced_content.setVisible(False)
         layout.addWidget(self.advanced_content)
 
@@ -842,21 +878,14 @@ class ModelSettingsDialog(BaseDialog):
         """Render a coherent model state without re-querying the filesystem."""
         self._current_local_model_state = state
         self.local_downloaded = state.installed
-        if state.installed:
-            self.local_action_btn.setText("Delete")
-            self._set_model_action_destructive(True)
-        else:
+        if not state.installed:
             self.local_status_label.setText("Not installed")
             self._set_status_text_color(
                 self.local_status_label,
                 Theme.TEXT_SECONDARY,
             )
             self._set_model_status_tone("neutral")
-            self.local_action_btn.setText("Install Model")
-            self._set_model_action_destructive(False)
-        self.local_action_btn.setEnabled(
-            not self.is_downloading and not state.diagnostic_message
-        )
+        self._render_local_model_action(state)
 
         if state.installed:
             self.local_resource_label.setText(
@@ -909,6 +938,43 @@ class ModelSettingsDialog(BaseDialog):
             )
             if not state.installed:
                 self._set_model_status_tone("neutral")
+
+    def _render_local_model_action(
+        self,
+        state: ModelStatusInspectionResult,
+    ) -> None:
+        """Project download and runtime ownership onto the cache action."""
+        if state.installed and self._selected_model_is_loading():
+            self.local_action_btn.setText("Loading…")
+            self._set_model_action_destructive(False)
+            self.local_action_btn.setEnabled(False)
+            return
+        self.local_action_btn.setText("Delete" if state.installed else "Install Model")
+        self._set_model_action_destructive(state.installed)
+        self.local_action_btn.setEnabled(
+            not self.is_downloading and not state.diagnostic_message
+        )
+
+    def _selected_model_is_loading(self) -> bool:
+        """Return whether the runtime is loading the selected local model."""
+        snapshot = self._assistant_runtime_snapshot
+        if snapshot is None or snapshot.phase is not AssistantRuntimePhase.LOADING:
+            return False
+        if snapshot.backend_mode not in {"", "local"}:
+            return False
+        loading_model = snapshot.requested_model_id or snapshot.model_id
+        return not loading_model or loading_model == self._selected_model_id()
+
+    def _on_assistant_runtime_snapshot_changed(self, snapshot: object) -> None:
+        """Refresh the cache action from the existing runtime owner."""
+        if not self._runtime_observer_attached:
+            return
+        if not isinstance(snapshot, AssistantRuntimeSnapshot):
+            return
+        self._assistant_runtime_snapshot = snapshot
+        state = self._current_local_model_state
+        if state is not None and state.request.model_name == self._selected_model_id():
+            self._render_local_model_action(state)
 
     def check_local_model_status(self, *_args):
         """Request one coherent status snapshot without blocking the GUI."""
@@ -1060,58 +1126,121 @@ class ModelSettingsDialog(BaseDialog):
     def _delete_model(self):
         """Delete the selected local model from cache after confirmation."""
         repo_id = self._selected_model_id()
-        reply = QMessageBox.warning(
-            self,
-            "Delete Model",
-            f"Are you sure you want to delete {repo_id}?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if reply == QMessageBox.StandardButton.Yes:
-            # SAFETY: Switch backend if this model is active
-            if self.agent_manager and not self.agent_manager.prepare_model_deletion(
-                repo_id
-            ):
-                return
+        if not self._model_deletion_is_allowed(repo_id):
+            return
+        if not self._confirm_destructive_action(
+            title="Delete Model",
+            text=(
+                f"Delete {repo_id} from this device?\n\nYou can install it again later."
+            ),
+            confirm_text="Delete Model",
+        ):
+            return
+        if not self._model_deletion_is_allowed(repo_id):
+            return
 
-            started = self.download_lifecycle.request_cache_removal(
-                repo_id,
-                self.config.cache_dir,
-                reason=ModelCacheCleanupReason.USER_DELETE,
+        started = self.download_lifecycle.request_cache_removal(
+            repo_id,
+            self.config.cache_dir,
+            reason=ModelCacheCleanupReason.USER_DELETE,
+        )
+        if not started:
+            QMessageBox.warning(
+                self,
+                "Model Cleanup Busy",
+                "Another model download or cleanup is still active.",
             )
-            if not started:
-                QMessageBox.warning(
-                    self,
-                    "Model Cleanup Busy",
-                    "Another model download or cleanup is still active.",
-                )
-                return
-            self.is_downloading = True
-            self.local_status_label.setText("Removing...")
-            self._set_status_text_color(self.local_status_label, Theme.TEXT_SECONDARY)
-            self._set_model_status_tone("neutral")
-            self.download_progress.setRange(0, 0)
-            self.download_progress.setVisible(True)
-            self._schedule_fit()
-            self.local_action_btn.setEnabled(False)
-            self.update_validation_state()
+            return
+        self.is_downloading = True
+        self.local_status_label.setText("Removing...")
+        self._set_status_text_color(self.local_status_label, Theme.TEXT_SECONDARY)
+        self._set_model_status_tone("neutral")
+        self.download_progress.setRange(0, 0)
+        self.download_progress.setVisible(True)
+        self._schedule_fit()
+        self.local_action_btn.setEnabled(False)
+        self.update_validation_state()
+
+    def _build_destructive_confirmation(
+        self,
+        *,
+        title: str,
+        text: str,
+        confirm_text: str,
+    ) -> tuple[QMessageBox, QPushButton]:
+        """Build the shared Settings danger/cancel confirmation hierarchy."""
+        box = QMessageBox(QMessageBox.Icon.Warning, title, text, parent=self)
+        confirm_button = box.addButton(
+            confirm_text,
+            QMessageBox.ButtonRole.DestructiveRole,
+        )
+        cancel_button = box.addButton(
+            "Cancel",
+            QMessageBox.ButtonRole.RejectRole,
+        )
+        confirm_button.setObjectName("AssistantDestructiveConfirmButton")
+        cancel_button.setObjectName("AssistantSecondaryButton")
+        box.setStyleSheet(self.styleSheet())
+        box.setDefaultButton(cancel_button)
+        box.setEscapeButton(cancel_button)
+        return box, confirm_button
+
+    def _confirm_destructive_action(
+        self,
+        *,
+        title: str,
+        text: str,
+        confirm_text: str,
+    ) -> bool:
+        """Return true only when the explicit dangerous action was clicked."""
+        box, confirm_button = self._build_destructive_confirmation(
+            title=title,
+            text=text,
+            confirm_text=confirm_text,
+        )
+        box.exec()
+        return box.clickedButton() is confirm_button
+
+    def _model_deletion_is_allowed(self, repo_id: str) -> bool:
+        """Keep deletion warnings inside this dialog's modal hierarchy."""
+        blocked = self._selected_model_is_loading()
+        if self.agent_manager is not None:
+            blocked = blocked or not self.agent_manager.prepare_model_deletion(repo_id)
+        if not blocked:
+            return True
+        QMessageBox.warning(
+            self,
+            "Assistant Model In Use",
+            "The Assistant is using this model. Open Advanced, choose Disable, "
+            "and wait for unloading to finish before deleting it.",
+        )
+        return False
 
     def on_download_progress(self, percent, msg):
         """Handle download progress updates.
 
         Args:
             percent: Download completion percentage.
-            msg: Backend progress detail intentionally kept out of the compact UI.
+            msg: Reviewed backend progress detail for the compact UI.
 
         """
-        del msg
         target = self.download_lifecycle.active_target
         if target is None or target.repo_id == self._selected_model_id():
-            if 0 <= int(percent) <= 100:
-                self.local_status_label.setText(f"Installing... {int(percent)}%")
+            value = int(percent)
+            if value >= 99:
+                self.local_status_label.setText("Finalizing and verifying model…")
+                self.download_progress.setRange(0, 0)
+            elif 0 < value < 99:
+                detail = str(msg)
+                self.local_status_label.setText(
+                    detail
+                    if detail.startswith("Downloaded ")
+                    else f"Downloading model files… about {value}%"
+                )
                 self.download_progress.setRange(0, 100)
-                self.download_progress.setValue(int(percent))
+                self.download_progress.setValue(value)
             else:
-                self.local_status_label.setText("Installing...")
+                self.local_status_label.setText("Preparing download…")
                 self.download_progress.setRange(0, 0)
             self._set_status_text_color(self.local_status_label, Theme.TEXT_SECONDARY)
             self._set_model_status_tone("neutral")
@@ -1181,13 +1310,7 @@ class ModelSettingsDialog(BaseDialog):
         self.download_progress.setVisible(False)
         self._schedule_fit()
         self.check_local_model_status()
-        if result.ok:
-            QMessageBox.information(
-                self,
-                "Model Deleted",
-                result.public_message,
-            )
-        else:
+        if not result.ok:
             logger.error(
                 "Model cleanup failed model=%s diagnostics=%s",
                 result.target.repo_id,
@@ -1211,6 +1334,11 @@ class ModelSettingsDialog(BaseDialog):
         )
         self.btn_activate.setText(
             "Save Changes" if self.config.local_model_enabled else "Enable Assistant"
+        )
+        self.assistant_state_label.setText(
+            "Assistant is enabled"
+            if self.config.local_model_enabled
+            else "Assistant is disabled"
         )
         self.btn_activate.setEnabled(not self.is_downloading and runtime_ready)
         self.disable_assistant_btn.setEnabled(
@@ -1283,18 +1411,15 @@ class ModelSettingsDialog(BaseDialog):
         """Confirm and request true runtime deactivation from the existing owner."""
         if not self.config.local_model_enabled:
             return
-        reply = QMessageBox.question(
-            self,
-            "Disable Assistant",
-            (
+        if not self._confirm_destructive_action(
+            title="Disable Assistant",
+            text=(
                 "Disable Assistant and unload the local model?\n\n"
                 "The model cache, response settings, and EEG workflow will be kept. "
                 "The current Assistant conversation will be cleared."
             ),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
+            confirm_text="Disable Assistant",
+        ):
             return
         request = getattr(
             self.agent_manager,
@@ -1339,7 +1464,7 @@ class ModelSettingsDialog(BaseDialog):
 
     def on_assistant_deactivation_finished(self, ok: bool, message: str) -> None:
         """Render only the terminal result published by the runtime owner."""
-        self.disable_assistant_btn.setText("Disable Assistant…")
+        self.disable_assistant_btn.setText("Disable")
         if ok:
             self.config.local_model_enabled = False
             self.save_error_label.clear()
@@ -1414,6 +1539,14 @@ class ModelSettingsDialog(BaseDialog):
                         self.on_assistant_deactivation_finished,
                     )
             self._deactivation_observer_attached = False
+        if self._runtime_observer_attached:
+            assistant_runtime = getattr(self.agent_manager, "assistant_runtime", None)
+            signal = getattr(assistant_runtime, "runtime_snapshot_changed", None)
+            disconnect_runtime = getattr(signal, "disconnect", None)
+            with contextlib.suppress(AttributeError, RuntimeError, TypeError):
+                if callable(disconnect_runtime):
+                    disconnect_runtime(self._on_assistant_runtime_snapshot_changed)
+            self._runtime_observer_attached = False
 
     def get_config(self):
         """Return the current LLM configuration.

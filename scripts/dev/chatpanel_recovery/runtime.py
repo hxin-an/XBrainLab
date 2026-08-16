@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from PIL import Image
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import QApplication, QDockWidget
 
 from scripts.dev.bounded_qt_shutdown import BoundedQtShutdown
@@ -96,7 +96,7 @@ _ACTION_PREPARE_PRECONDITION = (
     "real ApplicationService.execute commands"
 )
 _ACTION_OPEN_ASSISTANT = (
-    "opened and floated the real Assistant dock at capture width so Retry was visible"
+    "opened the fixed-right Assistant dock at capture width so Retry was visible"
 )
 _ACTION_SUBMIT_BLOCKED = (
     "submitted the bounded evaluation request through the ChatPanel composer"
@@ -105,7 +105,9 @@ _ACTION_SUBMIT_TRAINING = (
     "submitted one real interactive TrainCommand after the visible evaluation block "
     "and waited for its terminal publication"
 )
-_ACTION_CLICK_RETRY = "clicked the visible Retry last request control without changing the original prompt"
+_ACTION_RESUBMIT = (
+    "resubmitted the same blocked prompt through the visible ChatPanel composer"
+)
 _ACTION_SUBMIT_CANCELLATION = (
     "submitted one informational request and waited for exact-model generation "
     "dispatch to start"
@@ -417,19 +419,19 @@ class _RecoveryWalkthroughDriver:
         if not self._generation_signal_connected:
             controller.generation_event.connect(self._record_generation_event)
             self._generation_signal_connected = True
-        manager.float_action.trigger()
         QTimer.singleShot(250, self._size_and_capture_ready)
 
     def _size_and_capture_ready(self) -> None:
         manager = self.window.agent_manager
         dock = manager.chat_dock if manager is not None else None
-        if manager is None or dock is None or not dock.isFloating():
-            self.fail("Assistant dock did not enter the observable floating state.")
+        if manager is None or dock is None or dock.isFloating():
+            self.fail("Assistant dock did not remain in the fixed-right state.")
             return
-        dock.setMinimumSize(560, 700)
-        dock.resize(620, 760)
-        dock.move(0, 0)
+        self.window.resize(
+            max(self.window.width(), 1500), max(self.window.height(), 850)
+        )
         dock.show()
+        self.window.resizeDocks([dock], [620], Qt.Orientation.Horizontal)
         self._record_host_action(_ACTION_OPEN_ASSISTANT)
         title_bar = dock.titleBarWidget()
         if title_bar is not None:
@@ -465,17 +467,17 @@ class _RecoveryWalkthroughDriver:
             self.fail("ChatPanel disappeared after the blocked turn.")
             return
         record = self._latest_assistant_record()
-        retry = manager.retry_title_btn
+        composer = panel.input_field
         blocked = {
             "prompt": BLOCKED_PROMPT,
             "presentation_kind": _presentation_kind(record),
             "assistant_text": record.content if record is not None else "",
             "new_tools": self._new_tools(),
             "terminal_outcome": self.terminals[-1]["outcome"],
-            "retry_control": {
-                "visible": retry.isVisible(),
-                "enabled": retry.isEnabled(),
-                "accessible_name": retry.accessibleName(),
+            "resubmit_control": {
+                "visible": composer.isVisible(),
+                "enabled": composer.isEnabled(),
+                "accessible_name": composer.accessibleName(),
             },
         }
         self._scenario()["blocked"] = blocked
@@ -601,16 +603,20 @@ class _RecoveryWalkthroughDriver:
 
     def _start_retry(self) -> None:
         manager = self.window.agent_manager
-        if manager is None:
-            self.fail("Assistant manager disappeared before Retry.")
+        panel = manager.chat_panel if manager is not None else None
+        if manager is None or panel is None:
+            self.fail("ChatPanel disappeared before same-prompt recovery.")
             return
-        retry = manager.retry_title_btn
-        if not retry.isVisible() or not retry.isEnabled():
-            self.fail("Visible Retry control was unavailable after host recovery.")
+        if not panel.input_field.isVisible() or not panel.input_field.isEnabled():
+            self.fail("Visible composer was unavailable after host recovery.")
             return
         self._turn_baseline = self._collect_turn_baseline()
-        retry.click()
-        self._record_host_action(_ACTION_CLICK_RETRY)
+        panel.input_field.setText(BLOCKED_PROMPT)
+        if not panel.send_btn.isEnabled():
+            self.fail("Same-prompt recovery could not be submitted through the UI.")
+            return
+        panel.send_btn.click()
+        self._record_host_action(_ACTION_RESUBMIT)
         QTimer.singleShot(_POLL_INTERVAL_MS, self._wait_for_retry)
 
     def _wait_for_retry(self) -> None:
@@ -624,14 +630,14 @@ class _RecoveryWalkthroughDriver:
         manager = self.window.agent_manager
         controller = manager.agent_controller if manager is not None else None
         if manager is None or controller is None:
-            self.fail("Assistant controller disappeared during Retry recovery.")
+            self.fail("Assistant controller disappeared during same-prompt recovery.")
             return
         record = self._latest_assistant_record()
         proposals = collect_model_proposals(controller.history, BLOCKED_PROMPT)
         retry = {
             "prompt": BLOCKED_PROMPT,
             "same_prompt": self._latest_user_text() == BLOCKED_PROMPT,
-            "invoked_via": "Retry last request",
+            "invoked_via": "ChatPanel composer",
             "presentation_kind": _presentation_kind(record),
             "assistant_text": record.content if record is not None else "",
             "assistant_text_source": "product_runtime",

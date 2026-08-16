@@ -7,7 +7,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6 import sip
-from PyQt6.QtCore import QCoreApplication, QObject, QRunnable, Qt, QThread, QThreadPool
+from PyQt6.QtCore import (
+    QCoreApplication,
+    QObject,
+    QRunnable,
+    Qt,
+    QThread,
+    QThreadPool,
+    QTimer,
+)
 from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtWidgets import QDockWidget, QMessageBox, QWidget
 
@@ -192,6 +200,70 @@ def test_top_bar_flexible_space_does_not_cover_the_full_width_header(main_window
     stylesheet = main_window.top_bar_spacer.styleSheet().replace(" ", "")
 
     assert "background-color:transparent" in stylesheet
+
+
+def test_assistant_dock_width_keeps_constraints_on_content(main_window, qtbot):
+    dock = QDockWidget("Assistant", main_window)
+    content = QWidget(dock)
+    content.setMinimumWidth(main_window.ASSISTANT_DOCK_MINIMUM_WIDTH)
+    dock.setWidget(content)
+    main_window.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+    main_window.agent_manager = SimpleNamespace(chat_dock=dock)
+    main_window.resize(1_200, 800)
+    main_window.show()
+    dock.show()
+    qtbot.wait(0)
+
+    with (
+        patch.object(dock, "setMinimumWidth", wraps=dock.setMinimumWidth) as set_min,
+        patch.object(
+            main_window, "resizeDocks", wraps=main_window.resizeDocks
+        ) as resize,
+    ):
+        main_window._apply_assistant_dock_width()
+
+    set_min.assert_not_called()
+    resize.assert_called_once()
+    assert content.minimumWidth() == main_window.ASSISTANT_DOCK_MINIMUM_WIDTH
+
+
+def test_product_shell_repeated_hide_show_keeps_fixed_right_dock_and_heartbeat(
+    main_window,
+    qtbot,
+):
+    from XBrainLab.ui.components.agent_manager import AgentManager
+
+    manager = AgentManager(main_window, main_window.study)
+    main_window.agent_manager = manager
+    manager.init_ui()
+    main_window._bind_assistant_dock_presentation()
+    dock = manager.chat_dock
+    assert dock is not None
+    main_window.resize(1_200, 800)
+    main_window.show()
+    dock.show()
+    main_window._apply_assistant_dock_width()
+    heartbeats: list[tuple[int, str]] = []
+
+    for cycle in range(10):
+        dock.hide()
+        QTimer.singleShot(0, lambda index=cycle: heartbeats.append((index, "hidden")))
+        qtbot.waitUntil(
+            lambda index=cycle: (dock.isHidden() and (index, "hidden") in heartbeats),
+            timeout=2_000,
+        )
+        dock.show()
+        QTimer.singleShot(0, lambda index=cycle: heartbeats.append((index, "shown")))
+        qtbot.waitUntil(
+            lambda index=cycle: (
+                not dock.isFloating()
+                and dock.isVisible()
+                and (index, "shown") in heartbeats
+            ),
+            timeout=2_000,
+        )
+
+    assert len(heartbeats) == 20
 
 
 def test_switch_page_only_updates_target_panel(main_window):

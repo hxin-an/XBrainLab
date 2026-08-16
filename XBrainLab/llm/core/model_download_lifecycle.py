@@ -49,8 +49,6 @@ class _Downloader(Protocol):
 class ModelCacheCleanupReason(str, Enum):
     """Why one model cache target is being removed."""
 
-    CANCELLED_DOWNLOAD = "cancelled_download"
-    FAILED_DOWNLOAD = "failed_download"
     USER_DELETE = "user_delete"
 
 
@@ -398,7 +396,6 @@ class ModelDownloadLifecycle(QObject):
         self._cleanup_worker: _ModelCacheCleanupWorker | None = None
         self._pending_cleanup_request: ModelCacheCleanupRequest | None = None
         self._pending_cleanup_result: ModelCacheCleanupResult | None = None
-        self._pending_download_outcome: ModelDownloadOutcome | None = None
         self._inspection_thread: QThread | None = None
         self._inspection_worker: _ModelStatusInspectionWorker | None = None
         self._pending_inspection_request: ModelStatusInspectionRequest | None = None
@@ -477,44 +474,7 @@ class ModelDownloadLifecycle(QObject):
         if not isinstance(outcome, ModelDownloadOutcome):
             return
         self._active_target = outcome.target
-        if (
-            not outcome.ok
-            and not outcome.target.complete_cache_at_start
-            and self._target_cache_may_need_cleanup(outcome.target)
-        ):
-            self._pending_download_outcome = outcome
-            request = ModelCacheCleanupRequest(
-                target=outcome.target,
-                reason=(
-                    ModelCacheCleanupReason.CANCELLED_DOWNLOAD
-                    if outcome.cancelled
-                    else ModelCacheCleanupReason.FAILED_DOWNLOAD
-                ),
-            )
-            if self._start_cache_cleanup(request):
-                return
-            self._pending_download_outcome = None
-            outcome = replace(
-                outcome,
-                message=(
-                    f"{outcome.message} Partial model cleanup could not start. "
-                    "Try removing the model again."
-                ),
-            )
         self._publish_download_outcome(outcome)
-
-    @staticmethod
-    def _target_cache_may_need_cleanup(target: ModelDownloadTarget) -> bool:
-        """Return whether an automatic target-only cleanup has work to do."""
-        for raw_path in target.cache_candidates:
-            try:
-                Path(raw_path).lstat()
-            except FileNotFoundError:
-                continue
-            except OSError:
-                return True
-            return True
-        return False
 
     def _start_cache_cleanup(self, request: ModelCacheCleanupRequest) -> bool:
         if self._cleanup_thread is not None:
@@ -569,20 +529,6 @@ class ModelDownloadLifecycle(QObject):
         _delete_unstarted_qobject(worker)
         _delete_unstarted_qobject(thread)
 
-        outcome = self._pending_download_outcome
-        self._pending_download_outcome = None
-        if outcome is not None:
-            self._publish_download_outcome(
-                replace(
-                    outcome,
-                    message=(
-                        f"{outcome.message} Partial model cleanup could not start. "
-                        "Try removing the model again."
-                    ),
-                )
-            )
-            return
-
         self.terminal.emit(
             False,
             "Model cleanup could not start. Check the application log and try again.",
@@ -613,17 +559,6 @@ class ModelDownloadLifecycle(QObject):
             return
 
         self.cache_cleanup_finished.emit(result)
-        outcome = self._pending_download_outcome
-        self._pending_download_outcome = None
-        if outcome is not None:
-            if result.errors:
-                outcome = replace(
-                    outcome,
-                    message=f"{outcome.message} {result.public_message}",
-                )
-            self._publish_download_outcome(outcome)
-            return
-
         self._active_target = None
         self.terminal.emit(result.ok, result.public_message)
 

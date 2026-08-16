@@ -174,7 +174,7 @@ def validate_recovery_evidence(
 
 
 def _validate_blocked(blocked: Mapping[str, object]) -> tuple[bool, str]:
-    retry = _mapping(blocked.get("retry_control"))
+    resubmit = _mapping(blocked.get("resubmit_control"))
     text = str(blocked.get("assistant_text") or "").lower()
     if blocked.get("prompt") != BLOCKED_PROMPT:
         return False, "Blocked request does not match the bounded prompt."
@@ -187,11 +187,11 @@ def _validate_blocked(blocked: Mapping[str, object]) -> tuple[bool, str]:
     if blocked.get("terminal_outcome") != "completed":
         return False, "Blocked command did not reach one terminal acknowledgement."
     if (
-        retry.get("visible") is not True
-        or retry.get("enabled") is not True
-        or retry.get("accessible_name") != "Retry last request"
+        resubmit.get("visible") is not True
+        or resubmit.get("enabled") is not True
+        or resubmit.get("accessible_name") != "Assistant message"
     ):
-        return False, "The visible Retry control was unavailable after the block."
+        return False, "The visible composer was unavailable after the block."
     return True, ""
 
 
@@ -261,9 +261,9 @@ def _validate_retry(retry: Mapping[str, object]) -> tuple[bool, str]:
     if (
         retry.get("prompt") != BLOCKED_PROMPT
         or retry.get("same_prompt") is not True
-        or retry.get("invoked_via") != "Retry last request"
+        or retry.get("invoked_via") != "ChatPanel composer"
     ):
-        return False, "Retry did not recover the same blocked prompt through the UI."
+        return False, "The composer did not recover the same blocked prompt."
     text_source = str(retry.get("assistant_text_source") or "product_runtime")
     if text_source != "product_runtime" or "granite output" in text_source.lower():
         return False, "Retry evidence contains fabricated host-named Granite output."
@@ -404,7 +404,7 @@ def render_markdown(payload: Mapping[str, object]) -> str:
 
     lines.extend(
         [
-            "## Blocked command and visible Retry",
+            "## Blocked command and visible recovery",
             "",
             f"- host precondition spine: `{precondition.get('command_spine', '')}`",
             f"- host precondition commands: `{[_mapping(item).get('command') for item in precondition.get('commands', [])]}`",
@@ -412,9 +412,9 @@ def render_markdown(payload: Mapping[str, object]) -> str:
             f"- presentation: `{blocked.get('presentation_kind', '')}`",
             f"- visible result: {blocked.get('assistant_text', '')}",
             f"- terminal: `{blocked.get('terminal_outcome', '')}`",
-            f"- Retry control: `{_mapping(blocked.get('retry_control'))}`",
+            f"- resubmit control: `{_mapping(blocked.get('resubmit_control'))}`",
             "",
-            "## Retry Recovery",
+            "## Same-prompt Recovery",
             "",
             f"- command spine: `{recovery.get('command_spine', '')}`",
             f"- host commands: `{[_mapping(item).get('command') for item in recovery.get('commands', [])]}`",

@@ -315,8 +315,8 @@ Assistant 不是直接塞在 `MainWindow` 內部，而是由 `AgentManager` 管�
 
 - chat panel 內不再顯示 `Conversation` 標題、第二條 status footer、developer mode /
   step behavior controls 或第二個 options menu。對話區第一視覺是 empty state / transcript。
-- 第一層 controls 收斂到 dock title bar：`XBrainLab`、retry icon、new conversation、
-  settings menu、float/dock。`Clear conversation` 收進 settings menu；workflow / runtime
+- 第一層 controls 收斂到固定右側 dock title bar：`XBrainLab`、new conversation、
+  settings、hide。Assistant 不提供 float 或 left-dock；workflow / runtime
   details 放在 main status bar、tooltip、settings 或非 transcript diagnostics。
 - 第一層 UI 不顯示 raw command names，例如 `load_data`、`configure_training`；主介面顯示
   `Load EEG data`、`Train model` 這類使用者語言。Reset Session 已從 desktop surface 移除；raw command

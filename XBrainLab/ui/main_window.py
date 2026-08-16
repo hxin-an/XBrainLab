@@ -1220,7 +1220,6 @@ class MainWindow(QMainWindow):
             return
         dock.installEventFilter(self)
         dock.visibilityChanged.connect(self._on_assistant_dock_visibility_changed)
-        dock.topLevelChanged.connect(self._on_assistant_dock_top_level_changed)
         self._sync_assistant_central_width_floor()
 
     def eventFilter(self, watched, event):  # noqa: N802
@@ -1240,23 +1239,13 @@ class MainWindow(QMainWindow):
         if visible:
             self._schedule_assistant_dock_resize()
 
-    def _on_assistant_dock_top_level_changed(self, floating: bool) -> None:
-        """Restore the docked width after a floating Assistant is reattached."""
-        self._sync_assistant_central_width_floor()
-        if not floating:
-            self._schedule_assistant_dock_resize()
-
     def _sync_assistant_central_width_floor(self) -> None:
         """Protect workflow controls while the Assistant consumes shell width."""
         dock = self._assistant_dock()
         central = self.centralWidget()
         if dock is None or central is None:
             return
-        target = (
-            self.ASSISTANT_CENTRAL_WIDGET_MINIMUM_WIDTH
-            if dock.isVisible() and not dock.isFloating()
-            else 0
-        )
+        target = self.ASSISTANT_CENTRAL_WIDGET_MINIMUM_WIDTH if dock.isVisible() else 0
         if central.minimumWidth() != target:
             central.setMinimumWidth(target)
             central.updateGeometry()
@@ -1266,7 +1255,7 @@ class MainWindow(QMainWindow):
         if self._assistant_dock_resize_pending:
             return
         dock = self._assistant_dock()
-        if dock is None or not dock.isVisible() or dock.isFloating():
+        if dock is None or not dock.isVisible():
             return
         self._assistant_dock_resize_pending = True
         QTimer.singleShot(0, self._apply_assistant_dock_width)
@@ -1275,7 +1264,7 @@ class MainWindow(QMainWindow):
         """Use 420 px normally and shrink only to preserve workflow space."""
         self._assistant_dock_resize_pending = False
         dock = self._assistant_dock()
-        if dock is None or not dock.isVisible() or dock.isFloating():
+        if dock is None or not dock.isVisible():
             return
         available_for_dock = (
             self.contentsRect().width() - self.ASSISTANT_DOCK_CENTRAL_MINIMUM_WIDTH
@@ -1284,9 +1273,9 @@ class MainWindow(QMainWindow):
             self.ASSISTANT_DOCK_STANDARD_WIDTH,
             max(self.ASSISTANT_DOCK_MINIMUM_WIDTH, available_for_dock),
         )
-        # Make the responsive target authoritative over competing central-panel
-        # size hints. Narrow shells lower this back to the supported 320 px floor.
-        dock.setMinimumWidth(target_width)
+        # QDockWidget owns platform-dependent dock chrome. Its content
+        # owns the supported floor; resizeDocks requests the responsive width
+        # without carrying a dock-only constraint into the top-level window.
         self.resizeDocks(
             [dock],
             [target_width],
