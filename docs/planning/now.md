@@ -103,8 +103,8 @@ subject selection 與 async lifecycle owner。**
   overlap 或錯誤 button hierarchy；offscreen evidence 不取代 native manual acceptance。
 - Production 目前觸及 10 files，380 additions / 146 deletions，net +234 LOC；新增的是一個必要的
   Qt external seam，owner 數不變，沒有新增 state machine、receipt或第二套 BIDS heuristic。
-- 目前仍是未提交 checkpoint；尚缺 exact commit、CI 與使用者 native 手測，因此不稱
-  handoff-ready、不合併。
+- Product implementation commit 9112fcf2 已推送並建立 draft PR #29；required CI 正在執行。
+  尚缺 final exact head 的 CI success 與使用者 native 手測，因此不稱 handoff-ready、不合併。
 
 ## Stop conditions
 
