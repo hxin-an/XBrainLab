@@ -10,6 +10,8 @@ import pytest
 
 from XBrainLab.llm.core.downloader import (
     DOWNLOAD_CONSUMPTION_POLL_INTERVAL_SEC,
+    MODEL_DOWNLOAD_INACTIVITY_DIAGNOSTIC,
+    MODEL_DOWNLOAD_INACTIVITY_SEC,
     MODEL_DOWNLOAD_TIMEOUT_PUBLIC_MESSAGE,
     PROCESS_JOIN_TIMEOUT_SEC,
     PROCESS_KILL_JOIN_TIMEOUT_SEC,
@@ -735,9 +737,144 @@ class TestDownloadWorker:
             assert worker._check_consumption_if_due(now=102.0) is True
 
         assert progress == [
-            (50, "Downloading model files..."),
-            (99, "Downloading model files..."),
+            (50, "Downloaded 2.54 GB of about 5.08 GB."),
+            (99, "Finalizing and verifying model…"),
         ]
+
+    def test_inactive_child_recovers_success_only_from_valid_pinned_snapshot(
+        self,
+    ) -> None:
+        worker = DownloadWorker(PRIMARY_MODEL_ID, "/cache")
+        observation = DownloadConsumptionResult(
+            ok=True,
+            public_message="",
+            diagnostic_message="",
+            model_cache_bytes=5_080_000_000,
+            total_cache_bytes=5_080_000_000,
+            available_disk_bytes=10_000_000_000,
+        )
+        validation = MagicMock(ok=True, snapshot_path="/cache/pinned-snapshot")
+
+        with (
+            patch(
+                "XBrainLab.llm.core.downloader.inspect_model_download_consumption",
+                return_value=observation,
+            ),
+            patch(
+                "XBrainLab.llm.core.downloader.model_snapshot_path",
+                return_value=Path("/cache/pinned-snapshot"),
+            ),
+            patch(
+                "XBrainLab.llm.core.downloader.validate_downloaded_model_cache",
+                return_value=validation,
+            ) as validate,
+        ):
+            assert worker._check_consumption_if_due(now=100.0) is True
+            assert (
+                worker._check_consumption_if_due(
+                    now=100.0 + MODEL_DOWNLOAD_INACTIVITY_SEC
+                )
+                is False
+            )
+
+        validate.assert_called_once_with(
+            PRIMARY_MODEL_ID,
+            "/cache",
+            "/cache/pinned-snapshot",
+        )
+        assert worker._pending_terminal_kind == "finished"
+        assert worker._pending_terminal_payload == "/cache/pinned-snapshot"
+
+    def test_inactive_child_times_out_when_pinned_snapshot_is_not_valid(
+        self,
+    ) -> None:
+        worker = DownloadWorker(PRIMARY_MODEL_ID, "/cache")
+        observation = DownloadConsumptionResult(
+            ok=True,
+            public_message="",
+            diagnostic_message="",
+            model_cache_bytes=4_000_000_000,
+            total_cache_bytes=4_000_000_000,
+            available_disk_bytes=10_000_000_000,
+        )
+
+        with (
+            patch(
+                "XBrainLab.llm.core.downloader.inspect_model_download_consumption",
+                return_value=observation,
+            ),
+            patch(
+                "XBrainLab.llm.core.downloader.model_snapshot_path",
+                return_value=Path("/cache/pinned-snapshot"),
+            ),
+            patch(
+                "XBrainLab.llm.core.downloader.validate_downloaded_model_cache",
+                return_value=MagicMock(ok=False, snapshot_path=None),
+            ),
+        ):
+            assert worker._check_consumption_if_due(now=100.0) is True
+            assert (
+                worker._check_consumption_if_due(
+                    now=100.0 + MODEL_DOWNLOAD_INACTIVITY_SEC
+                )
+                is False
+            )
+
+        assert worker._pending_terminal_kind == "failed"
+        assert worker._pending_terminal_payload == MODEL_DOWNLOAD_INACTIVITY_DIAGNOSTIC
+
+    def test_valid_stalled_snapshot_reaps_child_before_success_terminal(
+        self,
+    ) -> None:
+        worker = DownloadWorker(PRIMARY_MODEL_ID, "/cache")
+        successes: list[str] = []
+        worker.download_finished.connect(successes.append)
+        process = MagicMock()
+        process.is_alive.side_effect = lambda: not process.terminate.called
+        result_queue = MagicMock()
+        result_queue.get_nowait.side_effect = stdlib_queue.Empty
+        observation = DownloadConsumptionResult(
+            ok=True,
+            public_message="",
+            diagnostic_message="",
+            model_cache_bytes=5_080_000_000,
+            total_cache_bytes=5_080_000_000,
+            available_disk_bytes=10_000_000_000,
+        )
+
+        with (
+            _patch_download_process_context(process, result_queue),
+            patch(
+                "XBrainLab.llm.core.downloader.DOWNLOAD_CONSUMPTION_POLL_INTERVAL_SEC",
+                0.0,
+            ),
+            patch(
+                "XBrainLab.llm.core.downloader.MODEL_DOWNLOAD_INACTIVITY_SEC",
+                0.0,
+            ),
+            patch(
+                "XBrainLab.llm.core.downloader.inspect_model_download_consumption",
+                return_value=observation,
+            ),
+            patch(
+                "XBrainLab.llm.core.downloader.model_snapshot_path",
+                return_value=Path("/cache/pinned-snapshot"),
+            ),
+            patch(
+                "XBrainLab.llm.core.downloader.validate_downloaded_model_cache",
+                return_value=MagicMock(
+                    ok=True,
+                    snapshot_path="/cache/pinned-snapshot",
+                ),
+            ),
+        ):
+            worker.run()
+
+        assert successes == ["/cache/pinned-snapshot"]
+        process.terminate.assert_called_once_with()
+        process.join.assert_called()
+        process.close.assert_called_once_with()
+        assert worker._process is None
 
     def test_worker_uses_explicit_spawn_context(self, mock_multiprocessing) -> None:
         mock_mp, mock_process, mock_queue = mock_multiprocessing

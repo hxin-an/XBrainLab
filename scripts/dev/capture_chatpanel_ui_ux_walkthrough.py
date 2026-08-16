@@ -3098,14 +3098,13 @@ def _capture_assistant_settings(
     dialog.local_action_btn.click()
     lifecycle.progress.emit(
         42,
-        "Download allowed for ibm-granite/granite-3.3-2b-instruct: "
-        "estimated 5.08 GB; projected cache 5.08 GB.",
+        "Downloaded 2.13 GB of about 5.08 GB.",
     )
     _settle_layout(app, dialog)
     installing = record(
         ASSISTANT_SETTINGS_SCREEN_FILES[1],
         state="installing",
-        expected_status="Installing... 42%",
+        expected_status="Downloaded 2.13 GB of about 5.08 GB.",
         expected_action="Cancel",
     )
     with patch.object(QMessageBox, "critical"):

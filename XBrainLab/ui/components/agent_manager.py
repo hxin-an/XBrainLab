@@ -206,7 +206,6 @@ class AssistantDockTitleBar(QWidget):
         self.status_badge: QLabel | None = None
         self._drag_origin_global: QPoint | None = None
         self._drag_origin_window: QPoint | None = None
-        self._system_move_started = False
 
     def set_assistant_status(self, text: str) -> None:
         """Expose runtime status without adding a competing header badge."""
@@ -252,13 +251,8 @@ class AssistantDockTitleBar(QWidget):
             and isinstance(dock, QDockWidget)
             and dock.isFloating()
         ):
-            self._system_move_started = self._start_system_move()
-            if self._system_move_started:
-                self._drag_origin_global = None
-                self._drag_origin_window = None
-            else:
-                self._drag_origin_global = event.globalPosition().toPoint()
-                self._drag_origin_window = dock.pos()
+            self._drag_origin_global = event.globalPosition().toPoint()
+            self._drag_origin_window = dock.pos()
             event.accept()
             return
         if event.button() == Qt.MouseButton.LeftButton:
@@ -267,50 +261,35 @@ class AssistantDockTitleBar(QWidget):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):  # noqa: N802
-        """Move a floating dock using native system move or a manual fallback."""
+        """Move a floating dock from the pointer delta owned by this title bar."""
         dock = self.parentWidget()
         if (
             isinstance(dock, QDockWidget)
             and dock.isFloating()
             and event.buttons() & Qt.MouseButton.LeftButton
+            and self._drag_origin_global is not None
+            and self._drag_origin_window is not None
         ):
-            if self._system_move_started:
-                event.accept()
-                return
-            if (
-                self._drag_origin_global is not None
-                and self._drag_origin_window is not None
-            ):
-                delta = event.globalPosition().toPoint() - self._drag_origin_global
-                dock.move(self._drag_origin_window + delta)
-                event.accept()
-                return
-        event.ignore()
-
-    def mouseReleaseEvent(self, event):  # noqa: N802
-        """Finish one owned floating-window drag."""
-        if self._drag_origin_global is not None or self._system_move_started:
-            self._drag_origin_global = None
-            self._drag_origin_window = None
-            self._system_move_started = False
+            delta = event.globalPosition().toPoint() - self._drag_origin_global
+            dock.move(self._drag_origin_window + delta)
             event.accept()
             return
         event.ignore()
 
-    def _start_system_move(self) -> bool:
-        """Ask the active window system to own a native floating-window move."""
-        dock = self.parentWidget()
-        if not isinstance(dock, QDockWidget):
-            return False
-        handle = dock.windowHandle()
-        return bool(handle is not None and handle.startSystemMove())
+    def mouseReleaseEvent(self, event):  # noqa: N802
+        """Finish one owned floating-window drag."""
+        if self._drag_origin_global is not None:
+            self._drag_origin_global = None
+            self._drag_origin_window = None
+            event.accept()
+            return
+        event.ignore()
 
     def mouseDoubleClickEvent(self, event):  # noqa: N802
         """Mirror native title-bar double-click float/dock behavior."""
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_origin_global = None
             self._drag_origin_window = None
-            self._system_move_started = False
             self._on_float_toggle()
             event.accept()
             return

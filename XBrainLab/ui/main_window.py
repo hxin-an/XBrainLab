@@ -1284,9 +1284,9 @@ class MainWindow(QMainWindow):
             self.ASSISTANT_DOCK_STANDARD_WIDTH,
             max(self.ASSISTANT_DOCK_MINIMUM_WIDTH, available_for_dock),
         )
-        # Make the responsive target authoritative over competing central-panel
-        # size hints. Narrow shells lower this back to the supported 320 px floor.
-        dock.setMinimumWidth(target_width)
+        # QDockWidget owns platform-dependent dock/floating chrome. Its content
+        # owns the supported floor; resizeDocks requests the responsive width
+        # without carrying a dock-only constraint into the top-level window.
         self.resizeDocks(
             [dock],
             [target_width],

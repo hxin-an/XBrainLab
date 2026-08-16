@@ -3940,7 +3940,7 @@ class TestAgentManagerMethods:
         toggle.assert_called_once()
         assert double_click.isAccepted()
 
-    def test_floating_titlebar_starts_system_move_on_mouse_press(self, qtbot):
+    def test_floating_titlebar_avoids_native_window_move_grab(self, qtbot):
         from XBrainLab.ui.components.agent_manager import AssistantDockTitleBar
 
         dock = QDockWidget()
@@ -3948,7 +3948,9 @@ class TestAgentManagerMethods:
         dock.setFloating(True)
         title_bar = AssistantDockTitleBar(MagicMock(), dock)
         dock.setTitleBarWidget(title_bar)
-        title_bar._start_system_move = MagicMock(return_value=True)
+        dock.windowHandle = MagicMock(
+            side_effect=AssertionError("native window move must not be used")
+        )
         press = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(8, 8),
@@ -3960,13 +3962,11 @@ class TestAgentManagerMethods:
 
         title_bar.mousePressEvent(press)
 
-        title_bar._start_system_move.assert_called_once_with()
         assert press.isAccepted()
-        assert title_bar._system_move_started is True
-        assert title_bar._drag_origin_global is None
-        assert title_bar._drag_origin_window is None
+        assert title_bar._drag_origin_global == QPoint(80, 80)
+        assert title_bar._drag_origin_window == dock.pos()
 
-    def test_floating_titlebar_uses_pointer_fallback_when_system_move_fails(
+    def test_floating_titlebar_moves_by_pointer_delta(
         self,
         qtbot,
     ):
@@ -3991,7 +3991,6 @@ class TestAgentManagerMethods:
         dock.setFloating(True)
         title_bar = AssistantDockTitleBar(MagicMock(), dock)
         dock.setTitleBarWidget(title_bar)
-        title_bar._start_system_move = MagicMock(return_value=False)
         press = QMouseEvent(
             QEvent.Type.MouseButtonPress,
             QPointF(8, 8),
@@ -4016,7 +4015,6 @@ class TestAgentManagerMethods:
         assert move.buttons() & Qt.MouseButton.LeftButton
         title_bar.mouseMoveEvent(move)
 
-        title_bar._start_system_move.assert_called_once_with()
         assert QPoint(40, 55) in dock.moves
         assert move.isAccepted()
 

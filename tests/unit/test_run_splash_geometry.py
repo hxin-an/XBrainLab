@@ -1,6 +1,7 @@
 """Tests for startup splash placement and main-window presentation."""
 
 import inspect
+from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
@@ -156,3 +157,12 @@ def test_main_drains_qt_runtime_after_event_loop_before_exiting():
     assert "_configure_product_window_lifetime(window)" in source
     assert "raise SystemExit(run_qt_event_loop(app))" in source
     assert "sys.exit(app.exec())" not in source
+
+
+def test_entrypoint_disables_xet_before_any_product_import() -> None:
+    source = Path("run.py").read_text(encoding="utf-8")
+
+    disable_at = source.index('os.environ["HF_HUB_DISABLE_XET"] = "1"')
+    first_product_import_at = source.index("from XBrainLab")
+
+    assert disable_at < first_product_import_at

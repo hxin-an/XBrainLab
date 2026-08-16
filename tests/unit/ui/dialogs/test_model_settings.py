@@ -467,7 +467,7 @@ class TestModelSettingsInit:
         qtbot.wait(20)
 
         assert dialog.width() == 520
-        assert dialog.local_status_label.text() == "Installing... 42%"
+        assert dialog.local_status_label.text() == "Downloading model files… about 42%"
         assert "ibm-granite" not in dialog.local_status_label.text()
         assert dialog.settings_body_scroll.horizontalScrollBar().maximum() == 0
         assert dialog.rect().contains(
@@ -685,12 +685,23 @@ class TestLocalModelSection:
         assert dialog.download_progress.minimum() == 0
         assert dialog.download_progress.maximum() == 0
 
-        dialog.on_download_progress(42, "Downloading model files...")
+        dialog.on_download_progress(
+            42,
+            "Downloaded 2.13 GB of about 5.08 GB.",
+        )
 
         assert dialog.download_progress.maximum() == 100
         assert dialog.download_progress.value() == 42
-        assert dialog.local_status_label.text() == "Installing... 42%"
+        assert (
+            dialog.local_status_label.text() == "Downloaded 2.13 GB of about 5.08 GB."
+        )
         assert dialog.model_status_dot.property("statusTone") == "neutral"
+
+        dialog.on_download_progress(99, "Downloading model files...")
+
+        assert dialog.download_progress.minimum() == 0
+        assert dialog.download_progress.maximum() == 0
+        assert dialog.local_status_label.text() == "Finalizing and verifying model…"
 
     def test_start_failure_is_not_misreported_as_an_active_download(self, dialog):
         dialog.is_downloading = False
@@ -829,6 +840,41 @@ class TestLocalModelSection:
         assert sensitive not in rendered
         assert result.public_message in rendered
 
+    def test_successful_cache_cleanup_is_inline_and_first_install_click_works(
+        self,
+        dialog,
+    ):
+        target = ModelDownloadTarget.create(
+            dialog.local_model_combo.currentData(),
+            dialog.config.cache_dir,
+        )
+        result = ModelCacheCleanupResult(
+            request=ModelCacheCleanupRequest(
+                target=target,
+                reason=ModelCacheCleanupReason.USER_DELETE,
+            ),
+        )
+        dialog.download_lifecycle.idle = True
+
+        with patch.object(QMessageBox, "information") as information:
+            dialog.on_cache_cleanup_finished(result)
+
+        information.assert_not_called()
+        dialog.download_lifecycle.complete_inspection(
+            installed=False,
+            runtime_ready=False,
+            runtime_message="Local runtime unavailable. Model cache not found.",
+        )
+        assert dialog.local_status_label.text() == "Not installed"
+        assert dialog.local_action_btn.text() == "Install Model"
+        assert dialog.local_action_btn.isEnabled()
+
+        dialog.local_action_btn.click()
+
+        assert dialog.download_lifecycle.start_requests == [
+            (target.repo_id, target.cache_dir)
+        ]
+
     def test_on_download_finished(self, dialog):
         dialog.is_downloading = True
         target = ModelDownloadTarget.create(
@@ -884,6 +930,39 @@ class TestLocalModelSection:
             dialog._delete_model()
 
         mock_rmtree.assert_not_called()
+
+    def test_destructive_confirmations_use_shared_danger_and_cancel_hierarchy(
+        self,
+        dialog,
+    ):
+        delete_box, delete_button = dialog._build_destructive_confirmation(
+            title="Delete Model",
+            text="Delete the selected model?",
+            confirm_text="Delete Model",
+        )
+        disable_box, disable_button = dialog._build_destructive_confirmation(
+            title="Disable Assistant",
+            text="Disable Assistant?",
+            confirm_text="Disable Assistant",
+        )
+
+        for box, confirm_button, expected_text in (
+            (delete_box, delete_button, "Delete Model"),
+            (disable_box, disable_button, "Disable Assistant"),
+        ):
+            cancel_button = next(
+                button for button in box.buttons() if button.text() == "Cancel"
+            )
+            assert confirm_button.text() == expected_text
+            assert confirm_button.objectName() == "AssistantDestructiveConfirmButton"
+            assert cancel_button.objectName() == "AssistantSecondaryButton"
+            assert box.styleSheet() == dialog.styleSheet()
+            assert (
+                box.buttonRole(confirm_button) is QMessageBox.ButtonRole.DestructiveRole
+            )
+            assert box.buttonRole(cancel_button) is QMessageBox.ButtonRole.RejectRole
+            assert box.defaultButton() is cancel_button
+            assert box.escapeButton() is cancel_button
 
     def test_runtime_loading_disables_delete_until_loading_finishes(
         self,
@@ -955,14 +1034,14 @@ class TestLocalModelSection:
         dialog.local_downloaded = True
         dialog.agent_manager.prepare_model_deletion.side_effect = [True, False]
 
-        with patch.object(
-            QMessageBox,
-            "warning",
-            side_effect=[
-                QMessageBox.StandardButton.Yes,
-                QMessageBox.StandardButton.Ok,
-            ],
-        ) as warning:
+        with (
+            patch.object(
+                dialog,
+                "_confirm_destructive_action",
+                return_value=True,
+            ),
+            patch.object(QMessageBox, "warning") as warning,
+        ):
             dialog._delete_model()
 
         assert dialog.agent_manager.prepare_model_deletion.call_count == 2
@@ -973,16 +1052,14 @@ class TestLocalModelSection:
         self,
         dialog,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         repo_id = dialog.local_model_combo.currentData()
         dialog.local_downloaded = True
         dialog.agent_manager.prepare_model_deletion.return_value = True
         with (
             patch.object(
-                QMessageBox,
-                "warning",
-                return_value=QMessageBox.StandardButton.Yes,
+                dialog,
+                "_confirm_destructive_action",
+                return_value=True,
             ),
             patch("shutil.rmtree") as mock_rmtree,
         ):
@@ -1100,9 +1177,9 @@ class TestActivateAndSave:
         qtbot.addWidget(created)
 
         with patch.object(
-            QMessageBox,
-            "question",
-            return_value=QMessageBox.StandardButton.Yes,
+            created,
+            "_confirm_destructive_action",
+            return_value=True,
         ):
             created.on_disable_assistant_clicked()
 
@@ -1140,9 +1217,9 @@ class TestActivateAndSave:
 
         with (
             patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
+                created,
+                "_confirm_destructive_action",
+                return_value=True,
             ),
             patch.object(QMessageBox, "information") as information,
         ):
