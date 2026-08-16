@@ -563,7 +563,7 @@ def test_scan_explicit_folder_on_bids_root_does_not_enter_bids_mode(tmp_path: Pa
     assert scan.bids["is_bids"] is False
     assert scan.bids["looks_like_bids"] is True
     assert scan.label_carriers == [str(events_file.resolve())]
-    assert any("Use Import BIDS folder" in item for item in scan.warnings)
+    assert any("Return to Import Data" in item for item in scan.warnings)
 
 
 def test_scan_explicit_bids_hint_blocks_non_bids_folder(tmp_path: Path):
@@ -584,7 +584,7 @@ def test_scan_explicit_bids_hint_blocks_non_bids_folder(tmp_path: Path):
     )
     assert scan.blocked_reasons == [
         "dataset_description.json is missing from the selected BIDS root. "
-        "Use Import folder for regular EEG files."
+        "Return to Import Data for regular EEG files."
     ]
 
 
@@ -656,7 +656,7 @@ def test_explicit_bids_import_blocks_invalid_dataset_root(
     assert scan.bids["is_bids"] is False
     assert len(scan.blocked_reasons) == 1
     assert "dataset_description.json" in scan.blocked_reasons[0]
-    assert "Use Import folder" in scan.blocked_reasons[0]
+    assert "Return to Import Data" in scan.blocked_reasons[0]
 
 
 def test_scan_regular_folder_skips_nested_bids_dataset(tmp_path: Path):

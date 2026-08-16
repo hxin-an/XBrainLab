@@ -3651,10 +3651,7 @@ class TestDatasetSidebar:
         sb.update_sidebar()
 
         assert sb.import_btn.toolTip() == (
-            "Choose EEG data, review metadata and labels, then import"
-        )
-        assert sb.import_folder_btn.toolTip() == (
-            "Choose an EEG folder, review metadata and labels, then import"
+            "Choose EEG files or a folder, review metadata and labels, then import"
         )
         assert sb.reload_recipe_btn.toolTip() == (
             "Review a saved import recipe before applying it"

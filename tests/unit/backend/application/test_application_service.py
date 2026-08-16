@@ -1147,6 +1147,101 @@ def test_bids_catalog_only_scan_preserves_application_publication(
     assert delivered == [before]
 
 
+def test_auto_catalog_only_scan_classifies_generic_folder_without_publication(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "generic"
+    source.mkdir()
+    (source / "recording.edf").write_bytes(b"header only")
+    service = ApplicationService(Study())
+    before = service.get_view_publication()
+
+    result = service.execute(
+        ScanSourceCommand(
+            source_path=str(source),
+            source_hint="auto",
+            catalog_only=True,
+        )
+    )
+
+    assert result.ok is True
+    assert result.diagnostics == {
+        "payload_type": "source_classification",
+        "source_kind": "folder",
+    }
+    assert service.get_view_publication() == before
+
+
+def test_auto_catalog_only_scan_classifies_one_file_without_publication(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "recording.vhdr"
+    source.write_text(
+        "Brain Vision Data Exchange Header File Version 1.0",
+        encoding="utf-8",
+    )
+    service = ApplicationService(Study())
+    before = service.get_view_publication()
+
+    result = service.execute(
+        ScanSourceCommand(
+            source_path=str(source),
+            source_hint="auto",
+            catalog_only=True,
+        )
+    )
+
+    assert result.ok is True
+    assert result.diagnostics["source_kind"] == "file"
+    assert service.get_view_publication() == before
+
+
+def test_auto_catalog_only_scan_missing_path_fails_without_partial_interpretation(
+    tmp_path: Path,
+) -> None:
+    service = ApplicationService(Study())
+    before = service.get_view_publication()
+
+    result = service.execute(
+        ScanSourceCommand(
+            source_path=str(tmp_path / "missing"),
+            source_hint="auto",
+            catalog_only=True,
+        )
+    )
+
+    assert result.failed is True
+    after = service.get_view_publication()
+    assert after.state.interpretation == before.state.interpretation
+    assert after.state.raw == before.state.raw
+
+
+def test_auto_catalog_only_scan_classifies_bids_and_returns_subject_catalog(
+    tmp_path: Path,
+) -> None:
+    bids_root = tmp_path / "bids"
+    eeg_dir = bids_root / "sub-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    (bids_root / "dataset_description.json").write_text("{}", encoding="utf-8")
+    (eeg_dir / "sub-01_task-P300_eeg.set").write_bytes(b"catalog only")
+    service = ApplicationService(Study())
+    before = service.get_view_publication()
+
+    result = service.execute(
+        ScanSourceCommand(
+            source_path=str(bids_root),
+            source_hint="auto",
+            catalog_only=True,
+        )
+    )
+
+    assert result.ok is True
+    assert result.diagnostics["payload_type"] == "source_classification"
+    assert result.diagnostics["source_kind"] == "bids"
+    assert result.diagnostics["bids_subject_catalog"]["subject_count"] == 1
+    assert service.get_view_publication() == before
+
+
 def test_view_publication_consumers_cannot_mutate_committed_state_or_policy() -> None:
     service = ApplicationService(Study())
     lock_acquired = Event()

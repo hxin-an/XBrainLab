@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
     QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QFrame,
     QLabel,
@@ -49,6 +50,9 @@ from XBrainLab.ui.dialogs.dataset.bids_subject_selection_dialog import (
 )
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
+)
+from XBrainLab.ui.dialogs.dataset.eeg_source_chooser_dialog import (
+    EegSourceChooserDialog,
 )
 from XBrainLab.ui.panels.dataset.panel import DatasetPanel
 
@@ -203,6 +207,7 @@ class _DatasetHost(QWidget):
 @dataclass
 class _WizardDriver:
     timer: QTimer
+    source_picker: str = "files"
     skip_labels: bool = False
     resolve_bids_values: bool = False
     resolve_openneuro_values: bool = False
@@ -653,6 +658,7 @@ def _assert_step_surface(
 
 def _start_wizard_driver(
     *,
+    source_picker: str = "files",
     skip_labels: bool = False,
     resolve_bids_values: bool = False,
     resolve_openneuro_values: bool = False,
@@ -661,6 +667,7 @@ def _start_wizard_driver(
 ) -> _WizardDriver:
     driver = _WizardDriver(
         timer=QTimer(),
+        source_picker=source_picker,
         skip_labels=skip_labels,
         resolve_bids_values=resolve_bids_values,
         resolve_openneuro_values=resolve_openneuro_values,
@@ -728,6 +735,22 @@ def _start_wizard_driver(
             f"openneuro_stage={driver.openneuro_value_stage}"
         )
         try:
+            if isinstance(modal, EegSourceChooserDialog):
+                picker = (
+                    modal.choose_folder_button
+                    if driver.source_picker == "folder"
+                    else modal.choose_files_button
+                )
+                QTEST.mouseClick(picker, Qt.MouseButton.LeftButton)
+                continue_button = modal.button_box.button(
+                    QDialogButtonBox.StandardButton.Ok
+                )
+                if continue_button is None or not continue_button.isEnabled():
+                    _fail("Import Data did not retain the selected source.", modal)
+                    return
+                QTEST.mouseClick(continue_button, Qt.MouseButton.LeftButton)
+                return
+
             if isinstance(modal, BidsSubjectSelectionDialog):
                 selected_subjects = modal.get_result()
                 if not selected_subjects:
@@ -1100,7 +1123,7 @@ def test_public_file_formats_run_five_steps_and_apply_without_labels(
     QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
     _wait_for_applied_interpretation(qtbot, driver, runtime, panel)
 
-    assert chooser_calls == ["Choose EEG Source for Interpretation"]
+    assert chooser_calls == ["Choose EEG files"]
     assert driver.phase == 5
     assert driver.trace == [
         "Choose EEG Data",
@@ -1163,8 +1186,8 @@ def test_public_raw_folders_ignore_context_sidecars_and_apply_selected_eeg(
     )
     _host, panel, runtime = _build_dataset_panel(qtbot)
 
-    driver = _start_wizard_driver(skip_labels=True)
-    QTEST.mouseClick(panel.sidebar.import_folder_btn, Qt.MouseButton.LeftButton)
+    driver = _start_wizard_driver(skip_labels=True, source_picker="folder")
+    QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
     _wait_for_applied_interpretation(
         qtbot,
         driver,
@@ -1173,7 +1196,7 @@ def test_public_raw_folders_ignore_context_sidecars_and_apply_selected_eeg(
         timeout=60_000,
     )
 
-    assert chooser_calls == ["Choose Folder or BIDS Root for Interpretation"]
+    assert chooser_calls == ["Choose EEG folder"]
     assert driver.phase == 5
     assert driver.trace == [
         "Choose EEG Data",
@@ -1230,8 +1253,11 @@ def test_openneuro_p300_import_bids_uses_recommended_value_field_and_applies(
     )
     _host, panel, runtime = _build_dataset_panel(qtbot)
 
-    driver = _start_wizard_driver(resolve_openneuro_values=True)
-    QTEST.mouseClick(panel.sidebar.import_bids_btn, Qt.MouseButton.LeftButton)
+    driver = _start_wizard_driver(
+        resolve_openneuro_values=True,
+        source_picker="folder",
+    )
+    QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
     _wait_for_applied_interpretation(
         qtbot,
         driver,
@@ -1241,7 +1267,7 @@ def test_openneuro_p300_import_bids_uses_recommended_value_field_and_applies(
         expected_rows=3,
     )
 
-    assert chooser_calls == ["Choose BIDS Folder for Import"]
+    assert chooser_calls == ["Choose EEG folder"]
     assert driver.phase == 5
     assert driver.trace == [
         "select BIDS subjects: 001",
@@ -1305,9 +1331,12 @@ def test_openneuro_p300_import_bids_trial_type_excludes_na_and_applies(
         ),
     )
     _host, panel, runtime = _build_dataset_panel(qtbot)
-    driver = _start_wizard_driver(resolve_openneuro_trial_types=True)
+    driver = _start_wizard_driver(
+        resolve_openneuro_trial_types=True,
+        source_picker="folder",
+    )
 
-    QTEST.mouseClick(panel.sidebar.import_bids_btn, Qt.MouseButton.LeftButton)
+    QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
     _wait_for_applied_interpretation(
         qtbot,
         driver,
@@ -1345,9 +1374,12 @@ def test_visible_bids_apply_cancel_reopens_identical_review_and_retries(
     host, panel, runtime = _build_dataset_panel(qtbot)
     service = get_application_service(host.study)
     load_started, release_load = _block_first_apply_raw_load(service)
-    driver = _start_wizard_driver(resolve_bids_values=True)
+    driver = _start_wizard_driver(
+        resolve_bids_values=True,
+        source_picker="folder",
+    )
 
-    QTEST.mouseClick(panel.sidebar.import_bids_btn, Qt.MouseButton.LeftButton)
+    QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
     qtbot.waitUntil(load_started.is_set, timeout=45_000)
     driver.timer.stop()
 
@@ -1461,8 +1493,11 @@ def test_bids_missing_events_preserves_data_state_then_valid_root_recovers(
     before = runtime.get_view_publication().state
     before_non_interpretation_state = _non_interpretation_state(before)
 
-    blocked_driver = _start_wizard_driver(expect_blocked=True)
-    QTEST.mouseClick(panel.sidebar.import_bids_btn, Qt.MouseButton.LeftButton)
+    blocked_driver = _start_wizard_driver(
+        expect_blocked=True,
+        source_picker="folder",
+    )
+    QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
     _wait_for_blocked_cancel(qtbot, blocked_driver, panel)
 
     blocked_state = runtime.get_view_publication().state
@@ -1480,13 +1515,16 @@ def test_bids_missing_events_preserves_data_state_then_valid_root_recovers(
     assert blocked_state.interpretation.has_applied_interpretation is False
     assert panel.table.rowCount() == 0
 
-    recovery_driver = _start_wizard_driver(resolve_bids_values=True)
-    QTEST.mouseClick(panel.sidebar.import_bids_btn, Qt.MouseButton.LeftButton)
+    recovery_driver = _start_wizard_driver(
+        resolve_bids_values=True,
+        source_picker="folder",
+    )
+    QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
     _wait_for_applied_interpretation(qtbot, recovery_driver, runtime, panel)
 
     assert chooser_calls == [
-        "Choose BIDS Folder for Import",
-        "Choose BIDS Folder for Import",
+        "Choose EEG folder",
+        "Choose EEG folder",
     ]
     assert recovery_driver.phase == 5
     assert recovery_driver.trace == [

@@ -653,8 +653,6 @@ def _scenario_evidence(
         )
         for button in (
             sidebar.import_btn,
-            sidebar.import_folder_btn,
-            sidebar.import_bids_btn,
             sidebar.reload_recipe_btn,
             sidebar.chan_select_btn,
         )

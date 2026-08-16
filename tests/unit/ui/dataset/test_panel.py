@@ -9,7 +9,6 @@ from PyQt6.QtWidgets import (
     QApplication,
     QBoxLayout,
     QDockWidget,
-    QFileDialog,
     QFrame,
     QHeaderView,
     QMainWindow,
@@ -291,8 +290,6 @@ def test_dataset_panel_empty_state_fits_840_shell_with_320_assistant_dock(
     assert_wrapped_label_fits(panel.empty_state_title)
     for button in (
         panel.sidebar.import_btn,
-        panel.sidebar.import_folder_btn,
-        panel.sidebar.import_bids_btn,
         panel.sidebar.reload_recipe_btn,
         panel.sidebar.chan_select_btn,
     ):
@@ -412,8 +409,6 @@ def test_dataset_panel_empty_and_loaded_summary_scale_matrix(
         assert_info_cells_fit(active_info_panel)
         for button in (
             panel.sidebar.import_btn,
-            panel.sidebar.import_folder_btn,
-            panel.sidebar.import_bids_btn,
             panel.sidebar.reload_recipe_btn,
             panel.sidebar.chan_select_btn,
         ):
@@ -459,8 +454,6 @@ def test_dataset_fixed_sidebar_ignores_wide_native_font_minimum_hints(qtbot):
         assert_dataset_horizontal_scroll_is_absent(panel)
         for button in (
             panel.sidebar.import_btn,
-            panel.sidebar.import_folder_btn,
-            panel.sidebar.import_bids_btn,
             panel.sidebar.reload_recipe_btn,
             panel.sidebar.chan_select_btn,
         ):
@@ -619,15 +612,27 @@ def test_dataset_panel_init_controller(mock_main_window, mock_controller, qtbot)
 
 def test_dataset_panel_import_data_success(mock_main_window, mock_controller, qtbot):
     """Import without command service should not mutate the controller."""
+    from XBrainLab.ui.dialogs.dataset.eeg_source_chooser_dialog import (
+        EegSourceSelection,
+    )
+
+    class _AcceptedChooser:
+        def __init__(self, _parent, *, start_directory=""):
+            assert isinstance(start_directory, str)
+
+        def exec(self):
+            return True
+
+        def get_result(self):
+            return EegSourceSelection(kind="files", paths=("/path/to/file.set",))
+
     panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
     qtbot.addWidget(panel)
+    panel.action_handler._data_interpretation._source_chooser_dialog_class = lambda: (
+        _AcceptedChooser
+    )
 
-    # Patch the name imported in the module
     with (
-        patch(
-            "XBrainLab.ui.panels.dataset.actions.QFileDialog.getOpenFileNames",
-            return_value=(["/path/to/file.set"], "Filter"),
-        ) as mock_file_dialog,
         patch(
             "XBrainLab.ui.panels.dataset.actions.QMessageBox.information",
         ) as mock_info,
@@ -636,10 +641,6 @@ def test_dataset_panel_import_data_success(mock_main_window, mock_controller, qt
         ) as mock_warning,
     ):
         panel.action_handler.import_data()
-        assert (
-            mock_file_dialog.call_args.kwargs["options"]
-            & QFileDialog.Option.DontUseNativeDialog
-        )
         mock_controller.import_files.assert_not_called()
         mock_warning.assert_called_once()
         assert mock_warning.call_args.args[1] == "Interpretation Blocked"

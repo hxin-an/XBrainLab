@@ -3422,7 +3422,7 @@ def test_workflow_sidebar_guard_requires_visible_painted_action(
     sidebar.setObjectName("RightPanel")
     sidebar.setGeometry(150, 10, 250, 230)
     layout = QVBoxLayout(sidebar)
-    action = QPushButton("Import file", sidebar)
+    action = QPushButton("Import Data", sidebar)
     action.setStyleSheet(
         "background: #3a3a3a; color: #d8d8d8; border: none; "
         "padding-left: 12px; text-align: left;"

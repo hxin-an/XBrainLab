@@ -488,8 +488,7 @@ class DatasetPanel(BasePanel):
             QMessageBox.warning(
                 self,
                 "Import EEG Data",
-                "Use Import file, Import folder, or Import BIDS folder so "
-                "the data goes through the guided import workflow.",
+                "Use Import Data so the data goes through the guided import workflow.",
             )
             return None
 

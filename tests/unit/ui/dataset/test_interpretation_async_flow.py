@@ -148,6 +148,8 @@ def test_catalog_scan_publishes_owned_status_before_worker_is_scheduled(
 
     result = _success_result(
         "scan_source",
+        payload_type="source_classification",
+        source_kind="bids",
         bids_subject_catalog={
             "eeg_file_count": 1,
             "subjects": [{"subject": "01", "label": "sub-01", "eeg_file_count": 1}],
@@ -157,6 +159,7 @@ def test_catalog_scan_publishes_owned_status_before_worker_is_scheduled(
     class _Service:
         def begin_owned_operation(self, command):
             assert command.catalog_only is True
+            assert command.source_hint == "auto"
             return SimpleNamespace(operation_id="catalog-operation-1")
 
         def get_owned_operation(self, operation_id):
@@ -215,7 +218,7 @@ def test_catalog_scan_publishes_owned_status_before_worker_is_scheduled(
     )
     handler = DatasetActionHandler(panel)
 
-    outcome = handler._data_interpretation._start_bids_subject_selection_async(
+    outcome = handler._data_interpretation._start_source_classification_async(
         "/tmp/bids-root"
     )
 

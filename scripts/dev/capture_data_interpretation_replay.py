@@ -341,10 +341,6 @@ def dataset_sidebar_state(sidebar: Any) -> dict[str, dict[str, Any]]:
     """Capture Dataset sidebar button states used by import workflows."""
     return {
         "import_source": button_state(sidebar.import_btn),
-        "import_folder": button_state(sidebar.import_folder_btn),
-        "import_bids": button_state(sidebar.import_bids_btn)
-        if hasattr(sidebar, "import_bids_btn")
-        else {"text": "", "enabled": False, "tooltip": ""},
         "reload_recipe": button_state(sidebar.reload_recipe_btn),
         "import_labels": button_state(sidebar.import_label_btn),
         "smart_parse": button_state(sidebar.smart_parse_btn),

@@ -51,8 +51,9 @@ def sidebar(qtbot):
 
 def test_init_ui(sidebar):
     assert isinstance(sidebar.import_btn, QPushButton)
-    assert isinstance(sidebar.import_folder_btn, QPushButton)
-    assert isinstance(sidebar.import_bids_btn, QPushButton)
+    assert sidebar.import_btn.text() == "Import Data"
+    assert not hasattr(sidebar, "import_folder_btn")
+    assert not hasattr(sidebar, "import_bids_btn")
     assert isinstance(sidebar.reload_recipe_btn, QPushButton)
     assert isinstance(sidebar.import_label_btn, QPushButton)
     assert isinstance(sidebar.smart_parse_btn, QPushButton)
@@ -237,12 +238,6 @@ def test_update_sidebar_real_study_missing_publication_skips_compatibility_state
     compatibility_value.assert_not_called()
     expected = {
         widget.import_btn: "Data interpretation availability is unavailable right now.",
-        widget.import_folder_btn: (
-            "Data interpretation availability is unavailable right now."
-        ),
-        widget.import_bids_btn: (
-            "Data interpretation availability is unavailable right now."
-        ),
         widget.reload_recipe_btn: (
             "Recipe reload availability is unavailable right now."
         ),
@@ -275,12 +270,6 @@ def test_deferred_startup_real_study_missing_publication_fails_closed(qtbot):
 
     expected = {
         widget.import_btn: "Data interpretation availability is unavailable right now.",
-        widget.import_folder_btn: (
-            "Data interpretation availability is unavailable right now."
-        ),
-        widget.import_bids_btn: (
-            "Data interpretation availability is unavailable right now."
-        ),
         widget.reload_recipe_btn: (
             "Recipe reload availability is unavailable right now."
         ),
@@ -634,12 +623,6 @@ def test_button_connections(sidebar):
     # Verify connections call action handler
     sidebar.import_btn.click()
     sidebar.panel.action_handler.import_data.assert_called_once()
-
-    sidebar.import_folder_btn.click()
-    sidebar.panel.action_handler.import_folder_source.assert_called_once()
-
-    sidebar.import_bids_btn.click()
-    sidebar.panel.action_handler.import_bids_source.assert_called_once()
 
     sidebar.reload_recipe_btn.click()
     sidebar.panel.action_handler.reload_interpretation_recipe.assert_called_once()

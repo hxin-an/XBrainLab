@@ -282,7 +282,7 @@ def build_interpretation_candidate(
     ):
         blocked_reasons.append(
             "BIDS events.tsv was not found for the selected EEG file(s). "
-            "Choose a BIDS run with events.tsv, or use Import folder for non-BIDS "
+            "Choose a BIDS run with events.tsv, or return to Import Data for non-BIDS "
             "labels."
         )
     label_carrier_choices = (
