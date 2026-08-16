@@ -36,6 +36,10 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.llm.agent.runtime_state import (
+    AssistantRuntimePhase,
+    AssistantRuntimeSnapshot,
+)
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.downloader import (
     ModelDownloadFailureCode,
@@ -316,6 +320,8 @@ class ModelSettingsDialog(BaseDialog):
         self._updating_response_presets = False
         self._download_observers_attached = False
         self._deactivation_observer_attached = False
+        self._runtime_observer_attached = False
+        self._assistant_runtime_snapshot: AssistantRuntimeSnapshot | None = None
 
         super().__init__(
             parent=parent,
@@ -347,6 +353,19 @@ class ModelSettingsDialog(BaseDialog):
         if callable(connect_deactivation):
             connect_deactivation(self.on_assistant_deactivation_finished)
             self._deactivation_observer_attached = True
+        assistant_runtime = getattr(self.agent_manager, "assistant_runtime", None)
+        runtime_signal = getattr(
+            assistant_runtime,
+            "runtime_snapshot_changed",
+            None,
+        )
+        connect_runtime = getattr(runtime_signal, "connect", None)
+        if callable(connect_runtime):
+            connect_runtime(self._on_assistant_runtime_snapshot_changed)
+            self._runtime_observer_attached = True
+        current_runtime = getattr(assistant_runtime, "current", None)
+        if isinstance(current_runtime, AssistantRuntimeSnapshot):
+            self._assistant_runtime_snapshot = current_runtime
         self.load_state()
         self._schedule_fit()
 
@@ -846,21 +865,14 @@ class ModelSettingsDialog(BaseDialog):
         """Render a coherent model state without re-querying the filesystem."""
         self._current_local_model_state = state
         self.local_downloaded = state.installed
-        if state.installed:
-            self.local_action_btn.setText("Delete")
-            self._set_model_action_destructive(True)
-        else:
+        if not state.installed:
             self.local_status_label.setText("Not installed")
             self._set_status_text_color(
                 self.local_status_label,
                 Theme.TEXT_SECONDARY,
             )
             self._set_model_status_tone("neutral")
-            self.local_action_btn.setText("Install Model")
-            self._set_model_action_destructive(False)
-        self.local_action_btn.setEnabled(
-            not self.is_downloading and not state.diagnostic_message
-        )
+        self._render_local_model_action(state)
 
         if state.installed:
             self.local_resource_label.setText(
@@ -913,6 +925,43 @@ class ModelSettingsDialog(BaseDialog):
             )
             if not state.installed:
                 self._set_model_status_tone("neutral")
+
+    def _render_local_model_action(
+        self,
+        state: ModelStatusInspectionResult,
+    ) -> None:
+        """Project download and runtime ownership onto the cache action."""
+        if state.installed and self._selected_model_is_loading():
+            self.local_action_btn.setText("Loading…")
+            self._set_model_action_destructive(False)
+            self.local_action_btn.setEnabled(False)
+            return
+        self.local_action_btn.setText("Delete" if state.installed else "Install Model")
+        self._set_model_action_destructive(state.installed)
+        self.local_action_btn.setEnabled(
+            not self.is_downloading and not state.diagnostic_message
+        )
+
+    def _selected_model_is_loading(self) -> bool:
+        """Return whether the runtime is loading the selected local model."""
+        snapshot = self._assistant_runtime_snapshot
+        if snapshot is None or snapshot.phase is not AssistantRuntimePhase.LOADING:
+            return False
+        if snapshot.backend_mode not in {"", "local"}:
+            return False
+        loading_model = snapshot.requested_model_id or snapshot.model_id
+        return not loading_model or loading_model == self._selected_model_id()
+
+    def _on_assistant_runtime_snapshot_changed(self, snapshot: object) -> None:
+        """Refresh the cache action from the existing runtime owner."""
+        if not self._runtime_observer_attached:
+            return
+        if not isinstance(snapshot, AssistantRuntimeSnapshot):
+            return
+        self._assistant_runtime_snapshot = snapshot
+        state = self._current_local_model_state
+        if state is not None and state.request.model_name == self._selected_model_id():
+            self._render_local_model_action(state)
 
     def check_local_model_status(self, *_args):
         """Request one coherent status snapshot without blocking the GUI."""
@@ -1064,6 +1113,8 @@ class ModelSettingsDialog(BaseDialog):
     def _delete_model(self):
         """Delete the selected local model from cache after confirmation."""
         repo_id = self._selected_model_id()
+        if not self._model_deletion_is_allowed(repo_id):
+            return
         reply = QMessageBox.warning(
             self,
             "Delete Model",
@@ -1071,10 +1122,7 @@ class ModelSettingsDialog(BaseDialog):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
-            # SAFETY: Switch backend if this model is active
-            if self.agent_manager and not self.agent_manager.prepare_model_deletion(
-                repo_id
-            ):
+            if not self._model_deletion_is_allowed(repo_id):
                 return
 
             started = self.download_lifecycle.request_cache_removal(
@@ -1098,6 +1146,21 @@ class ModelSettingsDialog(BaseDialog):
             self._schedule_fit()
             self.local_action_btn.setEnabled(False)
             self.update_validation_state()
+
+    def _model_deletion_is_allowed(self, repo_id: str) -> bool:
+        """Keep deletion warnings inside this dialog's modal hierarchy."""
+        blocked = self._selected_model_is_loading()
+        if self.agent_manager is not None:
+            blocked = blocked or not self.agent_manager.prepare_model_deletion(repo_id)
+        if not blocked:
+            return True
+        QMessageBox.warning(
+            self,
+            "Assistant Model In Use",
+            "The Assistant is using this model. Open Advanced, choose Disable, "
+            "and wait for unloading to finish before deleting it.",
+        )
+        return False
 
     def on_download_progress(self, percent, msg):
         """Handle download progress updates.
@@ -1423,6 +1486,14 @@ class ModelSettingsDialog(BaseDialog):
                         self.on_assistant_deactivation_finished,
                     )
             self._deactivation_observer_attached = False
+        if self._runtime_observer_attached:
+            assistant_runtime = getattr(self.agent_manager, "assistant_runtime", None)
+            signal = getattr(assistant_runtime, "runtime_snapshot_changed", None)
+            disconnect_runtime = getattr(signal, "disconnect", None)
+            with contextlib.suppress(AttributeError, RuntimeError, TypeError):
+                if callable(disconnect_runtime):
+                    disconnect_runtime(self._on_assistant_runtime_snapshot_changed)
+            self._runtime_observer_attached = False
 
     def get_config(self):
         """Return the current LLM configuration.

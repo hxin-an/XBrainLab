@@ -12,9 +12,15 @@ from typing import Any, cast
 from unittest.mock import MagicMock, call, patch
 
 import pytest
-from PyQt6.QtCore import QEvent, QObject, QPointF, Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, QObject, QPoint, QPointF, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QMouseEvent
-from PyQt6.QtWidgets import QApplication, QMainWindow, QToolButton
+from PyQt6.QtWidgets import (
+    QApplication,
+    QDockWidget,
+    QMainWindow,
+    QPushButton,
+    QToolButton,
+)
 
 from XBrainLab.backend.application import (
     APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
@@ -433,11 +439,35 @@ class TestAgentManagerMethods:
 
     def test_toggle_float_no_dock(self, agent_mgr):
         agent_mgr.chat_dock = None
-        agent_mgr._place_floating_dock = MagicMock()
 
         agent_mgr._toggle_float()
 
-        agent_mgr._place_floating_dock.assert_not_called()
+        assert agent_mgr._float_transition_pending is False
+
+    def test_toggle_float_defers_dock_hierarchy_transition(self, agent_mgr, qtbot):
+        dock = MagicMock()
+        dock.isFloating.return_value = False
+        agent_mgr.chat_dock = dock
+        agent_mgr.float_btn = QPushButton()
+        qtbot.addWidget(agent_mgr.float_btn)
+
+        agent_mgr._toggle_float()
+
+        dock.setFloating.assert_not_called()
+        qtbot.waitUntil(lambda: dock.setFloating.call_count == 1, timeout=1000)
+        dock.setFloating.assert_called_once_with(True)
+
+    def test_top_level_change_does_not_reposition_floating_dock(self, agent_mgr):
+        dock = MagicMock()
+        dock.width.return_value = 400
+        dock.height.return_value = 600
+        agent_mgr.chat_dock = dock
+        agent_mgr._render_float_button_state = MagicMock()
+
+        agent_mgr._on_dock_top_level_changed(True)
+
+        dock.setGeometry.assert_not_called()
+        dock.setMinimumSize.assert_not_called()
 
     def test_backend_publication_events_ignore_only_old_or_equal_revisions(
         self,
@@ -3497,9 +3527,10 @@ class TestAgentManagerMethods:
 
     def test_prepare_model_deletion_no_controller(self, agent_mgr):
         agent_mgr._assistant_runtime.controller = None
+        agent_mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.return_value = False
 
         assert agent_mgr.prepare_model_deletion("test") is True
-        agent_mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.assert_not_called()
+        agent_mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.assert_called_once_with()
 
     def test_prepare_model_deletion_allows_inactive_runtime(self, agent_mgr):
         agent_mgr._assistant_runtime.controller = MagicMock()
@@ -3511,18 +3542,9 @@ class TestAgentManagerMethods:
     def test_prepare_model_deletion_blocks_active_local_runtime(self, agent_mgr):
         agent_mgr._assistant_runtime.controller = MagicMock()
         agent_mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.return_value = True
-        with patch(
-            "XBrainLab.ui.components.agent_manager.QMessageBox.warning"
-        ) as warning:
-            assert agent_mgr.prepare_model_deletion("test") is False
+        assert agent_mgr.prepare_model_deletion("test") is False
 
         agent_mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.assert_called_once_with()
-        warning.assert_called_once_with(
-            agent_mgr.main_window,
-            "Assistant Model In Use",
-            "The AI assistant is currently using this local model.\n"
-            "Close the assistant or select a different model before deleting it.",
-        )
 
     def test_on_processing_state_changed(self, agent_mgr):
         agent_mgr.chat_panel = MagicMock()
@@ -3794,7 +3816,6 @@ class TestAgentManagerMethods:
         features = manager.chat_dock.features()
         assert features & QDockWidget.DockWidgetFeature.DockWidgetMovable
         assert features & QDockWidget.DockWidgetFeature.DockWidgetFloatable
-        assert manager.chat_dock.minimumWidth() >= 320
         assert manager.chat_panel.minimumWidth() >= 320
         title = manager.chat_dock.findChild(QLabel, "AssistantDockTitle")
         assert title is not None
@@ -3842,6 +3863,39 @@ class TestAgentManagerMethods:
         manager.close_btn.click()
         assert manager.chat_dock.isHidden()
 
+    def test_real_dock_float_and_restore_keep_qt_heartbeat_alive(self, qtbot):
+        from XBrainLab.ui.components.agent_manager import AgentManager
+
+        main_window = cast(Any, QMainWindow())
+        main_window.ai_btn = MagicMock()
+        qtbot.addWidget(main_window)
+        study = MagicMock()
+        study.get_controller.return_value = MagicMock()
+        manager = cast(Any, AgentManager(main_window, study))
+        manager.init_ui()
+        assert manager.chat_dock is not None
+        main_window.show()
+        manager.chat_dock.show()
+        heartbeats: list[str] = []
+
+        manager.float_btn.click()
+        QTimer.singleShot(0, lambda: heartbeats.append("float"))
+        qtbot.waitUntil(
+            lambda: manager.chat_dock.isFloating()
+            and manager.float_btn.isEnabled()
+            and heartbeats == ["float"],
+            timeout=2000,
+        )
+
+        manager.float_btn.click()
+        QTimer.singleShot(0, lambda: heartbeats.append("dock"))
+        qtbot.waitUntil(
+            lambda: not manager.chat_dock.isFloating()
+            and manager.float_btn.isEnabled()
+            and heartbeats == ["float", "dock"],
+            timeout=2000,
+        )
+
     def test_dock_titlebar_empty_space_preserves_native_drag_events(self, qtbot):
         from XBrainLab.ui.components.agent_manager import AssistantDockTitleBar
 
@@ -3885,6 +3939,86 @@ class TestAgentManagerMethods:
 
         toggle.assert_called_once()
         assert double_click.isAccepted()
+
+    def test_floating_titlebar_starts_system_move_on_mouse_press(self, qtbot):
+        from XBrainLab.ui.components.agent_manager import AssistantDockTitleBar
+
+        dock = QDockWidget()
+        qtbot.addWidget(dock)
+        dock.setFloating(True)
+        title_bar = AssistantDockTitleBar(MagicMock(), dock)
+        dock.setTitleBarWidget(title_bar)
+        title_bar._start_system_move = MagicMock(return_value=True)
+        press = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(8, 8),
+            QPointF(80, 80),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+
+        title_bar.mousePressEvent(press)
+
+        title_bar._start_system_move.assert_called_once_with()
+        assert press.isAccepted()
+        assert title_bar._system_move_started is True
+        assert title_bar._drag_origin_global is None
+        assert title_bar._drag_origin_window is None
+
+    def test_floating_titlebar_uses_pointer_fallback_when_system_move_fails(
+        self,
+        qtbot,
+    ):
+        from XBrainLab.ui.components.agent_manager import AssistantDockTitleBar
+
+        class _FallbackDock(QDockWidget):
+            def __init__(self) -> None:
+                super().__init__()
+                self.moves: list[QPoint] = []
+
+            def isFloating(self) -> bool:
+                return True
+
+            def pos(self) -> QPoint:
+                return QPoint(30, 40)
+
+            def move(self, point: QPoint) -> None:
+                self.moves.append(point)
+
+        dock = _FallbackDock()
+        qtbot.addWidget(dock)
+        dock.setFloating(True)
+        title_bar = AssistantDockTitleBar(MagicMock(), dock)
+        dock.setTitleBarWidget(title_bar)
+        title_bar._start_system_move = MagicMock(return_value=False)
+        press = QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(8, 8),
+            QPointF(80, 80),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        title_bar.mousePressEvent(press)
+        assert title_bar._drag_origin_global == QPoint(80, 80)
+        assert title_bar._drag_origin_window == QPoint(30, 40)
+        assert title_bar.parentWidget() is dock
+        assert dock.isFloating()
+        move = QMouseEvent(
+            QEvent.Type.MouseMove,
+            QPointF(18, 23),
+            QPointF(90, 95),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        assert move.buttons() & Qt.MouseButton.LeftButton
+        title_bar.mouseMoveEvent(move)
+
+        title_bar._start_system_move.assert_called_once_with()
+        assert QPoint(40, 55) in dock.moves
+        assert move.isAccepted()
 
     def test_toggle_first_open_unavailable_keeps_panel_open(self, agent_mgr):
         agent_mgr._assistant_runtime.initialized = False

@@ -6,7 +6,6 @@ from typing import Any, cast
 from PyQt6.QtCore import (
     QObject,
     QPoint,
-    QRect,
     QSize,
     Qt,
     QTimer,
@@ -19,7 +18,6 @@ from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QPushButton,
     QStyle,
     QWidget,
@@ -254,9 +252,13 @@ class AssistantDockTitleBar(QWidget):
             and isinstance(dock, QDockWidget)
             and dock.isFloating()
         ):
-            self._drag_origin_global = event.globalPosition().toPoint()
-            self._drag_origin_window = dock.pos()
-            self._system_move_started = False
+            self._system_move_started = self._start_system_move()
+            if self._system_move_started:
+                self._drag_origin_global = None
+                self._drag_origin_window = None
+            else:
+                self._drag_origin_global = event.globalPosition().toPoint()
+                self._drag_origin_window = dock.pos()
             event.accept()
             return
         if event.button() == Qt.MouseButton.LeftButton:
@@ -270,22 +272,24 @@ class AssistantDockTitleBar(QWidget):
         if (
             isinstance(dock, QDockWidget)
             and dock.isFloating()
-            and self._drag_origin_global is not None
-            and self._drag_origin_window is not None
             and event.buttons() & Qt.MouseButton.LeftButton
         ):
-            if not self._system_move_started and self._start_system_move():
-                self._system_move_started = True
-            elif not self._system_move_started:
+            if self._system_move_started:
+                event.accept()
+                return
+            if (
+                self._drag_origin_global is not None
+                and self._drag_origin_window is not None
+            ):
                 delta = event.globalPosition().toPoint() - self._drag_origin_global
                 dock.move(self._drag_origin_window + delta)
-            event.accept()
-            return
+                event.accept()
+                return
         event.ignore()
 
     def mouseReleaseEvent(self, event):  # noqa: N802
         """Finish one owned floating-window drag."""
-        if self._drag_origin_global is not None:
+        if self._drag_origin_global is not None or self._system_move_started:
             self._drag_origin_global = None
             self._drag_origin_window = None
             self._system_move_started = False
@@ -385,6 +389,7 @@ class AgentManager(QObject):
 
         self.chat_panel: ChatPanel | None = None
         self.chat_dock: QDockWidget | None = None
+        self._float_transition_pending = False
 
         self.chat_controller = ChatController()
         # Connect Chat Controller Signals
@@ -528,8 +533,6 @@ class AgentManager(QObject):
             | QDockWidget.DockWidgetFeature.DockWidgetMovable
             | QDockWidget.DockWidgetFeature.DockWidgetFloatable,
         )
-        chat_dock.setMinimumWidth(320)
-
         # Custom title bar with conversation controls and native dock dragging.
         title_bar = AssistantDockTitleBar(self._toggle_float, chat_dock)
         self.assistant_header = title_bar
@@ -568,12 +571,12 @@ class AgentManager(QObject):
         self.new_conv_title_btn.clicked.connect(self.start_new_conversation)
         title_layout.addWidget(self.new_conv_title_btn)
 
-        self._float_icon = QIcon.fromTheme(QIcon.ThemeIcon.WindowNew)
+        self._float_icon = QIcon(Icons.FLOAT.path)
         if self._float_icon.isNull():
             self._float_icon = title_style.standardIcon(
                 QStyle.StandardPixmap.SP_TitleBarMaxButton
             )
-        self._dock_icon = QIcon.fromTheme(QIcon.ThemeIcon.ViewRestore)
+        self._dock_icon = QIcon(Icons.DOCK.path)
         if self._dock_icon.isNull():
             self._dock_icon = title_style.standardIcon(
                 QStyle.StandardPixmap.SP_TitleBarNormalButton
@@ -646,16 +649,37 @@ class AgentManager(QObject):
             self.main_window.ai_btn.blockSignals(False)
 
     def _toggle_float(self):
-        """Toggle floating/docked state of the chat dock."""
-        if self.chat_dock:
-            should_float = not self.chat_dock.isFloating()
-            self.chat_dock.setFloating(should_float)
+        """Queue one floating/docked transition after the click dispatch."""
+        dock = self.chat_dock
+        if dock is None or self._float_transition_pending:
+            return
+        self._float_transition_pending = True
+        if hasattr(self, "float_btn"):
+            self.float_btn.setEnabled(False)
+        should_float = not dock.isFloating()
+        QTimer.singleShot(
+            0,
+            lambda owned_dock=dock, target=should_float: self._apply_float_state(
+                owned_dock,
+                target,
+            ),
+        )
+
+    def _apply_float_state(self, dock: QDockWidget, should_float: bool) -> None:
+        """Apply a queued transition only to the still-owned dock."""
+        if self.chat_dock is dock:
+            dock.setFloating(should_float)
+        QTimer.singleShot(0, self._finish_float_transition)
+
+    def _finish_float_transition(self) -> None:
+        """Release the view-local transition guard on a settled event loop."""
+        self._float_transition_pending = False
+        if hasattr(self, "float_btn"):
+            self.float_btn.setEnabled(True)
 
     def _on_dock_top_level_changed(self, floating: bool) -> None:
         """Keep the assistant dock usable when it becomes a floating window."""
         self._render_float_button_state(floating)
-        if floating:
-            self._place_floating_dock()
 
     def _render_float_button_state(self, floating: bool) -> None:
         """Render the direct Float/Dock action from the dock's actual state."""
@@ -675,34 +699,6 @@ class AgentManager(QObject):
         self.float_btn.setAccessibleDescription(
             "Move the Assistant into a separate movable window."
         )
-
-    def _place_floating_dock(self) -> None:
-        """Size and clamp the floating assistant dock within the active screen."""
-        if not self.chat_dock:
-            return
-
-        available = self._available_screen_geometry()
-        main_frame = self.main_window.frameGeometry()
-        dock_width = min(max(self.chat_dock.width(), 420), available.width())
-        dock_height = min(
-            max(self.chat_dock.height(), min(self.main_window.height(), 720)),
-            available.height(),
-        )
-
-        x = main_frame.right() - dock_width
-        y = main_frame.top() + 48
-        x = min(max(x, available.left()), available.right() - dock_width + 1)
-        y = min(max(y, available.top()), available.bottom() - dock_height + 1)
-
-        self.chat_dock.setMinimumSize(QSize(320, 520))
-        self.chat_dock.setGeometry(QRect(x, y, dock_width, dock_height))
-
-    def _available_screen_geometry(self) -> QRect:
-        """Return the usable screen area for the main window or primary screen."""
-        screen = self.main_window.screen() or QApplication.primaryScreen()
-        if screen is not None:
-            return screen.availableGeometry()
-        return QRect(0, 0, 1280, 800)
 
     def toggle(self):
         """Toggle the Agent dock visibility, initializing on first open."""
@@ -844,8 +840,8 @@ class AgentManager(QObject):
             self.refresh_backend_status()
         self.assistant_deactivation_finished.emit(bool(ok), str(message or ""))
 
-    def prepare_model_deletion(self, model_name: str):
-        """Prepare for model file deletion by switching away if active.
+    def prepare_model_deletion(self, model_name: str) -> bool:
+        """Return whether runtime ownership allows model file deletion.
 
         Called by ``ModelSettingsDialog`` before deleting a model. If the
         model is currently loaded in local mode, block deletion until the
@@ -858,18 +854,10 @@ class AgentManager(QObject):
             ``True`` if it is safe to proceed with deletion.
 
         """
-        if self.agent_controller is None:
-            return True
         if self._assistant_runtime.active_local_runtime_blocks_model_deletion():
             logger.info(
                 "Blocking deletion of active local model: %s",
                 redact_public_text(model_name),
-            )
-            QMessageBox.warning(
-                self.main_window,
-                "Assistant Model In Use",
-                "The AI assistant is currently using this local model.\n"
-                "Close the assistant or select a different model before deleting it.",
             )
             return False
 

@@ -150,12 +150,12 @@ def test_assistant_toolbar_buttons_trigger_their_own_actions(
     open_settings.assert_called_once_with()
 
     assistant_manager.float_btn.click()
-    assert dock.isFloating()
+    qtbot.waitUntil(dock.isFloating, timeout=1000)
     assert assistant_manager.float_btn.toolTip() == "Dock assistant"
     assert assistant_manager.float_btn.accessibleName() == "Dock assistant"
 
     assistant_manager.float_btn.click()
-    assert not dock.isFloating()
+    qtbot.waitUntil(lambda: not dock.isFloating(), timeout=1000)
     assert assistant_manager.float_btn.toolTip() == "Float assistant"
 
     assistant_manager.close_btn.click()

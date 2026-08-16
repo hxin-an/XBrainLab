@@ -8,6 +8,10 @@ import pytest
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QMessageBox, QPushButton
 
+from XBrainLab.llm.agent.runtime_state import (
+    AssistantRuntimePhase,
+    AssistantRuntimeSnapshot,
+)
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.downloader import (
     MODEL_DOWNLOAD_TIMEOUT_PUBLIC_MESSAGE,
@@ -122,10 +126,17 @@ class _FakeDownloadLifecycle(QObject):
 class _FakeAgentManager(QObject):
     assistant_deactivation_finished = pyqtSignal(bool, str)
 
-    def __init__(self, result: RuntimeCommandAdmissionResult) -> None:
+    def __init__(
+        self,
+        result: RuntimeCommandAdmissionResult,
+        *,
+        runtime=None,
+    ) -> None:
         super().__init__()
         self.result = result
         self.deactivation_configs: list[LLMConfig] = []
+        self.assistant_runtime = runtime
+        self.deletion_checks = 0
 
     def request_assistant_deactivation(
         self,
@@ -133,6 +144,36 @@ class _FakeAgentManager(QObject):
     ) -> RuntimeCommandAdmissionResult:
         self.deactivation_configs.append(config)
         return self.result
+
+    def prepare_model_deletion(self, _model_name: str) -> bool:
+        self.deletion_checks += 1
+        runtime = self.assistant_runtime
+        return bool(
+            runtime is None or not runtime.active_local_runtime_blocks_model_deletion()
+        )
+
+
+class _FakeRuntimeLifecycle(QObject):
+    runtime_snapshot_changed = pyqtSignal(object)
+
+    def __init__(self, snapshot: AssistantRuntimeSnapshot) -> None:
+        super().__init__()
+        self.current = snapshot
+        self.blocks_deletion = snapshot.phase in {
+            AssistantRuntimePhase.LOADING,
+            AssistantRuntimePhase.READY,
+        }
+
+    def publish(self, snapshot: AssistantRuntimeSnapshot) -> None:
+        self.current = snapshot
+        self.blocks_deletion = snapshot.phase in {
+            AssistantRuntimePhase.LOADING,
+            AssistantRuntimePhase.READY,
+        }
+        self.runtime_snapshot_changed.emit(snapshot)
+
+    def active_local_runtime_blocks_model_deletion(self) -> bool:
+        return self.blocks_deletion
 
 
 @pytest.fixture
@@ -144,6 +185,27 @@ def config():
     cfg.device = "cpu"
     cfg.local_model_enabled = True
     return cfg
+
+
+def _runtime_dialog(qtbot, config, snapshot: AssistantRuntimeSnapshot):
+    from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
+
+    runtime = _FakeRuntimeLifecycle(snapshot)
+    manager = _FakeAgentManager(
+        RuntimeCommandAdmissionResult(
+            command_name="deactivate",
+            status=RuntimeCommandAdmissionStatus.ACCEPTED,
+        ),
+        runtime=runtime,
+    )
+    lifecycle = _FakeDownloadLifecycle()
+    created = ModelSettingsDialog(
+        config=config,
+        agent_manager=manager,
+        download_lifecycle=lifecycle,
+    )
+    qtbot.addWidget(created)
+    return created, lifecycle, runtime
 
 
 @pytest.fixture
@@ -823,6 +885,90 @@ class TestLocalModelSection:
 
         mock_rmtree.assert_not_called()
 
+    def test_runtime_loading_disables_delete_until_loading_finishes(
+        self,
+        qtbot,
+        config,
+    ):
+        model_id = config.model_name
+        created, lifecycle, runtime = _runtime_dialog(
+            qtbot,
+            config,
+            AssistantRuntimeSnapshot(
+                phase=AssistantRuntimePhase.LOADING,
+                initialized=False,
+                backend_mode="local",
+                requested_model_id=model_id,
+            ),
+        )
+        created.check_local_model_status()
+        lifecycle.complete_inspection(
+            installed=True,
+            runtime_ready=True,
+            runtime_message="Local runtime ready.",
+        )
+
+        assert created.local_action_btn.text() == "Loading…"
+        assert not created.local_action_btn.isEnabled()
+
+        runtime.publish(
+            AssistantRuntimeSnapshot(
+                phase=AssistantRuntimePhase.READY,
+                initialized=True,
+                backend_mode="local",
+                model_id=model_id,
+            )
+        )
+
+        assert created.local_action_btn.text() == "Delete"
+        assert created.local_action_btn.isEnabled()
+
+    def test_active_runtime_warning_is_owned_by_settings_dialog(
+        self,
+        qtbot,
+        config,
+    ):
+        created, lifecycle, _runtime = _runtime_dialog(
+            qtbot,
+            config,
+            AssistantRuntimeSnapshot(
+                phase=AssistantRuntimePhase.READY,
+                initialized=True,
+                backend_mode="local",
+                model_id=config.model_name,
+            ),
+        )
+        created.local_downloaded = True
+
+        with patch.object(QMessageBox, "warning") as warning:
+            created._delete_model()
+
+        warning.assert_called_once_with(
+            created,
+            "Assistant Model In Use",
+            "The Assistant is using this model. Open Advanced, choose Disable, "
+            "and wait for unloading to finish before deleting it.",
+        )
+        assert lifecycle.removal_requests == []
+
+    def test_delete_rechecks_runtime_after_user_confirmation(self, dialog):
+        dialog.local_downloaded = True
+        dialog.agent_manager.prepare_model_deletion.side_effect = [True, False]
+
+        with patch.object(
+            QMessageBox,
+            "warning",
+            side_effect=[
+                QMessageBox.StandardButton.Yes,
+                QMessageBox.StandardButton.Ok,
+            ],
+        ) as warning:
+            dialog._delete_model()
+
+        assert dialog.agent_manager.prepare_model_deletion.call_count == 2
+        assert warning.call_args_list[-1].args[0] is dialog
+        assert dialog.download_lifecycle.removal_requests == []
+
     def test_delete_model_delegates_recursive_cleanup_to_app_lifecycle(
         self,
         dialog,
@@ -1114,6 +1260,38 @@ class TestRejectAndClose:
         assert dialog.is_downloading is True
         assert event.isAccepted() is True
         assert dialog.local_status_label.text() == "Before close"
+
+    def test_reject_detaches_runtime_snapshot_observer(self, qtbot, config):
+        created, lifecycle, runtime = _runtime_dialog(
+            qtbot,
+            config,
+            AssistantRuntimeSnapshot(
+                phase=AssistantRuntimePhase.READY,
+                initialized=True,
+                backend_mode="local",
+                model_id=config.model_name,
+            ),
+        )
+        created.check_local_model_status()
+        lifecycle.complete_inspection(
+            installed=True,
+            runtime_ready=True,
+            runtime_message="Local runtime ready.",
+        )
+        assert created.local_action_btn.text() == "Delete"
+
+        created.reject()
+        runtime.publish(
+            AssistantRuntimeSnapshot(
+                phase=AssistantRuntimePhase.LOADING,
+                initialized=False,
+                backend_mode="local",
+                requested_model_id=config.model_name,
+            )
+        )
+
+        assert created.local_action_btn.text() == "Delete"
+        assert created._runtime_observer_attached is False
 
     def test_get_config(self, dialog):
         cfg = dialog.get_config()

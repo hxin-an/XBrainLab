@@ -85,6 +85,10 @@ from XBrainLab.llm.agent.response_presentation import (
     AssistantResponseKind,
     AssistantResponsePresentation,
 )
+from XBrainLab.llm.agent.runtime_state import (
+    AssistantRuntimePhase,
+    AssistantRuntimeSnapshot,
+)
 from XBrainLab.llm.agent.turn import AssistantTurnCorrelation, AssistantTurnTerminal
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.downloader import (
@@ -115,7 +119,7 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 DEFAULT_OUTPUT_DIR = ROOT / "build" / "dev-artifacts" / "chatpanel-ui-ux"
 JSON_ARTIFACT = "walkthrough.json"
 README_ARTIFACT = "README.md"
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 GENERATOR = "scripts/dev/capture_chatpanel_ui_ux_walkthrough.py"
 CLAIM_BOUNDARY = (
     "Linux/Qt offscreen rendering and geometry evidence, including a real "
@@ -177,6 +181,7 @@ ASSISTANT_SETTINGS_SCREEN_FILES = (
     "assistant-settings-installing.png",
     "assistant-settings-failed.png",
     "assistant-settings-ready.png",
+    "assistant-settings-runtime-loading.png",
     "assistant-settings-advanced.png",
     "assistant-settings-disabled.png",
 )
@@ -419,6 +424,42 @@ class _AssistantSettingsCaptureLifecycle(QObject):
                 message="Deterministic capture failure",
             )
         )
+
+
+class _AssistantSettingsCaptureRuntime(QObject):
+    """Publish deterministic runtime ownership without loading a model."""
+
+    runtime_snapshot_changed = pyqtSignal(object)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.current = AssistantRuntimeSnapshot(
+            phase=AssistantRuntimePhase.IDLE,
+            initialized=False,
+        )
+
+    def publish(self, snapshot: AssistantRuntimeSnapshot) -> None:
+        self.current = snapshot
+        self.runtime_snapshot_changed.emit(snapshot)
+
+    def active_local_runtime_blocks_model_deletion(self) -> bool:
+        return self.current.phase in {
+            AssistantRuntimePhase.LOADING,
+            AssistantRuntimePhase.READY,
+        }
+
+
+class _AssistantSettingsCaptureAgentManager(QObject):
+    """Expose only Settings' existing runtime and deletion contracts."""
+
+    assistant_deactivation_finished = pyqtSignal(bool, str)
+
+    def __init__(self, runtime: _AssistantSettingsCaptureRuntime) -> None:
+        super().__init__()
+        self.assistant_runtime = runtime
+
+    def prepare_model_deletion(self, _model_name: str) -> bool:
+        return not self.assistant_runtime.active_local_runtime_blocks_model_deletion()
 
 
 _CAPTURE_CONTROLLERS: WeakKeyDictionary[ChatPanel, ChatController] = WeakKeyDictionary()
@@ -2876,8 +2917,11 @@ def _capture_assistant_settings(
     config.model_name = LLMConfig.default_local_model_id()
     config.local_model_enabled = True
     lifecycle = _AssistantSettingsCaptureLifecycle()
+    runtime = _AssistantSettingsCaptureRuntime()
+    agent_manager = _AssistantSettingsCaptureAgentManager(runtime)
     dialog = ModelSettingsDialog(
         config=config,
+        agent_manager=agent_manager,
         download_lifecycle=lifecycle,
     )
     dialog.show()
@@ -3083,6 +3127,31 @@ def _capture_assistant_settings(
         expected_action="Delete",
         save_enabled=True,
     )
+    runtime.publish(
+        AssistantRuntimeSnapshot(
+            phase=AssistantRuntimePhase.LOADING,
+            initialized=False,
+            backend_mode="local",
+            requested_model_id=config.model_name,
+        )
+    )
+    _settle_layout(app, dialog)
+    runtime_loading = record(
+        ASSISTANT_SETTINGS_SCREEN_FILES[4],
+        state="runtime-loading",
+        expected_status="Ready",
+        expected_action="Loading…",
+        save_enabled=True,
+    )
+    runtime.publish(
+        AssistantRuntimeSnapshot(
+            phase=AssistantRuntimePhase.READY,
+            initialized=True,
+            backend_mode="local",
+            model_id=config.model_name,
+        )
+    )
+    _settle_layout(app, dialog)
     dialog.advanced_toggle.setChecked(True)
     _settle_layout(app, dialog)
     vertical_scroll = dialog.settings_body_scroll.verticalScrollBar()
@@ -3090,7 +3159,7 @@ def _capture_assistant_settings(
         vertical_scroll.setValue(vertical_scroll.maximum())
     _settle_layout(app, dialog)
     advanced = record(
-        ASSISTANT_SETTINGS_SCREEN_FILES[4],
+        ASSISTANT_SETTINGS_SCREEN_FILES[5],
         state="advanced",
         expected_status="Ready",
         expected_action="Delete",
@@ -3102,14 +3171,22 @@ def _capture_assistant_settings(
     dialog.update_validation_state()
     _settle_layout(app, dialog)
     disabled = record(
-        ASSISTANT_SETTINGS_SCREEN_FILES[5],
+        ASSISTANT_SETTINGS_SCREEN_FILES[6],
         state="disabled",
         expected_status="Ready",
         expected_action="Delete",
         save_enabled=True,
         expected_primary_action="Enable Assistant",
     )
-    screens = [not_installed, installing, failed, ready, advanced, disabled]
+    screens = [
+        not_installed,
+        installing,
+        failed,
+        ready,
+        runtime_loading,
+        advanced,
+        disabled,
+    ]
     result = {
         "screens": screens,
         "passed": all(
