@@ -191,14 +191,24 @@ exact oracle 的 bounded worker，Sol 只處理客觀 high-risk decision；它�
   controller/dispatcher/generation thread left. It did not download or alter repo-root/user production settings.
 - Remaining before user handoff: exact-source push and every existing required PR check. Native/manual acceptance is still
   pending and prior PR #27 evidence is stale because source changed.
+- Exact head `a0cc825e98c87de7810909b30f9e101e8a9ef5e3` passed every reported Windows, macOS,
+  dataset, visual, lint, docs and non-UI Linux check, but `linux-integration-ui` failed. The same failure reproduces
+  locally: the human-like walkthrough still dereferences the removed `local_enable_chk`; its Qt callback aborts before
+  closing the modal dialog, so the outer process reports only a 180-second timeout. This is a stale directly-coupled
+  capture call site, not evidence to relax the timeout or CI gate. Remove only that retired-widget mutation and rerun
+  the exact integration test before creating a new source commit.
+- The stale widget mutation is now removed without changing the timeout or gate. The identical red test changed from
+  `1 failed in 188.65s` to `1 passed in 103.98s`; the complete capture subprocess itself finished in 96.90 seconds.
+  The directly adjacent walkthrough sweep passed 239 tests; Ruff check/format, Basedpyright and MkDocs strict also pass.
+  Remaining work is a new exact commit/push and a fully green rerun of all required CI.
 
 ## 下一步
 
-1. 建立 completion slice 的 downloader、Settings、lifecycle 與 manager red tests。
-2. 依上述順序完成最小實作並守住 owner/LOC/files complexity boundary。
-3. 執行 focused、static、UI artifact 與 isolated offline Granite walkthrough。
-4. Push PR #27 exact head、等待全部既有 required CI，再交使用者手測；未取得 exact-source 手測通過與
-   merge 同意前不得合入 `main`。
+1. 刪除 human-like walkthrough 對退役 `local_enable_chk` 的直接操作；不增加 timeout、不降低 gate。
+2. 重跑同一 red integration test，確認完整 capture 正常退出且 artifact contract 維持通過。
+3. 重跑直接相關 focused/static 檢查，建立並推送新的 exact source commit。
+4. 等待 PR #27 全部既有 required CI，再交使用者手測；未取得 exact-source 手測通過與 merge 同意前
+   不得合入 `main`。
 
 ## Non-goals
 
