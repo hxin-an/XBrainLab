@@ -101,6 +101,9 @@ subject selection 與 async lifecycle owner。**
 - Public real-fixture兩個代表案例因本機未下載 fixture而明確 skipped，沒有將 skip 說成資料集
   成功。Default 460×300 與 narrow 320×300 chooser artifacts 已由主 agent 實際查看，無 clipping、
   overlap 或錯誤 button hierarchy；offscreen evidence 不取代 native manual acceptance。
+- CI default visual regression 精確指出三張含 Dataset sidebar 的 approved references 漂移；主 agent
+  已查看 runner artifacts並確認只呈現已授權的按鈕收斂。三張 references 已同步，canonical capture
+  重新驗證 7 artifacts 全通過，最大 mean diff 0.025、changed 0.04%，沒有放寬 threshold。
 - Production 目前觸及 10 files，380 additions / 146 deletions，net +234 LOC；新增的是一個必要的
   Qt external seam，owner 數不變，沒有新增 state machine、receipt或第二套 BIDS heuristic。
 - Product implementation commit 9112fcf2 已推送並建立 draft PR #29；required CI 正在執行。
