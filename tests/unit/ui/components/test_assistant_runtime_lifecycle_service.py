@@ -74,6 +74,30 @@ class _Controller(QObject):
         self.closed = True
         return True
 
+    def initialize(self, _launch_spec: object) -> bool:
+        return True
+
+    def handle_user_turn(self, _request: object) -> bool:
+        return True
+
+    def stop_generation(self) -> bool:
+        return True
+
+    def set_model(self, _launch_spec: object) -> bool:
+        return True
+
+    def reset_conversation(self) -> bool:
+        return True
+
+    def on_user_confirmation_resolved(self, _resolution: object) -> bool:
+        return True
+
+    def on_workflow_ui_handoff_resolved(self, _resolution: object) -> bool:
+        return True
+
+    def execute_debug_tool(self, _request: object) -> bool:
+        return True
+
 
 class _SignalDrivenShutdownController(_Controller):
     shutdown_finished = pyqtSignal(bool, str)
@@ -1588,6 +1612,232 @@ def test_failed_close_blocks_dispatch_and_late_ready_until_cleanup_succeeds() ->
     assert lifecycle.state is AssistantRuntimeLifecycleState.CLOSED
     assert lifecycle.controller is None
     assert lifecycle.active_local_runtime_blocks_model_deletion() is False
+
+
+def test_deactivation_unloads_persists_and_can_reactivate_in_same_process(
+    monkeypatch,
+) -> None:
+    controllers: list[_Controller] = []
+    dispatchers: list[_Dispatcher] = []
+
+    def controller_factory(_study: object) -> _Controller:
+        controller = _Controller()
+        controllers.append(controller)
+        return controller
+
+    def dispatcher_factory() -> _Dispatcher:
+        dispatcher = _Dispatcher()
+        dispatchers.append(dispatcher)
+        return dispatcher
+
+    config = _ready_config()
+    monkeypatch.setattr(config, "save_to_file", lambda filepath=None: True)
+    lifecycle = AssistantRuntimeLifecycle(
+        study=object(),
+        controller_factory=controller_factory,
+        dispatcher_factory=dispatcher_factory,
+        config_loader=lambda: config,
+    )
+    terminal: list[tuple[bool, str]] = []
+    lifecycle.deactivation_finished.connect(
+        lambda ok, message: terminal.append((ok, message))
+    )
+    assert lifecycle.start() is True
+    activation_id = lifecycle.expected_activation_id
+    assert activation_id is not None
+    lifecycle.accept_runtime_snapshot(
+        _ActivationTransition(
+            phase=AssistantRuntimePhase.READY,
+            initialized=True,
+            backend_mode="local",
+            model_id=LLMConfig.default_local_model_id(),
+            activation_id=activation_id,
+        )
+    )
+
+    result = lifecycle.request_deactivation(config)
+
+    assert result.status is RuntimeCommandAdmissionStatus.ACCEPTED
+    assert terminal == [(True, "Assistant disabled.")]
+    assert config.local_model_enabled is False
+    assert dispatchers[0].closed is True
+    assert lifecycle.controller is None
+    assert lifecycle.initialized is False
+    assert lifecycle.state is AssistantRuntimeLifecycleState.OPEN
+    assert len(dispatchers) == 2
+
+    config.local_model_enabled = True
+    activation = lifecycle.activate(config)
+
+    assert activation.status is RuntimeActivationStatus.STARTED
+    assert lifecycle.controller is controllers[1]
+    assert len(controllers) == 2
+
+
+def test_production_dispatcher_deactivation_closes_controller_and_reopens(
+    monkeypatch,
+) -> None:
+    controllers: list[_Controller] = []
+
+    def controller_factory(_study: object) -> _Controller:
+        controller = _Controller()
+        controllers.append(controller)
+        return controller
+
+    config = _ready_config()
+    monkeypatch.setattr(config, "save_to_file", lambda filepath=None: True)
+    lifecycle = AssistantRuntimeLifecycle(
+        study=object(),
+        controller_factory=controller_factory,
+        config_loader=lambda: config,
+    )
+    assert lifecycle.start() is True
+
+    result = lifecycle.request_deactivation(config)
+
+    assert result.accepted is True
+    assert controllers[0].closed is True
+    assert lifecycle.controller is None
+    assert config.local_model_enabled is False
+
+    config.local_model_enabled = True
+    assert lifecycle.activate(config).status is RuntimeActivationStatus.STARTED
+    assert lifecycle.controller is controllers[1]
+    assert lifecycle.close() is True
+
+
+def test_deactivation_rejects_active_turn_without_mutating_config(monkeypatch) -> None:
+    controller = _Controller()
+    dispatcher = _Dispatcher()
+    config = _ready_config()
+    monkeypatch.setattr(config, "save_to_file", lambda filepath=None: True)
+    lifecycle = AssistantRuntimeLifecycle(
+        study=object(),
+        controller_factory=lambda _study: controller,
+        dispatcher=dispatcher,
+        config_loader=lambda: config,
+    )
+    assert lifecycle.start() is True
+    activation_id = lifecycle.expected_activation_id
+    assert activation_id is not None
+    lifecycle.accept_runtime_snapshot(
+        _ActivationTransition(
+            phase=AssistantRuntimePhase.READY,
+            initialized=True,
+            backend_mode="local",
+            model_id=LLMConfig.default_local_model_id(),
+            activation_id=activation_id,
+        )
+    )
+    assert lifecycle.submit("still running").accepted is True
+
+    result = lifecycle.request_deactivation(config)
+
+    assert result.status is RuntimeCommandAdmissionStatus.BUSY
+    assert "Stop" in result.message
+    assert config.local_model_enabled is True
+    assert dispatcher.closed is False
+    assert lifecycle.state is AssistantRuntimeLifecycleState.OPEN
+
+
+def test_async_deactivation_cleanup_failure_never_persists_disabled(
+    monkeypatch,
+) -> None:
+    dispatcher = _SignalledCleanupDispatcher()
+    config = _ready_config()
+    saves: list[bool] = []
+    monkeypatch.setattr(
+        config,
+        "save_to_file",
+        lambda filepath=None: saves.append(config.local_model_enabled) or True,
+    )
+    lifecycle = AssistantRuntimeLifecycle(
+        study=object(),
+        controller_factory=lambda _study: _Controller(),
+        dispatcher=dispatcher,
+        dispatcher_factory=_Dispatcher,
+        config_loader=lambda: config,
+    )
+    terminal: list[tuple[bool, str]] = []
+    lifecycle.deactivation_finished.connect(
+        lambda ok, message: terminal.append((ok, message))
+    )
+    assert lifecycle.start() is True
+
+    result = lifecycle.request_deactivation(config)
+    dispatcher.cleanup_finished.emit(False, "cleanup failed")
+
+    assert result.status is RuntimeCommandAdmissionStatus.ACCEPTED
+    assert config.local_model_enabled is True
+    assert saves == []
+    assert terminal == [(False, "cleanup failed")]
+    assert lifecycle.state is AssistantRuntimeLifecycleState.CLEANUP_PENDING
+
+
+def test_deactivation_save_failure_restores_enabled_config(monkeypatch) -> None:
+    dispatchers: list[_Dispatcher] = []
+
+    def dispatcher_factory() -> _Dispatcher:
+        dispatcher = _Dispatcher()
+        dispatchers.append(dispatcher)
+        return dispatcher
+
+    config = _ready_config()
+    monkeypatch.setattr(config, "save_to_file", lambda filepath=None: False)
+    lifecycle = AssistantRuntimeLifecycle(
+        study=object(),
+        controller_factory=lambda _study: _Controller(),
+        dispatcher_factory=dispatcher_factory,
+        config_loader=lambda: config,
+    )
+    terminal: list[tuple[bool, str]] = []
+    lifecycle.deactivation_finished.connect(
+        lambda ok, message: terminal.append((ok, message))
+    )
+    assert lifecycle.start() is True
+
+    result = lifecycle.request_deactivation(config)
+
+    assert result.accepted is True
+    assert config.local_model_enabled is True
+    assert lifecycle.state is AssistantRuntimeLifecycleState.OPEN
+    assert lifecycle.controller is None
+    assert len(dispatchers) == 2
+    assert terminal == [(False, "Assistant could not save the disabled setting.")]
+
+
+def test_application_close_during_deactivation_finishes_terminally(
+    monkeypatch,
+) -> None:
+    dispatcher = _SignalledCleanupDispatcher()
+    config = _ready_config()
+    saves: list[bool] = []
+    monkeypatch.setattr(
+        config,
+        "save_to_file",
+        lambda filepath=None: saves.append(config.local_model_enabled) or True,
+    )
+    lifecycle = AssistantRuntimeLifecycle(
+        study=object(),
+        controller_factory=lambda _study: _Controller(),
+        dispatcher=dispatcher,
+        dispatcher_factory=_Dispatcher,
+        config_loader=lambda: config,
+    )
+    terminal: list[tuple[bool, str]] = []
+    lifecycle.deactivation_finished.connect(
+        lambda ok, message: terminal.append((ok, message))
+    )
+    assert lifecycle.start() is True
+    assert lifecycle.request_deactivation(config).accepted is True
+
+    assert lifecycle.close() is False
+    dispatcher.cleanup_finished.emit(True, "")
+
+    assert lifecycle.state is AssistantRuntimeLifecycleState.CLOSED
+    assert config.local_model_enabled is True
+    assert saves == []
+    assert terminal == [(False, "Application shutdown replaced the disable request.")]
 
 
 def test_close_exception_keeps_runtime_retryable_until_cleanup_succeeds() -> None:

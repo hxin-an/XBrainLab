@@ -126,7 +126,7 @@ class TestLocalBootstrapValidation:
             assert config.local_backend_ready() is True
             assert config.local_backend_status_message() == "Local runtime ready."
             assert dialog.local_downloaded is True
-            assert dialog.local_status_label.text() == "Model: Installed"
+            assert dialog.local_status_label.text() == "Ready"
             assert dialog.local_runtime_label.text() == "Environment check: Ready"
             assert dialog.btn_activate.isEnabled() is True
 

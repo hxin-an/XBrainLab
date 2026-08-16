@@ -471,10 +471,16 @@ class TestRunDownloadTask:
         q = multiprocessing.Queue()
         cache_dir = tmp_path / "models"
         snapshot = _write_hf_snapshot(cache_dir)
-        with patch(
-            "XBrainLab.llm.core.downloader.snapshot_download",
-            return_value=str(snapshot),
-        ) as download:
+        with (
+            patch(
+                "XBrainLab.llm.core.downloader.snapshot_download",
+                return_value=str(snapshot),
+            ) as download,
+            patch(
+                "XBrainLab.llm.core.downloader.disable_hf_progress_bars",
+                create=True,
+            ) as disable_progress,
+        ):
             run_download_task(PRIMARY_MODEL_ID, str(cache_dir), q)
 
         messages = _drain_queue(q)
@@ -484,6 +490,8 @@ class TestRunDownloadTask:
         assert "finished" in types
         assert messages[-1] == ("finished", str(snapshot))
         assert download.call_args.kwargs["revision"] == PRIMARY_MODEL_REVISION
+        assert "resume_download" not in download.call_args.kwargs
+        disable_progress.assert_called_once_with()
 
     def test_invalid_snapshot_never_emits_success(self, tmp_path: Path) -> None:
         q = multiprocessing.Queue()
@@ -697,6 +705,39 @@ class TestDownloadWorker:
             )
 
         assert inspect.call_count == 2
+
+    def test_consumption_poll_publishes_monotonic_progress_below_completion(
+        self,
+    ) -> None:
+        worker = DownloadWorker(PRIMARY_MODEL_ID, "/cache")
+        progress: list[tuple[int, str]] = []
+        worker.progress_update.connect(
+            lambda percent, message: progress.append((percent, message))
+        )
+        observations = [
+            DownloadConsumptionResult(
+                ok=True,
+                public_message="",
+                diagnostic_message="",
+                model_cache_bytes=model_bytes,
+                total_cache_bytes=model_bytes,
+                available_disk_bytes=10_000_000_000,
+            )
+            for model_bytes in (2_540_000_000, 1_000_000_000, 8_000_000_000)
+        ]
+
+        with patch(
+            "XBrainLab.llm.core.downloader.inspect_model_download_consumption",
+            side_effect=observations,
+        ):
+            assert worker._check_consumption_if_due(now=100.0) is True
+            assert worker._check_consumption_if_due(now=101.0) is True
+            assert worker._check_consumption_if_due(now=102.0) is True
+
+        assert progress == [
+            (50, "Downloading model files..."),
+            (99, "Downloading model files..."),
+        ]
 
     def test_worker_uses_explicit_spawn_context(self, mock_multiprocessing) -> None:
         mock_mp, mock_process, mock_queue = mock_multiprocessing

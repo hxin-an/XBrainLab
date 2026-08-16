@@ -1497,6 +1497,9 @@ class MainWindow(QMainWindow):
         if self._force_shutdown_requested:
             if not self._closing_in_progress:
                 self._begin_close_attempt()
+            if not self._close_assistant_for_shutdown():
+                self._handle_assistant_shutdown_failure(event)
+                return
             if not self._owned_ui_background_work_idle():
                 self._pre_close_background_snapshot = None
                 event.ignore()
@@ -1520,9 +1523,6 @@ class MainWindow(QMainWindow):
             if not self._finalize_preprocess_native_plots_for_shutdown():
                 event.ignore()
                 self._schedule_close_retry()
-                return
-            if not self._close_assistant_for_shutdown():
-                self._handle_assistant_shutdown_failure(event)
                 return
             if not self._finalize_application_publication_renderer_for_shutdown():
                 event.ignore()
@@ -1555,6 +1555,9 @@ class MainWindow(QMainWindow):
                     3000,
                 )
             return
+        if not self._close_assistant_for_shutdown():
+            self._handle_assistant_shutdown_failure(event)
+            return
         if not self._owned_ui_background_work_idle():
             self._pre_close_background_snapshot = None
             event.ignore()
@@ -1578,9 +1581,6 @@ class MainWindow(QMainWindow):
         if not self._finalize_preprocess_native_plots_for_shutdown():
             event.ignore()
             self._schedule_close_retry()
-            return
-        if not self._close_assistant_for_shutdown():
-            self._handle_assistant_shutdown_failure(event)
             return
         if not self._finalize_application_publication_renderer_for_shutdown():
             event.ignore()

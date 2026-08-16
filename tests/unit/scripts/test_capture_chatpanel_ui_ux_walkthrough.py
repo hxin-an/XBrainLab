@@ -98,8 +98,12 @@ def test_scenario_contract_covers_required_surfaces_once() -> None:
         walkthrough_module.ROOT / "build" / "dev-artifacts" / "chatpanel-ui-ux"
     )
     assert ASSISTANT_SETTINGS_SCREEN_FILES == (
-        "assistant-settings-collapsed.png",
+        "assistant-settings-not-installed.png",
+        "assistant-settings-installing.png",
+        "assistant-settings-failed.png",
+        "assistant-settings-ready.png",
         "assistant-settings-advanced.png",
+        "assistant-settings-disabled.png",
     )
 
 

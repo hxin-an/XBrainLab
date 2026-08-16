@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 from itertools import pairwise
 from pathlib import Path
 from typing import Any, cast
+from unittest.mock import patch
 from weakref import WeakKeyDictionary
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -55,6 +56,7 @@ from PyQt6.QtWidgets import (
     QDockWidget,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QToolButton,
     QWidget,
 )
@@ -85,6 +87,11 @@ from XBrainLab.llm.agent.response_presentation import (
 )
 from XBrainLab.llm.agent.turn import AssistantTurnCorrelation, AssistantTurnTerminal
 from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.llm.core.downloader import (
+    ModelDownloadOutcome,
+    ModelDownloadStatus,
+    ModelDownloadTarget,
+)
 from XBrainLab.llm.core.model_download_lifecycle import (
     ModelCacheCleanupReason,
     ModelStatusInspectionRequest,
@@ -108,7 +115,7 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 DEFAULT_OUTPUT_DIR = ROOT / "build" / "dev-artifacts" / "chatpanel-ui-ux"
 JSON_ARTIFACT = "walkthrough.json"
 README_ARTIFACT = "README.md"
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 11
 GENERATOR = "scripts/dev/capture_chatpanel_ui_ux_walkthrough.py"
 CLAIM_BOUNDARY = (
     "Linux/Qt offscreen rendering and geometry evidence, including a real "
@@ -166,8 +173,12 @@ METRIC_TAB_SCREEN_FILES = (
     "training-metric-first-data.png",
 )
 ASSISTANT_SETTINGS_SCREEN_FILES = (
-    "assistant-settings-collapsed.png",
+    "assistant-settings-not-installed.png",
+    "assistant-settings-installing.png",
+    "assistant-settings-failed.png",
+    "assistant-settings-ready.png",
     "assistant-settings-advanced.png",
+    "assistant-settings-disabled.png",
 )
 
 EXPECTED_STATE_LABELS = {
@@ -337,11 +348,16 @@ class _AssistantSettingsCaptureLifecycle(QObject):
         return True
 
     def start_download(self, repo_id: str, cache_dir: str) -> bool:
-        del repo_id, cache_dir
-        return False
+        if not self.idle:
+            return False
+        self.idle = False
+        self.active_target = ModelDownloadTarget.create(repo_id, cache_dir)
+        return True
 
     def request_cancel(self) -> bool:
-        return True
+        self.idle = True
+        self.active_target = None
+        return self.idle
 
     def request_shutdown(self) -> bool:
         return True
@@ -357,18 +373,28 @@ class _AssistantSettingsCaptureLifecycle(QObject):
         return False
 
     def is_idle(self) -> bool:
-        return True
+        return self.idle
+
+    def publish_not_installed_inspection(self) -> None:
+        self._publish_inspection(installed=False, runtime_ready=False)
 
     def publish_ready_inspection(self) -> None:
+        self._publish_inspection(installed=True, runtime_ready=True)
+
+    def _publish_inspection(self, *, installed: bool, runtime_ready: bool) -> None:
         if not self.inspection_requests:
             raise RuntimeError("Assistant Settings did not request model inspection.")
         request = self.inspection_requests[-1]
         self.inspection_finished.emit(
             ModelStatusInspectionResult(
                 request=request,
-                installed=True,
-                runtime_ready=True,
-                runtime_message="Local runtime ready.",
+                installed=installed,
+                runtime_ready=runtime_ready,
+                runtime_message=(
+                    "Local runtime ready."
+                    if runtime_ready
+                    else "Local runtime unavailable. Model cache not found."
+                ),
                 estimated_download_bytes=3_100_000_000,
                 current_cache_bytes=3_100_000_000,
                 projected_cache_bytes=3_100_000_000,
@@ -377,6 +403,20 @@ class _AssistantSettingsCaptureLifecycle(QObject):
                 preflight_message="Ready",
                 cleanup_candidates=(),
                 resolved_config=None,
+            )
+        )
+
+    def publish_download_failure(self) -> None:
+        target = self.active_target
+        if target is None:
+            raise RuntimeError("Assistant Settings has no active download target.")
+        self.idle = True
+        self.active_target = None
+        self.failed.emit(
+            ModelDownloadOutcome(
+                target=target,
+                status=ModelDownloadStatus.FAILED,
+                message="Deterministic capture failure",
             )
         )
 
@@ -2829,7 +2869,7 @@ def _capture_assistant_settings(
     app: QApplication,
     output_dir: Path,
 ) -> dict[str, Any]:
-    """Capture collapsed and advanced Settings from the real product dialog."""
+    """Capture the user-visible Settings install lifecycle at narrow width."""
     config = LLMConfig(device="cpu")
     config.inference_mode = "local"
     config.active_mode = "local"
@@ -2842,13 +2882,24 @@ def _capture_assistant_settings(
     )
     dialog.show()
     _settle_layout(app, dialog)
+    dialog.resize(520, dialog.height())
+    _settle_layout(app, dialog)
     if not lifecycle.inspection_requests:
         dialog.check_local_model_status()
         _settle_layout(app, dialog)
-    lifecycle.publish_ready_inspection()
+    lifecycle.publish_not_installed_inspection()
     _settle_layout(app, dialog)
 
-    def record(filename: str, *, advanced: bool) -> dict[str, Any]:
+    def record(
+        filename: str,
+        *,
+        state: str,
+        expected_status: str,
+        expected_action: str,
+        advanced: bool = False,
+        save_enabled: bool = False,
+        expected_primary_action: str = "Save Changes",
+    ) -> dict[str, Any]:
         body_viewport = dialog.settings_body_scroll.viewport()
         if body_viewport is None:
             raise RuntimeError("Assistant Settings scroll viewport is unavailable.")
@@ -2870,6 +2921,12 @@ def _capture_assistant_settings(
             human_evidence._widget_inside(dialog, button)
             for button in (dialog.btn_cancel, dialog.btn_activate)
         )
+        status_text_fits = (
+            dialog.local_status_label.fontMetrics().horizontalAdvance(
+                dialog.local_status_label.text()
+            )
+            <= dialog.local_status_label.contentsRect().width() + 2
+        )
         fields_inside_viewport = True
         if advanced:
             fields_inside_viewport = all(
@@ -2883,9 +2940,15 @@ def _capture_assistant_settings(
         checks = {
             "dialog_title_complete": dialog.windowTitle() == "Assistant Settings",
             "heading_complete": dialog.heading_label.text() == "Assistant Settings",
-            "model_status_ready": (
-                dialog.local_status_label.text() == "Model: Installed"
-                and dialog.local_runtime_label.text() == "Environment check: Ready"
+            "model_status_matches": (
+                dialog.local_status_label.text() == expected_status
+                and dialog.local_action_btn.text() == expected_action
+            ),
+            "narrow_width_preserved": dialog.width() == 520,
+            "status_text_fits": status_text_fits,
+            "raw_download_detail_absent": all(
+                marker not in dialog.local_status_label.text()
+                for marker in ("ibm-granite/", "estimated", "projected cache")
             ),
             "primary_controls_selected": (
                 dialog.response_style_control.selected_key() == "balanced"
@@ -2898,16 +2961,42 @@ def _capture_assistant_settings(
                 and horizontal_scroll.maximum() == 0
             ),
             "footer_inside_dialog": footer_inside,
+            "primary_content_inside_viewport": (
+                advanced
+                or human_evidence._widget_inside(
+                    body_viewport,
+                    dialog.heading_label,
+                )
+            ),
+            "model_action_inside_dialog": (
+                advanced
+                or human_evidence._widget_inside(dialog, dialog.local_action_btn)
+            ),
             "buttons_text_only": (
                 dialog.btn_activate.icon().isNull()
                 and dialog.btn_cancel.icon().isNull()
             ),
-            "save_is_primary_and_enabled": (
+            "local_only_primary_action": (
+                not hasattr(dialog, "local_enable_chk")
+                and dialog.btn_activate.text() == expected_primary_action
+            ),
+            "save_state_matches": (
                 dialog.btn_activate.objectName() == "AssistantPrimaryButton"
-                and dialog.btn_activate.isEnabled()
+                and dialog.btn_activate.isEnabled() is save_enabled
             ),
             "advanced_visibility_matches": (
                 dialog.advanced_content.isVisibleTo(dialog) is advanced
+            ),
+            "runtime_detail_visibility_matches": (
+                dialog.local_runtime_label.isVisibleTo(dialog) is advanced
+                and dialog.check_runtime_btn.isVisibleTo(dialog) is advanced
+            ),
+            "advanced_groups_match": (
+                dialog.runtime_group_label.text() == "Runtime"
+                and dialog.exact_values_group_label.text() == "Exact response values"
+                and dialog.assistant_group_label.text() == "Assistant"
+                and dialog.disable_assistant_btn.text() == "Disable Assistant…"
+                and dialog.disable_assistant_btn.isVisibleTo(dialog) is advanced
             ),
             "advanced_fields_inside_viewport": fields_inside_viewport,
             "spinbox_strips_absent": (
@@ -2943,22 +3032,78 @@ def _capture_assistant_settings(
         checks["render_content_ready"] = capture["render_content"]["passed"]
         return {
             "file": filename,
-            "state": "advanced" if advanced else "collapsed",
+            "state": state,
             "logical_size": [dialog.width(), dialog.height()],
             "checks": checks,
             "failures": [name for name, passed in checks.items() if not passed],
             **capture,
         }
 
-    collapsed = record(ASSISTANT_SETTINGS_SCREEN_FILES[0], advanced=False)
+    not_installed = record(
+        ASSISTANT_SETTINGS_SCREEN_FILES[0],
+        state="not-installed",
+        expected_status="Not installed",
+        expected_action="Install Model",
+    )
+    dialog.local_action_btn.click()
+    lifecycle.progress.emit(
+        42,
+        "Download allowed for ibm-granite/granite-3.3-2b-instruct: "
+        "estimated 5.08 GB; projected cache 5.08 GB.",
+    )
+    _settle_layout(app, dialog)
+    installing = record(
+        ASSISTANT_SETTINGS_SCREEN_FILES[1],
+        state="installing",
+        expected_status="Installing... 42%",
+        expected_action="Cancel",
+    )
+    with patch.object(QMessageBox, "critical"):
+        lifecycle.publish_download_failure()
+    _settle_layout(app, dialog)
+    failed = record(
+        ASSISTANT_SETTINGS_SCREEN_FILES[2],
+        state="failed",
+        expected_status="Install failed",
+        expected_action="Retry",
+    )
+    dialog.check_local_model_status()
+    lifecycle.publish_ready_inspection()
+    _settle_layout(app, dialog)
+    ready = record(
+        ASSISTANT_SETTINGS_SCREEN_FILES[3],
+        state="ready",
+        expected_status="Ready",
+        expected_action="Delete",
+        save_enabled=True,
+    )
     dialog.advanced_toggle.setChecked(True)
     _settle_layout(app, dialog)
     vertical_scroll = dialog.settings_body_scroll.verticalScrollBar()
     if vertical_scroll is not None:
         vertical_scroll.setValue(vertical_scroll.maximum())
     _settle_layout(app, dialog)
-    advanced = record(ASSISTANT_SETTINGS_SCREEN_FILES[1], advanced=True)
-    screens = [collapsed, advanced]
+    advanced = record(
+        ASSISTANT_SETTINGS_SCREEN_FILES[4],
+        state="advanced",
+        expected_status="Ready",
+        expected_action="Delete",
+        advanced=True,
+        save_enabled=True,
+    )
+    dialog.advanced_toggle.setChecked(False)
+    config.local_model_enabled = False
+    dialog.update_validation_state()
+    _settle_layout(app, dialog)
+    disabled = record(
+        ASSISTANT_SETTINGS_SCREEN_FILES[5],
+        state="disabled",
+        expected_status="Ready",
+        expected_action="Delete",
+        save_enabled=True,
+        expected_primary_action="Enable Assistant",
+    )
+    screens = [not_installed, installing, failed, ready, advanced, disabled]
     result = {
         "screens": screens,
         "passed": all(
@@ -3422,7 +3567,9 @@ def render_readme(payload: dict[str, Any]) -> str:
             f"- collapsed frame: "
             f"`{payload['assistant_settings']['screens'][0]['file']}`",
             f"- advanced frame: "
-            f"`{payload['assistant_settings']['screens'][1]['file']}`",
+            f"`{payload['assistant_settings']['screens'][4]['file']}`",
+            f"- disabled frame: "
+            f"`{payload['assistant_settings']['screens'][5]['file']}`",
             "",
             "## Teardown",
             "",

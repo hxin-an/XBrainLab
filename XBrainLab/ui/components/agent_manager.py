@@ -307,6 +307,8 @@ class AgentManager(QObject):
 
     """
 
+    assistant_deactivation_finished = pyqtSignal(bool, str)
+
     def __init__(
         self,
         main_window,
@@ -394,6 +396,14 @@ class AgentManager(QObject):
         self._assistant_runtime.turn_finished.connect(
             self._on_assistant_turn_finished,
         )
+        deactivation_signal = getattr(
+            self._assistant_runtime,
+            "deactivation_finished",
+            None,
+        )
+        connect_deactivation = getattr(deactivation_signal, "connect", None)
+        if callable(connect_deactivation):
+            connect_deactivation(self._on_assistant_deactivation_finished)
         self._model_download_lifecycle = (
             model_download_lifecycle or ModelDownloadLifecycle(parent=self)
         )
@@ -416,13 +426,6 @@ class AgentManager(QObject):
     def assistant_runtime(self) -> AssistantRuntimeLifecycle:
         """Expose the focused runtime contract for diagnostics and integration."""
         return self._assistant_runtime
-
-    def assistant_runtime_settings_notice(self) -> str:
-        """Return a safe last-start failure for Assistant Settings."""
-        snapshot = self._assistant_runtime.current
-        if snapshot.phase is not AssistantRuntimePhase.FAILED:
-            return ""
-        return self._presentation.runtime_settings_notice(snapshot.error)
 
     @property
     def model_download_lifecycle(self) -> ModelDownloadLifecycle:
@@ -813,6 +816,21 @@ class AgentManager(QObject):
             and self.chat_panel
         ):
             self.chat_panel.set_runtime_state(AssistantRuntimePhase.READY.value)
+
+    def request_assistant_deactivation(
+        self,
+        config: LLMConfig,
+    ) -> RuntimeCommandAdmissionResult:
+        """Delegate Disable admission to the existing runtime owner."""
+        return self._assistant_runtime.request_deactivation(config)
+
+    def _on_assistant_deactivation_finished(self, ok: bool, message: str) -> None:
+        """Clear Assistant-only presentation after runtime ownership is released."""
+        if ok:
+            self._clear_conversation_presentation()
+            self._runtime_unavailable_notice = None
+            self.refresh_backend_status()
+        self.assistant_deactivation_finished.emit(bool(ok), str(message or ""))
 
     def prepare_model_deletion(self, model_name: str):
         """Prepare for model file deletion by switching away if active.
@@ -1621,6 +1639,18 @@ class AgentManager(QObject):
             return
 
         # Clear the transcript only after the runtime accepts the boundary.
+        self._clear_conversation_presentation()
+
+        # Keep a runtime blocker actionable after the transcript is cleared.
+        runtime = self._assistant_runtime.current
+        if runtime.phase is AssistantRuntimePhase.FAILED:
+            self._runtime_unavailable_notice = None
+            self._show_runtime_unavailable(runtime.error)
+
+        self.refresh_backend_status()
+
+    def _clear_conversation_presentation(self) -> None:
+        """Clear Assistant transcript/UI state without changing EEG workflow."""
         self.chat_controller.clear_conversation()
         self._pending_prune_notice = False
         self._application_publication_coordinator.clear_training()
@@ -1638,14 +1668,6 @@ class AgentManager(QObject):
 
         if self.agent_controller:
             logger.info("Assistant conversation state reset successfully")
-
-        # Keep a runtime blocker actionable after the transcript is cleared.
-        runtime = self._assistant_runtime.current
-        if runtime.phase is AssistantRuntimePhase.FAILED:
-            self._runtime_unavailable_notice = None
-            self._show_runtime_unavailable(runtime.error)
-
-        self.refresh_backend_status()
 
     # Signal to notify Main Window (or other listeners) about status updates
     status_message_received = pyqtSignal(str)

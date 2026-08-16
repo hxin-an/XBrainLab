@@ -537,7 +537,6 @@ def _drive_settings_recovery(
             callback_error.append("Assistant Settings model check did not finish.")
             dialog.reject()
             return
-        dialog.local_enable_chk.setChecked(True)
         dialog.response_style_control.set_selected("precise", emit=True)
         dialog.update_validation_state()
         evidence["selected_model"] = str(dialog.local_model_combo.currentData() or "")

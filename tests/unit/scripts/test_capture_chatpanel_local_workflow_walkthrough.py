@@ -10,9 +10,11 @@ from scripts.dev.capture_chatpanel_local_workflow_walkthrough import (
     _build_post_close_evidence,
     _disable_first_run_dialog_for_unattended_capture,
     _has_unpainted_main_surface,
+    _prepare_isolated_settings,
     _turn_contract_failure,
     render_markdown,
 )
+from XBrainLab.llm.core.config import LLMConfig
 
 
 def test_default_output_uses_dev_artifact_namespace() -> None:
@@ -45,6 +47,41 @@ def test_unattended_capture_requires_initialized_assistant_manager() -> None:
 
     with pytest.raises(RuntimeError, match="must be initialized"):
         _disable_first_run_dialog_for_unattended_capture(FakeWindow())
+
+
+def test_deactivation_capture_settings_are_isolated_below_temp(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "scripts.dev.capture_chatpanel_local_workflow_walkthrough.tempfile.gettempdir",
+        lambda: str(tmp_path.parent),
+    )
+    monkeypatch.setattr(
+        LLMConfig,
+        "_default_settings_path",
+        LLMConfig._default_settings_path,
+    )
+    settings_path = tmp_path / "capture" / "settings.json"
+
+    _prepare_isolated_settings(
+        settings_path,
+        model_id=LLMConfig.default_local_model_id(),
+    )
+
+    loaded = LLMConfig.load_from_file()
+    assert settings_path.is_file()
+    assert loaded is not None
+    assert loaded.local_model_enabled is True
+    assert loaded.local_runtime_notice_acknowledged is True
+
+
+def test_deactivation_capture_rejects_repo_settings_path() -> None:
+    with pytest.raises(ValueError, match="OS temp"):
+        _prepare_isolated_settings(
+            ROOT / "settings.json",
+            model_id=LLMConfig.default_local_model_id(),
+        )
 
 
 def test_assistant_ready_requires_visible_enabled_idle_controls() -> None:
