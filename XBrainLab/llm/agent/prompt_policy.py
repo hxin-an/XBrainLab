@@ -265,28 +265,31 @@ _POLICY_UNAVAILABLE_MESSAGE = (
 class StrictToolResponsePromptPolicy:
     """Canonical model-owned structured decision contract for local models."""
 
-    max_format_recovery_attempts: int = 1
+    max_format_recovery_attempts: int = 2
 
     def __post_init__(self) -> None:
         if self.max_format_recovery_attempts < 0:
             raise ValueError("max_format_recovery_attempts must be non-negative")
 
-    def decision_instructions(self) -> str:
+    def decision_instructions(
+        self,
+        workflow_stage: str = "<exact backend workflow_stage>",
+    ) -> str:
         """Return a compact decision contract without evaluator answer fields."""
         return (
             "STRICT RESPONSE CONTRACT - DECISION ORDER (decide silently):\n"
             "1. Find the exact requested action in the enabled tool contracts.\n"
-            "- No exact matching contract: use respond_to_user with decision blocked "
-            "and a specific backend blocking reason.\n"
+            "- No exact matching contract: use respond_to_user with a specific "
+            "backend blocking reason.\n"
             "- Exact match but a required parameter is absent from the latest user "
-            "request and verified state: use respond_to_user with decision "
-            "missing_input and name only the absent required fields.\n"
+            "request and verified state: use respond_to_user to ask only for the "
+            "absent required values.\n"
             "- Exact match and every required parameter is present: call that exact "
             "enabled tool name with only supported parameters.\n"
-            "- Informational request: use respond_to_user with decision answer.\n"
+            "- Informational request: use respond_to_user with a concise answer.\n"
             "When action_policy is present, request_category is semantic text, not a "
-            "tool name. Status blocked requires respond_to_user.blocked with a listed "
-            "backend reason. Status enabled permits only "
+            "tool name. Status blocked requires respond_to_user with a listed backend "
+            "reason. Status enabled permits only "
             "callable_tool_names.\n"
             "2. Never call a prerequisite or substitute for a different exact "
             "requested action. A tool being enabled does not make it relevant.\n"
@@ -303,15 +306,13 @@ class StrictToolResponsePromptPolicy:
             "complete inputs, still propose that exact tool call. The host will "
             "request confirmation before execution; do not describe it as blocked.\n"
             "6. Return exactly one DECISION ENVELOPE. The root object must be exactly "
-            '{"tool_name":"<exact enabled name>","parameters":{...}}. '
+            '{"workflow_stage":"'
+            + workflow_stage
+            + '","tool_name":"<exact enabled name>","parameters":{...}}. '
             "Never wrap it in tool-call, tool_call, action, or function. For no-tool "
-            "decisions use respond_to_user and exactly one parameters branch: "
-            "blocked uses exactly decision and message "
-            '({"decision":"blocked","message":"reason"}); missing_input '
-            "uses exactly decision, missing_inputs, and message "
-            '({"decision":"missing_input","missing_inputs":["field"],'
-            '"message":"question"}); answer uses exactly decision and message '
-            '({"decision":"answer","message":"answer"}).\n'
+            "decisions use respond_to_user with parameters containing exactly message. "
+            "The workflow_stage value above is a required acknowledgement of the "
+            "backend publication, not permission to change state.\n"
             "The first non-whitespace character must be { and the last must be "
             "}. Never use a Markdown code fence or add prose outside the object."
         )
@@ -325,13 +326,13 @@ class StrictToolResponsePromptPolicy:
             "recommendation is not user permission. Do not convert a blocked "
             "explanation or missing-input request into a tool call. Return exactly "
             "one JSON object from the original discriminated contract. The root "
-            'object must be exactly {"tool_name": "<name>", "parameters": '
-            "{...}}. Never wrap it in tool-call, tool_call, action, or function. "
+            'object must be exactly {"workflow_stage": "<exact backend '
+            'workflow_stage>", "tool_name": "<name>", "parameters": {...}}. '
+            "Never wrap it in tool-call, tool_call, action, or function. "
             "Use an exact enabled tool_name and its parameters for a direct action. "
-            "Otherwise use tool_name respond_to_user and exactly one parameters "
-            "branch: blocked uses exactly decision and message; missing_input uses "
-            "exactly decision, missing_inputs, and message; answer uses exactly "
-            "decision and message. The response "
+            "Otherwise use tool_name respond_to_user with parameters containing "
+            "exactly message. Copy the current backend workflow_stage exactly. The "
+            "response "
             "must begin with { and end with }, with no prose or code fence. Do "
             "not add fields from another decision branch."
         )

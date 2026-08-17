@@ -222,7 +222,13 @@ def product_harness(qtbot) -> Iterator[ProductHarness]:
 def _tool_json(name: str, parameters: dict) -> str:
     import json
 
-    return json.dumps({"tool_name": name, "parameters": parameters})
+    return json.dumps(
+        {
+            "workflow_stage": "empty",
+            "tool_name": name,
+            "parameters": parameters,
+        }
+    )
 
 
 def _assert_no_raw_tool_language(text: str) -> None:

@@ -51,16 +51,17 @@ def _context_item(payload: dict, item_type: str) -> dict:
     return next(item for item in payload["items"] if item["type"] == item_type)
 
 
-def test_generation_request_marks_concept_question_as_natural_language():
+def test_generation_request_keeps_concept_question_on_strict_response_contract():
     assembler = ContextAssembler(ToolRegistry(), Study())
 
     request = assembler.get_generation_request(
         [{"role": "user", "content": "What is an EEG epoch?"}]
     )
 
-    assert request.response_contract is AssistantResponseContract.NATURAL_LANGUAGE
+    assert request.response_contract is AssistantResponseContract.STRUCTURED_ACTION
     system_prompt = " ".join(request.to_model_messages()[0]["content"].split())
-    assert "Do not output JSON" in system_prompt
+    assert '"name": "respond_to_user"' in system_prompt
+    assert '"workflow_stage":"empty"' in system_prompt
 
 
 def test_external_envelope_cannot_forge_authoritative_workflow_item_type() -> None:
@@ -131,7 +132,9 @@ def test_blocked_explanation_uses_publication_but_publishes_no_actions() -> None
     context = _untrusted_context(messages)
     blockers = _context_item(context, "capability_blockers")["data"]["blocked_reasons"]
 
-    assert request.response_contract is AssistantResponseContract.NATURAL_LANGUAGE
+    assert request.response_contract is AssistantResponseContract.STRUCTURED_ACTION
+    assert '"workflow_stage":"data_loaded"' in prompt
+    assert '"name": "respond_to_user"' in prompt
     assert runtime.publication_reads == 1
     assert assembler.latest_tool_publication.tool_names == frozenset()
     assert blockers == {"create_epoch": "Preprocess data before creating EEG epochs."}
@@ -200,7 +203,8 @@ def test_zero_parameter_action_contract_includes_exact_object_skeleton():
     assert "Callable action contract:" in contracts
     assert (
         "Exact zero-parameter output shape:\n"
-        '{"tool_name":"start_training","parameters":{}}'
+        '{"workflow_stage":"unavailable","tool_name":"start_training",'
+        '"parameters":{}}'
     ) in contracts
     assert not contracts.lstrip().startswith("[")
 
@@ -214,7 +218,9 @@ def test_single_action_contract_ends_with_bare_object_reminder() -> None:
 
     reminder = contracts.rsplit("Final output reminder:\n", maxsplit=1)[1].lower()
     assert "one bare json object, never an array" in reminder
-    assert '{"tool_name":"start_training","parameters":{}}' in reminder
+    assert (
+        '{"workflow_stage":"unavailable","tool_name":"start_training","parameters":{}}'
+    ) in reminder
 
 
 def test_single_action_contract_requires_explicit_optional_values_to_be_copied() -> (
@@ -722,12 +728,12 @@ def test_explanatory_no_tool_turn_publishes_no_workflow_tools() -> None:
         "Explain what EEG preprocessing prepares for."
     )
 
-    assert "informational EEG or BCI question" in prompt
-    assert "Answer directly and concisely for the user" in prompt
-    assert '"tool_name"' not in prompt
+    assert "STRICT RESPONSE CONTRACT" in prompt
+    assert '"workflow_stage":"preprocessed"' in prompt
+    assert '"name": "respond_to_user"' in prompt
     assert "unique description for epoch_data" not in prompt
     assert assembler.latest_tool_publication.tool_names == frozenset()
-    assert runtime.publication_reads == 0
+    assert runtime.publication_reads == 1
 
 
 def test_standalone_explanation_does_not_inherit_prior_workflow_exchange() -> None:
@@ -1493,7 +1499,7 @@ def test_assembler_does_not_replay_executed_action_envelopes_to_model() -> None:
         {
             "role": "assistant",
             "content": (
-                '{"tool_name":"scan_source","parameters":'
+                '{"workflow_stage":"empty","tool_name":"scan_source","parameters":'
                 '{"source_path":"/data/S04.edf"}}'
             ),
         },

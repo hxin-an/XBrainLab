@@ -315,7 +315,9 @@ def run_structured_output_smoke(config: LLMConfig) -> dict[str, Any]:
                     {
                         "role": "user",
                         "content": (
-                            'Return exactly {"tool_name":"query_state","parameters":{}}'
+                            "Return exactly "
+                            '{"workflow_stage":"unavailable",'
+                            '"tool_name":"query_state","parameters":{}}'
                         ),
                     },
                 ],
@@ -331,8 +333,10 @@ def run_structured_output_smoke(config: LLMConfig) -> dict[str, Any]:
 
     response = "".join(chunks).strip()
     envelope = CommandParser.parse_product(response)
-    if envelope.status is ToolEnvelopeStatus.VALID and envelope.commands == (
-        ("query_state", {}),
+    if (
+        envelope.status is ToolEnvelopeStatus.VALID
+        and envelope.workflow_stage == "unavailable"
+        and envelope.commands == (("query_state", {}),)
     ):
         return {
             "status": "passed",

@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-08-17`
+最後更新：`2026-08-18`
 
 ## 目前焦點
 
@@ -8,12 +8,12 @@
 完成 replacement、atomic cutover、deletion 與 exact-SHA candidate；在完整候選前不要求使用者手測，
 未取得同一 source 的手測通過不得合併 main。**
 
-目前 phase：`backend-owned setup stage contract`
+目前 phase：`strict model envelope`
 
-目前 branch：`refactor/assistant-stage-contract-v2`
+目前 branch：`refactor/assistant-strict-envelope-v2`
 
-下一步：校正既有backend `PipelineStage` derivation，使`dataset_ready`只在saved split、model與
-training settings三者都完成時成立；此slice不修改tool membership、prompt、UI、Host policy或
+下一步：完成strict envelope slice的exact-head PR／CI並合回integration；之後另開state-card與
+one-prior-assistant context slice。此slice不修改tool membership、UI、Host narrowing／continuation或
 walkthrough runner。
 
 已完成 checkpoint：target authority 已由 PR #34 以 exact merge commit
@@ -30,15 +30,20 @@ commit `54384129c6c6a806f859ff699610855b11628262` 合入`integration/assistant-s
 Assistant launch不變，debug transport可在不建立或載入Granite時沿用既有controller、ApplicationService
 與turn correlation。
 
+已完成 checkpoint：backend setup stage已由PR #37以exact integration merge commit
+`2ee0dee90318e0bd68bc6d9f83269d7d271ffb0b`合入`integration/assistant-stable-v2`；
+`dataset_ready`現在只在saved split、model與training settings三者皆完成時成立，exact PR head的
+Linux full suite、Windows/macOS、public multi-dataset與MkDocs checks皆completed/success。
+
 ## 問題與證據
 
 - Current product仍發布21個model-facing actions；該集合是PR #30從runtime inventory投影出的current
   implementation，不是使用者逐項核准的target。
 - 舊target文件仍同時描述Host intent narrowing、bounded continuation、大型state snapshot與多分支
   response contract，和已核准的一回合一動作／thin Host設計衝突。
-- Current `PipelineStage.DATASET_READY`只以generated datasets推導，尚未表達split、model、training
-  settings三者都完成的target語意。
-- Current debug path仍要求local runtime READY，且在terminal前consume下一個call；因此不能作為
+- Backend setup stage已收斂，但model output尚未acknowledge同一publication；舊兩欄envelope可在
+  stage變更後仍被parser接受。
+- No-generation transport已存在，但walkthrough仍會在terminal前consume下一個call；因此尚不能作為
   無模型、逐步可見的frontend walkthrough。
 - Current UI handoff已有Import、Epoch、Split、Training、Montage與panel correlation；Channel Selection
   仍缺typed terminal。這些是bounded seam，不需要新增dialog或workflow owner。
@@ -68,11 +73,14 @@ Assistant launch不變，debug transport可在不建立或載入Granite時沿用
 4. **已完成 — no-generation diagnostic transport**：PR #36 已合入integration exact
    `54384129c6c6a806f859ff699610855b11628262`；tool-debug session不解析或載入local model，normal
    Assistant launch維持原契約。Exact PR head的CI與Documentation Site皆completed/success。
-5. **Active slice — backend setup stage**：`dataset_ready`只代表saved split、model與training settings
+5. **已完成 — backend setup stage**：`dataset_ready`只代表saved split、model與training settings
    三者全部完成；generated datasets或trainer存在本身不是ready evidence。沿用既有
    `ApplicationStateSnapshot`／`ActiveDatasetSnapshot`／`ActiveTrainingSnapshot`，不新增state owner。
-6. 校正action metadata，讓prompt、RAG、verifier、eval與showcase從單一projection取得catalog。
-7. 收斂strict envelope、repair budget、minimal state card與one-message context。
+6. **已確認 current baseline — action projection**：prompt、RAG、verifier、eval與showcase目前已從
+   `AGENT_ACTION_CONTRACTS.model_tool_names()`取得current catalog；不新增第二份metadata或另開PR。
+7. **Active slice — strict envelope**：root object exact三欄；stage必須等於backend publication；
+   `respond_to_user.parameters` exact只有`message`；格式或stage mismatch走既有bounded repair，禁止執行。
+   Minimal state card與one-message context保留到後續獨立slice，避免同時改grammar與context內容。
 8. 建立target adapters與GUI routes，但在cutover前不發布第二個model catalog。
 9. Atomic cutover到approved target projection，同時停止Host narrowing／continuation call sites。
 10. 按analysis、dataset protocol／recipe、training wrappers與Host policy分片物理刪除obsolete code。
@@ -113,17 +121,21 @@ benchmark。
 
 目前slice直接證據：
 
-- Red：新target regression在current implementation產生6個unexpected-parameter failures，且完整
-  setup但未materialize dataset時仍錯誤停在`epoch_ready`。
-- Green：split、model、training settings任一缺少時即使已有generated dataset仍為`epoch_ready`；三者
-  齊備時不依賴eager materialization即可為`dataset_ready`，training／trained priority維持不變。
-- Direct backend／LLM stage、StateSnapshotService與workflow projection focused suite共146 passed。
+- Red-first已重現8個focused contract failure：parser接受兩欄root與多分支response，controller不比對
+  model/backend stage，prompt與eval仍教舊格式。
+- Parser、prompt、controller與local eval現在共用exact三欄；缺stage、額外root key、stage mismatch、
+  response額外key均走既有最多兩次bounded repair且不執行。Missing-input field ID只在schema／Host有
+  evidence時評分，message-only model response不再自行聲稱欄位。
+- 合併驗證`tests/unit/llm`、local eval、runtime inspection與完整agent integration共2,564 passed；
+  包含strict recovery、Qt product flow、runtime lifecycle failure、no-model transport與202-turn／兩次
+  pruning的長對話。Stage在`empty→data_loaded→empty`間皆使用exact backend token。
 
-Complexity review：authoritative owner before／after皆為既有`ApplicationService` publication與
-`PipelineStage` pure derivation；不新增owner、state machine、receipt、module或public class。實際只改
-1個production file，production `+12/-4`、net `+8` LOC。Deletion candidate是`derive_pipeline_stage`中忽略
-saved split／model／training setting的舊shortcut；rollback是revert此單一slice，tool registry與UI不需
-migration。
+Complexity review：authoritative owner before／after皆為既有backend publication、controller verifier與
+ApplicationService；不新增owner、state machine、receipt、module或public class。Deletion candidates是
+多分支response grammar、兩欄root contract與重複response decision copy。實際5個production files
+`+116/-153`、net `-37` LOC；不新增owner、module、public class或UI。若需要超過8個production files、
+新owner或淨增超過100 LOC即停止拆slice。
+Rollback是revert此grammar slice，tool registry、backend command與UI不需migration。
 
 ## Stop conditions
 

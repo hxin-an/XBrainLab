@@ -208,7 +208,7 @@ def _submit_user_turn(controller: LLMController, text: str) -> None:
     )
 
 
-def test_malformed_tool_envelopes_stop_after_one_retry_without_execution(
+def test_malformed_tool_envelopes_stop_after_two_retries_without_execution(
     qtbot,
     tmp_path,
 ):
@@ -218,7 +218,7 @@ def test_malformed_tool_envelopes_stop_after_one_retry_without_execution(
         '```json\n{"tool_name":"scan_source","parameters":'
         f'{{"source_path":"{source}"}}}}\n```'
     )
-    controller, worker, coordinator = _controller_with_script([malformed] * 2)
+    controller, worker, coordinator = _controller_with_script([malformed] * 3)
     statuses: list[str] = []
     responses: list[str] = []
     controller.status_update.connect(statuses.append)
@@ -230,12 +230,12 @@ def test_malformed_tool_envelopes_stop_after_one_retry_without_execution(
         _submit_user_turn(controller, f"Scan data source {source}")
         qtbot.waitUntil(lambda: not controller.is_processing, timeout=3_000)
 
-        assert worker.generation_count == 2
-        assert worker.profiles == [GenerationProfile.STRUCTURED_DECISION] * 2
-        assert controller._tool_attempt_session.retry_count == 1
+        assert worker.generation_count == 3
+        assert worker.profiles == [GenerationProfile.STRUCTURED_DECISION] * 3
+        assert controller._tool_attempt_session.retry_count == 2
         assert controller._tool_attempt_session.execution_count == 0
         assert coordinator.commands == []
-        assert statuses.count("Invalid assistant action, retrying...") == 1
+        assert statuses.count("Invalid assistant action, retrying...") == 2
         assert statuses[-1] == "Invalid assistant action"
         assert responses == [
             "The assistant could not produce a valid assistant action. Try again "
@@ -262,7 +262,10 @@ def test_recovered_valid_envelope_reaches_real_execution_coordinator(
         '```json\n{"tool_name":"scan_source","parameters":'
         f'{{"source_path":"{source}"}}}}\n```'
     )
-    valid = f'{{"tool_name":"scan_source","parameters":{{"source_path":"{source}"}}}}'
+    valid = (
+        '{"workflow_stage":"empty","tool_name":"scan_source",'
+        f'"parameters":{{"source_path":"{source}"}}}}'
+    )
     controller, worker, coordinator = _controller_with_script([malformed, valid])
 
     try:

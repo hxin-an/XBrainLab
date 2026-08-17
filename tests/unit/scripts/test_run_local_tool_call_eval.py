@@ -37,6 +37,25 @@ def _case(case_id: str):
     return next(case for case in build_eval_cases() if case.case_id == case_id)
 
 
+def _strict_output(case, raw_output: str) -> str:
+    """Upgrade semantic fixtures to the current model-output envelope."""
+    payload = json.loads(raw_output)
+    parameters = payload["parameters"]
+    if payload["tool_name"] == "respond_to_user":
+        parameters = {"message": parameters["message"]}
+    return json.dumps(
+        {
+            "workflow_stage": _primary_prompt_state_snapshot(case.state_name)[
+                "pipeline_stage"
+            ],
+            "tool_name": payload["tool_name"],
+            "parameters": parameters,
+        },
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+
+
 def test_phi4_decision_case_suites_are_disjoint_and_resolve_existing_cases():
     known_case_ids = {case.case_id for case in build_eval_cases()}
 
@@ -157,10 +176,9 @@ def test_primary_prompt_includes_state_enabled_tools_without_answer_fields():
     assert "Blocked commands and reasons" not in prompt
     assert '"taxonomy": "Data Interpretation"' in prompt
     assert '"name": "respond_to_user"' in prompt
-    assert '"oneOf": [' in prompt
-    assert '"const": "blocked"' in prompt
-    assert '"const": "missing_input"' in prompt
-    assert '"const": "answer"' in prompt
+    assert '"required": ["message"]' in prompt
+    assert '"decision"' not in prompt
+    assert '"missing_inputs"' not in prompt
     assert '"additionalProperties": false' in prompt
     assert "Do not call it as a prerequisite or substitute" in prompt
 
@@ -181,17 +199,17 @@ def test_primary_prompt_uses_product_stage_tools_and_excludes_legacy_routes():
     assert '"name": "set_model"' not in loaded_prompt
 
 
-def test_primary_prompt_defines_model_owned_discriminated_decision_contract():
+def test_primary_prompt_defines_strict_stage_acknowledging_envelope():
     messages = build_prompt_messages(_case("empty-train-block"))
     system = messages[0]["content"]
 
     assert "DECISION ORDER" in system
     assert "exact requested action" in system
     assert "one DECISION ENVELOPE" in system
-    assert 'root object must be exactly {"tool_name"' in system
-    assert "missing_inputs" in system
-    assert '"decision":"blocked"' in system
-    assert '"decision":"answer"' in system
+    assert 'root object must be exactly {"workflow_stage":"empty"' in system
+    assert "workflow_stage value above is a required acknowledgement" in system
+    assert "missing_inputs" not in system
+    assert '"decision":"blocked"' not in system
     assert "intent" not in system.lower()
     assert "Never call a prerequisite or substitute" in system
     assert "Broad workflow continuation" in system
@@ -471,6 +489,7 @@ def test_scores_local_tool_call_output():
     raw_output = (
         '{"tool_name":"scan_source","parameters":{"source_path":"/datasets/bci_iv_2a"}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -549,6 +568,7 @@ def test_placeholder_tool_argument_is_scored_as_missing_input():
     raw_output = (
         '{"tool_name":"scan_source","parameters":{"source_path":"path_to_eeg_dataset"}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     prediction = prediction_from_model_output(case, raw_output)
 
@@ -560,6 +580,7 @@ def test_placeholder_tool_argument_is_scored_as_missing_input():
 def test_host_admission_blocks_substitute_before_model_without_hiding_raw_failure():
     case = _case("empty-train-block")
     raw_output = '{"tool_name":"set_model","parameters":{"model_name":"EEGNet"}}'
+    raw_output = _strict_output(case, raw_output)
 
     raw_score = score_local_case(case, [raw_output, raw_output, raw_output])
     assisted_score = score_host_assisted_local_case(
@@ -586,6 +607,7 @@ def test_raw_blocked_direct_tool_call_is_preserved_and_fails_no_tool_decision():
         '{"tool_name":"epoch_data","parameters":'
         '{"t_min":-0.1,"t_max":1.0,"event_id":["769"]}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     raw_prediction = raw_prediction_from_model_output(case, raw_output)
     raw_score = score_local_case(case, [raw_output] * 3)
@@ -631,6 +653,7 @@ def test_raw_structured_blocked_decision_uses_model_owned_intent():
         '"decision":"blocked",'
         '"message":"Load EEG data before training."}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     score = score_local_case(case, [raw_output] * 3)
 
@@ -649,6 +672,7 @@ def test_raw_structured_missing_input_decision_uses_model_owned_intent():
         '"decision":"missing_input","missing_inputs":["source_path"],'
         '"message":"Please provide the EEG source path."}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     score = score_local_case(case, [raw_output] * 3)
 
@@ -656,33 +680,29 @@ def test_raw_structured_missing_input_decision_uses_model_owned_intent():
     assert score.intent is None
     assert score.prediction["intent"] == "no_tool"
     assert score.prediction["asks_clarification"] is True
+    assert score.prediction["missing_inputs"] == ()
+    assert score.missing_input_fields is None
     assert score.verification_result == "missing_input"
 
 
-def test_missing_input_scores_exact_field_ids_in_raw_and_assisted_scopes():
+def test_missing_input_field_ids_are_host_evidence_not_model_output():
     case = _case("empty-reload-recipe-missing-path")
     correct = (
         '{"tool_name":"respond_to_user","parameters":{'
         '"decision":"missing_input","missing_inputs":["recipe_path"],'
         '"message":"Please provide the recipe path."}}'
     )
-    wrong = (
-        '{"tool_name":"respond_to_user","parameters":{'
-        '"decision":"missing_input","missing_inputs":["source_path"],'
-        '"message":"Please provide the recipe path."}}'
-    )
+    correct = _strict_output(case, correct)
 
     correct_raw = score_local_case(case, [correct] * 3)
-    wrong_raw = score_local_case(case, [wrong] * 3)
     correct_assisted = score_host_assisted_local_case(case, [correct] * 3)
 
     assert correct_raw.passed
-    assert correct_raw.missing_input_fields is True
-    assert correct_raw.prediction["missing_inputs"] == ("recipe_path",)
-    assert not wrong_raw.passed
-    assert wrong_raw.missing_input_fields is False
-    assert "missing-input field mismatch" in wrong_raw.failures
-    assert correct_assisted.missing_input_fields is True
+    assert correct_raw.missing_input_fields is None
+    assert correct_raw.prediction["missing_inputs"] == ()
+    assert "missing_input_fields" in correct_raw.excluded_dimensions
+    assert correct_assisted.missing_input_fields is None
+    assert correct_assisted.prediction["missing_inputs"] == ()
 
 
 def test_host_admission_preserves_exact_missing_input_fields() -> None:
@@ -690,7 +710,7 @@ def test_host_admission_preserves_exact_missing_input_fields() -> None:
 
     score = score_host_assisted_local_case(
         case,
-        ['{"tool_name":"scan_source","parameters":{}}'] * 3,
+        [_strict_output(case, '{"tool_name":"scan_source","parameters":{}}')] * 3,
     )
 
     assert score.passed
@@ -701,6 +721,7 @@ def test_host_admission_preserves_exact_missing_input_fields() -> None:
 def test_raw_tool_call_does_not_claim_host_confirmation_state() -> None:
     case = _case("ready-train-confirmation")
     output = '{"tool_name":"start_training","parameters":{}}'
+    output = _strict_output(case, output)
 
     raw = score_local_case(case, [output] * 3)
     assisted = score_host_assisted_local_case(case, [output] * 3)
@@ -720,6 +741,7 @@ def test_raw_and_host_assisted_scores_do_not_hide_tool_alias_normalization():
         '{"tool_name":"create_epoch","parameters":'
         '{"t_min":-0.2,"t_max":0.8,"event_id":["769"]}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     raw_score = score_local_case(case, [raw_output] * 3)
     assisted_score = score_host_assisted_local_case(case, [raw_output] * 3)
@@ -741,6 +763,7 @@ def test_raw_prediction_and_decision_score_are_outcome_mutation_invariant():
     raw_output = (
         '{"tool_name":"scan_source","parameters":{"source_path":"/data/S03.fif"}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     prediction = raw_prediction_from_model_output(case, raw_output)
     mutated_prediction = raw_prediction_from_model_output(mutated_case, raw_output)
@@ -790,9 +813,11 @@ def test_raw_prediction_and_decision_score_are_outcome_mutation_invariant():
 
 
 def test_raw_summary_reports_unmeasured_outcomes_as_excluded():
+    case = _case("successful-load-summary")
     raw_output = (
         '{"tool_name":"scan_source","parameters":{"source_path":"/data/S03.fif"}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     result = run_local_eval(
         model_id=PRIMARY_LOCAL_MODEL_ID,
@@ -856,6 +881,7 @@ def test_configure_dataset_split_default_val_ratio_is_counted():
         '"parameters":{"split_strategy":"trial",'
         '"training_mode":"individual","test_ratio":0.2}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -870,6 +896,7 @@ def test_raw_configure_dataset_split_accepts_omitted_optional_schema_default():
         '"parameters":{"split_strategy":"trial",'
         '"training_mode":"individual","test_ratio":0.2}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     score = score_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -884,6 +911,7 @@ def test_unspecified_dataset_split_strategy_requires_named_missing_field():
         '"decision":"missing_input","missing_inputs":["split_strategy"],'
         '"message":"Please specify which split strategy to use."}}'
     )
+    clarification = _strict_output(case, clarification)
 
     score = score_local_case(case, [clarification, clarification, clarification])
 
@@ -899,6 +927,7 @@ def test_unspecified_dataset_split_strategy_rejects_invented_trial_call():
         '"parameters":{"split_strategy":"trial",'
         '"training_mode":"individual","test_ratio":0.2}}'
     )
+    invented = _strict_output(case, invented)
 
     score = score_local_case(case, [invented, invented, invented])
 
@@ -914,6 +943,7 @@ def test_scores_configure_dataset_split_missing_test_ratio_from_latest_text():
         '"parameters":{"split_strategy":"trial",'
         '"training_mode":"individual"}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -928,6 +958,7 @@ def test_scores_preview_metadata_overrides_string_map_as_choices():
         '"subject":"subject-01","session":"ses-01",'
         '"metadata_overrides":{"subject":"subject-01","session":"ses-01"}}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -950,6 +981,7 @@ def test_scores_preview_unrequested_label_review_noise_as_metadata_choice():
         '"class_map":{},"anchor":"onset_seconds","granularity":"trial",'
         '"role":"class cue labels"}}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -970,6 +1002,7 @@ def test_scores_preview_task_run_with_generated_prefix_noise():
         '"subject":"subject1","session":"session1",'
         '"task":"task_imagery","run":"run03"}}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -985,6 +1018,7 @@ def test_scores_preview_task_run_with_generated_prefix_noise():
 def test_scores_strict_empty_parameter_tool_call_when_available():
     case = _case("previewed-safe-validate")
     raw_output = '{"tool_name":"validate_interpretation","parameters":{}}'
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -1012,6 +1046,7 @@ def test_scores_recipe_eeg_file_remap_tool_call():
         '{"tool_name":"preview_interpretation","parameters":{"choices":{'
         '"eeg_file_remap":{"/recipe/old_raw.fif":"/data/new_raw.fif"}}}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -1037,6 +1072,7 @@ def test_scores_recipe_remap_missing_target_with_named_field():
         '"decision":"missing_input","missing_inputs":["eeg_file_remap"],'
         '"message":"Please provide the saved file and replacement remap target."}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -1052,6 +1088,7 @@ def test_scores_placeholder_recipe_remap_alias_tool_as_clarification():
         '"saved_item":"missing saved EEG file",'
         '"replacement":"current replacement EEG file path/name"}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -1067,6 +1104,7 @@ def test_scores_hallucinated_recipe_remap_paths_as_clarification():
         '{"tool_name":"preview_interpretation","parameters":{'
         '"eeg_file_remap":{"/missing/saved_eeg.fif":"/data/current_eeg.fif"}}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -1082,6 +1120,7 @@ def test_scores_preview_with_stale_source_path_as_latest_preview():
         '{"tool_name":"preview_interpretation",'
         '"parameters":{"source_path":"/data/bids_mi"}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -1102,6 +1141,7 @@ def test_scores_preview_with_unrequested_placeholder_choices_as_plain_preview():
         '"required_label_carriers":["/data/label1.tsv","/data/label2.tsv"]'
         "}}}"
     )
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -1130,6 +1170,7 @@ def test_scores_policy_reason_subset_as_blocked_command_handling():
 def test_scores_latest_turn_intent_not_joined_history():
     case = _case("multi-turn-validate-apply-safe")
     raw_output = '{"tool_name":"apply_interpretation","parameters":{}}'
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -1142,6 +1183,7 @@ def test_host_assisted_score_does_not_infer_unexecuted_success_outcome():
     raw_output = (
         '{"tool_name":"scan_source","parameters":{"source_path":"/data/S03.fif"}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -1169,6 +1211,7 @@ def test_scores_blocked_text_with_backend_policy_reason():
 def test_scores_missing_recipe_path_with_path_label():
     case = _case("empty-reload-recipe-missing-path")
     raw_output = '{"tool_name":"reload_interpretation_recipe","parameters":{}}'
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -1181,6 +1224,7 @@ def test_scores_relative_scan_source_as_missing_input():
     raw_output = (
         '{"tool_name":"scan_source","parameters":{"source_path":"data/session01"}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -1194,6 +1238,7 @@ def test_switch_panel_output_fails_visualize_case_with_tool_selection_mismatch()
     raw_output = (
         '{"tool_name":"switch_panel","parameters":{"panel_name":"visualization"}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -1205,6 +1250,7 @@ def test_switch_panel_output_fails_visualize_case_with_tool_selection_mismatch()
 def test_set_model_output_fails_saliency_case_with_tool_selection_mismatch():
     case = _case("dataset-saliency-readiness-summary")
     raw_output = '{"tool_name":"set_model","parameters":{"model_name":"EEGNet"}}'
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -1216,6 +1262,7 @@ def test_set_model_output_fails_saliency_case_with_tool_selection_mismatch():
 def test_scores_published_saliency_tool_directly():
     case = _case("dataset-saliency-readiness-summary")
     raw_output = '{"tool_name":"saliency","parameters":{}}'
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -1234,14 +1281,15 @@ def test_scores_chinese_missing_input_and_no_call_cases():
     assert missing_score.score_breakdown["clarification_behavior"]
 
     no_tool = _case("no-tool-what-is-epoch")
+    no_tool_output = _strict_output(
+        no_tool,
+        '{"tool_name":"respond_to_user","parameters":{'
+        '"decision":"answer",'
+        '"message":"Epoch 是圍繞事件切出的 EEG 時間窗。"}}',
+    )
     no_tool_score = score_host_assisted_local_case(
         no_tool,
-        [
-            '{"tool_name":"respond_to_user","parameters":{'
-            '"decision":"answer",'
-            '"message":"Epoch 是圍繞事件切出的 EEG 時間窗。"}}'
-        ]
-        * 3,
+        [no_tool_output] * 3,
     )
 
     assert no_tool_score.passed
@@ -1256,6 +1304,7 @@ def test_scores_structured_clarification_without_visible_tool_syntax():
         '"decision":"missing_input","missing_inputs":["workflow_step"],'
         '"message":"Could you please specify the data step?"}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     score = score_host_assisted_local_case(case, [raw_output, raw_output, raw_output])
 
@@ -1280,12 +1329,15 @@ def test_multiple_json_objects_fail_instead_of_executing_first_tool_call():
 
 
 def test_run_local_eval_with_fake_generator_and_writes_artifacts(tmp_path: Path):
+    output = _strict_output(
+        _case("empty-scan-source-folder"),
+        '{"tool_name":"scan_source",'
+        '"parameters":{"source_path":"/datasets/bci_iv_2a"}}',
+    )
+
     def fake_generator(messages: list[dict[str, str]]) -> str:
         assert messages
-        return (
-            '{"tool_name":"scan_source",'
-            '"parameters":{"source_path":"/datasets/bci_iv_2a"}}'
-        )
+        return output
 
     result = run_local_eval(
         model_id=PRIMARY_LOCAL_MODEL_ID,
@@ -1385,9 +1437,10 @@ def test_run_local_eval_with_fake_generator_and_writes_artifacts(tmp_path: Path)
 
 def test_run_local_eval_closes_owned_engine_generator(monkeypatch):
     generator = MagicMock(
-        return_value=(
+        return_value=_strict_output(
+            _case("empty-scan-source-folder"),
             '{"tool_name":"scan_source",'
-            '"parameters":{"source_path":"/datasets/bci_iv_2a"}}'
+            '"parameters":{"source_path":"/datasets/bci_iv_2a"}}',
         )
     )
     generator.close = MagicMock()
@@ -1413,9 +1466,10 @@ def test_local_eval_recovers_malformed_then_valid_and_scores_final_output():
                 '```json\n{"tool_name":"scan_source","parameters":'
                 '{"source_path":"/datasets/bci_iv_2a"}}\n```'
             ),
-            (
+            _strict_output(
+                _case("empty-scan-source-folder"),
                 '{"tool_name":"scan_source","parameters":'
-                '{"source_path":"/datasets/bci_iv_2a"}}'
+                '{"source_path":"/datasets/bci_iv_2a"}}',
             ),
         ]
     )
@@ -1446,7 +1500,34 @@ def test_local_eval_recovers_malformed_then_valid_and_scores_final_output():
     assert "exactly one JSON object" in seen_messages[1][0]["content"]
 
 
-def test_local_eval_exhausts_malformed_output_after_one_recovery_attempt():
+def test_local_eval_repairs_wrong_backend_stage_before_scoring_tool_call():
+    case = _case("empty-scan-source-folder")
+    valid = _strict_output(
+        case,
+        '{"tool_name":"scan_source","parameters":'
+        '{"source_path":"/datasets/bci_iv_2a"}}',
+    )
+    wrong = valid.replace('"workflow_stage":"empty"', '"workflow_stage":"data_loaded"')
+    generator = MagicMock(side_effect=[wrong, valid])
+
+    result = run_local_eval(
+        model_id=PRIMARY_LOCAL_MODEL_ID,
+        repeat_count=1,
+        case_ids=[case.case_id],
+        generator=generator,
+    )
+
+    assert result["summary"]["failed_cases"] == 0
+    run = result["cases"][0]["runs"][0]
+    assert run["recovery_taxonomy"] == "recovered_tool"
+    assert [attempt["tool_envelope_status"] for attempt in run["attempts"]] == [
+        "format_error",
+        "valid",
+    ]
+    assert "workflow_stage acknowledgement" in run["attempts"][0]["tool_envelope_error"]
+
+
+def test_local_eval_exhausts_malformed_output_after_two_recovery_attempts():
     malformed = (
         '```json\n{"tool_name":"scan_source","parameters":'
         '{"source_path":"/datasets/bci_iv_2a"}}\n```'
@@ -1460,7 +1541,7 @@ def test_local_eval_exhausts_malformed_output_after_one_recovery_attempt():
         generator=generator,
     )
 
-    assert generator.call_count == 2
+    assert generator.call_count == 3
     assert result["summary"]["failed_cases"] == 1
     assert result["summary"]["output_format_accuracy"] == 0.0
     assert result["failure_taxonomy"]["tool envelope format failure"] == 1
@@ -1468,6 +1549,7 @@ def test_local_eval_exhausts_malformed_output_after_one_recovery_attempt():
     run = result["cases"][0]["runs"][0]
     assert run["recovery_taxonomy"] == "format_recovery_exhausted"
     assert [attempt["recovery_action"] for attempt in run["attempts"]] == [
+        "retry_format",
         "retry_format",
         "exhausted",
     ]
@@ -1486,13 +1568,14 @@ def test_local_eval_no_tool_prose_retries_then_fails_strict_envelope():
         generator=generator,
     )
 
-    assert generator.call_count == 2
+    assert generator.call_count == 3
     assert result["summary"]["failed_cases"] == 1
     assert result["recovery_taxonomy"] == {"format_recovery_exhausted": 1}
     run = result["cases"][0]["runs"][0]
     assert run["recovery_taxonomy"] == "format_recovery_exhausted"
-    assert len(run["attempts"]) == 2
+    assert len(run["attempts"]) == 3
     assert [attempt["recovery_action"] for attempt in run["attempts"]] == [
+        "retry_format",
         "retry_format",
         "exhausted",
     ]
@@ -1522,10 +1605,12 @@ def test_local_eval_generation_error_fails_even_for_expected_no_tool_case():
 
 
 def test_local_eval_reports_raw_failure_and_safe_host_block_separately():
+    case = _case("loaded-create-epoch-block")
     raw_output = (
         '{"tool_name":"epoch_data","parameters":'
         '{"t_min":-0.1,"t_max":1.0,"event_id":["769"]}}'
     )
+    raw_output = _strict_output(case, raw_output)
 
     result = run_local_eval(
         model_id=PRIMARY_LOCAL_MODEL_ID,
@@ -1550,7 +1635,9 @@ def test_local_eval_reports_raw_failure_and_safe_host_block_separately():
 
 
 def test_product_publication_blocks_wrong_browse_tool_without_claiming_completion():
+    case = _case("workflow-continue-empty-scan")
     raw_output = '{"tool_name":"list_files","parameters":{"directory":"/data/S04.edf"}}'
+    raw_output = _strict_output(case, raw_output)
 
     result = run_local_eval(
         model_id=PRIMARY_LOCAL_MODEL_ID,

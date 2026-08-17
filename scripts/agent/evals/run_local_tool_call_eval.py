@@ -462,9 +462,9 @@ def build_prompt_messages(
         "explicit browse/list request. Earlier turns are context, not permission to "
         "repeat an old action. Request categories in action_policy are semantic "
         "labels, never callable tool names. A blocked category requires "
-        "respond_to_user.blocked; an enabled category permits only its listed exact "
+        "respond_to_user; an enabled category permits only its listed exact "
         "callable names. No host answer or expected result is present.\n\n"
-        f"{STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions()}"
+        f"{STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions(state_snapshot['pipeline_stage'])}"
     )
     user = (
         "Workflow state:\n"
@@ -480,7 +480,7 @@ def build_prompt_messages(
         f"{json.dumps(latest_turn, ensure_ascii=False)}\n\n"
         "Apply the decision order now. Match the exact request to one semantic "
         "request_category in action_policy. For status blocked, use "
-        "respond_to_user.blocked and call no action tool. "
+        "respond_to_user and call no action tool. "
         "For status enabled, use only a listed callable_tool_name when all schema "
         "required values are present; otherwise use missing_input. Return one "
         "decision envelope only."
@@ -722,6 +722,30 @@ def _host_admission_prediction(case: EvalCase) -> Prediction | None:
     )
 
 
+def _parse_envelope_for_stage(
+    raw_output: str,
+    *,
+    expected_stage: str,
+) -> ToolEnvelopeParseResult:
+    envelope = CommandParser.parse_product(raw_output)
+    if (
+        envelope.status is not ToolEnvelopeStatus.FORMAT_ERROR
+        and envelope.workflow_stage != expected_stage
+    ):
+        return ToolEnvelopeParseResult.format_error(
+            "The workflow_stage acknowledgement does not match the current "
+            "backend workflow stage."
+        )
+    return envelope
+
+
+def _parse_case_envelope(case: EvalCase, raw_output: str) -> ToolEnvelopeParseResult:
+    return _parse_envelope_for_stage(
+        raw_output,
+        expected_stage=_current_eval_state(case.state_name).pipeline_stage,
+    )
+
+
 def raw_prediction_from_model_output(case: EvalCase, raw_output: str) -> Prediction:
     """Preserve the model's structured decision and intent for honest scoring.
 
@@ -729,7 +753,7 @@ def raw_prediction_from_model_output(case: EvalCase, raw_output: str) -> Predict
     injects benchmark outcomes, or replaces model prose with backend policy text.
     Host verification and capability blocking are scored in the assisted scope.
     """
-    envelope = CommandParser.parse_product(raw_output)
+    envelope = _parse_case_envelope(case, raw_output)
     if envelope.status is ToolEnvelopeStatus.FORMAT_ERROR:
         return Prediction(
             intent="unknown",
@@ -804,7 +828,7 @@ def _raw_no_tool_prediction(
 
 def prediction_from_model_output(case: EvalCase, raw_output: str) -> Prediction:
     """Convert one raw local-model response into the shared scorer prediction."""
-    envelope = CommandParser.parse_product(raw_output)
+    envelope = _parse_case_envelope(case, raw_output)
     requested_intent = _inferred_case_intent(case)
     if envelope.status is ToolEnvelopeStatus.FORMAT_ERROR:
         return Prediction(
@@ -1148,6 +1172,7 @@ def _evaluate_local_cases(
                 messages=messages,
                 generator=generator,
                 recovery_policy=recovery_policy,
+                expected_stage=_current_eval_state(case.state_name).pipeline_stage,
             )
             raw_output = generation.raw_output
             envelope = generation.envelope
@@ -1310,6 +1335,7 @@ def _generate_with_strict_envelope_recovery(
     messages: list[dict[str, str]],
     generator: TextGenerator,
     recovery_policy: StrictEnvelopeRecoveryPolicy,
+    expected_stage: str,
 ) -> _StrictEnvelopeGeneration:
     """Run the product-equivalent strict format loop without output salvage."""
     prompt_messages = [dict(message) for message in messages]
@@ -1325,7 +1351,7 @@ def _generate_with_strict_envelope_recovery(
             raw_output = ""
             generation_error = str(exc)
         elapsed = time.monotonic() - started
-        envelope = CommandParser.parse_product(raw_output)
+        envelope = _parse_envelope_for_stage(raw_output, expected_stage=expected_stage)
 
         if generation_error is not None:
             attempts.append(

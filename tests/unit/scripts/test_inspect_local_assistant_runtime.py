@@ -248,7 +248,10 @@ def test_structured_smoke_accepts_only_the_product_tool_envelope():
         patch("scripts.dev.inspect_local_assistant_runtime.LLMEngine") as engine_type,
     ):
         engine_type.return_value.generate_stream.return_value = iter(
-            ['{"tool_name":"query_state","parameters":{}}']
+            [
+                '{"workflow_stage":"unavailable",'
+                '"tool_name":"query_state","parameters":{}}'
+            ]
         )
 
         result = run_structured_output_smoke(config)
