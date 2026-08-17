@@ -8,11 +8,15 @@
 完成 replacement、atomic cutover、deletion 與 exact-SHA candidate；在完整候選前不要求使用者手測，
 未取得同一 source 的手測通過不得合併 main。**
 
-目前 phase：`target authority lock`
+目前 phase：`CI bootstrap`
 
-目前 branch：`docs/assistant-stable-v2-target-lock`
+目前 branch：`ci/assistant-stable-v2-integration-trigger`
 
-下一步：完成 target／decision／validation truth sync，通過 docs/guidance gate後以純文件PR合入main。
+下一步：將 CI bootstrap PR 推向 main，要求同一 exact SHA 的所有 applicable GitHub checks
+`completed/success`；合入後才從 exact main 建立 integration branch。
+
+已完成 checkpoint：target authority 已由 PR #34 以 exact merge commit
+`7518c7a60ab7e5355b2e5e1fbc6412ba8edeab2b` 合入 main；該 PR 只有 docs/guidance，沒有產品行為。
 
 ## 問題與證據
 
@@ -43,9 +47,12 @@
 
 ## Scope、ordered repair 與 checkpoint
 
-1. **Target authority PR → main**：收斂target、decisions、current/target wording與staged validation。
-2. **CI bootstrap PR → main**：讓base=`integration/assistant-stable-v2`的product/docs PR執行既有
-   GitHub Actions；不建立較弱的替代CI。
+1. **已完成 — Target authority PR → main**：收斂target、decisions、current/target wording與staged
+   validation；PR #34 已合入 exact main。
+2. **PR candidate — CI bootstrap PR → main**：讓base=`integration/assistant-stable-v2`的product/docs
+   PR執行既有GitHub Actions；只改兩個既有 workflow 的 exact PR base filter 與直接 regression，
+   不建立較弱的替代CI或新 workflow。Local focused regression、guidance audit與MkDocs strict已通過，
+   等待同一SHA的remote checks。
 3. 從exact main建立`integration/assistant-stable-v2`；該branch不是產品基線或release source。
 4. Characterize current UI／handoff／debug／PhysioNet path，建立no-generation diagnostic transport。
 5. 校正backend stage與action metadata，先讓prompt、RAG、verifier、eval、showcase從單一projection
