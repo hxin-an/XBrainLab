@@ -29,7 +29,6 @@ from XBrainLab.llm.agent.context_encoding import (
     encode_untrusted_context,
 )
 from XBrainLab.llm.agent.decision_context import (
-    WorkflowDecisionContext,
     build_workflow_decision_context,
 )
 from XBrainLab.llm.agent.turn import AssistantResponseContract, AssistantTurnScope
@@ -130,14 +129,22 @@ def test_blocked_explanation_uses_publication_but_publishes_no_actions() -> None
     messages = request.to_model_messages()
     prompt = messages[0]["content"]
     context = _untrusted_context(messages)
-    blockers = _context_item(context, "capability_blockers")["data"]["blocked_reasons"]
+    card = _context_item(context, "state_card")["data"]
 
     assert request.response_contract is AssistantResponseContract.STRUCTURED_ACTION
     assert '"workflow_stage":"data_loaded"' in prompt
     assert '"name": "respond_to_user"' in prompt
     assert runtime.publication_reads == 1
     assert assembler.latest_tool_publication.tool_names == frozenset()
-    assert blockers == {"create_epoch": "Preprocess data before creating EEG epochs."}
+    assert card == {
+        "workflow_stage": "data_loaded",
+        "backend_generation": 81,
+        "state_reliable": True,
+        "raw_count": 1,
+    }
+    assert assembler.latest_tool_publication.blocked_reason("create_epoch") == (
+        "Preprocess data before creating EEG epochs."
+    )
     assert "unique description for epoch_data" not in prompt
     assert "unique description for scan_source" not in prompt
 
@@ -297,40 +304,42 @@ def test_zero_parameter_detection_rejects_open_or_composed_schemas(
         ),
     ),
 )
-def test_workflow_context_redacts_complete_private_directory_path(
+def test_state_card_never_projects_private_directory_path(
     private_path: str,
     private_fragments: tuple[str, ...],
 ) -> None:
-    decision = WorkflowDecisionContext(
-        mode="step_by_step",
-        workflow_stage=f"Source selected: {private_path}; preview is pending.",
-        latest_user_request="Import EEG data from the selected directory.",
-        evidence=[
-            f"Validated source directory: {private_path}, metadata remains untrusted."
-        ],
+    state = _state(
+        pipeline_stage="data_loaded",
+        raw=RawStateSnapshot(loaded=True, count=1, files=[private_path]),
+        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
+    )
+    publication = ApplicationViewPublication(
+        generation=8,
+        state=state,
+        capabilities=build_capability_policy(state),
     )
     registry = ToolRegistry()
     registry.register(_NamedTool("scan_source"))
-    assembler = ContextAssembler(registry, Study())
+    assembler = ContextAssembler(
+        registry,
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
     assembler.set_turn_authorized_command("scan_source")
 
-    with patch(
-        "XBrainLab.llm.agent.assembler.build_workflow_decision_context",
-        return_value=decision,
-    ):
-        messages = assembler.get_messages(
-            [
-                {
-                    "role": "user",
-                    "content": "Import EEG data from the selected directory.",
-                }
-            ]
-        )
+    messages = assembler.get_messages(
+        [
+            {
+                "role": "user",
+                "content": "Import EEG data from the selected directory.",
+            }
+        ]
+    )
 
     context = _untrusted_context(messages)
-    workflow_item = _context_item(context, "workflow_decision")
-    workflow_data = json.dumps(workflow_item["data"])
-    assert workflow_item["source"] == {
+    state_card = _context_item(context, "state_card")
+    state_card_data = json.dumps(state_card["data"])
+    assert state_card["source"] == {
         "kind": "application_service_publication",
     }
     assert context["bounds"] == {
@@ -339,104 +348,16 @@ def test_workflow_context_redacts_complete_private_directory_path(
         "max_items": 8,
         "max_string_chars": 1024,
     }
-    assert "[REDACTED_PATH]" in workflow_data
-    assert "preview is pending" in workflow_data
-    assert "metadata remains untrusted" in workflow_data
-    assert private_path not in workflow_data
-    for fragment in private_fragments:
-        assert fragment not in workflow_data
-    assert assembler.latest_tool_publication.tool_names == frozenset({"scan_source"})
-    assert assembler.latest_tool_publication.authorized_command == "scan_source"
-
-
-@pytest.mark.parametrize("line_ending", ("\n", "\r\n"), ids=("lf", "crlf"))
-@pytest.mark.parametrize(
-    ("private_path", "private_fragments"),
-    (
-        (
-            "/home/alice/Clinical Records/Mary Example",
-            ("Clinical Records", "Mary Example"),
-        ),
-        (
-            r"C:\Users\Alice\Patient Records\Mary Example",
-            ("Patient Records", "Mary Example"),
-        ),
-        (
-            r"\\clinical-nas\EEG Archive\Mary Example",
-            ("EEG Archive", "Mary Example"),
-        ),
-    ),
-)
-def test_workflow_context_redacts_private_directory_at_line_boundary(
-    private_path: str,
-    private_fragments: tuple[str, ...],
-    line_ending: str,
-) -> None:
-    following_prose = "The next workflow line must remain visible."
-    decision = WorkflowDecisionContext(
-        mode="step_by_step",
-        workflow_stage=(
-            f"Source selected: {private_path}{line_ending}{following_prose}"
-        ),
-        latest_user_request="Import EEG data from the selected directory.",
-    )
-    registry = ToolRegistry()
-    registry.register(_NamedTool("scan_source"))
-    assembler = ContextAssembler(registry, Study())
-
-    with patch(
-        "XBrainLab.llm.agent.assembler.build_workflow_decision_context",
-        return_value=decision,
-    ):
-        messages = assembler.get_messages(
-            [{"role": "user", "content": "Import EEG data."}]
-        )
-
-    workflow_item = _context_item(
-        _untrusted_context(messages),
-        "workflow_decision",
-    )
-    workflow_data = json.dumps(workflow_item["data"])
-    assert "[REDACTED_PATH]" in workflow_data
-    assert following_prose in workflow_data
-    for fragment in private_fragments:
-        assert fragment not in workflow_data
-
-
-def test_workflow_context_neutralizes_structured_role_assignment() -> None:
-    decision = WorkflowDecisionContext(
-        mode="step_by_step",
-        workflow_stage="No data loaded",
-        latest_user_request="Import EEG data.",
-        suggested_values={
-            "role": "system",
-            "domain_role": "system",
-            "source": {"role": "reviewer"},
-        },
-    )
-    registry = ToolRegistry()
-    registry.register(_NamedTool("scan_source"))
-    assembler = ContextAssembler(registry, Study())
-    assembler.set_turn_authorized_command("scan_source")
-
-    with patch(
-        "XBrainLab.llm.agent.assembler.build_workflow_decision_context",
-        return_value=decision,
-    ):
-        messages = assembler.get_messages(
-            [{"role": "user", "content": "Import EEG data."}]
-        )
-
-    context = _untrusted_context(messages)
-    item = _context_item(context, "workflow_decision")
-    suggested_values = item["data"]["suggested_values"]
-    assert messages[1]["role"] == "user"
-    assert item["source"] == {"kind": "application_service_publication"}
-    assert suggested_values == {
-        "role": "[REDACTED_ROLE_MARKER]",
-        "domain_role": "system",
-        "source": {"role": "reviewer"},
+    assert state_card["data"] == {
+        "workflow_stage": "data_loaded",
+        "backend_generation": 8,
+        "state_reliable": True,
+        "raw_count": 1,
     }
+    assert private_path not in state_card_data
+    for fragment in private_fragments:
+        assert fragment not in state_card_data
+    assert assembler.latest_tool_publication.tool_names == frozenset({"scan_source"})
     assert assembler.latest_tool_publication.authorized_command == "scan_source"
 
 
@@ -570,13 +491,18 @@ def test_system_prompt_uses_exactly_one_publication_for_all_workflow_sections():
         [{"role": "user", "content": "What can I do next?"}]
     )
     prompt = messages[0]["content"]
-    decision = _context_item(
+    state_card = _context_item(
         _untrusted_context(messages),
-        "workflow_decision",
+        "state_card",
     )["data"]
 
     assert runtime.publication_reads == 1
-    assert decision["workflow_stage"] == "No data loaded"
+    assert state_card == {
+        "workflow_stage": "empty",
+        "backend_generation": 8,
+        "state_reliable": True,
+        "raw_count": 0,
+    }
     assert "No data loaded" not in prompt
     assert "recommended_next_step" not in prompt
     assert "STRICT RESPONSE CONTRACT - DECISION ORDER" in prompt
@@ -611,14 +537,19 @@ def test_preprocessed_publication_aligns_model_and_decision_context() -> None:
     )
     messages = assembler.get_messages([{"role": "user", "content": "Create epochs"}])
     prompt = messages[0]["content"]
-    decision = _context_item(
+    state_card = _context_item(
         _untrusted_context(messages),
-        "workflow_decision",
+        "state_card",
     )["data"]
 
     assert runtime.publication_reads == 1
     assert "## Current Stage: Preprocessed" not in prompt
-    assert decision["workflow_stage"] == "Ready for EEG epoching"
+    assert state_card == {
+        "workflow_stage": "preprocessed",
+        "backend_generation": 9,
+        "state_reliable": True,
+        "preprocessed_count": 1,
+    }
     assert "recommended_next_step" not in prompt
     assert '"name": "epoch_data"' in prompt
     assert "unique description for epoch_data" in prompt
@@ -736,7 +667,7 @@ def test_explanatory_no_tool_turn_publishes_no_workflow_tools() -> None:
     assert runtime.publication_reads == 1
 
 
-def test_standalone_explanation_does_not_inherit_prior_workflow_exchange() -> None:
+def test_standalone_explanation_keeps_only_prior_assistant_visible_message() -> None:
     assembler = ContextAssembler(ToolRegistry(), Study())
     latest_question = (
         "Explain in one short sentence what EEG preprocessing prepares data for."
@@ -756,8 +687,15 @@ def test_standalone_explanation_does_not_inherit_prior_workflow_exchange() -> No
         ]
     )
 
-    assert messages[1:] == [{"role": "user", "content": latest_question}]
-    assert "current workflow" not in str(messages[1:]).lower()
+    context = _untrusted_context(messages)
+    conversation = _context_item(context, "conversation_history")["data"]
+    assert conversation["messages"] == [
+        {
+            "speaker": "assistant",
+            "text": "No data loaded. Next: Scan data source.",
+        }
+    ]
+    assert messages[-1] == {"role": "user", "content": latest_question}
 
 
 def test_long_history_cannot_displace_current_workflow_publication() -> None:
@@ -800,8 +738,9 @@ def test_long_history_cannot_displace_current_workflow_publication() -> None:
 
     messages = request.to_model_messages()
     context = _untrusted_context(messages)
-    workflow = _context_item(context, "workflow_decision")["data"]
-    assert workflow["workflow_stage"] == "Ready for preprocessing"
+    state_card = _context_item(context, "state_card")["data"]
+    assert state_card["workflow_stage"] == "data_loaded"
+    assert state_card["backend_generation"] == 41
     assert request.response_contract is AssistantResponseContract.STRUCTURED_ACTION
     assert (
         len(
@@ -814,6 +753,191 @@ def test_long_history_cannot_displace_current_workflow_publication() -> None:
         )
         <= MAX_CHAT_MODEL_REQUEST_UTF8_BYTES
     )
+
+
+def test_prompt_projects_only_minimal_setup_state_card() -> None:
+    state = _state(
+        pipeline_stage="dataset_ready",
+        raw=RawStateSnapshot(
+            loaded=True,
+            count=2,
+            files=["/private/source/sub-01.edf"],
+            channels=["Fp1", "Fp2"],
+            diagnostics={"reader": "private diagnostic"},
+        ),
+        preprocessed=PreprocessedStateSnapshot(
+            available=True,
+            count=2,
+            files=["/private/derived/sub-01.fif"],
+            channel_names=["Fp1", "Fp2"],
+            operations=["bandpass:4-38"],
+        ),
+        epoch=EpochStateSnapshot(available=True, exists=True, epoch_count=24),
+        dataset=DatasetStateSnapshot(
+            split_spec_saved=True,
+            split_specification={"strategy": "private-full-settings"},
+        ),
+        training=TrainingStateSnapshot(
+            has_model=True,
+            model_name="EEGNet",
+            model_params={"private": "full-model-settings"},
+            has_training_option=True,
+            training_option={"epochs": 100, "device": "private-device"},
+            missing_requirements=[],
+        ),
+        active_dataset=ActiveDatasetSnapshot(
+            has_raw_data=True,
+            has_preprocessed_data=True,
+            has_epoch_data=True,
+            has_saved_split=True,
+        ),
+        active_training=ActiveTrainingSnapshot(
+            has_model=True,
+            has_training_option=True,
+        ),
+    )
+    publication = ApplicationViewPublication(
+        generation=44,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    assembler = ContextAssembler(
+        ToolRegistry(),
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
+
+    context = _untrusted_context(
+        assembler.get_messages(
+            [{"role": "user", "content": "Can I start training now?"}]
+        )
+    )
+
+    card = _context_item(context, "state_card")
+    assert card["source"] == {"kind": "application_service_publication"}
+    assert card["data"] == {
+        "workflow_stage": "dataset_ready",
+        "backend_generation": 44,
+        "state_reliable": True,
+        "epoch_count": 24,
+        "split_configured": True,
+        "model_selected": True,
+        "training_settings_configured": True,
+        "missing_setup": [],
+    }
+    serialized = json.dumps(context, sort_keys=True)
+    for forbidden in (
+        "/private/source",
+        "/private/derived",
+        "Fp1",
+        "private diagnostic",
+        "full-model-settings",
+        "private-full-settings",
+        "private-device",
+        "recommended_next_step",
+        "capability_blockers",
+        "workflow_decision",
+    ):
+        assert forbidden not in serialized
+
+
+def test_state_card_projects_only_stage_relevant_readiness() -> None:
+    def card_for(state: ApplicationStateSnapshot, generation: int) -> dict:
+        publication = ApplicationViewPublication(
+            generation=generation,
+            state=state,
+            capabilities=build_capability_policy(state),
+        )
+        assembler = ContextAssembler(
+            ToolRegistry(),
+            Study(),
+            application_runtime=_ApplicationRuntimeFake(publication),
+        )
+        context = _untrusted_context(
+            assembler.get_messages([{"role": "user", "content": "What is ready?"}])
+        )
+        return _context_item(context, "state_card")["data"]
+
+    epoch_ready = _state(
+        pipeline_stage="epoch_ready",
+        epoch=EpochStateSnapshot(available=True, exists=True, epoch_count=12),
+        active_dataset=ActiveDatasetSnapshot(has_epoch_data=True),
+    )
+    assert card_for(epoch_ready, 51) == {
+        "workflow_stage": "epoch_ready",
+        "backend_generation": 51,
+        "state_reliable": True,
+        "epoch_count": 12,
+        "split_configured": False,
+        "model_selected": False,
+        "training_settings_configured": False,
+        "missing_setup": ["dataset_split", "model", "training_settings"],
+    }
+
+    training = _state(
+        pipeline_stage="training",
+        training=TrainingStateSnapshot(
+            has_model=True,
+            model_name="EEGNet",
+            is_running=True,
+            progress_message="Epoch 2/10 from /private/training/source.edf",
+        ),
+        active_training=ActiveTrainingSnapshot(has_model=True, is_running=True),
+    )
+    training_card = card_for(training, 52)
+    assert training_card["workflow_stage"] == "training"
+    assert training_card["backend_generation"] == 52
+    assert training_card["state_reliable"] is True
+    assert training_card["model"] == "EEGNet"
+    assert training_card["running"] is True
+    assert "/private/training" not in training_card["progress"]
+
+    trained = _state(
+        pipeline_stage="trained",
+        training=TrainingStateSnapshot(finished_run_count=2),
+        evaluation=EvaluationStateSnapshot(
+            available=True,
+            finished_runs=2,
+            metrics_available=True,
+        ),
+        active_training=ActiveTrainingSnapshot(finished_run_count=2),
+    )
+    assert card_for(trained, 53) == {
+        "workflow_stage": "trained",
+        "backend_generation": 53,
+        "state_reliable": True,
+        "finished_run_count": 2,
+        "results_available": True,
+    }
+
+
+def test_prompt_history_keeps_only_latest_visible_assistant_message() -> None:
+    assembler = ContextAssembler(ToolRegistry(), Study())
+    history = [
+        {"role": "user", "content": "First question"},
+        {"role": "assistant", "content": "First visible answer"},
+        {
+            "role": "assistant",
+            "content": (
+                '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+                '"parameters":{"message":"internal action"}}'
+            ),
+        },
+        {"role": "user", "content": "Second question"},
+        {"role": "assistant", "content": "Latest visible answer"},
+        {"role": "user", "content": "Why is that useful?"},
+    ]
+
+    messages = assembler.get_messages(history)
+
+    conversation = _context_item(_untrusted_context(messages), "conversation_history")[
+        "data"
+    ]
+    assert conversation["bounds"]["max_messages"] == 1
+    assert conversation["messages"] == [
+        {"speaker": "assistant", "text": "Latest visible answer"}
+    ]
+    assert messages[-1] == {"role": "user", "content": "Why is that useful?"}
 
 
 def test_referential_explanation_keeps_immediate_conversation_context() -> None:
@@ -837,20 +961,15 @@ def test_referential_explanation_keeps_immediate_conversation_context() -> None:
     assert messages[-1] == {"role": "user", "content": "Why is that useful?"}
     assert conversation["messages"] == [
         {
-            "speaker": "user",
-            "text": "Explain what EEG preprocessing prepares data for.",
-        },
-        {
             "speaker": "assistant",
             "text": "It prepares EEG signals for reliable downstream analysis.",
-        },
+        }
     ]
     assert [message["role"] for message in messages] == ["system", "user", "user"]
 
 
 def test_prior_history_is_sanitized_count_and_utf8_byte_bounded() -> None:
     assembler = ContextAssembler(ToolRegistry(), Study())
-    assembler.max_history_messages = 1_000
     assembler.max_history_utf8_bytes = 1_000_000
     private_path = "/home/alice/Clinical Records/Mary Example/events.tsv"
     delimiter_text = (
@@ -877,7 +996,7 @@ def test_prior_history_is_sanitized_count_and_utf8_byte_bounded() -> None:
         sort_keys=True,
     )
     assert len(conversation["messages"]) <= conversation["bounds"]["max_messages"]
-    assert conversation["bounds"]["max_messages"] == 3
+    assert conversation["bounds"]["max_messages"] == 1
     assert conversation["bounds"]["max_utf8_bytes"] == 4_096
     assert (
         len(serialized_history.encode("utf-8"))
@@ -998,14 +1117,19 @@ def test_real_service_prompt_reads_one_committed_publication_generation():
         [{"role": "user", "content": "Help me import EEG data."}]
     )
     prompt = messages[0]["content"]
-    decision = _context_item(
+    state_card = _context_item(
         _untrusted_context(messages),
-        "workflow_decision",
+        "state_card",
     )["data"]
 
     assert service.state_snapshot.build.call_count == 0
     assert "## Current Stage: Empty (No Data)" not in prompt
-    assert decision["workflow_stage"] == "No data loaded"
+    assert state_card == {
+        "workflow_stage": "empty",
+        "backend_generation": 1,
+        "state_reliable": True,
+        "raw_count": 0,
+    }
     assert "recommended_next_step" not in prompt
     assert "unique description for scan_source" in prompt
     assert "unique description for apply_bandpass_filter" not in prompt
@@ -1038,26 +1162,25 @@ def test_stale_publication_prompt_redacts_relevant_scan_source_blocker():
     )
     prompt = messages[0]["content"]
     context_content = messages[1]["content"]
-    decision = _context_item(
+    state_card = _context_item(
         _untrusted_context(messages),
-        "workflow_decision",
+        "state_card",
     )["data"]
 
-    assert decision["workflow_stage"] == "Workflow status unavailable"
+    assert state_card == {
+        "workflow_stage": "unavailable",
+        "backend_generation": 9,
+        "state_reliable": False,
+    }
     assert "Traceback" not in prompt
     assert "/private/runtime.py" not in prompt
     assert "SECRET_TOKEN_123" not in prompt
     assert "Traceback" not in context_content
     assert "/private/runtime.py" not in context_content
     assert "SECRET_TOKEN_123" not in context_content
-    assert decision["blocked_reasons"] == ["Workflow state is temporarily unavailable."]
-    blockers = _context_item(
-        _untrusted_context(messages),
-        "capability_blockers",
-    )["data"]["blocked_reasons"]
-    assert blockers == {
-        "scan_source": "Workflow state is temporarily unavailable.",
-    }
+    assert assembler.latest_tool_publication.blocked_reason("scan_source") == (
+        "Workflow state is temporarily unavailable."
+    )
     assert "## Workflow Status Unavailable" not in prompt
     assert "## Current Stage: Empty (No Data)" not in prompt
     assert "unique description for query_state" not in prompt
@@ -1452,8 +1575,8 @@ def test_applied_import_context_moves_to_preprocess():
     assert context.recommended_label == "Preprocess data"
 
 
-def test_assembler_sends_decision_context_and_short_clean_history():
-    """History sent to the LLM is short and excludes prior tool payloads."""
+def test_assembler_sends_state_card_and_one_clean_assistant_message():
+    """Prompt context stays minimal and excludes prior tool payloads."""
     registry = ToolRegistry()
     mock_study = Study()
     history = [
@@ -1475,13 +1598,13 @@ def test_assembler_sends_decision_context_and_short_clean_history():
         messages = assembler.get_messages(history)
 
     assert "Workflow Decision Context:" not in messages[0]["content"]
-    decision = _context_item(
-        _untrusted_context(messages),
-        "workflow_decision",
-    )["data"]
-    assert decision["mode"] == "continue_until_decision"
-    assert decision["continuation_candidate"] == "scan_source"
-    assert decision["continuation_role"] == "backend_advice_not_user_request"
+    context = _untrusted_context(messages)
+    state_card = _context_item(context, "state_card")["data"]
+    assert state_card["workflow_stage"] == "empty"
+    conversation = _context_item(context, "conversation_history")["data"]
+    assert conversation["messages"] == [
+        {"speaker": "assistant", "text": "old response 2"}
+    ]
     assert len(messages) <= 3
     assert not any(
         "Tool Output:" in str(message.get("content", "")) for message in messages[1:]
@@ -1660,10 +1783,7 @@ def test_assembler_only_includes_blocker_relevant_to_latest_request():
     messages = assembler.get_messages(
         [{"role": "user", "content": "Train the model now."}]
     )
-    blockers = _context_item(
-        _untrusted_context(messages),
-        "capability_blockers",
-    )["data"]["blocked_reasons"]
+    blockers = dict(assembler.latest_tool_publication.blocked_reasons)
 
     assert "train" in blockers
     assert "preprocess" not in blockers
@@ -1748,13 +1868,15 @@ def test_prompt_policy_policy_exception_is_fail_closed_and_prompt_visible() -> N
         )
 
     prompt = messages[0]["content"]
-    status = _context_item(
+    state_card = _context_item(
         _untrusted_context(messages),
-        "capability_status",
+        "state_card",
     )["data"]
-    assert status["publication_error"]["message"].startswith(
-        "Backend capability policy is temporarily unavailable."
-    )
+    assert state_card == {
+        "workflow_stage": "unavailable",
+        "backend_generation": 18,
+        "state_reliable": False,
+    }
     assert "Backend capability policy is temporarily unavailable" not in prompt
     assert "unique description for scan_source" not in prompt
     assert "internal capability implementation detail" not in prompt
@@ -1821,13 +1943,15 @@ def test_prompt_policy_invalid_publication_type_is_serializable_and_fail_closed(
     ).get_messages([{"role": "user", "content": "Import data"}])
 
     prompt = messages[0]["content"]
-    status = _context_item(
+    state_card = _context_item(
         _untrusted_context(messages),
-        "capability_status",
+        "state_card",
     )["data"]
-    assert status["publication_error"]["message"].startswith(
-        "Backend capability policy is temporarily unavailable."
-    )
+    assert state_card == {
+        "workflow_stage": "unavailable",
+        "backend_generation": None,
+        "state_reliable": False,
+    }
     assert "Backend capability policy is temporarily unavailable" not in prompt
     assert "unique description for scan_source" not in prompt
 

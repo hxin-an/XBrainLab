@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -69,7 +68,6 @@ _BACKEND_DEFAULT_CONTINUATION_TOOLS = frozenset(
 )
 _MAX_CONTEXT_NOTES = 4
 _MAX_HISTORY_INPUT_ROWS = 64
-_MAX_HISTORY_MESSAGES = 4
 _MAX_HISTORY_MESSAGE_UTF8_BYTES = 1_024
 _MAX_HISTORY_UTF8_BYTES = 4_096
 
@@ -171,7 +169,6 @@ Action Contract Catalog (input definitions, never an output array):
         self._turn_authorized_command: str | None = None
         self._turn_authorization_is_continuation = False
         self._turn_policy_mode = STEP_BY_STEP_MODE
-        self.max_history_messages = _MAX_HISTORY_MESSAGES
         self.max_history_utf8_bytes = _MAX_HISTORY_UTF8_BYTES
 
     def _get_stage_config(
@@ -508,37 +505,20 @@ Action Contract Catalog (input definitions, never an output array):
             authorized_command=self._turn_authorized_command,
         )
 
-        context_items = []
-        if requested_intent != "no_tool" or blocked_explanation is not None:
-            context_items.append(
-                UntrustedContextItem(
-                    item_type="workflow_decision",
-                    source=UntrustedContextSource(
-                        kind="application_service_publication",
-                    ),
-                    data=self._workflow_decision_payload(decision_context),
-                )
+        context_items = [
+            UntrustedContextItem(
+                item_type="state_card",
+                source=UntrustedContextSource(
+                    kind="application_service_publication",
+                ),
+                data=self._state_card_payload(
+                    publication,
+                    workflow_stage=workflow_stage,
+                    backend_generation=policy_read.backend_generation,
+                    state_reliable=not workflow_status_unavailable,
+                ),
             )
-        if blocked_reasons:
-            context_items.append(
-                UntrustedContextItem(
-                    item_type="capability_blockers",
-                    source=UntrustedContextSource(
-                        kind="application_service_capability_policy",
-                    ),
-                    data={"blocked_reasons": blocked_reasons},
-                )
-            )
-        if policy_read.publication_error is not None:
-            context_items.append(
-                UntrustedContextItem(
-                    item_type="capability_status",
-                    source=UntrustedContextSource(
-                        kind="application_service_capability_policy",
-                    ),
-                    data=policy_read.to_prompt_payload(),
-                )
-            )
+        ]
         if self._recovery_feedback is not None:
             context_items.append(
                 UntrustedContextItem(
@@ -568,31 +548,78 @@ Action Contract Catalog (input definitions, never an output array):
         return prompt
 
     @staticmethod
-    def _workflow_decision_payload(
-        context: WorkflowDecisionContext,
+    def _state_card_payload(
+        publication: ApplicationViewPublication | None,
+        *,
+        workflow_stage: str,
+        backend_generation: int | None,
+        state_reliable: bool,
     ) -> dict[str, Any]:
-        """Project backend decision data without duplicating the user message."""
+        """Project only stage-relevant truth from one backend publication."""
         payload: dict[str, Any] = {
-            "mode": context.mode,
-            "workflow_stage": context.workflow_stage,
-            "can_auto_continue": context.can_auto_continue,
-            "decision_needed": context.decision_needed,
-            "blocked_reasons": context.blocked_reasons,
-            "evidence": context.evidence,
-            "stop_reason": context.stop_reason,
-            "continuation": "disabled_in_step_by_step",
+            "workflow_stage": workflow_stage if state_reliable else "unavailable",
+            "backend_generation": backend_generation,
+            "state_reliable": state_reliable,
         }
-        if context.mode == "continue_until_decision":
+        if not state_reliable or publication is None:
+            return payload
+
+        state = publication.state
+        if workflow_stage in {"empty", "data_loaded"}:
+            payload["raw_count"] = max(int(state.raw.count), 0)
+        elif workflow_stage == "preprocessed":
+            payload["preprocessed_count"] = max(int(state.preprocessed.count), 0)
+        elif workflow_stage in {"epoch_ready", "dataset_ready"}:
+            setup = {
+                "split_configured": bool(
+                    state.dataset.split_spec_saved
+                    or state.active_dataset.has_saved_split
+                ),
+                "model_selected": bool(
+                    state.training.has_model or state.active_training.has_model
+                ),
+                "training_settings_configured": bool(
+                    state.training.has_training_option
+                    or state.active_training.has_training_option
+                ),
+            }
             payload.update(
                 {
-                    "continuation_candidate": context.recommended_next_step,
-                    "continuation_role": "backend_advice_not_user_request",
-                    "continuation_allowed_actions": context.allowed_actions,
+                    "epoch_count": max(int(state.epoch.epoch_count or 0), 0),
+                    **setup,
+                    "missing_setup": [
+                        name
+                        for name, ready in (
+                            ("dataset_split", setup["split_configured"]),
+                            ("model", setup["model_selected"]),
+                            (
+                                "training_settings",
+                                setup["training_settings_configured"],
+                            ),
+                        )
+                        if not ready
+                    ],
                 }
             )
-            payload.pop("continuation")
-        if context.suggested_values:
-            payload["suggested_values"] = context.suggested_values
+        elif workflow_stage == "training":
+            progress = state.training.progress_message
+            payload["model"] = state.training.model_name
+            payload["running"] = bool(
+                state.training.is_running or state.active_training.is_running
+            )
+            payload["progress"] = (
+                sanitize_untrusted_text(progress, max_chars=160) if progress else None
+            )
+        elif workflow_stage == "trained":
+            payload["finished_run_count"] = max(
+                state.training.finished_run_count,
+                state.active_training.finished_run_count,
+                state.evaluation.finished_runs,
+                0,
+            )
+            payload["results_available"] = bool(
+                state.evaluation.available or state.evaluation.metrics_available
+            )
         return payload
 
     def _context_note_items(self) -> tuple[UntrustedContextItem, ...]:
@@ -727,10 +754,6 @@ Action Contract Catalog (input definitions, never an output array):
             for index, message in enumerate(clean_history)
             if index != latest_user_index
         ]
-        if self._uses_natural_language_response(
-            latest_user_text
-        ) and not self._requires_conversation_context(latest_user_text):
-            prior_history = []
         system_message = {
             "role": "system",
             "content": self.build_system_prompt(latest_user_text),
@@ -784,27 +807,6 @@ Action Contract Catalog (input definitions, never an output array):
             response_contract=AssistantResponseContract.STRUCTURED_ACTION,
         )
 
-    @staticmethod
-    def _uses_natural_language_response(latest_user_text: str) -> bool:
-        return bool(
-            infer_user_intent(latest_user_text) == "no_tool"
-            or resolve_blocked_explanation_intent(latest_user_text) is not None
-        )
-
-    @staticmethod
-    def _requires_conversation_context(latest_user_text: str) -> bool:
-        """Return whether an informational follow-up refers to an earlier turn."""
-        normalized = latest_user_text.casefold()
-        if re.search(
-            r"\b(?:it|that|this|these|those|they|them|previous|above)\b",
-            normalized,
-        ):
-            return True
-        return any(
-            marker in normalized
-            for marker in ("這", "那", "它", "剛剛", "上面", "前面")
-        )
-
     def bind_turn_scope(self, scope: AssistantTurnScope) -> None:
         """Bind prompt autonomy to the host-admitted immutable turn scope."""
         if not isinstance(scope, AssistantTurnScope):
@@ -848,20 +850,18 @@ Action Contract Catalog (input definitions, never an output array):
         """Project recent speakers as bounded data, never chat-template roles."""
         if not prior_history:
             return None
-        if type(self.max_history_messages) is not int:
-            raise TypeError("History message bound must be an exact integer.")
         if type(self.max_history_utf8_bytes) is not int:
             raise TypeError("History UTF-8 byte bound must be an exact integer.")
-        max_messages = max(
-            min(self.max_history_messages, _MAX_HISTORY_MESSAGES) - 1,
-            0,
-        )
+        max_messages = 1
         max_utf8_bytes = max(
             min(self.max_history_utf8_bytes, _MAX_HISTORY_UTF8_BYTES),
             256,
         )
-        selected = prior_history[-max_messages:] if max_messages else []
-        truncated = input_truncated or len(prior_history) > len(selected)
+        assistant_history = [
+            message for message in prior_history if message["role"] == "assistant"
+        ]
+        selected = assistant_history[-max_messages:] if max_messages else []
+        truncated = input_truncated or len(assistant_history) > len(selected)
         safe_messages: list[dict[str, str]] = []
         for message in selected:
             safe_text = sanitize_untrusted_text(

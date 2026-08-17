@@ -8,13 +8,14 @@
 完成 replacement、atomic cutover、deletion 與 exact-SHA candidate；在完整候選前不要求使用者手測，
 未取得同一 source 的手測通過不得合併 main。**
 
-目前 phase：`strict model envelope`
+目前 phase：`minimal state card and one-prior-assistant context`
 
-目前 branch：`refactor/assistant-strict-envelope-v2`
+目前 branch：`refactor/assistant-minimal-context-v2`
 
-下一步：完成strict envelope slice的exact-head PR／CI並合回integration；之後另開state-card與
-one-prior-assistant context slice。此slice不修改tool membership、UI、Host narrowing／continuation或
-walkthrough runner。
+下一步：只收斂model prompt中的ApplicationService state projection與conversation history；完成本地
+focused／agent regression後形成一個stacked commit。GitHub服務目前不可用，因此不以remote PR／CI
+狀態阻塞本地施工；服務恢復後仍須依序更新strict-envelope與本slice的exact-head PR。此slice不修改
+tool membership、UI、Host narrowing／continuation或walkthrough runner。
 
 已完成 checkpoint：target authority 已由 PR #34 以 exact merge commit
 `7518c7a60ab7e5355b2e5e1fbc6412ba8edeab2b` 合入 main；該 PR 只有 docs/guidance，沒有產品行為。
@@ -78,16 +79,21 @@ Linux full suite、Windows/macOS、public multi-dataset與MkDocs checks皆comple
    `ApplicationStateSnapshot`／`ActiveDatasetSnapshot`／`ActiveTrainingSnapshot`，不新增state owner。
 6. **已確認 current baseline — action projection**：prompt、RAG、verifier、eval與showcase目前已從
    `AGENT_ACTION_CONTRACTS.model_tool_names()`取得current catalog；不新增第二份metadata或另開PR。
-7. **Active slice — strict envelope**：root object exact三欄；stage必須等於backend publication；
+7. **Local scope-complete／remote pending — strict envelope**：root object exact三欄；stage必須等於backend publication；
    `respond_to_user.parameters` exact只有`message`；格式或stage mismatch走既有bounded repair，禁止執行。
-   Minimal state card與one-message context保留到後續獨立slice，避免同時改grammar與context內容。
-8. 建立target adapters與GUI routes，但在cutover前不發布第二個model catalog。
-9. Atomic cutover到approved target projection，同時停止Host narrowing／continuation call sites。
-10. 按analysis、dataset protocol／recipe、training wrappers與Host policy分片物理刪除obsolete code。
-11. 執行三份no-model profiles與frozen Granite suite；未達gate時只調prompt／schema／approved
+   Exact local commit `a67abe5b`通過完整`linux-unit-rest` 1,312 tests；GitHub服務恢復前不推新remote
+   evidence。Minimal state card與one-message context保留到本次獨立slice，避免同時改grammar與內容。
+8. **Active slice — minimal prompt context**：以一張由同一ApplicationService publication投影的hidden
+   state card取代`workflow_decision`、capability map與status payload；prompt history只保留最新一則
+   Assistant-visible message，不重播prior user、tool output或action envelope。Controller archival history、
+   current Host narrowing與continuation暫時不變。
+9. 建立target adapters與GUI routes，但在cutover前不發布第二個model catalog。
+10. Atomic cutover到approved target projection，同時停止Host narrowing／continuation call sites。
+11. 按analysis、dataset protocol／recipe、training wrappers與Host policy分片物理刪除obsolete code。
+12. 執行三份no-model profiles與frozen Granite suite；未達gate時只調prompt／schema／approved
     examples，不增加Host heuristic或silent fallback。
-12. 同步最新main、完成handoff dossier並凍結exact candidate SHA；只在此時交付使用者手測。
-13. 手測通過且source未變後，以integration→main merge commit合併；之後刪branch並移除暫時CI
+13. 同步最新main、完成handoff dossier並凍結exact candidate SHA；只在此時交付使用者手測。
+14. 手測通過且source未變後，以integration→main merge commit合併；之後刪branch並移除暫時CI
     trigger。
 
 每個implementation slice從integration開短branch並PR回integration；CI全綠後squash為一個coherent
@@ -129,13 +135,30 @@ benchmark。
 - 合併驗證`tests/unit/llm`、local eval、runtime inspection與完整agent integration共2,564 passed；
   包含strict recovery、Qt product flow、runtime lifecycle failure、no-model transport與202-turn／兩次
   pruning的長對話。Stage在`empty→data_loaded→empty`間皆使用exact backend token。
+- `linux-unit-rest`先以一個仍使用舊兩欄JSON的root contract fixture重現失敗；更新該fixture後完整
+  shard 1,312 tests通過，沒有產品source修正。
 
-Complexity review：authoritative owner before／after皆為既有backend publication、controller verifier與
+上一slice complexity review：authoritative owner before／after皆為既有backend publication、controller verifier與
 ApplicationService；不新增owner、state machine、receipt、module或public class。Deletion candidates是
 多分支response grammar、兩欄root contract與重複response decision copy。實際5個production files
 `+116/-153`、net `-37` LOC；不新增owner、module、public class或UI。若需要超過8個production files、
 新owner或淨增超過100 LOC即停止拆slice。
 Rollback是revert此grammar slice，tool registry、backend command與UI不需migration。
+
+目前slice complexity review：authoritative owner before／after皆是既有ApplicationService publication；
+Assembler只做detached projection，不新增owner、state machine、receipt、module或public class。Deletion
+candidates是大型`workflow_decision` payload、prompt capability／status payload、多訊息與referential
+heuristic。實際1個production file`+84/-84`、net 0；刪除的prompt policy分支由stage-specific card
+projection等量取代，owner與prompt authority layers沒有增加。若需要改controller archival history、超過8個
+production files、增加owner或pure refactor淨增超過100 LOC即停止拆slice。Rollback只revertprompt
+projection，backend state、tool registry、commands與UI不需migration。
+
+目前slice直接證據：red-first重現缺少`state_card`與history上限仍為3；green後card只含exact stage、
+generation、可靠性與stage-relevant counts／readiness，unavailable固定三欄，paths、channels、完整settings、
+diagnostics、recommendation、capability map與Host decision皆不進prompt。History只投影最新一則可見
+Assistant訊息；prior user、tool output與action envelope不重播。`tests/unit/llm` 2,378 passed，最新
+assembler／untrusted-context focused 105 passed，完整`tests/integration/agent` 67 passed，ruff與
+basedpyright皆通過。
 
 ## Stop conditions
 
