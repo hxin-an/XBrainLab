@@ -149,6 +149,37 @@ def test_agent_action_contract_registry_has_unique_tools_and_intent_aliases():
     assert len(intent_aliases) == len(set(intent_aliases))
 
 
+def test_agent_action_contract_registry_has_exact_model_facing_projection():
+    expected = frozenset(
+        {
+            "list_files",
+            "scan_source",
+            "preview_interpretation",
+            "validate_interpretation",
+            "apply_interpretation",
+            "save_interpretation_recipe",
+            "reload_interpretation_recipe",
+            "query_state",
+            "apply_standard_preprocess",
+            "reset_preprocess",
+            "epoch_data",
+            "configure_dataset_split",
+            "set_model",
+            "configure_training",
+            "start_training",
+            "stop_training",
+            "evaluate",
+            "visualize",
+            "saliency",
+            "set_montage",
+            "switch_panel",
+        }
+    )
+
+    assert AGENT_ACTION_CONTRACTS.model_tool_names() == expected
+    assert len(AGENT_ACTION_CONTRACTS.tool_names()) == 30
+
+
 def test_tool_to_command_compatibility_view_does_not_drift_from_registry():
     expected = {
         "scan_source": CommandName.SCAN_SOURCE,

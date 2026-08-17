@@ -40,7 +40,7 @@ def test_get_similar_examples_success(mock_retriever):
     mock_point.payload = {
         "page_content": "User input",
         "metadata": {
-            "tool_calls": ('[{"tool_name": "get_dataset_info", "parameters": {}}]')
+            "tool_calls": ('[{"tool_name": "query_state", "parameters": {}}]')
         },
     }
 
@@ -59,7 +59,7 @@ def test_get_similar_examples_success(mock_retriever):
     assert example["source"]["kind"] == "xbrainlab_bundled_gold_set"
     assert example["data"]["input"] == "User input"
     assert example["data"]["expected_action"] == {
-        "tool_name": "get_dataset_info",
+        "tool_name": "query_state",
         "parameters": {},
     }
     assert "Assistant action:" not in result

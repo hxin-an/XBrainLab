@@ -16,13 +16,14 @@ from XBrainLab.chat_contract import (
     MODEL_UNTRUSTED_CONTEXT_BOUNDARY_MESSAGE,
 )
 
+from ..action_contracts import AGENT_ACTION_CONTRACTS
 from ..pipeline_state import STAGE_CONFIG, PipelineStage, compute_pipeline_stage
 from ..tools.application_surface import (
     ApplicationToolRuntime,
     application_tool_runtime,
 )
 from ..tools.base import BaseTool
-from ..tools.schema_contract import LEGACY_COMPATIBILITY_TOOLS, tool_contract_for_llm
+from ..tools.schema_contract import tool_contract_for_llm
 from ..tools.tool_registry import ToolRegistry
 from .context_encoding import (
     MAX_UNTRUSTED_CONTEXT_BYTES,
@@ -352,18 +353,19 @@ instead of inventing a workflow fact.
     ) -> list[str]:
         """Return tool names allowed by ApplicationService capability policy."""
         registered_names = {tool.name for tool in self.registry.get_all_tools()}
+        model_tool_names = AGENT_ACTION_CONTRACTS.model_tool_names()
         if not policy_read.policy_applies:
             return sorted(
                 name
                 for name in fallback
-                if name in registered_names and name not in LEGACY_COMPATIBILITY_TOOLS
+                if name in registered_names and name in model_tool_names
             )
         if policy_read.publication_error is not None:
             return []
         policy_allowed = {
             name
             for name in policy_read.published_tools
-            if name in registered_names and name not in LEGACY_COMPATIBILITY_TOOLS
+            if name in registered_names and name in model_tool_names
         }
         return sorted(policy_allowed)
 

@@ -41,6 +41,7 @@ from XBrainLab.backend.application.view_publication import ApplicationViewPublic
 from XBrainLab.backend.application.workflow_projection import (
     build_workflow_projection,
 )
+from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.agent.decision_contract import model_response_tool_contract
 from XBrainLab.llm.agent.intent import (
     command_for_intent,
@@ -84,11 +85,12 @@ from XBrainLab.llm.core.model_catalog import (
 )
 from XBrainLab.llm.pipeline_state import STAGE_CONFIG, PipelineStage
 from XBrainLab.llm.tools import get_all_tools
-from XBrainLab.llm.tools.application_surface import READ_ONLY_TOOLS, TOOL_TO_COMMAND
-from XBrainLab.llm.tools.schema_contract import (
-    LEGACY_COMPATIBILITY_TOOLS,
-    tool_contract_for_llm,
+from XBrainLab.llm.tools.application_surface import (
+    READ_ONLY_TOOLS,
+    TOOL_TO_COMMAND,
+    UI_REQUEST_TOOLS,
 )
+from XBrainLab.llm.tools.schema_contract import tool_contract_for_llm
 
 
 class TextGenerator(Protocol):
@@ -1933,11 +1935,12 @@ def _available_tool_schemas(state_name: str) -> list[dict[str, Any]]:
     state = _current_eval_state(state_name)
     policy = build_capability_policy(state)
     stage_tools = set(STAGE_CONFIG[_prompt_stage_for_state(state)]["tools"])
+    model_tool_names = AGENT_ACTION_CONTRACTS.model_tool_names()
     schemas: list[dict[str, Any]] = []
     for tool in get_all_tools(mode="mock"):
         command_name = TOOL_TO_COMMAND.get(tool.name)
         if command_name is not None:
-            if tool.name in LEGACY_COMPATIBILITY_TOOLS or tool.name not in stage_tools:
+            if tool.name not in model_tool_names or tool.name not in stage_tools:
                 continue
             capability = policy.get(command_name)
             if not capability.enabled:
@@ -1953,7 +1956,10 @@ def _available_tool_schemas(state_name: str) -> list[dict[str, Any]]:
             )
             schema["decision_boundary"] = capability.decision_boundary
             schemas.append(schema)
-        elif tool.name in READ_ONLY_TOOLS:
+        elif (
+            tool.name in READ_ONLY_TOOLS | UI_REQUEST_TOOLS
+            and tool.name in model_tool_names
+        ):
             schema = tool_contract_for_llm(tool)
             schema["description"] = (
                 f"{str(schema.get('description', '')).rstrip()}"

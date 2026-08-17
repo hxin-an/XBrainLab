@@ -8,18 +8,12 @@ import math
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
+from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
+
 if TYPE_CHECKING:
     from XBrainLab.llm.agent.verifier import ToolSchemaValidator
 
 logger = logging.getLogger(__name__)
-
-LEGACY_COMPATIBILITY_TOOLS = frozenset(
-    {
-        "load_data",
-        "attach_labels",
-        "import_labels",
-    }
-)
 
 
 @lru_cache(maxsize=1)
@@ -113,7 +107,7 @@ def prompt_tool_call_from_metadata(
         or not tool_name.strip()
         or tool_name != tool_name.strip()
         or not isinstance(parameters, dict)
-        or tool_name in LEGACY_COMPATIBILITY_TOOLS
+        or tool_name not in AGENT_ACTION_CONTRACTS.model_tool_names()
         or not _is_strict_json_value(parameters)
     ):
         return None

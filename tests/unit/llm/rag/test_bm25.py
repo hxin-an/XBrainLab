@@ -53,7 +53,7 @@ def test_build_from_json_indexes_only_primary_workflow_examples(tmp_path: Path) 
                     "input": "inspect the current dataset",
                     "category": "dataset",
                     "expected_tool_calls": [
-                        {"tool_name": "get_dataset_info", "parameters": {}}
+                        {"tool_name": "query_state", "parameters": {}}
                     ],
                 },
                 {
@@ -78,7 +78,7 @@ def test_build_from_json_indexes_only_primary_workflow_examples(tmp_path: Path) 
     assert len(results) == 1
     assert results[0][1] == "dataset-info"
     assert json.loads(results[0][3]["tool_calls"]) == [
-        {"tool_name": "get_dataset_info", "parameters": {}}
+        {"tool_name": "query_state", "parameters": {}}
     ]
 
 

@@ -167,9 +167,20 @@ class TestStageBasedFiltering:
         assert "apply_standard_preprocess" in prompt
         assert "attach_labels" not in prompt
 
-    def test_backend_policy_cannot_reintroduce_stage_filtered_legacy_tool(self):
+    def test_backend_policy_cannot_reintroduce_unpublished_model_tools(self):
+        unpublished = {
+            "load_data",
+            "attach_labels",
+            "apply_bandpass_filter",
+            "apply_notch_filter",
+            "resample_data",
+            "normalize_data",
+            "set_reference",
+            "select_channels",
+            "get_dataset_info",
+        }
         registry = ToolRegistry()
-        for name in ("load_data", "attach_labels", "scan_source", "switch_panel"):
+        for name in (*unpublished, "scan_source", "switch_panel"):
             registry.register(_FakeTool(name))
         study = MagicMock()
 
@@ -183,12 +194,7 @@ class TestStageBasedFiltering:
                 return_value=PromptPolicyReadResult(
                     publication=None,
                     published_tools=frozenset(
-                        {
-                            "load_data",
-                            "attach_labels",
-                            "scan_source",
-                            "switch_panel",
-                        }
+                        unpublished | {"scan_source", "switch_panel"}
                     ),
                     blocked_reasons=(),
                 ),
@@ -198,8 +204,8 @@ class TestStageBasedFiltering:
 
         assert "scan_source" in prompt
         assert "switch_panel" in prompt
-        assert "load_data" not in prompt
-        assert "attach_labels" not in prompt
+        for tool_name in unpublished:
+            assert tool_name not in prompt
 
 
 class TestPromptContent:

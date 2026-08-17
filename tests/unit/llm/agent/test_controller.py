@@ -2845,7 +2845,25 @@ class TestProcessToolCalls:
         assert isinstance(rejected, ToolCommandResult)
         assert rejected.error_type == "intent_mismatch"
 
-    def test_tool_not_published_for_active_generation_fails_closed(self, ctrl):
+    @pytest.mark.parametrize(
+        "tool_name",
+        (
+            "load_data",
+            "attach_labels",
+            "apply_bandpass_filter",
+            "apply_notch_filter",
+            "resample_data",
+            "normalize_data",
+            "set_reference",
+            "select_channels",
+            "get_dataset_info",
+        ),
+    )
+    def test_tool_not_published_for_active_generation_fails_closed(
+        self,
+        ctrl,
+        tool_name,
+    ):
         from XBrainLab.llm.agent.assembler import PromptToolPublication
 
         ctrl._turn_orchestrator.active_publication = PromptToolPublication(
@@ -2855,8 +2873,8 @@ class TestProcessToolCalls:
 
         result = _evaluate_policy(
             ctrl,
-            "load_data",
-            _enabled_tool_context("load_data", generation=12),
+            tool_name,
+            _enabled_tool_context(tool_name, generation=12),
         ).result
 
         assert isinstance(result, ToolCommandResult)

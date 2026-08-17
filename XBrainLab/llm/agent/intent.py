@@ -405,9 +405,34 @@ def infer_user_intent(text: str) -> str:
         return "visualize"
     if "視覺化" in normalized or "可視化" in normalized:
         return "visualize"
-    if "preprocess" in normalized or "bandpass" in normalized or "filter" in normalized:
+    if any(
+        marker in normalized
+        for marker in (
+            "preprocess",
+            "bandpass",
+            "filter",
+            "resample",
+            "normalize",
+            "normalise",
+            "reference",
+            "select channel",
+        )
+    ):
         return "preprocess"
-    if "前處理" in normalized or "濾波" in normalized or "帶通" in normalized:
+    if any(
+        marker in normalized
+        for marker in (
+            "前處理",
+            "濾波",
+            "帶通",
+            "重採樣",
+            "重新採樣",
+            "正規化",
+            "標準化",
+            "參考電極",
+            "選擇通道",
+        )
+    ):
         return "preprocess"
     if _is_dataset_generation_request(normalized):
         return "configure_dataset_split"
@@ -723,10 +748,17 @@ def _is_workflow_state_request(normalized: str) -> bool:
             "what's ready",
             "which steps are ready",
             "what changed",
+            "what dataset is loaded",
+            "current dataset information",
+            "dataset info",
+            "dataset summary",
             "目前狀態",
             "現在狀態",
             "目前可以做什麼",
             "現在可以做什麼",
+            "目前資料集",
+            "現在資料集",
+            "資料集資訊",
         )
     )
 
