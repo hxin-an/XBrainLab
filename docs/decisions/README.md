@@ -20,8 +20,9 @@
 | 穩定化優先 | active | 先讓既有 app 可跑、可測、可理解，再做 agent redesign。 |
 | app 內 assistant 是 workflow operator | active | 它不是外部 coding assistant，也不是普通聊天視窗。 |
 | assistant runtime local-only | active | 為了簡化開發、部署、隱私和驗證，assistant product runtime 已 local-only；remote backend modules 已從 product package 移除，`openai` / `google-genai` 只留 optional `legacy-remote-llm` dependency group。 |
-| Assistant tool surface 由 approved intent 決定 | active | Tool 數量不固定，且不由 runtime inventory 或既有測試反推 target。名稱、membership、side effect、confirmation 與 visible result 必須先在 `docs/target/agent.md` 的 intent ledger 取得使用者核准；current model-facing projection 只描述現況。 |
-| Assistant tool surface 第一批 target boundary | active | `list_files` 不進未來產品 surface；Data Import 對模型只呈現一個高階入口；workflow state 由 host 提供；preprocessing 只在參數明確時套用。Model／training、evaluation／visualization／saliency 等 intent 仍待逐項決定。 |
+| Assistant tool surface 由 approved intent 決定 | active | Tool 不由 runtime inventory 或既有測試反推。名稱、membership、side effect、confirmation 與 visible result 必須先在 `docs/target/agent.md` 的 intent ledger 取得使用者核准；current model-facing projection 只描述現況。 |
+| Assistant Stable v2 target surface | active | Target intent ledger 已鎖定17個產品tools、backend-owned stage、strict三欄envelope、一回合一動作、thin Host與GUI completion terminal。Implementation只能投影該ledger；不得用Host heuristic、silent substitution、auto continuation或runtime fallback補模型決策。 |
+| Assistant Stable v2 staged merge | active | Product重建先在暫時integration branch以小PR完成；該branch不是產品基線。只有完整candidate在同一exact SHA通過工程證據、使用者手測並取得明確merge同意後，才以merge commit進main；source改變即使批准失效。 |
 | validation 是 thesis-critical | active | 測試和 evidence 是論文主張的一部分。 |
 | 文件要少數 canonical 化 | active | 短期 AI / agent 文件整合後刪除，只保留少數 canonical 文件。 |
 | Agent guidance 採 lean single-authority contract | active | Root 保存授權、safety、scope ceiling、complexity trigger 與 handoff 不變量；skills 只保存 routing/方法，workflows 保存多步程序。Static audit 只限制上限與 authority integrity，不再要求最低篇幅或大量外部 A/B。 |

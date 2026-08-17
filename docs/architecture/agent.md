@@ -4,7 +4,8 @@
 
 ## 範圍
 
-這份文件描述 XBrainLab 內建 assistant 的目前架構與重構方向。
+這份文件只描述 XBrainLab 內建 assistant 的目前架構。Approved重構目標由
+[Agent target](../target/agent.md)擁有；本文件不建立第二份target。
 
 這裡的 agent 指 app 內的 workflow-aware software operation agent，不是外部開發用的 Codex。
 
@@ -461,18 +462,11 @@ publication、不建立 confirmation，也不呼叫 backend。Backend internal c
   `message`、`error_type`、`recoverable`、`state`、`capability`、`diagnostics`、
   `raw_result` JSON payload。
 - `set_montage` 仍走既有 Montage Settings UI request；Cancel 不產生 montage mutation；
-  `switch_panel` 仍是 UI routing request；current projection v1 中的 `list_files` / `query_state` 是
-  model-facing read-only / inspection path。Target 已決定 filesystem listing 不進產品 surface、workflow
-  state 改由 host 注入，但本次 authority repair 不先行修改 runtime。使用者詢問 dataset information
-  目前仍由 host admission 直接執行 `query_state`，不需要
-  模型選擇 tool。舊 `get_dataset_info` / `load_data`
-  definition 僅保留 compatibility identity，產品 policy 與 executor 會明確拒絕 direct
-  load 並導向 Data Interpretation；`attach_labels` 與 granular preprocess implementations 保留為
-  runtime/debug compatibility surface，但這些名稱
-  都不再是 Empty / Data Loaded /
-  Preprocessed stage prompt 的 primary tool language；Goal 1 新資料入口主線以 Data
-  Interpretation taxonomy 為主。Granular preprocess 自然語言 request 會開啟既有 Preprocess
-  Settings，不會 silent substitute 成 `apply_standard_preprocess`。
+  `switch_panel` 仍是 UI routing request。Current projection v1 中的 `list_files`／`query_state`、
+  Data Interpretation protocol wrappers、standard preprocess與analysis wrappers仍是model-facing；
+  granular preprocess implementations仍只在runtime/debug inventory。這些都是current migration
+  source，不是approved target。完整17-tool disposition、GUI completion與direct command boundary只讀
+  [target intent ledger](../target/agent.md#target-intent-ledger)；本次authority repair不先行修改runtime。
 
 ## Workflow State Gate
 
@@ -584,43 +578,12 @@ accuracy percentage exists yet.
 - Confirmation risk 仍以 `destructive` 布林值和文字種類描述，尚未成為 setting change、costly
   operation、irreversible action 等 typed semantic policy。
 
-## 目標架構
+## Approved target reference
 
-未來重構目標是讓 UI、Agent、Script 共用同一套 app operation surface。
-
-assistant runtime 目標是 local-only。這可以讓開發、部署、論文驗證和隱私邊界簡化：
-
-- 不需要 API key 管理。
-- 不需要雲端 provider fallback policy。
-- tool-call 驗證只需要面對一套本地 runtime。
-- offline / local lab machine 的行為比較容易固定。
-
-目標形狀：
-
-```text
-UI actions
-Assistant tools
-Headless scripts
-  |
-  v
-Application Service / Command API
-  |
-  v
-Domain managers / Study state
-  |
-  v
-Data / Training / Evaluation / Persistence
-```
-
-在這個目標裡：
-
-- agent-specific 的部分只負責自然語言、RAG、tool selection、verification、confirmation。
-- LLM runtime 只保留本地模型路線，不再把 API / Gemini 作為產品路線。
-- 真正 app 操作應該落在 shared command layer。
-- UI side effects 應該改成 typed events / typed requests，而不是 `Request:` 字串。
-- assistant / script product path 應直接使用 ApplicationService / Command API；不再保留
-  `BackendFacade` compatibility adapter。
-- tool taxonomy 可以重設計，不需要被目前 `real/` 工具切法綁住。
+Stable v2的tool membership、backend-owned stage、strict envelope、thin Host、GUI terminal、diagnostic
+walkthrough與candidate gates只由[Agent target](../target/agent.md)定義。Current runtime尚未完成該
+migration；在atomic cutover、obsolete wrapper deletion與same-source evidence完成前，本文件不得把
+target描述成current behavior。
 
 ## 文件狀態
 

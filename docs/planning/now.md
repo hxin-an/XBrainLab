@@ -4,71 +4,97 @@
 
 ## 目前焦點
 
-**先修復 Assistant tool surface 的決策權威鏈，完成可跨 context compression 與多個 PR 保存的
-target design lock；在 target intent 尚未逐項核准前，不修改產品 tool surface。**
+**建立 Assistant Stable v2 的 durable target authority，之後在暫時 integration branch 以小 PR
+完成 replacement、atomic cutover、deletion 與 exact-SHA candidate；在完整候選前不要求使用者手測，
+未取得同一 source 的手測通過不得合併 main。**
 
-使用者已停止並撤回 PR #32 的 manual acceptance。該 PR 已關閉且未合併；remote branch 保留，
-只供 target surface 核准後選擇性回收通用 no-model walkthrough infrastructure。
+目前 phase：`target authority lock`
+
+目前 branch：`docs/assistant-stable-v2-target-lock`
+
+下一步：完成 target／decision／validation truth sync，通過 docs/guidance gate後以純文件PR合入main。
 
 ## 問題與證據
 
-- PR #30 將 runtime/debug inventory 排除九個 compatibility implementations 後的剩餘集合定義為
-  21 個 model-facing actions；這是 current implementation projection，不是逐項核准的產品 target。
-- PR #31 與已關閉的 PR #32 都以同一個 `model_tool_names()` projection 作 exact-coverage oracle，
-  能抓 consumer drift，卻不能判斷 projection 本身是否符合使用者 workflow intent。
-- `canonical catalog` 一詞同時被用來描述 current implementation single source 與 target product
-  contract，讓後續 slice 將 current truth 誤升格成 durable product decision。
-- `docs/planning/now.md` 會隨 active slice 更換；跨 PR 的產品決策若未回寫 decisions／target authority，
-  便無法可靠抵抗 context compression。
+- Current product仍發布21個model-facing actions；該集合是PR #30從runtime inventory投影出的current
+  implementation，不是使用者逐項核准的target。
+- 舊target文件仍同時描述Host intent narrowing、bounded continuation、大型state snapshot與多分支
+  response contract，和已核准的一回合一動作／thin Host設計衝突。
+- Current `PipelineStage.DATASET_READY`只以generated datasets推導，尚未表達split、model、training
+  settings三者都完成的target語意。
+- Current debug path仍要求local runtime READY，且在terminal前consume下一個call；因此不能作為
+  無模型、逐步可見的frontend walkthrough。
+- Current UI handoff已有Import、Epoch、Split、Training、Montage與panel correlation；Channel Selection
+  仍缺typed terminal。這些是bounded seam，不需要新增dialog或workflow owner。
 
 ## Observable outcome
 
-- Decisions 明定 target tool 數量不固定，並保存已核准、延後與拒絕的產品方向。
-- Target Agent 文件擁有唯一 intent ledger：每個 intent 的 owner、side effect、confirmation、visible
-  result 與 decision status 都清楚；未核准 intent 不得進 model-facing projection。
-- Current Agent architecture 只把現有集合稱為 `current model-facing projection v1`，不再暗示它是
-  approved target surface。
-- Guidance 明定 tool membership、名稱、confirmation 與 visible result 都是 public contract；runtime
-  inventory 不能作 target oracle。
-- Showcase 只宣稱覆蓋 current projection，不宣稱 final taxonomy、tool count 或 raw-model accuracy。
+- [Agent target intent ledger](../target/agent.md#target-intent-ledger)是唯一approved target surface，
+  current／target不再混用。
+- Backend既有stage、publication與capability policy是唯一readiness truth；Host不再自行縮限intent、
+  substitute command或自動continuation。
+- Granite只輸出strict三欄envelope；一個turn最多一個tool或一個response。
+- 七個GUI completion tools只開啟既有surface；五個preprocess tools直接走ApplicationService；四個
+  lifecycle tools沿用既有confirmation；navigation只由`switch_panel`負責。
+- Normal UI layout與dialogs維持穩定；只加入已核准的debug-only banner、progress與Enter gating。
+- 最終authoritative owner、workflow state machine與receipt數量不增加，production LOC淨減少。
+- 只有完整17-tool、三份no-model profile、真Granite、source-diverse gate與CI在同一SHA閉合後，才
+  交付一次完整手測。
 
-## 已確認的 target decisions
+## Scope、ordered repair 與 checkpoint
 
-- Tool count 不固定，依 workflow intent、side effect、decision boundary 與 structured result 決定。
-- `list_files` 不屬於未來產品 model-facing surface。
-- Data Import 對模型只呈現一個高階入口；scan／preview／validate／apply 留在既有 backend／review
-  lifecycle。
-- Workflow state 由 host 每回合提供，不暴露 internal `query_state` 作 target model tool。
-- Preprocessing 只在參數明確時套用，不以含糊的 standard bundle 代替使用者決策。
-- Model selection 與 training configuration 的 target shape 延後到下一輪討論。
+1. **Target authority PR → main**：收斂target、decisions、current/target wording與staged validation。
+2. **CI bootstrap PR → main**：讓base=`integration/assistant-stable-v2`的product/docs PR執行既有
+   GitHub Actions；不建立較弱的替代CI。
+3. 從exact main建立`integration/assistant-stable-v2`；該branch不是產品基線或release source。
+4. Characterize current UI／handoff／debug／PhysioNet path，建立no-generation diagnostic transport。
+5. 校正backend stage與action metadata，先讓prompt、RAG、verifier、eval、showcase從單一projection
+   取得catalog。
+6. 收斂strict envelope、repair budget、minimal state card與one-message context。
+7. 建立target adapters與GUI routes，但在cutover前不發布第二個model catalog。
+8. Atomic cutover到approved target projection，同時停止Host narrowing／continuation call sites。
+9. 按analysis、dataset protocol／recipe、training wrappers與Host policy分片物理刪除obsolete code。
+10. 執行三份no-model profiles與frozen Granite suite；未達gate時只調prompt／schema／approved
+    examples，不增加Host heuristic或silent fallback。
+11. 同步最新main、完成handoff dossier並凍結exact candidate SHA；只在此時交付使用者手測。
+12. 手測通過且source未變後，以integration→main merge commit合併；之後刪branch並移除暫時CI
+    trigger。
 
-## Scope、ordered repair 與 non-goals
+每個implementation slice從integration開短branch並PR回integration；CI全綠後squash為一個coherent
+commit。Final rollup可以聚合這些已分片審查的commits，但不得加入新的未審實作。
 
-1. 更新 decisions、target Agent ledger 與 current Agent architecture，建立三層明確詞彙：runtime
-   compatibility inventory、current model-facing projection、approved target surface。
-2. 校正 deterministic showcase 的 claim boundary；歷史 PR／artifact 保留 provenance，不作 active
-   dispatch。
-3. 在 root guidance 與 agent-toolcall-designer workflow 加入 target-decision gate，不複製 target
-   tool 清單。
-4. 執行 guidance audit、文件 link/source audit與 MkDocs strict；以純 docs／guidance PR 合入 main。
-5. 後續從更新後 main 繼續逐項討論完整 target ledger；全部高影響 intent 定案後才切 implementation
-   PR，最後再建立 target-derived no-model walkthrough。
+## Scope ceiling 與 UI confirmation
 
-Non-goals：本 slice 不改 `XBrainLab/`、prompt、RAG、runtime registry、UI、tool schema、測試 catalog
-或 `settings.json`；不立即 revert PR #30／#31，也不從 PR #32 cherry-pick production code。
+已取得的UI實作確認只涵蓋：
+
+- 既有Assistant經approved GUI tools開啟既有dialog／panel。
+- Debug launch的slim banner、step progress、composer提示與pending期間Enter disabled。
+- `switch_panel`顯示具體destination，並等待materialized terminal。
+
+不包含normal product layout、theme、dialog redesign、新generic result card或其他workflow copy變更。
+若implementation需要超出以上範圍，停止並重新取得使用者明確確認。
+
+Non-goals：不修改或stage root `settings.json`；不重建ApplicationService；不新增authoritative owner、
+state machine、receipt、runtime fallback或第二套compatibility path；不在candidate前啟動thesis-grade
+benchmark。
 
 ## Focused validation
 
-- Active Assistant docs 不得再把 21 稱為 approved／canonical target catalog。
-- Decisions、target、architecture、planning 與 showcase claim 必須一致，且 unresolved intent 明確標示
-  deferred。
-- Repo guidance audit、direct documentation source/link audit、MkDocs strict與 diff check 必須通過。
-- Final diff 只能包含 docs、guidance 與 developer-facing wording；不需要產品 manual acceptance。
+- Target ledger完整鎖定tool、stage、schema、execution kind、owner、confirmation、terminal與retired
+  disposition；其他canonical docs只引用，不複製清單。
+- Current architecture在runtime切換前仍誠實稱為current21 projection；不得提前宣稱Stable v2完成。
+- Docs link/source audit、guidance audit及MkDocs strict通過。
+- 每個code slice加入直接對應的unit／integration evidence；UI handoff驗accepted→completed／cancelled／
+  blocked／failed與stale／duplicate。
+- Candidate使用同一clean/explained exact SHA完成no-model、Granite、data、UI artifact、static quality與
+  GitHub checks；manual acceptance不由automation取代。
 
 ## Stop conditions
 
-- 若任何文件仍用 current registry membership 推導 target correctness，不得合併。
-- 若修復需要新增 control plane、decision manifest、runtime state 或產品 compatibility path，停止並縮回
-  canonical docs／guidance。
-- 若 target ledger 尚有 deferred intent，不得建立 fixed-count target walkthrough或宣稱 Agent tool
-  redesign 完成。
+- Target、current、active plan或source對tool membership／stage／owner互相衝突。
+- Prompt、RAG、eval、showcase或walkthrough另存第二份可漂移catalog。
+- GUI tool在surface opened時過早回success，或debug在terminal前前進。
+- Slice新增owner／state machine／receipt、pure refactor淨增超過100 production LOC，或final
+  production LOC非淨減少而未取得complexity exception。
+- Granite未達candidate safety／accuracy gate、必要CI有missing／pending／skipped／failed，或
+  source在manual acceptance後改變。
