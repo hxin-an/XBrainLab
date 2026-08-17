@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, integration/assistant-stable-v2]
     paths:
       - ".agents/skills/docs-site-product-designer/**"
       - ".agents/workflows/docs-site-redesign.md"
