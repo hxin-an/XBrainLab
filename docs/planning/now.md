@@ -66,6 +66,20 @@ Retired eval deletion checkpoint：舊21-action deterministic／local runners仍
 新runner。歷史121-case artifact與dashboard只能作provenance，`docs/validation/thesis_protocol.md`已明確
 要求產品surface穩定後重建thesis benchmark，不把34-case產品gate升格為thesis evidence。
 
+Retired showcase red-first：舊`agent_toolcall_showcase`已無法import，且仍把8個舊21-tool案例注入
+`product_scenario_manifest`，使產品checkpoint以已退役的`scan_source`、`evaluate`等動作判定Agent成功。
+本slice會整包刪除該showcase與runner，從產品scenario manifest移除其execution／validator／8個scenario，
+並把剩餘真實data、command-spine、UI與DPI gates明確改為`immediate-12`。Stable v2 Agent本身不塞回這份
+通用產品manifest：無模型frontend terminal、34-case真Granite selection與最終人工walkthrough各自保留
+單一evidence owner，避免再建立第三份catalog。此slice只刪歷史scripts/tests wiring，不改產品runtime、UI、
+ApplicationService或既有產品gate；完成條件是manifest focused tests通過且repo不再import舊showcase。
+
+Retired showcase green：已物理刪除showcase package／entry point共3,472行，產品scenario manifest移除其
+execution、validator與8筆自我引用scenario，並將通用checkpoint收斂成不含Agent accuracy claim的
+`immediate-12`。Runner summary改用不綁數字的`immediate_profile_passed`，避免下次profile調整再留下
+歷史欄位。Manifest focused 16 tests、完整architecture contract合計300 tests、ruff與CLI import smoke
+通過；repo除本段歷史說明外不再引用舊showcase。產品runtime、UI與ApplicationService沒有變更。
+
 已否決的中間路徑：red-first曾將三個target adapters加在舊30-tool runtime旁，立即使runtime變成33，
 並被runtime equality／headless contract tests攔截。該狀態不提交；建立第二個過渡catalog會增加遷移
 成本且違反single target authority，因此改採一次atomic cutover。
