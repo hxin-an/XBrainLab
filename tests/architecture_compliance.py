@@ -200,9 +200,19 @@ UI_CONTROLLER_DIRECT_CALL_ALLOWLIST = {
             frozenset({"active_response_record"}),
         ),
         ControllerDirectCallAllowance(
-            "start_new_conversation",
+            "_clear_conversation_presentation",
             "self.chat_controller",
             frozenset({"clear_conversation"}),
+        ),
+        ControllerDirectCallAllowance(
+            "_resolve",
+            "self.agent_controller",
+            frozenset({"on_panel_navigation_resolved"}),
+        ),
+        ControllerDirectCallAllowance(
+            "handle_panel_navigation",
+            "self.agent_controller",
+            frozenset({"on_panel_navigation_resolved"}),
         ),
         ControllerDirectCallAllowance(
             "on_assistant_activity_changed",

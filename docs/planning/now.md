@@ -111,6 +111,17 @@ Frontend replacement gate已以canonical Poetry separator與strict attestation�
 handoff registry contract 14 tests通過。下一步只刪除已無required gate或production caller的舊capture
 entrypoints／driver／evidence tests；共用artifact integrity helper與仍被其他UI evidence使用的程式保留。
 
+舊gate evidence物理清理已完成：guided/training/recovery/long-session的五個entrypoints、專用driver／
+runtime／validator與七個專用test files已移除，約刪除12,966行tracked舊證據；visualization仍需的兩個
+deterministic training fixture helpers移到單一中性support module，共用source-identity integrity helper保留。
+刪除後caller scan為零，相關UI evidence 101 tests通過，完整`tests/unit` collection無error。這不刪
+ApplicationService、現行17-tool adapters、normal ChatPanel或任何UI產品行為。
+Architecture sweep另發現兩個Assistant-owned controller callback未落在精確allowlist，以及三個本slice
+新增的application-surface tests只用generic non-None assertion。已把allowlist校準到實際
+`_clear_conversation_presentation`／panel terminal callback，並將tests改為驗證execution kind、capability、
+command、publication generation與state；不新增compatibility runtime或改產品行為。Focused 24 tests與
+architecture guard自身284 tests通過，完整repository architecture entrypoint仍需在commit後重跑。
+
 已否決的中間路徑：red-first曾將三個target adapters加在舊30-tool runtime旁，立即使runtime變成33，
 並被runtime equality／headless contract tests攔截。該狀態不提交；建立第二個過渡catalog會增加遷移
 成本且違反single target authority，因此改採一次atomic cutover。

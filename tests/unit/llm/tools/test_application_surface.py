@@ -104,13 +104,17 @@ def test_application_command_builders_match_declared_owner(
     params: dict[str, object],
     command_name: CommandName,
 ) -> None:
-    contract = AGENT_ACTION_CONTRACTS.contract_for(tool_name)
-    assert contract is not None
+    contract = next(
+        item
+        for item in AGENT_ACTION_CONTRACTS.contracts
+        if item.canonical_tool == tool_name
+    )
     assert contract.execution_kind is AgentExecutionKind.APPLICATION_COMMAND
+    assert contract.capability_command is command_name
 
     command = _command_for_tool(tool_name, params)
-
-    assert command is not None
+    if command is None:
+        pytest.fail(f"{tool_name} did not build its declared application command")
     assert command.name is command_name
 
 
@@ -212,5 +216,9 @@ def test_target_policy_is_derived_from_one_publication_generation() -> None:
     context = get_application_context(object(), "switch_panel", runtime=_Runtime())
 
     assert set(policy) == AGENT_ACTION_CONTRACTS.tool_names()
-    assert context is not None
+    if context is None:
+        pytest.fail("switch_panel did not receive the supplied publication context")
     assert context.generation == newer.generation
+    assert context.availability.tool_name == "switch_panel"
+    assert context.availability.enabled is True
+    assert context.state == newer.state.to_dict()
