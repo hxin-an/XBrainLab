@@ -33,7 +33,6 @@ PUBLIC_LOG_BOUNDARIES = (
     "XBrainLab/debug/tool_executor.py",
     "XBrainLab/debug/tool_debug_mode.py",
     "XBrainLab/llm/tools/__init__.py",
-    "XBrainLab/llm/tools/real/dataset_real.py",
     "XBrainLab/ui/components/assistant_runtime_lifecycle.py",
     "XBrainLab/ui/components/agent_manager.py",
 )

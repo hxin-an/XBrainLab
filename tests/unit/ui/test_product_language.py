@@ -93,11 +93,6 @@ def test_eeg_epoch_product_copy_does_not_regress_to_ambiguous_epoch_language() -
             '"last_epoch": "Last training epoch"',
         ),
         (
-            "XBrainLab/llm/tools/definitions/dataset_def.py",
-            'return "Generate a training dataset from EEG epochs."',
-            'return "Save data splitting settings for EEG training."',
-        ),
-        (
             "XBrainLab/backend/application/preprocess_service.py",
             '"Epoch target is not in the reviewed import labels: "',
             '"EEG epoch target is not in the reviewed import labels: "',

@@ -4468,25 +4468,6 @@ class TestPipelineGate:
             in result.message
         )
 
-    def test_montage_ui_request_does_not_open_command_refresh_window(self, ctrl):
-        from XBrainLab.backend.study import Study
-        from XBrainLab.llm.tools.real.preprocess_real import RealSetMontageTool
-
-        ctrl.study = Study()
-        ctrl.registry.get_tool.return_value = RealSetMontageTool()
-        _allow_prompt_tools(ctrl)
-
-        outcome = ctrl._execute_tool_no_loop(
-            "set_montage",
-            {"montage_name": "standard_1020"},
-        )
-
-        assert outcome.success is True
-        assert isinstance(outcome.result, UiRequest)
-        assert outcome.result.kind is UiRequestKind.CONFIRM_MONTAGE
-        ctrl.application_command_started.emit.assert_not_called()
-        ctrl.application_command_completed.emit.assert_not_called()
-
 
 # --- Immutable turn scope ---
 class TestTurnScope:

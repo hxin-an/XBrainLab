@@ -16,10 +16,6 @@ from XBrainLab.llm.agent.verifier import (
 )
 from XBrainLab.llm.tools import authorized_paths
 from XBrainLab.llm.tools.authorized_paths import FilesystemIdentity, PathKind
-from XBrainLab.llm.tools.definitions.dataset_def import (
-    BaseLoadDataTool,
-    BasePreviewInterpretationTool,
-)
 
 
 def _error_message(result: VerificationResult) -> str:
@@ -303,36 +299,6 @@ class TestToolSchemaValidator:
         )
         assert not r.is_valid
         assert "choices" in _error_message(r)
-
-    def test_preview_choice_schema_accepts_recipe_remap_mappings(self):
-        v = ToolSchemaValidator(
-            {"preview_interpretation": BasePreviewInterpretationTool().parameters}
-        )
-
-        r = v.validate(
-            "preview_interpretation",
-            {
-                "choices": {
-                    "eeg_file_remap": {
-                        "/recipe/sub-01_task-mi_raw.fif": "/data/sub-01_raw.fif",
-                    },
-                    "label_carrier_remap": {
-                        "/recipe/events.tsv": "/data/events.tsv",
-                    },
-                    "label_carrier_choices": {
-                        "/data/events.tsv": {
-                            "label_field": "trial_type",
-                            "anchor": "onset",
-                            "time_model": "seconds",
-                            "granularity": "trial",
-                            "target_file": "/data/sub-01_raw.fif",
-                        }
-                    },
-                }
-            },
-        )
-
-        assert r.is_valid
 
 
 # ---------------------------------------------------------------------------
@@ -880,35 +846,6 @@ class TestVerificationLayerWithValidators:
         r = v.verify_tool_call(("scan_source", {"source_path": "/path/to/eeg/data"}))
         assert not r.is_valid
         assert "actual path" in _error_message(r)
-
-    def test_load_data_schema_rejects_unsupported_file_path_key(self, tmp_path):
-        source = tmp_path / "source.edf"
-        source.touch()
-        v = VerificationLayer(
-            tool_schemas={"load_data": BaseLoadDataTool().parameters},
-        )
-
-        r = v.verify_tool_call(
-            (
-                "load_data",
-                {"paths": [str(source)], "file_path": str(source)},
-            )
-        )
-
-        assert not r.is_valid
-        assert "Unknown parameter for load_data: file_path" in _error_message(r)
-
-    def test_load_data_file_path_cannot_replace_required_paths(self, tmp_path):
-        source = tmp_path / "source.edf"
-        source.touch()
-        v = VerificationLayer(
-            tool_schemas={"load_data": BaseLoadDataTool().parameters},
-        )
-
-        r = v.verify_tool_call(("load_data", {"file_path": str(source)}))
-
-        assert not r.is_valid
-        assert "Missing required parameter(s) for load_data: paths" in _error_message(r)
 
 
 class _PrivateFailureValidator(ValidatorStrategy):

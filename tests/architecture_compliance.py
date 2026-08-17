@@ -464,36 +464,18 @@ PRODUCT_RUNTIME_BACKEND_FACADE_DIRS = (
 )
 MAPPED_REAL_TOOL_FILES = (
     Path("XBrainLab/llm/tools/__init__.py"),
-    Path("XBrainLab/llm/tools/real/dataset_real.py"),
     Path("XBrainLab/llm/tools/real/preprocess_real.py"),
     Path("XBrainLab/llm/tools/real/training_real.py"),
 )
 CANONICAL_DELEGATING_REAL_TOOL_CLASSES = frozenset(
     {
-        "RealApplyInterpretationTool",
-        "RealAttachLabelsTool",
         "RealBandPassFilterTool",
-        "RealChannelSelectionTool",
-        "RealConfigureTrainingTool",
-        "RealEpochDataTool",
-        "RealConfigureDatasetSplitTool",
-        "RealGetDatasetInfoTool",
-        "RealLoadDataTool",
         "RealNormalizeTool",
         "RealNotchFilterTool",
-        "RealPreviewInterpretationTool",
-        "RealQueryStateTool",
-        "RealReloadInterpretationRecipeTool",
         "RealRereferenceTool",
         "RealResampleTool",
-        "RealResetPreprocessTool",
-        "RealSaveInterpretationRecipeTool",
-        "RealScanSourceTool",
-        "RealSetModelTool",
-        "RealStandardPreprocessTool",
         "RealStartTrainingTool",
         "RealStopTrainingTool",
-        "RealValidateInterpretationTool",
     }
 )
 APPLICATION_SERVICE_CACHE_OWNER_FILES = frozenset(
@@ -6574,32 +6556,9 @@ def check_mapped_real_tool_command_ownership(root_dir: Path) -> list[str]:
                         "application_surface.py."
                     )
 
-            if class_node.name == "RealConfigureTrainingTool":
-                positional = [
-                    *execute_method.args.posonlyargs,
-                    *execute_method.args.args,
-                ]
-                defaults = [None] * (
-                    len(positional) - len(execute_method.args.defaults)
-                ) + list(execute_method.args.defaults)
-                for argument, default in zip(positional, defaults, strict=True):
-                    if (
-                        argument.arg == "output_dir"
-                        and default is not None
-                        and not (
-                            isinstance(default, ast.Constant) and default.value is None
-                        )
-                    ):
-                        violations.append(
-                            f"{relative_path}:{argument.lineno} "
-                            "RealConfigureTrainingTool declares a second output_dir "
-                            "default; the canonical surface/backend state owns it."
-                        )
-
     stale_test_targets = tuple(
         f"XBrainLab.llm.tools.real.{module_name}.get_application_service"
         for module_name in (
-            "dataset_real",
             "preprocess_real",
             "training_real",
         )

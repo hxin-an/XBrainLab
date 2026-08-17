@@ -496,69 +496,50 @@ def test_mapped_real_tool_command_ownership_rejects_parallel_translation(
 ) -> None:
     _write_product_file(
         tmp_path,
-        "XBrainLab/llm/tools/real/dataset_real.py",
+        "XBrainLab/llm/tools/real/preprocess_real.py",
         """
-from XBrainLab.backend.application import LoadDataCommand, get_application_service
-from XBrainLab.llm.tools.application_surface import build_load_data_command
+from XBrainLab.backend.application import PreprocessCommand, get_application_service
 
-class RealLoadDataTool:
-    def execute(self, study, paths=None):
-        expanded = []
-        for path in paths or []:
-            if os.path.isdir(path):
-                expanded.extend(os.listdir(path))
-        command = build_load_data_command({"paths": expanded})
+class RealBandPassFilterTool:
+    def execute(self, study, low_freq=None, high_freq=None):
+        output = os.path.abspath("./parallel-output")
         return get_application_service(study).execute(
-            LoadDataCommand(paths=command.paths)
+            PreprocessCommand(operation="bandpass", params={"output": output})
         )
 """,
     )
 
     violations = check_mapped_real_tool_command_ownership(tmp_path)
 
-    assert any("imports LoadDataCommand" in item for item in violations)
+    assert any("imports PreprocessCommand" in item for item in violations)
     assert any("imports get_application_service" in item for item in violations)
     assert any("calls service.execute() directly" in item for item in violations)
     assert any("performs local path translation" in item for item in violations)
     assert any("does not delegate" in item for item in violations)
 
 
-def test_mapped_real_tool_command_ownership_accepts_canonical_delegation_and_direct_ui(
+def test_mapped_real_tool_command_ownership_accepts_canonical_delegation(
     tmp_path: Path,
 ) -> None:
     _write_product_file(
         tmp_path,
-        "XBrainLab/llm/tools/real/dataset_real.py",
+        "XBrainLab/llm/tools/real/preprocess_real.py",
         """
 from XBrainLab.llm.tools import execute_real_application_tool
 
-class RealLoadDataTool:
-    def execute(self, study, paths=None):
+class RealBandPassFilterTool:
+    def execute(self, study, low_freq=None, high_freq=None):
         return execute_real_application_tool(
             study,
-            "load_data",
-            {"paths": paths},
+            "apply_bandpass_filter",
+            {"low_freq": low_freq, "high_freq": high_freq},
         )
-
-class RealListFilesTool:
-    def execute(self, study, directory=None):
-        return os.listdir(directory)
 """,
     )
-    _write_product_file(
-        tmp_path,
-        "XBrainLab/llm/tools/real/preprocess_real.py",
-        """
-class RealSetMontageTool:
-    def execute(self, study, montage_name=None):
-        return UiRequest(montage_name)
-""",
-    )
-
     assert check_mapped_real_tool_command_ownership(tmp_path) == []
 
 
-def test_mapped_real_tool_command_ownership_rejects_output_dir_default_and_normalizer(
+def test_mapped_real_tool_command_ownership_rejects_adapter_normalizer(
     tmp_path: Path,
 ) -> None:
     _write_product_file(
@@ -567,13 +548,13 @@ def test_mapped_real_tool_command_ownership_rejects_output_dir_default_and_norma
         """
 from XBrainLab.llm.tools import execute_real_application_tool
 
-class RealConfigureTrainingTool:
-    def execute(self, study, output_dir="./output", repeat=1):
+class RealStartTrainingTool:
+    def execute(self, study, repeat=1):
         normalized_repeat = normalize_positive_integer("repeat", repeat)
         return execute_real_application_tool(
             study,
-            "configure_training",
-            {"output_dir": output_dir, "repeat": normalized_repeat},
+            "start_training",
+            {"repeat": normalized_repeat},
         )
 """,
     )
@@ -581,7 +562,6 @@ class RealConfigureTrainingTool:
     violations = check_mapped_real_tool_command_ownership(tmp_path)
 
     assert any("calls normalize_positive_integer" in item for item in violations)
-    assert any("second output_dir default" in item for item in violations)
 
 
 def test_mapped_real_tool_command_ownership_rejects_stale_service_patch(
@@ -595,7 +575,7 @@ from unittest.mock import patch
 
 def test_old_adapter_service_ownership():
     with patch(
-        "XBrainLab.llm.tools.real.dataset_real.get_application_service",
+        "XBrainLab.llm.tools.real.preprocess_real.get_application_service",
     ):
         pass
 """,
@@ -1902,7 +1882,7 @@ def test_agent_resource_receipt_guard_rejects_tokenless_adapter_contract(
             'payload.get("confirmation_token")\n'
         ),
         "XBrainLab/llm/tools/application_surface.py": "confirmed = True\n",
-        "XBrainLab/llm/tools/real/dataset_real.py": "confirmed = True\n",
+        "XBrainLab/llm/tools/real/preprocess_real.py": "confirmed = True\n",
         "XBrainLab/backend/application/data_interpretation_service.py": (
             "confirmation_is_current = resource_preflight_confirmed\n"
         ),

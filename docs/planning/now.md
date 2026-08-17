@@ -80,6 +80,25 @@ execution、validator與8筆自我引用scenario，並將通用checkpoint收斂�
 歷史欄位。Manifest focused 16 tests、完整architecture contract合計300 tests、ruff與CLI import smoke
 通過；repo除本段歷史說明外不再引用舊showcase。產品runtime、UI與ApplicationService沒有變更。
 
+Retired wrapper cleanup baseline／complexity review：目前runtime已只建立target 17，但dataset整個
+definition／real／mock family、training的`set_model/configure_training`、preprocess的standard／channel／
+montage／epoch classes仍以compatibility code存在，另有三份只走舊wrapper的integration與一支
+`verify_real_tools.py`。它們不是production caller，且其測試會把已退役surface繼續當產品契約；focused
+characterization目前330 passed。此cleanup的deletion candidates就是上述wrappers、只驗wrapper的tests與
+script；保留五個direct preprocess、start／stop、`WorkflowHandoffTool`、ApplicationService services、
+path-provenance core與UI owners。Authoritative owners before／after完全相同，新增0 owner／state machine／
+receipt／module／public class；預期3個既有production modules被刪、6個既有production modules收窄，
+production淨刪超過1,000 LOC。依family分checkpoint：training→preprocess→dataset；任何仍有非測試caller、
+安全path contract被迫刪除或target focused test失敗即停止，不加compatibility shim。
+
+Retired wrapper cleanup green：training只保留start／stop；preprocess只保留五個direct actions；dataset
+Assistant definition／real／mock family已整包移除。三份只測舊wrapper的integration與舊
+`verify_real_tools.py`一併退役；shared definition／mock tests重寫成exact target contract，path identity、
+backend Data Interpretation、ApplicationService與UI tests保留。變更共9個既有production modules，
+`+18/-2,386`、net `-2,368` production LOC，依training／preprocess／dataset三個各低於1,500 LOC的
+checkpoint提交；owner before／after不變。Focused 442 tests、完整unit collection 11,030 tests、完整
+`tests/unit/llm`加no-model debug integration 1,488 tests皆通過；repo不再import已刪dataset／analysis modules。
+
 已否決的中間路徑：red-first曾將三個target adapters加在舊30-tool runtime旁，立即使runtime變成33，
 並被runtime equality／headless contract tests攔截。該狀態不提交；建立第二個過渡catalog會增加遷移
 成本且違反single target authority，因此改採一次atomic cutover。
