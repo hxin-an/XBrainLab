@@ -22,7 +22,6 @@ from XBrainLab.backend.application import (
     ResetSessionCommand,
     get_application_service,
 )
-from XBrainLab.backend.application.pipeline_stage import pipeline_stage_status_label
 from XBrainLab.backend.controller.chat_controller import (
     ChatActionState,
     ChatController,
@@ -215,11 +214,9 @@ class _DeterministicModelWorker(AgentWorker):
         if request.response_contract is AssistantResponseContract.STRUCTURED_ACTION:
             response_text = json.dumps(
                 {
+                    "workflow_stage": _request_workflow_stage(request),
                     "tool_name": "respond_to_user",
-                    "parameters": {
-                        "decision": "answer",
-                        "message": response_text,
-                    },
+                    "parameters": {"message": response_text},
                 },
                 separators=(",", ":"),
             )
@@ -375,6 +372,13 @@ def _request_workflow_stage(request: AssistantGenerationRequest) -> str:
         content = message.get("content")
         if not isinstance(content, str):
             continue
+        prompt_marker = 'root object must be exactly {"workflow_stage":"'
+        marker_index = content.find(prompt_marker)
+        if marker_index >= 0:
+            stage_start = marker_index + len(prompt_marker)
+            stage_end = content.find('"', stage_start)
+            if stage_end > stage_start:
+                return content[stage_start:stage_end]
         try:
             payload = json.loads(content)
         except json.JSONDecodeError:
@@ -1089,8 +1093,8 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
         assert {terminal.outcome for terminal in runtime.terminals} == {"completed"}
 
         assert publication_stages == {
-            turn_count // 4: pipeline_stage_status_label("data_loaded"),
-            (turn_count * 3) // 4: pipeline_stage_status_label("empty"),
+            turn_count // 4: "data_loaded",
+            (turn_count * 3) // 4: "empty",
         }
         assert manager.assistant_status_projection == (
             build_assistant_status_projection(publication)

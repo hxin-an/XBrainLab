@@ -1313,6 +1313,14 @@ class LLMController(QObject):
             return
 
         envelope = CommandParser.parse_product(response_text)
+        if (
+            envelope.status is not ToolEnvelopeStatus.FORMAT_ERROR
+            and envelope.workflow_stage
+            != self._turn_orchestrator.active_publication.workflow_stage
+        ):
+            envelope = ToolEnvelopeParseResult.format_error(
+                "workflow_stage does not match the current backend publication."
+            )
 
         # Invalid tool-shaped output is never treated as user-facing prose and
         # never reaches verification or execution.

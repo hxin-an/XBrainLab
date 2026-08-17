@@ -1677,9 +1677,12 @@ class TestOnGenerationFinished:
         assert presentation.text == response_text
 
     def test_structured_no_tool_decision_publishes_only_user_message(self, ctrl):
+        from XBrainLab.llm.agent.assembler import PromptToolPublication
+
+        ctrl._turn_orchestrator.active_publication = PromptToolPublication.empty()
         ctrl.current_response = (
-            '{"tool_name":"respond_to_user","parameters":{'
-            '"decision":"blocked",'
+            '{"workflow_stage":"unavailable","tool_name":"respond_to_user",'
+            '"parameters":{'
             '"message":"Load EEG data before training."}}'
         )
         ctrl.is_processing = True
@@ -1691,6 +1694,24 @@ class TestOnGenerationFinished:
         assert presentation.text == "Load EEG data before training."
         assert "decision" not in presentation.text
         assert not ctrl.is_processing
+
+    def test_wrong_workflow_stage_retries_without_executing_or_presenting(self, ctrl):
+        from XBrainLab.llm.agent.assembler import PromptToolPublication
+
+        ctrl._turn_orchestrator.active_publication = PromptToolPublication.empty()
+        ctrl.current_response = (
+            '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+            '"parameters":{"message":"Load EEG data before training."}}'
+        )
+        ctrl.is_processing = True
+        ctrl._turn_orchestrator.active_generation_id = 120
+        ctrl._generate_response = MagicMock()
+
+        ctrl._on_generation_finished(120, [])
+
+        ctrl._generate_response.assert_called_once()
+        ctrl.response_presentation_ready.emit.assert_not_called()
+        assert ctrl._tool_attempt_session.retry_count == 1
 
     @pytest.mark.parametrize(
         "response_text",

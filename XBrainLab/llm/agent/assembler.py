@@ -79,6 +79,7 @@ class PromptToolPublication:
     """Exact tool names exposed to one model generation."""
 
     tool_names: frozenset[str]
+    workflow_stage: str = "unavailable"
     backend_generation: int | None = None
     blocked_reasons: tuple[tuple[str, str], ...] = ()
     recommended_command: str | None = None
@@ -86,7 +87,11 @@ class PromptToolPublication:
 
     @classmethod
     def empty(cls) -> PromptToolPublication:
-        return cls(tool_names=frozenset(), backend_generation=None)
+        return cls(
+            tool_names=frozenset(),
+            workflow_stage="unavailable",
+            backend_generation=None,
+        )
 
     def permits(self, tool_name: str) -> bool:
         return tool_name in self.tool_names
@@ -136,18 +141,6 @@ Action Contract Catalog (input definitions, never an output array):
 {tools_str}
 {availability_note}
 """
-
-    _NO_TOOL_SYSTEM_PROMPT = (
-        """You are XBrainLab Assistant, an EEG workflow guide.
-
-The latest request is an informational EEG or BCI question, not permission to
-operate on the application. Answer directly and concisely for the user. Do not
-output JSON, code, command envelopes, internal state,
-or implementation details. If the answer is uncertain, say what is uncertain
-instead of inventing a workflow fact.
-"""
-        + _UNTRUSTED_DATA_POLICY
-    )
 
     def __init__(
         self,
@@ -217,6 +210,7 @@ instead of inventing a workflow fact.
         self,
         allowed_names: list[str],
         *,
+        workflow_stage: str = "unavailable",
         backend_default_tools: frozenset[str] = frozenset(),
     ) -> str:
         """Format request-scoped contracts without resembling model output.
@@ -250,6 +244,7 @@ instead of inventing a workflow fact.
             )
             if self._is_zero_parameter_contract(tool_def):
                 output_shape = {
+                    "workflow_stage": workflow_stage,
                     "tool_name": tool.name,
                     "parameters": {},
                 }
@@ -270,7 +265,11 @@ instead of inventing a workflow fact.
             )
         )
         sections.extend(
-            self._final_output_reminder(active_tools, backend_default_tools)
+            self._final_output_reminder(
+                active_tools,
+                backend_default_tools,
+                workflow_stage=workflow_stage,
+            )
         )
         return "\n".join(sections)
 
@@ -278,6 +277,8 @@ instead of inventing a workflow fact.
     def _final_output_reminder(
         active_tools: list[BaseTool],
         backend_default_tools: frozenset[str],
+        *,
+        workflow_stage: str,
     ) -> tuple[str, ...]:
         """Place the current turn's strict shape after the longer schema catalog."""
         if len(active_tools) != 1:
@@ -297,7 +298,11 @@ instead of inventing a workflow fact.
         )
         if properties == {}:
             exact = json.dumps(
-                {"tool_name": tool.name, "parameters": {}},
+                {
+                    "workflow_stage": workflow_stage,
+                    "tool_name": tool.name,
+                    "parameters": {},
+                },
                 separators=(",", ":"),
             )
             return (
@@ -423,9 +428,6 @@ instead of inventing a workflow fact.
         # fails partway through this call.
         self._latest_tool_publication = PromptToolPublication.empty()
         self._latest_context_items = ()
-        if infer_user_intent(latest_user_text) == "no_tool":
-            self._latest_context_items = self._context_note_items()
-            return self._NO_TOOL_SYSTEM_PROMPT
         policy_read = read_prompt_policy(
             self.study_state,
             runtime=self.application_runtime,
@@ -435,10 +437,11 @@ instead of inventing a workflow fact.
         workflow_status_unavailable = (
             policy_read.publication_error is not None or publication_unverified
         )
-        _stage, config = self._get_stage_config(
+        stage, config = self._get_stage_config(
             publication,
             publication_unavailable=workflow_status_unavailable,
         )
+        workflow_stage = "unavailable" if workflow_status_unavailable else stage.value
         allowed_tools = self._application_allowed_tools(
             config["tools"],
             policy_read,
@@ -462,6 +465,7 @@ instead of inventing a workflow fact.
         )
         tools_str = self._format_tools(
             allowed_tools,
+            workflow_stage=workflow_stage,
             backend_default_tools=backend_default_tools,
         )
         if workflow_status_unavailable:
@@ -497,21 +501,24 @@ instead of inventing a workflow fact.
         )
         self._latest_tool_publication = PromptToolPublication(
             tool_names=frozenset(allowed_tools),
+            workflow_stage=workflow_stage,
             backend_generation=policy_read.backend_generation,
             blocked_reasons=tuple(sorted(blocked_reasons.items())),
             recommended_command=decision_context.recommended_next_step,
             authorized_command=self._turn_authorized_command,
         )
 
-        context_items = [
-            UntrustedContextItem(
-                item_type="workflow_decision",
-                source=UntrustedContextSource(
-                    kind="application_service_publication",
-                ),
-                data=self._workflow_decision_payload(decision_context),
+        context_items = []
+        if requested_intent != "no_tool" or blocked_explanation is not None:
+            context_items.append(
+                UntrustedContextItem(
+                    item_type="workflow_decision",
+                    source=UntrustedContextSource(
+                        kind="application_service_publication",
+                    ),
+                    data=self._workflow_decision_payload(decision_context),
+                )
             )
-        ]
         if blocked_reasons:
             context_items.append(
                 UntrustedContextItem(
@@ -546,7 +553,9 @@ instead of inventing a workflow fact.
         self._latest_context_items = tuple(context_items)
 
         prompt = self._ACTION_SYSTEM_PROMPT
-        prompt += "\n" + STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions()
+        prompt += "\n" + STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions(
+            workflow_stage
+        )
         prompt += self._TOOL_BLOCK_TEMPLATE.format(
             tools_str=tools_str,
             availability_note=(
@@ -770,15 +779,9 @@ instead of inventing a workflow fact.
     ) -> AssistantGenerationRequest:
         """Build one typed request with an explicit response grammar."""
         messages = self.get_messages(history)
-        latest_user_text = self._latest_user_text(self._history_for_llm(history))
-        response_contract = (
-            AssistantResponseContract.NATURAL_LANGUAGE
-            if self._uses_natural_language_response(latest_user_text)
-            else AssistantResponseContract.STRUCTURED_ACTION
-        )
         return AssistantGenerationRequest.from_messages(
             messages,
-            response_contract=response_contract,
+            response_contract=AssistantResponseContract.STRUCTURED_ACTION,
         )
 
     @staticmethod
@@ -961,7 +964,8 @@ instead of inventing a workflow fact.
             return False
         return (
             type(payload) is dict
-            and set(payload) == {"tool_name", "parameters"}
+            and set(payload) == {"workflow_stage", "tool_name", "parameters"}
+            and type(payload.get("workflow_stage")) is str
             and type(payload.get("tool_name")) is str
             and type(payload.get("parameters")) is dict
         )

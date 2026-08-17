@@ -146,7 +146,9 @@ class TestStageBasedFiltering:
             ["scan_source", "preview_interpretation", "set_model"],
         )
 
-        assert STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions() in prompt
+        assert (
+            STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions("empty") in prompt
+        )
         assert "request-scoped action contracts are" in prompt
         assert "Workflow Decision Context" not in prompt
         assert 'schema "xbrainlab.untrusted_context.v1"' in prompt
@@ -264,9 +266,9 @@ class TestPromptContent:
         assert runtime_item["data"] == {"text": "RAG info"}
         assert runtime_item["source"] == {"kind": "assistant_runtime_context"}
 
-    def test_each_stage_uses_the_same_policy_prompt(self):
-        """Workflow state changes data, not policy prose."""
-        prompts = set()
+    def test_each_stage_acknowledges_its_exact_backend_value(self):
+        """Workflow state changes only the required stage acknowledgement."""
+        prompts = {}
         for stage in PipelineStage:
             registry = ToolRegistry()
             study = MagicMock()
@@ -276,8 +278,10 @@ class TestPromptContent:
             ):
                 assembler = ContextAssembler(registry, study)
                 prompt = assembler.build_system_prompt()
-            prompts.add(prompt)
-        assert len(prompts) == 1
+            prompts[stage] = prompt
+        assert len(set(prompts.values())) == len(PipelineStage)
+        for stage, prompt in prompts.items():
+            assert f'"workflow_stage":"{stage.value}"' in prompt
 
     def test_rule_6_only_listed_tools(self):
         """Prompt instructs LLM not to call unlisted tools."""

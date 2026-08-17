@@ -86,7 +86,10 @@ class _InMemoryEngine:
 
     def generate_stream(self, _messages: list[dict[str, Any]], *, profile: Any):
         del profile
-        yield "Recovered assistant response."
+        yield (
+            '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+            '"parameters":{"message":"Recovered assistant response."}}'
+        )
 
     def cancel_generation(self, wait_timeout: float = 0.25) -> bool:
         del wait_timeout
@@ -439,8 +442,8 @@ def test_manager_delivery_watchdog_fences_retry_until_terminal_exactly_once(
     ):
         del profile
         yield (
-            '{"tool_name":"respond_to_user","parameters":'
-            '{"decision":"answer","message":"Transport recovered."}}'
+            '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+            '"parameters":{"message":"Transport recovered."}}'
         )
 
     monkeypatch.setattr(engine, "generate_stream", _valid_recovery_response)

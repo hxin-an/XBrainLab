@@ -2465,7 +2465,7 @@ def score_case(
         case.expected_tools and tool_ok
     )
     dimension_applicability["missing_input_fields"] = (
-        expected_verification == "missing_input"
+        expected_verification == "missing_input" and bool(prediction.missing_inputs)
     )
     if (
         score_scope == RAW_MODEL_DECISION_SCORE_SCOPE

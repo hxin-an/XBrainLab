@@ -46,7 +46,10 @@ class TestCommandParserReturnPaths:
     def test_parse_returns_commands(self):
         from XBrainLab.llm.agent.parser import CommandParser
 
-        text = '{"tool_name": "load_data", "parameters": {"paths": ["/a.gdf"]}}'
+        text = (
+            '{"workflow_stage":"empty","tool_name":"load_data",'
+            '"parameters":{"paths":["/a.gdf"]}}'
+        )
         result = CommandParser.parse(text)
         assert result == [("load_data", {"paths": ["/a.gdf"]})]
 
