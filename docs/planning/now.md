@@ -8,19 +8,27 @@
 完成 replacement、atomic cutover、deletion 與 exact-SHA candidate；在完整候選前不要求使用者手測，
 未取得同一 source 的手測通過不得合併 main。**
 
-目前 phase：`no-generation diagnostic transport`
+目前 phase：`backend-owned setup stage contract`
 
-目前 branch：`refactor/assistant-diagnostic-transport`
+目前 branch：`refactor/assistant-stage-contract-v2`
 
-下一步：將no-generation diagnostic transport PR推向`integration/assistant-stable-v2`，要求
-同一exact SHA的applicable CI全綠；此slice不提前進入17-tool cutover或walkthrough runner。
+下一步：校正既有backend `PipelineStage` derivation，使`dataset_ready`只在saved split、model與
+training settings三者都完成時成立；此slice不修改tool membership、prompt、UI、Host policy或
+walkthrough runner。
 
 已完成 checkpoint：target authority 已由 PR #34 以 exact merge commit
 `7518c7a60ab7e5355b2e5e1fbc6412ba8edeab2b` 合入 main；該 PR 只有 docs/guidance，沒有產品行為。
 
 已完成 checkpoint：CI bootstrap 已由 PR #35 以 exact merge commit
 `ddfef059323dbcc14dbcb5ef725deaa4fd071337` 合入 main；19個applicable checks成功，暫時
-`integration/assistant-stable-v2` 已從該commit建立。
+`integration/assistant-stable-v2` 已從該commit建立。該merge的main push run曾因GitHub runner下載
+Actions archive遇到HTTP 429而在setup失敗；同一SHA重跑後Full Test Suite、MkDocs與Pages Deploy皆
+completed/success，沒有source-side fix。
+
+已完成 checkpoint：no-generation diagnostic transport 已由 PR #36 以 exact integration merge
+commit `54384129c6c6a806f859ff699610855b11628262` 合入`integration/assistant-stable-v2`；normal
+Assistant launch不變，debug transport可在不建立或載入Granite時沿用既有controller、ApplicationService
+與turn correlation。
 
 ## 問題與證據
 
@@ -57,21 +65,21 @@
    既有GitHub Actions；PR #35 的完整product／docs checks已通過並合入main。
 3. **已完成 — integration branch**：`integration/assistant-stable-v2`已從exact
    `main@ddfef059323dbcc14dbcb5ef725deaa4fd071337`建立；不是產品基線或release source。
-4. **PR candidate — no-generation diagnostic transport**：characterize current UI／handoff／debug，讓
-   tool-debug session不解析或載入local model，且normal Assistant launch完全不變。此slice不處理
-   17-tool cutover、walkthrough step commit、banner／progress或PhysioNet完整流程。Local focused
-   lifecycle／debug／threading tests共63 passed，完整AgentManager unit file 172 passed，Ruff與
-   basedpyright通過；等待remote checks。
-5. 校正backend stage與action metadata，先讓prompt、RAG、verifier、eval、showcase從單一projection
-   取得catalog。
-6. 收斂strict envelope、repair budget、minimal state card與one-message context。
-7. 建立target adapters與GUI routes，但在cutover前不發布第二個model catalog。
-8. Atomic cutover到approved target projection，同時停止Host narrowing／continuation call sites。
-9. 按analysis、dataset protocol／recipe、training wrappers與Host policy分片物理刪除obsolete code。
-10. 執行三份no-model profiles與frozen Granite suite；未達gate時只調prompt／schema／approved
+4. **已完成 — no-generation diagnostic transport**：PR #36 已合入integration exact
+   `54384129c6c6a806f859ff699610855b11628262`；tool-debug session不解析或載入local model，normal
+   Assistant launch維持原契約。Exact PR head的CI與Documentation Site皆completed/success。
+5. **Active slice — backend setup stage**：`dataset_ready`只代表saved split、model與training settings
+   三者全部完成；generated datasets或trainer存在本身不是ready evidence。沿用既有
+   `ApplicationStateSnapshot`／`ActiveDatasetSnapshot`／`ActiveTrainingSnapshot`，不新增state owner。
+6. 校正action metadata，讓prompt、RAG、verifier、eval與showcase從單一projection取得catalog。
+7. 收斂strict envelope、repair budget、minimal state card與one-message context。
+8. 建立target adapters與GUI routes，但在cutover前不發布第二個model catalog。
+9. Atomic cutover到approved target projection，同時停止Host narrowing／continuation call sites。
+10. 按analysis、dataset protocol／recipe、training wrappers與Host policy分片物理刪除obsolete code。
+11. 執行三份no-model profiles與frozen Granite suite；未達gate時只調prompt／schema／approved
     examples，不增加Host heuristic或silent fallback。
-11. 同步最新main、完成handoff dossier並凍結exact candidate SHA；只在此時交付使用者手測。
-12. 手測通過且source未變後，以integration→main merge commit合併；之後刪branch並移除暫時CI
+12. 同步最新main、完成handoff dossier並凍結exact candidate SHA；只在此時交付使用者手測。
+13. 手測通過且source未變後，以integration→main merge commit合併；之後刪branch並移除暫時CI
     trigger。
 
 每個implementation slice從integration開短branch並PR回integration；CI全綠後squash為一個coherent
@@ -105,17 +113,17 @@ benchmark。
 
 目前slice直接證據：
 
-- lifecycle test證明diagnostic start不呼叫config loader、launch resolver、dispatcher initialize、
-  Granite engine或RAG start；normal `start()` characterization維持原契約。
-- real `Study` + `AgentManager` + `ChatPanel` + `LLMController` debug flow能在沒有runtime activation時
-  執行一個backend-blocked tool，產生正常correlated visible terminal並可clean shutdown。
-- normal launch tests、runtime lifecycle tests與debug integration tests維持green。
+- Red：新target regression在current implementation產生6個unexpected-parameter failures，且完整
+  setup但未materialize dataset時仍錯誤停在`epoch_ready`。
+- Green：split、model、training settings任一缺少時即使已有generated dataset仍為`epoch_ready`；三者
+  齊備時不依賴eager materialization即可為`dataset_ready`，training／trained priority維持不變。
+- Direct backend／LLM stage、StateSnapshotService與workflow projection focused suite共146 passed。
 
-Complexity review：authoritative owners before／after皆為既有 `AssistantRuntimeLifecycle`、
-`LLMController`、`ApplicationService`與UI correlation；不新增owner、state machine、receipt或controller。
-實際只改2個production files，production `+80/-7`、net `+73` LOC。Deletion candidate只有
-tool-debug path中不必要的first-run／selection／initialize呼叫；normal path不刪。Rollback是revert此
-單一slice，既有model runtime與tool registry不需migration。
+Complexity review：authoritative owner before／after皆為既有`ApplicationService` publication與
+`PipelineStage` pure derivation；不新增owner、state machine、receipt、module或public class。實際只改
+1個production file，production `+12/-4`、net `+8` LOC。Deletion candidate是`derive_pipeline_stage`中忽略
+saved split／model／training setting的舊shortcut；rollback是revert此單一slice，tool registry與UI不需
+migration。
 
 ## Stop conditions
 

@@ -205,7 +205,7 @@ def test_primary_prompt_defines_model_owned_discriminated_decision_contract():
         ("loaded-preprocess", "data_loaded"),
         ("preprocessed-create-epoch", "preprocessed"),
         ("epoched-generate-dataset", "epoch_ready"),
-        ("dataset-set-model", "dataset_ready"),
+        ("dataset-set-model", "epoch_ready"),
     ],
 )
 def test_primary_prompt_uses_backend_pipeline_stage_contract(
