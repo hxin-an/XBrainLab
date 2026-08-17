@@ -36,6 +36,7 @@ class AgentActionContract:
     capability_command: CommandName | None = None
     intent_aliases: tuple[str, ...] = ()
     direct_action: bool = False
+    model_facing: bool = True
 
     def __post_init__(self) -> None:
         if self.capability_command is None and isinstance(self.action, CommandName):
@@ -124,6 +125,14 @@ class AgentActionContractRegistry:
     def tool_names(self) -> frozenset[str]:
         """Return every canonical tool name exposed by this registry."""
         return frozenset(contract.canonical_tool for contract in self.contracts)
+
+    def model_tool_names(self) -> frozenset[str]:
+        """Return the canonical tools that may be published to the model."""
+        return frozenset(
+            contract.canonical_tool
+            for contract in self.contracts
+            if contract.model_facing
+        )
 
     def contract_for(self, tool_name: str) -> AgentActionContract | None:
         """Return the canonical contract for ``tool_name`` when registered."""
@@ -237,6 +246,7 @@ AGENT_ACTION_CONTRACTS = AgentActionContractRegistry(
             taxonomy="Lifecycle",
             execution_kind=AgentExecutionKind.READ_ONLY,
             direct_action=True,
+            model_facing=False,
         ),
         AgentActionContract(
             "switch_panel",
@@ -292,12 +302,14 @@ AGENT_ACTION_CONTRACTS = AgentActionContractRegistry(
             CommandName.LOAD_DATA,
             taxonomy="Legacy Compatibility",
             intent_aliases=("load_data",),
+            model_facing=False,
         ),
         AgentActionContract(
             "attach_labels",
             CommandName.ATTACH_LABELS,
             taxonomy="Legacy Compatibility",
             direct_action=True,
+            model_facing=False,
         ),
         AgentActionContract(
             "apply_standard_preprocess",
@@ -311,36 +323,42 @@ AGENT_ACTION_CONTRACTS = AgentActionContractRegistry(
             CommandName.PREPROCESS,
             taxonomy="Data Transform",
             direct_action=True,
+            model_facing=False,
         ),
         AgentActionContract(
             "apply_notch_filter",
             CommandName.PREPROCESS,
             taxonomy="Data Transform",
             direct_action=True,
+            model_facing=False,
         ),
         AgentActionContract(
             "resample_data",
             CommandName.PREPROCESS,
             taxonomy="Data Transform",
             direct_action=True,
+            model_facing=False,
         ),
         AgentActionContract(
             "normalize_data",
             CommandName.PREPROCESS,
             taxonomy="Data Transform",
             direct_action=True,
+            model_facing=False,
         ),
         AgentActionContract(
             "set_reference",
             CommandName.PREPROCESS,
             taxonomy="Data Transform",
             direct_action=True,
+            model_facing=False,
         ),
         AgentActionContract(
             "select_channels",
             CommandName.PREPROCESS,
             taxonomy="Data Transform",
             direct_action=True,
+            model_facing=False,
         ),
         AgentActionContract(
             "reset_preprocess",

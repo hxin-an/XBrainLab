@@ -632,6 +632,18 @@ def test_scan_intent_does_not_rewrite_legacy_load_proposal():
     assert params == {"paths": ["/data/A01T.gdf"]}
 
 
+def test_unpublished_dataset_info_proposal_is_not_rewritten_to_query_state():
+    tool_name, params = normalize_tool_call(
+        "get_dataset_info",
+        {},
+        latest_user_text="Show dataset info.",
+        published_tool_names=frozenset({"query_state"}),
+    )
+
+    assert tool_name == "get_dataset_info"
+    assert params == {}
+
+
 def test_reload_recipe_intent_does_not_rewrite_scan_proposal():
     tool_name, params = normalize_tool_call(
         "scan_source",

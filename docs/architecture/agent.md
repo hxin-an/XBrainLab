@@ -1,6 +1,6 @@
 # Agent 目前架構
 
-最後更新：`2026-08-10`
+最後更新：`2026-08-17`
 
 ## 範圍
 
@@ -362,6 +362,27 @@ fixture，必須放在明確 optional legacy path，不能被 product code impor
 
 `XBrainLab/llm/tools/real/` 是目前真的操作 app 的工具。
 
+`XBrainLab/llm/action_contracts.py` 是完整 runtime inventory 與 model-facing classification 的
+共同 authority。Runtime / debug registry 暫時保留 30 個 implementations；local model 只會收到
+21 個 action contracts：
+
+```text
+list_files
+scan_source / preview_interpretation / validate_interpretation / apply_interpretation
+save_interpretation_recipe / reload_interpretation_recipe
+query_state
+apply_standard_preprocess / reset_preprocess
+epoch_data / configure_dataset_split
+set_model / configure_training / start_training / stop_training
+evaluate / visualize / saliency
+set_montage / switch_panel
+```
+
+Assembler prompt、RAG example policy 與 local tool-call eval 都從同一個 model-facing projection
+取得 catalog，不再各自用 compatibility denylist 決定曝光。`load_data`、`attach_labels`、六個
+granular preprocess tools 與 `get_dataset_info` 只留在 runtime/debug compatibility inventory；
+模型提出未發布的名稱會在 execution 前 fail closed。
+
 目前 real tools 有兩條路徑：
 
 ```text
@@ -429,19 +450,23 @@ publication、不建立 confirmation，也不呼叫 backend。Backend internal c
   legacy non-Study test path 仍可使用 legacy tool execution。
 - compatibility real tools 若仍回傳 `"Error: ..."`、`"Failed ..."` 等字串，controller 會將它
   正規化成 failed result，不再把 compatibility failure 當成 successful tool execution。
-- read-only `list_files` / `get_dataset_info` 現在也會正規化為 typed result；visible transcript
+- read-only `list_files` / `query_state` 現在也會正規化為 typed result；visible transcript
   透過 product formatter 顯示，不直接露出 Python list、schema error 或 tool syntax。
 - `CommandResult` 可直接轉成 agent payload；conversation history 中的 `Tool Output` 已保留
   `ok`、`tool_name`、`command_name`、
   `message`、`error_type`、`recoverable`、`state`、`capability`、`diagnostics`、
   `raw_result` JSON payload。
-- `set_montage` 仍走 UI confirmation request；`switch_panel` 仍是 UI routing request；
-  `list_files` / `get_dataset_info` 仍是 read-only / inspection path。舊 `load_data`
+- `set_montage` 仍走既有 Montage Settings UI request；Cancel 不產生 montage mutation；
+  `switch_panel` 仍是 UI routing request；`list_files` / `query_state` 是 model-facing read-only /
+  inspection path。使用者詢問 dataset information 由 host admission 直接執行 `query_state`，不需要
+  模型選擇 tool。舊 `get_dataset_info` / `load_data`
   definition 僅保留 compatibility identity，產品 policy 與 executor 會明確拒絕 direct
-  load 並導向 Data Interpretation；`attach_labels` 保留為 compatibility surface，但兩者
+  load 並導向 Data Interpretation；`attach_labels` 與 granular preprocess implementations 保留為
+  runtime/debug compatibility surface，但這些名稱
   都不再是 Empty / Data Loaded /
   Preprocessed stage prompt 的 primary tool language；Goal 1 新資料入口主線以 Data
-  Interpretation taxonomy 為主。
+  Interpretation taxonomy 為主。Granular preprocess 自然語言 request 會開啟既有 Preprocess
+  Settings，不會 silent substitute 成 `apply_standard_preprocess`。
 
 ## Workflow State Gate
 
@@ -453,14 +478,14 @@ policy 產生。
 
 目前 `ContextAssembler` 以 ApplicationService capability policy 作 mapped workflow tool 的唯一
 曝光真相；stage config 只提供敘事與少數非 command UI/inspection tool，不再當第二個 allowlist。
-legacy compatibility tools 即使 backend compatibility capability 可用，也不會重新放回 primary
+非 model-facing tools 即使 backend compatibility capability 可用，也不會重新放回 primary
 prompt。若 capability snapshot 讀取失敗，只保留不屬於 command policy 的安全 UI/inspection tool，
 不退回 stage-based workflow exposure。
 
-同日後續 RAG cleanup 把 bundled gold-set examples 也納入同一條邊界：
+RAG cleanup 把 bundled gold-set examples 也納入同一條 canonical model-facing 邊界：
 `RAGIndexer`、`BM25Index` 和 `RAGRetriever` 會透過
-`XBrainLab/llm/rag/example_policy.py` 排除含 `load_data` / `attach_labels` /
-`import_labels` 的 examples。這同時處理新建 index 和使用者機器上已存在的舊 Qdrant
+`XBrainLab/llm/rag/example_policy.py` 排除所有未發布 tool examples，包括舊 dataset-info、direct
+load / attach 與 granular preprocess names。這同時處理新建 index 和使用者機器上已存在的舊 Qdrant
 collection，避免 legacy few-shot examples 被重新注入 local LLM prompt。
 
 目前主要 stage 包括：

@@ -398,6 +398,46 @@ def test_state_query_is_admitted_as_deterministic_read_only_execution() -> None:
     assert decision.command is CommandName.QUERY_STATE
 
 
+@pytest.mark.parametrize(
+    "text",
+    (
+        "What dataset is loaded?",
+        "Show me the current dataset information.",
+        "目前資料集是什麼?",
+    ),
+)
+def test_dataset_information_uses_host_owned_query_state(text: str) -> None:
+    decision = UserRequestAdmissionPolicy().evaluate(
+        text,
+        _publication(ApplicationStateSnapshot.empty()),
+    )
+
+    assert decision.action is UserRequestAdmissionAction.EXECUTE_READ_ONLY
+    assert decision.command is CommandName.QUERY_STATE
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
+        "Apply a 50 Hz notch filter.",
+        "Resample the data to 128 Hz.",
+        "Normalize the data with z-score.",
+        "Use average reference.",
+        "Select channels C3 and C4.",
+        "把資料重採樣到 128 Hz。",
+    ),
+)
+def test_granular_preprocess_request_opens_existing_settings(text: str) -> None:
+    decision = UserRequestAdmissionPolicy().evaluate(
+        text,
+        _publication(_loaded_state()),
+    )
+
+    assert decision.action is UserRequestAdmissionAction.UI_HANDOFF
+    assert decision.command is CommandName.PREPROCESS
+    assert decision.decision_fields == ("preprocess_settings",)
+
+
 def test_complete_epoch_request_can_reach_model_tool_selection() -> None:
     decision = UserRequestAdmissionPolicy().evaluate(
         "Create epochs from -0.2 to 0.8 seconds for event 769.",

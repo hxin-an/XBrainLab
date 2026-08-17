@@ -438,7 +438,7 @@ def test_workflow_context_neutralizes_structured_role_assignment() -> None:
 class ValidTool(BaseTool):
     @property
     def name(self):
-        return "valid_tool"
+        return "scan_source"
 
     @property
     def description(self):
@@ -458,7 +458,7 @@ class ValidTool(BaseTool):
 class InvalidTool(BaseTool):
     @property
     def name(self):
-        return "invalid_tool"
+        return "set_model"
 
     @property
     def description(self):
@@ -1109,7 +1109,7 @@ def test_assembler_filtering():
     # 2. Use an explicit non-product context with no application runtime.
     compatibility_context = object()
 
-    # 3. Patch pipeline stage to a config that allows only valid_tool
+    # 3. Patch pipeline stage to a config that allows only scan_source
     with (
         patch(
             "XBrainLab.llm.agent.assembler.compute_pipeline_stage",
@@ -1119,7 +1119,7 @@ def test_assembler_filtering():
             "XBrainLab.llm.agent.assembler.STAGE_CONFIG",
             {
                 PipelineStage.EMPTY: {
-                    "tools": ["valid_tool"],
+                    "tools": ["scan_source"],
                     "system_prompt": "You are XBrainLab Assistant.\ntest stage prompt",
                 }
             },
@@ -1129,9 +1129,9 @@ def test_assembler_filtering():
         system_prompt = assembler.build_system_prompt()
 
     # 4. Verify Content
-    assert "valid_tool" in system_prompt
+    assert "scan_source" in system_prompt
     assert "Valid description" in system_prompt
-    assert "invalid_tool" not in system_prompt
+    assert "set_model" not in system_prompt
     assert "Invalid description" not in system_prompt
 
 

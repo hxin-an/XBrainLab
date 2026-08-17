@@ -208,8 +208,16 @@ def _submit_user_turn(controller: LLMController, text: str) -> None:
     )
 
 
-def test_malformed_tool_envelopes_stop_after_one_retry_without_execution(qtbot):
-    malformed = '```json\n{"tool_name":"get_dataset_info","parameters":{}}\n```'
+def test_malformed_tool_envelopes_stop_after_one_retry_without_execution(
+    qtbot,
+    tmp_path,
+):
+    source = tmp_path / "sample.edf"
+    source.write_bytes(b"fixture")
+    malformed = (
+        '```json\n{"tool_name":"scan_source","parameters":'
+        f'{{"source_path":"{source}"}}}}\n```'
+    )
     controller, worker, coordinator = _controller_with_script([malformed] * 2)
     statuses: list[str] = []
     responses: list[str] = []
@@ -219,7 +227,7 @@ def test_malformed_tool_envelopes_stop_after_one_retry_without_execution(qtbot):
     )
 
     try:
-        _submit_user_turn(controller, "Show dataset info.")
+        _submit_user_turn(controller, f"Scan data source {source}")
         qtbot.waitUntil(lambda: not controller.is_processing, timeout=3_000)
 
         assert worker.generation_count == 2
@@ -244,18 +252,26 @@ def test_malformed_tool_envelopes_stop_after_one_retry_without_execution(qtbot):
         close_controller_and_wait(controller, qtbot)
 
 
-def test_recovered_valid_envelope_reaches_real_execution_coordinator(qtbot):
-    malformed = '```json\n{"tool_name":"get_dataset_info","parameters":{}}\n```'
-    valid = '{"tool_name":"get_dataset_info","parameters":{}}'
+def test_recovered_valid_envelope_reaches_real_execution_coordinator(
+    qtbot,
+    tmp_path,
+):
+    source = tmp_path / "sample.edf"
+    source.write_bytes(b"fixture")
+    malformed = (
+        '```json\n{"tool_name":"scan_source","parameters":'
+        f'{{"source_path":"{source}"}}}}\n```'
+    )
+    valid = f'{{"tool_name":"scan_source","parameters":{{"source_path":"{source}"}}}}'
     controller, worker, coordinator = _controller_with_script([malformed, valid])
 
     try:
-        _submit_user_turn(controller, "Show dataset info.")
+        _submit_user_turn(controller, f"Scan data source {source}")
         qtbot.waitUntil(lambda: not controller.is_processing, timeout=3_000)
 
         assert worker.generation_count == 2
         assert worker.profiles == [GenerationProfile.STRUCTURED_DECISION] * 2
         assert controller._tool_attempt_session.execution_count == 1
-        assert coordinator.commands == ["query_state"]
+        assert coordinator.commands == ["scan_source"]
     finally:
         close_controller_and_wait(controller, qtbot)

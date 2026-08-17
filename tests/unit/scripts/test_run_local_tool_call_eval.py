@@ -28,6 +28,7 @@ from scripts.agent.evals.run_local_tool_call_eval import (
     write_local_artifacts,
 )
 from scripts.agent.evals.run_tool_call_eval import ExpectedToolCall, build_eval_cases
+from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.agent.prompt_policy import DIRECT_ACTION_TOOL_NAMES
 from XBrainLab.llm.core.model_catalog import PRIMARY_LOCAL_MODEL_ID
 
@@ -83,15 +84,36 @@ def test_direct_action_taxonomy_covers_every_benchmark_tool():
 
 
 def test_every_expected_tool_is_exposed_in_the_case_prompt_state() -> None:
+    model_tools = AGENT_ACTION_CONTRACTS.model_tool_names()
     for case in build_eval_cases():
         exposed = {
             str(tool["name"]) for tool in _available_tool_schemas(case.state_name)
         }
         expected = {call.tool_name for call in case.expected_tools}
+        expected_model_tools = expected & model_tools
+        expected_runtime_only_tools = expected - model_tools
 
-        assert expected <= exposed, (
-            f"{case.case_id} expects unexposed tools: {sorted(expected - exposed)}"
+        assert expected_model_tools <= exposed, (
+            f"{case.case_id} expects unexposed model tools: "
+            f"{sorted(expected_model_tools - exposed)}"
         )
+        assert expected_runtime_only_tools.isdisjoint(exposed)
+
+
+def test_local_eval_catalog_uses_canonical_model_facing_projection() -> None:
+    model_tools = AGENT_ACTION_CONTRACTS.model_tool_names()
+    unpublished = AGENT_ACTION_CONTRACTS.tool_names() - model_tools
+    exposed: set[str] = set()
+
+    for case in build_eval_cases():
+        exposed.update(
+            str(tool["name"]) for tool in _available_tool_schemas(case.state_name)
+        )
+
+    assert exposed - {"respond_to_user"} <= model_tools
+    assert "respond_to_user" in exposed
+    assert "switch_panel" in exposed
+    assert exposed.isdisjoint(unpublished)
 
 
 def test_training_ready_state_exposes_start_only_after_deferred_split_is_saved():

@@ -17,7 +17,6 @@ _TOOL_ALIASES: dict[str, str] = {
     "create_epochs": "epoch_data",
     "train": "start_training",
     "train_model": "start_training",
-    "get_dataset_info": "query_state",
     "get_state": "query_state",
     "state_query": "query_state",
     "choices.eeg_file_remap": "preview_interpretation",

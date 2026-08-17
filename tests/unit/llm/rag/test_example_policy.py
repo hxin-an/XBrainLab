@@ -33,6 +33,27 @@ def test_rag_example_policy_rejects_legacy_compatibility_tools() -> None:
     assert is_primary_workflow_example(metadata) is False
 
 
+def test_rag_example_policy_rejects_every_unpublished_model_tool() -> None:
+    unpublished = (
+        "load_data",
+        "attach_labels",
+        "apply_bandpass_filter",
+        "apply_notch_filter",
+        "resample_data",
+        "normalize_data",
+        "set_reference",
+        "select_channels",
+        "get_dataset_info",
+    )
+
+    for tool_name in unpublished:
+        metadata = {
+            "tool_calls": json.dumps([{"tool_name": tool_name, "parameters": {}}])
+        }
+        assert prompt_tool_call_from_metadata(metadata) is None
+        assert is_primary_workflow_example(metadata) is False
+
+
 def test_rag_example_policy_accepts_data_interpretation_tools() -> None:
     metadata = {
         "tool_calls": (

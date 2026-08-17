@@ -739,7 +739,7 @@ def test_retrieved_text_is_bounded_and_labeled_as_untrusted(
             "metadata": {
                 "id": "gold-17",
                 "category": "dataset",
-                "tool_calls": ('[{"tool_name":"get_dataset_info","parameters":{}}]'),
+                "tool_calls": ('[{"tool_name":"query_state","parameters":{}}]'),
             },
         },
     )
@@ -750,7 +750,7 @@ def test_retrieved_text_is_bounded_and_labeled_as_untrusted(
 
     result = retriever.get_similar_examples(
         "show dataset information",
-        allowed_tool_names=frozenset({"get_dataset_info"}),
+        allowed_tool_names=frozenset({"query_state"}),
     )
 
     payload = json.loads(result)

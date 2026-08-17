@@ -42,7 +42,7 @@ def identity_docs() -> list[Document]:
             metadata={
                 "id": "dataset-info",
                 "category": "dataset",
-                "tool_calls": '[{"tool_name":"get_dataset_info","parameters":{}}]',
+                "tool_calls": '[{"tool_name":"query_state","parameters":{}}]',
             },
         )
     ]
@@ -101,9 +101,7 @@ def test_load_gold_set(mock_indexer):
             "id": "test_01",
             "category": "test",
             "input": "User Input",
-            "expected_tool_calls": [
-                {"tool_name": "get_dataset_info", "parameters": {}}
-            ],
+            "expected_tool_calls": [{"tool_name": "query_state", "parameters": {}}],
         }
     ]
 
