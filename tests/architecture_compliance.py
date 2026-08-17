@@ -666,7 +666,7 @@ LLM_PARSER_EXACT_EVIDENCE_TESTS = (
 )
 STRICT_TOOL_ENVELOPE_ENTRYPOINTS = (
     Path("XBrainLab/llm/agent/controller.py"),
-    Path("scripts/agent/evals/run_local_tool_call_eval.py"),
+    Path("scripts/dev/run_stable_assistant_model_eval.py"),
 )
 LLM_APPLICATION_SURFACE_EXACT_EVIDENCE_TESTS = (
     Path("tests/unit/llm/tools/test_application_surface.py"),
@@ -7672,9 +7672,17 @@ def check_product_tool_envelope_boundary(root_dir: Path) -> list[str]:
 
     for relative in STRICT_TOOL_ENVELOPE_ENTRYPOINTS:
         path = root_dir / relative
-        if path.exists() and "CommandParser.parse_product(" not in path.read_text(
-            encoding="utf-8"
+        if not path.exists():
+            continue
+        source = path.read_text(encoding="utf-8")
+        if "CommandParser.parse_diagnostic(" in source and not str(relative).startswith(
+            "XBrainLab/"
         ):
+            violations.append(
+                f"{relative} calls tolerant parse_diagnostic(); strict scoring "
+                "must consume parse_product() status."
+            )
+        if "CommandParser.parse_product(" not in source:
             violations.append(
                 f"{relative} does not use the strict parse_product() boundary."
             )

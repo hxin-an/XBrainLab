@@ -61,6 +61,11 @@ GUI action複製exact empty shape），同一34-case suite達34/34。這支撐fi
 bilingual target set上的raw selection／parameter exactness，不支撐tool execution、GUI完成或thesis-grade
 泛化accuracy。
 
+Retired eval deletion checkpoint：舊21-action deterministic／local runners仍import已刪Host classifier且
+不可執行，現已由34-case Stable v2 product evaluator取代並物理移除；strict-envelope architecture guard改指
+新runner。歷史121-case artifact與dashboard只能作provenance，`docs/validation/thesis_protocol.md`已明確
+要求產品surface穩定後重建thesis benchmark，不把34-case產品gate升格為thesis evidence。
+
 已否決的中間路徑：red-first曾將三個target adapters加在舊30-tool runtime旁，立即使runtime變成33，
 並被runtime equality／headless contract tests攔截。該狀態不提交；建立第二個過渡catalog會增加遷移
 成本且違反single target authority，因此改採一次atomic cutover。

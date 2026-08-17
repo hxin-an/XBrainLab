@@ -1695,7 +1695,7 @@ def test_product_tool_envelope_guard_rejects_tolerant_product_and_eval_parsers(
     )
     _write_product_file(
         tmp_path,
-        "scripts/agent/evals/run_local_tool_call_eval.py",
+        "scripts/dev/run_stable_assistant_model_eval.py",
         "commands = CommandParser.parse_diagnostic(model_output)\n",
     )
 
@@ -1721,7 +1721,7 @@ def test_product_tool_envelope_guard_accepts_strict_execution_and_scorer(
     )
     _write_product_file(
         tmp_path,
-        "scripts/agent/evals/run_local_tool_call_eval.py",
+        "scripts/dev/run_stable_assistant_model_eval.py",
         strict_source,
     )
 
