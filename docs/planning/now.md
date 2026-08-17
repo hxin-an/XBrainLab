@@ -4,60 +4,92 @@
 
 ## 目前焦點
 
-**在 `test/assistant-21-action-smoke-v1` 收斂 Agent deterministic showcase，使其精確覆蓋 21 個
-model-facing actions，但本 branch 只修改 dev diagnostic、tests 與 docs，先合回 `main`。**
+**在 `feat/assistant-no-model-tool-walkthrough-v1` 建立不載入 Granite 的真人前端 tool walkthrough，
+並讓 normal `switch_panel` 只有在目標 UI 真正 ready／failed 後才產生 terminal。**
 
-使用者於 2026-08-17 要求先整理並合併目前不需要手測的部分，再另開 branch 實作 no-LLM frontend
-walkthrough。Repo-root `settings.json` 是使用者本機 runtime 設定，不屬於本 slice。
+使用者已於 2026-08-17 明確同意：`--tool-debug` 自動打開 Assistant、使用 debug-only compact
+status strip，以及修改 normal `switch_panel` 的可見 async completion／failure 行為。本 slice 會交付
+給使用者手測，取得批准前不合入 `main`。Repo-root `settings.json` 仍是使用者本機 runtime設定，
+不得 stage、revert或隱藏。
 
 ## 問題與證據
 
-- 現有 showcase 擴充到 24 cases／21 actions，但為了讓 `set_montage` diagnostic 通過，worktree
-  同時改了 production intent 與 action registry；這會讓本來可免手測的 dev-only slice 變成產品行為
-  變更。
-- Showcase 應能由 canonical action contract 產生 host-selected diagnostic authorization，不需要替
-  production prompt inference 新增 montage policy。
-- 現有 deterministic runner 可驗證 command spine、typed UI request、confirmation、blocked、stale
-  與 retry terminal；它不開 Qt、不載入 local model，也不證明真人前端流程或 raw model accuracy。
+- 現有 `--tool-debug` 雖由 Enter 依序取 scripted call，開啟 Assistant 時仍會走 first-run與
+  `AssistantRuntimeLifecycle.activate()`；runtime／controller 未 ready 時 case已先被消耗，因而不能
+  作為真正的 no-model frontend smoke。
+- Current JSON的 `expected` 未被Qt流程消費，`confirmed=true` 又會跳過真實 confirmation card；
+  async handoff、panel materialization或training尚未terminal時，下一次Enter可能和前一步競態。
+- Normal `switch_panel` 在 typed request發出後就顯示「Opened」語意，沒有等待
+  `MainWindow.switch_page(... on_ready/on_failed)`；lazy materialization失敗時Assistant也收不到
+  correlated terminal，重複／stale callback可能覆寫較新的navigation。
+- Phase A 的24-case／21-action headless showcase已於PR #31合入；它驗證backend boundary，但不開Qt、
+  不載入模型、不證明真人按鈕／dialog／panel狀態。
 
 ## Observable outcome
 
-- 24-case showcase exact 覆蓋 canonical 21 model-facing actions，產生 schema v3 artifact，並對 recipe、
-  state transition、confirmation、typed UI request 與 terminal semantics fail closed。
-- `set_montage` 與 `switch_panel` 由 dev runner 的明確 scripted selection 驗證既有 boundary；production
-  intent、registry、UI 與 runtime 行為完全不變。
-- PR diff 只包含 `scripts/dev/`、`tests/`、`docs/`；`settings.json` 保持 unstaged。因不可能改變產品
-  行為，本 slice 依 validation contract 不要求 manual acceptance。
+- `python run.py --tool-debug <profile.json>` 在沒有local model cache時直接進入debug session並自動打開
+  Assistant，不進行model selection、download、Granite初始化或prompt inference。
+- Debug-only compact status清楚顯示step、action、expected completion與等待原因。Enter只有在前一步
+  terminal後才消耗下一步；confirmation、workflow UI handoff、panel materialization與training期間
+  不能跳步。實際Confirm／Cancel沿用現有UI，profile不得以`confirmed=true`繞過。
+- Canonical `xbrainlab.tool_walkthrough.v1` profile精確涵蓋21 actions；使用session temp synthetic FIF，
+  training固定real CPU EEGNet、1 epoch、batch 2、learning rate 0.001。另有navigation profile覆蓋5個
+  panels、4個Visualization subviews、repeat與invalid requests。
+- Normal `switch_panel` 保留現有MainWindow ownership，但Assistant terminal必須對同一request等待
+  `on_ready`或`on_failed`；stale／duplicate completion忽略，失敗可見且可retry。
 
-## Scope、ordered repair 與 non-goals
+## Scope、ownership與complexity
 
-1. 先保留 current focused baseline，再移除 `action_contracts.py`、`intent.py` 與其 product intent test
-   的未提交變更。
-2. 讓 dev runner 對 canonical direct action 建立 exact host-selected authorization；artifact 與 README
-   清楚限制 claim，不把 scripted selection 說成模型判斷。
-3. 跑 showcase focused tests、相關 intent/action contracts regression、Ruff、format-check、targeted
-   Basedpyright 與 MkDocs strict；只在同一 source 綠燈後 commit、push、建立 PR。
-4. PR 的 non-skipped checks 全部 completed/success 後以 merge commit 合併並同步本機 `main`。
+- Owner before／after：ApplicationService仍擁有command/capability；既有confirmation owner不變；
+  MainWindow仍擁有panel materialization；AssistantRuntimeLifecycle仍擁有normal model runtime。
+  Debug walkthrough只是同一tool/command/UI boundary的host，不新增產品workflow owner。
+- Deletion／reuse first：重用`ToolDebugMode`、`ToolExecutor`、ApplicationToolRuntime、既有chat
+  presentation、confirmation card與panel callbacks；不複製21-tool catalog、command state或UI表單。
+- 此new feature預算production net LOC不超過600、production files不超過10、owner增加0；同一PR分成
+  walkthrough與switch-panel兩個implementation commits。超過預算或需要新owner時先拆PR。
+- Non-goals：不評估Granite selection accuracy、不下載model、不做scientific quality claim、不建立
+  persistent pass receipt、不讓debug mode成為production user feature、不修其他Assistant架構問題。
 
-Non-goals：不修改 `XBrainLab/ui/`、不新增 frontend walkthrough、不修 normal `switch_panel` async
-completion、不啟動 Granite、不做真人 training，也不建立第二套 capability／state／confirmation owner。
+## Ordered implementation
 
-## Stop conditions
+1. Characterize現有debug consume-before-terminal、runtime activation與switch-panel early-success；先加
+   能抓到真退化的focused red tests。
+2. 將debug session與normal runtime activation分流：auto-open Assistant，建立model-free executor／
+   existing UI adapters，新增versioned profile parser與compact status；只有correlated terminal可advance。
+3. 加入21-action與navigation profiles；所有需要confirmation／UI review／training的step明確pause，
+   使用者完成既有UI後才繼續。
+4. 讓normal switch-panel navigation帶request identity，從MainWindow ready／failed callback回到既有
+   presentation／command lifecycle；latest request wins，失敗顯示recoverable response。
+5. 跑focused unit/integration、no-model subprocess、Qt offscreen screenshot/walkthrough、Ruff、
+   Basedpyright與applicable validation。交付exact SHA與manual steps；使用者批准前不merge。
 
-- 若最終 diff 仍含任何 production file、runner 繞過 canonical tool/command mapping，或 21-action exact
-  coverage／typed terminal corruption test失效，不得合併。
-- 若 focused validation 或 PR non-skipped check不是 completed/success，停在 checkpoint，不宣稱完成。
-- Phase B 的可見 UI change 必須在新 branch 實作，完成 screenshot／walkthrough 並取得使用者手測批准
-  後才可合併。
+## Focused validation與stop conditions
+
+- Cold/missing model cache下`--tool-debug`不得import／initialize Granite或觸發download；21 actions exact
+  cover canonical catalog，profile未知欄位／terminal／`confirmed=true` fail closed。
+- Double Enter、busy、confirmation、UI handoff、training與panel lazy load都不得消耗下一step；failure
+  保留目前step並允許retry或明確skip/cancel，不可silent advance。
+- `switch_panel`測試必須用delayed ready、failure、out-of-order與duplicate callback，驗證terminal時機、
+  visible response及latest-wins；只測UiRequest emission不算完成。
+- Screenshot／walkthrough檢查debug status在default與窄視窗的fit、contrast、hierarchy與disabled state；
+  offscreen artifact不取代使用者native手測。
+- 若需要第二套ApplicationService state／confirmation policy、owner增加、production超過600 net LOC／
+  10 files，或無法在不載模型時走同一execution boundary，停止並拆分或重新確認。
 
 ## Implementation checkpoint
 
-- 已移除 worktree 中 `action_contracts.py`、`intent.py` 與 product intent test 的 montage policy變更；
-  current diff 除使用者本機 `settings.json` 外只剩 docs、dev script與test。
-- Characterization baseline為15 passed；移除product montage intent後exact 21-action matrix如預期紅在
-  23/24。Dev runner改為只對缺少production admission的typed UI direct action建立host-selected
-  authorization後，focused intent/showcase回到147 passed。
-- Test-quality mutation確認：過度泛化host-selection會讓path provenance的3 cases失敗；typed handoff
-  parameter corruption與21-action catalog drift也會被現有test攔截。這些證據仍不支撐Qt或Granite claim。
-- Final focused rerun為147 passed；Ruff check／format-check、targeted Basedpyright（0 errors）、
-  MkDocs strict與git diff check均通過。尚待commit、push、PR checks與merge。
+- Branch由PR #31 merge commit `eb007163`建立。Implementation已完成但尚未commit／push；使用者既有
+  `settings.json`仍dirty且不在本slice。
+- Debug session現在以diagnostic runtime綁定既有controller／dispatcher但不呼叫model initialize；v1
+  walkthrough透過既有ToolAttemptCoordinator、confirmation card、ApplicationService與UI handoff執行，
+  terminal前不consume step。Normal `switch_panel`由MainWindow ready／failed callback回傳同一request
+  identity，stale／duplicate resolution不會完成turn。
+- Canonical profiles位於`scripts/dev/agent_tool_walkthrough/`：21-action profile與model-facing catalog exact
+  相等，session temp FIF為4 channels、left/right events；navigation profile覆蓋5 panels、4 subviews、repeat
+  與invalid requests。
+- Complexity checkpoint：9個production files、production net +599 LOC、owner +0，未超過批准上限。
+- Focused unit／integration、Ruff、Ruff format與Basedpyright已通過。真實offscreen Qt diagnostic各執行
+  `switch_panel`與`list_files`一個terminal，metrics皆為`llm_calls=0`、`tools=1/1`；截圖在
+  `build/dev-artifacts/agent-tool-walkthrough/`。這些只證明Linux offscreen wiring，不取代native手測。
+- 下一步：建立兩個coherent commits並開PR，確認non-skipped CI後交付exact head SHA。使用者依README先跑
+  navigation profile、再跑21-action profile；只有同一SHA手測通過並明確批准後才可merge。
