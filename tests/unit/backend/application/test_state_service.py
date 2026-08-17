@@ -528,7 +528,7 @@ def _expect_payload(result: HandlerResult) -> tuple[str, dict[str, Any]]:
 def test_state_snapshot_service_builds_workflow_snapshot() -> None:
     state = _snapshot_service().build()
 
-    assert state.pipeline_stage == "dataset_ready"
+    assert state.pipeline_stage == "epoch_ready"
     assert state.raw.loaded is True
     assert state.raw.files == ["subject01.fif"]
     assert state.raw.metadata[0]["subject"] == "S01"
@@ -891,7 +891,7 @@ def test_state_snapshot_does_not_read_study_training_aliases() -> None:
             False,
             False,
             0,
-            "dataset_ready",
+            "epoch_ready",
         ),
         (
             "training",
@@ -965,7 +965,7 @@ def test_trainer_without_finished_results_preserves_terminal_outcome_without_tra
     state = service.build()
 
     assert state.evaluation.finished_runs == 0
-    assert state.pipeline_stage == "dataset_ready"
+    assert state.pipeline_stage == "epoch_ready"
     assert state.training.terminal_outcome.state is terminal_outcome
 
 

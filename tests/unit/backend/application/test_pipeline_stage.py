@@ -15,11 +15,14 @@ from XBrainLab.backend.application.pipeline_stage import (
     derive_pipeline_stage,
     pipeline_stage_contract,
     pipeline_stage_from_snapshot,
+    pipeline_stage_from_snapshots,
     pipeline_stage_readiness_message,
     pipeline_stage_readiness_summary,
     workflow_command_label,
 )
 from XBrainLab.backend.application.state import (
+    ActiveDatasetSnapshot,
+    ActiveTrainingSnapshot,
     ApplicationStateSnapshot,
     RawStateSnapshot,
 )
@@ -65,6 +68,9 @@ STAGE_CASES = [
             "has_preprocessed_data": True,
             "has_epoch_data": True,
             "has_datasets": True,
+            "has_saved_split": True,
+            "has_model": True,
+            "has_training_option": True,
         },
         PipelineStage.DATASET_READY,
         "Dataset ready",
@@ -144,6 +150,9 @@ def test_trainer_without_finished_runs_is_not_a_trained_stage() -> None:
             has_preprocessed_data=True,
             has_epoch_data=True,
             has_datasets=True,
+            has_saved_split=True,
+            has_model=True,
+            has_training_option=True,
             has_trainer=True,
             finished_run_count=0,
         )
@@ -151,7 +160,7 @@ def test_trainer_without_finished_runs_is_not_a_trained_stage() -> None:
     )
 
 
-def test_saved_split_without_generated_dataset_remains_epoch_ready() -> None:
+def test_complete_setup_is_dataset_ready_before_dataset_materialization() -> None:
     assert (
         derive_pipeline_stage(
             has_raw_data=True,
@@ -159,8 +168,55 @@ def test_saved_split_without_generated_dataset_remains_epoch_ready() -> None:
             has_epoch_data=True,
             has_datasets=False,
             has_saved_split=True,
+            has_model=True,
+            has_training_option=True,
+        )
+        is PipelineStage.DATASET_READY
+    )
+
+
+@pytest.mark.parametrize(
+    ("has_saved_split", "has_model", "has_training_option"),
+    [
+        (False, True, True),
+        (True, False, True),
+        (True, True, False),
+    ],
+)
+def test_dataset_ready_requires_split_model_and_training_settings(
+    has_saved_split: bool,
+    has_model: bool,
+    has_training_option: bool,
+) -> None:
+    assert (
+        derive_pipeline_stage(
+            has_raw_data=True,
+            has_preprocessed_data=True,
+            has_epoch_data=True,
+            has_datasets=True,
+            has_saved_split=has_saved_split,
+            has_model=has_model,
+            has_training_option=has_training_option,
         )
         is PipelineStage.EPOCH_READY
+    )
+
+
+def test_published_snapshots_use_complete_setup_as_dataset_ready_truth() -> None:
+    assert (
+        pipeline_stage_from_snapshots(
+            ActiveDatasetSnapshot(
+                has_raw_data=True,
+                has_preprocessed_data=True,
+                has_epoch_data=True,
+                has_saved_split=True,
+            ),
+            ActiveTrainingSnapshot(
+                has_model=True,
+                has_training_option=True,
+            ),
+        )
+        is PipelineStage.DATASET_READY
     )
 
 
@@ -204,6 +260,8 @@ def test_legacy_study_stage_priority_is_preserved() -> None:
         preprocessed_data_list=[object()],
         epoch_data=object(),
         datasets=[object()],
+        model_holder=object(),
+        training_option=object(),
         trainer=trainer,
     )
 
@@ -222,6 +280,8 @@ def test_legacy_stage_ignores_non_iterable_or_text_run_collections(
         preprocessed_data_list=[object()],
         epoch_data=object(),
         datasets=[object()],
+        model_holder=object(),
+        training_option=object(),
         trainer=trainer,
     )
 

@@ -107,6 +107,8 @@ def _make_study(**overrides):
     study.preprocessed_data_list = overrides.get("preprocessed_data_list", [])
     study.epoch_data = overrides.get("epoch_data")
     study.datasets = overrides.get("datasets", [])
+    study.model_holder = overrides.get("model_holder")
+    study.training_option = overrides.get("training_option")
     study.trainer = overrides.get("trainer")
     return study
 
@@ -166,6 +168,8 @@ class TestComputePipelineStage:
             loaded_data_list=["raw1"],
             epoch_data=MagicMock(),
             datasets=["ds1"],
+            model_holder=MagicMock(),
+            training_option=MagicMock(),
         )
         assert compute_pipeline_stage(study) == PipelineStage.DATASET_READY
 
