@@ -46,6 +46,21 @@ wrappers（`evaluate`、`visualize`、`saliency`）及只驗證這三個退役wr
 `AnalysisCommandService`與Evaluation／Visualization UI owner完全保留。此slice刪除275 production LOC、
 新增0、owner before／after不變；focused definitions、mock、assembler與architecture tests通過。
 
+Frozen Granite suite checkpoint：新增從既有34筆target `gold_set.json`與runtime registry派生的bilingual
+selection evaluator；每個approved tool正好兩題，prompt暴露對應backend stage的整組target tools，score要求
+exact strict envelope、stage、tool、parameters與runtime schema。首次真模型run依目前local setting使用CPU，
+600秒內未完成，且舊runner只在全套完成後寫artifact，因而沒有可判讀的partial result。此為evaluator
+observability／checkpoint缺口，不是模型accuracy結果；修正為逐case進度與atomic partial artifact，並允許CLI
+對本次run明示CUDA但不保存或修改`settings.json`後再重跑。快速單題smoke與candidate 34-case gate維持分級。
+
+Frozen Granite suite green：sandbox內無`/dev/dxg`，因此GPU gate在明確sandbox外本機CUDA環境執行；沒有
+修改或保存`settings.json`。第一個GPU run為32/34：一個zero-parameter GUI tool捏造dialog值、一個正確
+direct action前置多餘文字；一次negative prompt曾因直接寫出禁用標籤造成30/34，已確認為small-model
+priming並移除。最終只保留positive last-position contract（回覆立刻以`{`開始、以`}`結束、zero-parameter
+GUI action複製exact empty shape），同一34-case suite達34/34。這支撐fixed Granite revision在frozen
+bilingual target set上的raw selection／parameter exactness，不支撐tool execution、GUI完成或thesis-grade
+泛化accuracy。
+
 已否決的中間路徑：red-first曾將三個target adapters加在舊30-tool runtime旁，立即使runtime變成33，
 並被runtime equality／headless contract tests攔截。該狀態不提交；建立第二個過渡catalog會增加遷移
 成本且違反single target authority，因此改採一次atomic cutover。

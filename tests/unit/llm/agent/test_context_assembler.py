@@ -229,6 +229,26 @@ def test_single_action_contract_ends_with_bare_object_reminder() -> None:
     ) in reminder
 
 
+def test_multi_action_reminder_forbids_prose_and_gui_parameter_invention() -> None:
+    from XBrainLab.llm.tools import get_all_tools
+
+    registry = ToolRegistry()
+    for tool in get_all_tools("mock"):
+        registry.register(tool)
+    assembler = ContextAssembler(registry, Study())
+
+    contracts = assembler._format_tools(
+        ["configure_training", "apply_bandpass_filter"],
+        workflow_stage="epoch_ready",
+    )
+
+    reminder = contracts.rsplit("Final output reminder:\n", maxsplit=1)[1]
+    assert "Begin the response immediately with {" in reminder
+    assert "copy its exact zero-parameter output shape" in reminder
+    assert "all choices are made by the user in the opened product UI" in reminder
+    assert "DECISION ENVELOPE" not in reminder
+
+
 @pytest.mark.parametrize(
     "parameters",
     (

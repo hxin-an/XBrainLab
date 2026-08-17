@@ -52,7 +52,10 @@ class StrictToolResponsePromptPolicy:
             "describe it as blocked.\n"
             "5. Copy every supported value explicitly stated by the user, even "
             "when the schema marks it optional. Never omit an explicitly requested "
-            "supported value.\n"
+            "supported value. A zero-parameter GUI action must always use "
+            "parameters {}. Never invent or copy dialog choices into a contract "
+            "whose parameter properties are empty; the user chooses them in the "
+            "opened product UI.\n"
             "6. Return exactly one DECISION ENVELOPE. The root object must be exactly "
             '{"workflow_stage":"'
             + workflow_stage

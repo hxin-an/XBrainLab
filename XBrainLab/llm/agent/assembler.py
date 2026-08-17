@@ -268,7 +268,11 @@ Action Contract Catalog (input definitions, never an output array):
         if len(active_tools) != 1:
             return (
                 "Final output reminder:",
-                "Return one bare JSON object, never an array or a wrapped object.",
+                "Begin the response immediately with { and end it immediately with "
+                "}. Output only one bare JSON object. When the chosen action "
+                "contract has no parameter properties, copy its exact "
+                "zero-parameter output shape and use an empty parameters object; "
+                "all choices are made by the user in the opened product UI.",
             )
 
         tool = active_tools[0]
