@@ -78,8 +78,8 @@ status strip，以及修改 normal `switch_panel` 的可見 async completion／f
 
 ## Implementation checkpoint
 
-- Branch由PR #31 merge commit `eb007163`建立。Implementation已完成但尚未commit／push；使用者既有
-  `settings.json`仍dirty且不在本slice。
+- Branch由PR #31 merge commit `eb007163`建立。Implementation已以`594957a8`提交並在draft PR #32
+  追蹤；使用者既有`settings.json`仍dirty且不在本slice。
 - Debug session現在以diagnostic runtime綁定既有controller／dispatcher但不呼叫model initialize；v1
   walkthrough透過既有ToolAttemptCoordinator、confirmation card、ApplicationService與UI handoff執行，
   terminal前不consume step。Normal `switch_panel`由MainWindow ready／failed callback回傳同一request
@@ -91,5 +91,8 @@ status strip，以及修改 normal `switch_panel` 的可見 async completion／f
 - Focused unit／integration、Ruff、Ruff format與Basedpyright已通過。真實offscreen Qt diagnostic各執行
   `switch_panel`與`list_files`一個terminal，metrics皆為`llm_calls=0`、`tools=1/1`；截圖在
   `build/dev-artifacts/agent-tool-walkthrough/`。這些只證明Linux offscreen wiring，不取代native手測。
-- 下一步：建立兩個coherent commits並開PR，確認non-skipped CI後交付exact head SHA。使用者依README先跑
-  navigation profile、再跑21-action profile；只有同一SHA手測通過並明確批准後才可merge。
+- PR #32首輪CI揭露既有human-like capture controller未實作新增的typed panel-resolution contract，
+  dispatcher因此正確fail closed。修正只補capture double的typed接收／記錄，不放寬production dispatcher；
+  contract unit與實際完整Qt capture gate均已通過。
+- 下一步：推送capture contract修正並等待PR #32同一head的non-skipped CI全綠，再交付exact head SHA。
+  使用者依README先跑navigation profile、再跑21-action profile；只有同一SHA手測通過並明確批准後才可merge。

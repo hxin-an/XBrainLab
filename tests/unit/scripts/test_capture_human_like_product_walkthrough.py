@@ -139,6 +139,8 @@ from XBrainLab.llm.agent.interaction import (
     AgentInteractionStatus,
 )
 from XBrainLab.llm.agent.response_presentation import (
+    AssistantPanelNavigationResolution,
+    AssistantPanelNavigationStatus,
     AssistantResponseActionKind,
     AssistantResponsePresentation,
 )
@@ -2729,6 +2731,22 @@ def test_walkthrough_source_has_no_standalone_turn_admission_fallback() -> None:
     assert "AssistantTurnCorrelation(" not in direct_source
     assert "_handle_admitted_user_input(payload.text)" in admitted_source
     assert "raise RuntimeError" in direct_source
+
+
+def test_walkthrough_controller_accepts_typed_panel_navigation_resolution() -> None:
+    controller = WalkthroughAssistantController()
+    resolution = AssistantPanelNavigationResolution(
+        request_id="walkthrough-panel-request",
+        correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
+        status=AssistantPanelNavigationStatus.READY,
+    )
+
+    controller.on_panel_navigation_resolved(resolution)
+
+    assert controller.last_panel_navigation_resolution is resolution
+    assert controller.events == [
+        "panel_navigation:resolution_accepted:ready:walkthrough-panel-request"
+    ]
 
 
 def test_walkthrough_confirmation_publishes_a_terminal_result() -> None:

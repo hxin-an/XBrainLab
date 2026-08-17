@@ -44,6 +44,7 @@ from XBrainLab.llm.agent.controller import (
     AgentInteractionStatus,
 )
 from XBrainLab.llm.agent.response_presentation import (
+    AssistantPanelNavigationResolution,
     AssistantResponseAction,
     AssistantResponseKind,
     AssistantResponsePresentation,
@@ -167,6 +168,9 @@ class WalkthroughAssistantController(QObject):
         self.last_confirmation_request: AgentConfirmationRequest | None = None
         self.last_workflow_handoff: WorkflowUiHandoffRequest | None = None
         self.last_workflow_resolution: WorkflowUiHandoffResolution | None = None
+        self.last_panel_navigation_resolution: (
+            AssistantPanelNavigationResolution | None
+        ) = None
         self._pending_workflow_handoff: WorkflowUiHandoffRequest | None = None
         self._pending_confirmation_request: AgentConfirmationRequest | None = None
         self._runtime_model_id = "walkthrough-local-model"
@@ -626,6 +630,17 @@ class WalkthroughAssistantController(QObject):
             f"handoff:resolution_accepted:{payload.status.value}:{payload.request_id}"
         )
         self._finish()
+
+    def on_panel_navigation_resolved(self, payload: object) -> None:
+        """Accept the typed panel callback required by the product dispatcher."""
+        if not isinstance(payload, AssistantPanelNavigationResolution):
+            self.events.append("panel_navigation:resolution_rejected:untyped")
+            return
+        self.last_panel_navigation_resolution = payload
+        self.events.append(
+            "panel_navigation:resolution_accepted:"
+            f"{payload.status.value}:{payload.request_id}"
+        )
 
     def execute_debug_tool(self, tool_name: str, _params: dict[Any, Any]) -> None:
         self.events.append(f"debug:{tool_name}")
