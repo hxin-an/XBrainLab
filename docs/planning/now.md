@@ -22,9 +22,24 @@ preprocess、四個lifecycle與`switch_panel`。Local commits依序為`2366c6b3`
 D3已移除兩個無production caller的policy modules。保留schema、同generation publication、path provenance、
 ApplicationService capability與confirmation；`tests/unit/llm`在target 17 surface上`1680 passed`。
 
-下一步：物理刪除obsolete Assistant wrappers，並以no-model frontend walkthrough取代舊21-action showcase。
-舊showcase與local eval仍import已退役host classifier，broader unit已在collection時fail closed；不得以compatibility
-shim恢復classifier。GitHub服務目前不可用，因此只跑local evidence。
+下一步：先修正真Granite structured smoke的舊契約假陽性，再物理刪除obsolete Assistant wrappers，並以
+no-model frontend walkthrough取代舊21-action showcase。舊showcase與local eval仍import已退役host
+classifier，broader unit已在collection時fail closed；不得以compatibility shim恢復classifier。GitHub服務
+目前不可用，因此只跑local evidence，不把remote狀態當本地施工 blocker。
+
+最新local red-first證據：exact Stable v2 branch可在offline模式載入固定Granite revision並產生strict三欄
+JSON，但`inspect_local_assistant_runtime.py --structured-smoke --strict`仍在prompt與oracle中要求已退役的
+`query_state`，因而把`{"workflow_stage":"unavailable","tool_name":"query_state","parameters":{}}`
+錯判為passed。此結果只證明模型可載入與輸出JSON，不證明target tool-call。修正後`unavailable`階段只接受
+backend-published的`switch_panel`及其exact schema；retired、未發布、錯stage或錯參數都必須讓strict CLI
+非零結束。若真模型仍選退役工具，該結果視為真accuracy failure，只能調整prompt/schema/approved examples，
+不得恢復Host heuristic或compatibility alias。
+
+最新local green證據：修正後runtime inspection以approved target registry、`switch_panel`實際schema及
+exact unavailable-stage action作oracle；23個focused tests通過，包含retired tool、錯stage、非法panel與
+額外parameter拒絕。固定`ibm-granite/granite-3.3-2b-instruct`在offline、GPU模式載入既有5.07 GB cache，
+輸出exact `{"workflow_stage":"unavailable","tool_name":"switch_panel","parameters":{"panel_name":"dataset"}}`
+並由`--strict`通過。這只支撐一個真模型target action與strict JSON boundary，不外推17-tool selection accuracy。
 
 已否決的中間路徑：red-first曾將三個target adapters加在舊30-tool runtime旁，立即使runtime變成33，
 並被runtime equality／headless contract tests攔截。該狀態不提交；建立第二個過渡catalog會增加遷移
@@ -107,7 +122,8 @@ Linux full suite、Windows/macOS、public multi-dataset與MkDocs checks皆comple
    capability／confirmation；navigation仍只由`switch_panel`負責。同一slice停止兩個Host request-admission
    call sites及tool-success continuation，確保一回合一個tool或response。
 11. 按analysis、dataset protocol／recipe、training wrappers與Host policy分片物理刪除obsolete code。
-12. 執行三份no-model profiles與frozen Granite suite；未達gate時只調prompt／schema／approved
+12. 先讓runtime inspection的Granite structured smoke使用target registry與stage publication作fail-closed
+    oracle，再執行三份no-model profiles與frozen Granite suite；未達gate時只調prompt／schema／approved
     examples，不增加Host heuristic或silent fallback。
 13. 同步最新main、完成handoff dossier並凍結exact candidate SHA；只在此時交付使用者手測。
 14. 手測通過且source未變後，以integration→main merge commit合併；之後刪branch並移除暫時CI

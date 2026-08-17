@@ -22,7 +22,9 @@ else:
 ROOT = Path(__file__).resolve().parents[2]
 assert_active_checkout_import(ROOT)
 
+from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
+from XBrainLab.llm.agent.verifier import ToolSchemaValidator
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.engine import LLMEngine
 from XBrainLab.llm.core.generation import GenerationProfile
@@ -37,6 +39,11 @@ from XBrainLab.llm.core.model_catalog import (
     local_model_policy_error,
     local_model_spec,
 )
+from XBrainLab.llm.tools.real.ui_control_real import RealSwitchPanelTool
+
+_STRUCTURED_SMOKE_STAGE = "unavailable"
+_STRUCTURED_SMOKE_TOOL = "switch_panel"
+_STRUCTURED_SMOKE_PARAMETERS = {"panel_name": "dataset"}
 
 
 def classify_runtime(config: LLMConfig) -> dict[str, Any]:
@@ -280,7 +287,7 @@ def run_prompt_smoke(
 
 
 def run_structured_output_smoke(config: LLMConfig) -> dict[str, Any]:
-    """Check whether the local model can follow the tool-call JSON protocol."""
+    """Check one approved target action through the strict product envelope."""
     selection = config.assistant_runtime_selection()
     if selection.backend_mode != "local":
         return {
@@ -308,16 +315,18 @@ def run_structured_output_smoke(config: LLMConfig) -> dict[str, Any]:
                     {
                         "role": "system",
                         "content": (
-                            "You emit only one compact JSON object for XBrainLab "
-                            "tool calls. Do not use markdown."
+                            "You emit exactly one compact JSON object for XBrainLab "
+                            "tool calls. The only available action is switch_panel. "
+                            "Do not use markdown, prose, aliases, or extra fields."
                         ),
                     },
                     {
                         "role": "user",
                         "content": (
-                            "Return exactly "
+                            "The user asked to open the Dataset panel. Return exactly "
                             '{"workflow_stage":"unavailable",'
-                            '"tool_name":"query_state","parameters":{}}'
+                            '"tool_name":"switch_panel",'
+                            '"parameters":{"panel_name":"dataset"}}'
                         ),
                     },
                 ],
@@ -333,23 +342,45 @@ def run_structured_output_smoke(config: LLMConfig) -> dict[str, Any]:
 
     response = "".join(chunks).strip()
     envelope = CommandParser.parse_product(response)
-    if (
-        envelope.status is ToolEnvelopeStatus.VALID
-        and envelope.workflow_stage == "unavailable"
-        and envelope.commands == (("query_state", {}),)
-    ):
+    if envelope.status is not ToolEnvelopeStatus.VALID:
+        return {
+            "status": "failed",
+            "failure_type": "output_format",
+            "message": "Model did not return the strict product tool envelope.",
+            "response": response[:500],
+            "parse_status": envelope.status.value,
+            "parse_error": envelope.error,
+        }
+
+    model_tools = AGENT_ACTION_CONTRACTS.model_tool_names()
+    switch_tool = RealSwitchPanelTool()
+    command_name, parameters = envelope.commands[0]
+    schema_result = ToolSchemaValidator(
+        {switch_tool.name: switch_tool.parameters}
+    ).validate(command_name, parameters)
+    target_matches = (
+        _STRUCTURED_SMOKE_TOOL in model_tools
+        and schema_result.is_valid
+        and envelope.workflow_stage == _STRUCTURED_SMOKE_STAGE
+        and command_name == _STRUCTURED_SMOKE_TOOL
+        and parameters == _STRUCTURED_SMOKE_PARAMETERS
+    )
+    if target_matches:
         return {
             "status": "passed",
-            "message": "Product tool-envelope smoke completed.",
+            "message": "Stable v2 target tool-envelope smoke completed.",
             "response": response[:500],
         }
     return {
         "status": "failed",
-        "failure_type": "output_format",
-        "message": "Model did not return the strict product tool envelope.",
+        "failure_type": "target_contract",
+        "message": (
+            "Model output did not match the approved unavailable-stage "
+            "switch_panel target action."
+        ),
         "response": response[:500],
         "parse_status": envelope.status.value,
-        "parse_error": envelope.error,
+        "parse_error": envelope.error or schema_result.error_message,
     }
 
 
