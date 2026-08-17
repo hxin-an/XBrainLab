@@ -8,15 +8,19 @@
 完成 replacement、atomic cutover、deletion 與 exact-SHA candidate；在完整候選前不要求使用者手測，
 未取得同一 source 的手測通過不得合併 main。**
 
-目前 phase：`CI bootstrap`
+目前 phase：`no-generation diagnostic transport`
 
-目前 branch：`ci/assistant-stable-v2-integration-trigger`
+目前 branch：`refactor/assistant-diagnostic-transport`
 
-下一步：將 CI bootstrap PR 推向 main，要求同一 exact SHA 的所有 applicable GitHub checks
-`completed/success`；合入後才從 exact main 建立 integration branch。
+下一步：將no-generation diagnostic transport PR推向`integration/assistant-stable-v2`，要求
+同一exact SHA的applicable CI全綠；此slice不提前進入17-tool cutover或walkthrough runner。
 
 已完成 checkpoint：target authority 已由 PR #34 以 exact merge commit
 `7518c7a60ab7e5355b2e5e1fbc6412ba8edeab2b` 合入 main；該 PR 只有 docs/guidance，沒有產品行為。
+
+已完成 checkpoint：CI bootstrap 已由 PR #35 以 exact merge commit
+`ddfef059323dbcc14dbcb5ef725deaa4fd071337` 合入 main；19個applicable checks成功，暫時
+`integration/assistant-stable-v2` 已從該commit建立。
 
 ## 問題與證據
 
@@ -49,12 +53,15 @@
 
 1. **已完成 — Target authority PR → main**：收斂target、decisions、current/target wording與staged
    validation；PR #34 已合入 exact main。
-2. **PR candidate — CI bootstrap PR → main**：讓base=`integration/assistant-stable-v2`的product/docs
-   PR執行既有GitHub Actions；只改兩個既有 workflow 的 exact PR base filter 與直接 regression，
-   不建立較弱的替代CI或新 workflow。Local focused regression、guidance audit與MkDocs strict已通過，
-   等待同一SHA的remote checks。
-3. 從exact main建立`integration/assistant-stable-v2`；該branch不是產品基線或release source。
-4. Characterize current UI／handoff／debug／PhysioNet path，建立no-generation diagnostic transport。
+2. **已完成 — CI bootstrap PR → main**：base=`integration/assistant-stable-v2`的product/docs PR會執行
+   既有GitHub Actions；PR #35 的完整product／docs checks已通過並合入main。
+3. **已完成 — integration branch**：`integration/assistant-stable-v2`已從exact
+   `main@ddfef059323dbcc14dbcb5ef725deaa4fd071337`建立；不是產品基線或release source。
+4. **PR candidate — no-generation diagnostic transport**：characterize current UI／handoff／debug，讓
+   tool-debug session不解析或載入local model，且normal Assistant launch完全不變。此slice不處理
+   17-tool cutover、walkthrough step commit、banner／progress或PhysioNet完整流程。Local focused
+   lifecycle／debug／threading tests共63 passed，完整AgentManager unit file 172 passed，Ruff與
+   basedpyright通過；等待remote checks。
 5. 校正backend stage與action metadata，先讓prompt、RAG、verifier、eval、showcase從單一projection
    取得catalog。
 6. 收斂strict envelope、repair budget、minimal state card與one-message context。
@@ -95,6 +102,20 @@ benchmark。
   blocked／failed與stale／duplicate。
 - Candidate使用同一clean/explained exact SHA完成no-model、Granite、data、UI artifact、static quality與
   GitHub checks；manual acceptance不由automation取代。
+
+目前slice直接證據：
+
+- lifecycle test證明diagnostic start不呼叫config loader、launch resolver、dispatcher initialize、
+  Granite engine或RAG start；normal `start()` characterization維持原契約。
+- real `Study` + `AgentManager` + `ChatPanel` + `LLMController` debug flow能在沒有runtime activation時
+  執行一個backend-blocked tool，產生正常correlated visible terminal並可clean shutdown。
+- normal launch tests、runtime lifecycle tests與debug integration tests維持green。
+
+Complexity review：authoritative owners before／after皆為既有 `AssistantRuntimeLifecycle`、
+`LLMController`、`ApplicationService`與UI correlation；不新增owner、state machine、receipt或controller。
+實際只改2個production files，production `+80/-7`、net `+73` LOC。Deletion candidate只有
+tool-debug path中不必要的first-run／selection／initialize呼叫；normal path不刪。Rollback是revert此
+單一slice，既有model runtime與tool registry不需migration。
 
 ## Stop conditions
 
