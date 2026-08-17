@@ -24,6 +24,7 @@ from scripts.dev.agent_toolcall_showcase.runner import (
     ShowcaseRunner,
     current_source_commit,
     current_source_fingerprint,
+    finalize_case_result,
     require_source_stability,
     resumable_passed_cases,
     resume_case_matches,
@@ -31,6 +32,7 @@ from scripts.dev.agent_toolcall_showcase.runner import (
     terminal_outcome_present,
 )
 from scripts.dev.agent_toolcall_showcase.selector import DeterministicSelector
+from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.tools.application_surface import (
     AssistantSettingConfirmation,
     AuthoritativeConfirmationParameter,
@@ -186,6 +188,7 @@ def _resume_payload(
 
 def test_catalog_filter_alias_area_and_list_output(capsys) -> None:
     case_ids = {case.case_id for case in SHOWCASE_CASES}
+    assert len(SHOWCASE_CASES) == 24
     assert len(case_ids) == len(SHOWCASE_CASES)
     assert {
         "settings.complete_training_approved",
@@ -217,6 +220,12 @@ def test_catalog_filter_alias_area_and_list_output(capsys) -> None:
     output = capsys.readouterr().out
     assert "navigation.list_source_folder" in output
     assert "not a thesis benchmark" in output
+
+
+def test_showcase_catalog_exactly_covers_model_facing_actions() -> None:
+    assert {case.tool_name for case in SHOWCASE_CASES} == (
+        AGENT_ACTION_CONTRACTS.model_tool_names()
+    )
 
 
 def test_redaction_preserves_all_cases_and_stdout_defaults_to_compact_trace() -> None:
@@ -560,6 +569,17 @@ def test_resume_fails_closed_across_source_selector_and_granite_identity() -> No
     deterministic = _deterministic_selector_metadata()
     payload = _resume_payload(prior, selector=deterministic)
 
+    old_schema = deepcopy(payload)
+    old_schema["schema_version"] = "xbrainlab.agent_toolcall_showcase.v2"
+    with pytest.raises(ShowcaseContractError, match="unsupported schema"):
+        resumable_passed_cases(
+            old_schema,
+            expected_cases=[case],
+            expected_source_commit="source-commit-a",
+            expected_source_fingerprint="source-fingerprint-a",
+            expected_selector=deterministic,
+        )
+
     with pytest.raises(ShowcaseContractError, match="source commit"):
         resumable_passed_cases(
             payload,
@@ -680,6 +700,67 @@ def test_split_case_uses_confirmation_and_saves_deferred_specification(
     assert dataset["split_spec_saved"] is True
     assert dataset["split_materialized"] is False
     assert dataset["available"] is False
+
+
+def test_full_model_action_matrix_has_real_side_effects_and_typed_terminals(
+    tmp_path: Path,
+) -> None:
+    output_dir = tmp_path / "showcase"
+    payload = ShowcaseRunner(
+        output_dir=output_dir,
+        selector=DeterministicSelector(),
+    ).run(list(SHOWCASE_CASES))
+    results = {item["case_id"]: item for item in payload["cases"]}
+
+    assert payload["schema_version"] == "xbrainlab.agent_toolcall_showcase.v3"
+    assert payload["summary"] == {
+        "status": "passed",
+        "total": 24,
+        "passed": 24,
+        "failed": 0,
+        "missing_terminal_outcomes": 0,
+    }
+    assert (output_dir / "runtime" / "showcase_recipe.json").is_file()
+    assert results["import.save_recipe"]["command_result"]["ok"] is True
+    assert results["import.reload_recipe"]["command_result"]["ok"] is True
+
+    reset_state = results["preprocess.reset_approved"]["state_after"]
+    assert reset_state["raw"]["loaded"] is True
+    assert reset_state["preprocessed"]["operations"] == []
+    assert reset_state["epoch"]["available"] is False
+    assert reset_state["dataset"]["split_spec_saved"] is False
+    assert reset_state["training"]["has_trainer"] is False
+
+    assert results["analysis.visualize_before_run"]["command_result"]["ok"] is True
+    assert (
+        results["analysis.visualize_before_run"]["state_after"]["visualization"][
+            "saliency_available"
+        ]
+        is False
+    )
+    assert results["visualization.montage_request"]["handoff"] == {
+        "kind": "confirm_montage",
+        "status": "requested",
+        "parameters": {"montage_name": "standard_1020", "warning": ""},
+    }
+    assert results["visualization.montage_request"]["admission"]["command"] is None
+    assert results["visualization.montage_request"]["exposed_tool_schema_names"] == [
+        "set_montage"
+    ]
+    assert results["navigation.switch_dataset_panel"]["handoff"] == {
+        "kind": "switch_panel",
+        "status": "requested",
+        "parameters": {"panel": "dataset", "view_mode": None},
+    }
+
+    for case_id, parameter, wrong_value in (
+        ("visualization.montage_request", "montage_name", "standard_1005"),
+        ("navigation.switch_dataset_panel", "panel", "training"),
+    ):
+        case = _case(case_id)
+        corrupted = deepcopy(results[case_id])
+        corrupted["handoff"]["parameters"][parameter] = wrong_value
+        assert finalize_case_result(case, corrupted)["pass"] is False
 
 
 def test_real_boundaries_cover_success_block_confirmation_stale_and_retry(

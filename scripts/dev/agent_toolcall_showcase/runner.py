@@ -18,6 +18,10 @@ from XBrainLab.backend.application import (
 )
 from XBrainLab.backend.application.runtime import get_application_service
 from XBrainLab.backend.study import Study
+from XBrainLab.llm.action_contracts import (
+    AGENT_ACTION_CONTRACTS,
+    AgentExecutionKind,
+)
 from XBrainLab.llm.agent.assembler import ContextAssembler
 from XBrainLab.llm.agent.confirmation import (
     AgentConfirmationRequest,
@@ -28,7 +32,10 @@ from XBrainLab.llm.agent.interaction import (
     AgentInteractionOutcome,
     AgentInteractionStatus,
 )
-from XBrainLab.llm.agent.prompt_policy import prompt_action_authorization
+from XBrainLab.llm.agent.prompt_policy import (
+    classify_prompt_action,
+    prompt_action_authorization,
+)
 from XBrainLab.llm.agent.request_admission import (
     UserRequestAdmission,
     UserRequestAdmissionAction,
@@ -63,7 +70,7 @@ from XBrainLab.product_language import tool_action_label
 from .cases import ShowcaseCase
 from .selector import ProposalSelector
 
-SCHEMA_VERSION = "xbrainlab.agent_toolcall_showcase.v2"
+SCHEMA_VERSION = "xbrainlab.agent_toolcall_showcase.v3"
 DIAGNOSTIC_DISCLAIMER = (
     "This is a product showcase and diagnostic. It is not the frozen thesis "
     "benchmark, does not report Agent accuracy, and must not be cited as thesis "
@@ -76,9 +83,9 @@ def showcase_limitations(mode: str) -> list[str]:
     limitations = [
         DIAGNOSTIC_DISCLAIMER,
         (
-            "The fast matrix cancels training before execution and verifies "
-            "evaluation and saliency as blocked before a finished run; it does "
-            "not validate training quality or completed analysis output."
+            "The fast matrix does not execute training. Evaluation remains blocked "
+            "before a finished run, while visualization readiness and saliency setup "
+            "do not validate completed analysis output."
         ),
     ]
     if mode == "deterministic":
@@ -105,6 +112,7 @@ _PREPARATION_ORDER = {
     "previewed": 2,
     "validated": 3,
     "loaded": 4,
+    "recipe_saved": 4,
     "preprocessed": 5,
     "epoched": 6,
     "dataset_ready": 7,
@@ -183,6 +191,7 @@ class WorkflowHarness:
         self.output_dir = output_dir
         self.runtime_dir = output_dir / "runtime"
         self.source_path = (self.runtime_dir / "showcase_raw.fif").resolve()
+        self.recipe_path = (self.runtime_dir / "showcase_recipe.json").resolve()
         self.study = Study()
         self.service = get_application_service(self.study)
 
@@ -273,6 +282,14 @@ class WorkflowHarness:
                 self._setup_command(
                     "apply_interpretation",
                     {"confirmed": True},
+                )
+            )
+            state = self.service.get_state()
+        if preparation == "recipe_saved":
+            trace.append(
+                self._setup_command(
+                    "save_interpretation_recipe",
+                    {"recipe_path": str(self.recipe_path)},
                 )
             )
             state = self.service.get_state()
@@ -675,6 +692,10 @@ class ShowcaseRunner:
                 "preparation": case.preparation,
                 "expected_terminal": case.expected_terminal,
                 "expected_error_type": case.expected_error_type,
+                "expected_confirmation_kind": case.expected_confirmation_kind,
+                "expected_ui_request_kind": case.expected_ui_request_kind,
+                "expected_ui_params": dict(case.expected_ui_params),
+                "expected_state_after": dict(case.expected_state_after),
             },
             "setup_trace": setup_trace,
             "state_before": state_before,
@@ -712,7 +733,7 @@ class ShowcaseRunner:
         admission: UserRequestAdmission,
     ) -> dict[str, Any]:
         assembler = ContextAssembler(self.registry, world.study)
-        authorization = _prompt_authorization(case, admission)
+        authorization = _prompt_authorization(case, admission, prompt)
         assembler.set_turn_authorized_command(authorization)
         messages = assembler.get_messages([{"role": "user", "content": prompt}])
         prompt_publication = assembler.latest_tool_publication
@@ -765,13 +786,20 @@ class ShowcaseRunner:
                 {"purpose": "induce_real_publication_change", **trace}
             )
 
+        latest_user_text = prompt
+        if _prompt_authorization_selects_tool(
+            authorization,
+            prompt_publication.tool_names,
+            selected_tool,
+        ):
+            latest_user_text = ""
         decision = coordinator.evaluate(
             ToolAttemptRequest(
                 command_name=selected_tool,
                 params=selected_params,
                 confidence=1.0,
                 publication=prompt_publication,
-                latest_user_text=prompt,
+                latest_user_text=latest_user_text,
             )
         )
         base["verification"] = _verification_payload(decision, recording.last)
@@ -1099,7 +1127,8 @@ def finalize_showcase_payload(
     status = "passed" if passed == len(finalized) and missing == 0 else "failed"
     result = dict(payload)
     result["cases"] = finalized
-    run = dict(result.get("run")) if isinstance(result.get("run"), dict) else {}
+    raw_run = result.get("run")
+    run: dict[str, Any] = dict(raw_run) if isinstance(raw_run, dict) else {}
     run["status"] = status
     run["case_count"] = len(finalized)
     result["run"] = run
@@ -1372,6 +1401,10 @@ def _resumed_case_result(
             "preparation": case.preparation,
             "expected_terminal": case.expected_terminal,
             "expected_error_type": case.expected_error_type,
+            "expected_confirmation_kind": case.expected_confirmation_kind,
+            "expected_ui_request_kind": case.expected_ui_request_kind,
+            "expected_ui_params": dict(case.expected_ui_params),
+            "expected_state_after": dict(case.expected_state_after),
         },
         "setup_trace": [],
         "state_before": {},
@@ -1487,9 +1520,35 @@ def _duration_projection(value: Any) -> float:
 def _prompt_authorization(
     case: ShowcaseCase,
     admission: UserRequestAdmission,
+    prompt: str,
 ) -> str | None:
     command = admission.command
+    prompt_action = classify_prompt_action(
+        prompt,
+        command.value if command is not None else "",
+    )
+    if prompt_action.tool_name is not None:
+        if prompt_action.action_name is None:
+            raise ShowcaseContractError("Prompt action omitted its action identity.")
+        return prompt_action_authorization(
+            command_name=prompt_action.action_name,
+            tool_name=prompt_action.tool_name,
+        )
+    contract = AGENT_ACTION_CONTRACTS.contract_for(case.tool_name)
     mapped = TOOL_TO_COMMAND.get(case.tool_name)
+    if (
+        command is None
+        and contract is not None
+        and contract.direct_action
+        and contract.execution_kind is AgentExecutionKind.UI_REQUEST
+        and contract.command is not None
+        and mapped is contract.command
+        and not contract.intent_aliases
+    ):
+        return prompt_action_authorization(
+            command_name=contract.command.value,
+            tool_name=case.tool_name,
+        )
     if command is None or mapped is None:
         return None
     if mapped is not command:
@@ -1497,6 +1556,33 @@ def _prompt_authorization(
     return prompt_action_authorization(
         command_name=command.value,
         tool_name=case.tool_name,
+    )
+
+
+def _prompt_authorization_selects_tool(
+    authorization: str | None,
+    published_tool_names: frozenset[str],
+    tool_name: str,
+) -> bool:
+    """Recognize one exact host-selected direct action in this diagnostic."""
+    contract = AGENT_ACTION_CONTRACTS.contract_for(tool_name)
+    if contract is None or not contract.direct_action:
+        return False
+    host_selected_ui_action = (
+        contract.execution_kind is AgentExecutionKind.UI_REQUEST
+        and contract.command is not None
+        and not contract.intent_aliases
+    )
+    if contract.command is not None and not host_selected_ui_action:
+        return False
+    action_name = (
+        contract.command.value if contract.command is not None else contract.action_name
+    )
+    return published_tool_names == frozenset(
+        {tool_name}
+    ) and authorization == prompt_action_authorization(
+        command_name=action_name,
+        tool_name=tool_name,
     )
 
 
@@ -1630,6 +1716,29 @@ def _case_contract_failures(
             and verification.get("valid") is True
         ):
             failures.append("Expected exact workflow UI handoff semantics.")
+    elif case.expected_terminal == "typed_ui_request":
+        if terminal != {"kind": "handoff", "status": "requested"}:
+            failures.append(f"Expected a typed UI request; got {terminal!r}.")
+        handoff = result.get("handoff")
+        parameters = handoff.get("parameters") if isinstance(handoff, dict) else None
+        if not (
+            isinstance(handoff, dict)
+            and handoff.get("kind") == case.expected_ui_request_kind
+            and handoff.get("status") == "requested"
+            and isinstance(parameters, dict)
+            and verification.get("status") == "verified"
+            and verification.get("coordinator_action") == "execute"
+            and verification.get("valid") is True
+        ):
+            failures.append("Expected exact verified typed UI-request semantics.")
+        for key, expected in case.expected_ui_params:
+            actual = parameters.get(key) if isinstance(parameters, dict) else None
+            if actual != expected:
+                failures.append(
+                    f"Expected UI request parameter {key}={expected!r}; got {actual!r}."
+                )
+        if command_result is not None:
+            failures.append("A typed UI request must not report a command result.")
     elif case.expected_terminal == "stale_revision":
         if (
             terminal != {"kind": "command_result", "status": "failed"}
@@ -1649,7 +1758,8 @@ def _case_contract_failures(
             failures.append("Expected exact stale-publication verification semantics.")
     elif case.expected_terminal == "retry_ok":
         retry = result.get("retry")
-        attempts = retry.get("attempts") if isinstance(retry, dict) else None
+        retry_mapping = retry if isinstance(retry, dict) else {}
+        attempts = retry_mapping.get("attempts")
         retry_shape_valid = bool(
             isinstance(attempts, list)
             and len(attempts) == 2
@@ -1664,7 +1774,7 @@ def _case_contract_failures(
             and attempts[1].get("success") is True
             and isinstance(attempts[1].get("result"), dict)
             and attempts[1]["result"].get("ok") is True
-            and retry.get("continued") is True
+            and retry_mapping.get("continued") is True
         )
         if (
             terminal != {"kind": "command_result", "status": "ok"}
@@ -1699,6 +1809,13 @@ def _case_contract_failures(
     for field in case.expected_changed_state:
         if not isinstance(changed, dict) or changed.get(field) is not True:
             failures.append(f"Expected changed_state.{field}=true.")
+    state_after = result.get("state_after")
+    for path, expected in case.expected_state_after:
+        actual = _nested_mapping_value(state_after, path)
+        if actual != expected:
+            failures.append(
+                f"Expected state_after.{path}={expected!r}; got {actual!r}."
+            )
     return failures
 
 
@@ -1710,7 +1827,7 @@ def _confirmation_contract_failures(
 ) -> list[str]:
     if not isinstance(confirmation, dict):
         return ["Expected a correlated confirmation record."]
-    expected_kind = (
+    expected_kind = case.expected_confirmation_kind or (
         "setting_change" if case.confirmation == "approve" else "command_confirmation"
     )
     failures: list[str] = []
@@ -1730,6 +1847,15 @@ def _confirmation_contract_failures(
     if confirmation.get("correlation_valid") is not True:
         failures.append("Confirmation resolution is not correlated to its request.")
     return failures
+
+
+def _nested_mapping_value(value: Any, path: str) -> Any:
+    current = value
+    for segment in path.split("."):
+        if not isinstance(current, dict) or segment not in current:
+            return None
+        current = current[segment]
+    return current
 
 
 def _messages_sha256(messages: list[dict[str, Any]]) -> str:
