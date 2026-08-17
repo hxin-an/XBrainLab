@@ -1,6 +1,6 @@
 # XBrainLab Agent Guide
 
-最後更新：`2026-08-14`
+最後更新：`2026-08-17`
 
 這裡只保留每個 coding agent 都必須遵守的 repo 級不變量；可變的產品現況、計畫與 gate
 命令仍由 canonical source 擁有。
@@ -38,14 +38,15 @@ validation 無法判斷的 adjacent finding 才會阻擋本 slice。其他 findi
 
 ## Plan-first repair
 
-任何 product bug、new feature 或 refactor 在開始實作前，先更新 `docs/planning/now.md` 中唯一的
-active plan，不為每題建立另一份 planning 文件。Plan 至少收斂：問題與證據、observable outcome、
-scope／non-goals、已確認原因與仍待驗證假設、依序修理步驟、focused validation 與 stop condition。
-涉及 UI 時也要記錄使用者確認狀態。
+Product bug、feature或refactor開始實作前先更新唯一active plan `docs/planning/now.md`，涵蓋問題與證據、
+outcome、scope／non-goals、假設、修理步驟、focused validation、stop condition與UI確認狀態。
 
-聊天中的 plan 是執行鏡像，不是 durable authority。施工中在 meaningful checkpoint 更新 next step、
-blocker 與 plan 變更；plan 不會擴大 scope ceiling。完成後從 active dispatch 移除該 slice，只有真的
-改變 current truth、decision 或 evidence contract 時才保留到對應 canonical 文件。
+聊天plan只是執行鏡像。施工中更新next step、blocker與變更；完成後移除該active slice，只將真正改變
+的current truth、decision或evidence contract留在其canonical authority。Plan不擴大scope ceiling。
+
+Multi-PR public contracts require approved decisions/target before implementation; current source/tests
+never ratify target. Assistant tool names, membership, side effects, confirmation, and visible results are
+public contracts.
 
 ## 產品與 Git 不變量
 

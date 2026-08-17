@@ -5,13 +5,19 @@ thesis benchmark, does not calculate Agent accuracy, and must not be cited as
 thesis evidence.
 
 The default deterministic matrix contains 24 contract-terminal cases whose tool
-union is checked directly against all 21 current model-facing action contracts.
+union is checked directly against the 21-action current model-facing projection
+v1.
 It verifies real command, confirmation, recipe-file, state, and typed UI-request
 boundaries without loading Granite or running a training job. Artifacts use the
 fail-closed `xbrainlab.agent_toolcall_showcase.v3` schema.
 
+This exact coverage guards consumers of the current projection. It does not
+approve those action names, freeze the product tool count, or define the target
+workflow-intent surface. Target membership is decided separately in
+`docs/target/agent.md`.
+
 The deterministic selector is a host-authored diagnostic: each case explicitly
-selects one canonical action and the runner derives its authorization from the
+selects one current-projection action and the runner derives its authorization from the
 current action contract. This exercises publication, verification, execution,
 and terminal boundaries, but it does not show that production intent inference
 or a model would select that action from the case prompt.

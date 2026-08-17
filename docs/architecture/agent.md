@@ -362,9 +362,9 @@ fixture，必須放在明確 optional legacy path，不能被 product code impor
 
 `XBrainLab/llm/tools/real/` 是目前真的操作 app 的工具。
 
-`XBrainLab/llm/action_contracts.py` 是完整 runtime inventory 與 model-facing classification 的
-共同 authority。Runtime / debug registry 暫時保留 30 個 implementations；local model 只會收到
-21 個 action contracts：
+`XBrainLab/llm/action_contracts.py` 是目前 runtime compatibility inventory 與 model-facing
+classification 的共同 source。Local model 目前收到下列 21 個 action contracts；這個集合稱為
+**current model-facing projection v1**，只描述 current behavior，不是 approved target surface：
 
 ```text
 list_files
@@ -378,10 +378,14 @@ evaluate / visualize / saliency
 set_montage / switch_panel
 ```
 
-Assembler prompt、RAG example policy 與 local tool-call eval 都從同一個 model-facing projection
+Assembler prompt、RAG example policy 與 local tool-call eval 都從同一個 current projection
 取得 catalog，不再各自用 compatibility denylist 決定曝光。`load_data`、`attach_labels`、六個
 granular preprocess tools 與 `get_dataset_info` 只留在 runtime/debug compatibility inventory；
 模型提出未發布的名稱會在 execution 前 fail closed。
+
+Approved target surface 由 [Agent target intent ledger](../target/agent.md#target-intent-ledger) 擁有。
+Current projection 中存在 implementation 或 exact-coverage test，不代表名稱、數量或 exposure 已取得
+產品核准；後續 migration 會依 ledger 移除、合併或重新命名 current actions。
 
 目前 real tools 有兩條路徑：
 
@@ -457,8 +461,10 @@ publication、不建立 confirmation，也不呼叫 backend。Backend internal c
   `message`、`error_type`、`recoverable`、`state`、`capability`、`diagnostics`、
   `raw_result` JSON payload。
 - `set_montage` 仍走既有 Montage Settings UI request；Cancel 不產生 montage mutation；
-  `switch_panel` 仍是 UI routing request；`list_files` / `query_state` 是 model-facing read-only /
-  inspection path。使用者詢問 dataset information 由 host admission 直接執行 `query_state`，不需要
+  `switch_panel` 仍是 UI routing request；current projection v1 中的 `list_files` / `query_state` 是
+  model-facing read-only / inspection path。Target 已決定 filesystem listing 不進產品 surface、workflow
+  state 改由 host 注入，但本次 authority repair 不先行修改 runtime。使用者詢問 dataset information
+  目前仍由 host admission 直接執行 `query_state`，不需要
   模型選擇 tool。舊 `get_dataset_info` / `load_data`
   definition 僅保留 compatibility identity，產品 policy 與 executor 會明確拒絕 direct
   load 並導向 Data Interpretation；`attach_labels` 與 granular preprocess implementations 保留為
@@ -482,7 +488,7 @@ policy 產生。
 prompt。若 capability snapshot 讀取失敗，只保留不屬於 command policy 的安全 UI/inspection tool，
 不退回 stage-based workflow exposure。
 
-RAG cleanup 把 bundled gold-set examples 也納入同一條 canonical model-facing 邊界：
+RAG cleanup 把 bundled gold-set examples 也納入同一條 current model-facing projection 邊界：
 `RAGIndexer`、`BM25Index` 和 `RAGRetriever` 會透過
 `XBrainLab/llm/rag/example_policy.py` 排除所有未發布 tool examples，包括舊 dataset-info、direct
 load / attach 與 granular preprocess names。這同時處理新建 index 和使用者機器上已存在的舊 Qdrant
