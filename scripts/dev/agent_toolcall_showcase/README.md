@@ -4,6 +4,18 @@ This command is a fast product showcase and diagnostic. It is not the frozen
 thesis benchmark, does not calculate Agent accuracy, and must not be cited as
 thesis evidence.
 
+The default deterministic matrix contains 24 contract-terminal cases whose tool
+union is checked directly against all 21 current model-facing action contracts.
+It verifies real command, confirmation, recipe-file, state, and typed UI-request
+boundaries without loading Granite or running a training job. Artifacts use the
+fail-closed `xbrainlab.agent_toolcall_showcase.v3` schema.
+
+The deterministic selector is a host-authored diagnostic: each case explicitly
+selects one canonical action and the runner derives its authorization from the
+current action contract. This exercises publication, verification, execution,
+and terminal boundaries, but it does not show that production intent inference
+or a model would select that action from the case prompt.
+
 From the repository root:
 
 ```bash

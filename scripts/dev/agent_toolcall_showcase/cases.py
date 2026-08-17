@@ -15,6 +15,7 @@ from typing import Any, Literal
 
 SHOWCASE_SOURCE_PLACEHOLDER = "<SHOWCASE_SOURCE_PATH>"
 SHOWCASE_SOURCE_DIR_PLACEHOLDER = "<SHOWCASE_SOURCE_DIR>"
+SHOWCASE_RECIPE_PATH_PLACEHOLDER = "<SHOWCASE_RECIPE_PATH>"
 _CASE_ALIASES = {
     "navigation.open_preprocess": "navigation.list_source_folder",
 }
@@ -25,6 +26,7 @@ Preparation = Literal[
     "previewed",
     "validated",
     "loaded",
+    "recipe_saved",
     "preprocessed",
     "epoched",
     "dataset_ready",
@@ -35,6 +37,7 @@ TerminalExpectation = Literal[
     "blocked",
     "confirmation_cancelled",
     "ui_handoff",
+    "typed_ui_request",
     "stale_revision",
     "retry_ok",
 ]
@@ -56,6 +59,10 @@ class ShowcaseCase:
     expected_terminal: TerminalExpectation = "command_ok"
     expected_error_type: str | None = None
     confirmation: ConfirmationResolution | None = None
+    expected_confirmation_kind: str | None = None
+    expected_ui_request_kind: str | None = None
+    expected_ui_params: tuple[tuple[str, Any], ...] = ()
+    expected_state_after: tuple[tuple[str, Any], ...] = ()
     flow: FlowKind = "standard"
     expected_changed_state: tuple[str, ...] = ()
     tags: tuple[str, ...] = ()
@@ -80,6 +87,10 @@ class ShowcaseCase:
             "expected_terminal": self.expected_terminal,
             "expected_error_type": self.expected_error_type,
             "confirmation": self.confirmation,
+            "expected_confirmation_kind": self.expected_confirmation_kind,
+            "expected_ui_request_kind": self.expected_ui_request_kind,
+            "expected_ui_params": self.expected_ui_params,
+            "expected_state_after": self.expected_state_after,
             "flow": self.flow,
             "expected_changed_state": self.expected_changed_state,
         }
@@ -110,10 +121,17 @@ def _replace_source_token(value: Any, source_path: str) -> Any:
 
 
 def _replace_runtime_tokens(value: str, source_path: str) -> str:
-    return value.replace(
-        SHOWCASE_SOURCE_DIR_PLACEHOLDER,
-        str(Path(source_path).parent),
-    ).replace(SHOWCASE_SOURCE_PLACEHOLDER, source_path)
+    return (
+        value.replace(
+            SHOWCASE_RECIPE_PATH_PLACEHOLDER,
+            str(Path(source_path).with_name("showcase_recipe.json")),
+        )
+        .replace(
+            SHOWCASE_SOURCE_DIR_PLACEHOLDER,
+            str(Path(source_path).parent),
+        )
+        .replace(SHOWCASE_SOURCE_PLACEHOLDER, source_path)
+    )
 
 
 SHOWCASE_CASES: tuple[ShowcaseCase, ...] = (
@@ -125,6 +143,18 @@ SHOWCASE_CASES: tuple[ShowcaseCase, ...] = (
         tool_name="list_files",
         params={"directory": SHOWCASE_SOURCE_DIR_PLACEHOLDER},
         tags=("navigation", "read-only", "success"),
+    ),
+    ShowcaseCase(
+        case_id="navigation.switch_dataset_panel",
+        title="Request the Dataset panel",
+        area="data import/navigation",
+        prompt="切換到 Dataset 面板。",
+        tool_name="switch_panel",
+        params={"panel_name": "dataset"},
+        expected_terminal="typed_ui_request",
+        expected_ui_request_kind="switch_panel",
+        expected_ui_params=(("panel", "dataset"), ("view_mode", None)),
+        tags=("navigation", "ui-request", "success"),
     ),
     ShowcaseCase(
         case_id="blocked.preprocess_without_data",
@@ -184,6 +214,39 @@ SHOWCASE_CASES: tuple[ShowcaseCase, ...] = (
         tags=("import", "handoff", "review"),
     ),
     ShowcaseCase(
+        case_id="import.save_recipe",
+        title="Save the applied interpretation recipe",
+        area="data import/navigation",
+        prompt=(
+            "Save the current interpretation recipe to "
+            f"{SHOWCASE_RECIPE_PATH_PLACEHOLDER}"
+        ),
+        tool_name="save_interpretation_recipe",
+        params={"recipe_path": SHOWCASE_RECIPE_PATH_PLACEHOLDER},
+        preparation="loaded",
+        expected_changed_state=("interpretation_changed",),
+        expected_state_after=(("interpretation.has_recipe", True),),
+        tags=("import", "recipe", "write", "success"),
+    ),
+    ShowcaseCase(
+        case_id="import.reload_recipe",
+        title="Reload an interpretation recipe",
+        area="data import/navigation",
+        prompt=(
+            f"Reload the interpretation recipe from {SHOWCASE_RECIPE_PATH_PLACEHOLDER}"
+        ),
+        tool_name="reload_interpretation_recipe",
+        params={"recipe_path": SHOWCASE_RECIPE_PATH_PLACEHOLDER},
+        preparation="recipe_saved",
+        expected_changed_state=("interpretation_changed",),
+        expected_state_after=(
+            ("interpretation.has_scan_result", True),
+            ("interpretation.has_preview", True),
+            ("interpretation.has_validation_decision", True),
+        ),
+        tags=("import", "recipe", "reload", "success"),
+    ),
+    ShowcaseCase(
         case_id="preprocess.standard",
         title="Apply standard preprocessing",
         area="preprocess",
@@ -211,6 +274,19 @@ SHOWCASE_CASES: tuple[ShowcaseCase, ...] = (
         preparation="preprocessed",
         expected_changed_state=("epoch_changed",),
         tags=("epoch", "success"),
+    ),
+    ShowcaseCase(
+        case_id="visualization.montage_request",
+        title="Request Montage Settings",
+        area="evaluation and saliency",
+        prompt="Use the standard_1020 montage for channel positions.",
+        tool_name="set_montage",
+        params={"montage_name": "standard_1020"},
+        preparation="epoched",
+        expected_terminal="typed_ui_request",
+        expected_ui_request_kind="confirm_montage",
+        expected_ui_params=(("montage_name", "standard_1020"),),
+        tags=("montage", "ui-request", "success"),
     ),
     ShowcaseCase(
         case_id="split.generate_trial",
@@ -312,6 +388,17 @@ SHOWCASE_CASES: tuple[ShowcaseCase, ...] = (
         tags=("evaluation", "blocked"),
     ),
     ShowcaseCase(
+        case_id="analysis.visualize_before_run",
+        title="Summarize visualization readiness before a finished run",
+        area="evaluation and saliency",
+        prompt="Visualize the current training results summary.",
+        tool_name="visualize",
+        params={"view": "summary"},
+        preparation="training_configured",
+        expected_state_after=(("visualization.saliency_available", False),),
+        tags=("visualization", "readiness", "success"),
+    ),
+    ShowcaseCase(
         case_id="analysis.saliency_before_run",
         title="Configure saliency before a finished run",
         area="evaluation and saliency",
@@ -321,6 +408,39 @@ SHOWCASE_CASES: tuple[ShowcaseCase, ...] = (
         preparation="training_configured",
         expected_changed_state=("visualization_changed",),
         tags=("saliency", "settings", "success"),
+    ),
+    ShowcaseCase(
+        case_id="preprocess.reset_approved",
+        title="Approve resetting derived preprocessing state",
+        area="preprocess",
+        prompt=(
+            "Reset preprocessing and discard derived epochs, the dataset split, "
+            "and training runs while retaining the loaded raw data and settings."
+        ),
+        tool_name="reset_preprocess",
+        params={},
+        preparation="training_configured",
+        confirmation="approve",
+        expected_confirmation_kind="command_confirmation",
+        expected_changed_state=(
+            "preprocessed_changed",
+            "epoch_changed",
+            "datasets_changed",
+            "training_changed",
+        ),
+        expected_state_after=(
+            ("raw.loaded", True),
+            ("preprocessed.operations", []),
+            ("epoch.available", False),
+            ("dataset.split_spec_saved", False),
+            ("training.has_model", True),
+            ("training.has_training_option", True),
+            ("training.has_trainer", False),
+            ("training.plan_count", 0),
+            ("training.run_count", 0),
+            ("training.finished_run_count", 0),
+        ),
+        tags=("preprocess", "reset", "confirmation", "success"),
     ),
     ShowcaseCase(
         case_id="safety.stale_revision",
