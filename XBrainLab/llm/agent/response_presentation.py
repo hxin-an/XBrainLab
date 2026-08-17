@@ -56,6 +56,13 @@ class AssistantPanelTarget(str, Enum):
     VISUALIZATION = "visualization"
 
 
+class AssistantPanelNavigationStatus(str, Enum):
+    """Terminal materialization result for one panel navigation request."""
+
+    READY = "ready"
+    FAILED = "failed"
+
+
 _PANEL_VIEW_MODES: dict[AssistantPanelTarget, frozenset[str]] = {
     AssistantPanelTarget.VISUALIZATION: frozenset(
         {
@@ -74,10 +81,18 @@ class AssistantPanelNavigationRequest:
 
     target: AssistantPanelTarget
     view_mode: str | None = None
+    correlation: AssistantTurnCorrelation | None = field(default=None, compare=False)
+    request_id: str = field(default_factory=lambda: uuid4().hex, compare=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.target, AssistantPanelTarget):
             raise TypeError("Assistant panel target must be typed.")
+        if self.correlation is not None and not isinstance(
+            self.correlation, AssistantTurnCorrelation
+        ):
+            raise TypeError("Assistant panel navigation correlation must be typed.")
+        if not isinstance(self.request_id, str) or not self.request_id.strip():
+            raise ValueError("Assistant panel navigation request ID is required.")
         if self.view_mode is None:
             return
         if not isinstance(self.view_mode, str):
@@ -90,6 +105,52 @@ class AssistantPanelNavigationRequest:
                 f"{self.target.value}."
             )
         object.__setattr__(self, "view_mode", normalized)
+
+
+@dataclass(frozen=True, slots=True)
+class AssistantPanelNavigationResolution:
+    """One correlated ready/failure callback from the product panel owner."""
+
+    request_id: str
+    correlation: AssistantTurnCorrelation
+    status: AssistantPanelNavigationStatus
+    message: str = ""
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.request_id, str) or not self.request_id.strip():
+            raise ValueError("Assistant panel navigation resolution requires an ID.")
+        if not isinstance(self.correlation, AssistantTurnCorrelation):
+            raise TypeError("Assistant panel navigation resolution must be correlated.")
+        if not isinstance(self.status, AssistantPanelNavigationStatus):
+            raise TypeError("Assistant panel navigation status must be typed.")
+        if not isinstance(self.message, str):
+            raise TypeError("Assistant panel navigation message must be a string.")
+        object.__setattr__(self, "request_id", self.request_id.strip())
+        object.__setattr__(self, "message", " ".join(self.message.split()))
+
+    @classmethod
+    def for_request(
+        cls,
+        request: AssistantPanelNavigationRequest,
+        *,
+        status: AssistantPanelNavigationStatus,
+        message: str = "",
+    ) -> AssistantPanelNavigationResolution:
+        if request.correlation is None:
+            raise ValueError("Uncorrelated panel navigation cannot be resolved.")
+        return cls(
+            request_id=request.request_id,
+            correlation=request.correlation,
+            status=status,
+            message=message,
+        )
+
+    def matches(self, request: AssistantPanelNavigationRequest) -> bool:
+        return (
+            request.correlation is not None
+            and self.request_id == request.request_id
+            and self.correlation == request.correlation
+        )
 
 
 _DATASET_PANEL_COMMANDS = frozenset(

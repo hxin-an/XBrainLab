@@ -1,0 +1,17 @@
+{
+  "schema": "xbrainlab.tool_walkthrough.v1",
+  "title": "Assistant panel navigation walkthrough",
+  "calls": [
+    {"id":"dataset","prompt":"Open Dataset.","tool":"switch_panel","params":{"panel_name":"dataset"},"expected":"Dataset is ready before terminal.","completion":"terminal"},
+    {"id":"preprocess","prompt":"Open Preprocess.","tool":"switch_panel","params":{"panel_name":"preprocess"},"expected":"Preprocess is ready before terminal.","completion":"terminal"},
+    {"id":"training","prompt":"Open Training.","tool":"switch_panel","params":{"panel_name":"training"},"expected":"Training is ready before terminal.","completion":"terminal"},
+    {"id":"evaluation","prompt":"Open Evaluation.","tool":"switch_panel","params":{"panel_name":"evaluation"},"expected":"Evaluation is ready before terminal.","completion":"terminal"},
+    {"id":"visualization-saliency","prompt":"Open Visualization saliency map.","tool":"switch_panel","params":{"panel_name":"visualization","view_mode":"saliency_map"},"expected":"Visualization is ready on Saliency Map.","completion":"terminal"},
+    {"id":"visualization-spectrogram","prompt":"Open Visualization spectrogram.","tool":"switch_panel","params":{"panel_name":"visualization","view_mode":"spectrogram"},"expected":"Spectrogram subview is selected.","completion":"terminal"},
+    {"id":"visualization-topographic","prompt":"Open Visualization topographic map.","tool":"switch_panel","params":{"panel_name":"visualization","view_mode":"topographic_map"},"expected":"Topographic Map subview is selected.","completion":"terminal"},
+    {"id":"visualization-3d","prompt":"Open Visualization 3D plot.","tool":"switch_panel","params":{"panel_name":"visualization","view_mode":"3d_plot"},"expected":"3D Plot subview is selected.","completion":"terminal"},
+    {"id":"visualization-repeat","prompt":"Open Visualization 3D plot again.","tool":"switch_panel","params":{"panel_name":"visualization","view_mode":"3d_plot"},"expected":"Repeated navigation is idempotent and terminal once.","completion":"terminal"},
+    {"id":"invalid-panel","prompt":"Open dashboard.","tool":"switch_panel","params":{"panel_name":"dashboard"},"expected":"A visible blocked result; the current panel does not change.","completion":"terminal"},
+    {"id":"invalid-subview","prompt":"Open Training metrics subview.","tool":"switch_panel","params":{"panel_name":"training","view_mode":"metrics"},"expected":"A visible blocked result; the current panel does not change.","completion":"terminal"}
+  ]
+}

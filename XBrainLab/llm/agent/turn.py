@@ -354,6 +354,7 @@ class AssistantDebugToolRequest:
     params: tuple[tuple[str, Any], ...]
     confirmed: bool = False
     authorization_text: str = ""
+    walkthrough: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.correlation, AssistantTurnCorrelation):
@@ -381,6 +382,8 @@ class AssistantDebugToolRequest:
             raise TypeError("Assistant debug path authorization must be a string.")
         if len(self.authorization_text) > MAX_CHAT_MESSAGE_CONTENT_LENGTH:
             raise ValueError("Assistant debug path authorization is too long.")
+        if type(self.walkthrough) is not bool:
+            raise TypeError("Assistant debug walkthrough marker must be a boolean.")
 
     @classmethod
     def from_params(
@@ -391,6 +394,7 @@ class AssistantDebugToolRequest:
         params: Mapping[str, Any],
         confirmed: bool = False,
         authorization_text: str = "",
+        walkthrough: bool = False,
     ) -> AssistantDebugToolRequest:
         """Copy diagnostic parameters before they cross a queued boundary."""
         if not isinstance(params, Mapping):
@@ -402,6 +406,7 @@ class AssistantDebugToolRequest:
             params=tuple(copied.items()),
             confirmed=confirmed,
             authorization_text=authorization_text,
+            walkthrough=walkthrough,
         )
 
     def to_params(self) -> dict[str, Any]:

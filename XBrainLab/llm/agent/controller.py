@@ -78,6 +78,8 @@ from .request_admission import (
 )
 from .response_presentation import (
     AssistantPanelNavigationRequest,
+    AssistantPanelNavigationResolution,
+    AssistantPanelNavigationStatus,
     AssistantPanelTarget,
     AssistantResponseAction,
     AssistantResponseKind,
@@ -402,6 +404,7 @@ class LLMController(QObject):
         self._max_tool_executions = 5
 
         self._pending_interactions = PendingInteractionCoordinator()
+        self._pending_panel_navigation: AssistantPanelNavigationRequest | None = None
 
     def _initialize_shutdown_lifecycle(self) -> None:
         """Initialize the controller-owned, signal-driven shutdown state."""
@@ -636,6 +639,7 @@ class LLMController(QObject):
             self._run_turn_setup_cleanup(label, cleanup)
 
         self._invalidate_pending_rag_turn()
+        self._pending_panel_navigation = None
         self.is_processing = False
         self.current_response = ""
         self._active_response_contract = AssistantResponseContract.STRUCTURED_ACTION
@@ -828,6 +832,7 @@ class LLMController(QObject):
         self._tool_attempt_session.reset_for_user_turn()
         self._turn_orchestrator.reset_for_user_turn()
         self.pending_interactions.clear_workflow_handoff()
+        self._pending_panel_navigation = None
         self.assembler.clear_recovery_feedback()
         self.assembler.clear_turn_authorization()
 
@@ -1687,7 +1692,10 @@ class LLMController(QObject):
             return
         success, result, requested_ui = presented
         if requested_ui:
-            if self.pending_interactions.workflow_handoff is None:
+            if (
+                self.pending_interactions.workflow_handoff is None
+                and self._pending_panel_navigation is None
+            ):
                 self._finalize_turn_after_tool()
             return
         if after_confirmation:
@@ -2176,6 +2184,10 @@ class LLMController(QObject):
             logger.error("Refused to finalize while a workflow UI handoff is pending")
             self.status_update.emit("Waiting for XBrainLab settings to finish.")
             return
+        if self._pending_panel_navigation is not None:
+            logger.error("Refused to finalize while panel navigation is pending")
+            self.status_update.emit("Waiting for the XBrainLab panel to open.")
+            return
         terminal = self._tool_attempt_session.arbitrate_terminal_response(
             "Tool execution finished, but no assistant message was produced."
         )
@@ -2602,6 +2614,7 @@ class LLMController(QObject):
                             str(result.params.get("panel", "")).strip().lower()
                         ),
                         view_mode=result.params.get("view_mode"),
+                        correlation=self._require_active_turn_correlation(),
                     )
                 except (TypeError, ValueError):
                     self._publish_response(
@@ -2610,6 +2623,16 @@ class LLMController(QObject):
                         kind=AssistantResponseKind.BLOCKED,
                     )
                     return False
+                self._pending_panel_navigation = navigation_request
+                self.status_update.emit(
+                    f"Opening {navigation_request.target.value.title()}..."
+                )
+                self._publish_activity(
+                    AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+                    command_name="switch_panel",
+                    request_id=navigation_request.request_id,
+                    decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
+                )
                 self.panel_navigation_requested.emit(navigation_request)
                 return True
             if result.kind is UiRequestKind.CONFIRM_MONTAGE:
@@ -2639,6 +2662,42 @@ class LLMController(QObject):
         # policy decides that the turn is terminal. Publishing here would show
         # a failure bubble before a corrected retry succeeds.
         return False
+
+    @pyqtSlot(object)
+    def on_panel_navigation_resolved(self, payload: object) -> bool:
+        """Finish only the still-current panel materialization request."""
+        pending = self._pending_panel_navigation
+        if not isinstance(payload, AssistantPanelNavigationResolution):
+            logger.error("Ignored untyped assistant panel navigation resolution")
+            return False
+        if pending is None or not payload.matches(pending):
+            logger.warning("Ignored stale or duplicate panel navigation resolution")
+            return False
+        self._pending_panel_navigation = None
+        target_label = pending.target.value.title()
+        if payload.status is AssistantPanelNavigationStatus.FAILED:
+            message = payload.message or f"Could not open {target_label}."
+            self._tool_attempt_session.record_failure()
+            self._tool_attempt_session.clear_summary()
+            self.status_update.emit(message)
+            self._publish_activity(
+                AssistantTurnActivityPhase.NEEDS_ATTENTION,
+                command_name="switch_panel",
+                request_id=pending.request_id,
+                message=message,
+                attention_kind=AssistantAttentionKind.ERROR,
+            )
+            self._publish_response(message, kind=AssistantResponseKind.ERROR)
+        else:
+            message = f"Opened {target_label} panel."
+            self._tool_attempt_session.record_success()
+            self._tool_attempt_session.record_summary(
+                message,
+                AssistantResponseKind.TOOL_RESULT,
+            )
+            self.status_update.emit(message)
+        self._finalize_turn_after_tool()
+        return True
 
     @staticmethod
     def _summarize_tool_result(
@@ -3192,6 +3251,7 @@ class LLMController(QObject):
                 payload.to_params(),
                 confirmed=payload.confirmed,
                 authorization_text=payload.authorization_text,
+                walkthrough=payload.walkthrough,
             )
         except Exception as exc:
             failure = safe_unexpected_failure(
@@ -3218,6 +3278,7 @@ class LLMController(QObject):
         *,
         confirmed: bool = False,
         authorization_text: str = "",
+        walkthrough: bool = False,
     ) -> None:
         """Execute a diagnostic tool after exact host-turn admission.
 
@@ -3230,6 +3291,13 @@ class LLMController(QObject):
 
         """
         self._require_active_turn_correlation()
+        if walkthrough:
+            self._execute_walkthrough_tool(
+                tool_name,
+                params,
+                authorization_text=authorization_text,
+            )
+            return
         admission = ToolExecutor(self.study).admit(
             tool_name,
             dict(params),
@@ -3282,3 +3350,49 @@ class LLMController(QObject):
         self.status_update.emit("Ready")
         self.is_processing = False
         self._emit_processing_finished()
+
+    def _execute_walkthrough_tool(
+        self,
+        tool_name: str,
+        params: dict[str, Any],
+        *,
+        authorization_text: str,
+    ) -> None:
+        """Run one scripted action through the normal product policy boundary."""
+        self.is_processing = True
+        self.status_update.emit(f"Diagnostic: Checking {tool_name}...")
+        self._publish_activity(AssistantTurnActivityPhase.PREPARING)
+        turn = self.metrics.start_turn()
+        turn.input_chars += len(authorization_text)
+        self._reset_user_turn_state()
+        prompt = authorization_text.strip() or f"Run {tool_name}."
+        self._append_history("user", prompt)
+
+        contract = AGENT_ACTION_CONTRACTS.contract_for(tool_name)
+        context = self._tool_attempt_coordinator.context_for(tool_name)
+        publication = PromptToolPublication(
+            tool_names=(
+                frozenset({tool_name}) if contract is not None else frozenset()
+            ),
+            backend_generation=context.generation,
+            authorized_command=(contract.action_name if contract is not None else None),
+        )
+        self._turn_orchestrator.set_active_publication(publication)
+        repeated = self._tool_attempt_session.record_tool_proposal(tool_name, params)
+        latest_user_text = prompt
+        direct_ui = self._publication_authorizes_direct_ui_action
+        if tool_name == "switch_panel" and direct_ui(publication, tool_name):
+            latest_user_text = ""
+        decision = self._tool_attempt_coordinator.evaluate(
+            ToolAttemptRequest(
+                command_name=tool_name,
+                params=dict(params),
+                confidence=1.0,
+                publication=publication,
+                latest_user_text=latest_user_text,
+                repeated=repeated,
+            )
+        )
+        if self._present_tool_attempt_boundary(decision):
+            return
+        self._execute_tool_attempt(decision)

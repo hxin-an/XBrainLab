@@ -74,6 +74,8 @@ class _RuntimeDispatcher(Protocol):
         resolution: WorkflowUiHandoffResolution,
     ) -> bool: ...
 
+    def resolve_panel_navigation(self, resolution: object) -> bool: ...
+
     def debug(self, request: AssistantDebugToolRequest) -> bool: ...
 
     def close(self) -> bool: ...
@@ -678,6 +680,49 @@ class AssistantRuntimeLifecycle(QObject):
         self.controller_created.emit(controller)
         return True
 
+    def start_diagnostic(self) -> bool:
+        """Bind the normal command transport without initializing a model engine."""
+        if self._initialized:
+            return bool(
+                self.accepts_commands and self.current.backend_mode == "diagnostic"
+            )
+        if not self._lifecycle_is_open or self._startup_cleanup_via_dispatcher:
+            return False
+
+        controller: object | None = None
+        dispatcher_bound = False
+        try:
+            controller = self._controller_factory(self._study)
+            self._bind_controller_lifecycle_signals(controller)
+            self._dispatcher.bind(controller)
+            dispatcher_bound = True
+        except Exception as exc:
+            safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="assistant_runtime_lifecycle",
+                operation="start_diagnostic",
+            )
+            self._rollback_failed_start(
+                controller,
+                dispatcher_bound=dispatcher_bound,
+            )
+            return False
+
+        self._controller = controller
+        self._initialized = True
+        self.controller_created.emit(controller)
+        ready = AssistantRuntimeSnapshot(
+            phase=AssistantRuntimePhase.READY,
+            initialized=True,
+            backend_mode="diagnostic",
+            selection_detail="Tool walkthrough",
+        )
+        if not self._coordinator.accept_worker_snapshot(ready):
+            self._rollback_failed_start(controller, dispatcher_bound=True)
+            return False
+        return True
+
     def _bind_controller_lifecycle_signals(self, controller: object) -> None:
         """Bind the required runtime-state and turn-terminal signal contract."""
         bindings = (
@@ -1271,6 +1316,17 @@ class AssistantRuntimeLifecycle(QObject):
             generation=active.generation if active is not None else None,
         )
 
+    def resolve_panel_navigation(
+        self,
+        resolution: object,
+    ) -> RuntimeCommandAdmissionResult:
+        """Deliver panel ready/failure through the owned command transport."""
+        return self._dispatch_if_open(
+            "resolve_panel_navigation",
+            resolution,
+            require_ready=False,
+        )
+
     def debug(
         self,
         tool_name: str,
@@ -1279,6 +1335,7 @@ class AssistantRuntimeLifecycle(QObject):
         generation: int | None = None,
         confirmed: bool = False,
         authorization_text: str = "",
+        walkthrough: bool = False,
     ) -> RuntimeCommandAdmissionResult:
         if not self.accepts_commands:
             return self._dispatch_if_open("debug", object())
@@ -1301,6 +1358,7 @@ class AssistantRuntimeLifecycle(QObject):
                 params=params,
                 confirmed=confirmed,
                 authorization_text=authorization_text,
+                walkthrough=walkthrough,
             )
         except (TypeError, ValueError) as exc:
             return RuntimeCommandAdmissionResult(

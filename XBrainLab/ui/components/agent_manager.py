@@ -1,5 +1,6 @@
 """Qt composition and presentation adapter for the in-app assistant."""
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any, cast
 
@@ -45,6 +46,7 @@ from XBrainLab.backend.training_state_contract import (
     TrainingOutcomeState,
 )
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.debug.tool_debug_mode import ToolDebugMode
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantDecisionOwner,
     AssistantTurnActivity,
@@ -57,6 +59,8 @@ from XBrainLab.llm.agent.confirmation import (
 from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.agent.response_presentation import (
     AssistantPanelNavigationRequest,
+    AssistantPanelNavigationResolution,
+    AssistantPanelNavigationStatus,
     AssistantPanelTarget,
     AssistantResponseAction,
     AssistantResponseActionKind,
@@ -564,6 +568,16 @@ class AgentManager(QObject):
             if hasattr(self.main_window, "ai_btn"):
                 self.main_window.ai_btn.setChecked(True)
 
+            if isinstance(self.chat_panel.debug_mode, ToolDebugMode):
+                if not self._assistant_runtime.start_diagnostic():
+                    self._show_low_priority_notice(
+                        "The tool walkthrough could not start. Restart XBrainLab "
+                        "and try again."
+                    )
+                    return
+                self.refresh_backend_status()
+                return
+
             config = self._assistant_runtime.load_config()
             if self._assistant_runtime.needs_first_run(config):
                 choice = self._show_local_runtime_first_run_dialog(config)
@@ -938,6 +952,10 @@ class AgentManager(QObject):
     ) -> None:
         """Admit one debug-script action through the normal correlated turn lease."""
         if self.agent_controller is None:
+            if self.chat_panel and hasattr(self.chat_panel, "reject_debug_step"):
+                self.chat_panel.reject_debug_step(
+                    "The diagnostic runtime is not ready. Try again."
+                )
             self._show_low_priority_notice(
                 "The assistant runtime must be ready before running diagnostics."
             )
@@ -949,6 +967,12 @@ class AgentManager(QObject):
             debug_options["confirmed"] = True
         if authorization_text:
             debug_options["authorization_text"] = authorization_text
+        debug_mode = getattr(self.chat_panel, "debug_mode", None)
+        if (
+            debug_mode is not None
+            and getattr(debug_mode, "is_walkthrough", False) is True
+        ):
+            debug_options["walkthrough"] = True
         admission = self._assistant_runtime.debug(
             tool_name,
             dict(params),
@@ -961,11 +985,17 @@ class AgentManager(QObject):
             self._show_low_priority_notice(
                 "The diagnostic action could not be started. Try again."
             )
+            if self.chat_panel and hasattr(self.chat_panel, "reject_debug_step"):
+                self.chat_panel.reject_debug_step(
+                    "The diagnostic action could not be started. Try again."
+                )
             return
         if not admission.accepted:
             self._finish_assistant_turn_submission(submission, accepted=False)
             self._deferred_submission_events = None
             self._show_low_priority_notice(admission.message)
+            if self.chat_panel and hasattr(self.chat_panel, "reject_debug_step"):
+                self.chat_panel.reject_debug_step(admission.message)
             return
         correlation = admission.correlation
         deferred_events = self._deferred_submission_events
@@ -978,6 +1008,10 @@ class AgentManager(QObject):
             self._show_low_priority_notice(
                 "The diagnostic action could not be correlated. Try again."
             )
+            if self.chat_panel and hasattr(self.chat_panel, "reject_debug_step"):
+                self.chat_panel.reject_debug_step(
+                    "The diagnostic action could not be correlated. Try again."
+                )
             return
         self._prepare_admitted_transcript_turn()
         self._replay_deferred_submission_events(deferred_events)
@@ -1283,6 +1317,8 @@ class AgentManager(QObject):
         target: AssistantPanelTarget,
         *,
         view_mode: str = "",
+        on_ready: Callable[[], None] | None = None,
+        on_failed: Callable[[str], None] | None = None,
     ) -> int:
         """Open one typed existing main-window panel without mutating workflow."""
         panel_index = {
@@ -1294,6 +1330,14 @@ class AgentManager(QObject):
         }[target]
         status_bar = self.main_window.statusBar()
 
+        if not view_mode and on_ready is None and on_failed is None:
+            materialized = self.main_window.switch_page(panel_index)
+            if materialized is not False and status_bar:
+                status_bar.showMessage(f"Opened {target.value.title()} panel.")
+            if materialized is False and status_bar:
+                status_bar.showMessage(f"Opening {target.value.title()}...")
+            return panel_index
+
         ready_callback_delivered = False
 
         def _on_ready(_panel: object) -> None:
@@ -1303,18 +1347,25 @@ class AgentManager(QObject):
                 self._switch_sub_view(panel_index, view_mode)
             if status_bar:
                 status_bar.showMessage(f"Opened {target.value.title()} panel.")
+            if on_ready is not None:
+                on_ready()
 
-        if view_mode:
-            materialized = self.main_window.switch_page(
-                panel_index,
-                on_ready=_on_ready,
+        def _on_failed(failure: object) -> None:
+            message = str(
+                getattr(failure, "message", "")
+                or f"Could not open {target.value.title()}."
             )
-            if materialized is not False and not ready_callback_delivered:
-                _on_ready(None)
-        else:
-            materialized = self.main_window.switch_page(panel_index)
-            if materialized is not False and status_bar:
-                status_bar.showMessage(f"Opened {target.value.title()} panel.")
+            if status_bar:
+                status_bar.showMessage(message)
+            if on_failed is not None:
+                on_failed(message)
+
+        callbacks: dict[str, Callable[..., None]] = {"on_ready": _on_ready}
+        if on_failed is not None:
+            callbacks["on_failed"] = _on_failed
+        materialized = self.main_window.switch_page(panel_index, **callbacks)
+        if materialized is not False and not ready_callback_delivered:
+            _on_ready(None)
 
         if materialized is False and status_bar:
             status_bar.showMessage(f"Opening {target.value.title()}...")
@@ -1617,6 +1668,16 @@ class AgentManager(QObject):
             self.chat_controller.set_processing(False)
         elif self.chat_panel:
             self.chat_panel.set_turn_activity(ChatTurnPresentation.idle())
+        if self.chat_panel and payload.outcome in {
+            "delivery_error",
+            "delivery_rejected",
+            "delivery_timeout",
+            "rejected_busy",
+            "rejected_closing",
+        }:
+            self.chat_panel.reject_debug_step("The diagnostic step was not delivered.")
+        elif self.chat_panel and hasattr(self.chat_panel, "complete_debug_step"):
+            self.chat_panel.complete_debug_step(payload.outcome)
         self._flush_assistant_training_terminal()
         self.refresh_backend_status()
 
@@ -1965,13 +2026,40 @@ class AgentManager(QObject):
                 "The requested XBrainLab view could not be opened."
             )
             return
-        if payload.view_mode:
-            self._open_assistant_panel_target(
-                payload.target,
-                view_mode=payload.view_mode,
+        if payload.correlation is None:
+            if payload.view_mode:
+                self._open_assistant_panel_target(
+                    payload.target,
+                    view_mode=payload.view_mode,
+                )
+            else:
+                self._open_assistant_panel_target(payload.target)
+            return
+
+        def _resolve(status: AssistantPanelNavigationStatus, message: str = "") -> None:
+            resolution = AssistantPanelNavigationResolution.for_request(
+                payload,
+                status=status,
+                message=message,
             )
-        else:
-            self._open_assistant_panel_target(payload.target)
+            admission = self._assistant_runtime.resolve_panel_navigation(resolution)
+            if not isinstance(admission, RuntimeCommandAdmissionResult) or not (
+                admission.accepted
+            ):
+                self._show_low_priority_notice(
+                    "Panel result delivery failed; its Assistant step is waiting. "
+                    "Retry the diagnostic step."
+                )
+
+        self._open_assistant_panel_target(
+            payload.target,
+            view_mode=payload.view_mode or "",
+            on_ready=lambda: _resolve(AssistantPanelNavigationStatus.READY),
+            on_failed=lambda message: _resolve(
+                AssistantPanelNavigationStatus.FAILED,
+                message,
+            ),
+        )
 
     def handle_workflow_ui_handoff(self, payload: object) -> None:
         """Route one typed backend workflow decision to existing product UI."""

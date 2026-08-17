@@ -267,6 +267,8 @@ def main() -> None:
     window = MainWindow(study)
     _configure_product_window_lifetime(window)
     _present_main_window(app, splash, window)
+    if args.tool_debug:
+        QTimer.singleShot(0, window.toggle_ai_dock)
     if startup_geometry_diagnostics_enabled():
         logger.info(widget_geometry_diagnostic_line("main_window.after_show", window))
 

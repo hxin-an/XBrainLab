@@ -85,6 +85,62 @@ def test_debug_script_parsing(debug_script_file):
     assert call.params["panel_name"] == "training"
 
 
+def test_walkthrough_ui_does_not_consume_or_duplicate_before_terminal(
+    qtbot,
+    tmp_path,
+):
+    path = tmp_path / "walkthrough.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema": "xbrainlab.tool_walkthrough.v1",
+                "title": "Navigation walkthrough",
+                "calls": [
+                    {
+                        "id": "navigation.training",
+                        "prompt": "Open Training.",
+                        "tool": "switch_panel",
+                        "params": {"panel_name": "training"},
+                        "expected": "Training becomes visible.",
+                        "completion": "terminal",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    app = QApplication.instance()
+    assert isinstance(app, QApplication)
+    app.setProperty("tool_debug_script", str(path))
+    panel = ChatPanel()
+    qtbot.addWidget(panel)
+    panel.set_runtime_state("ready")
+    assert "Step 1/1" in panel.workflow_run_status_label.text()
+    assert panel.workflow_run_status_label.isVisible()
+    receiver = MagicMock()
+    panel.debug_tool_requested.connect(receiver)
+
+    qtbot.mouseClick(panel.send_btn, Qt.MouseButton.LeftButton)
+    qtbot.mouseClick(panel.send_btn, Qt.MouseButton.LeftButton)
+
+    receiver.assert_called_once_with(
+        "switch_panel",
+        {"panel_name": "training"},
+        False,
+        "Open Training.",
+    )
+    assert panel.debug_mode is not None
+    assert panel.debug_mode.index == 0
+    assert "Waiting for terminal" in panel.workflow_run_status_label.text()
+
+    panel.complete_debug_step("completed")
+
+    assert panel.debug_mode.index == 1
+    assert panel.debug_mode.is_complete
+    assert "Completed 1/1" in panel.workflow_run_status_label.text()
+    app.setProperty("tool_debug_script", None)
+
+
 def test_debug_mode_execution_integration(qtbot, debug_script_file):
     """Debug requests have one Agent owner instead of a MainWindow bypass."""
     # 1. Setup MainWindow with property

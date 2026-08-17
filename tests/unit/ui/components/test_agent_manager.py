@@ -61,6 +61,8 @@ from XBrainLab.llm.agent.confirmation import (
 )
 from XBrainLab.llm.agent.response_presentation import (
     AssistantPanelNavigationRequest,
+    AssistantPanelNavigationResolution,
+    AssistantPanelNavigationStatus,
     AssistantPanelTarget,
     AssistantResponseAction,
     AssistantResponseKind,
@@ -282,11 +284,13 @@ def agent_mgr(qtbot) -> Any:
             generation=1,
         )
         runtime.debug.side_effect = (
-            lambda _tool_name, _params, *, generation: RuntimeCommandAdmissionResult(
-                command_name="debug",
-                status=RuntimeCommandAdmissionStatus.ACCEPTED,
-                turn_id=1,
-                generation=generation,
+            lambda _tool_name, _params, *, generation, **_options: (
+                RuntimeCommandAdmissionResult(
+                    command_name="debug",
+                    status=RuntimeCommandAdmissionStatus.ACCEPTED,
+                    turn_id=1,
+                    generation=generation,
+                )
             )
         )
         for method_name in (
@@ -708,6 +712,24 @@ class TestAgentManagerMethods:
         lease = agent_mgr._assistant_turn_state.lease
         assert lease is not None
         assert lease == AssistantTurnCorrelation(generation=1, turn_id=1)
+
+    def test_walkthrough_debug_request_uses_normal_tool_policy(self, agent_mgr):
+        agent_mgr.chat_panel = MagicMock()
+        agent_mgr.chat_panel.debug_mode.is_walkthrough = True
+
+        agent_mgr._handle_debug_tool_requested(
+            "reset_preprocess",
+            {},
+            authorization_text="Reset preprocessing.",
+        )
+
+        agent_mgr._assistant_runtime.debug.assert_called_once_with(
+            "reset_preprocess",
+            {},
+            generation=1,
+            authorization_text="Reset preprocessing.",
+            walkthrough=True,
+        )
 
     def test_rejected_runtime_submission_does_not_enter_processing(self, agent_mgr):
         agent_mgr.chat_panel = MagicMock()
@@ -1375,6 +1397,34 @@ class TestAgentManagerMethods:
             "Opened Visualization panel."
         )
 
+    def test_correlated_panel_navigation_resolves_only_after_ready(self, agent_mgr):
+        callbacks: dict[str, object] = {}
+
+        def _switch_page(index, *, on_ready=None, on_failed=None):
+            assert index == 2
+            callbacks["ready"] = on_ready
+            callbacks["failed"] = on_failed
+            return False
+
+        agent_mgr.main_window.switch_page = MagicMock(side_effect=_switch_page)
+        request = AssistantPanelNavigationRequest(
+            AssistantPanelTarget.TRAINING,
+            correlation=AssistantTurnCorrelation(generation=3, turn_id=7),
+        )
+
+        agent_mgr.handle_panel_navigation(request)
+
+        agent_mgr._assistant_runtime.resolve_panel_navigation.assert_not_called()
+        ready = callbacks["ready"]
+        assert callable(ready)
+        ready(object())
+        agent_mgr._assistant_runtime.resolve_panel_navigation.assert_called_once_with(
+            AssistantPanelNavigationResolution.for_request(
+                request,
+                status=AssistantPanelNavigationStatus.READY,
+            )
+        )
+
     def test_send_message_response_action_reenters_normal_input_path(self, agent_mgr):
         action = ChatResponseAction(
             action_id="check-workflow",
@@ -1827,6 +1877,9 @@ class TestAgentManagerMethods:
             "Terminal workflow result.",
         ]
         assert agent_mgr._assistant_turn_state.lease is None
+        agent_mgr.chat_panel.reject_debug_step.assert_called_once_with(
+            "The diagnostic step was not delivered."
+        )
 
     def test_debug_admission_establishes_the_same_two_row_presentation_budget(
         self,
@@ -3903,6 +3956,23 @@ class TestAgentManagerMethods:
         agent_mgr.toggle()
         agent_mgr.chat_dock.show.assert_called()
 
+    def test_tool_walkthrough_opens_without_normal_runtime_activation(self, agent_mgr):
+        from XBrainLab.debug.tool_debug_mode import ToolDebugMode
+
+        agent_mgr.chat_panel = MagicMock()
+        agent_mgr.chat_panel.debug_mode = ToolDebugMode.__new__(ToolDebugMode)
+        agent_mgr.chat_dock = MagicMock()
+        agent_mgr.chat_dock.isVisible.return_value = False
+        agent_mgr._assistant_runtime.initialized = False
+        agent_mgr._assistant_runtime.start_diagnostic.return_value = True
+
+        agent_mgr.toggle()
+
+        agent_mgr.chat_dock.show.assert_called()
+        agent_mgr._assistant_runtime.start_diagnostic.assert_called_once_with()
+        agent_mgr._assistant_runtime.load_config.assert_not_called()
+        agent_mgr._assistant_runtime.activate.assert_not_called()
+
     def test_debug_tool_flow_surfaces_backend_blocked_result(self, qtbot):
         """UI -> agent -> backend command flow reports shared blocked reason."""
         from XBrainLab.backend.study import Study
@@ -4092,6 +4162,9 @@ class _FakeAgentController(QObject):
         return None
 
     def on_workflow_ui_handoff_resolved(self, _resolution: object):
+        return None
+
+    def on_panel_navigation_resolved(self, _resolution: object):
         return None
 
     def stop_generation(self):

@@ -143,6 +143,9 @@ class _ThreadedAgentController(QObject):
         self.handoff_resolution_thread = QThread.currentThread()
         self.handoff_resolution = resolution
 
+    def on_panel_navigation_resolved(self, _resolution):
+        return None
+
     def close(self):
         self.worker_thread.quit()
         self.worker_thread.wait(1000)

@@ -292,6 +292,121 @@ class TestToolDebugMode:
         dbg = ToolDebugMode(str(p))
         assert len(dbg.calls) == 0
 
+    def test_walkthrough_v1_waits_for_terminal_before_advancing(self, tmp_path):
+        import json
+
+        from XBrainLab.debug.tool_debug_mode import DebugToolCall, ToolDebugMode
+
+        script = {
+            "schema": "xbrainlab.tool_walkthrough.v1",
+            "title": "Assistant tool walkthrough",
+            "calls": [
+                {
+                    "id": "navigation.dataset",
+                    "prompt": "Open Dataset.",
+                    "tool": "switch_panel",
+                    "params": {"panel_name": "dataset"},
+                    "expected": "Dataset becomes visible.",
+                    "completion": "terminal",
+                }
+            ],
+        }
+        path = tmp_path / "walkthrough.json"
+        path.write_text(json.dumps(script), encoding="utf-8")
+
+        debug = ToolDebugMode(str(path))
+
+        expected = DebugToolCall(
+            tool="switch_panel",
+            params={"panel_name": "dataset"},
+            authorization_text="Open Dataset.",
+            step_id="navigation.dataset",
+            prompt="Open Dataset.",
+            expected="Dataset becomes visible.",
+            completion="terminal",
+        )
+        assert debug.begin_next() == expected
+        assert debug.begin_next() == expected
+        assert debug.index == 0
+        assert not debug.is_complete
+
+        debug.complete_current("completed")
+
+        assert debug.index == 1
+        assert debug.is_complete
+
+    @pytest.mark.parametrize(
+        "mutation",
+        (
+            {"confirmed": True},
+            {"unexpected": "field"},
+            {"completion": "auto_approve"},
+        ),
+    )
+    def test_walkthrough_v1_rejects_unsafe_or_unknown_contracts(
+        self,
+        tmp_path,
+        mutation,
+    ):
+        import json
+
+        from XBrainLab.debug.tool_debug_mode import ToolDebugMode
+
+        call = {
+            "id": "navigation.dataset",
+            "prompt": "Open Dataset.",
+            "tool": "switch_panel",
+            "params": {"panel_name": "dataset"},
+            "expected": "Dataset becomes visible.",
+            "completion": "terminal",
+            **mutation,
+        }
+        path = tmp_path / "invalid-walkthrough.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "schema": "xbrainlab.tool_walkthrough.v1",
+                    "title": "Invalid",
+                    "calls": [call],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        debug = ToolDebugMode(str(path))
+
+        assert debug.calls == []
+        assert debug.load_error
+
+    def test_canonical_walkthrough_covers_exact_model_action_catalog(self):
+        from pathlib import Path
+
+        import mne
+
+        from XBrainLab.debug.tool_debug_mode import ToolDebugMode
+        from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
+
+        root = Path(__file__).resolve().parents[3]
+        profile = (
+            root
+            / "scripts"
+            / "dev"
+            / "agent_tool_walkthrough"
+            / "assistant-21-actions.json"
+        )
+
+        debug = ToolDebugMode(str(profile))
+
+        tools = [call["tool"] for call in debug.calls]
+        assert len(tools) == 21
+        assert len(set(tools)) == 21
+        assert set(tools) == AGENT_ACTION_CONTRACTS.model_tool_names()
+        assert all("confirmed" not in call for call in debug.calls)
+        source = debug.calls[2]["params"]["source_path"]
+        raw = mne.io.read_raw_fif(source, preload=False, verbose="ERROR")
+        assert raw.ch_names == ["C3", "C4", "Cz", "Pz"]
+        assert set(raw.annotations.description) == {"left", "right"}
+
 
 # --- visualization/base.py ---
 class TestVisualizer:

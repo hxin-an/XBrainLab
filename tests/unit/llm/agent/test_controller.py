@@ -48,6 +48,8 @@ from XBrainLab.llm.agent.request_admission import (
 )
 from XBrainLab.llm.agent.response_presentation import (
     AssistantPanelNavigationRequest,
+    AssistantPanelNavigationResolution,
+    AssistantPanelNavigationStatus,
     AssistantPanelTarget,
     AssistantResponseActionKind,
     AssistantResponseKind,
@@ -1971,10 +1973,77 @@ class TestHandleToolResultLogic:
         )
         assert result
         request = ctrl.panel_navigation_requested.emit.call_args.args[0]
-        assert request == AssistantPanelNavigationRequest(
-            target=AssistantPanelTarget.VISUALIZATION,
-            view_mode="3d_plot",
+        assert request.target is AssistantPanelTarget.VISUALIZATION
+        assert request.view_mode == "3d_plot"
+        assert request.correlation == AssistantTurnCorrelation(generation=1, turn_id=1)
+
+    def test_switch_panel_waits_for_matching_ready_resolution(self, ctrl):
+        ctrl.is_processing = True
+        assert ctrl._handle_tool_result_logic(
+            UiRequest(UiRequestKind.SWITCH_PANEL, {"panel": "training"})
         )
+        request = ctrl.panel_navigation_requested.emit.call_args.args[0]
+        stale = AssistantPanelNavigationRequest(
+            target=AssistantPanelTarget.TRAINING,
+            correlation=request.correlation,
+        )
+
+        assert (
+            ctrl.on_panel_navigation_resolved(
+                AssistantPanelNavigationResolution.for_request(
+                    stale,
+                    status=AssistantPanelNavigationStatus.READY,
+                )
+            )
+            is False
+        )
+        ctrl.turn_finished.emit.assert_not_called()
+
+        assert (
+            ctrl.on_panel_navigation_resolved(
+                AssistantPanelNavigationResolution.for_request(
+                    request,
+                    status=AssistantPanelNavigationStatus.READY,
+                )
+            )
+            is True
+        )
+        ctrl.turn_finished.emit.assert_called_once()
+        assert ctrl.is_processing is False
+
+        assert (
+            ctrl.on_panel_navigation_resolved(
+                AssistantPanelNavigationResolution.for_request(
+                    request,
+                    status=AssistantPanelNavigationStatus.READY,
+                )
+            )
+            is False
+        )
+        ctrl.turn_finished.emit.assert_called_once()
+
+    def test_switch_panel_failure_is_visible_and_terminal(self, ctrl):
+        ctrl.is_processing = True
+        assert ctrl._handle_tool_result_logic(
+            UiRequest(UiRequestKind.SWITCH_PANEL, {"panel": "evaluation"})
+        )
+        request = ctrl.panel_navigation_requested.emit.call_args.args[0]
+
+        assert (
+            ctrl.on_panel_navigation_resolved(
+                AssistantPanelNavigationResolution.for_request(
+                    request,
+                    status=AssistantPanelNavigationStatus.FAILED,
+                    message="Could not open Evaluation.",
+                )
+            )
+            is True
+        )
+
+        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
+        assert presentation.kind is AssistantResponseKind.ERROR
+        assert "Could not open Evaluation" in presentation.text
+        ctrl.turn_finished.emit.assert_called_once()
 
     @pytest.mark.parametrize(
         "params",
@@ -3624,6 +3693,42 @@ class TestExecuteDebugTool:
             "The host approved resetting preprocessing."
         )
         assert request.to_params() == {}
+
+    def test_walkthrough_uses_normal_confirmation_boundary(self, ctrl):
+        context = _enabled_tool_context(
+            "reset_preprocess",
+            generation=23,
+            confirmation=True,
+        )
+        decision = ToolAttemptDecision(
+            ToolAttemptAction.CONFIRMATION_REQUIRED,
+            "reset_preprocess",
+            {},
+            context=context,
+            tool=MagicMock(requires_confirmation=True),
+        )
+        ctrl._tool_attempt_coordinator.context_for = MagicMock(return_value=context)
+        ctrl._tool_attempt_coordinator.evaluate = MagicMock(return_value=decision)
+        ctrl._turn_orchestrator.host_turn_generation = None
+        ctrl._turn_orchestrator.host_turn_id = None
+        request = AssistantDebugToolRequest.from_params(
+            correlation=AssistantTurnCorrelation(generation=7, turn_id=11),
+            tool_name="reset_preprocess",
+            params={},
+            authorization_text="Reset preprocessing and show the confirmation.",
+            walkthrough=True,
+        )
+        ctrl._execute_tool_no_loop = MagicMock()
+
+        acknowledgement = ctrl.execute_debug_tool(request)
+
+        assert acknowledgement.phase is AssistantTurnDeliveryPhase.ACCEPTED
+        ctrl._tool_attempt_coordinator.evaluate.assert_called_once()
+        ctrl._execute_tool_no_loop.assert_not_called()
+        assert ctrl.pending_interactions.confirmation is not None
+        ctrl.confirmation_requested.emit.assert_called_once()
+        ctrl.turn_finished.emit.assert_not_called()
+        assert ctrl.is_processing is True
 
     def test_debug_params_cannot_smuggle_host_confirmation(self, ctrl):
         from XBrainLab.backend.application import get_application_service

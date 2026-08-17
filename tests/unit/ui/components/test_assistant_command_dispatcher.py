@@ -124,6 +124,9 @@ class _DirectController:
     ) -> bool | None:
         return self._deliver("resolve_ui_handoff")
 
+    def on_panel_navigation_resolved(self, _resolution: object) -> bool | None:
+        return self._deliver("resolve_panel_navigation")
+
     def execute_debug_tool(
         self,
         _request: AssistantDebugToolRequest,
@@ -167,6 +170,9 @@ class _QueuedController(QObject):
         _resolution: WorkflowUiHandoffResolution,
     ) -> None:
         self.calls.append("resolve_ui_handoff")
+
+    def on_panel_navigation_resolved(self, _resolution: object) -> None:
+        self.calls.append("resolve_panel_navigation")
 
     def execute_debug_tool(
         self,

@@ -227,6 +227,7 @@ class AssistantCommandDispatcher(QObject):
         "reset_conversation",
         "on_user_confirmation_resolved",
         "on_workflow_ui_handoff_resolved",
+        "on_panel_navigation_resolved",
         "execute_debug_tool",
         "close",
     )
@@ -238,6 +239,7 @@ class AssistantCommandDispatcher(QObject):
     reset_requested = pyqtSignal()
     confirmation_requested = pyqtSignal(object)
     workflow_ui_handoff_resolved_requested = pyqtSignal(object)
+    panel_navigation_resolved_requested = pyqtSignal(object)
     debug_requested = pyqtSignal(object)
     shutdown_requested = pyqtSignal()
     cleanup_finished = pyqtSignal(bool, str)
@@ -311,6 +313,9 @@ class AssistantCommandDispatcher(QObject):
         self.workflow_ui_handoff_resolved_requested.connect(
             qt_controller.on_workflow_ui_handoff_resolved
         )
+        self.panel_navigation_resolved_requested.connect(
+            qt_controller.on_panel_navigation_resolved
+        )
         self.debug_requested.connect(shutdown_bridge.deliver_debug)
         self.shutdown_requested.connect(shutdown_bridge.shutdown)
         shutdown_bridge.finished.connect(self._on_controller_shutdown_finished)
@@ -377,6 +382,14 @@ class AssistantCommandDispatcher(QObject):
         return self._emit_or_call(
             self.workflow_ui_handoff_resolved_requested,
             "on_workflow_ui_handoff_resolved",
+            resolution,
+        )
+
+    def resolve_panel_navigation(self, resolution: object) -> bool:
+        """Dispatch one typed panel materialization result."""
+        return self._emit_or_call(
+            self.panel_navigation_resolved_requested,
+            "on_panel_navigation_resolved",
             resolution,
         )
 

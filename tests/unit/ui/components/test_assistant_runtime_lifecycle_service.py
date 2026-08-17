@@ -95,6 +95,9 @@ class _Controller(QObject):
     def on_workflow_ui_handoff_resolved(self, _resolution: object) -> bool:
         return True
 
+    def on_panel_navigation_resolved(self, _resolution: object) -> bool:
+        return True
+
     def execute_debug_tool(self, _request: object) -> bool:
         return True
 
@@ -135,6 +138,7 @@ class _Dispatcher:
         self.turn_requests: list[object] = []
         self.confirmation_resolutions: list[AgentConfirmationResolution] = []
         self.handoff_resolutions: list[WorkflowUiHandoffResolution] = []
+        self.panel_navigation_resolutions: list[object] = []
         self.closed = False
         self.stop_calls = 0
         self.reset_calls = 0
@@ -174,6 +178,10 @@ class _Dispatcher:
         resolution: WorkflowUiHandoffResolution,
     ) -> bool:
         self.handoff_resolutions.append(resolution)
+        return True
+
+    def resolve_panel_navigation(self, resolution: object) -> bool:
+        self.panel_navigation_resolutions.append(resolution)
         return True
 
     def debug(self, request: AssistantDebugToolRequest) -> bool:
@@ -423,6 +431,37 @@ def test_lifecycle_owns_start_snapshot_dispatch_and_shutdown(qtbot) -> None:
     assert dispatcher.closed is True
     assert lifecycle.controller is None
     assert lifecycle.initialized is False
+
+
+def test_diagnostic_start_binds_transport_without_model_initialization() -> None:
+    controller = _Controller()
+    dispatcher = _Dispatcher()
+    created: list[object] = []
+    lifecycle = AssistantRuntimeLifecycle(
+        study=object(),
+        controller_factory=lambda _study: controller,
+        dispatcher=dispatcher,
+        config_loader=lambda: (_ for _ in ()).throw(
+            AssertionError("diagnostic startup must not load model config")
+        ),
+    )
+    lifecycle.controller_created.connect(created.append)
+
+    assert lifecycle.start_diagnostic() is True
+
+    assert lifecycle.initialized is True
+    assert lifecycle.accepts_commands is True
+    assert lifecycle.controller is controller
+    assert lifecycle.current == AssistantRuntimeSnapshot(
+        phase=AssistantRuntimePhase.READY,
+        initialized=True,
+        backend_mode="diagnostic",
+        selection_detail="Tool walkthrough",
+    )
+    assert created == [controller]
+    assert dispatcher.bound_controller is controller
+    assert dispatcher.initialized is False
+    assert dispatcher.launch_specs == []
 
 
 def test_start_fails_and_cleans_controller_without_terminal_signal() -> None:
