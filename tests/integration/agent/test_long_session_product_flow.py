@@ -16,6 +16,7 @@ from unittest.mock import patch
 import pytest
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QMainWindow
+from XBrainLab.llm.agent.product_turn_policy import ProductTurnPolicy
 
 from XBrainLab.backend.application import (
     LoadDataCommand,
@@ -37,7 +38,6 @@ from XBrainLab.chat_contract import (
 )
 from XBrainLab.llm.agent.context_encoding import decode_untrusted_context
 from XBrainLab.llm.agent.controller import LLMController
-from XBrainLab.llm.agent.product_turn_policy import ProductTurnPolicy
 from XBrainLab.llm.agent.rag_lifecycle import RAGRetrieverLifecycle
 from XBrainLab.llm.agent.runtime_state import (
     AssistantRuntimePhase,
