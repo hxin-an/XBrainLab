@@ -13,6 +13,10 @@ subject selection 與 async lifecycle owner。**
 - 主介面與 Assistant 共用同一個薄 chooser；
 - 主介面只保留 Import Data 與 Reload recipe，不保留三個舊 import 捷徑；
 - chooser 只負責選擇或預填來源，不能建立第二套 import state 或繞過 Import Review；
+- 手測確認 formal BIDS `bids/moabb-15/PhysionetMI` 能正確進入 BIDS subject selector；先前走
+  generic folder 是選到同名的 `source/moabb-15/PhysionetMI` raw EDF 目錄，不修改 backend
+  classification heuristic；
+- chooser 視覺採單一路徑列，右側內嵌 `Files...` 與 `Folder...` 小型動作，取代兩顆等權大按鈕；
 - 後續 21-tool catalog、no-LLM smoke 與 tool architecture 刪減各自使用獨立 PR。
 
 ## 問題與證據
@@ -30,8 +34,9 @@ subject selection 與 async lifecycle owner。**
 
 ## Observable outcome
 
-- Import Data 開啟單一薄視窗，提供 Choose files...、Choose folder...、selected-source summary、
-  Continue 與 Cancel。
+- Import Data 開啟單一薄視窗，提供一個可貼上路徑的 source bar、內嵌 Files... / Folder...
+  動作、selected-source summary、Continue 與 Cancel；視覺與既有 Data Import wizard 共用暗色
+  hierarchy，而不是 generic Qt 按鈕排列。
 - 可選多個 EEG files 或一個 folder；不可混合 files 與 folder。單一路徑可由使用者貼上，未按
   Continue 前不得 scan 或修改 ApplicationService state。
 - Folder 先經既有 SCAN_SOURCE catalog-only read path 取得 typed source_kind。Formal BIDS 進
@@ -72,6 +77,8 @@ subject selection 與 async lifecycle owner。**
    non-sidebar compatibility facade 不擴張，後續有真實 caller inventory 時再獨立決定移除。
 6. 跑 focused / same-class tests、Ruff、Basedpyright、UI artifact與 applicable CI；交付 exact SHA
    給使用者手測，批准前不合併。
+7. 依手測 feedback 以 characterization + focused red UI contract 把 chooser 收斂為單一 source bar；
+   保留 detached selection、folder auto classification 與 Cancel no-mutation contract，不修改 backend。
 
 ## Focused validation
 
@@ -108,6 +115,16 @@ subject selection 與 async lifecycle owner。**
   Qt external seam，owner 數不變，沒有新增 state machine、receipt或第二套 BIDS heuristic。
 - Product implementation commit 9112fcf2 已推送並建立 draft PR #29；required CI 正在執行。
   尚缺 final exact head 的 CI success 與使用者 native 手測，因此不稱 handoff-ready、不合併。
+- 後續 exact head `3f177df00fb1fe22d6d8def7a806566ca19828ad` 的所有 non-skipped CI checks 已
+  completed/success。2026-08-17 手測指出 chooser hierarchy 過於素；使用者已選定單一路徑列內嵌
+  Files... / Folder... 的 A 版 refinement。這會產生新 product SHA，使前述 CI evidence 只作
+  checkpoint，完成後需重新跑 exact-head CI 與 manual acceptance。
+- A 版 refinement 已完成 focused red→green：chooser 5 passed；相鄰 Dataset action contracts
+  94 passed；Assistant / product import walkthrough 6 passed。Ruff check / format-check、targeted
+  Basedpyright 與 MkDocs strict 均通過。主 agent 已查看 default 560×250、narrow 320×250 與
+  formal-BIDS 長路徑畫面；source bar、footer 無 overlap / clipping，browser path 從開頭顯示以利
+  分辨 `bids/` 與 `source/`。尚缺 clean exact-source visual baseline、pushed-head CI 與新 SHA 的
+  使用者 manual acceptance。
 
 ## Stop conditions
 
@@ -116,6 +133,8 @@ subject selection 與 async lifecycle owner。**
 - 若 generic folder / BIDS 判斷依賴 UI 自建 heuristic、exception message parsing或 direct backend
   helper call，停止並改回 command spine 的 typed result。
 - 若 Cancel、failure或stale callback留下 active handoff / busy state，不得交付。
+- 若 chooser refinement 改動 EegSourceSelection public shape、把 source type heuristic搬進 UI、
+  或在 Continue 前啟動 backend scan，不得交付。
 - 若 exact-source artifact未查看、required CI未 success或新 source未由使用者手測通過，只稱
   checkpoint，不合入 main。
 
