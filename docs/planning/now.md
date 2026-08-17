@@ -140,6 +140,15 @@ Focused red為eval helper不存在；green後ephemeral config固定使用
 `ibm-granite/granite-3.3-2b-instruct`，保留使用者cache path、明示CUDA、強制local／enabled且沒有save
 call。Stable eval與handoff registry合計19 tests通過；下一步在此修正commit後重跑final exact-source gates。
 
+RAG gate red-first：offline cache、34-point index與repeat initialization皆成功，但known-query oracle仍硬編
+已退役`get_dataset_info`，使現行34-case target corpus只能2/3。不得降similarity threshold或恢復舊tool；
+將query／request-scope oracle改成approved `import_eeg_data` exact gold prompt，並加source test要求所有
+known-query tools都屬於同一`AGENT_ACTION_CONTRACTS.model_tool_names()`。Backend RAG owner、embedding、
+index schema與corpus都不變。
+Focused red精確抓到retired tool；遷移後RAG／retriever 95 tests通過，真offline MiniLM gate使用既有
+D-mounted fixed revision與34-point index達3/3 known queries，request-scoped filter、non-action filter與
+repeat initialization全通過。這是最後一個source-side candidate blocker；提交後重新建立final exact SHA。
+
 已否決的中間路徑：red-first曾將三個target adapters加在舊30-tool runtime旁，立即使runtime變成33，
 並被runtime equality／headless contract tests攔截。該狀態不提交；建立第二個過渡catalog會增加遷移
 成本且違反single target authority，因此改採一次atomic cutover。
