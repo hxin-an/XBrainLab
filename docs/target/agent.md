@@ -1,6 +1,6 @@
 # XBrainLab Agent 目標
 
-最後更新：`2026-07-29`
+最後更新：`2026-08-17`
 
 這份文件定義 XBrainLab agent 的目標態。
 
@@ -410,19 +410,34 @@ tool surface 不應被舊工具 taxonomy 綁住。成熟 tool taxonomy 應以 wo
 side effect、decision boundary 和 result contract 來設計，而不是以目前檔案所在模組或舊
 controller method 命名。
 
-目標 tool 類型：
+分析時可使用 Discovery／Query、Data Interpretation、Metadata Resolution、Data Transform、
+Experiment Setup、Execution／Job Lifecycle、Result Query／Visualization、Lifecycle／Destructive 與
+UI Routing 等 intent 類型；這些是設計分類，不是已核准的 tool 名稱或固定數量。
 
-| 類型 | 代表 tools | 用途 |
-| --- | --- | --- |
-| Discovery / Query | `get_state`、`list_sources`、`explain_validation_state` | 讀狀態、查詢資料、向使用者解釋目前為什麼可做或不能做。 |
-| Data Interpretation | `scan_source`、`preview_interpretation`、`validate_interpretation`、`apply_interpretation`、`save_recipe`、`reload_recipe` | 資料匯入、label / event、BIDS、metadata、recipe 的共同入口。 |
-| Metadata Resolution | `infer_metadata`、`preview_subject_map`、`confirm_subject_map`、`confirm_class_map`、`confirm_event_roles` | subject/session/task/run、class map、event role、label anchor 的語意確認。 |
-| Data Transform | `apply_preprocess`、`create_epoch` | 對資料做受控轉換，必須綁定 AppliedInterpretation 與 capability policy。 |
-| Experiment Setup | `configure_dataset_split` | 保存經預覽與確認的 split specification；authoritative dataset materialization 由 `start_training` 執行。 |
-| Experiment Setup | `configure_model`、`configure_training`、`select_split_strategy`、`configure_saliency` | 設定高影響策略，通常需要使用者確認。 |
-| Execution | `start_training`、`run_evaluation`、`run_saliency`、`stop_job` | 長任務與 job lifecycle。 |
-| Lifecycle / Destructive | `new_session`、`remove_files` | 破壞性或改變 active pipeline 的 Assistant 操作，一律 confirmation。Reset Session 不是 Assistant target surface。 |
-| UI Routing | `switch_panel`、`open_result_view`、`show_import_preview` | 純 UI 導航，不應承載 backend workflow logic。 |
+### Authority layers
+
+- **Runtime compatibility inventory**：source 中目前可註冊／執行的 implementations；不能用來推導
+  target product surface。
+- **Current model-facing projection**：目前 prompt、RAG 與 eval 共用的曝光集合；只描述 current
+  behavior，可被 target migration 取代。
+- **Approved target surface**：只由下方 intent ledger 中 `approved` 的產品決策組成。未核准、延後或
+  拒絕的 intent 不得因為已存在 implementation 或 test case 而進入 target projection。
+
+### Target intent ledger
+
+| 使用者 intent | Target exposure | Owner 與 side effect | Confirmation 與 visible result | 狀態 |
+| --- | --- | --- | --- | --- |
+| 瀏覽任意資料夾內容 | 不提供 product model-facing filesystem listing；資料來源由既有 chooser／授權 scope 取得。 | 不新增 owner；不讓 Assistant 成為一般檔案瀏覽器。 | 不適用。Current `list_files` 等待後續 migration 移出產品 projection。 | rejected |
+| 匯入 EEG 資料 | 對模型提供一個高階 Data Import intent；final tool name／schema 待 implementation slice 命名。 | 重用既有 chooser、Data Interpretation command service 與 review lifecycle；只有 reviewed apply 能 authoritative mutation。 | 既有 Import Review／resource confirmation 決定 apply；回傳 imported、blocked 或 cancelled 的 typed terminal。 | approved |
+| 知道目前 workflow 狀態 | Host 每回合注入 scoped ApplicationService state／capability；不提供 internal state-dump target tool。 | ApplicationService snapshot 維持唯一 readiness owner；read-only。 | 不需 confirmation；回答必須使用最新 scoped snapshot。Current `query_state` 等待後續 migration 移出 model-facing projection。 | approved |
+| 套用 preprocessing | 只有明確 filter、resample、reference、normalization 等參數時才可提出受控 action；final grouping／schema 待討論。 | 重用 Preprocess command owner；不得把未指定意圖 silent substitute 成 standard bundle。 | 執行前顯示實際參數並使用既有 confirmation／capability boundary；回傳 applied 或 blocked typed result。 | approved |
+| 選擇模型與設定訓練 | 尚未決定拆成獨立 Select Model／Configure Training，或合成 Experiment Setup。 | 既有 ConfigureTraining command 是 current owner；target exposure 尚未核准。 | 待決定。 | deferred |
+| Evaluation、Visualization 與 Saliency | 尚未決定 result query、analysis execution、configuration 與 UI routing 的最終拆分。 | Current handlers 的 read／configure／schedule 語意混合不能直接當 target contract。 | 待決定。 | deferred |
+| Montage、epoch、dataset split、training lifecycle、recipe 與 destructive actions | 逐項確認是否 model-facing、UI handoff 或 host-owned workflow。 | 既有 ApplicationService／UI owner 保持 current truth。 | 待決定。 | deferred |
+
+改變任何 ledger 列的 exposure、owner、side effect、confirmation 或 visible result 都是 public product
+contract decision。必須先取得使用者確認並更新本表，之後 implementation PR 才能修改 projection、
+prompt、RAG、eval 或 walkthrough；`docs/planning/now.md` 只描述當前 implementation slice。
 
 tool 的輸出應該是 structured result，而不是只靠自然語言。
 
@@ -438,6 +453,8 @@ tool 的輸出應該是 structured result，而不是只靠自然語言。
 
 tool 重構的完成條件：
 
+- model-facing projection 的每一項都能對應一列 `approved` intent；不以 runtime inventory 的差集、
+  既有 prompt 名稱或 exact-coverage test 反推 target。
 - mutating agent tools 不再直接呼叫 controller。
 - UI 和 agent 對同一 workflow 使用同一套 `ApplicationService` command / capability policy。
 - 資料入口工具以 Data Interpretation command 為核心，不再把舊 `load_data` / `attach_labels`
