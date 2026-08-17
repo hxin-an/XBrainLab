@@ -5,11 +5,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from XBrainLab.llm.tools.mock.analysis_mock import (
-    MockEvaluateTool,
-    MockSaliencyTool,
-    MockVisualizeTool,
-)
 from XBrainLab.llm.tools.mock.dataset_mock import (
     MockApplyInterpretationTool,
     MockAttachLabelsTool,
@@ -628,41 +623,6 @@ class TestTrainingMocks:
             "configure_training",
         ):
             assert tools[tool_name].execute(study).kind.value == "workflow_handoff"
-
-
-class TestAnalysisMocks:
-    def test_evaluate(self, study):
-        result = MockEvaluateTool().execute(study)
-        _assert_tool_result(
-            result,
-            ok=True,
-            message="Evaluation summary ready.",
-        )
-
-    def test_visualize(self, study):
-        result = MockVisualizeTool().execute(study, view="summary")
-        _assert_tool_result(
-            result,
-            ok=True,
-            message="Visualization summary ready: summary.",
-        )
-
-    def test_saliency(self, study):
-        _assert_tool_result(
-            MockSaliencyTool().execute(study, method="Gradient"),
-            ok=True,
-            message="Saliency readiness checked with Gradient.",
-        )
-        _assert_tool_result(
-            MockSaliencyTool().execute(study, nt_samples=8),
-            ok=True,
-            message="Saliency readiness checked with custom parameters.",
-        )
-        _assert_tool_result(
-            MockSaliencyTool().execute(study),
-            ok=True,
-            message="Saliency readiness summary ready.",
-        )
 
 
 class TestUIControlMock:

@@ -4,17 +4,6 @@ from typing import Any
 
 import pytest
 
-from XBrainLab.backend.application.saliency_policy import (
-    MAX_SALIENCY_NT_SAMPLES,
-    MAX_SALIENCY_NT_SAMPLES_BATCH_SIZE,
-    MIN_SALIENCY_NT_SAMPLES,
-    MIN_SALIENCY_NT_SAMPLES_BATCH_SIZE,
-)
-from XBrainLab.llm.tools.definitions.analysis_def import (
-    BaseEvaluateTool,
-    BaseSaliencyTool,
-    BaseVisualizeTool,
-)
 from XBrainLab.llm.tools.definitions.dataset_def import (
     BaseApplyInterpretationTool,
     BaseAttachLabelsTool,
@@ -71,9 +60,6 @@ def _get_all_def_classes():
         BaseQueryStateTool,
         BaseGetDatasetInfoTool,
         BaseConfigureDatasetSplitTool,
-        BaseEvaluateTool,
-        BaseVisualizeTool,
-        BaseSaliencyTool,
         BaseStandardPreprocessTool,
         BaseResetPreprocessTool,
         BaseBandPassFilterTool,
@@ -169,29 +155,6 @@ EXPECTED_TOOL_CONTRACTS = {
             "training_mode",
         ),
         "required": ("split_strategy", "training_mode"),
-    },
-    BaseEvaluateTool: {
-        "name": "evaluate",
-        "description_markers": ("evaluation metrics", "training summaries"),
-        "properties": ("target",),
-        "required": (),
-    },
-    BaseVisualizeTool: {
-        "name": "visualize",
-        "description_markers": ("visualization views", "workflow state"),
-        "properties": ("view",),
-        "required": (),
-    },
-    BaseSaliencyTool: {
-        "name": "saliency",
-        "description_markers": ("saliency readiness", "trained EEG models"),
-        "properties": (
-            "method",
-            "nt_samples",
-            "nt_samples_batch_size",
-            "stdevs",
-        ),
-        "required": (),
     },
     BaseStandardPreprocessTool: {
         "name": "apply_standard_preprocess",
@@ -413,48 +376,6 @@ class TestConfigureTrainingDefinitions:
         assert "output_dir" not in params["properties"]
 
 
-class TestAnalysisDefinitions:
-    def test_evaluate_target_is_optional(self):
-        params = _property_value(BaseEvaluateTool.parameters)
-        assert "target" in params["properties"]
-        assert "target" not in params.get("required", [])
-
-    def test_visualize_view_is_optional(self):
-        params = _property_value(BaseVisualizeTool.parameters)
-        assert "view" in params["properties"]
-        assert "view" not in params.get("required", [])
-
-    def test_saliency_can_query_or_configure_method(self):
-        params = _property_value(BaseSaliencyTool.parameters)
-        assert "method" in params["properties"]
-        assert params["properties"]["method"]["enum"] == [
-            "Gradient",
-            "Gradient * Input",
-            "SmoothGrad",
-            "SmoothGrad_Squared",
-            "VarGrad",
-        ]
-        assert params["properties"]["nt_samples"]["type"] == "integer"
-        assert params["properties"]["nt_samples"]["minimum"] == (
-            MIN_SALIENCY_NT_SAMPLES
-        )
-        assert params["properties"]["nt_samples"]["maximum"] == (
-            MAX_SALIENCY_NT_SAMPLES
-        )
-        assert params["properties"]["nt_samples_batch_size"]["type"] == [
-            "integer",
-            "null",
-        ]
-        assert params["properties"]["nt_samples_batch_size"]["minimum"] == (
-            MIN_SALIENCY_NT_SAMPLES_BATCH_SIZE
-        )
-        assert params["properties"]["nt_samples_batch_size"]["maximum"] == (
-            MAX_SALIENCY_NT_SAMPLES_BATCH_SIZE
-        )
-        assert params["properties"]["stdevs"]["type"] == "number"
-        assert "params" not in params["properties"]
-
-
 class TestDataInterpretationDefinitions:
     def test_scan_source_requires_source_path(self):
         params = _property_value(BaseScanSourceTool.parameters)
@@ -526,9 +447,6 @@ class TestRequiresConfirmation:
             BaseAttachLabelsTool,
             BaseGetDatasetInfoTool,
             BaseConfigureDatasetSplitTool,
-            BaseEvaluateTool,
-            BaseVisualizeTool,
-            BaseSaliencyTool,
             BaseStandardPreprocessTool,
             BaseBandPassFilterTool,
             BaseNotchFilterTool,

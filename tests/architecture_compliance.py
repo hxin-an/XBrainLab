@@ -467,7 +467,6 @@ MAPPED_REAL_TOOL_FILES = (
     Path("XBrainLab/llm/tools/real/dataset_real.py"),
     Path("XBrainLab/llm/tools/real/preprocess_real.py"),
     Path("XBrainLab/llm/tools/real/training_real.py"),
-    Path("XBrainLab/llm/tools/real/analysis_real.py"),
 )
 CANONICAL_DELEGATING_REAL_TOOL_CLASSES = frozenset(
     {
@@ -477,7 +476,6 @@ CANONICAL_DELEGATING_REAL_TOOL_CLASSES = frozenset(
         "RealChannelSelectionTool",
         "RealConfigureTrainingTool",
         "RealEpochDataTool",
-        "RealEvaluateTool",
         "RealConfigureDatasetSplitTool",
         "RealGetDatasetInfoTool",
         "RealLoadDataTool",
@@ -489,7 +487,6 @@ CANONICAL_DELEGATING_REAL_TOOL_CLASSES = frozenset(
         "RealRereferenceTool",
         "RealResampleTool",
         "RealResetPreprocessTool",
-        "RealSaliencyTool",
         "RealSaveInterpretationRecipeTool",
         "RealScanSourceTool",
         "RealSetModelTool",
@@ -497,7 +494,6 @@ CANONICAL_DELEGATING_REAL_TOOL_CLASSES = frozenset(
         "RealStartTrainingTool",
         "RealStopTrainingTool",
         "RealValidateInterpretationTool",
-        "RealVisualizeTool",
     }
 )
 APPLICATION_SERVICE_CACHE_OWNER_FILES = frozenset(
@@ -6606,7 +6602,6 @@ def check_mapped_real_tool_command_ownership(root_dir: Path) -> list[str]:
             "dataset_real",
             "preprocess_real",
             "training_real",
-            "analysis_real",
         )
     )
     excluded_guard_tests = {

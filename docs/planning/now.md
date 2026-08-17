@@ -41,6 +41,11 @@ exact unavailable-stage action作oracle；23個focused tests通過，包含retir
 輸出exact `{"workflow_stage":"unavailable","tool_name":"switch_panel","parameters":{"panel_name":"dataset"}}`
 並由`--strict`通過。這只支撐一個真模型target action與strict JSON boundary，不外推17-tool selection accuracy。
 
+Retired-surface deletion checkpoint：已先移除無production caller的Assistant analysis definition／real／mock
+wrappers（`evaluate`、`visualize`、`saliency`）及只驗證這三個退役wrapper的測試；backend
+`AnalysisCommandService`與Evaluation／Visualization UI owner完全保留。此slice刪除275 production LOC、
+新增0、owner before／after不變；focused definitions、mock、assembler與architecture tests通過。
+
 已否決的中間路徑：red-first曾將三個target adapters加在舊30-tool runtime旁，立即使runtime變成33，
 並被runtime equality／headless contract tests攔截。該狀態不提交；建立第二個過渡catalog會增加遷移
 成本且違反single target authority，因此改採一次atomic cutover。

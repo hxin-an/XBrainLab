@@ -34,7 +34,6 @@ from XBrainLab.llm.agent.decision_context import (
 from XBrainLab.llm.agent.turn import AssistantResponseContract, AssistantTurnScope
 from XBrainLab.llm.pipeline_state import STAGE_CONFIG, PipelineStage
 from XBrainLab.llm.tools.base import BaseTool
-from XBrainLab.llm.tools.definitions.analysis_def import BaseSaliencyTool
 from XBrainLab.llm.tools.definitions.training_def import BaseStartTrainingTool
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
@@ -228,24 +227,6 @@ def test_single_action_contract_ends_with_bare_object_reminder() -> None:
     assert (
         '{"workflow_stage":"unavailable","tool_name":"start_training","parameters":{}}'
     ) in reminder
-
-
-def test_single_action_contract_requires_explicit_optional_values_to_be_copied() -> (
-    None
-):
-    registry = ToolRegistry()
-    registry.register(BaseSaliencyTool())
-    assembler = ContextAssembler(registry, Study())
-
-    contracts = assembler._format_tools(["saliency"])
-
-    reminder = contracts.rsplit("Final output reminder:\n", maxsplit=1)[1].lower()
-    assert "copy every supported value explicitly stated" in reminder
-    assert "method" in reminder
-    assert "nt_samples" in reminder
-    assert (
-        "omit an optional parameter only when the request does not state it" in reminder
-    )
 
 
 @pytest.mark.parametrize(
