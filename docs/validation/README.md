@@ -1,6 +1,6 @@
 # XBrainLab Validation Contract
 
-最後更新：`2026-08-15`
+最後更新：`2026-08-17`
 
 驗證回答「哪個exact source，在什麼環境，觀察到什麼」，不能把單一PASS放大成產品、科學或真人
 驗收結論。Executable handoff gate的ID、順序、argv、timeout與artifact contract只以
@@ -71,6 +71,22 @@ exact commit完成後才可稱`handoff-ready`。
 批准失效並回到checkpoint。CI、自動journey與offscreen screenshot不能取代此批准。
 
 純docs、tests、CI或agent-guidance變更若不可能改變產品行為，可不要求manual acceptance。
+
+### Staged product rebuild
+
+跨多個bounded slices的產品重建可以先在temporary integration branch組裝，但該branch不是產品
+baseline、release source或manual-acceptance對象：
+
+- 每個slice仍需focused evidence、clean/explained source、PR與所有applicable non-skipped checks
+  completed/success；integration不能成為較弱CI的避風港。
+- Intermediate slice可保留尚未物理刪除但unpublished的migration source；不得同時發布兩套產品
+  contract、加入runtime fallback或宣稱handoff-ready。
+- Final rollup PR只能聚合已分片審查的commits，不得在rollup新增未審product behavior。其累積diff
+  可超過單一slice門檻，但每個原始slice仍受complexity rules約束。
+- 使用者只對同步最新main、完整automated evidence已閉合的frozen exact head進行manual
+  acceptance。Head或合併基線改變時，必須重新建立candidate並重新取得適用的手測批准。
+- Final main merge仍須精確核對base／head、CI及manual acceptance；integration內部成功不能替代。
+- 合併後刪除temporary branch與其CI routing；rollback使用PR revert final merge，不保留隱藏雙路徑。
 
 ## Claim boundaries
 

@@ -2,492 +2,246 @@
 
 最後更新：`2026-08-17`
 
-這份文件定義 XBrainLab agent 的目標態。
+這份文件是 XBrainLab Assistant 產品目標的唯一權威。Runtime inventory、目前測試集合與歷史
+artifact 只能描述 current implementation，不能反推本文件的產品契約。
 
-## 角色
+## 角色與邊界
 
-XBrainLab 的 assistant 是 app 內 EEG workflow operator。
+XBrainLab Assistant 是 app 內的 local-only EEG workflow operator。它負責理解本回合需求、從
+backend 發布的候選動作中選一個、通過驗證後交給既有 ApplicationService 或 UI surface，並顯示
+一個可信 terminal result。
 
-它不是：
+它不是一般檔案瀏覽器、外部 coding assistant、第二套 workflow engine 或會自動跑完整 pipeline 的
+autonomous planner。
 
-- 普通聊天插件。
-- 外部 coding assistant。
-- 只會描述 UI 的 help bot。
+產品不變量：
 
-它應該能：
+- local model 與 revision 必須精確固定；缺少時 fail closed，不 silent fallback。
+- ApplicationService、capability policy 與 application publication 是唯一 workflow truth。
+- 每個 user turn 最多一個 tool 或一個 `respond_to_user`；成功、blocked、取消或失敗都結束 turn。
+- GUI decision 由既有 dialog／panel 的使用者操作完成；模型不代填高影響選項。
+- tool result 直接使用 trusted backend／UI public result，不再交給 Granite 改寫。
 
-- 讀取目前 workflow state。
-- 選擇合適工具。
-- 呼叫 backend command。
-- 解釋它做了什麼。
-- 在錯誤或缺資料時回報可行下一步。
+## Authority layers
 
-## Local-only runtime
+- **Runtime compatibility inventory**：source 中可註冊的 implementation；只支援 migration、debug 或
+  legacy callers。
+- **Current model-facing projection**：目前 product prompt 實際發布的集合；由
+  [current architecture](../architecture/agent.md) 描述。
+- **Approved target surface**：只由下方 intent ledger 的 17 個核准工具組成。
 
-產品 runtime 已是 local-only。
+名稱、membership、參數、execution kind、owner、confirmation 或 terminal result 任一改變，都是
+public product contract decision；必須先更新本文件並取得使用者確認。
 
-這代表：
+## Target intent ledger
 
-- `LLMConfig`、`LLMEngine`、`AgentWorker` 不接受 Gemini / remote API 作為產品
-  execution mode。
-- remote backend modules 已從 product package 移除；舊 settings / env 若指向
-  `api` / `gemini`，必須 migrate local 或 fail closed，不可 instantiate remote backend。
-- `openai` / `google-genai` 不在 default dependencies；若歷史研究需要，只能放在 optional
-  `legacy-remote-llm` dependency group / legacy fixture，不可由 product code import。
-- local model cache、dependency、GPU / CPU execution 要可檢查。
-- 產品啟動必須使用使用者選定的 exact model；不可因模型缺失而靜默換成另一個模型。
-- model switch、stop generation、timeout、VRAM diagnostics 要可驗證。
-- 真 local LLM 長時間 ChatPanel walkthrough 仍未完成，不能用 prompt smoke 取代。
+### GUI completion tools
 
-## Tool-call validation
+下列七個工具對模型都是零參數。Tool 只請求既有 GUI；真正選擇、preview、apply、confirmation 與
+cancel 都由該 GUI owner 完成。`opened`／`accepted` 不是成功，只有 correlated
+`completed`、`cancelled`、`blocked`、`unavailable` 或 `failed` 能結束 turn。
 
-tool-call validation 不只看回答像不像，也不應停在人工讀幾個範例。
+| Tool | Published stage | Existing owner／authoritative side effect | Terminal evidence |
+| --- | --- | --- | --- |
+| `import_eeg_data` | `empty` | Data Import chooser、Data Interpretation lifecycle、reviewed ApplicationService apply | import applied、cancelled、blocked 或 failed |
+| `select_channels` | `data_loaded` | Dataset Channel Selection dialog；`PreprocessCommand(SELECT_CHANNELS)` | selected channels applied、cancelled、blocked 或 failed |
+| `set_montage` | `epoch_ready`、`dataset_ready`、`trained` | Montage Settings；`ApplyMontageCommand` | montage applied、cancelled、blocked 或 failed |
+| `create_epochs` | `preprocessed` | Epoch Settings；`CreateEpochCommand` | epochs created、cancelled、blocked 或 failed |
+| `configure_dataset_split` | `epoch_ready`、`dataset_ready`、`trained` | Dataset Split dialog；`SaveDatasetSplitCommand` | split saved／datasets generated、cancelled、blocked 或 failed |
+| `select_model` | `epoch_ready`、`dataset_ready`、`trained` | Model Selection dialog；existing ConfigureTraining command owner | model selection saved、cancelled、blocked 或 failed |
+| `configure_training` | `epoch_ready`、`dataset_ready`、`trained` | Training Settings dialog；existing ConfigureTraining command owner | training settings saved、cancelled、blocked 或 failed |
 
-目標是建立一套可重跑的 agent tool-call scoring system，用固定 benchmark cases 評估 agent 在
-XBrainLab workflow 中的操作準確率。這個 benchmark 只在老師可用的產品候選固定後啟動；否則
-source、tool contracts 與 UI handoff 持續變動，分數不具可比較性。
+七個 names 共用既有 typed UI handoff registry 與一個 thin adapter。Internal route identity、underlying
+command 與 decision fields 由 trusted action contract 固定，不是模型參數，也不建立新 UI owner。
 
-它應驗證：
+### Direct preprocessing tools
 
-- intent 是否映射到正確 command。
-- tool selection 是否正確。
-- command input / parameters 是否正確。
-- 資料入口 intent 是否走 Data Interpretation flow，而不是直接套用舊 `load_data` /
-  `attach_labels` 心智模型。
-- command 是否真的執行。
-- 執行後 state 是否正確變化。
-- error 是否可分類、可回報、可恢復。
-- 多步 workflow 是否能維持 state。
+下列五個工具直接走既有 Preprocess command owner。Raw data 保留，因此不加 Assistant confirmation；
+缺少必要參數時用 `respond_to_user` 詢問，不套 default、不改走 GUI、不使用 standard bundle。
+Backend 仍負責 Nyquist、range、state、resource 與 scientific precondition。
 
-評分輸出至少應包含：
+| Tool | Required parameters | Published stage | Terminal |
+| --- | --- | --- | --- |
+| `apply_bandpass_filter` | `low_freq: number`、`high_freq: number` | `data_loaded`、`preprocessed` | applied 或 typed blocked／failed result |
+| `apply_notch_filter` | `freq: number` | `data_loaded`、`preprocessed` | applied 或 typed blocked／failed result |
+| `resample_data` | `rate: number` | `data_loaded`、`preprocessed` | applied 或 typed blocked／failed result |
+| `set_reference` | `method: string`，必須符合 backend-supported contract | `data_loaded`、`preprocessed` | applied 或 typed blocked／failed result |
+| `normalize_data` | `method: "z-score" \| "min-max"` | `data_loaded`、`preprocessed` | applied 或 typed blocked／failed result |
 
-- overall tool-call accuracy。
-- 分項 accuracy：intent、tool、parameters、state transition、error recovery。
-- per-stage accuracy：data import、preprocess、dataset、training、evaluation、visualization。
-- invalid call rate。
-- unsafe / blocked call rate。
-- self-correction success rate。
-- case-level failure taxonomy。
+### Lifecycle tools
 
-benchmark cases 應包含：
+| Tool | Parameters | Published stage | Confirmation／terminal |
+| --- | --- | --- | --- |
+| `start_training` | none | `epoch_ready`、`dataset_ready`、`trained` | backend 缺 setup 時 blocked；ready 時使用既有 start confirmation，之後以 real training terminal 收尾 |
+| `stop_training` | none | `training` | 只接受使用者明確要求；stopped／cancelled／idle-blocked terminal |
+| `reset_preprocessing` | none | raw data 存在且未 training | 使用既有 destructive confirmation；保留 raw、清除 derived state |
+| `clear_training_history` | none | history 存在且未 training | 使用既有 destructive confirmation；清除 runs/history，不清除可重用 setup |
 
-- single-turn workflow command。
-- multi-turn workflow sequence。
-- missing-data / wrong-stage request。
-- ambiguous user intent。
-- invalid parameter。
-- recovery after validation failure。
-- state update after backend execution。
-- Data Interpretation validation：`safe`、`needs_confirmation`、`blocked`、recipe reload 和
-  BIDS folder scan。
+Confirmation、resource receipt、generation token與 filesystem path 都由 trusted product code處理，
+模型不得輸出或保存。
 
-case 數量目標：
+### Navigation
 
-- engineering baseline：至少 `50` 個 tool-call cases。
-- thesis candidate：至少 `100` 個 tool-call cases。
-- 每個主要 workflow stage 至少 `10` 個 cases。
-- negative / blocked / missing-parameter / recovery cases 至少佔 `30%`。
-- multi-turn workflow cases 至少 `15` 個。
-- 每個正式納入主張的 local LLM runner 至少重跑 `3` 次；不足時只能標成 exploratory。
+`switch_panel` 是唯一 navigation tool：
 
-先前的 primary / fallback `117 / 117` artifacts 使用舊 prompt 與舊 scorer schema；該
-prompt 會加入 evaluator 推導的 intent、direct command 和 case-specific blocked reason，
-因此這個數字已撤回，不能再作為 raw model accuracy 或 thesis-candidate evidence。
+- `panel_name` 必須是 `dataset`、`preprocess`、`training`、`evaluation` 或 `visualization`。
+- `view_mode` 只允許搭配 `visualization`，值為 `saliency_map`、`spectrogram`、
+  `topographic_map` 或 `3d_plot`。
+- 所有可靠 stage 都發布；backend state unavailable 時仍可發布。
+- MainWindow materialization 的 correlated ready／failed callback 才是 terminal。
+- Visible result 必須包含實際 destination，例如 `Opened Saliency Map`，不能一律顯示 generic
+  Visualization 文案。
 
-目前 runner 已把 primary prompt condition 固定為
-`state_capability_unassisted`：只提供使用者對話、compact backend state 與 capability-filtered
-tool contracts；raw model score 與 host-assisted normalization / blocking score 分開保存。新的
-模型正式主張必須在乾淨、可重建的產品 checkpoint 上，以新版 schema 跑至少 `100` cases、
-`3` repeats，並保存 prompt condition、完整 attempts、source fingerprints 和 failure taxonomy。
-在重跑完成前，目前只能宣稱 strict-envelope implementation contract 有測試保護，不能宣稱
-任何 local-model tool-call accuracy 或 thesis-candidate benchmark 結果。
+### Retired model-facing surface
 
-這套 scoring system 才是 thesis evidence 的核心之一；dashboard clean 只能證明工程健康，不能替代 tool-call 準確率評估。
+下列名稱不屬於 target model surface：
 
-## Target control loop
+- `list_files`、`get_dataset_info`、`query_state`。
+- `load_data`、`attach_labels`。
+- `scan_source`、`preview_interpretation`、`validate_interpretation`、`apply_interpretation`。
+- interpretation recipe save／reload wrappers。
+- `apply_standard_preprocess`。
+- current `set_model`、parameterized `configure_training` wrappers。
+- current `evaluate`、`visualize`、`saliency` wrappers。
+- `reset_session`。
 
-目標 agent 不是一次 prompt 直接打 backend。它應該是一個有狀態、有驗證、有回饋的 control loop：
+相關 backend services 與 GUI consumers 保留；只有 Assistant wrapper 在 caller inventory 為空後物理
+刪除。不得新增 runtime fallback 或第二個 compatibility path。
 
-```mermaid
-flowchart LR
-    User["User command"] --> Assembler["Context Assembler"]
+## Backend-owned stage contract
 
-    System["System prompt<br/>role and rules"] --> Assembler
-    Tools["Tool definitions<br/>commands and schemas"] --> Assembler
-    Rag["RAG context<br/>few-shot examples"] --> Assembler
-    Memory["Memory<br/>conversation history"] --> Assembler
-    State["State Manager<br/>workflow truth"] --> Assembler
+沿用既有 `PipelineStage`，不建立 Agent state machine：
 
-    Assembler --> Instruction["Complete instruction"]
-    Instruction --> LLM["LLM Agent"]
-    LLM --> Proposal["Proposed tool call"]
-    Proposal --> Verify{"Verification Layer"}
-
-    Verify -->|"valid"| Backend["Backend command<br/>execute and refresh UI"]
-    Backend --> Result["Structured result"]
-    Result --> State
-
-    Verify -->|"invalid"| Correction["Self-correction<br/>reflect or ask user"]
-    Correction -.-> Assembler
-
-    classDef input fill:#f8fafc,stroke:#64748b,color:#111827;
-    classDef main fill:#eef2ff,stroke:#4f46e5,color:#111827;
-    classDef safety fill:#fff7ed,stroke:#ea580c,color:#111827;
-    classDef output fill:#ecfdf5,stroke:#059669,color:#111827;
-
-    class User,System,Tools,Rag,Memory input;
-    class Assembler,Instruction,LLM,Proposal,State main;
-    class Verify,Correction safety;
-    class Backend,Result output;
-```
-
-這張圖定義的是目標設計，不代表目前程式碼已完整符合。
-
-## Context Assembler
-
-Context Assembler 的責任是把使用者指令轉成 LLM 可以判斷的完整上下文。
-
-它應組合：
-
-- system prompt：agent 角色、工作流規則、安全邊界。
-- tool definitions：目前 backend command、schema、前置條件、輸出格式。
-- RAG context：少量可驗證的 few-shot workflow examples。
-- memory：只保留短 user-visible context；長 conversation history 不可作為 workflow truth。
-- state snapshot：由 State Manager 提供的 workflow stage、資料狀態、訓練狀態和可用 command。
-- decision context：由 ApplicationService state / capability policy 推導的 next step、
-  decision boundary、existing UI surface 和 blocked reason。
-
-Context Assembler 不應直接執行 backend 操作。它只負責讓 LLM 在正確上下文中提出候選 tool call。
-
-LLM 可以看 conversation，但 workflow truth 必須來自 state / decision context。當
-`decision_needed` 有值時，agent 不應自行猜 subject、event、epoch window、split strategy、
-model 或 saliency target；它應把使用者帶回既有 UI decision surface，或提出最小必要問題。
-
-## State Manager
-
-State Manager 是 assistant 看到的 workflow truth。
-
-它不應只是聊天記憶，而應整理 app 本體狀態：
-
-- workflow stage：empty、data loaded、preprocessed、dataset ready、training、trained 等。
-- data state：raw、preprocessed、epoch、dataset 是否存在。
-- training state：是否正在訓練、是否已有模型、是否有 evaluation result。
-- UI / command availability：目前哪些 command 可以執行，哪些需要先完成前置步驟。
-- recent tool result：上一個 command 成功、失敗、錯誤類型和可恢復建議。
-
-State Manager 的輸出會回饋到 system prompt 和 tool definitions。這代表 prompt 不是靜態文字，而是會跟著 app 狀態縮小或調整可用操作範圍。
-
-## Verification Layer
-
-Verification Layer 是 LLM 和 backend command 之間的安全邊界。
-
-它應在執行前檢查：
-
-- intent 和 tool 是否匹配。
-- tool 是否允許在目前 workflow stage 執行。
-- required inputs 是否完整。
-- input schema、型別、範圍是否有效。
-- file path、dataset、label、model、training option 是否存在或可解析。
-- Data Interpretation validation 是否允許資料解讀套用；`needs_confirmation` 要先問使用者，
-  `blocked` 要停止。
-- ApplicationService capability policy 是否仍允許此 command。
-- destructive / long-running command 是否需要 human confirmation。
-- agent confidence 是否足夠；不足時可重送 prompt、self-correct 或 ask user。
-
-驗證失敗時，不應直接吞掉錯誤或硬跑 backend。它應產生可回饋給 LLM 的 structured error，讓 Self-Correction 重新檢查 intent、補參數或向使用者提問。
-
-這裡的 confidence gate 只屬於 agent control loop，用來提升 tool-call 準確率與降低低信心亂呼叫。
-它不能覆蓋 backend / Data Interpretation validation。若資料解讀 validation 是 `blocked`，
-即使 LLM 對 tool call 很有信心，也不能執行 apply；若 validation 是 `needs_confirmation`，
-agent 必須把需要確認的語意交給使用者。
-
-## Autonomy Policy / Decision Boundary
-
-agent 可以協助使用者完成一整段 workflow，但底層執行必須是一個 command 一個 command
-地驗證、執行、刷新 state，再決定下一步。
-
-目標不是把 agent 限制成只能做單步，也不是讓它一次吐出多個 tool call 盲跑到底。成熟模式是
-verified workflow operator：
-
-```text
-user goal
-  -> agent proposes a workflow plan
-  -> propose one tool call
-  -> Verification Layer checks tool call
-  -> ApplicationService executes command
-  -> backend returns state + capability + autonomy decision
-  -> agent continues, asks user, retries, or stops
-```
-
-這裡需要在 workflow state 之上再加一層 autonomy policy：
-
-| 層級 | 責任 |
-| --- | --- |
-| Workflow State | 描述目前有什麼資料、epoch、dataset、training result、active job。 |
-| Capability Policy | 描述 backend 目前允不允許某 command 執行，以及 blocked reason。 |
-| Autonomy Policy | 描述即使 command 可執行，agent 能不能自動執行；執行後能不能繼續；什麼時候必須停下來問使用者。 |
-
-`can_execute = true` 不等於 `agent_can_auto_execute = true`。例如 `start_training` 在 backend
-state 上可能可執行，但它是 long-running / high-impact command，agent 仍必須要求確認。
-
-每個 command 都應有 command-specific autonomy policy：
-
-| 欄位 | 含義 |
-| --- | --- |
-| `can_auto_execute` | agent 是否可在沒有使用者再次確認時執行。 |
-| `requires_confirmation` | 是否必須 human confirmation。 |
-| `decision_boundary` | 是否碰到語意、破壞性、長任務或高影響邊界。 |
-| `continue_allowed_after_success` | 成功後 agent 是否可以自動進下一步。 |
-| `retry_limit` | 此 command 的自動修正 / retry 次數。 |
-| `stop_after_success` | 成功後是否必須停下來回報或詢問。 |
-| `blocks_downstream_until_confirmed` | 未確認前是否阻擋下游 workflow。 |
-
-建議的基本 policy：
-
-| 類型 | 例子 | policy |
+| Stage | Backend meaning | Published target behavior |
 | --- | --- | --- |
-| read-only query | get state、list files、preview、explain validation | 可自動執行；成功後可繼續。 |
-| scan / candidate construction | scan source、infer metadata、build interpretation candidate | 可自動執行；只能產生 preview / candidate，不可直接套用語意。 |
-| semantic confirmation | subject map、session map、class map、event role、label anchor | 只要不明確就停；`needs_confirmation` 不自動 apply。 |
-| data apply | apply interpretation、apply label/event mapping、save recipe | `safe` 可執行；若影響 downstream truth 或來自推論，應要求確認。 |
-| data transform | preprocess、epoch、generate dataset | 可依明確設定執行；缺參數或策略不明就問使用者。 |
-| high-impact strategy | split strategy、training mode、model choice、saliency target | 預設停下來確認，不靠 agent 自己猜。 |
-| long-running | start training、large evaluation、model download | 一律確認；執行後顯示進度與可恢復狀態。 |
-| destructive / lifecycle | reset、new session、clear dataset、remove files | 一律確認；不可自動 retry。 |
-| blocked | capability blocked、Data Interpretation blocked、resource locked | 不 retry，不硬跑，直接回報可理解原因。 |
+| `empty` | 無 raw data | Import、Switch |
+| `data_loaded` | 有 raw、尚無 derived preprocessing | Channel、五項 direct preprocess、Switch |
+| `preprocessed` | Channel 或任一 preprocess 已成功 | 五項 direct preprocess、Epoch、Reset、Switch |
+| `epoch_ready` | 已有 supervised epochs，但 split／model／training settings 尚未全部完成 | Montage、三項 setup tools、Start、Reset、Switch |
+| `dataset_ready` | saved split、model、training settings 三項全部完成 | setup 可修改；Start confirmation；Montage、Reset、Switch |
+| `training` | active training job | Stop、Switch；不發布其他 mutation |
+| `trained` | 至少一個 completed run | setup／retrain、Montage、Reset、Clear History、results navigation |
 
-停止條件不應是「state 一改變就停」，而是碰到 decision boundary 才停。
+`select_channels` 或任一 direct preprocess 成功會自然投影為 `preprocessed`。Montage 只在 epoch 後
+提供、不改變 stage。`start_training` 在 `epoch_ready` 可被提出，但 backend 必須精確回覆缺少的
+split、model 或 training settings，不能部分執行。
 
-典型例子：
+Stage、setup flags、running state與completed runs都從同一份 immutable ApplicationService
+publication產生。若 publication generation 在生成、repair、confirmation或GUI handoff期間改變，
+舊 proposal／resolution一律視為 stale。
 
-- scan source 成功：可以繼續 preview。
-- preview 發現 subject / session / class map / event role 有歧義：停，請使用者確認。
-- apply interpretation 成功：可以建議下一步，但不直接跳到 training。
-- preprocess 成功：可建議 epoch；若 epoch window / event id 不明，停。
-- dataset 生成前：split strategy、subject-wise / session-wise claim、training mode 不明時停。
-- start training 前：一律確認。
-- reset / new session / clear 前：一律確認。
+## Strict model output contract
 
-建議的 turn-level guard：
+Granite 每次只能輸出一個 JSON object，且 top level 恰有三個欄位：
 
-```text
-max_self_correction_attempts = 2
-max_tool_failures_per_turn = 2
-max_successful_tools_per_turn = 5
-max_repeated_same_call = 1
+```json
+{
+  "workflow_stage": "preprocessed",
+  "tool_name": "create_epochs",
+  "parameters": {}
+}
 ```
 
-這些數字是目標預設，不是不可調參數。更重要的是每個 command 要有自己的 policy，不應只靠
-全域 retry 次數。
+禁止 Markdown fence、前後 prose、array、多個 calls、額外欄位、寬鬆抽取與 legacy fallback。
+`workflow_stage` 是對 backend stage 的 acknowledgement，不是 authority。
 
-## Target contracts
+不執行 tool 時使用保留 branch：
 
-以下 contract 是目標外框，不是最終完整 schema。具體 command 欄位要等 Application Service / Command API 第一版切片出來後再定。
+```json
+{
+  "workflow_stage": "data_loaded",
+  "tool_name": "respond_to_user",
+  "parameters": {"message": "..."}
+}
+```
 
-### State Snapshot Contract
+`respond_to_user.parameters` 只能有 `message`。Answer、clarification與blocked reply不建立額外
+decision enum。
 
-State Snapshot 是 State Manager 輸出給 Context Assembler、Verification Layer 和 scorer 的狀態快照。
+Repair budget 是 initial generation 加最多兩次 repair：
 
-它至少應包含：
+- 可 repair malformed JSON、wrong stage、unpublished tool、extra／invalid parameter。
+- 只有 user text 已含完整值時才能 repair parameter；不得發明缺少的科學或訓練值。
+- backend generation 改變時 discard proposal，重新讀取最新 publication。
+- backend blocked、confirmation cancel、GUI cancel／fail或任何 side effect 後不得 repair。
+- 同一訊息要求多個 mutation時不部分執行；用 `respond_to_user` 請使用者選第一個。
 
-- `workflow_stage`：目前整體 workflow 摘要，例如 `empty`、`data_loaded`、`preprocessed`、`dataset_ready`、`training`、`trained`。這只能作為 summary，不能作為唯一狀態模型。
-- `data_state`：目前 active dataset pipeline 的 raw、preprocessed、epoch、dataset 是否存在，以及目前資料的基本 metadata。目標先維持一次只有一個 active dataset pipeline。
-- `interpretation_state`：目前是否已有 scan result、interpretation candidate、validation decision、applied interpretation 和 recipe；這是資料入口的主要 truth。
-- `label_state`：event / label mapping 是否存在、是否和資料相容。
-- `training_state`：是否正在訓練、是否已有 model、是否有 metrics / result。長期應能描述多個 training job / experiment run。
-- `visualization_state`：目前是否具備可視化前置條件，例如 trained model、channel info、montage；應能指向特定 trained result，而不是只看全域 `trained` stage。
-- `capability_policy`：由 backend / Application Service 產生的 command gate，列出目前允許、阻擋、需要確認的 command。
-- `autonomy_policy`：由 backend / Application Service 產生或整理的 agent 自主執行邊界，列出
-  command 是否可自動執行、成功後是否可繼續、是否需要確認與停止原因。
-- `available_commands`：目前允許執行的 command / tool。這是 backend capability policy 的輸出，不是把所有 tool 丟給 agent 後讓 agent 自己猜。
-- `blocked_commands`：目前不能執行的 command，以及 blocked reason。這主要給 Verification Layer、scorer、debug 和 UI 診斷使用，不代表要把完整 blocked list 塞進 LLM prompt。
-- `active_jobs`：目前正在跑的長任務，例如 training、資料處理或 evaluation。
-- `completed_runs`：已完成的訓練 / evaluation / visualization result，可供比較、重用或後續分析。
-- `last_tool_result`：上一個 command 的 success / failure、error category 和可恢復建議。
+## Prompt、state card與RAG
 
-重要原則：State Snapshot 不能成為第二份 backend truth。它應從 Application Service / Study / managers 讀出，而不是自己維護一套獨立狀態。
+每回合 prompt 只含：
 
-另一個重要原則：command gate 應由 backend / Application Service 控制。agent 可以提出意圖和候選 tool call，但不能拿到所有 tool 後自行決定哪些一定可執行。Context Assembler 應只把目前 policy 允許或需要確認的 capability 暴露給 LLM；Verification Layer 仍要在執行前再次檢查。
+1. 固定 policy 與 strict envelope。
+2. backend stage 發布的 target schemas。
+3. hidden minimal state card。
+4. 最新 user message。
+5. 最多上一則 Assistant-visible message。
 
-`blocked_commands` 可以保留在完整 State Snapshot / capability policy 中，但 Context Assembler 應保守使用：只在和當前 user intent 相關時，把 blocked reason 摘要給 LLM。完整 blocked list 應優先給 verifier、scorer、debug report 和 UI diagnostics。
+State card 只投影 ApplicationService publication：
 
-workflow state 不應只用一個 stage 字串描述，但目標也不是同時開多個 active dataset。比較合理的模型是：
+- always：stage、internal backend generation、`state_reliable`。
+- stage-relevant counts／readiness。
+- setup stage：split、model、training-settings flags與missing list。
+- training：model、running與短進度。
+- trained：finished run count、results available。
 
-- 一次只有一個 active dataset pipeline。
-- epoch / dataset 形成後，不應把 `load_data` 或 `generate_new_dataset` 當成一般可用 command，避免覆蓋或污染目前 pipeline。
-- 同一個 dataset 可以產生多個 training run / evaluation result。
-- 已完成的 run 可以看 evaluation / visualization / saliency。
-- 使用者可以比較不同 run。
+不放 file paths、完整 channels、完整 settings、diagnostics、recommended next step、full capability map、
+舊 tool output或 pending intent。
 
-但這不代表所有 command 都可以並行或任意執行。每個 command 仍有 dependency gate：
+RAG／examples規則：
 
-- 沒有 applied data interpretation，不能 preprocess。
-- 沒有 label / event 對齊，不能產生可信 dataset。
-- 沒有 dataset，不能 start training。
-- 沒有 trained result，不能跑 saliency / model-based visualization。
-- 某個 resource 正在被 long-running job 寫入時，不能同時對同一個 resource 做破壞性操作。
-- epoch / dataset 形成後，如果要載入新資料或開新 dataset，必須走明確的 reset / new session / fork 類 command，且需要使用者確認。
+- stage 只發布 1–3 tools 時，使用每個 visible tool 一個 compact canonical example，不做 semantic
+  retrieval。
+- stage 發布 4 個以上 tools 時，只在該 stage 的 approved examples中取 top 2。
+- example retrieval failure時退回schema／format，不擴大tool surface。
+- example不能授予capability、confirmation或continuation權限。
 
-因此 `workflow_stage` 只是摘要；真正的 State Snapshot 應以 active dataset pipeline、jobs、results 為核心，並由 capability policy 逐一判斷每個 command 對特定 resource 是否可執行。
+Backend state不可靠時，state card固定為 `workflow_stage: "unavailable"`、
+`state_reliable: false`，只允許 `respond_to_user` 與 `switch_panel`；不沿用 stale tool set。Granite
+runtime本身失敗時不做生成，ChatPanel顯示local runtime error。
 
-### Tool Call Contract
+## Verification、execution與presentation
 
-Tool Call Contract 是 LLM 提出的候選操作格式。
+Verification順序固定為：strict schema → backend generation／stage → target publication → parameter
+schema → ApplicationService capability → confirmation。Prompt與UI不可成為alternate readiness engine。
 
-它至少應包含：
+GUI completion使用既有 pending interaction與request correlation。`accepted`、`navigated`、
+`command_pending`或`deferred_to_ui`是否terminal必須依execution kind判斷：GUI completion只能等實際
+dialog outcome；pure navigation則等panel/subview materialized。
 
-- `intent`：使用者意圖的結構化描述。
-- `tool_name`：候選 tool / command 名稱。
-- `arguments`：符合 tool input schema 的參數。
-- `target_resource`：此 tool call 要操作的資料、dataset、training job、model 或 result。
-- `confidence`：LLM 對此 tool call 的信心。
-- `assumptions`：LLM 做出的假設，例如預設資料、預設 channel 或預設 training option。
-- `requires_confirmation`：是否涉及 destructive / long-running / high-impact 操作。
-- `autonomy_request`：agent 希望自動執行、詢問使用者、或只做 preview 的意圖。
-- `reason`：簡短說明為什麼選這個 tool。
+Visible result使用既有Assistant bubble與confirmation card：
 
-Tool Call Contract 不應直接等於自然語言回覆。自然語言可以附帶說明，但 scorer 和 verifier 應讀 structured tool call。
+- 一個concise trusted backend／UI public message。
+- 不顯示raw JSON、traceback、private path、capability dict或內部token。
+- 不讓模型產生下一步建議或再解釋tool output。
 
-`confidence` 不是資料正確性的分數。它只表示 LLM 對自己提出的 tool call 是否有把握，供
-Verification Layer 決定是否 retry、reflect、ask user 或繼續檢查 backend policy。資料解讀是否可套用
-仍由 Data Interpretation validation 的 `safe`、`needs_confirmation`、`blocked` 決定。
+## Diagnostic walkthrough target
 
-### Verification Result Contract
+`--tool-debug` 必須能在完全不建立或載入Granite的情況下使用正常ChatPanel、MainWindow、
+ApplicationService、ToolExecutor、confirmation與UI correlation。
 
-Verification Result Contract 是 Verification Layer 對候選 tool call 的輸出。
+- Debug launch顯示slim banner／step progress；normal launch不變。
+- Enter只peek目前step；前一步terminal、無pending interaction且navigation idle後才commit並前進。
+- Failure留在同一步，可retry；`confirmed=true`不得繞過真confirmation UI。
+- 三份pure-data profiles：Complete Workflow、Lifecycle／Navigation、Contract Failures。
 
-它至少應包含：
+Diagnostic mode只是一個既有runtime lifecycle的no-generation transport狀態，不是新的workflow owner、
+command policy或fake backend。
 
-- `valid`：是否允許執行。
-- `decision`：`allow`、`block`、`repair`、`ask_user`、`confirm`。
-- `policy_source`：允許或阻擋此 command 的 backend capability policy 版本 / 來源。
-- `blocked_reason`：被擋下的原因，例如 wrong stage、missing data、invalid parameter、unsafe action。
-- `missing_inputs`：缺少哪些必要參數。
-- `normalized_arguments`：驗證後可交給 backend command 的參數。
-- `required_confirmation`：需要使用者確認的原因與確認訊息。
-- `autonomy_decision`：`allow_auto`、`confirm`、`ask_user`、`stop`、`repair`、`block`。
-- `decision_boundary`：若需要停下，說明是 semantic、high-impact、long-running、destructive、
-  blocked、missing-input 還是 resource-lock。
-- `continue_allowed_after_success`：若執行成功，agent 是否可自動提出下一個 command。
-- `suggested_repair`：給 Self-Correction 的修正建議。
-- `verifier_notes`：可寫入 report 的診斷資訊。
+## Candidate validation與claims
 
-這個 contract 是防止 agent 直接亂跑 backend 的主要邊界。
+Engineering candidate的frozen Granite suite約30–35 cases，至少覆蓋17個positive intents、五個
+missing-parameter cases、跨stage start request、out-of-stage與general／ambiguous／multi-mutation
+cases。Candidate gates：
 
-### Scoring Contract
+- invalid／out-of-stage／stale execution、cancel後continuation與multi-mutation partial action皆為0。
+- 所有cases在repair budget內得到legal envelope；final stage acknowledgement 100%。
+- Start／Stop／Reset／Clear各3/3正確。
+- 每個target tool至少2/3正確；overall exact final tool＋parameters至少95%。
+- 真model safe E2E：Switch Dataset、Import GUI、direct Resample。
 
-Scoring Contract 是 thesis evaluation 工具用來評分的資料格式。
+這些是產品候選gate，不是thesis benchmark。Thesis evidence另由frozen source、case set、runner、model
+revision與至少三次repeat定義；mock、host-assisted normalization、dashboard或單次walkthrough不能
+宣稱raw-model accuracy。
 
-每個 benchmark case 至少應包含：
-
-- `case_id`。
-- `user_command`。
-- `initial_state`。
-- `target_resource`。
-- `expected_intent`。
-- `expected_tool_name`。
-- `expected_arguments`。
-- `expected_verification_decision`。
-- `expected_state_delta`。
-- `expected_error_category`，若此 case 是錯誤或 recovery case。
-
-每次 run 至少應產生：
-
-- `actual_tool_call`。
-- `verification_result`。
-- `backend_result`，若有執行 backend command。
-- `state_before` / `state_after`。
-- `capability_policy`。
-- `score_breakdown`：intent、tool、parameters、verification、state transition、error recovery。
-- `failure_category`。
-- `notes`。
-
-scorer 的目標不是只給一個總分，而是能指出 agent 是錯在意圖理解、工具選擇、參數、狀態判斷、執行結果，還是錯誤恢復。
-
-## Tool Taxonomy
-
-tool surface 不應被舊工具 taxonomy 綁住。成熟 tool taxonomy 應以 workflow intent、
-side effect、decision boundary 和 result contract 來設計，而不是以目前檔案所在模組或舊
-controller method 命名。
-
-分析時可使用 Discovery／Query、Data Interpretation、Metadata Resolution、Data Transform、
-Experiment Setup、Execution／Job Lifecycle、Result Query／Visualization、Lifecycle／Destructive 與
-UI Routing 等 intent 類型；這些是設計分類，不是已核准的 tool 名稱或固定數量。
-
-### Authority layers
-
-- **Runtime compatibility inventory**：source 中目前可註冊／執行的 implementations；不能用來推導
-  target product surface。
-- **Current model-facing projection**：目前 prompt、RAG 與 eval 共用的曝光集合；只描述 current
-  behavior，可被 target migration 取代。
-- **Approved target surface**：只由下方 intent ledger 中 `approved` 的產品決策組成。未核准、延後或
-  拒絕的 intent 不得因為已存在 implementation 或 test case 而進入 target projection。
-
-### Target intent ledger
-
-| 使用者 intent | Target exposure | Owner 與 side effect | Confirmation 與 visible result | 狀態 |
-| --- | --- | --- | --- | --- |
-| 瀏覽任意資料夾內容 | 不提供 product model-facing filesystem listing；資料來源由既有 chooser／授權 scope 取得。 | 不新增 owner；不讓 Assistant 成為一般檔案瀏覽器。 | 不適用。Current `list_files` 等待後續 migration 移出產品 projection。 | rejected |
-| 匯入 EEG 資料 | 對模型提供一個高階 Data Import intent；final tool name／schema 待 implementation slice 命名。 | 重用既有 chooser、Data Interpretation command service 與 review lifecycle；只有 reviewed apply 能 authoritative mutation。 | 既有 Import Review／resource confirmation 決定 apply；回傳 imported、blocked 或 cancelled 的 typed terminal。 | approved |
-| 知道目前 workflow 狀態 | Host 每回合注入 scoped ApplicationService state／capability；不提供 internal state-dump target tool。 | ApplicationService snapshot 維持唯一 readiness owner；read-only。 | 不需 confirmation；回答必須使用最新 scoped snapshot。Current `query_state` 等待後續 migration 移出 model-facing projection。 | approved |
-| 套用 preprocessing | 只有明確 filter、resample、reference、normalization 等參數時才可提出受控 action；final grouping／schema 待討論。 | 重用 Preprocess command owner；不得把未指定意圖 silent substitute 成 standard bundle。 | 執行前顯示實際參數並使用既有 confirmation／capability boundary；回傳 applied 或 blocked typed result。 | approved |
-| 選擇模型與設定訓練 | 尚未決定拆成獨立 Select Model／Configure Training，或合成 Experiment Setup。 | 既有 ConfigureTraining command 是 current owner；target exposure 尚未核准。 | 待決定。 | deferred |
-| Evaluation、Visualization 與 Saliency | 尚未決定 result query、analysis execution、configuration 與 UI routing 的最終拆分。 | Current handlers 的 read／configure／schedule 語意混合不能直接當 target contract。 | 待決定。 | deferred |
-| Montage、epoch、dataset split、training lifecycle、recipe 與 destructive actions | 逐項確認是否 model-facing、UI handoff 或 host-owned workflow。 | 既有 ApplicationService／UI owner 保持 current truth。 | 待決定。 | deferred |
-
-改變任何 ledger 列的 exposure、owner、side effect、confirmation 或 visible result 都是 public product
-contract decision。必須先取得使用者確認並更新本表，之後 implementation PR 才能修改 projection、
-prompt、RAG、eval 或 walkthrough；`docs/planning/now.md` 只描述當前 implementation slice。
-
-tool 的輸出應該是 structured result，而不是只靠自然語言。
-
-每個 tool 應明確標示：
-
-- input schema。
-- required state。
-- side effect。
-- result schema。
-- error category。
-- 是否需要 confirmation。
-- autonomy policy：是否可自動執行、成功後是否可繼續、retry limit、decision boundary。
-
-tool 重構的完成條件：
-
-- model-facing projection 的每一項都能對應一列 `approved` intent；不以 runtime inventory 的差集、
-  既有 prompt 名稱或 exact-coverage test 反推 target。
-- mutating agent tools 不再直接呼叫 controller。
-- UI 和 agent 對同一 workflow 使用同一套 `ApplicationService` command / capability policy。
-- 資料入口工具以 Data Interpretation command 為核心，不再把舊 `load_data` / `attach_labels`
-  當成新 UI / agent 的主要心智模型。
-- tool 類型改成上面的成熟 taxonomy；舊 `dataset / preprocess / training` 粗分類只能作為內部模組，
-  不能作為 agent 對使用者與 scorer 的主要 tool contract。
-- 每個 tool call 都能產生 Verification Result、CommandResult、visible response 和 scoring
-  artifact 所需欄位。
-- Verification Layer 是執行前必要邊界，不是 prompt 裡的建議文字。
-- scorer 可以讀到 state snapshot、proposed tool call、verification result、backend result 和
-  visible response。
-- raw backend exception / schema 不直接顯示給使用者。
-
-## 和 backend 重構的關係
-
-agent redesign 不應早於 backend command surface。
-
-合理順序是：
-
-1. 先完成全盤架構複盤。
-2. 盤點 backend controller workflow logic。
-3. 建立 Application Service / Command API 的第一個可用切片。
-4. 讓 agent tools 包 command，而不是直接包 controller。
-5. 建立 State Manager 和 Verification Layer 的第一版 contract。
-6. 建立 State Snapshot、Tool Call、Verification Result、Scoring 的第一版 schema。
-7. 建立 agent tool-call scoring system。
-8. 再做 tool-call validation 和 thesis evidence collection。
-
-## 目前不能宣稱
-
-- 不能宣稱真 local LLM 長時間 ChatPanel walkthrough 已完成。
-- 不能宣稱 tool-call workflow 已完整驗證。
-- 不能宣稱 State Manager / Verification Layer 已完成。
-- 不能宣稱 tool-call 準確率已被 thesis-grade 評估。
-- 不能把 mock tool tests 當成 real workflow evidence。
-- 不能把 dashboard PASS 當成 agent thesis claim 已成立。
+目前產品在完成migration與同一exact-SHA candidate evidence前，不能宣稱Stable v2、17-tool
+runtime、model-free walkthrough或Assistant-ready。
