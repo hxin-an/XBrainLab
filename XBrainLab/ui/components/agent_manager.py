@@ -45,6 +45,7 @@ from XBrainLab.backend.training_state_contract import (
     TrainingOutcomeState,
 )
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.debug.tool_debug_mode import ToolDebugMode
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantDecisionOwner,
     AssistantTurnActivity,
@@ -564,6 +565,16 @@ class AgentManager(QObject):
             if hasattr(self.main_window, "ai_btn"):
                 self.main_window.ai_btn.setChecked(True)
 
+            if self._tool_debug_enabled():
+                started = self._assistant_runtime.start_diagnostics()
+                self.refresh_backend_status()
+                if not started:
+                    self._show_runtime_unavailable(
+                        self._assistant_runtime.current.error
+                        or "Tool diagnostics could not start."
+                    )
+                return
+
             config = self._assistant_runtime.load_config()
             if self._assistant_runtime.needs_first_run(config):
                 choice = self._show_local_runtime_first_run_dialog(config)
@@ -710,8 +721,20 @@ class AgentManager(QObject):
         """Start the runtime owner after the assistant UI is available."""
         if not self.chat_panel:
             return
-        if self._assistant_runtime.start():
+        started = (
+            self._assistant_runtime.start_diagnostics()
+            if self._tool_debug_enabled()
+            else self._assistant_runtime.start()
+        )
+        if started:
             self.refresh_backend_status()
+
+    def _tool_debug_enabled(self) -> bool:
+        """Return whether this real chat panel owns a debug script session."""
+        return isinstance(
+            getattr(self.chat_panel, "debug_mode", None),
+            ToolDebugMode,
+        )
 
     def _create_assistant_controller(self, study: object) -> LLMController:
         """Create a controller only when its product UI contract is complete."""

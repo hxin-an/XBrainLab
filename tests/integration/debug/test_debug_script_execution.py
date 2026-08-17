@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QWidget
+from PyQt6.QtWidgets import QApplication, QMainWindow, QToolButton, QWidget
 
 from XBrainLab.debug.tool_debug_mode import ToolDebugMode
 from XBrainLab.ui.chat.panel import ChatPanel
@@ -166,3 +166,66 @@ def test_debug_mode_execution_integration(qtbot, debug_script_file):
         assert not hasattr(window, "_on_debug_tool_requested")
 
     app.setProperty("tool_debug_script", None)
+
+
+def test_tool_debug_session_runs_backend_without_runtime_activation(qtbot, tmp_path):
+    """The real diagnostic transport executes tools without loading Granite."""
+    from XBrainLab.backend.study import Study
+    from XBrainLab.llm.agent.controller import LLMController
+    from XBrainLab.ui.components.agent_manager import AgentManager
+    from XBrainLab.ui.components.assistant_runtime_lifecycle import (
+        AssistantRuntimeLifecycle,
+        AssistantRuntimeLifecycleState,
+    )
+
+    script_path = tmp_path / "backend-blocked.json"
+    script_path.write_text(
+        json.dumps({"calls": [{"tool": "start_training", "params": {}}]}),
+        encoding="utf-8",
+    )
+    app = QApplication.instance()
+    assert isinstance(app, QApplication)
+    app.setProperty("tool_debug_script", str(script_path))
+
+    window = QMainWindow()
+    window.ai_btn = QToolButton(window)
+    window.setCentralWidget(QWidget(window))
+    qtbot.addWidget(window)
+    study = Study()
+
+    def reject_config_load():
+        raise AssertionError("Tool diagnostics must not resolve model settings.")
+
+    runtime = AssistantRuntimeLifecycle(
+        study,
+        controller_factory=lambda current: LLMController(current),
+        config_loader=reject_config_load,
+    )
+    manager = AgentManager(window, study, runtime_lifecycle=runtime)
+    try:
+        manager.init_ui()
+        manager.toggle()
+        assert manager.chat_panel is not None
+        assert runtime.current.backend_mode == "diagnostic"
+
+        qtbot.mouseClick(manager.chat_panel.send_btn, Qt.MouseButton.LeftButton)
+        qtbot.waitUntil(
+            lambda: any(
+                "Training is not available yet" in message["content"]
+                for message in manager.chat_controller.messages
+            ),
+            timeout=10_000,
+        )
+
+        visible = "\n".join(
+            message["content"] for message in manager.chat_controller.messages
+        )
+        assert "Load raw data before training" in visible
+        assert "Tool Output:" not in visible
+    finally:
+        manager.close()
+        qtbot.waitUntil(
+            lambda: runtime.state is AssistantRuntimeLifecycleState.CLOSED,
+            timeout=10_000,
+        )
+        app.setProperty("tool_debug_script", None)
