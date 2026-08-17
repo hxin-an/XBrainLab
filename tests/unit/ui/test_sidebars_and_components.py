@@ -3681,9 +3681,10 @@ class TestDatasetSidebar:
             ) as mock_dialog,
             patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
         ):
-            sb.open_channel_selection()
+            outcome = sb.open_channel_selection()
 
         mock_dialog.assert_not_called()
+        assert outcome.status is InteractionStatus.BLOCKED
         mock_warning.assert_called_once()
         assert "Load raw data before preprocessing." in mock_warning.call_args.args[2]
 
@@ -3726,9 +3727,10 @@ class TestDatasetSidebar:
         ):
             mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             mock_dialog.return_value.get_result.return_value = ["Cz", "Pz"]
-            sb.open_channel_selection()
+            outcome = sb.open_channel_selection()
 
         mock_dialog.assert_called_once()
+        assert outcome.status is InteractionStatus.COMPLETED
         question.assert_not_called()
         assert isinstance(mock_execute.call_args.args[1], PreprocessCommand)
         panel.controller.apply_channel_selection.assert_not_called()

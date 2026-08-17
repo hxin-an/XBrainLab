@@ -43,6 +43,7 @@ from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
 )
+from XBrainLab.ui.interaction_outcome import InteractionOutcome
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
@@ -601,14 +602,16 @@ class DatasetSidebar(QWidget):
             )
             return []
 
-    def open_channel_selection(self):
+    def open_channel_selection(self) -> InteractionOutcome:
         """Open the channel selection dialog.
 
         Blocked if the dataset is locked or no data is loaded.
         The dialog's OK action is the single confirmation before applying.
         """
         if self.controller is None and not has_real_application_context(self):
-            return
+            return InteractionOutcome.failed(
+                "Channel Selection is unavailable in this session."
+            )
 
         publication = get_application_view_publication(self)
         if publication is None and has_real_application_context(self):
@@ -617,7 +620,9 @@ class DatasetSidebar(QWidget):
                 "Channel Selection Blocked",
                 _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE,
             )
-            return
+            return InteractionOutcome.blocked(
+                _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE
+            )
         preprocess_capability = (
             publication.effective_capabilities.get(CommandName.PREPROCESS)
             if publication is not None
@@ -632,7 +637,12 @@ class DatasetSidebar(QWidget):
                     "Load raw data before selecting channels.",
                 ),
             )
-            return
+            return InteractionOutcome.blocked(
+                blocked_reason(
+                    preprocess_capability,
+                    "Load raw data before selecting channels.",
+                )
+            )
 
         if preprocess_capability is None:
             if has_real_application_context(self):
@@ -641,23 +651,31 @@ class DatasetSidebar(QWidget):
                     "Channel Selection Blocked",
                     _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE,
                 )
-                return
+                return InteractionOutcome.blocked(
+                    _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE
+                )
             available, has_data = self._compatibility_controller_value(
                 lambda: bool(self.controller.has_data()),
                 blocked_title="Channel Selection Blocked",
             )
             if not available:
-                return
+                return InteractionOutcome.failed(
+                    "Channel Selection is unavailable in this session."
+                )
             if not has_data:
                 QMessageBox.warning(self, "Warning", "No data loaded.")
-                return
+                return InteractionOutcome.blocked(
+                    "Load raw data before selecting channels."
+                )
 
             available, is_locked = self._compatibility_controller_value(
                 lambda: bool(self.controller.is_locked()),
                 blocked_title="Channel Selection Blocked",
             )
             if not available:
-                return
+                return InteractionOutcome.failed(
+                    "Channel Selection is unavailable in this session."
+                )
             if is_locked:
                 QMessageBox.warning(
                     self,
@@ -666,7 +684,9 @@ class DatasetSidebar(QWidget):
                     "been applied.\n"
                     "Use 'Reset All Preprocessing' before changing channels.",
                 )
-                return
+                return InteractionOutcome.blocked(
+                    "Reset preprocessing before changing channels."
+                )
 
         channels = (
             [str(channel) for channel in publication.state.raw.channels]
@@ -674,7 +694,9 @@ class DatasetSidebar(QWidget):
             else self._compatibility_loaded_data_list_for_channel_selection()
         )
         if channels is None:
-            return
+            return InteractionOutcome.failed(
+                "Channel Selection could not read the current channels."
+            )
         dialog_class = _channel_selection_dialog_class()
         dialog = dialog_class(self, channels)
         reviewed_boundary = (
@@ -707,7 +729,9 @@ class DatasetSidebar(QWidget):
                             "Channel Selection Blocked",
                             CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                         )
-                        return
+                        return InteractionOutcome.failed(
+                            CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+                        )
                     elif is_stale_publication_result(command_result) or (
                         isinstance(command_result.diagnostics, dict)
                         and command_result.diagnostics.get(
@@ -739,17 +763,27 @@ class DatasetSidebar(QWidget):
                                 else _DATASET_CHANGED_MESSAGE
                             ),
                         )
-                        return
+                        return InteractionOutcome.blocked(
+                            _CHANNELS_CHANGED_MESSAGE
+                            if raw_identity_changed
+                            else _DATASET_CHANGED_MESSAGE
+                        )
                     elif command_result.failed:
                         QMessageBox.critical(
                             self,
                             "Error",
                             f"Channel selection failed: {command_result.message}",
                         )
-                        return
+                        return InteractionOutcome.failed(command_result.message)
                     self._show_status("Channel selection applied")
+                    return InteractionOutcome.completed("Channel selection applied.")
                 except Exception:
                     present_unexpected_error(
                         self,
                         UnexpectedErrorContext.DATASET_CHANNEL_SELECTION,
                     )
+                    return InteractionOutcome.failed(
+                        "Channel selection could not be applied."
+                    )
+            return InteractionOutcome.cancelled("Channel Selection was cancelled.")
+        return InteractionOutcome.cancelled("Channel Selection was cancelled.")
