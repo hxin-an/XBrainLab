@@ -8,7 +8,7 @@
 完成 replacement、atomic cutover、deletion 與 exact-SHA candidate；在完整候選前不要求使用者手測，
 未取得同一 source 的手測通過不得合併 main。**
 
-目前 phase：`Retired-surface deletion and no-model walkthrough replacement`
+目前 phase：`Local frozen-candidate validation；GitHub remote evidence pending`
 
 目前 branch：`refactor/assistant-target-adapters-v2`
 
@@ -22,10 +22,9 @@ preprocess、四個lifecycle與`switch_panel`。Local commits依序為`2366c6b3`
 D3已移除兩個無production caller的policy modules。保留schema、同generation publication、path provenance、
 ApplicationService capability與confirmation；`tests/unit/llm`在target 17 surface上`1680 passed`。
 
-下一步：先修正真Granite structured smoke的舊契約假陽性，再物理刪除obsolete Assistant wrappers，並以
-no-model frontend walkthrough取代舊21-action showcase。舊showcase與local eval仍import已退役host
-classifier，broader unit已在collection時fail closed；不得以compatibility shim恢復classifier。GitHub服務
-目前不可用，因此只跑local evidence，不把remote狀態當本地施工 blocker。
+下一步：凍結本地exact head後重跑完整unit／architecture／static quality、no-model frontend、34-case
+Granite與source-diverse gates；GitHub服務恢復前不執行remote checks，也不把remote狀態當本地施工
+blocker。本地全部閉合後才交付三份真人frontend walkthrough；source或plan再變更就重新凍結與驗證。
 
 最新local red-first證據：exact Stable v2 branch可在offline模式載入固定Granite revision並產生strict三欄
 JSON，但`inspect_local_assistant_runtime.py --structured-smoke --strict`仍在prompt與oracle中要求已退役的
@@ -122,6 +121,15 @@ Architecture sweep另發現兩個Assistant-owned controller callback未落在精
 command、publication generation與state；不新增compatibility runtime或改產品行為。Focused 24 tests與
 architecture guard自身284 tests通過，完整repository architecture entrypoint仍需在commit後重跑。
 
+Local candidate pre-freeze sweep：完整repository architecture entrypoint通過；完整unit首次為10,871
+passed／5 failed，五個failure全在sandbox建立`AF_INET` socket時以`PermissionError`終止，未進產品HTTP
+MCP行為；同一HTTP MCP file在允許localhost的本機環境7 passed。全repo Ruff在機械修正一個integration
+test import order後通過，Ruff format、Basedpyright（0 errors）與MkDocs strict皆通過。No-model frontend
+strict attestation 3 passed，完整debug integration file 5 passed。Source-diverse strict gate在注入既有
+D-mounted public fixture root後4/4通過：PhysioNet EDF／BBCI GDF皆完成one-epoch CPU training與safe
+artifact reload，EEGLAB SET／MNE CNT完成import-preprocess並在缺乏可靠雙類別語意時fail closed。這些仍是
+pre-freeze checkpoint；本段commit後須對final exact head重跑關鍵gate。
+
 已否決的中間路徑：red-first曾將三個target adapters加在舊30-tool runtime旁，立即使runtime變成33，
 並被runtime equality／headless contract tests攔截。該狀態不提交；建立第二個過渡catalog會增加遷移
 成本且違反single target authority，因此改採一次atomic cutover。
@@ -147,16 +155,16 @@ Linux full suite、Windows/macOS、public multi-dataset與MkDocs checks皆comple
 
 ## 問題與證據
 
-- Current product仍發布21個model-facing actions；該集合是PR #30從runtime inventory投影出的current
-  implementation，不是使用者逐項核准的target。
-- 舊target文件仍同時描述Host intent narrowing、bounded continuation、大型state snapshot與多分支
-  response contract，和已核准的一回合一動作／thin Host設計衝突。
-- Backend setup stage已收斂，但model output尚未acknowledge同一publication；舊兩欄envelope可在
-  stage變更後仍被parser接受。
-- No-generation transport已存在，但walkthrough仍會在terminal前consume下一個call；因此尚不能作為
-  無模型、逐步可見的frontend walkthrough。
-- Current UI handoff已有Import、Epoch、Split、Training、Montage與panel correlation；Channel Selection
-  仍缺typed terminal。這些是bounded seam，不需要新增dialog或workflow owner。
+- Stable v2 runtime目前只發布已核准17個actions；舊21-action inventory、showcase、eval與handoff evidence
+  已物理退役，不再是current product contract。
+- Host intent narrowing、deterministic continuation與多分支response contract已移除；backend publication
+  stage、capability、confirmation與schema verifier仍是唯一執行authority。
+- Model output現為strict三欄並須acknowledge同一publication stage；debug walkthrough只在真terminal後
+  commit下一步，pending dialog／confirmation／navigation期間不consume case。
+- 七個GUI handoff（包含Channel Selection typed terminal）皆沿用既有dialog／panel與correlation，沒有
+  新增UI workflow owner。
+- 剩餘問題只是在GitHub服務不可用期間無法取得final remote CI／PR evidence，以及final exact head尚未
+  完成真人三份frontend walkthrough；兩者都不能由本地自動測試冒充。
 
 ## Observable outcome
 
@@ -197,16 +205,18 @@ Linux full suite、Windows/macOS、public multi-dataset與MkDocs checks皆comple
    Assistant-visible message，不重播prior user、tool output或action envelope。Controller archival history、
    current Host narrowing與continuation暫時不變。Exact local commit `df0731eb`已完成；GitHub恢復後再建立
    exact-head stacked PR。
-9. **Active slice — atomic target cutover**：runtime與model projection一次替換成approved 17；七個GUI
+9. **已完成 — atomic target cutover**：runtime與model projection一次替換成approved 17；七個GUI
    adapters只回傳trusted command／decision-fields handoff，不執行或保存GUI選擇；Channel Selection接到
    現有dialog並回傳typed terminal。五個preprocess沿用PreprocessCommandService；四個lifecycle沿用現有
    capability／confirmation；navigation仍只由`switch_panel`負責。同一slice停止兩個Host request-admission
    call sites及tool-success continuation，確保一回合一個tool或response。
-11. 按analysis、dataset protocol／recipe、training wrappers與Host policy分片物理刪除obsolete code。
-12. 先讓runtime inspection的Granite structured smoke使用target registry與stage publication作fail-closed
+11. **已完成 — retired surface deletion**：按analysis、dataset protocol／recipe、training wrappers與
+    Host policy分片物理刪除obsolete code，不保留compatibility catalog。
+12. **已完成 — replacement evidence**：runtime inspection的Granite structured smoke使用target registry與stage publication作fail-closed
     oracle，再執行三份no-model profiles與frozen Granite suite；未達gate時只調prompt／schema／approved
     examples，不增加Host heuristic或silent fallback。
-13. 同步最新main、完成handoff dossier並凍結exact candidate SHA；只在此時交付使用者手測。
+13. **進行中 — frozen candidate**：先完成本地exact-source dossier；GitHub恢復後同步最新main並補齊
+    remote checks。只有本地產品證據閉合才交付使用者手測，remote pending不冒充handoff-ready。
 14. 手測通過且source未變後，以integration→main merge commit合併；之後刪branch並移除暫時CI
     trigger。
 
