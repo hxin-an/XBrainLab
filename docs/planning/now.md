@@ -99,6 +99,18 @@ backend Data Interpretation、ApplicationService與UI tests保留。變更共9�
 checkpoint提交；owner before／after不變。Focused 442 tests、完整unit collection 11,030 tests、完整
 `tests/unit/llm`加no-model debug integration 1,488 tests皆通過；repo不再import已刪dataset／analysis modules。
 
+Candidate gate migration red-first：handoff registry仍把`chatpanel-guided-boundary`、兩支舊training flow、
+recovery與long-session列為required；這些腳本明確要求`scan_source`、`query_state`、Host auto-chain與舊
+analysis wrappers，和Stable v2 single-action target衝突。不得修成compatibility workflow。Section 4將以
+兩個新權威gate取代：`assistant-frontend-contract`透過attested pytest執行三份profile contract與真
+MainWindow／AgentManager／Controller／ApplicationService的no-model terminal flow；
+`stable-assistant-model-eval`在offline fixed Granite revision、CUDA、34個frozen bilingual cases上要求
+strict全通過並保存JSON。既有`granite-runtime`保留作單題load/strict-envelope smoke，RAG gate保留；
+舊五個gate與其專用scripts/tests在新gate green後物理刪除。這不改normal UI、模型revision或backend owner。
+Frontend replacement gate已以canonical Poetry separator與strict attestation在本機通過（3 passed）；
+handoff registry contract 14 tests通過。下一步只刪除已無required gate或production caller的舊capture
+entrypoints／driver／evidence tests；共用artifact integrity helper與仍被其他UI evidence使用的程式保留。
+
 已否決的中間路徑：red-first曾將三個target adapters加在舊30-tool runtime旁，立即使runtime變成33，
 並被runtime equality／headless contract tests攔截。該狀態不提交；建立第二個過渡catalog會增加遷移
 成本且違反single target authority，因此改採一次atomic cutover。
