@@ -114,6 +114,8 @@ def test_walkthrough_ui_does_not_consume_or_duplicate_before_terminal(
     app.setProperty("tool_debug_script", str(path))
     panel = ChatPanel()
     qtbot.addWidget(panel)
+    panel.show()
+    qtbot.wait(0)
     panel.set_runtime_state("ready")
     assert "Step 1/1" in panel.workflow_run_status_label.text()
     assert panel.workflow_run_status_label.isVisible()

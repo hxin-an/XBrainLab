@@ -91,8 +91,9 @@ status strip，以及修改 normal `switch_panel` 的可見 async completion／f
 - Focused unit／integration、Ruff、Ruff format與Basedpyright已通過。真實offscreen Qt diagnostic各執行
   `switch_panel`與`list_files`一個terminal，metrics皆為`llm_calls=0`、`tools=1/1`；截圖在
   `build/dev-artifacts/agent-tool-walkthrough/`。這些只證明Linux offscreen wiring，不取代native手測。
-- PR #32首輪CI揭露既有human-like capture controller未實作新增的typed panel-resolution contract，
-  dispatcher因此正確fail closed。修正只補capture double的typed接收／記錄，不放寬production dispatcher；
-  contract unit與實際完整Qt capture gate均已通過。
+- PR #32 CI揭露兩個既有capture controller doubles未實作新增的typed panel-resolution contract，
+  dispatcher因此正確fail closed；另有一個debug integration test在未show widget時誤驗`isVisible()`。
+  修正只補capture doubles與真實顯示test setup，不放寬production dispatcher或修改產品UI；對應contract、
+  完整human-like Qt capture、ChatPanel UI UX capture與debug integration gates均已通過。
 - 下一步：推送capture contract修正並等待PR #32同一head的non-skipped CI全綠，再交付exact head SHA。
   使用者依README先跑navigation profile、再跑21-action profile；只有同一SHA手測通過並明確批准後才可merge。

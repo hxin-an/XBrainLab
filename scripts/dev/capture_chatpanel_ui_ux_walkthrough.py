@@ -318,6 +318,10 @@ class _TeardownProbeController(QObject):
     def on_workflow_ui_handoff_resolved(self, _payload: object) -> None:
         return None
 
+    @pyqtSlot(object)
+    def on_panel_navigation_resolved(self, _payload: object) -> None:
+        return None
+
     @pyqtSlot(str, object)
     def execute_debug_tool(self, _name: str, _params: object) -> None:
         return None
