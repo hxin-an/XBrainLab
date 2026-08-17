@@ -392,7 +392,7 @@ class _LoadDataRejectingRuntime:
 
 
 @pytest.mark.parametrize("with_grant", (False, True))
-def test_load_data_executor_fails_closed_before_application_service(
+def test_retired_load_data_has_no_application_command_path(
     tmp_path: Path,
     with_grant: bool,
 ) -> None:
@@ -422,9 +422,7 @@ def test_load_data_executor_fails_closed_before_application_service(
         runtime=runtime,  # type: ignore[arg-type]
     )
 
-    assert result is not None
-    assert result.ok is False
-    assert result.error_code == "assistant_direct_load_disabled"
+    assert result is None
     assert runtime.commands == []
 
 

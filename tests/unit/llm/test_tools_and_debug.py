@@ -103,54 +103,6 @@ class TestToolExecutor:
         assert result.tool_name == "unknown_debug_tool"
         assert result.message == "The requested debug tool is unavailable."
 
-    def test_execute_success(self, tmp_path):
-        from XBrainLab.debug.tool_executor import ToolExecutor
-        from XBrainLab.llm.tools.application_surface import ToolCommandResult
-
-        executor = ToolExecutor(study=MagicMock())
-        result = executor.execute(
-            "list_files",
-            {"directory": str(tmp_path)},
-            authorization_text=f"List files in `{tmp_path}`.",
-        )
-
-        assert isinstance(result, ToolCommandResult)
-        assert result.ok is True
-        assert result.raw_result == []
-
-    def test_execute_exception(self, tmp_path):
-        from XBrainLab.debug.tool_executor import ToolExecutor
-        from XBrainLab.llm.tools.application_surface import ToolCommandResult
-
-        executor = ToolExecutor(study=MagicMock())
-        with patch(
-            "XBrainLab.debug.tool_executor.RealListFilesTool.execute",
-            side_effect=RuntimeError(
-                "/home/alice/private/subject-17/events.tsv "
-                "alice@example.test token=hf_super_secret"
-            ),
-        ):
-            result = executor.execute(
-                "list_files",
-                {"directory": str(tmp_path)},
-                authorization_text=f"List files in `{tmp_path}`.",
-            )
-            assert isinstance(result, ToolCommandResult)
-            assert result.ok is False
-            assert result.error_type == "runtime"
-            assert result.message == (
-                "The assistant tool could not complete the action. "
-                "Refresh application state before retrying."
-            )
-            assert result.error_code == "unexpected_tool_failure"
-            assert result.recovery_action == "refresh_application_state"
-            assert result.raw_result is None
-            assert result.diagnostics["incident_id"]
-            serialized = repr(result.to_payload())
-            assert "/home/alice/private" not in serialized
-            assert "alice@example.test" not in serialized
-            assert "hf_super_secret" not in serialized
-
     def test_partial_training_debug_call_fails_without_backend_mutation(self):
         from XBrainLab.backend.application import get_application_service
         from XBrainLab.backend.study import Study
@@ -171,54 +123,6 @@ class TestToolExecutor:
         assert result.error_type == "input"
         assert service.get_state().training == before
 
-    def test_complete_training_debug_call_accepts_learning_rate_one(self):
-        from XBrainLab.backend.application import get_application_service
-        from XBrainLab.backend.application.training_recommendation import (
-            TrainingRecommendationField,
-        )
-        from XBrainLab.backend.study import Study
-        from XBrainLab.debug.tool_executor import DebugToolAdmission, ToolExecutor
-        from XBrainLab.llm.tools.application_surface import (
-            AssistantSettingConfirmation,
-            ToolCommandResult,
-        )
-
-        study = Study()
-        executor = ToolExecutor(study)
-        proposal = {
-            "model_name": "EEGNet",
-            "epoch": 2,
-            "batch_size": 4,
-            "learning_rate": 1,
-        }
-        admission = executor.admit(
-            "configure_training",
-            proposal,
-            confirmed=True,
-        )
-        assert isinstance(admission, DebugToolAdmission)
-        evidence = admission.params["assistant_setting_confirmation"]
-        assert isinstance(evidence, AssistantSettingConfirmation)
-        assert evidence.edited_recommendation_fields == (
-            TrainingRecommendationField.EPOCHS,
-            TrainingRecommendationField.BATCH_SIZE,
-            TrainingRecommendationField.LEARNING_RATE,
-        )
-
-        result = executor.execute(
-            "configure_training",
-            proposal,
-            confirmed=True,
-        )
-
-        assert isinstance(result, ToolCommandResult)
-        assert result.ok is True
-        training = get_application_service(study).get_state().training
-        assert training.model_name == "EEGNet (XBrainLab)"
-        assert training.training_option["epoch"] == 2
-        assert training.training_option["batch_size"] == 4
-        assert training.training_option["learning_rate"] == 1.0
-
 
 # --- tool_debug_mode.py ---
 class TestToolDebugMode:
@@ -228,56 +132,90 @@ class TestToolDebugMode:
         from XBrainLab.debug.tool_debug_mode import DebugToolCall, ToolDebugMode
 
         script = {
+            "schema_version": "xbrainlab.assistant_walkthrough.v1",
+            "profile_id": "contract",
+            "title": "Contract walkthrough",
             "calls": [
                 {
-                    "tool": "t1",
-                    "params": {"a": 1},
-                    "confirmed": True,
-                    "authorization_text": "Host selected the input path.",
+                    "id": "open-training",
+                    "tool": "switch_panel",
+                    "params": {"panel_name": "training"},
+                    "instruction": "Open Training",
+                    "expected_outcomes": ["completed"],
                 },
-                {"tool": "t2"},
-            ]
+            ],
         }
         p = tmp_path / "test_script.json"
         p.write_text(json.dumps(script))
 
         dbg = ToolDebugMode(str(p))
-        assert len(dbg.calls) == 2
+        assert len(dbg.calls) == 1
         assert not dbg.is_complete
 
-        call1 = dbg.next_call()
+        call1 = dbg.begin_call()
         assert call1 == DebugToolCall(
-            tool="t1",
-            params={"a": 1},
-            confirmed=True,
-            authorization_text="Host selected the input path.",
+            step_id="open-training",
+            tool="switch_panel",
+            params={"panel_name": "training"},
+            instruction="Open Training",
+            expected_outcomes=("completed",),
         )
+        assert dbg.index == 0
+        assert dbg.is_waiting
+        assert dbg.begin_call() is None
 
-        call2 = dbg.next_call()
-        assert call2 == DebugToolCall(
-            tool="t2",
-            params={},
-            confirmed=False,
-            authorization_text="",
-        )
-
-        assert dbg.next_call() is None
+        assert dbg.complete_pending("completed") is True
+        assert dbg.index == 1
         assert dbg.is_complete
 
     def test_missing_file(self, tmp_path):
+        import pytest
+
         from XBrainLab.debug.tool_debug_mode import ToolDebugMode
 
-        dbg = ToolDebugMode(str(tmp_path / "nonexistent.json"))
-        assert len(dbg.calls) == 0
-        assert dbg.is_complete
+        with pytest.raises(ValueError, match="not found"):
+            ToolDebugMode(str(tmp_path / "nonexistent.json"))
 
     def test_invalid_json(self, tmp_path):
+        import pytest
+
         from XBrainLab.debug.tool_debug_mode import ToolDebugMode
 
         p = tmp_path / "bad.json"
         p.write_text("not json")
+        with pytest.raises(ValueError, match="valid JSON"):
+            ToolDebugMode(str(p))
+
+    def test_terminal_mismatch_stops_without_consuming(self, tmp_path):
+        import json
+
+        from XBrainLab.debug.tool_debug_mode import ToolDebugMode
+
+        p = tmp_path / "mismatch.json"
+        p.write_text(
+            json.dumps(
+                {
+                    "schema_version": "xbrainlab.assistant_walkthrough.v1",
+                    "profile_id": "mismatch",
+                    "title": "Mismatch",
+                    "calls": [
+                        {
+                            "id": "open",
+                            "tool": "switch_panel",
+                            "params": {"panel_name": "dataset"},
+                            "instruction": "Open Dataset",
+                            "expected_outcomes": ["completed"],
+                        }
+                    ],
+                }
+            )
+        )
         dbg = ToolDebugMode(str(p))
-        assert len(dbg.calls) == 0
+        assert dbg.begin_call() is not None
+        assert dbg.complete_pending("panel_navigation_failed") is False
+        assert dbg.index == 0
+        assert "panel_navigation_failed" in dbg.failure
+        assert not dbg.can_dispatch
 
 
 # --- visualization/base.py ---

@@ -8046,9 +8046,6 @@ def check_agent_resource_receipt_boundary(root_dir: Path) -> list[str]:
         "XBrainLab/backend/application/resource_receipt.py": (
             "class ResourceReceiptAuthority",
         ),
-        "XBrainLab/llm/agent/tool_call_normalizer.py": (
-            'normalized_params.pop("resource_preflight_token", None)',
-        ),
         "XBrainLab/llm/agent/tool_attempt_coordinator.py": (
             "ResourcePreflightView.from_diagnostics",
             'confirmed["resource_preflight_token"] =',

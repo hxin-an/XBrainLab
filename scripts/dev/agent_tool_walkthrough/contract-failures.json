@@ -1,0 +1,16 @@
+{
+  "schema_version": "xbrainlab.assistant_walkthrough.v1",
+  "profile_id": "contract-failures",
+  "title": "Assistant blocked-state recovery",
+  "calls": [
+    {"id":"dataset","tool":"switch_panel","params":{"panel_name":"dataset"},"instruction":"Open Dataset from an empty session","expected_outcomes":["completed"]},
+    {"id":"start-empty","tool":"start_training","params":{},"instruction":"Verify training is blocked without prerequisites","expected_outcomes":["completed"]},
+    {"id":"stop-empty","tool":"stop_training","params":{},"instruction":"Verify idle Stop is blocked safely","expected_outcomes":["completed"]},
+    {"id":"bandpass-empty","tool":"apply_bandpass_filter","params":{"low_freq":4.0,"high_freq":38.0},"instruction":"Verify band-pass is blocked before import","expected_outcomes":["completed"]},
+    {"id":"notch-empty","tool":"apply_notch_filter","params":{"freq":60.0},"instruction":"Verify notch is blocked before import","expected_outcomes":["completed"]},
+    {"id":"resample-empty","tool":"resample_data","params":{"rate":128},"instruction":"Verify resampling is blocked before import","expected_outcomes":["completed"]},
+    {"id":"reference-empty","tool":"set_reference","params":{"method":"average"},"instruction":"Verify reference is blocked before import","expected_outcomes":["completed"]},
+    {"id":"normalize-empty","tool":"normalize_data","params":{"method":"z-score"},"instruction":"Verify normalization is blocked before import","expected_outcomes":["completed"]},
+    {"id":"recover-navigation","tool":"switch_panel","params":{"panel_name":"preprocess"},"instruction":"Verify a valid navigation still works after blocked actions","expected_outcomes":["completed"]}
+  ]
+}

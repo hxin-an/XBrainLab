@@ -13,6 +13,7 @@ from XBrainLab.llm.agent.execution_policy import HostExecutionPolicy
 from XBrainLab.llm.agent.tool_attempt_coordinator import ToolAttemptCoordinator
 from XBrainLab.llm.agent.tool_execution_coordinator import ToolExecutionCoordinator
 from XBrainLab.llm.agent.verifier import PathProvenanceVerifier, VerificationLayer
+from XBrainLab.llm.tools import get_all_tools
 from XBrainLab.llm.tools.application_surface import (
     SETTING_CHANGE_CONFIRMATION_KIND,
     TOOL_TO_COMMAND,
@@ -27,44 +28,6 @@ from XBrainLab.llm.tools.application_surface import (
     setting_confirmation_params,
 )
 from XBrainLab.llm.tools.base import BaseTool
-from XBrainLab.llm.tools.real.analysis_real import (
-    RealEvaluateTool,
-    RealSaliencyTool,
-    RealVisualizeTool,
-)
-from XBrainLab.llm.tools.real.dataset_real import (
-    RealApplyInterpretationTool,
-    RealAttachLabelsTool,
-    RealConfigureDatasetSplitTool,
-    RealGetDatasetInfoTool,
-    RealListFilesTool,
-    RealLoadDataTool,
-    RealPreviewInterpretationTool,
-    RealQueryStateTool,
-    RealReloadInterpretationRecipeTool,
-    RealSaveInterpretationRecipeTool,
-    RealScanSourceTool,
-    RealValidateInterpretationTool,
-)
-from XBrainLab.llm.tools.real.preprocess_real import (
-    RealBandPassFilterTool,
-    RealChannelSelectionTool,
-    RealEpochDataTool,
-    RealNormalizeTool,
-    RealNotchFilterTool,
-    RealRereferenceTool,
-    RealResampleTool,
-    RealResetPreprocessTool,
-    RealSetMontageTool,
-    RealStandardPreprocessTool,
-)
-from XBrainLab.llm.tools.real.training_real import (
-    RealConfigureTrainingTool,
-    RealSetModelTool,
-    RealStartTrainingTool,
-    RealStopTrainingTool,
-)
-from XBrainLab.llm.tools.real.ui_control_real import RealSwitchPanelTool
 from XBrainLab.llm.tools.result_contract import (
     UiRequest,
     redact_public_text,
@@ -210,54 +173,18 @@ class DebugToolAdmission:
 class ToolExecutor:
     """Executes tools requested by the Interactive Debug Mode.
 
-    Maintains a class-level registry (``TOOL_MAP``) that maps short string
-    names to concrete ``Real*Tool`` classes covering dataset, preprocessing,
-    training, and UI-control operations.
+    The registry is compiled from the same canonical real-tool surface used by
+    the production Assistant. Debug mode therefore cannot retain retired tools.
 
     Attributes:
-        TOOL_MAP: Class-variable mapping tool name strings to their
-            corresponding ``BaseTool`` subclass types.
+        TOOL_MAP: Class-variable mapping tool names to stateless factories.
         study: The active :class:`Study` instance against which tools are
             executed.
 
     """
 
-    TOOL_MAP: ClassVar[dict[str, type[BaseTool]]] = {
-        # Dataset
-        "list_files": RealListFilesTool,
-        "scan_source": RealScanSourceTool,
-        "preview_interpretation": RealPreviewInterpretationTool,
-        "validate_interpretation": RealValidateInterpretationTool,
-        "apply_interpretation": RealApplyInterpretationTool,
-        "save_interpretation_recipe": RealSaveInterpretationRecipeTool,
-        "reload_interpretation_recipe": RealReloadInterpretationRecipeTool,
-        "load_data": RealLoadDataTool,
-        "attach_labels": RealAttachLabelsTool,
-        "query_state": RealQueryStateTool,
-        "get_dataset_info": RealGetDatasetInfoTool,
-        "configure_dataset_split": RealConfigureDatasetSplitTool,
-        # Analysis
-        "evaluate": RealEvaluateTool,
-        "visualize": RealVisualizeTool,
-        "saliency": RealSaliencyTool,
-        # Preprocess
-        "apply_standard_preprocess": RealStandardPreprocessTool,
-        "reset_preprocess": RealResetPreprocessTool,
-        "apply_bandpass_filter": RealBandPassFilterTool,
-        "apply_notch_filter": RealNotchFilterTool,
-        "resample_data": RealResampleTool,
-        "normalize_data": RealNormalizeTool,
-        "set_reference": RealRereferenceTool,
-        "select_channels": RealChannelSelectionTool,
-        "set_montage": RealSetMontageTool,
-        "epoch_data": RealEpochDataTool,
-        # Training
-        "configure_training": RealConfigureTrainingTool,
-        "set_model": RealSetModelTool,
-        "start_training": RealStartTrainingTool,
-        "stop_training": RealStopTrainingTool,
-        # UI
-        "switch_panel": RealSwitchPanelTool,
+    TOOL_MAP: ClassVar[dict[str, Any]] = {
+        tool.name: (lambda tool=tool: tool) for tool in get_all_tools("real")
     }
 
     def __init__(

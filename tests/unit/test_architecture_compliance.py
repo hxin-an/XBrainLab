@@ -2743,13 +2743,9 @@ def test_agent_coordinators_are_constructor_owned_without_lazy_fallback():
             and node.func.attr == "context_for"
         )
         for method in attempt_class.body
-        if isinstance(method, ast.FunctionDef)
-        and method.name in {"evaluate", "evaluate_host_deterministic_continuation"}
+        if isinstance(method, ast.FunctionDef) and method.name == "evaluate"
     }
-    assert context_reads == {
-        "evaluate": 1,
-        "evaluate_host_deterministic_continuation": 1,
-    }
+    assert context_reads == {"evaluate": 1}
     assert "result=self._verification_result(" in attempt_source
 
 

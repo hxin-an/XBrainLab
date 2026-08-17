@@ -10,7 +10,6 @@ from XBrainLab.llm.agent.verifier import (
     PathProvenanceVerifier,
     PlaceholderArgumentValidator,
     ToolSchemaValidator,
-    TrainingParamValidator,
     ValidatorStrategy,
     VerificationLayer,
     VerificationResult,
@@ -21,7 +20,6 @@ from XBrainLab.llm.tools.definitions.dataset_def import (
     BaseLoadDataTool,
     BasePreviewInterpretationTool,
 )
-from XBrainLab.llm.tools.definitions.training_def import BaseConfigureTrainingTool
 
 
 def _error_message(result: VerificationResult) -> str:
@@ -163,128 +161,6 @@ class TestFrequencyRangeValidator:
         v = FrequencyRangeValidator()
         r = v.validate("apply_bandpass_filter", {"low_freq": 1.0})
         assert r.is_valid
-
-
-# ---------------------------------------------------------------------------
-# Training Param Validator
-# ---------------------------------------------------------------------------
-
-
-class TestTrainingParamValidator:
-    def test_valid_params(self):
-        v = TrainingParamValidator()
-        r = v.validate(
-            "configure_training",
-            {"epoch": 10, "learning_rate": 0.001, "batch_size": 32},
-        )
-        assert r.is_valid
-
-    def test_epoch_zero_rejected(self):
-        v = TrainingParamValidator()
-        r = v.validate("configure_training", {"epoch": 0})
-        assert not r.is_valid
-
-    def test_epoch_negative_rejected(self):
-        v = TrainingParamValidator()
-        r = v.validate("configure_training", {"epoch": -5})
-        assert not r.is_valid
-
-    def test_large_positive_epoch_matches_backend_contract(self):
-        v = TrainingParamValidator()
-        r = v.validate(
-            "configure_training",
-            {"epoch": 99999, "batch_size": 32, "learning_rate": 0.001},
-        )
-        assert r.is_valid
-
-    def test_epoch_non_numeric(self):
-        v = TrainingParamValidator()
-        r = v.validate("configure_training", {"epoch": "lots"})
-        assert not r.is_valid
-
-    def test_lr_zero_rejected(self):
-        v = TrainingParamValidator()
-        r = v.validate("configure_training", {"learning_rate": 0})
-        assert not r.is_valid
-
-    def test_lr_one_matches_backend_positive_finite_contract(self):
-        v = TrainingParamValidator()
-        r = v.validate(
-            "configure_training",
-            {"epoch": 10, "batch_size": 32, "learning_rate": 1.0},
-        )
-        assert r.is_valid
-
-    def test_missing_training_option_is_rejected(self):
-        v = TrainingParamValidator()
-        r = v.validate(
-            "configure_training",
-            {"epoch": 10, "learning_rate": 0.001},
-        )
-        assert not r.is_valid
-        assert "batch_size" in _error_message(r)
-
-    def test_batch_size_zero_rejected(self):
-        v = TrainingParamValidator()
-        r = v.validate("configure_training", {"batch_size": 0})
-        assert not r.is_valid
-
-    @pytest.mark.parametrize(
-        ("field", "value"),
-        [
-            ("repeat", 0),
-            ("repeat", -1),
-            ("repeat", 1.75),
-            ("save_checkpoints_every", -1),
-            ("save_checkpoints_every", 2.9),
-        ],
-    )
-    def test_optional_integer_contract_matches_execution(
-        self,
-        field: str,
-        value: object,
-    ) -> None:
-        validator = TrainingParamValidator()
-        params: dict[str, object] = {
-            "epoch": 10,
-            "batch_size": 32,
-            "learning_rate": 0.001,
-            field: value,
-        }
-
-        result = validator.validate("configure_training", params)
-
-        assert not result.is_valid
-        assert field in _error_message(result)
-
-    def test_ignores_unrelated_tools(self):
-        v = TrainingParamValidator()
-        r = v.validate("load_data", {"epoch": -1})
-        assert r.is_valid
-
-
-def test_training_schema_requires_native_json_numeric_values():
-    verifier = VerificationLayer(
-        tool_schemas={
-            "configure_training": BaseConfigureTrainingTool().parameters,
-        }
-    )
-
-    string_result = verifier.verify_tool_call(
-        (
-            "configure_training",
-            {"epoch": "10", "batch_size": 32.0, "learning_rate": "0.001"},
-        )
-    )
-    typed_result = verifier.verify_tool_call(
-        (
-            "configure_training",
-            {"epoch": 10, "batch_size": 32, "learning_rate": 0.001},
-        )
-    )
-
-    assert not string_result.is_valid
-    assert typed_result.is_valid
 
 
 # ---------------------------------------------------------------------------

@@ -1180,9 +1180,7 @@ def test_stale_publication_allows_only_navigation_and_redacts_failure_details():
     assert "/private/runtime.py" not in context_content
     assert "SECRET_TOKEN_123" not in context_content
     assert assembler.latest_tool_publication.tool_names == frozenset({"switch_panel"})
-    assert assembler.latest_tool_publication.blocked_reason("switch_panel") == (
-        "Workflow state is temporarily unavailable."
-    )
+    assert assembler.latest_tool_publication.blocked_reason("switch_panel") is None
     assert "## Workflow Status Unavailable" not in prompt
     assert "## Current Stage: Empty (No Data)" not in prompt
     assert "unique description for import_eeg_data" not in prompt
@@ -1804,12 +1802,7 @@ def test_prompt_policy_read_result_serializes_one_successful_publication() -> No
 
     assert payload["backend_generation"] == 17
     assert payload["publication_error"] is None
-    assert set(payload["published_tools"]) == {
-        "configure_training",
-        "import_eeg_data",
-        "select_model",
-        "switch_panel",
-    }
+    assert payload["published_tools"] == []
 
 
 def test_prompt_policy_publication_exception_is_fail_closed_and_safe() -> None:
@@ -1830,92 +1823,6 @@ def test_prompt_policy_publication_exception_is_fail_closed_and_safe() -> None:
     assert "temporarily unavailable" in result.publication_error.message
     assert "secret backend path" not in serialized
     assert "Traceback" not in serialized
-
-
-def test_prompt_policy_policy_exception_is_fail_closed_and_prompt_visible() -> None:
-    from XBrainLab.llm.agent.prompt_policy import read_prompt_policy
-
-    state = _state()
-    publication = ApplicationViewPublication(
-        generation=18,
-        state=state,
-        capabilities=build_capability_policy(state),
-    )
-    runtime = _ApplicationRuntimeFake(publication)
-    with patch(
-        "XBrainLab.llm.agent.prompt_policy.build_agent_tool_policy",
-        side_effect=RuntimeError("internal capability implementation detail"),
-    ):
-        result = read_prompt_policy(object(), runtime=runtime)
-
-    assert result.published_tools == frozenset()
-    assert result.publication_error is not None
-    assert result.publication_error.code == "policy_read_failed"
-
-    registry = ToolRegistry()
-    registry.register(_NamedTool("scan_source"))
-    assembler = ContextAssembler(
-        registry,
-        object(),
-        application_runtime=_ApplicationRuntimeFake(publication),
-    )
-    with patch(
-        "XBrainLab.llm.agent.prompt_policy.build_agent_tool_policy",
-        side_effect=RuntimeError("internal capability implementation detail"),
-    ):
-        messages = assembler.get_messages(
-            [{"role": "user", "content": "Import EEG data"}]
-        )
-
-    prompt = messages[0]["content"]
-    state_card = _context_item(
-        _untrusted_context(messages),
-        "state_card",
-    )["data"]
-    assert state_card == {
-        "workflow_stage": "unavailable",
-        "backend_generation": 18,
-        "state_reliable": False,
-    }
-    assert "Backend capability policy is temporarily unavailable" not in prompt
-    assert "unique description for scan_source" not in prompt
-    assert "internal capability implementation detail" not in prompt
-    assert "internal capability implementation detail" not in messages[1]["content"]
-
-
-def test_prompt_policy_blocked_reason_exception_is_fail_closed() -> None:
-    from XBrainLab.llm.agent.prompt_policy import read_prompt_policy
-
-    class _BrokenAvailability:
-        enabled = False
-        command_name = "train"
-        tool_name = "start_training"
-
-        @property
-        def reason_text(self) -> str:
-            raise RuntimeError("blocked reason serialization detail")
-
-    state = _state()
-    publication = ApplicationViewPublication(
-        generation=19,
-        state=state,
-        capabilities=build_capability_policy(state),
-    )
-    with patch(
-        "XBrainLab.llm.agent.prompt_policy.build_agent_tool_policy",
-        return_value={"start_training": _BrokenAvailability()},
-    ):
-        result = read_prompt_policy(
-            object(),
-            runtime=_ApplicationRuntimeFake(publication),
-        )
-
-    serialized = json.dumps(result.to_prompt_payload())
-    assert result.published_tools == frozenset()
-    assert result.blocked_reasons == ()
-    assert result.publication_error is not None
-    assert result.publication_error.code == "blocked_reasons_failed"
-    assert "blocked reason serialization detail" not in serialized
 
 
 def test_prompt_policy_invalid_publication_type_is_serializable_and_fail_closed() -> (

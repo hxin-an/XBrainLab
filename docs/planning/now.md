@@ -8,16 +8,23 @@
 完成 replacement、atomic cutover、deletion 與 exact-SHA candidate；在完整候選前不要求使用者手測，
 未取得同一 source 的手測通過不得合併 main。**
 
-目前 phase：`atomic 17-tool target cutover`
+目前 phase：`Retired-surface deletion and no-model walkthrough replacement`
 
 目前 branch：`refactor/assistant-target-adapters-v2`
 
-下一步：以三個可獨立驗證的local checkpoint完成同一次target migration：A先讓現有Channel Selection
+已完成：以三個可獨立驗證的local checkpoint完成target migration：A先讓現有Channel Selection
 dialog回傳typed terminal；B將舊Host tool-call normalizer刪減成strict identity boundary；C再將runtime與
 model projection原子切換成approved 17-tool target，接通七個zero-parameter GUI handoff、五個direct
-preprocess、四個lifecycle與`switch_panel`，並停止Host intent narrowing與成功後continuation。GitHub
-服務目前不可用，因此不以remote PR／CI狀態阻塞本地施工；三個checkpoint皆完成focused regression
-後才依序形成stacked commits。
+preprocess、四個lifecycle與`switch_panel`。Local commits依序為`2366c6b3`、`015104ff`、`5da213a3`。
+
+已完成local checkpoint：D1已從`ToolAttemptCoordinator`移除以使用者文字猜command的intent gate；D2已
+刪除controller的request admission、product shortcut、Host deterministic continuation與execution snapshot；
+D3已移除兩個無production caller的policy modules。保留schema、同generation publication、path provenance、
+ApplicationService capability與confirmation；`tests/unit/llm`在target 17 surface上`1680 passed`。
+
+下一步：物理刪除obsolete Assistant wrappers，並以no-model frontend walkthrough取代舊21-action showcase。
+舊showcase與local eval仍import已退役host classifier，broader unit已在collection時fail closed；不得以compatibility
+shim恢復classifier。GitHub服務目前不可用，因此只跑local evidence。
 
 已否決的中間路徑：red-first曾將三個target adapters加在舊30-tool runtime旁，立即使runtime變成33，
 並被runtime equality／headless contract tests攔截。該狀態不提交；建立第二個過渡catalog會增加遷移

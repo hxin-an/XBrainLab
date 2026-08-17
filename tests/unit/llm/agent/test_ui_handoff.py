@@ -76,12 +76,12 @@ def test_workflow_handoff_route_descriptors_preserve_existing_ui_taxonomy() -> N
         ),
         (
             CommandName.PREPROCESS,
-            WorkflowUiHandoffSurfaceKind.PANEL,
-            AssistantDecisionOwner.PANEL_HANDOFF,
-            WorkflowUiHandoffPanel.PREPROCESS,
-            WorkflowUiHandoffRouteIdentity.PREPROCESS_PANEL,
-            "Continue in Preprocess",
-            "Continue in the opened XBrainLab panel.",
+            WorkflowUiHandoffSurfaceKind.DIALOG,
+            AssistantDecisionOwner.GUI_DIALOG,
+            WorkflowUiHandoffPanel.DATASET,
+            WorkflowUiHandoffRouteIdentity.CHANNEL_SELECTION_DIALOG,
+            "Continue in Channel Selection",
+            "Finish or cancel in the open Channel Selection dialog.",
         ),
         (
             CommandName.CREATE_EPOCH,

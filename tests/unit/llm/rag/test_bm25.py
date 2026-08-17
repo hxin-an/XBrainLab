@@ -49,11 +49,11 @@ def test_build_from_json_indexes_only_primary_workflow_examples(tmp_path: Path) 
         json.dumps(
             [
                 {
-                    "id": "dataset-info",
-                    "input": "inspect the current dataset",
+                    "id": "import-eeg",
+                    "input": "import an EEG dataset",
                     "category": "dataset",
                     "expected_tool_calls": [
-                        {"tool_name": "query_state", "parameters": {}}
+                        {"tool_name": "import_eeg_data", "parameters": {}}
                     ],
                 },
                 {
@@ -72,13 +72,13 @@ def test_build_from_json_indexes_only_primary_workflow_examples(tmp_path: Path) 
     index = BM25Index()
 
     index.build_from_json(corpus)
-    results = index.query("inspect dataset")
+    results = index.query("import EEG dataset")
 
     assert index.doc_count == 1
     assert len(results) == 1
-    assert results[0][1] == "dataset-info"
+    assert results[0][1] == "import-eeg"
     assert json.loads(results[0][3]["tool_calls"]) == [
-        {"tool_name": "query_state", "parameters": {}}
+        {"tool_name": "import_eeg_data", "parameters": {}}
     ]
 
 

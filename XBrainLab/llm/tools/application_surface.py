@@ -36,7 +36,6 @@ from XBrainLab.backend.application import (
     get_application_service,
 )
 from XBrainLab.backend.application.capabilities import (
-    UNRELIABLE_STATE_ALLOWED_COMMAND_NAMES,
     CapabilityPolicy,
     CommandCapability,
     build_capability_policy,
@@ -975,7 +974,7 @@ def _build_agent_tool_policy_from_publication(
         tool_policy = {
             name: (
                 availability
-                if (availability.command_name in UNRELIABLE_STATE_ALLOWED_COMMAND_NAMES)
+                if name == "switch_panel"
                 else replace(
                     availability,
                     enabled=False,
@@ -1380,6 +1379,12 @@ def _command_for_tool(
     state: dict[str, Any] | None = None,
 ) -> Command | None:
     """Build an ApplicationService command for a supported agent tool."""
+    contract = AGENT_ACTION_CONTRACTS.contract_for(tool_name)
+    if (
+        contract is None
+        or contract.execution_kind is not AgentExecutionKind.APPLICATION_COMMAND
+    ):
+        return None
     if tool_name == "scan_source":
         source_path = params.get("source_path")
         if not source_path:

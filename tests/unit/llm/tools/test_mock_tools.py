@@ -598,40 +598,36 @@ class TestTrainingMocks:
         from XBrainLab.llm.tools import get_all_tools
 
         tools = {tool.name: tool for tool in get_all_tools(mode="mock")}
-
+        assert set(tools) == {
+            "import_eeg_data",
+            "select_channels",
+            "set_montage",
+            "create_epochs",
+            "configure_dataset_split",
+            "select_model",
+            "configure_training",
+            "apply_bandpass_filter",
+            "apply_notch_filter",
+            "resample_data",
+            "set_reference",
+            "normalize_data",
+            "start_training",
+            "stop_training",
+            "reset_preprocessing",
+            "clear_training_history",
+            "switch_panel",
+        }
         assert _require_tool_result(tools["start_training"].execute(study)).ok is False
-        assert _require_tool_result(
-            tools["scan_source"].execute(study, source_path="/data/A01T.gdf")
-        ).ok
-        assert _require_tool_result(tools["preview_interpretation"].execute(study)).ok
-        assert _require_tool_result(tools["validate_interpretation"].execute(study)).ok
-        assert _require_tool_result(
-            tools["apply_interpretation"].execute(study, confirmed=True)
-        ).ok
-        assert _require_tool_result(
-            tools["epoch_data"].execute(study, t_min=-0.5, t_max=1.0)
-        ).ok
-        assert _require_tool_result(tools["configure_dataset_split"].execute(study)).ok
-        assert _require_tool_result(
-            tools["set_model"].execute(study, model_name="EEGNet")
-        ).ok
-        assert _require_tool_result(
-            tools["configure_training"].execute(
-                study,
-                epoch=10,
-                batch_size=32,
-                learning_rate=0.001,
-            )
-        ).ok
-        assert _require_tool_result(
-            tools["start_training"].execute(study, confirmed=True)
-        ).ok
-        assert _require_tool_result(
-            tools["reset_preprocess"].execute(study, confirmed=True)
-        ).ok
-        reset_start = _require_tool_result(tools["start_training"].execute(study))
-        assert reset_start.ok is False
-        assert reset_start.error_type == "precondition"
+        for tool_name in (
+            "import_eeg_data",
+            "select_channels",
+            "set_montage",
+            "create_epochs",
+            "configure_dataset_split",
+            "select_model",
+            "configure_training",
+        ):
+            assert tools[tool_name].execute(study).kind.value == "workflow_handoff"
 
 
 class TestAnalysisMocks:

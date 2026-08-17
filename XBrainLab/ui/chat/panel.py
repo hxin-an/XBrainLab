@@ -1256,11 +1256,17 @@ class ChatPanel(QWidget):
             self.send_btn.setToolTip("Send request")
             self.send_btn.setStyleSheet(SEND_BUTTON_STYLE)
             send_enabled = runtime_ready and (
-                self.debug_mode is not None or bool(self.input_field.text().strip())
+                self.debug_mode.can_dispatch
+                if self.debug_mode is not None
+                else bool(self.input_field.text().strip())
             )
 
         self._fit_composer_action_width()
-        self.input_field.setEnabled(not self.is_processing and runtime_ready)
+        self.input_field.setEnabled(
+            not self.is_processing
+            and runtime_ready
+            and (self.debug_mode is None or self.debug_mode.can_dispatch)
+        )
         self.send_btn.setEnabled(send_enabled)
         for button in getattr(self, "suggestion_prompt_buttons", ()):
             prompt = button.property("assistantPrompt")
@@ -1270,6 +1276,43 @@ class ChatPanel(QWidget):
                 and not self.is_processing
                 and runtime_ready
             )
+
+    def reject_debug_step(self, message: str) -> None:
+        """Release a step rejected before controller ownership was established."""
+        if self.debug_mode is None:
+            return
+        self.debug_mode.reject_pending()
+        if message:
+            self.show_notice(message)
+        self._refresh_debug_walkthrough_ui()
+
+    def complete_debug_step(self, outcome: str) -> None:
+        """Commit one diagnostic step only after its correlated terminal."""
+        if self.debug_mode is None or not self.debug_mode.is_waiting:
+            return
+        self.debug_mode.complete_pending(str(outcome or ""))
+        if self.debug_mode.failure:
+            self.show_notice(self.debug_mode.failure)
+        self._refresh_debug_walkthrough_ui()
+
+    def _refresh_debug_walkthrough_ui(self) -> None:
+        """Render the approved slim walkthrough progress and Enter gate."""
+        if self.debug_mode is None:
+            return
+        progress = self.debug_mode.progress_text
+        self.workflow_run_status_label.setText(progress)
+        self.workflow_run_status_label.setToolTip(progress)
+        self.workflow_run_status_label.setVisible(True)
+        if self.debug_mode.is_complete:
+            placeholder = "Walkthrough complete"
+        elif self.debug_mode.failure:
+            placeholder = "Walkthrough stopped"
+        elif self.debug_mode.is_waiting:
+            placeholder = "Complete the current action in XBrainLab"
+        else:
+            placeholder = "Press Enter to run the next action"
+        self.input_field.setPlaceholderText(placeholder)
+        self._apply_composer_activity_state()
 
     def eventFilter(self, watched, event):  # noqa: N802
         """Reflect composer focus on its integrated input surface."""
@@ -1315,22 +1358,11 @@ class ChatPanel(QWidget):
 
         # M3.1 Debug Mode Interception
         if self.debug_mode:
-            if not self.debug_mode.is_complete:
-                call = self.debug_mode.next_call()
-                if call:
-                    # Clear input just in case
-                    self.input_field.clear()
-                    # Emit debug request
-                    self.debug_tool_requested.emit(
-                        call.tool,
-                        call.params,
-                        call.confirmed,
-                        call.authorization_text,
-                    )
-                else:
-                    self.input_field.setText("Debug Script Completed.")
-            else:
-                self.input_field.setText("Debug Script Completed.")
+            call = self.debug_mode.begin_call()
+            if call is not None:
+                self.input_field.clear()
+                self._refresh_debug_walkthrough_ui()
+                self.debug_tool_requested.emit(call.tool, call.params, False, "")
             return
 
         if self._runtime_phase is not AssistantRuntimePhase.READY:
@@ -1438,9 +1470,6 @@ class ChatPanel(QWidget):
 
         if self.debug_mode is not None:
             self.input_widget.setVisible(True)
-            self.input_field.setPlaceholderText("Run next diagnostic action")
-            self.workflow_run_status_label.setText("")
-            self.workflow_run_status_label.setVisible(False)
             self.runtime_progress.setVisible(False)
             self.retry_runtime_btn.setVisible(False)
             self.retry_runtime_btn.setEnabled(False)
@@ -1448,6 +1477,7 @@ class ChatPanel(QWidget):
             self.runtime_actions.setVisible(False)
             self.runtime_state_widget.setVisible(False)
             self._update_processing_ui(self.is_processing)
+            self._refresh_debug_walkthrough_ui()
             return
 
         if self._runtime_phase is AssistantRuntimePhase.LOADING:

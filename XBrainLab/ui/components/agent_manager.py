@@ -961,6 +961,10 @@ class AgentManager(QObject):
     ) -> None:
         """Admit one debug-script action through the normal correlated turn lease."""
         if self.agent_controller is None:
+            if self.chat_panel:
+                self.chat_panel.reject_debug_step(
+                    "The assistant runtime must be ready before running diagnostics."
+                )
             self._show_low_priority_notice(
                 "The assistant runtime must be ready before running diagnostics."
             )
@@ -984,11 +988,17 @@ class AgentManager(QObject):
             self._show_low_priority_notice(
                 "The diagnostic action could not be started. Try again."
             )
+            if self.chat_panel:
+                self.chat_panel.reject_debug_step(
+                    "The diagnostic action could not be started. Try again."
+                )
             return
         if not admission.accepted:
             self._finish_assistant_turn_submission(submission, accepted=False)
             self._deferred_submission_events = None
             self._show_low_priority_notice(admission.message)
+            if self.chat_panel:
+                self.chat_panel.reject_debug_step(admission.message)
             return
         correlation = admission.correlation
         deferred_events = self._deferred_submission_events
@@ -1001,6 +1011,10 @@ class AgentManager(QObject):
             self._show_low_priority_notice(
                 "The diagnostic action could not be correlated. Try again."
             )
+            if self.chat_panel:
+                self.chat_panel.reject_debug_step(
+                    "The diagnostic action could not be correlated. Try again."
+                )
             return
         self._prepare_admitted_transcript_turn()
         self._replay_deferred_submission_events(deferred_events)
@@ -1306,6 +1320,7 @@ class AgentManager(QObject):
         target: AssistantPanelTarget,
         *,
         view_mode: str = "",
+        on_terminal: Any | None = None,
     ) -> int:
         """Open one typed existing main-window panel without mutating workflow."""
         panel_index = {
@@ -1326,18 +1341,36 @@ class AgentManager(QObject):
                 self._switch_sub_view(panel_index, view_mode)
             if status_bar:
                 status_bar.showMessage(f"Opened {target.value.title()} panel.")
+            if on_terminal is not None:
+                on_terminal(True)
 
-        if view_mode:
+        def _on_failed(_failure: object) -> None:
+            if status_bar:
+                status_bar.showMessage(f"Could not open {target.value.title()} panel.")
+            if on_terminal is not None:
+                on_terminal(False)
+
+        if on_terminal is not None:
+            materialized = self.main_window.switch_page(
+                panel_index,
+                on_ready=_on_ready,
+                on_failed=_on_failed,
+            )
+        elif view_mode:
             materialized = self.main_window.switch_page(
                 panel_index,
                 on_ready=_on_ready,
             )
-            if materialized is not False and not ready_callback_delivered:
-                _on_ready(None)
         else:
             materialized = self.main_window.switch_page(panel_index)
             if materialized is not False and status_bar:
                 status_bar.showMessage(f"Opened {target.value.title()} panel.")
+        if (
+            materialized is not False
+            and not ready_callback_delivered
+            and (view_mode or on_terminal is not None)
+        ):
+            _on_ready(None)
 
         if materialized is False and status_bar:
             status_bar.showMessage(f"Opening {target.value.title()}...")
@@ -1625,6 +1658,8 @@ class AgentManager(QObject):
             )
             return
         self._render_delivery_terminal_error(payload)
+        if self.chat_panel:
+            self.chat_panel.complete_debug_step(payload.outcome)
         self._pending_prune_notice = False
         if self.chat_panel:
             self.chat_panel.clear_confirmation_request()
@@ -1988,7 +2023,19 @@ class AgentManager(QObject):
                 "The requested XBrainLab view could not be opened."
             )
             return
-        if payload.view_mode:
+
+        def _resolve(success: bool) -> None:
+            controller = self.agent_controller
+            if controller is not None:
+                controller.on_panel_navigation_resolved(payload, success=success)
+
+        if payload.correlation is not None:
+            self._open_assistant_panel_target(
+                payload.target,
+                view_mode=payload.view_mode or "",
+                on_terminal=_resolve,
+            )
+        elif payload.view_mode:
             self._open_assistant_panel_target(
                 payload.target,
                 view_mode=payload.view_mode,

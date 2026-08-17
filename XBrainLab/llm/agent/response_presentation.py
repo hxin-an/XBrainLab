@@ -74,10 +74,16 @@ class AssistantPanelNavigationRequest:
 
     target: AssistantPanelTarget
     view_mode: str | None = None
+    correlation: AssistantTurnCorrelation | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.target, AssistantPanelTarget):
             raise TypeError("Assistant panel target must be typed.")
+        if self.correlation is not None and not isinstance(
+            self.correlation,
+            AssistantTurnCorrelation,
+        ):
+            raise TypeError("Assistant panel correlation must be typed.")
         if self.view_mode is None:
             return
         if not isinstance(self.view_mode, str):

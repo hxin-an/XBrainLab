@@ -312,15 +312,16 @@ def test_assistant_surface_ready_requires_runtime_and_composer_truth():
 
 
 def test_collect_model_proposals_preserves_full_canonical_parameters():
-    prompt = "Scan the source."
+    prompt = "Apply a band-pass filter."
     history = [
         {"role": "user", "content": "Earlier request"},
         {"role": "user", "content": prompt},
         {
             "role": "assistant",
             "content": (
-                '{"tool_name":"scan_source","parameters":'
-                '{"source_path":"/tmp/source.fif","label_sources":[]}}'
+                '{"workflow_stage":"data_loaded",'
+                '"tool_name":"apply_bandpass_filter","parameters":'
+                '{"low_freq":4.0,"high_freq":38.0}}'
             ),
         },
         {"role": "user", "content": "Tool Output: done"},
@@ -328,10 +329,10 @@ def test_collect_model_proposals_preserves_full_canonical_parameters():
 
     assert collect_model_proposals(history, prompt) == [
         {
-            "tool_name": "scan_source",
+            "tool_name": "apply_bandpass_filter",
             "parameters": {
-                "source_path": "/tmp/source.fif",
-                "label_sources": [],
+                "low_freq": 4.0,
+                "high_freq": 38.0,
             },
         }
     ]

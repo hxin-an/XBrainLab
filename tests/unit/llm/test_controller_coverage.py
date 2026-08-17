@@ -227,20 +227,18 @@ class TestControllerToolExecution:
 
     def test_execute_success(self):
         ctrl = _make_ctrl()
-        mock_tool = MagicMock()
-        mock_tool.execute.return_value = ToolResult(True, "Done")
-        ctrl.registry.get_tool.return_value = mock_tool
+        from XBrainLab.llm.tools.real.ui_control_real import RealSwitchPanelTool
+
+        ctrl.registry.get_tool.return_value = RealSwitchPanelTool()
 
         outcome = ctrl._execute_tool_no_loop(
-            "list_files",
-            {},
-            context=_allowed_context("list_files"),
+            "switch_panel",
+            {"panel_name": "dataset"},
+            context=_allowed_context("switch_panel"),
         )
         result = outcome.result
         assert outcome.success is True
-        assert result.ok is True
-        assert result.command_name == "list_files"
-        assert result.message == "Done"
+        assert result.kind is UiRequestKind.SWITCH_PANEL
 
     def test_execute_gated(self):
         ctrl = _make_ctrl()
@@ -248,14 +246,14 @@ class TestControllerToolExecution:
         ctrl.registry.get_tool.return_value = mock_tool
 
         outcome = ctrl._execute_tool_no_loop(
-            "load_data",
+            "apply_bandpass_filter",
             {},
-            context=_blocked_context("load_data", "no raw data"),
+            context=_blocked_context("apply_bandpass_filter", "no raw data"),
         )
         result = outcome.result
         assert outcome.success is False
         assert result.ok is False
-        assert result.command_name == "load_data"
+        assert result.command_name == "apply_bandpass_filter"
         assert result.blocked_reason == "no raw data"
 
     def test_execute_unknown_tool(self):
