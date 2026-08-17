@@ -4,14 +4,34 @@ from pathlib import Path
 
 from scripts.dev.run_stable_assistant_model_eval import (
     _build_report,
+    _stable_eval_config,
     build_case_messages,
     load_target_cases,
     score_model_response,
     target_tool_registry,
 )
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
+from XBrainLab.llm.core.config import LLMConfig
 
 GOLD_SET = Path("XBrainLab/llm/rag/data/gold_set.json")
+
+
+def test_eval_config_uses_fixed_product_model_without_mutating_user_settings() -> None:
+    user_config = LLMConfig(
+        model_name="microsoft/Phi-4-mini-instruct",
+        cache_dir="/tmp/xbrainlab-model-cache",
+        device="cpu",
+        local_model_enabled=False,
+    )
+
+    eval_config = _stable_eval_config(user_config, device="cuda")
+
+    assert eval_config is user_config
+    assert eval_config.model_name == LLMConfig.default_local_model_id()
+    assert eval_config.cache_dir == "/tmp/xbrainlab-model-cache"
+    assert eval_config.device == "cuda"
+    assert eval_config.local_model_enabled is True
+    assert eval_config.assistant_runtime_selection().backend_mode == "local"
 
 
 def test_target_cases_cover_each_approved_tool_twice() -> None:

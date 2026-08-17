@@ -130,6 +130,16 @@ D-mounted public fixture root後4/4通過：PhysioNet EDF／BBCI GDF皆完成one
 artifact reload，EEGLAB SET／MNE CNT完成import-preprocess並在缺乏可靠雙類別語意時fail closed。這些仍是
 pre-freeze checkpoint；本段commit後須對final exact head重跑關鍵gate。
 
+Frozen model gate red-first：final GPU gate前確認`run_stable_assistant_model_eval.py`仍直接採用使用者
+`settings.json`的model ID與enabled狀態，和gate宣稱的fixed Granite revision衝突；本機protected setting
+目前正好是retired model，會使同一source因個人偏好而得到不同結果。最小修正只在eval script建立
+ephemeral config：保留現有cache與generation設定，但強制repo-approved default Granite、local backend、
+enabled與CLI device；不讀寫或遷移`settings.json`，不改normal runtime。Focused test先以retired user model
+重現，要求eval config仍解析成fixed Granite且保留cache path。
+Focused red為eval helper不存在；green後ephemeral config固定使用
+`ibm-granite/granite-3.3-2b-instruct`，保留使用者cache path、明示CUDA、強制local／enabled且沒有save
+call。Stable eval與handoff registry合計19 tests通過；下一步在此修正commit後重跑final exact-source gates。
+
 已否決的中間路徑：red-first曾將三個target adapters加在舊30-tool runtime旁，立即使runtime變成33，
 並被runtime equality／headless contract tests攔截。該狀態不提交；建立第二個過渡catalog會增加遷移
 成本且違反single target authority，因此改採一次atomic cutover。

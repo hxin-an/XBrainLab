@@ -184,7 +184,9 @@ def score_model_response(
             tool_name, parameters
         )
         schema_valid = schema_result.is_valid
-        schema_detail = schema_result.error_message
+        schema_detail = (
+            schema_result.error_message or "Tool parameters did not pass validation."
+        )
 
     passed = bool(
         envelope.workflow_stage == case.workflow_stage
@@ -262,6 +264,23 @@ def _write_report(path: Path, report: dict[str, Any]) -> None:
     )
 
 
+def _stable_eval_config(
+    source: LLMConfig | None,
+    *,
+    device: str | None,
+) -> LLMConfig:
+    """Build a fixed-model eval config without persisting user settings."""
+    config = source or LLMConfig()
+    config.apply_runtime_selection(
+        "local",
+        model_id=LLMConfig.default_local_model_id(),
+    )
+    config.local_model_enabled = True
+    if device is not None:
+        config.device = device
+    return config
+
+
 def run_eval(
     config: LLMConfig,
     cases: tuple[TargetEvalCase, ...],
@@ -325,9 +344,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args(argv)
 
-    config = LLMConfig.load_from_file() or LLMConfig()
-    if args.device is not None:
-        config.device = args.device
+    config = _stable_eval_config(
+        LLMConfig.load_from_file(),
+        device=args.device,
+    )
     try:
         report = run_eval(
             config,
