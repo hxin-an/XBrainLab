@@ -238,7 +238,7 @@ def interaction_outcome_message(outcome: AgentInteractionOutcome) -> str:
             "clear_training_history": (
                 "Training history removal cancelled. Your current history is unchanged."
             ),
-            "reset_preprocess": (
+            "reset_preprocessing": (
                 "Preprocessing reset cancelled. Your current workflow is unchanged."
             ),
             "new_session": (

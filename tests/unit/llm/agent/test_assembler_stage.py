@@ -73,68 +73,61 @@ class TestStageBasedFiltering:
         prompt = self._build(
             PipelineStage.EMPTY,
             [
-                "list_files",
-                "load_data",
-                "scan_source",
+                "import_eeg_data",
                 "switch_panel",
                 "apply_bandpass_filter",
             ],
         )
-        assert "list_files" in prompt
-        assert "scan_source" in prompt
-        assert "load_data" not in prompt
+        assert "import_eeg_data" in prompt
         assert "switch_panel" in prompt
         assert "apply_bandpass_filter" not in prompt
 
     def test_data_loaded_shows_preprocess_not_training(self):
         prompt = self._build(
             PipelineStage.DATA_LOADED,
-            ["apply_standard_preprocess", "start_training", "switch_panel"],
+            ["select_channels", "apply_bandpass_filter", "start_training"],
         )
-        assert "apply_standard_preprocess" in prompt
+        assert "select_channels" in prompt
+        assert "apply_bandpass_filter" in prompt
         assert "start_training" not in prompt
 
     def test_dataset_ready_shows_training_not_preprocess(self):
         prompt = self._build(
             PipelineStage.DATASET_READY,
             [
-                "set_model",
+                "select_model",
                 "configure_training",
                 "start_training",
                 "apply_bandpass_filter",
             ],
         )
-        assert "set_model" in prompt
+        assert "select_model" in prompt
         assert "start_training" in prompt
         assert "apply_bandpass_filter" not in prompt
 
     def test_training_only_switch_panel(self):
         prompt = self._build(
             PipelineStage.TRAINING,
-            ["switch_panel", "set_model", "retired_reset_tool", "list_files"],
+            ["switch_panel", "select_model", "stop_training"],
         )
         assert "switch_panel" in prompt
-        assert "set_model" not in prompt
-        assert "retired_reset_tool" not in prompt
+        assert "stop_training" in prompt
+        assert "select_model" not in prompt
 
     def test_trained_allows_retraining(self):
         prompt = self._build(
             PipelineStage.TRAINED,
             [
-                "set_model",
+                "select_model",
                 "configure_training",
                 "start_training",
-                "evaluate",
-                "visualize",
-                "saliency",
+                "clear_training_history",
                 "switch_panel",
             ],
         )
-        assert "set_model" in prompt
+        assert "select_model" in prompt
         assert "start_training" in prompt
-        assert "evaluate" in prompt
-        assert "visualize" in prompt
-        assert "saliency" in prompt
+        assert "clear_training_history" in prompt
 
     def test_no_tools_registered_shows_fallback(self):
         prompt = self._build(PipelineStage.EMPTY, [])
@@ -143,46 +136,42 @@ class TestStageBasedFiltering:
     def test_prompt_composes_the_canonical_decision_policy(self):
         prompt = self._build(
             PipelineStage.EMPTY,
-            ["scan_source", "preview_interpretation", "set_model"],
+            ["import_eeg_data", "switch_panel", "select_model"],
         )
 
         assert (
             STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions("empty") in prompt
         )
-        assert "request-scoped action contracts are" in prompt
+        assert "backend-stage-published action contracts" in prompt
         assert "Workflow Decision Context" not in prompt
         assert 'schema "xbrainlab.untrusted_context.v1"' in prompt
-        assert "Only the listed workflow action is available" in prompt
+        assert "Only the listed workflow actions are available" in prompt
 
-    def test_stage_filter_keeps_legacy_tools_out_of_primary_prompt(self):
+    def test_stage_filter_keeps_retired_tools_out_of_primary_prompt(self):
         prompt = self._build(
             PipelineStage.DATA_LOADED,
             [
                 "scan_source",
                 "preview_interpretation",
-                "attach_labels",
-                "apply_standard_preprocess",
+                "select_channels",
+                "apply_bandpass_filter",
             ],
         )
-        assert "scan_source" in prompt
-        assert "preview_interpretation" in prompt
-        assert "apply_standard_preprocess" in prompt
-        assert "attach_labels" not in prompt
+        assert "select_channels" in prompt
+        assert "apply_bandpass_filter" in prompt
+        assert "scan_source" not in prompt
+        assert "preview_interpretation" not in prompt
 
     def test_backend_policy_cannot_reintroduce_unpublished_model_tools(self):
-        unpublished = {
+        retired = {
             "load_data",
             "attach_labels",
-            "apply_bandpass_filter",
-            "apply_notch_filter",
-            "resample_data",
-            "normalize_data",
-            "set_reference",
-            "select_channels",
             "get_dataset_info",
+            "scan_source",
+            "query_state",
         }
         registry = ToolRegistry()
-        for name in (*unpublished, "scan_source", "switch_panel"):
+        for name in (*retired, "import_eeg_data", "switch_panel"):
             registry.register(_FakeTool(name))
         study = MagicMock()
 
@@ -196,7 +185,7 @@ class TestStageBasedFiltering:
                 return_value=PromptPolicyReadResult(
                     publication=None,
                     published_tools=frozenset(
-                        unpublished | {"scan_source", "switch_panel"}
+                        retired | {"import_eeg_data", "switch_panel"}
                     ),
                     blocked_reasons=(),
                 ),
@@ -204,9 +193,9 @@ class TestStageBasedFiltering:
         ):
             prompt = ContextAssembler(registry, study).build_system_prompt()
 
-        assert "scan_source" in prompt
+        assert "import_eeg_data" in prompt
         assert "switch_panel" in prompt
-        for tool_name in unpublished:
+        for tool_name in retired:
             assert tool_name not in prompt
 
 
@@ -294,5 +283,5 @@ class TestPromptContent:
             assembler = ContextAssembler(registry, study)
             prompt = assembler.build_system_prompt()
 
-        assert "request-scoped action contracts are" in prompt
-        assert "Use only an action contract listed for this exact turn" in prompt
+        assert "backend-stage-published action contracts" in prompt
+        assert "Use only an action contract listed for this exact stage" in prompt

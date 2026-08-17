@@ -19,6 +19,7 @@ from XBrainLab.backend.application import (
     Command,
     CommandName,
     CommandResult,
+    ConfigureTrainingCommand,
     LoadDataCommand,
     PreprocessedStateSnapshot,
     PreviewInterpretationCommand,
@@ -28,6 +29,7 @@ from XBrainLab.backend.application import (
     SaliencyCommand,
     SaveDatasetSplitCommand,
     StopTrainingCommand,
+    TrainCommand,
     get_application_service,
 )
 from XBrainLab.backend.application.capabilities import build_capability_policy
@@ -144,7 +146,7 @@ def test_agent_action_contract_registry_has_unique_tools_and_intent_aliases():
         alias for contract in contracts for alias in contract.intent_aliases
     ]
 
-    assert len(contracts) == 30
+    assert len(contracts) == 17
     assert len(tool_names) == len(set(tool_names))
     assert len(intent_aliases) == len(set(intent_aliases))
 
@@ -152,63 +154,48 @@ def test_agent_action_contract_registry_has_unique_tools_and_intent_aliases():
 def test_agent_action_contract_registry_has_exact_model_facing_projection():
     expected = frozenset(
         {
-            "list_files",
-            "scan_source",
-            "preview_interpretation",
-            "validate_interpretation",
-            "apply_interpretation",
-            "save_interpretation_recipe",
-            "reload_interpretation_recipe",
-            "query_state",
-            "apply_standard_preprocess",
-            "reset_preprocess",
-            "epoch_data",
+            "import_eeg_data",
+            "select_channels",
+            "set_montage",
+            "create_epochs",
             "configure_dataset_split",
-            "set_model",
+            "select_model",
             "configure_training",
+            "apply_bandpass_filter",
+            "apply_notch_filter",
+            "resample_data",
+            "set_reference",
+            "normalize_data",
             "start_training",
             "stop_training",
-            "evaluate",
-            "visualize",
-            "saliency",
-            "set_montage",
+            "reset_preprocessing",
+            "clear_training_history",
             "switch_panel",
         }
     )
 
     assert AGENT_ACTION_CONTRACTS.model_tool_names() == expected
-    assert len(AGENT_ACTION_CONTRACTS.tool_names()) == 30
+    assert len(AGENT_ACTION_CONTRACTS.tool_names()) == 17
 
 
 def test_tool_to_command_compatibility_view_does_not_drift_from_registry():
     expected = {
-        "scan_source": CommandName.SCAN_SOURCE,
-        "preview_interpretation": CommandName.PREVIEW_INTERPRETATION,
-        "validate_interpretation": CommandName.VALIDATE_INTERPRETATION,
-        "apply_interpretation": CommandName.APPLY_INTERPRETATION,
-        "save_interpretation_recipe": CommandName.SAVE_INTERPRETATION_RECIPE,
-        "reload_interpretation_recipe": CommandName.RELOAD_INTERPRETATION_RECIPE,
-        "load_data": CommandName.LOAD_DATA,
-        "attach_labels": CommandName.ATTACH_LABELS,
-        "apply_standard_preprocess": CommandName.PREPROCESS,
+        "import_eeg_data": CommandName.SCAN_SOURCE,
+        "select_channels": CommandName.PREPROCESS,
+        "set_montage": CommandName.APPLY_MONTAGE,
+        "create_epochs": CommandName.CREATE_EPOCH,
+        "configure_dataset_split": CommandName.CONFIGURE_DATASET_SPLIT,
+        "select_model": CommandName.CONFIGURE_TRAINING,
+        "configure_training": CommandName.CONFIGURE_TRAINING,
         "apply_bandpass_filter": CommandName.PREPROCESS,
         "apply_notch_filter": CommandName.PREPROCESS,
         "resample_data": CommandName.PREPROCESS,
         "normalize_data": CommandName.PREPROCESS,
         "set_reference": CommandName.PREPROCESS,
-        "select_channels": CommandName.PREPROCESS,
-        "reset_preprocess": CommandName.RESET_PREPROCESS,
-        "set_montage": CommandName.APPLY_MONTAGE,
-        "epoch_data": CommandName.CREATE_EPOCH,
-        "configure_dataset_split": CommandName.CONFIGURE_DATASET_SPLIT,
-        "set_model": CommandName.CONFIGURE_TRAINING,
-        "configure_training": CommandName.CONFIGURE_TRAINING,
         "start_training": CommandName.TRAIN,
         "stop_training": CommandName.STOP_TRAINING,
-        "evaluate": CommandName.EVALUATE,
-        "visualize": CommandName.VISUALIZE,
-        "saliency": CommandName.SALIENCY,
-        "query_state": CommandName.QUERY_STATE,
+        "reset_preprocessing": CommandName.RESET_PREPROCESS,
+        "clear_training_history": CommandName.CLEAR_TRAINING_HISTORY,
     }
 
     assert expected == TOOL_TO_COMMAND
@@ -239,39 +226,15 @@ def test_action_contract_registry_is_the_complete_runtime_and_prompt_boundary():
 
 def test_every_application_tool_builder_matches_its_declared_command():
     valid_params = {
-        "scan_source": {"source_path": "recording.edf"},
-        "preview_interpretation": {},
-        "validate_interpretation": {},
-        "apply_interpretation": {},
-        "save_interpretation_recipe": {},
-        "reload_interpretation_recipe": {"recipe_path": "import.recipe.json"},
-        "attach_labels": {"mapping": {"recording.edf": "events.tsv"}},
-        "apply_standard_preprocess": {},
         "apply_bandpass_filter": {"low_freq": 1.0, "high_freq": 40.0},
         "apply_notch_filter": {"freq": 50.0},
         "resample_data": {"rate": 128},
         "normalize_data": {"method": "zscore"},
         "set_reference": {"method": "average"},
-        "select_channels": {"channels": ["C3", "C4"]},
-        "reset_preprocess": {},
-        "epoch_data": {"t_min": -0.2, "t_max": 1.0},
-        "configure_dataset_split": {
-            "split_strategy": "trial",
-            "training_mode": "full_data",
-        },
-        "set_model": {"model_name": "EEGNet"},
-        "configure_training": {
-            "model_name": "EEGNet",
-            "epoch": 1,
-            "batch_size": 8,
-            "learning_rate": 0.001,
-        },
         "start_training": {},
         "stop_training": {},
-        "evaluate": {},
-        "visualize": {},
-        "saliency": {},
-        "query_state": {},
+        "reset_preprocessing": {},
+        "clear_training_history": {},
     }
 
     application_contracts = tuple(
@@ -279,7 +242,7 @@ def test_every_application_tool_builder_matches_its_declared_command():
         for contract in AGENT_ACTION_CONTRACTS.contracts_for_kind(
             AgentExecutionKind.APPLICATION_COMMAND
         )
-        if contract.canonical_tool != "load_data"
+        if contract.execution_kind is AgentExecutionKind.APPLICATION_COMMAND
     )
     assert set(valid_params) == {
         contract.canonical_tool for contract in application_contracts
@@ -294,7 +257,6 @@ def test_every_application_tool_builder_matches_its_declared_command():
                 f"{contract.canonical_tool} did not build its application command"
             )
         assert command.name is contract.capability_command, contract.canonical_tool
-    assert _command_for_tool("load_data", {"paths": ["recording.edf"]}) is None
 
 
 def test_agent_tool_policy_reuses_application_train_reasons():
@@ -314,15 +276,12 @@ def test_agent_tool_policy_reuses_application_train_reasons():
     )
 
 
-def test_agent_tool_policy_disables_legacy_direct_file_loading():
-    availability = build_agent_tool_policy(Study())["load_data"]
+def test_agent_tool_policy_does_not_republish_retired_file_tools():
+    policy = build_agent_tool_policy(Study())
 
-    assert availability.enabled is False
-    assert availability.can_auto_execute is False
-    assert availability.command_name == CommandName.LOAD_DATA.value
-    assert "cannot preserve an authorized filesystem identity" in (
-        availability.reason_text
-    )
+    assert "load_data" not in policy
+    assert "list_files" not in policy
+    assert "get_dataset_info" not in policy
 
 
 def test_agent_tool_policy_reads_state_and_capabilities_from_one_publication():
@@ -337,20 +296,21 @@ def test_agent_tool_policy_reads_state_and_capabilities_from_one_publication():
     policy = build_agent_tool_policy(object(), runtime=runtime)
 
     assert runtime.publication_reads == 1
-    assert policy["query_state"].enabled is True
+    assert set(policy) == AGENT_ACTION_CONTRACTS.tool_names()
+    assert policy["switch_panel"].enabled is True
 
 
 def test_mapped_product_tool_without_application_runtime_fails_closed():
     result = execute_application_tool_command(
         object(),
-        "query_state",
-        {"query": "state"},
+        "start_training",
+        {},
     )
 
     assert isinstance(result, ToolCommandResult)
     assert result.ok is False
-    assert result.tool_name == "query_state"
-    assert result.command_name == CommandName.QUERY_STATE.value
+    assert result.tool_name == "start_training"
+    assert result.command_name == CommandName.TRAIN.value
     assert result.error_type == "contract"
     assert result.recoverable is False
     assert result.error_code == "application_tool_runtime_required"
@@ -513,8 +473,9 @@ def test_tool_payload_caps_the_complete_serialized_envelope() -> None:
 @pytest.mark.parametrize(
     ("tool_name", "command_name"),
     [
-        ("reset_preprocess", CommandName.RESET_PREPROCESS),
+        ("reset_preprocessing", CommandName.RESET_PREPROCESS),
         ("stop_training", CommandName.STOP_TRAINING),
+        ("clear_training_history", CommandName.CLEAR_TRAINING_HISTORY),
     ],
 )
 def test_lifecycle_tools_without_application_runtime_fail_closed(
@@ -540,8 +501,8 @@ def test_explicit_application_runtime_executes_for_headless_context():
     runtime = _ApplicationRuntimeFake(
         publication=publication,
         command_result=CommandResult.success_result(
-            command_name=CommandName.QUERY_STATE.value,
-            message="Application state snapshot ready.",
+            command_name=CommandName.TRAIN.value,
+            message="Training request accepted.",
             state=state,
             changed_state=ChangedState(),
         ),
@@ -549,8 +510,8 @@ def test_explicit_application_runtime_executes_for_headless_context():
 
     result = execute_application_tool_command(
         object(),
-        "query_state",
-        {"query": "state"},
+        "start_training",
+        {},
         runtime=runtime,
     )
 
@@ -559,7 +520,7 @@ def test_explicit_application_runtime_executes_for_headless_context():
     assert result.error_code is None
     assert result.recovery_action is None
     assert len(runtime.commands) == 1
-    assert isinstance(runtime.commands[0], QueryStateCommand)
+    assert isinstance(runtime.commands[0], TrainCommand)
 
 
 def test_saliency_application_surface_preserves_flat_noise_parameters() -> None:
@@ -650,14 +611,14 @@ def test_reset_preprocess_tool_routes_to_narrow_command_and_publishes_final_stat
         ),
     )
     availability = ToolAvailability(
-        tool_name="reset_preprocess",
+        tool_name="reset_preprocessing",
         enabled=True,
         command_name=CommandName.RESET_PREPROCESS.value,
     )
 
     result = execute_application_tool_command(
         object(),
-        "reset_preprocess",
+        "reset_preprocessing",
         {"confirmed": True},
         availability=availability,
         state=before.to_dict(),
@@ -1044,22 +1005,15 @@ def test_start_training_surface_preserves_backend_confirmation_boundary():
     assert saved_split.ok is True
     assert saved_split.state.dataset.split_spec_saved is True
     assert saved_split.state.dataset.split_materialized is False
-    configured = execute_application_tool_command(
-        study,
-        "configure_training",
-        _authorize_setting(
-            study,
-            "configure_training",
-            {
-                "model_name": "EEGNet",
-                "epoch": 1,
-                "batch_size": 2,
-                "learning_rate": 0.001,
-                "device": "cpu",
-            },
-        ),
+    configured = service.execute(
+        ConfigureTrainingCommand(
+            model_name="EEGNet",
+            epoch=1,
+            batch_size=2,
+            learning_rate=0.001,
+            device="cpu",
+        )
     )
-    assert isinstance(configured, ToolCommandResult)
     assert configured.ok is True
     training = study.training_state_service
 

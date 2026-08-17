@@ -8,14 +8,20 @@
 完成 replacement、atomic cutover、deletion 與 exact-SHA candidate；在完整候選前不要求使用者手測，
 未取得同一 source 的手測通過不得合併 main。**
 
-目前 phase：`minimal state card and one-prior-assistant context`
+目前 phase：`atomic 17-tool target cutover`
 
-目前 branch：`refactor/assistant-minimal-context-v2`
+目前 branch：`refactor/assistant-target-adapters-v2`
 
-下一步：只收斂model prompt中的ApplicationService state projection與conversation history；完成本地
-focused／agent regression後形成一個stacked commit。GitHub服務目前不可用，因此不以remote PR／CI
-狀態阻塞本地施工；服務恢復後仍須依序更新strict-envelope與本slice的exact-head PR。此slice不修改
-tool membership、UI、Host narrowing／continuation或walkthrough runner。
+下一步：以三個可獨立驗證的local checkpoint完成同一次target migration：A先讓現有Channel Selection
+dialog回傳typed terminal；B將舊Host tool-call normalizer刪減成strict identity boundary；C再將runtime與
+model projection原子切換成approved 17-tool target，接通七個zero-parameter GUI handoff、五個direct
+preprocess、四個lifecycle與`switch_panel`，並停止Host intent narrowing與成功後continuation。GitHub
+服務目前不可用，因此不以remote PR／CI狀態阻塞本地施工；三個checkpoint皆完成focused regression
+後才依序形成stacked commits。
+
+已否決的中間路徑：red-first曾將三個target adapters加在舊30-tool runtime旁，立即使runtime變成33，
+並被runtime equality／headless contract tests攔截。該狀態不提交；建立第二個過渡catalog會增加遷移
+成本且違反single target authority，因此改採一次atomic cutover。
 
 已完成 checkpoint：target authority 已由 PR #34 以 exact merge commit
 `7518c7a60ab7e5355b2e5e1fbc6412ba8edeab2b` 合入 main；該 PR 只有 docs/guidance，沒有產品行為。
@@ -83,12 +89,16 @@ Linux full suite、Windows/macOS、public multi-dataset與MkDocs checks皆comple
    `respond_to_user.parameters` exact只有`message`；格式或stage mismatch走既有bounded repair，禁止執行。
    Exact local commit `a67abe5b`通過完整`linux-unit-rest` 1,312 tests；GitHub服務恢復前不推新remote
    evidence。Minimal state card與one-message context保留到本次獨立slice，避免同時改grammar與內容。
-8. **Active slice — minimal prompt context**：以一張由同一ApplicationService publication投影的hidden
+8. **Local scope-complete／remote pending — minimal prompt context**：以一張由同一ApplicationService publication投影的hidden
    state card取代`workflow_decision`、capability map與status payload；prompt history只保留最新一則
    Assistant-visible message，不重播prior user、tool output或action envelope。Controller archival history、
-   current Host narrowing與continuation暫時不變。
-9. 建立target adapters與GUI routes，但在cutover前不發布第二個model catalog。
-10. Atomic cutover到approved target projection，同時停止Host narrowing／continuation call sites。
+   current Host narrowing與continuation暫時不變。Exact local commit `df0731eb`已完成；GitHub恢復後再建立
+   exact-head stacked PR。
+9. **Active slice — atomic target cutover**：runtime與model projection一次替換成approved 17；七個GUI
+   adapters只回傳trusted command／decision-fields handoff，不執行或保存GUI選擇；Channel Selection接到
+   現有dialog並回傳typed terminal。五個preprocess沿用PreprocessCommandService；四個lifecycle沿用現有
+   capability／confirmation；navigation仍只由`switch_panel`負責。同一slice停止兩個Host request-admission
+   call sites及tool-success continuation，確保一回合一個tool或response。
 11. 按analysis、dataset protocol／recipe、training wrappers與Host policy分片物理刪除obsolete code。
 12. 執行三份no-model profiles與frozen Granite suite；未達gate時只調prompt／schema／approved
     examples，不增加Host heuristic或silent fallback。
@@ -159,6 +169,17 @@ diagnostics、recommendation、capability map與Host decision皆不進prompt。H
 Assistant訊息；prior user、tool output與action envelope不重播。`tests/unit/llm` 2,378 passed，最新
 assembler／untrusted-context focused 105 passed，完整`tests/integration/agent` 67 passed，ruff與
 basedpyright皆通過。
+
+目前cutover complexity review：owner before／after皆為既有ApplicationService command services、
+`WorkflowUiHandoffHost`、MainWindow/dialogs與controller correlation；共用zero-parameter adapter與mapped
+lifecycle adapter都不是authority，分別服務七個與兩個runtime callers。Deletion candidates是舊30-tool
+runtime registration、21-tool model projection、Host request narrowing／continuation，以及後續會物理刪除的
+obsolete wrappers。初始working diff共14個production files，因此依stop condition拆成A（1個現有UI file，
+只補typed return且不改layout／文案／互動）、B（1個normalizer file，production約淨減798 LOC）與C（其餘
+12個production files的atomic public-surface切換）；各checkpoint新增不超過2個共用public adapter classes，
+production整體淨減；owner、state machine與receipt皆不增加。若C超過12個production files、增加owner、
+需要新dialog或不能沿用既有command terminal即停止。Rollback可依序revert C／B／A；backend services、
+既有dialogs與user data不需migration。
 
 ## Stop conditions
 

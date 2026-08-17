@@ -79,6 +79,58 @@ EXPECTED_STAGE_PROMPT_MARKERS = {
     ),
 }
 
+EXPECTED_TARGET_TOOLS = {
+    PipelineStage.EMPTY: {"import_eeg_data", "switch_panel"},
+    PipelineStage.DATA_LOADED: {
+        "select_channels",
+        "apply_bandpass_filter",
+        "apply_notch_filter",
+        "resample_data",
+        "set_reference",
+        "normalize_data",
+        "switch_panel",
+    },
+    PipelineStage.PREPROCESSED: {
+        "apply_bandpass_filter",
+        "apply_notch_filter",
+        "resample_data",
+        "set_reference",
+        "normalize_data",
+        "create_epochs",
+        "reset_preprocessing",
+        "switch_panel",
+    },
+    PipelineStage.EPOCH_READY: {
+        "set_montage",
+        "configure_dataset_split",
+        "select_model",
+        "configure_training",
+        "start_training",
+        "reset_preprocessing",
+        "switch_panel",
+    },
+    PipelineStage.DATASET_READY: {
+        "set_montage",
+        "configure_dataset_split",
+        "select_model",
+        "configure_training",
+        "start_training",
+        "reset_preprocessing",
+        "switch_panel",
+    },
+    PipelineStage.TRAINING: {"stop_training", "switch_panel"},
+    PipelineStage.TRAINED: {
+        "set_montage",
+        "configure_dataset_split",
+        "select_model",
+        "configure_training",
+        "start_training",
+        "reset_preprocessing",
+        "clear_training_history",
+        "switch_panel",
+    },
+}
+
 
 def test_stage_prompts_do_not_publish_a_second_tool_truth():
     tool_literals = {
@@ -92,7 +144,13 @@ def test_stage_prompts_do_not_publish_a_second_tool_truth():
         assert not tool_literals.intersection(
             literal for literal in tool_literals if literal in prompt
         )
-        assert "request-scoped action contracts below are authoritative" in prompt
+        assert "backend-published action contracts below are authoritative" in prompt
+
+
+def test_stage_config_matches_the_approved_target_ledger() -> None:
+    assert {
+        stage: set(config["tools"]) for stage, config in STAGE_CONFIG.items()
+    } == EXPECTED_TARGET_TOOLS
 
 
 # ---------------------------------------------------------------------------
@@ -256,7 +314,9 @@ class TestStageConfig:
         for stage, markers in EXPECTED_STAGE_PROMPT_MARKERS.items():
             prompt = STAGE_CONFIG[stage]["system_prompt"]
             assert prompt.startswith("You are XBrainLab Assistant"), stage
-            assert "request-scoped action contracts below are authoritative" in prompt
+            assert (
+                "backend-published action contracts below are authoritative" in prompt
+            )
             for marker in markers:
                 assert marker in prompt, f"{stage}: missing prompt marker {marker!r}"
 
@@ -268,24 +328,20 @@ class TestStageConfig:
 
     def test_empty_has_minimal_tools(self):
         tools = STAGE_CONFIG[PipelineStage.EMPTY]["tools"]
-        assert "list_files" in tools
-        assert "scan_source" in tools
-        assert "preview_interpretation" in tools
-        assert "load_data" not in tools
+        assert tools == ["import_eeg_data", "switch_panel"]
         # No preprocess/training tools in EMPTY
         assert "apply_bandpass_filter" not in tools
         assert "start_training" not in tools
 
     def test_data_loaded_has_preprocess_tools(self):
         tools = STAGE_CONFIG[PipelineStage.DATA_LOADED]["tools"]
-        assert "apply_standard_preprocess" in tools
+        assert "select_channels" in tools
         assert "apply_bandpass_filter" in tools
-        assert "scan_source" in tools
-        assert "attach_labels" not in tools
+        assert "apply_standard_preprocess" not in tools
 
     def test_data_loaded_has_no_training_tools(self):
         tools = STAGE_CONFIG[PipelineStage.DATA_LOADED]["tools"]
-        assert "set_model" not in tools
+        assert "select_model" not in tools
         assert "start_training" not in tools
 
     def test_standard_preprocess_prompt_keeps_epoching_as_a_separate_step(self):
@@ -294,17 +350,16 @@ class TestStageConfig:
 
     def test_preprocessed_has_epoching_but_not_dataset_generation(self):
         tools = STAGE_CONFIG[PipelineStage.PREPROCESSED]["tools"]
-        assert "epoch_data" in tools
+        assert "create_epochs" in tools
         assert "configure_dataset_split" not in tools
-        assert "validate_interpretation" in tools
-        assert "attach_labels" not in tools
-        assert "apply_standard_preprocess" in tools
+        assert "validate_interpretation" not in tools
+        assert "apply_bandpass_filter" in tools
 
     def test_epoch_ready_has_configure_dataset_split(self):
         tools = STAGE_CONFIG[PipelineStage.EPOCH_READY]["tools"]
         assert "configure_dataset_split" in tools
-        assert "epoch_data" not in tools
-        assert "validate_interpretation" in tools
+        assert "create_epochs" not in tools
+        assert "select_model" in tools
 
     def test_stage_prompts_do_not_present_legacy_data_entry_as_primary(self):
         for stage in (
@@ -316,11 +371,13 @@ class TestStageConfig:
             prompt = STAGE_CONFIG[stage]["system_prompt"]
             assert "'load_data'" not in prompt
             assert "'attach_labels'" not in prompt
-            assert "request-scoped action contracts below are authoritative" in prompt
+            assert (
+                "backend-published action contracts below are authoritative" in prompt
+            )
 
     def test_dataset_ready_has_training_but_no_preprocess(self):
         tools = STAGE_CONFIG[PipelineStage.DATASET_READY]["tools"]
-        assert "set_model" in tools
+        assert "select_model" in tools
         assert "configure_training" in tools
         assert "start_training" in tools
         assert "clear_dataset" not in tools
@@ -332,10 +389,10 @@ class TestStageConfig:
         tools = STAGE_CONFIG[PipelineStage.TRAINING]["tools"]
         assert tools == ["stop_training", "switch_panel"]
 
-    def test_trained_same_tools_as_dataset_ready(self):
+    def test_trained_adds_history_cleanup_to_dataset_ready(self):
         trained = set(STAGE_CONFIG[PipelineStage.TRAINED]["tools"])
         ready = set(STAGE_CONFIG[PipelineStage.DATASET_READY]["tools"])
-        assert trained == ready
+        assert trained == ready | {"clear_training_history"}
 
 
 # ---------------------------------------------------------------------------

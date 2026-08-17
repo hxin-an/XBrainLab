@@ -124,7 +124,11 @@ class BaseStartTrainingTool(BaseTool):
 
     @property
     def parameters(self) -> dict[str, Any]:
-        return {"type": "object", "properties": {}}
+        return {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        }
 
     @property
     def requires_confirmation(self) -> bool:
@@ -148,7 +152,11 @@ class BaseStopTrainingTool(BaseTool):
 
     @property
     def parameters(self) -> dict[str, Any]:
-        return {"type": "object", "properties": {}}
+        return {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        }
 
     def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
         raise NotImplementedError

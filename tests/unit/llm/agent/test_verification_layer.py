@@ -4,10 +4,6 @@ from typing import Any, cast
 
 import pytest
 
-from XBrainLab.backend.application.saliency_policy import (
-    MAX_SALIENCY_NT_SAMPLES,
-)
-from XBrainLab.llm.agent.tool_call_normalizer import normalize_tool_call
 from XBrainLab.llm.agent.verifier import (
     FrequencyRangeValidator,
     PathExistsValidator,
@@ -21,7 +17,6 @@ from XBrainLab.llm.agent.verifier import (
 )
 from XBrainLab.llm.tools import authorized_paths
 from XBrainLab.llm.tools.authorized_paths import FilesystemIdentity, PathKind
-from XBrainLab.llm.tools.definitions.analysis_def import BaseSaliencyTool
 from XBrainLab.llm.tools.definitions.dataset_def import (
     BaseLoadDataTool,
     BasePreviewInterpretationTool,
@@ -34,71 +29,42 @@ def _error_message(result: VerificationResult) -> str:
     return result.error_message
 
 
-@pytest.mark.parametrize(
-    "user_text",
-    [
-        "Configure IntegratedGradients saliency.",
-        "Configure Integrated Gradient saliency.",
-    ],
-)
-def test_unsupported_saliency_request_is_a_typed_schema_failure(
-    user_text: str,
-) -> None:
-    tool_name, params = normalize_tool_call(
-        "saliency",
-        {},
-        latest_user_text=user_text,
-    )
+def test_missing_direct_preprocess_parameters_are_typed_schema_failures() -> None:
+    from XBrainLab.llm.tools.definitions.preprocess_def import BaseBandPassFilterTool
+
     validator = ToolSchemaValidator(
-        {"saliency": BaseSaliencyTool().parameters},
+        {"apply_bandpass_filter": BaseBandPassFilterTool().parameters},
     )
 
-    result = validator.validate(tool_name, params)
+    result = validator.validate("apply_bandpass_filter", {"low_freq": 4.0})
+
+    assert result.is_valid is False
+    assert "high_freq" in _error_message(result)
+
+
+def test_zero_parameter_gui_handoff_rejects_model_choices() -> None:
+    from XBrainLab.llm.tools import get_all_tools
+
+    tool = next(tool for tool in get_all_tools("real") if tool.name == "select_model")
+    validator = ToolSchemaValidator({tool.name: tool.parameters})
+
+    result = validator.validate("select_model", {"model_name": "EEGNet"})
+
+    assert result.is_valid is False
+    assert "Unknown parameter" in _error_message(result)
+
+
+def test_normalize_method_is_limited_by_the_target_schema() -> None:
+    from XBrainLab.llm.tools.definitions.preprocess_def import BaseNormalizeTool
+
+    validator = ToolSchemaValidator(
+        {"normalize_data": BaseNormalizeTool().parameters},
+    )
+
+    result = validator.validate("normalize_data", {"method": "robust"})
 
     assert result.is_valid is False
     assert "method must be one of" in _error_message(result)
-
-
-@pytest.mark.parametrize(
-    "user_text",
-    [
-        "Configure SmoothGrad saliency with nt_samples 2.5.",
-        "Configure SmoothGrad saliency with nt_samples two.",
-    ],
-)
-def test_unrepresentable_saliency_params_are_typed_schema_failures(
-    user_text: str,
-) -> None:
-    tool_name, params = normalize_tool_call(
-        "saliency",
-        {"method": "SmoothGrad"},
-        latest_user_text=user_text,
-    )
-    validator = ToolSchemaValidator(
-        {"saliency": BaseSaliencyTool().parameters},
-    )
-
-    result = validator.validate(tool_name, params)
-
-    assert result.is_valid is False
-    assert "nt_samples" in _error_message(result)
-
-
-def test_oversized_saliency_noise_samples_fail_agent_schema_admission() -> None:
-    validator = ToolSchemaValidator(
-        {"saliency": BaseSaliencyTool().parameters},
-    )
-
-    result = validator.validate(
-        "saliency",
-        {
-            "method": "SmoothGrad",
-            "nt_samples": MAX_SALIENCY_NT_SAMPLES + 1,
-        },
-    )
-
-    assert result.is_valid is False
-    assert f"nt_samples must be <= {MAX_SALIENCY_NT_SAMPLES}" in _error_message(result)
 
 
 def test_verification_script_syntax(tmp_path):

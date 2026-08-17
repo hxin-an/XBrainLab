@@ -17,43 +17,16 @@ from typing import TYPE_CHECKING, Any
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 
 from .base import BaseTool
-from .mock.analysis_mock import (
-    MockEvaluateTool,
-    MockSaliencyTool,
-    MockVisualizeTool,
-)
-
-# Mock tools are lightweight — import eagerly for type checking
-from .mock.dataset_mock import (
-    MockApplyInterpretationTool,
-    MockAttachLabelsTool,
-    MockConfigureDatasetSplitTool,
-    MockGetDatasetInfoTool,
-    MockListFilesTool,
-    MockLoadDataTool,
-    MockPreviewInterpretationTool,
-    MockQueryStateTool,
-    MockReloadInterpretationRecipeTool,
-    MockSaveInterpretationRecipeTool,
-    MockScanSourceTool,
-    MockValidateInterpretationTool,
-)
+from .definitions.ui_control_def import ApplicationCommandTool, WorkflowHandoffTool
 from .mock.preprocess_mock import (
     MockBandPassFilterTool,
-    MockChannelSelectionTool,
-    MockEpochDataTool,
     MockNormalizeTool,
     MockNotchFilterTool,
     MockRereferenceTool,
     MockResampleTool,
-    MockResetPreprocessTool,
-    MockSetMontageTool,
-    MockStandardPreprocessTool,
 )
 from .mock.state import MockWorkflowState
 from .mock.training_mock import (
-    MockConfigureTrainingTool,
-    MockSetModelTool,
     MockStartTrainingTool,
     MockStopTrainingTool,
 )
@@ -65,6 +38,42 @@ from .result_contract import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+_TARGET_GUI_HANDOFF_DESCRIPTIONS = {
+    "import_eeg_data": "Open Import EEG Data for the user to review and apply.",
+    "select_channels": "Open Channel Selection for the user to choose EEG channels.",
+    "set_montage": "Open Montage Settings for the user to resolve channel positions.",
+    "create_epochs": "Open EEG Epoch Settings for the user to create epochs.",
+    "configure_dataset_split": "Open Dataset Splitting for the user to configure it.",
+    "select_model": "Open Model Selection for the user to choose a model.",
+    "configure_training": "Open Training Settings for the user to configure training.",
+}
+
+_TARGET_LIFECYCLE_DESCRIPTIONS = {
+    "reset_preprocessing": (
+        "Reset preprocessing and downstream derived state after confirmation."
+    ),
+    "clear_training_history": (
+        "Clear training plans and run history after confirmation."
+    ),
+}
+
+
+def _target_gui_handoff_tools() -> list[BaseTool]:
+    """Build the approved parameter-free product GUI handoff surface."""
+    return [
+        WorkflowHandoffTool(tool_name, description)
+        for tool_name, description in _TARGET_GUI_HANDOFF_DESCRIPTIONS.items()
+    ]
+
+
+def _target_lifecycle_tools() -> list[BaseTool]:
+    return [
+        ApplicationCommandTool(tool_name, description)
+        for tool_name, description in _TARGET_LIFECYCLE_DESCRIPTIONS.items()
+    ]
+
 
 if TYPE_CHECKING:
     from .application_surface import ApplicationToolRuntime
@@ -183,80 +192,29 @@ def execute_real_application_tool(
 
 def _build_real_tools() -> list[BaseTool]:
     """Lazily import and instantiate real tool classes."""
-    from .real.analysis_real import (
-        RealEvaluateTool,
-        RealSaliencyTool,
-        RealVisualizeTool,
-    )
-    from .real.dataset_real import (
-        RealApplyInterpretationTool,
-        RealAttachLabelsTool,
-        RealConfigureDatasetSplitTool,
-        RealGetDatasetInfoTool,
-        RealListFilesTool,
-        RealLoadDataTool,
-        RealPreviewInterpretationTool,
-        RealQueryStateTool,
-        RealReloadInterpretationRecipeTool,
-        RealSaveInterpretationRecipeTool,
-        RealScanSourceTool,
-        RealValidateInterpretationTool,
-    )
     from .real.preprocess_real import (
         RealBandPassFilterTool,
-        RealChannelSelectionTool,
-        RealEpochDataTool,
         RealNormalizeTool,
         RealNotchFilterTool,
         RealRereferenceTool,
         RealResampleTool,
-        RealResetPreprocessTool,
-        RealSetMontageTool,
-        RealStandardPreprocessTool,
     )
     from .real.training_real import (
-        RealConfigureTrainingTool,
-        RealSetModelTool,
         RealStartTrainingTool,
         RealStopTrainingTool,
     )
     from .real.ui_control_real import RealSwitchPanelTool
 
     return [
-        # Dataset
-        RealListFilesTool(),
-        RealScanSourceTool(),
-        RealPreviewInterpretationTool(),
-        RealValidateInterpretationTool(),
-        RealApplyInterpretationTool(),
-        RealSaveInterpretationRecipeTool(),
-        RealReloadInterpretationRecipeTool(),
-        RealLoadDataTool(),
-        RealAttachLabelsTool(),
-        RealQueryStateTool(),
-        RealGetDatasetInfoTool(),
-        RealConfigureDatasetSplitTool(),
-        # Analysis
-        RealEvaluateTool(),
-        RealVisualizeTool(),
-        RealSaliencyTool(),
-        # Preprocess
-        RealStandardPreprocessTool(),
-        RealResetPreprocessTool(),
+        *_target_gui_handoff_tools(),
         RealBandPassFilterTool(),
         RealNotchFilterTool(),
         RealResampleTool(),
-        RealNormalizeTool(),
         RealRereferenceTool(),
-        RealChannelSelectionTool(),
-        RealSetMontageTool(),
-        RealEpochDataTool(),
-        # Training
-        RealSetModelTool(),
-        RealConfigureTrainingTool(),
+        RealNormalizeTool(),
         RealStartTrainingTool(),
         RealStopTrainingTool(),
-        # UI Control
+        *_target_lifecycle_tools(),
         RealSwitchPanelTool(),
     ]
 
@@ -279,40 +237,15 @@ def get_all_tools(mode: str = "mock") -> list[BaseTool]:
     if mode == "mock":
         workflow_state = MockWorkflowState()
         tools = [
-            # Dataset
-            MockListFilesTool(),
-            MockScanSourceTool(),
-            MockPreviewInterpretationTool(),
-            MockValidateInterpretationTool(),
-            MockApplyInterpretationTool(workflow_state),
-            MockSaveInterpretationRecipeTool(),
-            MockReloadInterpretationRecipeTool(),
-            MockLoadDataTool(workflow_state),
-            MockAttachLabelsTool(),
-            MockQueryStateTool(workflow_state),
-            MockGetDatasetInfoTool(),
-            MockConfigureDatasetSplitTool(workflow_state),
-            # Analysis
-            MockEvaluateTool(),
-            MockVisualizeTool(),
-            MockSaliencyTool(),
-            # Preprocess
-            MockStandardPreprocessTool(workflow_state),
-            MockResetPreprocessTool(workflow_state),
+            *_target_gui_handoff_tools(),
             MockBandPassFilterTool(workflow_state),
             MockNotchFilterTool(workflow_state),
             MockResampleTool(workflow_state),
-            MockNormalizeTool(workflow_state),
             MockRereferenceTool(workflow_state),
-            MockChannelSelectionTool(workflow_state),
-            MockSetMontageTool(workflow_state),
-            MockEpochDataTool(workflow_state),
-            # Training
-            MockSetModelTool(workflow_state),
-            MockConfigureTrainingTool(workflow_state),
+            MockNormalizeTool(workflow_state),
             MockStartTrainingTool(workflow_state),
             MockStopTrainingTool(workflow_state),
-            # UI Control
+            *_target_lifecycle_tools(),
             MockSwitchPanelTool(),
         ]
     elif mode == "real":

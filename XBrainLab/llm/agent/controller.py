@@ -20,7 +20,10 @@ from XBrainLab.backend.application.view_publication import (
     InterpretationReviewIdentity,
 )
 from XBrainLab.debug.tool_executor import DebugToolAdmission, ToolExecutor
-from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
+from XBrainLab.llm.action_contracts import (
+    AGENT_ACTION_CONTRACTS,
+    AgentExecutionKind,
+)
 from XBrainLab.llm.core.runtime_selection import AssistantRuntimeLaunchSpec
 from XBrainLab.llm.tools import AVAILABLE_TOOLS
 from XBrainLab.llm.tools.application_surface import (
@@ -136,7 +139,6 @@ from .turn_orchestrator import (
     AssistantToolAttemptSession,
     AssistantTurnOrchestrator,
 )
-from .turn_scope import workflow_command_is_within_endpoint
 from .ui_handoff import (
     WorkflowUiHandoffRequest,
     WorkflowUiHandoffResolution,
@@ -712,9 +714,6 @@ class LLMController(QObject):
             )
             return
 
-        if self._handle_product_turn(text):
-            return
-
         self.is_processing = True
         self.status_update.emit("Thinking...")
         self._publish_activity(AssistantTurnActivityPhase.PREPARING)
@@ -728,8 +727,6 @@ class LLMController(QObject):
             self._append_history("user", text)
 
             self._reset_user_turn_state()
-            if self._handle_request_admission(text):
-                return
             turn_id = self._begin_rag_turn()
             self.assembler.clear_context()
 
@@ -1098,25 +1095,6 @@ class LLMController(QObject):
             features = ""
 
         try:
-            admitted_before_rag = (
-                self._turn_orchestrator.admitted_command_name,
-                self._turn_orchestrator.admitted_publication_generation,
-            )
-            if self._handle_request_admission(text):
-                return
-            admitted_after_rag = (
-                self._turn_orchestrator.admitted_command_name,
-                self._turn_orchestrator.admitted_publication_generation,
-            )
-            if admitted_after_rag != admitted_before_rag:
-                logger.info(
-                    "Discarded RAG context after workflow authorization changed "
-                    "from %s to %s.",
-                    admitted_before_rag,
-                    admitted_after_rag,
-                )
-                features = ""
-
             if features:
                 self.assembler.add_context(features)
             self._generate_response()
@@ -1701,7 +1679,6 @@ class LLMController(QObject):
         if after_confirmation:
             if not success:
                 self._tool_attempt_session.record_failure()
-                self._refresh_execution_snapshot()
                 self._finalize_turn_after_tool()
                 return
             self._handle_tool_success(
@@ -1849,56 +1826,10 @@ class LLMController(QObject):
         autonomy: ToolAvailability | None,
         result: ToolCommandResult | UiRequest,
     ) -> None:
-        """Apply host retry limits after one failed command."""
-        failure_count = self._tool_attempt_session.record_failure()
-        decision = self._tool_attempt_coordinator.after_failure(
-            mode=self._active_policy_mode(),
-            availability=autonomy,
-            failure_count=failure_count,
-            global_retry_limit=self._max_tool_failures,
-            execution_count=self._tool_attempt_session.execution_count,
-            tool_cap=self._max_tool_executions,
-            cancelled=self._turn_orchestrator.cancelled,
-        )
-        if decision.continue_workflow:
-            self.assembler.set_recovery_feedback(
-                build_recovery_feedback(
-                    getattr(result, "tool_name", "") or "unknown_tool",
-                    result,
-                )
-            )
-            logger.info(
-                "Workflow failure %d/%d; requesting one corrected proposal.",
-                failure_count,
-                self._max_tool_failures,
-            )
-            self._generate_response()
-            return
-
+        """Finish after one executed command failure without model continuation."""
+        del autonomy, result
+        self._tool_attempt_session.record_failure()
         self.assembler.clear_recovery_feedback()
-
-        if decision.reason in {"retry_cap", "tool_cap"}:
-            self._append_history(
-                "user",
-                "System: Tool execution retry limit reached. Stopping.",
-            )
-            self.status_update.emit("Retry limit reached, stopping.")
-        response_kind = self._tool_result_response_kind(False, result)
-        retry_actions = self._retry_actions_for_result(result)
-        if (
-            decision.reason != "cancelled"
-            and response_kind is AssistantResponseKind.ERROR
-            and retry_actions
-        ):
-            self._publish_response(
-                self._summarize_tool_result(
-                    getattr(result, "tool_name", "") or "unknown_tool",
-                    False,
-                    result,
-                ),
-                kind=response_kind,
-                actions=retry_actions,
-            )
         self._finalize_turn_after_tool()
 
     def _retry_actions_for_result(
@@ -1925,111 +1856,13 @@ class LLMController(QObject):
         command_name: str,
         after_confirmation: bool = False,
     ) -> None:
-        """Refresh workflow truth, then apply host continuation policy."""
+        """Finish after one trusted tool result; each user turn owns one action."""
+        del autonomy, after_confirmation
         self.assembler.clear_recovery_feedback()
         self._tool_attempt_session.record_success()
-        if self._turn_endpoint_reached(command_name):
-            logger.info(
-                "Assistant workflow reached its user-authored endpoint: %s",
-                redact_public_text(command_name),
-            )
-            self._finalize_turn_after_tool()
-            return
-        if (
-            self._active_policy_mode() == AssistantTurnScope.GUIDED_WORKFLOW.policy_mode
-            or after_confirmation
-        ):
-            snapshot = self._refresh_execution_snapshot()
-        else:
-            snapshot = ExecutionSnapshot.safe_to_continue()
-
-        boundary_command = snapshot.recommended_next_step or snapshot.blocked_command
-        if boundary_command and not workflow_command_is_within_endpoint(
-            boundary_command,
-            self._turn_orchestrator.terminal_command,
-        ):
-            logger.info(
-                "Assistant workflow stopped before exceeding its user-authored "
-                "endpoint: next=%s endpoint=%s",
-                redact_public_text(boundary_command),
-                redact_public_text(self._turn_orchestrator.terminal_command or ""),
-            )
-            self._finalize_turn_after_tool()
-            return
-
-        decision = self._tool_attempt_coordinator.after_success(
-            mode=self._active_policy_mode(),
-            availability=autonomy,
-            snapshot=snapshot,
-            execution_count=self._tool_attempt_session.execution_count,
-            tool_cap=self._max_tool_executions,
-            after_confirmation=after_confirmation,
-            cancelled=self._turn_orchestrator.cancelled,
-        )
-        if decision.continue_workflow:
-            if not snapshot.recommended_next_step:
-                logger.error("Workflow continuation was allowed without a next command")
-                self.status_update.emit("Workflow could not determine the next step.")
-                self._finalize_turn_after_tool()
-                return
-            if self._execute_host_deterministic_continuation(
-                snapshot.recommended_next_step
-            ):
-                return
-            self.assembler.set_turn_authorized_command(
-                snapshot.recommended_next_step,
-                continuation=True,
-            )
-            logger.info(
-                "Workflow policy allowed one next proposal (%d/%d).",
-                self._tool_attempt_session.execution_count,
-                self._max_tool_executions,
-            )
-            self._generate_response()
-            return
-
-        if decision.reason == "decision_needed":
-            self.status_update.emit("Waiting for workflow decision.")
-            handoff_command = snapshot.recommended_next_step or snapshot.blocked_command
-            if handoff_command:
-                summary = self._tool_attempt_session.last_tool_summary
-                if summary and not self._tool_attempt_session.visible_response_sent:
-                    self._publish_response(
-                        summary,
-                        # This is an intermediate workflow update. The open
-                        # product dialog owns completion, so presenting it as a
-                        # completed tool result would contradict the waiting
-                        # state rendered immediately below.
-                        kind=AssistantResponseKind.MESSAGE,
-                    )
-                request = self._workflow_ui_handoff_request(
-                    handoff_command,
-                    decision_fields=snapshot.decision_needed,
-                    publication=snapshot.publication,
-                )
-                self.pending_interactions.begin_workflow_handoff(request)
-                self._publish_activity(
-                    AssistantTurnActivityPhase.WAITING_FOR_DECISION,
-                    command_name=request.command_name,
-                    request_id=request.request_id,
-                    decision_owner=self._workflow_handoff_decision_owner(
-                        request.command
-                    ),
-                )
-                self.workflow_ui_handoff_requested.emit(request)
-                logger.info(
-                    "Workflow policy stopped: %s",
-                    redact_public_text(decision.reason),
-                )
-                return
-            else:
-                logger.error(
-                    "Workflow decision fields were published without a next command"
-                )
-                self.status_update.emit("Workflow decision could not be opened.")
         logger.info(
-            "Workflow policy stopped: %s",
-            redact_public_text(decision.reason),
+            "Assistant completed one action for this turn: %s",
+            redact_public_text(command_name),
         )
         self._finalize_turn_after_tool()
 
@@ -2603,6 +2436,47 @@ class LLMController(QObject):
 
         """
         if isinstance(result, UiRequest):
+            if result.kind is UiRequestKind.WORKFLOW_HANDOFF:
+                tool_name = result.params.get("tool_name")
+                command_name = result.params.get("command")
+                decision_fields = result.params.get("decision_fields")
+                contract = (
+                    AGENT_ACTION_CONTRACTS.contract_for(tool_name)
+                    if type(tool_name) is str
+                    else None
+                )
+                try:
+                    command = CommandName(command_name)
+                except (TypeError, ValueError):
+                    command = None
+                valid = bool(
+                    contract is not None
+                    and contract.execution_kind is AgentExecutionKind.UI_REQUEST
+                    and contract.action is command
+                    and type(decision_fields) is tuple
+                    and decision_fields == contract.ui_decision_fields
+                    and command is not None
+                    and workflow_ui_handoff_route_for(command) is not None
+                )
+                if not valid:
+                    self._publish_response(
+                        "That XBrainLab settings surface is not available.",
+                        kind=AssistantResponseKind.BLOCKED,
+                    )
+                    return False
+                workflow_request = self._workflow_ui_handoff_request(
+                    command,
+                    decision_fields=decision_fields,
+                )
+                self.pending_interactions.begin_workflow_handoff(workflow_request)
+                self._publish_activity(
+                    AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+                    command_name=workflow_request.command_name,
+                    request_id=workflow_request.request_id,
+                    decision_owner=self._workflow_handoff_decision_owner(command),
+                )
+                self.workflow_ui_handoff_requested.emit(workflow_request)
+                return True
             if result.kind is UiRequestKind.SWITCH_PANEL:
                 try:
                     navigation_request = AssistantPanelNavigationRequest(

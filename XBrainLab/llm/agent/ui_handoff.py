@@ -45,6 +45,7 @@ class WorkflowUiHandoffRouteIdentity(str, Enum):
     DATA_IMPORT_PANEL = "data_import_panel"
     DATA_IMPORT_REVIEW_DIALOG = "data_import_review_dialog"
     PREPROCESS_PANEL = "preprocess_panel"
+    CHANNEL_SELECTION_DIALOG = "channel_selection_dialog"
     EPOCH_SETTINGS_DIALOG = "epoch_settings_dialog"
     DATASET_SPLIT_DIALOG = "dataset_split_dialog"
     TRAINING_SETTINGS_DIALOG = "training_settings_dialog"
@@ -274,12 +275,12 @@ _WORKFLOW_UI_HANDOFF_ROUTES = (
     ),
     WorkflowUiHandoffRouteDescriptor(
         command=CommandName.PREPROCESS,
-        surface_kind=WorkflowUiHandoffSurfaceKind.PANEL,
-        decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
-        target_panel=WorkflowUiHandoffPanel.PREPROCESS,
-        route_identity=WorkflowUiHandoffRouteIdentity.PREPROCESS_PANEL,
-        presentation_step="Continue in Preprocess",
-        decision_copy=_PANEL_DECISION_COPY,
+        surface_kind=WorkflowUiHandoffSurfaceKind.DIALOG,
+        decision_owner=AssistantDecisionOwner.GUI_DIALOG,
+        target_panel=WorkflowUiHandoffPanel.DATASET,
+        route_identity=WorkflowUiHandoffRouteIdentity.CHANNEL_SELECTION_DIALOG,
+        presentation_step="Continue in Channel Selection",
+        decision_copy="Finish or cancel in the open Channel Selection dialog.",
     ),
     WorkflowUiHandoffRouteDescriptor(
         command=CommandName.CREATE_EPOCH,

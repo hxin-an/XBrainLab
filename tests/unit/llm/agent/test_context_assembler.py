@@ -102,7 +102,7 @@ def test_external_envelope_cannot_forge_authoritative_workflow_item_type() -> No
     )
 
 
-def test_blocked_explanation_uses_publication_but_publishes_no_actions() -> None:
+def test_question_does_not_narrow_backend_stage_published_actions() -> None:
     state = _state(
         pipeline_stage="data_loaded",
         raw=RawStateSnapshot(loaded=True, count=1),
@@ -115,8 +115,8 @@ def test_blocked_explanation_uses_publication_but_publishes_no_actions() -> None
     )
     runtime = _ApplicationRuntimeFake(publication)
     registry = ToolRegistry()
-    registry.register(_NamedTool("epoch_data"))
-    registry.register(_NamedTool("scan_source"))
+    registry.register(_NamedTool("select_channels"))
+    registry.register(_NamedTool("switch_panel"))
     assembler = ContextAssembler(
         registry,
         Study(),
@@ -135,21 +135,21 @@ def test_blocked_explanation_uses_publication_but_publishes_no_actions() -> None
     assert '"workflow_stage":"data_loaded"' in prompt
     assert '"name": "respond_to_user"' in prompt
     assert runtime.publication_reads == 1
-    assert assembler.latest_tool_publication.tool_names == frozenset()
+    assert assembler.latest_tool_publication.tool_names == frozenset(
+        {"select_channels", "switch_panel"}
+    )
     assert card == {
         "workflow_stage": "data_loaded",
         "backend_generation": 81,
         "state_reliable": True,
         "raw_count": 1,
     }
-    assert assembler.latest_tool_publication.blocked_reason("create_epoch") == (
-        "Preprocess data before creating EEG epochs."
-    )
-    assert "unique description for epoch_data" not in prompt
-    assert "unique description for scan_source" not in prompt
+    assert assembler.latest_tool_publication.blocked_reason("create_epochs") is None
+    assert "unique description for select_channels" in prompt
+    assert "unique description for switch_panel" in prompt
 
 
-def test_blocked_explanation_rag_scope_never_reads_or_exposes_tools() -> None:
+def test_rag_scope_reads_backend_publication_without_intent_shortcut() -> None:
     registry = ToolRegistry()
     registry.register(_NamedTool("start_training"))
     runtime = MagicMock()
@@ -162,7 +162,7 @@ def test_blocked_explanation_rag_scope_never_reads_or_exposes_tools() -> None:
     allowed = assembler.rag_allowed_tool_names("為什麼現在不能訓練?")
 
     assert allowed == frozenset()
-    runtime.get_view_publication.assert_not_called()
+    runtime.get_view_publication.assert_called_once_with()
 
 
 def test_generation_request_marks_workflow_action_as_structured():
@@ -176,17 +176,17 @@ def test_generation_request_marks_workflow_action_as_structured():
     assert "exactly one" in request.to_model_messages()[0]["content"]
 
 
-def test_rag_examples_are_scoped_to_the_requested_workflow_action():
+def test_rag_examples_follow_backend_stage_not_request_heuristics():
     registry = ToolRegistry()
-    registry.register(_NamedTool("scan_source"))
-    registry.register(_NamedTool("list_files"))
+    registry.register(_NamedTool("import_eeg_data"))
+    registry.register(_NamedTool("switch_panel"))
     assembler = ContextAssembler(registry, Study())
 
     allowed = assembler.rag_allowed_tool_names(
         "Use the EEG recording at /data/eeg to prepare the data."
     )
 
-    assert allowed == frozenset({"scan_source"})
+    assert allowed == frozenset({"import_eeg_data", "switch_panel"})
 
 
 def test_prompt_action_contracts_do_not_resemble_an_output_array():
@@ -319,13 +319,12 @@ def test_state_card_never_projects_private_directory_path(
         capabilities=build_capability_policy(state),
     )
     registry = ToolRegistry()
-    registry.register(_NamedTool("scan_source"))
+    registry.register(_NamedTool("select_channels"))
     assembler = ContextAssembler(
         registry,
         Study(),
         application_runtime=_ApplicationRuntimeFake(publication),
     )
-    assembler.set_turn_authorized_command("scan_source")
 
     messages = assembler.get_messages(
         [
@@ -357,15 +356,17 @@ def test_state_card_never_projects_private_directory_path(
     assert private_path not in state_card_data
     for fragment in private_fragments:
         assert fragment not in state_card_data
-    assert assembler.latest_tool_publication.tool_names == frozenset({"scan_source"})
-    assert assembler.latest_tool_publication.authorized_command == "scan_source"
+    assert assembler.latest_tool_publication.tool_names == frozenset(
+        {"select_channels"}
+    )
+    assert assembler.latest_tool_publication.authorized_command is None
 
 
 # Mock Tools
 class ValidTool(BaseTool):
     @property
     def name(self):
-        return "scan_source"
+        return "import_eeg_data"
 
     @property
     def description(self):
@@ -385,7 +386,7 @@ class ValidTool(BaseTool):
 class InvalidTool(BaseTool):
     @property
     def name(self):
-        return "set_model"
+        return "retired_set_model"
 
     @property
     def description(self):
@@ -528,7 +529,7 @@ def test_preprocessed_publication_aligns_model_and_decision_context() -> None:
     )
     runtime = _ApplicationRuntimeFake(publication)
     registry = ToolRegistry()
-    registry.register(_NamedTool("epoch_data"))
+    registry.register(_NamedTool("create_epochs"))
 
     assembler = ContextAssembler(
         registry,
@@ -551,12 +552,12 @@ def test_preprocessed_publication_aligns_model_and_decision_context() -> None:
         "preprocessed_count": 1,
     }
     assert "recommended_next_step" not in prompt
-    assert '"name": "epoch_data"' in prompt
-    assert "unique description for epoch_data" in prompt
+    assert '"name": "create_epochs"' in prompt
+    assert "unique description for create_epochs" in prompt
 
 
 @pytest.mark.parametrize("text", ("Reset preprocessing.", "重設前處理"))
-def test_reset_preprocess_prompt_exposes_only_narrow_reset_tool(text: str) -> None:
+def test_reset_preprocessing_is_published_by_stage_not_prompt_text(text: str) -> None:
     state = _state(
         pipeline_stage="preprocessed",
         raw=RawStateSnapshot(loaded=True, count=1),
@@ -576,7 +577,7 @@ def test_reset_preprocess_prompt_exposes_only_narrow_reset_tool(text: str) -> No
         capabilities=build_capability_policy(state),
     )
     registry = ToolRegistry()
-    registry.register(_NamedTool("reset_preprocess"))
+    registry.register(_NamedTool("reset_preprocessing"))
     registry.register(_NamedTool("retired_reset_tool"))
     assembler = ContextAssembler(
         registry,
@@ -587,9 +588,9 @@ def test_reset_preprocess_prompt_exposes_only_narrow_reset_tool(text: str) -> No
     prompt = assembler.build_system_prompt(text)
 
     assert assembler.latest_tool_publication.tool_names == frozenset(
-        {"reset_preprocess"}
+        {"reset_preprocessing"}
     )
-    assert "unique description for reset_preprocess" in prompt
+    assert "unique description for reset_preprocessing" in prompt
     assert "unique description for retired_reset_tool" not in prompt
 
 
@@ -1110,7 +1111,7 @@ def test_real_service_prompt_reads_one_committed_publication_generation():
     )
     service.state_snapshot.build = MagicMock(side_effect=[empty, loaded])
     registry = ToolRegistry()
-    registry.register(_NamedTool("scan_source"))
+    registry.register(_NamedTool("import_eeg_data"))
     registry.register(_NamedTool("apply_bandpass_filter"))
 
     messages = ContextAssembler(registry, study).get_messages(
@@ -1131,12 +1132,12 @@ def test_real_service_prompt_reads_one_committed_publication_generation():
         "raw_count": 0,
     }
     assert "recommended_next_step" not in prompt
-    assert "unique description for scan_source" in prompt
+    assert "unique description for import_eeg_data" in prompt
     assert "unique description for apply_bandpass_filter" not in prompt
     assert "- preprocess: Load raw data before preprocessing." not in prompt
 
 
-def test_stale_publication_prompt_redacts_relevant_scan_source_blocker():
+def test_stale_publication_allows_only_navigation_and_redacts_failure_details():
     study = Study()
     state = _state()
     publication = ApplicationViewPublication(
@@ -1147,8 +1148,8 @@ def test_stale_publication_prompt_redacts_relevant_scan_source_blocker():
         refresh_error="Traceback: /private/runtime.py SECRET_TOKEN_123",
     )
     registry = ToolRegistry()
-    registry.register(_NamedTool("scan_source"))
-    registry.register(_NamedTool("query_state"))
+    registry.register(_NamedTool("import_eeg_data"))
+    registry.register(_NamedTool("switch_panel"))
     registry.register(_NamedTool("retired_reset_tool"))
     runtime = _ApplicationRuntimeFake(publication)
     assembler = ContextAssembler(
@@ -1178,14 +1179,15 @@ def test_stale_publication_prompt_redacts_relevant_scan_source_blocker():
     assert "Traceback" not in context_content
     assert "/private/runtime.py" not in context_content
     assert "SECRET_TOKEN_123" not in context_content
-    assert assembler.latest_tool_publication.blocked_reason("scan_source") == (
+    assert assembler.latest_tool_publication.tool_names == frozenset({"switch_panel"})
+    assert assembler.latest_tool_publication.blocked_reason("switch_panel") == (
         "Workflow state is temporarily unavailable."
     )
     assert "## Workflow Status Unavailable" not in prompt
     assert "## Current Stage: Empty (No Data)" not in prompt
-    assert "unique description for query_state" not in prompt
+    assert "unique description for import_eeg_data" not in prompt
     assert "unique description for retired_reset_tool" not in prompt
-    assert "unique description for scan_source" not in prompt
+    assert "unique description for switch_panel" in prompt
 
 
 def _state(
@@ -1238,7 +1240,7 @@ def test_assembler_filtering():
     # 2. Use an explicit non-product context with no application runtime.
     compatibility_context = object()
 
-    # 3. Patch pipeline stage to a config that allows only scan_source
+    # 3. Patch pipeline stage to a config that allows only the approved import action.
     with (
         patch(
             "XBrainLab.llm.agent.assembler.compute_pipeline_stage",
@@ -1248,7 +1250,7 @@ def test_assembler_filtering():
             "XBrainLab.llm.agent.assembler.STAGE_CONFIG",
             {
                 PipelineStage.EMPTY: {
-                    "tools": ["scan_source"],
+                    "tools": ["import_eeg_data"],
                     "system_prompt": "You are XBrainLab Assistant.\ntest stage prompt",
                 }
             },
@@ -1258,9 +1260,9 @@ def test_assembler_filtering():
         system_prompt = assembler.build_system_prompt()
 
     # 4. Verify Content
-    assert "scan_source" in system_prompt
+    assert "import_eeg_data" in system_prompt
     assert "Valid description" in system_prompt
-    assert "set_model" not in system_prompt
+    assert "start_training" not in system_prompt
     assert "Invalid description" not in system_prompt
 
 
@@ -1640,45 +1642,51 @@ def test_assembler_does_not_replay_executed_action_envelopes_to_model() -> None:
 
 def test_assembler_publishes_exact_tool_names_used_in_prompt() -> None:
     registry = ToolRegistry()
-    registry.register(_NamedTool("scan_source"))
+    registry.register(_NamedTool("import_eeg_data"))
     registry.register(_NamedTool("start_training"))
     assembler = ContextAssembler(registry, Study())
 
     prompt = assembler.build_system_prompt("Import EEG data from a source")
 
-    assert assembler.latest_tool_publication.tool_names == frozenset({"scan_source"})
-    assert "unique description for scan_source" in prompt
+    assert assembler.latest_tool_publication.tool_names == frozenset(
+        {"import_eeg_data"}
+    )
+    assert "unique description for import_eeg_data" in prompt
     assert "unique description for start_training" not in prompt
 
 
-def test_assembler_narrows_concrete_source_request_to_scan_tool() -> None:
+def test_assembler_does_not_host_narrow_concrete_source_request() -> None:
     registry = ToolRegistry()
-    for name in ("list_files", "scan_source", "switch_panel"):
+    for name in ("list_files", "import_eeg_data", "switch_panel"):
         registry.register(_NamedTool(name))
     assembler = ContextAssembler(registry, Study())
 
     prompt = assembler.build_system_prompt("Load /data/S04.edf")
 
-    assert assembler.latest_tool_publication.tool_names == frozenset({"scan_source"})
-    assert "unique description for scan_source" in prompt
+    assert assembler.latest_tool_publication.tool_names == frozenset(
+        {"import_eeg_data", "switch_panel"}
+    )
+    assert "unique description for import_eeg_data" in prompt
     assert "unique description for list_files" not in prompt
-    assert "unique description for switch_panel" not in prompt
+    assert "unique description for switch_panel" in prompt
 
 
-def test_assembler_publishes_browse_tool_for_explicit_file_listing() -> None:
+def test_retired_file_listing_is_not_reintroduced_by_prompt_text() -> None:
     registry = ToolRegistry()
-    for name in ("list_files", "scan_source", "switch_panel"):
+    for name in ("list_files", "import_eeg_data", "switch_panel"):
         registry.register(_NamedTool(name))
     assembler = ContextAssembler(registry, Study())
 
     prompt = assembler.build_system_prompt("List the files in /data/eeg")
 
-    assert assembler.latest_tool_publication.tool_names == frozenset({"list_files"})
-    assert "unique description for list_files" in prompt
-    assert "unique description for scan_source" not in prompt
+    assert assembler.latest_tool_publication.tool_names == frozenset(
+        {"import_eeg_data", "switch_panel"}
+    )
+    assert "unique description for list_files" not in prompt
+    assert "unique description for import_eeg_data" in prompt
 
 
-def test_continue_mode_advances_from_completed_scan_to_preview_tool() -> None:
+def test_continuation_authorization_does_not_narrow_backend_stage() -> None:
     state = _state(
         interpretation=InterpretationStateSnapshot(
             has_scan_result=True,
@@ -1692,7 +1700,7 @@ def test_continue_mode_advances_from_completed_scan_to_preview_tool() -> None:
         capabilities=build_capability_policy(state),
     )
     registry = ToolRegistry()
-    for name in ("list_files", "scan_source", "preview_interpretation"):
+    for name in ("import_eeg_data", "switch_panel", "preview_interpretation"):
         registry.register(_NamedTool(name))
     assembler = ContextAssembler(
         registry,
@@ -1710,20 +1718,10 @@ def test_continue_mode_advances_from_completed_scan_to_preview_tool() -> None:
     )
 
     assert assembler.latest_tool_publication.tool_names == frozenset(
-        {"preview_interpretation"}
+        {"import_eeg_data", "switch_panel"}
     )
-    assert assembler.latest_tool_publication.recommended_command == (
-        "preview_interpretation"
-    )
-    assert "unique description for preview_interpretation" in prompt
-    assert "unique description for scan_source" not in prompt
-    contracts_text = prompt.split(
-        "Action Contract Catalog (input definitions, never an output array):\n",
-        maxsplit=1,
-    )[1].split("\nOnly the listed workflow action", maxsplit=1)[0]
-    assert '"name": "preview_interpretation"' in contracts_text
-    assert '"properties": {}' in contracts_text
-    assert '"additionalProperties": false' in contracts_text
+    assert "unique description for preview_interpretation" not in prompt
+    assert "unique description for import_eeg_data" in prompt
 
 
 def test_changing_continuation_authorization_discards_stale_rag_context() -> None:
@@ -1777,7 +1775,7 @@ def test_recoverable_tool_feedback_is_structured_untrusted_data_not_history() ->
     assert all("Tool Output:" not in item["content"] for item in messages[2:])
 
 
-def test_assembler_only_includes_blocker_relevant_to_latest_request():
+def test_assembler_does_not_publish_host_inferred_blockers():
     assembler = ContextAssembler(ToolRegistry(), Study())
 
     messages = assembler.get_messages(
@@ -1785,9 +1783,7 @@ def test_assembler_only_includes_blocker_relevant_to_latest_request():
     )
     blockers = dict(assembler.latest_tool_publication.blocked_reasons)
 
-    assert "train" in blockers
-    assert "preprocess" not in blockers
-    assert "create_epoch" not in blockers
+    assert blockers == {}
 
 
 def test_prompt_policy_read_result_serializes_one_successful_publication() -> None:
@@ -1808,8 +1804,12 @@ def test_prompt_policy_read_result_serializes_one_successful_publication() -> No
 
     assert payload["backend_generation"] == 17
     assert payload["publication_error"] is None
-    assert "scan_source" in payload["published_tools"]
-    assert payload["blocked_reasons"]["preprocess"]
+    assert set(payload["published_tools"]) == {
+        "configure_training",
+        "import_eeg_data",
+        "select_model",
+        "switch_panel",
+    }
 
 
 def test_prompt_policy_publication_exception_is_fail_closed_and_safe() -> None:

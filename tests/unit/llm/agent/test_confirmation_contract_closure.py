@@ -185,7 +185,6 @@ def test_capability_confirmed_approval_injects_backend_boolean() -> None:
 @pytest.mark.parametrize(
     ("tool_name", "params"),
     [
-        ("set_model", {"model_name": "SCCNet"}),
         (
             "configure_dataset_split",
             {"split_strategy": "trial", "training_mode": "individual"},
@@ -350,7 +349,6 @@ def test_setting_evidence_fingerprint_excludes_backend_confirmation_boolean() ->
 @pytest.mark.parametrize(
     ("tool_name", "params"),
     [
-        ("set_model", {"model_name": "EEGNet"}),
         (
             "configure_training",
             {
@@ -386,16 +384,9 @@ def test_incomplete_training_settings_keep_existing_input_handoff_boundary() -> 
 
 
 _AFFECTED_CONFIRMATIONS = (
-    ("reset_preprocess", {}),
-    (
-        "configure_dataset_split",
-        {"split_strategy": "trial", "training_mode": "individual"},
-    ),
-    ("set_model", {"model_name": "SCCNet"}),
-    (
-        "configure_training",
-        {"epoch": 5, "batch_size": 4, "learning_rate": 0.001},
-    ),
+    ("reset_preprocessing", {}),
+    ("clear_training_history", {}),
+    ("start_training", {}),
 )
 
 
@@ -426,7 +417,7 @@ def test_confirmation_resolution_matrix_is_correlated_for_every_affected_command
         params=params,
         action_label="Apply change",
         description="Apply the reviewed change.",
-        destructive=tool_name == "reset_preprocess",
+        destructive=tool_name in {"reset_preprocessing", "clear_training_history"},
         publication_generation=41,
         request_id=f"{tool_name}-request",
     )

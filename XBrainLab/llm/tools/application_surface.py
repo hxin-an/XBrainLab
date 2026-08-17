@@ -10,6 +10,7 @@ from typing import Any, Protocol, cast
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
     AttachLabelsCommand,
+    ClearTrainingHistoryCommand,
     Command,
     CommandName,
     CommandResult,
@@ -83,12 +84,6 @@ class CapabilityPolicyUnavailableError(RuntimeError):
 
 
 CapabilityPolicyUnavailable = CapabilityPolicyUnavailableError
-
-_ASSISTANT_DIRECT_LOAD_DISABLED_MESSAGE = (
-    "Direct assistant file loading is unavailable because the legacy loader "
-    "cannot preserve an authorized filesystem identity through file parsing. "
-    "Use scan_source and the Data Interpretation workflow instead."
-)
 
 
 class HostAuthorizedToolParameter(str):
@@ -964,36 +959,13 @@ def _build_agent_tool_policy_from_publication(
 ) -> dict[str, ToolAvailability]:
     """Build one tool policy from a single committed application generation."""
     app_policy = publication.effective_capabilities
-    state = publication.state
-
     tool_policy: dict[str, ToolAvailability] = {}
     for tool_name, command_name in TOOL_TO_COMMAND.items():
         capability = app_policy.get(command_name)
         tool_policy[tool_name] = _from_capability(tool_name, command_name, capability)
-    tool_policy["load_data"] = replace(
-        tool_policy["load_data"],
-        enabled=False,
-        reasons=(_ASSISTANT_DIRECT_LOAD_DISABLED_MESSAGE,),
-        can_auto_execute=False,
-    )
-
-    has_raw_data = state.active_dataset.has_raw_data
-    tool_policy["list_files"] = ToolAvailability(
-        tool_name="list_files",
-        enabled=True,
-        read_only=True,
-    )
     tool_policy["switch_panel"] = ToolAvailability(
         tool_name="switch_panel",
         enabled=True,
-        read_only=True,
-    )
-    tool_policy["get_dataset_info"] = ToolAvailability(
-        tool_name="get_dataset_info",
-        enabled=has_raw_data,
-        reasons=(
-            () if has_raw_data else ("Load raw data before requesting dataset info.",)
-        ),
         read_only=True,
     )
     if not publication.usable:
@@ -1170,35 +1142,6 @@ def execute_application_tool_command(
                 "boundary": "application_tool_runtime",
                 "mapped_product_tool": True,
             },
-        )
-
-    if tool_name == "load_data":
-        if availability is None:
-            try:
-                availability = get_tool_availability(
-                    study,
-                    tool_name,
-                    runtime=application_runtime,
-                )
-            except CapabilityPolicyUnavailableError:
-                availability = None
-        return ToolCommandResult.failure(
-            tool_name,
-            _ASSISTANT_DIRECT_LOAD_DISABLED_MESSAGE,
-            command_name=CommandName.LOAD_DATA.value,
-            state=(
-                state
-                if state is not None
-                else _state_snapshot_dict(study, runtime=application_runtime)
-            ),
-            capability=availability.to_dict() if availability else None,
-            error_type="precondition",
-            error_code="assistant_direct_load_disabled",
-            recovery_action=(
-                "Use scan_source, preview_interpretation, "
-                "validate_interpretation, and apply_interpretation."
-            ),
-            recoverable=False,
         )
 
     command_params = dict(params)
@@ -1548,8 +1491,13 @@ def _command_for_tool(
             channels=[str(channel) for channel in channels],
         )
 
-    if tool_name == "reset_preprocess":
+    if tool_name == "reset_preprocessing":
         return ResetPreprocessCommand(
+            confirmed=_boolean_param(params, "confirmed"),
+        )
+
+    if tool_name == "clear_training_history":
+        return ClearTrainingHistoryCommand(
             confirmed=_boolean_param(params, "confirmed"),
         )
 

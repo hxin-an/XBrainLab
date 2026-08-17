@@ -187,6 +187,17 @@ class WorkflowUiHandoffHost:
                 fallback_request,
                 "There is no pending Data Import step to open.",
             )
+        if command not in {
+            CommandName.SCAN_SOURCE,
+            CommandName.REVIEW_INTERPRETATION,
+            CommandName.PREVIEW_INTERPRETATION,
+            CommandName.VALIDATE_INTERPRETATION,
+            CommandName.APPLY_INTERPRETATION,
+        }:
+            return self._standalone_failure(
+                fallback_request,
+                "There is no pending Data Import step to open.",
+            )
         descriptor = workflow_ui_handoff_route_for(command)
         if (
             descriptor is None
@@ -471,6 +482,9 @@ class WorkflowUiHandoffHost:
             WorkflowUiHandoffRouteIdentity.DATA_IMPORT_DIALOG: (self._open_data_import),
             WorkflowUiHandoffRouteIdentity.DATA_IMPORT_REVIEW_DIALOG: (
                 self._open_current_import_review
+            ),
+            WorkflowUiHandoffRouteIdentity.CHANNEL_SELECTION_DIALOG: (
+                self._open_channel_selection
             ),
             WorkflowUiHandoffRouteIdentity.EPOCH_SETTINGS_DIALOG: (self._open_epoching),
             WorkflowUiHandoffRouteIdentity.DATASET_SPLIT_DIALOG: (
@@ -893,6 +907,14 @@ class WorkflowUiHandoffHost:
         kwargs = {"suggested_values": suggestions} if suggestions else {}
         return self._surface_result(
             self._main_window.preprocess_panel.sidebar.open_epoching(**kwargs)
+        )
+
+    def _open_channel_selection(
+        self,
+        _request: WorkflowSurfaceRequest,
+    ) -> WorkflowSurfaceResult:
+        return self._surface_result(
+            self._main_window.dataset_panel.sidebar.open_channel_selection()
         )
 
     def _open_data_splitting(
