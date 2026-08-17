@@ -100,7 +100,9 @@ DatasetController.import_files(...)
 
 `RawDataLoaderFactory` 以副檔名 dispatch loader。如果副檔名沒有註冊，會 raise `UnsupportedFormatError`。如果 loader 失敗，會包成 `FileCorruptedError` 或由原始錯誤往外傳。
 
-Strict `Import BIDS folder` 在 loader 前先使用 `BidsDatasetIndex`。Index 對使用者明確選取的
+Unified `Import Data` 會先以 read-only `catalog_only + source_hint=auto` 回傳 typed
+`source_kind`。Formal BIDS 在 loader 前使用 `BidsDatasetIndex` 並開啟既有 subject selector；
+generic folder 與 files 直接進既有 Import Review。Index 對使用者明確選取的
 root 做 bounded walk，解析唯一 nested formal root，記錄 subject catalog、selected EEG recordings、
 entities、events / channels / electrodes / coordsystem / JSON sidecars、warnings 與 completeness。
 Scan、subject selection、review/apply、EEGLAB dependency preflight 和 montage preparation 只重用
@@ -374,9 +376,9 @@ Data Import wizard baseline 和仍未完成的產品化差距，不是新增目�
   `next_action` 和 `severity`，供 UI、agent、headless 讀同一份 command result。
 - import dialog 目前以 `QStackedWidget` step panels 呈現，一次只顯示一個 task panel：
   Choose EEG Data、Load Labels、Review Metadata、Match Labels、Review and Import。
-- Dataset sidebar 主要入口已改成 `Import file`、`Import folder`、`Import BIDS folder`；
-  `Import BIDS folder` 是 strict BIDS path，一般 `Import folder` 即使掃到 `events.tsv`
-  仍走普通 label-file flow。
+- Dataset sidebar 主要入口已收斂為 `Import Data`。薄 chooser 只保存 detached selection；
+  Continue 後 backend typed classification 將 formal BIDS 導向 subject selector，generic folder
+  與 files 導向普通 label-file flow。`Reload recipe` 仍是獨立 reuse action。
 - apply path 能在完整且唯一的 file pairing 下自動套 label：timestamp labels、sample-index
   anchored MAT labels、trial-order sequence labels；不再默默跳過未配到 label 的 selected EEG。
 - metadata edit、smart parse、remove files 已有 `DataTableCommandService` command path。

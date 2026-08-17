@@ -399,21 +399,52 @@ class DataInterpretationCommandService:
     ) -> _PreparedSourceScan:
         """Discover one source without publishing its interpretation state."""
         if command.catalog_only:
-            if str(command.source_hint).strip().casefold() != "bids":
-                raise ValueError("Catalog-only discovery requires a BIDS source.")
-            bids_index = self._bids_index_for_source(command.source_path)
-            catalog = inspect_bids_subject_catalog(
-                command.source_path,
-                bids_index=bids_index,
+            source_hint = str(command.source_hint).strip().casefold()
+            if source_hint not in {"auto", "bids"}:
+                raise ValueError(
+                    "Catalog-only discovery requires an auto or BIDS source."
+                )
+            if source_hint == "bids":
+                bids_index = self._bids_index_for_source(command.source_path)
+                catalog = inspect_bids_subject_catalog(
+                    command.source_path,
+                    bids_index=bids_index,
+                )
+                return _PreparedSourceScan(
+                    scan=None,
+                    result=(
+                        f"Found {catalog['subject_count']} BIDS subject(s).",
+                        {
+                            "payload_type": "bids_subject_catalog",
+                            "bids_subject_catalog": catalog,
+                        },
+                    ),
+                )
+
+            scope = discover_source_preflight_scope(
+                source_path=command.source_path,
+                source_hint="auto",
+                bids_index=self._bids_index_for_hint(
+                    command.source_path,
+                    "auto",
+                ),
             )
+            self._remember_bids_index(scope.bids_index)
+            diagnostics: dict[str, Any] = {
+                "payload_type": "source_classification",
+                "source_kind": scope.source_kind,
+            }
+            if scope.source_kind == "bids":
+                catalog = inspect_bids_subject_catalog(
+                    scope.source_path,
+                    bids_index=scope.bids_index,
+                )
+                diagnostics["bids_subject_catalog"] = catalog
             return _PreparedSourceScan(
                 scan=None,
                 result=(
-                    f"Found {catalog['subject_count']} BIDS subject(s).",
-                    {
-                        "payload_type": "bids_subject_catalog",
-                        "bids_subject_catalog": catalog,
-                    },
+                    f"Detected {scope.source_kind} EEG source.",
+                    diagnostics,
                 ),
             )
         scan_id = self.state.next_id("scan")

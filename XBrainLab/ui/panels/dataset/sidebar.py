@@ -109,8 +109,6 @@ class DatasetSidebar(QWidget):
         panel: The parent ``DatasetPanel`` reference.
         info_panel: ``AggregateInfoPanel`` displaying summary statistics.
         import_btn: Button to import EEG data files.
-        import_folder_btn: Button to import a folder.
-        import_bids_btn: Button to import a BIDS EEG folder.
         reload_recipe_btn: Button to reload a saved import recipe.
         import_label_btn: Hidden compatibility button for old label attachment.
         smart_parse_btn: Hidden compatibility button to auto-extract metadata.
@@ -192,34 +190,13 @@ class DatasetSidebar(QWidget):
         self.ops_layout.setContentsMargins(0, 10, 0, 0)
         self.ops_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        self.import_btn = QPushButton("Import file")
+        self.import_btn = QPushButton("Import Data")
         self.import_btn.setToolTip(
-            "Choose EEG files, review metadata and labels, then import"
+            "Choose EEG files or a folder, review metadata and labels, then import"
         )
         self.import_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
         self.import_btn.clicked.connect(self.panel.action_handler.import_data)
         self.ops_layout.addWidget(self.import_btn, 0, 0)
-
-        self.import_folder_btn = QPushButton("Import folder")
-        self.import_folder_btn.setToolTip(
-            "Choose an EEG folder, review metadata and labels, then import",
-        )
-        self.import_folder_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
-        self.import_folder_btn.clicked.connect(
-            self.panel.action_handler.import_folder_source,
-        )
-        self.ops_layout.addWidget(self.import_folder_btn, 1, 0)
-
-        self.import_bids_btn = QPushButton("Import BIDS")
-        self.import_bids_btn.setObjectName("DatasetImportBidsButton")
-        self.import_bids_btn.setToolTip(
-            "Choose a BIDS EEG folder and review detected metadata and events",
-        )
-        self.import_bids_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
-        self.import_bids_btn.clicked.connect(
-            self.panel.action_handler.import_bids_source,
-        )
-        self.ops_layout.addWidget(self.import_bids_btn, 2, 0)
 
         self.reload_recipe_btn = QPushButton("Reload recipe")
         self.reload_recipe_btn.setToolTip(
@@ -229,7 +206,7 @@ class DatasetSidebar(QWidget):
         self.reload_recipe_btn.clicked.connect(
             self.panel.action_handler.reload_interpretation_recipe,
         )
-        self.ops_layout.addWidget(self.reload_recipe_btn, 3, 0)
+        self.ops_layout.addWidget(self.reload_recipe_btn, 1, 0)
 
         self.import_cancel_btn = QPushButton("Cancel Import")
         self.import_cancel_btn.setObjectName("OwnedOperationCancelButton")
@@ -237,7 +214,7 @@ class DatasetSidebar(QWidget):
         self.import_cancel_btn.setStyleSheet(Stylesheets.BTN_WARNING)
         self.import_cancel_btn.setVisible(False)
         self.import_cancel_btn.setEnabled(False)
-        self.ops_layout.addWidget(self.import_cancel_btn, 4, 0)
+        self.ops_layout.addWidget(self.import_cancel_btn, 2, 0)
 
         self.smart_parse_btn = QPushButton("Smart Parse Metadata", self.ops_group)
         self.smart_parse_btn.setToolTip("Auto-extract Subject/Session from filenames")
@@ -275,8 +252,6 @@ class DatasetSidebar(QWidget):
         layout.addStretch()
         self._action_buttons = (
             self.import_btn,
-            self.import_folder_btn,
-            self.import_bids_btn,
             self.reload_recipe_btn,
             self.import_cancel_btn,
             self.smart_parse_btn,
@@ -358,8 +333,6 @@ class DatasetSidebar(QWidget):
         if has_real_application_context(self):
             unavailable_actions = {
                 self.import_btn: _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
-                self.import_folder_btn: _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
-                self.import_bids_btn: _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
                 self.reload_recipe_btn: _RECIPE_RELOAD_AVAILABILITY_UNAVAILABLE,
                 self.smart_parse_btn: _SMART_PARSE_AVAILABILITY_UNAVAILABLE,
                 self.import_label_btn: _LABEL_IMPORT_AVAILABILITY_UNAVAILABLE,
@@ -372,8 +345,6 @@ class DatasetSidebar(QWidget):
 
         for button in (
             self.import_btn,
-            self.import_folder_btn,
-            self.import_bids_btn,
             self.reload_recipe_btn,
         ):
             button.setEnabled(True)
@@ -473,10 +444,9 @@ class DatasetSidebar(QWidget):
 
             if scan_capability is not None:
                 self.import_btn.setEnabled(scan_capability.enabled)
-                self.import_folder_btn.setEnabled(scan_capability.enabled)
-                self.import_bids_btn.setEnabled(scan_capability.enabled)
                 source_tooltip = (
-                    "Choose EEG data, review metadata and labels, then import"
+                    "Choose EEG files or a folder, review metadata and labels, "
+                    "then import"
                     if scan_capability.enabled
                     else blocked_reason(
                         scan_capability,
@@ -484,54 +454,21 @@ class DatasetSidebar(QWidget):
                     )
                 )
                 self.import_btn.setToolTip(source_tooltip)
-                self.import_folder_btn.setToolTip(
-                    "Choose an EEG folder, review metadata and labels, then import"
-                    if scan_capability.enabled
-                    else source_tooltip,
-                )
-                self.import_bids_btn.setToolTip(
-                    "Choose a BIDS EEG folder and review metadata and events"
-                    if scan_capability.enabled
-                    else source_tooltip,
-                )
             elif not compatibility_state_available:
                 self.import_btn.setEnabled(False)
-                self.import_folder_btn.setEnabled(False)
-                self.import_bids_btn.setEnabled(False)
                 self.import_btn.setToolTip(
-                    _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
-                )
-                self.import_folder_btn.setToolTip(
-                    _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
-                )
-                self.import_bids_btn.setToolTip(
                     _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
                 )
             elif compatibility_is_locked:
                 self.import_btn.setEnabled(True)
-                self.import_folder_btn.setEnabled(True)
-                self.import_bids_btn.setEnabled(True)
                 self.import_btn.setToolTip(
                     "Dataset is locked. Reset before interpreting a new source.",
                 )
-                self.import_folder_btn.setToolTip(
-                    "Dataset is locked. Reset before interpreting a folder.",
-                )
-                self.import_bids_btn.setToolTip(
-                    "Dataset is locked. Reset before importing a BIDS folder.",
-                )
             else:
                 self.import_btn.setEnabled(True)
-                self.import_folder_btn.setEnabled(True)
-                self.import_bids_btn.setEnabled(True)
                 self.import_btn.setToolTip(
-                    "Choose EEG data, review metadata and labels, then import",
-                )
-                self.import_folder_btn.setToolTip(
-                    "Choose an EEG folder, review metadata and labels, then import",
-                )
-                self.import_bids_btn.setToolTip(
-                    "Choose a BIDS EEG folder and review metadata and events",
+                    "Choose EEG files or a folder, review metadata and labels, "
+                    "then import",
                 )
 
             if reload_capability is not None:

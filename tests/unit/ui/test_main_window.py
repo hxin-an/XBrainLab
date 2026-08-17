@@ -137,6 +137,20 @@ def test_mainwindow_typed_dataset_import_does_not_require_legacy_controller(
     qapp,
     qtbot,
 ):
+    from XBrainLab.ui.dialogs.dataset.eeg_source_chooser_dialog import (
+        EegSourceSelection,
+    )
+
+    class _AcceptedChooser:
+        def __init__(self, _parent, *, start_directory=""):
+            assert isinstance(start_directory, str)
+
+        def exec(self):
+            return True
+
+        def get_result(self):
+            return EegSourceSelection(kind="files", paths=("/tmp/example.edf",))
+
     study = Study()
     with patch.object(MainWindow, "_schedule_startup_prewarm"):
         window = MainWindow(study)
@@ -145,12 +159,11 @@ def test_mainwindow_typed_dataset_import_does_not_require_legacy_controller(
     assert window.dataset_panel.controller is None
 
     handler = window.dataset_panel.action_handler
+    handler._data_interpretation._source_chooser_dialog_class = lambda: (
+        _AcceptedChooser
+    )
     expected = InteractionOutcome.accepted("Review started")
     with (
-        patch(
-            "XBrainLab.ui.panels.dataset.actions.QFileDialog.getOpenFileNames",
-            return_value=(["/tmp/example.edf"], "EDF"),
-        ),
         patch.object(
             handler._data_interpretation,
             "_run_data_interpretation_import",

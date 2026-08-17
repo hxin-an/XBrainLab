@@ -2097,7 +2097,7 @@ class DataInterpretationPreviewDialog(
         if self._is_bids_source():
             return (
                 "No events.tsv is attached for the selected BIDS runs. Add the "
-                "missing BIDS sidecar or use Import folder for non-BIDS labels."
+                "missing BIDS sidecar or return to Import Data for non-BIDS labels."
             )
         if "label_carrier_preview" in self.preview:
             carriers = self.preview.get("label_carrier_preview")

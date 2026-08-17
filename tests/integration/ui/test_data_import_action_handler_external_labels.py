@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QLabel,
     QLineEdit,
@@ -31,6 +32,9 @@ from XBrainLab.ui.application_capabilities import application_ui_runtime
 from XBrainLab.ui.async_command_runner import application_command_registry
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
+)
+from XBrainLab.ui.dialogs.dataset.eeg_source_chooser_dialog import (
+    EegSourceChooserDialog,
 )
 from XBrainLab.ui.panels.dataset.panel import DatasetPanel
 
@@ -203,6 +207,18 @@ def _complete_visible_external_label_controls(
         raise AssertionError("Visible event-value decisions remain incomplete.")
 
 
+def _accept_eeg_source_chooser(modal: QWidget | None) -> bool:
+    """Drive the real shared source chooser before the interpretation wizard."""
+    if not isinstance(modal, EegSourceChooserDialog):
+        return False
+    QTest.mouseClick(modal.choose_files_button, Qt.MouseButton.LeftButton)
+    continue_button = modal.button_box.button(QDialogButtonBox.StandardButton.Ok)
+    if continue_button is None or not continue_button.isEnabled():
+        raise AssertionError("Import Data did not retain the selected EEG files.")
+    QTest.mouseClick(continue_button, Qt.MouseButton.LeftButton)
+    return True
+
+
 def _start_wizard_driver(*, save_recipe: bool) -> _WizardDriver:
     driver = _WizardDriver(timer=QTimer(), save_recipe=save_recipe)
     driver.timer.setInterval(5)
@@ -216,6 +232,8 @@ def _start_wizard_driver(*, save_recipe: bool) -> _WizardDriver:
     def _poll() -> None:
         modal = visible_modal_dialog()
         try:
+            if _accept_eeg_source_chooser(modal):
+                return
             if isinstance(modal, QMessageBox):
                 if modal.windowTitle() != "Dataset Resource Check":
                     _fail(
@@ -385,6 +403,8 @@ def _start_auto_detected_label_driver() -> _AutoDetectedLabelDriver:
     def _poll() -> None:
         modal = visible_modal_dialog()
         try:
+            if _accept_eeg_source_chooser(modal):
+                return
             if isinstance(modal, QMessageBox):
                 driver.unexpected_messages.append(
                     f"{modal.windowTitle()}: {modal.text()}"
@@ -491,6 +511,8 @@ def _start_label_source_lifecycle_driver(
     def _poll() -> None:
         modal = visible_modal_dialog()
         try:
+            if _accept_eeg_source_chooser(modal):
+                return
             if isinstance(modal, QMessageBox):
                 if modal.windowTitle() != "Dataset Resource Check":
                     _fail(
@@ -701,7 +723,7 @@ def test_dataset_action_handler_imports_real_gdf_with_external_mat_labels(
         **_kwargs: Any,
     ) -> tuple[list[str], str]:
         chooser_calls.append(title)
-        if title == "Choose EEG Source for Interpretation":
+        if title == "Choose EEG files":
             return [str(selected_gdf)], ""
         if title == "Load label file":
             return [str(external_label)], ""
@@ -761,7 +783,7 @@ def test_dataset_action_handler_imports_real_gdf_with_external_mat_labels(
     assert driver.phase == 5
     assert len(driver.dialogs) == 2
     assert chooser_calls == [
-        "Choose EEG Source for Interpretation",
+        "Choose EEG files",
         "Load label file",
     ]
     expected_trace = [
@@ -893,7 +915,7 @@ def test_outer_async_review_remove_then_readd_keeps_one_real_label_source(
         **_kwargs: Any,
     ) -> tuple[list[str], str]:
         chooser_calls.append(title)
-        if title == "Choose EEG Source for Interpretation":
+        if title == "Choose EEG files":
             return [str(selected_gdf)], ""
         if title == "Load label file":
             return [str(external_label)], ""
@@ -956,7 +978,7 @@ def test_outer_async_review_remove_then_readd_keeps_one_real_label_source(
     assert driver.phase == 5
     assert len(driver.dialogs) == 4
     assert chooser_calls == [
-        "Choose EEG Source for Interpretation",
+        "Choose EEG files",
         "Load label file",
         "Load label file",
     ]

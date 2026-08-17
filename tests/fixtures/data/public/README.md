@@ -77,7 +77,8 @@ poetry run python scripts/dev/fetch_public_eeg_fixtures.py \
 
 - exact pinned profile：`68` files、`569,171,066 bytes`
 - BIDS root：`tests/fixtures/data/public/openneuro-ds003061-p300/`
-- 手測時選擇 `Import BIDS folder`，subject selector 應列出 `001`、`002`、`003`
+- 手測時選擇 `Import Data` → `Choose folder…`，subject selector 應列出
+  `001`、`002`、`003`
 - 這個 profile 不屬於 required CI 或 teacher-preflight，不會增加一般 CI 下載量
 
 一般本機 pytest 仍允許在尚未下載 public fixtures 時 skip，方便日常開發。CI 的

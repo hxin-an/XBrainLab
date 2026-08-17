@@ -199,16 +199,31 @@ def test_data_import_unexpected_exception_keeps_failed_outcome_without_leaking(
     monkeypatch,
     caplog,
 ) -> None:
+    from XBrainLab.ui.dialogs.dataset.eeg_source_chooser_dialog import (
+        EegSourceSelection,
+    )
+
+    class _AcceptedChooser:
+        def __init__(self, _parent, *, start_directory=""):
+            assert isinstance(start_directory, str)
+
+        def exec(self):
+            return True
+
+        def get_result(self):
+            return EegSourceSelection(
+                kind="files",
+                paths=("/selected/source.edf",),
+            )
+
     panel = MagicMock()
     panel.controller.is_locked.return_value = False
     handler = DatasetActionHandler(panel)
+    handler._data_interpretation._source_chooser_dialog_class = lambda: (
+        _AcceptedChooser
+    )
     critical = MagicMock()
     monkeypatch.setattr(actions.QMessageBox, "critical", critical)
-    monkeypatch.setattr(
-        actions.QFileDialog,
-        "getOpenFileNames",
-        lambda *_args, **_kwargs: (["/selected/source.edf"], ""),
-    )
     monkeypatch.setattr(
         handler._data_interpretation,
         "_run_data_interpretation_import",

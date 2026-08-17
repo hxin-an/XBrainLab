@@ -124,6 +124,10 @@ def _saliency_render_publication(
 class TestDatasetActionHandler:
     @pytest.fixture
     def handler(self, qtbot):
+        from XBrainLab.ui.dialogs.dataset.eeg_source_chooser_dialog import (
+            EegSourceSelection,
+        )
+        from XBrainLab.ui.panels.dataset import actions
         from XBrainLab.ui.panels.dataset.actions import DatasetActionHandler
 
         del qtbot  # Ensure QApplication exists even when this fixture runs alone.
@@ -137,6 +141,41 @@ class TestDatasetActionHandler:
         # unparented loading dialog instead of passing a MagicMock into Qt.
         panel.window.return_value = panel
         h = DatasetActionHandler(panel)
+
+        class _LegacyFileChooser:
+            """Keep old file-oriented cases focused on post-selection behavior."""
+
+            def __init__(self, parent, *, start_directory=""):
+                filter_str = (
+                    "All files (*);;"
+                    "EEG files (*.set *.SET *.gdf *.GDF *.fif *.FIF *.edf *.EDF "
+                    "*.bdf *.BDF *.cnt *.CNT *.vhdr *.VHDR);;"
+                    "EEGLAB (*.set *.SET);;GDF (*.gdf *.GDF);;"
+                    "FIF (*.fif *.FIF);;EDF/BDF (*.edf *.EDF *.bdf *.BDF);;"
+                    "Neuroscan CNT (*.cnt *.CNT);;BrainVision (*.vhdr *.VHDR)"
+                )
+                paths, _ = actions.QFileDialog.getOpenFileNames(
+                    parent,
+                    "Choose EEG Source for Interpretation",
+                    start_directory,
+                    filter_str,
+                    options=actions.QFileDialog.Option.DontUseNativeDialog,
+                )
+                self._result = (
+                    EegSourceSelection(kind="files", paths=tuple(paths))
+                    if paths
+                    else None
+                )
+
+            def exec(self):
+                return self._result is not None
+
+            def get_result(self):
+                return self._result
+
+        h._data_interpretation._source_chooser_dialog_class = lambda: (
+            _LegacyFileChooser
+        )
         h._data_interpretation._review_state_from_parts = MagicMock(
             side_effect=_mock_interpretation_review_state,
         )
@@ -220,6 +259,155 @@ class TestDatasetActionHandler:
         handler.import_data()
 
         assert mock_fd.getOpenFileNames.call_args.args[2] == str(dataset_root)
+
+    def test_import_data_folder_selection_uses_typed_classification(
+        self,
+        handler,
+    ):
+        from XBrainLab.ui.dialogs.dataset.eeg_source_chooser_dialog import (
+            EegSourceSelection,
+        )
+
+        class _FolderChooser:
+            def __init__(self, _parent, *, start_directory=""):
+                assert isinstance(start_directory, str)
+
+            def exec(self):
+                return True
+
+            def get_result(self):
+                return EegSourceSelection(kind="folder", paths=("/data/eeg",))
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        handler._data_interpretation._source_chooser_dialog_class = lambda: (
+            _FolderChooser
+        )
+
+        with patch.object(
+            handler._data_interpretation,
+            "_start_source_classification_async",
+            return_value=InteractionOutcome.accepted("scheduled"),
+        ) as classify:
+            outcome = handler.import_data()
+
+        assert outcome.status is InteractionStatus.ACCEPTED
+        classify.assert_called_once_with("/data/eeg")
+
+    def test_import_data_chooser_cancel_does_not_start_backend_work(
+        self,
+        handler,
+    ):
+        class _CancelledChooser:
+            def __init__(self, _parent, *, start_directory=""):
+                assert isinstance(start_directory, str)
+
+            def exec(self):
+                return False
+
+            def get_result(self):
+                raise AssertionError("cancelled chooser has no result")
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        handler._data_interpretation._source_chooser_dialog_class = lambda: (
+            _CancelledChooser
+        )
+
+        with (
+            patch.object(
+                handler._data_interpretation,
+                "_start_source_classification_async",
+            ) as classify,
+            patch.object(
+                handler._data_interpretation,
+                "_run_data_interpretation_import",
+            ) as review,
+        ):
+            outcome = handler.import_data()
+
+        assert outcome.status is InteractionStatus.CANCELLED
+        classify.assert_not_called()
+        review.assert_not_called()
+
+    def test_typed_generic_folder_classification_enters_existing_review(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.application import ScanSourceCommand
+
+        commands = []
+
+        def fake_async(_panel, command, *, on_result, **_kwargs):
+            commands.append(command)
+            on_result(
+                _command_result(
+                    payload_type="source_classification",
+                    source_kind="folder",
+                )
+            )
+            return True
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command_async",
+                side_effect=fake_async,
+            ),
+            patch.object(
+                handler._data_interpretation,
+                "_run_data_interpretation_import",
+                return_value=InteractionOutcome.accepted("review scheduled"),
+            ) as review,
+        ):
+            outcome = handler._data_interpretation._start_source_classification_async(
+                "/data/eeg"
+            )
+
+        assert outcome is not None
+        assert outcome.status is InteractionStatus.ACCEPTED
+        assert len(commands) == 1
+        assert isinstance(commands[0], ScanSourceCommand)
+        assert commands[0].source_hint == "auto"
+        assert commands[0].catalog_only is True
+        review.assert_called_once_with(["/data/eeg"], source_hint="folder")
+
+    def test_typed_bids_classification_reuses_subject_selector(
+        self,
+        handler,
+    ):
+        catalog = {
+            "eeg_file_count": 1,
+            "subjects": [{"subject": "01", "eeg_file_count": 1}],
+        }
+
+        def fake_async(_panel, _command, *, on_result, **_kwargs):
+            on_result(
+                _command_result(
+                    payload_type="source_classification",
+                    source_kind="bids",
+                    bids_subject_catalog=catalog,
+                )
+            )
+            return True
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command_async",
+                side_effect=fake_async,
+            ),
+            patch.object(
+                handler._data_interpretation,
+                "_present_bids_subject_catalog",
+                return_value=InteractionOutcome.accepted("subjects scheduled"),
+            ) as subjects,
+        ):
+            outcome = handler._data_interpretation._start_source_classification_async(
+                "/data/bids"
+            )
+
+        assert outcome is not None
+        assert outcome.status is InteractionStatus.ACCEPTED
+        subjects.assert_called_once_with("/data/bids", catalog)
 
     def test_dataset_folder_picker_prefers_existing_canonical_bids_root(
         self,

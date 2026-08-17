@@ -1428,8 +1428,8 @@ def _scan_warnings(
     warnings: list[str] = []
     if source_kind == "folder" and bids.get("looks_like_bids"):
         warnings.append(
-            "BIDS folder detected during regular folder import. Use Import BIDS "
-            "folder for BIDS-guided labels, metadata, and EEG epoch setup."
+            "BIDS folder detected during a regular folder import. Return to Import "
+            "Data so subjects can be selected before review."
         )
     root_issue = str(bids.get("root_validation_issue") or "").strip()
     if source_kind != "bids" and root_issue:
@@ -1455,7 +1455,7 @@ def _scan_warnings(
 def _nested_bids_warnings(skipped_roots: list[Path]) -> list[str]:
     return [
         "Nested BIDS folder was skipped during regular folder import: "
-        f"{root}. Use Import BIDS folder to import that dataset."
+        f"{root}. Return to Import Data and choose that dataset root."
         for root in skipped_roots
     ]
 
@@ -1470,7 +1470,7 @@ def _scan_blocked_reasons(
     if source_kind == "bids" and not bids.get("is_bids"):
         root_issue = str(bids.get("root_validation_issue") or "").strip()
         detail = root_issue or "The selected folder is not a valid BIDS dataset root."
-        return [f"{detail} Use Import folder for regular EEG files."]
+        return [f"{detail} Return to Import Data for regular EEG files."]
     if eeg_files:
         return []
     blocked = [

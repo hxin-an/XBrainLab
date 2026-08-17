@@ -91,6 +91,14 @@ def _default_loading_dialog_class() -> type[Any]:
     return DataInterpretationLoadingDialog
 
 
+def _default_source_chooser_dialog_class() -> type[Any]:
+    from XBrainLab.ui.dialogs.dataset.eeg_source_chooser_dialog import (  # noqa: PLC0415
+        EegSourceChooserDialog,
+    )
+
+    return EegSourceChooserDialog
+
+
 @dataclass(frozen=True)
 class _InterpretationReviewState:
     scan: dict[str, Any]
@@ -181,11 +189,15 @@ class DataInterpretationActionCoordinator:
         *,
         preview_dialog_class: Callable[[], type[Any]],
         bids_subject_dialog_class: Callable[[], type[Any]],
+        source_chooser_dialog_class: Callable[[], type[Any]] | None = None,
         loading_dialog_class: Callable[[], type[Any]] | None = None,
         bindings: DataInterpretationActionBindings | None = None,
     ) -> None:
         self._host = host
         self.panel = host.panel
+        self._source_chooser_dialog_class = (
+            source_chooser_dialog_class or _default_source_chooser_dialog_class
+        )
         self._preview_dialog_class = preview_dialog_class
         self._bids_subject_dialog_class = bids_subject_dialog_class
         self._loading_dialog_class = (
@@ -469,27 +481,42 @@ class DataInterpretationActionCoordinator:
                     "Dataset is locked or its import state could not be verified."
                 )
 
-        filter_str = (
-            "All files (*);;"
-            "EEG files (*.set *.SET *.gdf *.GDF *.fif *.FIF *.edf *.EDF "
-            "*.bdf *.BDF *.cnt *.CNT *.vhdr *.VHDR);;"
-            "EEGLAB (*.set *.SET);;GDF (*.gdf *.GDF);;"
-            "FIF (*.fif *.FIF);;EDF/BDF (*.edf *.EDF *.bdf *.BDF);;"
-            "Neuroscan CNT (*.cnt *.CNT);;BrainVision (*.vhdr *.VHDR)"
-        )
-        filepaths, _ = self._bindings.file_dialog().getOpenFileNames(
+        chooser = self._source_chooser_dialog_class()(
             self.panel,
-            "Choose EEG Source for Interpretation",
-            _dataset_dialog_start_directory(),
-            filter_str,
-            options=self._bindings.file_dialog().Option.DontUseNativeDialog,
+            start_directory=_dataset_dialog_start_directory(),
         )
-        if not filepaths:
+        if not chooser.exec():
             return InteractionOutcome.cancelled("No EEG source was selected.")
+        selection = chooser.get_result()
+        if selection is None or not selection.paths:
+            return InteractionOutcome.cancelled("No EEG source was selected.")
+
+        if selection.kind != "files":
+            source_path = str(selection.paths[0])
+            try:
+                outcome = self._start_source_classification_async(source_path)
+                if outcome is not None:
+                    return outcome
+                message = "Data Interpretation command service is unavailable."
+                self._bindings.message_box().critical(
+                    self.panel,
+                    "Interpretation unavailable",
+                    message,
+                )
+                return InteractionOutcome.failed(message)
+            except Exception:
+                message = self._bindings.present_unexpected_error(
+                    self.panel,
+                    UnexpectedErrorContext.DATA_IMPORT,
+                    message_box=self._bindings.message_box(),
+                )
+                return InteractionOutcome.failed(message)
+
+        filepaths = list(selection.paths)
 
         try:
             outcome = self._run_data_interpretation_import(
-                list(filepaths),
+                filepaths,
                 source_hint="file",
             )
             if outcome is not None:
@@ -514,7 +541,7 @@ class DataInterpretationActionCoordinator:
             result = self._bindings.execute_application_command(
                 self.panel,
                 LoadDataCommand(
-                    paths=list(filepaths),
+                    paths=filepaths,
                 ),
             )
             if result is not None and result.failed:
@@ -709,8 +736,51 @@ class DataInterpretationActionCoordinator:
             },
         )
 
+    def _start_source_classification_async(
+        self,
+        source_path: str,
+    ) -> InteractionOutcome | None:
+        """Classify one detached path, then enter the existing owned flow."""
+
+        def _handle_classification(result) -> InteractionOutcome:
+            if self._result_failed(result, "EEG source discovery failed"):
+                return self._interaction_failure_outcome(result, result.message)
+            diagnostics = getattr(result, "diagnostics", {})
+            if not isinstance(diagnostics, dict):
+                diagnostics = {}
+            source_kind = str(diagnostics.get("source_kind") or "").strip()
+            if source_kind == "bids":
+                catalog = diagnostics.get("bids_subject_catalog")
+                if not isinstance(catalog, dict):
+                    return InteractionOutcome.failed(
+                        "BIDS subject catalog was unavailable."
+                    )
+                return self._present_bids_subject_catalog(source_path, catalog)
+            if source_kind not in {"file", "folder"}:
+                return InteractionOutcome.failed(
+                    "The selected EEG source type could not be determined."
+                )
+            return self._run_data_interpretation_import(
+                [source_path],
+                source_hint=source_kind,
+            ) or InteractionOutcome.blocked(
+                "Data interpretation review could not be started."
+            )
+
+        self._show_status("Checking EEG source…")
+        return self._execute_interpretation_command_async(
+            ScanSourceCommand(
+                source_path=source_path,
+                source_hint="auto",
+                catalog_only=True,
+            ),
+            on_result=_handle_classification,
+            error_title="EEG source discovery failed",
+            unexpected_error_context=UnexpectedErrorContext.DATA_IMPORT,
+        )
+
     def import_folder_source(self):
-        """Interpret a folder or BIDS root through the Data Interpretation flow."""
+        """Compatibility entry retained for non-sidebar callers."""
         if not self._can_start_interpretation():
             return
         source_path = self._bindings.file_dialog().getExistingDirectory(
@@ -740,7 +810,7 @@ class DataInterpretationActionCoordinator:
             )
 
     def import_bids_source(self):
-        """Interpret a BIDS EEG folder through the Data Interpretation flow."""
+        """Compatibility entry retained for non-sidebar callers."""
         if not self._can_start_interpretation():
             return
         source_path = self._bindings.file_dialog().getExistingDirectory(
@@ -773,48 +843,13 @@ class DataInterpretationActionCoordinator:
         self,
         source_path: str,
     ) -> InteractionOutcome | None:
-        """Inspect one BIDS root, then admit only user-selected subjects."""
+        """Inspect one explicit BIDS root for compatibility callers."""
 
         def _handle_catalog_result(result) -> InteractionOutcome:
             if self._result_failed(result, "BIDS subject discovery failed"):
                 return self._interaction_failure_outcome(result, result.message)
             catalog = self._diagnostic_payload(result, "bids_subject_catalog")
-            if (
-                not list(catalog.get("subjects") or [])
-                or int(catalog.get("eeg_file_count") or 0) <= 0
-            ):
-                message = "No importable BIDS subjects were found in this folder."
-                self._bindings.message_box().warning(
-                    self.panel,
-                    "No BIDS subjects found",
-                    message,
-                )
-                return InteractionOutcome.blocked(message)
-
-            dialog_class = self._bids_subject_dialog_class()
-            dialog = dialog_class(self.panel, catalog=catalog)
-            if not dialog.exec():
-                return InteractionOutcome.cancelled(
-                    "BIDS subject selection was cancelled."
-                )
-            selected_subjects = [
-                str(value).strip()
-                for value in list(dialog.get_result() or [])
-                if str(value).strip()
-            ]
-            if not selected_subjects:
-                return InteractionOutcome.blocked(
-                    "Select at least one BIDS subject before continuing."
-                )
-            return self._run_data_interpretation_import(
-                [source_path],
-                source_hint="bids",
-                initial_choices={
-                    "selected_bids_subjects": selected_subjects,
-                },
-            ) or InteractionOutcome.blocked(
-                "Data interpretation review could not be started."
-            )
+            return self._present_bids_subject_catalog(source_path, catalog)
 
         self._show_status("Reading BIDS subject catalog...")
         return self._execute_interpretation_command_async(
@@ -826,6 +861,45 @@ class DataInterpretationActionCoordinator:
             on_result=_handle_catalog_result,
             error_title="BIDS subject discovery failed",
             unexpected_error_context=UnexpectedErrorContext.DATA_IMPORT,
+        )
+
+    def _present_bids_subject_catalog(
+        self,
+        source_path: str,
+        catalog: dict[str, Any],
+    ) -> InteractionOutcome:
+        """Reuse the bounded BIDS subject decision for a classified source."""
+        if (
+            not list(catalog.get("subjects") or [])
+            or int(catalog.get("eeg_file_count") or 0) <= 0
+        ):
+            message = "No importable BIDS subjects were found in this folder."
+            self._bindings.message_box().warning(
+                self.panel,
+                "No BIDS subjects found",
+                message,
+            )
+            return InteractionOutcome.blocked(message)
+
+        dialog_class = self._bids_subject_dialog_class()
+        dialog = dialog_class(self.panel, catalog=catalog)
+        if not dialog.exec():
+            return InteractionOutcome.cancelled("BIDS subject selection was cancelled.")
+        selected_subjects = [
+            str(value).strip()
+            for value in list(dialog.get_result() or [])
+            if str(value).strip()
+        ]
+        if not selected_subjects:
+            return InteractionOutcome.blocked(
+                "Select at least one BIDS subject before continuing."
+            )
+        return self._run_data_interpretation_import(
+            [source_path],
+            source_hint="bids",
+            initial_choices={"selected_bids_subjects": selected_subjects},
+        ) or InteractionOutcome.blocked(
+            "Data interpretation review could not be started."
         )
 
     def reload_interpretation_recipe(self):

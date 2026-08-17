@@ -1,125 +1,143 @@
 # XBrainLab Now
 
-最後更新：`2026-08-16`
+最後更新：2026-08-17
 
 ## 目前焦點
 
-**收尾 `assistant/toolbar-floating-polish-v1` / PR #28：保留可續傳的 model partial cache、
-將 Assistant 收旂為固定右側 panel，並在新 exact source 手測通過前不合併。**
+**在 assistant/unified-eeg-source-v1 建立一個由 Dataset 主介面與 Assistant 共用的薄 EEG
+source chooser，取代分散的 file / folder / BIDS 起點，同時保留既有 Data Interpretation、BIDS
+subject selection 與 async lifecycle owner。**
 
-使用者已於 `2026-08-16` 明確授權本輪 UI 修改，並選擇：
+使用者已於 2026-08-17 明確授權本輪 UI 修改，並確認：
 
-- Hugging Face standard HTTP 讀取 timeout 提高為 60 秒，保留外層 180 秒無 byte
-  成長的 bounded terminal；
-- timeout、network failure 或 Cancel 後保留 partial cache 供 Retry 續傳；只有明確
-  Delete 或資源 policy 阻擋才清理；
-- 取消 Float 功能，Assistant 固定在主視窗右側。
+- 主介面與 Assistant 共用同一個薄 chooser；
+- 主介面只保留 Import Data 與 Reload recipe，不保留三個舊 import 捷徑；
+- chooser 只負責選擇或預填來源，不能建立第二套 import state 或繞過 Import Review；
+- 手測確認 formal BIDS `bids/moabb-15/PhysionetMI` 能正確進入 BIDS subject selector；先前走
+  generic folder 是選到同名的 `source/moabb-15/PhysionetMI` raw EDF 目錄，不修改 backend
+  classification heuristic；
+- chooser 視覺採單一路徑列，右側內嵌 `Files...` 與 `Folder...` 小型動作，取代兩顆等權大按鈕；
+- 後續 21-tool catalog、no-LLM smoke 與 tool architecture 刪減各自使用獨立 PR。
 
 ## 問題與證據
 
-- 本次 Granite 安裝遇到 `us.aws.cdn.hf.co` standard HTTP `Read timed out` 後多次
-  `Trying to resume download...`。Hugging Face Hub 0.36.0 預設 download read timeout 為 10 秒；
-  任一 chunk 成功又會重置 retry，不穩定連線可長時間反覆 resume。
-- 使用者最後已重新下載成功；目前 pinned revision
-  `707f574c62054322f6b5b04b6d075f0a8f05e0f0` cache 約 5.07 GB，現有 product validator
-  已通過，不需要刪除或重新下載。
-- `ModelDownloadLifecycle` 在失敗或 Cancel 後會自動遞迴刪除 target partial cache，
-  讓 Hugging Face 原本的 cross-attempt resume 失效，並多出 pending outcome/cleanup state。
-- WSLg 實際操作 Float 仍反覆凍結。現有路徑包含 button、icon、manual drag、
-  double-click、transition flag、dock top-level signals 與 MainWindow sizing 分支；使用者已取消
-  此功能，不再繼續疊疊 native workaround。
-- Worktree 只有 repo-root `settings.json` 是使用者本機 runtime 修改；不得 stage、
-  commit、revert 或隱藏。
+- Dataset sidebar 目前以 Import file、Import folder、Import BIDS 三個按鈕進入同一個
+  Data Interpretation workflow；Assistant 的 SCAN_SOURCE handoff 又固定呼叫 file picker。
+- Backend source_hint=auto 已能以 bounded source discovery 判斷 file、folder 或 formal BIDS；
+  但一般 folder path 不會在 review 前先進入現有 BIDS subject selector。
+- Native file dialog 無法可靠地跨平台同時選 files 與 folders，因此需要一個薄 Qt chooser 包裝
+  既有 file / folder dialogs。它只保存 dialog-local selection，不擁有 authoritative state。
+- Formal BIDS discovery 已由 immutable bounded index、subject catalog 與 selected-subject projection
+  擁有；UI 不得複製 dataset_description.json 或目錄 heuristic。
+- Worktree 只有 repo-root settings.json 是使用者本機 runtime 修改；不得 stage、commit、revert
+  或隱藏。
 
 ## Observable outcome
 
-- GUI entry 在任何 product/Hugging Face import 前預設 `HF_HUB_DOWNLOAD_TIMEOUT=60`，並
-  繼續停用已在 WSLg stall 的 Xet transport。
-- Download child 終止並被 reap 後才發佈 terminal。Failed/timeout/cancelled target partial
-  保留在同一 cache path；Retry 使用同一 model/revision/path，但只有 complete pinned
-  snapshot validation 通過才顯示 Installed。
-- Explicit Delete 仍只刪除選定 model target；10 GB single-model、20 GB total-cache 與磁碟預留
-  policy 不變。
-- Assistant 是 right-only QDockWidget；無 Float/Dock button、無拖曳/雙擊切換、無 left
-  docking。Header 只有 New Chat、Settings、Hide，Hide/Show/resize/close 不會變成
-  floating window。
+- Import Data 開啟單一薄視窗，提供一個可貼上路徑的 source bar、內嵌 Files... / Folder...
+  動作、selected-source summary、Continue 與 Cancel；視覺與既有 Data Import wizard 共用暗色
+  hierarchy，而不是 generic Qt 按鈕排列。
+- 可選多個 EEG files 或一個 folder；不可混合 files 與 folder。單一路徑可由使用者貼上，未按
+  Continue 前不得 scan 或修改 ApplicationService state。
+- Folder 先經既有 SCAN_SOURCE catalog-only read path 取得 typed source_kind。Formal BIDS 進
+  既有 subject selector；generic folder 進既有 Import Review。Files 直接進既有 Import Review。
+- Cancel、空 selection、無效 path、BIDS subject cancel、classification failure 都回傳 terminal
+  InteractionOutcome，且不發布 partial interpretation state。
+- Dataset sidebar 不再顯示三個舊 import buttons；Reload recipe、active import cancel、label 與
+  channel actions不變。
+- Assistant 現有 Data Import handoff 使用同一 import_data() entry；本 PR 不改 model-facing tool
+  catalog，也不新增 Assistant path prefill contract。
 
-## Scope、ownership 與 non-goals
+## Scope、ownership 與 complexity
 
-- `ModelDownloadLifecycle / ModelDownloader` 仍是 download child、deadline、validation 與 explicit
-  deletion owner；不新增 state machine、receipt、module 或 public class。
-- Owner before：AgentManager、QDockWidget 與 MainWindow 共同處理 float transition/sizing。Owner after：
-  AgentManager 建立固定右側 dock，MainWindow 只依 visibility 處理 shell width；沒有 floating
-  lifecycle owner。
-- Deletion candidates：float/dock button、icons/assets、manual title drag/double-click、transition state、
-  top-level callbacks、float-only capture/test paths，以及 failed/cancelled automatic cleanup reason/pending outcome。
-- 不改 model、revision、cache location、Assistant controller/tool calls/RAG/EEG workflow 或
-  `settings.json`。不在 CI 重下 5 GB model。
-- 使用 skill 時實際暴露的 `tdd-guard` / `refactor-slicer` workflow 相對路徑斷鏈依使用者
-  明確要求同步修正；只改這兩個 locator，不擴張為 guidance 全盤審查。
-- 本 slice 預期使用現有 production files 並淨減 LOC；若反而觸發 complexity threshold，
-  停止並重新拆分。
+- Owner before / after：ApplicationService 擁有 scan / publication；
+  DataInterpretationActionCoordinator 擁有 import async lifecycle；既有 BIDS subject dialog 與
+  Import Review 擁有人類決策。Owner 數不增加。
+- 新 chooser 是 private UI selection surface，只回傳 detached source selection；不是 owner、state
+  machine、receipt 或 compatibility path。
+- Deletion candidates：sidebar 三個 import buttons / labels / callbacks，以及不再被 production
+  呼叫的 separate folder / BIDS entry wrappers。
+- 必要新增：一個薄 dialog seam，因 native picker 無法跨平台表達 files-or-folder；它由主介面與
+  Assistant 的共同 import_data() entry 使用。
+- 預期不超過 8 個 production files，production 淨增低於 300 LOC。若新增 authoritative owner、
+  總 production churn 超過 1,500 LOC，或需要另一套 BIDS heuristic，停止並重新切片。
+- Non-goals：不改 label / event inference、recipe schema、preprocess、epoch、training、Saliency、
+  model download、21-tool catalog、Granite prompt 或 settings.json。
 
 ## Ordered repair
 
-1. 新增 exact red tests：failed/timeout/cancelled 後 partial 存在且 lifecycle terminal；固定右側
-   dock 不得 movable/floatable，header 無 float action。
-2. 刪除 unsuccessful-download automatic cleanup reasons、pending outcome 與 cleanup branches；explicit
-   `USER_DELETE` 仍使用既有 background cleanup owner。
-3. 在 desktop entry 加入 60 秒 Hugging Face read timeout，順序必須早於任何 product
-   import；保留 180 秒 inactivity 與 two-hour absolute deadline。
-4. 刪除 Float 產品路徑、assets與不再可達的 branches；MainWindow/capture 改為固定右側
-   invariant。
-5. 更新 directly relevant tests、approved UI baseline 與 `docs/architecture/ui.md`，產生並
-   實際查看 default-scale/narrow-width artifact。
-6. 修正兩個 repo-local skill 對 canonical workflow 的相對路徑，並以 locator existence guard
-   驗證。
-7. 跑 focused unit/integration、Ruff、Basedpyright 與 applicable CI；交付新 exact SHA 給使用者
-   手測，批准前不合併。
+1. 建立 focused red tests：單一入口、files/folder selection、auto BIDS routing、Cancel 不 mutation，
+   以及 Assistant handoff 呼叫共同 entry。
+2. 擴充既有 catalog-only scan read path，使 source_hint=auto 回傳 typed source_kind；BIDS 才附
+   subject catalog，generic folder 不發布 interpretation state。
+3. 建立薄 chooser 與 detached selection result；選擇按鈕只更新 dialog-local preview。
+4. 將 DataInterpretationActionCoordinator.import_data() 收斂為唯一入口，按 typed selection
+   委派既有 file review、generic folder review或BIDS subject selection。
+5. Sidebar 收斂為 Import Data + Reload recipe，移除可見 separate entry 與 callbacks；既有
+   non-sidebar compatibility facade 不擴張，後續有真實 caller inventory 時再獨立決定移除。
+6. 跑 focused / same-class tests、Ruff、Basedpyright、UI artifact與 applicable CI；交付 exact SHA
+   給使用者手測，批准前不合併。
+7. 依手測 feedback 以 characterization + focused red UI contract 把 chooser 收斂為單一 source bar；
+   保留 detached selection、folder auto classification 與 Cancel no-mutation contract，不修改 backend。
 
 ## Focused validation
 
-- TDD red/green：`test_model_download_lifecycle.py`、`test_run_splash_geometry.py`、AgentManager/
-  Assistant toolbar/MainWindow dock policy tests。
-- Same-class sweep：downloader inactivity/reap/validator，explicit model deletion，Settings retry/cancel，
-  product walkthrough 與 fixed-dock recovery capture。
-- UI artifact：default scale 與 320 px 最小寬度，查看 header 操作、Settings、Hide/Show 與
-  無 clipping/overlap；Linux/WSL automated artifact 不取代 native manual acceptance。
-- Manual exact SHA：Settings 顯示已完整安裝而不啟動下載；Local Assistant 回答一個
-  簡單問題；panel 始終固定右側，Settings、Hide/Show 與關閉程式皆可終止。
+- TDD：chooser、Dataset action coordinator、BIDS catalog-only classification、sidebar與 Assistant UI
+  handoff tests。
+- Same-class：single / multi-file、BrainVision sidecars、generic folder、formal / nested BIDS、empty /
+  missing source、cancel / retry、busy import與stale completion。
+- UI artifact：default scale與 narrow width；檢查 hierarchy、text fit、focus、keyboard、button order、
+  clipping、empty/error/cancel states。主 agent 必須實際查看。
+- Existing platform product walkthrough 必須保留，不跳過 Windows / macOS CI；offscreen evidence 不
+  取代使用者 native acceptance。
+- 本 slice 只支撐「共用來源入口與既有 import lifecycle routing」，不外推 dataset diversity、
+  full BIDS compliance 或 downstream scientific correctness。
 
 ## Implementation checkpoint
 
-- Exact red/green 已完成：舊 lifecycle 會在 failed/cancelled terminal 後刪除 partial cache；
-  新 contract 保留同一 model/revision/path 並由 Retry 續傳，explicit Delete 仍走既有
-  target-only background cleanup。Desktop entry 也已鎖定 product import 前設定 60 秒
-  Hugging Face read timeout。
-- Assistant 已收斂為 fixed-right dock；Float/Dock actions、兩個 SVG、manual drag/double-click、
-  top-level transition state/callback 與 MainWindow floating sizing branch 都已刪除。Header 只保留
-  New Chat、Settings、Hide。
-- Focused unit/integration sweep 為 433 passed；後續單點 MainWindow regression 為 1 passed。
-  Ruff check/format、targeted Basedpyright、`git diff --check` 與 agent guidance audit 均通過。
-- ChatPanel recovery artifact 已實際查看 420 px、320 px 與 Settings ready states；canonical UI
-  baseline 重新產生並 validate，7 artifacts 全部通過，最大 mean diff 0.305、changed 0.90%，
-  Assistant approved reference 已更新為 fixed-right header。這是 Linux offscreen evidence，
-  不取代使用者 native 手測。
-- Production 觸及 9 個既有 paths（其中兩個是刪除的 SVG），23 additions／245 deletions，
-  net `-222` LOC；沒有新增 module、public class、owner、state machine、receipt 或 compatibility
-  path，符合 deletion-first。兩個 skill 的 canonical workflow locator 已修正，guidance audit 通過。
-- 受保護的 root `settings.json` 仍是使用者既有本機修改，未被本 slice 修改、stage 或隱藏。
-  MkDocs strict build 已通過。目前仍是未提交 checkpoint；尚缺 exact commit/CI 與使用者手測，
-  因此不稱 handoff-ready、不合併。
+- PR #28 已合入 main；本 branch 從 merge commit b14dd5ea 建立，root settings.json 仍是
+  使用者既有本機修改，未被本 slice 修改、stage 或隱藏。
+- Exact red→green 已完成：chooser 在 accept 前只保留 detached selection；catalog-only auto
+  classification 對 file、generic folder、formal BIDS 回傳 typed source_kind，missing path 不發布
+  partial interpretation；BIDS classification重用既有 subject selector。
+- Dataset sidebar 已只顯示 Import Data 與 Reload recipe；Assistant 現有 Open Data Import handoff
+  仍呼叫共同 import_data() entry。舊 folder / BIDS facade 沒有 sidebar caller，也未新增 state。
+- Focused contract 13 passed；exact-source Data Interpretation / Dataset / ApplicationService / product
+  walkthrough same-class sweep 1044 passed。Ruff check/format、targeted
+  Basedpyright、git diff check 與 MkDocs strict 均通過。
+- Public real-fixture兩個代表案例因本機未下載 fixture而明確 skipped，沒有將 skip 說成資料集
+  成功。Default 460×300 與 narrow 320×300 chooser artifacts 已由主 agent 實際查看，無 clipping、
+  overlap 或錯誤 button hierarchy；offscreen evidence 不取代 native manual acceptance。
+- CI default visual regression 精確指出三張含 Dataset sidebar 的 approved references 漂移；主 agent
+  已查看 runner artifacts並確認只呈現已授權的按鈕收斂。三張 references 已同步，canonical capture
+  重新驗證 7 artifacts 全通過，最大 mean diff 0.025、changed 0.04%，沒有放寬 threshold。
+- Production 目前觸及 10 files，380 additions / 146 deletions，net +234 LOC；新增的是一個必要的
+  Qt external seam，owner 數不變，沒有新增 state machine、receipt或第二套 BIDS heuristic。
+- Product implementation commit 9112fcf2 已推送並建立 draft PR #29；required CI 正在執行。
+  尚缺 final exact head 的 CI success 與使用者 native 手測，因此不稱 handoff-ready、不合併。
+- 後續 exact head `3f177df00fb1fe22d6d8def7a806566ca19828ad` 的所有 non-skipped CI checks 已
+  completed/success。2026-08-17 手測指出 chooser hierarchy 過於素；使用者已選定單一路徑列內嵌
+  Files... / Folder... 的 A 版 refinement。這會產生新 product SHA，使前述 CI evidence 只作
+  checkpoint，完成後需重新跑 exact-head CI 與 manual acceptance。
+- A 版 refinement 已完成 focused red→green：chooser 5 passed；相鄰 Dataset action contracts
+  94 passed；Assistant / product import walkthrough 6 passed。Ruff check / format-check、targeted
+  Basedpyright 與 MkDocs strict 均通過。主 agent 已查看 default 560×250、narrow 320×250 與
+  formal-BIDS 長路徑畫面；source bar、footer 無 overlap / clipping，browser path 從開頭顯示以利
+  分辨 `bids/` 與 `source/`。尚缺 clean exact-source visual baseline、pushed-head CI 與新 SHA 的
+  使用者 manual acceptance。
 
 ## Stop conditions
 
-- Partial cache 不得被當成 Installed；validator 未通過只能顯示 Retry/failure。
-- 若保留 partial 導致 retry 新增第二份 cache truth、繞過 resource policy 或無法
-  explicit Delete，停止並修正，不加 compatibility state。
-- 若 fixed-right 後仍有任何 reachable `setFloating()`/manual drag/Float action，不交付手測。
-- 若 artifact 未由主 agent 查看、required CI 未 success 或新 exact source 未由使用者手測
-  通過，只稱 checkpoint，不合入 `main`。
+- 若按 Continue 前發生 filesystem scan、ApplicationService mutation或interpretation publication，
+  不得交付。
+- 若 generic folder / BIDS 判斷依賴 UI 自建 heuristic、exception message parsing或 direct backend
+  helper call，停止並改回 command spine 的 typed result。
+- 若 Cancel、failure或stale callback留下 active handoff / busy state，不得交付。
+- 若 chooser refinement 改動 EegSourceSelection public shape、把 source type heuristic搬進 UI、
+  或在 Continue 前啟動 backend scan，不得交付。
+- 若 exact-source artifact未查看、required CI未 success或新 source未由使用者手測通過，只稱
+  checkpoint，不合入 main。
 
-本 branch 完成後才從合併後 `main` 建立獨立 Agent real-runtime smoke slice；不在本 UI/
-download diff 修改 Assistant controller 架構。
-
-長期目標讀 [Roadmap](roadmap.md)，evidence contract只讀 [Validation](../validation/README.md)。
+本 PR 合併後，下一個獨立 branch 才執行 21-tool catalog、panel affinity與 deterministic no-LLM
+smoke。長期目標讀 [Roadmap](roadmap.md)，evidence contract只讀
+[Validation](../validation/README.md)。

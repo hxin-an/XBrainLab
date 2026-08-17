@@ -398,7 +398,7 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
                 (
                     "events.tsv",
                     "Not detected",
-                    "Required for this BIDS import. Use Import folder for "
+                    "Required for this BIDS import. Return to Import Data for "
                     "non-BIDS labels.",
                 )
             ]

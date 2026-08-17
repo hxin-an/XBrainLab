@@ -349,7 +349,7 @@ def test_bids_candidate_blocks_selected_scope_without_events_tsv():
     assert candidate.bids["selected_scope"]["events_files"] == []
     assert (
         "BIDS events.tsv was not found for the selected EEG file(s). "
-        "Choose a BIDS run with events.tsv, or use Import folder for non-BIDS labels."
+        "Choose a BIDS run with events.tsv, or return to Import Data for non-BIDS labels."
         in candidate.blocked_reasons
     )
 

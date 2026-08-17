@@ -733,21 +733,21 @@ def test_visible_open_data_import_action_opens_typed_product_surface_directly(
     )
     test_app.agent_manager = manager
     handoff_requests: list[WorkflowUiHandoffRequest] = []
-    chooser_calls: list[tuple[object, str, str, str]] = []
+    chooser_calls: list[tuple[object, str]] = []
 
-    def _cancel_data_import_chooser(
-        parent,
-        title: str,
-        directory: str,
-        file_filter: str,
-        options=None,
-    ):
-        chooser_calls.append((parent, title, directory, file_filter))
-        return ([], "")
+    class _CancelledSourceChooser:
+        def __init__(self, parent, *, start_directory=""):
+            chooser_calls.append((parent, start_directory))
+
+        def exec(self):
+            return False
+
+        def get_result(self):
+            return None
 
     monkeypatch.setattr(
-        "XBrainLab.ui.panels.dataset.actions.QFileDialog.getOpenFileNames",
-        _cancel_data_import_chooser,
+        "XBrainLab.ui.panels.dataset.actions.EegSourceChooserDialog",
+        _CancelledSourceChooser,
     )
 
     try:
@@ -775,13 +775,9 @@ def test_visible_open_data_import_action_opens_typed_product_surface_directly(
         assert runtime.delivery_phases == [AssistantTurnDeliveryPhase.ACCEPTED]
         assert handoff_requests == []
         assert chooser_calls
-        chooser_parent, chooser_title, chooser_directory, chooser_filter = (
-            chooser_calls[0]
-        )
+        chooser_parent, chooser_directory = chooser_calls[0]
         assert chooser_parent is test_app.dataset_panel
-        assert chooser_title == "Choose EEG Source for Interpretation"
         assert chooser_directory == _dataset_dialog_start_directory()
-        assert "EEG files" in chooser_filter
         assert test_app.stack.currentWidget() is test_app.dataset_panel
         assert controller.pending_interactions.workflow_handoff is None
         assert all(
@@ -871,6 +867,10 @@ def test_import_command_success_refreshes_dataset_table_without_stale_controller
     tmp_path,
 ):
     """A backend import command success must refresh UI from command/query truth."""
+    from XBrainLab.ui.dialogs.dataset.eeg_source_chooser_dialog import (
+        EegSourceSelection,
+    )
+
     fif_path = _write_synthetic_raw_fif(tmp_path)
     test_app.switch_page(0)
 
@@ -886,13 +886,17 @@ def test_import_command_success_refreshes_dataset_table_without_stale_controller
             side_effect=AssertionError("stale sidebar controller state was read"),
         ) as stale_sidebar,
         patch(
-            "XBrainLab.ui.panels.dataset.actions.QFileDialog.getOpenFileNames",
-            return_value=([str(fif_path)], ""),
-        ),
+            "XBrainLab.ui.panels.dataset.actions.EegSourceChooserDialog",
+        ) as SourceChooser,
         patch(
             "XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog",
         ) as PreviewDialog,
     ):
+        SourceChooser.return_value.exec.return_value = True
+        SourceChooser.return_value.get_result.return_value = EegSourceSelection(
+            kind="files",
+            paths=(str(fif_path),),
+        )
         PreviewDialog.return_value.exec.return_value = True
         PreviewDialog.return_value.get_result.return_value = {
             "confirmed": True,
@@ -916,6 +920,10 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
     test_app, qtbot, tmp_path, monkeypatch
 ):
     """Drive import -> preprocess -> epoch -> split -> configure -> dry-run train UI."""
+    from XBrainLab.ui.dialogs.dataset.eeg_source_chooser_dialog import (
+        EegSourceSelection,
+    )
+
     monkeypatch.setattr(
         QMessageBox,
         "information",
@@ -1036,19 +1044,23 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
 
     with (
         patch(
-            "XBrainLab.ui.panels.dataset.actions.QFileDialog.getOpenFileNames",
-            return_value=([str(fif_path)], ""),
-        ),
+            "XBrainLab.ui.panels.dataset.actions.EegSourceChooserDialog",
+        ) as SourceChooser,
         patch(
             "XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog",
         ) as PreviewDialog,
     ):
+        SourceChooser.return_value.exec.return_value = True
+        SourceChooser.return_value.get_result.return_value = EegSourceSelection(
+            kind="files",
+            paths=(str(fif_path),),
+        )
         PreviewDialog.return_value.exec.return_value = True
         PreviewDialog.return_value.get_result.return_value = {
             "confirmed": True,
             "choices": {"label_carrier": "embedded_events"},
         }
-        assert test_app.dataset_panel.sidebar.import_btn.text() == "Import file"
+        assert test_app.dataset_panel.sidebar.import_btn.text() == "Import Data"
         _click(qtbot, test_app.dataset_panel.sidebar.import_btn)
         _wait_for_raw_count(qtbot, test_app.study, 1)
 

@@ -231,9 +231,7 @@ def test_dataset_sidebar_state_records_button_tooltips(qtbot) -> None:
     sidebar = SidebarStub()
     smart_parse_btn: QPushButton | None = None
     for name, text in {
-        "import_btn": "Import file",
-        "import_folder_btn": "Import folder",
-        "import_bids_btn": "Import BIDS folder",
+        "import_btn": "Import Data",
         "reload_recipe_btn": "Reload Import Recipe",
         "import_label_btn": "Add labels",
         "smart_parse_btn": "Smart Parse Metadata",
@@ -251,8 +249,9 @@ def test_dataset_sidebar_state_records_button_tooltips(qtbot) -> None:
 
     state = dataset_sidebar_state(sidebar)
 
-    assert state["import_source"]["text"] == "Import file"
-    assert state["import_bids"]["text"] == "Import BIDS folder"
+    assert state["import_source"]["text"] == "Import Data"
+    assert "import_folder" not in state
+    assert "import_bids" not in state
     assert state["smart_parse"] == {
         "text": "Smart Parse Metadata",
         "enabled": False,

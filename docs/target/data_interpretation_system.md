@@ -36,7 +36,7 @@ panel。
 
 | Step | 使用者目標 | 第一層 UI 應顯示 | 不應在第一層暴露 |
 | --- | --- | --- | --- |
-| Choose EEG Data | 選要匯入的 EEG data。 | `Import file`、`Import folder`、`Import BIDS folder`；清楚顯示 selected files 和 scan location。 | scan root implementation、source_kind raw value。 |
+| Choose EEG Data | 選要匯入的 EEG data。 | 單一 `Import Data` 入口；薄 chooser 可選多個 files、一個 folder 或貼上一個 path，之後清楚顯示 selected files 和 scan location。 | scan root implementation、source_kind raw value。 |
 | Load Labels | 載入要和 EEG 對應的 labels / events。 | 自動找到附近 label carrier；提供 `Load label file`、`Load label folder`、`Continue without labels`。 | 假設 label 一定和 EEG 在同一資料夾。 |
 | Review Metadata | 檢查 subject / session / task / run。 | metadata table、empty metadata compact state、`Smart Parse`、manual edit。 | 空 metadata 佔滿大表格。 |
 | Match Labels | 設定 label 如何套到 EEG。 | Pairing board：每個 selected EEG row 選一個 `Label file`，狀態放在 label 右側；label placement：`Read labels from`、`Use as`、`Place labels by` 和 mode-specific placement panel。 | `Anchor`、`Time`、`Granularity`、`Role`、`Label unit` 作為第一層術語。 |
@@ -48,7 +48,8 @@ class map diagnostics 應放在 `View import report` 或其他 advanced details�
 
 資料入口命名也應貼近一般使用者語言：
 
-- Primary actions：`Import file`、`Import folder`、`Import BIDS folder`。
+- Primary action：`Import Data`。來源型別由 backend typed classification 判斷；formal BIDS
+  才進 subject selector，generic folder / files 進既有 Import Review。
 - Label actions：`Load label file`、`Load label folder`、`Continue without labels`。
 - Metadata actions：`Smart Parse metadata`、`Edit metadata`。
 - Advanced / reuse actions：`Load import recipe`、`Save import recipe`、format diagnostics。
@@ -64,7 +65,8 @@ class map diagnostics 應放在 `View import report` 或其他 advanced details�
 
 目前已交付第一版 task-oriented step-panel wizard：
 
-- Dataset sidebar 主要入口是 `Import file`、`Import folder`、`Import BIDS folder`。
+- Dataset sidebar 主要入口已收斂為 `Import Data`；chooser 本身不掃描或發布 interpretation
+  state，使用者 Continue 後才交給 command spine。
 - dialog 使用 step stack，一次只顯示一個 panel：`Choose EEG Data`、`Load Labels`、
   `Review Metadata`、`Match Labels`、`Review and Import`。
 - 每個 step 目前有自己的 task panel：source summary cards、label source/action layout、
