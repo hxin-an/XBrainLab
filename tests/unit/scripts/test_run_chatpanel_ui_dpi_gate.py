@@ -50,8 +50,9 @@ def _payload(*, configured: str = "1.25", observed: float = 1.25) -> dict:
                 ],
                 "confirmation": {
                     "visible": True,
-                    "title": "Suggested change",
-                    "values": "Batch size\n32  ->  16",
+                    "title": "Start training",
+                    "values": "",
+                    "impact": "Starts a potentially long GPU or CPU job.",
                 },
                 "render_content": {
                     "regions": {
@@ -84,8 +85,8 @@ def _payload(*, configured: str = "1.25", observed: float = 1.25) -> dict:
         },
         "screens": [
             {
-                "name": "main_window_dock_420_action_visible",
-                "file": "main-window-dock-420-action-visible.png",
+                "name": "main_window_dock_420_response_visible",
+                "file": "main-window-dock-420-response-visible.png",
                 "logical_size": [1180, 760],
                 "pixel_size": physical([1180, 760]),
                 "checks": {
@@ -156,7 +157,7 @@ def test_dpi_gate_covers_required_full_window_and_narrow_evidence() -> None:
     assert REQUIRED_QT_SCALE_FACTORS == (1.0, 1.25, 1.5)
     assert FULL_WINDOW_DOCK_SCREENSHOTS == (
         "first-paint-320-real-dock.png",
-        "main-window-dock-420-action-visible.png",
+        "main-window-dock-420-response-visible.png",
     )
     assert NARROW_CROP_SCREENSHOTS == (
         "responsive-320-idle.png",

@@ -881,7 +881,7 @@ class TestHandleUserInput:
         assert ctrl.history == [{"role": "user", "content": text}]
         assert ctrl.is_processing is True
 
-    def test_blocked_training_attempt_offers_existing_training_panel(self, ctrl):
+    def test_blocked_training_attempt_is_plain_terminal_feedback(self, ctrl):
         ctrl._finalize_turn_after_tool = MagicMock()
         result = ToolCommandResult.failure(
             "start_training",
@@ -895,11 +895,11 @@ class TestHandleUserInput:
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
         assert isinstance(presentation, AssistantResponsePresentation)
         assert presentation.kind is AssistantResponseKind.BLOCKED
-        assert len(presentation.actions) == 1
-        assert presentation.actions[0].panel is AssistantPanelTarget.TRAINING
+        assert "Training settings are incomplete" in presentation.text
+        assert not hasattr(presentation, "actions")
         ctrl._finalize_turn_after_tool.assert_called_once_with("blocked")
 
-    def test_blocked_evaluation_points_to_missing_training_prerequisite(self, ctrl):
+    def test_blocked_evaluation_is_plain_terminal_feedback(self, ctrl):
         ctrl._finalize_turn_after_tool = MagicMock()
         result = ToolCommandResult.failure(
             "evaluate",
@@ -913,9 +913,8 @@ class TestHandleUserInput:
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
         assert isinstance(presentation, AssistantResponsePresentation)
         assert presentation.kind is AssistantResponseKind.BLOCKED
-        assert len(presentation.actions) == 1
-        assert presentation.actions[0].label == "Open Training"
-        assert presentation.actions[0].panel is AssistantPanelTarget.TRAINING
+        assert "Create a training plan" in presentation.text
+        assert not hasattr(presentation, "actions")
         ctrl._finalize_turn_after_tool.assert_called_once_with("blocked")
 
     @pytest.mark.parametrize("error_type", ["runtime", "contract", "internal"])
@@ -936,7 +935,7 @@ class TestHandleUserInput:
 
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
         assert presentation.kind is AssistantResponseKind.ERROR
-        assert presentation.actions == ()
+        assert not hasattr(presentation, "actions")
         activity = ctrl.activity_changed.emit.call_args.args[0]
         assert activity.attention_kind is AssistantAttentionKind.ERROR
 
@@ -1310,7 +1309,7 @@ class TestOnGenerationFinished:
         ctrl.error_occurred.emit.assert_called_once()
         assert "empty response" in ctrl.error_occurred.emit.call_args[0][0]
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
-        assert presentation.actions == ()
+        assert not hasattr(presentation, "actions")
         ctrl.processing_finished.emit.assert_called()
 
     def test_broken_json_retries(self, ctrl):
@@ -1460,7 +1459,7 @@ class TestGenerationErrors:
         assert presentation.kind is AssistantResponseKind.ERROR
         assert "could not complete the request" in presentation.text
         assert "generation failed" not in presentation.text
-        assert presentation.actions == ()
+        assert not hasattr(presentation, "actions")
         activity = ctrl.activity_changed.emit.call_args.args[0]
         assert activity.attention_kind is AssistantAttentionKind.ERROR
 
@@ -1517,7 +1516,7 @@ class TestHandleLoopDetected:
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
         assert presentation.kind is AssistantResponseKind.BLOCKED
         assert "repeated the same action" in presentation.text
-        assert [action.label for action in presentation.actions] == ["Check workflow"]
+        assert not hasattr(presentation, "actions")
         assert not ctrl.is_processing
         ctrl.processing_finished.emit.assert_called_once()
 
@@ -2705,6 +2704,42 @@ class TestResetConversation:
 
 # --- execute_debug_tool ---
 class TestExecuteDebugTool:
+    def test_reserved_response_uses_current_publication_and_normal_presentation(
+        self,
+        ctrl,
+    ):
+        from XBrainLab.llm.agent.assembler import PromptToolPublication
+        from XBrainLab.llm.agent.decision_contract import MODEL_RESPONSE_TOOL_NAME
+
+        ctrl._turn_orchestrator.host_turn_generation = None
+        ctrl._turn_orchestrator.host_turn_id = None
+        request = AssistantDebugToolRequest.from_params(
+            correlation=AssistantTurnCorrelation(generation=7, turn_id=8),
+            tool_name=MODEL_RESPONSE_TOOL_NAME,
+            params={"message": "Choose one preprocessing action first."},
+        )
+        publication = PromptToolPublication(
+            tool_names=frozenset({"switch_panel"}),
+            workflow_stage="data_loaded",
+            backend_generation=42,
+        )
+        ctrl.assembler.latest_tool_publication = publication
+        ctrl._execute_tool_no_loop = MagicMock()
+
+        acknowledgement = ctrl.execute_debug_tool(request)
+
+        assert acknowledgement.phase is AssistantTurnDeliveryPhase.ACCEPTED
+        ctrl.assembler.build_system_prompt.assert_called_once_with("")
+        ctrl._execute_tool_no_loop.assert_not_called()
+        ctrl.confirmation_requested.emit.assert_not_called()
+        ctrl.panel_navigation_requested.emit.assert_not_called()
+        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
+        assert presentation.kind is AssistantResponseKind.MESSAGE
+        assert presentation.text == "Choose one preprocessing action first."
+        terminal = ctrl.turn_finished.emit.call_args.args[0]
+        assert terminal.correlation == request.correlation
+        assert terminal.outcome == "completed"
+
     def test_compute_saliency_requests_confirmation_before_ui_action(self, ctrl):
         ctrl._turn_orchestrator.host_turn_generation = None
         ctrl._turn_orchestrator.host_turn_id = None
@@ -2732,6 +2767,72 @@ class TestExecuteDebugTool:
         assert pending.request.publication_generation == 52
         ctrl.confirmation_requested.emit.assert_called_once_with(pending.request)
         ctrl._execute_tool_no_loop.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("tool_name", "expected_target"),
+        (
+            ("apply_bandpass_filter", AssistantPanelTarget.PREPROCESS),
+            ("apply_notch_filter", AssistantPanelTarget.PREPROCESS),
+            ("resample_data", AssistantPanelTarget.PREPROCESS),
+            ("set_reference", AssistantPanelTarget.PREPROCESS),
+            ("normalize_data", AssistantPanelTarget.PREPROCESS),
+            ("reset_preprocessing", AssistantPanelTarget.PREPROCESS),
+            ("start_training", AssistantPanelTarget.TRAINING),
+            ("stop_training", AssistantPanelTarget.TRAINING),
+            ("clear_training_history", AssistantPanelTarget.TRAINING),
+        ),
+    )
+    def test_direct_action_navigates_after_admission_before_execution(
+        self,
+        ctrl,
+        tool_name,
+        expected_target,
+    ):
+        events = []
+        context = _enabled_tool_context(tool_name, generation=17)
+        decision = ToolAttemptDecision(
+            ToolAttemptAction.EXECUTE,
+            tool_name,
+            {},
+            context=context,
+        )
+        ctrl.panel_navigation_requested.emit.side_effect = (
+            lambda request: events.append(("navigation", request.target))
+        )
+        ctrl._execute_tool_no_loop = MagicMock(
+            side_effect=lambda *_args, **_kwargs: (
+                events.append(("execute", tool_name)) or _tool_outcome("done")
+            )
+        )
+        ctrl._present_tool_execution_outcome = MagicMock(return_value=None)
+
+        ctrl._execute_tool_attempt(decision)
+
+        assert events == [
+            ("navigation", expected_target),
+            ("execute", tool_name),
+        ]
+        request = ctrl.panel_navigation_requested.emit.call_args.args[0]
+        assert request.correlation is None
+
+    def test_capability_blocked_action_does_not_navigate(self, ctrl):
+        context = _enabled_tool_context("apply_bandpass_filter", generation=17)
+        result = ToolCommandResult.failure(
+            "apply_bandpass_filter",
+            "Import EEG data first.",
+            error_type="precondition",
+        )
+        decision = ToolAttemptDecision(
+            ToolAttemptAction.CAPABILITY_BLOCKED,
+            "apply_bandpass_filter",
+            {"low_freq": 4.0, "high_freq": 38.0},
+            context=context,
+            result=result,
+        )
+
+        assert ctrl._present_tool_attempt_boundary(decision) is True
+
+        ctrl.panel_navigation_requested.emit.assert_not_called()
 
     def test_ready_debug_training_requests_confirmation_before_execution(self, ctrl):
         ctrl._turn_orchestrator.host_turn_generation = None
@@ -3534,7 +3635,9 @@ class TestOnUserConfirmed:
 
         assert execution_count == 1
         assert ctrl.pending_interactions.confirmation_decision is None
-        ctrl.panel_navigation_requested.emit.assert_not_called()
+        navigation = ctrl.panel_navigation_requested.emit.call_args.args[0]
+        assert navigation.target is AssistantPanelTarget.TRAINING
+        assert navigation.correlation is None
         assert "command-bound receipt" in ctrl.history[-1]["content"]
         ctrl._generate_response.assert_not_called()
 

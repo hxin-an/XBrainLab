@@ -5,6 +5,7 @@ execution, and communication between the UI layer and the backend
 worker thread.
 """
 
+import json
 import logging
 from collections.abc import Callable
 from contextlib import suppress
@@ -54,6 +55,7 @@ from .confirmation import (
     AgentConfirmationRisk,
 )
 from .conversation import ConversationHistory
+from .decision_contract import MODEL_RESPONSE_TOOL_NAME
 from .interaction import AgentInteractionOutcome, AgentInteractionStatus
 from .metrics import AgentMetricsTracker
 from .parser import CommandParser, ToolEnvelopeParseResult, ToolEnvelopeStatus
@@ -67,12 +69,10 @@ from .rag_process_lifecycle import ProcessRAGRetrieverLifecycle
 from .response_presentation import (
     AssistantPanelNavigationRequest,
     AssistantPanelTarget,
-    AssistantResponseAction,
     AssistantResponseKind,
     AssistantResponsePresentation,
     interaction_outcome_kind,
     interaction_outcome_message,
-    panel_target_for_blocked_command,
     panel_target_for_command,
     user_facing_generation_error,
 )
@@ -125,6 +125,18 @@ from .ui_handoff import (
 )
 from .verifier import VerificationLayer
 from .worker import AgentWorker
+
+_DIRECT_ACTION_PANEL_TARGETS = {
+    "apply_bandpass_filter": AssistantPanelTarget.PREPROCESS,
+    "apply_notch_filter": AssistantPanelTarget.PREPROCESS,
+    "resample_data": AssistantPanelTarget.PREPROCESS,
+    "set_reference": AssistantPanelTarget.PREPROCESS,
+    "normalize_data": AssistantPanelTarget.PREPROCESS,
+    "reset_preprocessing": AssistantPanelTarget.PREPROCESS,
+    "start_training": AssistantPanelTarget.TRAINING,
+    "stop_training": AssistantPanelTarget.TRAINING,
+    "clear_training_history": AssistantPanelTarget.TRAINING,
+}
 
 logger = logging.getLogger(__name__)
 
@@ -448,7 +460,6 @@ class LLMController(QObject):
         text: str,
         *,
         kind: AssistantResponseKind = AssistantResponseKind.MESSAGE,
-        actions: tuple[AssistantResponseAction, ...] = (),
         marks_current_turn: bool = True,
     ) -> None:
         """Publish one opaque, typed response to the product transcript.
@@ -461,7 +472,6 @@ class LLMController(QObject):
             text=text,
             correlation=self._require_active_turn_correlation(),
             kind=kind,
-            actions=actions,
         )
         self.response_presentation_ready.emit(presentation)
         if marks_current_turn:
@@ -1348,6 +1358,11 @@ class LLMController(QObject):
             command_name=cmd,
             request_id=request_id,
         )
+        companion_target = _DIRECT_ACTION_PANEL_TARGETS.get(cmd)
+        if companion_target is not None:
+            self.panel_navigation_requested.emit(
+                AssistantPanelNavigationRequest(target=companion_target)
+            )
         self._tool_attempt_session.begin_execution()
         if expected_publication_generation is None:
             outcome = self._execute_tool_no_loop(
@@ -1461,27 +1476,9 @@ class LLMController(QObject):
                 else AssistantAttentionKind.ERROR
             ),
         )
-        panel_target = (
-            panel_target_for_blocked_command(
-                command_name,
-                result.blocked_reason or result.message,
-            )
-            if blocked
-            else None
-        )
-        if panel_target is not None:
-            actions = (
-                AssistantResponseAction.open_panel(
-                    f"Open {panel_target.value.title()}",
-                    panel_target,
-                ),
-            )
-        else:
-            actions = self._retry_actions_for_result(result)
         self._publish_response(
             user_message,
             kind=response_kind,
-            actions=actions,
         )
         history_message = (
             f"Tool Output: {self._format_tool_output(command_name, False, result)}"
@@ -1529,23 +1526,6 @@ class LLMController(QObject):
         self._tool_attempt_session.record_failure()
         self.assembler.clear_recovery_feedback()
         self._finalize_turn_after_tool(self._terminal_outcome_for_result(False, result))
-
-    def _retry_actions_for_result(
-        self,
-        result: ToolCommandResult | UiRequest,
-    ) -> tuple[AssistantResponseAction, ...]:
-        """Offer one correlated retry only for recoverable runtime failures."""
-        if (
-            not isinstance(result, ToolCommandResult)
-            or not result.recoverable
-            or self._tool_result_response_kind(False, result)
-            is not AssistantResponseKind.ERROR
-        ):
-            return ()
-        prompt = self._latest_user_request_text()
-        if not prompt:
-            return ()
-        return (AssistantResponseAction.send_message("Try again", prompt),)
 
     def _handle_tool_success(
         self,
@@ -1936,12 +1916,6 @@ class LLMController(QObject):
             self._publish_response(
                 visible_message,
                 kind=AssistantResponseKind.BLOCKED,
-                actions=(
-                    AssistantResponseAction.send_message(
-                        "Check workflow",
-                        "What is ready now?",
-                    ),
-                ),
             )
             self.metrics.finish_turn()
             self.status_update.emit("Loop detected, aborting.")
@@ -2748,9 +2722,11 @@ class LLMController(QObject):
         """
         self._require_active_turn_correlation()
         self._reset_user_turn_state()
+        reserved_response = tool_name == MODEL_RESPONSE_TOOL_NAME
         safe_tool_name = (
             tool_name
-            if AGENT_ACTION_CONTRACTS.contract_for(tool_name) is not None
+            if reserved_response
+            or AGENT_ACTION_CONTRACTS.contract_for(tool_name) is not None
             else "unknown_debug_tool"
         )
         safe_tool_name = redact_public_text(safe_tool_name)
@@ -2766,6 +2742,9 @@ class LLMController(QObject):
             logger.warning(
                 "Ignored pre-confirmed diagnostic action; confirmation is UI-owned."
             )
+        if reserved_response:
+            self._execute_debug_response(params)
+            return
         if AGENT_ACTION_CONTRACTS.contract_for(tool_name) is None:
             self._handle_tool_attempt_blocked(
                 "unknown_debug_tool",
@@ -2801,6 +2780,38 @@ class LLMController(QObject):
         if self._present_tool_attempt_boundary(decision):
             return
         self._execute_tool_attempt(decision)
+
+    def _execute_debug_response(self, params: dict[str, Any]) -> None:
+        """Replay one reserved response through the normal strict presentation path."""
+        self.assembler.build_system_prompt("")
+        publication = self.assembler.latest_tool_publication
+        self._turn_orchestrator.set_active_publication(publication)
+        response_text = json.dumps(
+            {
+                "workflow_stage": publication.workflow_stage,
+                "tool_name": MODEL_RESPONSE_TOOL_NAME,
+                "parameters": dict(params),
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        envelope = CommandParser.parse_product(response_text)
+        if (
+            envelope.status is not ToolEnvelopeStatus.NO_TOOL
+            or envelope.workflow_stage != publication.workflow_stage
+            or not envelope.message
+        ):
+            self._publish_response(
+                "The requested diagnostic response is invalid.",
+                kind=AssistantResponseKind.ERROR,
+            )
+            self.metrics.finish_turn()
+            self.status_update.emit("Diagnostic response rejected")
+            self._publish_activity(AssistantTurnActivityPhase.NEEDS_ATTENTION)
+            self.is_processing = False
+            self._emit_processing_finished("failed")
+            return
+        self._finalize_turn(envelope.message)
 
     def on_panel_navigation_resolved(
         self,

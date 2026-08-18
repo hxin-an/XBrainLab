@@ -5,9 +5,8 @@ from __future__ import annotations
 import gc
 import re
 import weakref
-from dataclasses import FrozenInstanceError, replace
+from dataclasses import replace
 from pathlib import Path
-from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -28,9 +27,6 @@ from XBrainLab.backend.controller.chat_controller import (
     ChatHistoryReplacement,
     ChatHistoryReplacementKind,
     ChatMessagePresentationKind,
-    ChatPanelTarget,
-    ChatResponseAction,
-    ChatResponseActionKind,
 )
 from XBrainLab.chat_contract import MAX_CHAT_MESSAGE_CONTENT_LENGTH
 from XBrainLab.llm.agent.assistant_activity import (
@@ -45,11 +41,6 @@ from XBrainLab.llm.agent.confirmation import (
 )
 from XBrainLab.ui.chat.message_bubble import MessageBubble
 from XBrainLab.ui.chat.presentation import (
-    ChatResponseActionSelectionView,
-    ChatResponseActionsView,
-    ChatResponseActionView,
-    ChatResponseActionViewKind,
-    ChatResponsePanelTargetView,
     ChatTurnCancelability,
     ChatTurnPresentation,
     ChatTurnPresentationPhase,
@@ -288,33 +279,10 @@ class TestChatPanelInit:
 
         assert scroll_bar.value() <= 2
 
-    def test_response_actions_are_attached_to_the_message_area(
-        self,
-        chat_panel,
-        qtbot,
-    ) -> None:
-        controller = ChatController()
-        chat_panel.connect_controller(controller)
-        chat_panel.resize(420, 680)
-        chat_panel.show()
-        controller.add_agent_message(
-            "The next safe step is to review Training.",
-            presentation_kind=ChatMessagePresentationKind.CLARIFICATION,
-            presentation_id="attached-action",
-            actions=(
-                ChatResponseAction(
-                    action_id="open-training",
-                    label="Open Training",
-                    kind=ChatResponseActionKind.OPEN_PANEL,
-                    panel=ChatPanelTarget.TRAINING,
-                ),
-            ),
-        )
-        qtbot.wait(20)
-
-        assert chat_panel.scroll_area.isAncestorOf(chat_panel.response_actions_widget)
-        assert chat_panel.response_actions_widget.isVisibleTo(panel := chat_panel)
-        assert panel.response_action_title.text() == "Suggested next step"
+    def test_retired_response_action_surface_is_absent(self, chat_panel) -> None:
+        assert not hasattr(chat_panel, "response_actions_widget")
+        assert not hasattr(chat_panel, "response_action_requested")
+        assert not hasattr(chat_panel, "show_response_actions")
 
     def test_confirmation_card_emits_the_exact_correlated_request(
         self,
@@ -1181,7 +1149,7 @@ class TestChatPanelInit:
             record.content for record in controller.get_typed_history()
         ]
 
-    def test_history_rebuild_keeps_live_tail_and_latest_action_state(
+    def test_history_rebuild_keeps_live_tail_message(
         self,
         chat_panel,
         qtbot,
@@ -1194,29 +1162,7 @@ class TestChatPanelInit:
         live_record = controller.add_agent_message(
             "Choose the next workflow step.",
             presentation_kind=ChatMessagePresentationKind.CLARIFICATION,
-            presentation_id="live-tail-actions",
-            actions=(
-                ChatResponseAction(
-                    action_id="open-live-dataset",
-                    label="Open Dataset",
-                    kind=ChatResponseActionKind.OPEN_PANEL,
-                    panel=ChatPanelTarget.DATASET,
-                ),
-            ),
         )
-        while chat_panel.response_actions_widget.isHidden():
-            assert chat_panel._history_rebuild_active is True
-            chat_panel._history_rebuild_timer.stop()
-            chat_panel._apply_history_rebuild_chunk()
-            chat_panel._history_rebuild_timer.stop()
-
-        assert chat_panel._history_rebuild_active is True
-        assert chat_panel.response_actions_widget.isHidden() is False
-
-        assert controller.consume_response_actions(live_record.presentation_id) is True
-        assert chat_panel.response_actions_widget.isHidden()
-
-        chat_panel._history_rebuild_timer.start(0)
 
         qtbot.waitUntil(
             lambda: len(chat_panel.chat_content_widget.findChildren(MessageBubble))
@@ -1228,7 +1174,6 @@ class TestChatPanelInit:
             record.message_id for record in controller.get_typed_history()
         ]
         assert bubbles[-1].get_text() == live_record.content
-        assert chat_panel.response_actions_widget.isHidden()
 
     def test_history_replacement_rebuild_uses_snapshot_without_controller_polling(
         self,
@@ -1350,15 +1295,6 @@ class TestChatPanelInit:
         controller.add_agent_message(
             "The import is ready for review.",
             presentation_kind=ChatMessagePresentationKind.CLARIFICATION,
-            presentation_id="restore-actions",
-            actions=(
-                ChatResponseAction(
-                    action_id="review-import",
-                    label="Review import",
-                    kind=ChatResponseActionKind.OPEN_PANEL,
-                    panel=ChatPanelTarget.DATASET,
-                ),
-            ),
         )
         persisted = controller.get_history()
         expected_ids = [record["message_id"] for record in persisted]
@@ -1367,8 +1303,6 @@ class TestChatPanelInit:
             lambda: len(chat_panel._layout_message_bubbles()) == 2,
             timeout=3_000,
         )
-        assert chat_panel.response_actions_widget.isVisibleTo(chat_panel)
-
         controller.clear_conversation()
         qtbot.waitUntil(
             lambda: not chat_panel._layout_message_bubbles(),
@@ -1377,7 +1311,6 @@ class TestChatPanelInit:
         assert controller.get_typed_history() == ()
         assert controller.get_history() == []
         assert controller.pruned_row_count == 0
-        assert chat_panel.response_actions_widget.isHidden()
         assert chat_panel.empty_state_widget.isVisibleTo(chat_panel)
 
         assert controller.restore_history(persisted) == 2
@@ -1395,8 +1328,6 @@ class TestChatPanelInit:
             "Inspect the imported EEG data.",
             "The import is ready for review.",
         ]
-        assert chat_panel.response_actions_widget.isHidden()
-        assert not controller.get_typed_history()[-1].has_active_actions
 
     def test_prune_preserves_retained_reader_anchor(
         self,
@@ -1543,7 +1474,7 @@ class TestChatPanelInit:
         assert bubble.bubble_frame is not None
         assert bubble.bubble_frame.property("assistantMessageKind") == expected_kind
 
-    def test_error_presentation_does_not_depend_on_action_label(
+    def test_error_presentation_uses_typed_message_kind(
         self,
         chat_panel,
     ) -> None:
@@ -1552,15 +1483,6 @@ class TestChatPanelInit:
         controller.add_agent_message(
             "The assistant could not complete the request. Try again.",
             presentation_kind=ChatMessagePresentationKind.ERROR,
-            presentation_id="error-response",
-            actions=(
-                ChatResponseAction(
-                    action_id="continue-action",
-                    label="Continue",
-                    kind=ChatResponseActionKind.SEND_MESSAGE,
-                    prompt="Please retry my previous request.",
-                ),
-            ),
         )
 
         bubble = chat_panel._latest_layout_message_bubble()
@@ -1569,101 +1491,6 @@ class TestChatPanelInit:
         assert bubble.kind_label.text() == "Error"
         assert bubble.bubble_frame is not None
         assert bubble.bubble_frame.property("assistantMessageKind") == "error"
-
-    def test_typed_response_actions_fit_narrow_dock_and_clear_on_next_turn(
-        self,
-        chat_panel,
-        qtbot,
-    ):
-        controller = ChatController()
-        chat_panel.connect_controller(controller)
-        actions = (
-            ChatResponseAction(
-                action_id="check-workflow",
-                label="Check workflow",
-                kind=ChatResponseActionKind.SEND_MESSAGE,
-                prompt="Check what is ready now.",
-            ),
-            ChatResponseAction(
-                action_id="open-dataset",
-                label="Open Dataset",
-                kind=ChatResponseActionKind.OPEN_PANEL,
-                panel=ChatPanelTarget.DATASET,
-            ),
-        )
-        chat_panel.resize(320, 620)
-        chat_panel.show()
-        active_presentation_ids: list[object] = []
-        chat_panel.active_response_presentation_changed.connect(
-            active_presentation_ids.append
-        )
-
-        controller.add_agent_message(
-            "Choose a next step.",
-            presentation_kind=ChatMessagePresentationKind.CLARIFICATION,
-            presentation_id="response-actions",
-            actions=actions,
-        )
-        qtbot.wait(10)
-
-        buttons = chat_panel.response_actions_widget.findChildren(QToolButton)
-        assert [button.text() for button in buttons] == [
-            "Check workflow",
-            "Open Dataset",
-        ]
-        assert chat_panel.response_actions_widget.isVisible()
-        assert all(
-            button.width() <= chat_panel.scroll_area.viewport().width()
-            for button in buttons
-        )
-        presentation = chat_panel._response_presentation
-        assert isinstance(presentation, ChatResponseActionsView)
-        assert all(
-            isinstance(action, ChatResponseActionView)
-            for action in presentation.actions
-        )
-        assert presentation.actions[0] is not actions[0]
-        assert active_presentation_ids[-1] == "response-actions"
-        with pytest.raises(FrozenInstanceError):
-            cast(Any, presentation).presentation_id = "changed"
-
-        identity_at_selection: list[object] = []
-        chat_panel.response_action_requested.connect(
-            lambda _selection: identity_at_selection.append(active_presentation_ids[-1])
-        )
-        with qtbot.waitSignal(
-            chat_panel.response_action_requested,
-            timeout=1000,
-        ) as emitted:
-            buttons[1].click()
-        assert emitted.args == [
-            ChatResponseActionSelectionView(
-                presentation_id="response-actions",
-                action=ChatResponseActionView(
-                    action_id="open-dataset",
-                    label="Open Dataset",
-                    kind=ChatResponseActionViewKind.OPEN_PANEL,
-                    panel=ChatResponsePanelTargetView.DATASET,
-                ),
-            )
-        ]
-        assert identity_at_selection == ["response-actions"]
-        assert active_presentation_ids[-1] is None
-        assert chat_panel._response_presentation is None
-        assert chat_panel.response_actions_widget.isHidden()
-        assert controller.get_typed_history()[-1].has_active_actions is True
-
-        controller.add_agent_message(
-            "Choose another step.",
-            presentation_kind=ChatMessagePresentationKind.CLARIFICATION,
-            presentation_id="next-actions",
-            actions=(
-                replace(actions[0], action_id="check-workflow-next"),
-                replace(actions[1], action_id="open-dataset-next"),
-            ),
-        )
-        controller.add_user_message("Next request")
-        assert chat_panel.response_actions_widget.isHidden()
 
     def test_panel_does_not_keep_controller_alive(self, chat_panel, qtbot) -> None:
         controller = ChatController()
@@ -1675,43 +1502,6 @@ class TestChatPanelInit:
         qtbot.wait(1)
 
         assert controller_ref() is None
-
-    def test_long_response_action_elides_without_widening_narrow_dock(
-        self,
-        chat_panel,
-        qtbot,
-    ):
-        full_label = "Review the unresolved label alignment details"
-        controller = ChatController()
-        chat_panel.connect_controller(controller)
-        controller.add_agent_message(
-            "Choose a next step.",
-            presentation_kind=ChatMessagePresentationKind.CLARIFICATION,
-            presentation_id="long-action",
-            actions=(
-                ChatResponseAction(
-                    action_id="review-labels",
-                    label=full_label,
-                    kind=ChatResponseActionKind.SEND_MESSAGE,
-                    prompt="Review label alignment.",
-                ),
-            ),
-        )
-        chat_panel.resize(320, 620)
-        chat_panel.show()
-        qtbot.wait(20)
-
-        button = chat_panel.response_actions_widget.findChild(QToolButton)
-        viewport = chat_panel.scroll_area.viewport()
-        assert button is not None
-        assert viewport is not None
-        assert button.toolTip() == full_label
-        assert button.accessibleName() == full_label
-        assert button.text() == full_label or (
-            "…" in button.text() and button.text().startswith("Review")
-        )
-        _assert_inside_panel_on_all_sides(chat_panel, button)
-        assert chat_panel.scroll_area.isAncestorOf(chat_panel.response_actions_widget)
 
     def test_has_input_area(self, chat_panel):
         assert isinstance(chat_panel.input_field, QPlainTextEdit)
@@ -2820,7 +2610,6 @@ class TestChatPanelCallbacks:
         assert not any(
             isinstance(widget, MessageBubble) for widget in transcript_widgets
         )
-        assert chat_panel.response_actions_widget.isHidden()
 
     def test_runtime_notice_clear_preserves_newer_general_notice(self, chat_panel):
         chat_panel.show_runtime_notice("Assistant unavailable")
@@ -2868,11 +2657,6 @@ class TestChatPanelCallbacks:
         chat_panel,
         height,
     ):
-        full_label = (
-            "Review "
-            "subject_01_session_02_task_motor_run_000000000000000000000000000001 "
-            "label alignment before continuing"
-        )
         controller = ChatController()
         chat_panel.connect_controller(controller)
         chat_panel.resize(320, height)
@@ -2894,23 +2678,9 @@ class TestChatPanelCallbacks:
                 )
             ),
             presentation_kind=ChatMessagePresentationKind.CLARIFICATION,
-            presentation_id=f"long-clarification-{height}",
-            actions=(
-                ChatResponseAction(
-                    action_id=f"review-labels-{height}",
-                    label=full_label,
-                    kind=ChatResponseActionKind.SEND_MESSAGE,
-                    prompt="Review the unresolved label alignment.",
-                ),
-            ),
         )
         qtbot.wait(30)
 
-        action = chat_panel.response_actions_widget.findChild(QToolButton)
-        assert action is not None
-        wide_font = QFont(action.font())
-        wide_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 3.0)
-        action.setFont(wide_font)
         chat_panel._reflow_chat_content()
         qtbot.wait(0)
         assert chat_panel.size().width() == 320
@@ -2919,23 +2689,10 @@ class TestChatPanelCallbacks:
         for control in (
             chat_panel.input_field,
             chat_panel.send_btn,
-            action,
         ):
             assert control.isVisibleTo(chat_panel)
             _assert_inside_panel_on_all_sides(chat_panel, control)
         assert not hasattr(chat_panel, "mode_selector_widget")
-        assert action.toolTip() == full_label
-        assert "…" in action.text()
-        assert action.text().startswith("Review ")
-        assert action.text().endswith("before continuing")
-        assert chat_panel.scroll_area.isAncestorOf(chat_panel.response_actions_widget)
-        assert (
-            chat_panel.response_actions_widget.mapTo(
-                chat_panel,
-                chat_panel.response_actions_widget.rect().bottomLeft(),
-            ).y()
-            < chat_panel.control_panel.mapTo(chat_panel, QPoint(0, 0)).y()
-        )
         composer_top = chat_panel.input_widget.mapTo(
             chat_panel,
             QPoint(0, 0),

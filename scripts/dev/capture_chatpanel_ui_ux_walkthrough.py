@@ -57,7 +57,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
-    QToolButton,
     QWidget,
 )
 
@@ -69,19 +68,19 @@ from scripts.dev.human_like_walkthrough import evidence as human_evidence
 from XBrainLab.backend.controller.chat_controller import (
     ChatController,
     ChatMessagePresentationKind,
-    ChatPanelTarget,
-    ChatResponseAction,
-    ChatResponseActionKind,
 )
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantTurnActivity,
     AssistantTurnActivityPhase,
 )
-from XBrainLab.llm.agent.confirmation import AgentConfirmationRequest
+from XBrainLab.llm.agent.confirmation import (
+    AgentConfirmationRequest,
+    AgentConfirmationRisk,
+)
 from XBrainLab.llm.agent.response_presentation import (
+    AssistantPanelNavigationRequest,
     AssistantPanelTarget,
-    AssistantResponseAction,
     AssistantResponseKind,
     AssistantResponsePresentation,
 )
@@ -119,7 +118,7 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 DEFAULT_OUTPUT_DIR = ROOT / "build" / "dev-artifacts" / "chatpanel-ui-ux"
 JSON_ARTIFACT = "walkthrough.json"
 README_ARTIFACT = "README.md"
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 GENERATOR = "scripts/dev/capture_chatpanel_ui_ux_walkthrough.py"
 CLAIM_BOUNDARY = (
     "Linux/Qt offscreen rendering and geometry evidence, including a real "
@@ -163,8 +162,8 @@ EXPECTED_SCREEN_FILES = (
     "responsive-1280-long-clarification-action.png",
     "responsive-1280-processing-stop.png",
     "responsive-1280-runtime-unavailable.png",
-    "main-window-dock-420-action-visible.png",
-    "main-window-dock-420-action-click.png",
+    "main-window-dock-420-response-visible.png",
+    "main-window-dock-420-navigation.png",
     "main-window-dock-420-stopping.png",
     "main-window-dock-420-command-running.png",
 )
@@ -482,15 +481,10 @@ def _add_response(
     panel: ChatPanel,
     text: str,
     kind: ChatMessagePresentationKind,
-    *,
-    actions: tuple[ChatResponseAction, ...] = (),
-    presentation_id: str = "",
 ) -> None:
     _controller(panel).add_agent_message(
         text,
         presentation_kind=kind,
-        actions=actions,
-        presentation_id=presentation_id,
     )
 
 
@@ -594,15 +588,6 @@ def _prepare_restored_audit(panel: ChatPanel) -> None:
     original.add_agent_message(
         "Review the imported labels before training.",
         presentation_kind=ChatMessagePresentationKind.ERROR,
-        presentation_id="restored-response",
-        actions=(
-            ChatResponseAction(
-                action_id="open-dataset",
-                label="Open Dataset",
-                kind=ChatResponseActionKind.OPEN_PANEL,
-                panel=ChatPanelTarget.DATASET,
-            ),
-        ),
     )
     restored = ChatController()
     restored.restore_history(original.get_history())
@@ -649,15 +634,6 @@ def _prepare_error_action(panel: ChatPanel) -> None:
         "The assistant could not complete the request. Technical details were "
         "written to the application log.",
         ChatMessagePresentationKind.ERROR,
-        presentation_id="error-response",
-        actions=(
-            ChatResponseAction(
-                action_id="try-again",
-                label="Try again",
-                kind=ChatResponseActionKind.SEND_MESSAGE,
-                prompt="Please retry my previous request.",
-            ),
-        ),
     )
 
 
@@ -729,28 +705,31 @@ def _prepare_dpi_evidence(panel: ChatPanel) -> None:
     """Compose the same message, error, and confirmation state at each width."""
     panel.set_runtime_state("ready")
     controller = _controller(panel)
-    controller.add_user_message("Review the proposed training setting.")
+    controller.add_user_message("Start training with the reviewed configuration.")
     _add_response(
         panel,
-        "The current batch size may exceed available GPU memory.",
+        "Training can take time and use significant compute resources.",
         ChatMessagePresentationKind.ERROR,
     )
+    impact = (
+        "Starts a potentially long GPU or CPU job using the configured resources. "
+        "You can stop it after it starts."
+    )
     request = AgentConfirmationRequest.for_action(
-        command_name="configure_training",
-        params={"batch_size": 16},
-        action_label="Apply change",
-        description="Reduce the batch size before starting training.",
+        command_name="start_training",
+        params={},
+        action_label="Start training",
+        description="Run the reviewed training configuration.",
         destructive=False,
         publication_generation=1,
-        request_id=f"dpi-batch-size-change-{panel.width()}",
+        request_id=f"dpi-start-training-{panel.width()}",
+        risk=AgentConfirmationRisk(
+            long_running=True,
+            decision_boundary="long_running",
+            impact_text=impact,
+        ),
     )
-    panel.show_confirmation_request(
-        request,
-        current_values={"Batch size": "32"},
-    )
-
-
-_RESPONSIVE_ACTION_LABEL = "Review import decision"
+    panel.show_confirmation_request(request)
 
 
 def _prepare_responsive_idle(panel: ChatPanel) -> None:
@@ -792,15 +771,6 @@ def _prepare_responsive_long_clarification(panel: ChatPanel) -> None:
             f"{repeated_context}"
         ),
         ChatMessagePresentationKind.CLARIFICATION,
-        presentation_id=f"responsive-long-clarification-{panel.width()}-{panel.height()}",
-        actions=(
-            ChatResponseAction(
-                action_id=f"review-labels-{panel.width()}-{panel.height()}",
-                label=_RESPONSIVE_ACTION_LABEL,
-                kind=ChatResponseActionKind.SEND_MESSAGE,
-                prompt="Review the unresolved label alignment.",
-            ),
-        ),
     )
 
 
@@ -952,7 +922,6 @@ SCENARIOS = (
         1.0,
         _prepare_error_action,
         required_kinds=("user", "error"),
-        expected_action_labels=("Try again",),
     ),
     ScenarioSpec(
         "narrow_setting_change_confirmation",
@@ -1002,9 +971,8 @@ SCENARIOS = (
         _prepare_dpi_evidence,
         required_kinds=("user", "error"),
         confirmation_visible=True,
-        expected_confirmation_title="Suggested change",
-        expected_confirmation_values=("Batch size", "32  ->  16"),
-        expected_confirmation_actions=("Keep current value", "Apply change"),
+        expected_confirmation_title="Start training",
+        expected_confirmation_actions=("Cancel", "Confirm"),
         review_state="dpi_evidence",
     ),
     ScenarioSpec(
@@ -1016,9 +984,8 @@ SCENARIOS = (
         _prepare_dpi_evidence,
         required_kinds=("user", "error"),
         confirmation_visible=True,
-        expected_confirmation_title="Suggested change",
-        expected_confirmation_values=("Batch size", "32  ->  16"),
-        expected_confirmation_actions=("Keep current value", "Apply change"),
+        expected_confirmation_title="Start training",
+        expected_confirmation_actions=("Cancel", "Confirm"),
         review_state="dpi_evidence",
     ),
     ScenarioSpec(
@@ -1030,9 +997,8 @@ SCENARIOS = (
         _prepare_dpi_evidence,
         required_kinds=("user", "error"),
         confirmation_visible=True,
-        expected_confirmation_title="Suggested change",
-        expected_confirmation_values=("Batch size", "32  ->  16"),
-        expected_confirmation_actions=("Keep current value", "Apply change"),
+        expected_confirmation_title="Start training",
+        expected_confirmation_actions=("Cancel", "Confirm"),
         review_state="dpi_evidence",
     ),
     ScenarioSpec(
@@ -1064,7 +1030,6 @@ SCENARIOS = (
         1.0,
         _prepare_responsive_long_clarification,
         required_kinds=("user", "clarification"),
-        expected_action_labels=(_RESPONSIVE_ACTION_LABEL,),
         review_state="long_clarification_action",
     ),
     ScenarioSpec(
@@ -1075,7 +1040,6 @@ SCENARIOS = (
         1.0,
         _prepare_responsive_long_clarification,
         required_kinds=("user", "clarification"),
-        expected_action_labels=(_RESPONSIVE_ACTION_LABEL,),
         review_state="long_clarification_action",
     ),
     ScenarioSpec(
@@ -1125,7 +1089,6 @@ SCENARIOS = (
         1.0,
         _prepare_responsive_long_clarification,
         required_kinds=("user", "clarification"),
-        expected_action_labels=(_RESPONSIVE_ACTION_LABEL,),
         review_state="long_clarification_action",
     ),
     ScenarioSpec(
@@ -1175,7 +1138,6 @@ SCENARIOS = (
         1.0,
         _prepare_responsive_long_clarification,
         required_kinds=("user", "clarification"),
-        expected_action_labels=(_RESPONSIVE_ACTION_LABEL,),
         review_state="long_clarification_action",
     ),
     ScenarioSpec(
@@ -1367,18 +1329,9 @@ def _widget_panel_geometry(
 
 def _panel_relative_geometry(panel: ChatPanel) -> dict[str, Any]:
     """Collect the hard geometry gate for persistent assistant controls."""
-    response_action = next(
-        (
-            button
-            for button in panel.response_actions_widget.findChildren(QToolButton)
-            if button.isVisibleTo(panel)
-        ),
-        None,
-    )
     return {
         "composer": _widget_panel_geometry(panel, panel.input_field),
         "send": _widget_panel_geometry(panel, panel.send_btn),
-        "response_action": _widget_panel_geometry(panel, response_action),
     }
 
 
@@ -1446,17 +1399,12 @@ def _screen_evidence(panel: ChatPanel, spec: ScenarioSpec) -> dict[str, Any]:
         if not inside:
             clipped.append(f"message_bubble_{index}")
 
-    response_actions = [
-        str(button.property("assistantFullLabel") or button.text())
-        for button in panel.response_actions_widget.findChildren(QToolButton)
-        if button.isVisibleTo(panel.response_actions_widget)
-    ]
     runtime_actions = [
         " ".join(str(button.property("assistantFullLabel") or button.text()).split())
         for button in (panel.retry_runtime_btn, panel.setup_btn)
         if button.isVisibleTo(panel.runtime_state_widget)
     ]
-    visible_actions = response_actions + runtime_actions
+    visible_actions = runtime_actions
     panel_geometry = _panel_relative_geometry(panel)
     placeholder = human_evidence.assistant_composer_placeholder_evidence(panel)
     text_overflow = human_evidence._assistant_text_overflow(panel)
@@ -1490,6 +1438,7 @@ def _screen_evidence(panel: ChatPanel, spec: ScenarioSpec) -> dict[str, Any]:
         "description": confirmation_card.description_label.text(),
         "values": confirmation_values,
         "reason": confirmation_card.reason_label.text(),
+        "impact": confirmation_card.impact_label.text(),
         "actions": (
             confirmation_card.secondary_button.text(),
             confirmation_card.primary_button.text(),
@@ -1534,8 +1483,8 @@ def _screen_evidence(panel: ChatPanel, spec: ScenarioSpec) -> dict[str, Any]:
             hasattr(panel, name)
             for name in ("mode_selector_widget", "ask_mode_btn", "workflow_mode_btn")
         ),
-        "response_action_inside_panel_on_all_sides": (
-            not response_actions or _geometry_inside(panel_geometry["response_action"])
+        "retired_response_action_surface_absent": not hasattr(
+            panel, "response_actions_widget"
         ),
         "expected_message_kinds_present": message_kinds == list(spec.required_kinds),
         "expected_actions_present": visible_actions
@@ -1623,7 +1572,9 @@ def _screen_evidence(panel: ChatPanel, spec: ScenarioSpec) -> dict[str, Any]:
         "message_horizontal_scroll_maxima": code_scroll_maxima,
         "visible_buttons": buttons,
         "visible_actions": visible_actions,
-        "visible_response_actions": response_actions,
+        "retired_response_action_surface_absent": not hasattr(
+            panel, "response_actions_widget"
+        ),
         "send_text": panel.send_btn.text(),
         "send_enabled": panel.send_btn.isEnabled(),
         "input_enabled": panel.input_field.isEnabled(),
@@ -2098,11 +2049,6 @@ def _main_window_screen_record(
     dock_evidence = human_evidence.assistant_dock_evidence(dock, panel)
     placeholder = human_evidence.assistant_composer_placeholder_evidence(panel)
     panel_geometry = _panel_relative_geometry(panel)
-    response_actions = [
-        str(button.property("assistantFullLabel") or button.text())
-        for button in panel.response_actions_widget.findChildren(QToolButton)
-        if button.isVisibleTo(panel)
-    ]
     summary_label = window.findChild(QLabel, "DataSummaryEmpty")
     summary_text_fit = _wrapped_label_text_fit(summary_label)
     checks = {
@@ -2129,8 +2075,8 @@ def _main_window_screen_record(
             hasattr(panel, name)
             for name in ("mode_selector_widget", "ask_mode_btn", "workflow_mode_btn")
         ),
-        "response_action_inside_panel_on_all_sides": (
-            not response_actions or _geometry_inside(panel_geometry["response_action"])
+        "retired_response_action_surface_absent": not hasattr(
+            panel, "response_actions_widget"
         ),
         "visible_data_summary_empty_copy_fits": (
             summary_text_fit["fits"] if summary_text_fit["visible"] else True
@@ -2151,7 +2097,9 @@ def _main_window_screen_record(
         "failures": [key for key, passed in checks.items() if not passed],
         "dock": dock_evidence,
         "composer_placeholder": placeholder,
-        "visible_response_actions": response_actions,
+        "retired_response_action_surface_absent": not hasattr(
+            panel, "response_actions_widget"
+        ),
         "panel_relative_geometry": panel_geometry,
         "data_summary_empty_copy": summary_text_fit,
     }
@@ -2469,46 +2417,24 @@ def _capture_main_window_dock_walkthrough(
         panel,
         MainWindow.ASSISTANT_DOCK_STANDARD_WIDTH,
     )
+    window._ensure_panel_loaded(1)
+    window._activate_page(1)
+    _settle_layout(app, window)
 
-    restored_presentation_id = "restored-open-dataset"
     source_history = ChatController()
     source_history.add_user_message("Show me where to review EEG data.")
     source_history.add_agent_message(
         "I can help review EEG files before they are loaded.",
         presentation_kind=ChatMessagePresentationKind.ASSISTANT,
-        presentation_id=restored_presentation_id,
-        actions=(
-            ChatResponseAction(
-                action_id="open-restored-dataset",
-                label="Open Dataset",
-                kind=ChatResponseActionKind.OPEN_PANEL,
-                panel=ChatPanelTarget.DATASET,
-            ),
-        ),
-    )
-    active_identity_events: list[object] = []
-    selected_identity_events: list[str] = []
-    panel.active_response_presentation_changed.connect(active_identity_events.append)
-    panel.response_action_requested.connect(
-        lambda selection: selected_identity_events.append(selection.presentation_id)
     )
     restored_count = manager.chat_controller.restore_history(
         source_history.get_history()
     )
-    window._ensure_panel_loaded(1)
-    window._activate_page(1)
-    _settle_layout(app, window)
     restored_records = manager.chat_controller.get_typed_history()
-    restored_action_buttons = [
-        button
-        for button in panel.response_actions_widget.findChildren(QToolButton)
-        if button.isVisibleTo(panel)
-    ]
-    restored_actions_inert = bool(
+    restored_copy_only = bool(
         restored_count == 2
         and restored_records
-        and all(not record.has_active_actions for record in restored_records)
-        and not restored_action_buttons
+        and all(not hasattr(record, "actions") for record in restored_records)
     )
 
     live_submission = manager._assistant_turn_state.begin_submission()
@@ -2520,72 +2446,53 @@ def _capture_main_window_dock_walkthrough(
         live_submission,
         live_correlation,
     ):
-        raise RuntimeError("Could not admit the live response-action capture turn.")
-    presentation_id = "live-open-dataset"
+        raise RuntimeError("Could not admit the live response capture turn.")
     manager._handle_response_presentation(
         AssistantResponsePresentation(
             correlation=live_correlation,
-            presentation_id=presentation_id,
-            text="Open Dataset to review the current EEG workspace.",
+            text="Open the Dataset panel to review the current EEG workspace.",
             kind=AssistantResponseKind.CLARIFICATION,
-            actions=(
-                AssistantResponseAction.open_panel(
-                    "Open Dataset",
-                    AssistantPanelTarget.DATASET,
-                ),
-            ),
         )
     )
     _settle_layout(app, window)
-    action = next(
-        (
-            button
-            for button in panel.response_actions_widget.findChildren(QToolButton)
-            if button.isVisibleTo(panel) and button.accessibleName() == "Open Dataset"
-        ),
-        None,
-    )
-    if action is None:
-        raise RuntimeError("Real response action was not visible in the dock.")
     bubbles = _layout_bubbles(panel)
     if not bubbles:
-        raise RuntimeError("Restored response did not render in the real dock.")
-    pre_click_screen = _main_window_screen_record(
+        raise RuntimeError("Plain assistant response did not render in the real dock.")
+    response_screen = _main_window_screen_record(
         app,
         output_dir,
         window,
         dock,
         panel,
-        name="main_window_dock_420_action_visible",
-        filename="main-window-dock-420-action-visible.png",
+        name="main_window_dock_420_response_visible",
+        filename="main-window-dock-420-response-visible.png",
     )
     before_index = window.stack.currentIndex()
     before_widget = window.stack.currentWidget()
     before_widget_type = (
         type(before_widget).__name__ if before_widget is not None else ""
     )
-    cast(Any, QTest.mouseClick)(action, Qt.MouseButton.LeftButton)
+    manager.handle_panel_navigation(
+        AssistantPanelNavigationRequest(target=AssistantPanelTarget.DATASET)
+    )
     _settle_layout(app, window)
     after_index = window.stack.currentIndex()
     after_widget = window.stack.currentWidget()
     after_widget_type = type(after_widget).__name__ if after_widget is not None else ""
-    action_clicked = before_index != after_index and after_index == 0
+    navigation_opened = before_index != after_index and after_index == 0
     manager._on_assistant_turn_finished(
-        AssistantTurnTerminal(
-            correlation=live_correlation,
-            outcome="completed",
-        )
+        AssistantTurnTerminal(correlation=live_correlation, outcome="completed")
     )
     screens = [
-        pre_click_screen,
+        response_screen,
         _main_window_screen_record(
             app,
             output_dir,
             window,
             dock,
             panel,
-            name="main_window_dock_420_action_click",
-            filename="main-window-dock-420-action-click.png",
+            name="main_window_dock_420_navigation",
+            filename="main-window-dock-420-navigation.png",
         ),
     ]
 
@@ -2722,17 +2629,11 @@ def _capture_main_window_dock_walkthrough(
         "real_qdockwidget": isinstance(dock, QDockWidget),
         "assistant_usable_width": panel.width(),
         "assistant_viewport_width": assistant_viewport.width(),
-        "action_click": {
-            "label": "Open Dataset",
+        "response_and_navigation": {
             "history_source": "live_correlated_response",
-            "restored_record_count": restored_count,
-            "restored_actions_inert": restored_actions_inert,
-            "presentation_identity_from_ui": bool(
-                presentation_id in active_identity_events
-                and selected_identity_events == [presentation_id]
-            ),
-            "pre_click_render_content": pre_click_screen["render_content"],
-            "clicked": action_clicked,
+            "restored_copy_only": restored_copy_only,
+            "response_render_content": response_screen["render_content"],
+            "navigation_opened": navigation_opened,
             "before_panel_index": before_index,
             "after_panel_index": after_index,
             "before_panel_widget_type": before_widget_type,
@@ -2745,18 +2646,9 @@ def _capture_main_window_dock_walkthrough(
                 after_widget is not None
                 and after_widget_type != "_LazyPanelPlaceholder"
             ),
-            "before_placeholder_visible": bool(
-                before_widget is not None
-                and before_widget_type == "_LazyPanelPlaceholder"
-                and before_widget.isVisibleTo(window)
+            "retired_response_action_surface_absent": not hasattr(
+                panel, "response_actions_widget"
             ),
-            "after_placeholder_visible": bool(
-                after_widget is not None
-                and after_widget_type == "_LazyPanelPlaceholder"
-                and after_widget.isVisibleTo(window)
-            ),
-            "workflow_panel_opened": after_index == 0,
-            "actions_consumed": panel.response_actions_widget.isHidden(),
         },
         "states": {
             "cancellable": cancellable_state,
@@ -3378,8 +3270,8 @@ def validate_payload(payload: dict[str, Any]) -> list[str]:
             MainWindow.ASSISTANT_DOCK_STANDARD_WIDTH
         ):
             failures.append("real assistant dock does not use the standard width")
-        if not dock.get("action_click", {}).get("clicked"):
-            failures.append("real response action click was not observed")
+        if not dock.get("response_and_navigation", {}).get("navigation_opened"):
+            failures.append("real panel navigation was not observed")
         states = dock.get("states", {})
         expected_buttons = {
             "cancellable": ("Stop", True),
@@ -3397,27 +3289,22 @@ def validate_payload(payload: dict[str, Any]) -> list[str]:
             failures.append("real Stop click did not emit the cancellation request")
         if not states.get("stopping", {}).get("late_activity_latched"):
             failures.append("late stopped-turn activity escaped the Stopping latch")
-        action_click = dock.get("action_click", {})
-        if action_click.get("history_source") != "live_correlated_response":
-            failures.append("real response action did not originate from a live turn")
-        if action_click.get("restored_actions_inert") is not True:
-            failures.append("restored response actions remained executable")
-        if not action_click.get("presentation_identity_from_ui"):
-            failures.append("live response identity was not authoritative in the UI")
-        if not action_click.get("pre_click_render_content", {}).get("passed"):
-            failures.append("live response action was not visibly painted before click")
-        if action_click.get("before_panel_index") != 1:
-            failures.append("response action did not start from Preprocess")
-        if action_click.get("after_panel_index") != 0:
-            failures.append("response action did not finish on Dataset")
-        if action_click.get("before_panel_materialized") is not True:
-            failures.append("Preprocess was not materialized before action capture")
-        if action_click.get("after_panel_materialized") is not True:
-            failures.append("Dataset was not materialized after action capture")
-        if action_click.get("before_placeholder_visible") is not False:
-            failures.append("Preprocess placeholder remained visible before action")
-        if action_click.get("after_placeholder_visible") is not False:
-            failures.append("Dataset placeholder remained visible after action")
+        response_navigation = dock.get("response_and_navigation", {})
+        if response_navigation.get("history_source") != "live_correlated_response":
+            failures.append("real response did not originate from a live turn")
+        if response_navigation.get("restored_copy_only") is not True:
+            failures.append("restored transcript retained response-action payload")
+        if not response_navigation.get("response_render_content", {}).get("passed"):
+            failures.append("live response was not visibly painted")
+        if response_navigation.get("before_panel_index") != 1:
+            failures.append("navigation did not start from Preprocess")
+        if response_navigation.get("after_panel_index") != 0:
+            failures.append("navigation did not finish on Dataset")
+        if (
+            response_navigation.get("retired_response_action_surface_absent")
+            is not True
+        ):
+            failures.append("retired response-action surface is still present")
 
     current_source_files = source_file_manifest()
     current_fingerprint = source_fingerprint(current_source_files)
@@ -3566,8 +3453,8 @@ def capture_walkthrough(
                 "assistant_primary_action",
                 "assistant_activity_when_visible",
             ],
-            "restored_action_inert_check": True,
-            "live_action_pre_click_region_check": True,
+            "plain_history_restore_check": True,
+            "typed_navigation_check": True,
         },
         "native_display_scaling_observed": False,
         "claim_boundary": CLAIM_BOUNDARY,
@@ -3693,8 +3580,8 @@ def render_readme(payload: dict[str, Any]) -> str:
             "",
             "The composed walkthrough uses the real `MainWindow`, `AgentManager`, "
             "`QDockWidget`, and `ChatPanel`. It establishes a 320 px ChatPanel width, "
-            "proves a response action restored from serialized history is inert, then "
-            "clicks a correlated live-turn action to open Dataset. It then clicks Stop "
+            "restores plain transcript history without executable payloads, then "
+            "uses a typed navigation request to open Dataset. It then clicks Stop "
             "while the typed state is cancellable, "
             "proves late activity for that turn remains latched at Stopping until the "
             "matching terminal event, and records a new-turn Application command state "
@@ -3706,8 +3593,8 @@ def render_readme(payload: dict[str, Any]) -> str:
             "Captured output is normalized to a standard RGB PNG before inspection. "
             "The composed MainWindow frames additionally require painted main-shell, "
             "assistant transcript, and primary-action regions; visible activity cards "
-            "are checked separately. Restored actions must remain inert, and the live "
-            "action is checked in its own painted region before the real click. Solid "
+            "are checked separately. Restored history must remain plain copy, and typed "
+            "navigation is checked through the real MainWindow route. Solid "
             "or shell-only captures fail the gate.",
             "",
             "## Render Scaling",

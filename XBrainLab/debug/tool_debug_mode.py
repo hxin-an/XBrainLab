@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
+from XBrainLab.llm.agent.decision_contract import MODEL_RESPONSE_TOOL_NAME
 
 WALKTHROUGH_SCHEMA_VERSION = "xbrainlab.assistant_walkthrough.v1"
 _ROOT_FIELDS = frozenset({"schema_version", "profile_id", "title", "calls"})
@@ -85,11 +86,21 @@ class ToolDebugMode:
         params = raw.get("params")
         instruction = raw.get("instruction")
         outcomes = raw.get("expected_outcomes")
+        response_params_valid = bool(
+            tool == MODEL_RESPONSE_TOOL_NAME
+            and isinstance(params, dict)
+            and set(params) == {"message"}
+            and isinstance(params.get("message"), str)
+            and bool(params["message"].strip())
+        )
+        action_tool_valid = bool(
+            isinstance(tool, str) and tool in AGENT_ACTION_CONTRACTS.tool_names()
+        )
         if (
             not isinstance(step_id, str)
             or not step_id.strip()
             or not isinstance(tool, str)
-            or tool not in AGENT_ACTION_CONTRACTS.tool_names()
+            or not (action_tool_valid or response_params_valid)
             or not isinstance(params, dict)
             or not isinstance(instruction, str)
             or not instruction.strip()

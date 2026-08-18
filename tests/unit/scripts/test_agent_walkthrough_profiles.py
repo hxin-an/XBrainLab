@@ -8,11 +8,25 @@ from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 PROFILE_ROOT = Path("scripts/dev/agent_tool_walkthrough")
 VALIDATION_GUIDE = Path("docs/validation/README.md")
 PROFILE_NAMES = (
+    "response-presentation",
     "contract-failures",
     "complete-workflow",
     "gui-cancellation",
     "lifecycle-routing",
 )
+
+
+def test_response_profile_covers_reserved_branch_without_expanding_tool_surface() -> (
+    None
+):
+    profile = ToolDebugMode(str(PROFILE_ROOT / "response-presentation.json"))
+
+    assert profile.calls[0].tool == "respond_to_user"
+    assert profile.calls[0].params == {
+        "message": "Choose one preprocessing action first."
+    }
+    assert profile.calls[1].tool == "switch_panel"
+    assert "respond_to_user" not in AGENT_ACTION_CONTRACTS.tool_names()
 
 
 def test_walkthrough_profiles_are_strict_and_cover_exact_target_surface() -> None:

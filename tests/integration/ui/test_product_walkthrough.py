@@ -817,7 +817,7 @@ def test_model_import_action_opens_typed_product_surface_directly(
         assert runtime.delivery_phases == [AssistantTurnDeliveryPhase.ACCEPTED]
         assert len(handoff_requests) == 1
         assert handoff_requests[0].command is CommandName.SCAN_SOURCE
-        assert not panel.response_actions_widget.isVisible()
+        assert not hasattr(panel, "response_actions_widget")
         assert chooser_calls
         chooser_parent, chooser_directory = chooser_calls[0]
         assert chooser_parent is test_app.dataset_panel

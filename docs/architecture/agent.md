@@ -291,7 +291,8 @@ fixture，必須放在明確 optional legacy path，不能被 product code impor
 - `AgentManager` header 將 runtime 與 turn state投影成 accessibility description、tooltip 與
   typed panel state；header 不顯示額外綠色／橘色 status badge。窄 dock 固定保留產品標題、
   New chat、Settings、Close。
-- message area 擁有 loading、empty、transcript、activity、response action 與 confirmation card；
+- message area 擁有 loading、empty、transcript、activity 與 confirmation card；failure只呈現
+  typed bubble，不附帶可執行的suggested-next-step按鈕；
   composer 固定在底部 layout，不用 absolute positioning。Panel 不顯示 execution-mode selector。
 - setting change 與高風險 action 使用 transient `AssistantConfirmationCard`。Card 持有原始
   `AgentConfirmationRequest`，Apply / Cancel 產生同 identity 的 typed

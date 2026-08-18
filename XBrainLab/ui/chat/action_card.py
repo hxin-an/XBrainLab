@@ -527,21 +527,28 @@ class AssistantConfirmationCard(QFrame):
         self.setProperty("riskLongRunning", request.long_running)
         self.setProperty("decisionBoundary", request.decision_boundary)
         setting_change = request.command_name in _SETTING_CHANGE_COMMANDS
+        compact_long_running = (
+            request.long_running and not request.destructive and not setting_change
+        )
         self.title_label.setText(
             "High-risk confirmation"
             if request.destructive
-            else "Long-running action"
-            if request.long_running
+            else request.action_label
+            if compact_long_running
             else "High-impact confirmation"
             if request.high_impact and not setting_change
             else ("Suggested change" if setting_change else "Confirmation required")
         )
         self.description_label.setText(request.action_label)
-        self.description_label.setVisible(not setting_change)
+        self.description_label.setVisible(
+            not setting_change and not compact_long_running
+        )
         self.impact_label.setText(request.impact_text or "")
         self.impact_title.setVisible(bool(request.impact_text))
         self.impact_label.setVisible(bool(request.impact_text))
         self.reason_label.setText(request.description)
+        self.reason_title.setVisible(not compact_long_running)
+        self.reason_label.setVisible(not compact_long_running)
         self.context_warning.setText(
             "The workflow changed after this suggestion. XBrainLab will validate "
             "the action again before applying it."
@@ -564,8 +571,14 @@ class AssistantConfirmationCard(QFrame):
             setting_change=setting_change,
             current_verified=current_verified,
         )
+        if compact_long_running:
+            self.details_title.setVisible(False)
+            self.proposal_rows_widget.setVisible(False)
+            self.proposal_scroll.setVisible(False)
 
-        if setting_change:
+        if compact_long_running:
+            primary_label, secondary_label = "Confirm", "Cancel"
+        elif setting_change:
             primary_label, secondary_label = _setting_change_action_labels(request)
         else:
             primary_label = tool_action_label(request.command_name)
@@ -736,8 +749,15 @@ class AssistantConfirmationCard(QFrame):
             self.primary_button.setAccessibleName(label)
         elif self._request is not None:
             setting_change = self._request.command_name in _SETTING_CHANGE_COMMANDS
+            compact_long_running = (
+                self._request.long_running
+                and not self._request.destructive
+                and not setting_change
+            )
             label = (
-                _setting_change_action_labels(self._request)[0]
+                "Confirm"
+                if compact_long_running
+                else _setting_change_action_labels(self._request)[0]
                 if setting_change
                 else tool_action_label(self._request.command_name)
             )

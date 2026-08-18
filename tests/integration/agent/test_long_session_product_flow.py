@@ -981,9 +981,8 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
                     source_response.presentation_kind
                     is ChatMessagePresentationKind.ASSISTANT
                 )
-                assert not source_response.has_active_actions
-                assert manager._active_response_presentation_id is None
-                assert not manager.chat_panel.response_actions_widget.isVisible()
+                assert not hasattr(source_response, "actions")
+                assert not hasattr(manager.chat_panel, "response_actions_widget")
                 assert len(retriever.requests) == 1
                 assert len(worker.requests) == 1
             elif turn_index in {
@@ -1008,9 +1007,8 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
                     historical_response.presentation_kind
                     is ChatMessagePresentationKind.ASSISTANT
                 )
-                assert not historical_response.has_active_actions
-                assert manager._active_response_presentation_id is None
-                assert not manager.chat_panel.response_actions_widget.isVisible()
+                assert not hasattr(historical_response, "actions")
+                assert not hasattr(manager.chat_panel, "response_actions_widget")
                 assert controller._tool_attempt_session.execution_count == 0
                 assert not controller.is_processing
 
@@ -1090,7 +1088,6 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
                 record.content,
                 record.presentation_kind,
                 record.message_id,
-                record.actions,
             )
             for record in restored_records
         ] == [
@@ -1099,11 +1096,10 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
                 record.content,
                 record.presentation_kind,
                 record.message_id,
-                record.actions,
             )
             for record in records
         ]
-        assert not any(record.has_active_actions for record in restored_records)
+        assert all(not hasattr(record, "actions") for record in restored_records)
         normalized_persistence = restored.get_history()
         canonical_restore = ChatController()
         assert canonical_restore.restore_history(normalized_persistence) == len(records)

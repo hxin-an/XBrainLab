@@ -138,10 +138,7 @@ from XBrainLab.llm.agent.interaction import (
     AgentInteractionOutcome,
     AgentInteractionStatus,
 )
-from XBrainLab.llm.agent.response_presentation import (
-    AssistantResponseActionKind,
-    AssistantResponsePresentation,
-)
+from XBrainLab.llm.agent.response_presentation import AssistantResponsePresentation
 from XBrainLab.llm.agent.turn import (
     AssistantTurnCorrelation,
     AssistantTurnRequest,
@@ -2772,7 +2769,7 @@ def test_walkthrough_stop_publishes_a_terminal_cancellation() -> None:
     assert controller.is_processing is False
 
 
-def test_walkthrough_clarification_copy_matches_its_available_actions() -> None:
+def test_walkthrough_clarification_is_plain_transcript_copy() -> None:
     controller = WalkthroughAssistantController()
     presentations: list[object] = []
     controller.response_presentation_ready.connect(presentations.append)
@@ -2782,17 +2779,10 @@ def test_walkthrough_clarification_copy_matches_its_available_actions() -> None:
     assert len(presentations) == 1
     presentation = cast(AssistantResponsePresentation, presentations[0])
     assert presentation.text == ASSISTANT_WORKFLOW_CLARIFICATION_MESSAGE
-    assert tuple(action.label for action in presentation.actions) == (
-        "Check workflow",
-        "Open Data Import",
-    )
-    assert presentation.actions[0].kind is AssistantResponseActionKind.SEND_MESSAGE
-    assert presentation.actions[1].kind is AssistantResponseActionKind.OPEN_DATA_IMPORT
-    assert presentation.actions[1].prompt == ""
-    assert presentation.actions[1].panel is None
+    assert not hasattr(presentation, "actions")
 
 
-def test_walkthrough_blocked_action_resolves_the_stated_session_blocker() -> None:
+def test_walkthrough_blocked_copy_does_not_attach_actions() -> None:
     controller = WalkthroughAssistantController()
     presentations: list[object] = []
     controller.response_presentation_ready.connect(presentations.append)
@@ -2802,11 +2792,7 @@ def test_walkthrough_blocked_action_resolves_the_stated_session_blocker() -> Non
     assert len(presentations) == 1
     presentation = cast(AssistantResponsePresentation, presentations[0])
     assert "Start a new session" in presentation.text
-    assert len(presentation.actions) == 1
-    action = presentation.actions[0]
-    assert action.label == "Start new session"
-    assert action.kind is AssistantResponseActionKind.SEND_MESSAGE
-    assert action.prompt == ASSISTANT_CONFIRM_CONFIRMATION_REQUEST
+    assert not hasattr(presentation, "actions")
 
 
 def test_walkthrough_confirmation_marks_session_reset_as_destructive() -> None:

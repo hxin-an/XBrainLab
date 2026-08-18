@@ -280,6 +280,91 @@ def test_tool_debug_session_runs_backend_without_runtime_activation(qtbot, tmp_p
         app.setProperty("tool_debug_script", None)
 
 
+def test_reserved_response_profile_uses_real_chat_path_without_granite(
+    qtbot,
+    tmp_path,
+):
+    """A reserved response finishes visibly and leaves the next step dispatchable."""
+    from XBrainLab.backend.controller.chat_controller import (
+        ChatMessagePresentationKind,
+    )
+    from XBrainLab.backend.study import Study
+    from XBrainLab.llm.agent.controller import LLMController
+    from XBrainLab.ui.components.agent_manager import AgentManager
+    from XBrainLab.ui.components.assistant_runtime_lifecycle import (
+        AssistantRuntimeLifecycle,
+        AssistantRuntimeLifecycleState,
+    )
+
+    script_path = tmp_path / "response-presentation.json"
+    script_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "xbrainlab.assistant_walkthrough.v1",
+                "profile_id": "response-presentation",
+                "title": "Assistant response presentation",
+                "calls": [
+                    {
+                        "id": "reply",
+                        "tool": "respond_to_user",
+                        "params": {"message": "Choose one preprocessing action first."},
+                        "instruction": "Verify the blue Assistant reply",
+                        "expected_outcomes": ["completed"],
+                    },
+                    {
+                        "id": "dataset",
+                        "tool": "switch_panel",
+                        "params": {"panel_name": "dataset"},
+                        "instruction": "Verify Dataset still opens",
+                        "expected_outcomes": ["completed"],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    app = QApplication.instance()
+    assert isinstance(app, QApplication)
+    app.setProperty("tool_debug_script", str(script_path))
+    window = _ImmediateNavigationWindow()
+    qtbot.addWidget(window)
+    study = Study()
+    runtime = AssistantRuntimeLifecycle(
+        study,
+        controller_factory=lambda current: LLMController(current),
+        config_loader=lambda: (_ for _ in ()).throw(
+            AssertionError("Response diagnostics must not load Granite settings.")
+        ),
+    )
+    manager = AgentManager(window, study, runtime_lifecycle=runtime)
+    try:
+        manager.init_ui()
+        manager.toggle()
+        panel = manager.chat_panel
+        assert panel is not None and panel.debug_mode is not None
+
+        qtbot.mouseClick(panel.send_btn, Qt.MouseButton.LeftButton)
+        qtbot.waitUntil(lambda: panel.debug_mode.index == 1, timeout=10_000)
+        response = manager.chat_controller.get_typed_history()[-1]
+        assert response.content == "Choose one preprocessing action first."
+        assert response.presentation_kind is ChatMessagePresentationKind.ASSISTANT
+        assert window.opened_indices == []
+        assert panel.send_btn.isEnabled()
+
+        qtbot.mouseClick(panel.send_btn, Qt.MouseButton.LeftButton)
+        qtbot.waitUntil(lambda: panel.debug_mode.index == 2, timeout=10_000)
+        assert window.opened_indices == [0]
+        assert panel.debug_mode.is_complete
+        assert runtime.current.backend_mode == "diagnostic"
+    finally:
+        manager.close()
+        qtbot.waitUntil(
+            lambda: runtime.state is AssistantRuntimeLifecycleState.CLOSED,
+            timeout=10_000,
+        )
+        app.setProperty("tool_debug_script", None)
+
+
 def test_contract_failure_profile_advances_only_on_real_terminals(qtbot):
     """The empty-state profile runs through the real no-model frontend boundary."""
     from XBrainLab.backend.controller.chat_controller import (

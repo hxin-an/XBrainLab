@@ -94,6 +94,12 @@ Assistant candidate必須在同一clean/explained exact source依序閉合下列
 transport不建立或載入Granite。JSON profile是executable step sequence authority；本節只保存啟動
 方式與人工選擇，不複製call list。
 
+Response Presentation：
+
+```bash
+poetry run python run.py --tool-debug scripts/dev/agent_tool_walkthrough/response-presentation.json
+```
+
 Contract Failures：
 
 ```bash

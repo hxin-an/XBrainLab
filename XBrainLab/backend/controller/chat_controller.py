@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 from uuid import uuid4
@@ -13,15 +13,10 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from XBrainLab.chat_contract import (
     CHAT_HISTORY_LIVE_WINDOW_ROWS,
     CHAT_HISTORY_SCHEMA_VERSION,
-    MAX_CHAT_ACTION_ID_LENGTH,
-    MAX_CHAT_ACTION_LABEL_LENGTH,
-    MAX_CHAT_ACTION_PROMPT_LENGTH,
     MAX_CHAT_HISTORY_ROWS,
     MAX_CHAT_MESSAGE_CONTENT_LENGTH,
     MAX_CHAT_MESSAGE_ID_LENGTH,
-    MAX_CHAT_PRESENTATION_ID_LENGTH,
     MAX_CHAT_PRESENTATION_ROWS_PER_TURN,
-    MAX_CHAT_RESPONSE_ACTIONS,
     MIN_CHAT_TURN_HISTORY_ROWS,
     bounded_chat_string,
 )
@@ -59,138 +54,6 @@ class ChatMessagePresentationKind(str, Enum):
     CANCELLED = "cancelled"
 
 
-class ChatResponseActionKind(str, Enum):
-    """Bounded UI behavior attached to an assistant response."""
-
-    SEND_MESSAGE = "send_message"
-    OPEN_PANEL = "open_panel"
-    OPEN_DATA_IMPORT = "open_data_import"
-
-
-class ChatPanelTarget(str, Enum):
-    """Existing main-window destinations available to response actions."""
-
-    DATASET = "dataset"
-    PREPROCESS = "preprocess"
-    TRAINING = "training"
-    EVALUATION = "evaluation"
-    VISUALIZATION = "visualization"
-
-
-class ChatActionState(str, Enum):
-    """Whether persisted response actions may still be selected."""
-
-    NONE = "none"
-    ACTIVE = "active"
-    CONSUMED = "consumed"
-
-
-@dataclass(frozen=True, slots=True)
-class ChatResponseAction:
-    """Serializable, typed action rendered below one assistant response."""
-
-    action_id: str
-    label: str
-    kind: ChatResponseActionKind
-    prompt: str = ""
-    panel: ChatPanelTarget | None = None
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.kind, ChatResponseActionKind):
-            raise TypeError("Chat response action kind must be typed.")
-        if self.panel is not None and not isinstance(self.panel, ChatPanelTarget):
-            raise TypeError("Chat response panel target must be typed.")
-        object.__setattr__(
-            self,
-            "action_id",
-            bounded_chat_string(
-                self.action_id,
-                field_name="Chat response action id",
-                maximum_length=MAX_CHAT_ACTION_ID_LENGTH,
-                normalize_whitespace=True,
-            ),
-        )
-        object.__setattr__(
-            self,
-            "label",
-            bounded_chat_string(
-                self.label,
-                field_name="Chat response action label",
-                maximum_length=MAX_CHAT_ACTION_LABEL_LENGTH,
-                normalize_whitespace=True,
-            ),
-        )
-        object.__setattr__(
-            self,
-            "prompt",
-            bounded_chat_string(
-                self.prompt,
-                field_name="Chat response action prompt",
-                maximum_length=MAX_CHAT_ACTION_PROMPT_LENGTH,
-                normalize_whitespace=True,
-            ),
-        )
-        if not self.action_id or not self.label:
-            raise ValueError("Chat response actions require an id and label.")
-        if self.kind is ChatResponseActionKind.SEND_MESSAGE:
-            if not self.prompt or self.panel is not None:
-                raise ValueError("Send-message actions require only a prompt.")
-        elif self.kind is ChatResponseActionKind.OPEN_PANEL and (
-            not isinstance(self.panel, ChatPanelTarget) or self.prompt
-        ):
-            raise ValueError("Open-panel actions require only a panel target.")
-        elif self.kind is ChatResponseActionKind.OPEN_DATA_IMPORT and (
-            self.prompt or self.panel is not None
-        ):
-            raise ValueError("Open-data-import actions do not accept payload fields.")
-
-    def to_history_dict(self) -> dict[str, str | None]:
-        """Return a JSON-safe action payload."""
-        return {
-            "action_id": self.action_id,
-            "label": self.label,
-            "kind": self.kind.value,
-            "prompt": self.prompt,
-            "panel": self.panel.value if self.panel is not None else None,
-        }
-
-    @classmethod
-    def from_history_value(cls, value: object) -> ChatResponseAction | None:
-        """Safely parse one persisted action, dropping malformed legacy data."""
-        if not isinstance(value, Mapping) or not _is_json_like(value):
-            return None
-        action_id = value.get("action_id")
-        label = value.get("label")
-        kind_value = value.get("kind")
-        prompt = value.get("prompt", "")
-        panel_value = value.get("panel")
-        if (
-            not isinstance(action_id, str)
-            or not isinstance(label, str)
-            or not isinstance(kind_value, str)
-            or not isinstance(prompt, str)
-        ):
-            return None
-        if panel_value is not None and not isinstance(panel_value, str):
-            return None
-        try:
-            kind = ChatResponseActionKind(kind_value)
-            panel = (
-                ChatPanelTarget(panel_value)
-                if isinstance(panel_value, str) and panel_value
-                else None
-            )
-            return cls(
-                action_id=action_id,
-                label=label,
-                kind=kind,
-                prompt=prompt,
-                panel=panel,
-            )
-        except (TypeError, ValueError):
-            return None
-
-
 @dataclass(frozen=True, slots=True)
 class ChatMessageRecord:
     """Immutable transcript record used by rendering and persistence."""
@@ -199,17 +62,12 @@ class ChatMessageRecord:
     content: str
     presentation_kind: ChatMessagePresentationKind
     message_id: str
-    presentation_id: str = ""
-    actions: tuple[ChatResponseAction, ...] = ()
-    action_state: ChatActionState = ChatActionState.NONE
 
     def __post_init__(self) -> None:
         if not isinstance(self.role, ChatMessageRole):
             raise TypeError("Chat message role must be typed.")
         if not isinstance(self.presentation_kind, ChatMessagePresentationKind):
             raise TypeError("Chat message presentation kind must be typed.")
-        if not isinstance(self.action_state, ChatActionState):
-            raise TypeError("Chat message action state must be typed.")
         object.__setattr__(
             self,
             "content",
@@ -228,54 +86,15 @@ class ChatMessageRecord:
                 maximum_length=MAX_CHAT_MESSAGE_ID_LENGTH,
             ),
         )
-        object.__setattr__(
-            self,
-            "presentation_id",
-            bounded_chat_string(
-                self.presentation_id,
-                field_name="Chat presentation id",
-                maximum_length=MAX_CHAT_PRESENTATION_ID_LENGTH,
-            ),
-        )
-        if not isinstance(self.actions, tuple) or not all(
-            isinstance(action, ChatResponseAction) for action in self.actions
-        ):
-            raise TypeError("Chat message actions must be a typed tuple.")
         if not self.message_id.strip():
             raise ValueError("Chat message id cannot be empty.")
-        if self.presentation_id and not self.presentation_id.strip():
-            raise ValueError("Chat presentation id cannot be blank.")
-        if len(self.actions) > MAX_CHAT_RESPONSE_ACTIONS:
-            raise ValueError(
-                f"Chat messages may expose at most {MAX_CHAT_RESPONSE_ACTIONS} actions."
-            )
-        if len({action.action_id for action in self.actions}) != len(self.actions):
-            raise ValueError("Chat response action ids must be unique per message.")
         if self.role is ChatMessageRole.USER:
             if self.presentation_kind is not ChatMessagePresentationKind.USER:
                 raise ValueError("User messages require the user presentation kind.")
-            if (
-                self.actions
-                or self.presentation_id
-                or self.action_state is not ChatActionState.NONE
-            ):
-                raise ValueError("User messages cannot expose response actions.")
         elif self.presentation_kind is ChatMessagePresentationKind.USER:
             raise ValueError(
                 "Assistant messages cannot use the user presentation kind."
             )
-        if self.actions:
-            if not self.presentation_id:
-                raise ValueError("Response actions require a presentation id.")
-            if self.action_state is ChatActionState.NONE:
-                raise ValueError("Response actions require active or consumed state.")
-        elif self.action_state is not ChatActionState.NONE:
-            raise ValueError("Messages without actions require the none action state.")
-
-    @property
-    def has_active_actions(self) -> bool:
-        """Return whether the response actions are still selectable."""
-        return bool(self.actions and self.action_state is ChatActionState.ACTIVE)
 
     def to_history_dict(self) -> dict[str, Any]:
         """Return the versioned JSON-safe persistence payload."""
@@ -285,9 +104,6 @@ class ChatMessageRecord:
             "content": self.content,
             "presentation_kind": self.presentation_kind.value,
             "message_id": self.message_id,
-            "presentation_id": self.presentation_id,
-            "actions": [action.to_history_dict() for action in self.actions],
-            "action_state": self.action_state.value,
         }
 
     @classmethod
@@ -338,42 +154,6 @@ class ChatMessageRecord:
         ):
             return None
 
-        raw_actions = value.get("actions", [])
-        if not isinstance(raw_actions, list):
-            return None
-        if len(raw_actions) > MAX_CHAT_RESPONSE_ACTIONS:
-            return None
-        if role is ChatMessageRole.USER and raw_actions:
-            return None
-        parsed_action_values = [
-            ChatResponseAction.from_history_value(action) for action in raw_actions
-        ]
-        if any(action is None for action in parsed_action_values):
-            return None
-        parsed_actions = tuple(
-            action for action in parsed_action_values if action is not None
-        )
-        presentation_id_value = value.get("presentation_id", "")
-        if not isinstance(presentation_id_value, str):
-            return None
-        presentation_id = presentation_id_value
-        try:
-            action_state_value = value.get("action_state", "none")
-            if not isinstance(action_state_value, str):
-                return None
-            action_state = ChatActionState(action_state_value)
-        except ValueError:
-            return None
-        if parsed_actions and (
-            not presentation_id or action_state is ChatActionState.NONE
-        ):
-            return None
-        if not parsed_actions:
-            if action_state is not ChatActionState.NONE:
-                return None
-            action_state = ChatActionState.NONE
-            presentation_id = ""
-
         message_id_value = value.get("message_id", "")
         if not isinstance(message_id_value, str):
             return None
@@ -385,9 +165,6 @@ class ChatMessageRecord:
                 content=content,
                 presentation_kind=presentation_kind,
                 message_id=message_id_value,
-                presentation_id=presentation_id,
-                actions=parsed_actions,
-                action_state=action_state,
             )
         except (TypeError, ValueError):
             return None
@@ -417,108 +194,6 @@ class ChatHistoryReplacement:
             raise TypeError("Chat history replacements require a typed tuple.")
         if len({record.message_id for record in self.records}) != len(self.records):
             raise ValueError("Chat history replacement message ids must be unique.")
-        presentation_ids = tuple(
-            record.presentation_id for record in self.records if record.presentation_id
-        )
-        if len(set(presentation_ids)) != len(presentation_ids):
-            raise ValueError(
-                "Chat history replacement presentation ids must be unique."
-            )
-        action_ids = tuple(
-            action.action_id for record in self.records for action in record.actions
-        )
-        if len(set(action_ids)) != len(action_ids):
-            raise ValueError(
-                "Chat history replacement response action ids must be unique."
-            )
-
-
-@dataclass(frozen=True, slots=True)
-class ChatResponseActionSelection:
-    """Untrusted UI selection values resolved against canonical history."""
-
-    presentation_id: str
-    action_id: str
-    label: str
-    kind: ChatResponseActionKind
-    prompt: str = ""
-    panel: ChatPanelTarget | None = None
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.kind, ChatResponseActionKind):
-            raise TypeError("Chat action selection kind must be typed.")
-        if self.panel is not None and not isinstance(self.panel, ChatPanelTarget):
-            raise TypeError("Chat action selection panel must be typed.")
-        limits = {
-            "presentation_id": MAX_CHAT_PRESENTATION_ID_LENGTH,
-            "action_id": MAX_CHAT_ACTION_ID_LENGTH,
-            "label": MAX_CHAT_ACTION_LABEL_LENGTH,
-            "prompt": MAX_CHAT_ACTION_PROMPT_LENGTH,
-        }
-        for field_name, maximum_length in limits.items():
-            object.__setattr__(
-                self,
-                field_name,
-                bounded_chat_string(
-                    getattr(self, field_name),
-                    field_name=f"Chat action selection {field_name}",
-                    maximum_length=maximum_length,
-                    normalize_whitespace=True,
-                ),
-            )
-        if not self.presentation_id or not self.action_id or not self.label:
-            raise ValueError(
-                "Chat action selections require a presentation ID, action ID, "
-                "and label."
-            )
-
-    @classmethod
-    def from_action(
-        cls,
-        presentation_id: str,
-        action: ChatResponseAction,
-    ) -> ChatResponseActionSelection:
-        if not isinstance(action, ChatResponseAction):
-            raise TypeError("Chat action selections require a typed action.")
-        return cls(
-            presentation_id=presentation_id,
-            action_id=action.action_id,
-            label=action.label,
-            kind=action.kind,
-            prompt=action.prompt,
-            panel=action.panel,
-        )
-
-    def matches(self, action: ChatResponseAction) -> bool:
-        return bool(
-            isinstance(action, ChatResponseAction)
-            and self.action_id == action.action_id
-            and self.label == action.label
-            and self.kind is action.kind
-            and self.prompt == action.prompt
-            and self.panel is action.panel
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class ChatResponseActionResolution:
-    """Canonical action plus the active record needed for a rejected UI retry."""
-
-    action: ChatResponseAction
-    source_record: ChatMessageRecord
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.action, ChatResponseAction):
-            raise TypeError("Chat response action resolutions require a typed action.")
-        if not isinstance(self.source_record, ChatMessageRecord):
-            raise TypeError("Chat response action resolutions require a typed record.")
-        if (
-            not self.source_record.has_active_actions
-            or self.action not in self.source_record.actions
-        ):
-            raise ValueError(
-                "Chat response action resolutions require their active source record."
-            )
 
 
 class ChatController(QObject):
@@ -542,7 +217,7 @@ class ChatController(QObject):
         self.is_processing = False
 
     def add_user_message(self, text: str) -> ChatMessageRecord:
-        """Add one user message and retire prior response actions."""
+        """Add one user message."""
         record = ChatMessageRecord(
             role=ChatMessageRole.USER,
             content=text,
@@ -559,24 +234,17 @@ class ChatController(QObject):
         presentation_kind: ChatMessagePresentationKind = (
             ChatMessagePresentationKind.ASSISTANT
         ),
-        presentation_id: str = "",
-        actions: tuple[ChatResponseAction, ...] = (),
     ) -> ChatMessageRecord:
         """Add one explicitly typed assistant presentation."""
         if not isinstance(presentation_kind, ChatMessagePresentationKind):
             raise TypeError("Agent messages require a typed presentation kind.")
         if presentation_kind is ChatMessagePresentationKind.USER:
             raise ValueError("Agent messages cannot use the user presentation kind.")
-        if actions and not presentation_id:
-            raise ValueError("Agent response actions require a presentation id.")
         record = ChatMessageRecord(
             role=ChatMessageRole.ASSISTANT,
             content=text,
             presentation_kind=presentation_kind,
             message_id=uuid4().hex,
-            presentation_id=presentation_id,
-            actions=actions,
-            action_state=(ChatActionState.ACTIVE if actions else ChatActionState.NONE),
         )
         reserved = self._reserve_prepared_presentation_capacity()
         try:
@@ -667,38 +335,23 @@ class ChatController(QObject):
         return self._pruned_row_count
 
     def _require_record_appendable(self, record: ChatMessageRecord) -> None:
-        """Validate an append before any existing action state is mutated."""
+        """Validate an append before canonical history is mutated."""
         self._require_history_capacity()
         if any(item.message_id == record.message_id for item in self._history_records):
             raise ValueError("Chat message ids must be unique.")
-        if record.presentation_id and any(
-            item.presentation_id == record.presentation_id
-            for item in self._history_records
-        ):
-            raise ValueError("Chat presentation ids must be unique.")
-        known_action_ids = {
-            action.action_id
-            for item in self._history_records
-            for action in item.actions
-        }
-        if any(action.action_id in known_action_ids for action in record.actions):
-            raise ValueError("Chat response action ids must be unique.")
 
     def _append_record_transaction(self, record: ChatMessageRecord) -> None:
-        """Commit action retirement and one append before publishing UI signals."""
+        """Commit one append before publishing UI signals."""
         self._require_record_appendable(record)
         history_before = list(self._history_records)
         messages_before = list(self.messages)
         try:
-            consumed_records = self._consume_active_actions(emit=False)
             self._append_record(record, emit=False)
         except Exception:
             self._history_records = history_before
             self.messages = messages_before
             raise
 
-        for consumed_record in consumed_records:
-            self._emit_record_updated(consumed_record)
         self._emit_record_added(record)
 
     def _append_record(self, record: ChatMessageRecord, *, emit: bool = True) -> None:
@@ -765,153 +418,6 @@ class ChatController(QObject):
         if self._history_replacement_depth:
             raise RuntimeError("Chat history replacement cannot be nested.")
 
-    def consume_response_actions(self, presentation_id: str) -> bool:
-        """Persist that one visible action set is no longer selectable."""
-        if not isinstance(presentation_id, str) or not presentation_id:
-            return False
-        for index in range(len(self._history_records) - 1, -1, -1):
-            record = self._history_records[index]
-            if (
-                record.presentation_id != presentation_id
-                or not record.has_active_actions
-            ):
-                continue
-            updated = replace(record, action_state=ChatActionState.CONSUMED)
-            self._history_records[index] = updated
-            self._emit_record_updated(updated)
-            return True
-        return False
-
-    def consume_all_response_actions(self) -> None:
-        """Make every live response action inert at a turn/session boundary."""
-        self._consume_active_actions()
-
-    def resolve_response_action(
-        self,
-        selection: ChatResponseActionSelection,
-    ) -> ChatResponseAction | None:
-        """Return one canonical active action after exact payload matching."""
-        if not isinstance(selection, ChatResponseActionSelection):
-            return None
-        for record in reversed(self._history_records):
-            if (
-                record.presentation_id != selection.presentation_id
-                or not record.has_active_actions
-            ):
-                continue
-            action = next(
-                (
-                    candidate
-                    for candidate in record.actions
-                    if candidate.action_id == selection.action_id
-                ),
-                None,
-            )
-            if action is None or not selection.matches(action):
-                return None
-            return action
-        return None
-
-    def active_response_record(
-        self,
-        *,
-        message_id: str,
-        presentation_id: str,
-    ) -> ChatMessageRecord | None:
-        """Return one exact action row only while it remains canonically active."""
-        if (
-            type(message_id) is not str
-            or not message_id
-            or type(presentation_id) is not str
-            or not presentation_id
-        ):
-            return None
-        for record in reversed(self._history_records):
-            if (
-                record.message_id == message_id
-                and record.presentation_id == presentation_id
-                and record.has_active_actions
-            ):
-                return record
-        return None
-
-    def resolve_and_consume_response_action(
-        self,
-        selection: ChatResponseActionSelection,
-    ) -> ChatResponseActionResolution | None:
-        """Resolve one action and own its consume/retry transaction.
-
-        Navigation actions are consumed immediately. Send-message actions remain
-        active until an admitted user row consumes them, so rejected admission is
-        retryable without restoring controller state.
-        """
-        if not isinstance(selection, ChatResponseActionSelection):
-            return None
-        for index in range(len(self._history_records) - 1, -1, -1):
-            record = self._history_records[index]
-            if (
-                record.presentation_id != selection.presentation_id
-                or not record.has_active_actions
-            ):
-                continue
-            action = next(
-                (
-                    candidate
-                    for candidate in record.actions
-                    if candidate.action_id == selection.action_id
-                ),
-                None,
-            )
-            if action is None or not selection.matches(action):
-                return None
-            resolution = ChatResponseActionResolution(
-                action=action,
-                source_record=record,
-            )
-            if action.kind is ChatResponseActionKind.SEND_MESSAGE:
-                return resolution
-            updated = replace(record, action_state=ChatActionState.CONSUMED)
-            self._history_records[index] = updated
-            self._emit_record_updated(updated)
-            return resolution
-        return None
-
-    def _consume_active_actions(
-        self,
-        *,
-        emit: bool = True,
-    ) -> tuple[ChatMessageRecord, ...]:
-        consumed_records: list[ChatMessageRecord] = []
-        for index, record in enumerate(self._history_records):
-            if not record.has_active_actions:
-                continue
-            updated = replace(record, action_state=ChatActionState.CONSUMED)
-            self._history_records[index] = updated
-            consumed_records.append(updated)
-            if emit:
-                self._emit_record_updated(updated)
-        return tuple(consumed_records)
-
-    def update_presentation_kind(
-        self,
-        presentation_id: str,
-        presentation_kind: ChatMessagePresentationKind,
-    ) -> bool:
-        """Update one correlated assistant record from a later typed event."""
-        if not isinstance(presentation_kind, ChatMessagePresentationKind):
-            raise TypeError("Updated chat presentation kind must be typed.")
-        if presentation_kind is ChatMessagePresentationKind.USER:
-            raise ValueError("Assistant presentations cannot become user messages.")
-        for index in range(len(self._history_records) - 1, -1, -1):
-            record = self._history_records[index]
-            if record.presentation_id != presentation_id:
-                continue
-            updated = replace(record, presentation_kind=presentation_kind)
-            self._history_records[index] = updated
-            self._emit_record_updated(updated)
-            return True
-        return False
-
     def clear_conversation(self) -> None:
         """Clear the entire conversation history and notify the UI."""
         self._require_history_replacement_idle()
@@ -947,8 +453,6 @@ class ChatController(QObject):
             return 0
         parsed: list[ChatMessageRecord] = []
         message_ids: set[str] = set()
-        presentation_ids: set[str] = set()
-        action_ids: set[str] = set()
         try:
             for value in history:
                 if len(parsed) >= MAX_CHAT_HISTORY_ROWS:
@@ -956,47 +460,20 @@ class ChatController(QObject):
                 record = ChatMessageRecord.from_history_value(value)
                 if record is None:
                     return 0
-                record_action_ids = {action.action_id for action in record.actions}
-                if (
-                    record.message_id in message_ids
-                    or (
-                        bool(record.presentation_id)
-                        and record.presentation_id in presentation_ids
-                    )
-                    or bool(record_action_ids & action_ids)
-                ):
+                if record.message_id in message_ids:
                     return 0
-                if record.actions:
-                    record = replace(record, action_state=ChatActionState.CONSUMED)
                 parsed.append(record)
                 message_ids.add(record.message_id)
-                if record.presentation_id:
-                    presentation_ids.add(record.presentation_id)
-                action_ids.update(record_action_ids)
         except Exception:
             return 0
 
-        normalized: list[ChatMessageRecord] = []
-        active_index: int | None = None
-        for record in parsed:
-            if active_index is not None:
-                normalized[active_index] = replace(
-                    normalized[active_index],
-                    action_state=ChatActionState.CONSUMED,
-                )
-                active_index = None
-            normalized.append(record)
-            if record.has_active_actions:
-                active_index = len(normalized) - 1
-
-        self._history_records = normalized
+        self._history_records = parsed
         self._pruned_row_count = 0
         self._remaining_prepared_presentation_rows = None
         self.messages = [
-            {"role": record.role.value, "content": record.content}
-            for record in normalized
+            {"role": record.role.value, "content": record.content} for record in parsed
         ]
-        restored_records = tuple(normalized)
+        restored_records = tuple(parsed)
         self._publish_history_replacement(
             ChatHistoryReplacement(
                 kind=ChatHistoryReplacementKind.RESTORE,

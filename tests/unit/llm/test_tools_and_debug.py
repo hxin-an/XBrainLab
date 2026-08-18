@@ -127,6 +127,82 @@ class TestToolExecutor:
 
 # --- tool_debug_mode.py ---
 class TestToolDebugMode:
+    def test_loads_reserved_response_without_registering_it_as_a_tool(
+        self,
+        tmp_path,
+    ):
+        import json
+
+        from XBrainLab.debug.tool_debug_mode import ToolDebugMode
+        from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
+
+        script = {
+            "schema_version": "xbrainlab.assistant_walkthrough.v1",
+            "profile_id": "response",
+            "title": "Response walkthrough",
+            "calls": [
+                {
+                    "id": "reply",
+                    "tool": "respond_to_user",
+                    "params": {"message": "Choose one preprocessing action first."},
+                    "instruction": "Verify the Assistant reply",
+                    "expected_outcomes": ["completed"],
+                }
+            ],
+        }
+        path = tmp_path / "response.json"
+        path.write_text(json.dumps(script), encoding="utf-8")
+
+        debugger = ToolDebugMode(str(path))
+
+        assert debugger.current_call is not None
+        assert debugger.current_call.tool == "respond_to_user"
+        assert debugger.current_call.params == {
+            "message": "Choose one preprocessing action first."
+        }
+        assert "respond_to_user" not in AGENT_ACTION_CONTRACTS.tool_names()
+
+    @pytest.mark.parametrize(
+        "params",
+        (
+            {},
+            {"message": ""},
+            {"message": "Reply", "extra": "forbidden"},
+        ),
+    )
+    def test_reserved_response_requires_exact_nonempty_message(
+        self,
+        tmp_path,
+        params,
+    ):
+        import json
+
+        from XBrainLab.debug.tool_debug_mode import ToolDebugMode
+
+        path = tmp_path / "invalid-response.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "xbrainlab.assistant_walkthrough.v1",
+                    "profile_id": "invalid-response",
+                    "title": "Invalid response",
+                    "calls": [
+                        {
+                            "id": "reply",
+                            "tool": "respond_to_user",
+                            "params": params,
+                            "instruction": "Reject malformed response",
+                            "expected_outcomes": ["completed"],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match="step 1 is invalid"):
+            ToolDebugMode(str(path))
+
     def test_load_valid_script(self, tmp_path):
         import json
 
