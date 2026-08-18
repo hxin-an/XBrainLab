@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-08-18`
+最後更新：`2026-08-19`
 
 ## 目前焦點
 
@@ -8,7 +8,7 @@
 Compute Saliency completion 與 `respond_to_user` 可見行為，再物理刪除舊 response-action UI。
 本輪完成前不測 Granite selection、不合併 integration 或 main。
 
-目前 phase：`Active；implementation complete，candidate validation`
+目前 phase：`Active；candidate validation`
 
 ## 問題與證據
 
@@ -27,6 +27,11 @@ Compute Saliency completion 與 `respond_to_user` 可見行為，再物理刪除
 - Long-running confirmation 仍以 generic `Long-running action`、Reason 與 Action details 呈現；
   使用者已核准收斂成產品 action 名稱、Impact、Confirm／Cancel。
 
+- 真人 `response-presentation` 手測發現一般藍色 Assistant 回答的文字視覺上偏：外層
+  bubble 上下 margin 各 10 px，但 prose view 預留的 8 px 防裁切高度全落在文字下方。
+  使用者已明確核准只修正一般藍色回答的垂直置中；水平位置、文字左對齊及
+  success／attention／error／cancelled／user bubbles 不變。
+
 ## Observable outcome
 
 1. `respond_to_user` diagnostic 由當下 ApplicationService publication 取得 workflow stage，組成
@@ -42,6 +47,8 @@ Compute Saliency completion 與 `respond_to_user` 可見行為，再物理刪除
    只保留 typed bubble。Empty-state suggestion prompts不變。
 5. Long-running card只顯示產品 action名稱、Impact與Confirm／Cancel；setting-change與destructive
    confirmation的既有詳細資訊不變。
+6. 一般藍色 Assistant 回答的 prose 內容在保留既有 8 px 防裁切高度、bubble
+   總高與寬度 contract 的前提下上下視覺置中；不改其他 presentation kinds。
 
 ## Scope、complexity 與修理順序
 
@@ -87,6 +94,19 @@ working directory解析後仍能由`ToolDebugMode`載入；Ruff、Basedpyright�
 debug integration／ChatPanel相鄰測試通過。`eabe7959`的真人批准尚未發生且已由本修正取代；固定新的
 local candidate commit後重新執行受影響的首次啟動手測。
 
+UI repair（2026-08-19）：先以一行藍色 Assistant prose 建立上下可見留白的紅測試，
+再只重新分配該 presentation 的 prose viewport 垂直 guard。英文、中文與換行在
+320／420／760 px 及 100／125／150% scale 的上下差距不得超過 1 logical px；現有
+`documentSize + 8`、wrapping與clipping assertions不得放寬。完成focused tests、Ruff、Basedpyright與
+exact-source response screenshot後，回到真人 `response-presentation` 驗收；本次source修改會使先前手測失效。
+
+Checkpoint（2026-08-19）：上述 UI repair 已完成 red→green。藍色 Assistant prose 在三種寬度、
+英文／中文／換行與100／125／150% offscreen scale的上下差距為可接受範圍；其他
+presentation kinds不套用新inset。201個MessageBubble／ChatPanel／capture-contract相鄰測試、
+Ruff、Basedpyright、format check、focused ChatPanel walkthrough與7張default baseline comparison均通過。
+上述仍只是Linux／Qt offscreen checkpoint；下一步是在固定candidate source重跑真人
+`response-presentation`。
+
 ## Focused validation 與人工 stop boundary
 
 - Registry仍精確18 tools，`respond_to_user`只能走reserved response path；message空值／額外key fail closed。
@@ -97,6 +117,8 @@ local candidate commit後重新執行受影響的首次啟動手測。
   cancel、blocked與failed皆釋放turn且不誤報completed。
 - Source guard與Qt assertions證明response-action UI／payload已不存在、empty-state prompts仍存在，
   long-running card只有核准欄位；可見變更另產生320／420／760px artifacts。
+- 藍色 Assistant prose 的上下留白差距最多 1 logical px；使用者、semantic status、Markdown、
+  CJK、streaming、wrapping與code block高度不回歸。
 - 同一candidate SHA依序真人執行 `response-presentation`、`contract-failures`、`gui-cancellation`、
   `complete-workflow`。任一步unexpected terminal、頁面錯誤、Suggested-next-step殘留、確認後卡住或
   Compute未進busy／terminal即停止；source再改使受影響手測失效。
