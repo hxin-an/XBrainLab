@@ -8,7 +8,7 @@
 完成 replacement、atomic cutover、deletion 與 exact-SHA candidate；在完整候選前不要求使用者手測，
 未取得同一 source 的手測通過不得合併 main。**
 
-目前 phase：`Evaluate；raw→epoch repair local green，Granite 2B two-pass A/B pending`
+目前 phase：`Checkpoint；raw→epoch repaired，Granite 2B two-pass rejected`
 
 目前 branch：`refactor/assistant-target-adapters-v2`
 
@@ -22,7 +22,7 @@ preprocess、四個lifecycle與`switch_panel`。Local commits依序為`2366c6b3`
 D3已移除兩個無production caller的policy modules。保留schema、同generation publication、path provenance、
 ApplicationService capability與confirmation；`tests/unit/llm`在target 17 surface上`1680 passed`。
 
-下一步依序固定為兩個slice。第一個slice修復目前exact head把「尚無已提交preprocess operation」錯誤
+本輪已依序完成兩個slice。第一個slice修復原exact head把「尚無已提交preprocess operation」錯誤
 擴大成「產品禁止raw直接epoch」的capability regression：`data_loaded`仍誠實表示只有raw，但同時發布
 Channel、五項direct preprocess、Epoch與Switch；`CreateEpoch`要求raw與合法epoch context，不強制先做
 preprocessing。可見狀態固定為`EEG data loaded · Ready for preprocessing or epoching`；使用者已明確
@@ -72,6 +72,15 @@ warm p95 latency；B的gate只有`workflow_stage`、`decision`、`reason_class`�
 `tool_name`或`parameters`。首次單case真Granite smoke因prompt使用非法JSON union而補出額外鍵，
 strict parser正確拒絕；改為合法三鍵skeleton後，同一`import_eeg_data_01`的A、gate與final均
 精確通過，A約1.70秒、B約1.78秒。這只是runner與prompt-contract smoke，不是48-case結論。
+
+Exact-source 48-case A/B已在`42300de37d5cadec3329e93b1eccedbe7c29e83f`、固定Granite revision
+`707f574c62054322f6b5b04b6d075f0a8f05e0f0`與offline CUDA上完成。A為34/48（positive
+34/34、challenge 0/14）；B為22/48（positive 22/34、challenge 0/14）。B有17個gate
+format／一致性failure，且多個正確`respond`的gate在final pass仍被模型改成tool call。A warm
+p95為1537.94 ms，B為2803.29 ms，約1.823倍；雖低於6秒絕對上限，但超過1.5倍
+相對上限。因accuracy與latency兩項都失敗，依stop condition拒絕產品化two-pass；不修改
+normal generation path、不恢復Host routing、不換模型，artifact保留於ignored
+`build/dev-artifacts/stable-assistant-model-eval/ab-42300de3.json`作development checkpoint。
 
 最新local red-first證據：exact Stable v2 branch可在offline模式載入固定Granite revision並產生strict三欄
 JSON，但`inspect_local_assistant_runtime.py --structured-smoke --strict`仍在prompt與oracle中要求已退役的
@@ -327,12 +336,12 @@ Linux full suite、Windows/macOS、public multi-dataset與MkDocs checks皆comple
     Host policy分片物理刪除obsolete code，不保留compatibility catalog。
 12. **已完成 — stage truth repair**：以真load／ApplicationService publication先紅測，將
     `has_preprocessed_data`改由已提交operation判定；同一測試要求normal prompt在import後發布Channel，
-    operation後發布Epoch，Reset後回到Channel。Dataset visible-state capture已同步，不改UI source；focused
-    state／capture／prompt contract合計196 tests通過。
-13. **進行中 — 48-case replacement evidence**：保留34 positive gold cases，已新增14個不進RAG的
-    challenge cases與分組報告；8個evaluator unit tests通過。下一步同一次fixed Granite load要求48/48，
-    並保留runtime、frontend、source-diverse與安全gate。Same-source Granite結果為34/48：positive 34/34、
-    challenge 0/14，故本項blocked而非完成。
+    operation後發布Epoch，Reset後回到Channel。依已核准文案只更新既有status presenter，不改
+    layout、dialog、theme或interaction；focused state／capture／prompt contract合計196 tests通過。
+13. **已完成評估／產品化被拒 — 48-case replacement evidence**：保留34 positive gold cases與
+    14個不進RAG的challenge cases。Same-source A為34/48；model-owned two-pass B為22/48，且
+    warm p95相對延遲為1.823倍。Accuracy與relative-latency gate均失敗，因此不進入
+    production generation slice，不以runtime、frontend或Host fallback掩蓋evaluator failure。
 14. **blocked — exact candidate freeze**：current architecture／target count／validation walkthrough已同步；
     完整local handoff與remote applicable checks在同一clean/explained pushed SHA閉合後，才交付正常Granite
     safe E2E與三份真人frontend walkthrough。
@@ -378,7 +387,7 @@ benchmark。
 - Stage truth red-first：working raw copy存在但operation history為空時，原source錯誤發布
   `has_preprocessed_data=true`／`preprocessed`；改由既有`preprocessed.operations`判定後，import與reset是
   `data_loaded`，真正operation後才是`preprocessed`。Focused state、Dataset capture、pipeline與prompt
-  projection合計196 tests通過；沒有UI source、owner、state flag或compatibility path新增。
+  projection合計196 tests通過；只改已授權status copy，沒有owner、state flag或compatibility path新增。
 - 48-case evaluator contract：34個production RAG positive cases保持不變，14個dev-only challenge涵蓋
   missing parameter、out-of-stage、general、ambiguous與multi-action；strict response scorer及positive／
   challenge分組report共8 tests通過。Fixed Granite exact revision
@@ -388,6 +397,10 @@ benchmark。
   partial執行第一項。兩輪只增加static fallback shape／通用counter-example的prompt實驗最高僅2/14且
   仍含false-completion，已完整撤除，避免為過測試膨脹production prompt。Scorer另加forbidden
   completion claim，防止「已開始／已停止／已reset」文字被required-keyword誤判通過。
+  後續model-owned two-pass A/B未改corpus：B只通過22/34 positive且challenge仍0/14；17個
+  gate本身格式／一致性失敗，部分正確`respond`的gate也在final被模型改成tool。
+  B warm p95 2803.29 ms雖低於6秒，但為A的1.823倍而超過1.5倍上限。本輪已按
+  預設stop condition停在evaluator checkpoint。
 
 - Red-first已重現8個focused contract failure：parser接受兩欄root與多分支response，controller不比對
   model/backend stage，prompt與eval仍教舊格式。
