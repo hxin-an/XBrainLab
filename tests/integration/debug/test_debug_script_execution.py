@@ -97,6 +97,16 @@ def test_debug_mode_ui_flow(qtbot, debug_script_file):
     # 5. A second click cannot consume the pending step.
     qtbot.mouseClick(panel.send_btn, Qt.MouseButton.LeftButton)
     assert mock_receiver.call_count == 1  # Still 1
+    panel.complete_debug_step("cancelled")
+    assert panel.debug_mode.index == 0
+    assert panel.debug_mode.can_dispatch
+    assert panel.send_btn.isEnabled() is True
+    assert "retry" in panel.input_field.placeholderText().casefold()
+
+    qtbot.mouseClick(panel.send_btn, Qt.MouseButton.LeftButton)
+    assert mock_receiver.call_count == 2
+    assert panel.debug_mode.is_waiting
+
     panel.complete_debug_step("completed")
     assert panel.debug_mode.index == 1
     assert panel.debug_mode.is_complete

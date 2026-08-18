@@ -186,7 +186,7 @@ class TestToolDebugMode:
         with pytest.raises(ValueError, match="valid JSON"):
             ToolDebugMode(str(p))
 
-    def test_terminal_mismatch_stops_without_consuming(self, tmp_path):
+    def test_terminal_mismatch_keeps_step_retryable_without_consuming(self, tmp_path):
         import json
 
         from XBrainLab.debug.tool_debug_mode import ToolDebugMode
@@ -215,7 +215,16 @@ class TestToolDebugMode:
         assert dbg.complete_pending("panel_navigation_failed") is False
         assert dbg.index == 0
         assert "panel_navigation_failed" in dbg.failure
-        assert not dbg.can_dispatch
+        assert dbg.can_dispatch
+
+        retry = dbg.begin_call()
+
+        assert retry is not None
+        assert retry.step_id == "open"
+        assert dbg.failure == ""
+        assert dbg.complete_pending("completed") is True
+        assert dbg.index == 1
+        assert dbg.is_complete
 
 
 # --- visualization/base.py ---

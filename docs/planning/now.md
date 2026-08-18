@@ -8,9 +8,21 @@
 完成 replacement、atomic cutover、deletion 與 exact-SHA candidate；在完整候選前不要求使用者手測，
 未取得同一 source 的手測通過不得合併 main。**
 
-目前 phase：`Checkpoint；raw→epoch repaired，Granite 2B two-pass rejected`
+目前 phase：`Checkpoint；core no-model behavior walkthrough preflight`
 
 目前 branch：`refactor/assistant-target-adapters-v2`
+
+本輪只準備使用者已核准的兩份核心真人walkthrough：先執行`contract-failures`，再以fresh process
+執行`complete-workflow`；不執行timing-sensitive lifecycle profile，不修改normal Granite generation，
+也不把本次通過外推為Assistant-ready。Montage沿用既有target決策，只在Epoch後提供，不再重開階段
+討論。手測前的直接blocker是`ToolDebugMode`在unexpected terminal後把同一步永久停住，違反target
+「failure留在同一步可retry」。修復限於既有debug sequencing／progress copy與tests：unexpected
+terminal不得consume index，下一次Enter重試同一步，成功只前進一次；不改產品dialog、layout、theme、
+17-tool membership、Host authority或ApplicationService command semantics。Preflight曾懷疑PhysioNet
+`S008R04`應標為bilateral hand／foot；同類掃描與PhysioNet official protocol否證該假設：R04是
+imagined left／right fist，既有T1=`left fist`、T2=`right fist`保持不變。Focused unit／real no-model
+integration與canonical source-diverse smoke通過，且PR exact head所有applicable non-skipped checks
+completed/success後，才交付兩份手測命令。
 
 已完成：以三個可獨立驗證的local checkpoint完成target migration：A先讓現有Channel Selection
 dialog回傳typed terminal；B將舊Host tool-call normalizer刪減成strict identity boundary；C再將runtime與
