@@ -72,8 +72,20 @@ Slice B2只精簡既有confirmation card。若任一slice超過8個production fi
 Checkpoint（2026-08-18）：Slice A、B1、B2皆完成。reserved response replay、9個direct companion
 navigation、route-aware saliency handoff與response walkthrough已實作；response-action types、history
 payload、renderer、buttons與dispatch已物理刪除；long-running card已收斂成產品action、Impact與
-Confirm／Cancel。Ruff與865個focused/adjacent cases中的舊response-action預期已完成遷移，失敗項
-逐項回歸為green；下一步只執行candidate validation、visual capture與真人walkthrough handoff。
+ Confirm／Cancel。Ruff與865個focused/adjacent cases中的舊response-action預期已完成遷移，失敗項
+ 逐項回歸為green；下一步只執行candidate validation、visual capture與真人walkthrough handoff。
+
+Handoff blocker（2026-08-19）：真人首次啟動在Assistant UI construction時以
+`Assistant walkthrough profile was not found`失敗。CLI目前將`--tool-debug`相對路徑原樣保存到
+QApplication，而ChatPanel延後建立才讀檔；啟動工作目錄與repo root不同時就會失效。修復只限
+`run.py`啟動seam：先以呼叫端目錄解析，若不存在再以repo root解析，驗證為regular JSON file後保存
+absolute path；不存在時由argparse在Qt UI建立前清楚拒絕。Red protection必須模擬解析後working
+directory改變仍可由ChatPanel載入；不改ToolDebugMode schema、正常模型路徑或產品UI。
+
+Checkpoint（2026-08-19）：上述launcher seam已完成red→green。Repo-relative內建profile在非repo
+working directory解析後仍能由`ToolDebugMode`載入；Ruff、Basedpyright與151個launcher／profile／
+debug integration／ChatPanel相鄰測試通過。`eabe7959`的真人批准尚未發生且已由本修正取代；固定新的
+local candidate commit後重新執行受影響的首次啟動手測。
 
 ## Focused validation 與人工 stop boundary
 
