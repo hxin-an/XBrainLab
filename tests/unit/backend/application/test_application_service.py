@@ -7246,7 +7246,7 @@ def test_data_interpretation_recipe_save_and_reload_rescans_without_apply(tmp_pa
     fresh_load.assert_not_called()
 
 
-def test_preprocess_capability_requires_raw_data_not_existing_preprocessed_copy():
+def test_epoch_capability_accepts_raw_data_without_preprocess_operation():
     service = ApplicationService(Study())
     raw = _raw_mock()
     service.study.data_manager.loaded_data_list = [raw]
@@ -7256,11 +7256,8 @@ def test_preprocess_capability_requires_raw_data_not_existing_preprocessed_copy(
     policy = service.get_capabilities()
 
     assert policy.get(CommandName.PREPROCESS).available is True
-    assert policy.get(CommandName.CREATE_EPOCH).available is False
-    assert (
-        "Preprocess data before creating EEG epochs"
-        in (policy.get(CommandName.CREATE_EPOCH).reasons[0])
-    )
+    assert policy.get(CommandName.CREATE_EPOCH).available is True
+    assert policy.get(CommandName.CREATE_EPOCH).reasons == []
 
 
 def test_load_data_blocks_after_preprocessing_operations():

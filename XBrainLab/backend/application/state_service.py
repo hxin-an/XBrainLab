@@ -420,7 +420,7 @@ class StateSnapshotService:
         )
         active_dataset = ActiveDatasetSnapshot(
             has_raw_data=raw.count > 0,
-            has_preprocessed_data=preprocessed_state.count > 0,
+            has_preprocessed_data=bool(preprocessed_state.operations),
             has_epoch_data=epoch.exists,
             has_datasets=dataset.count > 0,
             has_saved_split=dataset.split_spec_saved,

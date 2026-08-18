@@ -33,7 +33,7 @@ MANIFEST_NAME = "dpi-gate.json"
 REQUIRED_QT_SCALE_FACTORS = (1.0, 1.25, 1.5)
 FULL_WINDOW_DOCK_SCREENSHOTS = (
     "first-paint-320-real-dock.png",
-    "main-window-dock-420-action-visible.png",
+    "main-window-dock-420-response-visible.png",
 )
 NARROW_CROP_SCREENSHOTS = (
     "responsive-320-idle.png",
@@ -242,7 +242,10 @@ def _validate_dpi_content_record(
     if (
         confirmation.get("visible") is not True
         or not str(confirmation.get("title") or "").strip()
-        or not str(confirmation.get("values") or "").strip()
+        or not (
+            str(confirmation.get("values") or "").strip()
+            or str(confirmation.get("impact") or "").strip()
+        )
     ):
         failures.append(f"{width}px DPI evidence confirmation card is missing")
     regions = _mapping(_mapping(record.get("render_content")).get("regions"))

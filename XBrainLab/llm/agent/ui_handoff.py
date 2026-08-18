@@ -19,6 +19,7 @@ class WorkflowUiHandoffKind(str, Enum):
     """Why the assistant is yielding control to an existing UI surface."""
 
     DECISION_REQUIRED = "decision_required"
+    ACTION_REQUESTED = "action_requested"
 
 
 class WorkflowUiHandoffSurfaceKind(str, Enum):
@@ -26,6 +27,7 @@ class WorkflowUiHandoffSurfaceKind(str, Enum):
 
     DIALOG = "dialog"
     PANEL = "panel"
+    ACTION = "action"
 
 
 class WorkflowUiHandoffPanel(str, Enum):
@@ -45,13 +47,14 @@ class WorkflowUiHandoffRouteIdentity(str, Enum):
     DATA_IMPORT_PANEL = "data_import_panel"
     DATA_IMPORT_REVIEW_DIALOG = "data_import_review_dialog"
     PREPROCESS_PANEL = "preprocess_panel"
+    CHANNEL_SELECTION_DIALOG = "channel_selection_dialog"
     EPOCH_SETTINGS_DIALOG = "epoch_settings_dialog"
     DATASET_SPLIT_DIALOG = "dataset_split_dialog"
     TRAINING_SETTINGS_DIALOG = "training_settings_dialog"
     TRAINING_PANEL = "training_panel"
     EVALUATION_PANEL = "evaluation_panel"
     VISUALIZATION_PANEL = "visualization_panel"
-    SALIENCY_SETTINGS_DIALOG = "saliency_settings_dialog"
+    SALIENCY_COMPUTE_ACTION = "saliency_compute_action"
     MONTAGE_SETTINGS_DIALOG = "montage_settings_dialog"
 
 
@@ -179,7 +182,7 @@ class WorkflowUiHandoffRouteDescriptor:
 
     command: CommandName
     surface_kind: WorkflowUiHandoffSurfaceKind
-    decision_owner: AssistantDecisionOwner
+    decision_owner: AssistantDecisionOwner | None
     target_panel: WorkflowUiHandoffPanel
     route_identity: WorkflowUiHandoffRouteIdentity
     presentation_step: str
@@ -189,7 +192,6 @@ class WorkflowUiHandoffRouteDescriptor:
         for field_name, value, expected_type in (
             ("command", self.command, CommandName),
             ("surface_kind", self.surface_kind, WorkflowUiHandoffSurfaceKind),
-            ("decision_owner", self.decision_owner, AssistantDecisionOwner),
             ("target_panel", self.target_panel, WorkflowUiHandoffPanel),
             ("route_identity", self.route_identity, WorkflowUiHandoffRouteIdentity),
         ):
@@ -199,11 +201,11 @@ class WorkflowUiHandoffRouteDescriptor:
                 contract="route descriptor",
                 field_name=field_name,
             )
-        expected_owner = (
-            AssistantDecisionOwner.GUI_DIALOG
-            if self.surface_kind is WorkflowUiHandoffSurfaceKind.DIALOG
-            else AssistantDecisionOwner.PANEL_HANDOFF
-        )
+        expected_owner = {
+            WorkflowUiHandoffSurfaceKind.DIALOG: AssistantDecisionOwner.GUI_DIALOG,
+            WorkflowUiHandoffSurfaceKind.PANEL: AssistantDecisionOwner.PANEL_HANDOFF,
+            WorkflowUiHandoffSurfaceKind.ACTION: None,
+        }[self.surface_kind]
         if self.decision_owner is not expected_owner:
             raise ValueError(
                 "Workflow UI handoff route decision owner must match its surface kind."
@@ -274,12 +276,12 @@ _WORKFLOW_UI_HANDOFF_ROUTES = (
     ),
     WorkflowUiHandoffRouteDescriptor(
         command=CommandName.PREPROCESS,
-        surface_kind=WorkflowUiHandoffSurfaceKind.PANEL,
-        decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
-        target_panel=WorkflowUiHandoffPanel.PREPROCESS,
-        route_identity=WorkflowUiHandoffRouteIdentity.PREPROCESS_PANEL,
-        presentation_step="Continue in Preprocess",
-        decision_copy=_PANEL_DECISION_COPY,
+        surface_kind=WorkflowUiHandoffSurfaceKind.DIALOG,
+        decision_owner=AssistantDecisionOwner.GUI_DIALOG,
+        target_panel=WorkflowUiHandoffPanel.DATASET,
+        route_identity=WorkflowUiHandoffRouteIdentity.CHANNEL_SELECTION_DIALOG,
+        presentation_step="Continue in Channel Selection",
+        decision_copy="Finish or cancel in the open Channel Selection dialog.",
     ),
     WorkflowUiHandoffRouteDescriptor(
         command=CommandName.CREATE_EPOCH,
@@ -337,12 +339,14 @@ _WORKFLOW_UI_HANDOFF_ROUTES = (
     ),
     WorkflowUiHandoffRouteDescriptor(
         command=CommandName.SALIENCY,
-        surface_kind=WorkflowUiHandoffSurfaceKind.DIALOG,
-        decision_owner=AssistantDecisionOwner.GUI_DIALOG,
+        surface_kind=WorkflowUiHandoffSurfaceKind.ACTION,
+        decision_owner=None,
         target_panel=WorkflowUiHandoffPanel.VISUALIZATION,
-        route_identity=WorkflowUiHandoffRouteIdentity.SALIENCY_SETTINGS_DIALOG,
-        presentation_step="Continue in Saliency Settings",
-        decision_copy="Finish or cancel in the open Saliency Settings dialog.",
+        route_identity=WorkflowUiHandoffRouteIdentity.SALIENCY_COMPUTE_ACTION,
+        presentation_step="Compute saliency",
+        decision_copy=(
+            "Wait for saliency computation to finish or cancel it in Visualization."
+        ),
     ),
     WorkflowUiHandoffRouteDescriptor(
         command=CommandName.APPLY_MONTAGE,
@@ -388,6 +392,7 @@ class WorkflowUiHandoffRequest:
     kind: WorkflowUiHandoffKind
     command: CommandName
     request_id: str = field(default_factory=lambda: uuid4().hex)
+    tool_name: str = ""
     decision_fields: tuple[str, ...] = ()
     suggested_values: tuple[tuple[str, str], ...] = ()
     interpretation_identity: InterpretationReviewIdentity | None = None
@@ -410,6 +415,10 @@ class WorkflowUiHandoffRequest:
             "request_id",
             _normalize_request_id(self.request_id, contract="request"),
         )
+        normalized_tool_name = str(self.tool_name or self.command.value).strip()
+        if not normalized_tool_name:
+            raise ValueError("Workflow UI handoff request tool name cannot be empty.")
+        object.__setattr__(self, "tool_name", normalized_tool_name)
         _validate_decision_fields(self.decision_fields, contract="request")
         _validate_suggested_values(self.suggested_values, contract="request")
         if self.interpretation_identity is not None and not isinstance(
@@ -435,6 +444,7 @@ class WorkflowUiHandoffRequest:
         cls,
         command_name: CommandName | str,
         *,
+        tool_name: str = "",
         decision_fields: Iterable[str] = (),
         suggested_values: Mapping[str, object] | None = None,
         request_id: str | None = None,
@@ -472,9 +482,39 @@ class WorkflowUiHandoffRequest:
             kind=WorkflowUiHandoffKind.DECISION_REQUIRED,
             command=command,
             request_id=normalized_request_id,
+            tool_name=tool_name,
             decision_fields=tuple(fields),
             suggested_values=tuple(suggestions),
             interpretation_identity=interpretation_identity,
+        )
+
+    @classmethod
+    def for_action(
+        cls,
+        command_name: CommandName | str,
+        *,
+        tool_name: str = "",
+        request_id: str | None = None,
+    ) -> WorkflowUiHandoffRequest:
+        """Build a parameter-free request for one existing product UI action."""
+        command = (
+            command_name
+            if isinstance(command_name, CommandName)
+            else CommandName(str(command_name or "").strip().lower())
+        )
+        route = workflow_ui_handoff_route_for(command)
+        if (
+            route is None
+            or route.surface_kind is not WorkflowUiHandoffSurfaceKind.ACTION
+        ):
+            raise ValueError(
+                f"No workflow UI action is registered for {command.value}."
+            )
+        return cls(
+            kind=WorkflowUiHandoffKind.ACTION_REQUESTED,
+            command=command,
+            request_id=uuid4().hex if request_id is None else str(request_id).strip(),
+            tool_name=tool_name,
         )
 
 
@@ -485,6 +525,7 @@ class WorkflowUiHandoffResolution:
     request_id: str
     command: CommandName
     status: WorkflowUiHandoffResolutionStatus
+    tool_name: str = ""
     decision_fields: tuple[str, ...] = ()
     suggested_values: tuple[tuple[str, str], ...] = ()
     interpretation_identity: InterpretationReviewIdentity | None = None
@@ -508,6 +549,12 @@ class WorkflowUiHandoffResolution:
             "request_id",
             _normalize_request_id(self.request_id, contract="resolution"),
         )
+        normalized_tool_name = str(self.tool_name or self.command.value).strip()
+        if not normalized_tool_name:
+            raise ValueError(
+                "Workflow UI handoff resolution tool name cannot be empty."
+            )
+        object.__setattr__(self, "tool_name", normalized_tool_name)
         _validate_decision_fields(self.decision_fields, contract="resolution")
         _validate_suggested_values(self.suggested_values, contract="resolution")
         if self.interpretation_identity is not None and not isinstance(
@@ -547,6 +594,7 @@ class WorkflowUiHandoffResolution:
             isinstance(request, WorkflowUiHandoffRequest)
             and self.request_id == request.request_id
             and self.command is request.command
+            and self.tool_name == request.tool_name
             and self.decision_fields == request.decision_fields
             and self.suggested_values == request.suggested_values
             and self.interpretation_identity == request.interpretation_identity
@@ -569,6 +617,7 @@ class WorkflowUiHandoffResolution:
             request_id=request.request_id,
             command=request.command,
             status=status,
+            tool_name=request.tool_name,
             decision_fields=request.decision_fields,
             suggested_values=request.suggested_values,
             interpretation_identity=request.interpretation_identity,
@@ -581,6 +630,7 @@ class WorkflowUiHandoffResolution:
             request_id=self.request_id,
             command=self.command,
             status=WorkflowUiHandoffResolutionStatus.FAILED,
+            tool_name=self.tool_name,
             decision_fields=self.decision_fields,
             suggested_values=self.suggested_values,
             interpretation_identity=self.interpretation_identity,

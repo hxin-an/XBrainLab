@@ -1,0 +1,26 @@
+{
+  "schema_version": "xbrainlab.assistant_walkthrough.v1",
+  "profile_id": "complete-workflow",
+  "title": "Complete Assistant workflow",
+  "calls": [
+    {"id":"open-dataset","tool":"switch_panel","params":{"panel_name":"dataset"},"instruction":"Verify the Dataset panel opens","expected_outcomes":["completed"]},
+    {"id":"import","tool":"import_eeg_data","params":{},"instruction":"Choose the PhysioNet S008R04 EDF fixture, map T1/T2, and apply the import","expected_outcomes":["completed"]},
+    {"id":"open-preprocess","tool":"switch_panel","params":{"panel_name":"preprocess"},"instruction":"Verify the Preprocess panel opens","expected_outcomes":["completed"]},
+    {"id":"channels","tool":"select_channels","params":{},"instruction":"Choose a valid EEG channel subset and apply","expected_outcomes":["completed"]},
+    {"id":"bandpass","tool":"apply_bandpass_filter","params":{"low_freq":4.0,"high_freq":38.0},"instruction":"Apply the 4-38 Hz band-pass filter","expected_outcomes":["completed"]},
+    {"id":"notch","tool":"apply_notch_filter","params":{"freq":60.0},"instruction":"Apply the 60 Hz notch filter","expected_outcomes":["completed"]},
+    {"id":"resample","tool":"resample_data","params":{"rate":128},"instruction":"Resample to 128 Hz","expected_outcomes":["completed"]},
+    {"id":"reference","tool":"set_reference","params":{"method":"average"},"instruction":"Apply average reference","expected_outcomes":["completed"]},
+    {"id":"normalize","tool":"normalize_data","params":{"method":"z-score"},"instruction":"Apply z-score normalization","expected_outcomes":["completed"]},
+    {"id":"epochs","tool":"create_epochs","params":{},"instruction":"Create T1/T2 epochs from 0 to 2 seconds","expected_outcomes":["completed"]},
+    {"id":"montage","tool":"set_montage","params":{},"instruction":"Review and apply an available standard montage","expected_outcomes":["completed"]},
+    {"id":"split","tool":"configure_dataset_split","params":{},"instruction":"Set individual trial split with validation 0.2 and test 0.2","expected_outcomes":["completed"]},
+    {"id":"open-training","tool":"switch_panel","params":{"panel_name":"training"},"instruction":"Verify the Training panel opens","expected_outcomes":["completed"]},
+    {"id":"model","tool":"select_model","params":{},"instruction":"Select EEGNet and apply","expected_outcomes":["completed"]},
+    {"id":"training-settings","tool":"configure_training","params":{},"instruction":"Choose CPU, 1 epoch, batch 8, Adam, and learning rate 0.001","expected_outcomes":["completed"]},
+    {"id":"train","tool":"start_training","params":{},"instruction":"Approve Start Training, approve a resource check only if prompted, and wait for the run to finish","expected_outcomes":["completed"]},
+    {"id":"evaluation","tool":"switch_panel","params":{"panel_name":"evaluation"},"instruction":"Verify completed-run Evaluation opens","expected_outcomes":["completed"]},
+    {"id":"visualization","tool":"switch_panel","params":{"panel_name":"visualization","view_mode":"saliency_map"},"instruction":"Verify Visualization opens on Saliency Map","expected_outcomes":["completed"]},
+    {"id":"compute-saliency","tool":"compute_saliency","params":{},"instruction":"Approve Compute Saliency, approve a resource check only if prompted, and wait for Saliency ready","expected_outcomes":["completed"]}
+  ]
+}

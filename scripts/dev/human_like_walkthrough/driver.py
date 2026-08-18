@@ -44,7 +44,6 @@ from XBrainLab.llm.agent.controller import (
     AgentInteractionStatus,
 )
 from XBrainLab.llm.agent.response_presentation import (
-    AssistantResponseAction,
     AssistantResponseKind,
     AssistantResponsePresentation,
     interaction_outcome_kind,
@@ -223,7 +222,6 @@ class WalkthroughAssistantController(QObject):
         *,
         text: str,
         kind: AssistantResponseKind = AssistantResponseKind.MESSAGE,
-        actions: tuple[AssistantResponseAction, ...] = (),
     ) -> AssistantResponsePresentation:
         correlation = self._active_turn
         if correlation is None:
@@ -232,7 +230,6 @@ class WalkthroughAssistantController(QObject):
             text=text,
             correlation=correlation,
             kind=kind,
-            actions=actions,
         )
 
     def _begin_generation(self) -> None:
@@ -445,12 +442,6 @@ class WalkthroughAssistantController(QObject):
                 self._response_presentation(
                     text=message,
                     kind=AssistantResponseKind.BLOCKED,
-                    actions=(
-                        AssistantResponseAction.send_message(
-                            "Start new session",
-                            ASSISTANT_CONFIRM_CONFIRMATION_REQUEST,
-                        ),
-                    ),
                 )
             )
         elif outcome == "clarification":
@@ -459,15 +450,6 @@ class WalkthroughAssistantController(QObject):
                 self._response_presentation(
                     text=message,
                     kind=AssistantResponseKind.CLARIFICATION,
-                    actions=(
-                        AssistantResponseAction.send_message(
-                            "Check workflow",
-                            "What is ready now?",
-                        ),
-                        AssistantResponseAction.open_data_import(
-                            "Open Data Import",
-                        ),
-                    ),
                 )
             )
         else:

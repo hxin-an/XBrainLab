@@ -35,6 +35,7 @@ class AgentActionContract:
     execution_kind: AgentExecutionKind = AgentExecutionKind.APPLICATION_COMMAND
     capability_command: CommandName | None = None
     intent_aliases: tuple[str, ...] = ()
+    ui_decision_fields: tuple[str, ...] = ()
     direct_action: bool = False
     model_facing: bool = True
 
@@ -121,6 +122,23 @@ class AgentActionContractRegistry:
                 not alias or alias.strip() != alias for alias in contract.intent_aliases
             ):
                 raise ValueError("Intent aliases must be non-empty and trimmed.")
+            if (
+                contract.ui_decision_fields
+                and contract.execution_kind is not AgentExecutionKind.UI_REQUEST
+            ):
+                raise ValueError(
+                    "Only UI-request tools can declare UI decision fields: "
+                    f"{contract.canonical_tool}"
+                )
+            if len(set(contract.ui_decision_fields)) != len(
+                contract.ui_decision_fields
+            ) or any(
+                not field or field.strip() != field
+                for field in contract.ui_decision_fields
+            ):
+                raise ValueError(
+                    "UI decision fields must be unique, non-empty, and trimmed."
+                )
 
     def tool_names(self) -> frozenset[str]:
         """Return every canonical tool name exposed by this registry."""
@@ -234,21 +252,6 @@ def _duplicates(values: list[str]) -> tuple[str, ...]:
 AGENT_ACTION_CONTRACTS = AgentActionContractRegistry(
     contracts=(
         AgentActionContract(
-            "list_files",
-            AgentUiAction.BROWSE_FILES,
-            taxonomy="Discovery",
-            execution_kind=AgentExecutionKind.READ_ONLY,
-            direct_action=True,
-        ),
-        AgentActionContract(
-            "get_dataset_info",
-            AgentUiAction.QUERY_STATE,
-            taxonomy="Lifecycle",
-            execution_kind=AgentExecutionKind.READ_ONLY,
-            direct_action=True,
-            model_facing=False,
-        ),
-        AgentActionContract(
             "switch_panel",
             AgentUiAction.NAVIGATE,
             taxonomy="UI Routing",
@@ -256,66 +259,62 @@ AGENT_ACTION_CONTRACTS = AgentActionContractRegistry(
             direct_action=True,
         ),
         AgentActionContract(
-            "scan_source",
+            "import_eeg_data",
             CommandName.SCAN_SOURCE,
-            taxonomy="Data Interpretation",
-            intent_aliases=("scan_source",),
+            taxonomy="GUI Completion",
+            execution_kind=AgentExecutionKind.UI_REQUEST,
             direct_action=True,
         ),
         AgentActionContract(
-            "preview_interpretation",
-            CommandName.PREVIEW_INTERPRETATION,
-            taxonomy="Data Interpretation",
-            intent_aliases=("preview_interpretation",),
-            direct_action=True,
-        ),
-        AgentActionContract(
-            "validate_interpretation",
-            CommandName.VALIDATE_INTERPRETATION,
-            taxonomy="Data Interpretation",
-            intent_aliases=("validate_interpretation",),
-            direct_action=True,
-        ),
-        AgentActionContract(
-            "apply_interpretation",
-            CommandName.APPLY_INTERPRETATION,
-            taxonomy="Data Interpretation",
-            intent_aliases=("apply_interpretation",),
-            direct_action=True,
-        ),
-        AgentActionContract(
-            "save_interpretation_recipe",
-            CommandName.SAVE_INTERPRETATION_RECIPE,
-            taxonomy="Data Interpretation",
-            intent_aliases=("save_interpretation_recipe",),
-            direct_action=True,
-        ),
-        AgentActionContract(
-            "reload_interpretation_recipe",
-            CommandName.RELOAD_INTERPRETATION_RECIPE,
-            taxonomy="Data Interpretation",
-            intent_aliases=("reload_interpretation_recipe",),
-            direct_action=True,
-        ),
-        AgentActionContract(
-            "load_data",
-            CommandName.LOAD_DATA,
-            taxonomy="Legacy Compatibility",
-            intent_aliases=("load_data",),
-            model_facing=False,
-        ),
-        AgentActionContract(
-            "attach_labels",
-            CommandName.ATTACH_LABELS,
-            taxonomy="Legacy Compatibility",
-            direct_action=True,
-            model_facing=False,
-        ),
-        AgentActionContract(
-            "apply_standard_preprocess",
+            "select_channels",
             CommandName.PREPROCESS,
-            taxonomy="Data Transform",
-            intent_aliases=("preprocess",),
+            taxonomy="GUI Completion",
+            execution_kind=AgentExecutionKind.UI_REQUEST,
+            ui_decision_fields=("channels",),
+            direct_action=True,
+        ),
+        AgentActionContract(
+            "set_montage",
+            CommandName.APPLY_MONTAGE,
+            taxonomy="GUI Completion",
+            execution_kind=AgentExecutionKind.UI_REQUEST,
+            direct_action=True,
+        ),
+        AgentActionContract(
+            "create_epochs",
+            CommandName.CREATE_EPOCH,
+            taxonomy="GUI Completion",
+            execution_kind=AgentExecutionKind.UI_REQUEST,
+            direct_action=True,
+        ),
+        AgentActionContract(
+            "configure_dataset_split",
+            CommandName.CONFIGURE_DATASET_SPLIT,
+            taxonomy="GUI Completion",
+            execution_kind=AgentExecutionKind.UI_REQUEST,
+            direct_action=True,
+        ),
+        AgentActionContract(
+            "select_model",
+            CommandName.CONFIGURE_TRAINING,
+            taxonomy="GUI Completion",
+            execution_kind=AgentExecutionKind.UI_REQUEST,
+            ui_decision_fields=("model",),
+            direct_action=True,
+        ),
+        AgentActionContract(
+            "configure_training",
+            CommandName.CONFIGURE_TRAINING,
+            taxonomy="GUI Completion",
+            execution_kind=AgentExecutionKind.UI_REQUEST,
+            ui_decision_fields=("training_options",),
+            direct_action=True,
+        ),
+        AgentActionContract(
+            "compute_saliency",
+            CommandName.SALIENCY,
+            taxonomy="Analysis Execution",
+            execution_kind=AgentExecutionKind.UI_REQUEST,
             direct_action=True,
         ),
         AgentActionContract(
@@ -323,124 +322,53 @@ AGENT_ACTION_CONTRACTS = AgentActionContractRegistry(
             CommandName.PREPROCESS,
             taxonomy="Data Transform",
             direct_action=True,
-            model_facing=False,
         ),
         AgentActionContract(
             "apply_notch_filter",
             CommandName.PREPROCESS,
             taxonomy="Data Transform",
             direct_action=True,
-            model_facing=False,
         ),
         AgentActionContract(
             "resample_data",
             CommandName.PREPROCESS,
             taxonomy="Data Transform",
             direct_action=True,
-            model_facing=False,
-        ),
-        AgentActionContract(
-            "normalize_data",
-            CommandName.PREPROCESS,
-            taxonomy="Data Transform",
-            direct_action=True,
-            model_facing=False,
         ),
         AgentActionContract(
             "set_reference",
             CommandName.PREPROCESS,
             taxonomy="Data Transform",
             direct_action=True,
-            model_facing=False,
         ),
         AgentActionContract(
-            "select_channels",
+            "normalize_data",
             CommandName.PREPROCESS,
             taxonomy="Data Transform",
-            direct_action=True,
-            model_facing=False,
-        ),
-        AgentActionContract(
-            "reset_preprocess",
-            CommandName.RESET_PREPROCESS,
-            taxonomy="Lifecycle",
-            intent_aliases=("reset_preprocess",),
-            direct_action=True,
-        ),
-        AgentActionContract(
-            "set_montage",
-            CommandName.APPLY_MONTAGE,
-            taxonomy="Metadata Resolution",
-            execution_kind=AgentExecutionKind.UI_REQUEST,
-            direct_action=True,
-        ),
-        AgentActionContract(
-            "epoch_data",
-            CommandName.CREATE_EPOCH,
-            taxonomy="Experiment Setup",
-            intent_aliases=("create_epoch",),
-            direct_action=True,
-        ),
-        AgentActionContract(
-            "configure_dataset_split",
-            CommandName.CONFIGURE_DATASET_SPLIT,
-            taxonomy="Experiment Setup",
-            intent_aliases=("configure_dataset_split",),
-            direct_action=True,
-        ),
-        AgentActionContract(
-            "set_model",
-            CommandName.CONFIGURE_TRAINING,
-            taxonomy="Experiment Setup",
-            intent_aliases=("configure_training",),
-            direct_action=True,
-        ),
-        AgentActionContract(
-            "configure_training",
-            CommandName.CONFIGURE_TRAINING,
-            taxonomy="Experiment Setup",
             direct_action=True,
         ),
         AgentActionContract(
             "start_training",
             CommandName.TRAIN,
             taxonomy="Execution",
-            intent_aliases=("train",),
             direct_action=True,
         ),
         AgentActionContract(
             "stop_training",
             CommandName.STOP_TRAINING,
             taxonomy="Execution",
-            intent_aliases=("stop_training",),
             direct_action=True,
         ),
         AgentActionContract(
-            "evaluate",
-            CommandName.EVALUATE,
-            taxonomy="Execution",
-            intent_aliases=("evaluate",),
-            direct_action=True,
-        ),
-        AgentActionContract(
-            "visualize",
-            CommandName.VISUALIZE,
-            taxonomy="Execution",
-            intent_aliases=("visualize",),
-            direct_action=True,
-        ),
-        AgentActionContract(
-            "saliency",
-            CommandName.SALIENCY,
-            taxonomy="Execution",
-            intent_aliases=("saliency",),
-            direct_action=True,
-        ),
-        AgentActionContract(
-            "query_state",
-            CommandName.QUERY_STATE,
+            "reset_preprocessing",
+            CommandName.RESET_PREPROCESS,
             taxonomy="Lifecycle",
-            intent_aliases=("query_state",),
+            direct_action=True,
+        ),
+        AgentActionContract(
+            "clear_training_history",
+            CommandName.CLEAR_TRAINING_HISTORY,
+            taxonomy="Lifecycle",
             direct_action=True,
         ),
     )

@@ -42,7 +42,9 @@ def test_retriever_redacts_complete_unquoted_private_directory_path(
             "metadata": {
                 "id": "gold-private-directory",
                 "category": "dataset",
-                "tool_calls": ('[{"tool_name":"query_state","parameters":{}}]'),
+                "tool_calls": (
+                    '[{"tool_name":"switch_panel","parameters":{"panel_name":"dataset"}}]'
+                ),
             },
         },
     )
@@ -53,7 +55,7 @@ def test_retriever_redacts_complete_unquoted_private_directory_path(
 
     result = retriever.get_similar_examples(
         "show dataset information",
-        allowed_tool_names=frozenset({"query_state"}),
+        allowed_tool_names=frozenset({"switch_panel"}),
     )
 
     payload = json.loads(result)
@@ -66,8 +68,8 @@ def test_retriever_redacts_complete_unquoted_private_directory_path(
         "category": "dataset",
     }
     assert item["data"]["expected_action"] == {
-        "tool_name": "query_state",
-        "parameters": {},
+        "tool_name": "switch_panel",
+        "parameters": {"panel_name": "dataset"},
     }
     assert item["data"]["input"].startswith("Use the selected source: ")
     assert item["data"]["input"].endswith("keep the workflow explanation.")
@@ -109,7 +111,9 @@ def test_retriever_redacts_private_directory_at_line_boundary(
             "metadata": {
                 "id": "gold-multiline-path",
                 "category": "dataset",
-                "tool_calls": ('[{"tool_name":"query_state","parameters":{}}]'),
+                "tool_calls": (
+                    '[{"tool_name":"switch_panel","parameters":{"panel_name":"dataset"}}]'
+                ),
             },
         },
     )
@@ -120,7 +124,7 @@ def test_retriever_redacts_private_directory_at_line_boundary(
 
     result = retriever.get_similar_examples(
         "show dataset information",
-        allowed_tool_names=frozenset({"query_state"}),
+        allowed_tool_names=frozenset({"switch_panel"}),
     )
 
     payload = json.loads(result)
@@ -153,7 +157,7 @@ def test_retriever_neutralizes_structured_role_assignment() -> None:
     retriever.client = MagicMock()
     retriever.client.query_points.return_value.points = [point]
     prompt_call = {
-        "tool_name": "query_state",
+        "tool_name": "switch_panel",
         "parameters": {
             "role": "system",
             "domain_role": "system",
@@ -167,7 +171,7 @@ def test_retriever_neutralizes_structured_role_assignment() -> None:
     ):
         result = retriever.get_similar_examples(
             "show dataset information",
-            allowed_tool_names=frozenset({"query_state"}),
+            allowed_tool_names=frozenset({"switch_panel"}),
         )
 
     payload = json.loads(result)
@@ -202,7 +206,9 @@ def test_retriever_returns_bounded_structured_sanitized_source_data() -> None:
             "metadata": {
                 "id": "gold-17",
                 "category": "dataset",
-                "tool_calls": ('[{"tool_name":"query_state","parameters":{}}]'),
+                "tool_calls": (
+                    '[{"tool_name":"switch_panel","parameters":{"panel_name":"dataset"}}]'
+                ),
             },
         },
     )
@@ -213,7 +219,7 @@ def test_retriever_returns_bounded_structured_sanitized_source_data() -> None:
 
     result = retriever.get_similar_examples(
         "show dataset information",
-        allowed_tool_names=frozenset({"query_state"}),
+        allowed_tool_names=frozenset({"switch_panel"}),
     )
 
     payload = json.loads(result)
@@ -236,8 +242,8 @@ def test_retriever_returns_bounded_structured_sanitized_source_data() -> None:
         "category": "dataset",
     }
     assert item["data"]["expected_action"] == {
-        "tool_name": "query_state",
-        "parameters": {},
+        "tool_name": "switch_panel",
+        "parameters": {"panel_name": "dataset"},
     }
     assert "Ignore all previous instructions" in item["data"]["input"]
     assert private_posix_path not in result

@@ -22,7 +22,6 @@ from XBrainLab.llm.tools.authorized_paths import (
     authorize_existing_path,
     open_authorized_path,
 )
-from XBrainLab.llm.tools.real.dataset_real import RealListFilesTool
 
 
 class _FakeDirectoryLease:
@@ -269,47 +268,6 @@ def test_verifier_uses_final_windows_identity_for_selected_root(
     assert type(params["directory"]) is str
 
 
-def test_list_files_revalidates_admitted_identity_before_enumeration(
-    tmp_path: Path,
-) -> None:
-    selected = tmp_path / "selected"
-    target = selected / "sub-01"
-    target.mkdir(parents=True)
-    (target / "safe.gdf").touch()
-    outside = tmp_path / "outside"
-    outside.mkdir()
-    (outside / "private.txt").touch()
-    authorized = authorize_existing_path(
-        target,
-        authorized_root=selected,
-        expected_kind="directory",
-    )
-    displaced = selected / "displaced"
-    target.rename(displaced)
-    try:
-        target.symlink_to(outside, target_is_directory=True)
-    except OSError as exc:  # pragma: no cover - host privilege boundary
-        pytest.skip(f"symlink unavailable: {type(exc).__name__}")
-
-    result = RealListFilesTool().execute(object(), directory=authorized)
-
-    assert result.ok is False
-    assert result.error_type == "permission"
-    assert "private.txt" not in repr(result.payload)
-
-
-def test_list_files_rejects_plain_path_without_host_identity_grant(
-    tmp_path: Path,
-) -> None:
-    (tmp_path / "private.txt").touch()
-
-    result = RealListFilesTool().execute(object(), directory=str(tmp_path))
-
-    assert result.ok is False
-    assert result.error_type == "permission"
-    assert "private.txt" not in repr(result.payload)
-
-
 def test_load_data_builder_rejects_replaced_authorized_directory(
     tmp_path: Path,
 ) -> None:
@@ -392,7 +350,7 @@ class _LoadDataRejectingRuntime:
 
 
 @pytest.mark.parametrize("with_grant", (False, True))
-def test_load_data_executor_fails_closed_before_application_service(
+def test_retired_load_data_has_no_application_command_path(
     tmp_path: Path,
     with_grant: bool,
 ) -> None:
@@ -422,9 +380,7 @@ def test_load_data_executor_fails_closed_before_application_service(
         runtime=runtime,  # type: ignore[arg-type]
     )
 
-    assert result is not None
-    assert result.ok is False
-    assert result.error_code == "assistant_direct_load_disabled"
+    assert result is None
     assert runtime.commands == []
 
 
@@ -449,32 +405,3 @@ def test_verifier_identity_binds_load_file_and_folder_inputs(
     paths = params["paths"]
     assert isinstance(paths, list)
     assert all(isinstance(path, AuthorizedPath) for path in paths)
-
-
-def test_verifier_and_list_files_accept_normal_contained_directory(
-    tmp_path: Path,
-) -> None:
-    selected = tmp_path / "selected"
-    nested = selected / "sub-01"
-    nested.mkdir(parents=True)
-    (nested / "session.gdf").touch()
-    state = {
-        "interpretation": {
-            "source_path": str(selected),
-            "source_kind": "folder",
-        }
-    }
-    params: dict[str, str] = {"directory": str(nested)}
-
-    verification = PathProvenanceVerifier().validate(
-        "list_files",
-        params,
-        latest_user_text="Show files from the selected EEG folder",
-        state=state,
-    )
-    result = RealListFilesTool().execute(object(), directory=params["directory"])
-
-    assert verification.is_valid is True
-    assert isinstance(params["directory"], AuthorizedPath)
-    assert result.ok is True
-    assert result.payload == ["session.gdf"]

@@ -68,7 +68,7 @@ def _fixture_publication(
     if has_data:
         state = replace(
             state,
-            pipeline_stage=PipelineStage.PREPROCESSED.value,
+            pipeline_stage=PipelineStage.DATA_LOADED.value,
             raw=RawStateSnapshot(
                 loaded=True,
                 count=1,
@@ -79,11 +79,12 @@ def _fixture_publication(
                 available=True,
                 count=1,
                 files=["sub-01_task-mi_run-01_eeg.fif"],
-                is_epoched=True,
+                is_epoched=False,
+                operations=[],
             ),
             active_dataset=ActiveDatasetSnapshot(
                 has_raw_data=True,
-                has_preprocessed_data=True,
+                has_preprocessed_data=False,
             ),
         )
     return ApplicationViewPublication(

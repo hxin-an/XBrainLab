@@ -20,7 +20,14 @@ from XBrainLab.ui.chat.presentation import (
 )
 
 
-@pytest.mark.parametrize("route", workflow_ui_handoff_routes())
+@pytest.mark.parametrize(
+    "route",
+    tuple(
+        route
+        for route in workflow_ui_handoff_routes()
+        if route.decision_owner is not None
+    ),
+)
 def test_workflow_handoff_presentation_uses_descriptor_copy(
     route: WorkflowUiHandoffRouteDescriptor,
 ) -> None:

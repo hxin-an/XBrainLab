@@ -82,6 +82,9 @@ def _main_window() -> Any:
             )
         ),
         visualization_panel=SimpleNamespace(
+            compute_saliency=MagicMock(
+                return_value=InteractionOutcome.completed("Saliency ready.")
+            ),
             sidebar=SimpleNamespace(
                 set_montage=MagicMock(
                     return_value=InteractionOutcome.completed("Montage set.")
@@ -91,7 +94,7 @@ def _main_window() -> Any:
                         "Saliency settings were cancelled."
                     )
                 ),
-            )
+            ),
         ),
     )
     return window
@@ -106,7 +109,11 @@ def test_host_route_table_is_derived_from_typed_handoff_descriptors() -> None:
         assert route is not None
         assert route.panel.value == descriptor.target_panel.value
         assert (route.open_surface is not None) is (
-            descriptor.surface_kind is WorkflowUiHandoffSurfaceKind.DIALOG
+            descriptor.surface_kind
+            in {
+                WorkflowUiHandoffSurfaceKind.DIALOG,
+                WorkflowUiHandoffSurfaceKind.ACTION,
+            }
         )
 
 
@@ -517,7 +524,7 @@ def test_training_handoff_preserves_standalone_configuration_actions(
             2,
             WorkflowUiHandoffResolutionStatus.COMPLETED,
         ),
-        ("saliency", 4, WorkflowUiHandoffResolutionStatus.CANCELLED),
+        ("saliency", 4, WorkflowUiHandoffResolutionStatus.COMPLETED),
     ],
 )
 def test_host_owns_modal_route_table_and_outcome_conversion(
@@ -528,10 +535,18 @@ def test_host_owns_modal_route_table_and_outcome_conversion(
     window = _main_window()
     host = WorkflowUiHandoffHost(window)
 
-    outcome = host.open(WorkflowUiHandoffRequest.for_decision(command_name))
+    request = (
+        WorkflowUiHandoffRequest.for_action(command_name)
+        if command_name == "saliency"
+        else WorkflowUiHandoffRequest.for_decision(command_name)
+    )
+    outcome = host.open(request)
 
     assert outcome.status is expected_status
     window.switch_page.assert_called_once_with(panel_index)
+    if command_name == "saliency":
+        window.visualization_panel.compute_saliency.assert_called_once_with()
+        window.visualization_panel.sidebar.set_saliency.assert_not_called()
 
 
 @pytest.mark.parametrize(

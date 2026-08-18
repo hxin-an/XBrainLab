@@ -174,7 +174,7 @@ def test_bids_artifact_and_boundary_rows_reject_overlapping_class_epoch(
     assert epoch_result.error_type.value == "validation", epoch_result
     assert epoch_result.recoverable is True
     assert "No usable epochs remain" in epoch_result.message
-    assert epoch_result.state.pipeline_stage == "preprocessed"
+    assert epoch_result.state.pipeline_stage == "data_loaded"
     assert epoch_result.state.epoch.exists is False
     assert epoch_result.changed_state.preprocessed_changed is False
     assert epoch_result.changed_state.epoch_changed is False

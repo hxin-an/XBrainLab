@@ -94,6 +94,11 @@ class _BrokenPreprocessHistoryRaw(_Raw):
         raise RuntimeError("preprocess history unavailable")
 
 
+class _RawWithoutPreprocessing(_Raw):
+    def get_preprocess_history(self) -> list[str]:
+        return []
+
+
 class _Epoch:
     event_id: ClassVar[dict[str, int]] = {"left": 1}
     data: ClassVar[list[list[list[float]]]] = [[[0.0, 0.1], [0.2, 0.3]]]
@@ -946,6 +951,37 @@ def test_state_snapshot_publishes_backend_stage_contract(
     )
 
     assert service.build().pipeline_stage == expected_stage
+
+
+def test_working_raw_copy_does_not_publish_preprocessed_stage_without_operations() -> (
+    None
+):
+    service = _snapshot_service()
+    raw = _RawWithoutPreprocessing()
+    service.study.loaded_data_list = [raw]
+    service.study.preprocessed_data_list = [raw]
+    service.study.epoch_data = None
+    service.study.datasets = []
+    service.study.trainer = None
+
+    loaded = service.build()
+
+    assert loaded.preprocessed.count == 1
+    assert loaded.preprocessed.operations == []
+    assert loaded.active_dataset.has_preprocessed_data is False
+    assert loaded.pipeline_stage == "data_loaded"
+
+    service.study.preprocessed_data_list = [_Raw()]
+    processed = service.build()
+
+    assert processed.active_dataset.has_preprocessed_data is True
+    assert processed.pipeline_stage == "preprocessed"
+
+    service.study.preprocessed_data_list = [raw]
+    reset = service.build()
+
+    assert reset.active_dataset.has_preprocessed_data is False
+    assert reset.pipeline_stage == "data_loaded"
 
 
 @pytest.mark.parametrize(

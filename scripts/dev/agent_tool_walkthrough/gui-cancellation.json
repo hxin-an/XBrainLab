@@ -1,0 +1,21 @@
+{
+  "schema_version": "xbrainlab.assistant_walkthrough.v1",
+  "profile_id": "gui-cancellation",
+  "title": "GUI Cancellation Recovery",
+  "calls": [
+    {
+      "id": "cancel-import",
+      "tool": "import_eeg_data",
+      "params": {},
+      "instruction": "Open Import EEG Data, then press Cancel",
+      "expected_outcomes": ["cancelled"]
+    },
+    {
+      "id": "open-preprocess-after-cancel",
+      "tool": "switch_panel",
+      "params": {"panel_name": "preprocess"},
+      "instruction": "Open the Preprocess panel after cancellation",
+      "expected_outcomes": ["completed"]
+    }
+  ]
+}

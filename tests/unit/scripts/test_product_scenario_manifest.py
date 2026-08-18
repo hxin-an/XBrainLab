@@ -15,18 +15,18 @@ from scripts.dev.product_scenario_manifest import (
 )
 
 
-def test_immediate_profile_has_exactly_twenty_unique_high_difference_scenarios() -> (
+def test_immediate_profile_has_exactly_twelve_unique_high_difference_scenarios() -> (
     None
 ):
     profile = PRODUCT_SCENARIO_PROFILES[IMMEDIATE_PROFILE_ID]
     selected = [PRODUCT_SCENARIOS[item] for item in profile.scenario_ids]
 
-    assert profile.expected_scenario_count == 20
+    assert profile.expected_scenario_count == 12
     assert profile.denominator_kind == "product_scenarios"
     assert profile.moabb_dataset_campaign_in_scope is False
-    assert len(selected) == 20
-    assert len({item.scenario_id for item in selected}) == 20
-    assert len({(item.execution_id, item.evidence_key) for item in selected}) == 20
+    assert len(selected) == 12
+    assert len({item.scenario_id for item in selected}) == 12
+    assert len({(item.execution_id, item.evidence_key) for item in selected}) == 12
     assert all(item.scope.strip() for item in selected)
     assert all(item.pass_criteria for item in selected)
     assert all(item.claim_boundary.strip() for item in selected)
@@ -46,10 +46,6 @@ def test_immediate_profile_covers_required_product_dimensions() -> None:
         "training",
         "evaluation",
         "visualization",
-        "agent-success",
-        "agent-blocked",
-        "agent-confirmation",
-        "agent-recovery",
         "full",
         "narrow",
         "dpi-100",
@@ -58,7 +54,7 @@ def test_immediate_profile_covers_required_product_dimensions() -> None:
     } <= tags
 
 
-def test_manifest_reuses_canonical_handoff_gates_and_stable_showcase_cases() -> None:
+def test_manifest_reuses_canonical_handoff_gates() -> None:
     validate_manifest()
 
     gate_refs = {
@@ -93,14 +89,6 @@ def test_manifest_reuses_canonical_handoff_gates_and_stable_showcase_cases() -> 
             "verify-required-ci",
         )
 
-    agent_scenarios = [
-        item
-        for item in PRODUCT_SCENARIOS.values()
-        if item.validator.kind == "agent_showcase_case"
-    ]
-    assert len(agent_scenarios) == 8
-    assert len({item.validator.key for item in agent_scenarios}) == 8
-
 
 def test_all_native_executions_are_bounded_and_disable_core_dumps() -> None:
     for execution in PRODUCT_SCENARIO_EXECUTIONS.values():
@@ -110,7 +98,7 @@ def test_all_native_executions_are_bounded_and_disable_core_dumps() -> None:
             assert command[:3] == ("prlimit", "--core=0", "--")
 
 
-def test_profiles_are_configurable_without_treating_twenty_as_catalog_capacity() -> (
+def test_profiles_are_configurable_without_treating_twelve_as_catalog_capacity() -> (
     None
 ):
     base = next(iter(PRODUCT_SCENARIOS.values()))
@@ -165,7 +153,7 @@ def test_immediate_claim_boundary_rejects_statistical_and_moabb_extrapolation() 
     assert "bug risk" in boundary
     assert "<5%" in boundary
     assert "moabb" in boundary
-    assert "20" in boundary
+    assert "12" in boundary
 
 
 def test_cross_source_scenario_preserves_public_fixture_scientific_boundary() -> None:

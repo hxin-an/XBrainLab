@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.dev import verify_rag
+from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.agent.context_encoding import (
     UntrustedContextItem,
     UntrustedContextSource,
@@ -43,14 +44,14 @@ def _encoded_tool_context(tool_name: str) -> str:
 
 def test_evaluate_context_result_requires_expected_tool() -> None:
     result = verify_rag.evaluate_context_result(
-        _encoded_tool_context("get_dataset_info"),
-        expected_tool="get_dataset_info",
+        _encoded_tool_context("import_eeg_data"),
+        expected_tool="import_eeg_data",
     )
 
     assert result == {
         "ok": True,
-        "expected_tool": "get_dataset_info",
-        "observed_tool": "get_dataset_info",
+        "expected_tool": "import_eeg_data",
+        "observed_tool": "import_eeg_data",
         "item_count": 1,
     }
 
@@ -70,6 +71,15 @@ def test_evaluate_context_result_rejects_empty_or_wrong_context() -> None:
         )["ok"]
         is False
     )
+
+
+def test_known_query_oracles_only_reference_approved_target_tools() -> None:
+    query_tools = {
+        expected_tool for _case_id, _query, expected_tool in verify_rag._QUERY_CASES
+    }
+
+    assert query_tools <= AGENT_ACTION_CONTRACTS.model_tool_names()
+    assert "get_dataset_info" not in query_tools
 
 
 def test_strict_main_returns_failure_for_failed_report(capsys) -> None:

@@ -256,16 +256,6 @@ def _publication(
         (
             replace(
                 ApplicationStateSnapshot.empty(),
-                pipeline_stage="data_loaded",
-                active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
-            ),
-            "preprocess",
-            AssistantWorkflowSurface.PREPROCESSING,
-            ("preprocess_settings",),
-        ),
-        (
-            replace(
-                ApplicationStateSnapshot.empty(),
                 pipeline_stage="preprocessed",
                 preprocessed=PreprocessedStateSnapshot(available=True, count=1),
                 active_dataset=ActiveDatasetSnapshot(
@@ -341,6 +331,27 @@ def test_status_projection_preserves_atomic_backend_workflow_truth(
     assert projection.decision_fields == backend_projection.decision_fields
     assert projection.existing_ui_surface is surface
     assert projection.available_commands == (command_name,)
+
+
+def test_status_projection_leaves_raw_preparation_choice_open() -> None:
+    state = replace(
+        ApplicationStateSnapshot.empty(),
+        pipeline_stage="data_loaded",
+        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
+    )
+    publication = _publication(state)
+    backend_projection = build_workflow_projection(
+        publication.state,
+        publication.effective_capabilities,
+    )
+
+    projection = build_assistant_status_projection(publication)
+
+    assert projection.recommended_command is None
+    assert projection.recommended_command == backend_projection.recommended_command
+    assert projection.decision_fields == ()
+    assert projection.decision_fields == backend_projection.decision_fields
+    assert projection.available_commands == ()
 
 
 def test_epoch_settings_surface_uses_eeg_domain_language() -> None:

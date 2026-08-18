@@ -28,35 +28,23 @@ from XBrainLab.llm.tools.application_surface import (
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
 EXPECTED_CONTROLLER_TOOL_NAMES = (
-    "list_files",
-    "scan_source",
-    "preview_interpretation",
-    "validate_interpretation",
-    "apply_interpretation",
-    "save_interpretation_recipe",
-    "reload_interpretation_recipe",
-    "load_data",
-    "attach_labels",
-    "query_state",
-    "get_dataset_info",
+    "import_eeg_data",
+    "select_channels",
+    "set_montage",
+    "create_epochs",
     "configure_dataset_split",
-    "evaluate",
-    "visualize",
-    "saliency",
-    "apply_standard_preprocess",
-    "reset_preprocess",
+    "select_model",
+    "configure_training",
+    "compute_saliency",
     "apply_bandpass_filter",
     "apply_notch_filter",
     "resample_data",
-    "normalize_data",
     "set_reference",
-    "select_channels",
-    "set_montage",
-    "epoch_data",
-    "set_model",
-    "configure_training",
+    "normalize_data",
     "start_training",
     "stop_training",
+    "reset_preprocessing",
+    "clear_training_history",
     "switch_panel",
 )
 
@@ -168,19 +156,11 @@ def test_controller_initialization(controller: LLMController) -> None:
     schema_validator = controller.verifier.validators[0]
     assert isinstance(schema_validator, ToolSchemaValidator)
     assert tuple(schema_validator.tool_schemas) == EXPECTED_CONTROLLER_TOOL_NAMES
-    assert schema_validator.tool_schemas["query_state"]["properties"] == {
-        "query": {
-            "type": "string",
-            "enum": [
-                "state",
-                "data_lists",
-                "data_summary",
-                "preprocess_diagnostics",
-                "smart_filter_suggestions",
-            ],
-            "default": "state",
-        }
-    }
+    assert schema_validator.tool_schemas["import_eeg_data"]["properties"] == {}
+    assert (
+        schema_validator.tool_schemas["import_eeg_data"]["additionalProperties"]
+        is False
+    )
 
 
 def test_controller_prompt_generation(controller: LLMController) -> None:

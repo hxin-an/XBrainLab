@@ -23,9 +23,9 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ARTIFACT = ROOT / "build" / "dev-artifacts" / "rag-offline.json"
 _QUERY_CASES = (
     (
-        "dataset_info",
-        "Tell me about the loaded dataset info.",
-        "get_dataset_info",
+        "import_eeg_data",
+        "Import an EEG dataset.",
+        "import_eeg_data",
     ),
     (
         "bandpass",
@@ -215,7 +215,7 @@ def run_verification() -> dict[str, Any]:
         scoped_context = retriever.get_similar_examples(
             "Start training now.",
             k=1,
-            allowed_tool_names=frozenset({"get_dataset_info"}),
+            allowed_tool_names=frozenset({"import_eeg_data"}),
         )
         _add_check(
             checks,
@@ -227,7 +227,7 @@ def run_verification() -> dict[str, Any]:
         no_tool_context = retriever.get_similar_examples(
             "Explain what an EEG epoch is.",
             k=1,
-            allowed_tool_names=frozenset({"get_dataset_info"}),
+            allowed_tool_names=frozenset({"import_eeg_data"}),
         )
         _add_check(
             checks,

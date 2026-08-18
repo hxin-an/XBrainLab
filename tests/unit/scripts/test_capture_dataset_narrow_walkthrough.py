@@ -47,11 +47,13 @@ def test_dataset_capture_keeps_visible_state_publication_and_status_consistent(
 
     loaded_publication = panel._read_application_publication()
     assert loaded_publication is not None
-    assert loaded_publication.state.pipeline_stage == "preprocessed"
-    assert loaded_publication.state.active_dataset.has_preprocessed_data is True
+    assert loaded_publication.state.pipeline_stage == "data_loaded"
+    assert loaded_publication.state.active_dataset.has_preprocessed_data is False
     assert controller.has_data() is True
     assert panel.table.isVisibleTo(panel)
-    assert status_bar.currentMessage() == "Ready for EEG epoching"
+    assert status_bar.currentMessage() == (
+        "EEG data loaded · Ready for preprocessing or epoching"
+    )
 
 
 def test_dataset_capture_gate_rejects_empty_ready_contradiction(qtbot) -> None:

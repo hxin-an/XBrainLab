@@ -16,12 +16,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, ClassVar, Literal, NamedTuple
 
-from XBrainLab.backend.training.input_contract import (
-    TrainingInputContractError,
-    normalize_non_negative_integer,
-    normalize_positive_integer,
-    normalize_training_input,
-)
 from XBrainLab.llm.tools.application_surface import (
     AuthoritativeConfirmationParameter,
     UserProvidedTrainingOutputDir,
@@ -112,34 +106,6 @@ class FrequencyRangeValidator(ValidatorStrategy):
                     is_valid=False,
                     error_message=f"low_freq ({lo}) must be < high_freq ({hi})",
                 )
-        return VerificationResult(is_valid=True)
-
-
-class TrainingParamValidator(ValidatorStrategy):
-    """Enforce the assistant training-input contract before execution."""
-
-    TOOLS: ClassVar[set[str]] = {"configure_training"}
-
-    def validate(self, name: str, params: dict[str, Any]) -> VerificationResult:
-        if name not in self.TOOLS:
-            return VerificationResult(is_valid=True)
-
-        try:
-            normalize_training_input(params)
-            if "repeat" in params:
-                normalize_positive_integer("repeat", params["repeat"])
-            if "save_checkpoints_every" in params:
-                normalize_non_negative_integer(
-                    "save_checkpoints_every",
-                    params["save_checkpoints_every"],
-                )
-        except TrainingInputContractError as exc:
-            return VerificationResult(
-                is_valid=False,
-                error_message=redact_public_text(
-                    object.__getattribute__(exc, "public_message")
-                ),
-            )
         return VerificationResult(is_valid=True)
 
 
@@ -1023,7 +989,6 @@ class PlaceholderArgumentValidator(ValidatorStrategy):
 # Default validators applied to every tool call
 DEFAULT_VALIDATORS: list[ValidatorStrategy] = [
     FrequencyRangeValidator(),
-    TrainingParamValidator(),
     PlaceholderArgumentValidator(),
     PathExistsValidator(),
 ]

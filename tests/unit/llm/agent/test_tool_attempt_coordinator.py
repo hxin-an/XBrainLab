@@ -212,44 +212,25 @@ def test_schema_rejection_prevents_registry_and_confirmation_checks() -> None:
     assert registry.reads == 0
 
 
-def test_host_deterministic_continuation_rejects_non_allowlisted_mutation() -> None:
+def test_published_action_is_not_rejected_by_host_text_classification() -> None:
+    tool_name = "apply_bandpass_filter"
     coordinator, source, verifier, registry = _coordinator(
-        _context(tool_name="apply_standard_preprocess"),
+        _context(tool_name=tool_name),
     )
 
-    decision = coordinator.evaluate_host_deterministic_continuation(
-        "apply_standard_preprocess",
-        {},
+    decision = coordinator.evaluate(
+        _request(
+            tool_name=tool_name,
+            params={"low_freq": 4.0, "high_freq": 38.0},
+            text="Why is model training unavailable?",
+        )
     )
 
-    assert decision.action is ToolAttemptAction.VERIFICATION_BLOCKED
-    assert decision.result is not None
-    assert decision.result.error_type == "contract"
-    assert "not an allowlisted host continuation" in decision.result.message
-    assert source.reads == 0
-    assert verifier.calls == 0
-    assert registry.reads == 0
-
-
-def test_host_deterministic_continuation_rejects_parameterized_allowlisted_tool() -> (
-    None
-):
-    coordinator, source, verifier, registry = _coordinator(
-        _context(tool_name="preview_interpretation"),
-    )
-
-    decision = coordinator.evaluate_host_deterministic_continuation(
-        "preview_interpretation",
-        {"unexpected": True},
-    )
-
-    assert decision.action is ToolAttemptAction.VERIFICATION_BLOCKED
-    assert decision.result is not None
-    assert decision.result.error_type == "contract"
-    assert "parameter-free" in decision.result.message
-    assert source.reads == 0
-    assert verifier.calls == 0
-    assert registry.reads == 0
+    assert decision.action is ToolAttemptAction.EXECUTE
+    assert decision.params == {"low_freq": 4.0, "high_freq": 38.0}
+    assert source.reads == 1
+    assert verifier.calls == 1
+    assert registry.reads == 1
 
 
 def test_capability_block_prevents_registry_lookup() -> None:
@@ -265,7 +246,9 @@ def test_capability_block_prevents_registry_lookup() -> None:
     assert registry.reads == 0
 
 
-def test_schema_rejection_uses_requested_path_label_in_typed_result(tmp_path) -> None:
+def test_schema_rejection_does_not_rewrite_verifier_message_from_prompt(
+    tmp_path,
+) -> None:
     eeg_path = tmp_path / "A01T.gdf"
     eeg_path.touch()
     coordinator, _source, _verifier, _registry = _coordinator(
@@ -286,7 +269,7 @@ def test_schema_rejection_uses_requested_path_label_in_typed_result(tmp_path) ->
 
     assert decision.action is ToolAttemptAction.VERIFICATION_BLOCKED
     assert decision.result is not None
-    assert decision.result.message == "Required source path is missing."
+    assert decision.result.message == "Required input: source_path"
 
 
 def test_tool_and_backend_confirmation_metadata_share_one_boundary() -> None:

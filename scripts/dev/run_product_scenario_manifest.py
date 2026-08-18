@@ -379,30 +379,6 @@ def _validate_pytest_attestation(
     return ""
 
 
-def _validate_agent_case(payload: Mapping[str, Any], case_id: str) -> str:
-    summary = payload.get("summary")
-    cases = payload.get("cases")
-    if not isinstance(summary, Mapping) or summary.get("status") != "passed":
-        return "Agent showcase summary did not pass."
-    if not isinstance(cases, list):
-        return "Agent showcase case list is missing."
-    matching = [
-        item
-        for item in cases
-        if isinstance(item, Mapping) and item.get("case_id") == case_id
-    ]
-    if len(matching) != 1:
-        return f"Agent showcase requires exactly one case {case_id!r}."
-    result = matching[0]
-    if result.get("pass") is not True or not isinstance(
-        result.get("terminal"), Mapping
-    ):
-        return f"Agent showcase case {case_id!r} lacks a passing terminal outcome."
-    if not result["terminal"]:
-        return f"Agent showcase case {case_id!r} has an empty terminal outcome."
-    return ""
-
-
 def _validate_dpi_scale(payload: Mapping[str, Any], scale: float) -> str:
     if payload.get("status") != "passed" or not isinstance(
         payload.get("records"), list
@@ -441,8 +417,6 @@ def _validator_failure(scenario: ScenarioSpec, evidence_root: Path) -> str:
         return failure
     if validator.kind == "json_object":
         return ""
-    if validator.kind == "agent_showcase_case":
-        return _validate_agent_case(payload, validator.key)
     if validator.kind == "dpi_scale":
         return _validate_dpi_scale(payload, float(validator.expected))
     try:
@@ -582,10 +556,10 @@ def run_product_scenarios(
             result["failure_reason"] = source_failure
     passed_count = sum(item["passed"] is True for item in results)
     all_selected_passed = passed_count == len(results)
-    immediate_gate_passed = (
+    immediate_profile_passed = (
         plan.profile_id == IMMEDIATE_PROFILE_ID
         and plan.profile_complete
-        and len(results) == plan.profile_expected_count == 20
+        and len(results) == plan.profile_expected_count == 12
         and all_selected_passed
         and source_stable
     )
@@ -623,7 +597,7 @@ def run_product_scenarios(
             "passed": passed_count,
             "failed": len(results) - passed_count,
             "selected_status": "passed" if all_selected_passed else "failed",
-            "immediate_20_gate_passed": immediate_gate_passed,
+            "immediate_profile_passed": immediate_profile_passed,
             "shared_execution_count": len(plan.execution_ids),
             "scenario_results_are_statistically_independent": False,
             "shared_results_counted_as_independent_successes": False,

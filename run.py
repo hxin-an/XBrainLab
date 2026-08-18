@@ -13,6 +13,7 @@ Usage::
 import argparse
 import os
 import sys
+from pathlib import Path
 from time import monotonic, sleep
 from typing import Protocol
 
@@ -31,6 +32,29 @@ from XBrainLab.ui.qt_runtime import (
 )
 
 configure_qt_platform_for_runtime()
+
+_RUN_ROOT = Path(__file__).resolve().parent
+
+
+def _resolve_tool_debug_script(value: str) -> str:
+    """Resolve a walkthrough before deferred Qt construction can change context."""
+    requested = Path(value).expanduser()
+    candidates = (
+        (requested,)
+        if requested.is_absolute()
+        else (Path.cwd() / requested, _RUN_ROOT / requested)
+    )
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve(strict=True)
+        except OSError:
+            continue
+        if resolved.is_file():
+            return str(resolved)
+    raise argparse.ArgumentTypeError(
+        "Assistant walkthrough profile was not found. Pass an existing JSON file path."
+    )
+
 
 from PyQt6.QtCore import QSettings, QSize, Qt, QTimer
 from PyQt6.QtGui import QColor, QFont, QPainter, QPaintEvent, QPen, QPixmap
@@ -215,7 +239,9 @@ def main() -> None:
     """
     parser = argparse.ArgumentParser(description="XBrainLab Application")
     parser.add_argument(
-        "--tool-debug", type=str, help="Path to tool debug script (JSON)"
+        "--tool-debug",
+        type=_resolve_tool_debug_script,
+        help="Path to tool debug script (JSON)",
     )
     parser.add_argument(
         "--model",

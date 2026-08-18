@@ -12,6 +12,99 @@ from XBrainLab.ui.styles.theme import Theme
 
 
 class TestMessageBubble:
+    def test_assistant_answer_uses_subtle_blue_bubble_without_status_label(
+        self,
+        qtbot,
+    ) -> None:
+        bubble = MessageBubble(
+            "Here is the requested EEG explanation.",
+            is_user=False,
+            presentation_kind=MessagePresentationKind.ASSISTANT,
+        )
+        qtbot.addWidget(bubble)
+
+        style = bubble.bubble_frame.styleSheet()
+        assert Theme.CHAT_AI_BUBBLE in style
+        assert Theme.ACCENT_PRIMARY in style
+        assert "border: 1px solid" in style
+        assert "border-radius: 8px" in style
+        assert bubble.kind_label.isHidden()
+
+    @pytest.mark.parametrize(
+        ("width", "text"),
+        [
+            (320, "Assistant response with enough text to wrap at a narrow width."),
+            (420, "中文 EEG 回答內容"),
+            (760, "First line.\n\nSecond line."),
+        ],
+    )
+    def test_assistant_answer_prose_is_vertically_centered_in_blue_bubble(
+        self,
+        qtbot,
+        width,
+        text,
+    ) -> None:
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        bubble = MessageBubble(
+            text,
+            is_user=False,
+            presentation_kind=MessagePresentationKind.ASSISTANT,
+        )
+        layout.addWidget(bubble)
+        qtbot.addWidget(container)
+        container.resize(width, 300)
+        container.show()
+        bubble.adjust_width(width)
+        qtbot.wait(20)
+
+        text_view = bubble.text_edit
+        document = text_view.document()
+        document_layout = document.documentLayout() if document is not None else None
+        assert document_layout is not None
+        document_height = document_layout.documentSize().height()
+        document_top = text_view.mapTo(
+            bubble.bubble_frame,
+            text_view.viewport().pos(),
+        ).y()
+        top_space = float(document_top)
+        bottom_space = float(bubble.bubble_frame.height()) - (
+            top_space + document_height
+        )
+
+        assert text_view.height() >= ceil(document_height) + 8
+        assert abs(top_space - bottom_space) <= 1.0
+
+    def test_prose_vertical_centering_is_limited_to_plain_assistant_answers(
+        self,
+        qtbot,
+    ) -> None:
+        assistant = MessageBubble(
+            "Assistant answer",
+            is_user=False,
+            presentation_kind=MessagePresentationKind.ASSISTANT,
+        )
+        attention = MessageBubble(
+            "Review this state",
+            is_user=False,
+            presentation_kind=MessagePresentationKind.ATTENTION,
+        )
+        user = MessageBubble("User message", is_user=True)
+        for bubble in (assistant, attention, user):
+            qtbot.addWidget(bubble)
+            bubble.show()
+            bubble.adjust_width(420)
+        qtbot.wait(20)
+
+        assert assistant.text_edit.viewport().y() > 0
+        assert attention.text_edit.viewport().y() == 0
+        assert user.text_edit.viewport().y() == 0
+
+        assistant.set_presentation_kind(MessagePresentationKind.ATTENTION)
+        qtbot.wait(20)
+        assert assistant.text_edit.viewport().y() == 0
+
     def test_initialization(self, qtbot):
         text = "Hello **World**"
         bubble = MessageBubble(text, is_user=True)

@@ -1,53 +1,25 @@
-"""Unit tests for LLM tool definitions — schema validation and contracts."""
+"""Schema contracts for the Stable v2 Assistant tool definitions."""
 
 from typing import Any
 
 import pytest
 
-from XBrainLab.backend.application.saliency_policy import (
-    MAX_SALIENCY_NT_SAMPLES,
-    MAX_SALIENCY_NT_SAMPLES_BATCH_SIZE,
-    MIN_SALIENCY_NT_SAMPLES,
-    MIN_SALIENCY_NT_SAMPLES_BATCH_SIZE,
-)
-from XBrainLab.llm.tools.definitions.analysis_def import (
-    BaseEvaluateTool,
-    BaseSaliencyTool,
-    BaseVisualizeTool,
-)
-from XBrainLab.llm.tools.definitions.dataset_def import (
-    BaseApplyInterpretationTool,
-    BaseAttachLabelsTool,
-    BaseConfigureDatasetSplitTool,
-    BaseGetDatasetInfoTool,
-    BaseListFilesTool,
-    BaseLoadDataTool,
-    BasePreviewInterpretationTool,
-    BaseQueryStateTool,
-    BaseReloadInterpretationRecipeTool,
-    BaseSaveInterpretationRecipeTool,
-    BaseScanSourceTool,
-    BaseValidateInterpretationTool,
-)
 from XBrainLab.llm.tools.definitions.preprocess_def import (
     BaseBandPassFilterTool,
-    BaseChannelSelectionTool,
-    BaseEpochDataTool,
     BaseNormalizeTool,
     BaseNotchFilterTool,
     BaseRereferenceTool,
     BaseResampleTool,
-    BaseResetPreprocessTool,
-    BaseSetMontageTool,
-    BaseStandardPreprocessTool,
 )
 from XBrainLab.llm.tools.definitions.training_def import (
-    BaseConfigureTrainingTool,
-    BaseSetModelTool,
     BaseStartTrainingTool,
     BaseStopTrainingTool,
 )
-from XBrainLab.llm.tools.definitions.ui_control_def import BaseSwitchPanelTool
+from XBrainLab.llm.tools.definitions.ui_control_def import (
+    ApplicationCommandTool,
+    BaseSwitchPanelTool,
+    WorkflowHandoffTool,
+)
 
 
 def _property_value(prop: property) -> Any:
@@ -56,495 +28,99 @@ def _property_value(prop: property) -> Any:
     return getter(None)
 
 
-def _get_all_def_classes():
-    """Return all abstract tool definition classes."""
-    return [
-        BaseListFilesTool,
-        BaseScanSourceTool,
-        BasePreviewInterpretationTool,
-        BaseValidateInterpretationTool,
-        BaseApplyInterpretationTool,
-        BaseSaveInterpretationRecipeTool,
-        BaseReloadInterpretationRecipeTool,
-        BaseLoadDataTool,
-        BaseAttachLabelsTool,
-        BaseQueryStateTool,
-        BaseGetDatasetInfoTool,
-        BaseConfigureDatasetSplitTool,
-        BaseEvaluateTool,
-        BaseVisualizeTool,
-        BaseSaliencyTool,
-        BaseStandardPreprocessTool,
-        BaseResetPreprocessTool,
-        BaseBandPassFilterTool,
-        BaseNotchFilterTool,
-        BaseResampleTool,
-        BaseNormalizeTool,
-        BaseRereferenceTool,
-        BaseChannelSelectionTool,
-        BaseSetMontageTool,
-        BaseEpochDataTool,
-        BaseSetModelTool,
-        BaseConfigureTrainingTool,
-        BaseStartTrainingTool,
-        BaseStopTrainingTool,
-        BaseSwitchPanelTool,
-    ]
-
-
-EXPECTED_TOOL_CONTRACTS = {
-    BaseListFilesTool: {
-        "name": "list_files",
-        "description_markers": ("List all files", "directory"),
-        "properties": ("directory", "pattern"),
-        "required": ("directory",),
-    },
-    BaseScanSourceTool: {
-        "name": "scan_source",
-        "description_markers": ("Scan an EEG file", "import recipe"),
-        "properties": ("source_path", "source_hint", "label_sources"),
-        "required": ("source_path",),
-    },
-    BasePreviewInterpretationTool: {
-        "name": "preview_interpretation",
-        "description_markers": ("Preview file", "metadata choices"),
-        "properties": ("scan_id", "choices"),
-        "required": (),
-    },
-    BaseValidateInterpretationTool: {
-        "name": "validate_interpretation",
-        "description_markers": ("Validate", "safe"),
-        "properties": ("candidate_id",),
-        "required": (),
-    },
-    BaseApplyInterpretationTool: {
-        "name": "apply_interpretation",
-        "description_markers": ("Apply", "validated data interpretation"),
-        "properties": ("candidate_id", "confirmed"),
-        "required": (),
-    },
-    BaseSaveInterpretationRecipeTool: {
-        "name": "save_interpretation_recipe",
-        "description_markers": ("Save", "import recipe"),
-        "properties": ("recipe_path",),
-        "required": (),
-    },
-    BaseReloadInterpretationRecipeTool: {
-        "name": "reload_interpretation_recipe",
-        "description_markers": ("Reload", "preview"),
-        "properties": ("recipe_path",),
-        "required": ("recipe_path",),
-    },
-    BaseLoadDataTool: {
-        "name": "load_data",
-        "description_markers": ("Legacy compatibility", "Data Interpretation"),
-        "properties": ("paths",),
-        "required": ("paths",),
-    },
-    BaseAttachLabelsTool: {
-        "name": "attach_labels",
-        "description_markers": ("Legacy compatibility", "labels/events"),
-        "properties": ("mapping", "label_format", "selected_event_names"),
-        "required": ("mapping",),
-    },
-    BaseQueryStateTool: {
-        "name": "query_state",
-        "description_markers": ("typed workflow state", "ApplicationService"),
-        "properties": ("query",),
-        "required": (),
-    },
-    BaseGetDatasetInfoTool: {
-        "name": "get_dataset_info",
-        "description_markers": ("summary info", "loaded dataset"),
-        "properties": (),
-        "required": (),
-    },
-    BaseConfigureDatasetSplitTool: {
-        "name": "configure_dataset_split",
-        "description_markers": ("Save data splitting settings", "EEG training"),
-        "properties": (
-            "test_ratio",
-            "val_ratio",
-            "split_strategy",
-            "training_mode",
-        ),
-        "required": ("split_strategy", "training_mode"),
-    },
-    BaseEvaluateTool: {
-        "name": "evaluate",
-        "description_markers": ("evaluation metrics", "training summaries"),
-        "properties": ("target",),
-        "required": (),
-    },
-    BaseVisualizeTool: {
-        "name": "visualize",
-        "description_markers": ("visualization views", "workflow state"),
-        "properties": ("view",),
-        "required": (),
-    },
-    BaseSaliencyTool: {
-        "name": "saliency",
-        "description_markers": ("saliency readiness", "trained EEG models"),
-        "properties": (
-            "method",
-            "nt_samples",
-            "nt_samples_batch_size",
-            "stdevs",
-        ),
-        "required": (),
-    },
-    BaseStandardPreprocessTool: {
-        "name": "apply_standard_preprocess",
-        "description_markers": ("standard EEG preprocessing", "Bandpass"),
-        "properties": (
-            "l_freq",
-            "h_freq",
-            "notch_freq",
-            "rereference",
-            "resample_rate",
-            "normalize_method",
-        ),
-        "required": (),
-    },
-    BaseResetPreprocessTool: {
-        "name": "reset_preprocess",
-        "description_markers": ("Reset preprocessing", "loaded raw data"),
-        "properties": (),
-        "required": (),
-    },
-    BaseBandPassFilterTool: {
-        "name": "apply_bandpass_filter",
-        "description_markers": ("single bandpass filter",),
-        "properties": ("low_freq", "high_freq"),
-        "required": ("low_freq", "high_freq"),
-    },
-    BaseNotchFilterTool: {
-        "name": "apply_notch_filter",
-        "description_markers": ("notch filter", "power line noise"),
-        "properties": ("freq",),
-        "required": ("freq",),
-    },
-    BaseResampleTool: {
-        "name": "resample_data",
-        "description_markers": ("Resample data", "sampling rate"),
-        "properties": ("rate",),
-        "required": ("rate",),
-    },
-    BaseNormalizeTool: {
-        "name": "normalize_data",
-        "description_markers": ("Normalize data", "Z-Score"),
-        "properties": ("method",),
-        "required": ("method",),
-    },
-    BaseRereferenceTool: {
-        "name": "set_reference",
-        "description_markers": ("Set EEG reference",),
-        "properties": ("method",),
-        "required": ("method",),
-    },
-    BaseChannelSelectionTool: {
-        "name": "select_channels",
-        "description_markers": ("Select specific channels",),
-        "properties": ("channels",),
-        "required": ("channels",),
-    },
-    BaseSetMontageTool: {
-        "name": "set_montage",
-        "description_markers": ("standard EEG montage", "visualization"),
-        "properties": ("montage_name",),
-        "required": ("montage_name",),
-    },
-    BaseEpochDataTool: {
-        "name": "epoch_data",
-        "description_markers": ("Create EEG epochs", "event markers"),
-        "properties": ("t_min", "t_max", "event_id", "baseline"),
-        "required": ("t_min", "t_max"),
-    },
-    BaseSetModelTool: {
-        "name": "set_model",
-        "description_markers": ("deep learning model architecture",),
-        "properties": ("model_name",),
-        "required": ("model_name",),
-    },
-    BaseConfigureTrainingTool: {
-        "name": "configure_training",
-        "description_markers": ("training hyperparameters",),
-        "properties": (
-            "model_name",
-            "epoch",
-            "batch_size",
-            "learning_rate",
-            "repeat",
-            "device",
-            "optimizer",
-            "evaluation_option",
-            "save_checkpoints_every",
-        ),
-        "required": ("epoch", "batch_size", "learning_rate"),
-    },
-    BaseStartTrainingTool: {
-        "name": "start_training",
-        "description_markers": ("Start the training process",),
-        "properties": (),
-        "required": (),
-    },
-    BaseStopTrainingTool: {
-        "name": "stop_training",
-        "description_markers": ("Stop the active training",),
-        "properties": (),
-        "required": (),
-    },
-    BaseSwitchPanelTool: {
-        "name": "switch_panel",
-        "description_markers": ("Switch the main window view", "panel"),
-        "properties": ("panel_name", "view_mode"),
-        "required": ("panel_name",),
-    },
+DIRECT_CONTRACTS = {
+    BaseBandPassFilterTool: (
+        "apply_bandpass_filter",
+        ("low_freq", "high_freq"),
+    ),
+    BaseNotchFilterTool: ("apply_notch_filter", ("freq",)),
+    BaseResampleTool: ("resample_data", ("rate",)),
+    BaseNormalizeTool: ("normalize_data", ("method",)),
+    BaseRereferenceTool: ("set_reference", ("method",)),
+    BaseStartTrainingTool: ("start_training", ()),
+    BaseStopTrainingTool: ("stop_training", ()),
 }
 
 
-class TestToolDefinitionContracts:
-    """Verify that all tool definitions expose name, description, parameters,
-    and that execute() raises NotImplementedError (abstract guard)."""
+@pytest.mark.parametrize(("tool_cls", "contract"), DIRECT_CONTRACTS.items())
+def test_direct_definition_has_exact_schema(tool_cls, contract) -> None:
+    expected_name, expected_required = contract
+    tool = tool_cls()
 
-    @pytest.mark.parametrize("tool_cls", _get_all_def_classes())
-    def test_has_name(self, tool_cls):
-        assert (
-            _property_value(tool_cls.name) == EXPECTED_TOOL_CONTRACTS[tool_cls]["name"]
-        )
+    assert tool.name == expected_name
+    assert tool.description.strip()
+    assert tool.parameters["type"] == "object"
+    assert tuple(tool.parameters.get("required", ())) == expected_required
+    assert set(expected_required) <= set(tool.parameters["properties"])
 
-    @pytest.mark.parametrize("tool_cls", _get_all_def_classes())
-    def test_has_description(self, tool_cls):
-        desc = _property_value(tool_cls.description)
-        assert isinstance(desc, str)
-        for marker in EXPECTED_TOOL_CONTRACTS[tool_cls]["description_markers"]:
-            assert marker in desc
-
-    @pytest.mark.parametrize("tool_cls", _get_all_def_classes())
-    def test_has_parameters(self, tool_cls):
-        params = _property_value(tool_cls.parameters)
-        assert isinstance(params, dict)
-        assert params["type"] == "object"
-        assert (
-            tuple(params.get("properties", {}).keys())
-            == EXPECTED_TOOL_CONTRACTS[tool_cls]["properties"]
-        )
-        assert (
-            tuple(params.get("required", ()))
-            == EXPECTED_TOOL_CONTRACTS[tool_cls]["required"]
-        )
-
-    @pytest.mark.parametrize("tool_cls", _get_all_def_classes())
-    def test_execute_raises_not_implemented(self, tool_cls):
-        with pytest.raises(NotImplementedError):
-            tool_cls.execute(None, None)
+    with pytest.raises(NotImplementedError):
+        tool.execute(None)
 
 
-class TestSetModelToolEnums:
-    def test_model_enum_values(self):
-        params = _property_value(BaseSetModelTool.parameters)
-        model_enum = params["properties"]["model_name"]["enum"]
-        assert "EEGNet" in model_enum
-        assert "SCCNet" in model_enum
-        assert "ShallowConvNet" in model_enum
-        # DeepConvNet was removed (doesn't exist)
-        assert "DeepConvNet" not in model_enum
+def test_normalize_method_is_closed_to_target_choices() -> None:
+    schema = BaseNormalizeTool().parameters
+
+    assert schema["properties"]["method"]["enum"] == ["z-score", "min-max"]
 
 
-class TestSwitchPanelEnums:
-    def test_panel_enum_values(self):
-        params = _property_value(BaseSwitchPanelTool.parameters)
-        panel_enum = params["properties"]["panel_name"]["enum"]
-        assert "dashboard" not in panel_enum
-        assert "dataset" in panel_enum
-        assert "preprocess" in panel_enum
-        assert "training" in panel_enum
-        assert "visualization" in panel_enum
-        assert "evaluation" in panel_enum
+def test_start_training_requires_confirmation_and_stop_does_not() -> None:
+    assert BaseStartTrainingTool().requires_confirmation is True
+    assert BaseStopTrainingTool().requires_confirmation is False
 
 
-class TestConfigureDatasetSplitEnums:
-    def test_split_strategy(self):
-        params = _property_value(BaseConfigureDatasetSplitTool.parameters)
-        strategies = params["properties"]["split_strategy"]["enum"]
-        assert "trial" in strategies
-        assert "session" in strategies
-        assert "subject" in strategies
+def test_switch_panel_target_and_visualization_view_schema_are_closed() -> None:
+    schema = BaseSwitchPanelTool().parameters
 
-    def test_required_fields(self):
-        params = _property_value(BaseConfigureDatasetSplitTool.parameters)
-        assert "split_strategy" in params["required"]
-        assert "training_mode" in params["required"]
-
-
-class TestConfigureTrainingDefinitions:
-    def test_core_numeric_schema_matches_backend_positive_contract(self):
-        params = _property_value(BaseConfigureTrainingTool.parameters)
-        properties = params["properties"]
-
-        assert properties["epoch"]["type"] == "integer"
-        assert properties["epoch"]["minimum"] == 1
-        assert properties["batch_size"]["type"] == "integer"
-        assert properties["batch_size"]["minimum"] == 1
-        assert properties["learning_rate"]["type"] == "number"
-        assert properties["learning_rate"]["exclusiveMinimum"] == 0
-        assert "maximum" not in properties["learning_rate"]
-
-    def test_optional_integer_schema_does_not_advertise_coercible_strings(self):
-        params = _property_value(BaseConfigureTrainingTool.parameters)
-        properties = params["properties"]
-
-        assert properties["repeat"]["type"] == "integer"
-        assert properties["save_checkpoints_every"]["type"] == "integer"
-
-    def test_evaluation_option_uses_backend_supported_names(self):
-        params = _property_value(BaseConfigureTrainingTool.parameters)
-
-        assert params["properties"]["evaluation_option"]["enum"] == [
-            "val_loss",
-            "val_auc",
-            "val_acc",
-            "last_epoch",
-        ]
-
-    def test_output_dir_is_not_model_facing(self):
-        params = _property_value(BaseConfigureTrainingTool.parameters)
-
-        assert "output_dir" not in params["properties"]
+    assert schema["required"] == ["panel_name"]
+    assert schema["additionalProperties"] is False
+    assert schema["properties"]["panel_name"]["enum"] == [
+        "dataset",
+        "preprocess",
+        "training",
+        "visualization",
+        "evaluation",
+    ]
+    assert schema["properties"]["view_mode"]["enum"] == [
+        "saliency_map",
+        "spectrogram",
+        "topographic_map",
+        "3d_plot",
+    ]
 
 
-class TestAnalysisDefinitions:
-    def test_evaluate_target_is_optional(self):
-        params = _property_value(BaseEvaluateTool.parameters)
-        assert "target" in params["properties"]
-        assert "target" not in params.get("required", [])
+@pytest.mark.parametrize(
+    "tool_name",
+    (
+        "import_eeg_data",
+        "select_channels",
+        "set_montage",
+        "create_epochs",
+        "configure_dataset_split",
+        "select_model",
+        "configure_training",
+    ),
+)
+def test_workflow_handoff_schema_is_parameter_free(tool_name: str) -> None:
+    tool = WorkflowHandoffTool(tool_name, "Open the existing UI.")
 
-    def test_visualize_view_is_optional(self):
-        params = _property_value(BaseVisualizeTool.parameters)
-        assert "view" in params["properties"]
-        assert "view" not in params.get("required", [])
-
-    def test_saliency_can_query_or_configure_method(self):
-        params = _property_value(BaseSaliencyTool.parameters)
-        assert "method" in params["properties"]
-        assert params["properties"]["method"]["enum"] == [
-            "Gradient",
-            "Gradient * Input",
-            "SmoothGrad",
-            "SmoothGrad_Squared",
-            "VarGrad",
-        ]
-        assert params["properties"]["nt_samples"]["type"] == "integer"
-        assert params["properties"]["nt_samples"]["minimum"] == (
-            MIN_SALIENCY_NT_SAMPLES
-        )
-        assert params["properties"]["nt_samples"]["maximum"] == (
-            MAX_SALIENCY_NT_SAMPLES
-        )
-        assert params["properties"]["nt_samples_batch_size"]["type"] == [
-            "integer",
-            "null",
-        ]
-        assert params["properties"]["nt_samples_batch_size"]["minimum"] == (
-            MIN_SALIENCY_NT_SAMPLES_BATCH_SIZE
-        )
-        assert params["properties"]["nt_samples_batch_size"]["maximum"] == (
-            MAX_SALIENCY_NT_SAMPLES_BATCH_SIZE
-        )
-        assert params["properties"]["stdevs"]["type"] == "number"
-        assert "params" not in params["properties"]
+    assert tool.name == tool_name
+    assert tool.parameters == {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    }
 
 
-class TestDataInterpretationDefinitions:
-    def test_scan_source_requires_source_path(self):
-        params = _property_value(BaseScanSourceTool.parameters)
-        assert "source_path" in params["required"]
+@pytest.mark.parametrize(
+    "tool_name",
+    ("reset_preprocessing", "clear_training_history"),
+)
+def test_lifecycle_adapter_schema_is_parameter_free(tool_name: str) -> None:
+    tool = ApplicationCommandTool(tool_name, "Apply after confirmation.")
 
-    def test_scan_source_accepts_external_label_sources(self):
-        params = _property_value(BaseScanSourceTool.parameters)
-        label_sources = params["properties"]["label_sources"]
-
-        assert label_sources["type"] == "array"
-        assert label_sources["items"]["type"] == "string"
-        assert "label/event files or folders" in label_sources["description"]
-
-    def test_reload_recipe_requires_recipe_path(self):
-        params = _property_value(BaseReloadInterpretationRecipeTool.parameters)
-        assert "recipe_path" in params["required"]
-
-    def test_apply_interpretation_uses_dynamic_confirmation_policy(self):
-        val = _property_value(BaseApplyInterpretationTool.requires_confirmation)
-        assert val is False
-
-    def test_preview_choices_are_structured_for_labels_and_metadata(self):
-        params = _property_value(BasePreviewInterpretationTool.parameters)
-        choices = params["properties"]["choices"]
-
-        assert choices["additionalProperties"] is False
-        assert "label_carrier" in choices["properties"]
-        assert "bids_events" in choices["properties"]["label_carrier"]["enum"]
-        assert "event_role" in choices["properties"]
-        assert "subject" in choices["properties"]
-        assert "metadata_overrides" in choices["properties"]
-        assert "label_carrier_choices" in choices["properties"]
-        assert "eeg_file_remap" in choices["properties"]
-        assert (
-            choices["properties"]["eeg_file_remap"]["additionalProperties"]["type"]
-            == "string"
-        )
-        assert "label_carrier_remap" in choices["properties"]
-        assert (
-            choices["properties"]["label_carrier_remap"]["additionalProperties"]["type"]
-            == "string"
-        )
-
-    def test_legacy_data_tools_are_marked_in_descriptions(self):
-        assert "Legacy compatibility" in _property_value(BaseLoadDataTool.description)
-        assert "Legacy compatibility" in _property_value(
-            BaseAttachLabelsTool.description
-        )
-
-
-class TestRequiresConfirmation:
-    """Verify that dangerous tools require user confirmation."""
-
-    def test_start_training_requires_confirmation(self):
-        val = _property_value(BaseStartTrainingTool.requires_confirmation)
-        assert val is True
-
-    @pytest.mark.parametrize(
-        "tool_cls",
-        [
-            BaseListFilesTool,
-            BaseScanSourceTool,
-            BasePreviewInterpretationTool,
-            BaseValidateInterpretationTool,
-            BaseApplyInterpretationTool,
-            BaseSaveInterpretationRecipeTool,
-            BaseReloadInterpretationRecipeTool,
-            BaseLoadDataTool,
-            BaseAttachLabelsTool,
-            BaseGetDatasetInfoTool,
-            BaseConfigureDatasetSplitTool,
-            BaseEvaluateTool,
-            BaseVisualizeTool,
-            BaseSaliencyTool,
-            BaseStandardPreprocessTool,
-            BaseBandPassFilterTool,
-            BaseNotchFilterTool,
-            BaseResampleTool,
-            BaseNormalizeTool,
-            BaseRereferenceTool,
-            BaseChannelSelectionTool,
-            BaseSetMontageTool,
-            BaseEpochDataTool,
-            BaseSetModelTool,
-            BaseConfigureTrainingTool,
-            BaseSwitchPanelTool,
-        ],
-    )
-    def test_normal_tools_do_not_require_confirmation(self, tool_cls):
-        # requires_confirmation is inherited from BaseTool → False
-        from XBrainLab.llm.tools.base import BaseTool
-
-        assert _property_value(BaseTool.requires_confirmation) is False
+    assert tool.name == tool_name
+    assert tool.parameters == {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    }

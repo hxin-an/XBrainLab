@@ -6,7 +6,6 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from XBrainLab.llm.agent.assembler import PromptToolPublication
-from XBrainLab.llm.agent.execution_policy import ExecutionSnapshot
 from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ResourcePreflightReceipt,
     ToolAttemptAction,
@@ -202,19 +201,16 @@ def test_stale_prompt_generation_blocks_immediate_execution() -> None:
     assert verifier.calls == []
 
 
-def test_requested_intent_blocks_substitute_tool_from_same_publication() -> None:
+def test_published_tool_is_not_reclassified_from_host_text() -> None:
     coordinator, source, verifier = _coordinator(
         _context("set_model", command_name="configure_training")
     )
 
     decision = coordinator.evaluate(_request("set_model", text="Start training"))
 
-    assert decision.action is ToolAttemptAction.INTENT_BLOCKED
-    assert decision.result is not None
-    assert decision.result.error_type == "intent_mismatch"
-    assert decision.result.command_name == "train"
+    assert decision.action is ToolAttemptAction.CONFIRMATION_REQUIRED
     assert source.reads == ["set_model"]
-    assert verifier.calls == []
+    assert verifier.calls == [(("set_model", {}), 0.9)]
 
 
 def test_explicit_continue_request_authorizes_current_backend_candidate() -> None:
@@ -353,35 +349,8 @@ def test_disabled_capability_returns_generation_bound_block_result() -> None:
     assert source.reads == ["start_training"]
 
 
-def test_retry_policy_and_confirmation_fields_are_owned_by_coordinator() -> None:
+def test_confirmation_fields_are_owned_by_coordinator() -> None:
     coordinator, _source, _verifier = _coordinator(_context("start_training"))
-    availability = ToolAvailability(
-        tool_name="start_training",
-        enabled=True,
-        retry_limit=2,
-    )
-
-    retry = coordinator.after_failure(
-        mode="multi",
-        availability=availability,
-        failure_count=1,
-        global_retry_limit=3,
-        execution_count=1,
-        tool_cap=5,
-        cancelled=False,
-    )
-    stop = coordinator.after_failure(
-        mode="multi",
-        availability=availability,
-        failure_count=2,
-        global_retry_limit=3,
-        execution_count=2,
-        tool_cap=5,
-        cancelled=False,
-    )
-
-    assert (retry.continue_workflow, retry.reason) == (True, "retry")
-    assert (stop.continue_workflow, stop.reason) == (False, "retry_cap")
     assert coordinator.confirmed_params(
         "apply_interpretation",
         {"candidate_id": "candidate-1"},
@@ -401,7 +370,7 @@ def test_retry_policy_and_confirmation_fields_are_owned_by_coordinator() -> None
     }
 
 
-def test_success_policy_uses_fresh_snapshot_and_loop_state_resets_per_turn() -> None:
+def test_loop_state_resets_per_turn() -> None:
     coordinator, _source, _verifier = _coordinator(_context("query_state"))
     session = AssistantToolAttemptSession()
     request = _request("query_state", text="Show current workflow state")
@@ -425,20 +394,6 @@ def test_success_policy_uses_fresh_snapshot_and_loop_state_resets_per_turn() -> 
     assert second.action is ToolAttemptAction.EXECUTE
     assert third.action is ToolAttemptAction.LOOP
     assert after_reset.action is ToolAttemptAction.EXECUTE
-
-    decision = coordinator.after_success(
-        mode="multi",
-        availability=ToolAvailability(
-            tool_name="query_state",
-            enabled=True,
-        ),
-        snapshot=ExecutionSnapshot.safe_to_continue(),
-        execution_count=1,
-        tool_cap=5,
-        after_confirmation=False,
-        cancelled=False,
-    )
-    assert (decision.continue_workflow, decision.reason) == (True, "continue")
 
 
 def test_loop_policy_handles_non_json_serializable_parameters_deterministically() -> (

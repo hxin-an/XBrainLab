@@ -62,8 +62,8 @@ _PIPELINE_STAGE_CONTRACTS: dict[PipelineStage, PipelineStageContract] = {
     ),
     PipelineStage.DATA_LOADED: PipelineStageContract(
         prompt_label="Data Loaded",
-        status_label="Ready for preprocessing",
-        next_command=CommandName.PREPROCESS.value,
+        status_label="EEG data loaded · Ready for preprocessing or epoching",
+        next_command=None,
     ),
     PipelineStage.PREPROCESSED: PipelineStageContract(
         prompt_label="Preprocessed",

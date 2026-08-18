@@ -1,0 +1,21 @@
+{
+  "schema_version": "xbrainlab.assistant_walkthrough.v1",
+  "profile_id": "response-presentation",
+  "title": "Assistant response presentation",
+  "calls": [
+    {
+      "id": "reply",
+      "tool": "respond_to_user",
+      "params": {"message": "Choose one preprocessing action first."},
+      "instruction": "Verify a blue Assistant reply appears with no tool result, confirmation, or navigation",
+      "expected_outcomes": ["completed"]
+    },
+    {
+      "id": "dataset",
+      "tool": "switch_panel",
+      "params": {"panel_name": "dataset"},
+      "instruction": "Verify the Dataset panel still opens after the response",
+      "expected_outcomes": ["completed"]
+    }
+  ]
+}

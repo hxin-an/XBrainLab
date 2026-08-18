@@ -1,0 +1,104 @@
+[
+  {
+    "id": "missing_bandpass_bounds_01",
+    "category": "missing_parameter",
+    "input": "Apply a bandpass filter.",
+    "workflow_stage": "data_loaded",
+    "required_concepts": [["bandpass", "帶通"], ["low", "lower", "低"], ["high", "upper", "高"]]
+  },
+  {
+    "id": "missing_notch_frequency_01",
+    "category": "missing_parameter",
+    "input": "幫我套用 notch filter。",
+    "workflow_stage": "data_loaded",
+    "required_concepts": [["notch", "陷波"], ["frequency", "freq", "hz", "頻率"]]
+  },
+  {
+    "id": "missing_resample_rate_01",
+    "category": "missing_parameter",
+    "input": "Resample the EEG data.",
+    "workflow_stage": "data_loaded",
+    "required_concepts": [["resample", "重採樣"], ["rate", "hz", "頻率", "採樣率"]]
+  },
+  {
+    "id": "missing_reference_method_01",
+    "category": "missing_parameter",
+    "input": "重新設定 EEG reference。",
+    "workflow_stage": "data_loaded",
+    "required_concepts": [["reference", "參考"], ["method", "方式", "方法", "average"]]
+  },
+  {
+    "id": "missing_normalization_method_01",
+    "category": "missing_parameter",
+    "input": "Normalize this EEG data.",
+    "workflow_stage": "data_loaded",
+    "required_concepts": [["normalize", "normalization", "正規化", "標準化"], ["method", "方式", "方法", "z-score", "min-max"]]
+  },
+  {
+    "id": "start_before_setup_01",
+    "category": "out_of_stage",
+    "input": "Start training now.",
+    "workflow_stage": "data_loaded",
+    "required_concepts": [["training", "訓練"], ["first", "before", "先", "尚未", "需要"]],
+    "forbidden_concepts": ["initiated", "has started", "已開始", "開始了"]
+  },
+  {
+    "id": "stop_without_training_01",
+    "category": "out_of_stage",
+    "input": "Stop training.",
+    "workflow_stage": "empty",
+    "required_concepts": [["training", "訓練"], ["not", "no", "沒有", "尚未", "未在"]],
+    "forbidden_concepts": ["has been stopped", "stopped.", "已停止", "停止了"]
+  },
+  {
+    "id": "reset_before_preprocessing_01",
+    "category": "out_of_stage",
+    "input": "Reset preprocessing.",
+    "workflow_stage": "data_loaded",
+    "required_concepts": [["preprocess", "前處理"], ["not", "no", "沒有", "尚未", "未有"]],
+    "forbidden_concepts": ["has been reset", "已重設", "已重置"]
+  },
+  {
+    "id": "clear_history_before_training_01",
+    "category": "out_of_stage",
+    "input": "Clear the training history.",
+    "workflow_stage": "epoch_ready",
+    "required_concepts": [["history", "歷史"], ["not", "no", "沒有", "尚未", "未有"]],
+    "forbidden_concepts": ["has been cleared", "cleared.", "已清除"]
+  },
+  {
+    "id": "general_capability_question_01",
+    "category": "general",
+    "input": "What can you help me do in XBrainLab?",
+    "workflow_stage": "empty",
+    "required_concepts": []
+  },
+  {
+    "id": "ambiguous_preprocess_01",
+    "category": "ambiguous",
+    "input": "幫我處理一下這些 EEG 資料。",
+    "workflow_stage": "data_loaded",
+    "required_concepts": [["which", "what", "哪", "什麼", "何種", "具體"]]
+  },
+  {
+    "id": "multi_preprocess_request_01",
+    "category": "multi_action",
+    "input": "Apply a 4 to 38 Hz bandpass and then resample to 128 Hz.",
+    "workflow_stage": "data_loaded",
+    "required_concepts": [["one", "single", "first", "一次", "一個", "先"]]
+  },
+  {
+    "id": "epochs_before_data_01",
+    "category": "out_of_stage",
+    "input": "Open epoch settings.",
+    "workflow_stage": "empty",
+    "required_concepts": [["epoch"], ["data", "import", "資料", "匯入"]]
+  },
+  {
+    "id": "unsupported_dashboard_01",
+    "category": "out_of_stage",
+    "input": "Open the dashboard panel.",
+    "workflow_stage": "empty",
+    "required_concepts": [["dashboard"], ["not", "unavailable", "沒有", "無法", "不支援"]]
+  }
+]

@@ -328,6 +328,7 @@ class UiRequestKind(str, Enum):
 
     SWITCH_PANEL = "switch_panel"
     CONFIRM_MONTAGE = "confirm_montage"
+    WORKFLOW_HANDOFF = "workflow_handoff"
 
 
 @dataclass(frozen=True)

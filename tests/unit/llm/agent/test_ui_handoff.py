@@ -76,12 +76,12 @@ def test_workflow_handoff_route_descriptors_preserve_existing_ui_taxonomy() -> N
         ),
         (
             CommandName.PREPROCESS,
-            WorkflowUiHandoffSurfaceKind.PANEL,
-            AssistantDecisionOwner.PANEL_HANDOFF,
-            WorkflowUiHandoffPanel.PREPROCESS,
-            WorkflowUiHandoffRouteIdentity.PREPROCESS_PANEL,
-            "Continue in Preprocess",
-            "Continue in the opened XBrainLab panel.",
+            WorkflowUiHandoffSurfaceKind.DIALOG,
+            AssistantDecisionOwner.GUI_DIALOG,
+            WorkflowUiHandoffPanel.DATASET,
+            WorkflowUiHandoffRouteIdentity.CHANNEL_SELECTION_DIALOG,
+            "Continue in Channel Selection",
+            "Finish or cancel in the open Channel Selection dialog.",
         ),
         (
             CommandName.CREATE_EPOCH,
@@ -139,12 +139,12 @@ def test_workflow_handoff_route_descriptors_preserve_existing_ui_taxonomy() -> N
         ),
         (
             CommandName.SALIENCY,
-            WorkflowUiHandoffSurfaceKind.DIALOG,
-            AssistantDecisionOwner.GUI_DIALOG,
+            WorkflowUiHandoffSurfaceKind.ACTION,
+            None,
             WorkflowUiHandoffPanel.VISUALIZATION,
-            WorkflowUiHandoffRouteIdentity.SALIENCY_SETTINGS_DIALOG,
-            "Continue in Saliency Settings",
-            "Finish or cancel in the open Saliency Settings dialog.",
+            WorkflowUiHandoffRouteIdentity.SALIENCY_COMPUTE_ACTION,
+            "Compute saliency",
+            "Wait for saliency computation to finish or cancel it in Visualization.",
         ),
         (
             CommandName.APPLY_MONTAGE,
@@ -210,14 +210,29 @@ def test_workflow_handoff_consumers_do_not_redeclare_route_taxonomy() -> None:
 def test_decision_handoff_normalizes_backend_command_and_fields() -> None:
     request = WorkflowUiHandoffRequest.for_decision(
         " CREATE_EPOCH ",
+        tool_name="create_epochs",
         decision_fields=[" epoch_window ", "target_event", "epoch_window"],
     )
 
     assert request.kind is WorkflowUiHandoffKind.DECISION_REQUIRED
     assert request.command is CommandName.CREATE_EPOCH
     assert request.command_name == "create_epoch"
+    assert request.tool_name == "create_epochs"
     assert request.decision_fields == ("epoch_window", "target_event")
     assert request.request_id
+
+
+def test_action_handoff_has_no_gui_decision_owner_or_model_parameters() -> None:
+    request = WorkflowUiHandoffRequest.for_action(CommandName.SALIENCY)
+    route = workflow_ui_handoff_route_for(request.command)
+
+    assert request.kind is WorkflowUiHandoffKind.ACTION_REQUESTED
+    assert request.command is CommandName.SALIENCY
+    assert request.decision_fields == ()
+    assert request.suggestions == {}
+    assert route is not None
+    assert route.surface_kind is WorkflowUiHandoffSurfaceKind.ACTION
+    assert route.decision_owner is None
 
 
 def test_each_handoff_request_has_a_distinct_correlation_id() -> None:
@@ -230,6 +245,7 @@ def test_each_handoff_request_has_a_distinct_correlation_id() -> None:
 def test_resolution_preserves_request_identity_command_and_decision_fields() -> None:
     request = WorkflowUiHandoffRequest.for_decision(
         "create_epoch",
+        tool_name="create_epochs",
         decision_fields=("epoch_window", "target_event"),
     )
 
@@ -242,8 +258,30 @@ def test_resolution_preserves_request_identity_command_and_decision_fields() -> 
     assert resolution.request_id == request.request_id
     assert resolution.command is CommandName.CREATE_EPOCH
     assert resolution.command_name == "create_epoch"
+    assert resolution.tool_name == "create_epochs"
     assert resolution.decision_fields == ("epoch_window", "target_event")
     assert resolution.message == "Epoch settings were applied."
+
+
+def test_resolution_rejects_changed_public_tool_identity() -> None:
+    request = WorkflowUiHandoffRequest.for_decision(
+        CommandName.PREPROCESS,
+        tool_name="select_channels",
+        decision_fields=("channels",),
+    )
+    resolution = WorkflowUiHandoffResolution.for_request(
+        request,
+        status=WorkflowUiHandoffResolutionStatus.COMPLETED,
+    )
+    forged = WorkflowUiHandoffRequest.for_decision(
+        CommandName.PREPROCESS,
+        tool_name="apply_bandpass_filter",
+        decision_fields=("channels",),
+        request_id=request.request_id,
+    )
+
+    assert resolution.matches(request)
+    assert not resolution.matches(forged)
 
 
 def test_import_review_handoff_preserves_domain_identity() -> None:

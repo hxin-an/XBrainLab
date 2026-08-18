@@ -18,13 +18,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tests.qt_lifecycle import close_controller_and_wait
-from XBrainLab.backend.application import CommandName, get_application_service
 from XBrainLab.backend.controller.chat_controller import ChatController
 from XBrainLab.backend.study import Study
-from XBrainLab.llm.agent.confirmation import (
-    AgentConfirmationResolution,
-    AgentConfirmationResolutionStatus,
-)
 from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.agent.turn import (
     AssistantGenerationDispatchAcknowledgement,
@@ -222,7 +217,13 @@ def product_harness(qtbot) -> Iterator[ProductHarness]:
 def _tool_json(name: str, parameters: dict) -> str:
     import json
 
-    return json.dumps({"tool_name": name, "parameters": parameters})
+    return json.dumps(
+        {
+            "workflow_stage": "empty",
+            "tool_name": name,
+            "parameters": parameters,
+        }
+    )
 
 
 def _assert_no_raw_tool_language(text: str) -> None:
@@ -233,7 +234,6 @@ def _assert_no_raw_tool_language(text: str) -> None:
         "completed (",
         "Error: directory is required",
         "command_name",
-        "list_files",
         "start_training",
         "[]",
     ]
@@ -243,77 +243,21 @@ def _assert_no_raw_tool_language(text: str) -> None:
 
 
 def test_greeting_flow_is_friendly_and_does_not_call_tools(product_harness):
-    product_harness.controller._generate_response = MagicMock()
-
-    product_harness.send("hello")
+    product_harness.send(
+        "hello",
+        _tool_json(
+            "respond_to_user",
+            {"message": "Hello! I can help you work through your EEG workflow."},
+        ),
+    )
 
     visible = product_harness.visible_assistant_text
     assert "Hello" in visible
-    assert "import raw data" in visible
-    product_harness.controller._generate_response.assert_not_called()
+    assert "EEG workflow" in visible
     _assert_no_raw_tool_language(visible)
 
 
-def test_missing_argument_flow_asks_for_folder_without_schema_error(product_harness):
-    product_harness.send("list files", _tool_json("list_files", {}))
-
-    events = product_harness.generation_events
-    assert len(events) == 2
-    assert all(isinstance(event, AssistantGenerationEvent) for event in events)
-    assert events[0].generation_id > 0
-    assert events[1].generation_id == events[0].generation_id
-    assert [event.phase for event in events] == [
-        AssistantGenerationEventPhase.STARTED,
-        AssistantGenerationEventPhase.FINISHED,
-    ]
-
-    visible = product_harness.visible_assistant_text
-    assert "folder path" in visible
-    assert "paste the path" in visible
-    _assert_no_raw_tool_language(visible)
-
-    history_text = "\n".join(
-        str(message["content"]) for message in product_harness.controller.history
-    )
-    assert "Tool Output:" in history_text
-    assert "directory is required" in history_text
-
-
-def test_empty_tool_result_flow_uses_user_empty_state(
-    tmp_path: Path,
-    product_harness,
-):
-    product_harness.send(
-        f"show files in {tmp_path}",
-        _tool_json("list_files", {"directory": str(tmp_path)}),
-    )
-
-    visible = product_harness.visible_assistant_text
-    assert "did not find files" in visible
-    assert "import EEG data" in visible
-    _assert_no_raw_tool_language(visible)
-
-
-def test_model_invented_existing_path_is_rejected_before_file_access(
-    tmp_path: Path,
-    product_harness,
-):
-    not_selected = tmp_path / "not-selected"
-    not_selected.mkdir()
-    (not_selected / "private.txt").write_text("private", encoding="utf-8")
-
-    product_harness.send(
-        "Show my EEG files",
-        _tool_json("list_files", {"directory": str(not_selected)}),
-    )
-
-    visible = product_harness.visible_assistant_text
-    assert "Choose a file or folder in the app" in visible
-    assert "private.txt" not in visible
-    _assert_no_raw_tool_language(visible)
-
-
-def test_qt_chat_wiring_rejects_prose_prefixed_tool_trace_without_execution(
+def test_qt_chat_wiring_rejects_prose_prefixed_target_action_without_execution(
     qtbot,
     tmp_path: Path,
 ):
@@ -342,7 +286,7 @@ def test_qt_chat_wiring_rejects_prose_prefixed_tool_trace_without_execution(
         controller.handle_user_turn(
             AssistantTurnRequest.single_action(
                 correlation=AssistantTurnCorrelation(generation=1, turn_id=1),
-                text=f"Show files in {tmp_path}",
+                text="Import EEG data.",
             )
         )
         qtbot.waitUntil(
@@ -359,9 +303,13 @@ def test_qt_chat_wiring_rejects_prose_prefixed_tool_trace_without_execution(
         assert not isinstance(generation_id, bool)
         assert generation_id > 0
         controller._on_chunk_received(generation_id, "Sure, I will check.\n")
-        controller._on_chunk_received(generation_id, '{"tool_name":"list_')
         controller._on_chunk_received(
-            generation_id, f'files","parameters":{{"directory":"{tmp_path}"}}}}'
+            generation_id,
+            '{"workflow_stage":"empty","tool_name":"import_',
+        )
+        controller._on_chunk_received(
+            generation_id,
+            'eeg_data","parameters":{}}',
         )
 
         assert not any(
@@ -382,12 +330,12 @@ def test_qt_chat_wiring_rejects_prose_prefixed_tool_trace_without_execution(
             AssistantGenerationEvent(
                 generation_id=generation_id,
                 phase=AssistantGenerationEventPhase.CHUNK,
-                text='{"tool_name":"list_',
+                text='{"workflow_stage":"empty","tool_name":"import_',
             ),
             AssistantGenerationEvent(
                 generation_id=generation_id,
                 phase=AssistantGenerationEventPhase.CHUNK,
-                text=f'files","parameters":{{"directory":"{tmp_path}"}}}}',
+                text='eeg_data","parameters":{}}',
             ),
             AssistantGenerationEvent(
                 generation_id=generation_id,
@@ -408,86 +356,8 @@ def test_qt_chat_wiring_rejects_prose_prefixed_tool_trace_without_execution(
         controller._process_tool_calls.assert_not_called()
         controller._generate_response.assert_called_once_with()
         assert "Sure, I will check" not in visible_text
-        assert "did not find files" not in visible_text
         _assert_no_raw_tool_language(visible_text)
         close_controller_and_wait(controller, qtbot)
-
-
-def test_state_gated_command_flow_uses_backend_reason(product_harness):
-    product_harness.send("start training")
-
-    visible = product_harness.visible_assistant_text
-    assert "Start training is not available yet" in visible
-    assert "Save a valid data splitting specification before training" in visible
-    assert product_harness.generation_events == []
-    _assert_no_raw_tool_language(visible)
-
-
-def test_successful_command_result_summary_flow(product_harness):
-    product_harness.send(
-        "use eegnet",
-        _tool_json("set_model", {"model_name": "eegnet"}),
-    )
-
-    request = product_harness.controller.pending_interactions.confirmation_request
-    assert request is not None
-    assert request.command_name == "set_model"
-    assert (
-        get_application_service(product_harness.controller.study)
-        .get_state()
-        .training.has_model
-        is False
-    )
-
-    product_harness.controller.on_user_confirmation_resolved(
-        AgentConfirmationResolution.for_request(
-            request,
-            status=AgentConfirmationResolutionStatus.APPROVED,
-        )
-    )
-
-    visible = product_harness.visible_assistant_text
-    assert "Model configured" in visible
-    assert "eegnet" in visible
-    assert (
-        get_application_service(product_harness.controller.study)
-        .get_state()
-        .training.has_model
-        is True
-    )
-    _assert_no_raw_tool_language(visible)
-
-
-def test_workflow_scan_continuation_reaches_typed_import_review_boundary(
-    product_harness,
-):
-    source = Path("tests/fixtures/data/A01T.gdf").resolve()
-    request_text = f"Load {source} and continue until a decision is needed."
-
-    product_harness.send(
-        request_text,
-        _tool_json("scan_source", {"source_path": str(source)}),
-    )
-
-    publication = get_application_service(
-        product_harness.controller.study
-    ).get_view_publication()
-    interpretation = publication.state.interpretation
-    assert interpretation.has_preview is True
-    assert interpretation.has_validation_decision is True
-    assert interpretation.validation_decision == "blocked"
-    assert any(
-        "explicit target EEG event set" in reason
-        for reason in interpretation.blocked_reasons
-    )
-    assert interpretation.has_applied_interpretation is False
-    assert publication.state.raw.loaded is False
-
-    handoff = product_harness.controller.pending_interactions.workflow_handoff
-    assert handoff is not None
-    assert handoff.command is CommandName.APPLY_INTERPRETATION
-    assert set(handoff.decision_fields) == {"metadata_review", "label_matching"}
-    assert "Import review is blocked:" in product_harness.visible_assistant_text
 
 
 def test_local_runtime_disabled_flow_is_user_visible(qtbot):

@@ -26,37 +26,17 @@ __all__ = ["STAGE_CONFIG", "PipelineStage", "compute_pipeline_stage"]
 # ---------------------------------------------------------------------------
 
 _PREPROCESS_TOOLS: list[str] = [
-    "apply_standard_preprocess",
-    "reset_preprocess",
     "apply_bandpass_filter",
     "apply_notch_filter",
     "resample_data",
-    "normalize_data",
     "set_reference",
-    "select_channels",
-    "set_montage",
-    "epoch_data",
+    "normalize_data",
 ]
 
-_DATA_INTERPRETATION_TOOLS: list[str] = [
-    "scan_source",
-    "preview_interpretation",
-    "validate_interpretation",
-    "apply_interpretation",
-    "save_interpretation_recipe",
-    "reload_interpretation_recipe",
-]
-
-_TRAINING_TOOLS: list[str] = [
-    "set_model",
+_SETUP_TOOLS: list[str] = [
+    "configure_dataset_split",
+    "select_model",
     "configure_training",
-    "start_training",
-]
-
-_ANALYSIS_TOOLS: list[str] = [
-    "evaluate",
-    "visualize",
-    "saliency",
 ]
 
 
@@ -73,8 +53,8 @@ def _stage_system_prompt(
         f"## Current Stage: {stage}\n"
         f"{status}\n"
         f"{boundary}\n\n"
-        "The request-scoped action contracts below are authoritative. Use only "
-        "an action contract listed for this exact turn. Do not infer permission "
+        "The backend-published action contracts below are authoritative. Use only "
+        "an action contract listed for this exact stage. Do not infer permission "
         "from the stage description, prior chat, examples, or a recommended "
         "next step. Never replace the user's request with a prerequisite or "
         "substitute action."
@@ -88,8 +68,7 @@ def _stage_system_prompt(
 STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     PipelineStage.EMPTY: {
         "tools": [
-            "list_files",
-            *_DATA_INTERPRETATION_TOOLS,
+            "import_eeg_data",
             "switch_panel",
         ],
         "system_prompt": _stage_system_prompt(
@@ -106,9 +85,9 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     },
     PipelineStage.DATA_LOADED: {
         "tools": [
-            *_DATA_INTERPRETATION_TOOLS,
+            "select_channels",
             *_PREPROCESS_TOOLS,
-            "get_dataset_info",
+            "create_epochs",
             "switch_panel",
         ],
         "system_prompt": _stage_system_prompt(
@@ -116,16 +95,16 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             stage="Data Loaded",
             status="Raw EEG data is available, but preprocessing is not complete.",
             boundary=(
-                "Preprocessing must complete before EEG epoching and training dataset "
-                "construction."
+                "Raw EEG data is ready for preprocessing or EEG epoching. "
+                "Training dataset construction still requires completed EEG epochs."
             ),
         ),
     },
     PipelineStage.PREPROCESSED: {
         "tools": [
-            *_DATA_INTERPRETATION_TOOLS,
             *_PREPROCESS_TOOLS,
-            "get_dataset_info",
+            "create_epochs",
+            "reset_preprocessing",
             "switch_panel",
         ],
         "system_prompt": _stage_system_prompt(
@@ -142,10 +121,10 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     },
     PipelineStage.EPOCH_READY: {
         "tools": [
-            *_DATA_INTERPRETATION_TOOLS,
-            "reset_preprocess",
-            "configure_dataset_split",
-            "get_dataset_info",
+            "set_montage",
+            *_SETUP_TOOLS,
+            "start_training",
+            "reset_preprocessing",
             "switch_panel",
         ],
         "system_prompt": _stage_system_prompt(
@@ -160,11 +139,10 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     },
     PipelineStage.DATASET_READY: {
         "tools": [
-            *_DATA_INTERPRETATION_TOOLS,
-            "reset_preprocess",
-            *_TRAINING_TOOLS,
-            *_ANALYSIS_TOOLS,
-            "get_dataset_info",
+            "set_montage",
+            *_SETUP_TOOLS,
+            "start_training",
+            "reset_preprocessing",
             "switch_panel",
         ],
         "system_prompt": _stage_system_prompt(
@@ -194,11 +172,12 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     },
     PipelineStage.TRAINED: {
         "tools": [
-            *_DATA_INTERPRETATION_TOOLS,
-            "reset_preprocess",
-            *_TRAINING_TOOLS,
-            *_ANALYSIS_TOOLS,
-            "get_dataset_info",
+            "set_montage",
+            *_SETUP_TOOLS,
+            "start_training",
+            "reset_preprocessing",
+            "clear_training_history",
+            "compute_saliency",
             "switch_panel",
         ],
         "system_prompt": _stage_system_prompt(

@@ -248,12 +248,55 @@ def test_structured_smoke_accepts_only_the_product_tool_envelope():
         patch("scripts.dev.inspect_local_assistant_runtime.LLMEngine") as engine_type,
     ):
         engine_type.return_value.generate_stream.return_value = iter(
-            ['{"tool_name":"query_state","parameters":{}}']
+            [
+                '{"workflow_stage":"unavailable",'
+                '"tool_name":"switch_panel",'
+                '"parameters":{"panel_name":"dataset"}}'
+            ]
         )
 
         result = run_structured_output_smoke(config)
 
     assert result["status"] == "passed"
+    engine_type.return_value.close.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        ('{"workflow_stage":"unavailable","tool_name":"query_state","parameters":{}}'),
+        (
+            '{"workflow_stage":"empty",'
+            '"tool_name":"switch_panel",'
+            '"parameters":{"panel_name":"dataset"}}'
+        ),
+        (
+            '{"workflow_stage":"unavailable",'
+            '"tool_name":"switch_panel",'
+            '"parameters":{"panel_name":"dashboard"}}'
+        ),
+        (
+            '{"workflow_stage":"unavailable",'
+            '"tool_name":"switch_panel",'
+            '"parameters":{"panel_name":"dataset","extra":true}}'
+        ),
+    ],
+    ids=("retired-tool", "wrong-stage", "invalid-panel", "extra-parameter"),
+)
+def test_structured_smoke_rejects_non_target_tool_call(response: str):
+    config = LLMConfig()
+    config.apply_runtime_selection("local", ui_active_mode="local")
+
+    with (
+        patch.object(LLMConfig, "local_backend_ready", return_value=True),
+        patch("scripts.dev.inspect_local_assistant_runtime.LLMEngine") as engine_type,
+    ):
+        engine_type.return_value.generate_stream.return_value = iter([response])
+
+        result = run_structured_output_smoke(config)
+
+    assert result["status"] == "failed"
+    assert result["failure_type"] == "target_contract"
     engine_type.return_value.close.assert_called_once_with()
 
 
@@ -263,7 +306,11 @@ def test_structured_smoke_rejects_legacy_arguments_and_code_fences():
 
     for response in (
         '{"tool_name":"get_state","arguments":{}}',
-        '```json\n{"tool_name":"query_state","parameters":{}}\n```',
+        (
+            '```json\n{"workflow_stage":"unavailable",'
+            '"tool_name":"switch_panel",'
+            '"parameters":{"panel_name":"dataset"}}\n```'
+        ),
     ):
         with (
             patch.object(LLMConfig, "local_backend_ready", return_value=True),

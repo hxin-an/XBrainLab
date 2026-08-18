@@ -27,11 +27,6 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.backend.application import (
-    ApplicationService,
-    ConfigureTrainingCommand,
-    get_application_service,
-)
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantDecisionOwner,
@@ -143,6 +138,11 @@ class _ControlledEngine:
         self.generated_messages: list[list[dict[str, Any]]] = []
         self.generated_profiles: list[GenerationProfile] = []
         self.generation_failure: Exception | None = None
+        self.generation_output = (
+            '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+            '"parameters":{"message":"I inspected the requested EEG workflow. '
+            'No application command was executed."}}'
+        )
 
     @staticmethod
     def _wait_for_release(release: Event, operation: str) -> None:
@@ -184,10 +184,7 @@ class _ControlledEngine:
                 return
             if self.generation_failure is not None:
                 raise self.generation_failure
-            yield (
-                "I inspected the requested EEG workflow. No application command "
-                "was executed."
-            )
+            yield self.generation_output
         finally:
             with self._lock:
                 self.active_generations -= 1
@@ -689,6 +686,7 @@ def test_rapid_product_submissions_admit_only_first_turn(
 ) -> None:
     with _runtime_harness(qtbot, monkeypatch) as harness:
         _release_initial_load(qtbot, harness)
+        harness.engine.generation_release.set()
 
         harness.manager.handle_user_input("first queued request")
         harness.manager.handle_user_input("second queued request")
@@ -829,12 +827,13 @@ def test_generation_timeout_retains_turn_until_thread_exit_then_retry_succeeds(
     assert not ACTIVE_GENERATION_THREADS
 
 
-def test_real_product_submission_uses_backend_admission_before_model_generation(
+def test_real_product_submission_uses_model_without_host_intent_preemption(
     qtbot: Any,
     monkeypatch: Any,
 ) -> None:
     with _runtime_harness(qtbot, monkeypatch) as harness:
         _release_initial_load(qtbot, harness)
+        harness.engine.generation_release.set()
 
         _send_request(harness, "Train now.")
         qtbot.waitUntil(
@@ -849,8 +848,11 @@ def test_real_product_submission_uses_backend_admission_before_model_generation(
         messages = harness.manager.chat_controller.messages
         assert messages[0] == {"role": "user", "content": "Train now."}
         assert messages[1]["role"] == "assistant"
-        assert "not available yet" in messages[1]["content"].lower()
-        assert harness.engine.generation_calls == 0
+        assert messages[1]["content"] == (
+            "I inspected the requested EEG workflow. No application command "
+            "was executed."
+        )
+        assert harness.engine.generation_calls == 1
 
 
 def test_real_product_stop_has_one_terminal_response_and_no_late_model_text(
@@ -946,177 +948,6 @@ def test_worker_error_releases_runtime_turn_and_allows_next_submission(
         ]
 
 
-def test_incomplete_training_handoff_cancel_preserves_backend_state(
-    qtbot: Any,
-    monkeypatch: Any,
-) -> None:
-    with _runtime_harness(
-        qtbot,
-        monkeypatch,
-        use_real_workflow_router=True,
-    ) as harness:
-        _release_initial_load(qtbot, harness)
-        _install_real_training_surface(qtbot, harness)
-        before = get_application_service(harness.study).get_state().training
-        recorded_commands: list[object] = []
-        original_execute = ApplicationService.execute
-
-        def recording_execute(
-            service: ApplicationService,
-            command: object,
-            **kwargs: object,
-        ):
-            recorded_commands.append(command)
-            return original_execute(service, command, **kwargs)
-
-        monkeypatch.setattr(ApplicationService, "execute", recording_execute)
-        monkeypatch.setattr(
-            ModelSelectionDialog,
-            "exec",
-            lambda dialog: _run_scripted_dialog(
-                dialog,
-                _model_dialog_accepts_eegnet,
-            ),
-        )
-        monkeypatch.setattr(
-            TrainingSettingDialog,
-            "exec",
-            lambda dialog: _run_scripted_dialog(dialog, _training_dialog_cancel),
-        )
-        request_spy = QSignalSpy(harness.controller.workflow_ui_handoff_requested)
-        outcome_spy = QSignalSpy(harness.controller.interaction_resolved)
-        request = "Configure training with batch size 32 and learning rate 0.001."
-
-        _send_request(harness, request)
-        qtbot.waitUntil(
-            lambda: len(outcome_spy) == 1,
-            timeout=WATCHDOG_MS,
-        )
-        qtbot.waitUntil(
-            lambda: not harness.manager.chat_controller.is_processing,
-            timeout=WATCHDOG_MS,
-        )
-
-        assert len(request_spy) == 1
-        handoff = request_spy[0][0]
-        assert isinstance(handoff, WorkflowUiHandoffRequest)
-        assert handoff.command_name == "configure_training"
-        assert handoff.decision_fields == ("model", "training_options")
-        assert len(outcome_spy) == 1
-        outcome = outcome_spy[0][0]
-        assert outcome == AgentInteractionOutcome(
-            status=AgentInteractionStatus.CANCELLED,
-            command_name="configure_training",
-            request_id=handoff.request_id,
-            decision_fields=("model", "training_options"),
-            message="Training settings were cancelled.",
-        )
-        assert not any(
-            isinstance(command, ConfigureTrainingCommand)
-            for command in recorded_commands
-        )
-        after = get_application_service(harness.study).get_state().training
-        assert after == before
-        assert harness.study.training_manager.model_holder is None
-        assert harness.study.training_manager.training_option is None
-        assert harness.engine.generation_calls == 0
-        assert harness.manager.chat_controller.messages == [
-            {"role": "user", "content": request},
-            {
-                "role": "assistant",
-                "content": (
-                    "Configure training was cancelled. "
-                    "Your current workflow is unchanged."
-                ),
-            },
-        ]
-
-
-def test_incomplete_training_handoff_commits_one_backend_command(
-    qtbot: Any,
-    monkeypatch: Any,
-) -> None:
-    with _runtime_harness(
-        qtbot,
-        monkeypatch,
-        use_real_workflow_router=True,
-    ) as harness:
-        _release_initial_load(qtbot, harness)
-        _install_real_training_surface(qtbot, harness)
-        recorded_commands: list[object] = []
-        original_execute = ApplicationService.execute
-
-        def recording_execute(
-            service: ApplicationService,
-            command: object,
-            **kwargs: object,
-        ):
-            recorded_commands.append(command)
-            return original_execute(service, command, **kwargs)
-
-        monkeypatch.setattr(ApplicationService, "execute", recording_execute)
-        monkeypatch.setattr(
-            ModelSelectionDialog,
-            "exec",
-            lambda dialog: _run_scripted_dialog(
-                dialog,
-                _model_dialog_accepts_eegnet,
-            ),
-        )
-        monkeypatch.setattr(
-            TrainingSettingDialog,
-            "exec",
-            lambda dialog: _run_scripted_dialog(
-                dialog,
-                _training_dialog_accepts_suggestions,
-            ),
-        )
-        request_spy = QSignalSpy(harness.controller.workflow_ui_handoff_requested)
-        outcome_spy = QSignalSpy(harness.controller.interaction_resolved)
-        request = "Configure training with batch size 32 and learning rate 0.001."
-
-        _send_request(harness, request)
-        qtbot.waitUntil(
-            lambda: len(outcome_spy) == 1,
-            timeout=WATCHDOG_MS,
-        )
-        qtbot.waitUntil(
-            lambda: not harness.manager.chat_controller.is_processing,
-            timeout=WATCHDOG_MS,
-        )
-
-        assert len(request_spy) == 1
-        handoff = request_spy[0][0]
-        assert isinstance(handoff, WorkflowUiHandoffRequest)
-        assert len(outcome_spy) == 1
-        outcome = outcome_spy[0][0]
-        assert outcome.status is AgentInteractionStatus.COMPLETED_IN_UI
-        assert outcome.request_id == handoff.request_id
-        configure_commands = [
-            command
-            for command in recorded_commands
-            if isinstance(command, ConfigureTrainingCommand)
-        ]
-        assert len(configure_commands) == 1
-        command = cast(ConfigureTrainingCommand, configure_commands[0])
-        assert command.model_name == "braindecode.eegnet"
-        assert command.epoch == 12
-        assert command.batch_size == 32
-        assert command.learning_rate == 0.001
-        state = get_application_service(harness.study).get_state().training
-        assert state.has_model is True
-        assert state.model_name == "EEGNet (Braindecode)"
-        assert state.has_training_option is True
-        assert harness.engine.generation_calls == 0
-        assert harness.manager.chat_controller.messages == [
-            {"role": "user", "content": request},
-            {
-                "role": "assistant",
-                "content": "Configure training was completed in XBrainLab.",
-            },
-        ]
-
-
 def test_pending_agent_decision_resolves_through_real_ui_handoff_signal(
     qtbot: Any,
     monkeypatch: Any,
@@ -1199,11 +1030,11 @@ def test_cancelled_confirmation_has_one_terminal_manager_presentation(
         correlation = _install_host_turn_lease(harness)
         decision = ToolAttemptDecision(
             action=ToolAttemptAction.CONFIRMATION_REQUIRED,
-            command_name="reset_preprocess",
+            command_name="reset_preprocessing",
             params={},
         )
         request = AgentConfirmationRequest.for_action(
-            command_name="reset_preprocess",
+            command_name="reset_preprocessing",
             params={},
             action_label="Reset preprocessing",
             description="Restore the loaded EEG data to its raw state.",
@@ -1240,7 +1071,7 @@ def test_cancelled_confirmation_has_one_terminal_manager_presentation(
         assert len(outcome_spy) == 1
         assert outcome_spy[0][0] == AgentInteractionOutcome(
             status=AgentInteractionStatus.CANCELLED,
-            command_name="reset_preprocess",
+            command_name="reset_preprocessing",
             request_id=request.request_id,
         )
         visible = harness.manager.chat_controller.messages[0]["content"]

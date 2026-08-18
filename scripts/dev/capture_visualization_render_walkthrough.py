@@ -32,14 +32,14 @@ from scripts.dev.capture_chatpanel_local_tool_chain_walkthrough import (
     _clear_saved_main_window_geometry,
     _set_baseline_window_geometry,
 )
-from scripts.dev.capture_chatpanel_local_training_completion_walkthrough import (
-    prepare_training_dataset_ready_state,
-    write_synthetic_training_raw_fif,
-)
 from scripts.dev.capture_chatpanel_local_walkthrough import is_nearly_black
 from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
     collect_source_identity,
     validate_source_identity,
+)
+from scripts.dev.training_evidence_fixture import (
+    prepare_training_dataset_ready_state,
+    write_synthetic_training_raw_fif,
 )
 from scripts.dev.ui_navigation import open_workflow_panel
 from XBrainLab.backend.application import (

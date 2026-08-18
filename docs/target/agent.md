@@ -1,6 +1,6 @@
 # XBrainLab Agent 目標
 
-最後更新：`2026-08-17`
+最後更新：`2026-08-18`
 
 這份文件是 XBrainLab Assistant 產品目標的唯一權威。Runtime inventory、目前測試集合與歷史
 artifact 只能描述 current implementation，不能反推本文件的產品契約。
@@ -28,7 +28,7 @@ autonomous planner。
   legacy callers。
 - **Current model-facing projection**：目前 product prompt 實際發布的集合；由
   [current architecture](../architecture/agent.md) 描述。
-- **Approved target surface**：只由下方 intent ledger 的 17 個核准工具組成。
+- **Approved target surface**：只由下方 intent ledger 的 18 個核准工具組成。
 
 名稱、membership、參數、execution kind、owner、confirmation 或 terminal result 任一改變，都是
 public product contract decision；必須先更新本文件並取得使用者確認。
@@ -46,7 +46,7 @@ cancel 都由該 GUI owner 完成。`opened`／`accepted` 不是成功，只有 
 | `import_eeg_data` | `empty` | Data Import chooser、Data Interpretation lifecycle、reviewed ApplicationService apply | import applied、cancelled、blocked 或 failed |
 | `select_channels` | `data_loaded` | Dataset Channel Selection dialog；`PreprocessCommand(SELECT_CHANNELS)` | selected channels applied、cancelled、blocked 或 failed |
 | `set_montage` | `epoch_ready`、`dataset_ready`、`trained` | Montage Settings；`ApplyMontageCommand` | montage applied、cancelled、blocked 或 failed |
-| `create_epochs` | `preprocessed` | Epoch Settings；`CreateEpochCommand` | epochs created、cancelled、blocked 或 failed |
+| `create_epochs` | `data_loaded`、`preprocessed` | Epoch Settings；`CreateEpochCommand` | epochs created、cancelled、blocked 或 failed |
 | `configure_dataset_split` | `epoch_ready`、`dataset_ready`、`trained` | Dataset Split dialog；`SaveDatasetSplitCommand` | split saved／datasets generated、cancelled、blocked 或 failed |
 | `select_model` | `epoch_ready`、`dataset_ready`、`trained` | Model Selection dialog；existing ConfigureTraining command owner | model selection saved、cancelled、blocked 或 failed |
 | `configure_training` | `epoch_ready`、`dataset_ready`、`trained` | Training Settings dialog；existing ConfigureTraining command owner | training settings saved、cancelled、blocked 或 failed |
@@ -79,6 +79,20 @@ Backend 仍負責 Nyquist、range、state、resource 與 scientific precondition
 
 Confirmation、resource receipt、generation token與 filesystem path 都由 trusted product code處理，
 模型不得輸出或保存。
+
+### Owned analysis action
+
+`compute_saliency`是唯一可由Assistant提出的analysis execution tool：
+
+- 參數固定為空object，只在`trained`stage發布。
+- 一律先使用既有Assistant confirmation card；取消後不得執行或continuation。
+- 批准後開啟Visualization的Saliency Map，使用該panel當下合法的completed run、method與settings；
+  模型不選擇也不保存這些值。
+- 執行仍由既有VisualizationPanel、ApplicationService／AnalysisService與resource confirmation擁有；
+  Assistant adapter不建立第二個command、readiness或operation owner。
+- 只有同一owned operation id的`completed`、`cancelled`、`blocked`或`failed`能結束turn；opened、
+  button clicked、scheduled或其他operation terminal都不是成功。
+- 沒有合法completed run、selection stale或已有saliency operation時blocked，不silent fallback或重複啟動。
 
 ### Navigation
 
@@ -115,16 +129,17 @@ Confirmation、resource receipt、generation token與 filesystem path 都由 tru
 | Stage | Backend meaning | Published target behavior |
 | --- | --- | --- |
 | `empty` | 無 raw data | Import、Switch |
-| `data_loaded` | 有 raw、尚無 derived preprocessing | Channel、五項 direct preprocess、Switch |
+| `data_loaded` | 有 raw、尚無 derived preprocessing | Channel、五項 direct preprocess、Epoch、Switch |
 | `preprocessed` | Channel 或任一 preprocess 已成功 | 五項 direct preprocess、Epoch、Reset、Switch |
 | `epoch_ready` | 已有 supervised epochs，但 split／model／training settings 尚未全部完成 | Montage、三項 setup tools、Start、Reset、Switch |
 | `dataset_ready` | saved split、model、training settings 三項全部完成 | setup 可修改；Start confirmation；Montage、Reset、Switch |
 | `training` | active training job | Stop、Switch；不發布其他 mutation |
-| `trained` | 至少一個 completed run | setup／retrain、Montage、Reset、Clear History、results navigation |
+| `trained` | 至少一個 completed run | setup／retrain、Montage、Reset、Clear History、Compute Saliency、results navigation |
 
-`select_channels` 或任一 direct preprocess 成功會自然投影為 `preprocessed`。Montage 只在 epoch 後
-提供、不改變 stage。`start_training` 在 `epoch_ready` 可被提出，但 backend 必須精確回覆缺少的
-split、model 或 training settings，不能部分執行。
+`select_channels` 或任一 direct preprocess 成功會自然投影為 `preprocessed`。Raw data可直接建立
+Epoch；`CreateEpochCommand`要求raw與合法epoch context，不以preprocessing operation作前置條件，成功後
+直接投影為`epoch_ready`。Montage只在epoch後提供、不改變stage。`start_training` 在 `epoch_ready`
+可被提出，但backend必須精確回覆缺少的split、model或training settings，不能部分執行。
 
 Stage、setup flags、running state與completed runs都從同一份 immutable ApplicationService
 publication產生。若 publication generation 在生成、repair、confirmation或GUI handoff期間改變，
@@ -229,19 +244,21 @@ command policy或fake backend。
 
 ## Candidate validation與claims
 
-Engineering candidate的frozen Granite suite約30–35 cases，至少覆蓋17個positive intents、五個
-missing-parameter cases、跨stage start request、out-of-stage與general／ambiguous／multi-mutation
-cases。Candidate gates：
+Engineering candidate suite在新增`compute_saliency`後為50 cases：36個positive cases（18個target
+tool各2個）加既有14個challenge cases。Challenge必須包含五個missing-parameter、跨stage lifecycle、
+out-of-stage、general、ambiguous與multi-mutation；它們使用`respond_to_user`，不得執行替代工具。
+Candidate gates：
 
 - invalid／out-of-stage／stale execution、cancel後continuation與multi-mutation partial action皆為0。
 - 所有cases在repair budget內得到legal envelope；final stage acknowledgement 100%。
-- Start／Stop／Reset／Clear各3/3正確。
-- 每個target tool至少2/3正確；overall exact final tool＋parameters至少95%。
+- 36個positive全部得到exact final tool＋parameters；14個challenge全部得到stage-correct
+  `respond_to_user`，缺參數案例還必須指出缺少的欄位。
+- 50/50才通過；不得以平均分數、repair前結果或縮小denominator替代。
 - 真model safe E2E：Switch Dataset、Import GUI、direct Resample。
 
 這些是產品候選gate，不是thesis benchmark。Thesis evidence另由frozen source、case set、runner、model
 revision與至少三次repeat定義；mock、host-assisted normalization、dashboard或單次walkthrough不能
 宣稱raw-model accuracy。
 
-目前產品在完成migration與同一exact-SHA candidate evidence前，不能宣稱Stable v2、17-tool
+目前產品在完成migration與同一exact-SHA candidate evidence前，不能宣稱Stable v2、18-tool
 runtime、model-free walkthrough或Assistant-ready。

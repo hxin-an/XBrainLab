@@ -1,25 +1,16 @@
-"""Typed, user-facing assistant responses with bounded next actions."""
+"""Typed, user-facing assistant responses and panel navigation requests."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from uuid import uuid4
 
 from XBrainLab.backend.application.commands import CommandName
 from XBrainLab.backend.utils.public_diagnostics import (
     DiagnosticTextLayout,
     public_diagnostic_text,
 )
-from XBrainLab.chat_contract import (
-    MAX_CHAT_ACTION_ID_LENGTH,
-    MAX_CHAT_ACTION_LABEL_LENGTH,
-    MAX_CHAT_ACTION_PROMPT_LENGTH,
-    MAX_CHAT_MESSAGE_CONTENT_LENGTH,
-    MAX_CHAT_PRESENTATION_ID_LENGTH,
-    MAX_CHAT_RESPONSE_ACTIONS,
-    bounded_chat_string,
-)
+from XBrainLab.chat_contract import MAX_CHAT_MESSAGE_CONTENT_LENGTH, bounded_chat_string
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.product_language import tool_action_label
 
@@ -36,14 +27,6 @@ class AssistantResponseKind(str, Enum):
     BLOCKED = "blocked"
     ERROR = "error"
     CANCELLED = "cancelled"
-
-
-class AssistantResponseActionKind(str, Enum):
-    """Safe host action offered below one response."""
-
-    SEND_MESSAGE = "send_message"
-    OPEN_PANEL = "open_panel"
-    OPEN_DATA_IMPORT = "open_data_import"
 
 
 class AssistantPanelTarget(str, Enum):
@@ -74,10 +57,16 @@ class AssistantPanelNavigationRequest:
 
     target: AssistantPanelTarget
     view_mode: str | None = None
+    correlation: AssistantTurnCorrelation | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.target, AssistantPanelTarget):
             raise TypeError("Assistant panel target must be typed.")
+        if self.correlation is not None and not isinstance(
+            self.correlation,
+            AssistantTurnCorrelation,
+        ):
+            raise TypeError("Assistant panel correlation must be typed.")
         if self.view_mode is None:
             return
         if not isinstance(self.view_mode, str):
@@ -137,10 +126,6 @@ _COMMAND_PANEL_TARGETS: dict[CommandName, AssistantPanelTarget] = {
     CommandName.APPLY_MONTAGE: AssistantPanelTarget.VISUALIZATION,
     CommandName.VISUALIZE: AssistantPanelTarget.VISUALIZATION,
     CommandName.SALIENCY: AssistantPanelTarget.VISUALIZATION,
-}
-
-_BLOCKED_COMMAND_PANEL_TARGETS: dict[CommandName, AssistantPanelTarget] = {
-    CommandName.EVALUATE: AssistantPanelTarget.TRAINING,
 }
 
 
@@ -205,23 +190,6 @@ def panel_target_for_command(
     )
 
 
-def panel_target_for_blocked_command(
-    command_name: str | CommandName,
-    blocked_reason: str | None,
-) -> AssistantPanelTarget | None:
-    """Route a blocked action from command identity, never display copy."""
-    # Kept in the signature for the current controller call; presentation copy is
-    # deliberately non-authoritative for routing.
-    _ = blocked_reason
-    canonical_command = _canonical_command_identity(command_name)
-    if canonical_command is None:
-        return None
-    return _BLOCKED_COMMAND_PANEL_TARGETS.get(
-        canonical_command,
-        _COMMAND_PANEL_TARGETS.get(canonical_command),
-    )
-
-
 def interaction_outcome_message(outcome: AgentInteractionOutcome) -> str:
     """Translate one typed interaction result into stable product copy."""
     if not isinstance(outcome, AgentInteractionOutcome):
@@ -238,7 +206,7 @@ def interaction_outcome_message(outcome: AgentInteractionOutcome) -> str:
             "clear_training_history": (
                 "Training history removal cancelled. Your current history is unchanged."
             ),
-            "reset_preprocess": (
+            "reset_preprocessing": (
                 "Preprocessing reset cancelled. Your current workflow is unchanged."
             ),
             "new_session": (
@@ -254,12 +222,14 @@ def interaction_outcome_message(outcome: AgentInteractionOutcome) -> str:
         if command_identifier == CommandName.EVALUATE.value:
             return "Evaluation is open in the main window. Review results there."
         return f"{label} is open in the main window. Continue there."
-    if outcome.status is AgentInteractionStatus.COMPLETED_IN_UI:
-        return f"{label} was completed in XBrainLab."
     detail = public_diagnostic_text(
         outcome.message or "",
         layout=DiagnosticTextLayout.SINGLE_LINE,
     )
+    if outcome.status is AgentInteractionStatus.COMPLETED_IN_UI:
+        if command_identifier == "select_model" and detail:
+            return detail
+        return f"{label} was completed in XBrainLab."
     if outcome.status is AgentInteractionStatus.BLOCKED:
         return detail or (
             f"{label} is blocked by the current workflow state. "
@@ -293,106 +263,12 @@ def interaction_outcome_kind(
 
 
 @dataclass(frozen=True, slots=True)
-class AssistantResponseAction:
-    """One bounded action rendered below an assistant response."""
-
-    label: str
-    kind: AssistantResponseActionKind
-    prompt: str = ""
-    panel: AssistantPanelTarget | None = None
-    action_id: str = field(default_factory=lambda: uuid4().hex)
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.kind, AssistantResponseActionKind):
-            raise TypeError("Assistant response action kind must be typed.")
-        object.__setattr__(
-            self,
-            "label",
-            bounded_chat_string(
-                public_diagnostic_text(self.label),
-                field_name="Assistant response action label",
-                maximum_length=MAX_CHAT_ACTION_LABEL_LENGTH,
-                normalize_whitespace=True,
-            ),
-        )
-        object.__setattr__(
-            self,
-            "prompt",
-            bounded_chat_string(
-                public_diagnostic_text(self.prompt),
-                field_name="Assistant response action prompt",
-                maximum_length=MAX_CHAT_ACTION_PROMPT_LENGTH,
-                normalize_whitespace=True,
-            ),
-        )
-        object.__setattr__(
-            self,
-            "action_id",
-            bounded_chat_string(
-                self.action_id,
-                field_name="Assistant response action id",
-                maximum_length=MAX_CHAT_ACTION_ID_LENGTH,
-                normalize_whitespace=True,
-            ),
-        )
-        if self.panel is not None and not isinstance(self.panel, AssistantPanelTarget):
-            raise TypeError("Assistant response panel target must be typed.")
-        if not self.label.strip():
-            raise ValueError("Assistant response action label cannot be empty.")
-        if not self.action_id.strip():
-            raise ValueError("Assistant response action id cannot be empty.")
-        if self.kind is AssistantResponseActionKind.SEND_MESSAGE:
-            if not self.prompt.strip() or self.panel is not None:
-                raise ValueError("Send-message actions require only a prompt.")
-        elif self.kind is AssistantResponseActionKind.OPEN_PANEL and (
-            self.panel is None or self.prompt.strip()
-        ):
-            raise ValueError("Open-panel actions require only a panel target.")
-        elif self.kind is AssistantResponseActionKind.OPEN_DATA_IMPORT and (
-            self.prompt.strip() or self.panel is not None
-        ):
-            raise ValueError("Open-data-import actions do not accept payload fields.")
-
-    @classmethod
-    def send_message(cls, label: str, prompt: str) -> AssistantResponseAction:
-        """Build an action that submits visible user text through the agent."""
-        return cls(
-            label=label,
-            kind=AssistantResponseActionKind.SEND_MESSAGE,
-            prompt=prompt,
-        )
-
-    @classmethod
-    def open_panel(
-        cls,
-        label: str,
-        panel: AssistantPanelTarget,
-    ) -> AssistantResponseAction:
-        """Build an action that opens one existing product panel."""
-        return cls(
-            label=label,
-            kind=AssistantResponseActionKind.OPEN_PANEL,
-            panel=panel,
-        )
-
-    @classmethod
-    def open_data_import(cls, label: str) -> AssistantResponseAction:
-        """Build a typed action that opens the existing Data Import surface."""
-        return cls(
-            label=label,
-            kind=AssistantResponseActionKind.OPEN_DATA_IMPORT,
-        )
-
-
-@dataclass(frozen=True, slots=True)
 class AssistantResponsePresentation:
-    """Typed response copy and a small set of contextual actions."""
+    """Typed response copy rendered in the product transcript."""
 
     text: str
     correlation: AssistantTurnCorrelation
     kind: AssistantResponseKind = AssistantResponseKind.MESSAGE
-    actions: tuple[AssistantResponseAction, ...] = ()
-    presentation_id: str = field(default_factory=lambda: uuid4().hex)
 
     def __post_init__(self) -> None:
         if not isinstance(self.correlation, AssistantTurnCorrelation):
@@ -408,56 +284,5 @@ class AssistantResponsePresentation:
                 maximum_length=MAX_CHAT_MESSAGE_CONTENT_LENGTH,
             ),
         )
-        object.__setattr__(
-            self,
-            "presentation_id",
-            bounded_chat_string(
-                self.presentation_id,
-                field_name="Assistant response presentation id",
-                maximum_length=MAX_CHAT_PRESENTATION_ID_LENGTH,
-                normalize_whitespace=True,
-            ),
-        )
-        if not isinstance(self.actions, tuple):
-            raise TypeError("Assistant response actions must be a tuple.")
-        if not all(
-            isinstance(action, AssistantResponseAction) for action in self.actions
-        ):
-            raise TypeError("Assistant responses require typed response actions.")
         if not self.text.strip():
             raise ValueError("Assistant response text cannot be empty.")
-        if not self.presentation_id.strip():
-            raise ValueError("Assistant response presentation id cannot be empty.")
-        if len(self.actions) > MAX_CHAT_RESPONSE_ACTIONS:
-            raise ValueError(
-                "Assistant responses may expose at most "
-                f"{MAX_CHAT_RESPONSE_ACTIONS} actions."
-            )
-        if len({action.action_id for action in self.actions}) != len(self.actions):
-            raise ValueError("Assistant response action ids must be unique.")
-
-
-@dataclass(frozen=True, slots=True)
-class AssistantResponseActionSelection:
-    """Correlated user selection from one still-visible presentation."""
-
-    presentation_id: str
-    action: AssistantResponseAction
-
-    def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
-            "presentation_id",
-            bounded_chat_string(
-                self.presentation_id,
-                field_name="Assistant response presentation id",
-                maximum_length=MAX_CHAT_PRESENTATION_ID_LENGTH,
-                normalize_whitespace=True,
-            ),
-        )
-        if not self.presentation_id.strip():
-            raise ValueError("Assistant response presentation id cannot be empty.")
-        if not isinstance(self.action, AssistantResponseAction):
-            raise TypeError(
-                "Assistant response selection requires a typed response action."
-            )
