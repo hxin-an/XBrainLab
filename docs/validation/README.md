@@ -1,6 +1,6 @@
 # XBrainLab Validation Contract
 
-最後更新：`2026-08-17`
+最後更新：`2026-08-18`
 
 驗證回答「哪個exact source，在什麼環境，觀察到什麼」，不能把單一PASS放大成產品、科學或真人
 驗收結論。Executable handoff gate的ID、順序、argv、timeout與artifact contract只以
@@ -71,6 +71,26 @@ exact commit完成後才可稱`handoff-ready`。
 批准失效並回到checkpoint。CI、自動journey與offscreen screenshot不能取代此批准。
 
 純docs、tests、CI或agent-guidance變更若不可能改變產品行為，可不要求manual acceptance。
+
+### Stable Assistant candidate
+
+Assistant candidate必須在同一clean/explained exact source依序閉合下列證據：
+
+1. Unit/integration證明17-tool registry、strict envelope、backend-owned stage、confirmation、GUI
+   correlation與no-model diagnostic terminal；mock或manifest-only測試不等於真人workflow。
+2. Frozen Granite report固定48 cases：34 positive（17 tools各2）與14 challenge；positive要求exact
+   tool＋parameters，challenge要求stage-correct `respond_to_user`，48/48才通過。這只支撐bounded
+   selection，不支撐tool execution或產品ready。
+3. 真model safe E2E依normal ChatPanel路徑完成Switch Dataset → Import GUI → Select Channels →
+   direct Resample；不得用debug transport或fake generator替代。
+4. 使用者在同一candidate source完成Complete Workflow、Lifecycle／Navigation、Contract Failures三份
+   frontend walkthrough。Import、Channel、Montage、Epoch、Split、Model與Training Settings都必須
+   透過真GUI；confirmation/cancel/navigation terminal不可由script預先批准。
+5. PR所有applicable non-skipped checks completed/success後，才記錄manual acceptance與merge同意。
+
+Stage驗收另有一個硬邊界：匯入建立的working raw copy不算preprocessing。只有
+`preprocessed.operations`非空（Channel或任一direct preprocess已成功）才可發布`preprocessed`；否則
+必須是`data_loaded`並向模型發布Channel與五個direct preprocess工具。
 
 ### Staged product rebuild
 

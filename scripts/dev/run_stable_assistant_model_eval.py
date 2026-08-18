@@ -27,7 +27,8 @@ from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CASES = ROOT / "XBrainLab" / "llm" / "rag" / "data" / "gold_set.json"
-REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v1"
+DEFAULT_CHALLENGES = ROOT / "scripts" / "dev" / "stable_assistant_challenge_cases.json"
+REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +40,18 @@ class TargetEvalCase:
     workflow_stage: str
     expected_tool: str
     expected_parameters: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class TargetChallengeCase:
+    """One no-execution challenge against the same strict product envelope."""
+
+    case_id: str
+    user_input: str
+    workflow_stage: str
+    category: str
+    required_concepts: tuple[tuple[str, ...], ...]
+    forbidden_concepts: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,8 +138,92 @@ def load_target_cases(path: Path = DEFAULT_CASES) -> tuple[TargetEvalCase, ...]:
     return tuple(cases)
 
 
+def load_challenge_cases(
+    path: Path = DEFAULT_CHALLENGES,
+) -> tuple[TargetChallengeCase, ...]:
+    """Load frozen no-execution cases without changing the RAG gold set."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Could not load target challenge cases: {exc}") from exc
+    if not isinstance(payload, list):
+        raise ValueError("Target challenge cases must be one JSON array.")
+
+    allowed_categories = {
+        "ambiguous",
+        "general",
+        "missing_parameter",
+        "multi_action",
+        "out_of_stage",
+    }
+    cases: list[TargetChallengeCase] = []
+    seen_ids: set[str] = set()
+    for row in payload:
+        required_keys = {
+            "id",
+            "category",
+            "input",
+            "workflow_stage",
+            "required_concepts",
+        }
+        if (
+            not isinstance(row, dict)
+            or not required_keys.issubset(row)
+            or set(row).difference(required_keys | {"forbidden_concepts"})
+        ):
+            raise ValueError("Each target challenge case must use the exact schema.")
+        case_id = row["id"]
+        category = row["category"]
+        user_input = row["input"]
+        workflow_stage = row["workflow_stage"]
+        concepts = row["required_concepts"]
+        forbidden = row.get("forbidden_concepts", [])
+        if not isinstance(case_id, str) or not case_id or case_id in seen_ids:
+            raise ValueError(f"Invalid or duplicate challenge case id: {case_id!r}")
+        if category not in allowed_categories:
+            raise ValueError(f"Challenge case {case_id} has an invalid category.")
+        if not isinstance(user_input, str) or not user_input.strip():
+            raise ValueError(f"Challenge case {case_id} lacks a user input.")
+        try:
+            PipelineStage(workflow_stage)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Challenge case {case_id} has an invalid workflow stage."
+            ) from exc
+        if not isinstance(concepts, list) or any(
+            not isinstance(group, list)
+            or not group
+            or any(not isinstance(term, str) or not term for term in group)
+            for group in concepts
+        ):
+            raise ValueError(f"Challenge case {case_id} has invalid required concepts.")
+        if not isinstance(forbidden, list) or any(
+            not isinstance(term, str) or not term for term in forbidden
+        ):
+            raise ValueError(
+                f"Challenge case {case_id} has invalid forbidden concepts."
+            )
+        cases.append(
+            TargetChallengeCase(
+                case_id=case_id,
+                user_input=user_input.strip(),
+                workflow_stage=workflow_stage,
+                category=category,
+                required_concepts=tuple(
+                    tuple(term for term in group) for group in concepts
+                ),
+                forbidden_concepts=tuple(forbidden),
+            )
+        )
+        seen_ids.add(case_id)
+
+    if len(cases) != 14:
+        raise ValueError("Target challenge suite must contain exactly 14 cases.")
+    return tuple(cases)
+
+
 def build_case_messages(
-    case: TargetEvalCase,
+    case: TargetEvalCase | TargetChallengeCase,
     registry: ToolRegistry,
 ) -> list[dict[str, str]]:
     """Build the product strict contract with the case's stage tool projection."""
@@ -220,6 +317,74 @@ def score_model_response(
     )
 
 
+def score_challenge_response(
+    case: TargetChallengeCase,
+    response: str,
+    registry: ToolRegistry,
+) -> TargetEvalScore:
+    """Require a strict, stage-correct response without tool execution."""
+    del registry
+    envelope = CommandParser.parse_product(response)
+    if envelope.status is ToolEnvelopeStatus.FORMAT_ERROR:
+        return TargetEvalScore(
+            False,
+            "output_format",
+            response[:1000],
+            envelope.workflow_stage,
+            None,
+            None,
+            envelope.error,
+        )
+    if envelope.status is ToolEnvelopeStatus.VALID:
+        tool_name, parameters = envelope.commands[0]
+        return TargetEvalScore(
+            False,
+            "unexpected_tool",
+            response[:1000],
+            envelope.workflow_stage,
+            tool_name,
+            parameters,
+            "Challenge required respond_to_user without executing a tool.",
+        )
+    if envelope.workflow_stage != case.workflow_stage:
+        return TargetEvalScore(
+            False,
+            "workflow_stage",
+            response[:1000],
+            envelope.workflow_stage,
+            "respond_to_user",
+            {"message": envelope.message},
+            "Model did not acknowledge the exact target stage.",
+        )
+
+    folded_message = envelope.message.casefold()
+    missing = [
+        tuple(group)
+        for group in case.required_concepts
+        if not any(term.casefold() in folded_message for term in group)
+    ]
+    forbidden = [
+        term for term in case.forbidden_concepts if term.casefold() in folded_message
+    ]
+    passed = not missing and not forbidden
+    return TargetEvalScore(
+        passed,
+        "none" if passed else "response_content",
+        response[:1000],
+        envelope.workflow_stage,
+        "respond_to_user",
+        {"message": envelope.message},
+        (
+            "Exact no-execution response selected."
+            if passed
+            else (
+                "Response violated its content contract: "
+                f"missing={missing!r}, forbidden={forbidden!r}"
+            )
+        ),
+    )
+
+
 def _build_report(
     *,
     model_id: str,
@@ -228,6 +393,15 @@ def _build_report(
     complete: bool,
 ) -> dict[str, Any]:
     passed_count = sum(bool(row["score"]["passed"]) for row in results)
+    suite_summary: dict[str, dict[str, int]] = {}
+    for suite in ("positive", "challenge"):
+        suite_rows = [row for row in results if row.get("suite") == suite]
+        suite_passed = sum(bool(row["score"]["passed"]) for row in suite_rows)
+        suite_summary[suite] = {
+            "case_count": len(suite_rows),
+            "passed_count": suite_passed,
+            "failed_count": len(suite_rows) - suite_passed,
+        }
     spec = local_model_spec(model_id)
     return {
         "schema_version": REPORT_SCHEMA,
@@ -238,6 +412,7 @@ def _build_report(
             "deterministic": True,
         },
         "target_surface": sorted(AGENT_ACTION_CONTRACTS.model_tool_names()),
+        "suite_summary": suite_summary,
         "summary": {
             "expected_case_count": expected_case_count,
             "case_count": len(results),
@@ -285,6 +460,7 @@ def run_eval(
     config: LLMConfig,
     cases: tuple[TargetEvalCase, ...],
     *,
+    challenge_cases: tuple[TargetChallengeCase, ...] = (),
     checkpoint_path: Path | None = None,
 ) -> dict[str, Any]:
     """Load one exact local engine and score every frozen target case."""
@@ -301,9 +477,13 @@ def run_eval(
     results: list[dict[str, Any]] = []
     try:
         engine.load_model()
-        for index, case in enumerate(cases, start=1):
+        all_cases: tuple[TargetEvalCase | TargetChallengeCase, ...] = (
+            *cases,
+            *challenge_cases,
+        )
+        for index, case in enumerate(all_cases, start=1):
             print(
-                f"Stable Assistant model eval {index}/{len(cases)}: {case.case_id}",
+                f"Stable Assistant model eval {index}/{len(all_cases)}: {case.case_id}",
                 file=sys.stderr,
                 flush=True,
             )
@@ -312,15 +492,22 @@ def run_eval(
                 profile=GenerationProfile.STRUCTURED_DECISION,
             )
             response = "".join(chunks).strip()
-            score = score_model_response(case, response, registry)
-            results.append({"case": asdict(case), "score": asdict(score)})
+            if isinstance(case, TargetChallengeCase):
+                suite = "challenge"
+                score = score_challenge_response(case, response, registry)
+            else:
+                suite = "positive"
+                score = score_model_response(case, response, registry)
+            results.append(
+                {"suite": suite, "case": asdict(case), "score": asdict(score)}
+            )
             if checkpoint_path is not None:
                 _write_report(
                     checkpoint_path,
                     _build_report(
                         model_id=selection.model_id,
                         results=results,
-                        expected_case_count=len(cases),
+                        expected_case_count=len(all_cases),
                         complete=False,
                     ),
                 )
@@ -331,7 +518,7 @@ def run_eval(
     return _build_report(
         model_id=selection.model_id,
         results=results,
-        expected_case_count=len(cases),
+        expected_case_count=len(cases) + len(challenge_cases),
         complete=True,
     )
 
@@ -339,6 +526,7 @@ def run_eval(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
+    parser.add_argument("--challenges", type=Path, default=DEFAULT_CHALLENGES)
     parser.add_argument("--json-out", type=Path)
     parser.add_argument("--device", choices=("cpu", "cuda"))
     parser.add_argument("--strict", action="store_true")
@@ -352,6 +540,7 @@ def main(argv: list[str] | None = None) -> int:
         report = run_eval(
             config,
             load_target_cases(args.cases),
+            challenge_cases=load_challenge_cases(args.challenges),
             checkpoint_path=args.json_out,
         )
     except Exception as exc:

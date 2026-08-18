@@ -1,6 +1,6 @@
 # XBrainLab Agent 目標
 
-最後更新：`2026-08-17`
+最後更新：`2026-08-18`
 
 這份文件是 XBrainLab Assistant 產品目標的唯一權威。Runtime inventory、目前測試集合與歷史
 artifact 只能描述 current implementation，不能反推本文件的產品契約。
@@ -229,14 +229,16 @@ command policy或fake backend。
 
 ## Candidate validation與claims
 
-Engineering candidate的frozen Granite suite約30–35 cases，至少覆蓋17個positive intents、五個
-missing-parameter cases、跨stage start request、out-of-stage與general／ambiguous／multi-mutation
-cases。Candidate gates：
+Engineering candidate的frozen Granite suite固定為48 cases：34個positive cases（17個target tool各
+2個）加14個challenge cases。Challenge必須包含五個missing-parameter、跨stage lifecycle、
+out-of-stage、general、ambiguous與multi-mutation；它們使用`respond_to_user`，不得執行替代工具。
+Candidate gates：
 
 - invalid／out-of-stage／stale execution、cancel後continuation與multi-mutation partial action皆為0。
 - 所有cases在repair budget內得到legal envelope；final stage acknowledgement 100%。
-- Start／Stop／Reset／Clear各3/3正確。
-- 每個target tool至少2/3正確；overall exact final tool＋parameters至少95%。
+- 34個positive全部得到exact final tool＋parameters；14個challenge全部得到stage-correct
+  `respond_to_user`，缺參數案例還必須指出缺少的欄位。
+- 48/48才通過；不得以平均分數、repair前結果或縮小denominator替代。
 - 真model safe E2E：Switch Dataset、Import GUI、direct Resample。
 
 這些是產品候選gate，不是thesis benchmark。Thesis evidence另由frozen source、case set、runner、model

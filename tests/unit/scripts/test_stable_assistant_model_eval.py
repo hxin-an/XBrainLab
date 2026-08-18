@@ -3,10 +3,13 @@
 from pathlib import Path
 
 from scripts.dev.run_stable_assistant_model_eval import (
+    DEFAULT_CHALLENGES,
     _build_report,
     _stable_eval_config,
     build_case_messages,
+    load_challenge_cases,
     load_target_cases,
+    score_challenge_response,
     score_model_response,
     target_tool_registry,
 )
@@ -45,6 +48,70 @@ def test_target_cases_cover_each_approved_tool_twice() -> None:
     assert len(cases) == 34
     assert set(counts) == AGENT_ACTION_CONTRACTS.model_tool_names()
     assert set(counts.values()) == {2}
+
+
+def test_challenge_cases_extend_positive_matrix_to_exact_48_case_gate() -> None:
+    cases = load_challenge_cases(DEFAULT_CHALLENGES)
+
+    assert len(cases) == 14
+    assert len({case.case_id for case in cases}) == 14
+    assert {case.category for case in cases} == {
+        "ambiguous",
+        "general",
+        "missing_parameter",
+        "multi_action",
+        "out_of_stage",
+    }
+    assert len(load_target_cases(GOLD_SET)) + len(cases) == 48
+
+
+def test_challenge_score_requires_strict_response_envelope_and_message_contract() -> (
+    None
+):
+    case = next(
+        item
+        for item in load_challenge_cases(DEFAULT_CHALLENGES)
+        if item.case_id == "missing_bandpass_bounds_01"
+    )
+    registry = target_tool_registry()
+    valid = (
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '"parameters":{"message":"請提供 bandpass 的 low 和 high 頻率。"}}'
+    )
+
+    assert score_challenge_response(case, valid, registry).passed is True
+
+    failures = (
+        (
+            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '"parameters":{"message":"請補充設定。"}}'
+        ),
+        (
+            '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
+            '"parameters":{"low_freq":4,"high_freq":38}}'
+        ),
+        (
+            '{"workflow_stage":"preprocessed","tool_name":"respond_to_user",'
+            '"parameters":{"message":"請提供 bandpass 的 low 和 high 頻率。"}}'
+        ),
+    )
+    for response in failures:
+        assert score_challenge_response(case, response, registry).passed is False
+
+    lifecycle_case = next(
+        item
+        for item in load_challenge_cases(DEFAULT_CHALLENGES)
+        if item.case_id == "start_before_setup_01"
+    )
+    false_completion = (
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '"parameters":{"message":"Training has been initiated; finish setup '
+        'before starting."}}'
+    )
+    assert (
+        score_challenge_response(lifecycle_case, false_completion, registry).passed
+        is False
+    )
 
 
 def test_case_messages_publish_stage_tools_without_retired_surface() -> None:
@@ -102,15 +169,32 @@ def test_partial_report_never_claims_the_suite_passed() -> None:
     report = _build_report(
         model_id="ibm-granite/granite-3.3-2b-instruct",
         results=[],
-        expected_case_count=34,
+        expected_case_count=48,
         complete=False,
     )
 
     assert report["summary"] == {
-        "expected_case_count": 34,
+        "expected_case_count": 48,
         "case_count": 0,
         "passed_count": 0,
         "failed_count": 0,
         "complete": False,
         "passed": False,
+    }
+
+
+def test_report_separates_positive_and_challenge_results() -> None:
+    report = _build_report(
+        model_id="ibm-granite/granite-3.3-2b-instruct",
+        results=[
+            {"suite": "positive", "score": {"passed": True}},
+            {"suite": "challenge", "score": {"passed": False}},
+        ],
+        expected_case_count=48,
+        complete=False,
+    )
+
+    assert report["suite_summary"] == {
+        "positive": {"case_count": 1, "passed_count": 1, "failed_count": 0},
+        "challenge": {"case_count": 1, "passed_count": 0, "failed_count": 1},
     }

@@ -8,7 +8,7 @@
 完成 replacement、atomic cutover、deletion 與 exact-SHA candidate；在完整候選前不要求使用者手測，
 未取得同一 source 的手測通過不得合併 main。**
 
-目前 phase：`Frozen-candidate CI contract migration；manual acceptance pending`
+目前 phase：`Checkpoint；stage truth已修復，48-case Granite challenge gate blocked`
 
 目前 branch：`refactor/assistant-target-adapters-v2`
 
@@ -22,9 +22,35 @@ preprocess、四個lifecycle與`switch_panel`。Local commits依序為`2366c6b3`
 D3已移除兩個無production caller的policy modules。保留schema、同generation publication、path provenance、
 ApplicationService capability與confirmation；`tests/unit/llm`在target 17 surface上`1680 passed`。
 
-下一步：凍結本地exact head後重跑完整unit／architecture／static quality、no-model frontend、34-case
-Granite與source-diverse gates；GitHub服務恢復前不執行remote checks，也不把remote狀態當本地施工
-blocker。本地全部閉合後才交付三份真人frontend walkthrough；source或plan再變更就重新凍結與驗證。
+下一步：stage truth的red／green、48-case evaluator contract及canonical docs已完成；同一fixed Granite
+revision的same-source GPU run為positive 34/34、challenge 0/14，因此candidate fail closed。不可開始
+handoff、remote candidate claim或真人walkthrough。需重新決策「direct preprocessing仍由2B model填參數」
+與「無Host narrowing」兩項約束如何取捨，或核准另一個符合local/cache/license政策且經重新驗證的模型；
+不得以降低denominator、接受partial mutation或恢復hidden heuristic假裝完成。
+
+最新 candidate closure 決策與證據：真實 `DataManager.set_loaded_data_list()` 為避免匯入時昂貴複製，
+會把raw references放入working `preprocessed_data_list`；`StateSnapshotService`目前卻以該list非空直接將
+`active_dataset.has_preprocessed_data`設為true。使用真ApplicationService import重現結果為raw count 1、
+preprocessed working count 1、operations空、stage卻為`preprocessed`，違反target的
+`Import → data_loaded → Channel或任一preprocess → preprocessed`。正常Granite prompt因此不發布
+`select_channels`；no-model debug只驗ApplicationService capability，可繞過stage prompt而掩蓋此defect。
+使用者已明確確認修回`data_loaded`，並接受可見status／next action隨正確publication改變；不授權layout、
+dialog或theme修改。Montage維持epoch建立後，避免在本slice新增raw geometry persistence owner。
+
+現有34-case Granite gate每個target tool只有兩個固定正向case；沒有target要求的missing-parameter、
+cross-stage、general／ambiguous／multi-mutation及lifecycle第三case。原target的「約30–35」與上述最低覆蓋
+數學上不相容，使用者已確認改為48：保留34個positive gold cases，另建14個dev-only challenge cases，
+同一次model load執行並要求strict 48/48。Challenge不得進production RAG examples，也不得藉Host heuristic、
+silent fallback或放寬scorer取得通過。
+
+本closure slice的observable outcome是：import後即使working preprocess list存在，只要沒有已提交operation，
+publication與prompt都為`data_loaded`並發布Channel＋五項direct preprocess；Channel或任一preprocess成功後
+才為`preprocessed`並發布Epoch；Reset後回到`data_loaded`。Canonical architecture只描述current17 surface，
+validation誠實區分34 positive、14 challenge、自動contract profile與尚待人工執行的三份walkthrough。
+Backend owner before／after都是既有StateSnapshotService／ApplicationService；重用既有
+`preprocessed.operations`，預期只改1個production file且淨LOC接近零，不新增owner、state machine、flag、
+receipt、module或compatibility path。若operation history無法在Channel及source-diverse paths穩定代表已提交
+preprocess、需要UI source修改或需要新authoritative state，立即停止並重新規劃。
 
 最新local red-first證據：exact Stable v2 branch可在offline模式載入固定Granite revision並產生strict三欄
 JSON，但`inspect_local_assistant_runtime.py --structured-smoke --strict`仍在prompt與oracle中要求已退役的
@@ -224,8 +250,12 @@ Linux full suite、Windows/macOS、public multi-dataset與MkDocs checks皆comple
   commit下一步，pending dialog／confirmation／navigation期間不consume case。
 - 七個GUI handoff（包含Channel Selection typed terminal）皆沿用既有dialog／panel與correlation，沒有
   新增UI workflow owner。
-- 剩餘問題只是在GitHub服務不可用期間無法取得final remote CI／PR evidence，以及final exact head尚未
-  完成真人三份frontend walkthrough；兩者都不能由本地自動測試冒充。
+- 真import目前把working preprocess buffer錯認為已完成preprocess，導致正常prompt跳過`data_loaded`與
+  `select_channels`；這是交付手測前的產品blocker。
+- GitHub已恢復，PR #39既有exact head checks雖全綠，但該evidence沒有覆蓋上述真import→prompt stage
+  transition，且產品修正後會失效並須重跑。
+- 三份profile目前只有manifest contract與empty-state `contract-failures`自動執行；Complete Workflow、
+  Lifecycle／Navigation仍必須由真人完成，不得以gate名稱冒充三份皆已執行。
 
 ## Observable outcome
 
@@ -233,6 +263,7 @@ Linux full suite、Windows/macOS、public multi-dataset與MkDocs checks皆comple
   current／target不再混用。
 - Backend既有stage、publication與capability policy是唯一readiness truth；Host不再自行縮限intent、
   substitute command或自動continuation。
+- Import後保持`data_loaded`；只有Channel或任一preprocess成功後才發布`preprocessed`。
 - Granite只輸出strict三欄envelope；一個turn最多一個tool或一個response。
 - 七個GUI completion tools只開啟既有surface；五個preprocess tools直接走ApplicationService；四個
   lifecycle tools沿用既有confirmation；navigation只由`switch_panel`負責。
@@ -273,12 +304,18 @@ Linux full suite、Windows/macOS、public multi-dataset與MkDocs checks皆comple
    call sites及tool-success continuation，確保一回合一個tool或response。
 11. **已完成 — retired surface deletion**：按analysis、dataset protocol／recipe、training wrappers與
     Host policy分片物理刪除obsolete code，不保留compatibility catalog。
-12. **已完成 — replacement evidence**：runtime inspection的Granite structured smoke使用target registry與stage publication作fail-closed
-    oracle，再執行三份no-model profiles與frozen Granite suite；未達gate時只調prompt／schema／approved
-    examples，不增加Host heuristic或silent fallback。
-13. **進行中 — frozen candidate**：先完成本地exact-source dossier；GitHub恢復後同步最新main並補齊
-    remote checks。只有本地產品證據閉合才交付使用者手測，remote pending不冒充handoff-ready。
-14. 手測通過且source未變後，以integration→main merge commit合併；之後刪branch並移除暫時CI
+12. **已完成 — stage truth repair**：以真load／ApplicationService publication先紅測，將
+    `has_preprocessed_data`改由已提交operation判定；同一測試要求normal prompt在import後發布Channel，
+    operation後發布Epoch，Reset後回到Channel。Dataset visible-state capture已同步，不改UI source；focused
+    state／capture／prompt contract合計196 tests通過。
+13. **進行中 — 48-case replacement evidence**：保留34 positive gold cases，已新增14個不進RAG的
+    challenge cases與分組報告；8個evaluator unit tests通過。下一步同一次fixed Granite load要求48/48，
+    並保留runtime、frontend、source-diverse與安全gate。Same-source Granite結果為34/48：positive 34/34、
+    challenge 0/14，故本項blocked而非完成。
+14. **blocked — exact candidate freeze**：current architecture／target count／validation walkthrough已同步；
+    完整local handoff與remote applicable checks在同一clean/explained pushed SHA閉合後，才交付正常Granite
+    safe E2E與三份真人frontend walkthrough。
+15. 手測通過且產品source未變後，以integration→main merge commit合併；之後刪branch並移除暫時CI
     trigger。
 
 每個implementation slice從integration開短branch並PR回integration；CI全綠後squash為一個coherent
@@ -291,6 +328,8 @@ commit。Final rollup可以聚合這些已分片審查的commits，但不得加�
 - 既有Assistant經approved GUI tools開啟既有dialog／panel。
 - Debug launch的slim banner、step progress、composer提示與pending期間Enter disabled。
 - `switch_panel`顯示具體destination，並等待materialized terminal。
+- Import後可見workflow status與next action依修正後backend publication由`preprocessed`校準為
+  `data_loaded`；不改layout、dialog、theme或interaction structure。
 
 不包含normal product layout、theme、dialog redesign、新generic result card或其他workflow copy變更。
 若implementation需要超出以上範圍，停止並重新取得使用者明確確認。
@@ -303,14 +342,31 @@ benchmark。
 
 - Target ledger完整鎖定tool、stage、schema、execution kind、owner、confirmation、terminal與retired
   disposition；其他canonical docs只引用，不複製清單。
-- Current architecture在runtime切換前仍誠實稱為current21 projection；不得提前宣稱Stable v2完成。
+- Current architecture必須與exact source一致描述current17 projection；`docs/current.md`仍在合入main前
+  保持Assistant尚未正式ready的產品claim。
 - Docs link/source audit、guidance audit及MkDocs strict通過。
 - 每個code slice加入直接對應的unit／integration evidence；UI handoff驗accepted→completed／cancelled／
   blocked／failed與stale／duplicate。
 - Candidate使用同一clean/explained exact SHA完成no-model、Granite、data、UI artifact、static quality與
   GitHub checks；manual acceptance不由automation取代。
+- Granite candidate同一次load執行34 positive＋14 challenge並要求48/48；challenge的missing parameters
+  必須回`respond_to_user`詢問缺值，cross-stage／general／ambiguous／multi-mutation不得執行partial tool。
 
 目前slice直接證據：
+
+- Stage truth red-first：working raw copy存在但operation history為空時，原source錯誤發布
+  `has_preprocessed_data=true`／`preprocessed`；改由既有`preprocessed.operations`判定後，import與reset是
+  `data_loaded`，真正operation後才是`preprocessed`。Focused state、Dataset capture、pipeline與prompt
+  projection合計196 tests通過；沒有UI source、owner、state flag或compatibility path新增。
+- 48-case evaluator contract：34個production RAG positive cases保持不變，14個dev-only challenge涵蓋
+  missing parameter、out-of-stage、general、ambiguous與multi-action；strict response scorer及positive／
+  challenge分組report共8 tests通過。Fixed Granite exact revision
+  `707f574c62054322f6b5b04b6d075f0a8f05e0f0`的same-source GPU run完成48 cases：positive 34/34、
+  challenge 0/14。Missing-parameter會自行填0.5–45 Hz、50/60 Hz、256/400 Hz、average、z-score；
+  out-of-stage會改stage、呼叫替代tool或宣稱未發生的stop/reset；ambiguous會選Channel、multi-action會
+  partial執行第一項。兩輪只增加static fallback shape／通用counter-example的prompt實驗最高僅2/14且
+  仍含false-completion，已完整撤除，避免為過測試膨脹production prompt。Scorer另加forbidden
+  completion claim，防止「已開始／已停止／已reset」文字被required-keyword誤判通過。
 
 - Red-first已重現8個focused contract failure：parser接受兩欄root與多分支response，controller不比對
   model/backend stage，prompt與eval仍教舊格式。
@@ -365,3 +421,5 @@ production整體淨減；owner、state machine與receipt皆不增加。若C超�
   production LOC非淨減少而未取得complexity exception。
 - Granite未達candidate safety／accuracy gate、必要CI有missing／pending／skipped／failed，或
   source在manual acceptance後改變。
+- Import後仍非`data_loaded`、normal prompt未發布Channel、operation後未升`preprocessed`，或debug profile
+  成功掩蓋normal prompt stage mismatch。
