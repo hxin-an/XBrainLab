@@ -180,6 +180,17 @@ preflight。完整`tests/integration/agent`為40 passed；CI同型`linux-integra
 subshards通過。Production／UI檔案0變更，owner、state machine與receipt數量不變；本slice為tests/docs
 淨刪除，下一步只做static／architecture與exact-head remote CI。
 
+Remote CI在同一head另由`linux-unit-scripts`抓到executable handoff registry仍列出已刪除的RAG
+readmission與resource-confirmation test entrypoints。Focused red為
+`test_registered_python_entrypoints_exist`精確失敗；security suite應改列保留下來且current可達的
+`test_resource_preflight_receipt.py`，不恢復舊Host routing。修正後重跑完整manifest與scripts shard，
+再建立新的exact head；其他production／UI scope維持不變。
+
+Registry green：handoff manifest 14 passed，CI同型`linux-unit-scripts`完整1,107 passed；
+`assistant-security-suite`現在涵蓋current產品流、lifecycle、202-turn soak、training receipt、strict recovery、
+RAG security與worker supervision／timeout，所有entrypoints存在。此修正只改executable validation mapping，
+不改gate outcome、產品行為或claim boundary。
+
 已否決的中間路徑：red-first曾將三個target adapters加在舊30-tool runtime旁，立即使runtime變成33，
 並被runtime equality／headless contract tests攔截。該狀態不提交；建立第二個過渡catalog會增加遷移
 成本且違反single target authority，因此改採一次atomic cutover。
