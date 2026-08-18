@@ -15,7 +15,6 @@ from PyQt6.QtWidgets import (
     QAbstractButton,
     QLabel,
     QMessageBox,
-    QToolButton,
     QWidget,
 )
 
@@ -57,17 +56,22 @@ from XBrainLab.backend.training import (
 )
 from XBrainLab.backend.training.record import EvalRecord, RecordKey, TrainRecordKey
 from XBrainLab.llm.agent.controller import LLMController
+from XBrainLab.llm.agent.rag_lifecycle import RAGRetrieverLifecycle
 from XBrainLab.llm.agent.response_presentation import AssistantResponsePresentation
 from XBrainLab.llm.agent.runtime_state import (
     AssistantRuntimePhase,
     AssistantRuntimeSnapshot,
 )
 from XBrainLab.llm.agent.turn import (
+    AssistantGenerationDispatchAcknowledgement,
+    AssistantGenerationDispatchPhase,
+    AssistantGenerationRequest,
     AssistantTurnCorrelation,
     AssistantTurnDeliveryPhase,
     AssistantTurnRequest,
 )
 from XBrainLab.llm.agent.ui_handoff import WorkflowUiHandoffRequest
+from XBrainLab.llm.agent.worker import AgentWorker
 from XBrainLab.ui.chat.status_presenter import build_assistant_empty_state
 from XBrainLab.ui.components.agent_manager import AgentManager
 from XBrainLab.ui.components.assistant_runtime_lifecycle import (
@@ -183,6 +187,49 @@ class _ReadyAssistantIntegrationRuntime(QObject):
 
     def close(self) -> bool:
         return bool(self.controller.close())
+
+
+class _ImportEegToolWorker(AgentWorker):
+    """Return one strict target action at the external model boundary."""
+
+    def generate_from_messages(self, request: AssistantGenerationRequest) -> None:
+        generation_id = request.generation_id
+        self.generation_dispatch_acknowledged.emit(
+            AssistantGenerationDispatchAcknowledgement(
+                generation_id=generation_id,
+                phase=AssistantGenerationDispatchPhase.ACCEPTED,
+            )
+        )
+        self.generation_dispatch_acknowledged.emit(
+            AssistantGenerationDispatchAcknowledgement(
+                generation_id=generation_id,
+                phase=AssistantGenerationDispatchPhase.STARTED,
+            )
+        )
+        self.generation_chunk_received.emit(
+            generation_id,
+            '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}',
+        )
+        self.generation_finished.emit(generation_id, [])
+
+
+class _EmptyRagRetriever:
+    """Return no examples while retaining the real RAG lifecycle boundary."""
+
+    def initialize(self) -> None:
+        return
+
+    def get_similar_examples(
+        self,
+        query: str,
+        *,
+        allowed_tool_names: frozenset[str] | None = None,
+    ) -> str:
+        del query, allowed_tool_names
+        return ""
+
+    def close(self) -> None:
+        return
 
 
 def _click(qtbot, button) -> None:
@@ -718,13 +765,17 @@ def test_assistant_status_uses_real_interpretation_confirmation_publication(
     )
 
 
-def test_visible_open_data_import_action_opens_typed_product_surface_directly(
+def test_model_import_action_opens_typed_product_surface_directly(
     test_app,
     qtbot,
     monkeypatch,
 ) -> None:
-    """Click the rendered response action through normal Assistant admission."""
-    controller = LLMController(test_app.study)
+    """Route one strict model action through the typed product handoff."""
+    with patch("XBrainLab.llm.agent.controller.AgentWorker", _ImportEegToolWorker):
+        controller = LLMController(
+            test_app.study,
+            rag_lifecycle=RAGRetrieverLifecycle(_EmptyRagRetriever()),
+        )
     runtime = _ReadyAssistantIntegrationRuntime(controller)
     manager = AgentManager(
         test_app,
@@ -761,19 +812,12 @@ def test_visible_open_data_import_action_opens_typed_product_surface_directly(
         panel.input_field.setText("幫我處理資料")
         qtbot.waitUntil(panel.send_btn.isEnabled, timeout=2_000)
         _click(qtbot, panel.send_btn)
-        qtbot.waitUntil(panel.response_actions_widget.isVisible, timeout=2_000)
-
-        response_actions = panel.response_actions_widget.findChildren(QToolButton)
-        open_import = next(
-            button for button in response_actions if button.text() == "Open Data Import"
-        )
-        assert open_import.isVisibleTo(panel)
-        _click(qtbot, open_import)
-
         qtbot.waitUntil(lambda: bool(chooser_calls), timeout=2_000)
         assert runtime.submissions == ["幫我處理資料"]
         assert runtime.delivery_phases == [AssistantTurnDeliveryPhase.ACCEPTED]
-        assert handoff_requests == []
+        assert len(handoff_requests) == 1
+        assert handoff_requests[0].command is CommandName.SCAN_SOURCE
+        assert not panel.response_actions_widget.isVisible()
         assert chooser_calls
         chooser_parent, chooser_directory = chooser_calls[0]
         assert chooser_parent is test_app.dataset_panel

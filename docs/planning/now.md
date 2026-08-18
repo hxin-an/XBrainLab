@@ -157,6 +157,12 @@ Host policy或降低timing gate。該soak另有兩處期待Host把模糊文字�
 每turn經模型回覆、沒有active action且不啟動Application command的Stable v2契約。Focused validation
 先重跑該檔，再重跑CI shard mapping與受影響契約。
 
+同一PR head的Linux integration UI與Windows／macOS product lifecycle再共同揭露一個stale跨平台
+walkthrough：測試仍等待舊Host產生`Open Data Import` clarification button。Stable v2不再有該Host
+中介；將external model boundary固定輸出strict `import_eeg_data` envelope，保留真controller、
+AgentManager、MainWindow、typed handoff、chooser cancel與turn correlation，並明確要求不顯示舊action
+widget。三個job是同一測試，不建立平台分支或延長timeout掩蓋錯誤。
+
 已否決的中間路徑：red-first曾將三個target adapters加在舊30-tool runtime旁，立即使runtime變成33，
 並被runtime equality／headless contract tests攔截。該狀態不提交；建立第二個過渡catalog會增加遷移
 成本且違反single target authority，因此改採一次atomic cutover。
