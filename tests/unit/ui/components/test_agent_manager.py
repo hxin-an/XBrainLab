@@ -4398,7 +4398,7 @@ class TestAgentManagerProductChatFlow:
         assert "load_data" not in projection.available_commands
         assert "attach_labels" not in projection.available_commands
 
-    def test_product_next_steps_hide_legacy_label_tool_after_raw_load(self):
+    def test_product_next_steps_leave_raw_preparation_choice_open(self):
         from XBrainLab.backend.application.view_publication import (
             ApplicationViewPublication,
         )
@@ -4426,7 +4426,9 @@ class TestAgentManagerProductChatFlow:
             )
         )
 
-        assert projection.available_commands == ("preprocess",)
+        assert projection.available_commands == ()
+        assert projection.recommended_command is None
+        assert projection.decision_fields == ()
 
     def test_normal_chat_response_product_flow(self, qtbot):
         manager, fake = _make_real_manager_with_fake_controller(qtbot, "normal")

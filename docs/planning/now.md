@@ -37,7 +37,9 @@ Raw→epoch repair已在local checkpoint閉合：focused stage／capability，pr
 capture仍因與本文案無關的narrow table水平scroll既有gate而為red，不在此slice改layout。
 Remote exact-head CI另抓到`test_workflow_projection.py`一個遗漏的同類舊假設：它仍要求
 `data_loaded`唯一推薦`preprocess`。Production projection正確回傳無單一recommended command；修正只
-更新該test的observable contract，不改production code。
+更新該test的observable contract，不改production code。後續UI unit shard又抓到
+`test_agent_manager.py`與`test_agent_presentation_service.py`兩個相同舊假設；同樣只把測試校準為raw後
+不替使用者選擇preprocess或epoch，保留backend publication與已核准status文案不變。
 
 最新 candidate closure 決策與證據：真實 `DataManager.set_loaded_data_list()` 為避免匯入時昂貴複製，
 會把raw references放入working `preprocessed_data_list`；`StateSnapshotService`目前卻以該list非空直接將
