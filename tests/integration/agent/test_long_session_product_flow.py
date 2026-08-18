@@ -16,7 +16,6 @@ from unittest.mock import patch
 import pytest
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QMainWindow
-from XBrainLab.llm.agent.product_turn_policy import ProductTurnPolicy
 
 from XBrainLab.backend.application import (
     LoadDataCommand,
@@ -24,7 +23,6 @@ from XBrainLab.backend.application import (
     get_application_service,
 )
 from XBrainLab.backend.controller.chat_controller import (
-    ChatActionState,
     ChatController,
     ChatMessagePresentationKind,
     ChatMessageRecord,
@@ -415,13 +413,6 @@ def _request_utf8_bytes(request: AssistantGenerationRequest) -> int:
     return len(encoded.encode("utf-8"))
 
 
-def _record_by_message_id(
-    records: tuple[ChatMessageRecord, ...],
-    message_id: str,
-) -> ChatMessageRecord | None:
-    return next((record for record in records if record.message_id == message_id), None)
-
-
 def _layout_bubble_ids(panel: Any) -> list[str]:
     ids: list[str] = []
     for index in range(panel.chat_layout.count()):
@@ -809,7 +800,7 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
         manager.init_ui()
         manager.start_system()
         assert manager.agent_controller is controller
-        assert type(controller._product_turn_policy) is ProductTurnPolicy
+        assert not hasattr(controller, "_product_turn_policy")
         assert manager.chat_panel is not None
         assert manager.chat_dock is not None
         main_window.resize(1100, 760)
@@ -831,8 +822,6 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
         prune_notices: list[str] = []
         visible_notices: list[str] = []
         controller_history_sizes: list[int] = []
-        source_action: ChatMessageRecord | None = None
-        historical_action: ChatMessageRecord | None = None
         publication_stages: dict[int, str] = {}
         turn_count = 202
         external_data_path = tmp_path / "external-session.fif"
@@ -858,14 +847,6 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
             if turn_index == 0:
                 text = "Help me process the data."
             elif turn_index == 200:
-                assert source_action is not None
-                assert (
-                    _record_by_message_id(
-                        manager.chat_controller.get_typed_history(),
-                        source_action.message_id,
-                    )
-                    is None
-                )
                 evidence_before_reference = (
                     len(retriever.requests),
                     len(worker.requests),
@@ -995,29 +976,16 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
                 )
 
             if turn_index == 0:
-                source_action = manager.chat_controller.get_typed_history()[-1]
+                source_response = manager.chat_controller.get_typed_history()[-1]
                 assert (
-                    source_action.presentation_kind
-                    is ChatMessagePresentationKind.CLARIFICATION
+                    source_response.presentation_kind
+                    is ChatMessagePresentationKind.ASSISTANT
                 )
-                assert source_action.has_active_actions
-                assert manager._active_response_presentation_id == (
-                    source_action.presentation_id
-                )
-                assert manager.chat_panel.response_actions_widget.isVisible()
-                assert retriever.requests == []
-                assert worker.requests == []
-            elif turn_index == 1:
-                assert source_action is not None
-                consumed = _record_by_message_id(
-                    manager.chat_controller.get_typed_history(),
-                    source_action.message_id,
-                )
-                assert consumed is not None
-                assert consumed.action_state is ChatActionState.CONSUMED
-                assert not consumed.has_active_actions
+                assert not source_response.has_active_actions
                 assert manager._active_response_presentation_id is None
                 assert not manager.chat_panel.response_actions_widget.isVisible()
+                assert len(retriever.requests) == 1
+                assert len(worker.requests) == 1
             elif turn_index in {
                 turn_count // 4,
                 (turn_count * 3) // 4,
@@ -1026,35 +994,25 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
                 assert _request_latest_user_text(model_request) == text
                 publication_stages[turn_index] = _request_workflow_stage(model_request)
             elif turn_index == 200:
-                assert evidence_before_reference == (
+                assert (
                     len(retriever.requests),
                     len(worker.requests),
                     len(application_command_starts),
+                ) == (
+                    evidence_before_reference[0] + 1,
+                    evidence_before_reference[1] + 1,
+                    evidence_before_reference[2],
                 )
-                historical_action = manager.chat_controller.get_typed_history()[-1]
+                historical_response = manager.chat_controller.get_typed_history()[-1]
                 assert (
-                    historical_action.presentation_kind
-                    is ChatMessagePresentationKind.CLARIFICATION
+                    historical_response.presentation_kind
+                    is ChatMessagePresentationKind.ASSISTANT
                 )
-                assert "which earlier option" in historical_action.content
-                assert historical_action.has_active_actions
-                assert manager._active_response_presentation_id == (
-                    historical_action.presentation_id
-                )
-                assert manager.chat_panel.response_actions_widget.isVisible()
-                assert controller._tool_attempt_session.execution_count == 0
-                assert not controller.is_processing
-            elif turn_index == 201:
-                assert historical_action is not None
-                consumed = _record_by_message_id(
-                    manager.chat_controller.get_typed_history(),
-                    historical_action.message_id,
-                )
-                assert consumed is not None
-                assert consumed.action_state is ChatActionState.CONSUMED
-                assert not consumed.has_active_actions
+                assert not historical_response.has_active_actions
                 assert manager._active_response_presentation_id is None
                 assert not manager.chat_panel.response_actions_widget.isVisible()
+                assert controller._tool_attempt_session.execution_count == 0
+                assert not controller.is_processing
 
             if turn_index % 8 == 0:
                 qtbot.wait(5)
@@ -1153,7 +1111,7 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
 
         assert max(controller_history_sizes) <= LLMController.MAX_HISTORY
         assert len(controller.history) <= LLMController.MAX_HISTORY
-        assert len(worker.requests) == turn_count - 2
+        assert len(worker.requests) == turn_count
         assert len(retriever.requests) == len(worker.requests)
         assert application_command_starts == []
         assert all(

@@ -149,6 +149,14 @@ Focused red精確抓到retired tool；遷移後RAG／retriever 95 tests通過，
 D-mounted fixed revision與34-point index達3/3 known queries，request-scoped filter、non-action filter與
 repeat initialization全通過。這是最後一個source-side candidate blocker；提交後重新建立final exact SHA。
 
+Remote CI red-first：PR #39 exact head `33129364` 的`linux-integration-agent-timing`在collection時
+匯入已物理退役的`ProductTurnPolicy`而失敗；同一檔案沒有被本地`tests/unit`涵蓋。保留原本202-turn
+真controller／Qt／history pruning／latency soak，只移除退役import，並將舊「policy instance存在」
+assert反轉為「controller不得重新擁有`_product_turn_policy`」。不得為了讓測試collection恢復而復活
+Host policy或降低timing gate。該soak另有兩處期待Host把模糊文字攔成clarification buttons；同步改為
+每turn經模型回覆、沒有active action且不啟動Application command的Stable v2契約。Focused validation
+先重跑該檔，再重跑CI shard mapping與受影響契約。
+
 已否決的中間路徑：red-first曾將三個target adapters加在舊30-tool runtime旁，立即使runtime變成33，
 並被runtime equality／headless contract tests攔截。該狀態不提交；建立第二個過渡catalog會增加遷移
 成本且違反single target authority，因此改採一次atomic cutover。
