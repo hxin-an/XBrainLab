@@ -40,8 +40,8 @@ STAGE_CASES = [
         "raw",
         {"has_raw_data": True},
         PipelineStage.DATA_LOADED,
-        "Ready for preprocessing",
-        "preprocess",
+        "EEG data loaded · Ready for preprocessing or epoching",
+        None,
     ),
     (
         "preprocessed",
@@ -238,7 +238,7 @@ def test_pipeline_readiness_summary_is_user_facing_and_actionable() -> None:
         "No data loaded. Next: Scan data source."
     )
     assert pipeline_stage_readiness_summary(loaded) == (
-        "Ready for preprocessing: 3 EEG files loaded. Next: Preprocess data."
+        "EEG data loaded · Ready for preprocessing or epoching: 3 EEG files loaded."
     )
 
 

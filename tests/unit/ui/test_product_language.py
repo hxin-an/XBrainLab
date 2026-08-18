@@ -125,7 +125,10 @@ def test_user_visible_epoch_copy_names_the_domain(
     ("stage", "expected_label"),
     [
         ("empty", "No data loaded"),
-        ("data_loaded", "Ready for preprocessing"),
+        (
+            "data_loaded",
+            "EEG data loaded · Ready for preprocessing or epoching",
+        ),
         ("preprocessed", "Ready for EEG epoching"),
         ("epoch_ready", "Ready to configure split"),
         ("dataset_ready", "Dataset ready"),
@@ -155,14 +158,19 @@ def test_workflow_stage_label_does_not_rederive_stage_from_detail_flags() -> Non
         ),
     )
 
-    assert workflow_stage_label(contradictory) == "Ready for preprocessing"
+    assert workflow_stage_label(contradictory) == (
+        "EEG data loaded · Ready for preprocessing or epoching"
+    )
 
 
 @pytest.mark.parametrize(
     ("stage", "expected_hint"),
     [
         ("empty", "No data loaded · Scan data source"),
-        ("data_loaded", "Ready for preprocessing · Preprocess data"),
+        (
+            "data_loaded",
+            "EEG data loaded · Ready for preprocessing or epoching",
+        ),
         ("epoch_ready", "Ready to configure split · Configure data splitting"),
         ("training", "Training running"),
         ("trained", "Results available · Review results"),

@@ -881,13 +881,15 @@ def test_backend_observer_publication_refreshes_visible_assistant_status(
     publication_generations = [item.generation for item in terminal_publications]
     assert publication_generations == sorted(set(publication_generations))
     expected_projection = build_assistant_status_projection(publication)
-    assert expected_projection.stage == "Ready for EEG epoching"
+    assert expected_projection.stage == (
+        "EEG data loaded · Ready for preprocessing or epoching"
+    )
     qtbot.waitUntil(
         lambda: (
             manager.assistant_status_projection is not None
             and manager.assistant_status_projection.publication_generation
             == publication.generation
-            and panel.empty_state_title.text() == "Define the analysis windows"
+            and panel.empty_state_title.text() == "Prepare or epoch your EEG data"
         ),
         timeout=5_000,
     )
@@ -896,12 +898,12 @@ def test_backend_observer_publication_refreshes_visible_assistant_status(
     assert refreshed_projection is not None
     assert refreshed_projection.publication_generation == publication.generation
     assert refreshed_projection == expected_projection
-    assert refreshed_projection.recommended_command == CommandName.CREATE_EPOCH.value
-    assert panel.empty_state_title.text() == "Define the analysis windows"
+    assert refreshed_projection.recommended_command is None
+    assert panel.empty_state_title.text() == "Prepare or epoch your EEG data"
     assert [button.text() for button in panel.suggestion_prompt_buttons] == [
-        "Explain EEG epoch anchors",
-        "Review EEG epoch settings",
-        "Open EEG epoch setup",
+        "Review preprocessing",
+        "Explain EEG epoch settings",
+        "Choose the next preparation step",
     ]
 
 

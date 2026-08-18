@@ -1342,8 +1342,8 @@ def test_workflow_decision_context_uses_backend_state_for_next_step():
             ActiveTrainingSnapshot(),
             TrainingStateSnapshot(),
             EvaluationStateSnapshot(),
-            "Ready for preprocessing",
-            "preprocess",
+            "EEG data loaded · Ready for preprocessing or epoching",
+            None,
         ),
         (
             "preprocessed",
@@ -1554,8 +1554,8 @@ def test_workflow_decision_context_routes_blocked_import_to_resolution_ui():
     assert context.allowed_actions == []
 
 
-def test_applied_import_context_moves_to_preprocess():
-    """After import is applied, the agent should continue from loaded raw data."""
+def test_applied_import_context_does_not_choose_between_preprocess_and_epoch():
+    """Raw data leaves preprocessing versus epoching as the user's next choice."""
     state = _state(
         pipeline_stage="data_loaded",
         raw=RawStateSnapshot(loaded=True, count=1),
@@ -1572,8 +1572,11 @@ def test_applied_import_context_moves_to_preprocess():
     ):
         context = build_workflow_decision_context(object())
 
-    assert context.recommended_next_step == "preprocess"
-    assert context.recommended_label == "Preprocess data"
+    assert context.workflow_stage == (
+        "EEG data loaded · Ready for preprocessing or epoching"
+    )
+    assert context.recommended_next_step is None
+    assert context.recommended_label is None
 
 
 def test_assembler_sends_state_card_and_one_clean_assistant_message():

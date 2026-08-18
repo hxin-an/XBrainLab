@@ -36,6 +36,10 @@ _EMPTY_STATE_COPY: dict[str, tuple[str, str]] = {
         "Prepare your EEG data",
         "Ask what preprocessing is appropriate or what must be reviewed first.",
     ),
+    "EEG data loaded · Ready for preprocessing or epoching": (
+        "Prepare or epoch your EEG data",
+        "Ask about preprocessing, channel selection, or EEG epoch settings.",
+    ),
     "Ready for EEG epoching": (
         "Define the analysis windows",
         "Ask me to explain event anchors or prepare the EEG epoch settings.",
@@ -119,6 +123,26 @@ _STAGE_SUGGESTIONS: dict[str, tuple[AssistantPromptSuggestion, ...]] = {
             "Suggest the next step",
             "Get one recommendation from the current state.",
             "Explain how to choose the next preprocessing step",
+        ),
+    ),
+    "EEG data loaded · Ready for preprocessing or epoching": (
+        AssistantPromptSuggestion(
+            "Review preprocessing",
+            "Check what the loaded signal may need.",
+            "Explain the preprocessing options for the loaded EEG data",
+        ),
+        AssistantPromptSuggestion(
+            "Explain EEG epoch settings",
+            "Review event anchors, windows, and baselines.",
+            "Explain how to configure EEG epoching for the loaded data",
+        ),
+        AssistantPromptSuggestion(
+            "Choose the next preparation step",
+            "Compare channel selection, preprocessing, and epoching.",
+            (
+                "Explain whether I should select channels, preprocess, "
+                "or create epochs next"
+            ),
         ),
     ),
     "Ready for EEG epoching": (

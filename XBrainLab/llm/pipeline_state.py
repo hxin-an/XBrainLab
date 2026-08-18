@@ -87,6 +87,7 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
         "tools": [
             "select_channels",
             *_PREPROCESS_TOOLS,
+            "create_epochs",
             "switch_panel",
         ],
         "system_prompt": _stage_system_prompt(
@@ -94,8 +95,8 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             stage="Data Loaded",
             status="Raw EEG data is available, but preprocessing is not complete.",
             boundary=(
-                "Preprocessing must complete before EEG epoching and training dataset "
-                "construction."
+                "Raw EEG data is ready for preprocessing or EEG epoching. "
+                "Training dataset construction still requires completed EEG epochs."
             ),
         ),
     },

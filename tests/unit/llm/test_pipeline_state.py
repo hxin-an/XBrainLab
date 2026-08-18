@@ -88,6 +88,7 @@ EXPECTED_TARGET_TOOLS = {
         "resample_data",
         "set_reference",
         "normalize_data",
+        "create_epochs",
         "switch_panel",
     },
     PipelineStage.PREPROCESSED: {
@@ -333,10 +334,11 @@ class TestStageConfig:
         assert "apply_bandpass_filter" not in tools
         assert "start_training" not in tools
 
-    def test_data_loaded_has_preprocess_tools(self):
+    def test_data_loaded_has_preprocess_and_epoch_tools(self):
         tools = STAGE_CONFIG[PipelineStage.DATA_LOADED]["tools"]
         assert "select_channels" in tools
         assert "apply_bandpass_filter" in tools
+        assert "create_epochs" in tools
         assert "apply_standard_preprocess" not in tools
 
     def test_data_loaded_has_no_training_tools(self):
@@ -344,9 +346,10 @@ class TestStageConfig:
         assert "select_model" not in tools
         assert "start_training" not in tools
 
-    def test_standard_preprocess_prompt_keeps_epoching_as_a_separate_step(self):
+    def test_data_loaded_prompt_allows_preprocessing_or_epoching(self):
         prompt = STAGE_CONFIG[PipelineStage.DATA_LOADED]["system_prompt"]
-        assert "Preprocessing must complete before EEG epoching" in prompt
+        assert "ready for preprocessing or EEG epoching" in prompt
+        assert "must complete before EEG epoching" not in prompt
 
     def test_preprocessed_has_epoching_but_not_dataset_generation(self):
         tools = STAGE_CONFIG[PipelineStage.PREPROCESSED]["tools"]

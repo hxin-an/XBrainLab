@@ -8,7 +8,7 @@
 完成 replacement、atomic cutover、deletion 與 exact-SHA candidate；在完整候選前不要求使用者手測，
 未取得同一 source 的手測通過不得合併 main。**
 
-目前 phase：`Checkpoint；stage truth已修復，48-case Granite challenge gate blocked`
+目前 phase：`Evaluate；raw→epoch repair local green，Granite 2B two-pass A/B pending`
 
 目前 branch：`refactor/assistant-target-adapters-v2`
 
@@ -22,11 +22,19 @@ preprocess、四個lifecycle與`switch_panel`。Local commits依序為`2366c6b3`
 D3已移除兩個無production caller的policy modules。保留schema、同generation publication、path provenance、
 ApplicationService capability與confirmation；`tests/unit/llm`在target 17 surface上`1680 passed`。
 
-下一步：stage truth的red／green、48-case evaluator contract及canonical docs已完成；同一fixed Granite
-revision的same-source GPU run為positive 34/34、challenge 0/14，因此candidate fail closed。不可開始
-handoff、remote candidate claim或真人walkthrough。需重新決策「direct preprocessing仍由2B model填參數」
-與「無Host narrowing」兩項約束如何取捨，或核准另一個符合local/cache/license政策且經重新驗證的模型；
-不得以降低denominator、接受partial mutation或恢復hidden heuristic假裝完成。
+下一步依序固定為兩個slice。第一個slice修復目前exact head把「尚無已提交preprocess operation」錯誤
+擴大成「產品禁止raw直接epoch」的capability regression：`data_loaded`仍誠實表示只有raw，但同時發布
+Channel、五項direct preprocess、Epoch與Switch；`CreateEpoch`要求raw與合法epoch context，不強制先做
+preprocessing。可見狀態固定為`EEG data loaded · Ready for preprocessing or epoching`；使用者已明確
+授權這項status文案，不授權layout、dialog或theme修改。第二個slice只在evaluator建立同一Granite 2B的
+one-pass baseline與model-owned two-pass actionability A/B；未達48/48、相對延遲增幅不超過50%且warm
+p95不超過6秒前，不修改產品generation path。不得換模型、恢復Host intent narrowing、降低denominator、
+接受partial mutation或以case-specific prompt硬編取得通過。
+
+Raw→epoch repair已在local checkpoint閉合：focused stage／capability，prompt／status、backend／data與Qt
+路徑分別通過224、37與3個tests；舊Host「raw後只能preprocess」的recommended-next假設也已
+移除。Dataset narrow capture產生36組screenshots，新status文案與backend publication一致；整體
+capture仍因與本文案無關的narrow table水平scroll既有gate而為red，不在此slice改layout。
 
 最新 candidate closure 決策與證據：真實 `DataManager.set_loaded_data_list()` 為避免匯入時昂貴複製，
 會把raw references放入working `preprocessed_data_list`；`StateSnapshotService`目前卻以該list非空直接將
@@ -43,14 +51,21 @@ cross-stage、general／ambiguous／multi-mutation及lifecycle第三case。原ta
 同一次model load執行並要求strict 48/48。Challenge不得進production RAG examples，也不得藉Host heuristic、
 silent fallback或放寬scorer取得通過。
 
-本closure slice的observable outcome是：import後即使working preprocess list存在，只要沒有已提交operation，
-publication與prompt都為`data_loaded`並發布Channel＋五項direct preprocess；Channel或任一preprocess成功後
-才為`preprocessed`並發布Epoch；Reset後回到`data_loaded`。Canonical architecture只描述current17 surface，
-validation誠實區分34 positive、14 challenge、自動contract profile與尚待人工執行的三份walkthrough。
-Backend owner before／after都是既有StateSnapshotService／ApplicationService；重用既有
-`preprocessed.operations`，預期只改1個production file且淨LOC接近零，不新增owner、state machine、flag、
-receipt、module或compatibility path。若operation history無法在Channel及source-diverse paths穩定代表已提交
-preprocess、需要UI source修改或需要新authoritative state，立即停止並重新規劃。
+本repair slice的observable outcome是：import後即使working preprocess list存在，只要沒有已提交operation，
+publication仍為`data_loaded`，但backend capability與prompt都允許直接Epoch；Channel或任一preprocess成功後
+升為`preprocessed`，直接Epoch則升為`epoch_ready`，Reset後回到`data_loaded`。Backend owner before／after
+都是既有StateSnapshotService／ApplicationService；重用既有`preprocessed.operations`、capability policy與
+stage projection，不新增owner、state machine、flag、receipt、module或compatibility path。預期觸及
+state／capability／stage projection不超過3個production files，淨LOC接近零。若修復需要第二套Assistant-only
+readiness、UI layout改動或改寫raw epoch scientific semantics，立即停止。
+
+Granite slice先只改development evaluator與tests。A使用現行one-pass strict envelope；B先輸出internal
+actionability gate，再以同一backend publication、同一loaded Granite產生既有final envelope。兩arm每case
+最多3次generation，禁止semantic repair、gold leakage、challenge RAG與Host選擇／替換tool。只有B達
+48/48、34 positive exact、14 challenge零tool、stage 100%，且符合已鎖延遲門檻，才開始下一個production
+slice；否則保留checkpoint並停止。若產品化，預估重用assembler、turn-attempt session、controller、worker
+與現有verifier，4–6個production files、淨增約260–600 LOC、owner數不變；超過8個production files、需要
+新module／owner或Host semantic label時必須停止並重新做complexity review。
 
 最新local red-first證據：exact Stable v2 branch可在offline模式載入固定Granite revision並產生strict三欄
 JSON，但`inspect_local_assistant_runtime.py --structured-smoke --strict`仍在prompt與oracle中要求已退役的
