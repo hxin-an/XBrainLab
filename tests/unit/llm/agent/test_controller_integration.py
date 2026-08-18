@@ -35,6 +35,7 @@ EXPECTED_CONTROLLER_TOOL_NAMES = (
     "configure_dataset_split",
     "select_model",
     "configure_training",
+    "compute_saliency",
     "apply_bandpass_filter",
     "apply_notch_filter",
     "resample_data",
