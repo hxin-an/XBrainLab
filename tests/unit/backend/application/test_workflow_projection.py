@@ -164,7 +164,7 @@ def test_projection_publishes_epoch_decisions_from_preprocessed_state() -> None:
     assert projection.evidence == ("3 preprocessed item(s) are available.",)
 
 
-def test_projection_requires_preprocess_settings_before_guided_mutation() -> None:
+def test_projection_does_not_choose_between_preprocess_and_epoch_from_raw() -> None:
     state = replace(
         ApplicationStateSnapshot.empty(),
         pipeline_stage="data_loaded",
@@ -173,8 +173,8 @@ def test_projection_requires_preprocess_settings_before_guided_mutation() -> Non
 
     projection = _projection(state)
 
-    assert projection.recommended_command == "preprocess"
-    assert projection.decision_fields == ("preprocess_settings",)
+    assert projection.recommended_command is None
+    assert projection.decision_fields == ()
 
 
 def test_command_decision_schema_is_available_outside_next_step_projection() -> None:
