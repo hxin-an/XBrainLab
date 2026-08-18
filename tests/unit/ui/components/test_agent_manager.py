@@ -147,7 +147,7 @@ def _publish_waiting_handoff_activity(
     agent_mgr.on_assistant_activity_changed(
         AssistantTurnActivity(
             AssistantTurnActivityPhase.WAITING_FOR_DECISION,
-            command_name=request.command_name,
+            command_name=request.tool_name,
             request_id=request.request_id,
             turn_id=correlation.turn_id,
             generation=correlation.generation,
@@ -3036,6 +3036,7 @@ class TestAgentManagerMethods:
         agent_mgr.chat_panel = MagicMock()
         request = WorkflowUiHandoffRequest.for_decision(
             "create_epoch",
+            tool_name="create_epochs",
             decision_fields=("epoch_window", "target_event"),
         )
         agent_mgr._workflow_ui_handoff_host.open = MagicMock(

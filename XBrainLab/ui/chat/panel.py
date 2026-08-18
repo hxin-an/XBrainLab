@@ -1306,7 +1306,7 @@ class ChatPanel(QWidget):
         if self.debug_mode.is_complete:
             placeholder = "Walkthrough complete"
         elif self.debug_mode.failure:
-            placeholder = "Press Enter to retry the current action"
+            placeholder = "Walkthrough stopped"
         elif self.debug_mode.is_waiting:
             placeholder = "Complete the current action in XBrainLab"
         else:

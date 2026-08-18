@@ -1594,10 +1594,12 @@ class TestHandleToolResultLogic:
         assert result is True
         request = ctrl.workflow_ui_handoff_requested.emit.call_args.args[0]
         assert request.command is command
+        assert request.tool_name == tool_name
         assert request.decision_fields == decision_fields
         assert ctrl.pending_interactions.workflow_handoff is request
         activity = ctrl.activity_changed.emit.call_args.args[0]
         assert activity.decision_owner is AssistantDecisionOwner.GUI_DIALOG
+        assert activity.command_name == tool_name
 
     def test_workflow_handoff_rejects_forged_contract_fields(self, ctrl):
         result = ctrl._handle_tool_result_logic(
@@ -2845,6 +2847,50 @@ class TestExecuteDebugTool:
         )
         assert acknowledgement.correlation == request.correlation
         assert acknowledgement.phase is AssistantTurnDeliveryPhase.ACCEPTED
+
+    def test_each_diagnostic_preprocess_turn_publishes_its_terminal(self, ctrl):
+        calls = (
+            ("apply_bandpass_filter", {"low_freq": 4.0, "high_freq": 38.0}),
+            ("apply_notch_filter", {"freq": 60.0}),
+            ("resample_data", {"rate": 128}),
+            ("set_reference", {"method": "average"}),
+            ("normalize_data", {"method": "z-score"}),
+        )
+        messages = [f"completed-{index}" for index in range(1, len(calls) + 1)]
+        ctrl._execute_tool_no_loop = MagicMock(
+            side_effect=[_tool_outcome(message) for message in messages]
+        )
+        ctrl._handle_tool_result_logic = MagicMock(return_value=False)
+        _set_context_reader(
+            ctrl,
+            side_effect=lambda tool_name: _enabled_tool_context(tool_name),
+        )
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.side_effect = lambda tool_name: MagicMock(
+            name=tool_name,
+            requires_confirmation=False,
+        )
+
+        for index, (tool_name, params) in enumerate(calls, start=1):
+            ctrl._turn_orchestrator.host_turn_generation = None
+            ctrl._turn_orchestrator.host_turn_id = None
+            acknowledgement = ctrl.execute_debug_tool(
+                AssistantDebugToolRequest.from_params(
+                    correlation=AssistantTurnCorrelation(
+                        generation=index,
+                        turn_id=index,
+                    ),
+                    tool_name=tool_name,
+                    params=params,
+                )
+            )
+            assert acknowledgement.phase is AssistantTurnDeliveryPhase.ACCEPTED
+
+        visible_responses = [
+            item.args[0].text
+            for item in ctrl.response_presentation_ready.emit.call_args_list
+        ]
+        assert visible_responses == messages
 
     def test_blocked_debug_action_does_not_claim_that_it_is_running(self, ctrl):
         from XBrainLab.llm.tools.application_surface import ToolAvailability

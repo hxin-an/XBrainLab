@@ -8,9 +8,55 @@
 完成 replacement、atomic cutover、deletion 與 exact-SHA candidate；在完整候選前不要求使用者手測，
 未取得同一 source 的手測通過不得合併 main。**
 
-目前 phase：`Active；complete-workflow training confirmation與Compute Saliency收尾`
+目前 phase：`Active；complete-workflow action identity、逐步可見結果與取消收尾`
 
 目前 branch：`refactor/assistant-target-adapters-v2`
+
+最新真人`complete-workflow`在既有18-tool、confirmation與Compute Saliency鏈上揭露四個同源缺口：
+`import_eeg_data`的UI handoff被顯示成backend route `scan_source`，`select_channels`被顯示成泛稱
+`preprocess`；五個direct preprocess雖皆真的走ApplicationService並產生side effect，但同一diagnostic
+session只有第一個terminal bubble可見；在GUI handoff按Cancel則被walkthrough要求無限重試，最後停在
+同一步。已確認原因不是backend command或preprocess readiness錯誤，而是public action identity在
+`WorkflowUiHandoffRequest`轉成backend command時遺失、debug action沒有重設每turn的
+`visible_response_sent`／cancel state，以及profile runner把所有unexpected terminal都設為可重試。
+
+本slice observable outcome固定為：(1) UI handoff一路同時保留public `tool_name`與authoritative backend
+`CommandName`；route、capability與mutation仍只由既有ApplicationService／UI owner決定，但waiting、
+completed、cancelled與failed文案使用精確的public action名稱，Import顯示`Import EEG data`，Channel顯示
+`Select channels`；(2) 每次Enter都是新的Assistant turn，五個direct preprocess各自留下獨立綠色terminal
+bubble，不因上一turn已顯示回覆而被抑制；(3) normal Assistant的Cancel結束該action且不自動重試；
+Complete Workflow若出現未預期cancel／blocked／failed就明確停止，重新啟動才可再跑；另新增短
+`gui-cancellation` profile，把預期cancel當完成step並證明下一步仍可正常開Preprocess panel。
+
+Scope只包含typed handoff identity、diagnostic per-turn reset、walkthrough stop／expected-cancel contract、
+對應可見文案與一份短profile。Non-goals是不改backend command、capability、preprocess semantics、dialog
+layout、normal Granite generation、18-tool membership、confirmation policy或`settings.json`；不在本slice
+重跑或放寬目前36／50的Granite challenge blocker。使用者已明確核准上述可見文案、取消互動與profile
+行為。Owners before／after皆為既有ApplicationService、WorkflowUiHandoffHost、controller與
+ToolDebugMode，owner數不增加；預估不超過7個production files、淨增低於100 production LOC。Deletion
+candidates是generic backend-route label在Assistant outcome的錯誤投影與runner的無限retry分支；若超過8個
+production files、淨增300 LOC、需要新owner／state machine／compatibility path，立即停止重做complexity
+review。
+
+修理順序固定為：(1) red tests鎖定public tool identity、連續五個preprocess皆有terminal、unexpected cancel
+停止與expected cancel後可繼續；(2) request／resolution加入immutable tool identity並驗證tool-command-
+decision-fields一致；(3) diagnostic dispatch開始時重設既有per-turn presentation state；(4) runner改為
+unexpected terminal fail-stop，加入`gui-cancellation.json`；(5) 跑focused controller／handoff／ChatPanel／
+no-model integration、Ruff、Basedpyright、MkDocs與可見walkthrough evidence。Stop condition是backend route
+失去authority、任一direct preprocess沒執行或沒terminal、Cancel又自動重試、預期Cancel無法恢復、normal
+Granite路徑被改動或任何未授權UI redesign。完成後只交付同一exact source的兩條真人命令；尚未取得使用者
+手測通過前不push／merge。使用者通過後才以小follow-up commit更新PR #39，remote applicable checks全為
+completed／success後以merge commit合入`integration/assistant-stable-v2`；Granite safety另開後續PR，main
+仍等待整條integration candidate完成。
+
+本slice的test-first checkpoint已閉合：14個red精確命中public tool identity遺失、五個direct
+preprocess只有第一個terminal、unexpected cancel仍可dispatch與缺少cancellation profile；green後核心／相鄰
+controller、handoff、AgentManager、ChatPanel、profile與真no-model debug共518 tests通過，較寬的handoff host
+bundle另為536 tests通過。Ruff check／format-check clean，Basedpyright 0 errors，MkDocs strict與exact-source
+ChatPanel offscreen capture皆通過；capture支撐既有progress／terminal layout沒有本次相關clipping，不取代真人
+Cancel、public action文案與Windows native驗收。Production變更為6個既有files、淨增低於100 LOC，owner
+before／after不變，未觸發complexity threshold。下一個stop boundary就是同一commit先跑
+`gui-cancellation` 2步，再跑`complete-workflow` 19步；在真人結果前仍是checkpoint，不是handoff-ready。
 
 本輪由真人`complete-workflow`直接揭露三項同一驗收鏈上的缺口。第一，diagnostic
 `start_training`繞過正常`ToolAttemptCoordinator`，以`confirmed=False`直接進`ToolExecutor`，因此

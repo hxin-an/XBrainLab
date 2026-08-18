@@ -210,12 +210,14 @@ def test_workflow_handoff_consumers_do_not_redeclare_route_taxonomy() -> None:
 def test_decision_handoff_normalizes_backend_command_and_fields() -> None:
     request = WorkflowUiHandoffRequest.for_decision(
         " CREATE_EPOCH ",
+        tool_name="create_epochs",
         decision_fields=[" epoch_window ", "target_event", "epoch_window"],
     )
 
     assert request.kind is WorkflowUiHandoffKind.DECISION_REQUIRED
     assert request.command is CommandName.CREATE_EPOCH
     assert request.command_name == "create_epoch"
+    assert request.tool_name == "create_epochs"
     assert request.decision_fields == ("epoch_window", "target_event")
     assert request.request_id
 
@@ -243,6 +245,7 @@ def test_each_handoff_request_has_a_distinct_correlation_id() -> None:
 def test_resolution_preserves_request_identity_command_and_decision_fields() -> None:
     request = WorkflowUiHandoffRequest.for_decision(
         "create_epoch",
+        tool_name="create_epochs",
         decision_fields=("epoch_window", "target_event"),
     )
 
@@ -255,8 +258,30 @@ def test_resolution_preserves_request_identity_command_and_decision_fields() -> 
     assert resolution.request_id == request.request_id
     assert resolution.command is CommandName.CREATE_EPOCH
     assert resolution.command_name == "create_epoch"
+    assert resolution.tool_name == "create_epochs"
     assert resolution.decision_fields == ("epoch_window", "target_event")
     assert resolution.message == "Epoch settings were applied."
+
+
+def test_resolution_rejects_changed_public_tool_identity() -> None:
+    request = WorkflowUiHandoffRequest.for_decision(
+        CommandName.PREPROCESS,
+        tool_name="select_channels",
+        decision_fields=("channels",),
+    )
+    resolution = WorkflowUiHandoffResolution.for_request(
+        request,
+        status=WorkflowUiHandoffResolutionStatus.COMPLETED,
+    )
+    forged = WorkflowUiHandoffRequest.for_decision(
+        CommandName.PREPROCESS,
+        tool_name="apply_bandpass_filter",
+        decision_fields=("channels",),
+        request_id=request.request_id,
+    )
+
+    assert resolution.matches(request)
+    assert not resolution.matches(forged)
 
 
 def test_import_review_handoff_preserves_domain_identity() -> None:

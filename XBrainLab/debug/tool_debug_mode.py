@@ -117,11 +117,10 @@ class ToolDebugMode:
 
     def begin_call(self) -> DebugToolCall | None:
         """Mark the current step pending; only a terminal may advance it."""
-        if self._pending:
+        if self._pending or self._failure:
             return None
         call = self.current_call
         if call is not None:
-            self._failure = ""
             self._pending = True
         return call
 
@@ -138,7 +137,8 @@ class ToolDebugMode:
         if outcome not in expected:
             self._failure = (
                 f"Step {self.current_call.step_id} ended as {outcome}; expected "
-                f"{', '.join(expected)}. Press Enter to retry."
+                f"{', '.join(expected)}. Walkthrough stopped; relaunch it with a "
+                "fresh session."
             )
             return False
         self.index += 1
@@ -150,7 +150,7 @@ class ToolDebugMode:
 
     @property
     def can_dispatch(self) -> bool:
-        return not self._pending and self.current_call is not None
+        return not self._pending and not self._failure and self.current_call is not None
 
     @property
     def failure(self) -> str:

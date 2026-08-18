@@ -2228,7 +2228,7 @@ class AgentManager(QObject):
             }
             and activity.correlation == lease
             and activity.request_id == request.request_id
-            and activity.command_name == request.command_name
+            and activity.command_name == request.tool_name
         )
 
     def _confirmation_current_values(

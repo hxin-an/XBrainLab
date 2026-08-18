@@ -743,6 +743,7 @@ class LLMController(QObject):
         self,
         command_name: CommandName | str,
         *,
+        tool_name: str = "",
         decision_fields: Any = (),
         suggested_values: Any = None,
         publication: Any | None = None,
@@ -795,9 +796,13 @@ class LLMController(QObject):
             route is not None
             and route.surface_kind is WorkflowUiHandoffSurfaceKind.ACTION
         ):
-            return WorkflowUiHandoffRequest.for_action(command)
+            return WorkflowUiHandoffRequest.for_action(
+                command,
+                tool_name=tool_name,
+            )
         return WorkflowUiHandoffRequest.for_decision(
             command,
+            tool_name=tool_name,
             decision_fields=decision_fields,
             suggested_values=suggested_values,
             interpretation_identity=identity,
@@ -1809,7 +1814,7 @@ class LLMController(QObject):
             self.interaction_resolved.emit(outcome)
             self._publish_activity(
                 AssistantTurnActivityPhase.RUNNING_COMMAND,
-                command_name=request.command_name,
+                command_name=request.tool_name,
                 request_id=request.request_id,
                 message=typed_payload.message,
             )
@@ -2060,9 +2065,10 @@ class LLMController(QObject):
                 tool_name = result.params.get("tool_name")
                 command_name = result.params.get("command")
                 decision_fields = result.params.get("decision_fields")
+                public_tool_name = tool_name if type(tool_name) is str else ""
                 contract = (
-                    AGENT_ACTION_CONTRACTS.contract_for(tool_name)
-                    if type(tool_name) is str
+                    AGENT_ACTION_CONTRACTS.contract_for(public_tool_name)
+                    if public_tool_name
                     else None
                 )
                 try:
@@ -2086,6 +2092,7 @@ class LLMController(QObject):
                     return False
                 workflow_request = self._workflow_ui_handoff_request(
                     command,
+                    tool_name=public_tool_name,
                     decision_fields=decision_fields,
                 )
                 self.pending_interactions.begin_workflow_handoff(workflow_request)
@@ -2104,7 +2111,7 @@ class LLMController(QObject):
                         if is_action
                         else AssistantTurnActivityPhase.WAITING_FOR_DECISION
                     ),
-                    command_name=workflow_request.command_name,
+                    command_name=workflow_request.tool_name,
                     request_id=workflow_request.request_id,
                     decision_owner=(
                         None
@@ -2740,6 +2747,7 @@ class LLMController(QObject):
 
         """
         self._require_active_turn_correlation()
+        self._reset_user_turn_state()
         safe_tool_name = (
             tool_name
             if AGENT_ACTION_CONTRACTS.contract_for(tool_name) is not None

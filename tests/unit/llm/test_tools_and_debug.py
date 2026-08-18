@@ -11,6 +11,7 @@ EXPECTED_AGENT_TOOL_NAMES = {
     "apply_bandpass_filter",
     "apply_notch_filter",
     "clear_training_history",
+    "compute_saliency",
     "configure_dataset_split",
     "configure_training",
     "create_epochs",
@@ -186,7 +187,7 @@ class TestToolDebugMode:
         with pytest.raises(ValueError, match="valid JSON"):
             ToolDebugMode(str(p))
 
-    def test_terminal_mismatch_keeps_step_retryable_without_consuming(self, tmp_path):
+    def test_terminal_mismatch_stops_profile_without_consuming(self, tmp_path):
         import json
 
         from XBrainLab.debug.tool_debug_mode import ToolDebugMode
@@ -215,16 +216,10 @@ class TestToolDebugMode:
         assert dbg.complete_pending("panel_navigation_failed") is False
         assert dbg.index == 0
         assert "panel_navigation_failed" in dbg.failure
-        assert dbg.can_dispatch
-
-        retry = dbg.begin_call()
-
-        assert retry is not None
-        assert retry.step_id == "open"
-        assert dbg.failure == ""
-        assert dbg.complete_pending("completed") is True
-        assert dbg.index == 1
-        assert dbg.is_complete
+        assert "relaunch" in dbg.failure.casefold()
+        assert not dbg.can_dispatch
+        assert dbg.begin_call() is None
+        assert not dbg.is_complete
 
 
 # --- visualization/base.py ---

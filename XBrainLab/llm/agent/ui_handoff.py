@@ -392,6 +392,7 @@ class WorkflowUiHandoffRequest:
     kind: WorkflowUiHandoffKind
     command: CommandName
     request_id: str = field(default_factory=lambda: uuid4().hex)
+    tool_name: str = ""
     decision_fields: tuple[str, ...] = ()
     suggested_values: tuple[tuple[str, str], ...] = ()
     interpretation_identity: InterpretationReviewIdentity | None = None
@@ -414,6 +415,10 @@ class WorkflowUiHandoffRequest:
             "request_id",
             _normalize_request_id(self.request_id, contract="request"),
         )
+        normalized_tool_name = str(self.tool_name or self.command.value).strip()
+        if not normalized_tool_name:
+            raise ValueError("Workflow UI handoff request tool name cannot be empty.")
+        object.__setattr__(self, "tool_name", normalized_tool_name)
         _validate_decision_fields(self.decision_fields, contract="request")
         _validate_suggested_values(self.suggested_values, contract="request")
         if self.interpretation_identity is not None and not isinstance(
@@ -439,6 +444,7 @@ class WorkflowUiHandoffRequest:
         cls,
         command_name: CommandName | str,
         *,
+        tool_name: str = "",
         decision_fields: Iterable[str] = (),
         suggested_values: Mapping[str, object] | None = None,
         request_id: str | None = None,
@@ -476,6 +482,7 @@ class WorkflowUiHandoffRequest:
             kind=WorkflowUiHandoffKind.DECISION_REQUIRED,
             command=command,
             request_id=normalized_request_id,
+            tool_name=tool_name,
             decision_fields=tuple(fields),
             suggested_values=tuple(suggestions),
             interpretation_identity=interpretation_identity,
@@ -486,6 +493,7 @@ class WorkflowUiHandoffRequest:
         cls,
         command_name: CommandName | str,
         *,
+        tool_name: str = "",
         request_id: str | None = None,
     ) -> WorkflowUiHandoffRequest:
         """Build a parameter-free request for one existing product UI action."""
@@ -506,6 +514,7 @@ class WorkflowUiHandoffRequest:
             kind=WorkflowUiHandoffKind.ACTION_REQUESTED,
             command=command,
             request_id=uuid4().hex if request_id is None else str(request_id).strip(),
+            tool_name=tool_name,
         )
 
 
@@ -516,6 +525,7 @@ class WorkflowUiHandoffResolution:
     request_id: str
     command: CommandName
     status: WorkflowUiHandoffResolutionStatus
+    tool_name: str = ""
     decision_fields: tuple[str, ...] = ()
     suggested_values: tuple[tuple[str, str], ...] = ()
     interpretation_identity: InterpretationReviewIdentity | None = None
@@ -539,6 +549,12 @@ class WorkflowUiHandoffResolution:
             "request_id",
             _normalize_request_id(self.request_id, contract="resolution"),
         )
+        normalized_tool_name = str(self.tool_name or self.command.value).strip()
+        if not normalized_tool_name:
+            raise ValueError(
+                "Workflow UI handoff resolution tool name cannot be empty."
+            )
+        object.__setattr__(self, "tool_name", normalized_tool_name)
         _validate_decision_fields(self.decision_fields, contract="resolution")
         _validate_suggested_values(self.suggested_values, contract="resolution")
         if self.interpretation_identity is not None and not isinstance(
@@ -578,6 +594,7 @@ class WorkflowUiHandoffResolution:
             isinstance(request, WorkflowUiHandoffRequest)
             and self.request_id == request.request_id
             and self.command is request.command
+            and self.tool_name == request.tool_name
             and self.decision_fields == request.decision_fields
             and self.suggested_values == request.suggested_values
             and self.interpretation_identity == request.interpretation_identity
@@ -600,6 +617,7 @@ class WorkflowUiHandoffResolution:
             request_id=request.request_id,
             command=request.command,
             status=status,
+            tool_name=request.tool_name,
             decision_fields=request.decision_fields,
             suggested_values=request.suggested_values,
             interpretation_identity=request.interpretation_identity,
@@ -612,6 +630,7 @@ class WorkflowUiHandoffResolution:
             request_id=self.request_id,
             command=self.command,
             status=WorkflowUiHandoffResolutionStatus.FAILED,
+            tool_name=self.tool_name,
             decision_fields=self.decision_fields,
             suggested_values=self.suggested_values,
             interpretation_identity=self.interpretation_identity,

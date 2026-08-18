@@ -10,6 +10,7 @@ VALIDATION_GUIDE = Path("docs/validation/README.md")
 PROFILE_NAMES = (
     "contract-failures",
     "complete-workflow",
+    "gui-cancellation",
     "lifecycle-routing",
 )
 
@@ -28,6 +29,22 @@ def test_walkthrough_profiles_are_strict_and_cover_exact_target_surface() -> Non
         "lifecycle-routing",
         "contract-failures",
     }
+
+
+def test_gui_cancellation_profile_advances_after_expected_cancel() -> None:
+    profile = ToolDebugMode(str(PROFILE_ROOT / "gui-cancellation.json"))
+
+    first = profile.begin_call()
+    assert first is not None
+    assert first.tool == "import_eeg_data"
+    assert first.expected_outcomes == ("cancelled",)
+    assert profile.complete_pending("cancelled") is True
+
+    second = profile.begin_call()
+    assert second is not None
+    assert second.tool == "switch_panel"
+    assert profile.complete_pending("completed") is True
+    assert profile.is_complete
 
 
 def test_walkthrough_profiles_never_bypass_product_confirmation() -> None:

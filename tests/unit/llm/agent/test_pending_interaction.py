@@ -186,6 +186,7 @@ def test_matching_workflow_handoff_is_consumed_exactly_once() -> None:
     session = PendingInteractionCoordinator()
     request = WorkflowUiHandoffRequest.for_decision(
         "create_epoch",
+        tool_name="create_epochs",
         decision_fields=("epoch_window",),
     )
     resolution = WorkflowUiHandoffResolution.for_request(
@@ -201,6 +202,7 @@ def test_matching_workflow_handoff_is_consumed_exactly_once() -> None:
     assert consumed.request is request
     assert consumed.outcome is not None
     assert consumed.outcome.status.value == "completed_in_ui"
+    assert consumed.outcome.command_name == "create_epochs"
     assert duplicate.decision is PendingWorkflowHandoffDecision.DUPLICATE
     assert duplicate.request is None
     assert duplicate.outcome is None

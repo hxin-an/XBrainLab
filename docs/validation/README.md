@@ -100,6 +100,12 @@ Contract Failures：
 poetry run python run.py --tool-debug scripts/dev/agent_tool_walkthrough/contract-failures.json
 ```
 
+GUI Cancellation Recovery：
+
+```bash
+poetry run python run.py --tool-debug scripts/dev/agent_tool_walkthrough/gui-cancellation.json
+```
+
 Complete Workflow：
 
 ```bash
