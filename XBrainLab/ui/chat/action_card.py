@@ -365,12 +365,6 @@ class AssistantConfirmationCard(QFrame):
         )
         layout.addWidget(self.description_label)
 
-        self.impact_title = QLabel("Impact")
-        self.impact_title.setObjectName("AssistantActionCardLabel")
-        self.impact_title.setStyleSheet(ACTION_CARD_LABEL_STYLE)
-        self.impact_title.setVisible(False)
-        layout.addWidget(self.impact_title)
-
         self.impact_label = QLabel("")
         self.impact_label.setObjectName("AssistantActionCardImpact")
         self.impact_label.setStyleSheet(ACTION_CARD_TEXT_STYLE)
@@ -530,6 +524,14 @@ class AssistantConfirmationCard(QFrame):
         compact_long_running = (
             request.long_running and not request.destructive and not setting_change
         )
+        ordinary_confirmation = not any(
+            (
+                request.destructive,
+                request.high_impact,
+                compact_long_running,
+                setting_change,
+            )
+        )
         self.title_label.setText(
             "High-risk confirmation"
             if request.destructive
@@ -537,17 +539,20 @@ class AssistantConfirmationCard(QFrame):
             if compact_long_running
             else "High-impact confirmation"
             if request.high_impact and not setting_change
-            else ("Suggested change" if setting_change else "Confirmation required")
+            else ("Suggested change" if setting_change else request.action_label)
         )
         self.description_label.setText(request.action_label)
         self.description_label.setVisible(
-            not setting_change and not compact_long_running
+            not setting_change
+            and not compact_long_running
+            and not ordinary_confirmation
         )
         self.impact_label.setText(request.impact_text or "")
-        self.impact_title.setVisible(bool(request.impact_text))
         self.impact_label.setVisible(bool(request.impact_text))
         self.reason_label.setText(request.description)
-        self.reason_title.setVisible(not compact_long_running)
+        self.reason_title.setVisible(
+            not compact_long_running and not ordinary_confirmation
+        )
         self.reason_label.setVisible(not compact_long_running)
         self.context_warning.setText(
             "The workflow changed after this suggestion. XBrainLab will validate "

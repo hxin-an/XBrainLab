@@ -327,19 +327,16 @@ class TestChatPanelInit:
         assert card.primary_button.isEnabled() is False
         assert card.secondary_button.isEnabled() is False
 
-    def test_action_confirmation_is_not_presented_as_a_setting_change(
+    def test_ordinary_action_confirmation_uses_the_action_as_its_title(
         self,
         chat_panel,
         qtbot,
     ) -> None:
         request = AgentConfirmationRequest.for_action(
-            command_name="start_training",
-            params={
-                "checkpoint_policy": "disabled",
-                "output_directory": "./output",
-            },
-            action_label="Start training",
-            description="Start the training process.",
+            command_name="compute_saliency",
+            params={},
+            action_label="Compute saliency",
+            description="Use the current model and Visualization settings.",
             destructive=False,
             publication_generation=7,
         )
@@ -350,11 +347,13 @@ class TestChatPanelInit:
         qtbot.wait(20)
 
         card = chat_panel.confirmation_card_widget
-        assert card.title_label.text() == "Confirmation required"
-        assert card.description_label.text() == "Start training"
-        assert card.description_label.isVisibleTo(chat_panel)
+        assert card.title_label.text() == "Compute saliency"
+        assert card.description_label.isHidden()
+        assert card.reason_title.isHidden()
+        assert card.reason_label.text() == request.description
+        assert card.reason_label.isVisibleTo(chat_panel)
         assert card.secondary_button.text() == "Cancel"
-        assert card.primary_button.text() == "Start training"
+        assert card.primary_button.text() == "Compute saliency"
 
     def test_confirmation_card_stacks_actions_without_clipping_in_narrow_panel(
         self,

@@ -284,7 +284,7 @@ def test_preprocess_service_applies_core_operations() -> None:
                 notch_freq=50.0,
             ),
         )
-        == "Applied bandpass filter (1.0-40.0 Hz)."
+        == "Applied bandpass filter: 1.0-40.0 Hz."
     )
     assert (
         service.handle_preprocess(
@@ -323,7 +323,7 @@ def test_preprocess_service_maps_individual_operations_without_facade() -> None:
                 notch_freq=60.0,
             ),
         )
-        == "Applied notch filter (60.0 Hz)."
+        == "Applied notch filter: 60.0 Hz."
     )
     assert (
         service.handle_preprocess(
@@ -337,15 +337,15 @@ def test_preprocess_service_maps_individual_operations_without_facade() -> None:
     normalize_message, normalize_diagnostics = service.handle_preprocess(
         PreprocessCommand(
             operation=PreprocessOperation.NORMALIZE,
-            method="zscore",
+            method="z-score",
         ),
     )
     assert normalize_message == (
-        "Normalization using zscore is queued for per-EEG-epoch application "
-        "during EEG epoch creation."
+        "Z-score normalization will be applied independently to each EEG epoch "
+        "when epochs are created."
     )
     assert normalize_diagnostics == {
-        "normalization_method": "zscore",
+        "normalization_method": "z-score",
         "normalization_scope": "per_epoch_per_channel",
         "raw_requests_deferred": 1,
         "epoched_items_normalized": 0,
@@ -364,7 +364,7 @@ def test_preprocess_service_maps_individual_operations_without_facade() -> None:
     assert preprocess.events == [
         ("filter", (None, None, [60.0])),
         ("resample", 256),
-        ("normalize", "zscore"),
+        ("normalize", "z-score"),
         ("rereference", ["Cz"]),
     ]
 
@@ -436,8 +436,8 @@ def test_preprocess_service_applies_standard_preprocess_in_batch() -> None:
         ),
     )
     assert message == (
-        "Standard preprocessing applied. Normalization using z score is queued "
-        "for per-EEG-epoch application during EEG epoch creation."
+        "Standard preprocessing applied. Z score normalization will be applied "
+        "independently to each EEG epoch when epochs are created."
     )
     assert diagnostics["normalization_scope"] == "per_epoch_per_channel"
     assert diagnostics["raw_requests_deferred"] == 1

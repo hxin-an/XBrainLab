@@ -68,6 +68,16 @@ def test_cancelled_data_import_uses_product_language() -> None:
     )
 
 
+def test_completed_model_selection_names_the_model_selected_in_the_ui() -> None:
+    outcome = AgentInteractionOutcome(
+        status=AgentInteractionStatus.COMPLETED_IN_UI,
+        command_name="select_model",
+        message="Model selected: EEGNet.",
+    )
+
+    assert interaction_outcome_message(outcome) == "Model selected: EEGNet."
+
+
 def test_handoff_blocker_uses_specific_product_surface_message() -> None:
     outcome = AgentInteractionOutcome(
         status=AgentInteractionStatus.BLOCKED,

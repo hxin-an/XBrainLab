@@ -412,7 +412,7 @@ def test_contract_failure_profile_advances_only_on_real_terminals(qtbot):
         dataset_terminal = next(
             record
             for record in manager.chat_controller.get_typed_history()
-            if record.content == "Opened the Dataset panel in XBrainLab."
+            if record.content == "Opened Dataset panel."
         )
         assert (
             dataset_terminal.presentation_kind

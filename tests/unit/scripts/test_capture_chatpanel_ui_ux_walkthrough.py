@@ -82,6 +82,18 @@ def test_scenario_contract_covers_required_surfaces_once() -> None:
         spec.expected_confirmation_actions == ("Cancel", "Confirm")
         for spec in dpi_evidence
     )
+    ordinary_confirmations = [
+        spec for spec in SCENARIOS if spec.review_state == "ordinary_confirmation"
+    ]
+    assert [spec.logical_width for spec in ordinary_confirmations] == [320, 420, 760]
+    assert all(
+        spec.expected_confirmation_title == "Compute saliency"
+        for spec in ordinary_confirmations
+    )
+    assert all(
+        spec.expected_confirmation_actions == ("Cancel", "Compute saliency")
+        for spec in ordinary_confirmations
+    )
     assert any(
         spec.logical_width == 320
         and spec.logical_height == 650

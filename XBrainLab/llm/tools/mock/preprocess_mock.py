@@ -42,7 +42,7 @@ class MockBandPassFilterTool(_RequiresLoadedData, BaseBandPassFilterTool):
             return ToolResult(
                 False, "Error: frequencies are required", error_type="input"
             )
-        return ToolResult(True, f"Applied bandpass filter ({low_freq}-{high_freq} Hz).")
+        return ToolResult(True, f"Applied bandpass filter: {low_freq}-{high_freq} Hz.")
 
 
 class MockNotchFilterTool(_RequiresLoadedData, BaseNotchFilterTool):
@@ -57,7 +57,7 @@ class MockNotchFilterTool(_RequiresLoadedData, BaseNotchFilterTool):
             return blocked
         if freq is None:
             return ToolResult(False, "Error: frequency is required", error_type="input")
-        return ToolResult(True, f"Applied notch filter at {freq} Hz.")
+        return ToolResult(True, f"Applied notch filter: {freq} Hz.")
 
 
 class MockResampleTool(_RequiresLoadedData, BaseResampleTool):

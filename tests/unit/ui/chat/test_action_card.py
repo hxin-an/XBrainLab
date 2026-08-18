@@ -319,8 +319,7 @@ def test_start_training_renders_compact_long_running_confirmation(
     card = confirmation_card
     assert card.title_label.text() == "Start training"
     assert card.description_label.isHidden()
-    assert card.impact_title.text() == "Impact"
-    assert card.impact_title.isVisibleTo(card)
+    assert not hasattr(card, "impact_title")
     assert card.impact_label.text() == impact
     assert card.impact_label.isVisibleTo(card)
     assert card.impact_label.wordWrap()
@@ -332,7 +331,7 @@ def test_start_training_renders_compact_long_running_confirmation(
     assert card.proposal_scroll.isHidden()
     assert card.primary_button.text() == "Confirm"
     assert card.secondary_button.text() == "Cancel"
-    for widget in (card.impact_title, card.impact_label, card.primary_button):
+    for widget in (card.impact_label, card.primary_button):
         assert widget.mapTo(card, QPoint(0, 0)).x() >= 0
         assert widget.mapTo(card, widget.rect().bottomRight()).x() < card.width()
 

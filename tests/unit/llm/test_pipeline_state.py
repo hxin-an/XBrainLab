@@ -16,6 +16,7 @@ from XBrainLab.backend.application.pipeline_stage import (
 from XBrainLab.backend.application.pipeline_stage import (
     compute_pipeline_stage as backend_compute_pipeline_stage,
 )
+from XBrainLab.backend.application.pipeline_stage import derive_pipeline_stage
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.llm.pipeline_state import (
@@ -144,6 +145,13 @@ def test_compute_saliency_is_published_only_after_completed_training() -> None:
     assert stages == {
         PipelineStage.TRAINED: tuple(STAGE_CONFIG[PipelineStage.TRAINED]["tools"])
     }
+
+
+def test_active_retraining_hides_compute_saliency_even_with_finished_history() -> None:
+    stage = derive_pipeline_stage(is_training=True, finished_run_count=1)
+
+    assert stage is PipelineStage.TRAINING
+    assert "compute_saliency" not in STAGE_CONFIG[stage]["tools"]
 
 
 def test_stage_prompts_do_not_publish_a_second_tool_truth():

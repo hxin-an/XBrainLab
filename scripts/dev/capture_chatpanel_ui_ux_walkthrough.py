@@ -148,6 +148,9 @@ EXPECTED_SCREEN_FILES = (
     "dpi-320-message-error-confirmation.png",
     "dpi-420-message-error-confirmation.png",
     "dpi-760-message-error-confirmation.png",
+    "ordinary-confirmation-320.png",
+    "ordinary-confirmation-420.png",
+    "ordinary-confirmation-760.png",
     "responsive-320-idle.png",
     "responsive-320-multiline-composer.png",
     "responsive-320-long-clarification-action-520.png",
@@ -732,6 +735,24 @@ def _prepare_dpi_evidence(panel: ChatPanel) -> None:
     panel.show_confirmation_request(request)
 
 
+def _prepare_ordinary_confirmation(panel: ChatPanel) -> None:
+    """Render the minimal action-first confirmation approved for ordinary actions."""
+    panel.set_runtime_state("ready")
+    _controller(panel).add_user_message(
+        "Compute saliency with the current Visualization settings."
+    )
+    request = AgentConfirmationRequest.for_action(
+        command_name="compute_saliency",
+        params={},
+        action_label="Compute saliency",
+        description="Use the current model and Visualization settings.",
+        destructive=False,
+        publication_generation=1,
+        request_id=f"ordinary-compute-saliency-{panel.width()}",
+    )
+    panel.show_confirmation_request(request)
+
+
 def _prepare_responsive_idle(panel: ChatPanel) -> None:
     panel.set_runtime_state("ready")
 
@@ -1000,6 +1021,45 @@ SCENARIOS = (
         expected_confirmation_title="Start training",
         expected_confirmation_actions=("Cancel", "Confirm"),
         review_state="dpi_evidence",
+    ),
+    ScenarioSpec(
+        "ordinary_confirmation_320",
+        "ordinary-confirmation-320.png",
+        320,
+        520,
+        1.0,
+        _prepare_ordinary_confirmation,
+        required_kinds=("user",),
+        confirmation_visible=True,
+        expected_confirmation_title="Compute saliency",
+        expected_confirmation_actions=("Cancel", "Compute saliency"),
+        review_state="ordinary_confirmation",
+    ),
+    ScenarioSpec(
+        "ordinary_confirmation_420",
+        "ordinary-confirmation-420.png",
+        420,
+        520,
+        1.0,
+        _prepare_ordinary_confirmation,
+        required_kinds=("user",),
+        confirmation_visible=True,
+        expected_confirmation_title="Compute saliency",
+        expected_confirmation_actions=("Cancel", "Compute saliency"),
+        review_state="ordinary_confirmation",
+    ),
+    ScenarioSpec(
+        "ordinary_confirmation_760",
+        "ordinary-confirmation-760.png",
+        760,
+        520,
+        1.0,
+        _prepare_ordinary_confirmation,
+        required_kinds=("user",),
+        confirmation_visible=True,
+        expected_confirmation_title="Compute saliency",
+        expected_confirmation_actions=("Cancel", "Compute saliency"),
+        review_state="ordinary_confirmation",
     ),
     ScenarioSpec(
         "responsive_320_idle",

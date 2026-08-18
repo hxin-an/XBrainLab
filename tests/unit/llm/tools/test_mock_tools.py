@@ -69,9 +69,9 @@ def test_direct_preprocess_missing_params_are_typed(study, tool_type, message) -
         (
             MockBandPassFilterTool,
             {"low_freq": 1, "high_freq": 40},
-            "Applied bandpass filter (1-40 Hz).",
+            "Applied bandpass filter: 1-40 Hz.",
         ),
-        (MockNotchFilterTool, {"freq": 50}, "Applied notch filter at 50 Hz."),
+        (MockNotchFilterTool, {"freq": 50}, "Applied notch filter: 50 Hz."),
         (MockResampleTool, {"rate": 128}, "Resampled data to 128 Hz."),
         (
             MockNormalizeTool,

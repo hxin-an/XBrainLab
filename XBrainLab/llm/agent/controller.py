@@ -2829,12 +2829,10 @@ class LLMController(QObject):
             return
         if request.view_mode:
             destination = request.view_mode.replace("_", " ").title()
-            success_message = (
-                f"Opened the {destination} view in the Visualization panel."
-            )
+            success_message = f"Opened {destination} in Visualization panel."
         else:
             destination = request.target.value.title()
-            success_message = f"Opened the {destination} panel in XBrainLab."
+            success_message = f"Opened {destination} panel."
         if success:
             self._publish_response(
                 success_message,

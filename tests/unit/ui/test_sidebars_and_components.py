@@ -2585,6 +2585,7 @@ class TestTrainingSidebar:
             outcome = sidebar.select_model()
 
         assert outcome.status is InteractionStatus.COMPLETED
+        assert outcome.message == "Model selected: EEGNet."
         command = mock_execute.call_args.args[1]
         assert isinstance(command, ConfigureTrainingCommand)
         assert command.model_name == "EEGNet"
@@ -2592,7 +2593,7 @@ class TestTrainingSidebar:
         sidebar.panel.controller.get_model_holder.assert_not_called()
         mock_critical.assert_not_called()
         mock_info.assert_not_called()
-        sidebar.panel.show_status_message.assert_called_with("Model selected: EEGNet")
+        sidebar.panel.show_status_message.assert_called_with("Model selected: EEGNet.")
 
     def test_select_model_nonrecoverable_command_failure_returns_failed(
         self,

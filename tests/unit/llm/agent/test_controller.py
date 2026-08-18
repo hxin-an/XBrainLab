@@ -1642,39 +1642,39 @@ class TestHandleToolResultLogic:
         [
             (
                 {"panel": "dataset"},
-                "Opened the Dataset panel in XBrainLab.",
+                "Opened Dataset panel.",
             ),
             (
                 {"panel": "preprocess"},
-                "Opened the Preprocess panel in XBrainLab.",
+                "Opened Preprocess panel.",
             ),
             (
                 {"panel": "training"},
-                "Opened the Training panel in XBrainLab.",
+                "Opened Training panel.",
             ),
             (
                 {"panel": "evaluation"},
-                "Opened the Evaluation panel in XBrainLab.",
+                "Opened Evaluation panel.",
             ),
             (
                 {"panel": "visualization"},
-                "Opened the Visualization panel in XBrainLab.",
+                "Opened Visualization panel.",
             ),
             (
                 {"panel": "visualization", "view_mode": "saliency_map"},
-                "Opened the Saliency Map view in the Visualization panel.",
+                "Opened Saliency Map in Visualization panel.",
             ),
             (
                 {"panel": "visualization", "view_mode": "spectrogram"},
-                "Opened the Spectrogram view in the Visualization panel.",
+                "Opened Spectrogram in Visualization panel.",
             ),
             (
                 {"panel": "visualization", "view_mode": "topographic_map"},
-                "Opened the Topographic Map view in the Visualization panel.",
+                "Opened Topographic Map in Visualization panel.",
             ),
             (
                 {"panel": "visualization", "view_mode": "3d_plot"},
-                "Opened the 3D Plot view in the Visualization panel.",
+                "Opened 3D Plot in Visualization panel.",
             ),
         ],
     )

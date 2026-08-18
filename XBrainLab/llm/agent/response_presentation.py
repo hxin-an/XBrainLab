@@ -222,12 +222,14 @@ def interaction_outcome_message(outcome: AgentInteractionOutcome) -> str:
         if command_identifier == CommandName.EVALUATE.value:
             return "Evaluation is open in the main window. Review results there."
         return f"{label} is open in the main window. Continue there."
-    if outcome.status is AgentInteractionStatus.COMPLETED_IN_UI:
-        return f"{label} was completed in XBrainLab."
     detail = public_diagnostic_text(
         outcome.message or "",
         layout=DiagnosticTextLayout.SINGLE_LINE,
     )
+    if outcome.status is AgentInteractionStatus.COMPLETED_IN_UI:
+        if command_identifier == "select_model" and detail:
+            return detail
+        return f"{label} was completed in XBrainLab."
     if outcome.status is AgentInteractionStatus.BLOCKED:
         return detail or (
             f"{label} is blocked by the current workflow state. "

@@ -107,6 +107,53 @@ Ruff、Basedpyright、format check、focused ChatPanel walkthrough與7張default
 上述仍只是Linux／Qt offscreen checkpoint；下一步是在固定candidate source重跑真人
 `response-presentation`。
 
+真人 `complete-workflow` 新發現（2026-08-19）：panel navigation completion仍使用
+`Opened the … panel in XBrainLab.`；raw normalization completion以queued／per-EEG-epoch描述正確的
+deferred語意但不易讀；Select Model completion丟棄UI已知的實際model名稱；一般confirmation仍顯示
+generic `Confirmation required`與比內文小的`Reason`標籤。使用者已核准以下最小呈現修復：panel改為
+`Opened Training panel.`同型句法、Visualization subview改為`Opened Saliency Map in Visualization
+panel.`同型句法；deferred normalization改為`Z-score normalization will be applied independently to
+each EEG epoch when epochs are created.`同型句法；Select Model顯示`Model selected: EEGNet.`同型結果；
+一般confirmation以實際action作標題，移除generic title、重複action描述與`Reason`標籤，原因內文直接
+置於標題下。Long-running、setting-change與destructive card保持既有專屬結構。
+
+這個修復只改既有Controller／ApplicationService result copy、TrainingSidebar completion detail與
+AssistantConfirmationCard presentation；不改tool membership、ApplicationService command/capability、
+normalization計算、saliency operation lifecycle或任何owner。Owners before／after不變；預估5個
+production files、淨行數接近零，刪除候選是一般card的generic title與重複label branch。先以精確可見
+結果建立red tests，再做最小修復。`compute_saliency`本身維持只在`TRAINED`發布；另以passing
+characterization明確鎖定`is_training=True`即使`finished_run_count>0`仍優先為`TRAINING`，並重跑
+backend active-training拒絕與Visualization按鈕隱藏證據。完成focused unit／Qt tests、320／420／760px
+visual artifacts、Ruff、format check與Basedpyright後，固定新candidate並重新執行受影響的
+`complete-workflow`；任何source再改仍使該手測批准失效。
+
+Checkpoint（2026-08-19）：上述呈現修復已完成。14個舊copy／card assertions先以預期原因失敗，
+實作後連同3個saliency stage／capability cases共17個focused cases通過；直接相鄰的Controller、
+preprocess service、response presentation、pipeline stage、ChatPanel、confirmation card、TrainingSidebar、
+capture contract與no-model debug integration共609 tests通過。Production實際5 files、`+26/-13`、
+net `+13`，owners不變且未觸發complexity threshold。Ruff、format check、Basedpyright與diff check通過；
+`build/dev-artifacts/chatpanel-ui-ux-ordinary-confirmation/`的320／420／760px ordinary confirmation
+artifacts由主agent檢視，均顯示action-first title、直接原因內文與未溢出的Cancel／Compute按鈕，artifact
+gate status為passed。這些仍是Linux／Qt offscreen checkpoint；下一步只交付新的exact-source真人
+walkthrough，不宣稱Windows native acceptance或handoff-ready。
+
+真人後續呈現調整（2026-08-19）：使用者要求bandpass／notch成功訊息移除括號，統一為
+`Applied bandpass filter: 1.0-40.0 Hz.`與`Applied notch filter: 60.0 Hz.`同型句法；confirmation
+card只移除可見的`Impact`小標，以降低視覺噪音，原本的impact說明內文完整保留。這只改result copy與
+card renderer；typed risk、confirmation admission、correlation、說明內文、按鈕與執行policy全部
+保留。Impact title widget直接刪除而不是只設為hidden；capture payload仍保留impact內文證據。先建立
+copy與widget-absence紅測，再跑相同focused／adjacent tests、重產320／420／760 artifacts與靜態檢查；
+任何source變更仍使舊真人批准失效。
+
+Checkpoint（2026-08-19）：這個小幅呈現調整已完成。精確copy與widget-absence紅測先得到6 failed／
+3 passed，實作後9個focused cases通過；直接相鄰的preprocess、mock tool、confirmation card、ChatPanel
+與capture contract共223 tests通過。Ruff、format check、Basedpyright與diff check皆通過；搜尋確認產品
+與文件已無舊括號句法，`impact_title`只剩測試中的absence assertion。重新產生的
+`build/dev-artifacts/chatpanel-ui-ux-no-impact-label/` gate為passed，主agent檢視320／420／760px artifacts：
+Impact小標已消失，原本說明內文、action標題與Cancel／Confirm按鈕皆完整可見且未裁切。Owners不變，
+沒有新增state、policy或owner；這仍是Linux／Qt offscreen checkpoint，必須由使用者在新exact source
+重新真人手測後才可作merge acceptance。
+
 ## Focused validation 與人工 stop boundary
 
 - Registry仍精確18 tools，`respond_to_user`只能走reserved response path；message空值／額外key fail closed。
