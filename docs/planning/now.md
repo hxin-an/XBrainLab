@@ -67,6 +67,12 @@ slice；否則保留checkpoint並停止。若產品化，預估重用assembler�
 與現有verifier，4–6個production files、淨增約260–600 LOC、owner數不變；超過8個production files、需要
 新module／owner或Host semantic label時必須停止並重新做complexity review。
 
+Evaluator-only implementation checkpoint：runner已在同一engine load中交錯執行A與B，並紀錄每pass與
+warm p95 latency；B的gate只有`workflow_stage`、`decision`、`reason_class`三鍵，parser不容許
+`tool_name`或`parameters`。首次單case真Granite smoke因prompt使用非法JSON union而補出額外鍵，
+strict parser正確拒絕；改為合法三鍵skeleton後，同一`import_eeg_data_01`的A、gate與final均
+精確通過，A約1.70秒、B約1.78秒。這只是runner與prompt-contract smoke，不是48-case結論。
+
 最新local red-first證據：exact Stable v2 branch可在offline模式載入固定Granite revision並產生strict三欄
 JSON，但`inspect_local_assistant_runtime.py --structured-smoke --strict`仍在prompt與oracle中要求已退役的
 `query_state`，因而把`{"workflow_stage":"unavailable","tool_name":"query_state","parameters":{}}`
