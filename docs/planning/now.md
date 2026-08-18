@@ -8,21 +8,138 @@
 完成 replacement、atomic cutover、deletion 與 exact-SHA candidate；在完整候選前不要求使用者手測，
 未取得同一 source 的手測通過不得合併 main。**
 
-目前 phase：`Checkpoint；core no-model behavior walkthrough preflight`
+目前 phase：`Active；complete-workflow training confirmation與Compute Saliency收尾`
 
 目前 branch：`refactor/assistant-target-adapters-v2`
 
-本輪只準備使用者已核准的兩份核心真人walkthrough：先執行`contract-failures`，再以fresh process
-執行`complete-workflow`；不執行timing-sensitive lifecycle profile，不修改normal Granite generation，
-也不把本次通過外推為Assistant-ready。Montage沿用既有target決策，只在Epoch後提供，不再重開階段
-討論。手測前的直接blocker是`ToolDebugMode`在unexpected terminal後把同一步永久停住，違反target
-「failure留在同一步可retry」。修復限於既有debug sequencing／progress copy與tests：unexpected
-terminal不得consume index，下一次Enter重試同一步，成功只前進一次；不改產品dialog、layout、theme、
-17-tool membership、Host authority或ApplicationService command semantics。Preflight曾懷疑PhysioNet
-`S008R04`應標為bilateral hand／foot；同類掃描與PhysioNet official protocol否證該假設：R04是
-imagined left／right fist，既有T1=`left fist`、T2=`right fist`保持不變。Focused unit／real no-model
-integration與canonical source-diverse smoke通過，且PR exact head所有applicable non-skipped checks
-completed/success後，才交付兩份手測命令。
+本輪由真人`complete-workflow`直接揭露三項同一驗收鏈上的缺口。第一，diagnostic
+`start_training`繞過正常`ToolAttemptCoordinator`，以`confirmed=False`直接進`ToolExecutor`，因此
+即使training setup完整也只得到confirmation-required failure，沒有既有Start Training確認卡；debug
+terminal又會把blocked／failed預設成`completed`，可能錯誤推進profile。第二，18-step profile最後只
+`switch_panel(...saliency_map)`，成功後Enter停用是腳本完成而非freeze，但這也證明流程只開畫面、沒有
+計算saliency。第三，approved target遺漏產品既有的Compute Saliency user intent。
+
+Observable outcome固定為：diagnostic action走與normal Assistant相同的schema、backend publication、
+capability、confirmation與ApplicationService執行邊界；ready的`start_training`先顯示既有Assistant
+confirmation card，批准後才執行，resource preflight若另有風險可再顯示既有resource confirmation。
+`completed`、`blocked`、`cancelled`與`failed`必須保留到walkthrough terminal，Complete Workflow只有
+真正`completed`才前進。Approved target新增第18個`compute_saliency`：零參數、只在`trained`發布，
+永遠先顯示Assistant confirmation card；批准後開啟Visualization／Saliency Map，使用該panel當下合法的
+completed run、method與settings走既有Compute Saliency action，並等待同一owned operation id的
+completed／cancelled／blocked／failed terminal。模型不得選run／method／settings；沒有合法selection、
+selection stale或已有operation時fail closed，不silent fallback或重複啟動。
+
+Scope只包含debug正式confirmation重用、typed terminal outcome、薄`compute_saliency` UI request、
+既有Visualization operation correlation、19-step profile與直接tests／docs。Non-goals是不恢復舊parameterized
+`saliency` wrapper、不新增backend command、readiness owner、state machine或renderer，不改panel layout、
+theme、normal Granite generation、其他analysis工具或`settings.json`。使用者已明確核准新增第18個public
+tool與「先開確認卡」的可見互動；沒有授權其他UI redesign。
+
+Complexity review：owner before／after皆為ApplicationService／AnalysisService的運算owner、
+VisualizationPanel的selection／presentation owner、既有Assistant confirmation與
+WorkflowUiHandoffHost；owner數不增加。預估觸及6–8個production files、production +150～250／-30～80、
+net +70～220 LOC。Deletion candidates是controller的direct `DebugToolAdmission`特例與未使用的
+`SALIENCY_SETTINGS_DIALOG` Assistant route；若需要新backend owner、第二套operation state、超過8個
+production files或淨增300 LOC，立即停止並重新拆分。
+
+修理順序固定為：(1) 以red tests證明ready training沒有confirmation、blocked被誤報completed；
+(2) 讓diagnostic proposal重用正常attempt／confirmation／generation路徑並傳遞typed terminal；
+(3) 以red tests鎖定18-tool membership、zero-param／trained-only／confirmation與same-operation terminal；
+(4) 重用既有Visualization Compute與completion continuation實作薄adapter；(5) 將Complete Workflow擴為
+19步，Contract Failures校準typed outcomes；(6) 跑focused unit／真no-model GUI integration、saliency
+lifecycle、Ruff／Basedpyright與exact-source walkthrough artifact。Stop condition是任何確認前side effect、
+錯operation terminal、failure推進Complete Workflow、復活舊saliency params、owner增加或無法用現有UI
+selection完成。完成後交付三份profile重測；source改動會使既有`contract-failures`手測失效。只有同一
+exact SHA真人手測通過、PR applicable non-skipped checks全為completed／success後才可merge main。
+
+本slice已完成可交付真人走查的local checkpoint：diagnostic execution已改走既有
+`ToolAttemptCoordinator`與Assistant confirmation，blocked／cancelled／failed不再被誤報為completed；
+target與runtime現為18 tools，新增的零參數`compute_saliency`只在trained stage發布，先顯示既有
+Assistant確認卡，批准後才使用Visualization panel當下selection與既有owned operation執行。Complete
+Workflow已擴為19步，Start Training說明也明列第一張Start確認卡與可能出現的第二張resource確認卡。
+Focused／adjacent controller、handoff、Visualization、walkthrough與evaluator tests先前494 passed，
+最後type收尾後重跑核心bundle為422 passed；Ruff check／format-check、Basedpyright、MkDocs strict皆通過，
+真public source-diverse gate為4／4，exact-source ChatPanel capture已檢視無本次相關clipping。
+
+同一dirty source上的真Granite frozen gate已完整跑完：18 tools的36個正向中英選擇為36／36，但14個
+missing-parameter、out-of-stage、ambiguous、multi-action與unsupported挑戰為0／14，總計36／50，strict
+exit 1。主要失敗是模型在應該`respond_to_user`時仍擅自選工具；這不推翻無模型GUI／command spine
+checkpoint，但明確阻止「真模型安全可用」與handoff-ready宣稱。不得以case-specific prompt、降低
+denominator或Host代選工具掩蓋；先完成本次19-step真人workflow，以區分UI／execution defect與後續
+generic strict prompt／model-owned actionability修復。下一個人工stop boundary是同一source依序確認
+Start Training確認、可選resource確認、真正completed training、Compute Saliency確認與同operation完成；
+任一步blocked／failed／卡住即停止並記錄step id與可見terminal。
+
+使用者已在目前source完成`contract-failures`九步真人walkthrough；Dataset預設已開啟時第一個
+`switch_panel(dataset)`沒有視覺位移屬正確idempotent navigation，其餘empty-state actions皆得到預期
+terminal，九步行為通過。手測同時揭露兩個presentation defect：debug controller在admission已阻擋時仍
+永久寫入`Running a diagnostic action...`，看起來像真的開始執行；`start_training`則把全部backend
+reasons用分號串成`Training is not available yet: ...`，內容正確但過長且不易辨識起點。
+九步行為本身通過後，又確認一般Assistant回答是無容器的白字，而成功的
+`switch_panel`導航也因「沒有backend state mutation」被當成一般白字，使對話邊界與
+動作終態不清楚。
+
+本slice只修既有diagnostic presentation。使用者已明確核准：真正進入executor的action改用現有typed
+`RUNNING_COMMAND`進度卡顯示product action label，完成後卡片消失且聊天只保留terminal；admission已
+阻擋的action不顯示running。Training precondition只顯示backend排序的第一項requirement，
+already-running保持原意；後續已依使用者確認收旂為兩段式`Training can't start yet.`與
+粗體`Required first: <requirement>`。Structured `capability.reasons`是唯一來源，不解析
+長字串、不新增readiness owner。同步補齊current 17 action的產品labels。使用者已明確核准本
+slice的可見樣式：一般Assistant回答重用現有theme token顯示深色底與1px藍灰細框，不加
+狀態標籤；所有已確認完成的Application command、GUI操作與panel navigation使用現有
+綠框`Completed`。剛打開且等待使用者決定的GUI handoff不得提前顯示完成；一般回答、
+`Needs input`、blocked、error與cancelled維持各自語意。不改產品dialog、layout、17-tool
+membership、Host authority、ApplicationService capability、normal Granite generation或
+`settings.json`。Focused red／green必須覆蓋進度activity、blocked admission、multi-reason Training copy、
+一般回答bubble、終態成功分類與真no-model frontend terminal；可見結果另以exact-source
+320／420／760px artifacts檢視，之後才交付下一輪手測。
+
+Diagnostic copy前一checkpoint的red／green已閉合：focused red為6個預期presentation failure；修正後focused 37 tests、
+相鄰controller／ChatPanel／presentation 207 tests與真no-model debug integration 5 tests皆通過，Ruff
+check／format clean，Basedpyright為0 errors。Exact-source ChatPanel capture gate通過，實際檢視420px
+command progress與320px attention screenshot均無clipping；default-scale UI baseline另已產生於ignored
+development artifact。這些只是新視覺層級修正前的checkpoint；source再改後必須重跑同類focused
+tests與visual artifacts，然後才在`contract-failures`確認一般回答藍灰bubble、Dataset導航綠框、
+blocked Start Training橘框且沒有generic running泡泡，並於`complete-workflow`觀察真正preprocess
+action的進度卡與綠框終態。
+
+本次視覺層級red／green已閉合：red精確命中無state-change成功command、panel navigation與一般
+Assistant bubble四個預期失敗；修正後controller／copy 259 tests、ChatPanel／AgentManager／真no-model
+integration 221 tests與adjacent presentation／history 225 tests均通過，Ruff check／format clean，
+Basedpyright為0 errors。Default-scale 7個app baseline均與approved references相符；ChatPanel 100／125%
+DPI gate通過且已人工檢視320／420／760px一般回答、終態與長內容，無本次相關clipping。
+150%的focused capture當時只因既有Assistant Settings固定520px寬度斷言失敗，不在當時bubble
+slice修復或用來宣稱DPI gate全通過。這些都是dirty checkpoint證據，不取代使用者在同一source
+確認一般回答藍灰框、navigation／preprocess成功綠框與blocked橘框後才開始candidate handoff。
+
+使用者已明確核准同一slice的三項收尾：所有主panel navigation terminal改為
+`Opened the <Panel> panel in XBrainLab.`，Visualization子頁改為
+`Opened the <View> view in the Visualization panel.`；所有缺少前置條件的terminal以兩段式
+`<Action> can't run yet.`與粗體`Required first: <backend-owned requirement>`呈現，已在執行等狀態衝突
+維持簡短單句；150% Linux offscreen下Settings的485 logical px是800 physical px虛擬畫面除以
+1.5後再保留左右各24 logical px的正常responsive clamp，因此capture改驗
+`min(520, available screen width - 48)`，但仍必須通過無水平捲軸、無裁切、內容與footer完整等原有檢查。
+本改動只重用controller、feedback formatter與既有BaseDialog responsive contract，不新增owner、state、UI元件、
+tool或backend policy。依序以red tests鎖定全panel／view文案、generic／training precondition兩段式與
+dynamic DPI width，實作後重跑focused unit／no-model integration及100／125／150% artifacts並由主agent看圖。
+任一舊文案、固定520px斷言、clipping、horizontal scroll或非Settings狀態回歸都是stop condition；
+offscreen通過後仍只能交付Windows native 150%與panel／precondition文案手測，不得直接合併main。
+
+本收尾已以test-first閉合：red為9個panel／view目的地文案、4個precondition層級與3個
+responsive-width輸入，共16個預期失敗；green後focused／adjacent controller、feedback、真no-model
+debug、AgentManager、product-language與真Qt capture共278 tests通過。Ruff check／format-check通過，
+Basedpyright為0 errors；ChatPanel／Assistant Settings 100／125／150% Linux offscreen gate全通過。
+自動證據支持文案、Markdown層級與responsive geometry無回歸，不支持Windows native DPI或使用者
+usability宣稱；目前只等待同一source的panel navigation、blocked precondition與Windows 150% Settings手測。
+
+使用者已完成本source的`contract-failures`重測並確認可見行為沒有問題；同一product
+source不再重跑該profile，下一個有意義的人工邊界是`complete-workflow`。本docs-only收尾已在
+`docs/validation/README.md`的Stable Assistant candidate段落建立唯一manual walkthrough入口，保存
+三份現有JSON profile的exact `run.py --tool-debug`命令、共用操作／stop規則與Complete Workflow的
+固定人工選擇。JSON仍是executable sequence authority；沒有複製18-step call list、建立wrapper或第二份
+catalog。Focused source guard已確認canonical文件同時包含三條命令且profile paths可由
+`ToolDebugMode`解析；profile tests、guidance audit與MkDocs strict皆通過。這個收尾不觸及product code，
+不使已通過的`contract-failures`產品手測失效。
 
 已完成：以三個可獨立驗證的local checkpoint完成target migration：A先讓現有Channel Selection
 dialog回傳typed terminal；B將舊Host tool-call normalizer刪減成strict identity boundary；C再將runtime與

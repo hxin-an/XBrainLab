@@ -20,6 +20,7 @@ _TARGET_GUI_HANDOFFS = {
         CommandName.CONFIGURE_TRAINING,
         ("training_options",),
     ),
+    "compute_saliency": (CommandName.SALIENCY, ()),
 }
 
 
@@ -47,7 +48,7 @@ def test_target_gui_tools_are_zero_parameter_typed_handoffs(
         )
 
 
-def test_target_runtime_and_model_projection_are_the_approved_seventeen() -> None:
+def test_target_runtime_and_model_projection_are_the_approved_eighteen() -> None:
     approved = frozenset(
         {
             *_TARGET_GUI_HANDOFFS,

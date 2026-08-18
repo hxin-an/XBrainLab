@@ -12,6 +12,24 @@ from XBrainLab.ui.styles.theme import Theme
 
 
 class TestMessageBubble:
+    def test_assistant_answer_uses_subtle_blue_bubble_without_status_label(
+        self,
+        qtbot,
+    ) -> None:
+        bubble = MessageBubble(
+            "Here is the requested EEG explanation.",
+            is_user=False,
+            presentation_kind=MessagePresentationKind.ASSISTANT,
+        )
+        qtbot.addWidget(bubble)
+
+        style = bubble.bubble_frame.styleSheet()
+        assert Theme.CHAT_AI_BUBBLE in style
+        assert Theme.ACCENT_PRIMARY in style
+        assert "border: 1px solid" in style
+        assert "border-radius: 8px" in style
+        assert bubble.kind_label.isHidden()
+
     def test_initialization(self, qtbot):
         text = "Hello **World**"
         bubble = MessageBubble(text, is_user=True)

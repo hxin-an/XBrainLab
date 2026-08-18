@@ -18,7 +18,6 @@ from XBrainLab.backend.application import CommandName, get_application_service
 from XBrainLab.backend.application.view_publication import (
     InterpretationReviewIdentity,
 )
-from XBrainLab.debug.tool_executor import DebugToolAdmission, ToolExecutor
 from XBrainLab.llm.action_contracts import (
     AGENT_ACTION_CONTRACTS,
     AgentExecutionKind,
@@ -121,6 +120,7 @@ from .ui_handoff import (
     WorkflowUiHandoffRequest,
     WorkflowUiHandoffResolution,
     WorkflowUiHandoffResolutionStatus,
+    WorkflowUiHandoffSurfaceKind,
     workflow_ui_handoff_route_for,
 )
 from .verifier import VerificationLayer
@@ -477,14 +477,10 @@ class LLMController(QObject):
     @staticmethod
     def _workflow_handoff_decision_owner(
         command_name: CommandName | str,
-    ) -> AssistantDecisionOwner:
+    ) -> AssistantDecisionOwner | None:
         """Identify the existing product surface that owns one UI handoff."""
         route = workflow_ui_handoff_route_for(command_name)
-        return (
-            route.decision_owner
-            if route is not None
-            else AssistantDecisionOwner.PANEL_HANDOFF
-        )
+        return route.decision_owner if route is not None else None
 
     def initialize(self, launch_spec: AssistantRuntimeLaunchSpec):
         """Initializes the underlying worker engine and RAG retriever.
@@ -794,6 +790,12 @@ class LLMController(QObject):
                     scan_id=scan_id,
                     candidate_id=candidate_id,
                 )
+        route = workflow_ui_handoff_route_for(command)
+        if (
+            route is not None
+            and route.surface_kind is WorkflowUiHandoffSurfaceKind.ACTION
+        ):
+            return WorkflowUiHandoffRequest.for_action(command)
         return WorkflowUiHandoffRequest.for_decision(
             command,
             decision_fields=decision_fields,
@@ -1360,13 +1362,22 @@ class LLMController(QObject):
             return
         success, result, requested_ui = presented
         if requested_ui:
-            if self.pending_interactions.workflow_handoff is None:
-                self._finalize_turn_after_tool()
+            is_panel_navigation = (
+                isinstance(result, UiRequest)
+                and result.kind is UiRequestKind.SWITCH_PANEL
+            )
+            if (
+                not is_panel_navigation
+                and self.pending_interactions.workflow_handoff is None
+            ):
+                self._finalize_turn_after_tool("failed")
             return
         if after_confirmation:
             if not success:
                 self._tool_attempt_session.record_failure()
-                self._finalize_turn_after_tool()
+                self._finalize_turn_after_tool(
+                    self._terminal_outcome_for_result(False, result)
+                )
                 return
             self._handle_tool_success(
                 autonomy,
@@ -1477,7 +1488,7 @@ class LLMController(QObject):
             user_message,
             response_kind,
         )
-        self._finalize_turn_after_tool()
+        self._finalize_turn_after_tool("blocked" if blocked else "failed")
 
     @staticmethod
     def _panel_target_for_command(
@@ -1491,7 +1502,7 @@ class LLMController(QObject):
         success: bool,
         result: ToolCommandResult | UiRequest,
     ) -> AssistantResponseKind:
-        """Distinguish an informational read from a completed state change."""
+        """Distinguish a completed command from a still-pending UI request."""
         if not success:
             if (
                 isinstance(result, ToolCommandResult)
@@ -1499,9 +1510,7 @@ class LLMController(QObject):
             ):
                 return AssistantResponseKind.BLOCKED
             return AssistantResponseKind.ERROR
-        if isinstance(result, ToolCommandResult) and any(
-            changed is True for changed in result.changed_state.values()
-        ):
+        if isinstance(result, ToolCommandResult):
             return AssistantResponseKind.TOOL_RESULT
         return AssistantResponseKind.MESSAGE
 
@@ -1511,10 +1520,10 @@ class LLMController(QObject):
         result: ToolCommandResult | UiRequest,
     ) -> None:
         """Finish after one executed command failure without model continuation."""
-        del autonomy, result
+        del autonomy
         self._tool_attempt_session.record_failure()
         self.assembler.clear_recovery_feedback()
-        self._finalize_turn_after_tool()
+        self._finalize_turn_after_tool(self._terminal_outcome_for_result(False, result))
 
     def _retry_actions_for_result(
         self,
@@ -1589,10 +1598,10 @@ class LLMController(QObject):
             message,
             AssistantResponseKind.BLOCKED,
         )
-        self._finalize_turn_after_tool()
+        self._finalize_turn_after_tool("blocked")
         return True
 
-    def _finalize_turn_after_tool(self):
+    def _finalize_turn_after_tool(self, outcome: str = "completed"):
         """Finalizes the turn after tool execution.
 
         Stops generation and signals the UI that the agent is ready for
@@ -1616,7 +1625,33 @@ class LLMController(QObject):
         self.status_update.emit("Ready")
         self._publish_activity(AssistantTurnActivityPhase.IDLE)
         self.is_processing = False
-        self._emit_processing_finished()
+        self._emit_processing_finished(outcome)
+
+    def _terminal_outcome_for_result(
+        self,
+        success: bool,
+        result: ToolCommandResult | UiRequest,
+    ) -> str:
+        """Map one trusted tool result to the diagnostic terminal contract."""
+        if success:
+            return "completed"
+        if (
+            self._tool_result_response_kind(False, result)
+            is AssistantResponseKind.BLOCKED
+        ):
+            return "blocked"
+        return "failed"
+
+    @staticmethod
+    def _terminal_outcome_for_interaction(outcome: AgentInteractionOutcome) -> str:
+        """Project typed UI outcomes onto the walkthrough terminal vocabulary."""
+        if outcome.status in {
+            AgentInteractionStatus.CONFIRMED,
+            AgentInteractionStatus.DEFERRED_TO_UI,
+            AgentInteractionStatus.COMPLETED_IN_UI,
+        }:
+            return "completed"
+        return outcome.status.value
 
     def on_user_confirmation_resolved(self, payload: object) -> None:
         """Resolve exactly one still-current assistant action confirmation."""
@@ -1673,7 +1708,7 @@ class LLMController(QObject):
                 interaction_outcome_message(interaction_outcome),
                 kind=interaction_outcome_kind(interaction_outcome),
             )
-            self._finalize_turn_after_tool()
+            self._finalize_turn_after_tool("cancelled")
             return
 
         current_context = self._tool_attempt_coordinator.context_for(cmd)
@@ -1785,7 +1820,7 @@ class LLMController(QObject):
             interaction_outcome_message(outcome),
             kind=interaction_outcome_kind(outcome),
         )
-        self._finalize_turn_after_tool()
+        self._finalize_turn_after_tool(self._terminal_outcome_for_interaction(outcome))
 
     def _record_ui_handoff_outcome(
         self,
@@ -2054,11 +2089,28 @@ class LLMController(QObject):
                     decision_fields=decision_fields,
                 )
                 self.pending_interactions.begin_workflow_handoff(workflow_request)
+                route = (
+                    workflow_ui_handoff_route_for(command)
+                    if command is not None
+                    else None
+                )
+                is_action = bool(
+                    route is not None
+                    and route.surface_kind is WorkflowUiHandoffSurfaceKind.ACTION
+                )
                 self._publish_activity(
-                    AssistantTurnActivityPhase.WAITING_FOR_DECISION,
+                    (
+                        AssistantTurnActivityPhase.RUNNING_COMMAND
+                        if is_action
+                        else AssistantTurnActivityPhase.WAITING_FOR_DECISION
+                    ),
                     command_name=workflow_request.command_name,
                     request_id=workflow_request.request_id,
-                    decision_owner=self._workflow_handoff_decision_owner(command),
+                    decision_owner=(
+                        None
+                        if is_action
+                        else self._workflow_handoff_decision_owner(command)
+                    ),
                 )
                 self.workflow_ui_handoff_requested.emit(workflow_request)
                 return True
@@ -2688,61 +2740,59 @@ class LLMController(QObject):
 
         """
         self._require_active_turn_correlation()
-        admission = ToolExecutor(self.study).admit(
-            tool_name,
-            dict(params),
-            authorization_text=authorization_text,
-            confirmed=confirmed,
-        )
-        display_tool_name = (
+        safe_tool_name = (
             tool_name
-            if isinstance(admission, DebugToolAdmission)
-            else admission.tool_name
+            if AGENT_ACTION_CONTRACTS.contract_for(tool_name) is not None
+            else "unknown_debug_tool"
         )
-        safe_tool_name = redact_public_text(display_tool_name)
+        safe_tool_name = redact_public_text(safe_tool_name)
         logger.info(
-            "Debug execution admitted for %s (parameter count: %d)",
+            "Debug execution requested for %s (parameter count: %d)",
             safe_tool_name,
             len(params),
         )
 
         self.is_processing = True
-        self.status_update.emit(f"Debug: Executing {safe_tool_name}...")
-
         self._append_history("user", f"[DEBUG] Tool Call: {safe_tool_name}")
-        self._publish_response("Running a diagnostic action...")
-
-        if isinstance(admission, DebugToolAdmission):
-            outcome = self._execute_tool_no_loop(
-                tool_name,
-                admission.params,
-                context=admission.context,
+        if confirmed:
+            logger.warning(
+                "Ignored pre-confirmed diagnostic action; confirmation is UI-owned."
             )
-        else:
-            outcome = ToolExecutionOutcome(False, admission)
-        success, result = outcome.success, outcome.result
-
-        # A GUI owner resolves its own terminal. The diagnostic turn must stay
-        # pending until that correlated result returns.
-        ui_pending = self._handle_tool_result_logic(result, success)
-        if ui_pending:
+        if AGENT_ACTION_CONTRACTS.contract_for(tool_name) is None:
+            self._handle_tool_attempt_blocked(
+                "unknown_debug_tool",
+                ToolCommandResult.failure(
+                    "unknown_debug_tool",
+                    "The requested debug tool is unavailable.",
+                    error_type="input",
+                    recoverable=False,
+                ),
+            )
             return
 
-        # Keep structured output in controller history, but do not expose raw
-        # JSON/tool syntax in the visible product transcript.
-        msg = (
-            "Tool Output: "
-            f"{self._format_tool_output(display_tool_name, success, result)}"
+        context = self._tool_attempt_coordinator.context_for(tool_name)
+        state = context.state if isinstance(context.state, dict) else {}
+        workflow_stage = str(state.get("pipeline_stage") or "unavailable")
+        publication = PromptToolPublication(
+            tool_names=frozenset({tool_name}),
+            workflow_stage=workflow_stage,
+            backend_generation=context.generation,
         )
-        self._append_history("assistant", msg)
-        self._publish_response(
-            self._summarize_tool_result(display_tool_name, success, result),
-            kind=self._tool_result_response_kind(success, result),
+        self._turn_orchestrator.set_active_publication(publication)
+        repeated = self._tool_attempt_session.record_tool_proposal(tool_name, params)
+        decision = self._tool_attempt_coordinator.evaluate(
+            ToolAttemptRequest(
+                command_name=tool_name,
+                params=dict(params),
+                confidence=1.0,
+                publication=publication,
+                latest_user_text=authorization_text,
+                repeated=repeated,
+            )
         )
-
-        self.status_update.emit("Ready")
-        self.is_processing = False
-        self._emit_processing_finished()
+        if self._present_tool_attempt_boundary(decision):
+            return
+        self._execute_tool_attempt(decision)
 
     def on_panel_navigation_resolved(
         self,
@@ -2758,11 +2808,19 @@ class LLMController(QObject):
         if correlation is None or correlation != self._active_turn_correlation():
             logger.warning("Ignored stale assistant panel navigation result")
             return
-        destination = request.target.value.title()
         if request.view_mode:
             destination = request.view_mode.replace("_", " ").title()
+            success_message = (
+                f"Opened the {destination} view in the Visualization panel."
+            )
+        else:
+            destination = request.target.value.title()
+            success_message = f"Opened the {destination} panel in XBrainLab."
         if success:
-            self._publish_response(f"Opened {destination} in XBrainLab.")
+            self._publish_response(
+                success_message,
+                kind=AssistantResponseKind.TOOL_RESULT,
+            )
             outcome = "completed"
         else:
             self._publish_response(

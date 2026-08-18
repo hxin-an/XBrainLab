@@ -55,12 +55,12 @@ def test_target_cases_cover_each_approved_tool_twice() -> None:
         for tool_name in AGENT_ACTION_CONTRACTS.model_tool_names()
     }
 
-    assert len(cases) == 34
+    assert len(cases) == 36
     assert set(counts) == AGENT_ACTION_CONTRACTS.model_tool_names()
     assert set(counts.values()) == {2}
 
 
-def test_challenge_cases_extend_positive_matrix_to_exact_48_case_gate() -> None:
+def test_challenge_cases_extend_positive_matrix_to_exact_50_case_gate() -> None:
     cases = load_challenge_cases(DEFAULT_CHALLENGES)
 
     assert len(cases) == 14
@@ -72,7 +72,7 @@ def test_challenge_cases_extend_positive_matrix_to_exact_48_case_gate() -> None:
         "multi_action",
         "out_of_stage",
     }
-    assert len(load_target_cases(GOLD_SET)) + len(cases) == 48
+    assert len(load_target_cases(GOLD_SET)) + len(cases) == 50
 
 
 def test_challenge_score_requires_strict_response_envelope_and_message_contract() -> (
@@ -179,12 +179,12 @@ def test_partial_report_never_claims_the_suite_passed() -> None:
     report = _build_report(
         model_id="ibm-granite/granite-3.3-2b-instruct",
         results=[],
-        expected_case_count=48,
+        expected_case_count=50,
         complete=False,
     )
 
     assert report["summary"] == {
-        "expected_case_count": 48,
+        "expected_case_count": 50,
         "case_count": 0,
         "passed_count": 0,
         "failed_count": 0,
@@ -200,7 +200,7 @@ def test_report_separates_positive_and_challenge_results() -> None:
             {"suite": "positive", "score": {"passed": True}},
             {"suite": "challenge", "score": {"passed": False}},
         ],
-        expected_case_count=48,
+        expected_case_count=50,
         complete=False,
     )
 

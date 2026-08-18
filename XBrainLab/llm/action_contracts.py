@@ -311,6 +311,13 @@ AGENT_ACTION_CONTRACTS = AgentActionContractRegistry(
             direct_action=True,
         ),
         AgentActionContract(
+            "compute_saliency",
+            CommandName.SALIENCY,
+            taxonomy="Analysis Execution",
+            execution_kind=AgentExecutionKind.UI_REQUEST,
+            direct_action=True,
+        ),
+        AgentActionContract(
             "apply_bandpass_filter",
             CommandName.PREPROCESS,
             taxonomy="Data Transform",

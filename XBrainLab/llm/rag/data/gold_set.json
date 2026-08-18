@@ -192,6 +192,18 @@
     "expected_tool_calls": [{"tool_name": "clear_training_history", "parameters": {}}]
   },
   {
+    "id": "compute_saliency_01",
+    "category": "analysis_execution",
+    "input": "Compute saliency for the selected completed run.",
+    "expected_tool_calls": [{"tool_name": "compute_saliency", "parameters": {}}]
+  },
+  {
+    "id": "compute_saliency_02",
+    "category": "analysis_execution",
+    "input": "計算目前所選已完成訓練結果的 saliency。",
+    "expected_tool_calls": [{"tool_name": "compute_saliency", "parameters": {}}]
+  },
+  {
     "id": "switch_panel_01",
     "category": "navigation",
     "input": "Open the Evaluation panel.",

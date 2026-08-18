@@ -89,7 +89,11 @@ from XBrainLab.ui.application_publication_renderer import (
 )
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.core.worker import PythonThreadWorker
-from XBrainLab.ui.interaction_outcome import InteractionOutcome
+from XBrainLab.ui.interaction_outcome import (
+    InteractionContinuationLease,
+    InteractionOutcome,
+    reserve_interaction_continuation,
+)
 from XBrainLab.ui.owned_operation_presenter import OwnedOperationPresenter
 from XBrainLab.ui.product_language import fold_display_label, run_display_label
 from XBrainLab.ui.status import show_status_message
@@ -293,6 +297,9 @@ class VisualizationPanel(BasePanel):
         self._active_saliency_operation_id: str | None = None
         self._active_saliency_minimum_generation: int | None = None
         self._active_saliency_generation: int | None = None
+        self._saliency_interaction_continuation: InteractionContinuationLease | None = (
+            None
+        )
         self._current_saliency_coverage: dict[
             str,
             SaliencyMethodCoverageSnapshot,
@@ -1819,10 +1826,20 @@ class VisualizationPanel(BasePanel):
         if callable(set_automatic_status):
             set_automatic_status(automatic_status)
 
-    def _compute_saliency_from_action_bar(self) -> None:
+    def compute_saliency(self) -> InteractionOutcome:
+        """Start Compute Saliency using the current reviewed panel selection."""
+        return self._compute_saliency_from_action_bar()
+
+    def _compute_saliency_from_action_bar(self) -> InteractionOutcome:
         """Compute saliency for the current run using a product-friendly default."""
         if self._training_is_running():
-            return
+            return InteractionOutcome.blocked(
+                "Saliency can be computed after training finishes."
+            )
+        if self._saliency_compute_in_progress:
+            return InteractionOutcome.blocked(
+                "Saliency computation is already running."
+            )
         current_widget = self.tabs.currentWidget() if hasattr(self, "tabs") else None
         if self._saliency_settings_review_required:
             self._require_saliency_settings_review(
@@ -1830,7 +1847,7 @@ class VisualizationPanel(BasePanel):
                 or _SALIENCY_RESULTS_CHANGED_DETAIL,
                 current_widget=current_widget,
             )
-            return
+            return InteractionOutcome.blocked(_SALIENCY_SETTINGS_REVIEW_TITLE)
 
         current_target = self._current_saliency_settings_target()
         if current_target is None:
@@ -1838,7 +1855,7 @@ class VisualizationPanel(BasePanel):
                 _SALIENCY_RESULTS_CHANGED_DETAIL,
                 current_widget=current_widget,
             )
-            return
+            return InteractionOutcome.blocked(_SALIENCY_SETTINGS_REVIEW_TITLE)
         if (
             self._pending_saliency_params is not None
             and self._pending_saliency_target != current_target
@@ -1854,7 +1871,7 @@ class VisualizationPanel(BasePanel):
                 detail,
                 current_widget=current_widget,
             )
-            return
+            return InteractionOutcome.blocked(_SALIENCY_SETTINGS_REVIEW_TITLE)
 
         method_name = self._saliency_compute_method_name()
         params = self._effective_saliency_params(method_name)
@@ -1880,6 +1897,9 @@ class VisualizationPanel(BasePanel):
             self._set_saliency_action_busy(False)
             if not self._saliency_settings_review_required:
                 show_status_message(self, _SALIENCY_COMPUTE_START_FAILED_MESSAGE)
+                return InteractionOutcome.failed(_SALIENCY_COMPUTE_START_FAILED_MESSAGE)
+            return InteractionOutcome.blocked(_SALIENCY_SETTINGS_REVIEW_TITLE)
+        return InteractionOutcome.accepted("Saliency computation started.")
 
     def _open_saliency_settings(self) -> None:
         sidebar = getattr(self, "sidebar", None)
@@ -2314,6 +2334,11 @@ class VisualizationPanel(BasePanel):
         for widget in (self.tab_map, self.tab_spectro):
             if str(widget.property("operationId") or "") == operation_id:
                 self._set_saliency_render_status(widget, phase)
+        self._settle_saliency_interaction(
+            InteractionOutcome.cancelled("Saliency computation was cancelled.")
+            if phase == "cancelled"
+            else InteractionOutcome.failed(_SALIENCY_COMPUTE_FAILED_MESSAGE)
+        )
 
     def _set_saliency_render_status(
         self,
@@ -2577,6 +2602,7 @@ class VisualizationPanel(BasePanel):
                     _SALIENCY_COMPUTE_INVALID_RESULT_MESSAGE
                 )
             self._active_saliency_generation = generation
+            self._saliency_interaction_continuation = reserve_interaction_continuation()
             self.compute_saliency_btn.setProperty("operationPhase", "running")
             self._set_saliency_action_busy(True)
             show_status_message(self, "Computing saliency...")
@@ -3214,11 +3240,19 @@ class VisualizationPanel(BasePanel):
             if explicit_status.phase is PostTrainingSaliencyPhase.SUCCEEDED:
                 self.compute_saliency_btn.setProperty("operationPhase", "completed")
                 self._saliency_compute_in_progress = False
+                self._settle_saliency_interaction(
+                    InteractionOutcome.completed("Saliency computation completed.")
+                )
                 self._clear_active_saliency_operation()
                 self._set_saliency_action_busy(False)
                 show_status_message(self, "Saliency ready")
             elif explicit_status.phase is PostTrainingSaliencyPhase.CANCELLED:
                 self.compute_saliency_btn.setProperty("operationPhase", "cancelled")
+                self._settle_saliency_interaction(
+                    InteractionOutcome.cancelled(
+                        _SALIENCY_RESOURCE_CONFIRMATION_CANCELLED_MESSAGE
+                    )
+                )
                 self._finish_saliency_compute_cancelled(
                     attempt_key=None,
                     current_widget=(
@@ -3227,6 +3261,11 @@ class VisualizationPanel(BasePanel):
                 )
             elif explicit_status.phase is PostTrainingSaliencyPhase.FAILED:
                 self.compute_saliency_btn.setProperty("operationPhase", "failed")
+                self._settle_saliency_interaction(
+                    InteractionOutcome.failed(
+                        explicit_status.message or _SALIENCY_COMPUTE_FAILED_MESSAGE
+                    )
+                )
                 self._finish_saliency_compute_failure(
                     message=explicit_status.message or _SALIENCY_COMPUTE_FAILED_MESSAGE,
                     attempt_key=None,
@@ -3261,6 +3300,13 @@ class VisualizationPanel(BasePanel):
         self._active_saliency_operation_id = None
         self._active_saliency_minimum_generation = None
         self._active_saliency_generation = None
+
+    def _settle_saliency_interaction(self, outcome: InteractionOutcome) -> None:
+        """Settle the Assistant-owned continuation for this exact operation."""
+        continuation = self._saliency_interaction_continuation
+        self._saliency_interaction_continuation = None
+        if continuation is not None:
+            continuation.start(lambda: outcome)
 
     @staticmethod
     def _valid_application_publication(publication: object) -> bool:

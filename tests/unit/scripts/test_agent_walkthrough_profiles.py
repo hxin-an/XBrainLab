@@ -6,6 +6,12 @@ from XBrainLab.debug.tool_debug_mode import ToolDebugMode
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 
 PROFILE_ROOT = Path("scripts/dev/agent_tool_walkthrough")
+VALIDATION_GUIDE = Path("docs/validation/README.md")
+PROFILE_NAMES = (
+    "contract-failures",
+    "complete-workflow",
+    "lifecycle-routing",
+)
 
 
 def test_walkthrough_profiles_are_strict_and_cover_exact_target_surface() -> None:
@@ -29,3 +35,13 @@ def test_walkthrough_profiles_never_bypass_product_confirmation() -> None:
         source = path.read_text(encoding="utf-8")
         assert '"confirmed"' not in source
         assert '"authorization_text"' not in source
+
+
+def test_validation_guide_publishes_each_parseable_manual_walkthrough_command() -> None:
+    guide = VALIDATION_GUIDE.read_text(encoding="utf-8")
+
+    for profile_name in PROFILE_NAMES:
+        profile_path = PROFILE_ROOT / f"{profile_name}.json"
+        command = f"poetry run python run.py --tool-debug {profile_path.as_posix()}"
+        assert command in guide
+        assert ToolDebugMode(str(profile_path)).profile_id == profile_name

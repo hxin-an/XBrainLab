@@ -32,6 +32,11 @@ def test_tool_action_aliases_share_one_product_label_contract() -> None:
     assert tool_action_label("create_epoch") == "Create EEG epochs"
     assert tool_action_label("epoch_data") == "Create EEG epochs"
     assert tool_action_label("create_epochs") == "Create EEG epochs"
+    assert tool_action_label("import_eeg_data") == "Import EEG data"
+    assert tool_action_label("select_model") == "Select model"
+    assert tool_action_label("reset_preprocessing") == "Reset preprocessing"
+    assert tool_action_label("clear_training_history") == "Clear training history"
+    assert tool_action_label("switch_panel") == "Open workspace panel"
 
 
 def test_eeg_epoch_product_copy_does_not_regress_to_ambiguous_epoch_language() -> None:

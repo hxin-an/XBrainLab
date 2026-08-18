@@ -76,10 +76,10 @@ exact commit完成後才可稱`handoff-ready`。
 
 Assistant candidate必須在同一clean/explained exact source依序閉合下列證據：
 
-1. Unit/integration證明17-tool registry、strict envelope、backend-owned stage、confirmation、GUI
+1. Unit/integration證明18-tool registry、strict envelope、backend-owned stage、confirmation、GUI
    correlation與no-model diagnostic terminal；mock或manifest-only測試不等於真人workflow。
-2. Frozen Granite report固定48 cases：34 positive（17 tools各2）與14 challenge；positive要求exact
-   tool＋parameters，challenge要求stage-correct `respond_to_user`，48/48才通過。這只支撐bounded
+2. Frozen Granite report固定50 cases：36 positive（18 tools各2）與14 challenge；positive要求exact
+   tool＋parameters，challenge要求stage-correct `respond_to_user`，50/50才通過。這只支撐bounded
    selection，不支撐tool execution或產品ready。
 3. 真model safe E2E依normal ChatPanel路徑完成Switch Dataset → Import GUI → Select Channels →
    direct Resample；不得用debug transport或fake generator替代。
@@ -87,6 +87,49 @@ Assistant candidate必須在同一clean/explained exact source依序閉合下列
    frontend walkthrough。Import、Channel、Montage、Epoch、Split、Model與Training Settings都必須
    透過真GUI；confirmation/cancel/navigation terminal不可由script預先批准。
 5. PR所有applicable non-skipped checks completed/success後，才記錄manual acceptance與merge同意。
+
+#### Assistant manual walkthrough commands
+
+從repo root啟動，每份profile使用fresh process與fresh session；不加`--model`，diagnostic
+transport不建立或載入Granite。JSON profile是executable step sequence authority；本節只保存啟動
+方式與人工選擇，不複製call list。
+
+Contract Failures：
+
+```bash
+poetry run python run.py --tool-debug scripts/dev/agent_tool_walkthrough/contract-failures.json
+```
+
+Complete Workflow：
+
+```bash
+poetry run python run.py --tool-debug scripts/dev/agent_tool_walkthrough/complete-workflow.json
+```
+
+Lifecycle / Routing：
+
+```bash
+poetry run python run.py --tool-debug scripts/dev/agent_tool_walkthrough/lifecycle-routing.json
+```
+
+開啟XBrainLab Assistant後，每次只送出目前step一次。Dialog、confirmation、navigation或
+training尚未terminal時不送出下一步。Unexpected outcome必須留在同一step；記錄step ID、
+可見terminal與screenshot後停止，不繼續污染session。
+
+Complete Workflow使用已provision的
+`$XBRAINLAB_DATA_DIR/datasets/public-fixtures/physionet-eegmmidb-S008R04.edf`：
+
+- Import以embedded events將T1對應`left fist`、T2對應`right fist`，排除T0。
+- Channel Selection套用一組有效EEG subset，至少保留畫面上的C3、Cz與C4。
+- EEG Epoch選T1／T2、`0–2` seconds；Montage選當前可用的standard montage。
+- Data Split選Individual／Trial，validation與test皆為`0.2`。
+- Model選EEGNet；Training Settings選CPU、1 epoch、batch 8、Adam、learning rate `0.001`。
+- 先核准Start Training；若resource preflight另顯示確認，再核准該次receipt，等到training completed。
+- 確認Evaluation與Visualization／Saliency Map可開啟；最後核准Compute Saliency，若另有resource
+  confirmation則再核准，並等到同一operation顯示`Saliency ready`與腳本`Complete (19/19)`。
+
+任一product source改動都使對應的manual acceptance失效；純docs／tests且不可能改變產品
+行為的收尾依本文前述豁免規則處理。
 
 Stage驗收另有一個硬邊界：匯入建立的working raw copy不算preprocessing。只有
 `preprocessed.operations`非空（Channel或任一direct preprocess已成功）才可發布`preprocessed`；否則

@@ -108,6 +108,23 @@ def test_scenario_contract_covers_required_surfaces_once() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("available_width", "expected_width"),
+    [
+        (800, 520),
+        (640, 520),
+        (533, 485),
+    ],
+)
+def test_assistant_settings_width_respects_the_available_screen_margin(
+    available_width,
+    expected_width,
+) -> None:
+    assert walkthrough_module.assistant_settings_capture_width(available_width) == (
+        expected_width
+    )
+
+
 def test_source_fingerprint_manifest_covers_every_runtime_capture_owner() -> None:
     assert {
         "scripts/dev/capture_chatpanel_ui_ux_walkthrough.py",

@@ -1,4 +1,4 @@
-"""Standalone debug execution follows the approved 17-action boundary."""
+"""Standalone debug execution follows the approved 18-action boundary."""
 
 from XBrainLab.backend.study import Study
 from XBrainLab.debug.tool_executor import ToolExecutor
@@ -12,7 +12,7 @@ def test_debug_executor_surface_matches_canonical_real_tools() -> None:
     canonical = {tool.name for tool in get_all_tools("real")}
 
     assert canonical == AGENT_ACTION_CONTRACTS.model_tool_names()
-    assert len(canonical) == 17
+    assert len(canonical) == 18
     assert set(ToolExecutor.TOOL_MAP) == canonical
 
 

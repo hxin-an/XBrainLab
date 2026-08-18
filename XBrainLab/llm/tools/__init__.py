@@ -48,7 +48,12 @@ _TARGET_GUI_HANDOFF_DESCRIPTIONS = {
     "configure_dataset_split": "Open Dataset Splitting for the user to configure it.",
     "select_model": "Open Model Selection for the user to choose a model.",
     "configure_training": "Open Training Settings for the user to configure training.",
+    "compute_saliency": (
+        "Compute saliency for the currently selected completed run after confirmation."
+    ),
 }
+
+_CONFIRMED_GUI_HANDOFF_TOOLS = frozenset({"compute_saliency"})
 
 _TARGET_LIFECYCLE_DESCRIPTIONS = {
     "reset_preprocessing": (
@@ -60,10 +65,22 @@ _TARGET_LIFECYCLE_DESCRIPTIONS = {
 }
 
 
+class _ConfirmedWorkflowHandoffTool(WorkflowHandoffTool):
+    """Reuse the standard GUI handoff while requiring the existing card."""
+
+    @property
+    def requires_confirmation(self) -> bool:
+        return True
+
+
 def _target_gui_handoff_tools() -> list[BaseTool]:
     """Build the approved parameter-free product GUI handoff surface."""
     return [
-        WorkflowHandoffTool(tool_name, description)
+        (
+            _ConfirmedWorkflowHandoffTool(tool_name, description)
+            if tool_name in _CONFIRMED_GUI_HANDOFF_TOOLS
+            else WorkflowHandoffTool(tool_name, description)
+        )
         for tool_name, description in _TARGET_GUI_HANDOFF_DESCRIPTIONS.items()
     ]
 

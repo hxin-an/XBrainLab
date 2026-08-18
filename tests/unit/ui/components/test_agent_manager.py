@@ -3960,9 +3960,10 @@ class TestAgentManagerMethods:
         messages = [message["content"] for message in manager.chat_controller.messages]
         visible = "\n".join(messages)
 
-        assert "Training is not available yet" in visible
-        assert "Load raw data before training" in visible
-        assert "Save a valid data splitting specification before training" in visible
+        assert "Training can't start yet" in visible
+        assert "**Required first:** Import EEG data." in visible
+        assert "Save a valid data splitting specification" not in visible
+        assert "Running a diagnostic action" not in visible
         assert "Tool Output:" not in visible
         assert "command_name" not in visible
         assert manager.chat_panel.empty_state_widget.accessibleDescription() == (

@@ -185,6 +185,8 @@ ASSISTANT_SETTINGS_SCREEN_FILES = (
     "assistant-settings-advanced.png",
     "assistant-settings-disabled.png",
 )
+ASSISTANT_SETTINGS_PREFERRED_WIDTH = 520
+ASSISTANT_SETTINGS_SCREEN_MARGIN = 24
 
 EXPECTED_STATE_LABELS = {
     MessagePresentationKind.TOOL_RESULT.value: "Completed",
@@ -226,6 +228,7 @@ FINGERPRINT_RELATIVE_PATHS = (
     "XBrainLab/ui/components/assistant_runtime_coordinator.py",
     "XBrainLab/ui/components/assistant_runtime_lifecycle.py",
     "XBrainLab/ui/components/assistant_status_projection.py",
+    "XBrainLab/ui/core/base_dialog.py",
     "XBrainLab/ui/dialogs/model_settings_dialog.py",
     "XBrainLab/ui/main_window.py",
     "XBrainLab/ui/panels/training/components.py",
@@ -510,7 +513,7 @@ def _prepare_desktop_conversation(panel: ChatPanel) -> None:
     )
     _add_response(
         panel,
-        "Training cannot start yet because the dataset split still needs review.",
+        ("Training can't start yet.\n\n**Required first:** Review the dataset split."),
         ChatMessagePresentationKind.ATTENTION,
     )
     _add_response(
@@ -539,7 +542,7 @@ def _prepare_narrow_conversation(panel: ChatPanel) -> None:
     )
     _add_response(
         panel,
-        "Training cannot start until the dataset split is reviewed.",
+        ("Training can't start yet.\n\n**Required first:** Review the dataset split."),
         ChatMessagePresentationKind.ATTENTION,
     )
     _add_response(
@@ -712,7 +715,7 @@ def _prepare_scaled_pixmap(panel: ChatPanel) -> None:
     )
     _add_response(
         panel,
-        "Training cannot start until the split is reviewed.",
+        ("Training can't start yet.\n\n**Required first:** Review the dataset split."),
         ChatMessagePresentationKind.ATTENTION,
     )
     _add_response(
@@ -2906,6 +2909,14 @@ def _metric_tab_contract_failures(payload: dict[str, Any]) -> list[str]:
     return [] if passed else ["MetricTab empty-state to first-data contract failed"]
 
 
+def assistant_settings_capture_width(available_width: int) -> int:
+    """Return the preferred width clamped to the dialog's screen margins."""
+    return min(
+        ASSISTANT_SETTINGS_PREFERRED_WIDTH,
+        max(available_width - (ASSISTANT_SETTINGS_SCREEN_MARGIN * 2), 1),
+    )
+
+
 def _capture_assistant_settings(
     app: QApplication,
     output_dir: Path,
@@ -2926,7 +2937,13 @@ def _capture_assistant_settings(
     )
     dialog.show()
     _settle_layout(app, dialog)
-    dialog.resize(520, dialog.height())
+    screen = dialog.screen()
+    if screen is None:
+        raise RuntimeError("Assistant Settings capture screen is unavailable.")
+    expected_width = assistant_settings_capture_width(
+        screen.availableGeometry().width()
+    )
+    dialog.resize(expected_width, dialog.height())
     _settle_layout(app, dialog)
     if not lifecycle.inspection_requests:
         dialog.check_local_model_status()
@@ -2988,7 +3005,7 @@ def _capture_assistant_settings(
                 dialog.local_status_label.text() == expected_status
                 and dialog.local_action_btn.text() == expected_action
             ),
-            "narrow_width_preserved": dialog.width() == 520,
+            "responsive_width_preserved": dialog.width() == expected_width,
             "status_text_fits": status_text_fits,
             "raw_download_detail_absent": all(
                 marker not in dialog.local_status_label.text()

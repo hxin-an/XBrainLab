@@ -28,7 +28,7 @@ autonomous planner。
   legacy callers。
 - **Current model-facing projection**：目前 product prompt 實際發布的集合；由
   [current architecture](../architecture/agent.md) 描述。
-- **Approved target surface**：只由下方 intent ledger 的 17 個核准工具組成。
+- **Approved target surface**：只由下方 intent ledger 的 18 個核准工具組成。
 
 名稱、membership、參數、execution kind、owner、confirmation 或 terminal result 任一改變，都是
 public product contract decision；必須先更新本文件並取得使用者確認。
@@ -80,6 +80,20 @@ Backend 仍負責 Nyquist、range、state、resource 與 scientific precondition
 Confirmation、resource receipt、generation token與 filesystem path 都由 trusted product code處理，
 模型不得輸出或保存。
 
+### Owned analysis action
+
+`compute_saliency`是唯一可由Assistant提出的analysis execution tool：
+
+- 參數固定為空object，只在`trained`stage發布。
+- 一律先使用既有Assistant confirmation card；取消後不得執行或continuation。
+- 批准後開啟Visualization的Saliency Map，使用該panel當下合法的completed run、method與settings；
+  模型不選擇也不保存這些值。
+- 執行仍由既有VisualizationPanel、ApplicationService／AnalysisService與resource confirmation擁有；
+  Assistant adapter不建立第二個command、readiness或operation owner。
+- 只有同一owned operation id的`completed`、`cancelled`、`blocked`或`failed`能結束turn；opened、
+  button clicked、scheduled或其他operation terminal都不是成功。
+- 沒有合法completed run、selection stale或已有saliency operation時blocked，不silent fallback或重複啟動。
+
 ### Navigation
 
 `switch_panel` 是唯一 navigation tool：
@@ -120,7 +134,7 @@ Confirmation、resource receipt、generation token與 filesystem path 都由 tru
 | `epoch_ready` | 已有 supervised epochs，但 split／model／training settings 尚未全部完成 | Montage、三項 setup tools、Start、Reset、Switch |
 | `dataset_ready` | saved split、model、training settings 三項全部完成 | setup 可修改；Start confirmation；Montage、Reset、Switch |
 | `training` | active training job | Stop、Switch；不發布其他 mutation |
-| `trained` | 至少一個 completed run | setup／retrain、Montage、Reset、Clear History、results navigation |
+| `trained` | 至少一個 completed run | setup／retrain、Montage、Reset、Clear History、Compute Saliency、results navigation |
 
 `select_channels` 或任一 direct preprocess 成功會自然投影為 `preprocessed`。Raw data可直接建立
 Epoch；`CreateEpochCommand`要求raw與合法epoch context，不以preprocessing operation作前置條件，成功後
@@ -230,21 +244,21 @@ command policy或fake backend。
 
 ## Candidate validation與claims
 
-Engineering candidate的frozen Granite suite固定為48 cases：34個positive cases（17個target tool各
-2個）加14個challenge cases。Challenge必須包含五個missing-parameter、跨stage lifecycle、
+Engineering candidate suite在新增`compute_saliency`後為50 cases：36個positive cases（18個target
+tool各2個）加既有14個challenge cases。Challenge必須包含五個missing-parameter、跨stage lifecycle、
 out-of-stage、general、ambiguous與multi-mutation；它們使用`respond_to_user`，不得執行替代工具。
 Candidate gates：
 
 - invalid／out-of-stage／stale execution、cancel後continuation與multi-mutation partial action皆為0。
 - 所有cases在repair budget內得到legal envelope；final stage acknowledgement 100%。
-- 34個positive全部得到exact final tool＋parameters；14個challenge全部得到stage-correct
+- 36個positive全部得到exact final tool＋parameters；14個challenge全部得到stage-correct
   `respond_to_user`，缺參數案例還必須指出缺少的欄位。
-- 48/48才通過；不得以平均分數、repair前結果或縮小denominator替代。
+- 50/50才通過；不得以平均分數、repair前結果或縮小denominator替代。
 - 真model safe E2E：Switch Dataset、Import GUI、direct Resample。
 
 這些是產品候選gate，不是thesis benchmark。Thesis evidence另由frozen source、case set、runner、model
 revision與至少三次repeat定義；mock、host-assisted normalization、dashboard或單次walkthrough不能
 宣稱raw-model accuracy。
 
-目前產品在完成migration與同一exact-SHA candidate evidence前，不能宣稱Stable v2、17-tool
+目前產品在完成migration與同一exact-SHA candidate evidence前，不能宣稱Stable v2、18-tool
 runtime、model-free walkthrough或Assistant-ready。

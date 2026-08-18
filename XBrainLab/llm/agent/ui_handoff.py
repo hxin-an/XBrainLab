@@ -19,6 +19,7 @@ class WorkflowUiHandoffKind(str, Enum):
     """Why the assistant is yielding control to an existing UI surface."""
 
     DECISION_REQUIRED = "decision_required"
+    ACTION_REQUESTED = "action_requested"
 
 
 class WorkflowUiHandoffSurfaceKind(str, Enum):
@@ -26,6 +27,7 @@ class WorkflowUiHandoffSurfaceKind(str, Enum):
 
     DIALOG = "dialog"
     PANEL = "panel"
+    ACTION = "action"
 
 
 class WorkflowUiHandoffPanel(str, Enum):
@@ -52,7 +54,7 @@ class WorkflowUiHandoffRouteIdentity(str, Enum):
     TRAINING_PANEL = "training_panel"
     EVALUATION_PANEL = "evaluation_panel"
     VISUALIZATION_PANEL = "visualization_panel"
-    SALIENCY_SETTINGS_DIALOG = "saliency_settings_dialog"
+    SALIENCY_COMPUTE_ACTION = "saliency_compute_action"
     MONTAGE_SETTINGS_DIALOG = "montage_settings_dialog"
 
 
@@ -180,7 +182,7 @@ class WorkflowUiHandoffRouteDescriptor:
 
     command: CommandName
     surface_kind: WorkflowUiHandoffSurfaceKind
-    decision_owner: AssistantDecisionOwner
+    decision_owner: AssistantDecisionOwner | None
     target_panel: WorkflowUiHandoffPanel
     route_identity: WorkflowUiHandoffRouteIdentity
     presentation_step: str
@@ -190,7 +192,6 @@ class WorkflowUiHandoffRouteDescriptor:
         for field_name, value, expected_type in (
             ("command", self.command, CommandName),
             ("surface_kind", self.surface_kind, WorkflowUiHandoffSurfaceKind),
-            ("decision_owner", self.decision_owner, AssistantDecisionOwner),
             ("target_panel", self.target_panel, WorkflowUiHandoffPanel),
             ("route_identity", self.route_identity, WorkflowUiHandoffRouteIdentity),
         ):
@@ -200,11 +201,11 @@ class WorkflowUiHandoffRouteDescriptor:
                 contract="route descriptor",
                 field_name=field_name,
             )
-        expected_owner = (
-            AssistantDecisionOwner.GUI_DIALOG
-            if self.surface_kind is WorkflowUiHandoffSurfaceKind.DIALOG
-            else AssistantDecisionOwner.PANEL_HANDOFF
-        )
+        expected_owner = {
+            WorkflowUiHandoffSurfaceKind.DIALOG: AssistantDecisionOwner.GUI_DIALOG,
+            WorkflowUiHandoffSurfaceKind.PANEL: AssistantDecisionOwner.PANEL_HANDOFF,
+            WorkflowUiHandoffSurfaceKind.ACTION: None,
+        }[self.surface_kind]
         if self.decision_owner is not expected_owner:
             raise ValueError(
                 "Workflow UI handoff route decision owner must match its surface kind."
@@ -338,12 +339,14 @@ _WORKFLOW_UI_HANDOFF_ROUTES = (
     ),
     WorkflowUiHandoffRouteDescriptor(
         command=CommandName.SALIENCY,
-        surface_kind=WorkflowUiHandoffSurfaceKind.DIALOG,
-        decision_owner=AssistantDecisionOwner.GUI_DIALOG,
+        surface_kind=WorkflowUiHandoffSurfaceKind.ACTION,
+        decision_owner=None,
         target_panel=WorkflowUiHandoffPanel.VISUALIZATION,
-        route_identity=WorkflowUiHandoffRouteIdentity.SALIENCY_SETTINGS_DIALOG,
-        presentation_step="Continue in Saliency Settings",
-        decision_copy="Finish or cancel in the open Saliency Settings dialog.",
+        route_identity=WorkflowUiHandoffRouteIdentity.SALIENCY_COMPUTE_ACTION,
+        presentation_step="Compute saliency",
+        decision_copy=(
+            "Wait for saliency computation to finish or cancel it in Visualization."
+        ),
     ),
     WorkflowUiHandoffRouteDescriptor(
         command=CommandName.APPLY_MONTAGE,
@@ -476,6 +479,33 @@ class WorkflowUiHandoffRequest:
             decision_fields=tuple(fields),
             suggested_values=tuple(suggestions),
             interpretation_identity=interpretation_identity,
+        )
+
+    @classmethod
+    def for_action(
+        cls,
+        command_name: CommandName | str,
+        *,
+        request_id: str | None = None,
+    ) -> WorkflowUiHandoffRequest:
+        """Build a parameter-free request for one existing product UI action."""
+        command = (
+            command_name
+            if isinstance(command_name, CommandName)
+            else CommandName(str(command_name or "").strip().lower())
+        )
+        route = workflow_ui_handoff_route_for(command)
+        if (
+            route is None
+            or route.surface_kind is not WorkflowUiHandoffSurfaceKind.ACTION
+        ):
+            raise ValueError(
+                f"No workflow UI action is registered for {command.value}."
+            )
+        return cls(
+            kind=WorkflowUiHandoffKind.ACTION_REQUESTED,
+            command=command,
+            request_id=uuid4().hex if request_id is None else str(request_id).strip(),
         )
 
 

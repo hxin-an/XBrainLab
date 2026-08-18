@@ -13,7 +13,6 @@ import pytest
 
 from XBrainLab.backend.application import CommandName
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
-from XBrainLab.chat_contract import MAX_CHAT_PRESENTATION_ROWS_PER_TURN
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantAttentionKind,
     AssistantDecisionOwner,
@@ -64,6 +63,7 @@ from XBrainLab.llm.agent.turn import (
     AssistantTurnTerminal,
 )
 from XBrainLab.llm.agent.ui_handoff import (
+    WorkflowUiHandoffKind,
     WorkflowUiHandoffRequest,
     WorkflowUiHandoffResolution,
     WorkflowUiHandoffResolutionStatus,
@@ -897,7 +897,7 @@ class TestHandleUserInput:
         assert presentation.kind is AssistantResponseKind.BLOCKED
         assert len(presentation.actions) == 1
         assert presentation.actions[0].panel is AssistantPanelTarget.TRAINING
-        ctrl._finalize_turn_after_tool.assert_called_once_with()
+        ctrl._finalize_turn_after_tool.assert_called_once_with("blocked")
 
     def test_blocked_evaluation_points_to_missing_training_prerequisite(self, ctrl):
         ctrl._finalize_turn_after_tool = MagicMock()
@@ -916,7 +916,7 @@ class TestHandleUserInput:
         assert len(presentation.actions) == 1
         assert presentation.actions[0].label == "Open Training"
         assert presentation.actions[0].panel is AssistantPanelTarget.TRAINING
-        ctrl._finalize_turn_after_tool.assert_called_once_with()
+        ctrl._finalize_turn_after_tool.assert_called_once_with("blocked")
 
     @pytest.mark.parametrize("error_type", ["runtime", "contract", "internal"])
     def test_runtime_and_contract_failures_are_errors(
@@ -971,7 +971,7 @@ class TestHandleUserInput:
 
         ctrl.response_presentation_ready.emit.assert_not_called()
         ctrl._tool_attempt_coordinator.after_failure.assert_not_called()
-        ctrl._finalize_turn_after_tool.assert_called_once_with()
+        ctrl._finalize_turn_after_tool.assert_called_once_with("failed")
 
     @pytest.mark.parametrize(
         "error_type",
@@ -994,18 +994,17 @@ class TestHandleUserInput:
         )
 
     @pytest.mark.parametrize(
-        ("changed_state", "expected_kind"),
+        "changed_state",
         [
-            ({}, AssistantResponseKind.MESSAGE),
-            ({"training_changed": False}, AssistantResponseKind.MESSAGE),
-            ({"training_changed": True}, AssistantResponseKind.TOOL_RESULT),
+            {},
+            {"training_changed": False},
+            {"training_changed": True},
         ],
     )
-    def test_success_presentation_distinguishes_status_from_state_change(
+    def test_completed_command_success_is_always_presented_as_completed(
         self,
         ctrl,
         changed_state,
-        expected_kind,
     ):
         result = ToolCommandResult(
             ok=True,
@@ -1022,7 +1021,25 @@ class TestHandleUserInput:
             )
         )
 
-        assert ctrl._tool_attempt_session.last_tool_summary_kind is expected_kind
+        assert (
+            ctrl._tool_attempt_session.last_tool_summary_kind
+            is AssistantResponseKind.TOOL_RESULT
+        )
+
+    def test_pending_ui_request_is_not_presented_as_completed(self, ctrl):
+        request = UiRequest(
+            UiRequestKind.WORKFLOW_HANDOFF,
+            {
+                "tool_name": "import_eeg_data",
+                "command": CommandName.SCAN_SOURCE.value,
+                "decision_fields": (),
+            },
+        )
+
+        assert (
+            ctrl._tool_result_response_kind(True, request)
+            is AssistantResponseKind.MESSAGE
+        )
 
     def test_state_read_failure_is_handled_by_strict_model_turn(
         self,
@@ -1599,23 +1616,88 @@ class TestHandleToolResultLogic:
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
         assert presentation.kind is AssistantResponseKind.BLOCKED
 
-    def test_switch_panel(self, ctrl):
+    def test_compute_saliency_handoff_is_a_correlated_action(self, ctrl):
+        result = ctrl._handle_tool_result_logic(
+            UiRequest(
+                UiRequestKind.WORKFLOW_HANDOFF,
+                {
+                    "tool_name": "compute_saliency",
+                    "command": CommandName.SALIENCY.value,
+                    "decision_fields": (),
+                },
+            )
+        )
+
+        assert result is True
+        request = ctrl.workflow_ui_handoff_requested.emit.call_args.args[0]
+        assert request.kind is WorkflowUiHandoffKind.ACTION_REQUESTED
+        assert request.command is CommandName.SALIENCY
+        activity = ctrl.activity_changed.emit.call_args.args[0]
+        assert activity.phase is AssistantTurnActivityPhase.RUNNING_COMMAND
+        assert activity.decision_owner is None
+
+    @pytest.mark.parametrize(
+        ("params", "expected_text"),
+        [
+            (
+                {"panel": "dataset"},
+                "Opened the Dataset panel in XBrainLab.",
+            ),
+            (
+                {"panel": "preprocess"},
+                "Opened the Preprocess panel in XBrainLab.",
+            ),
+            (
+                {"panel": "training"},
+                "Opened the Training panel in XBrainLab.",
+            ),
+            (
+                {"panel": "evaluation"},
+                "Opened the Evaluation panel in XBrainLab.",
+            ),
+            (
+                {"panel": "visualization"},
+                "Opened the Visualization panel in XBrainLab.",
+            ),
+            (
+                {"panel": "visualization", "view_mode": "saliency_map"},
+                "Opened the Saliency Map view in the Visualization panel.",
+            ),
+            (
+                {"panel": "visualization", "view_mode": "spectrogram"},
+                "Opened the Spectrogram view in the Visualization panel.",
+            ),
+            (
+                {"panel": "visualization", "view_mode": "topographic_map"},
+                "Opened the Topographic Map view in the Visualization panel.",
+            ),
+            (
+                {"panel": "visualization", "view_mode": "3d_plot"},
+                "Opened the 3D Plot view in the Visualization panel.",
+            ),
+        ],
+    )
+    def test_switch_panel_names_the_panel_or_visualization_view(
+        self,
+        ctrl,
+        params,
+        expected_text,
+    ):
         result = ctrl._handle_tool_result_logic(
             UiRequest(
                 UiRequestKind.SWITCH_PANEL,
-                {"panel": "visualization", "view_mode": "3d_plot"},
+                params,
             )
         )
         assert result
         request = ctrl.panel_navigation_requested.emit.call_args.args[0]
-        assert request.target is AssistantPanelTarget.VISUALIZATION
-        assert request.view_mode == "3d_plot"
         assert request.correlation == ctrl._active_turn_correlation()
 
         ctrl.on_panel_navigation_resolved(request, success=True)
 
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
-        assert presentation.text == "Opened 3D Plot in XBrainLab."
+        assert presentation.text == expected_text
+        assert presentation.kind is AssistantResponseKind.TOOL_RESULT
         terminal = ctrl.turn_finished.emit.call_args.args[0]
         assert terminal.correlation == request.correlation
         assert terminal.outcome == "completed"
@@ -1820,7 +1902,7 @@ class TestProcessToolCalls:
 
         ctrl.assembler.set_recovery_feedback.assert_not_called()
         ctrl._generate_response.assert_not_called()
-        ctrl._finalize_turn_after_tool.assert_called_once_with()
+        ctrl._finalize_turn_after_tool.assert_called_once_with("failed")
 
     def test_success_does_not_open_host_selected_followup(self, ctrl):
         ctrl._refresh_execution_snapshot = MagicMock()
@@ -2621,25 +2703,190 @@ class TestResetConversation:
 
 # --- execute_debug_tool ---
 class TestExecuteDebugTool:
+    def test_compute_saliency_requests_confirmation_before_ui_action(self, ctrl):
+        ctrl._turn_orchestrator.host_turn_generation = None
+        ctrl._turn_orchestrator.host_turn_id = None
+        request = AssistantDebugToolRequest.from_params(
+            correlation=AssistantTurnCorrelation(generation=7, turn_id=10),
+            tool_name="compute_saliency",
+            params={},
+        )
+        context = _enabled_tool_context("compute_saliency", generation=52)
+        _set_context_reader(ctrl, return_value=context)
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value = MagicMock(
+            name="compute_saliency",
+            description="Compute saliency for the selected completed run.",
+            requires_confirmation=True,
+        )
+        ctrl._execute_tool_no_loop = MagicMock()
+
+        acknowledgement = ctrl.execute_debug_tool(request)
+
+        assert acknowledgement.phase is AssistantTurnDeliveryPhase.ACCEPTED
+        pending = _pending_session(ctrl).confirmation
+        assert isinstance(pending, PendingConfirmation)
+        assert pending.decision.command_name == "compute_saliency"
+        assert pending.request.publication_generation == 52
+        ctrl.confirmation_requested.emit.assert_called_once_with(pending.request)
+        ctrl._execute_tool_no_loop.assert_not_called()
+
+    def test_ready_debug_training_requests_confirmation_before_execution(self, ctrl):
+        ctrl._turn_orchestrator.host_turn_generation = None
+        ctrl._turn_orchestrator.host_turn_id = None
+        request = AssistantDebugToolRequest.from_params(
+            correlation=AssistantTurnCorrelation(generation=7, turn_id=9),
+            tool_name="start_training",
+            params={},
+        )
+        context = _enabled_tool_context(
+            "start_training",
+            generation=41,
+            confirmation=True,
+        )
+        _set_context_reader(ctrl, return_value=context)
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value = MagicMock(
+            name="start_training",
+            description="Start the configured training run.",
+            requires_confirmation=False,
+        )
+        ctrl._execute_tool_no_loop = MagicMock()
+
+        acknowledgement = ctrl.execute_debug_tool(request)
+
+        assert acknowledgement.phase is AssistantTurnDeliveryPhase.ACCEPTED
+        pending = _pending_session(ctrl).confirmation
+        assert isinstance(pending, PendingConfirmation)
+        assert pending.decision.command_name == "start_training"
+        assert pending.request.command_name == "start_training"
+        assert pending.request.publication_generation == 41
+        ctrl.confirmation_requested.emit.assert_called_once_with(pending.request)
+        ctrl._execute_tool_no_loop.assert_not_called()
+        ctrl.turn_finished.emit.assert_not_called()
+
+    def test_blocked_debug_training_publishes_blocked_terminal(self, ctrl):
+        from XBrainLab.llm.tools.application_surface import (
+            ToolAvailability,
+            ToolAvailabilityContext,
+        )
+
+        ctrl._turn_orchestrator.host_turn_generation = None
+        ctrl._turn_orchestrator.host_turn_id = None
+        request = AssistantDebugToolRequest.from_params(
+            correlation=AssistantTurnCorrelation(generation=7, turn_id=9),
+            tool_name="start_training",
+            params={},
+        )
+        context = ToolAvailabilityContext(
+            availability=ToolAvailability(
+                tool_name="start_training",
+                enabled=False,
+                reasons=("Load raw data before training.",),
+                command_name="train",
+            ),
+            state={"pipeline_stage": "empty"},
+            generation=42,
+        )
+        _set_context_reader(ctrl, return_value=context)
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value = MagicMock(
+            name="start_training",
+            description="Start the configured training run.",
+            requires_confirmation=False,
+        )
+
+        acknowledgement = ctrl.execute_debug_tool(request)
+
+        assert acknowledgement.phase is AssistantTurnDeliveryPhase.ACCEPTED
+        ctrl.turn_finished.emit.assert_called_once_with(
+            AssistantTurnTerminal(
+                correlation=request.correlation,
+                outcome="blocked",
+            )
+        )
+
     def test_records_and_executes(self, ctrl):
         ctrl._turn_orchestrator.host_turn_generation = None
         ctrl._turn_orchestrator.host_turn_id = None
         request = AssistantDebugToolRequest.from_params(
             correlation=AssistantTurnCorrelation(generation=7, turn_id=9),
-            tool_name="test",
-            params={"k": "v"},
+            tool_name="apply_bandpass_filter",
+            params={"low_freq": 4.0, "high_freq": 38.0},
         )
         ctrl._execute_tool_no_loop = MagicMock(return_value=_tool_outcome("done"))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
+        _set_context_reader(
+            ctrl,
+            return_value=_enabled_tool_context("apply_bandpass_filter"),
+        )
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value = MagicMock(
+            name="apply_bandpass_filter",
+            requires_confirmation=False,
+        )
+
         acknowledgement = ctrl.execute_debug_tool(request)
         assert not ctrl.is_processing
         assert len(ctrl.history) == 2
-        assert (
-            ctrl.response_presentation_ready.emit.call_count
-            == MAX_CHAT_PRESENTATION_ROWS_PER_TURN
+        assert ctrl.response_presentation_ready.emit.call_count == 1
+        visible_responses = [
+            item.args[0].text
+            for item in ctrl.response_presentation_ready.emit.call_args_list
+        ]
+        assert visible_responses == ["done"]
+        activities = [
+            item.args[0] for item in ctrl.activity_changed.emit.call_args_list
+        ]
+        assert any(
+            activity.phase is AssistantTurnActivityPhase.RUNNING_COMMAND
+            and activity.command_name == "apply_bandpass_filter"
+            for activity in activities
         )
         assert acknowledgement.correlation == request.correlation
         assert acknowledgement.phase is AssistantTurnDeliveryPhase.ACCEPTED
+
+    def test_blocked_debug_action_does_not_claim_that_it_is_running(self, ctrl):
+        from XBrainLab.llm.tools.application_surface import ToolAvailability
+
+        ctrl._turn_orchestrator.host_turn_generation = None
+        ctrl._turn_orchestrator.host_turn_id = None
+        request = AssistantDebugToolRequest.from_params(
+            correlation=AssistantTurnCorrelation(generation=7, turn_id=9),
+            tool_name="start_training",
+            params={},
+        )
+        context = ToolAvailabilityContext(
+            availability=ToolAvailability(
+                tool_name="start_training",
+                enabled=False,
+                reasons=("Load raw data before training.",),
+                command_name="train",
+            ),
+            state={"pipeline_stage": "empty"},
+            generation=42,
+        )
+        _set_context_reader(ctrl, return_value=context)
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value = MagicMock(
+            name="start_training",
+            requires_confirmation=True,
+        )
+
+        acknowledgement = ctrl.execute_debug_tool(request)
+
+        assert acknowledgement.phase is AssistantTurnDeliveryPhase.ACCEPTED
+        visible_responses = [
+            item.args[0].text
+            for item in ctrl.response_presentation_ready.emit.call_args_list
+        ]
+        assert visible_responses == [
+            "Training can't start yet.\n\n**Required first:** Import EEG data."
+        ]
+        assert all(
+            item.args[0].phase is not AssistantTurnActivityPhase.RUNNING_COMMAND
+            for item in ctrl.activity_changed.emit.call_args_list
+        )
 
     def test_rejects_stale_debug_request_without_executing_it(self, ctrl):
         ctrl._turn_orchestrator.host_turn_generation = 11
@@ -2691,6 +2938,10 @@ class TestExecuteDebugTool:
             correlation=AssistantTurnCorrelation(generation=7, turn_id=9),
             tool_name="reset_preprocessing",
             params={"confirmed": True},
+        )
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(
+            is_valid=False,
+            error_message="Tool parameters are invalid.",
         )
 
         with patch.object(service, "execute", wraps=service.execute) as execute:
@@ -2745,6 +2996,10 @@ class TestExecuteDebugTool:
             tool_name="import_eeg_data",
             params={"candidate_id": "candidate-1", "confirmed": True},
         )
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(
+            is_valid=False,
+            error_message="Tool parameters are invalid.",
+        )
 
         with patch.object(service, "execute", wraps=service.execute) as execute:
             acknowledgement = ctrl.execute_debug_tool(request)
@@ -2783,7 +3038,7 @@ class TestExecuteDebugTool:
             acknowledgement = ctrl.execute_debug_tool(request)
 
         assert acknowledgement.phase is AssistantTurnDeliveryPhase.ACCEPTED
-        assert '"error_type": "input"' in ctrl.history[-1]["content"]
+        assert "Tool call REJECTED" in ctrl.history[-1]["content"]
         assert str(private_path) not in repr(ctrl.history)
         assert str(private_path) not in "\n".join(
             record.getMessage() for record in caplog.records
@@ -3447,7 +3702,7 @@ class TestOnUserConfirmed:
         assert any("completed 'create_epoch'" in m["content"] for m in ctrl.history)
         assert "completed" in ctrl._tool_attempt_session.last_tool_summary.lower()
         ctrl.status_update.emit.assert_any_call("Existing settings completed.")
-        ctrl._finalize_turn_after_tool.assert_called_once_with()
+        ctrl._finalize_turn_after_tool.assert_called_once_with("completed")
 
     def test_ui_handoff_clears_pending_before_resolution_and_idle(self, ctrl):
         request = WorkflowUiHandoffRequest.for_decision(
@@ -3493,7 +3748,7 @@ class TestOnUserConfirmed:
 
         assert ctrl.pending_interactions.workflow_handoff is None
         assert any("cancelled" in m["content"] for m in ctrl.history)
-        ctrl._finalize_turn_after_tool.assert_called_once_with()
+        ctrl._finalize_turn_after_tool.assert_called_once_with("cancelled")
 
     def test_unavailable_existing_ui_does_not_claim_completion(self, ctrl):
         ctrl.pending_interactions.begin_workflow_handoff(
@@ -3516,7 +3771,7 @@ class TestOnUserConfirmed:
             in ctrl._tool_attempt_session.last_tool_summary
         )
         ctrl.status_update.emit.assert_any_call("Existing settings unavailable.")
-        ctrl._finalize_turn_after_tool.assert_called_once_with()
+        ctrl._finalize_turn_after_tool.assert_called_once_with("unavailable")
 
     def test_ui_handoff_failure_cannot_consume_training_resource_receipt(self, ctrl):
         pending = _pending_training_resource_confirmation(ctrl)
@@ -3554,7 +3809,7 @@ class TestOnUserConfirmed:
         )
 
         assert ctrl.pending_interactions.workflow_handoff is None
-        ctrl._finalize_turn_after_tool.assert_called_once_with()
+        ctrl._finalize_turn_after_tool.assert_called_once_with("completed")
 
     def test_reset_conversation_cannot_clear_pending_workflow_handoff(self, ctrl):
         request = WorkflowUiHandoffRequest.for_decision(
@@ -3585,7 +3840,7 @@ class TestOnUserConfirmed:
 
         assert ctrl.pending_interactions.workflow_handoff is None
         ctrl._execute_tool_no_loop.assert_not_called()
-        ctrl._finalize_turn_after_tool.assert_called_once_with()
+        ctrl._finalize_turn_after_tool.assert_called_once_with("cancelled")
 
     def test_stale_handoff_resolution_cannot_consume_current_request(self, ctrl):
         stale = WorkflowUiHandoffRequest.for_decision(
@@ -4445,7 +4700,8 @@ class TestPipelineGate:
 
         summary = LLMController._summarize_tool_result("load_data", False, result)
 
-        assert "Import data is not available yet" in summary
+        assert "Data import can't run yet" in summary
+        assert "**Required first:** Load raw data first." in summary
         assert "Load EEG data" not in summary
         assert "load_data" not in summary
 

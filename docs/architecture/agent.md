@@ -248,7 +248,7 @@ Granite 3.3 2B; Phi cannot be selected and never becomes a fallback.
 目前只宣稱Granite固定正向selection suite的checkpoint。Host保留strict schema、stage/publication、
 capability與confirmation verification，但不做intent narrowing或deterministic continuation。這種
 工程evidence不能替代真人workflow或thesis accuracy，也不能把歷史`117/117`、`121/121`或Phi
-candidate分數移植成Granite claim；candidate必須以同一frozen source完成48-case gate。
+candidate分數移植成Granite claim；candidate必須以同一frozen source完成50-case gate。
 4-bit loading 仍是 optional path；`accelerate` / `bitsandbytes` 不是預設產品啟動硬需求。
 
 Gemini/API 不再列為產品驗證目標；default dependencies 不包含 remote SDK。若歷史研究需要遠端
@@ -327,18 +327,20 @@ fixture，必須放在明確 optional legacy path，不能被 product code impor
 `XBrainLab/llm/tools/real/` 是目前真的操作 app 的工具。
 
 `XBrainLab/llm/action_contracts.py`是目前model-facing contract的唯一source；real、mock、debug與
-prompt registry必須精確等於下列17個工具：
+prompt registry必須精確等於下列18個工具：
 
 ```text
 import_eeg_data / select_channels / set_montage / create_epochs
 configure_dataset_split / select_model / configure_training
 apply_bandpass_filter / apply_notch_filter / resample_data / set_reference / normalize_data
 start_training / stop_training / reset_preprocessing / clear_training_history
-switch_panel
+switch_panel / compute_saliency
 ```
 
 其中七個setup工具是零參數typed GUI completion；五個preprocess工具直接走ApplicationService；
-四個lifecycle工具沿用backend capability/confirmation；`switch_panel`是唯一navigation。Retired
+四個lifecycle工具沿用backend capability/confirmation；`switch_panel`是唯一navigation；
+`compute_saliency`在trained stage先走Assistant confirmation，再以零參數UI action沿用目前
+Visualization panel選定的run、method、resource confirmation與operation publication。Retired
 dataset protocol、recipe、query、standard-preprocess與analysis wrapper不在runtime registry，模型提出
 未發布名稱會在adapter前fail closed。完整membership與參數契約由
 [Agent target intent ledger](../target/agent.md#target-intent-ledger)擁有。
@@ -389,6 +391,8 @@ confirmation。
   fields，模型參數永遠是`{}`。只有dialog的completed/cancelled/blocked/unavailable/failed outcome
   能結束turn。
 - `switch_panel`等待MainWindow/subview materialization callback，不把UiRequest emission當成功。
+- `compute_saliency`不讓模型填run/method/settings；它等待相同operation的completed/cancelled/failed
+  terminal，不把command schedule receipt當成功。
 - Data Interpretation、analysis與query services仍供產品GUI/backend使用，但沒有Assistant wrapper。
 - 缺少direct tool必要參數時，strict model branch使用`respond_to_user`；adapter不套default、不走
   legacy fallback。
@@ -396,8 +400,9 @@ confirmation。
   `ok`、`tool_name`、`command_name`、
   `message`、`error_type`、`recoverable`、`state`、`capability`、`diagnostics`、
   `raw_result` JSON payload。
-- `set_montage`走既有Montage Settings UI；Cancel不產生montage mutation。Evaluation、Visualization
-  與Saliency由`switch_panel`導向既有panel，不以Assistant tool重建readiness或render owner。
+- `set_montage`走既有Montage Settings UI；Cancel不產生montage mutation。Evaluation與Visualization
+  由`switch_panel`導向既有panel；Compute Saliency只觸發既有panel action，不重建readiness或render
+  owner。
 
 ## Workflow State Gate
 
@@ -412,7 +417,7 @@ publication。ApplicationService capability不是另一個prompt router，而是
 admission。若state publication不可靠，prompt stage固定為`unavailable`且只保留`switch_panel`與
 `respond_to_user`。
 
-RAG examples也受同一條17-tool與stage publication邊界約束：
+RAG examples也受同一條18-tool與stage publication邊界約束：
 `RAGIndexer`、`BM25Index` 和 `RAGRetriever` 會透過
 `XBrainLab/llm/rag/example_policy.py` 排除所有未發布 tool examples，包括舊 dataset-info、direct
 load / attach 與 granular preprocess names。這同時處理新建 index 和使用者機器上已存在的舊 Qdrant
@@ -438,7 +443,7 @@ settings全部完成後才是`dataset_ready`。
 已對照 source code 的部分：
 
 - chat UI、agent manager、controller、worker、engine、tool registry 都存在。
-- registry精確發布17個approved target tools；retired wrappers在adapter前fail closed。
+- registry精確發布18個approved target tools；retired wrappers在adapter前fail closed。
 - direct tools進`ApplicationService.execute(...)`；GUI tools進既有correlated handoff owner。
 - `LLMController`會做strict parser、stage/publication verification、capability、confirmation與單一tool
   turn limit，不做Host intent narrowing或continuation。
@@ -450,8 +455,9 @@ settings全部完成後才是`dataset_ready`。
 - local model catalog、download preflight 和 health-check script 存在。
 - closure-worktree runtime inspection 回報 Granite 3.3 2B `gpu-ready`，其 path-scoped cache 約
   `5.07 GB / 20 GB`；root launcher cache 的 `12.77 GB` 不是同一個 checkout。
-- frozen Granite 34個positive selection cases曾在先前exact source通過；本candidate擴為48 cases後必須
-  在最終exact source重跑，舊34-case結果不能代替。
+- frozen Granite 34個positive selection cases曾在先前exact source通過；本candidate新增
+  `compute_saliency`後是36 positive＋14 challenge的50-case gate，必須在最終exact source重跑，
+  舊34-case結果不能代替。
 - local runtime unavailable 時，chat panel 會保持可開並顯示原因；first-run consent 只在
   local backend 還未 acknowledged 且即將啟用時出現。
 - no-model diagnostic runtime可走真ChatPanel、MainWindow、ApplicationService與tool correlation，
@@ -466,13 +472,13 @@ settings全部完成後才是`dataset_ready`。
 - agent 操作完整資料 pipeline 的端到端正確性。
 - 真 Windows launcher / human desktop acceptance。
 - 長時間真人桌面 session、跨重啟 cache lifecycle 與 frozen Granite benchmark。
-- 最終48-case Granite gate、真model safe E2E與三份真人frontend walkthrough尚未在同一candidate
+- 最終50-case Granite gate、真model safe E2E與三份真人frontend walkthrough尚未在同一candidate
   source閉合。
 - Windows native layout、dialog interaction與完整PhysioNet CPU workflow仍需要使用者手測。
 
 Historical Phi evaluation artifacts are not current product or thesis evidence. Superseded raw、
 host-assisted或`121/121` reports不得作為current Granite accuracy。只有同一candidate source的
-48-case strict report可支撐本輪bounded selection claim，且仍不等於tool execution或產品ready。
+50-case strict report可支撐本輪bounded selection claim，且仍不等於tool execution或產品ready。
 
 ## 架構評斷
 
@@ -499,7 +505,7 @@ host-assisted或`121/121` reports不得作為current Granite accuracy。只有�
 - `CommandParser`驗證模型產生的strict JSON text envelope；它不是host-native structured tool calling，
   但不掃描prose或接受wrapper。
 - strict envelope、publication/stage verification、capability與confirmation守住目前product
-  contract；模型selection仍必須由48-case gate與真人safe E2E驗證。
+  contract；模型selection仍必須由50-case gate與真人safe E2E驗證。
 - `AgentManager` 已抽出 presentation、runtime lifecycle、workflow handoff 與 montage coordinator，
   但仍是偏大的 Qt orchestrator，後續應按責任切片而不是新增 fallback。
 - RAG 已接入 controller，但本輪尚未驗證資料來源和品質。
@@ -509,15 +515,15 @@ host-assisted或`121/121` reports不得作為current Granite accuracy。只有�
 ## Approved target reference
 
 Stable v2的tool membership、backend-owned stage、strict envelope、thin Host、GUI terminal、diagnostic
-walkthrough與candidate gates只由[Agent target](../target/agent.md)定義。Current source已完成17-tool
-cutover與obsolete wrapper removal；candidate仍缺同source 48-case、完整handoff與真人acceptance，
+walkthrough與candidate gates只由[Agent target](../target/agent.md)定義。Current source已完成18-tool
+cutover與obsolete wrapper removal；candidate仍缺同source 50-case、完整handoff與真人acceptance，
 因此不能宣稱Assistant-ready。
 
 ## 文件狀態
 
 這份文件目前是 `verified engineering checkpoint`。
 
-它已對照主要source code、17-tool boundary與no-model diagnostic contract；仍沒有證明最終48-case、
+它已對照主要source code、18-tool boundary與no-model diagnostic contract；仍沒有證明最終50-case、
 長時間真人workflow、Windows acceptance或thesis-grade accuracy。
 
 local-only runtime cleanup 已對齊 product source：remote backend modules、remote key handling、

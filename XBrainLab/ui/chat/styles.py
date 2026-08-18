@@ -672,12 +672,12 @@ USER_BUBBLE_TEXT_STYLE = f"""
     }}
 """
 
-AGENT_BUBBLE_FRAME_STYLE = """
-    QFrame#BubbleFrame {
-        background-color: transparent;
-        border: none;
-        border-radius: 0px;
-    }
+AGENT_BUBBLE_FRAME_STYLE = f"""
+    QFrame#BubbleFrame {{
+        background-color: {Theme.CHAT_AI_BUBBLE};
+        border: 1px solid {Theme.ACCENT_PRIMARY};
+        border-radius: 8px;
+    }}
 """
 
 CLARIFICATION_BUBBLE_FRAME_STYLE = f"""

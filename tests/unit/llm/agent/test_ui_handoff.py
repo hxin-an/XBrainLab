@@ -139,12 +139,12 @@ def test_workflow_handoff_route_descriptors_preserve_existing_ui_taxonomy() -> N
         ),
         (
             CommandName.SALIENCY,
-            WorkflowUiHandoffSurfaceKind.DIALOG,
-            AssistantDecisionOwner.GUI_DIALOG,
+            WorkflowUiHandoffSurfaceKind.ACTION,
+            None,
             WorkflowUiHandoffPanel.VISUALIZATION,
-            WorkflowUiHandoffRouteIdentity.SALIENCY_SETTINGS_DIALOG,
-            "Continue in Saliency Settings",
-            "Finish or cancel in the open Saliency Settings dialog.",
+            WorkflowUiHandoffRouteIdentity.SALIENCY_COMPUTE_ACTION,
+            "Compute saliency",
+            "Wait for saliency computation to finish or cancel it in Visualization.",
         ),
         (
             CommandName.APPLY_MONTAGE,
@@ -218,6 +218,19 @@ def test_decision_handoff_normalizes_backend_command_and_fields() -> None:
     assert request.command_name == "create_epoch"
     assert request.decision_fields == ("epoch_window", "target_event")
     assert request.request_id
+
+
+def test_action_handoff_has_no_gui_decision_owner_or_model_parameters() -> None:
+    request = WorkflowUiHandoffRequest.for_action(CommandName.SALIENCY)
+    route = workflow_ui_handoff_route_for(request.command)
+
+    assert request.kind is WorkflowUiHandoffKind.ACTION_REQUESTED
+    assert request.command is CommandName.SALIENCY
+    assert request.decision_fields == ()
+    assert request.suggestions == {}
+    assert route is not None
+    assert route.surface_kind is WorkflowUiHandoffSurfaceKind.ACTION
+    assert route.decision_owner is None
 
 
 def test_each_handoff_request_has_a_distinct_correlation_id() -> None:

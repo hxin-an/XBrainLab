@@ -232,7 +232,7 @@ def test_tool_debug_session_runs_backend_without_runtime_activation(qtbot, tmp_p
                         "tool": "start_training",
                         "params": {},
                         "instruction": "Verify training is blocked",
-                        "expected_outcomes": ["completed"],
+                        "expected_outcomes": ["blocked"],
                     }
                 ],
             }
@@ -267,7 +267,7 @@ def test_tool_debug_session_runs_backend_without_runtime_activation(qtbot, tmp_p
         qtbot.mouseClick(manager.chat_panel.send_btn, Qt.MouseButton.LeftButton)
         qtbot.waitUntil(
             lambda: any(
-                "Training is not available yet" in message["content"]
+                "Training can't start yet" in message["content"]
                 for message in manager.chat_controller.messages
             ),
             timeout=10_000,
@@ -276,7 +276,9 @@ def test_tool_debug_session_runs_backend_without_runtime_activation(qtbot, tmp_p
         visible = "\n".join(
             message["content"] for message in manager.chat_controller.messages
         )
-        assert "Load raw data before training" in visible
+        assert "**Required first:** Import EEG data." in visible
+        assert "Running a diagnostic action" not in visible
+        assert "Save a valid data splitting specification" not in visible
         assert "Tool Output:" not in visible
     finally:
         manager.close()
@@ -289,6 +291,9 @@ def test_tool_debug_session_runs_backend_without_runtime_activation(qtbot, tmp_p
 
 def test_contract_failure_profile_advances_only_on_real_terminals(qtbot):
     """The empty-state profile runs through the real no-model frontend boundary."""
+    from XBrainLab.backend.controller.chat_controller import (
+        ChatMessagePresentationKind,
+    )
     from XBrainLab.backend.study import Study
     from XBrainLab.llm.agent.controller import LLMController
     from XBrainLab.ui.components.agent_manager import AgentManager
@@ -328,6 +333,15 @@ def test_contract_failure_profile_advances_only_on_real_terminals(qtbot):
         assert panel.debug_mode.is_complete
         assert runtime.current.backend_mode == "diagnostic"
         assert window.opened_indices == [0, 1]
+        dataset_terminal = next(
+            record
+            for record in manager.chat_controller.get_typed_history()
+            if record.content == "Opened the Dataset panel in XBrainLab."
+        )
+        assert (
+            dataset_terminal.presentation_kind
+            is ChatMessagePresentationKind.TOOL_RESULT
+        )
     finally:
         manager.close()
         qtbot.waitUntil(

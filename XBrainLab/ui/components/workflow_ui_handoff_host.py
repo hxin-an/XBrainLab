@@ -493,8 +493,8 @@ class WorkflowUiHandoffHost:
             WorkflowUiHandoffRouteIdentity.TRAINING_SETTINGS_DIALOG: (
                 self._open_training_settings
             ),
-            WorkflowUiHandoffRouteIdentity.SALIENCY_SETTINGS_DIALOG: (
-                self._open_saliency_settings
+            WorkflowUiHandoffRouteIdentity.SALIENCY_COMPUTE_ACTION: (
+                self._compute_saliency
             ),
             WorkflowUiHandoffRouteIdentity.MONTAGE_SETTINGS_DIALOG: (
                 self._open_montage
@@ -513,14 +513,17 @@ class WorkflowUiHandoffHost:
         descriptor: WorkflowUiHandoffRouteDescriptor,
         open_surface: WorkflowSurfaceCallback | None = None,
     ) -> WorkflowSurfaceRoute:
-        requires_opener = descriptor.surface_kind is WorkflowUiHandoffSurfaceKind.DIALOG
+        requires_opener = descriptor.surface_kind in {
+            WorkflowUiHandoffSurfaceKind.DIALOG,
+            WorkflowUiHandoffSurfaceKind.ACTION,
+        }
         if requires_opener and open_surface is None:
             raise ValueError(
-                f"No dialog adapter registered for {descriptor.command.value}."
+                f"No product UI adapter registered for {descriptor.command.value}."
             )
         if not requires_opener and open_surface is not None:
             raise ValueError(
-                f"Panel-only route {descriptor.command.value} cannot open a dialog."
+                f"Panel-only route {descriptor.command.value} cannot open an action."
             )
         panel = WorkflowPanel(descriptor.target_panel.value)
         return WorkflowSurfaceRoute(
@@ -963,12 +966,12 @@ class WorkflowUiHandoffHost:
             )
         return WorkflowSurfaceResult(WorkflowSurfaceStatus.FAILED)
 
-    def _open_saliency_settings(
+    def _compute_saliency(
         self,
         _request: WorkflowSurfaceRequest,
     ) -> WorkflowSurfaceResult:
         return self._surface_result(
-            self._main_window.visualization_panel.sidebar.set_saliency()
+            self._main_window.visualization_panel.compute_saliency()
         )
 
     def _open_montage(

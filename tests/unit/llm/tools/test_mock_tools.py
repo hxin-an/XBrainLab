@@ -122,7 +122,7 @@ def test_mock_registry_is_exact_target_surface_and_shares_state(study) -> None:
     tools = {tool.name: tool for tool in get_all_tools(mode="mock")}
 
     assert set(tools) == set(AGENT_ACTION_CONTRACTS.model_tool_names())
-    assert len(tools) == 17
+    assert len(tools) == 18
     assert tools["start_training"].execute(study).ok is False
     for tool_name in (
         "import_eeg_data",

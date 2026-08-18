@@ -177,6 +177,7 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             "start_training",
             "reset_preprocessing",
             "clear_training_history",
+            "compute_saliency",
             "switch_panel",
         ],
         "system_prompt": _stage_system_prompt(

@@ -128,9 +128,22 @@ EXPECTED_TARGET_TOOLS = {
         "start_training",
         "reset_preprocessing",
         "clear_training_history",
+        "compute_saliency",
         "switch_panel",
     },
 }
+
+
+def test_compute_saliency_is_published_only_after_completed_training() -> None:
+    stages = {
+        stage: tuple(config["tools"])
+        for stage, config in STAGE_CONFIG.items()
+        if "compute_saliency" in config["tools"]
+    }
+
+    assert stages == {
+        PipelineStage.TRAINED: tuple(STAGE_CONFIG[PipelineStage.TRAINED]["tools"])
+    }
 
 
 def test_stage_prompts_do_not_publish_a_second_tool_truth():
@@ -392,10 +405,10 @@ class TestStageConfig:
         tools = STAGE_CONFIG[PipelineStage.TRAINING]["tools"]
         assert tools == ["stop_training", "switch_panel"]
 
-    def test_trained_adds_history_cleanup_to_dataset_ready(self):
+    def test_trained_adds_completed_run_actions_to_dataset_ready(self):
         trained = set(STAGE_CONFIG[PipelineStage.TRAINED]["tools"])
         ready = set(STAGE_CONFIG[PipelineStage.DATASET_READY]["tools"])
-        assert trained == ready | {"clear_training_history"}
+        assert trained == ready | {"clear_training_history", "compute_saliency"}
 
 
 # ---------------------------------------------------------------------------
