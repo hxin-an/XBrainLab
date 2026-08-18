@@ -8,7 +8,7 @@
 完成 replacement、atomic cutover、deletion 與 exact-SHA candidate；在完整候選前不要求使用者手測，
 未取得同一 source 的手測通過不得合併 main。**
 
-目前 phase：`Local frozen-candidate validation；GitHub remote evidence pending`
+目前 phase：`Frozen-candidate CI contract migration；manual acceptance pending`
 
 目前 branch：`refactor/assistant-target-adapters-v2`
 
@@ -162,6 +162,23 @@ walkthrough：測試仍等待舊Host產生`Open Data Import` clarification butto
 中介；將external model boundary固定輸出strict `import_eeg_data` envelope，保留真controller、
 AgentManager、MainWindow、typed handoff、chooser cancel與turn correlation，並明確要求不顯示舊action
 widget。三個job是同一測試，不建立平台分支或延長timeout掩蓋錯誤。
+
+最新exact PR head `91a325623c8cea26870b6830e50f858638f9609e`的Windows／macOS lifecycle、
+Linux UI、unit、backend、controller、debug、IO、pipeline、training、regression、public multi-dataset與
+MkDocs皆通過；`linux-integration-rest`只在`tests/integration/agent`的`agent-contracts`子集失敗。
+JUnit顯示44個case中27個仍要求已退役的Host blocked-explanation／readmission／continuation、`list_files`、
+`scan_source`／preview／recipe、`set_model`與`saliency`Assistant wrappers。這些self-referential舊契約不得
+用compatibility alias修綠：保留真正的ApplicationService receipt／TOCTOU／strict-recovery安全語意，改由
+現行17-tool或backend command boundary驗證；只證明退役routing的cases直接移除。完成後先跑完整
+`tests/integration/agent`與`linux-integration-rest`本地映射，再建立新exact SHA重跑全部remote checks；
+任何產品碼或可見UI變更都超出此test-contract slice並停止。
+
+Local green：移除三份只驗退役Host routing的integration檔；產品流只保留strict response、完整回覆
+格式拒絕與runtime-disabled可見狀態；strict recovery改用`import_eeg_data`並正確停在pending GUI handoff；
+resource receipt只保留目前可達的`start_training`一次性重放、configuration／preflight stale拒絕與blocking
+preflight。完整`tests/integration/agent`為40 passed；CI同型`linux-integration-rest`所有九個isolated
+subshards通過。Production／UI檔案0變更，owner、state machine與receipt數量不變；本slice為tests/docs
+淨刪除，下一步只做static／architecture與exact-head remote CI。
 
 已否決的中間路徑：red-first曾將三個target adapters加在舊30-tool runtime旁，立即使runtime變成33，
 並被runtime equality／headless contract tests攔截。該狀態不提交；建立第二個過渡catalog會增加遷移

@@ -14,6 +14,7 @@ from unittest.mock import patch
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 
 from tests.qt_lifecycle import close_controller_and_wait
+from XBrainLab.backend.application import CommandName
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.agent.tool_execution_coordinator import (
@@ -210,14 +211,8 @@ def _submit_user_turn(controller: LLMController, text: str) -> None:
 
 def test_malformed_tool_envelopes_stop_after_two_retries_without_execution(
     qtbot,
-    tmp_path,
 ):
-    source = tmp_path / "sample.edf"
-    source.write_bytes(b"fixture")
-    malformed = (
-        '```json\n{"tool_name":"scan_source","parameters":'
-        f'{{"source_path":"{source}"}}}}\n```'
-    )
+    malformed = '```json\n{"tool_name":"import_eeg_data","parameters":{}}\n```'
     controller, worker, coordinator = _controller_with_script([malformed] * 3)
     statuses: list[str] = []
     responses: list[str] = []
@@ -227,7 +222,7 @@ def test_malformed_tool_envelopes_stop_after_two_retries_without_execution(
     )
 
     try:
-        _submit_user_turn(controller, f"Scan data source {source}")
+        _submit_user_turn(controller, "Import EEG data.")
         qtbot.waitUntil(lambda: not controller.is_processing, timeout=3_000)
 
         assert worker.generation_count == 3
@@ -254,27 +249,25 @@ def test_malformed_tool_envelopes_stop_after_two_retries_without_execution(
 
 def test_recovered_valid_envelope_reaches_real_execution_coordinator(
     qtbot,
-    tmp_path,
 ):
-    source = tmp_path / "sample.edf"
-    source.write_bytes(b"fixture")
-    malformed = (
-        '```json\n{"tool_name":"scan_source","parameters":'
-        f'{{"source_path":"{source}"}}}}\n```'
-    )
-    valid = (
-        '{"workflow_stage":"empty","tool_name":"scan_source",'
-        f'"parameters":{{"source_path":"{source}"}}}}'
-    )
+    malformed = '```json\n{"tool_name":"import_eeg_data","parameters":{}}\n```'
+    valid = '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
     controller, worker, coordinator = _controller_with_script([malformed, valid])
 
     try:
-        _submit_user_turn(controller, f"Scan data source {source}")
-        qtbot.waitUntil(lambda: not controller.is_processing, timeout=3_000)
+        _submit_user_turn(controller, "Import EEG data.")
+        qtbot.waitUntil(
+            lambda: controller._tool_attempt_session.execution_count == 1,
+            timeout=3_000,
+        )
 
         assert worker.generation_count == 2
         assert worker.profiles == [GenerationProfile.STRUCTURED_DECISION] * 2
         assert controller._tool_attempt_session.execution_count == 1
-        assert coordinator.commands == ["scan_source"]
+        assert coordinator.commands == ["import_eeg_data"]
+        handoff = controller.pending_interactions.workflow_handoff
+        assert handoff is not None
+        assert handoff.command is CommandName.SCAN_SOURCE
+        assert controller.is_processing is True
     finally:
         close_controller_and_wait(controller, qtbot)
