@@ -271,17 +271,19 @@ def test_data_import_capture_flushes_deferred_dialog_deletes_between_specs():
     assert "QEvent.Type.DeferredDelete" in source
 
 
-def test_complete_capture_stages_each_spec_in_an_isolated_child_process(
+def test_complete_capture_uses_exact_scenario_family_processes(
     monkeypatch,
     tmp_path,
 ):
-    specs = capture_script._canonical_capture_specs()[:2]
+    specs = capture_script._canonical_capture_specs()
     calls: list[list[str]] = []
     server_commands: list[list[str]] = []
 
     def fake_run(command, **_kwargs):
         calls.append(command)
-        (tmp_path / command[-1]).write_bytes(b"png")
+        for index, argument in enumerate(command):
+            if argument == "--only":
+                (tmp_path / command[index + 1]).write_bytes(b"png")
         return type("Completed", (), {"returncode": 0})()
 
     class FakeServer:
@@ -309,11 +311,55 @@ def test_complete_capture_stages_each_spec_in_an_isolated_child_process(
 
     capture_script._capture_specs_in_isolated_processes(specs, tmp_path)
 
-    assert [command[-1] for command in calls] == [spec.filename for spec in specs]
-    assert all("--only" in command for command in calls)
+    expected_batches = capture_script._canonical_capture_batches(specs)
+    assert len(calls) == len(expected_batches) == 4
+    observed_batches = [
+        tuple(
+            command[index + 1]
+            for index, argument in enumerate(command)
+            if argument == "--only"
+        )
+        for command in calls
+    ]
+    assert observed_batches == [
+        tuple(spec.filename for spec in batch) for batch in expected_batches
+    ]
     assert all(command[0] == capture_script.sys.executable for command in calls)
-    assert len(server_commands) == len(specs)
-    assert server_commands == [["/usr/bin/Xvfb"]] * len(specs)
+    assert server_commands == [["/usr/bin/Xvfb"]] * 4
+
+
+def test_complete_placement_capture_uses_one_isolated_family_process(
+    monkeypatch,
+    tmp_path,
+):
+    specs = capture_script._placement_mode_capture_specs()
+    calls: list[list[str]] = []
+    servers: list[str] = []
+
+    def fake_run(command, **_kwargs):
+        calls.append(command)
+        for spec in specs:
+            (tmp_path / spec.filename).parent.mkdir(parents=True, exist_ok=True)
+            (tmp_path / spec.filename).write_bytes(b"png")
+        return type("Completed", (), {"returncode": 0})()
+
+    class FakeServer:
+        def poll(self):
+            return 0
+
+    monkeypatch.setattr(capture_script.shutil, "which", lambda _name: "/usr/bin/Xvfb")
+    monkeypatch.setattr(
+        capture_script,
+        "_start_xvfb",
+        lambda executable: (servers.append(executable) or FakeServer(), ":99"),
+    )
+    monkeypatch.setattr(capture_script.subprocess, "run", fake_run)
+
+    capture_script._capture_placement_specs_in_isolated_processes(specs, tmp_path)
+
+    assert len(calls) == 1
+    assert "--placement-batch" in calls[0]
+    assert servers == ["/usr/bin/Xvfb"]
 
 
 def test_data_import_capture_rejects_non_xcb_platforms():

@@ -633,10 +633,6 @@ _GATE_SPECS = (
         section="5",
         argv=(
             *_PRLIMIT,
-            "xvfb-run",
-            "-a",
-            "-s",
-            "-screen 0 1600x1400x24",
             *_POETRY_EXEC,
             "python",
             "scripts/dev/capture_data_import_wizard_steps.py",

@@ -264,6 +264,8 @@ def test_startup_and_visual_baseline_are_explicit_pre_dashboard_gates() -> None:
         "--handoff-evidence-path",
         f"{EVIDENCE_ROOT_TOKEN}/handoff-evidence.json",
     )
+    capture = HANDOFF_GATE_SPECS["data-import-wizard-capture"]
+    assert "xvfb-run" not in capture.argv
 
 
 def test_local_runtime_gates_bind_both_redacted_d_drive_cache_paths() -> None:
