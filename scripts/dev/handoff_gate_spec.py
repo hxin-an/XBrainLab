@@ -192,6 +192,10 @@ def _pytest_attestation_contract(
             return None
         command = runner_args[0]
         return SHARDED_PYTEST_RUNNER_ID, (command,)
+    if runner_name == "run_local_handoff_regression.py":
+        if "--evidence-dir" not in runner_args or "--result-json" not in runner_args:
+            return None
+        return SHARDED_PYTEST_RUNNER_ID, ("all",)
     return None
 
 
@@ -396,15 +400,19 @@ _GATE_SPECS = (
             *_PRLIMIT,
             *_POETRY_EXEC,
             "python",
-            "scripts/dev/run_tests.py",
-            "all",
+            "scripts/dev/run_local_handoff_regression.py",
+            "--evidence-dir",
+            f"{EVIDENCE_ROOT_TOKEN}/complete-regression-shards",
             "--result-json",
             f"{EVIDENCE_ROOT_TOKEN}/pytest-attestations/complete-regression.json",
         ),
         timeout_seconds=7200,
         environment=_QT_MNE_LOCAL_RUNTIME,
         outcome=_COMPLETE_REGRESSION_OUTCOME,
-        required_artifact_paths=("pytest-attestations/complete-regression.json",),
+        required_artifact_paths=(
+            "pytest-attestations/complete-regression.json",
+            "complete-regression-shards",
+        ),
         pytest_attestation_path="pytest-attestations/complete-regression.json",
     ),
     GateSpec(

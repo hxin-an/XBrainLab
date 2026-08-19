@@ -117,8 +117,9 @@ def test_complete_regression_uses_the_bounded_fail_closed_full_runner() -> None:
         "run",
         "--",
         "python",
-        "scripts/dev/run_tests.py",
-        "all",
+        "scripts/dev/run_local_handoff_regression.py",
+        "--evidence-dir",
+        f"{EVIDENCE_ROOT_TOKEN}/complete-regression-shards",
         "--result-json",
         f"{EVIDENCE_ROOT_TOKEN}/pytest-attestations/complete-regression.json",
     )
@@ -146,6 +147,10 @@ def test_complete_regression_uses_the_bounded_fail_closed_full_runner() -> None:
     )
     assert spec.pytest_attestation_path == (
         "pytest-attestations/complete-regression.json"
+    )
+    assert spec.required_artifact_paths == (
+        "pytest-attestations/complete-regression.json",
+        "complete-regression-shards",
     )
 
 
