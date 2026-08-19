@@ -369,22 +369,6 @@ def test_linux_ci_evidence_verifier_aggregates_every_required_group(tmp_path) ->
     assert payload["counts"]["passed"] == len(run_tests.LINUX_CI_GROUPS)
 
 
-def test_local_handoff_verifier_does_not_require_coverage_artifacts(tmp_path) -> None:
-    result_path = tmp_path / "all-regression.json"
-    _write_linux_ci_evidence(tmp_path)
-    for path in tmp_path.glob(".coverage.*"):
-        path.unlink()
-
-    assert (
-        run_tests.verify_linux_ci_evidence(
-            tmp_path,
-            result_path,
-            require_coverage=False,
-        )
-        == 0
-    )
-
-
 def test_linux_ci_evidence_verifier_accepts_owned_parallel_coverage_fragments(
     tmp_path,
 ) -> None:

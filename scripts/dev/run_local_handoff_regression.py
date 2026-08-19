@@ -11,7 +11,11 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from scripts.dev.owned_process_group import spawn_owned_process
-from scripts.dev.run_tests import LINUX_CI_COMMANDS, verify_linux_ci_evidence
+from scripts.dev.run_tests import (
+    LINUX_CI_COMMANDS,
+    LINUX_CI_UNCOVERED_COMMANDS,
+    verify_linux_ci_evidence,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 MAX_PARALLEL_GROUPS = 2
@@ -42,8 +46,12 @@ def _execute_group(command: str, *, evidence_dir: Path) -> int:
             "XBL_SHARED_CI_RUNNER": "1",
         }
     )
-    for name in ("COVERAGE_FILE", "COVERAGE_PROCESS_START", "XBL_TEST_COVERAGE"):
+    for name in ("COVERAGE_PROCESS_START", "XBL_TEST_COVERAGE"):
         environment.pop(name, None)
+    if command in LINUX_CI_UNCOVERED_COMMANDS:
+        environment.pop("COVERAGE_FILE", None)
+    else:
+        environment["COVERAGE_FILE"] = str(evidence_dir / f".coverage.{command}")
     argv = (
         sys.executable,
         "-m",
@@ -124,13 +132,11 @@ def run_local_handoff_regression(
             verify_linux_ci_evidence(
                 evidence_root,
                 result,
-                require_coverage=False,
             )
             return 1
     return verify_linux_ci_evidence(
         evidence_root,
         result,
-        require_coverage=False,
     )
 
 

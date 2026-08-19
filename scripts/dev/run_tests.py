@@ -485,22 +485,16 @@ def run_platform_ci_group(
 def verify_linux_ci_evidence(
     evidence_dir: Path,
     result_path: Path,
-    *,
-    require_coverage: bool = True,
 ) -> int:
     """Fail closed unless every Linux group and coverage file is present."""
     evidence_root = evidence_dir.expanduser().resolve()
     expected_results = {f"{command}.json" for command in LINUX_CI_COMMANDS}
     actual_results = {path.name for path in evidence_root.glob("linux-*.json")}
-    expected_coverage = (
-        {
-            f".coverage.{command}"
-            for command in LINUX_CI_COMMANDS
-            if command not in LINUX_CI_UNCOVERED_COMMANDS
-        }
-        if require_coverage
-        else set()
-    )
+    expected_coverage = {
+        f".coverage.{command}"
+        for command in LINUX_CI_COMMANDS
+        if command not in LINUX_CI_UNCOVERED_COMMANDS
+    }
     actual_coverage = {path.name for path in evidence_root.glob(".coverage.linux-*")}
     missing_coverage = expected_coverage - actual_coverage
     unknown_coverage = {
