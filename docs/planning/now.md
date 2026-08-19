@@ -124,6 +124,14 @@ family仍使用fresh Python／Qt／Xvfb，family內每個dialog仍close、`delet
 完整16張capture由477.814秒降至215.94秒，獨立`--validate-only`與manifest／hash inventory通過；外層
 冗餘`xvfb-run`已移除，staging／atomic publish／source identity契約不變。
 
+Checkpoint（`2026-08-20`，complete regression fixed phases）：原本單一序列`run_tests.py all`已改為
+固定兩階段執行canonical八個Linux CI groups；第一階段五個unit groups完成後，第二階段才執行三個
+integration／regression groups，每階段最多兩個worker。各group使用獨立coverage file與證據路徑，pytest
+暫存仍位於Linux原生`/dev/shm`以保留mtime、symlink、permission與logger語意；沒有建立通用scheduler或
+改變group argv／OutcomePolicy。Exact commit `4aeca591`實跑11,290項，11,282 passed、8個既有允許skip、
+0 failed／error／xfail／xpass／deselected，八份attestation、八份log與八份coverage均存在；總時間
+1,327.47秒（22分07秒），相較舊complete-regression 1,527.20秒縮短約3分20秒。
+
 ## Focused validation 與 stop condition
 
 - Release：version single-source test、已修改 ChatPanel／walkthrough suites、Ruff check／format check、
