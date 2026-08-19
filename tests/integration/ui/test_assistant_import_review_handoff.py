@@ -117,7 +117,7 @@ def test_assistant_exact_import_review_cancel_leaves_product_unchanged(
         assert terminals == [
             AssistantTurnTerminal(
                 correlation=correlation,
-                outcome="completed",
+                outcome="cancelled",
             )
         ]
         assert completions == []

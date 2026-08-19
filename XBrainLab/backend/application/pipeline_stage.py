@@ -62,8 +62,8 @@ _PIPELINE_STAGE_CONTRACTS: dict[PipelineStage, PipelineStageContract] = {
     ),
     PipelineStage.DATA_LOADED: PipelineStageContract(
         prompt_label="Data Loaded",
-        status_label="Ready for preprocessing",
-        next_command=CommandName.PREPROCESS.value,
+        status_label="EEG data loaded · Ready for preprocessing or epoching",
+        next_command=None,
     ),
     PipelineStage.PREPROCESSED: PipelineStageContract(
         prompt_label="Preprocessed",
@@ -174,18 +174,20 @@ def derive_pipeline_stage(
     has_epoch_data: bool = False,
     has_datasets: bool = False,
     has_saved_split: bool = False,
+    has_model: bool = False,
+    has_training_option: bool = False,
     has_trainer: bool = False,
     is_training: bool = False,
     finished_run_count: int = 0,
 ) -> PipelineStage:
     """Derive the highest workflow stage from backend read-model facts."""
-    # Trainer construction and saved split intent are not completed-stage evidence.
-    del has_trainer, has_saved_split
+    # Trainer construction and eager dataset materialization are not setup evidence.
+    del has_trainer, has_datasets
     if is_training:
         return PipelineStage.TRAINING
     if finished_run_count > 0:
         return PipelineStage.TRAINED
-    if has_datasets:
+    if has_epoch_data and has_saved_split and has_model and has_training_option:
         return PipelineStage.DATASET_READY
     if has_epoch_data:
         return PipelineStage.EPOCH_READY
@@ -207,6 +209,8 @@ def pipeline_stage_from_snapshots(
         has_epoch_data=bool(active_dataset.has_epoch_data),
         has_datasets=bool(active_dataset.has_datasets),
         has_saved_split=bool(active_dataset.has_saved_split),
+        has_model=bool(active_training.has_model),
+        has_training_option=bool(active_training.has_training_option),
         has_trainer=bool(active_training.has_trainer),
         is_training=bool(active_training.is_running),
         finished_run_count=max(0, int(active_training.finished_run_count)),
@@ -246,13 +250,17 @@ def _legacy_study_pipeline_stage(study: Any) -> PipelineStage:
     """Adapt Study-shaped compatibility doubles to the backend stage contract."""
     trainer = getattr(study, "trainer", None)
     is_running = getattr(trainer, "is_running", None)
+    datasets = getattr(study, "datasets", None)
     return derive_pipeline_stage(
         has_raw_data=bool(getattr(study, "loaded_data_list", None)),
         has_preprocessed_data=bool(
             getattr(study, "preprocessed_data_list", None),
         ),
         has_epoch_data=getattr(study, "epoch_data", None) is not None,
-        has_datasets=bool(getattr(study, "datasets", None)),
+        has_datasets=bool(datasets),
+        has_saved_split=bool(datasets),
+        has_model=getattr(study, "model_holder", None) is not None,
+        has_training_option=getattr(study, "training_option", None) is not None,
         has_trainer=trainer is not None,
         is_training=bool(is_running()) if callable(is_running) else False,
         finished_run_count=_legacy_finished_run_count(trainer),

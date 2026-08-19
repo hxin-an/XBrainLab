@@ -100,25 +100,90 @@ def test_summary_translates_backend_precondition_to_product_language() -> None:
     summary = summarize_tool_result("load_data", False, result)
 
     assert summary == (
-        "Import data is not available yet: the workflow requires a file or "
-        "folder path is required."
+        "Data import can't run yet.\n\n"
+        "**Required first:** The workflow requires a file or folder path."
     )
     assert "ApplicationService" not in summary
     assert "paths list" not in summary
 
 
-def test_training_precondition_uses_a_grammatical_product_subject() -> None:
+def test_training_precondition_shows_more_setup_and_the_first_requirement() -> None:
     result = ToolCommandResult.failure(
         "start_training",
-        "Load raw data before training.",
+        (
+            "Load raw data before training.; Save a valid data splitting "
+            "specification before training."
+        ),
         command_name="train",
+        capability={
+            "reasons": [
+                "Load raw data before training.",
+                "Save a valid data splitting specification before training.",
+            ]
+        },
         error_type="precondition",
     )
 
     summary = summarize_tool_result("start_training", False, result)
 
-    assert summary == ("Training is not available yet: Load raw data before training.")
-    assert "Start training is" not in summary
+    assert summary == (
+        "Training can't start yet.\n\n**Required first:** Import EEG data."
+    )
+    assert "data splitting specification" not in summary
+
+
+def test_training_precondition_keeps_only_the_next_backend_requirement() -> None:
+    result = ToolCommandResult.failure(
+        "start_training",
+        (
+            "Select a model before training.; Configure training options before "
+            "training."
+        ),
+        command_name="train",
+        capability={
+            "reasons": [
+                "Select a model before training.",
+                "Configure training options before training.",
+            ]
+        },
+        error_type="precondition",
+    )
+
+    summary = summarize_tool_result("start_training", False, result)
+
+    assert summary == (
+        "Training can't start yet.\n\n**Required first:** Select a model."
+    )
+    assert "Configure training options" not in summary
+
+
+def test_direct_preprocess_precondition_uses_a_two_part_product_message() -> None:
+    result = ToolCommandResult.failure(
+        "apply_bandpass_filter",
+        "Load raw data before preprocessing.",
+        command_name="preprocess",
+        error_type="precondition",
+    )
+
+    assert summarize_tool_result("apply_bandpass_filter", False, result) == (
+        "Band-pass filtering can't run yet.\n\n"
+        "**Required first:** Load raw data before preprocessing."
+    )
+
+
+def test_training_precondition_preserves_already_running_truth() -> None:
+    result = ToolCommandResult.failure(
+        "start_training",
+        "Training is already running.",
+        command_name="train",
+        capability={"reasons": ["Training is already running."]},
+        error_type="precondition",
+    )
+
+    assert (
+        summarize_tool_result("start_training", False, result)
+        == "Training is already running."
+    )
 
 
 def test_summary_uses_product_language_for_interpretation_decisions() -> None:

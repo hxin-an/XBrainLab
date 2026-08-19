@@ -22,6 +22,7 @@ from scripts.dev.capture_visualization_render_walkthrough import (
     _claim_boundary_for_runtime,
     _command_payload,
     _compose_native_framebuffer,
+    _compute_saliency_for_capture,
     _content_addressed_screenshot_path,
     _control_label_pair_gaps,
     _explanation_context_from_panel,
@@ -44,6 +45,56 @@ from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
 )
 from XBrainLab.backend.application import SaliencyCommand, TrainCommand
 from XBrainLab.backend.application.results import ErrorType
+from XBrainLab.ui.interaction_outcome import InteractionOutcome
+
+
+def test_capture_saliency_uses_explicit_panel_action_and_waits_for_terminal(
+    qapp,
+) -> None:
+    button = QWidget()
+    button.setProperty("operationPhase", "idle")
+
+    class Panel:
+        compute_calls = 0
+        compute_saliency_btn = button
+
+        def compute_saliency(self):
+            self.compute_calls += 1
+            QTimer.singleShot(
+                10,
+                lambda: button.setProperty("operationPhase", "completed"),
+            )
+            return InteractionOutcome.accepted("Saliency computation started.")
+
+    class State:
+        @staticmethod
+        def to_dict():
+            return {
+                "visualization": {
+                    "saliency_available": (
+                        button.property("operationPhase") == "completed"
+                    )
+                }
+            }
+
+    panel = Panel()
+    service = SimpleNamespace(get_state=lambda: State())
+
+    evidence = _compute_saliency_for_capture(
+        qapp,
+        panel,
+        service,
+        timeout_seconds=1,
+    )
+
+    assert panel.compute_calls == 1
+    assert evidence == {
+        "ok": True,
+        "action_status": "accepted",
+        "action_message": "Saliency computation started.",
+        "operation_phase": "completed",
+        "saliency_available": True,
+    }
 
 
 def test_explanation_context_comes_from_information_control(qapp) -> None:
@@ -499,6 +550,13 @@ def _base_payload():
                 ],
             },
         },
+        "saliency_compute": {
+            "ok": True,
+            "action_status": "accepted",
+            "action_message": "Saliency computation started.",
+            "operation_phase": "completed",
+            "saliency_available": True,
+        },
         "three_d_runtime": {
             "qt_platform": "offscreen",
             "configured_qt_platform": "offscreen",
@@ -767,6 +825,21 @@ def test_validate_visualization_payload_accepts_rendered_tabs(tmp_path):
 
     assert ok is True, reason
     assert reason == ""
+
+
+def test_validate_visualization_payload_requires_explicit_compute_terminal(tmp_path):
+    payload = _payload_with_screenshots(tmp_path)
+    payload["saliency_compute"] = {
+        "ok": False,
+        "action_status": "accepted",
+        "operation_phase": "pending",
+        "saliency_available": False,
+    }
+
+    ok, reason = validate_visualization_render_payload(payload)
+
+    assert ok is False
+    assert reason == "The visible Compute Saliency action did not complete."
 
 
 def test_validate_visualization_payload_requires_exact_source_identity(tmp_path):

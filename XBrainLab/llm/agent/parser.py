@@ -6,20 +6,15 @@ import json
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, TypeAlias, cast
+from typing import Any, TypeAlias
 
+from XBrainLab.backend.application.pipeline_stage import PipelineStage
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.tools.result_contract import (
     safe_unexpected_failure,
 )
 
-from .decision_contract import (
-    MODEL_RESPONSE_BRANCH_FIELDS,
-    MODEL_RESPONSE_DECISIONS,
-    MODEL_RESPONSE_TOOL_NAME,
-    ModelDecision,
-    ModelResponseDecision,
-)
+from .decision_contract import MODEL_RESPONSE_TOOL_NAME, ModelDecision
 
 ToolCommand: TypeAlias = tuple[str, dict[str, Any]]
 
@@ -55,7 +50,8 @@ _TOOL_MARKER = re.compile(
     r'["\']?(?:decision|tool_name|tool_call|tool_calls|command)'
     r'["\']?\s*:',
 )
-_STRICT_TOOL_FIELDS = frozenset({"tool_name", "parameters"})
+_STRICT_TOOL_FIELDS = frozenset({"workflow_stage", "tool_name", "parameters"})
+_WORKFLOW_STAGES = frozenset(stage.value for stage in PipelineStage) | {"unavailable"}
 
 
 class ToolEnvelopeStatus(str, Enum):
@@ -73,6 +69,7 @@ class ToolEnvelopeParseResult:
     status: ToolEnvelopeStatus
     commands: tuple[ToolCommand, ...] = ()
     error: str = ""
+    workflow_stage: str | None = None
     decision: ModelDecision | None = None
     intent: str = ""
     missing_inputs: tuple[str, ...] = ()
@@ -82,14 +79,14 @@ class ToolEnvelopeParseResult:
     def no_tool(
         cls,
         *,
-        decision: ModelResponseDecision | None = None,
+        workflow_stage: str | None = None,
         intent: str = "",
         missing_inputs: tuple[str, ...] = (),
         message: str = "",
     ) -> ToolEnvelopeParseResult:
         return cls(
             ToolEnvelopeStatus.NO_TOOL,
-            decision=decision,
+            workflow_stage=workflow_stage,
             intent=intent,
             missing_inputs=missing_inputs,
             message=message,
@@ -100,11 +97,13 @@ class ToolEnvelopeParseResult:
         cls,
         command: ToolCommand,
         *,
+        workflow_stage: str,
         intent: str = "",
     ) -> ToolEnvelopeParseResult:
         return cls(
             ToolEnvelopeStatus.VALID,
             (command,),
+            workflow_stage=workflow_stage,
             decision="tool",
             intent=intent,
         )
@@ -143,9 +142,9 @@ class CommandParser:
         """Classify a complete model response without recovering malformed calls.
 
         A product action is exactly one top-level JSON object with
-        ``tool_name`` and ``parameters``. Wrappers, prose, code fences, aliases,
-        arrays, duplicate keys, partial JSON and multiple calls are contract
-        failures and never reach execution.
+        ``workflow_stage``, ``tool_name`` and ``parameters``. Wrappers, prose,
+        code fences, aliases, arrays, duplicate keys, partial JSON and multiple
+        calls are contract failures and never reach execution.
         """
 
         stripped = text.strip()
@@ -190,11 +189,20 @@ class CommandParser:
         keys = frozenset(decoded)
         if keys != _STRICT_TOOL_FIELDS:
             return ToolEnvelopeParseResult.format_error(
-                "An assistant action must be exactly tool_name plus parameters.",
+                "An assistant action must be exactly workflow_stage, tool_name, "
+                "and parameters.",
             )
 
+        workflow_stage = decoded["workflow_stage"]
         tool_name = decoded["tool_name"]
         parameters = decoded["parameters"]
+        if (
+            not isinstance(workflow_stage, str)
+            or workflow_stage not in _WORKFLOW_STAGES
+        ):
+            return ToolEnvelopeParseResult.format_error(
+                "workflow_stage must be an exact backend stage value.",
+            )
         if not isinstance(tool_name, str) or not tool_name.strip():
             return ToolEnvelopeParseResult.format_error(
                 "tool_name must be a non-empty string.",
@@ -208,28 +216,26 @@ class CommandParser:
                 "parameters must be a JSON object.",
             )
         if tool_name.strip() == MODEL_RESPONSE_TOOL_NAME:
-            return CommandParser._parse_model_response(parameters)
+            return CommandParser._parse_model_response(
+                parameters,
+                workflow_stage=workflow_stage,
+            )
 
-        return ToolEnvelopeParseResult.valid((tool_name, parameters))
+        return ToolEnvelopeParseResult.valid(
+            (tool_name, parameters),
+            workflow_stage=workflow_stage,
+        )
 
     @staticmethod
     def _parse_model_response(
         parameters: dict[str, Any],
+        *,
+        workflow_stage: str,
     ) -> ToolEnvelopeParseResult:
         """Validate the reserved no-execution response envelope."""
-        decision = parameters.get("decision")
-        if not isinstance(decision, str) or decision not in MODEL_RESPONSE_DECISIONS:
+        if frozenset(parameters) != {"message"}:
             return ToolEnvelopeParseResult.format_error(
-                "respond_to_user decision must be lowercase blocked, "
-                "missing_input, or answer.",
-            )
-        response_decision = cast(ModelResponseDecision, decision)
-        expected_fields = MODEL_RESPONSE_BRANCH_FIELDS[response_decision]
-        if frozenset(parameters) != frozenset(expected_fields):
-            fields = ", ".join(sorted(expected_fields))
-            return ToolEnvelopeParseResult.format_error(
-                f"respond_to_user {response_decision} parameters must contain "
-                f"exactly {fields}.",
+                "respond_to_user parameters must contain exactly message.",
             )
 
         message = parameters["message"]
@@ -242,29 +248,9 @@ class CommandParser:
                 "A non-tool decision requires a user-facing message.",
             )
 
-        normalized_missing: tuple[str, ...] = ()
-        if response_decision == "missing_input":
-            missing_inputs = parameters["missing_inputs"]
-            if not isinstance(missing_inputs, list) or any(
-                not isinstance(item, str) or not item.strip() for item in missing_inputs
-            ):
-                return ToolEnvelopeParseResult.format_error(
-                    "missing_inputs must be an array of non-empty strings.",
-                )
-            normalized_missing = tuple(item.strip() for item in missing_inputs)
-            if not normalized_missing:
-                return ToolEnvelopeParseResult.format_error(
-                    "A missing_input decision must name at least one missing input.",
-                )
-            if len(set(normalized_missing)) != len(normalized_missing):
-                return ToolEnvelopeParseResult.format_error(
-                    "missing_inputs must not contain duplicates.",
-                )
-
         return ToolEnvelopeParseResult.no_tool(
-            decision=response_decision,
+            workflow_stage=workflow_stage,
             intent="no_tool",
-            missing_inputs=normalized_missing,
             message=message.strip(),
         )
 

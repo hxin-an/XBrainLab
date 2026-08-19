@@ -86,9 +86,9 @@ WIZARD_STEP_TEXT = (
     "5. Review and Import",
 )
 WIZARD_COMPACT_STEP_TEXT = (
-    "1. EEG Data",
+    "1. EEG",
     "2. Labels",
-    "3. Metadata",
+    "3. Details",
     "4. Match",
     "5. Review",
 )

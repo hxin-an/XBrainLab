@@ -1,107 +1,95 @@
 # XBrainLab Now
 
-最後更新：`2026-08-17`
+最後更新：`2026-08-20`
 
 ## 目前焦點
 
-**建立 Assistant Stable v2 的 durable target authority，之後在暫時 integration branch 以小 PR
-完成 replacement、atomic cutover、deletion 與 exact-SHA candidate；在完整候選前不要求使用者手測，
-未取得同一 source 的手測通過不得合併 main。**
+將使用者已在 `fix/assistant-direct-parameter-provenance-v1` 手測通過的 Local Assistant 初版封版為
+`v0.7.0`，經同一 exact source 的 PR、CI 與 handoff evidence 合併到 `main`。封版期間不再改產品行為；
+完成 release 後，才從乾淨 `main` 建立唯一的 cleanup branch，連續完成過時 Assistant／MCP surface
+移除與驗證加速，直到下一個完整候選可交使用者手測才停。
 
-目前 phase：`CI bootstrap`
-
-目前 branch：`ci/assistant-stable-v2-integration-trigger`
-
-下一步：將 CI bootstrap PR 推向 main，要求同一 exact SHA 的所有 applicable GitHub checks
-`completed/success`；合入後才從 exact main 建立 integration branch。
-
-已完成 checkpoint：target authority 已由 PR #34 以 exact merge commit
-`7518c7a60ab7e5355b2e5e1fbc6412ba8edeab2b` 合入 main；該 PR 只有 docs/guidance，沒有產品行為。
+目前 phase：`Active — v0.7.0 release closure`
 
 ## 問題與證據
 
-- Current product仍發布21個model-facing actions；該集合是PR #30從runtime inventory投影出的current
-  implementation，不是使用者逐項核准的target。
-- 舊target文件仍同時描述Host intent narrowing、bounded continuation、大型state snapshot與多分支
-  response contract，和已核准的一回合一動作／thin Host設計衝突。
-- Current `PipelineStage.DATASET_READY`只以generated datasets推導，尚未表達split、model、training
-  settings三者都完成的target語意。
-- Current debug path仍要求local runtime READY，且在terminal前consume下一個call；因此不能作為
-  無模型、逐步可見的frontend walkthrough。
-- Current UI handoff已有Import、Epoch、Split、Training、Montage與panel correlation；Channel Selection
-  仍缺typed terminal。這些是bounded seam，不需要新增dialog或workflow owner。
+- 目前 task branch 比 `main` 包含完整 Assistant integration 與後續真人手測修復，但最後一批 ChatPanel
+  幾何變更尚未 commit；使用者已於 `2026-08-20` 明確表示此 exact working source 手測通過並同意合併。
+- Remote PR #40 仍以舊 integration branch 為 base，且 remote head 尚未包含最後手測 source；不能直接把
+  舊 checks 外推到目前 source。
+- 版本與 current truth 仍停在 `0.6.0` Desktop GUI baseline，尚未記錄 bounded Local Assistant baseline。
+- Root `settings.json` 是使用者本機 runtime 設定，已修改但不屬於 release tree；全程不得 stage、commit、
+  revert、覆寫或隱藏。
 
 ## Observable outcome
 
-- [Agent target intent ledger](../target/agent.md#target-intent-ledger)是唯一approved target surface，
-  current／target不再混用。
-- Backend既有stage、publication與capability policy是唯一readiness truth；Host不再自行縮限intent、
-  substitute command或自動continuation。
-- Granite只輸出strict三欄envelope；一個turn最多一個tool或一個response。
-- 七個GUI completion tools只開啟既有surface；五個preprocess tools直接走ApplicationService；四個
-  lifecycle tools沿用既有confirmation；navigation只由`switch_panel`負責。
-- Normal UI layout與dialogs維持穩定；只加入已核准的debug-only banner、progress與Enter gating。
-- 最終authoritative owner、workflow state machine與receipt數量不增加，production LOC淨減少。
-- 只有完整17-tool、三份no-model profile、真Granite、source-diverse gate與CI在同一SHA閉合後，才
-  交付一次完整手測。
+1. 將已手測的產品 bytes 與 release metadata commit 成單一 exact branch head；沒有額外 UI／Assistant 行為
+   變更。
+2. `pyproject.toml`、runtime fallback、changelog、README、current／architecture truth 一致指向 `0.7.0`，
+   並只宣稱 bounded local Assistant baseline。
+3. PR #40 精確改以 `main` 為 base；同一 head 的 applicable non-skipped checks 全部
+   `completed/success`，canonical handoff dossier 對同一 clean/explained source 通過。
+4. 使用 merge commit 合入 `main`；main post-merge checks 通過後建立 annotated tag 與 GitHub Release
+   `v0.7.0`。
+5. 從 tagged `main` 建立唯一 cleanup branch。該 branch 以短 coherent commits 完成清理與加速，最終一次
+   產生完整候選與手測指令；中途 checkpoint 不要求使用者反覆手測，也不合併到 `main`。
 
-## Scope、ordered repair 與 checkpoint
+## Scope／non-goals
 
-1. **已完成 — Target authority PR → main**：收斂target、decisions、current/target wording與staged
-   validation；PR #34 已合入 exact main。
-2. **PR candidate — CI bootstrap PR → main**：讓base=`integration/assistant-stable-v2`的product/docs
-   PR執行既有GitHub Actions；只改兩個既有 workflow 的 exact PR base filter 與直接 regression，
-   不建立較弱的替代CI或新 workflow。Local focused regression、guidance audit與MkDocs strict已通過，
-   等待同一SHA的remote checks。
-3. 從exact main建立`integration/assistant-stable-v2`；該branch不是產品基線或release source。
-4. Characterize current UI／handoff／debug／PhysioNet path，建立no-generation diagnostic transport。
-5. 校正backend stage與action metadata，先讓prompt、RAG、verifier、eval、showcase從單一projection
-   取得catalog。
-6. 收斂strict envelope、repair budget、minimal state card與one-message context。
-7. 建立target adapters與GUI routes，但在cutover前不發布第二個model catalog。
-8. Atomic cutover到approved target projection，同時停止Host narrowing／continuation call sites。
-9. 按analysis、dataset protocol／recipe、training wrappers與Host policy分片物理刪除obsolete code。
-10. 執行三份no-model profiles與frozen Granite suite；未達gate時只調prompt／schema／approved
-    examples，不增加Host heuristic或silent fallback。
-11. 同步最新main、完成handoff dossier並凍結exact candidate SHA；只在此時交付使用者手測。
-12. 手測通過且source未變後，以integration→main merge commit合併；之後刪branch並移除暫時CI
-    trigger。
+- Release slice 只包含已手測產品 source、版本與 current truth；不新增功能、不調整 UI、不改 model、tool
+  surface、dataset、training 或 scientific behavior。
+- `v0.7.0` 不宣稱 signed installer、安全零容忍、任意 dataset 支援、科學模型品質、完整 thesis evidence，
+  或 MCP 產品能力。固定 Granite 2B 的語意限制仍是明示邊界。
+- Cleanup branch 才處理已核准的完整 MCP retirement、無 caller 的舊 Assistant scripts/tests，以及 local
+  handoff 重複工作。不得藉清理改變既有 GUI workflow 或建立第二套 owner／state／validation control plane。
+- Remote CI 約十分鐘的跨平台基礎不因 local handoff 過慢而移除；Windows/macOS 與有意義的 real-data、
+  lifecycle、安全 gates 保留。
 
-每個implementation slice從integration開短branch並PR回integration；CI全綠後squash為一個coherent
-commit。Final rollup可以聚合這些已分片審查的commits，但不得加入新的未審實作。
+## 施工順序
 
-## Scope ceiling 與 UI confirmation
+### A. v0.7.0 release closure
 
-已取得的UI實作確認只涵蓋：
+1. 固定本頁與 release truth，確認產品 diff 只包含使用者已測內容。
+2. 跑版本契約、ChatPanel focused regression、Ruff／format、MkDocs；commit 時明確排除 `settings.json`。
+3. Push exact head，將 PR #40 retarget 到 `main`，記錄 `2026-08-20` manual acceptance、範圍與 exact SHA。
+4. 在 clean/explained exact head 跑 canonical handoff workflow並驗證 dossier；同時等待 PR checks，任一
+   missing／pending／stale／cancelled／failed 都 fail closed。
+5. 以 merge commit 合併，確認 `main` post-merge checks，再建立／push `v0.7.0` tag與GitHub Release。
 
-- 既有Assistant經approved GUI tools開啟既有dialog／panel。
-- Debug launch的slim banner、step progress、composer提示與pending期間Enter disabled。
-- `switch_panel`顯示具體destination，並等待materialized terminal。
+Checkpoint（`2026-08-20`）：exact `95949fc4` 的212項focused tests、Ruff、format與MkDocs已通過，
+PR #40也已retarget到`main`；fresh CI隨後以三個直接相關的stale／platform oracle fail closed。Linux
+unit UI仍要求已核准刪除的stage-specific首頁copy；Linux human-like capture的quality review也仍把同一
+stage-specific copy matrix當必要契約，儘管chat geometry、runtime、signal、interaction等子項全PASS；
+macOS則因QTextBrowser整數寬14px減浮點glyph寬11.625px為2.375，讓直接`<=2.0`的subpixel assertion
+誤判。這三項只校正tests／validation script到已批准fixed onboarding與integer-pixel contract，不修改
+`XBrainLab/ui/`或其他產品source。舊SHA canonical handoff在complete-regression中被主agent終止，因任何
+修正都會使該dossier失效；新commit必須從頭重建。
 
-不包含normal product layout、theme、dialog redesign、新generic result card或其他workflow copy變更。
-若implementation需要超出以上範圍，停止並重新取得使用者明確確認。
+### B. 單一 cleanup branch
 
-Non-goals：不修改或stage root `settings.json`；不重建ApplicationService；不新增authoritative owner、
-state machine、receipt、runtime fallback或第二套compatibility path；不在candidate前啟動thesis-grade
-benchmark。
+1. 從 tagged `main` 建立一條短期 cleanup branch；先量測 current inventory與 baseline，不碰產品 UI。
+2. 以 caller inventory 為刪除 gate，先移除無外部 caller 的 legacy benchmark、pipeline-chain capture、
+   orphan debug JSON／lazy-import script與其專屬測試；每個 family 一個可回退 commit。
+3. 完整退役 MCP adapter/package、CLI/config/capture、tests與repo-local skill；保留 ApplicationService command
+   spine和必要 settings migration，只留不具執行面的歷史 tombstone。這是已取得使用者明確決策的 public
+   surface removal，不恢復任何替代 compatibility path。
+4. 加速 canonical handoff：先用一次 global immutable source barrier取代每 gate 前後全樹 rehash；再讓
+   handoff dashboard消費前序 manifest evidence而不重跑相同測試；最後把Data Import capture按五個
+   scenario family批次隔離。每步保留fail-closed identity／artifact contract並以實測前後時間驗證。
+5. 只有前述穩定後才考慮固定 lane schedule；不建立通用 scheduler。Qt、GPU、RAG與public fixture的共享
+   cache／process boundary按既有owner序列化。
+6. 清理完成後跑同一 exact source 的完整 handoff、remote CI、artifact抽查與手測 walkthrough；停在
+   `handoff-ready` 候選交使用者真人測試。使用者再次明確通過前不合併cleanup PR。
 
-## Focused validation
+## Focused validation 與 stop condition
 
-- Target ledger完整鎖定tool、stage、schema、execution kind、owner、confirmation、terminal與retired
-  disposition；其他canonical docs只引用，不複製清單。
-- Current architecture在runtime切換前仍誠實稱為current21 projection；不得提前宣稱Stable v2完成。
-- Docs link/source audit、guidance audit及MkDocs strict通過。
-- 每個code slice加入直接對應的unit／integration evidence；UI handoff驗accepted→completed／cancelled／
-  blocked／failed與stale／duplicate。
-- Candidate使用同一clean/explained exact SHA完成no-model、Granite、data、UI artifact、static quality與
-  GitHub checks；manual acceptance不由automation取代。
-
-## Stop conditions
-
-- Target、current、active plan或source對tool membership／stage／owner互相衝突。
-- Prompt、RAG、eval、showcase或walkthrough另存第二份可漂移catalog。
-- GUI tool在surface opened時過早回success，或debug在terminal前前進。
-- Slice新增owner／state machine／receipt、pure refactor淨增超過100 production LOC，或final
-  production LOC非淨減少而未取得complexity exception。
-- Granite未達candidate safety／accuracy gate、必要CI有missing／pending／skipped／failed，或
-  source在manual acceptance後改變。
+- Release：version single-source test、已修改 ChatPanel／walkthrough suites、Ruff check／format check、
+  MkDocs strict、canonical handoff dossier、PR與main exact-SHA checks。
+- Cleanup deletion：`rg` caller inventory、registry／architecture guards、對應 focused tests與完整 regression；
+  發現真實production caller即保留該surface並停止該刪除。
+- Handoff acceleration：不得減少assertion、允許新的skip、放寬OutcomePolicy或沿用舊source evidence。
+  Recorder source identity、dashboard evidence與capture manifest任一無法在final重新驗證即回退該slice。
+- 目標以相同 warm environment 將local handoff由約74分鐘降低到不超過40分鐘；若未達標，保留已證明
+  等價且有淨收益的slice，重新profile，不以刪安全gate湊數。
+- cleanup product/UI source若意外改變、owner數增加、MCP retirement觸及active product caller，或需要
+  新public contract決策，立即停止擴張並回報。最終source改動後，先前手測證據不外推。

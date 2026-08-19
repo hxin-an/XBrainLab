@@ -1026,7 +1026,7 @@ class TrainingSidebar(QWidget):
             command,
             blocked_title="Model Selection Blocked",
             failed_title="Model Selection Failed",
-            success_status=f"Model selected: {command.model_name}",
+            success_status=f"Model selected: {command.model_name}.",
             expected_publication_generation=(
                 review_context.publication_generation
                 if review_context is not None
@@ -1662,7 +1662,7 @@ class TrainingSidebar(QWidget):
             )
             return self._interaction_failure_outcome(result)
         self._show_status(success_status)
-        return InteractionOutcome.completed(result.message)
+        return InteractionOutcome.completed(success_status)
 
     @staticmethod
     def _interaction_failure_outcome(result) -> InteractionOutcome:

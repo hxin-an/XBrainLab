@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "xbrainlab"
-version = "0.6.0"
+version = "0.7.0"
 description = "XBrainLab: EEG Analysis Platform with AI Agent"
 authors = ["XBrainLab Team"]
 readme = "README.md"
@@ -248,7 +248,7 @@ test-cov = "pytest --cov=XBrainLab --cov-report=html --cov-report=term-missing"
 lint = "ruff check ."
 lint-fix = "ruff check . --fix"
 format = "ruff format ."
-typecheck-fast = "basedpyright"
+typecheck-fast = "python scripts/dev/run_basedpyright_regression.py"
 mypy = "mypy XBrainLab/"
 mypy-daemon = "dmypy run -- --config-file pyproject.toml XBrainLab/"
 check-architecture = "python tests/architecture_compliance.py"
@@ -265,7 +265,7 @@ bump = "cz bump"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.6.0"
+version = "0.7.0"
 tag_format = "v$version"
 version_files = [
     "pyproject.toml:version",

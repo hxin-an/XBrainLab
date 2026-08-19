@@ -1,12 +1,12 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-08-15`
+最後更新：`2026-08-20`
 
 ## 一句話
 
-XBrainLab `0.6.0` 是 Windows Desktop GUI/source baseline：使用者可由 Dataset import/review 經
-Preprocess、Epoch、Split/Training、Evaluation 到 Saliency visualization。Assistant 尚未成為正式
-產品能力，下一階段會從 tagged `main` 獨立推進。
+XBrainLab `0.7.0` 是 Desktop GUI／Local Assistant source baseline：使用者可由 Dataset
+import/review 經 Preprocess、Epoch、Split/Training、Evaluation 到 Saliency visualization，也可用固定
+local Granite透過18個核准action進入相同GUI與Command workflow。
 
 ## Current product truth
 
@@ -18,8 +18,8 @@ Preprocess、Epoch、Split/Training、Evaluation 到 Saliency visualization。As
 | Split / Training | Split preview、training settings、fold/repeat plans與training history存在。每次 Start Training有獨立 round identity。 | Recommendation不是AutoML或最佳參數保證。 |
 | Evaluation | Individual fold/run支援Train、Validation、Test；cross-fold Summary只pool同一training round的disjoint Test masks。 | `All Folds`的Split只有Test是刻意的統計邊界。 |
 | Saliency | 明確Compute Saliency、累加method recompute、Map/Spectrogram/Topographic/3D publication存在。 | 不代表attribution具科學有效性，也不保證所有模型梯度相容。 |
-| Assistant | Local Granite、tool admission、confirmation與structured result骨架存在。 | 尚未Assistant-ready；real-model準確率、長session與Windows驗收待下一階段。 |
-| MCP | Code/tests可供明確opt-in compatibility。 | 不屬於active roadmap、release或thesis prerequisite。 |
+| Assistant | 固定Local Granite、strict envelope、18-action stage surface、parameter provenance、capability、confirmation、GUI handoff與model-free walkthrough存在。 | 2B模型不是安全零容忍；deterministic guards不代表語意意圖完全正確，也不外推到任意長session。 |
+| MCP | `v0.7.0` source仍保留opt-in compatibility implementation。 | 不是release能力；下一個cleanup branch會完整退役，不得作active product或thesis prerequisite。 |
 | Packaging | Windows launcher與source啟動方式存在。 | 沒有signed installer。 |
 
 ## Evidence truth
@@ -47,5 +47,6 @@ seed、cache authority或retired worktree。
 
 ## Release boundary
 
-`v0.6.0`只宣稱經使用者手測與CI保護的Windows Desktop GUI/source baseline；不宣稱signed
-installer、Assistant-ready、scientific quality、任意dataset全面支援或產品1.0。
+`v0.7.0`只宣稱經使用者workflow手測、strict host guards與CI保護的Desktop GUI／Local Assistant
+source baseline；不宣稱signed installer、安全零容忍、scientific quality、任意dataset全面支援或
+產品1.0。

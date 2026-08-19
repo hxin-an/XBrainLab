@@ -27,7 +27,7 @@ class TestAppConfig:
         )
         commitizen = pyproject["tool"]["commitizen"]
 
-        assert AppConfig.VERSION == "0.6.0"
+        assert AppConfig.VERSION == "0.7.0"
         assert pyproject["tool"]["poetry"]["version"] == AppConfig.VERSION
         assert commitizen["version"] == AppConfig.VERSION
         assert commitizen["changelog_file"] == "CHANGELOG.md"

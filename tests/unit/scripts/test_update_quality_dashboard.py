@@ -1483,7 +1483,7 @@ def test_handoff_report_requires_external_manifest_sections_3_to_6(monkeypatch):
     assert exit_code == 0
     assert build_calls == [
         {
-            "include_slow_checks": True,
+            "include_slow_checks": False,
             "include_handoff_checks": True,
             "resource_calibration_path": calibration_path,
             "calibration_commit": "a" * 40,

@@ -20,7 +20,6 @@ from scripts.dev.update_quality_dashboard import REQUIRED_PUBLIC_IO_TEST_NODES
 ROOT = Path(__file__).resolve().parents[3]
 VALIDATION_DOC = ROOT / "docs" / "validation" / "README.md"
 RUNNER_PATH = ROOT / "scripts" / "dev" / "run_handoff_validation_manifest.py"
-EXACT_GRANITE_MODEL = "ibm-granite/granite-3.3-2b-instruct"
 EXPECTED_HANDOFF_CHECK_IDS = (
     "git-status",
     "git-head",
@@ -38,13 +37,10 @@ EXPECTED_HANDOFF_CHECK_IDS = (
     "complete-regression",
     "command-spine",
     "assistant-security-suite",
+    "assistant-frontend-contract",
     "granite-runtime",
+    "stable-assistant-model-eval",
     "rag-offline",
-    "chatpanel-guided-boundary",
-    "chatpanel-training-readiness",
-    "chatpanel-training-completion",
-    "chatpanel-local-recovery",
-    "chatpanel-local-long-session",
     "human-like-product",
     "ui-reviewer-fixes",
     "dataset-narrow",
@@ -68,12 +64,8 @@ EXPECTED_HANDOFF_CHECK_IDS = (
 )
 LOCAL_RUNTIME_CHECK_IDS = (
     "granite-runtime",
+    "stable-assistant-model-eval",
     "rag-offline",
-    "chatpanel-guided-boundary",
-    "chatpanel-training-readiness",
-    "chatpanel-training-completion",
-    "chatpanel-local-recovery",
-    "chatpanel-local-long-session",
 )
 
 
@@ -155,49 +147,59 @@ def test_complete_regression_uses_the_bounded_fail_closed_full_runner() -> None:
     )
 
 
-def test_exact_granite_recovery_and_long_session_gates_are_sha_scoped() -> None:
-    expected = {
-        "chatpanel-local-recovery": (
-            "scripts/dev/capture_chatpanel_local_recovery_walkthrough.py",
-            "600",
-            720,
-            "ui/chatpanel-local-recovery",
+def test_stable_assistant_frontend_and_model_gates_are_exact() -> None:
+    frontend = HANDOFF_GATE_SPECS["assistant-frontend-contract"]
+    assert frontend.section == "4"
+    assert frontend.argv == (
+        "prlimit",
+        "--core=0",
+        "--",
+        "poetry",
+        "run",
+        "--",
+        "python",
+        "-m",
+        "scripts.dev.run_required_pytest_gate",
+        "--result-json",
+        (f"{EVIDENCE_ROOT_TOKEN}/pytest-attestations/assistant-frontend-contract.json"),
+        "--",
+        "--capture=sys",
+        "tests/unit/scripts/test_agent_walkthrough_profiles.py",
+        (
+            "tests/integration/debug/test_debug_script_execution.py::"
+            "test_contract_failure_profile_advances_only_on_real_terminals"
         ),
-        "chatpanel-local-long-session": (
-            "scripts/dev/capture_chatpanel_exact_granite_long_session.py",
-            "600",
-            720,
-            "ui/chatpanel-local-long-session",
-        ),
-    }
+        "-q",
+    )
+    assert frontend.timeout_seconds == 600
+    assert frontend.outcome == OutcomePolicy.pytest_strict()
+    assert frontend.required_artifact_paths == (
+        "pytest-attestations/assistant-frontend-contract.json",
+    )
+    assert frontend.pytest_attestation_path == (
+        "pytest-attestations/assistant-frontend-contract.json"
+    )
 
-    for check_id, (
-        entrypoint,
-        command_timeout,
-        gate_timeout,
-        artifact_dir,
-    ) in expected.items():
-        spec = HANDOFF_GATE_SPECS[check_id]
-        assert spec.section == "4"
-        assert spec.argv == (
-            "prlimit",
-            "--core=0",
-            "--",
-            "poetry",
-            "run",
-            "--",
-            "python",
-            entrypoint,
-            "--model",
-            EXACT_GRANITE_MODEL,
-            "--timeout-seconds",
-            command_timeout,
-            "--output-dir",
-            f"{EVIDENCE_ROOT_TOKEN}/{artifact_dir}",
-        )
-        assert spec.timeout_seconds == gate_timeout
-        assert spec.required_artifact_paths == (artifact_dir,)
-        assert spec.preserved_input_artifact_paths == ()
+    model_eval = HANDOFF_GATE_SPECS["stable-assistant-model-eval"]
+    assert model_eval.section == "4"
+    assert model_eval.argv == (
+        "prlimit",
+        "--core=0",
+        "--",
+        "poetry",
+        "run",
+        "--",
+        "python",
+        "scripts/dev/run_stable_assistant_model_eval.py",
+        "--device",
+        "cuda",
+        "--strict",
+        "--json-out",
+        f"{EVIDENCE_ROOT_TOKEN}/stable-assistant-model-eval.json",
+    )
+    assert model_eval.timeout_seconds == 1800
+    assert model_eval.required_artifact_paths == ("stable-assistant-model-eval.json",)
+    assert model_eval.preserved_input_artifact_paths == ()
 
 
 def test_resource_calibration_is_generated_then_preserved_for_dashboard() -> None:
@@ -243,14 +245,7 @@ def test_local_runtime_gates_bind_both_redacted_d_drive_cache_paths() -> None:
             ("XBRAINLAB_MODEL_CACHE_DIR", MODEL_CACHE_DIR_TOKEN),
             ("XBRAINLAB_RAG_CACHE_DIR", RAG_CACHE_DIR_TOKEN),
         )
-        if check_id.startswith("chatpanel-"):
-            assert policy.required == (
-                ("QT_QPA_PLATFORM", "offscreen"),
-                ("MNE_DONTWRITE_HOME", "true"),
-                *offline_cache_environment,
-            )
-        else:
-            assert policy.required == offline_cache_environment
+        assert policy.required == offline_cache_environment
         assert policy.as_dict()["XBRAINLAB_MODEL_CACHE_DIR"] == MODEL_CACHE_DIR_TOKEN
         assert policy.as_dict()["XBRAINLAB_RAG_CACHE_DIR"] == RAG_CACHE_DIR_TOKEN
         assert policy.redacted_path_names == (
@@ -296,12 +291,13 @@ def test_gate_registry_tracks_security_and_artifact_policy() -> None:
     assert granite.stdout_artifact_path == "granite-runtime.json"
     assert granite.required_artifact_paths == ("granite-runtime.json",)
 
-    completion = HANDOFF_GATE_SPECS["chatpanel-training-completion"]
-    assert completion.required_artifact_paths == (
-        "ui/chatpanel-training-completion",
-        "runtime/training-completion",
+    frontend = HANDOFF_GATE_SPECS["assistant-frontend-contract"]
+    assert frontend.required_artifact_paths == (
+        "pytest-attestations/assistant-frontend-contract.json",
     )
-    assert any(EVIDENCE_ROOT_TOKEN in part for part in completion.argv)
+    model_eval = HANDOFF_GATE_SPECS["stable-assistant-model-eval"]
+    assert model_eval.required_artifact_paths == ("stable-assistant-model-eval.json",)
+    assert any(EVIDENCE_ROOT_TOKEN in part for part in model_eval.argv)
 
     data_import_validation = HANDOFF_GATE_SPECS["data-import-wizard-validate"]
     assert data_import_validation.required_artifact_paths == (

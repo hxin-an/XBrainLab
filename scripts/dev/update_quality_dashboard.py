@@ -1239,7 +1239,7 @@ def build_checks_for_mode(
             key="basedpyright_type_check",
             label="Basedpyright Type Check",
             category="quality",
-            command=f"{POETRY_RUN} basedpyright",
+            command=(f"{POETRY_PYTHON} scripts/dev/run_basedpyright_regression.py"),
             ui=False,
             validator=lambda code, output: validate_text_command(
                 code,
@@ -1501,7 +1501,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     """Refresh the dashboard unless it is still fresh enough."""
     args = parse_args(sys.argv[1:] if argv is None else argv)
-    include_slow_checks = bool(args.include_slow_checks or args.handoff)
+    include_slow_checks = bool(args.include_slow_checks)
     profile = "handoff" if args.handoff else ("full" if include_slow_checks else "fast")
     git_state = collect_git_state()
     handoff_expected_branch = args.expected_branch or git_state.branch

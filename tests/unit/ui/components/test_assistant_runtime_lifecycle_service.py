@@ -425,6 +425,45 @@ def test_lifecycle_owns_start_snapshot_dispatch_and_shutdown(qtbot) -> None:
     assert lifecycle.initialized is False
 
 
+def test_diagnostic_start_binds_tools_without_loading_a_model(qtbot) -> None:
+    del qtbot
+    controller = _Controller()
+    dispatcher = _Dispatcher()
+
+    def reject_config_load() -> LLMConfig:
+        raise AssertionError("Diagnostic startup must not load model settings.")
+
+    lifecycle = AssistantRuntimeLifecycle(
+        study=object(),
+        controller_factory=lambda _study: controller,
+        dispatcher=dispatcher,
+        config_loader=reject_config_load,
+    )
+
+    assert lifecycle.start_diagnostics() is True
+    assert lifecycle.initialized is True
+    assert lifecycle.controller is controller
+    assert lifecycle.current == AssistantRuntimeSnapshot(
+        phase=AssistantRuntimePhase.READY,
+        initialized=True,
+        backend_mode="diagnostic",
+        selection_detail="Tool diagnostics ready without a generation model.",
+    )
+    assert dispatcher.bound_controller is controller
+    assert dispatcher.initialized is False
+    assert dispatcher.launch_specs == []
+
+    normal_turn = lifecycle.submit("this must not invoke generation")
+    assert normal_turn.status is RuntimeCommandAdmissionStatus.REJECTED
+    assert "scripted diagnostic actions only" in normal_turn.message.lower()
+
+    diagnostic_turn = lifecycle.debug("start_training", {})
+    assert diagnostic_turn.status is RuntimeCommandAdmissionStatus.ACCEPTED
+    controller.turn_finished.emit(_terminal(diagnostic_turn))
+
+    assert lifecycle.close() is True
+
+
 def test_start_fails_and_cleans_controller_without_terminal_signal() -> None:
     controller = _ControllerMissingTerminalSignal()
     lifecycle = AssistantRuntimeLifecycle(

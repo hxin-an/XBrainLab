@@ -40,7 +40,12 @@ from XBrainLab.backend.training_state_contract import (
     TrainingRunIdentity,
 )
 from XBrainLab.backend.utils.observer import Observable
-from XBrainLab.ui.interaction_outcome import InteractionStatus
+from XBrainLab.ui.interaction_outcome import (
+    InteractionCompletionSession,
+    InteractionCompletionStatus,
+    InteractionStatus,
+    bind_interaction_completion,
+)
 
 
 def _widget_factory(parent=None):
@@ -2440,6 +2445,55 @@ def test_scheduled_saliency_result_keeps_visible_compute_state_busy(qtbot):
     assert panel._active_saliency_operation_id == "saliency-operation-1"
     assert panel._active_saliency_generation == 4
     assert panel.compute_saliency_btn.text() == "Computing..."
+
+
+def test_scheduled_saliency_handoff_waits_for_matching_terminal_publication(qtbot):
+    panel, _ctrl = _make_panel(qtbot)
+    panel._saliency_compute_in_progress = True
+    panel._active_saliency_operation_id = "saliency-operation-1"
+    panel._active_saliency_minimum_generation = 3
+    terminal = []
+    session = InteractionCompletionSession(
+        request_id="assistant-compute-1",
+        command_name="saliency",
+        on_terminal=terminal.append,
+    )
+    callbacks = session.prepare_command(
+        context=panel,
+        result_command_name="saliency",
+        on_result=panel._on_lazy_saliency_configured,
+        on_error=None,
+    )
+    callbacks.mark_started(True)
+    scheduled = CommandResult.success_result(
+        command_name="saliency",
+        message="Saliency computation scheduled.",
+        state=ApplicationStateSnapshot.empty(),
+        changed_state=ChangedState(),
+        diagnostics={
+            "action": "schedule",
+            "post_training_saliency_schedule": {"status": {"generation": 3}},
+        },
+    )
+
+    with bind_interaction_completion(session):
+        callbacks.on_result(scheduled)
+
+    assert terminal == []
+
+    result = _application_query_with_saliency_state(
+        _post_training_saliency_status(PostTrainingSaliencyPhase.SUCCEEDED),
+        _complete_coverage(),
+    )
+    assert isinstance(result.state, ApplicationStateSnapshot)
+    publication = ApplicationViewStore(
+        result.state,
+        TrainingReadBoundary.no_trainer(),
+    ).read()
+
+    assert panel._accept_application_publication(publication)
+    assert len(terminal) == 1
+    assert terminal[0].status is InteractionCompletionStatus.COMPLETED
 
 
 def test_terminal_saliency_publication_releases_visible_compute_state(qtbot):

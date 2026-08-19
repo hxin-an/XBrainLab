@@ -230,8 +230,13 @@ def summarize_tool_result(
     if not success:
         reason = (projection.blocked_reason or projection.message or "").strip()
         if result.error_type == "precondition":
+            if tool_name == "start_training":
+                return _training_precondition_summary(
+                    projection.capability,
+                    fallback_reason=reason,
+                )
             subject = tool_availability_label(tool_name)
-            return f"{subject} is not available yet: {clean_reason(reason)}"
+            return _precondition_summary(subject, reason)
         if result.error_type == "confirmation_required":
             return f"{label} needs confirmation in the app before it can continue."
         if result.error_type == "input":
@@ -267,6 +272,58 @@ def summarize_tool_result(
     if structured_summary is not None:
         return structured_summary
     return text
+
+
+def _training_precondition_summary(
+    capability: dict[str, Any] | None,
+    *,
+    fallback_reason: str,
+) -> str:
+    """Show one backend-owned training requirement without hiding later setup."""
+    reasons: list[str] = []
+    if type(capability) is dict:
+        raw_reasons = capability.get("reasons")
+        if type(raw_reasons) is list:
+            reasons = [
+                _safe_feedback_text(item, limit=500)
+                for item in raw_reasons
+                if type(item) is str and item.strip()
+            ]
+    first_reason = reasons[0] if reasons else clean_reason(fallback_reason)
+    normalized = first_reason.strip().casefold()
+    if normalized == "training is already running.":
+        return "Training is already running."
+    if normalized == "load raw data before training.":
+        return _precondition_summary(
+            "Training",
+            "Import EEG data.",
+            action="start",
+        )
+
+    concise_reason = re.sub(
+        r"\s+before training\.$",
+        ".",
+        clean_reason(first_reason),
+        flags=re.IGNORECASE,
+    )
+    return _precondition_summary(
+        "Training",
+        concise_reason,
+        action="start",
+    )
+
+
+def _precondition_summary(
+    subject: str,
+    requirement: str,
+    *,
+    action: str = "run",
+) -> str:
+    """Separate the blocked action from its first backend-owned requirement."""
+    cleaned_requirement = clean_reason(requirement)
+    if cleaned_requirement:
+        cleaned_requirement = cleaned_requirement[0].upper() + cleaned_requirement[1:]
+    return f"{subject} can't {action} yet.\n\n**Required first:** {cleaned_requirement}"
 
 
 def _structured_success_summary(
@@ -344,6 +401,10 @@ def clean_reason(reason: str) -> str:
     for prefix in ("Error:", "Tool execution failed:", "Tool failed:"):
         if cleaned.lower().startswith(prefix.lower()):
             cleaned = cleaned[len(prefix) :].strip()
+    cleaned = cleaned.replace(
+        "ApplicationService requires paths list cannot be empty.",
+        "The workflow requires a file or folder path.",
+    )
     cleaned = cleaned.replace("ApplicationService", "the workflow")
     cleaned = cleaned.replace("legacy facade path", "app confirmation path")
     cleaned = cleaned.replace(

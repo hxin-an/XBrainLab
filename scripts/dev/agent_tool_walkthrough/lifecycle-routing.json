@@ -1,0 +1,26 @@
+{
+  "schema_version": "xbrainlab.assistant_walkthrough.v1",
+  "profile_id": "lifecycle-routing",
+  "title": "Assistant lifecycle and routing",
+  "calls": [
+    {"id":"import","tool":"import_eeg_data","params":{},"instruction":"Import the PhysioNet S008R04 EDF fixture and map T1/T2","expected_outcomes":["completed"]},
+    {"id":"channels","tool":"select_channels","params":{},"instruction":"Choose and apply a valid EEG channel subset","expected_outcomes":["completed"]},
+    {"id":"bandpass","tool":"apply_bandpass_filter","params":{"low_freq":4.0,"high_freq":38.0},"instruction":"Apply the 4-38 Hz band-pass filter","expected_outcomes":["completed"]},
+    {"id":"epochs","tool":"create_epochs","params":{},"instruction":"Create T1/T2 epochs from 0 to 2 seconds","expected_outcomes":["completed"]},
+    {"id":"split","tool":"configure_dataset_split","params":{},"instruction":"Apply an individual trial split","expected_outcomes":["completed"]},
+    {"id":"model","tool":"select_model","params":{},"instruction":"Select EEGNet","expected_outcomes":["completed"]},
+    {"id":"training-settings","tool":"configure_training","params":{},"instruction":"Choose CPU and 20 epochs so Stop can be tested","expected_outcomes":["completed"]},
+    {"id":"start","tool":"start_training","params":{},"instruction":"Approve training and wait until it is visibly running","expected_outcomes":["completed"]},
+    {"id":"stop","tool":"stop_training","params":{},"instruction":"Stop the active run and wait for its terminal state","expected_outcomes":["completed"]},
+    {"id":"clear-history","tool":"clear_training_history","params":{},"instruction":"Approve clearing training history","expected_outcomes":["completed"]},
+    {"id":"reset","tool":"reset_preprocessing","params":{},"instruction":"Approve resetting derived preprocessing state","expected_outcomes":["completed"]},
+    {"id":"dataset","tool":"switch_panel","params":{"panel_name":"dataset"},"instruction":"Open Dataset","expected_outcomes":["completed"]},
+    {"id":"preprocess","tool":"switch_panel","params":{"panel_name":"preprocess"},"instruction":"Open Preprocess","expected_outcomes":["completed"]},
+    {"id":"training","tool":"switch_panel","params":{"panel_name":"training"},"instruction":"Open Training","expected_outcomes":["completed"]},
+    {"id":"evaluation","tool":"switch_panel","params":{"panel_name":"evaluation"},"instruction":"Open Evaluation","expected_outcomes":["completed"]},
+    {"id":"saliency","tool":"switch_panel","params":{"panel_name":"visualization","view_mode":"saliency_map"},"instruction":"Open Saliency Map","expected_outcomes":["completed"]},
+    {"id":"spectrogram","tool":"switch_panel","params":{"panel_name":"visualization","view_mode":"spectrogram"},"instruction":"Open Spectrogram","expected_outcomes":["completed"]},
+    {"id":"topographic","tool":"switch_panel","params":{"panel_name":"visualization","view_mode":"topographic_map"},"instruction":"Open Topographic Map","expected_outcomes":["completed"]},
+    {"id":"three-d","tool":"switch_panel","params":{"panel_name":"visualization","view_mode":"3d_plot"},"instruction":"Open 3D Plot","expected_outcomes":["completed"]}
+  ]
+}

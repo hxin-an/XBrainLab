@@ -353,7 +353,7 @@ class PendingInteractionCoordinator:
             resolution=resolution,
             outcome=AgentInteractionOutcome(
                 status=interaction_status,
-                command_name=request.command_name,
+                command_name=request.tool_name,
                 request_id=request.request_id,
                 decision_fields=request.decision_fields,
                 message=resolution.message,

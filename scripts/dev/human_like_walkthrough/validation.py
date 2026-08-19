@@ -1229,39 +1229,13 @@ def build_assistant_settings_recovery_review(
 def build_assistant_stage_copy_review(
     phases: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Require stage-aware headings plus workflow-grounded status copy."""
+    """Require the stable onboarding copy approved for an empty transcript."""
     rows: list[dict[str, Any]] = []
     for phase in phases:
         if phase.get("phase") != "assistant_empty_state":
             continue
-        workflow_state = phase.get("workflow_state", {})
-        if not isinstance(workflow_state, dict):
-            continue
-        evaluation = workflow_state.get("evaluation", {})
-        training = workflow_state.get("training", {})
-        raw = workflow_state.get("raw", {})
-        expected_heading = None
-        expected_intro = None
-        if isinstance(evaluation, dict) and (
-            int(evaluation.get("finished_runs", 0) or 0) > 0
-            or bool(evaluation.get("metrics_available", False))
-        ):
-            expected_heading = "Explore your results"
-            expected_intro = (
-                "Ask me to explain metrics, review available analyses, or recommend "
-                "what to inspect next."
-            )
-        elif isinstance(training, dict) and bool(training.get("is_running", False)):
-            expected_heading = "Training is running"
-            expected_intro = "Ask for progress or stop the current training run."
-        elif isinstance(raw, dict) and not bool(raw.get("loaded", False)):
-            expected_heading = "Start with your EEG data"
-            expected_intro = (
-                "Ask me to find EEG files, explain supported formats, or begin an "
-                "import."
-            )
-        if expected_heading is None or expected_intro is None:
-            continue
+        expected_heading = "Get started with XBrainLab"
+        expected_intro = "Choose a prompt or ask your own question."
         visible_text = [str(item) for item in phase.get("visible_text", [])]
         rows.append(
             {

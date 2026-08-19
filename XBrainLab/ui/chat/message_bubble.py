@@ -259,6 +259,7 @@ class _MessageContentView(QWidget):
     def __init__(self, text: str, link_handler, parent=None) -> None:
         super().__init__(parent)
         self._link_handler = link_handler
+        self._prose_vertical_margin = 0
         self._blocks: tuple[_MessageContentBlock, ...] = ()
         self.text_views: list[QTextBrowser] = []
         self.code_blocks: list[_CodeBlockView] = []
@@ -282,6 +283,15 @@ class _MessageContentView(QWidget):
         for view in self.text_views:
             view.setStyleSheet(style)
             self._sync_text_view_font(view)
+
+    def set_prose_vertical_margin(self, margin: int) -> None:
+        """Center prose inside its clipping guard without changing its height."""
+        margin = max(int(margin), 0)
+        if margin == self._prose_vertical_margin:
+            return
+        self._prose_vertical_margin = margin
+        for view in (self._compat_text_view, *self.text_views):
+            view.setViewportMargins(0, margin, 0, margin)
 
     def set_content(self, text: str) -> None:
         """Update existing segments when possible to keep streaming stable."""
@@ -429,6 +439,12 @@ class _MessageContentView(QWidget):
             document.setDocumentMargin(0)
             document.setDefaultStyleSheet(MESSAGE_DOCUMENT_STYLE)
         view.setContentsMargins(0, 0, 0, 0)
+        view.setViewportMargins(
+            0,
+            self._prose_vertical_margin,
+            0,
+            self._prose_vertical_margin,
+        )
         view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         return view
 
@@ -459,6 +475,7 @@ class MessageBubble(QWidget):
 
     _MAX_WIDTH_RATIO = 0.84
     _MAX_WIDTH_PX = 720
+    _PLAIN_PROSE_VERTICAL_MARGIN = 3
 
     def __init__(
         self,
@@ -556,6 +573,15 @@ class MessageBubble(QWidget):
         if self.is_user:
             kind = MessagePresentationKind.USER
         self.presentation_kind = kind
+        self.content_view.set_prose_vertical_margin(
+            self._PLAIN_PROSE_VERTICAL_MARGIN
+            if kind
+            in {
+                MessagePresentationKind.USER,
+                MessagePresentationKind.ASSISTANT,
+            }
+            else 0
+        )
 
         semantic = _SEMANTIC_PRESENTATION.get(kind)
         if semantic is None:
@@ -632,7 +658,7 @@ class MessageBubble(QWidget):
             int(container_width * self._MAX_WIDTH_RATIO),
             self._MAX_WIDTH_PX,
         )
-        min_bubble_width = 84 if self.is_user else 96
+        min_bubble_width = 50 if self.is_user else 96
 
         # Margins: 15+15=30 horizontal, 10+10=20 vertical
         layout_h_margins = 30
@@ -651,8 +677,8 @@ class MessageBubble(QWidget):
                 self.kind_label.sizeHint().width() + layout_h_margins,
             )
 
-        # 2. Determine actual width. Keep a modest minimum text column so short
-        # words remain readable without turning tiny messages into large boxes.
+        # 2. Determine actual width. User bubbles follow their content down to
+        # the safety floor; assistant bubbles retain a modest text column.
         actual_width = max(natural_width, min_bubble_width)
         actual_width = min(actual_width, max_bubble_width)
         actual_width = ceil(max(actual_width, 50))

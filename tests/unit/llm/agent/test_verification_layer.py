@@ -4,29 +4,19 @@ from typing import Any, cast
 
 import pytest
 
-from XBrainLab.backend.application.saliency_policy import (
-    MAX_SALIENCY_NT_SAMPLES,
-)
-from XBrainLab.llm.agent.tool_call_normalizer import normalize_tool_call
 from XBrainLab.llm.agent.verifier import (
     FrequencyRangeValidator,
     PathExistsValidator,
     PathProvenanceVerifier,
     PlaceholderArgumentValidator,
     ToolSchemaValidator,
-    TrainingParamValidator,
     ValidatorStrategy,
     VerificationLayer,
     VerificationResult,
+    verify_direct_parameter_origins,
 )
 from XBrainLab.llm.tools import authorized_paths
 from XBrainLab.llm.tools.authorized_paths import FilesystemIdentity, PathKind
-from XBrainLab.llm.tools.definitions.analysis_def import BaseSaliencyTool
-from XBrainLab.llm.tools.definitions.dataset_def import (
-    BaseLoadDataTool,
-    BasePreviewInterpretationTool,
-)
-from XBrainLab.llm.tools.definitions.training_def import BaseConfigureTrainingTool
 
 
 def _error_message(result: VerificationResult) -> str:
@@ -34,71 +24,200 @@ def _error_message(result: VerificationResult) -> str:
     return result.error_message
 
 
-@pytest.mark.parametrize(
-    "user_text",
-    [
-        "Configure IntegratedGradients saliency.",
-        "Configure Integrated Gradient saliency.",
-    ],
-)
-def test_unsupported_saliency_request_is_a_typed_schema_failure(
-    user_text: str,
-) -> None:
-    tool_name, params = normalize_tool_call(
-        "saliency",
-        {},
-        latest_user_text=user_text,
-    )
+def test_missing_direct_preprocess_parameters_are_typed_schema_failures() -> None:
+    from XBrainLab.llm.tools.definitions.preprocess_def import BaseBandPassFilterTool
+
     validator = ToolSchemaValidator(
-        {"saliency": BaseSaliencyTool().parameters},
+        {"apply_bandpass_filter": BaseBandPassFilterTool().parameters},
     )
 
-    result = validator.validate(tool_name, params)
+    result = validator.validate("apply_bandpass_filter", {"low_freq": 4.0})
+
+    assert result.is_valid is False
+    assert "high_freq" in _error_message(result)
+
+
+def test_zero_parameter_gui_handoff_rejects_model_choices() -> None:
+    from XBrainLab.llm.tools import get_all_tools
+
+    tool = next(tool for tool in get_all_tools("real") if tool.name == "select_model")
+    validator = ToolSchemaValidator({tool.name: tool.parameters})
+
+    result = validator.validate("select_model", {"model_name": "EEGNet"})
+
+    assert result.is_valid is False
+    assert "Unknown parameter" in _error_message(result)
+
+
+def test_normalize_method_is_limited_by_the_target_schema() -> None:
+    from XBrainLab.llm.tools.definitions.preprocess_def import BaseNormalizeTool
+
+    validator = ToolSchemaValidator(
+        {"normalize_data": BaseNormalizeTool().parameters},
+    )
+
+    result = validator.validate("normalize_data", {"method": "robust"})
 
     assert result.is_valid is False
     assert "method must be one of" in _error_message(result)
 
 
 @pytest.mark.parametrize(
-    "user_text",
+    ("tool_name", "params", "latest_user_text"),
     [
-        "Configure SmoothGrad saliency with nt_samples 2.5.",
-        "Configure SmoothGrad saliency with nt_samples two.",
+        (
+            "apply_bandpass_filter",
+            {"low_freq": 4.0, "high_freq": 38},
+            "Apply a 4\u201338 Hz bandpass filter.",
+        ),
+        (
+            "apply_bandpass_filter",
+            {"low_freq": 4, "high_freq": 38.0},
+            "請帶通 4 到 38 Hz。",
+        ),
+        (
+            "apply_notch_filter",
+            {"freq": 60},
+            "Use a 60 Hz notch filter.",
+        ),
+        (
+            "resample_data",
+            {"rate": 128},
+            "Resample the EEG data to 128 Hz.",
+        ),
+        (
+            "set_reference",
+            {"method": "average"},
+            "Set an average reference.",
+        ),
+        (
+            "set_reference",
+            {"method": "Cz"},
+            "請重新參考到 Cz。",
+        ),
+        (
+            "set_reference",
+            {"method": "Cz"},
+            "Set Cz as the EEG reference.",
+        ),
+        (
+            "normalize_data",
+            {"method": "z-score"},
+            "Normalize the EEG epochs using z score.",
+        ),
+        (
+            "normalize_data",
+            {"method": "min-max"},
+            "請用 min max 正規化。",
+        ),
     ],
 )
-def test_unrepresentable_saliency_params_are_typed_schema_failures(
-    user_text: str,
+def test_direct_parameter_origins_accept_explicit_latest_user_values(
+    tool_name: str,
+    params: dict[str, Any],
+    latest_user_text: str,
 ) -> None:
-    tool_name, params = normalize_tool_call(
-        "saliency",
-        {"method": "SmoothGrad"},
-        latest_user_text=user_text,
-    )
-    validator = ToolSchemaValidator(
-        {"saliency": BaseSaliencyTool().parameters},
+    result = verify_direct_parameter_origins(
+        tool_name,
+        params,
+        latest_user_text,
     )
 
-    result = validator.validate(tool_name, params)
-
-    assert result.is_valid is False
-    assert "nt_samples" in _error_message(result)
+    assert result == VerificationResult(True)
 
 
-def test_oversized_saliency_noise_samples_fail_agent_schema_admission() -> None:
-    validator = ToolSchemaValidator(
-        {"saliency": BaseSaliencyTool().parameters},
+@pytest.mark.parametrize(
+    ("tool_name", "params", "latest_user_text", "expected_question"),
+    [
+        (
+            "apply_bandpass_filter",
+            {"low_freq": 4, "high_freq": 38},
+            "Apply a bandpass filter.",
+            "What low and high cutoff frequencies should I use for the "
+            "bandpass filter?",
+        ),
+        (
+            "apply_bandpass_filter",
+            {"low_freq": 4, "high_freq": 38},
+            "The recording is 38 seconds long. Apply a 4 Hz high-pass filter.",
+            "What low and high cutoff frequencies should I use for the "
+            "bandpass filter?",
+        ),
+        (
+            "apply_notch_filter",
+            {"freq": 60},
+            "The recording has 60 channels. Apply a notch filter.",
+            "What notch frequency should I use?",
+        ),
+        (
+            "resample_data",
+            {"rate": 128},
+            "The current rate is 128 Hz. Resample the EEG data.",
+            "What resampling rate should I use?",
+        ),
+        (
+            "set_reference",
+            {"method": "average"},
+            "Use the average amplitude and update the reference.",
+            "What EEG reference method should I use?",
+        ),
+        (
+            "normalize_data",
+            {"method": "z-score"},
+            "Normalize the EEG data.",
+            "Which normalization method should I use: z-score or min-max?",
+        ),
+    ],
+)
+def test_direct_parameter_origins_reject_invented_or_unrelated_values(
+    tool_name: str,
+    params: dict[str, Any],
+    latest_user_text: str,
+    expected_question: str,
+) -> None:
+    result = verify_direct_parameter_origins(
+        tool_name,
+        params,
+        latest_user_text,
     )
 
-    result = validator.validate(
-        "saliency",
-        {
-            "method": "SmoothGrad",
-            "nt_samples": MAX_SALIENCY_NT_SAMPLES + 1,
-        },
+    assert result == VerificationResult(False, expected_question)
+
+
+def test_direct_parameter_origins_ignore_non_direct_tools() -> None:
+    result = verify_direct_parameter_origins(
+        "switch_panel",
+        {"panel_name": "dataset"},
+        "Open the Dataset panel.",
     )
 
-    assert result.is_valid is False
-    assert f"nt_samples must be <= {MAX_SALIENCY_NT_SAMPLES}" in _error_message(result)
+    assert result == VerificationResult(True)
+
+
+@pytest.mark.parametrize(
+    ("params", "expected_question"),
+    [
+        (
+            {"low_freq": 5, "high_freq": 38},
+            "What low cutoff frequency should I use for the bandpass filter?",
+        ),
+        (
+            {"low_freq": 4, "high_freq": 40},
+            "What high cutoff frequency should I use for the bandpass filter?",
+        ),
+    ],
+)
+def test_bandpass_origin_question_names_only_the_unverified_cutoff(
+    params: dict[str, Any],
+    expected_question: str,
+) -> None:
+    result = verify_direct_parameter_origins(
+        "apply_bandpass_filter",
+        params,
+        "Apply a 4 to 38 Hz bandpass filter.",
+    )
+
+    assert result == VerificationResult(False, expected_question)
 
 
 def test_verification_script_syntax(tmp_path):
@@ -197,128 +316,6 @@ class TestFrequencyRangeValidator:
         v = FrequencyRangeValidator()
         r = v.validate("apply_bandpass_filter", {"low_freq": 1.0})
         assert r.is_valid
-
-
-# ---------------------------------------------------------------------------
-# Training Param Validator
-# ---------------------------------------------------------------------------
-
-
-class TestTrainingParamValidator:
-    def test_valid_params(self):
-        v = TrainingParamValidator()
-        r = v.validate(
-            "configure_training",
-            {"epoch": 10, "learning_rate": 0.001, "batch_size": 32},
-        )
-        assert r.is_valid
-
-    def test_epoch_zero_rejected(self):
-        v = TrainingParamValidator()
-        r = v.validate("configure_training", {"epoch": 0})
-        assert not r.is_valid
-
-    def test_epoch_negative_rejected(self):
-        v = TrainingParamValidator()
-        r = v.validate("configure_training", {"epoch": -5})
-        assert not r.is_valid
-
-    def test_large_positive_epoch_matches_backend_contract(self):
-        v = TrainingParamValidator()
-        r = v.validate(
-            "configure_training",
-            {"epoch": 99999, "batch_size": 32, "learning_rate": 0.001},
-        )
-        assert r.is_valid
-
-    def test_epoch_non_numeric(self):
-        v = TrainingParamValidator()
-        r = v.validate("configure_training", {"epoch": "lots"})
-        assert not r.is_valid
-
-    def test_lr_zero_rejected(self):
-        v = TrainingParamValidator()
-        r = v.validate("configure_training", {"learning_rate": 0})
-        assert not r.is_valid
-
-    def test_lr_one_matches_backend_positive_finite_contract(self):
-        v = TrainingParamValidator()
-        r = v.validate(
-            "configure_training",
-            {"epoch": 10, "batch_size": 32, "learning_rate": 1.0},
-        )
-        assert r.is_valid
-
-    def test_missing_training_option_is_rejected(self):
-        v = TrainingParamValidator()
-        r = v.validate(
-            "configure_training",
-            {"epoch": 10, "learning_rate": 0.001},
-        )
-        assert not r.is_valid
-        assert "batch_size" in _error_message(r)
-
-    def test_batch_size_zero_rejected(self):
-        v = TrainingParamValidator()
-        r = v.validate("configure_training", {"batch_size": 0})
-        assert not r.is_valid
-
-    @pytest.mark.parametrize(
-        ("field", "value"),
-        [
-            ("repeat", 0),
-            ("repeat", -1),
-            ("repeat", 1.75),
-            ("save_checkpoints_every", -1),
-            ("save_checkpoints_every", 2.9),
-        ],
-    )
-    def test_optional_integer_contract_matches_execution(
-        self,
-        field: str,
-        value: object,
-    ) -> None:
-        validator = TrainingParamValidator()
-        params: dict[str, object] = {
-            "epoch": 10,
-            "batch_size": 32,
-            "learning_rate": 0.001,
-            field: value,
-        }
-
-        result = validator.validate("configure_training", params)
-
-        assert not result.is_valid
-        assert field in _error_message(result)
-
-    def test_ignores_unrelated_tools(self):
-        v = TrainingParamValidator()
-        r = v.validate("load_data", {"epoch": -1})
-        assert r.is_valid
-
-
-def test_training_schema_requires_native_json_numeric_values():
-    verifier = VerificationLayer(
-        tool_schemas={
-            "configure_training": BaseConfigureTrainingTool().parameters,
-        }
-    )
-
-    string_result = verifier.verify_tool_call(
-        (
-            "configure_training",
-            {"epoch": "10", "batch_size": 32.0, "learning_rate": "0.001"},
-        )
-    )
-    typed_result = verifier.verify_tool_call(
-        (
-            "configure_training",
-            {"epoch": 10, "batch_size": 32, "learning_rate": 0.001},
-        )
-    )
-
-    assert not string_result.is_valid
-    assert typed_result.is_valid
 
 
 # ---------------------------------------------------------------------------
@@ -461,36 +458,6 @@ class TestToolSchemaValidator:
         )
         assert not r.is_valid
         assert "choices" in _error_message(r)
-
-    def test_preview_choice_schema_accepts_recipe_remap_mappings(self):
-        v = ToolSchemaValidator(
-            {"preview_interpretation": BasePreviewInterpretationTool().parameters}
-        )
-
-        r = v.validate(
-            "preview_interpretation",
-            {
-                "choices": {
-                    "eeg_file_remap": {
-                        "/recipe/sub-01_task-mi_raw.fif": "/data/sub-01_raw.fif",
-                    },
-                    "label_carrier_remap": {
-                        "/recipe/events.tsv": "/data/events.tsv",
-                    },
-                    "label_carrier_choices": {
-                        "/data/events.tsv": {
-                            "label_field": "trial_type",
-                            "anchor": "onset",
-                            "time_model": "seconds",
-                            "granularity": "trial",
-                            "target_file": "/data/sub-01_raw.fif",
-                        }
-                    },
-                }
-            },
-        )
-
-        assert r.is_valid
 
 
 # ---------------------------------------------------------------------------
@@ -1038,35 +1005,6 @@ class TestVerificationLayerWithValidators:
         r = v.verify_tool_call(("scan_source", {"source_path": "/path/to/eeg/data"}))
         assert not r.is_valid
         assert "actual path" in _error_message(r)
-
-    def test_load_data_schema_rejects_unsupported_file_path_key(self, tmp_path):
-        source = tmp_path / "source.edf"
-        source.touch()
-        v = VerificationLayer(
-            tool_schemas={"load_data": BaseLoadDataTool().parameters},
-        )
-
-        r = v.verify_tool_call(
-            (
-                "load_data",
-                {"paths": [str(source)], "file_path": str(source)},
-            )
-        )
-
-        assert not r.is_valid
-        assert "Unknown parameter for load_data: file_path" in _error_message(r)
-
-    def test_load_data_file_path_cannot_replace_required_paths(self, tmp_path):
-        source = tmp_path / "source.edf"
-        source.touch()
-        v = VerificationLayer(
-            tool_schemas={"load_data": BaseLoadDataTool().parameters},
-        )
-
-        r = v.verify_tool_call(("load_data", {"file_path": str(source)}))
-
-        assert not r.is_valid
-        assert "Missing required parameter(s) for load_data: paths" in _error_message(r)
 
 
 class _PrivateFailureValidator(ValidatorStrategy):

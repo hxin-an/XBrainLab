@@ -15,7 +15,6 @@ from PyQt6.QtWidgets import (
     QAbstractButton,
     QLabel,
     QMessageBox,
-    QToolButton,
     QWidget,
 )
 
@@ -57,18 +56,22 @@ from XBrainLab.backend.training import (
 )
 from XBrainLab.backend.training.record import EvalRecord, RecordKey, TrainRecordKey
 from XBrainLab.llm.agent.controller import LLMController
+from XBrainLab.llm.agent.rag_lifecycle import RAGRetrieverLifecycle
 from XBrainLab.llm.agent.response_presentation import AssistantResponsePresentation
 from XBrainLab.llm.agent.runtime_state import (
     AssistantRuntimePhase,
     AssistantRuntimeSnapshot,
 )
 from XBrainLab.llm.agent.turn import (
+    AssistantGenerationDispatchAcknowledgement,
+    AssistantGenerationDispatchPhase,
+    AssistantGenerationRequest,
     AssistantTurnCorrelation,
     AssistantTurnDeliveryPhase,
     AssistantTurnRequest,
 )
 from XBrainLab.llm.agent.ui_handoff import WorkflowUiHandoffRequest
-from XBrainLab.ui.chat.status_presenter import build_assistant_empty_state
+from XBrainLab.llm.agent.worker import AgentWorker
 from XBrainLab.ui.components.agent_manager import AgentManager
 from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     RuntimeActivationResult,
@@ -185,6 +188,49 @@ class _ReadyAssistantIntegrationRuntime(QObject):
         return bool(self.controller.close())
 
 
+class _ImportEegToolWorker(AgentWorker):
+    """Return one strict target action at the external model boundary."""
+
+    def generate_from_messages(self, request: AssistantGenerationRequest) -> None:
+        generation_id = request.generation_id
+        self.generation_dispatch_acknowledged.emit(
+            AssistantGenerationDispatchAcknowledgement(
+                generation_id=generation_id,
+                phase=AssistantGenerationDispatchPhase.ACCEPTED,
+            )
+        )
+        self.generation_dispatch_acknowledged.emit(
+            AssistantGenerationDispatchAcknowledgement(
+                generation_id=generation_id,
+                phase=AssistantGenerationDispatchPhase.STARTED,
+            )
+        )
+        self.generation_chunk_received.emit(
+            generation_id,
+            '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}',
+        )
+        self.generation_finished.emit(generation_id, [])
+
+
+class _EmptyRagRetriever:
+    """Return no examples while retaining the real RAG lifecycle boundary."""
+
+    def initialize(self) -> None:
+        return
+
+    def get_similar_examples(
+        self,
+        query: str,
+        *,
+        allowed_tool_names: frozenset[str] | None = None,
+    ) -> str:
+        del query, allowed_tool_names
+        return ""
+
+    def close(self) -> None:
+        return
+
+
 def _click(qtbot, button) -> None:
     qtbot.waitUntil(button.isEnabled, timeout=10000)
     qtbot.mouseClick(
@@ -292,18 +338,15 @@ def _assert_assistant_status_matches_publication(
     assert ui_projection.decision_fields == decision_fields
     assert ui_projection.decision_fields == backend_projection.decision_fields
     assert ui_projection.existing_ui_surface is surface
-    presentation = build_assistant_empty_state(
-        ui_projection.stage,
-        None,
-        ui_projection.blocked_reason,
-        available_command_names=list(ui_projection.available_commands),
-    )
-    expected_action = presentation.suggestions[-1]
-    assert manager.chat_panel.empty_state_action_button.text() == expected_action.title
-    assert (
-        manager.chat_panel.empty_state_action_button.property("assistantPrompt")
-        == expected_action.prompt
-    )
+    assert manager.chat_panel.empty_state_title.text() == "Get started with XBrainLab"
+    assert [
+        button.property("assistantPrompt")
+        for button in manager.chat_panel.suggestion_prompt_buttons
+    ] == [
+        "What should I do next?",
+        "Explain my current workflow",
+        "What can you help me with?",
+    ]
     tooltip = manager.chat_panel.empty_state_widget.toolTip()
     assert surface.value in tooltip
     for reason in backend_projection.blocked_reasons:
@@ -347,16 +390,12 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
         if label.text()
     )
     assert "XBrainLab Assistant" in dock_title_text
-    assert panel.empty_state_title.text() == "Start with your EEG data"
+    assert panel.empty_state_title.text() == "Get started with XBrainLab"
     assert [button.text() for button in panel.suggestion_prompt_buttons] == [
-        "Import EEG data",
-        "Check supported formats",
-        "Explain the import workflow",
+        "What should I do next?",
+        "Explain my current workflow",
+        "What can you help me with?",
     ]
-    assert panel.empty_state_action_button.text() == "Explain the import workflow"
-    assert panel.empty_state_action_button.property("assistantPrompt") == (
-        "Explain the EEG data import workflow"
-    )
     assert panel.runtime_state_widget.isVisible()
     assert panel.runtime_state_title.text() == "Assistant setup required"
     assert "Model cache not found" not in panel.runtime_state_detail.text()
@@ -718,13 +757,17 @@ def test_assistant_status_uses_real_interpretation_confirmation_publication(
     )
 
 
-def test_visible_open_data_import_action_opens_typed_product_surface_directly(
+def test_model_import_action_opens_typed_product_surface_directly(
     test_app,
     qtbot,
     monkeypatch,
 ) -> None:
-    """Click the rendered response action through normal Assistant admission."""
-    controller = LLMController(test_app.study)
+    """Route one strict model action through the typed product handoff."""
+    with patch("XBrainLab.llm.agent.controller.AgentWorker", _ImportEegToolWorker):
+        controller = LLMController(
+            test_app.study,
+            rag_lifecycle=RAGRetrieverLifecycle(_EmptyRagRetriever()),
+        )
     runtime = _ReadyAssistantIntegrationRuntime(controller)
     manager = AgentManager(
         test_app,
@@ -761,19 +804,12 @@ def test_visible_open_data_import_action_opens_typed_product_surface_directly(
         panel.input_field.setText("幫我處理資料")
         qtbot.waitUntil(panel.send_btn.isEnabled, timeout=2_000)
         _click(qtbot, panel.send_btn)
-        qtbot.waitUntil(panel.response_actions_widget.isVisible, timeout=2_000)
-
-        response_actions = panel.response_actions_widget.findChildren(QToolButton)
-        open_import = next(
-            button for button in response_actions if button.text() == "Open Data Import"
-        )
-        assert open_import.isVisibleTo(panel)
-        _click(qtbot, open_import)
-
         qtbot.waitUntil(lambda: bool(chooser_calls), timeout=2_000)
         assert runtime.submissions == ["幫我處理資料"]
         assert runtime.delivery_phases == [AssistantTurnDeliveryPhase.ACCEPTED]
-        assert handoff_requests == []
+        assert len(handoff_requests) == 1
+        assert handoff_requests[0].command is CommandName.SCAN_SOURCE
+        assert not hasattr(panel, "response_actions_widget")
         assert chooser_calls
         chooser_parent, chooser_directory = chooser_calls[0]
         assert chooser_parent is test_app.dataset_panel
@@ -788,12 +824,12 @@ def test_visible_open_data_import_action_opens_typed_product_surface_directly(
         close_controller_and_wait(controller, qtbot)
 
 
-def test_backend_observer_publication_refreshes_visible_assistant_status(
+def test_backend_observer_refresh_keeps_fixed_assistant_homepage(
     test_app,
     qtbot,
     tmp_path,
 ) -> None:
-    """A queued backend observer must refresh visible Assistant publication state."""
+    """Backend publication refreshes status without rebuilding onboarding."""
     test_app.init_agent()
     manager = test_app.agent_manager
     panel = manager.chat_panel
@@ -804,7 +840,15 @@ def test_backend_observer_publication_refreshes_visible_assistant_status(
     assert initial_projection is not None
     initial_generation = initial_projection.publication_generation
     assert initial_projection.stage == "No data loaded"
-    assert panel.empty_state_title.text() == "Start with your EEG data"
+    homepage_copy = (
+        panel.empty_state_title.text(),
+        panel.empty_state_intro.text(),
+        tuple(
+            (button.text(), button.subtitle(), button.property("assistantPrompt"))
+            for button in panel.suggestion_prompt_buttons
+        ),
+    )
+    assert homepage_copy[0] == "Get started with XBrainLab"
     terminal_publications = []
     service.subscribe(
         APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
@@ -837,13 +881,14 @@ def test_backend_observer_publication_refreshes_visible_assistant_status(
     publication_generations = [item.generation for item in terminal_publications]
     assert publication_generations == sorted(set(publication_generations))
     expected_projection = build_assistant_status_projection(publication)
-    assert expected_projection.stage == "Ready for EEG epoching"
+    assert expected_projection.stage == (
+        "EEG data loaded · Ready for preprocessing or epoching"
+    )
     qtbot.waitUntil(
         lambda: (
             manager.assistant_status_projection is not None
             and manager.assistant_status_projection.publication_generation
             == publication.generation
-            and panel.empty_state_title.text() == "Define the analysis windows"
         ),
         timeout=5_000,
     )
@@ -852,13 +897,15 @@ def test_backend_observer_publication_refreshes_visible_assistant_status(
     assert refreshed_projection is not None
     assert refreshed_projection.publication_generation == publication.generation
     assert refreshed_projection == expected_projection
-    assert refreshed_projection.recommended_command == CommandName.CREATE_EPOCH.value
-    assert panel.empty_state_title.text() == "Define the analysis windows"
-    assert [button.text() for button in panel.suggestion_prompt_buttons] == [
-        "Explain EEG epoch anchors",
-        "Review EEG epoch settings",
-        "Open EEG epoch setup",
-    ]
+    assert refreshed_projection.recommended_command is None
+    assert (
+        panel.empty_state_title.text(),
+        panel.empty_state_intro.text(),
+        tuple(
+            (button.text(), button.subtitle(), button.property("assistantPrompt"))
+            for button in panel.suggestion_prompt_buttons
+        ),
+    ) == homepage_copy
 
 
 def test_import_command_success_refreshes_dataset_table_without_stale_controller(

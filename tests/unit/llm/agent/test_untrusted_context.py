@@ -567,14 +567,6 @@ def test_context_data_is_separate_structured_source_labelled_and_sanitized() -> 
     malicious = f"{_INJECTION} {_ROLE_DELIMITERS} {_PRIVATE_PATH}\x00\x1b" + (
         " oversized" * 4000
     )
-    decision = WorkflowDecisionContext(
-        mode="continue_until_decision",
-        workflow_stage=f"Data loaded\x00 from {_PRIVATE_PATH}",
-        latest_user_request="Continue.",
-        evidence=[malicious],
-        blocked_reasons=[f"Blocked by {_PRIVATE_PATH}\x07"],
-        stop_reason="user_decision_required",
-    )
     assembler = ContextAssembler(ToolRegistry(), Study())
     assembler.add_context(_rag_context(text=malicious))
     assembler.set_recovery_feedback(
@@ -588,13 +580,9 @@ def test_context_data_is_separate_structured_source_labelled_and_sanitized() -> 
         )
     )
 
-    with patch(
-        "XBrainLab.llm.agent.assembler.build_workflow_decision_context",
-        return_value=decision,
-    ):
-        messages = assembler.get_messages(
-            [{"role": "user", "content": "Show dataset information."}]
-        )
+    messages = assembler.get_messages(
+        [{"role": "user", "content": "Show dataset information."}]
+    )
 
     system_content = messages[0]["content"]
     assert messages[0]["role"] == "system"
@@ -620,8 +608,14 @@ def test_context_data_is_separate_structured_source_labelled_and_sanitized() -> 
     }
 
     items_by_type = {item["type"]: item for item in context_payload["items"]}
-    assert items_by_type["workflow_decision"]["source"] == {
+    assert items_by_type["state_card"]["source"] == {
         "kind": "application_service_publication"
+    }
+    assert items_by_type["state_card"]["data"] == {
+        "workflow_stage": "empty",
+        "backend_generation": 1,
+        "state_reliable": True,
+        "raw_count": 0,
     }
     assert items_by_type["tool_recovery"]["source"] == {"kind": "assistant_tool_result"}
     assert items_by_type["rag_example"]["source"] == {

@@ -29,7 +29,6 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.controller.chat_controller import (
-    ChatActionState,
     ChatController,
     ChatHistoryReplacement,
     ChatHistoryReplacementKind,
@@ -44,21 +43,17 @@ from XBrainLab.llm.agent.confirmation import (
     AgentConfirmationResolutionStatus,
 )
 from XBrainLab.llm.agent.runtime_state import AssistantRuntimePhase
-from XBrainLab.ui.product_language import command_labels, workflow_stage_text_label
+from XBrainLab.ui.product_language import workflow_stage_text_label
 
 from ..styles.theme import Theme
 from .action_card import AssistantConfirmationCard
 from .composer import AssistantComposer
 from .message_bubble import MessageBubble
 from .presentation import (
-    ChatResponseActionSelectionView,
-    ChatResponseActionsView,
-    ChatResponseActionView,
     ChatTurnCancelability,
     ChatTurnPresentation,
     ChatTurnPresentationPhase,
 )
-from .status_presenter import build_assistant_empty_state
 from .styles import (
     ASSISTANT_PANEL_STYLE,
     COMPOSER_SURFACE_STYLE,
@@ -68,8 +63,6 @@ from .styles import (
     EMPTY_STATE_TITLE_STYLE,
     INPUT_FIELD_STYLE,
     NOTICE_LABEL_STYLE,
-    RESPONSE_ACTION_STYLE,
-    RESPONSE_ACTION_TITLE_STYLE,
     RUNTIME_PRIMARY_ACTION_STYLE,
     RUNTIME_PROGRESS_STYLE,
     RUNTIME_SECONDARY_ACTION_STYLE,
@@ -89,13 +82,6 @@ from .styles import (
 )
 from .suggestion_card import AssistantSuggestionCard
 
-PRODUCT_STATUS_HIDDEN_COMMANDS = frozenset(
-    {
-        "load_data",
-        "attach_labels",
-        "import_labels",
-    }
-)
 CHAT_SURFACE_MAX_WIDTH = 620
 CHAT_CONTROL_MAX_WIDTH = 620
 EMPTY_STATE_MAX_WIDTH = 560
@@ -103,6 +89,26 @@ STATE_SURFACE_MAX_WIDTH = 540
 COMPOSER_ACTION_WIDTH = 84
 COMPOSER_ACTION_HEIGHT = 34
 HISTORY_REBUILD_CHUNK_SIZE = 12
+
+EMPTY_STATE_TITLE = "Get started with XBrainLab"
+EMPTY_STATE_INTRO = "Choose a prompt or ask your own question."
+EMPTY_STATE_SUGGESTIONS = (
+    (
+        "What should I do next?",
+        "Get guidance for the next step in your workflow.",
+        "What should I do next?",
+    ),
+    (
+        "Explain my current workflow",
+        "Review what is ready and what still needs attention.",
+        "Explain my current workflow",
+    ),
+    (
+        "What can you help me with?",
+        "See how the Assistant can support your EEG workflow.",
+        "What can you help me with?",
+    ),
+)
 
 WORKFLOW_RUN_STATUS_STYLE = f"""
     QLabel#AssistantWorkflowRunStatus {{
@@ -138,8 +144,6 @@ class ChatPanel(QWidget):
     debug_tool_requested = pyqtSignal(str, dict, bool, str)
     open_settings_requested = pyqtSignal()
     retry_local_assistant_requested = pyqtSignal()
-    response_action_requested = pyqtSignal(object)
-    active_response_presentation_changed = pyqtSignal(object)
     confirmation_decision_requested = pyqtSignal(AgentConfirmationResolution)
     header_status_changed = pyqtSignal(str)
 
@@ -157,7 +161,6 @@ class ChatPanel(QWidget):
         self._restoring_reader_anchor = False
         self._notice_owner: str | None = None
         self._runtime_recovery = False
-        self._response_presentation: ChatResponseActionsView | None = None
         self._follow_transcript_updates = True
         self._header_status_text = "Local · Setup"
         self._runtime_execution_device = ""
@@ -175,7 +178,6 @@ class ChatPanel(QWidget):
         self._history_rebuild_requires_reorder = False
         self._history_rebuild_reflow_bubbles: tuple[MessageBubble, ...] = ()
         self._history_rebuild_tail_message_id: str | None = None
-        self._history_rebuild_tail_actions: ChatResponseActionsView | None = None
         self._history_rebuild_follow_tail = True
         app = QApplication.instance()
         script_path = app.property("tool_debug_script") if app else None
@@ -244,7 +246,6 @@ class ChatPanel(QWidget):
         self.runtime_state_widget = self._build_runtime_state()
         self.empty_state_widget = self._build_empty_state()
         self.turn_activity_widget = self._build_turn_activity()
-        self.response_actions_widget = self._build_response_actions()
         self.confirmation_card_widget = AssistantConfirmationCard()
         self.confirmation_card_widget.decision_requested.connect(
             self._on_confirmation_decision
@@ -252,7 +253,6 @@ class ChatPanel(QWidget):
         for surface, maximum_width in (
             (self.runtime_state_widget, STATE_SURFACE_MAX_WIDTH),
             (self.empty_state_widget, EMPTY_STATE_MAX_WIDTH),
-            (self.response_actions_widget, CHAT_SURFACE_MAX_WIDTH),
             (self.confirmation_card_widget, CHAT_SURFACE_MAX_WIDTH),
             (self.turn_activity_widget, STATE_SURFACE_MAX_WIDTH),
         ):
@@ -263,13 +263,11 @@ class ChatPanel(QWidget):
             )
         self.chat_layout.addWidget(self.runtime_state_widget)
         self.chat_layout.addWidget(self.empty_state_widget)
-        self.chat_layout.addWidget(self.response_actions_widget)
         self.chat_layout.addWidget(self.confirmation_card_widget)
         self.chat_layout.addWidget(self.turn_activity_widget)
         for surface in (
             self.runtime_state_widget,
             self.empty_state_widget,
-            self.response_actions_widget,
             self.confirmation_card_widget,
             self.turn_activity_widget,
         ):
@@ -566,12 +564,7 @@ class ChatPanel(QWidget):
         return activity
 
     def _build_empty_state(self) -> QFrame:
-        """Build the initial guidance panel shown before conversation starts."""
-        initial_presentation = build_assistant_empty_state(
-            "No data loaded",
-            ["Scan data source"],
-            available_command_names=["scan_source"],
-        )
+        """Build the fixed onboarding shown before conversation starts."""
         empty = QFrame()
         empty.setObjectName("AssistantEmptyState")
         empty.setStyleSheet(EMPTY_STATE_STYLE)
@@ -579,9 +572,10 @@ class ChatPanel(QWidget):
         self.empty_state_layout = empty_layout
         empty_layout.setContentsMargins(10, 12, 10, 12)
         empty_layout.setSpacing(10)
-        empty.setAccessibleDescription(initial_presentation.stage_sentence)
+        empty.setAccessibleName(EMPTY_STATE_TITLE)
+        empty.setAccessibleDescription(EMPTY_STATE_INTRO)
 
-        self.empty_state_title = QLabel(initial_presentation.title)
+        self.empty_state_title = QLabel(EMPTY_STATE_TITLE)
         self.empty_state_title.setObjectName("AssistantEmptyTitle")
         self.empty_state_title.setStyleSheet(EMPTY_STATE_TITLE_STYLE)
         self.empty_state_title.setWordWrap(True)
@@ -592,18 +586,13 @@ class ChatPanel(QWidget):
         )
         empty_layout.addWidget(self.empty_state_title)
 
-        self.empty_state_intro = QLabel(initial_presentation.intro)
+        self.empty_state_intro = QLabel(EMPTY_STATE_INTRO)
         self.empty_state_intro.setWordWrap(True)
         self.empty_state_intro.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
         self.empty_state_intro.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_layout.addWidget(self.empty_state_intro)
 
-        self.empty_state_next_label = QLabel("")
-        self.empty_state_next_label.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
-        self.empty_state_next_label.setWordWrap(True)
-        self.empty_state_next_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.empty_state_next_label.setVisible(False)
-        empty_layout.addWidget(self.empty_state_next_label)
+        empty_layout.addSpacing(98)
 
         self.suggestion_prompt_widget = QWidget(empty)
         self.suggestion_prompt_widget.setObjectName("AssistantSuggestionPrompts")
@@ -611,19 +600,19 @@ class ChatPanel(QWidget):
             "background: transparent; border: none;"
         )
         self.suggestion_prompt_layout = QVBoxLayout(self.suggestion_prompt_widget)
-        self.suggestion_prompt_layout.setContentsMargins(0, 6, 0, 0)
-        self.suggestion_prompt_layout.setSpacing(8)
+        self.suggestion_prompt_layout.setContentsMargins(0, 0, 0, 0)
+        self.suggestion_prompt_layout.setSpacing(14)
 
         self.suggestion_prompt_buttons: list[AssistantSuggestionCard] = []
-        for suggestion in initial_presentation.suggestions:
+        for title, subtitle, prompt in EMPTY_STATE_SUGGESTIONS:
             button = AssistantSuggestionCard(
-                suggestion.title,
-                suggestion.subtitle,
+                title,
+                subtitle,
                 icon=QStyle.StandardPixmap.SP_ArrowForward,
                 accent="blue",
                 parent=self.suggestion_prompt_widget,
             )
-            button.setProperty("assistantPrompt", suggestion.prompt)
+            button.setProperty("assistantPrompt", prompt)
             button.clicked.connect(
                 lambda _checked=False, selected=button: (
                     self._fill_suggestion_prompt(selected)
@@ -632,11 +621,6 @@ class ChatPanel(QWidget):
             self.suggestion_prompt_buttons.append(button)
         self._layout_suggestion_prompts(1)
         empty_layout.addWidget(self.suggestion_prompt_widget)
-
-        # Compatibility alias: the stage-aware next-step prompt now fills the
-        # composer instead of starting an assistant turn without review.
-        self.empty_state_action_button = self.suggestion_prompt_buttons[2]
-        self._empty_state_action_prompt = "Suggest the next step"
 
         return empty
 
@@ -661,120 +645,6 @@ class ChatPanel(QWidget):
         for button in self.suggestion_prompt_buttons:
             self.suggestion_prompt_layout.addWidget(button)
 
-    def _build_response_actions(self) -> QWidget:
-        """Build the lightweight action list attached to the latest response."""
-        widget = QWidget()
-        widget.setObjectName("AssistantResponseActions")
-        widget.setStyleSheet("background: transparent; border: none;")
-        widget.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Maximum,
-        )
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-        self.response_action_title = QLabel("Suggested next step", widget)
-        self.response_action_title.setObjectName("AssistantResponseActionTitle")
-        self.response_action_title.setStyleSheet(RESPONSE_ACTION_TITLE_STYLE)
-        layout.addWidget(self.response_action_title)
-        widget.setVisible(False)
-        return widget
-
-    def show_response_actions(
-        self,
-        record: ChatMessageRecord,
-        *,
-        settle_layout: bool = True,
-    ) -> None:
-        """Render active actions from one persisted typed response record."""
-        if not isinstance(record, ChatMessageRecord):
-            raise TypeError("Assistant response actions require a typed chat record.")
-        presentation = ChatResponseActionsView.from_history_record(record)
-        if presentation is None:
-            self.clear_response_actions()
-            return
-        self._show_response_actions_view(
-            presentation,
-            settle_layout=settle_layout,
-        )
-
-    def _show_response_actions_view(
-        self,
-        presentation: ChatResponseActionsView,
-        *,
-        settle_layout: bool,
-    ) -> None:
-        """Render one detached UI action projection."""
-        self.clear_response_actions()
-        self._response_presentation = presentation
-        self.active_response_presentation_changed.emit(presentation.presentation_id)
-        layout = self.response_actions_widget.layout()
-        if layout is None:
-            raise RuntimeError("Assistant response action layout is unavailable.")
-        for action in presentation.actions:
-            button = QToolButton(self.response_actions_widget)
-            button.setObjectName("AssistantResponseAction")
-            button.setText(action.label)
-            button.setProperty("assistantFullLabel", action.label)
-            button.setToolTip(action.label)
-            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-            button.setSizePolicy(
-                QSizePolicy.Policy.Expanding,
-                QSizePolicy.Policy.Fixed,
-            )
-            button.setMinimumHeight(34)
-            button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.setAccessibleName(action.label)
-            button.setStyleSheet(RESPONSE_ACTION_STYLE)
-            button.clicked.connect(
-                lambda _checked=False, selected=action: self._select_response_action(
-                    selected
-                )
-            )
-            layout.addWidget(button)
-        self.response_actions_widget.setVisible(True)
-        self.response_actions_widget.updateGeometry()
-        response_layout = self.response_actions_widget.layout()
-        if response_layout is not None:
-            response_layout.activate()
-        if not settle_layout:
-            return
-        self._place_transient_surfaces_after_messages()
-        self._reflow_chat_content()
-        self._schedule_reflow()
-        if self._follow_transcript_updates:
-            self._scroll_to_bottom()
-
-    def _select_response_action(self, action: ChatResponseActionView) -> None:
-        presentation = self._response_presentation
-        if presentation is None or action not in presentation.actions:
-            return
-        selection = ChatResponseActionSelectionView(
-            presentation_id=presentation.presentation_id,
-            action=action,
-        )
-        self.response_action_requested.emit(selection)
-        self.clear_response_actions()
-
-    def clear_response_actions(self) -> None:
-        """Remove actions as soon as their response is no longer current."""
-        had_presentation = self._response_presentation is not None
-        self._response_presentation = None
-        layout = getattr(self, "response_actions_widget", None)
-        layout = layout.layout() if layout is not None else None
-        if layout is not None:
-            while layout.count() > 1:
-                item = layout.takeAt(1)
-                widget = item.widget() if item is not None else None
-                if widget is not None:
-                    widget.deleteLater()
-        if hasattr(self, "response_actions_widget"):
-            self.response_actions_widget.setVisible(False)
-            self.response_actions_widget.updateGeometry()
-        if had_presentation:
-            self.active_response_presentation_changed.emit(None)
-
     def show_confirmation_request(
         self,
         request: AgentConfirmationRequest,
@@ -784,7 +654,6 @@ class ChatPanel(QWidget):
     ) -> None:
         """Show one transient typed confirmation inside the message area."""
         follow_tail = self._follow_transcript_updates or self._is_near_bottom()
-        self.clear_response_actions()
         self.empty_state_widget.setVisible(False)
         self.confirmation_card_widget.present(
             request,
@@ -952,17 +821,11 @@ class ChatPanel(QWidget):
         self._history_rebuild_tail_message_id = (
             tail_record.message_id if tail_record is not None else None
         )
-        self._history_rebuild_tail_actions = (
-            ChatResponseActionsView.from_history_record(tail_record)
-            if tail_record is not None
-            else None
-        )
         self._history_rebuild_follow_tail = follow_tail
         self._follow_transcript_updates = follow_tail
         self._reader_anchor = anchor
         self._reader_anchor_restore_attempts = 0
         self._pending_scroll_to_bottom = False
-        self.clear_response_actions()
         self.clear_confirmation_request()
         if snapshot:
             self.empty_state_widget.setVisible(False)
@@ -1003,7 +866,6 @@ class ChatPanel(QWidget):
                 if bubble is None:
                     self._insert_message_record_widget(
                         message,
-                        show_actions=False,
                         settle_layout=False,
                         history_order=self._history_rebuild_order,
                         update_reader_state=False,
@@ -1049,14 +911,6 @@ class ChatPanel(QWidget):
                 return
             self._history_rebuild_phase = "reflow"
             self._history_rebuild_index = 0
-            tail_actions = self._history_rebuild_tail_actions
-            if tail_actions is not None:
-                self._show_response_actions_view(
-                    tail_actions,
-                    settle_layout=False,
-                )
-            else:
-                self.clear_response_actions()
             self._place_transient_surfaces_after_messages()
             self._history_rebuild_reflow_bubbles = tuple(self._layout_message_bubbles())
             self._fit_chat_surfaces_to_viewport()
@@ -1105,22 +959,14 @@ class ChatPanel(QWidget):
             if record.message_id not in self._message_bubbles_by_id:
                 self._insert_message_record_widget(
                     record,
-                    show_actions=False,
                     settle_layout=False,
                     update_reader_state=False,
                 )
                 self._history_rebuild_tail_message_id = record.message_id
-                self._history_rebuild_tail_actions = (
-                    ChatResponseActionsView.from_history_record(record)
-                )
             return
         if kind != "updated":
             return
         self._apply_rendered_record_update(record, schedule_reflow=False)
-        if self._history_rebuild_tail_message_id == record.message_id:
-            self._history_rebuild_tail_actions = (
-                ChatResponseActionsView.from_history_record(record)
-            )
 
     def _finish_history_rebuild(self) -> None:
         """Publish the final action/scroll state after bounded reconciliation."""
@@ -1135,7 +981,6 @@ class ChatPanel(QWidget):
         self._history_rebuild_requires_reorder = False
         self._history_rebuild_reflow_bubbles = ()
         self._history_rebuild_tail_message_id = None
-        self._history_rebuild_tail_actions = None
         self.empty_state_widget.setVisible(
             not self._has_transcript_messages()
             and self._runtime_phase is AssistantRuntimePhase.READY
@@ -1195,6 +1040,14 @@ class ChatPanel(QWidget):
             and self._runtime_phase is AssistantRuntimePhase.READY
             and not confirmation_owns_waiting_state
         )
+        if presentation.is_visible:
+            self.empty_state_widget.setVisible(False)
+        elif (
+            self._runtime_phase is AssistantRuntimePhase.READY
+            and not self._has_transcript_messages()
+            and not self.confirmation_card_widget.isVisible()
+        ):
+            self.empty_state_widget.setVisible(True)
         self._place_transient_surfaces_after_messages()
         self._apply_composer_activity_state()
         self._sync_control_context_visibility()
@@ -1256,11 +1109,17 @@ class ChatPanel(QWidget):
             self.send_btn.setToolTip("Send request")
             self.send_btn.setStyleSheet(SEND_BUTTON_STYLE)
             send_enabled = runtime_ready and (
-                self.debug_mode is not None or bool(self.input_field.text().strip())
+                self.debug_mode.can_dispatch
+                if self.debug_mode is not None
+                else bool(self.input_field.text().strip())
             )
 
         self._fit_composer_action_width()
-        self.input_field.setEnabled(not self.is_processing and runtime_ready)
+        self.input_field.setEnabled(
+            not self.is_processing
+            and runtime_ready
+            and (self.debug_mode is None or self.debug_mode.can_dispatch)
+        )
         self.send_btn.setEnabled(send_enabled)
         for button in getattr(self, "suggestion_prompt_buttons", ()):
             prompt = button.property("assistantPrompt")
@@ -1270,6 +1129,43 @@ class ChatPanel(QWidget):
                 and not self.is_processing
                 and runtime_ready
             )
+
+    def reject_debug_step(self, message: str) -> None:
+        """Release a step rejected before controller ownership was established."""
+        if self.debug_mode is None:
+            return
+        self.debug_mode.reject_pending()
+        if message:
+            self.show_notice(message)
+        self._refresh_debug_walkthrough_ui()
+
+    def complete_debug_step(self, outcome: str) -> None:
+        """Commit one diagnostic step only after its correlated terminal."""
+        if self.debug_mode is None or not self.debug_mode.is_waiting:
+            return
+        self.debug_mode.complete_pending(str(outcome or ""))
+        if self.debug_mode.failure:
+            self.show_notice(self.debug_mode.failure)
+        self._refresh_debug_walkthrough_ui()
+
+    def _refresh_debug_walkthrough_ui(self) -> None:
+        """Render the approved slim walkthrough progress and Enter gate."""
+        if self.debug_mode is None:
+            return
+        progress = self.debug_mode.progress_text
+        self.workflow_run_status_label.setText(progress)
+        self.workflow_run_status_label.setToolTip(progress)
+        self.workflow_run_status_label.setVisible(True)
+        if self.debug_mode.is_complete:
+            placeholder = "Walkthrough complete"
+        elif self.debug_mode.failure:
+            placeholder = "Walkthrough stopped"
+        elif self.debug_mode.is_waiting:
+            placeholder = "Complete the current action in XBrainLab"
+        else:
+            placeholder = "Press Enter to run the next action"
+        self.input_field.setPlaceholderText(placeholder)
+        self._apply_composer_activity_state()
 
     def eventFilter(self, watched, event):  # noqa: N802
         """Reflect composer focus on its integrated input surface."""
@@ -1315,22 +1211,11 @@ class ChatPanel(QWidget):
 
         # M3.1 Debug Mode Interception
         if self.debug_mode:
-            if not self.debug_mode.is_complete:
-                call = self.debug_mode.next_call()
-                if call:
-                    # Clear input just in case
-                    self.input_field.clear()
-                    # Emit debug request
-                    self.debug_tool_requested.emit(
-                        call.tool,
-                        call.params,
-                        call.confirmed,
-                        call.authorization_text,
-                    )
-                else:
-                    self.input_field.setText("Debug Script Completed.")
-            else:
-                self.input_field.setText("Debug Script Completed.")
+            call = self.debug_mode.begin_call()
+            if call is not None:
+                self.input_field.clear()
+                self._refresh_debug_walkthrough_ui()
+                self.debug_tool_requested.emit(call.tool, call.params, False, "")
             return
 
         if self._runtime_phase is not AssistantRuntimePhase.READY:
@@ -1358,18 +1243,6 @@ class ChatPanel(QWidget):
             self.input_field.setText(submitted)
         self.input_field.setFocus(Qt.FocusReason.OtherFocusReason)
         self._set_notice(str(message or "").strip(), timeout_ms=0, owner="submission")
-
-    def _request_empty_state_action(self) -> None:
-        """Send the current stage-aware suggestion as an assistant request."""
-        prompt = self._empty_state_action_prompt.strip()
-        if (
-            not prompt
-            or self.is_processing
-            or self._runtime_phase is not AssistantRuntimePhase.READY
-        ):
-            return
-        self.clear_response_actions()
-        self.send_message.emit(prompt)
 
     def set_processing_state(self, is_processing: bool):
         """Update the processing state and refresh the UI accordingly.
@@ -1438,9 +1311,6 @@ class ChatPanel(QWidget):
 
         if self.debug_mode is not None:
             self.input_widget.setVisible(True)
-            self.input_field.setPlaceholderText("Run next diagnostic action")
-            self.workflow_run_status_label.setText("")
-            self.workflow_run_status_label.setVisible(False)
             self.runtime_progress.setVisible(False)
             self.retry_runtime_btn.setVisible(False)
             self.retry_runtime_btn.setEnabled(False)
@@ -1448,6 +1318,7 @@ class ChatPanel(QWidget):
             self.runtime_actions.setVisible(False)
             self.runtime_state_widget.setVisible(False)
             self._update_processing_ui(self.is_processing)
+            self._refresh_debug_walkthrough_ui()
             return
 
         if self._runtime_phase is AssistantRuntimePhase.LOADING:
@@ -1660,7 +1531,7 @@ class ChatPanel(QWidget):
         label.setMinimumHeight(max(needed, label.fontMetrics().height()))
 
     def set_status_summary(self, text: str, tooltip: str | None = None) -> None:
-        """Update stage-aware assistant guidance from a compact status string."""
+        """Update low-priority workflow diagnostics without changing onboarding."""
         stage = "checking"
         model_status = "checking"
         if "|" in text:
@@ -1704,68 +1575,14 @@ class ChatPanel(QWidget):
         tooltip: str | None = None,
         blocked_reason: str | None = None,
     ) -> None:
-        """Apply status text to guidance and empty-state labels."""
+        """Apply workflow diagnostics without changing fixed onboarding copy."""
+        del available_commands
         status_tooltip = f"Workflow: {stage}\nSetup: {model_status}"
+        if blocked_reason:
+            status_tooltip = f"{status_tooltip}\n\nAction required: {blocked_reason}"
         if tooltip:
             status_tooltip = f"{status_tooltip}\n\n{tooltip}"
         self.empty_state_widget.setToolTip(status_tooltip)
-
-        visible_command_names = (
-            None
-            if available_commands is None
-            else [
-                name
-                for name in available_commands
-                if str(name) not in PRODUCT_STATUS_HIDDEN_COMMANDS
-            ]
-        )
-        display_commands = (
-            None
-            if visible_command_names is None
-            else command_labels(visible_command_names)
-        )
-        presentation = build_assistant_empty_state(
-            stage,
-            display_commands,
-            blocked_reason,
-            available_command_names=visible_command_names,
-        )
-        self.empty_state_title.setText(presentation.title)
-        self.empty_state_intro.setText(presentation.intro)
-        for button, suggestion in zip(
-            self.suggestion_prompt_buttons,
-            presentation.suggestions,
-            strict=True,
-        ):
-            button.setText(suggestion.title)
-            button.set_subtitle(suggestion.subtitle)
-            button.setProperty("assistantPrompt", suggestion.prompt)
-        self.empty_state_widget.setAccessibleDescription(
-            presentation.stage_sentence,
-        )
-        if hasattr(self, "empty_state_next_label"):
-            self.empty_state_next_label.setText(presentation.next_text)
-            self.empty_state_next_label.setVisible(
-                bool(presentation.next_text) and not bool(display_commands)
-            )
-        if hasattr(self, "empty_state_action_button"):
-            self._empty_state_action_prompt = (
-                presentation.suggestions[-1].prompt
-                if presentation.suggestions
-                else "Suggest the next step"
-            )
-            self.empty_state_action_button.setProperty(
-                "assistantPrompt",
-                self._empty_state_action_prompt,
-            )
-            self.empty_state_action_button.setAccessibleName(
-                self.empty_state_action_button.text()
-            )
-            self.empty_state_action_button.setVisible(True)
-            self.empty_state_action_button.setEnabled(
-                not self.is_processing
-                and self._runtime_phase is AssistantRuntimePhase.READY
-            )
 
     def show_notice(self, text: str, timeout_ms: int = 6000) -> None:
         """Show a low-priority inline notice outside the transcript."""
@@ -1849,7 +1666,7 @@ class ChatPanel(QWidget):
         self._schedule_reflow()
 
     def _reflow_chat_content(self) -> None:
-        """Fit transcript bubbles and response actions to the live viewport."""
+        """Fit transcript bubbles and transient cards to the live viewport."""
         viewport = self.scroll_area.viewport()
         if viewport is None or viewport.width() <= 0:
             return
@@ -1876,7 +1693,6 @@ class ChatPanel(QWidget):
         surface_widths = (
             (self.runtime_state_widget, STATE_SURFACE_MAX_WIDTH),
             (self.empty_state_widget, EMPTY_STATE_MAX_WIDTH),
-            (self.response_actions_widget, CHAT_SURFACE_MAX_WIDTH),
             (self.confirmation_card_widget, CHAT_SURFACE_MAX_WIDTH),
             (self.turn_activity_widget, STATE_SURFACE_MAX_WIDTH),
         )
@@ -1902,9 +1718,9 @@ class ChatPanel(QWidget):
             for label in (
                 self.empty_state_title,
                 self.empty_state_intro,
-                self.empty_state_next_label,
             ):
                 self._fit_wrapped_label_height(label)
+                label.setFixedHeight(label.minimumHeight())
             visible_suggestions = [
                 suggestion
                 for suggestion in self.suggestion_prompt_buttons
@@ -1918,11 +1734,11 @@ class ChatPanel(QWidget):
                 + self.suggestion_prompt_layout.spacing()
                 * max(len(visible_suggestions) - 1, 0)
             )
-            self.suggestion_prompt_widget.setMinimumHeight(prompt_height)
+            self.suggestion_prompt_widget.setFixedHeight(prompt_height)
             self.suggestion_prompt_widget.updateGeometry()
             self.empty_state_layout.invalidate()
             self.empty_state_layout.activate()
-            self.empty_state_widget.setMinimumHeight(
+            self.empty_state_widget.setFixedHeight(
                 max(
                     self.empty_state_layout.minimumSize().height(),
                     self.empty_state_layout.sizeHint().height(),
@@ -1931,9 +1747,6 @@ class ChatPanel(QWidget):
             )
             self.empty_state_widget.updateGeometry()
             self._layout_suggestion_prompts(2 if container_width >= 520 else 1)
-
-        if not self.response_actions_widget.isHidden():
-            self._fit_response_action_labels(transcript_surface_width)
 
         if not self.runtime_state_widget.isHidden():
             for button in (self.retry_runtime_btn, self.setup_btn):
@@ -2009,7 +1822,6 @@ class ChatPanel(QWidget):
         """Keep current transcript activity after the durable messages."""
         for surface in (
             self.runtime_state_widget,
-            self.response_actions_widget,
             self.confirmation_card_widget,
             self.turn_activity_widget,
         ):
@@ -2033,6 +1845,13 @@ class ChatPanel(QWidget):
 
     def _sync_content_alignment(self) -> None:
         """Center owned empty/runtime states and top-align real transcripts."""
+        homepage_visible = (
+            not self._has_transcript_messages()
+            and self.empty_state_widget.isVisible()
+            and not self.runtime_state_widget.isVisible()
+            and not self.confirmation_card_widget.isVisible()
+            and not self.turn_activity_widget.isVisible()
+        )
         centered_surface_visible = (
             not self._has_transcript_messages()
             and (
@@ -2059,6 +1878,28 @@ class ChatPanel(QWidget):
             QSizePolicy.Policy.Minimum,
             QSizePolicy.Policy.Expanding,
         )
+        for index in range(self.chat_layout.count()):
+            self.chat_layout.setStretch(index, 0)
+        top_index = next(
+            (
+                index
+                for index in range(self.chat_layout.count())
+                if (item := self.chat_layout.itemAt(index)) is not None
+                and item.spacerItem() is self.content_top_spacer
+            ),
+            -1,
+        )
+        bottom_index = self._bottom_spacer_index()
+        if top_index >= 0:
+            self.chat_layout.setStretch(
+                top_index,
+                7 if homepage_visible else (1 if centered_surface_visible else 0),
+            )
+        if bottom_index < self.chat_layout.count():
+            self.chat_layout.setStretch(
+                bottom_index,
+                4 if homepage_visible else 1,
+            )
         self.chat_layout.invalidate()
 
     def _is_near_bottom(self, tolerance: int = 12) -> bool:
@@ -2070,53 +1911,9 @@ class ChatPanel(QWidget):
             or scroll_bar.value() >= scroll_bar.maximum() - tolerance
         )
 
-    def _fit_response_action_labels(self, container_width: int) -> None:
-        """Keep the action verb visible while retaining full accessible text."""
-        layout = self.response_actions_widget.layout()
-        if layout is not None:
-            layout.activate()
-        for button in self.response_actions_widget.findChildren(QToolButton):
-            full_label = button.property("assistantFullLabel")
-            if not isinstance(full_label, str) or not full_label:
-                continue
-            button.ensurePolished()
-            metrics = button.fontMetrics()
-            decoration_width = max(
-                button.sizeHint().width() - metrics.horizontalAdvance(full_label),
-                0,
-            )
-            button_width = button.contentsRect().width()
-            if button_width <= 0:
-                button_width = container_width
-            text_width = max(button_width - decoration_width, 1)
-            if metrics.horizontalAdvance(full_label) <= text_width:
-                button.setText(full_label)
-                continue
-            words = full_label.rsplit(maxsplit=2)
-            if len(words) == 3 and " ".join(words[-2:]).casefold() == (
-                "before continuing"
-            ):
-                trailing_action = " ".join(words[-2:])
-                action_verb = full_label.split(maxsplit=1)[0]
-                compact = f"{action_verb} … {trailing_action}"
-                # This semantic compact label is intentionally stable. Native
-                # style size hints can under-report the usable text width on
-                # Windows; right-eliding the original would remove the decision
-                # context while the complete label remains in the tooltip.
-                rendered = compact
-            else:
-                rendered = metrics.elidedText(
-                    full_label,
-                    Qt.TextElideMode.ElideRight,
-                    text_width,
-                )
-            button.setText(rendered)
-
     def _render_message_record(
         self,
         message: ChatMessageRecord,
-        *,
-        show_actions: bool = True,
     ) -> None:
         """Create one bubble directly from the typed persistence record."""
         if not isinstance(message, ChatMessageRecord):
@@ -2124,13 +1921,12 @@ class ChatPanel(QWidget):
         if self._history_rebuild_active:
             self._history_rebuild_deltas.append(("added", message))
             return
-        self._insert_message_record_widget(message, show_actions=show_actions)
+        self._insert_message_record_widget(message)
 
     def _insert_message_record_widget(
         self,
         record: ChatMessageRecord,
         *,
-        show_actions: bool,
         settle_layout: bool = True,
         history_order: dict[str, int] | None = None,
         update_reader_state: bool = True,
@@ -2144,8 +1940,6 @@ class ChatPanel(QWidget):
         follow_tail = is_user or not had_transcript or self._is_near_bottom()
         if update_reader_state:
             self._follow_transcript_updates = follow_tail
-        if settle_layout and (is_user or not record.has_active_actions):
-            self.clear_response_actions()
         bubble = MessageBubble(
             record.content,
             is_user,
@@ -2170,8 +1964,6 @@ class ChatPanel(QWidget):
         if not settle_layout:
             return bubble
         self._place_transient_surfaces_after_messages()
-        if show_actions and record.has_active_actions:
-            self.show_response_actions(record)
         self._reflow_chat_content()
         self._sync_content_alignment()
         self._schedule_reflow()
@@ -2215,18 +2007,11 @@ class ChatPanel(QWidget):
             self._pending_scroll_to_bottom = False
 
     def _update_rendered_record(self, record: ChatMessageRecord) -> None:
-        """Apply a correlated typed history update to its existing bubble/actions."""
+        """Apply a correlated typed history update to its existing bubble."""
         message = record
         if not isinstance(message, ChatMessageRecord):
             return
         if self._history_rebuild_active:
-            if (
-                self._response_presentation is not None
-                and self._response_presentation.presentation_id
-                == message.presentation_id
-                and message.action_state is not ChatActionState.ACTIVE
-            ):
-                self.clear_response_actions()
             self._history_rebuild_deltas.append(("updated", message))
             return
         self._apply_rendered_record_update(message)
@@ -2242,14 +2027,6 @@ class ChatPanel(QWidget):
         if bubble is not None:
             bubble.set_text(record.content)
             bubble.set_presentation_kind(record.presentation_kind)
-        if (
-            self._response_presentation is not None
-            and self._response_presentation.presentation_id == record.presentation_id
-        ):
-            if record.action_state is ChatActionState.ACTIVE:
-                self.show_response_actions(record)
-            else:
-                self.clear_response_actions()
         if bubble is not None and schedule_reflow:
             self._schedule_reflow()
 
@@ -2282,16 +2059,13 @@ class ChatPanel(QWidget):
             self._history_rebuild_requires_reorder = False
             self._history_rebuild_reflow_bubbles = ()
             self._history_rebuild_tail_message_id = None
-            self._history_rebuild_tail_actions = None
         runtime_state = getattr(self, "runtime_state_widget", None)
         empty_state = getattr(self, "empty_state_widget", None)
-        response_actions = getattr(self, "response_actions_widget", None)
         confirmation_card = getattr(self, "confirmation_card_widget", None)
         turn_activity = getattr(self, "turn_activity_widget", None)
         preserved = {
             runtime_state,
             empty_state,
-            response_actions,
             confirmation_card,
             turn_activity,
         }
@@ -2307,7 +2081,6 @@ class ChatPanel(QWidget):
         for surface in (
             runtime_state,
             empty_state,
-            response_actions,
             confirmation_card,
             turn_activity,
         ):
@@ -2318,7 +2091,6 @@ class ChatPanel(QWidget):
                 surface,
                 Qt.AlignmentFlag.AlignHCenter,
             )
-        self.clear_response_actions()
         self.clear_confirmation_request()
         self._message_bubbles_by_id.clear()
         self.chat_layout.addItem(self.content_bottom_spacer)

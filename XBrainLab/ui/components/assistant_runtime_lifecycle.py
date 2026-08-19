@@ -306,6 +306,7 @@ class AssistantRuntimeLifecycle(QObject):
         )
         self._controller: object | None = None
         self._initialized = False
+        self._diagnostic_only = False
         self._state = AssistantRuntimeLifecycleState.OPEN
         self._startup_cleanup_via_dispatcher: bool | None = None
         self._activation_ids = count(1)
@@ -549,6 +550,11 @@ class AssistantRuntimeLifecycle(QObject):
         config: LLMConfig,
     ) -> RuntimeActivationResult:
         """Start or reconcile the active controller with persisted settings."""
+        if self._diagnostic_only:
+            return RuntimeActivationResult(
+                RuntimeActivationStatus.ALREADY_READY,
+                message="Tool diagnostics do not load a generation model.",
+            )
         if not self._lifecycle_is_open:
             message = self._admission_failure_message()
             self.mark_unavailable(message)
@@ -648,24 +654,58 @@ class AssistantRuntimeLifecycle(QObject):
 
         activation_request = self._new_activation_request(launch_spec)
         self._begin_activation(activation_request)
+        return self._start_bound_controller(activation_request)
+
+    def start_diagnostics(self) -> bool:
+        """Start the existing command transport without a generation engine."""
+        if self._initialized:
+            return self._diagnostic_only
+        if not self._lifecycle_is_open:
+            self.mark_unavailable(self._admission_failure_message())
+            return False
+        if self._startup_cleanup_via_dispatcher is not None:
+            self.mark_unavailable(
+                "The previous assistant startup did not finish shutting down. "
+                "Restart XBrainLab before running diagnostics again."
+            )
+            return False
+
+        if not self._start_bound_controller(None):
+            return False
+        self._coordinator.accept_worker_snapshot(
+            AssistantRuntimeSnapshot(
+                phase=AssistantRuntimePhase.READY,
+                initialized=True,
+                backend_mode="diagnostic",
+                selection_detail=("Tool diagnostics ready without a generation model."),
+            )
+        )
+        return True
+
+    def _start_bound_controller(
+        self,
+        activation_request: AssistantRuntimeActivationRequest | None,
+    ) -> bool:
+        """Create and bind the one controller used by normal and debug startup."""
         controller: object | None = None
         dispatcher_bound = False
+        operation = "start" if activation_request is not None else "start_diagnostics"
         try:
             controller = self._controller_factory(self._study)
             self._bind_controller_lifecycle_signals(controller)
-
             self._dispatcher.bind(controller)
             dispatcher_bound = True
-            self._require_delivery(
-                self._dispatcher.initialize(activation_request),
-                "initialization",
-            )
+            if activation_request is not None:
+                self._require_delivery(
+                    self._dispatcher.initialize(activation_request),
+                    "initialization",
+                )
         except Exception as exc:
             safe_unexpected_failure(
                 logger,
                 exc,
                 boundary="assistant_runtime_lifecycle",
-                operation="start",
+                operation=operation,
             )
             self._rollback_failed_start(
                 controller,
@@ -675,6 +715,7 @@ class AssistantRuntimeLifecycle(QObject):
 
         self._controller = controller
         self._initialized = True
+        self._diagnostic_only = activation_request is None
         self.controller_created.emit(controller)
         return True
 
@@ -991,6 +1032,7 @@ class AssistantRuntimeLifecycle(QObject):
                     )
 
         self._initialized = False
+        self._diagnostic_only = False
         if cleanup_complete:
             self._controller = None
             self._startup_cleanup_via_dispatcher = None
@@ -1118,6 +1160,12 @@ class AssistantRuntimeLifecycle(QObject):
         generation: int | None = None,
     ) -> RuntimeCommandAdmissionResult:
         """Atomically reserve and dispatch one user turn through the runtime."""
+        if self._diagnostic_only:
+            return RuntimeCommandAdmissionResult(
+                command_name="submit",
+                status=RuntimeCommandAdmissionStatus.REJECTED,
+                message="Diagnostic mode accepts scripted diagnostic actions only.",
+            )
         try:
             normalized = bounded_chat_string(
                 text,
@@ -1461,6 +1509,7 @@ class AssistantRuntimeLifecycle(QObject):
         self._deactivation_config = None
         self._disconnect_controller_lifecycle_signals()
         self._controller = None
+        self._diagnostic_only = False
         self._startup_cleanup_via_dispatcher = None
         self._replace_dispatcher(factory())
         previous_enabled = bool(config.local_model_enabled)
@@ -1538,6 +1587,7 @@ class AssistantRuntimeLifecycle(QObject):
         self._disconnect_controller_lifecycle_signals()
         self._state = AssistantRuntimeLifecycleState.CLOSED
         self._controller = None
+        self._diagnostic_only = False
         self._startup_cleanup_via_dispatcher = None
         self._deactivation_requested = False
         self._deactivation_config = None

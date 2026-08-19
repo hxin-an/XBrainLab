@@ -84,7 +84,7 @@ class TestEstimateConfidence:
         score = estimate_confidence(text, cmds)
         assert score >= 0.7
 
-    @pytest.mark.parametrize("tool_name", ["reset_preprocess", "stop_training"])
+    @pytest.mark.parametrize("tool_name", ["reset_preprocessing", "stop_training"])
     def test_default_known_tools_include_every_registered_lifecycle_tool(
         self,
         tool_name,

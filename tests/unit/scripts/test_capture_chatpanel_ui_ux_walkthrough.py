@@ -31,8 +31,8 @@ from XBrainLab.ui.chat.panel import ChatPanel
 def test_scenario_contract_covers_required_surfaces_once() -> None:
     assert tuple(spec.filename for spec in SCENARIOS) == EXPECTED_SCREEN_FILES[:-4]
     assert EXPECTED_SCREEN_FILES[-4:] == (
-        "main-window-dock-420-action-visible.png",
-        "main-window-dock-420-action-click.png",
+        "main-window-dock-420-response-visible.png",
+        "main-window-dock-420-navigation.png",
         "main-window-dock-420-stopping.png",
         "main-window-dock-420-command-running.png",
     )
@@ -74,7 +74,26 @@ def test_scenario_contract_covers_required_surfaces_once() -> None:
     assert all(spec.render_pixel_ratio == 1.0 for spec in dpi_evidence)
     assert all(spec.required_kinds == ("user", "error") for spec in dpi_evidence)
     assert all(spec.confirmation_visible for spec in dpi_evidence)
-    assert all(spec.expected_confirmation_values for spec in dpi_evidence)
+    assert all(
+        spec.expected_confirmation_title == "Start training" for spec in dpi_evidence
+    )
+    assert all(spec.expected_confirmation_values == () for spec in dpi_evidence)
+    assert all(
+        spec.expected_confirmation_actions == ("Cancel", "Confirm")
+        for spec in dpi_evidence
+    )
+    ordinary_confirmations = [
+        spec for spec in SCENARIOS if spec.review_state == "ordinary_confirmation"
+    ]
+    assert [spec.logical_width for spec in ordinary_confirmations] == [320, 420, 760]
+    assert all(
+        spec.expected_confirmation_title == "Compute saliency"
+        for spec in ordinary_confirmations
+    )
+    assert all(
+        spec.expected_confirmation_actions == ("Cancel", "Compute saliency")
+        for spec in ordinary_confirmations
+    )
     assert any(
         spec.logical_width == 320
         and spec.logical_height == 650
@@ -105,6 +124,23 @@ def test_scenario_contract_covers_required_surfaces_once() -> None:
         "assistant-settings-runtime-loading.png",
         "assistant-settings-advanced.png",
         "assistant-settings-disabled.png",
+    )
+
+
+@pytest.mark.parametrize(
+    ("available_width", "expected_width"),
+    [
+        (800, 520),
+        (640, 520),
+        (533, 485),
+    ],
+)
+def test_assistant_settings_width_respects_the_available_screen_margin(
+    available_width,
+    expected_width,
+) -> None:
+    assert walkthrough_module.assistant_settings_capture_width(available_width) == (
+        expected_width
     )
 
 
@@ -195,8 +231,8 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
             "assistant_primary_action",
             "assistant_activity_when_visible",
         ],
-        "restored_action_inert_check": True,
-        "live_action_pre_click_region_check": True,
+        "plain_history_restore_check": True,
+        "typed_navigation_check": True,
     }
     collapsed_settings = payload["assistant_settings"]["screens"][0]
     assert (
@@ -222,11 +258,7 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
             assert all(geometry[required_control]["sides"].values()), geometry[
                 required_control
             ]
-        if screen.get("visible_response_actions"):
-            assert geometry["response_action"]["inside_panel_on_all_sides"] is True
-            assert all(geometry["response_action"]["sides"].values()), geometry[
-                "response_action"
-            ]
+        assert screen["retired_response_action_surface_absent"] is True
 
     observed_labels = {
         kind: label
@@ -240,18 +272,15 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
     assert dock["real_main_window"] is True
     assert dock["real_qdockwidget"] is True
     assert dock["assistant_usable_width"] == 420
-    assert dock["action_click"]["clicked"] is True
-    assert dock["action_click"]["label"] == "Open Dataset"
-    assert dock["action_click"]["history_source"] == "live_correlated_response"
-    assert dock["action_click"]["restored_actions_inert"] is True
-    assert dock["action_click"]["presentation_identity_from_ui"] is True
-    assert dock["action_click"]["workflow_panel_opened"] is True
-    assert dock["action_click"]["before_panel_index"] == 1
-    assert dock["action_click"]["after_panel_index"] == 0
-    assert dock["action_click"]["before_panel_materialized"] is True
-    assert dock["action_click"]["after_panel_materialized"] is True
-    assert dock["action_click"]["before_placeholder_visible"] is False
-    assert dock["action_click"]["after_placeholder_visible"] is False
+    response_navigation = dock["response_and_navigation"]
+    assert response_navigation["navigation_opened"] is True
+    assert response_navigation["history_source"] == "live_correlated_response"
+    assert response_navigation["restored_copy_only"] is True
+    assert response_navigation["retired_response_action_surface_absent"] is True
+    assert response_navigation["before_panel_index"] == 1
+    assert response_navigation["after_panel_index"] == 0
+    assert response_navigation["before_panel_materialized"] is True
+    assert response_navigation["after_panel_materialized"] is True
     assert dock["states"]["cancellable"]["button_text"] == "Stop"
     assert dock["states"]["cancellable"]["button_enabled"] is True
     assert dock["states"]["stopping"]["button_text"] == "Stopping"

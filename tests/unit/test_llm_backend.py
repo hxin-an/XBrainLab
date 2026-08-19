@@ -111,7 +111,10 @@ class TestCommandParser:
     def test_parse_json_command(self):
         from XBrainLab.llm.agent.parser import CommandParser
 
-        text = '{"tool_name": "load_data", "parameters": {"path": "test.fif"}}'
+        text = (
+            '{"workflow_stage": "empty", "tool_name": "load_data", '
+            '"parameters": {"path": "test.fif"}}'
+        )
         result = CommandParser.parse(text)
         assert result == [("load_data", {"path": "test.fif"})]
 

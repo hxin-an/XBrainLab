@@ -187,6 +187,17 @@ class WorkflowUiHandoffHost:
                 fallback_request,
                 "There is no pending Data Import step to open.",
             )
+        if command not in {
+            CommandName.SCAN_SOURCE,
+            CommandName.REVIEW_INTERPRETATION,
+            CommandName.PREVIEW_INTERPRETATION,
+            CommandName.VALIDATE_INTERPRETATION,
+            CommandName.APPLY_INTERPRETATION,
+        }:
+            return self._standalone_failure(
+                fallback_request,
+                "There is no pending Data Import step to open.",
+            )
         descriptor = workflow_ui_handoff_route_for(command)
         if (
             descriptor is None
@@ -472,6 +483,9 @@ class WorkflowUiHandoffHost:
             WorkflowUiHandoffRouteIdentity.DATA_IMPORT_REVIEW_DIALOG: (
                 self._open_current_import_review
             ),
+            WorkflowUiHandoffRouteIdentity.CHANNEL_SELECTION_DIALOG: (
+                self._open_channel_selection
+            ),
             WorkflowUiHandoffRouteIdentity.EPOCH_SETTINGS_DIALOG: (self._open_epoching),
             WorkflowUiHandoffRouteIdentity.DATASET_SPLIT_DIALOG: (
                 self._open_data_splitting
@@ -479,8 +493,8 @@ class WorkflowUiHandoffHost:
             WorkflowUiHandoffRouteIdentity.TRAINING_SETTINGS_DIALOG: (
                 self._open_training_settings
             ),
-            WorkflowUiHandoffRouteIdentity.SALIENCY_SETTINGS_DIALOG: (
-                self._open_saliency_settings
+            WorkflowUiHandoffRouteIdentity.SALIENCY_COMPUTE_ACTION: (
+                self._compute_saliency
             ),
             WorkflowUiHandoffRouteIdentity.MONTAGE_SETTINGS_DIALOG: (
                 self._open_montage
@@ -499,14 +513,17 @@ class WorkflowUiHandoffHost:
         descriptor: WorkflowUiHandoffRouteDescriptor,
         open_surface: WorkflowSurfaceCallback | None = None,
     ) -> WorkflowSurfaceRoute:
-        requires_opener = descriptor.surface_kind is WorkflowUiHandoffSurfaceKind.DIALOG
+        requires_opener = descriptor.surface_kind in {
+            WorkflowUiHandoffSurfaceKind.DIALOG,
+            WorkflowUiHandoffSurfaceKind.ACTION,
+        }
         if requires_opener and open_surface is None:
             raise ValueError(
-                f"No dialog adapter registered for {descriptor.command.value}."
+                f"No product UI adapter registered for {descriptor.command.value}."
             )
         if not requires_opener and open_surface is not None:
             raise ValueError(
-                f"Panel-only route {descriptor.command.value} cannot open a dialog."
+                f"Panel-only route {descriptor.command.value} cannot open an action."
             )
         panel = WorkflowPanel(descriptor.target_panel.value)
         return WorkflowSurfaceRoute(
@@ -895,6 +912,14 @@ class WorkflowUiHandoffHost:
             self._main_window.preprocess_panel.sidebar.open_epoching(**kwargs)
         )
 
+    def _open_channel_selection(
+        self,
+        _request: WorkflowSurfaceRequest,
+    ) -> WorkflowSurfaceResult:
+        return self._surface_result(
+            self._main_window.dataset_panel.sidebar.open_channel_selection()
+        )
+
     def _open_data_splitting(
         self,
         request: WorkflowSurfaceRequest,
@@ -941,12 +966,12 @@ class WorkflowUiHandoffHost:
             )
         return WorkflowSurfaceResult(WorkflowSurfaceStatus.FAILED)
 
-    def _open_saliency_settings(
+    def _compute_saliency(
         self,
         _request: WorkflowSurfaceRequest,
     ) -> WorkflowSurfaceResult:
         return self._surface_result(
-            self._main_window.visualization_panel.sidebar.set_saliency()
+            self._main_window.visualization_panel.compute_saliency()
         )
 
     def _open_montage(

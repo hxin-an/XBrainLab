@@ -145,27 +145,21 @@ Local tool-call eval 不是每個小修都跑 full primary / fallback x3。正�
 | Candidate gate | 需要真 local model 驗證受影響 case family。 | primary model；affected families；repeat `1` 或 `2`。 |
 | Release / thesis gate | 更新正式 benchmark claim 或 thesis evidence artifact。 | deterministic full suite；primary full suite x3；fallback full suite x3；刷新 dashboard。 |
 
-Release / thesis local gate 前必須先記錄 disk / cache / `nvidia-smi` VRAM preflight。RTX
-5070 Ti 16GB 已在 fallback x3 觀察到高壓 VRAM boundary；若 VRAM 幾乎滿載，不應啟動 full
-fallback x3，而要保存 `resource_preflight.*` 並延後 formal local rerun，或改跑 fast dev /
-candidate gate。`scripts/agent/evals/run_local_tool_call_eval.py` 的 full-suite repeat `3`
-local run 必須顯式帶 `--eval-gate release` 或 `--eval-gate thesis`；預設 candidate gate 會先寫
-`resource_preflight.*` 並拒絕啟動模型。這種 blocked preflight 不能被寫成 thesis-ready rerun。
-deterministic CLI 也同樣分層：`scripts/agent/evals/run_tool_call_eval.py` 的預設 `fast` gate
-只允許 `--case-id` / `--case-family` / `--case-limit` subset 和 repeat `1`；正式 full-suite
-dashboard refresh 必須顯式帶 `--eval-gate release` 或 `--eval-gate thesis`。
+Release / thesis local gate 前必須先記錄 disk / cache / `nvidia-smi` VRAM preflight。舊
+21-action deterministic／local runners已隨Stable v2 surface退役，不能再用歷史121-case artifact
+刷新current claim。產品重建期間只使用`scripts/dev/run_stable_assistant_model_eval.py`的48-case
+target gate（34 positive＋14 challenge）；它要求exact stage、tool、parameters／response contract與
+schema，但不是thesis benchmark。
+正式thesis runner必須等產品surface凍結後另以approved target cases重建，並重新定義repeat、resource
+preflight、confidence interval與artifact schema；不得把產品48-case結果升格為thesis-ready rerun。
 
 Local LLM CLI 的 process exit 與 artifact contract 如下：
 
-- `--strict` 以 primary raw-model score 作為 hard gate；任何 failed case、空 case set 或不一致的
-  case summary 都回傳 exit code `1`。host-assisted normalization / safe blocking 不可把 raw-model
-  failure 轉成 gate pass。
-- `--eval-gate release` / `--eval-gate thesis` 預設使用 strict process-exit 語意。
-- fast / candidate run 預設為 report-only；也可顯式使用 `--report-only`。完成評估並寫出報告後
-  回傳 `0`，但 artifact 仍保留 `cli_gate.passed=false` 與 failed-case 數，不能宣稱模型通過。
-- resource preflight 在模型執行前失敗時回傳 exit code `2`，與模型評分失敗分開判讀。
-- `xbrainlab.local_tool_call_eval.v4` artifact 必須保存 `cli_gate.mode`、`score_scope`、pass/fail
-  case 數、`passed` 與 `exit_code`，使 CI 與人工報告可重現同一個 gate 判斷。
+- Stable v2產品gate的`--strict`在任何failed case、空case set或不完整summary時回傳非零；partial
+  artifact必須保持`complete=false`與`passed=false`。
+- 歷史`xbrainlab.local_tool_call_eval.v4`／v5 artifact只能作provenance，不是current Stable v2 gate。
+- 未來thesis runner的process exit、resource-preflight與artifact contract必須在重建時重新批准；不能
+  從已退役CLI自動繼承。
 
 ## Scripted Replay
 
@@ -367,14 +361,10 @@ build/dev-artifacts/thesis/<run_id>/
 
 ## Current Gap
 
-目前已建立 deterministic tool-call eval baseline、local primary / fallback runner、case-level
-scorer、dashboard、failure taxonomy、repeat-run artifact 和 resource preflight guard。最新
-benchmark slice 使用同一 `121` cases，deterministic / primary / fallback artifacts 均已刷新；這可
-作為該 benchmark 的 thesis-candidate tool-call evidence。
-
-尚未完成的是把這些 artifact 整理成正式 thesis report/evidence matrix、補 confidence interval
-或統計呈現、並在每次更新正式 claim 前依 release / thesis gate 重跑與保存 resource/latency
-條件。tool-call benchmark 也不能取代 UI、launcher 或 import wizard 的產品驗收 evidence。
+舊121-case deterministic／primary／fallback artifacts屬superseded provenance，不能作為Stable v2
+或thesis-candidate current evidence。Current產品層只有48-case bounded target selection gate；
+正式thesis benchmark、repeat-run matrix、confidence interval、resource／latency條件與dashboard均待
+產品主線穩定後重建。tool-call benchmark也不能取代UI、launcher或import wizard的產品驗收evidence。
 
 external EEG dataset runner、repeat runs、baseline comparison 和 statistical reporting 是可選的
 pipeline support，不是目前 thesis 主線。這些不能取代 local LLM 真實 tool-call accuracy run。

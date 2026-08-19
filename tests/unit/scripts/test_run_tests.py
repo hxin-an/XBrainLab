@@ -460,6 +460,12 @@ def test_ui_gate_runs_every_ui_domain_in_isolated_processes(
     ]
 
 
+def test_ui_shard_paths_are_portable_posix_cli_arguments() -> None:
+    assert all(
+        "\\" not in path for _label, paths in run_tests.UI_UNIT_SHARDS for path in paths
+    )
+
+
 def test_llm_gate_runs_every_native_domain_in_isolated_processes(
     monkeypatch,
 ) -> None:
@@ -519,6 +525,31 @@ def test_default_unit_gate_uses_the_llm_native_process_boundaries(
     ]
     assert len(llm_calls) == len(run_tests.LLM_UNIT_SHARDS)
     assert all("tests/unit/llm" not in call for call in llm_calls)
+
+
+def test_default_unit_gate_uses_the_ui_native_process_boundaries(
+    monkeypatch,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    monkeypatch.setattr(
+        run_tests,
+        "configure_headless_ui_env",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        run_tests,
+        "run_pytest",
+        lambda args: calls.append(tuple(args)) or 0,
+    )
+
+    run_tests.unit()
+
+    ui_calls = [
+        call for call in calls if any(path.startswith("tests/unit/ui") for path in call)
+    ]
+    assert len(ui_calls) == len(run_tests.UI_UNIT_SHARDS)
+    assert all("tests/unit/ui" not in call for call in ui_calls)
 
 
 def test_mcp_compatibility_is_explicitly_outside_default_all_gate() -> None:

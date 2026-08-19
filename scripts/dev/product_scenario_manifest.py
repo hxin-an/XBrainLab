@@ -9,24 +9,13 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Any, Final, Literal
 
-from scripts.dev.agent_toolcall_showcase.cases import SHOWCASE_CASES
 from scripts.dev.handoff_gate_spec import (
     EVIDENCE_ROOT_TOKEN,
     HANDOFF_GATE_SPECS,
 )
 
-IMMEDIATE_PROFILE_ID: Final = "immediate-20"
+IMMEDIATE_PROFILE_ID: Final = "immediate-12"
 _SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,95}$")
-_AGENT_CASE_IDS = (
-    "import.scan_source",
-    "blocked.preprocess_without_data",
-    "settings.model_approved",
-    "training.start_cancelled",
-    "import.apply_review_handoff",
-    "safety.stale_revision",
-    "recovery.runtime_error_retry",
-    "analysis.evaluate_before_run",
-)
 
 ValidatorKind = Literal[
     "execution_artifacts",
@@ -34,7 +23,6 @@ ValidatorKind = Literal[
     "json_truthy",
     "json_equals",
     "pytest_attestation",
-    "agent_showcase_case",
     "dpi_scale",
 ]
 
@@ -150,27 +138,6 @@ def _gate_execution(
     )
 
 
-_agent_showcase_argv = [
-    "prlimit",
-    "--core=0",
-    "--",
-    "poetry",
-    "run",
-    "--",
-    "python",
-    "scripts/dev/run_agent_toolcall_showcase.py",
-]
-for _case_id in _AGENT_CASE_IDS:
-    _agent_showcase_argv.extend(("--case", _case_id))
-_agent_showcase_argv.extend(
-    (
-        "--json-out",
-        f"{EVIDENCE_ROOT_TOKEN}/agent-toolcall-showcase/selected.json",
-        "--markdown-out",
-        f"{EVIDENCE_ROOT_TOKEN}/agent-toolcall-showcase/selected.md",
-    )
-)
-
 _EXECUTIONS = (
     _gate_execution("fetch-required-ci", native=False),
     _gate_execution(
@@ -200,22 +167,6 @@ _EXECUTIONS = (
     _gate_execution("human-like-product"),
     _gate_execution("dataset-narrow"),
     _gate_execution("chatpanel-dpi"),
-    ExecutionSpec(
-        execution_id="agent-showcase-selected",
-        timeout_seconds=900,
-        native=True,
-        argv=tuple(_agent_showcase_argv),
-        environment=(
-            ("QT_QPA_PLATFORM", "offscreen"),
-            ("MNE_DONTWRITE_HOME", "true"),
-            ("HF_HUB_OFFLINE", "1"),
-            ("TRANSFORMERS_OFFLINE", "1"),
-        ),
-        required_artifact_paths=(
-            "agent-toolcall-showcase/selected.json",
-            "agent-toolcall-showcase/selected.md",
-        ),
-    ),
 )
 PRODUCT_SCENARIO_EXECUTIONS: Final = MappingProxyType(
     {item.execution_id: item for item in _EXECUTIONS}
@@ -556,107 +507,6 @@ _SCENARIOS = (
 )
 
 
-def _agent_scenario(
-    *,
-    scenario_id: str,
-    title: str,
-    case_id: str,
-    scope: str,
-    tags: tuple[str, ...],
-    boundary: str,
-) -> ScenarioSpec:
-    return _scenario(
-        scenario_id=scenario_id,
-        title=title,
-        scope=scope,
-        execution_id="agent-showcase-selected",
-        artifact_policy=_artifact(
-            f"One unique {case_id} row in the source-bound showcase report.",
-            "agent-toolcall-showcase/selected.json",
-        ),
-        validator=ValidatorSpec(
-            kind="agent_showcase_case",
-            artifact_path="agent-toolcall-showcase/selected.json",
-            key=case_id,
-        ),
-        evidence_key=f"agent-case:{case_id}",
-        pass_criteria=(
-            f"The report contains exactly one passing {case_id} case.",
-            "The case has a terminal outcome validated by the showcase contract.",
-        ),
-        claim_boundary=boundary,
-        coverage_tags=tags,
-    )
-
-
-_SCENARIOS += (
-    _agent_scenario(
-        scenario_id="agent.import-success",
-        title="Agent import success",
-        case_id="import.scan_source",
-        scope="Successful scan_source selection, verification and structured result.",
-        tags=("agent", "agent-success", "data-import"),
-        boundary="Deterministic selector product diagnostic, not raw-model accuracy.",
-    ),
-    _agent_scenario(
-        scenario_id="agent.precondition-blocked",
-        title="Agent precondition block",
-        case_id="blocked.preprocess_without_data",
-        scope="Preprocessing request is blocked before data import with a typed reason.",
-        tags=("agent", "agent-blocked"),
-        boundary="One wrong-stage contract, not exhaustive negative-case coverage.",
-    ),
-    _agent_scenario(
-        scenario_id="agent.confirmation-approved",
-        title="Agent confirmation approval",
-        case_id="settings.model_approved",
-        scope="A model-setting change requires and receives explicit approval.",
-        tags=("agent", "agent-success", "agent-confirmation"),
-        boundary="Host-assisted confirmation contract, not autonomous model consent judgment.",
-    ),
-    _agent_scenario(
-        scenario_id="agent.confirmation-cancelled",
-        title="Agent confirmation cancellation",
-        case_id="training.start_cancelled",
-        scope="A training request is cancelled without applying the command.",
-        tags=("agent", "agent-confirmation"),
-        boundary="One confirmation cancellation path, not every command or UI gesture.",
-    ),
-    _agent_scenario(
-        scenario_id="agent.import-ui-handoff",
-        title="Agent import review handoff",
-        case_id="import.apply_review_handoff",
-        scope="Unresolved import review yields a structured UI handoff instead of bypassing review.",
-        tags=("agent", "agent-blocked", "data-import", "label"),
-        boundary="Handoff contract evidence, not proof a human completed the review.",
-    ),
-    _agent_scenario(
-        scenario_id="agent.stale-revision-recovery",
-        title="Agent stale revision rejection",
-        case_id="safety.stale_revision",
-        scope="A stale workflow revision is rejected at the execution boundary.",
-        tags=("agent", "agent-blocked", "agent-recovery"),
-        boundary="One stale-publication race contract, not all concurrent state races.",
-    ),
-    _agent_scenario(
-        scenario_id="agent.runtime-error-retry",
-        title="Agent runtime recovery retry",
-        case_id="recovery.runtime_error_retry",
-        scope="A recoverable runtime failure follows the exact retry sequence to success.",
-        tags=("agent", "agent-success", "agent-recovery"),
-        boundary="Injected recoverable failure path, not long-session runtime reliability.",
-    ),
-    _agent_scenario(
-        scenario_id="agent.evaluation-before-training-blocked",
-        title="Agent evaluation block",
-        case_id="analysis.evaluate_before_run",
-        scope="Evaluation before a completed training run is blocked with a typed precondition.",
-        tags=("agent", "agent-blocked", "evaluation"),
-        boundary="Readiness policy contract, not evidence of evaluation metric correctness.",
-    ),
-)
-
-
 def _dpi_scenario(scale: float) -> ScenarioSpec:
     percent = round(scale * 100)
     return _scenario(
@@ -698,18 +548,18 @@ PRODUCT_SCENARIOS: Final = MappingProxyType(
 
 _IMMEDIATE_IDS = tuple(item.scenario_id for item in _SCENARIOS)
 _IMMEDIATE_CLAIM_BOUNDARY = (
-    "This immediate 20-scenario product checkpoint is a fixed engineering gate. "
+    "This immediate 12-scenario product checkpoint is a fixed engineering gate. "
     "It does not establish statistical bug risk <5%, product completion, Windows "
-    "native acceptance, or any MOABB dataset campaign result. The 20 product "
+    "native acceptance, or any MOABB dataset campaign result. The 12 product "
     "scenarios must not be extrapolated to a MOABB dataset denominator."
 )
 _PROFILES = (
     ProfileSpec(
         profile_id=IMMEDIATE_PROFILE_ID,
         scenario_ids=_IMMEDIATE_IDS,
-        expected_scenario_count=20,
+        expected_scenario_count=12,
         purpose=(
-            "Execute the current handoff checkpoint's 20 high-difference product scenarios."
+            "Execute the current handoff checkpoint's 12 high-difference product scenarios."
         ),
         claim_boundary=_IMMEDIATE_CLAIM_BOUNDARY,
     ),
@@ -823,12 +673,6 @@ def validate_manifest(
                 scenario.validator.artifact_path,
                 owner=scenario_id,
             )
-        if scenario.validator.kind == "agent_showcase_case":
-            catalog_ids = {case.case_id for case in SHOWCASE_CASES}
-            if scenario.validator.key not in catalog_ids:
-                raise ScenarioManifestError(
-                    f"Scenario {scenario_id!r} references an unknown showcase case."
-                )
     for profile_id, profile in profiles.items():
         if profile_id != profile.profile_id or not _SAFE_ID.fullmatch(profile_id):
             raise ScenarioManifestError(f"Invalid profile identity: {profile_id!r}.")

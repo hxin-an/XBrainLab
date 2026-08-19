@@ -32,19 +32,12 @@ from XBrainLab.backend.application.pipeline_stage import workflow_command_label
 from XBrainLab.backend.controller.chat_controller import (
     ChatController,
     ChatMessagePresentationKind,
-    ChatMessageRecord,
-    ChatResponseAction,
-    ChatResponseActionKind,
-    ChatResponseActionResolution,
-    ChatResponseActionSelection,
-)
-from XBrainLab.backend.controller.chat_controller import (
-    ChatPanelTarget as ChatHistoryPanelTarget,
 )
 from XBrainLab.backend.training_state_contract import (
     TrainingOutcomeState,
 )
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.debug.tool_debug_mode import ToolDebugMode
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantDecisionOwner,
     AssistantTurnActivity,
@@ -58,8 +51,6 @@ from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.agent.response_presentation import (
     AssistantPanelNavigationRequest,
     AssistantPanelTarget,
-    AssistantResponseAction,
-    AssistantResponseActionKind,
     AssistantResponseKind,
     AssistantResponsePresentation,
 )
@@ -73,6 +64,7 @@ from XBrainLab.llm.agent.turn import (
     AssistantTurnTerminal,
 )
 from XBrainLab.llm.agent.ui_handoff import (
+    WorkflowUiHandoffKind,
     WorkflowUiHandoffRequest,
     WorkflowUiHandoffResolution,
     WorkflowUiHandoffResolutionStatus,
@@ -88,7 +80,6 @@ from XBrainLab.llm.tools.result_contract import (
 )
 from XBrainLab.ui.chat.panel import ChatPanel
 from XBrainLab.ui.chat.presentation import (
-    ChatResponseActionSelectionView,
     ChatTurnPresentation,
     present_assistant_activity,
 )
@@ -320,7 +311,6 @@ class AgentManager(QObject):
         self._pending_prune_notice = False
         self._runtime_unavailable_notice: str | None = None
         self._assistant_status_projection: AssistantStatusProjection | None = None
-        self._active_response_presentation_id: str | None = None
         self._application_command_in_flight = False
         self._assistant_training_terminal_retry_timer = QTimer(self)
         self._assistant_training_terminal_retry_timer.setSingleShot(True)
@@ -414,9 +404,6 @@ class AgentManager(QObject):
         self._assistant_runtime.replay_runtime_snapshot()
 
         # Connect UI to ChatController
-        chat_panel.active_response_presentation_changed.connect(
-            self._on_active_response_presentation_changed
-        )
         chat_panel.connect_controller(self.chat_controller)
 
         # Connect ChatPanel signals to self (for further dispatch)
@@ -431,9 +418,6 @@ class AgentManager(QObject):
         )
         if retry_runtime_requested is not None:
             retry_runtime_requested.connect(self.retry_local_assistant)
-        chat_panel.response_action_requested.connect(
-            self._handle_response_action_selection
-        )
         chat_panel.confirmation_decision_requested.connect(
             self._resolve_action_confirmation
         )
@@ -563,6 +547,16 @@ class AgentManager(QObject):
             self.chat_dock.show()
             if hasattr(self.main_window, "ai_btn"):
                 self.main_window.ai_btn.setChecked(True)
+
+            if self._tool_debug_enabled():
+                started = self._assistant_runtime.start_diagnostics()
+                self.refresh_backend_status()
+                if not started:
+                    self._show_runtime_unavailable(
+                        self._assistant_runtime.current.error
+                        or "Tool diagnostics could not start."
+                    )
+                return
 
             config = self._assistant_runtime.load_config()
             if self._assistant_runtime.needs_first_run(config):
@@ -710,8 +704,20 @@ class AgentManager(QObject):
         """Start the runtime owner after the assistant UI is available."""
         if not self.chat_panel:
             return
-        if self._assistant_runtime.start():
+        started = (
+            self._assistant_runtime.start_diagnostics()
+            if self._tool_debug_enabled()
+            else self._assistant_runtime.start()
+        )
+        if started:
             self.refresh_backend_status()
+
+    def _tool_debug_enabled(self) -> bool:
+        """Return whether this real chat panel owns a debug script session."""
+        return isinstance(
+            getattr(self.chat_panel, "debug_mode", None),
+            ToolDebugMode,
+        )
 
     def _create_assistant_controller(self, study: object) -> LLMController:
         """Create a controller only when its product UI contract is complete."""
@@ -938,6 +944,10 @@ class AgentManager(QObject):
     ) -> None:
         """Admit one debug-script action through the normal correlated turn lease."""
         if self.agent_controller is None:
+            if self.chat_panel:
+                self.chat_panel.reject_debug_step(
+                    "The assistant runtime must be ready before running diagnostics."
+                )
             self._show_low_priority_notice(
                 "The assistant runtime must be ready before running diagnostics."
             )
@@ -961,11 +971,17 @@ class AgentManager(QObject):
             self._show_low_priority_notice(
                 "The diagnostic action could not be started. Try again."
             )
+            if self.chat_panel:
+                self.chat_panel.reject_debug_step(
+                    "The diagnostic action could not be started. Try again."
+                )
             return
         if not admission.accepted:
             self._finish_assistant_turn_submission(submission, accepted=False)
             self._deferred_submission_events = None
             self._show_low_priority_notice(admission.message)
+            if self.chat_panel:
+                self.chat_panel.reject_debug_step(admission.message)
             return
         correlation = admission.correlation
         deferred_events = self._deferred_submission_events
@@ -978,26 +994,20 @@ class AgentManager(QObject):
             self._show_low_priority_notice(
                 "The diagnostic action could not be correlated. Try again."
             )
+            if self.chat_panel:
+                self.chat_panel.reject_debug_step(
+                    "The diagnostic action could not be correlated. Try again."
+                )
             return
         self._prepare_admitted_transcript_turn()
         self._replay_deferred_submission_events(deferred_events)
 
-    def _prepare_admitted_transcript_turn(
-        self,
-        *,
-        clear_response_actions: bool = True,
-    ) -> None:
+    def _prepare_admitted_transcript_turn(self) -> None:
         """Establish one bounded transcript budget after runtime admission."""
         pruned_rows = self.chat_controller.prepare_for_turn()
         self._pending_prune_notice = bool(pruned_rows)
         if pruned_rows:
             self._show_low_priority_notice(_CHAT_PRUNE_NOTICE)
-        if (
-            clear_response_actions
-            and self.chat_panel
-            and hasattr(self.chat_panel, "clear_response_actions")
-        ):
-            self.chat_panel.clear_response_actions()
 
     def _replay_deferred_submission_events(
         self,
@@ -1054,17 +1064,12 @@ class AgentManager(QObject):
         ):
             self.chat_panel.show_notice("")
         kind = self._chat_presentation_kind(presentation)
-        actions = tuple(
-            self._chat_response_action(action) for action in presentation.actions
-        )
         visible_text = self._presentation.assistant_transcript_message(
             presentation.text
         )
         self.chat_controller.add_agent_message(
             visible_text,
             presentation_kind=kind,
-            presentation_id=presentation.presentation_id,
-            actions=actions,
         )
         if self._pending_prune_notice:
             self._show_low_priority_notice(_CHAT_PRUNE_NOTICE)
@@ -1086,35 +1091,8 @@ class AgentManager(QObject):
             return ChatMessagePresentationKind.CANCELLED
         return ChatMessagePresentationKind.ASSISTANT
 
-    @staticmethod
-    def _chat_response_action(
-        action: AssistantResponseAction,
-    ) -> ChatResponseAction:
-        """Convert one typed runtime action into the persisted UI contract."""
-        if action.kind is AssistantResponseActionKind.SEND_MESSAGE:
-            return ChatResponseAction(
-                action_id=action.action_id,
-                label=action.label,
-                kind=ChatResponseActionKind.SEND_MESSAGE,
-                prompt=action.prompt,
-            )
-        if action.kind is AssistantResponseActionKind.OPEN_DATA_IMPORT:
-            return ChatResponseAction(
-                action_id=action.action_id,
-                label=action.label,
-                kind=ChatResponseActionKind.OPEN_DATA_IMPORT,
-            )
-        if action.panel is None:
-            raise ValueError("Open-panel assistant action is missing its target.")
-        return ChatResponseAction(
-            action_id=action.action_id,
-            label=action.label,
-            kind=ChatResponseActionKind.OPEN_PANEL,
-            panel=ChatHistoryPanelTarget(action.panel.value),
-        )
-
     def _handle_response_presentation(self, payload: object) -> None:
-        """Render one typed response and its correlated next actions."""
+        """Render one typed response for its correlated turn."""
         if not isinstance(payload, AssistantResponsePresentation):
             logger.error(
                 "Ignored invalid assistant response presentation: %s",
@@ -1127,9 +1105,7 @@ class AgentManager(QObject):
             payload.correlation,
         ):
             return
-        terminal_cancellation = bool(
-            payload.kind is AssistantResponseKind.CANCELLED and not payload.actions
-        )
+        terminal_cancellation = payload.kind is AssistantResponseKind.CANCELLED
         if not self._assistant_turn_state.accepts_response(
             payload.correlation,
             terminal_cancellation=terminal_cancellation,
@@ -1158,7 +1134,7 @@ class AgentManager(QObject):
                     redact_public_text(exc),
                 )
                 return False
-            self._prepare_admitted_transcript_turn(clear_response_actions=False)
+            self._prepare_admitted_transcript_turn()
             try:
                 self._render_visible_assistant_response(presentation)
             except (TypeError, ValueError) as retry_exc:
@@ -1177,112 +1153,12 @@ class AgentManager(QObject):
             return False
         return True
 
-    def _on_active_response_presentation_changed(self, payload: object) -> None:
-        """Accept the ChatPanel's immutable active-action identity as authoritative."""
-        if payload is None:
-            self._active_response_presentation_id = None
-            return
-        if not isinstance(payload, str) or not payload:
-            logger.error(
-                "Ignored invalid active response presentation ID: %s",
-                redact_public_text(payload),
-            )
-            return
-        self._active_response_presentation_id = payload
-
-    def _clear_active_response_actions(self) -> None:
-        """Retire response actions when Stop/cancel closes their live turn."""
-        self._on_active_response_presentation_changed(None)
-        self.chat_controller.consume_all_response_actions()
-        if self.chat_panel and hasattr(self.chat_panel, "clear_response_actions"):
-            self.chat_panel.clear_response_actions()
-
-    def _handle_response_action_selection(self, payload: object) -> None:
-        """Route only an action belonging to the still-current presentation."""
-        if not isinstance(payload, ChatResponseActionSelectionView):
-            logger.error(
-                "Ignored invalid assistant response action: %s",
-                redact_public_text(payload),
-            )
-            return
-        if payload.presentation_id != self._active_response_presentation_id:
-            logger.warning("Ignored stale assistant response action selection")
-            return
-        view_action = payload.action
-        try:
-            selection = ChatResponseActionSelection(
-                presentation_id=payload.presentation_id,
-                action_id=view_action.action_id,
-                label=view_action.label,
-                kind=ChatResponseActionKind(view_action.kind.value),
-                prompt=view_action.prompt,
-                panel=(
-                    ChatHistoryPanelTarget(view_action.panel.value)
-                    if view_action.panel is not None
-                    else None
-                ),
-            )
-        except (TypeError, ValueError):
-            logger.warning("Ignored malformed assistant response action selection")
-            return
-        resolution = self.chat_controller.resolve_and_consume_response_action(selection)
-        if not isinstance(resolution, ChatResponseActionResolution):
-            logger.warning("Ignored forged, stale, or consumed response action")
-            return
-        action = resolution.action
-        if action.kind is ChatResponseActionKind.SEND_MESSAGE:
-            admission = self.handle_user_input(action.prompt)
-            if admission.accepted:
-                self._on_active_response_presentation_changed(None)
-                return
-            source_record = resolution.source_record
-            QTimer.singleShot(
-                0,
-                lambda record=source_record: (
-                    self._restore_rejected_response_action(record)
-                ),
-            )
-            return
-        self._on_active_response_presentation_changed(None)
-        if action.kind is ChatResponseActionKind.OPEN_DATA_IMPORT:
-            try:
-                publication = self.application_service.get_view_publication()
-            except Exception as exc:
-                safe_unexpected_failure(
-                    logger,
-                    exc,
-                    boundary="agent_manager",
-                    operation="open_current_data_import",
-                )
-                publication = None
-            self._workflow_ui_handoff_host.open_current_data_import(
-                publication,
-            )
-            return
-        if action.panel is not None:
-            self._open_assistant_panel_target(AssistantPanelTarget(action.panel.value))
-
-    def _restore_rejected_response_action(self, record: object) -> None:
-        """Re-present one still-canonical action after runtime admission rejects it."""
-        if self._closing or self.chat_panel is None:
-            return
-        if not isinstance(record, ChatMessageRecord):
-            return
-        presentation_id = record.presentation_id
-        if self._active_response_presentation_id not in {None, presentation_id}:
-            return
-        canonical_record = self.chat_controller.active_response_record(
-            message_id=record.message_id,
-            presentation_id=presentation_id,
-        )
-        if canonical_record is not None and canonical_record.has_active_actions:
-            self.chat_panel.show_response_actions(canonical_record)
-
     def _open_assistant_panel_target(
         self,
         target: AssistantPanelTarget,
         *,
         view_mode: str = "",
+        on_terminal: Any | None = None,
     ) -> int:
         """Open one typed existing main-window panel without mutating workflow."""
         panel_index = {
@@ -1303,18 +1179,36 @@ class AgentManager(QObject):
                 self._switch_sub_view(panel_index, view_mode)
             if status_bar:
                 status_bar.showMessage(f"Opened {target.value.title()} panel.")
+            if on_terminal is not None:
+                on_terminal(True)
 
-        if view_mode:
+        def _on_failed(_failure: object) -> None:
+            if status_bar:
+                status_bar.showMessage(f"Could not open {target.value.title()} panel.")
+            if on_terminal is not None:
+                on_terminal(False)
+
+        if on_terminal is not None:
+            materialized = self.main_window.switch_page(
+                panel_index,
+                on_ready=_on_ready,
+                on_failed=_on_failed,
+            )
+        elif view_mode:
             materialized = self.main_window.switch_page(
                 panel_index,
                 on_ready=_on_ready,
             )
-            if materialized is not False and not ready_callback_delivered:
-                _on_ready(None)
         else:
             materialized = self.main_window.switch_page(panel_index)
             if materialized is not False and status_bar:
                 status_bar.showMessage(f"Opened {target.value.title()} panel.")
+        if (
+            materialized is not False
+            and not ready_callback_delivered
+            and (view_mode or on_terminal is not None)
+        ):
+            _on_ready(None)
 
         if materialized is False and status_bar:
             status_bar.showMessage(f"Opening {target.value.title()}...")
@@ -1370,7 +1264,6 @@ class AgentManager(QObject):
                     logger.error("Assistant Stop could not latch its active turn lease")
                     return
                 self._workflow_ui_handoff_host.abandon_active()
-                self._clear_active_response_actions()
                 if self.chat_panel:
                     self.chat_panel.set_turn_activity(
                         self._with_active_scope(ChatTurnPresentation.stopping())
@@ -1461,7 +1354,6 @@ class AgentManager(QObject):
         self._application_publication_coordinator.clear_training()
         if self.chat_panel:
             self.chat_panel.clear_confirmation_request()
-        self._on_active_response_presentation_changed(None)
         if not self._assistant_turn_state.reset_idle():
             logger.error(
                 "Runtime reset accepted while an assistant turn still owned UI"
@@ -1594,7 +1486,6 @@ class AgentManager(QObject):
             payload.correlation,
         ):
             return
-        phase_before_terminal = self._assistant_turn_state.phase
         if not self._assistant_turn_state.accept_terminal(payload):
             logger.warning(
                 "Ignored stale assistant UI terminal for %s",
@@ -1602,15 +1493,11 @@ class AgentManager(QObject):
             )
             return
         self._render_delivery_terminal_error(payload)
+        if self.chat_panel:
+            self.chat_panel.complete_debug_step(payload.outcome)
         self._pending_prune_notice = False
         if self.chat_panel:
             self.chat_panel.clear_confirmation_request()
-        cancelled_outcomes = {"cancelled", "shutdown_cancelled"}
-        if (
-            phase_before_terminal is AssistantUiTurnPhase.STOPPING
-            or payload.outcome in cancelled_outcomes
-        ):
-            self._clear_active_response_actions()
         self._last_assistant_activity = None
         self._active_turn_scope_summary = ""
         if self.chat_controller.is_processing:
@@ -1965,7 +1852,19 @@ class AgentManager(QObject):
                 "The requested XBrainLab view could not be opened."
             )
             return
-        if payload.view_mode:
+
+        def _resolve(success: bool) -> None:
+            controller = self.agent_controller
+            if controller is not None:
+                controller.on_panel_navigation_resolved(payload, success=success)
+
+        if payload.correlation is not None:
+            self._open_assistant_panel_target(
+                payload.target,
+                view_mode=payload.view_mode or "",
+                on_terminal=_resolve,
+            )
+        elif payload.view_mode:
             self._open_assistant_panel_target(
                 payload.target,
                 view_mode=payload.view_mode,
@@ -2147,18 +2046,29 @@ class AgentManager(QObject):
         """Bind one product-UI request to its exact active waiting lease."""
         activity = self._last_assistant_activity
         lease = self._assistant_turn_state.lease
+        if request.kind is WorkflowUiHandoffKind.ACTION_REQUESTED:
+            phase_matches = bool(
+                isinstance(activity, AssistantTurnActivity)
+                and activity.phase is AssistantTurnActivityPhase.RUNNING_COMMAND
+                and activity.decision_owner is None
+            )
+        else:
+            phase_matches = bool(
+                isinstance(activity, AssistantTurnActivity)
+                and activity.phase is AssistantTurnActivityPhase.WAITING_FOR_DECISION
+                and activity.decision_owner
+                in {
+                    AssistantDecisionOwner.GUI_DIALOG,
+                    AssistantDecisionOwner.PANEL_HANDOFF,
+                }
+            )
         return bool(
             lease is not None
             and isinstance(activity, AssistantTurnActivity)
-            and activity.phase is AssistantTurnActivityPhase.WAITING_FOR_DECISION
-            and activity.decision_owner
-            in {
-                AssistantDecisionOwner.GUI_DIALOG,
-                AssistantDecisionOwner.PANEL_HANDOFF,
-            }
+            and phase_matches
             and activity.correlation == lease
             and activity.request_id == request.request_id
-            and activity.command_name == request.command_name
+            and activity.command_name == request.tool_name
         )
 
     def _confirmation_current_values(

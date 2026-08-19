@@ -1,6 +1,6 @@
 # Agent 目前架構
 
-最後更新：`2026-08-17`
+最後更新：`2026-08-18`
 
 ## 範圍
 
@@ -107,11 +107,13 @@ request 打開後 workflow 會停止並顯示 waiting state，不會繼續猜測
 它負責：
 
 - 建立 `ToolRegistry` 並註冊 real tools。
-- 組 prompt：conversation history、workflow state、RAG examples、ApplicationService policy 可用工具與 blocked reason。
+- 組prompt：strict policy、stage-published target schemas、minimal state card、bounded RAG、最新user與
+  最多上一則Assistant-visible訊息。
 - 讓 `AgentWorker` 在 background thread 生成回覆。
-- 用 `CommandParser` 從 LLM 文字輸出中找 tool call JSON。
+- 用`CommandParser`只接受exact三欄JSON envelope；不做寬鬆抽取或legacy fallback。
 - 用 `VerificationLayer` 檢查 registered tool schema、required parameter、JSON-like type、
-  enum、confidence 和部分資料範圍。
+  enum、confidence 和部分資料範圍；五個direct preprocess另由同一verification boundary驗證required
+  value確實來自latest user request，無法驗證時回一般Assistant追問且不進executor。
 - 套用 ApplicationService capability gate，避免 assistant 在錯誤 backend state 呼叫不該開放的工具。
 - 將已驗證的單一 tool 交給 `ToolExecutionCoordinator`；mapped workflow tool 透過
   `execute_application_tool_command(...)` 執行 ApplicationService command，直接取得
@@ -121,7 +123,7 @@ request 打開後 workflow 會停止並顯示 waiting state，不會繼續猜測
   `changed_state` 另做一次 repaint；command 完成後 agent 會重讀同一份 ApplicationService
   state / capability publication。
 - 處理 destructive / long-running tool 的 human confirmation。
-- 防止明顯 tool loop，並限制 multi-step execution 次數。
+- 每個user turn只允許一個tool或一個`respond_to_user`；terminal後不continuation。
 
 Controller 不再透過 `_active_generation_id`、`_retry_count` 等 writable compatibility alias 保存
 第二份狀態。Host/RAG/generation/cancellation correlation 只在 `AssistantTurnOrchestrator`；format
@@ -138,71 +140,35 @@ command 仍由同一個 Study-scoped ApplicationService lock 序列化，避免 
 
 ### 執行模式
 
-- 使用者不再先選可見 execution mode。host 會從本回合自然語言產生 immutable
-  `AssistantTurnScope`：說明型請求不執行 tool、一般操作只執行一個已驗證步驟，只有明確要求
-  「繼續到需要我決定」或明確指定終點時才允許 bounded continuation。
-- continuation 只能連續執行安全步驟，直到 backend 回報 confirmation、`decision_needed`、
-  `can_auto_execute=False`、`stop_after_success=True`、到達 terminal endpoint，或需要開啟既有 UI
-  dialog。Evaluate 是 read-only terminal step，成功後停止，不會因 state 未改變而重複執行。
-- descriptive `decision_boundary` metadata 本身不是停止條件；真正的 backend policy 和當前 state
-  才決定能否繼續，避免每個 tool 都被靜態描述過早截斷。
-- UI execution controls 與 agent recommendation surface 分開。`Stop Training` 是使用者明確要求
-  才能進入的 terminal endpoint；它可以被 backend 執行，但不會由 generic continuation 自動推論。
-- `recommended_next_step` 只由 `WorkflowDecisionContext` 產生；AgentManager 不再維護另一份推測。
+產品沒有execution-mode selector，也沒有Host推導的step-by-step／continuation scope。每個user turn
+由Granite輸出一個strict decision envelope；Host只驗證、要求必要confirmation、執行一個approved
+action並顯示trusted terminal。成功、blocked、cancelled或failed都結束turn，下一步必須由使用者再發
+一則訊息。
 
-### Workflow Decision Context
+### Prompt state projection
 
-2026-05-31 bounded Copilot slice 後，LLM prompt 不再把長 conversation history 當成
-workflow truth。`ContextAssembler` 會先從 `ApplicationService.get_state()` 和
-`get_capabilities()` 產生一份 compact `WorkflowDecisionContext`。Host policy 和本 turn
-可執行的 action contracts 留在 system message；workflow state、blocked reason、tool recovery
-和 request-scoped RAG examples 則放在另一個 user-role、來源標記為 untrusted 的 bounded JSON
-envelope。動態資料不會被插入 policy 或 action-contract 欄位。
+目前prompt不使用Host intent narrowing、recommended-next-step或deterministic continuation。
+`ContextAssembler`從同一份immutable `ApplicationViewPublication`投影backend-owned stage與最小state
+card，再依`STAGE_CONFIG`發布該stage的approved target schemas。模型只在這個集合中選一個tool，
+或使用`respond_to_user`；Host不替模型選前置步驟或自動接續下一個mutation。
 
-目前 decision context 會明確列出：
+Prompt history只保留最新user訊息與最多一則Assistant-visible訊息，並排除`Tool Output:`、structured
+envelope與內部system payload。RAG example也只能在同一stage的approved tool集合中檢索，不能授予
+capability、confirmation或continuation權限。
 
-- `mode`：由 immutable turn scope 投影成 `step_by_step` 或 `continue_until_decision`，不是 UI
-  selector 的第二份狀態。
-- `workflow_stage`：使用者可理解的目前階段。
-- `recommended_next_step` / `recommended_label`：下一個建議 backend command。
-- `decision_needed`：缺哪些使用者決定，例如資料來源、epoch window、split strategy、model。
-- `existing_ui_surface`：若需要人決定，應打開既有 Data Import wizard、Epoch dialog、
-  Dataset split dialog、Training settings 或 Saliency settings，而不是在 chat 裡重做第二套 UI。
-- `can_auto_continue` / `stop_reason`：是否可以繼續自動執行，以及為什麼必須停。
-- `evidence` / `blocked_reasons`：從 backend state / capability policy 來的可追溯理由。
-
-conversation history 仍保留作語境，但送進 LLM 的 history 只保留最近少量 user-visible
-turns，並過濾 `Tool Output:`、`Request:` 和內部 system payload。這避免舊 tool result
-或長聊天紀錄覆蓋目前 backend state。
-
-Untrusted context 使用 `xbrainlab.untrusted_context.v1` schema，保留每個 item 的來源種類與
-必要識別，並限制總字元、item 數、單一字串、collection 和 nesting depth。模型可把內容當作
-事實參考，但不能從中取得 command permission；私有路徑、secret、控制字元和 role delimiter
-在送進模型前會被移除或替換。RAG 例子也會先依本次 request-scoped tool set 篩選。
-
-Data Import lifecycle 也是 decision context 的一級狀態：
-
-```text
-source selected -> scan_source
-scan ready      -> preview_interpretation
-candidate ready -> validate_interpretation
-validated       -> apply_interpretation boundary
-applied         -> loaded raw data / preprocess
-```
-
-這讓 agent 在使用者說「繼續」時從目前 import recipe / candidate 狀態前進，而不是因為
-聊天裡曾經提過資料夾就重複 scan。
+Data Import對模型是單一零參數`import_eeg_data` GUI completion tool。內部scan、preview、validate、
+apply與recipe lifecycle仍由既有Data Interpretation/ApplicationService owner負責，不作為模型工具，
+也不在chat中建立第二套import state machine。
 
 ### Data / training decision boundary
 
 - BIDS label-field recommendation 和其 selected-run evidence 來自 Data Interpretation command
   result。Assistant 可以解釋 evidence 或開啟既有 review surface，但不能自行把 `trial_type` /
   `value` 規則、第一個 run 或聊天文字升格成 confirmed truth。
-- `epoch_data` 只在 backend 發布的 reviewed epoch handoff、timing hints、source 與 placement
-  一致時可執行；缺少或不一致會回 blocked。Duration / event-locked mode 不是 agent policy。
-- `configure_dataset_split` 只保存 typed split specification 與 preview receipt。Tool success 不代表
-  masks / training tensors 已建立；`start_training` 才觸發 materialization、audit 與 resource
-  preflight。
+- `create_epochs`、`configure_dataset_split`、`select_model`與`configure_training`只是零參數GUI
+  completion request；參數與preview由既有dialog owner收集，模型不代填。
+- Dataset split UI保存typed split specification與preview receipt。完成設定不代表training tensors已
+  建立；`start_training`仍由ApplicationService觸發materialization、audit與resource preflight。
 - Deterministic training recommendation 由 backend contract 產生。只有 trusted UI host 可附加
   per-field user-edit provenance；Assistant 不可從自然語言或 tool payload 偽造 manual ownership。
   Timed hyperparameter search 尚無 tool schema，也不是可執行能力。
@@ -280,11 +246,10 @@ Granite 3.3 2B; Phi cannot be selected and never becomes a fallback.
 
 `LLMConfig` 和 `AssistantRuntimeSelection` 是 runtime truth。UI 顯示文字不能當成真實 backend 狀態。
 
-目前只宣稱 Granite 的產品 boundary workflow 通過。host 會執行 request admission、
-normalization、schema / capability / confirmation verification，並只對 allowlisted parameter-free
-`preview_interpretation` / `validate_interpretation` 做 deterministic continuation。這種
-host-assisted evidence 不能替代 raw-model accuracy，也不能把歷史 `117/117`、`121/121` 或 Phi
-candidate 分數移植成 Granite thesis claim。正式 benchmark 要等 working candidate freeze 後另跑。
+目前只宣稱Granite固定正向selection suite的checkpoint。Host保留strict schema、stage/publication、
+capability與confirmation verification，但不做intent narrowing或deterministic continuation。這種
+工程evidence不能替代真人workflow或thesis accuracy，也不能把歷史`117/117`、`121/121`或Phi
+candidate分數移植成Granite claim；candidate必須以同一frozen source完成composed 50-case report gate。
 4-bit loading 仍是 optional path；`accelerate` / `bitsandbytes` 不是預設產品啟動硬需求。
 
 Gemini/API 不再列為產品驗證目標；default dependencies 不包含 remote SDK。若歷史研究需要遠端
@@ -308,13 +273,12 @@ fixture，必須放在明確 optional legacy path，不能被 product code impor
 
 本輪修正後的 agent product contract：
 
-- `hello` / `hi` 等 greeting 先回產品友善導引，不急著呼叫 `list_files` 或其他工具。
+- greeting與一般問答使用strict `respond_to_user` envelope，不執行替代工具。
 - empty response 會發出 visible error，並讓 UI 回 idle。
 - tool-only successful turn 會產生 user-facing visible summary。
 - ApplicationService blocked command 會立即發出 shared blocked reason，但 transcript 不顯示
   raw tool name、backend command name 或 snake_case command。
-- `list_files` missing directory 會追問 folder/path；empty directory 會顯示空狀態文字，
-  不會把 `Error: directory is required` 或 `[]` 當 assistant 回覆。
+- 缺少direct preprocess參數時使用`respond_to_user`精確詢問，不發明值、不改走GUI。
 - tool error 會分成 input / precondition / runtime 等 product-level bucket；developer detail
   只留在 structured history / diagnostics / logs。
 - busy re-entry 不會默默吃掉使用者輸入；UI 會提示 assistant still processing。
@@ -328,7 +292,8 @@ fixture，必須放在明確 optional legacy path，不能被 product code impor
 - `AgentManager` header 將 runtime 與 turn state投影成 accessibility description、tooltip 與
   typed panel state；header 不顯示額外綠色／橘色 status badge。窄 dock 固定保留產品標題、
   New chat、Settings、Close。
-- message area 擁有 loading、empty、transcript、activity、response action 與 confirmation card；
+- message area 擁有 loading、empty、transcript、activity 與 confirmation card；failure只呈現
+  typed bubble，不附帶可執行的suggested-next-step按鈕；
   composer 固定在底部 layout，不用 absolute positioning。Panel 不顯示 execution-mode selector。
 - setting change 與高風險 action 使用 transient `AssistantConfirmationCard`。Card 持有原始
   `AgentConfirmationRequest`，Apply / Cancel 產生同 identity 的 typed
@@ -363,32 +328,26 @@ fixture，必須放在明確 optional legacy path，不能被 product code impor
 
 `XBrainLab/llm/tools/real/` 是目前真的操作 app 的工具。
 
-`XBrainLab/llm/action_contracts.py` 是目前 runtime compatibility inventory 與 model-facing
-classification 的共同 source。Local model 目前收到下列 21 個 action contracts；這個集合稱為
-**current model-facing projection v1**，只描述 current behavior，不是 approved target surface：
+`XBrainLab/llm/action_contracts.py`是目前model-facing contract的唯一source；real、mock、debug與
+prompt registry必須精確等於下列18個工具：
 
 ```text
-list_files
-scan_source / preview_interpretation / validate_interpretation / apply_interpretation
-save_interpretation_recipe / reload_interpretation_recipe
-query_state
-apply_standard_preprocess / reset_preprocess
-epoch_data / configure_dataset_split
-set_model / configure_training / start_training / stop_training
-evaluate / visualize / saliency
-set_montage / switch_panel
+import_eeg_data / select_channels / set_montage / create_epochs
+configure_dataset_split / select_model / configure_training
+apply_bandpass_filter / apply_notch_filter / resample_data / set_reference / normalize_data
+start_training / stop_training / reset_preprocessing / clear_training_history
+switch_panel / compute_saliency
 ```
 
-Assembler prompt、RAG example policy 與 local tool-call eval 都從同一個 current projection
-取得 catalog，不再各自用 compatibility denylist 決定曝光。`load_data`、`attach_labels`、六個
-granular preprocess tools 與 `get_dataset_info` 只留在 runtime/debug compatibility inventory；
-模型提出未發布的名稱會在 execution 前 fail closed。
+其中七個setup工具是零參數typed GUI completion；五個preprocess工具直接走ApplicationService；
+四個lifecycle工具沿用backend capability/confirmation；`switch_panel`是唯一navigation；
+`compute_saliency`在trained stage先走Assistant confirmation，再以零參數UI action沿用目前
+Visualization panel選定的run、method、resource confirmation與operation publication。Retired
+dataset protocol、recipe、query、standard-preprocess與analysis wrapper不在runtime registry，模型提出
+未發布名稱會在adapter前fail closed。完整membership與參數契約由
+[Agent target intent ledger](../target/agent.md#target-intent-ledger)擁有。
 
-Approved target surface 由 [Agent target intent ledger](../target/agent.md#target-intent-ledger) 擁有。
-Current projection 中存在 implementation 或 exact-coverage test，不代表名稱、數量或 exposure 已取得
-產品核准；後續 migration 會依 ledger 移除、合併或重新命名 current actions。
-
-目前 real tools 有兩條路徑：
+目前real tools有兩條路徑：
 
 ```text
 Mapped workflow tool
@@ -402,16 +361,16 @@ ApplicationService.execute(...)
   v
 ToolCommandResult.from_command_result(...)
 
-UI-request / read-only tool
+GUI completion / navigation tool
   |
   v
-get_application_service(study)
+typed UiRequest + correlated UI host
   |
   v
-ApplicationService / Command API
+existing dialog / panel owner
   |
   v
-Study / DataManager / TrainingManager / controllers
+ApplicationService / MainWindow terminal
 ```
 
 這表示 assistant 目前不是自己複製一套 backend，而是透過 ApplicationService 進入既有
@@ -419,54 +378,33 @@ Study / DataManager / TrainingManager / controllers
 compatibility implementations 都不能使用 `BackendFacade`；mapped workflow tools 以 command
 result / command query 為準。
 
-新增 `XBrainLab/llm/tools/application_surface.py` 作為 agent tool name 和
-ApplicationService command name 的對映層。`ContextAssembler` 用它決定可列出的 tools；
-`LLMController` 在 tool execution 前再次用它檢查 blocked reason。
+`XBrainLab/llm/tools/application_surface.py`是agent tool與ApplicationService command的對映層；
+`ContextAssembler`依backend stage發布static target schemas，`ToolAttemptCoordinator`與
+`ToolExecutionCoordinator`在execution前重讀同generation publication、schema、capability與
+confirmation。
 
 `ToolCommandResult` 是目前 agent-facing typed result adapter：
 
 - ApplicationService blocked command 會回傳 structured failed result，包含 `command_name`、
   `blocked_reason`、capability 和 state snapshot。
-- mapped workflow tools 會直接把 `CommandResult` 轉成 `ToolCommandResult`，目前包含
-  Data Interpretation tools（`scan_source`、`preview_interpretation`、
-  `validate_interpretation`、`apply_interpretation`、`save_interpretation_recipe`、
-  `reload_interpretation_recipe`）、`attach_labels`、preprocess tools、
-  `epoch_data`、`configure_dataset_split`、`set_model`、`configure_training`、`start_training`、
-  `evaluate`、`visualize`、`saliency`。
-- Data Interpretation tools 仍只透過 `ApplicationService.execute()` 進入 backend；實際
-  scan / preview / validate / apply / recipe lifecycle 已在 backend
-  `DataInterpretationCommandService` 中，reviewed metadata / label carrier side effects 已在
-  `DataInterpretationApplyService` 中，不在 agent controller 或 real tool 內重建
-  第二套 state。
-- Data Interpretation tools 與 analysis-readiness tools（`evaluate` / `visualize` /
-  `saliency`）已註冊在 definitions / real / mock tool set；Context Assembler 可以把 backend
-  capability policy 判定為 enabled 的新工具列入 prompt。
-- `LLMController` 對 `apply_interpretation` 這類 dynamic decision boundary 不再只看 static
-  `BaseTool.requires_confirmation`；若 backend capability 回報 `requires_confirmation` /
-  `confirmation_required`，controller 會暫停並等待 UI confirmation，確認後才對
-  `apply_interpretation`、`start_training` 帶 `confirmed=True` 執行。
-
-Reset Session 不在 Assistant action contract、real/mock registry、prompt publication 或 debug tool
-surface。明確要求 reset session 時，`ProductTurnPolicy` 直接回覆 unavailable；不讀 application
-publication、不建立 confirmation，也不呼叫 backend。Backend internal command 不因此移除。
-- real `Study` 下，mapped workflow tool 如果缺少必要參數而無法建立 ApplicationService
-  command，`application_surface` 會回 typed input failure，要求使用者補資訊；它不再退回
-  legacy real-tool execution。`set_montage` 仍是明確 UI confirmation request path，mock /
-  legacy non-Study test path 仍可使用 legacy tool execution。
-- compatibility real tools 若仍回傳 `"Error: ..."`、`"Failed ..."` 等字串，controller 會將它
-  正規化成 failed result，不再把 compatibility failure 當成 successful tool execution。
-- read-only `list_files` / `query_state` 現在也會正規化為 typed result；visible transcript
-  透過 product formatter 顯示，不直接露出 Python list、schema error 或 tool syntax。
+- 五個direct preprocess與四個lifecycle tool把`CommandResult`直接轉成`ToolCommandResult`；
+  adapter不保存第二份workflow state或confirmation policy。
+- 七個GUI completion tool共用一個thin handoff adapter；trusted action contract固定route與decision
+  fields，模型參數永遠是`{}`。只有dialog的completed/cancelled/blocked/unavailable/failed outcome
+  能結束turn。
+- `switch_panel`等待MainWindow/subview materialization callback，不把UiRequest emission當成功。
+- `compute_saliency`不讓模型填run/method/settings；它等待相同operation的completed/cancelled/failed
+  terminal，不把command schedule receipt當成功。
+- Data Interpretation、analysis與query services仍供產品GUI/backend使用，但沒有Assistant wrapper。
+- 缺少direct tool必要參數時，strict model branch使用`respond_to_user`；adapter不套default、不走
+  legacy fallback。
 - `CommandResult` 可直接轉成 agent payload；conversation history 中的 `Tool Output` 已保留
   `ok`、`tool_name`、`command_name`、
   `message`、`error_type`、`recoverable`、`state`、`capability`、`diagnostics`、
   `raw_result` JSON payload。
-- `set_montage` 仍走既有 Montage Settings UI request；Cancel 不產生 montage mutation；
-  `switch_panel` 仍是 UI routing request。Current projection v1 中的 `list_files`／`query_state`、
-  Data Interpretation protocol wrappers、standard preprocess與analysis wrappers仍是model-facing；
-  granular preprocess implementations仍只在runtime/debug inventory。這些都是current migration
-  source，不是approved target。完整17-tool disposition、GUI completion與direct command boundary只讀
-  [target intent ledger](../target/agent.md#target-intent-ledger)；本次authority repair不先行修改runtime。
+- `set_montage`走既有Montage Settings UI；Cancel不產生montage mutation。Evaluation與Visualization
+  由`switch_panel`導向既有panel；Compute Saliency只觸發既有panel action，不重建readiness或render
+  owner。
 
 ## Workflow State Gate
 
@@ -476,41 +414,42 @@ publication、不建立 confirmation，也不呼叫 backend。Backend internal c
 direct Study-shaped reads；真正可用工具與 blocked reason 仍由 ApplicationService capability
 policy 產生。
 
-目前 `ContextAssembler` 以 ApplicationService capability policy 作 mapped workflow tool 的唯一
-曝光真相；stage config 只提供敘事與少數非 command UI/inspection tool，不再當第二個 allowlist。
-非 model-facing tools 即使 backend compatibility capability 可用，也不會重新放回 primary
-prompt。若 capability snapshot 讀取失敗，只保留不屬於 command policy 的安全 UI/inspection tool，
-不退回 stage-based workflow exposure。
+`ContextAssembler`以backend `pipeline_stage`選擇`STAGE_CONFIG`中的approved target schemas；這是prompt
+publication。ApplicationService capability不是另一個prompt router，而是在proposal後再次做authoritative
+admission。若state publication不可靠，prompt stage固定為`unavailable`且只保留`switch_panel`與
+`respond_to_user`。
 
-RAG cleanup 把 bundled gold-set examples 也納入同一條 current model-facing projection 邊界：
+RAG examples也受同一條18-tool與stage publication邊界約束：
 `RAGIndexer`、`BM25Index` 和 `RAGRetriever` 會透過
 `XBrainLab/llm/rag/example_policy.py` 排除所有未發布 tool examples，包括舊 dataset-info、direct
 load / attach 與 granular preprocess names。這同時處理新建 index 和使用者機器上已存在的舊 Qdrant
 collection，避免 legacy few-shot examples 被重新注入 local LLM prompt。
 
-目前主要 stage 包括：
+目前stage包括：
 
 - `empty`
 - `data_loaded`
 - `preprocessed`
+- `epoch_ready`
 - `dataset_ready`
 - `training`
 - `trained`
 
-舊 stage table 不再是 execution gate。這很重要，因為 stage table 比較像單一路徑
-pipeline，不足以完整描述同一 dataset 上多個 training run、已完成 result 可視覺化、
-以及 reset / new session / fork 這類高風險資料切換情境。
-
-這不代表所有 tool 都能並行。沒有 loaded data 不能 preprocess，沒有 dataset 不能 training，沒有 trained result 不能 saliency / model-based visualization。epoch / dataset 形成後，load new data 應被擋下，除非使用者明確選擇 reset / new session / fork。
+Stage決定模型看見的候選集合；ApplicationService capability仍決定proposal是否能執行。匯入後的
+working copy本身不代表已preprocess：`preprocessed.operations`為空時stage是`data_loaded`；Channel或任一
+direct preprocess成功後才是`preprocessed`。Epoch後進入`epoch_ready`，split、model與training
+settings全部完成後才是`dataset_ready`。
 
 ## 目前可信判斷
 
 已對照 source code 的部分：
 
 - chat UI、agent manager、controller、worker、engine、tool registry 都存在。
-- real tools 目前會進 `get_application_service(study)` / `ApplicationService.execute(...)`。
-- `LLMController` 會做 parser、verification、stage gate、confirmation、loop limit。
-- `pipeline_state.py` 會從 live `Study` 推導 workflow stage。
+- registry精確發布18個approved target tools；retired wrappers在adapter前fail closed。
+- direct tools進`ApplicationService.execute(...)`；GUI tools進既有correlated handoff owner。
+- `LLMController`會做strict parser、stage/publication verification、capability、confirmation與單一tool
+  turn limit，不做Host intent narrowing或continuation。
+- `pipeline_state.py`使用ApplicationService publication的workflow stage。
 - runtime backend selection 已由 structured config 管理，不應再用 UI label 判斷。
 
 已在本輪 runtime 驗證的部分：
@@ -518,13 +457,14 @@ pipeline，不足以完整描述同一 dataset 上多個 training run、已完�
 - local model catalog、download preflight 和 health-check script 存在。
 - closure-worktree runtime inspection 回報 Granite 3.3 2B `gpu-ready`，其 path-scoped cache 約
   `5.07 GB / 20 GB`；root launcher cache 的 `12.77 GB` 不是同一個 checkout。
-- 真 Granite ChatPanel boundary workflow 已完成 model-owned scan、host-owned preview / validate、
-  typed review handoff、取消後 state 不變與正常 shutdown。
+- frozen Granite 34個positive selection cases曾在先前exact source通過；本candidate新增
+  `compute_saliency`後固定跑36 positive＋14 challenge diagnostics。Promotion要求36/36 positive與
+  5/5 missing-parameter composed host outcomes；舊34-case結果不能代替，其他raw challenge failure仍是
+  明示model limitation。
 - local runtime unavailable 時，chat panel 會保持可開並顯示原因；first-run consent 只在
   local backend 還未 acknowledged 且即將啟用時出現。
-- assistant product UI 已改成使用者語言：workflow stage、local model status 與 next steps
-  不再用 raw command names 或 developer labels 當第一層資訊；execution scope 由 request
-  推導，不再要求使用者先理解 Agent mode。
+- no-model diagnostic runtime可走真ChatPanel、MainWindow、ApplicationService與tool correlation，
+  但manifest/automated test不等於三份真人walkthrough已完成。
 - product-flow tests 覆蓋 normal chat response、empty response、worker error、local unavailable、
   blocked command feedback、assistant click-through layout。
 
@@ -535,17 +475,13 @@ pipeline，不足以完整描述同一 dataset 上多個 training run、已完�
 - agent 操作完整資料 pipeline 的端到端正確性。
 - 真 Windows launcher / human desktop acceptance。
 - 長時間真人桌面 session、跨重啟 cache lifecycle 與 frozen Granite benchmark。
-- `set_model` / `configure_training` 等 high-impact setting change 尚未統一要求 typed
-  confirmation；現有 current/proposed setting card 因此不是每條產品路徑都可達。
-- GUI workflow handoff 與真正 confirmation 仍投影成同一個 `WAITING_FOR_DECISION` activity；
-  presenter 只對部分 import 路徑特判，其他 handoff 可能顯示不存在的 confirmation card 指示。
-- 一個 admitted request 仍可能向 Granite 2B 暴露多個相近 tool schemas；現有 RAG verification
-  只用單一 expected tool，不能證明真實競爭 schema 下的 selection quality。
+- 最終composed Granite gate、真model safe E2E與三份真人frontend walkthrough尚未在同一candidate
+  source閉合。
+- Windows native layout、dialog interaction與完整PhysioNet CPU workflow仍需要使用者手測。
 
-Historical Phi evaluation artifacts are not current product or thesis evidence. The strict raw slice
-recorded `50.00%`, the anti-overfit slice `14.29%`, and a host-assisted safety workflow `100.00%`;
-superseded `121/121` reports must not be quoted as current accuracy. No frozen Granite raw tool-call
-accuracy percentage exists yet.
+Historical Phi evaluation artifacts are not current product or thesis evidence. Superseded raw、
+host-assisted或`121/121` reports不得作為current Granite accuracy。只有同一candidate source的
+50-case strict report可支撐本輪bounded selection claim，且仍不等於tool execution或產品ready。
 
 ## 架構評斷
 
@@ -569,9 +505,10 @@ accuracy percentage exists yet.
 - `BackendFacade` 已移除；若重新加入 wrapper，agent 會回到分裂 workflow truth。
 - 舊 UI request 相容路徑仍有字串協定；新 workflow handoff / interaction outcome 已有 typed
   contract，但不能宣稱所有 UI side effect 都完成 typed migration。
-- `CommandParser` 是從 LLM 文字中掃 JSON，不是 host-native structured tool calling。
-- `VerificationLayer`、request admission 與 strict-envelope recovery 已能守住目前 product
-  contracts；raw local model 在 candidate slice 仍只有 50%，所以模型判斷本身不是完成狀態。
+- `CommandParser`驗證模型產生的strict JSON text envelope；它不是host-native structured tool calling，
+  但不掃描prose或接受wrapper。
+- strict envelope、publication/stage verification、capability與confirmation守住目前product
+  contract；模型selection仍必須由composed 50-case report gate與真人safe E2E驗證。
 - `AgentManager` 已抽出 presentation、runtime lifecycle、workflow handoff 與 montage coordinator，
   但仍是偏大的 Qt orchestrator，後續應按責任切片而不是新增 fallback。
 - RAG 已接入 controller，但本輪尚未驗證資料來源和品質。
@@ -581,16 +518,16 @@ accuracy percentage exists yet.
 ## Approved target reference
 
 Stable v2的tool membership、backend-owned stage、strict envelope、thin Host、GUI terminal、diagnostic
-walkthrough與candidate gates只由[Agent target](../target/agent.md)定義。Current runtime尚未完成該
-migration；在atomic cutover、obsolete wrapper deletion與same-source evidence完成前，本文件不得把
-target描述成current behavior。
+walkthrough與candidate gates只由[Agent target](../target/agent.md)定義。Current source已完成18-tool
+cutover與obsolete wrapper removal；`v0.7.0`只把它宣稱為經真人workflow驗收的bounded Local Assistant
+baseline，不把固定2B模型或deterministic host guards宣稱為安全零容忍或語意正確性保證。
 
 ## 文件狀態
 
-這份文件目前是 `verified engineering checkpoint`。
+這份文件目前是 `v0.7.0 bounded product baseline`。
 
-它已對照主要 source code、真 Granite ChatPanel boundary workflow 與 host policy gate；仍沒有證明
-RAG 品質、長時間多步 tool-call workflow 或 thesis-grade raw accuracy。
+它已對照主要source code、18-tool boundary、no-model diagnostic contract與使用者真人workflow acceptance；
+這些證據不證明安全零容忍、任意長時間session、所有dataset／平台或thesis-grade accuracy。
 
 local-only runtime cleanup 已對齊 product source：remote backend modules、remote key handling、
 model settings remote UI 和 product remote switch path 已移除；剩餘驗證重點是長時間 local model

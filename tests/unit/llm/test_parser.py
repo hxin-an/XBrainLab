@@ -4,14 +4,50 @@ from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
 
 
 def test_product_parser_accepts_one_complete_strict_envelope():
-    text = '  {"tool_name":"load_data","parameters":{"file_paths":["/data/A.gdf"]}}\n'
+    text = (
+        '  {"workflow_stage":"empty","tool_name":"load_data",'
+        '"parameters":{"file_paths":["/data/A.gdf"]}}\n'
+    )
 
     result = CommandParser.parse_product(text)
 
     assert result.status is ToolEnvelopeStatus.VALID
+    assert result.workflow_stage == "empty"
     assert result.commands == (("load_data", {"file_paths": ["/data/A.gdf"]}),)
     assert result.error == ""
     assert CommandParser.parse(text) == [("load_data", {"file_paths": ["/data/A.gdf"]})]
+
+
+def test_product_parser_rejects_the_retired_two_field_root():
+    result = CommandParser.parse_product(
+        '{"tool_name":"scan_source","parameters":{"source_path":"/data/A.gdf"}}'
+    )
+
+    assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
+    assert "workflow_stage" in result.error
+
+
+def test_product_parser_accepts_message_only_response_contract():
+    result = CommandParser.parse_product(
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '"parameters":{"message":"Load EEG data before training."}}'
+    )
+
+    assert result.status is ToolEnvelopeStatus.NO_TOOL
+    assert result.workflow_stage == "data_loaded"
+    assert result.message == "Load EEG data before training."
+    assert result.decision is None
+    assert result.missing_inputs == ()
+
+
+def test_product_parser_rejects_retired_response_decision_fields():
+    result = CommandParser.parse_product(
+        '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+        '"parameters":{"decision":"blocked","message":"Blocked."}}'
+    )
+
+    assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
+    assert "exactly message" in result.error
 
 
 def test_product_parser_rejects_tool_call_wrapper_even_when_inner_shape_is_valid():
@@ -24,7 +60,7 @@ def test_product_parser_rejects_tool_call_wrapper_even_when_inner_shape_is_valid
 
     assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
     assert result.commands == ()
-    assert "exactly tool_name plus parameters" in result.error
+    assert "exactly workflow_stage, tool_name, and parameters" in result.error
     assert CommandParser.parse(text) is None
 
 
@@ -52,10 +88,9 @@ def test_product_parser_rejects_plain_text_at_strict_action_boundary():
     assert CommandParser.parse("Just a normal conversation response.") is None
 
 
-def test_product_parser_preserves_model_owned_blocked_decision():
+def test_product_parser_preserves_model_owned_blocked_message():
     text = (
-        '{"tool_name":"respond_to_user","parameters":{'
-        '"decision":"blocked",'
+        '{"workflow_stage":"empty","tool_name":"respond_to_user","parameters":{'
         '"message":"Load EEG data before training."}}'
     )
 
@@ -63,16 +98,16 @@ def test_product_parser_preserves_model_owned_blocked_decision():
 
     assert result.status is ToolEnvelopeStatus.NO_TOOL
     assert result.commands == ()
-    assert result.decision == "blocked"
+    assert result.workflow_stage == "empty"
+    assert result.decision is None
     assert result.intent == "no_tool"
     assert result.missing_inputs == ()
     assert result.message == "Load EEG data before training."
 
 
-def test_product_parser_preserves_model_owned_missing_input_decision():
+def test_product_parser_preserves_model_owned_clarification_message():
     text = (
-        '{"tool_name":"respond_to_user","parameters":{'
-        '"decision":"missing_input","missing_inputs":["source_path"],'
+        '{"workflow_stage":"empty","tool_name":"respond_to_user","parameters":{'
         '"message":"Please provide the EEG source path."}}'
     )
 
@@ -80,16 +115,17 @@ def test_product_parser_preserves_model_owned_missing_input_decision():
 
     assert result.status is ToolEnvelopeStatus.NO_TOOL
     assert result.commands == ()
-    assert result.decision == "missing_input"
+    assert result.workflow_stage == "empty"
+    assert result.decision is None
     assert result.intent == "no_tool"
-    assert result.missing_inputs == ("source_path",)
+    assert result.missing_inputs == ()
     assert result.message == "Please provide the EEG source path."
 
 
-def test_product_parser_preserves_model_owned_answer_decision():
+def test_product_parser_preserves_model_owned_answer_message():
     text = (
-        '{"tool_name":"respond_to_user","parameters":{'
-        '"decision":"answer",'
+        '{"workflow_stage":"preprocessed","tool_name":"respond_to_user",'
+        '"parameters":{'
         '"message":"An epoch is a window around an event."}}'
     )
 
@@ -97,14 +133,18 @@ def test_product_parser_preserves_model_owned_answer_decision():
 
     assert result.status is ToolEnvelopeStatus.NO_TOOL
     assert result.commands == ()
-    assert result.decision == "answer"
+    assert result.workflow_stage == "preprocessed"
+    assert result.decision is None
     assert result.intent == "no_tool"
     assert result.missing_inputs == ()
     assert result.message == "An epoch is a window around an event."
 
 
 def test_product_parser_keeps_direct_tool_decision_compact():
-    text = '{"tool_name":"scan_source","parameters":{"source_path":"/data/A.gdf"}}'
+    text = (
+        '{"workflow_stage":"empty","tool_name":"scan_source",'
+        '"parameters":{"source_path":"/data/A.gdf"}}'
+    )
 
     result = CommandParser.parse_product(text)
 
@@ -221,7 +261,7 @@ def test_product_parser_rejects_parameter_explanation_at_action_boundary():
             "non-standard",
         ),
         (
-            '{"tool_name":"none","parameters":{}}',
+            '{"workflow_stage":"empty","tool_name":"none","parameters":{}}',
             "normal text",
         ),
     ],

@@ -32,6 +32,11 @@ def test_tool_action_aliases_share_one_product_label_contract() -> None:
     assert tool_action_label("create_epoch") == "Create EEG epochs"
     assert tool_action_label("epoch_data") == "Create EEG epochs"
     assert tool_action_label("create_epochs") == "Create EEG epochs"
+    assert tool_action_label("import_eeg_data") == "Import EEG data"
+    assert tool_action_label("select_model") == "Select model"
+    assert tool_action_label("reset_preprocessing") == "Reset preprocessing"
+    assert tool_action_label("clear_training_history") == "Clear training history"
+    assert tool_action_label("switch_panel") == "Open workspace panel"
 
 
 def test_eeg_epoch_product_copy_does_not_regress_to_ambiguous_epoch_language() -> None:
@@ -93,11 +98,6 @@ def test_eeg_epoch_product_copy_does_not_regress_to_ambiguous_epoch_language() -
             '"last_epoch": "Last training epoch"',
         ),
         (
-            "XBrainLab/llm/tools/definitions/dataset_def.py",
-            'return "Generate a training dataset from EEG epochs."',
-            'return "Save data splitting settings for EEG training."',
-        ),
-        (
             "XBrainLab/backend/application/preprocess_service.py",
             '"Epoch target is not in the reviewed import labels: "',
             '"EEG epoch target is not in the reviewed import labels: "',
@@ -130,7 +130,10 @@ def test_user_visible_epoch_copy_names_the_domain(
     ("stage", "expected_label"),
     [
         ("empty", "No data loaded"),
-        ("data_loaded", "Ready for preprocessing"),
+        (
+            "data_loaded",
+            "EEG data loaded · Ready for preprocessing or epoching",
+        ),
         ("preprocessed", "Ready for EEG epoching"),
         ("epoch_ready", "Ready to configure split"),
         ("dataset_ready", "Dataset ready"),
@@ -160,14 +163,19 @@ def test_workflow_stage_label_does_not_rederive_stage_from_detail_flags() -> Non
         ),
     )
 
-    assert workflow_stage_label(contradictory) == "Ready for preprocessing"
+    assert workflow_stage_label(contradictory) == (
+        "EEG data loaded · Ready for preprocessing or epoching"
+    )
 
 
 @pytest.mark.parametrize(
     ("stage", "expected_hint"),
     [
         ("empty", "No data loaded · Scan data source"),
-        ("data_loaded", "Ready for preprocessing · Preprocess data"),
+        (
+            "data_loaded",
+            "EEG data loaded · Ready for preprocessing or epoching",
+        ),
         ("epoch_ready", "Ready to configure split · Configure data splitting"),
         ("training", "Training running"),
         ("trained", "Results available · Review results"),

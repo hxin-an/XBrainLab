@@ -40,7 +40,7 @@ def test_get_similar_examples_success(mock_retriever):
     mock_point.payload = {
         "page_content": "User input",
         "metadata": {
-            "tool_calls": ('[{"tool_name": "query_state", "parameters": {}}]')
+            "tool_calls": ('[{"tool_name": "import_eeg_data", "parameters": {}}]')
         },
     }
 
@@ -59,7 +59,7 @@ def test_get_similar_examples_success(mock_retriever):
     assert example["source"]["kind"] == "xbrainlab_bundled_gold_set"
     assert example["data"]["input"] == "User input"
     assert example["data"]["expected_action"] == {
-        "tool_name": "query_state",
+        "tool_name": "import_eeg_data",
         "parameters": {},
     }
     assert "Assistant action:" not in result
@@ -139,7 +139,7 @@ def test_bm25_reranks_only_semantically_admitted_candidates():
 
     metadata = {
         "tool_calls": [
-            {"tool_name": "query_state", "parameters": {}},
+            {"tool_name": "switch_panel", "parameters": {"panel_name": "dataset"}},
         ],
     }
     semantic_first = SimpleNamespace(
@@ -174,7 +174,7 @@ def test_bm25_reranks_only_semantically_admitted_candidates():
         retriever.get_similar_examples(
             "current workflow status",
             k=2,
-            allowed_tool_names=frozenset({"query_state"}),
+            allowed_tool_names=frozenset({"switch_panel"}),
         )
     )
 
@@ -183,7 +183,7 @@ def test_bm25_reranks_only_semantically_admitted_candidates():
         "inspect current state",
     ]
     assert all(
-        item["data"]["expected_action"]["tool_name"] == "query_state"
+        item["data"]["expected_action"]["tool_name"] == "switch_panel"
         for item in payload["items"]
     )
 
@@ -195,10 +195,7 @@ def test_retriever_filters_examples_to_request_scoped_tools(mock_retriever):
         payload={
             "page_content": "Scan the source",
             "metadata": {
-                "tool_calls": (
-                    '[{"tool_name":"scan_source","parameters":'
-                    '{"source_path":"/data/eeg"}}]'
-                )
+                "tool_calls": ('[{"tool_name":"import_eeg_data","parameters":{}}]')
             },
         },
     )
@@ -221,10 +218,10 @@ def test_retriever_filters_examples_to_request_scoped_tools(mock_retriever):
 
     result = mock_retriever.get_similar_examples(
         "Use the EEG recording at /data/eeg",
-        allowed_tool_names=frozenset({"scan_source"}),
+        allowed_tool_names=frozenset({"import_eeg_data"}),
     )
 
-    assert "scan_source" in result
+    assert "import_eeg_data" in result
     assert "list_files" not in result
 
 

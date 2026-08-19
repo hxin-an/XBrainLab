@@ -12,8 +12,8 @@ Import and review EEG data
 ```
 
 `ApplicationService / Command API` 是 GUI、Assistant 與開發 scripts 共用的產品命令邊界。
-Assistant 仍是下一階段工作，不屬於 `v0.6.0` Desktop GUI baseline 的完成主張；MCP 只保留為明確
-opt-in compatibility。
+`v0.7.0` 加入 bounded local Assistant baseline：固定 Granite 模型使用strict structured envelope、
+18個核准action與既有GUI／Command owners。MCP不是本版本產品能力。
 
 ## 啟動
 
@@ -51,5 +51,6 @@ poetry run python run.py
 
 ## 準確的 release claim
 
-`v0.6.0` 代表 Windows Desktop GUI/source baseline。它不代表 signed installer、Assistant-ready、
-任意 EEG dataset 全面支援、scientific model-quality certification 或整體產品 1.0。
+`v0.7.0` 代表經真人workflow手測與同一Command spine保護的Desktop GUI／Local Assistant source
+baseline。它不代表 signed installer、安全零容忍、任意 EEG dataset 全面支援、scientific
+model-quality certification 或整體產品 1.0。

@@ -263,11 +263,11 @@ class PreprocessCommandService:
             high_freq = self._require(command.high_freq, "high_freq")
             notch_freqs = [command.notch_freq] if command.notch_freq else None
             self.preprocess.apply_filter(low_freq, high_freq, notch_freqs)
-            return f"Applied bandpass filter ({low_freq}-{high_freq} Hz)."
+            return f"Applied bandpass filter: {low_freq}-{high_freq} Hz."
         if operation == PreprocessOperation.NOTCH:
             freq = self._require(command.notch_freq, "notch_freq")
             self.preprocess.apply_filter(None, None, [freq])
-            return f"Applied notch filter ({freq} Hz)."
+            return f"Applied notch filter: {freq} Hz."
         if operation == PreprocessOperation.RESAMPLE:
             rate = self._require(command.rate, "rate")
             self.preprocess.apply_resample(rate)
@@ -323,13 +323,13 @@ class PreprocessCommandService:
             notch_freqs = [command.notch_freq] if command.notch_freq else None
             return (
                 target.prepare_filter(low_freq, high_freq, notch_freqs),
-                f"Applied bandpass filter ({low_freq}-{high_freq} Hz).",
+                f"Applied bandpass filter: {low_freq}-{high_freq} Hz.",
             )
         if operation == PreprocessOperation.NOTCH:
             freq = self._require(command.notch_freq, "notch_freq")
             return (
                 target.prepare_filter(None, None, [freq]),
-                f"Applied notch filter ({freq} Hz).",
+                f"Applied notch filter: {freq} Hz.",
             )
         if operation == PreprocessOperation.RESAMPLE:
             rate = self._require(command.rate, "rate")
@@ -888,6 +888,7 @@ class PreprocessCommandService:
         raw_count: int,
         epoch_count: int,
     ) -> tuple[str, dict[str, Any]]:
+        display_method = method[:1].upper() + method[1:]
         if raw_count and epoch_count:
             message = (
                 f"Normalization using {method} was applied to {epoch_count} "
@@ -895,8 +896,8 @@ class PreprocessCommandService:
             )
         elif raw_count:
             message = (
-                f"Normalization using {method} is queued for per-EEG-epoch "
-                "application during EEG epoch creation."
+                f"{display_method} normalization will be applied independently "
+                "to each EEG epoch when epochs are created."
             )
         else:
             message = (

@@ -12,16 +12,12 @@ import math
 import ntpath
 import os
 import re
+import unicodedata
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import Any, ClassVar, Literal, NamedTuple
 
-from XBrainLab.backend.training.input_contract import (
-    TrainingInputContractError,
-    normalize_non_negative_integer,
-    normalize_positive_integer,
-    normalize_training_input,
-)
 from XBrainLab.llm.tools.application_surface import (
     AuthoritativeConfirmationParameter,
     UserProvidedTrainingOutputDir,
@@ -48,6 +44,214 @@ class VerificationResult(NamedTuple):
 
     is_valid: bool
     error_message: str | None = None
+
+
+_DIRECT_PARAMETER_TOOLS = frozenset(
+    {
+        "apply_bandpass_filter",
+        "apply_notch_filter",
+        "resample_data",
+        "set_reference",
+        "normalize_data",
+    }
+)
+_DECIMAL_NUMBER_PATTERN = r"(?<![\w.])[-+]?(?:\d+(?:\.\d+)?|\.\d+)(?![\w.])"
+_CLAUSE_SEPARATOR = re.compile(
+    r"(?<!\d)[.!?。\uff01\uff1f\uff1b;\n]+|"
+    r"[.!?。\uff01\uff1f\uff1b;\n]+(?!\d)"
+)
+
+
+def verify_direct_parameter_origins(
+    tool_name: str,
+    params: dict[str, Any],
+    latest_user_text: str,
+) -> VerificationResult:
+    """Verify direct preprocessing values against the latest user request.
+
+    The model may select one published preprocessing action, but it may not
+    supply that action's required values from defaults, examples, or earlier
+    context.  This check deliberately verifies value provenance only; it does
+    not infer intent or select a different action.
+    """
+    if tool_name not in _DIRECT_PARAMETER_TOOLS:
+        return VerificationResult(True)
+
+    text = unicodedata.normalize("NFKC", latest_user_text).strip()
+    clauses = tuple(
+        clause.strip() for clause in _CLAUSE_SEPARATOR.split(text) if clause.strip()
+    )
+    if tool_name == "apply_bandpass_filter":
+        return _verify_bandpass_origins(params, clauses)
+    if tool_name == "apply_notch_filter":
+        return _verify_single_numeric_origin(
+            params.get("freq"),
+            clauses,
+            before_pattern=r"(?:notch|陷波)(?:\s+(?:filter|濾波))?[^\d\n]{0,24}?",
+            after_pattern=r"\s*(?:hz)?\s*(?:notch|陷波)",
+            question="What notch frequency should I use?",
+        )
+    if tool_name == "resample_data":
+        return _verify_single_numeric_origin(
+            params.get("rate"),
+            clauses,
+            before_pattern=(
+                r"(?:re[\s-]*sampl(?:e|ing)|重採樣|重取樣)"
+                r"[^\d\n]{0,32}?(?:to|at|into|到|至|為)\s*"
+            ),
+            after_pattern=None,
+            question="What resampling rate should I use?",
+        )
+    if tool_name == "normalize_data":
+        return _verify_method_origin(
+            params.get("method"),
+            clauses,
+            cue_pattern=r"(?:normaliz(?:e|ation)|正規化|標準化)",
+            aliases={
+                "zscore": r"z[\s-]*score",
+                "minmax": r"min[\s-]*max",
+            },
+            question="Which normalization method should I use: z-score or min-max?",
+        )
+    return _verify_reference_origin(params.get("method"), clauses)
+
+
+def _verify_bandpass_origins(
+    params: dict[str, Any],
+    clauses: tuple[str, ...],
+) -> VerificationResult:
+    low = params.get("low_freq")
+    high = params.get("high_freq")
+    cue = re.compile(r"(?:band[\s-]*pass|帶通)", re.IGNORECASE)
+    range_pattern = re.compile(
+        rf"(?P<low>{_DECIMAL_NUMBER_PATTERN})\s*(?:hz\s*)?"
+        rf"(?:to|through|[-\u2013\u2014~\uff5e]|到|至)\s*"
+        rf"(?P<high>{_DECIMAL_NUMBER_PATTERN})\s*(?:hz)?",
+        re.IGNORECASE,
+    )
+    low_verified = False
+    high_verified = False
+    for clause in clauses:
+        if cue.search(clause) is None:
+            continue
+        for match in range_pattern.finditer(clause):
+            low_matches = _numbers_equal(low, match.group("low"))
+            high_matches = _numbers_equal(high, match.group("high"))
+            low_verified = low_verified or low_matches
+            high_verified = high_verified or high_matches
+            if low_matches and high_matches:
+                return VerificationResult(True)
+
+    if high_verified and not low_verified:
+        return VerificationResult(
+            False,
+            "What low cutoff frequency should I use for the bandpass filter?",
+        )
+    if low_verified and not high_verified:
+        return VerificationResult(
+            False,
+            "What high cutoff frequency should I use for the bandpass filter?",
+        )
+    return VerificationResult(
+        False,
+        "What low and high cutoff frequencies should I use for the bandpass filter?",
+    )
+
+
+def _verify_single_numeric_origin(
+    value: Any,
+    clauses: tuple[str, ...],
+    *,
+    before_pattern: str,
+    after_pattern: str | None,
+    question: str,
+) -> VerificationResult:
+    before = re.compile(
+        rf"{before_pattern}(?P<value>{_DECIMAL_NUMBER_PATTERN})\s*(?:hz)?",
+        re.IGNORECASE,
+    )
+    after = (
+        re.compile(
+            rf"(?P<value>{_DECIMAL_NUMBER_PATTERN}){after_pattern}",
+            re.IGNORECASE,
+        )
+        if after_pattern is not None
+        else None
+    )
+    for clause in clauses:
+        matches = list(before.finditer(clause))
+        if after is not None:
+            matches.extend(after.finditer(clause))
+        if any(_numbers_equal(value, match.group("value")) for match in matches):
+            return VerificationResult(True)
+    return VerificationResult(False, question)
+
+
+def _verify_method_origin(
+    value: Any,
+    clauses: tuple[str, ...],
+    *,
+    cue_pattern: str,
+    aliases: dict[str, str],
+    question: str,
+) -> VerificationResult:
+    normalized_value = _normalized_method(value)
+    alias_pattern = aliases.get(normalized_value)
+    if alias_pattern is None:
+        return VerificationResult(False, question)
+    cue = re.compile(cue_pattern, re.IGNORECASE)
+    alias = re.compile(alias_pattern, re.IGNORECASE)
+    if any(cue.search(clause) and alias.search(clause) for clause in clauses):
+        return VerificationResult(True)
+    return VerificationResult(False, question)
+
+
+def _verify_reference_origin(
+    value: Any,
+    clauses: tuple[str, ...],
+) -> VerificationResult:
+    question = "What EEG reference method should I use?"
+    if not isinstance(value, str) or not value.strip():
+        return VerificationResult(False, question)
+    escaped_words = [re.escape(part) for part in re.findall(r"\w+", value)]
+    if not escaped_words:
+        return VerificationResult(False, question)
+    method = r"[\s_-]*".join(escaped_words)
+    patterns = (
+        re.compile(rf"\b{method}\b\s+(?:eeg\s+)?reference\b", re.IGNORECASE),
+        re.compile(
+            rf"\b(?:set|use)\s+\b{method}\b\s+as\s+(?:the\s+)?"
+            r"(?:eeg\s+)?reference\b",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            rf"\breference\b[^.!?。\uff01\uff1f\n]{{0,24}}?"
+            rf"(?:to|using|with|as)\s+\b{method}\b",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            rf"(?:重新參考|重參考|參考)[^。\uff01\uff1f\n]{{0,16}}?"
+            rf"(?:到|至|為|使用)\s*{method}",
+            re.IGNORECASE,
+        ),
+        re.compile(rf"{method}\s*(?:重新參考|重參考|參考)", re.IGNORECASE),
+    )
+    if any(pattern.search(clause) for clause in clauses for pattern in patterns):
+        return VerificationResult(True)
+    return VerificationResult(False, question)
+
+
+def _numbers_equal(left: Any, right: Any) -> bool:
+    try:
+        return Decimal(str(left)) == Decimal(str(right))
+    except (InvalidOperation, TypeError, ValueError):
+        return False
+
+
+def _normalized_method(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    return re.sub(r"[^a-z0-9]+", "", value.casefold())
 
 
 # ---------------------------------------------------------------------------
@@ -112,34 +316,6 @@ class FrequencyRangeValidator(ValidatorStrategy):
                     is_valid=False,
                     error_message=f"low_freq ({lo}) must be < high_freq ({hi})",
                 )
-        return VerificationResult(is_valid=True)
-
-
-class TrainingParamValidator(ValidatorStrategy):
-    """Enforce the assistant training-input contract before execution."""
-
-    TOOLS: ClassVar[set[str]] = {"configure_training"}
-
-    def validate(self, name: str, params: dict[str, Any]) -> VerificationResult:
-        if name not in self.TOOLS:
-            return VerificationResult(is_valid=True)
-
-        try:
-            normalize_training_input(params)
-            if "repeat" in params:
-                normalize_positive_integer("repeat", params["repeat"])
-            if "save_checkpoints_every" in params:
-                normalize_non_negative_integer(
-                    "save_checkpoints_every",
-                    params["save_checkpoints_every"],
-                )
-        except TrainingInputContractError as exc:
-            return VerificationResult(
-                is_valid=False,
-                error_message=redact_public_text(
-                    object.__getattribute__(exc, "public_message")
-                ),
-            )
         return VerificationResult(is_valid=True)
 
 
@@ -1023,7 +1199,6 @@ class PlaceholderArgumentValidator(ValidatorStrategy):
 # Default validators applied to every tool call
 DEFAULT_VALIDATORS: list[ValidatorStrategy] = [
     FrequencyRangeValidator(),
-    TrainingParamValidator(),
     PlaceholderArgumentValidator(),
     PathExistsValidator(),
 ]

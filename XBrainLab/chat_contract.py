@@ -17,12 +17,7 @@ LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE = (
     "The current request is too long for the local model input limit. "
     "Shorten the request and try again."
 )
-MAX_CHAT_ACTION_LABEL_LENGTH = 120
-MAX_CHAT_ACTION_PROMPT_LENGTH = 4_096
 MAX_CHAT_MESSAGE_ID_LENGTH = 128
-MAX_CHAT_PRESENTATION_ID_LENGTH = 128
-MAX_CHAT_ACTION_ID_LENGTH = 128
-MAX_CHAT_RESPONSE_ACTIONS = 3
 
 
 def bounded_chat_string(

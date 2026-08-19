@@ -94,6 +94,11 @@ class _BrokenPreprocessHistoryRaw(_Raw):
         raise RuntimeError("preprocess history unavailable")
 
 
+class _RawWithoutPreprocessing(_Raw):
+    def get_preprocess_history(self) -> list[str]:
+        return []
+
+
 class _Epoch:
     event_id: ClassVar[dict[str, int]] = {"left": 1}
     data: ClassVar[list[list[list[float]]]] = [[[0.0, 0.1], [0.2, 0.3]]]
@@ -528,7 +533,7 @@ def _expect_payload(result: HandlerResult) -> tuple[str, dict[str, Any]]:
 def test_state_snapshot_service_builds_workflow_snapshot() -> None:
     state = _snapshot_service().build()
 
-    assert state.pipeline_stage == "dataset_ready"
+    assert state.pipeline_stage == "epoch_ready"
     assert state.raw.loaded is True
     assert state.raw.files == ["subject01.fif"]
     assert state.raw.metadata[0]["subject"] == "S01"
@@ -891,7 +896,7 @@ def test_state_snapshot_does_not_read_study_training_aliases() -> None:
             False,
             False,
             0,
-            "dataset_ready",
+            "epoch_ready",
         ),
         (
             "training",
@@ -948,6 +953,37 @@ def test_state_snapshot_publishes_backend_stage_contract(
     assert service.build().pipeline_stage == expected_stage
 
 
+def test_working_raw_copy_does_not_publish_preprocessed_stage_without_operations() -> (
+    None
+):
+    service = _snapshot_service()
+    raw = _RawWithoutPreprocessing()
+    service.study.loaded_data_list = [raw]
+    service.study.preprocessed_data_list = [raw]
+    service.study.epoch_data = None
+    service.study.datasets = []
+    service.study.trainer = None
+
+    loaded = service.build()
+
+    assert loaded.preprocessed.count == 1
+    assert loaded.preprocessed.operations == []
+    assert loaded.active_dataset.has_preprocessed_data is False
+    assert loaded.pipeline_stage == "data_loaded"
+
+    service.study.preprocessed_data_list = [_Raw()]
+    processed = service.build()
+
+    assert processed.active_dataset.has_preprocessed_data is True
+    assert processed.pipeline_stage == "preprocessed"
+
+    service.study.preprocessed_data_list = [raw]
+    reset = service.build()
+
+    assert reset.active_dataset.has_preprocessed_data is False
+    assert reset.pipeline_stage == "data_loaded"
+
+
 @pytest.mark.parametrize(
     "terminal_outcome",
     [TrainingOutcomeState.FAILED, TrainingOutcomeState.CANCELLED],
@@ -965,7 +1001,7 @@ def test_trainer_without_finished_results_preserves_terminal_outcome_without_tra
     state = service.build()
 
     assert state.evaluation.finished_runs == 0
-    assert state.pipeline_stage == "dataset_ready"
+    assert state.pipeline_stage == "epoch_ready"
     assert state.training.terminal_outcome.state is terminal_outcome
 
 

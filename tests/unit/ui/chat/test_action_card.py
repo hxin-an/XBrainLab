@@ -291,7 +291,7 @@ def test_high_risk_confirmation_stays_explicit_and_emits_the_exact_request(
 
 
 @pytest.mark.parametrize("width", [300, 520])
-def test_start_training_renders_typed_long_running_impact_without_overflow(
+def test_start_training_renders_compact_long_running_confirmation(
     confirmation_card,
     qtbot,
     width: int,
@@ -317,16 +317,21 @@ def test_start_training_renders_typed_long_running_impact_without_overflow(
     _show_card(confirmation_card, qtbot, request, width=width)
 
     card = confirmation_card
-    assert card.title_label.text() == "Long-running action"
-    assert card.impact_title.text() == "Impact"
-    assert card.impact_title.isVisibleTo(card)
+    assert card.title_label.text() == "Start training"
+    assert card.description_label.isHidden()
+    assert not hasattr(card, "impact_title")
     assert card.impact_label.text() == impact
     assert card.impact_label.isVisibleTo(card)
     assert card.impact_label.wordWrap()
     assert card.property("riskLongRunning") is True
     assert card.property("decisionBoundary") == "long_running"
-    assert card.primary_button.text() == "Start training"
-    for widget in (card.impact_title, card.impact_label, card.primary_button):
+    assert card.reason_title.isHidden()
+    assert card.reason_label.isHidden()
+    assert card.details_title.isHidden()
+    assert card.proposal_scroll.isHidden()
+    assert card.primary_button.text() == "Confirm"
+    assert card.secondary_button.text() == "Cancel"
+    for widget in (card.impact_label, card.primary_button):
         assert widget.mapTo(card, QPoint(0, 0)).x() >= 0
         assert widget.mapTo(card, widget.rect().bottomRight()).x() < card.width()
 

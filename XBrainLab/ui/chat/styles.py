@@ -40,7 +40,7 @@ EMPTY_STATE_TITLE_STYLE = f"""
         color: {Theme.TEXT_PRIMARY};
         background: transparent;
         border: none;
-        font-size: 18px;
+        font-size: 22px;
         font-weight: 700;
     }}
 """
@@ -456,8 +456,8 @@ RUNTIME_SECONDARY_ACTION_STYLE = f"""
     QPushButton:focus {{ border-color: {Theme.BLUE_FOCUS_BORDER}; }}
 """
 
-RESPONSE_ACTION_STYLE = f"""
-    QToolButton#AssistantResponseAction {{
+EMPTY_STATE_ACTION_STYLE = f"""
+    QToolButton#AssistantEmptyStateAction {{
         min-height: 34px;
         padding: 4px 12px;
         color: {Theme.TEXT_MUTED};
@@ -468,26 +468,16 @@ RESPONSE_ACTION_STYLE = f"""
         font-weight: 600;
         text-align: left;
     }}
-    QToolButton#AssistantResponseAction:hover {{
+    QToolButton#AssistantEmptyStateAction:hover {{
         color: {Theme.TEXT_PRIMARY};
         background-color: {Theme.BACKGROUND_MID};
         border-color: {Theme.GRAY_LIGHT};
     }}
-    QToolButton#AssistantResponseAction:pressed {{
+    QToolButton#AssistantEmptyStateAction:pressed {{
         background-color: {Theme.BACKGROUND_DARK};
     }}
-    QToolButton#AssistantResponseAction:focus {{
+    QToolButton#AssistantEmptyStateAction:focus {{
         border-color: {Theme.BLUE_FOCUS_BORDER};
-    }}
-"""
-
-RESPONSE_ACTION_TITLE_STYLE = f"""
-    QLabel#AssistantResponseActionTitle {{
-        color: {Theme.TEXT_MUTED};
-        background: transparent;
-        border: none;
-        font-size: 12px;
-        font-weight: 700;
     }}
 """
 
@@ -650,11 +640,6 @@ ACTION_CARD_SECONDARY_BUTTON_STYLE = f"""
     }}
 """
 
-EMPTY_STATE_ACTION_STYLE = RESPONSE_ACTION_STYLE.replace(
-    "AssistantResponseAction",
-    "AssistantEmptyStateAction",
-)
-
 # Message Bubble Styles
 USER_BUBBLE_FRAME_STYLE = f"""
     QFrame#BubbleFrame {{
@@ -672,12 +657,12 @@ USER_BUBBLE_TEXT_STYLE = f"""
     }}
 """
 
-AGENT_BUBBLE_FRAME_STYLE = """
-    QFrame#BubbleFrame {
-        background-color: transparent;
-        border: none;
-        border-radius: 0px;
-    }
+AGENT_BUBBLE_FRAME_STYLE = f"""
+    QFrame#BubbleFrame {{
+        background-color: {Theme.CHAT_AI_BUBBLE};
+        border: 1px solid {Theme.ACCENT_PRIMARY};
+        border-radius: 8px;
+    }}
 """
 
 CLARIFICATION_BUBBLE_FRAME_STYLE = f"""

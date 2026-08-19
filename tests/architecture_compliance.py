@@ -200,9 +200,19 @@ UI_CONTROLLER_DIRECT_CALL_ALLOWLIST = {
             frozenset({"active_response_record"}),
         ),
         ControllerDirectCallAllowance(
-            "start_new_conversation",
+            "_clear_conversation_presentation",
             "self.chat_controller",
             frozenset({"clear_conversation"}),
+        ),
+        ControllerDirectCallAllowance(
+            "_resolve",
+            "self.agent_controller",
+            frozenset({"on_panel_navigation_resolved"}),
+        ),
+        ControllerDirectCallAllowance(
+            "handle_panel_navigation",
+            "self.agent_controller",
+            frozenset({"on_panel_navigation_resolved"}),
         ),
         ControllerDirectCallAllowance(
             "on_assistant_activity_changed",
@@ -464,40 +474,18 @@ PRODUCT_RUNTIME_BACKEND_FACADE_DIRS = (
 )
 MAPPED_REAL_TOOL_FILES = (
     Path("XBrainLab/llm/tools/__init__.py"),
-    Path("XBrainLab/llm/tools/real/dataset_real.py"),
     Path("XBrainLab/llm/tools/real/preprocess_real.py"),
     Path("XBrainLab/llm/tools/real/training_real.py"),
-    Path("XBrainLab/llm/tools/real/analysis_real.py"),
 )
 CANONICAL_DELEGATING_REAL_TOOL_CLASSES = frozenset(
     {
-        "RealApplyInterpretationTool",
-        "RealAttachLabelsTool",
         "RealBandPassFilterTool",
-        "RealChannelSelectionTool",
-        "RealConfigureTrainingTool",
-        "RealEpochDataTool",
-        "RealEvaluateTool",
-        "RealConfigureDatasetSplitTool",
-        "RealGetDatasetInfoTool",
-        "RealLoadDataTool",
         "RealNormalizeTool",
         "RealNotchFilterTool",
-        "RealPreviewInterpretationTool",
-        "RealQueryStateTool",
-        "RealReloadInterpretationRecipeTool",
         "RealRereferenceTool",
         "RealResampleTool",
-        "RealResetPreprocessTool",
-        "RealSaliencyTool",
-        "RealSaveInterpretationRecipeTool",
-        "RealScanSourceTool",
-        "RealSetModelTool",
-        "RealStandardPreprocessTool",
         "RealStartTrainingTool",
         "RealStopTrainingTool",
-        "RealValidateInterpretationTool",
-        "RealVisualizeTool",
     }
 )
 APPLICATION_SERVICE_CACHE_OWNER_FILES = frozenset(
@@ -670,7 +658,7 @@ LLM_PARSER_EXACT_EVIDENCE_TESTS = (
 )
 STRICT_TOOL_ENVELOPE_ENTRYPOINTS = (
     Path("XBrainLab/llm/agent/controller.py"),
-    Path("scripts/agent/evals/run_local_tool_call_eval.py"),
+    Path("scripts/dev/run_stable_assistant_model_eval.py"),
 )
 LLM_APPLICATION_SURFACE_EXACT_EVIDENCE_TESTS = (
     Path("tests/unit/llm/tools/test_application_surface.py"),
@@ -6578,35 +6566,11 @@ def check_mapped_real_tool_command_ownership(root_dir: Path) -> list[str]:
                         "application_surface.py."
                     )
 
-            if class_node.name == "RealConfigureTrainingTool":
-                positional = [
-                    *execute_method.args.posonlyargs,
-                    *execute_method.args.args,
-                ]
-                defaults = [None] * (
-                    len(positional) - len(execute_method.args.defaults)
-                ) + list(execute_method.args.defaults)
-                for argument, default in zip(positional, defaults, strict=True):
-                    if (
-                        argument.arg == "output_dir"
-                        and default is not None
-                        and not (
-                            isinstance(default, ast.Constant) and default.value is None
-                        )
-                    ):
-                        violations.append(
-                            f"{relative_path}:{argument.lineno} "
-                            "RealConfigureTrainingTool declares a second output_dir "
-                            "default; the canonical surface/backend state owns it."
-                        )
-
     stale_test_targets = tuple(
         f"XBrainLab.llm.tools.real.{module_name}.get_application_service"
         for module_name in (
-            "dataset_real",
             "preprocess_real",
             "training_real",
-            "analysis_real",
         )
     )
     excluded_guard_tests = {
@@ -7677,9 +7641,17 @@ def check_product_tool_envelope_boundary(root_dir: Path) -> list[str]:
 
     for relative in STRICT_TOOL_ENVELOPE_ENTRYPOINTS:
         path = root_dir / relative
-        if path.exists() and "CommandParser.parse_product(" not in path.read_text(
-            encoding="utf-8"
+        if not path.exists():
+            continue
+        source = path.read_text(encoding="utf-8")
+        if "CommandParser.parse_diagnostic(" in source and not str(relative).startswith(
+            "XBrainLab/"
         ):
+            violations.append(
+                f"{relative} calls tolerant parse_diagnostic(); strict scoring "
+                "must consume parse_product() status."
+            )
+        if "CommandParser.parse_product(" not in source:
             violations.append(
                 f"{relative} does not use the strict parse_product() boundary."
             )
@@ -8045,9 +8017,6 @@ def check_agent_resource_receipt_boundary(root_dir: Path) -> list[str]:
         ),
         "XBrainLab/backend/application/resource_receipt.py": (
             "class ResourceReceiptAuthority",
-        ),
-        "XBrainLab/llm/agent/tool_call_normalizer.py": (
-            'normalized_params.pop("resource_preflight_token", None)',
         ),
         "XBrainLab/llm/agent/tool_attempt_coordinator.py": (
             "ResourcePreflightView.from_diagnostics",

@@ -254,8 +254,8 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     )
 
     epoch_reasons = []
-    if not active_dataset.has_preprocessed_data:
-        epoch_reasons.append("Preprocess data before creating EEG epochs.")
+    if not active_dataset.has_raw_data:
+        epoch_reasons.append("Load raw data before creating EEG epochs.")
     if active_dataset.has_epoch_data or active_dataset.has_datasets:
         epoch_reasons.append(
             "Reset the session before recreating EEG epochs for the active dataset."
