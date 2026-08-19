@@ -475,7 +475,7 @@ class MessageBubble(QWidget):
 
     _MAX_WIDTH_RATIO = 0.84
     _MAX_WIDTH_PX = 720
-    _ASSISTANT_PROSE_VERTICAL_MARGIN = 3
+    _PLAIN_PROSE_VERTICAL_MARGIN = 3
 
     def __init__(
         self,
@@ -574,8 +574,12 @@ class MessageBubble(QWidget):
             kind = MessagePresentationKind.USER
         self.presentation_kind = kind
         self.content_view.set_prose_vertical_margin(
-            self._ASSISTANT_PROSE_VERTICAL_MARGIN
-            if kind is MessagePresentationKind.ASSISTANT
+            self._PLAIN_PROSE_VERTICAL_MARGIN
+            if kind
+            in {
+                MessagePresentationKind.USER,
+                MessagePresentationKind.ASSISTANT,
+            }
             else 0
         )
 
@@ -654,7 +658,7 @@ class MessageBubble(QWidget):
             int(container_width * self._MAX_WIDTH_RATIO),
             self._MAX_WIDTH_PX,
         )
-        min_bubble_width = 84 if self.is_user else 96
+        min_bubble_width = 50 if self.is_user else 96
 
         # Margins: 15+15=30 horizontal, 10+10=20 vertical
         layout_h_margins = 30
@@ -673,8 +677,8 @@ class MessageBubble(QWidget):
                 self.kind_label.sizeHint().width() + layout_h_margins,
             )
 
-        # 2. Determine actual width. Keep a modest minimum text column so short
-        # words remain readable without turning tiny messages into large boxes.
+        # 2. Determine actual width. User bubbles follow their content down to
+        # the safety floor; assistant bubbles retain a modest text column.
         actual_width = max(natural_width, min_bubble_width)
         actual_width = min(actual_width, max_bubble_width)
         actual_width = ceil(max(actual_width, 50))

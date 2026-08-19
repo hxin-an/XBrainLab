@@ -132,6 +132,36 @@ class TestChatPanelInit:
         assert panel.empty_state_widget.isVisibleTo(panel)
         assert center_distance(panel.empty_state_widget) <= 100
 
+    def test_first_active_turn_replaces_homepage_without_reflowing_composer(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        chat_panel.resize(420, 760)
+        chat_panel.show()
+        qtbot.wait(20)
+        initial_control_geometry = chat_panel.control_panel.geometry()
+
+        chat_panel.set_turn_activity(
+            ChatTurnPresentation.application_command("Open the Dataset panel")
+        )
+        qtbot.wait(20)
+
+        assert chat_panel.empty_state_widget.isHidden()
+        assert chat_panel.turn_activity_widget.isVisibleTo(chat_panel)
+        assert chat_panel.control_panel.geometry() == initial_control_geometry
+        _assert_inside_panel_on_all_sides(
+            chat_panel,
+            chat_panel.turn_activity_widget,
+        )
+        _assert_inside_panel_on_all_sides(chat_panel, chat_panel.control_panel)
+
+        chat_panel.set_turn_activity(ChatTurnPresentation.idle())
+        qtbot.wait(20)
+
+        assert chat_panel.turn_activity_widget.isHidden()
+        assert chat_panel.empty_state_widget.isVisibleTo(chat_panel)
+
     def test_state_surfaces_are_unframed_and_bounded_in_a_wide_panel(
         self,
         qtbot,
@@ -177,13 +207,13 @@ class TestChatPanelInit:
             if button.isVisibleTo(chat_panel.empty_state_widget)
         ]
 
-        assert chat_panel.empty_state_title.text() == "Start with your EEG data"
+        assert chat_panel.empty_state_title.text() == "Get started with XBrainLab"
         assert chat_panel.composer_host.parentWidget() is chat_panel.control_panel
         assert len(prompts) == 3
         assert [button.text() for button in prompts] == [
-            "Import EEG data",
-            "Check supported formats",
-            "Explain the import workflow",
+            "What should I do next?",
+            "Explain my current workflow",
+            "What can you help me with?",
         ]
         assert {button.chevron_label.text() for button in prompts} == {
             "\N{SINGLE RIGHT-POINTING ANGLE QUOTATION MARK}"
@@ -197,7 +227,7 @@ class TestChatPanelInit:
         assert chat_panel.send_btn.isEnabled()
         assert emitted == []
 
-    def test_empty_state_copy_and_prompts_follow_backend_stage(
+    def test_empty_state_copy_and_prompts_ignore_backend_stage(
         self,
         chat_panel,
         qtbot,
@@ -212,18 +242,17 @@ class TestChatPanelInit:
         chat_panel.show()
         qtbot.wait(20)
 
-        assert chat_panel.empty_state_title.text() == "Explore your results"
+        assert chat_panel.empty_state_title.text() == "Get started with XBrainLab"
         assert chat_panel.empty_state_intro.text() == (
-            "Ask me to explain metrics, review available analyses, or recommend "
-            "what to inspect next."
+            "Choose a prompt or ask your own question."
         )
         assert [button.text() for button in chat_panel.suggestion_prompt_buttons] == [
-            "Explain these results",
-            "Review available analyses",
-            "Suggest the next analysis",
+            "What should I do next?",
+            "Explain my current workflow",
+            "What can you help me with?",
         ]
         assert chat_panel.empty_state_widget.accessibleDescription() == (
-            "Current workflow stage: Results available."
+            "Choose a prompt or ask your own question."
         )
 
     def test_two_line_composer_is_primary_control_and_empty_send_is_disabled(
@@ -783,6 +812,39 @@ class TestChatPanelInit:
 
         assert chat_panel.chat_content_widget.findChildren(MessageBubble)
         assert chat_panel.empty_state_widget.isHidden()
+
+    def test_first_user_record_hides_home_until_new_conversation(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        controller = ChatController()
+        chat_panel.connect_controller(controller)
+        qtbot.waitUntil(
+            lambda: chat_panel._history_rebuild_active is False,
+            timeout=3_000,
+        )
+
+        controller.add_user_message("Hello")
+
+        assert len(chat_panel._layout_message_bubbles()) == 1
+        assert chat_panel.empty_state_widget.isHidden()
+
+        chat_panel.set_product_status(
+            "Results available",
+            "Ready",
+            ["evaluate", "visualize"],
+        )
+        chat_panel.set_runtime_state("ready")
+        chat_panel.clear_confirmation_request()
+
+        assert chat_panel.empty_state_widget.isHidden()
+
+        controller.clear_conversation()
+        qtbot.waitUntil(
+            lambda: chat_panel.empty_state_widget.isVisibleTo(chat_panel),
+            timeout=3_000,
+        )
 
     @pytest.mark.parametrize("phase", ["idle", "loading", "failed"])
     def test_non_ready_runtime_rejects_processing_state(self, qtbot, phase):
@@ -1549,6 +1611,51 @@ class TestChatPanelInit:
         ).y()
         assert prompt_bottom < chat_panel.empty_state_widget.height()
 
+    @pytest.mark.parametrize("height", [650, 760, 900])
+    def test_fixed_homepage_keeps_hero_and_cards_in_approved_vertical_rhythm(
+        self,
+        chat_panel,
+        qtbot,
+        height,
+    ) -> None:
+        chat_panel.resize(420, height)
+        chat_panel.set_runtime_state("ready")
+        chat_panel.show()
+        qtbot.wait(20)
+
+        viewport = chat_panel.scroll_area.viewport()
+        assert viewport is not None
+        title_bottom = chat_panel.empty_state_title.mapTo(
+            viewport,
+            chat_panel.empty_state_title.rect().bottomLeft(),
+        ).y()
+        first_card_top = (
+            chat_panel.suggestion_prompt_buttons[0]
+            .mapTo(
+                viewport,
+                QPoint(0, 0),
+            )
+            .y()
+        )
+        last_card_bottom = (
+            chat_panel.suggestion_prompt_buttons[-1]
+            .mapTo(
+                viewport,
+                chat_panel.suggestion_prompt_buttons[-1].rect().bottomLeft(),
+            )
+            .y()
+        )
+        title_top = chat_panel.empty_state_title.mapTo(
+            viewport,
+            QPoint(0, 0),
+        ).y()
+        bottom_space = viewport.height() - last_card_bottom
+
+        assert 131 <= first_card_top - title_bottom <= 151
+        assert title_top > bottom_space
+        assert last_card_bottom < viewport.height()
+        assert chat_panel.scroll_area.verticalScrollBar().maximum() == 0
+
     def test_narrow_empty_state_starts_at_the_title_instead_of_the_tail(
         self,
         chat_panel,
@@ -2018,6 +2125,8 @@ class TestChatPanelSendMessage:
         )
         assert chat_panel.notice_label.isHidden() is False
         assert chat_panel._notice_timer.isActive() is False
+        assert chat_panel._has_transcript_messages() is False
+        assert chat_panel.empty_state_widget.isVisibleTo(chat_panel)
 
     def test_accepting_stale_submission_does_not_clear_newer_draft(self, chat_panel):
         chat_panel.input_field.setText("A newer draft")
@@ -2385,9 +2494,9 @@ class TestChatPanelCallbacks:
 
     def test_status_summary_updates_visible_empty_state_and_tooltip(self, chat_panel):
         chat_panel.set_status_summary("Backend: empty", "Train blocked")
-        assert chat_panel.empty_state_title.text() == "Start with your EEG data"
+        assert chat_panel.empty_state_title.text() == "Get started with XBrainLab"
         assert chat_panel.empty_state_widget.accessibleDescription() == (
-            "No EEG files are open yet."
+            "Choose a prompt or ask your own question."
         )
         assert "Train blocked" in chat_panel.empty_state_widget.toolTip()
 
@@ -2403,19 +2512,16 @@ class TestChatPanelCallbacks:
             assert not hasattr(chat_panel, legacy_name)
 
     def test_product_ui_structure_is_visible(self, chat_panel):
-        assert chat_panel.empty_state_title.text() == "Start with your EEG data"
+        assert chat_panel.empty_state_title.text() == "Get started with XBrainLab"
         assert chat_panel.empty_state_intro.text() == (
-            "Ask me to find EEG files, explain supported formats, or begin an import."
+            "Choose a prompt or ask your own question."
         )
         assert chat_panel.empty_state_widget.isHidden() is False
         assert chat_panel.empty_state_widget.accessibleDescription() == (
-            "No EEG files are open yet."
+            "Choose a prompt or ask your own question."
         )
-        assert chat_panel.empty_state_action_button.text() == (
-            "Explain the import workflow"
-        )
-        assert not chat_panel.empty_state_action_button.isHidden()
-        assert chat_panel.empty_state_next_label.isHidden()
+        assert not hasattr(chat_panel, "empty_state_action_button")
+        assert not hasattr(chat_panel, "empty_state_next_label")
         assert chat_panel.input_field.isHidden() is False
         assert chat_panel.send_btn.text() == "Send"
         assert chat_panel.send_btn.accessibleName() == "Send request"
@@ -2452,16 +2558,19 @@ class TestChatPanelCallbacks:
         ]:
             assert hidden_product_detail not in visible_text
 
-    def test_empty_state_action_uses_its_own_readable_style(self, chat_panel):
+    def test_empty_state_suggestions_use_one_readable_card_style(self, chat_panel):
         chat_panel.set_product_status(
             stage="Results available",
             model_status="Ready",
             available_commands=["evaluate"],
         )
 
-        assert chat_panel.empty_state_action_button.isEnabled()
-        assert "QPushButton#AssistantSuggestionPrompt" in (
-            chat_panel.empty_state_action_button.styleSheet()
+        assert all(
+            button.isEnabled() for button in chat_panel.suggestion_prompt_buttons
+        )
+        assert all(
+            "QPushButton#AssistantSuggestionPrompt" in button.styleSheet()
+            for button in chat_panel.suggestion_prompt_buttons
         )
 
     def test_loading_blank_space_uses_panel_background_not_black(
@@ -2483,7 +2592,18 @@ class TestChatPanelCallbacks:
 
         assert pixel == Theme.BACKGROUND_DARK
 
-    def test_product_status_updates_visible_empty_state(self, chat_panel):
+    def test_product_status_updates_tooltip_without_mutating_empty_state(
+        self,
+        chat_panel,
+    ):
+        original_copy = (
+            chat_panel.empty_state_title.text(),
+            chat_panel.empty_state_intro.text(),
+            tuple(
+                (button.text(), button.subtitle(), button.property("assistantPrompt"))
+                for button in chat_panel.suggestion_prompt_buttons
+            ),
+        )
         chat_panel.set_product_status(
             stage="empty",
             model_status="Setup needed",
@@ -2492,19 +2612,18 @@ class TestChatPanelCallbacks:
             blocked_reason="Generate datasets before training.",
         )
 
-        assert chat_panel.empty_state_widget.accessibleDescription() == (
-            "No EEG files are open yet."
-        )
-        assert chat_panel.empty_state_action_button.text() == (
-            "Explain the import workflow"
-        )
         assert (
-            chat_panel.empty_state_action_button.property("assistantPrompt")
-            == "Explain the EEG data import workflow"
-        )
-        assert not chat_panel.empty_state_action_button.isHidden()
-        assert chat_panel.empty_state_next_label.isHidden()
+            chat_panel.empty_state_title.text(),
+            chat_panel.empty_state_intro.text(),
+            tuple(
+                (button.text(), button.subtitle(), button.property("assistantPrompt"))
+                for button in chat_panel.suggestion_prompt_buttons
+            ),
+        ) == original_copy
         assert "Setup needed" in chat_panel.empty_state_widget.toolTip()
+        assert "Generate datasets before training." in (
+            chat_panel.empty_state_widget.toolTip()
+        )
         visible_text = " ".join(
             label.text()
             for label in chat_panel.findChildren(QLabel)
@@ -2513,7 +2632,7 @@ class TestChatPanelCallbacks:
         assert "load_data" not in visible_text
         assert "attach_labels" not in visible_text
 
-    def test_product_status_empty_stage_without_scan_capability_uses_safe_prompt(
+    def test_product_status_capability_changes_do_not_filter_homepage_prompts(
         self,
         chat_panel,
     ):
@@ -2525,17 +2644,16 @@ class TestChatPanelCallbacks:
             blocked_reason=None,
         )
 
-        assert chat_panel.empty_state_next_label.text() == (
-            "Scan a data source to begin"
-        )
-        assert not chat_panel.empty_state_next_label.isHidden()
-        assert not chat_panel.empty_state_action_button.isHidden()
-        assert (
-            chat_panel.empty_state_action_button.property("assistantPrompt")
-            == "Check the current workflow status"
-        )
+        assert [
+            button.property("assistantPrompt")
+            for button in chat_panel.suggestion_prompt_buttons
+        ] == [
+            "What should I do next?",
+            "Explain my current workflow",
+            "What can you help me with?",
+        ]
 
-    def test_product_status_results_stage_uses_results_empty_state(self, chat_panel):
+    def test_product_status_results_stage_keeps_fixed_empty_state(self, chat_panel):
         chat_panel.set_product_status(
             stage="Results available",
             model_status="Ready",
@@ -2544,29 +2662,22 @@ class TestChatPanelCallbacks:
             blocked_reason=None,
         )
 
-        assert chat_panel.empty_state_title.text() == "Explore your results"
+        assert chat_panel.empty_state_title.text() == "Get started with XBrainLab"
         assert chat_panel.empty_state_intro.text() == (
-            "Ask me to explain metrics, review available analyses, or recommend "
-            "what to inspect next."
+            "Choose a prompt or ask your own question."
         )
         assert chat_panel.empty_state_widget.accessibleDescription() == (
-            "Current workflow stage: Results available."
-        )
-        assert chat_panel.empty_state_action_button.text() == (
-            "Suggest the next analysis"
-        )
-        assert (
-            chat_panel.empty_state_action_button.property("assistantPrompt")
-            == "Explain how to choose the next analysis for the current results"
+            "Choose a prompt or ask your own question."
         )
         assert all(
             button.accessibleName() == button.text()
             for button in chat_panel.suggestion_prompt_buttons
         )
-        assert not chat_panel.empty_state_action_button.isHidden()
-        assert chat_panel.empty_state_next_label.isHidden()
+        assert all(
+            not button.isHidden() for button in chat_panel.suggestion_prompt_buttons
+        )
 
-    def test_empty_state_action_sends_stage_aware_request(self, chat_panel, qtbot):
+    def test_empty_state_third_card_fills_fixed_help_request(self, chat_panel, qtbot):
         chat_panel.set_runtime_state("ready")
         chat_panel.set_product_status(
             stage="Results available",
@@ -2576,14 +2687,12 @@ class TestChatPanelCallbacks:
 
         emitted: list[str] = []
         chat_panel.send_message.connect(emitted.append)
-        chat_panel.empty_state_action_button.click()
+        chat_panel.suggestion_prompt_buttons[2].click()
 
         assert emitted == []
-        assert chat_panel.input_field.text() == (
-            "Explain how to choose the next analysis for the current results"
-        )
+        assert chat_panel.input_field.text() == "What can you help me with?"
 
-    def test_product_status_training_stage_uses_running_empty_state(self, chat_panel):
+    def test_product_status_training_stage_keeps_fixed_empty_state(self, chat_panel):
         chat_panel.set_product_status(
             stage="Training running",
             model_status="Ready",
@@ -2592,9 +2701,9 @@ class TestChatPanelCallbacks:
             blocked_reason=None,
         )
 
-        assert chat_panel.empty_state_title.text() == "Training is running"
+        assert chat_panel.empty_state_title.text() == "Get started with XBrainLab"
         assert chat_panel.empty_state_intro.text() == (
-            "Ask for progress or stop the current training run."
+            "Choose a prompt or ask your own question."
         )
 
     def test_low_priority_notice_does_not_enter_transcript(self, chat_panel):
@@ -2764,7 +2873,7 @@ class TestChatPanelCallbacks:
             qapp.processEvents()
 
     @pytest.mark.parametrize("width", [320, 380, 460])
-    def test_user_bubble_keeps_short_word_readable_in_narrow_dock(
+    def test_user_bubble_fits_short_word_without_trailing_void_in_narrow_dock(
         self,
         qtbot,
         chat_panel,
@@ -2781,5 +2890,6 @@ class TestChatPanelCallbacks:
             if hasattr(chat_panel.chat_layout.itemAt(i).widget(), "get_text")
         )
         assert bubble.get_text() == "hello"
-        assert 72 <= bubble.bubble_frame.width() <= 110
-        assert bubble.text_edit.document().textWidth() >= 48
+        assert bubble.text_edit.toPlainText() == "hello"
+        natural_text_width = bubble.content_view.natural_content_width()
+        assert bubble.text_edit.width() - natural_text_width <= 2.0

@@ -40,7 +40,7 @@ EMPTY_STATE_TITLE_STYLE = f"""
         color: {Theme.TEXT_PRIMARY};
         background: transparent;
         border: none;
-        font-size: 18px;
+        font-size: 22px;
         font-weight: 700;
     }}
 """

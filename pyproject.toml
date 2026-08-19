@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "xbrainlab"
-version = "0.6.0"
+version = "0.7.0"
 description = "XBrainLab: EEG Analysis Platform with AI Agent"
 authors = ["XBrainLab Team"]
 readme = "README.md"
@@ -265,7 +265,7 @@ bump = "cz bump"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.6.0"
+version = "0.7.0"
 tag_format = "v$version"
 version_files = [
     "pyproject.toml:version",

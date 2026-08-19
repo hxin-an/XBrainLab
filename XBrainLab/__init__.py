@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .backend.study import Study
 
-FALLBACK_VERSION = "0.6.0"
+FALLBACK_VERSION = "0.7.0"
 
 try:
     __version__ = version("xbrainlab")

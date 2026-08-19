@@ -519,15 +519,15 @@ host-assisted或`121/121` reports不得作為current Granite accuracy。只有�
 
 Stable v2的tool membership、backend-owned stage、strict envelope、thin Host、GUI terminal、diagnostic
 walkthrough與candidate gates只由[Agent target](../target/agent.md)定義。Current source已完成18-tool
-cutover與obsolete wrapper removal；candidate仍缺同source 50-case、完整handoff與真人acceptance，
-因此不能宣稱Assistant-ready。
+cutover與obsolete wrapper removal；`v0.7.0`只把它宣稱為經真人workflow驗收的bounded Local Assistant
+baseline，不把固定2B模型或deterministic host guards宣稱為安全零容忍或語意正確性保證。
 
 ## 文件狀態
 
-這份文件目前是 `verified engineering checkpoint`。
+這份文件目前是 `v0.7.0 bounded product baseline`。
 
-它已對照主要source code、18-tool boundary與no-model diagnostic contract；仍沒有證明最終50-case、
-長時間真人workflow、Windows acceptance或thesis-grade accuracy。
+它已對照主要source code、18-tool boundary、no-model diagnostic contract與使用者真人workflow acceptance；
+這些證據不證明安全零容忍、任意長時間session、所有dataset／平台或thesis-grade accuracy。
 
 local-only runtime cleanup 已對齊 product source：remote backend modules、remote key handling、
 model settings remote UI 和 product remote switch path 已移除；剩餘驗證重點是長時間 local model

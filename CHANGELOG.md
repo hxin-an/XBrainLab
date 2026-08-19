@@ -5,7 +5,43 @@ Git and merged pull requests.
 
 ## [Unreleased]
 
-No user-visible changes are queued after the desktop baseline.
+No user-visible changes are queued after the Local Assistant baseline.
+
+## [0.7.0] - 2026-08-20
+
+### Added
+
+- A local Granite-powered Assistant panel with a strict 18-action workflow surface, backend-owned
+  capability checks, confirmations, and correlated GUI handoffs.
+- Model-free walkthrough profiles for response presentation, contract failures, complete workflow,
+  and lifecycle/navigation diagnostics.
+- Explicit Assistant actions for importing EEG data, opening decision dialogs, running bounded
+  preprocessing commands, controlling training, navigating result panels, and computing Saliency
+  through the existing product workflow.
+
+### Changed
+
+- Assistant mutations now enter the same `ApplicationService / Command API` used by the desktop UI;
+  the model does not own a second workflow state or capability policy.
+- The Assistant panel uses stable onboarding, compact semantic result cards, clearer confirmation
+  cards, and content-aware user-message geometry.
+- Direct preprocessing parameters must be present in the latest user request before execution;
+  missing or unverifiable values receive a normal clarification response without a tool side effect.
+
+### Fixed
+
+- Local model installation, deletion, cache validation, progress, cancellation, and retry lifecycle
+  issues found during manual testing.
+- Assistant panel navigation, GUI handoff cancellation, training confirmation, Compute Saliency,
+  transcript layout, and first-message rendering regressions found during the v0.7 manual walkthrough.
+
+### Release boundary
+
+- This is a source/local Assistant baseline, not a signed installer or a safety-zero-tolerance claim.
+- The fixed 2B model remains bounded by its measured semantic-selection limitations; deterministic
+  schema, capability, provenance, confirmation, and one-command guards do not certify intent accuracy.
+- MCP is not a v0.7 product capability. Scientific model quality, arbitrary dataset support, and
+  product 1.0 remain outside this release claim.
 
 ## [0.6.0] - 2026-08-15
 

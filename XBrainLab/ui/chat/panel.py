@@ -43,7 +43,7 @@ from XBrainLab.llm.agent.confirmation import (
     AgentConfirmationResolutionStatus,
 )
 from XBrainLab.llm.agent.runtime_state import AssistantRuntimePhase
-from XBrainLab.ui.product_language import command_labels, workflow_stage_text_label
+from XBrainLab.ui.product_language import workflow_stage_text_label
 
 from ..styles.theme import Theme
 from .action_card import AssistantConfirmationCard
@@ -54,7 +54,6 @@ from .presentation import (
     ChatTurnPresentation,
     ChatTurnPresentationPhase,
 )
-from .status_presenter import build_assistant_empty_state
 from .styles import (
     ASSISTANT_PANEL_STYLE,
     COMPOSER_SURFACE_STYLE,
@@ -83,13 +82,6 @@ from .styles import (
 )
 from .suggestion_card import AssistantSuggestionCard
 
-PRODUCT_STATUS_HIDDEN_COMMANDS = frozenset(
-    {
-        "load_data",
-        "attach_labels",
-        "import_labels",
-    }
-)
 CHAT_SURFACE_MAX_WIDTH = 620
 CHAT_CONTROL_MAX_WIDTH = 620
 EMPTY_STATE_MAX_WIDTH = 560
@@ -97,6 +89,26 @@ STATE_SURFACE_MAX_WIDTH = 540
 COMPOSER_ACTION_WIDTH = 84
 COMPOSER_ACTION_HEIGHT = 34
 HISTORY_REBUILD_CHUNK_SIZE = 12
+
+EMPTY_STATE_TITLE = "Get started with XBrainLab"
+EMPTY_STATE_INTRO = "Choose a prompt or ask your own question."
+EMPTY_STATE_SUGGESTIONS = (
+    (
+        "What should I do next?",
+        "Get guidance for the next step in your workflow.",
+        "What should I do next?",
+    ),
+    (
+        "Explain my current workflow",
+        "Review what is ready and what still needs attention.",
+        "Explain my current workflow",
+    ),
+    (
+        "What can you help me with?",
+        "See how the Assistant can support your EEG workflow.",
+        "What can you help me with?",
+    ),
+)
 
 WORKFLOW_RUN_STATUS_STYLE = f"""
     QLabel#AssistantWorkflowRunStatus {{
@@ -552,12 +564,7 @@ class ChatPanel(QWidget):
         return activity
 
     def _build_empty_state(self) -> QFrame:
-        """Build the initial guidance panel shown before conversation starts."""
-        initial_presentation = build_assistant_empty_state(
-            "No data loaded",
-            ["Scan data source"],
-            available_command_names=["scan_source"],
-        )
+        """Build the fixed onboarding shown before conversation starts."""
         empty = QFrame()
         empty.setObjectName("AssistantEmptyState")
         empty.setStyleSheet(EMPTY_STATE_STYLE)
@@ -565,9 +572,10 @@ class ChatPanel(QWidget):
         self.empty_state_layout = empty_layout
         empty_layout.setContentsMargins(10, 12, 10, 12)
         empty_layout.setSpacing(10)
-        empty.setAccessibleDescription(initial_presentation.stage_sentence)
+        empty.setAccessibleName(EMPTY_STATE_TITLE)
+        empty.setAccessibleDescription(EMPTY_STATE_INTRO)
 
-        self.empty_state_title = QLabel(initial_presentation.title)
+        self.empty_state_title = QLabel(EMPTY_STATE_TITLE)
         self.empty_state_title.setObjectName("AssistantEmptyTitle")
         self.empty_state_title.setStyleSheet(EMPTY_STATE_TITLE_STYLE)
         self.empty_state_title.setWordWrap(True)
@@ -578,18 +586,13 @@ class ChatPanel(QWidget):
         )
         empty_layout.addWidget(self.empty_state_title)
 
-        self.empty_state_intro = QLabel(initial_presentation.intro)
+        self.empty_state_intro = QLabel(EMPTY_STATE_INTRO)
         self.empty_state_intro.setWordWrap(True)
         self.empty_state_intro.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
         self.empty_state_intro.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_layout.addWidget(self.empty_state_intro)
 
-        self.empty_state_next_label = QLabel("")
-        self.empty_state_next_label.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
-        self.empty_state_next_label.setWordWrap(True)
-        self.empty_state_next_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.empty_state_next_label.setVisible(False)
-        empty_layout.addWidget(self.empty_state_next_label)
+        empty_layout.addSpacing(98)
 
         self.suggestion_prompt_widget = QWidget(empty)
         self.suggestion_prompt_widget.setObjectName("AssistantSuggestionPrompts")
@@ -597,19 +600,19 @@ class ChatPanel(QWidget):
             "background: transparent; border: none;"
         )
         self.suggestion_prompt_layout = QVBoxLayout(self.suggestion_prompt_widget)
-        self.suggestion_prompt_layout.setContentsMargins(0, 6, 0, 0)
-        self.suggestion_prompt_layout.setSpacing(8)
+        self.suggestion_prompt_layout.setContentsMargins(0, 0, 0, 0)
+        self.suggestion_prompt_layout.setSpacing(14)
 
         self.suggestion_prompt_buttons: list[AssistantSuggestionCard] = []
-        for suggestion in initial_presentation.suggestions:
+        for title, subtitle, prompt in EMPTY_STATE_SUGGESTIONS:
             button = AssistantSuggestionCard(
-                suggestion.title,
-                suggestion.subtitle,
+                title,
+                subtitle,
                 icon=QStyle.StandardPixmap.SP_ArrowForward,
                 accent="blue",
                 parent=self.suggestion_prompt_widget,
             )
-            button.setProperty("assistantPrompt", suggestion.prompt)
+            button.setProperty("assistantPrompt", prompt)
             button.clicked.connect(
                 lambda _checked=False, selected=button: (
                     self._fill_suggestion_prompt(selected)
@@ -618,11 +621,6 @@ class ChatPanel(QWidget):
             self.suggestion_prompt_buttons.append(button)
         self._layout_suggestion_prompts(1)
         empty_layout.addWidget(self.suggestion_prompt_widget)
-
-        # Compatibility alias: the stage-aware next-step prompt now fills the
-        # composer instead of starting an assistant turn without review.
-        self.empty_state_action_button = self.suggestion_prompt_buttons[2]
-        self._empty_state_action_prompt = "Suggest the next step"
 
         return empty
 
@@ -1042,6 +1040,14 @@ class ChatPanel(QWidget):
             and self._runtime_phase is AssistantRuntimePhase.READY
             and not confirmation_owns_waiting_state
         )
+        if presentation.is_visible:
+            self.empty_state_widget.setVisible(False)
+        elif (
+            self._runtime_phase is AssistantRuntimePhase.READY
+            and not self._has_transcript_messages()
+            and not self.confirmation_card_widget.isVisible()
+        ):
+            self.empty_state_widget.setVisible(True)
         self._place_transient_surfaces_after_messages()
         self._apply_composer_activity_state()
         self._sync_control_context_visibility()
@@ -1237,17 +1243,6 @@ class ChatPanel(QWidget):
             self.input_field.setText(submitted)
         self.input_field.setFocus(Qt.FocusReason.OtherFocusReason)
         self._set_notice(str(message or "").strip(), timeout_ms=0, owner="submission")
-
-    def _request_empty_state_action(self) -> None:
-        """Send the current stage-aware suggestion as an assistant request."""
-        prompt = self._empty_state_action_prompt.strip()
-        if (
-            not prompt
-            or self.is_processing
-            or self._runtime_phase is not AssistantRuntimePhase.READY
-        ):
-            return
-        self.send_message.emit(prompt)
 
     def set_processing_state(self, is_processing: bool):
         """Update the processing state and refresh the UI accordingly.
@@ -1536,7 +1531,7 @@ class ChatPanel(QWidget):
         label.setMinimumHeight(max(needed, label.fontMetrics().height()))
 
     def set_status_summary(self, text: str, tooltip: str | None = None) -> None:
-        """Update stage-aware assistant guidance from a compact status string."""
+        """Update low-priority workflow diagnostics without changing onboarding."""
         stage = "checking"
         model_status = "checking"
         if "|" in text:
@@ -1580,68 +1575,14 @@ class ChatPanel(QWidget):
         tooltip: str | None = None,
         blocked_reason: str | None = None,
     ) -> None:
-        """Apply status text to guidance and empty-state labels."""
+        """Apply workflow diagnostics without changing fixed onboarding copy."""
+        del available_commands
         status_tooltip = f"Workflow: {stage}\nSetup: {model_status}"
+        if blocked_reason:
+            status_tooltip = f"{status_tooltip}\n\nAction required: {blocked_reason}"
         if tooltip:
             status_tooltip = f"{status_tooltip}\n\n{tooltip}"
         self.empty_state_widget.setToolTip(status_tooltip)
-
-        visible_command_names = (
-            None
-            if available_commands is None
-            else [
-                name
-                for name in available_commands
-                if str(name) not in PRODUCT_STATUS_HIDDEN_COMMANDS
-            ]
-        )
-        display_commands = (
-            None
-            if visible_command_names is None
-            else command_labels(visible_command_names)
-        )
-        presentation = build_assistant_empty_state(
-            stage,
-            display_commands,
-            blocked_reason,
-            available_command_names=visible_command_names,
-        )
-        self.empty_state_title.setText(presentation.title)
-        self.empty_state_intro.setText(presentation.intro)
-        for button, suggestion in zip(
-            self.suggestion_prompt_buttons,
-            presentation.suggestions,
-            strict=True,
-        ):
-            button.setText(suggestion.title)
-            button.set_subtitle(suggestion.subtitle)
-            button.setProperty("assistantPrompt", suggestion.prompt)
-        self.empty_state_widget.setAccessibleDescription(
-            presentation.stage_sentence,
-        )
-        if hasattr(self, "empty_state_next_label"):
-            self.empty_state_next_label.setText(presentation.next_text)
-            self.empty_state_next_label.setVisible(
-                bool(presentation.next_text) and not bool(display_commands)
-            )
-        if hasattr(self, "empty_state_action_button"):
-            self._empty_state_action_prompt = (
-                presentation.suggestions[-1].prompt
-                if presentation.suggestions
-                else "Suggest the next step"
-            )
-            self.empty_state_action_button.setProperty(
-                "assistantPrompt",
-                self._empty_state_action_prompt,
-            )
-            self.empty_state_action_button.setAccessibleName(
-                self.empty_state_action_button.text()
-            )
-            self.empty_state_action_button.setVisible(True)
-            self.empty_state_action_button.setEnabled(
-                not self.is_processing
-                and self._runtime_phase is AssistantRuntimePhase.READY
-            )
 
     def show_notice(self, text: str, timeout_ms: int = 6000) -> None:
         """Show a low-priority inline notice outside the transcript."""
@@ -1777,9 +1718,9 @@ class ChatPanel(QWidget):
             for label in (
                 self.empty_state_title,
                 self.empty_state_intro,
-                self.empty_state_next_label,
             ):
                 self._fit_wrapped_label_height(label)
+                label.setFixedHeight(label.minimumHeight())
             visible_suggestions = [
                 suggestion
                 for suggestion in self.suggestion_prompt_buttons
@@ -1793,11 +1734,11 @@ class ChatPanel(QWidget):
                 + self.suggestion_prompt_layout.spacing()
                 * max(len(visible_suggestions) - 1, 0)
             )
-            self.suggestion_prompt_widget.setMinimumHeight(prompt_height)
+            self.suggestion_prompt_widget.setFixedHeight(prompt_height)
             self.suggestion_prompt_widget.updateGeometry()
             self.empty_state_layout.invalidate()
             self.empty_state_layout.activate()
-            self.empty_state_widget.setMinimumHeight(
+            self.empty_state_widget.setFixedHeight(
                 max(
                     self.empty_state_layout.minimumSize().height(),
                     self.empty_state_layout.sizeHint().height(),
@@ -1904,6 +1845,13 @@ class ChatPanel(QWidget):
 
     def _sync_content_alignment(self) -> None:
         """Center owned empty/runtime states and top-align real transcripts."""
+        homepage_visible = (
+            not self._has_transcript_messages()
+            and self.empty_state_widget.isVisible()
+            and not self.runtime_state_widget.isVisible()
+            and not self.confirmation_card_widget.isVisible()
+            and not self.turn_activity_widget.isVisible()
+        )
         centered_surface_visible = (
             not self._has_transcript_messages()
             and (
@@ -1930,6 +1878,28 @@ class ChatPanel(QWidget):
             QSizePolicy.Policy.Minimum,
             QSizePolicy.Policy.Expanding,
         )
+        for index in range(self.chat_layout.count()):
+            self.chat_layout.setStretch(index, 0)
+        top_index = next(
+            (
+                index
+                for index in range(self.chat_layout.count())
+                if (item := self.chat_layout.itemAt(index)) is not None
+                and item.spacerItem() is self.content_top_spacer
+            ),
+            -1,
+        )
+        bottom_index = self._bottom_spacer_index()
+        if top_index >= 0:
+            self.chat_layout.setStretch(
+                top_index,
+                7 if homepage_visible else (1 if centered_surface_visible else 0),
+            )
+        if bottom_index < self.chat_layout.count():
+            self.chat_layout.setStretch(
+                bottom_index,
+                4 if homepage_visible else 1,
+            )
         self.chat_layout.invalidate()
 
     def _is_near_bottom(self, tolerance: int = 12) -> bool:

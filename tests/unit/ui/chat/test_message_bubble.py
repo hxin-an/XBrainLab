@@ -76,7 +76,49 @@ class TestMessageBubble:
         assert text_view.height() >= ceil(document_height) + 8
         assert abs(top_space - bottom_space) <= 1.0
 
-    def test_prose_vertical_centering_is_limited_to_plain_assistant_answers(
+    @pytest.mark.parametrize(
+        ("width", "text"),
+        [
+            (320, "Short user message"),
+            (420, "中文使用者訊息"),
+            (760, "First line.\n\nSecond line."),
+        ],
+    )
+    def test_user_message_prose_is_vertically_centered_in_bubble(
+        self,
+        qtbot,
+        width,
+        text,
+    ) -> None:
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        bubble = MessageBubble(text, is_user=True)
+        layout.addWidget(bubble)
+        qtbot.addWidget(container)
+        container.resize(width, 300)
+        container.show()
+        bubble.adjust_width(width)
+        qtbot.wait(20)
+
+        text_view = bubble.text_edit
+        document = text_view.document()
+        document_layout = document.documentLayout() if document is not None else None
+        assert document_layout is not None
+        document_height = document_layout.documentSize().height()
+        document_top = text_view.mapTo(
+            bubble.bubble_frame,
+            text_view.viewport().pos(),
+        ).y()
+        top_space = float(document_top)
+        bottom_space = float(bubble.bubble_frame.height()) - (
+            top_space + document_height
+        )
+
+        assert text_view.height() >= ceil(document_height) + 8
+        assert abs(top_space - bottom_space) <= 1.0
+
+    def test_prose_vertical_centering_excludes_semantic_status_bubbles(
         self,
         qtbot,
     ) -> None:
@@ -99,7 +141,7 @@ class TestMessageBubble:
 
         assert assistant.text_edit.viewport().y() > 0
         assert attention.text_edit.viewport().y() == 0
-        assert user.text_edit.viewport().y() == 0
+        assert user.text_edit.viewport().y() > 0
 
         assistant.set_presentation_kind(MessagePresentationKind.ATTENTION)
         qtbot.wait(20)
@@ -599,10 +641,18 @@ class TestMessageBubble:
         assert layout is not None
         assert bubble.text_edit.height() >= ceil(layout.documentSize().height()) + 8
 
-    def test_short_user_message_has_minimum_text_column(self, qtbot):
-        bubble = MessageBubble("hello", is_user=True)
+    @pytest.mark.parametrize("text", ["hi", "hello"])
+    def test_short_user_message_fits_content_without_trailing_void(
+        self,
+        qtbot,
+        text,
+    ) -> None:
+        bubble = MessageBubble(text, is_user=True)
         qtbot.addWidget(bubble)
 
+        bubble.ensurePolished()
+        bubble.content_view.ensurePolished()
+        natural_text_width = bubble.content_view.natural_content_width()
         bubble.adjust_width(380)
 
         bubble_frame = bubble.bubble_frame
@@ -610,10 +660,15 @@ class TestMessageBubble:
         assert bubble_frame is not None
         assert text_edit is not None
 
-        assert 72 <= bubble_frame.width() <= 110
+        assert bubble.get_text() == text
+        assert text_edit.toPlainText() == text
+        assert text_edit.width() - natural_text_width <= 2.0
         document = text_edit.document()
-        assert document is not None
-        assert document.textWidth() >= 48
+        layout = document.documentLayout() if document is not None else None
+        assert layout is not None
+        assert (
+            layout.documentSize().height() <= text_edit.fontMetrics().lineSpacing() + 3
+        )
 
     def test_short_assistant_message_does_not_use_large_minimum_width(self, qtbot):
         bubble = MessageBubble("Done.", is_user=False)

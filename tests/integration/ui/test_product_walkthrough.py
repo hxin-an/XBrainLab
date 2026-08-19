@@ -72,7 +72,6 @@ from XBrainLab.llm.agent.turn import (
 )
 from XBrainLab.llm.agent.ui_handoff import WorkflowUiHandoffRequest
 from XBrainLab.llm.agent.worker import AgentWorker
-from XBrainLab.ui.chat.status_presenter import build_assistant_empty_state
 from XBrainLab.ui.components.agent_manager import AgentManager
 from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     RuntimeActivationResult,
@@ -339,18 +338,15 @@ def _assert_assistant_status_matches_publication(
     assert ui_projection.decision_fields == decision_fields
     assert ui_projection.decision_fields == backend_projection.decision_fields
     assert ui_projection.existing_ui_surface is surface
-    presentation = build_assistant_empty_state(
-        ui_projection.stage,
-        None,
-        ui_projection.blocked_reason,
-        available_command_names=list(ui_projection.available_commands),
-    )
-    expected_action = presentation.suggestions[-1]
-    assert manager.chat_panel.empty_state_action_button.text() == expected_action.title
-    assert (
-        manager.chat_panel.empty_state_action_button.property("assistantPrompt")
-        == expected_action.prompt
-    )
+    assert manager.chat_panel.empty_state_title.text() == "Get started with XBrainLab"
+    assert [
+        button.property("assistantPrompt")
+        for button in manager.chat_panel.suggestion_prompt_buttons
+    ] == [
+        "What should I do next?",
+        "Explain my current workflow",
+        "What can you help me with?",
+    ]
     tooltip = manager.chat_panel.empty_state_widget.toolTip()
     assert surface.value in tooltip
     for reason in backend_projection.blocked_reasons:
@@ -394,16 +390,12 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
         if label.text()
     )
     assert "XBrainLab Assistant" in dock_title_text
-    assert panel.empty_state_title.text() == "Start with your EEG data"
+    assert panel.empty_state_title.text() == "Get started with XBrainLab"
     assert [button.text() for button in panel.suggestion_prompt_buttons] == [
-        "Import EEG data",
-        "Check supported formats",
-        "Explain the import workflow",
+        "What should I do next?",
+        "Explain my current workflow",
+        "What can you help me with?",
     ]
-    assert panel.empty_state_action_button.text() == "Explain the import workflow"
-    assert panel.empty_state_action_button.property("assistantPrompt") == (
-        "Explain the EEG data import workflow"
-    )
     assert panel.runtime_state_widget.isVisible()
     assert panel.runtime_state_title.text() == "Assistant setup required"
     assert "Model cache not found" not in panel.runtime_state_detail.text()
@@ -832,12 +824,12 @@ def test_model_import_action_opens_typed_product_surface_directly(
         close_controller_and_wait(controller, qtbot)
 
 
-def test_backend_observer_publication_refreshes_visible_assistant_status(
+def test_backend_observer_refresh_keeps_fixed_assistant_homepage(
     test_app,
     qtbot,
     tmp_path,
 ) -> None:
-    """A queued backend observer must refresh visible Assistant publication state."""
+    """Backend publication refreshes status without rebuilding onboarding."""
     test_app.init_agent()
     manager = test_app.agent_manager
     panel = manager.chat_panel
@@ -848,7 +840,15 @@ def test_backend_observer_publication_refreshes_visible_assistant_status(
     assert initial_projection is not None
     initial_generation = initial_projection.publication_generation
     assert initial_projection.stage == "No data loaded"
-    assert panel.empty_state_title.text() == "Start with your EEG data"
+    homepage_copy = (
+        panel.empty_state_title.text(),
+        panel.empty_state_intro.text(),
+        tuple(
+            (button.text(), button.subtitle(), button.property("assistantPrompt"))
+            for button in panel.suggestion_prompt_buttons
+        ),
+    )
+    assert homepage_copy[0] == "Get started with XBrainLab"
     terminal_publications = []
     service.subscribe(
         APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
@@ -889,7 +889,6 @@ def test_backend_observer_publication_refreshes_visible_assistant_status(
             manager.assistant_status_projection is not None
             and manager.assistant_status_projection.publication_generation
             == publication.generation
-            and panel.empty_state_title.text() == "Prepare or epoch your EEG data"
         ),
         timeout=5_000,
     )
@@ -899,12 +898,14 @@ def test_backend_observer_publication_refreshes_visible_assistant_status(
     assert refreshed_projection.publication_generation == publication.generation
     assert refreshed_projection == expected_projection
     assert refreshed_projection.recommended_command is None
-    assert panel.empty_state_title.text() == "Prepare or epoch your EEG data"
-    assert [button.text() for button in panel.suggestion_prompt_buttons] == [
-        "Review preprocessing",
-        "Explain EEG epoch settings",
-        "Choose the next preparation step",
-    ]
+    assert (
+        panel.empty_state_title.text(),
+        panel.empty_state_intro.text(),
+        tuple(
+            (button.text(), button.subtitle(), button.property("assistantPrompt"))
+            for button in panel.suggestion_prompt_buttons
+        ),
+    ) == homepage_copy
 
 
 def test_import_command_success_refreshes_dataset_table_without_stale_controller(
