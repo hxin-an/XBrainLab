@@ -111,6 +111,19 @@ source mutation會立即使該gate失敗，最終dossier再以完整fingerprint 
 fingerprint為9.510秒、輕量guard中位數1.412秒；52項recorder／manifest tests（含命令修改source的反例）、
 Ruff與basedpyright均通過。此切片不平行化gate、不減少gate或OutcomePolicy。
 
+Checkpoint（`2026-08-20`，dashboard deduplication）：handoff dashboard已改為驗證並摘要同一dossier內
+所有前序gate records，不再重跑Ruff／type／architecture／UI／IO／public-data commands；final recorder
+仍逐record重驗command、environment、logs、artifacts與source。原dashboard獨有的真`run.py` startup與七張
+approved-reference visual baseline已升為兩個正式GateSpec，實跑分別PASS；visual baseline最大mean diff
+0.025、changed ratio 0.04%。fast／full日常dashboard不變，handoff report明記`executed_check_ids=[]`與
+`source_of_truth=handoff gate records`。
+
+Checkpoint（`2026-08-20`，Data Import capture batching）：十二張canonical wizard frames依choose/review
+metadata、many-label、match-label、review/import四個family隔離，四張placement modes為第五個family；每個
+family仍使用fresh Python／Qt／Xvfb，family內每個dialog仍close、`deleteLater`並flush deferred deletes。
+完整16張capture由477.814秒降至215.94秒，獨立`--validate-only`與manifest／hash inventory通過；外層
+冗餘`xvfb-run`已移除，staging／atomic publish／source identity契約不變。
+
 ## Focused validation 與 stop condition
 
 - Release：version single-source test、已修改 ChatPanel／walkthrough suites、Ruff check／format check、
