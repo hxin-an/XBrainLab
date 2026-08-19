@@ -65,7 +65,7 @@ UNIT_DOMAIN_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("ui", ("tests/unit/ui",)),
 )
 UI_UNIT_ROOT_TESTS = tuple(
-    str(path) for path in sorted(Path("tests/unit/ui").glob("test_*.py"))
+    path.as_posix() for path in sorted(Path("tests/unit/ui").glob("test_*.py"))
 )
 UI_UNIT_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("root-contracts", UI_UNIT_ROOT_TESTS),

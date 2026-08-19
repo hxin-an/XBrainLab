@@ -121,6 +121,15 @@ compatibility path。刪除優先：不恢復B/C/D、RAG、confidence gate或Hos
     baseline或產品程式。先以dashboard CLI contract red test鎖定handoff不隱式啟用raw mypy，再重跑
     focused dashboard tests並從新exact commit完整重建handoff dossier；dashboard或任一既有gate未PASS
     即停止，不交付手測。
+12. Exact `18fcf33f` 的local manifest已40／40、dossier verified、完整11312 passed／8 policy-allowed
+    skipped且dashboard PASS；人工remote boundary核對仍發現PR #40 Windows product-lifecycle失敗與其餘
+    jobs未完成，因此local dossier不能替代GitHub acceptance。Windows唯一failure是`UI_UNIT_ROOT_TESTS`
+    以`str(Path)`在Windows產生反斜線，但跨平台contract test用POSIX prefix計算已執行shards，導致實際
+    10個shard全被呼叫卻誤算9個。只將runner產生的root test paths正規化為POSIX，不修改tests集合、
+    UI或execution boundary；Windows原始failure作red evidence，新增portable path assertion並跑focused
+    runner tests。其餘Linux jobs停在hosted runner system-dependency setup，先由新push建立fresh run，
+    只有再次重現才修改workflow。新exact SHA仍須重跑local canonical handoff、人工抽查artifact，並等待
+    PR所有applicable checks completed/success；任一pending／cancelled／failed都不交付手測。
 
 ## Merge boundary
 

@@ -460,6 +460,12 @@ def test_ui_gate_runs_every_ui_domain_in_isolated_processes(
     ]
 
 
+def test_ui_shard_paths_are_portable_posix_cli_arguments() -> None:
+    assert all(
+        "\\" not in path for _label, paths in run_tests.UI_UNIT_SHARDS for path in paths
+    )
+
+
 def test_llm_gate_runs_every_native_domain_in_isolated_processes(
     monkeypatch,
 ) -> None:
