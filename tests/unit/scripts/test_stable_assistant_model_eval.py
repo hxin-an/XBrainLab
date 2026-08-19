@@ -3,24 +3,18 @@
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from scripts.dev.run_stable_assistant_model_eval import (
     DEFAULT_CHALLENGES,
-    ActionabilityGate,
     _build_report,
-    _evaluate_ab_adoption,
     _experiment_identity,
     _stable_eval_config,
-    build_actionability_gate_messages,
     build_case_messages,
-    build_final_messages_for_gate,
     load_challenge_cases,
     load_target_cases,
-    parse_actionability_gate,
-    run_ab_eval,
     score_challenge_response,
+    score_missing_parameter_host_guard,
     score_model_response,
+    score_positive_parameter_host_guard,
     target_tool_registry,
 )
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
@@ -210,203 +204,97 @@ def test_report_separates_positive_and_challenge_results() -> None:
     }
 
 
-def test_actionability_gate_parser_requires_exact_model_owned_schema() -> None:
-    valid = (
-        '{"workflow_stage":"data_loaded","decision":"respond",'
-        '"reason_class":"missing_required"}'
-    )
-
-    assert parse_actionability_gate(valid, expected_stage="data_loaded") == (
-        ActionabilityGate(
-            workflow_stage="data_loaded",
-            decision="respond",
-            reason_class="missing_required",
-        )
-    )
-
-    invalid = (
-        '{"workflow_stage":"preprocessed","decision":"respond",'
-        '"reason_class":"missing_required"}',
-        '{"workflow_stage":"data_loaded","decision":"execute_one",'
-        '"reason_class":"missing_required"}',
-        '{"workflow_stage":"data_loaded","decision":"respond",'
-        '"reason_class":"complete"}',
-        '{"workflow_stage":"data_loaded","decision":"respond",'
-        '"reason_class":"missing_required","tool_name":"apply_bandpass_filter"}',
-        '{"workflow_stage":"data_loaded","decision":"respond"}',
-        "not json",
-    )
-    for response in invalid:
-        with pytest.raises(ValueError):
-            parse_actionability_gate(response, expected_stage="data_loaded")
-
-
-def test_actionability_gate_prompt_is_generic_and_contains_no_case_oracle() -> None:
+def test_missing_parameter_model_default_is_blocked_by_host_guard() -> None:
     registry = target_tool_registry()
     case = next(
         item
         for item in load_challenge_cases(DEFAULT_CHALLENGES)
-        if item.case_id == "missing_bandpass_bounds_01"
+        if item.case_id == "missing_resample_rate_01"
+    )
+    response = (
+        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
+        '"parameters":{"rate":256}}'
     )
 
-    messages = build_actionability_gate_messages(case, registry)
-    system = messages[0]["content"]
+    host_guard = score_missing_parameter_host_guard(case, response, registry)
 
-    assert messages[-1] == {"role": "user", "content": case.user_input}
-    assert case.case_id not in system
-    assert "required_concepts" not in system
-    assert "forbidden_concepts" not in system
-    assert "STRICT RESPONSE CONTRACT" not in system
-    assert '"decision":"DECISION"' in system
-    assert "Replace DECISION with exactly execute_one or respond" in system
-    assert '"reason_class"' in system
-    assert '"name": "apply_bandpass_filter"' in system
+    assert host_guard == {
+        "applicable": True,
+        "passed": True,
+        "execution_allowed": False,
+        "tool_name": "resample_data",
+        "message": "What resampling rate should I use?",
+        "detail": "The host rejected model-supplied values absent from the latest user request.",
+    }
 
 
-def test_final_pass_uses_same_request_and_model_gate_without_host_tool_choice() -> None:
+def test_explicit_positive_values_pass_the_same_host_guard() -> None:
     registry = target_tool_registry()
     case = next(
         item
         for item in load_target_cases(GOLD_SET)
         if item.case_id == "apply_bandpass_filter_01"
     )
-    gate = ActionabilityGate(
-        workflow_stage=case.workflow_stage,
-        decision="execute_one",
-        reason_class="complete",
+    response = (
+        '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
+        '"parameters":{"low_freq":4,"high_freq":38}}'
     )
 
-    messages = build_final_messages_for_gate(case, registry, gate)
-    system = messages[0]["content"]
+    host_guard = score_positive_parameter_host_guard(case, response, registry)
 
-    assert messages[-1] == {"role": "user", "content": case.user_input}
-    assert "model-owned actionability draft" in system
-    assert '"decision":"execute_one"' in system
-    assert (
-        case.expected_tool
-        not in system.split("model-owned actionability draft", maxsplit=1)[1]
-    )
-
-
-def test_respond_gate_limits_final_branch_without_inventing_a_substitute() -> None:
-    registry = target_tool_registry()
-    case = next(
-        item
-        for item in load_challenge_cases(DEFAULT_CHALLENGES)
-        if item.case_id == "multi_preprocess_request_01"
-    )
-    gate = ActionabilityGate(
-        workflow_stage=case.workflow_stage,
-        decision="respond",
-        reason_class="multiple_actions",
-    )
-
-    messages = build_final_messages_for_gate(case, registry, gate)
-    final_instruction = messages[0]["content"].split(
-        "model-owned actionability draft", maxsplit=1
-    )[1]
-
-    assert "respond_to_user" in final_instruction
-    assert "Do not execute an action" in final_instruction
-    assert "apply_bandpass_filter" not in final_instruction
-    assert "resample_data" not in final_instruction
-
-
-def test_ab_adoption_requires_exact_two_pass_score_and_latency_limits() -> None:
-    passing = _evaluate_ab_adoption(
-        one_pass_report={"summary": {"passed": False}},
-        two_pass_report={"summary": {"passed": True}},
-        one_pass_warm_p95_ms=3000.0,
-        two_pass_warm_p95_ms=4400.0,
-    )
-
-    assert passing["score_gate"] is True
-    assert passing["relative_latency_gate"] is True
-    assert passing["warm_p95_gate"] is True
-    assert passing["passed"] is True
-
-    too_slow = _evaluate_ab_adoption(
-        one_pass_report={"summary": {"passed": True}},
-        two_pass_report={"summary": {"passed": True}},
-        one_pass_warm_p95_ms=3000.0,
-        two_pass_warm_p95_ms=4600.0,
-    )
-    assert too_slow["relative_latency_multiplier"] > 1.5
-    assert too_slow["relative_latency_gate"] is False
-    assert too_slow["passed"] is False
-
-    absolute_slow = _evaluate_ab_adoption(
-        one_pass_report={"summary": {"passed": True}},
-        two_pass_report={"summary": {"passed": True}},
-        one_pass_warm_p95_ms=5000.0,
-        two_pass_warm_p95_ms=6000.1,
-    )
-    assert absolute_slow["warm_p95_gate"] is False
-    assert absolute_slow["passed"] is False
-
-
-def test_ab_runner_reuses_one_engine_and_scores_both_model_owned_passes() -> None:
-    registry = target_tool_registry()
-    positive = next(
-        item
-        for item in load_target_cases(GOLD_SET)
-        if item.case_id == "switch_panel_01"
-    )
-    challenge = next(
-        item
-        for item in load_challenge_cases(DEFAULT_CHALLENGES)
-        if item.case_id == "missing_bandpass_bounds_01"
-    )
-    positive_response = (
-        '{"workflow_stage":"empty","tool_name":"switch_panel",'
-        '"parameters":{"panel_name":"evaluation"}}'
-    )
-    challenge_response = (
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
-        '"parameters":{"message":"Please provide the bandpass low and high '
-        'frequencies."}}'
-    )
-    generated = [
-        positive_response,
-        '{"workflow_stage":"empty","decision":"execute_one","reason_class":"complete"}',
-        positive_response,
-        challenge_response,
-        '{"workflow_stage":"data_loaded","decision":"respond",'
-        '"reason_class":"missing_required"}',
-        challenge_response,
-    ]
-    config = _stable_eval_config(
-        LLMConfig(cache_dir="/tmp/xbrainlab-model-cache"),
-        device="cpu",
-    )
-
-    with (
-        patch.object(config, "local_backend_ready", return_value=True),
-        patch("scripts.dev.run_stable_assistant_model_eval.LLMEngine") as engine_type,
-    ):
-        engine = engine_type.return_value
-        engine.generate_stream.side_effect = [iter([item]) for item in generated]
-        report = run_ab_eval(
-            config,
-            (positive,),
-            challenge_cases=(challenge,),
-        )
-
-    assert registry.get_tool("switch_panel") is not None
-    engine.load_model.assert_called_once_with()
-    assert engine.generate_stream.call_count == 6
-    assert report["arms"]["one_pass"]["summary"]["passed"] is True
-    assert report["arms"]["two_pass"]["summary"]["passed"] is True
-    assert report["arms"]["two_pass"]["results"][0]["gate"]["parsed"] == {
-        "workflow_stage": "empty",
-        "decision": "execute_one",
-        "reason_class": "complete",
+    assert host_guard == {
+        "applicable": True,
+        "passed": True,
+        "execution_allowed": True,
+        "tool_name": "apply_bandpass_filter",
+        "message": None,
     }
-    assert report["arms"]["two_pass"]["results"][1]["gate"]["parsed"] == {
-        "workflow_stage": "data_loaded",
-        "decision": "respond",
-        "reason_class": "missing_required",
+
+
+def test_candidate_report_requires_positive_and_host_guard_gates() -> None:
+    results = (
+        [
+            {
+                "suite": "positive",
+                "score": {"passed": True},
+                **(
+                    {
+                        "parameter_origin_guard": {
+                            "applicable": True,
+                            "passed": True,
+                        }
+                    }
+                    if index < 10
+                    else {}
+                ),
+            }
+            for index in range(36)
+        ]
+        + [
+            {
+                "suite": "challenge",
+                "score": {"passed": False},
+                "host_guard": {"applicable": True, "passed": True},
+            }
+            for _ in range(5)
+        ]
+        + [{"suite": "challenge", "score": {"passed": False}} for _ in range(9)]
+    )
+
+    report = _build_report(
+        model_id="ibm-granite/granite-3.3-2b-instruct",
+        results=results,
+        expected_case_count=50,
+        complete=True,
+    )
+
+    assert report["candidate_gate"] == {
+        "positive_exact": {"required": 36, "passed": 36},
+        "explicit_parameter_host_guard": {"required": 10, "passed": 10},
+        "missing_parameter_host_guard": {"required": 5, "passed": 5},
+        "passed": True,
     }
+    assert report["summary"]["passed"] is True
 
 
 def test_experiment_identity_binds_source_and_ignores_only_protected_settings(

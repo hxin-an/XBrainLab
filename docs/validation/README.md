@@ -78,9 +78,12 @@ Assistant candidate必須在同一clean/explained exact source依序閉合下列
 
 1. Unit/integration證明18-tool registry、strict envelope、backend-owned stage、confirmation、GUI
    correlation與no-model diagnostic terminal；mock或manifest-only測試不等於真人workflow。
-2. Frozen Granite report固定50 cases：36 positive（18 tools各2）與14 challenge；positive要求exact
-   tool＋parameters，challenge要求stage-correct `respond_to_user`，50/50才通過。這只支撐bounded
-   selection，不支撐tool execution或產品ready。
+2. Frozen Granite report固定50 cases：36 positive（18 tools各2）與14 challenge diagnostics。Candidate
+   gate要求36/36 positive exact tool＋parameters、其中10/10 direct preprocess通過production
+   parameter-origin guard，以及5/5 missing-parameter經同一guard得到零execution與英文追問。其餘9個
+   raw challenge必須完整保留為known
+   limitations，不計入promotion pass，也不得宣稱raw model已解決。這只支撐bounded selection與該
+   deterministic guard，不支撐完整tool execution或產品ready。
 3. 真model safe E2E依normal ChatPanel路徑完成Switch Dataset → Import GUI → Select Channels →
    direct Resample；不得用debug transport或fake generator替代。
 4. 使用者在同一candidate source完成Complete Workflow、Lifecycle／Navigation、Contract Failures三份

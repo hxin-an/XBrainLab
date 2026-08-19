@@ -13,6 +13,7 @@ from XBrainLab.llm.agent.verifier import (
     ValidatorStrategy,
     VerificationLayer,
     VerificationResult,
+    verify_direct_parameter_origins,
 )
 from XBrainLab.llm.tools import authorized_paths
 from XBrainLab.llm.tools.authorized_paths import FilesystemIdentity, PathKind
@@ -59,6 +60,164 @@ def test_normalize_method_is_limited_by_the_target_schema() -> None:
 
     assert result.is_valid is False
     assert "method must be one of" in _error_message(result)
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "params", "latest_user_text"),
+    [
+        (
+            "apply_bandpass_filter",
+            {"low_freq": 4.0, "high_freq": 38},
+            "Apply a 4\u201338 Hz bandpass filter.",
+        ),
+        (
+            "apply_bandpass_filter",
+            {"low_freq": 4, "high_freq": 38.0},
+            "請帶通 4 到 38 Hz。",
+        ),
+        (
+            "apply_notch_filter",
+            {"freq": 60},
+            "Use a 60 Hz notch filter.",
+        ),
+        (
+            "resample_data",
+            {"rate": 128},
+            "Resample the EEG data to 128 Hz.",
+        ),
+        (
+            "set_reference",
+            {"method": "average"},
+            "Set an average reference.",
+        ),
+        (
+            "set_reference",
+            {"method": "Cz"},
+            "請重新參考到 Cz。",
+        ),
+        (
+            "set_reference",
+            {"method": "Cz"},
+            "Set Cz as the EEG reference.",
+        ),
+        (
+            "normalize_data",
+            {"method": "z-score"},
+            "Normalize the EEG epochs using z score.",
+        ),
+        (
+            "normalize_data",
+            {"method": "min-max"},
+            "請用 min max 正規化。",
+        ),
+    ],
+)
+def test_direct_parameter_origins_accept_explicit_latest_user_values(
+    tool_name: str,
+    params: dict[str, Any],
+    latest_user_text: str,
+) -> None:
+    result = verify_direct_parameter_origins(
+        tool_name,
+        params,
+        latest_user_text,
+    )
+
+    assert result == VerificationResult(True)
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "params", "latest_user_text", "expected_question"),
+    [
+        (
+            "apply_bandpass_filter",
+            {"low_freq": 4, "high_freq": 38},
+            "Apply a bandpass filter.",
+            "What low and high cutoff frequencies should I use for the "
+            "bandpass filter?",
+        ),
+        (
+            "apply_bandpass_filter",
+            {"low_freq": 4, "high_freq": 38},
+            "The recording is 38 seconds long. Apply a 4 Hz high-pass filter.",
+            "What low and high cutoff frequencies should I use for the "
+            "bandpass filter?",
+        ),
+        (
+            "apply_notch_filter",
+            {"freq": 60},
+            "The recording has 60 channels. Apply a notch filter.",
+            "What notch frequency should I use?",
+        ),
+        (
+            "resample_data",
+            {"rate": 128},
+            "The current rate is 128 Hz. Resample the EEG data.",
+            "What resampling rate should I use?",
+        ),
+        (
+            "set_reference",
+            {"method": "average"},
+            "Use the average amplitude and update the reference.",
+            "What EEG reference method should I use?",
+        ),
+        (
+            "normalize_data",
+            {"method": "z-score"},
+            "Normalize the EEG data.",
+            "Which normalization method should I use: z-score or min-max?",
+        ),
+    ],
+)
+def test_direct_parameter_origins_reject_invented_or_unrelated_values(
+    tool_name: str,
+    params: dict[str, Any],
+    latest_user_text: str,
+    expected_question: str,
+) -> None:
+    result = verify_direct_parameter_origins(
+        tool_name,
+        params,
+        latest_user_text,
+    )
+
+    assert result == VerificationResult(False, expected_question)
+
+
+def test_direct_parameter_origins_ignore_non_direct_tools() -> None:
+    result = verify_direct_parameter_origins(
+        "switch_panel",
+        {"panel_name": "dataset"},
+        "Open the Dataset panel.",
+    )
+
+    assert result == VerificationResult(True)
+
+
+@pytest.mark.parametrize(
+    ("params", "expected_question"),
+    [
+        (
+            {"low_freq": 5, "high_freq": 38},
+            "What low cutoff frequency should I use for the bandpass filter?",
+        ),
+        (
+            {"low_freq": 4, "high_freq": 40},
+            "What high cutoff frequency should I use for the bandpass filter?",
+        ),
+    ],
+)
+def test_bandpass_origin_question_names_only_the_unverified_cutoff(
+    params: dict[str, Any],
+    expected_question: str,
+) -> None:
+    result = verify_direct_parameter_origins(
+        "apply_bandpass_filter",
+        params,
+        "Apply a 4 to 38 Hz bandpass filter.",
+    )
+
+    assert result == VerificationResult(False, expected_question)
 
 
 def test_verification_script_syntax(tmp_path):

@@ -4,12 +4,12 @@
 
 ## 目前焦點
 
-Assistant 真實 Granite 行為仍是 integration candidate 的最後 blocker。18-action surface、no-model
-walkthrough、confirmation、navigation、Compute Saliency 與 presentation 以 PR #39 merge commit
-`70274bed4c41331965e7d4795d0d16520cb0aada` 為唯一產品基線；本輪 evaluator 實驗未改產品 runtime、
-ApplicationService、UI 或 `settings.json`。
+在 `fix/assistant-direct-parameter-provenance-v1` 保留現行一段式 Granite 與18-action surface，只為五個
+direct preprocess 加入必要參數的 latest-user-text provenance guard。明確值仍直接執行；缺值或模型
+補值時零執行，以一般藍色英文 Assistant bubble追問。完成條件是同一exact source完成自動驗證、
+真Granite host-aware evidence與正常ChatPanel真人手測入口；中間checkpoint不交付手測。
 
-目前 phase：`Checkpoint；two-pass candidates rejected，無真人手測候選`
+目前 phase：`Active；core green，進入 exact-source candidate validation`
 
 ## Exact-model evidence
 
@@ -41,22 +41,41 @@ D 最終報告位於 ignored local artifact
   Assistant-ready。Backend schema、stage capability與confirmation仍提供deterministic防線，但無法辨識
   ambiguous／multi-action意圖，不能把它們當作模型語意正確的替代品。
 
-## 下一個決策邊界
+## 已核准的 observable outcome
 
-目前沒有已核准且有證據支持的兩段式。下一步必須先重新選擇產品方向，不能由施工agent自行擴張：
+- `apply_bandpass_filter`的low/high、`apply_notch_filter`的freq、`resample_data`的rate、
+  `normalize_data`與`set_reference`的method必須能在最新使用者輸入的相應操作表達中被精確驗證；只在
+  文字其他位置出現相同數字不算來源。
+- 數字比對正規化整數／小數、Unicode dash與中英文range／target表達；method只接受使用者明寫的
+  canonical value或安全的空白／連字號／大小寫變形，不推導同義值或default。
+- Schema有效但任一必要值無法驗證時，`ToolAttemptCoordinator`回傳typed response boundary，
+  ApplicationService與ToolExecutor皆不被呼叫。Controller用現有一般message presentation顯示簡短英文
+  追問並結束turn；不是黃色Attention、不寫Tool Output、不做第二次model generation。
+- 18-action membership、strict三欄model envelope、ApplicationService、capability與confirmation不變。
+  明確完整參數仍無確認直接執行一次。使用者已明確接受ambiguous／multi-action若含完整可驗證參數時，
+  模型可能只執行其中一項；one-command cap後不自動繼續第二項。
+- UI可見決策已於2026-08-19確認：缺值顯示一般藍色bubble，訊息統一英文。沒有`XBrainLab/ui/`修改。
 
-1. 保留一段式與既有 deterministic backend guards，接受模型層 ambiguous／multi-action限制，直接建立
-   明確限制的真人可用性評估；或
-2. 核准另一個 bounded evaluator 實驗，但必須提出與 B/C/D 不同、可由2B模型負擔且不建立 Host intent
-   router的假設，先過development與heldout才可改產品；或
-3. 收窄 Assistant 可直接 mutation 的工具，只讓模型導航／開GUI，高風險與語意模糊動作交回使用者。
+## Scope、complexity與施工順序
 
-無論選哪一條，都不改18-action membership、UI、ApplicationService、模型revision或confirmation policy，
-除非使用者另行明確核准。下一個產品candidate仍須在同一exact source完成正常ChatPanel真Granite、
-GUI handoff、direct command、取消／stale／late event與安全拒絕，再交使用者手測；source改變即重測。
+預計只修改既有verifier、ToolAttemptCoordinator與Controller，production低於3 files／淨增300 LOC；
+owners前後皆為既有Controller、Coordinator與ApplicationService。新增的是服務五個真實callers的純
+parameter-origin function與一個typed coordinator outcome，不是owner、state machine、receipt、module或
+compatibility path。刪除優先：不恢復B/C/D、RAG、confidence gate或Host intent router。
+
+1. 先以red tests鎖定明確／缺少／不一致／無關數字／method變形、零execution與藍色response terminal。
+2. 實作純parameter-origin驗證，再由Coordinator於schema後、capability／execute前使用；Controller只呈現
+   typed response，不重做policy。
+3. Focused verifier／coordinator／controller已374 tests通過；Ruff／format與相關Basedpyright為
+   clean。尚待ApplicationService／ChatPanel adjacent suites、MkDocs與canonical handoff gates。
+4. 固定Granite revision已重跑：36 positive為36/36；五個missing-parameter raw outputs皆自行補值，
+   production host guard已5/5拒絕並產生英文追問。Evaluator strict gate已改為同一composed
+   contract；其他9個raw challenge仍保留為known limitations。
+5. 固定candidate SHA後，正常ChatPanel真人驗證一般回答、navigation、Import取消／重試、明確與缺值
+   preprocess、multi-action one-command cap、Training與Compute Saliency既有邊界，才交使用者手測。
 
 ## Merge boundary
 
-Assistant product行為先以短branch進`integration/assistant-stable-v2`。只有同一source的applicable CI全數
-completed/success、真人手測通過並由使用者明確同意，才可另走PR合入`main`。本checkpoint沒有產品diff、
-沒有手測批准，也不是handoff-ready。
+Assistant product行為先以本短branch進`integration/assistant-stable-v2`。只有同一source的applicable CI
+全數completed/success、真人手測通過並由使用者明確同意，才可合入integration；之後完整integration
+candidate仍需另一次同源批准才可走PR合入`main`。Source改變即使手測失效。

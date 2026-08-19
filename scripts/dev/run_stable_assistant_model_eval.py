@@ -12,15 +12,17 @@ import sys
 from contextlib import suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from time import perf_counter
-from typing import Any, Literal
+from typing import Any
 
 from XBrainLab.backend.application.pipeline_stage import PipelineStage
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.agent.assembler import ContextAssembler
 from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
 from XBrainLab.llm.agent.prompt_policy import STRICT_TOOL_RESPONSE_PROMPT_POLICY
-from XBrainLab.llm.agent.verifier import ToolSchemaValidator
+from XBrainLab.llm.agent.verifier import (
+    ToolSchemaValidator,
+    verify_direct_parameter_origins,
+)
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.engine import LLMEngine
 from XBrainLab.llm.core.generation import GenerationProfile
@@ -32,18 +34,15 @@ from XBrainLab.llm.tools.tool_registry import ToolRegistry
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CASES = ROOT / "XBrainLab" / "llm" / "rag" / "data" / "gold_set.json"
 DEFAULT_CHALLENGES = ROOT / "scripts" / "dev" / "stable_assistant_challenge_cases.json"
-REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v3"
-ACTIONABILITY_DECISIONS = frozenset({"execute_one", "respond"})
-ACTIONABILITY_REASON_CLASSES = frozenset(
-    {
-        "complete",
-        "missing_required",
-        "out_of_stage_or_unsupported",
-        "ambiguous",
-        "multiple_actions",
-        "informational",
-    }
-)
+REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v4"
+MISSING_PARAMETER_HOST_TOOLS = {
+    "missing_bandpass_bounds_01": "apply_bandpass_filter",
+    "missing_notch_frequency_01": "apply_notch_filter",
+    "missing_resample_rate_01": "resample_data",
+    "missing_reference_method_01": "set_reference",
+    "missing_normalization_method_01": "normalize_data",
+}
+DIRECT_PARAMETER_TOOLS = frozenset(MISSING_PARAMETER_HOST_TOOLS.values())
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,22 +79,6 @@ class TargetEvalScore:
     parsed_tool: str | None
     parsed_parameters: dict[str, Any] | None
     detail: str
-
-
-@dataclass(frozen=True, slots=True)
-class ActionabilityGate:
-    """Evaluator-only model-owned classification before the final envelope."""
-
-    workflow_stage: str
-    decision: Literal["execute_one", "respond"]
-    reason_class: Literal[
-        "complete",
-        "missing_required",
-        "out_of_stage_or_unsupported",
-        "ambiguous",
-        "multiple_actions",
-        "informational",
-    ]
 
 
 def target_tool_registry() -> ToolRegistry:
@@ -291,201 +274,6 @@ def build_case_messages(
     ]
 
 
-def build_actionability_gate_messages(
-    case: TargetEvalCase | TargetChallengeCase,
-    registry: ToolRegistry,
-) -> list[dict[str, str]]:
-    """Ask the model to classify actionability without selecting a tool."""
-    stage, catalog = _stage_catalog(case, registry)
-    system = (
-        ContextAssembler._ACTION_SYSTEM_PROMPT
-        + "\nAction Contract Catalog (input definitions, never an output array):\n"
-        + catalog
-        + "\nOnly the listed workflow actions are available at this stage."
-        "\nEVALUATOR-ONLY MODEL-OWNED ACTIONABILITY GATE. This draft grants no "
-        "capability and will never be executed. Decide whether the latest user "
-        "request asks for exactly one listed action whose schema-required values "
-        "are explicit. Use respond for missing required values, unsupported or "
-        "out-of-stage requests, ambiguity, multiple requested mutations, or an "
-        "informational request. Never choose a prerequisite, substitute, or "
-        "default value. This pass is not a final action call. Return one valid "
-        "JSON object with exactly these three keys and no prose:\n"
-        '{"workflow_stage":"'
-        + stage.value
-        + '","decision":"DECISION","reason_class":"REASON"}\n'
-        "Replace DECISION with exactly execute_one or respond. Replace REASON "
-        "with exactly one of complete, missing_required, "
-        "out_of_stage_or_unsupported, ambiguous, multiple_actions, or "
-        "informational. "
-        "Use execute_one only with reason_class complete. Use respond with any "
-        "other reason_class. The root keys must be only workflow_stage, decision, "
-        "and reason_class. Never include tool_name, parameters, wrappers, or "
-        "Markdown."
-    )
-    return [
-        {"role": "system", "content": system},
-        {"role": "user", "content": case.user_input},
-    ]
-
-
-def parse_actionability_gate(
-    response: str,
-    *,
-    expected_stage: str,
-) -> ActionabilityGate:
-    """Parse the exact evaluator-only gate without making a semantic decision."""
-    try:
-        payload = json.loads(response)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Actionability gate is not valid JSON: {exc}") from exc
-    expected_keys = {"workflow_stage", "decision", "reason_class"}
-    if not isinstance(payload, dict) or set(payload) != expected_keys:
-        raise ValueError("Actionability gate must use the exact three-field schema.")
-    stage = payload["workflow_stage"]
-    decision = payload["decision"]
-    reason_class = payload["reason_class"]
-    if stage != expected_stage:
-        raise ValueError("Actionability gate did not preserve the backend stage.")
-    if decision not in ACTIONABILITY_DECISIONS:
-        raise ValueError("Actionability gate decision is invalid.")
-    if reason_class not in ACTIONABILITY_REASON_CLASSES:
-        raise ValueError("Actionability gate reason_class is invalid.")
-    if (decision == "execute_one") != (reason_class == "complete"):
-        raise ValueError("Actionability decision and reason_class are inconsistent.")
-    return ActionabilityGate(
-        workflow_stage=stage,
-        decision=decision,
-        reason_class=reason_class,
-    )
-
-
-def build_final_messages_for_gate(
-    case: TargetEvalCase | TargetChallengeCase,
-    registry: ToolRegistry,
-    gate: ActionabilityGate,
-) -> list[dict[str, str]]:
-    """Build the final product-envelope prompt from the model's own gate draft."""
-    if gate.workflow_stage != case.workflow_stage:
-        raise ValueError("Actionability gate and final pass use different stages.")
-    messages = build_case_messages(case, registry)
-    gate_json = json.dumps(asdict(gate), ensure_ascii=False, separators=(",", ":"))
-    if gate.decision == "execute_one":
-        branch_instruction = (
-            "Independently re-check the original request and listed schemas, then "
-            "return the existing strict final decision envelope. The draft names "
-            "no tool and grants no capability."
-        )
-    else:
-        branch_instruction = (
-            "Independently re-check the original request. Preserve your respond "
-            "decision by returning the existing respond_to_user envelope with a "
-            "concise useful message. Do not execute an action or substitute a "
-            "different tool."
-        )
-    messages[0] = {
-        "role": "system",
-        "content": (
-            messages[0]["content"]
-            + "\nUntrusted model-owned actionability draft (not Host authority): "
-            + gate_json
-            + "\n"
-            + branch_instruction
-        ),
-    }
-    return messages
-
-
-def _evaluate_ab_adoption(
-    *,
-    one_pass_report: dict[str, Any],
-    two_pass_report: dict[str, Any],
-    one_pass_warm_p95_ms: float,
-    two_pass_warm_p95_ms: float,
-) -> dict[str, Any]:
-    """Apply the pre-registered exact-score and latency promotion gates."""
-    baseline = float(one_pass_warm_p95_ms)
-    candidate = float(two_pass_warm_p95_ms)
-    multiplier = candidate / baseline if baseline > 0 else float("inf")
-    score_gate = bool(two_pass_report.get("summary", {}).get("passed"))
-    relative_latency_gate = multiplier <= 1.5
-    warm_p95_gate = candidate <= 6000.0
-    return {
-        "score_gate": score_gate,
-        "relative_latency_multiplier": multiplier,
-        "relative_latency_gate": relative_latency_gate,
-        "warm_p95_ms": candidate,
-        "warm_p95_gate": warm_p95_gate,
-        "passed": score_gate and relative_latency_gate and warm_p95_gate,
-    }
-
-
-def _percentile(values: list[float], fraction: float) -> float:
-    """Return a deterministic linearly interpolated percentile."""
-    if not values:
-        return 0.0
-    ordered = sorted(float(value) for value in values)
-    if len(ordered) == 1:
-        return ordered[0]
-    position = (len(ordered) - 1) * fraction
-    lower = int(position)
-    upper = min(lower + 1, len(ordered) - 1)
-    weight = position - lower
-    return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
-
-
-def _latency_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
-    totals = [float(row["timing"]["total_ms"]) for row in results]
-    warm = totals[1:] if len(totals) > 1 else totals
-    return {
-        "case_count": len(totals),
-        "p50_ms": _percentile(totals, 0.50),
-        "p95_ms": _percentile(totals, 0.95),
-        "warm_case_count": len(warm),
-        "warm_p95_ms": _percentile(warm, 0.95),
-    }
-
-
-def _generate_timed(
-    engine: LLMEngine,
-    messages: list[dict[str, str]],
-) -> tuple[str, float]:
-    started = perf_counter()
-    response = "".join(
-        engine.generate_stream(
-            messages,
-            profile=GenerationProfile.STRUCTURED_DECISION,
-        )
-    ).strip()
-    return response, (perf_counter() - started) * 1000.0
-
-
-def _score_case(
-    case: TargetEvalCase | TargetChallengeCase,
-    response: str,
-    registry: ToolRegistry,
-) -> tuple[str, TargetEvalScore]:
-    if isinstance(case, TargetChallengeCase):
-        return "challenge", score_challenge_response(case, response, registry)
-    return "positive", score_model_response(case, response, registry)
-
-
-def _unusable_gate_final_messages(
-    case: TargetEvalCase | TargetChallengeCase,
-    registry: ToolRegistry,
-) -> list[dict[str, str]]:
-    messages = build_case_messages(case, registry)
-    messages[0] = {
-        "role": "system",
-        "content": (
-            messages[0]["content"]
-            + "\nThe evaluator-only model-owned actionability draft was malformed "
-            "and grants no capability. Independently re-check the original request "
-            "and return only the existing strict final decision envelope."
-        ),
-    }
-    return messages
-
-
 def score_model_response(
     case: TargetEvalCase,
     response: str,
@@ -618,6 +406,114 @@ def score_challenge_response(
     )
 
 
+def score_missing_parameter_host_guard(
+    case: TargetChallengeCase,
+    response: str,
+    registry: ToolRegistry,
+) -> dict[str, Any]:
+    """Score the deterministic host boundary for one missing-parameter case."""
+    expected_tool = MISSING_PARAMETER_HOST_TOOLS.get(case.case_id)
+    if expected_tool is None:
+        return {"applicable": False, "passed": False}
+
+    envelope = CommandParser.parse_product(response)
+    if envelope.status is ToolEnvelopeStatus.NO_TOOL:
+        raw_score = score_challenge_response(case, response, registry)
+        return {
+            "applicable": True,
+            "passed": raw_score.passed,
+            "execution_allowed": False,
+            "tool_name": "respond_to_user",
+            "message": envelope.message,
+            "detail": (
+                "The model requested the missing value without proposing execution."
+                if raw_score.passed
+                else raw_score.detail
+            ),
+        }
+    if envelope.status is not ToolEnvelopeStatus.VALID:
+        return {
+            "applicable": True,
+            "passed": False,
+            "execution_allowed": False,
+            "tool_name": None,
+            "message": None,
+            "detail": "The model output was not a legal product envelope.",
+        }
+
+    tool_name, parameters = envelope.commands[0]
+    tool = registry.get_tool(tool_name)
+    schema_valid = bool(
+        tool is not None
+        and ToolSchemaValidator({tool.name: tool.parameters})
+        .validate(tool_name, parameters)
+        .is_valid
+    )
+    if (
+        envelope.workflow_stage != case.workflow_stage
+        or tool_name != expected_tool
+        or not schema_valid
+    ):
+        return {
+            "applicable": True,
+            "passed": False,
+            "execution_allowed": False,
+            "tool_name": tool_name,
+            "message": None,
+            "detail": "The proposal did not reach the expected host parameter guard.",
+        }
+
+    origin = verify_direct_parameter_origins(
+        tool_name,
+        parameters,
+        case.user_input,
+    )
+    return {
+        "applicable": True,
+        "passed": not origin.is_valid and bool(origin.error_message),
+        "execution_allowed": origin.is_valid,
+        "tool_name": tool_name,
+        "message": origin.error_message,
+        "detail": (
+            "The host rejected model-supplied values absent from the latest user "
+            "request."
+            if not origin.is_valid
+            else "The host would allow model-supplied values absent from the request."
+        ),
+    }
+
+
+def score_positive_parameter_host_guard(
+    case: TargetEvalCase,
+    response: str,
+    registry: ToolRegistry,
+) -> dict[str, Any]:
+    """Require an exact positive direct action to pass the production guard."""
+    if case.expected_tool not in DIRECT_PARAMETER_TOOLS:
+        return {"applicable": False, "passed": False}
+    raw_score = score_model_response(case, response, registry)
+    if not raw_score.passed or raw_score.parsed_parameters is None:
+        return {
+            "applicable": True,
+            "passed": False,
+            "execution_allowed": False,
+            "tool_name": raw_score.parsed_tool,
+            "message": None,
+        }
+    origin = verify_direct_parameter_origins(
+        case.expected_tool,
+        raw_score.parsed_parameters,
+        case.user_input,
+    )
+    return {
+        "applicable": True,
+        "passed": origin.is_valid,
+        "execution_allowed": origin.is_valid,
+        "tool_name": case.expected_tool,
+        "message": origin.error_message,
+    }
+
+
 def _build_report(
     *,
     model_id: str,
@@ -635,6 +531,32 @@ def _build_report(
             "passed_count": suite_passed,
             "failed_count": len(suite_rows) - suite_passed,
         }
+    positive_passed = suite_summary["positive"]["passed_count"]
+    positive_guard_rows = [
+        row["parameter_origin_guard"]
+        for row in results
+        if isinstance(row.get("parameter_origin_guard"), dict)
+        and row["parameter_origin_guard"].get("applicable") is True
+    ]
+    positive_guard_passed = sum(bool(row.get("passed")) for row in positive_guard_rows)
+    host_guard_rows = [
+        row["host_guard"]
+        for row in results
+        if isinstance(row.get("host_guard"), dict)
+        and row["host_guard"].get("applicable") is True
+    ]
+    host_guard_passed = sum(bool(row.get("passed")) for row in host_guard_rows)
+    candidate_passed = bool(
+        complete
+        and expected_case_count == 50
+        and len(results) == 50
+        and suite_summary["positive"]["case_count"] == 36
+        and positive_passed == 36
+        and len(positive_guard_rows) == 10
+        and positive_guard_passed == 10
+        and len(host_guard_rows) == 5
+        and host_guard_passed == 5
+    )
     spec = local_model_spec(model_id)
     return {
         "schema_version": REPORT_SCHEMA,
@@ -646,20 +568,32 @@ def _build_report(
         },
         "target_surface": sorted(AGENT_ACTION_CONTRACTS.model_tool_names()),
         "suite_summary": suite_summary,
+        "candidate_gate": {
+            "positive_exact": {"required": 36, "passed": positive_passed},
+            "explicit_parameter_host_guard": {
+                "required": 10,
+                "passed": positive_guard_passed,
+            },
+            "missing_parameter_host_guard": {
+                "required": 5,
+                "passed": host_guard_passed,
+            },
+            "passed": candidate_passed,
+        },
         "summary": {
             "expected_case_count": expected_case_count,
             "case_count": len(results),
             "passed_count": passed_count,
             "failed_count": len(results) - passed_count,
             "complete": complete,
-            "passed": complete
-            and len(results) == expected_case_count
-            and passed_count == len(results),
+            "passed": candidate_passed,
         },
         "results": results,
         "claim_boundary": (
-            "Frozen bilingual target selection and parameter exactness for one model "
-            "revision; not tool execution, workflow success, or thesis-grade accuracy."
+            "Frozen bilingual exact selection for 36 complete requests plus the "
+            "deterministic host parameter-origin boundary for five missing-value "
+            "requests. The remaining raw challenges are diagnostic known limitations; "
+            "this is not workflow success or thesis-grade model accuracy."
         ),
     }
 
@@ -759,9 +693,24 @@ def run_eval(
             else:
                 suite = "positive"
                 score = score_model_response(case, response, registry)
-            results.append(
-                {"suite": suite, "case": asdict(case), "score": asdict(score)}
-            )
+            row = {"suite": suite, "case": asdict(case), "score": asdict(score)}
+            if isinstance(case, TargetEvalCase) and (
+                case.expected_tool in DIRECT_PARAMETER_TOOLS
+            ):
+                row["parameter_origin_guard"] = score_positive_parameter_host_guard(
+                    case,
+                    response,
+                    registry,
+                )
+            if isinstance(case, TargetChallengeCase) and (
+                case.case_id in MISSING_PARAMETER_HOST_TOOLS
+            ):
+                row["host_guard"] = score_missing_parameter_host_guard(
+                    case,
+                    response,
+                    registry,
+                )
+            results.append(row)
             if checkpoint_path is not None:
                 _write_report(
                     checkpoint_path,
@@ -784,170 +733,12 @@ def run_eval(
     )
 
 
-def run_ab_eval(
-    config: LLMConfig,
-    cases: tuple[TargetEvalCase, ...],
-    *,
-    challenge_cases: tuple[TargetChallengeCase, ...] = (),
-    checkpoint_path: Path | None = None,
-) -> dict[str, Any]:
-    """Compare current one-pass with a model-owned two-pass gate in one load."""
-    selection = config.assistant_runtime_selection()
-    if selection.backend_mode != "local":
-        raise RuntimeError(f"Current assistant backend is {selection.backend_mode}.")
-    if not config.local_backend_ready(selection.model_id):
-        raise RuntimeError(config.local_backend_status_message(selection.model_id))
-
-    config.max_new_tokens = min(int(config.max_new_tokens), 128)
-    config.do_sample = False
-    registry = target_tool_registry()
-    engine = LLMEngine(config)
-    one_pass_results: list[dict[str, Any]] = []
-    two_pass_results: list[dict[str, Any]] = []
-    all_cases: tuple[TargetEvalCase | TargetChallengeCase, ...] = (
-        *cases,
-        *challenge_cases,
-    )
-
-    def build_report(*, complete: bool) -> dict[str, Any]:
-        one_pass = _build_report(
-            model_id=selection.model_id,
-            results=one_pass_results,
-            expected_case_count=len(all_cases),
-            complete=complete,
-        )
-        two_pass = _build_report(
-            model_id=selection.model_id,
-            results=two_pass_results,
-            expected_case_count=len(all_cases),
-            complete=complete,
-        )
-        one_latency = _latency_summary(one_pass_results)
-        two_latency = _latency_summary(two_pass_results)
-        adoption = _evaluate_ab_adoption(
-            one_pass_report=one_pass,
-            two_pass_report=two_pass,
-            one_pass_warm_p95_ms=one_latency["warm_p95_ms"],
-            two_pass_warm_p95_ms=two_latency["warm_p95_ms"],
-        )
-        if not complete:
-            adoption["passed"] = False
-        return {
-            "schema_version": REPORT_SCHEMA,
-            "experiment": "one_pass_vs_model_owned_actionability_gate",
-            "model": one_pass["model"],
-            "target_surface": one_pass["target_surface"],
-            "arms": {
-                "one_pass": one_pass,
-                "two_pass": two_pass,
-            },
-            "latency": {
-                "one_pass": one_latency,
-                "two_pass": two_latency,
-                "thresholds": {
-                    "maximum_relative_multiplier": 1.5,
-                    "maximum_two_pass_warm_p95_ms": 6000.0,
-                },
-            },
-            "adoption": adoption,
-            "claim_boundary": (
-                "Evaluator-only actionability and strict final-envelope behavior; "
-                "no tool execution, GUI completion, or product generation change."
-            ),
-        }
-
-    try:
-        load_started = perf_counter()
-        engine.load_model()
-        load_ms = (perf_counter() - load_started) * 1000.0
-        for index, case in enumerate(all_cases, start=1):
-            print(
-                f"Stable Assistant A/B {index}/{len(all_cases)}: {case.case_id}",
-                file=sys.stderr,
-                flush=True,
-            )
-            one_response, one_ms = _generate_timed(
-                engine,
-                build_case_messages(case, registry),
-            )
-            suite, one_score = _score_case(case, one_response, registry)
-            one_pass_results.append(
-                {
-                    "suite": suite,
-                    "case": asdict(case),
-                    "score": asdict(one_score),
-                    "timing": {"generation_count": 1, "total_ms": one_ms},
-                }
-            )
-
-            gate_response, gate_ms = _generate_timed(
-                engine,
-                build_actionability_gate_messages(case, registry),
-            )
-            gate: ActionabilityGate | None = None
-            gate_error: str | None = None
-            try:
-                gate = parse_actionability_gate(
-                    gate_response,
-                    expected_stage=case.workflow_stage,
-                )
-            except ValueError as exc:
-                gate_error = str(exc)
-            final_messages = (
-                build_final_messages_for_gate(case, registry, gate)
-                if gate is not None
-                else _unusable_gate_final_messages(case, registry)
-            )
-            final_response, final_ms = _generate_timed(engine, final_messages)
-            _, two_score = _score_case(case, final_response, registry)
-            if gate is None:
-                two_score = TargetEvalScore(
-                    False,
-                    "actionability_gate_format",
-                    two_score.response,
-                    two_score.parsed_stage,
-                    two_score.parsed_tool,
-                    two_score.parsed_parameters,
-                    gate_error or "Actionability gate was unusable.",
-                )
-            two_pass_results.append(
-                {
-                    "suite": suite,
-                    "case": asdict(case),
-                    "gate": {
-                        "response": gate_response[:1000],
-                        "parsed": asdict(gate) if gate is not None else None,
-                        "error": gate_error,
-                    },
-                    "score": asdict(two_score),
-                    "timing": {
-                        "generation_count": 2,
-                        "gate_ms": gate_ms,
-                        "final_ms": final_ms,
-                        "total_ms": gate_ms + final_ms,
-                    },
-                }
-            )
-            if checkpoint_path is not None:
-                checkpoint = build_report(complete=False)
-                checkpoint["model"]["load_ms"] = load_ms
-                _write_report(checkpoint_path, checkpoint)
-    finally:
-        with suppress(Exception):
-            engine.close()
-
-    report = build_report(complete=True)
-    report["model"]["load_ms"] = load_ms
-    return report
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument("--challenges", type=Path, default=DEFAULT_CHALLENGES)
     parser.add_argument("--json-out", type=Path)
     parser.add_argument("--device", choices=("cpu", "cuda"))
-    parser.add_argument("--mode", choices=("one-pass", "ab"), default="one-pass")
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args(argv)
 
@@ -956,8 +747,7 @@ def main(argv: list[str] | None = None) -> int:
         device=args.device,
     )
     try:
-        run = run_ab_eval if args.mode == "ab" else run_eval
-        report = run(
+        report = run_eval(
             config,
             load_target_cases(args.cases),
             challenge_cases=load_challenge_cases(args.challenges),
@@ -977,11 +767,7 @@ def main(argv: list[str] | None = None) -> int:
     print(rendered)
     if args.json_out is not None:
         _write_report(args.json_out, report)
-    passed = bool(
-        report.get("adoption", {}).get("passed")
-        if args.mode == "ab"
-        else report.get("summary", {}).get("passed")
-    )
+    passed = bool(report.get("summary", {}).get("passed"))
     return 1 if args.strict and not passed else 0
 
 

@@ -112,7 +112,8 @@ request 打開後 workflow 會停止並顯示 waiting state，不會繼續猜測
 - 讓 `AgentWorker` 在 background thread 生成回覆。
 - 用`CommandParser`只接受exact三欄JSON envelope；不做寬鬆抽取或legacy fallback。
 - 用 `VerificationLayer` 檢查 registered tool schema、required parameter、JSON-like type、
-  enum、confidence 和部分資料範圍。
+  enum、confidence 和部分資料範圍；五個direct preprocess另由同一verification boundary驗證required
+  value確實來自latest user request，無法驗證時回一般Assistant追問且不進executor。
 - 套用 ApplicationService capability gate，避免 assistant 在錯誤 backend state 呼叫不該開放的工具。
 - 將已驗證的單一 tool 交給 `ToolExecutionCoordinator`；mapped workflow tool 透過
   `execute_application_tool_command(...)` 執行 ApplicationService command，直接取得
@@ -248,7 +249,7 @@ Granite 3.3 2B; Phi cannot be selected and never becomes a fallback.
 目前只宣稱Granite固定正向selection suite的checkpoint。Host保留strict schema、stage/publication、
 capability與confirmation verification，但不做intent narrowing或deterministic continuation。這種
 工程evidence不能替代真人workflow或thesis accuracy，也不能把歷史`117/117`、`121/121`或Phi
-candidate分數移植成Granite claim；candidate必須以同一frozen source完成50-case gate。
+candidate分數移植成Granite claim；candidate必須以同一frozen source完成composed 50-case report gate。
 4-bit loading 仍是 optional path；`accelerate` / `bitsandbytes` 不是預設產品啟動硬需求。
 
 Gemini/API 不再列為產品驗證目標；default dependencies 不包含 remote SDK。若歷史研究需要遠端
@@ -457,8 +458,9 @@ settings全部完成後才是`dataset_ready`。
 - closure-worktree runtime inspection 回報 Granite 3.3 2B `gpu-ready`，其 path-scoped cache 約
   `5.07 GB / 20 GB`；root launcher cache 的 `12.77 GB` 不是同一個 checkout。
 - frozen Granite 34個positive selection cases曾在先前exact source通過；本candidate新增
-  `compute_saliency`後是36 positive＋14 challenge的50-case gate，必須在最終exact source重跑，
-  舊34-case結果不能代替。
+  `compute_saliency`後固定跑36 positive＋14 challenge diagnostics。Promotion要求36/36 positive與
+  5/5 missing-parameter composed host outcomes；舊34-case結果不能代替，其他raw challenge failure仍是
+  明示model limitation。
 - local runtime unavailable 時，chat panel 會保持可開並顯示原因；first-run consent 只在
   local backend 還未 acknowledged 且即將啟用時出現。
 - no-model diagnostic runtime可走真ChatPanel、MainWindow、ApplicationService與tool correlation，
@@ -473,7 +475,7 @@ settings全部完成後才是`dataset_ready`。
 - agent 操作完整資料 pipeline 的端到端正確性。
 - 真 Windows launcher / human desktop acceptance。
 - 長時間真人桌面 session、跨重啟 cache lifecycle 與 frozen Granite benchmark。
-- 最終50-case Granite gate、真model safe E2E與三份真人frontend walkthrough尚未在同一candidate
+- 最終composed Granite gate、真model safe E2E與三份真人frontend walkthrough尚未在同一candidate
   source閉合。
 - Windows native layout、dialog interaction與完整PhysioNet CPU workflow仍需要使用者手測。
 
@@ -506,7 +508,7 @@ host-assisted或`121/121` reports不得作為current Granite accuracy。只有�
 - `CommandParser`驗證模型產生的strict JSON text envelope；它不是host-native structured tool calling，
   但不掃描prose或接受wrapper。
 - strict envelope、publication/stage verification、capability與confirmation守住目前product
-  contract；模型selection仍必須由50-case gate與真人safe E2E驗證。
+  contract；模型selection仍必須由composed 50-case report gate與真人safe E2E驗證。
 - `AgentManager` 已抽出 presentation、runtime lifecycle、workflow handoff 與 montage coordinator，
   但仍是偏大的 Qt orchestrator，後續應按責任切片而不是新增 fallback。
 - RAG 已接入 controller，但本輪尚未驗證資料來源和品質。

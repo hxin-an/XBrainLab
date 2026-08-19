@@ -42,7 +42,11 @@ from XBrainLab.llm.tools.result_contract import (
 
 from .assembler import PromptToolPublication
 from .execution_policy import HostExecutionPolicy
-from .verifier import PathProvenanceVerifier, VerificationResult
+from .verifier import (
+    PathProvenanceVerifier,
+    VerificationResult,
+    verify_direct_parameter_origins,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +97,7 @@ class ToolAttemptAction(str, Enum):
     """Controller action selected for one model proposal."""
 
     LOOP = "loop"
+    RESPOND = "respond"
     PUBLICATION_BLOCKED = "publication_blocked"
     PROVENANCE_BLOCKED = "provenance_blocked"
     INTENT_BLOCKED = "intent_blocked"
@@ -124,6 +129,7 @@ class ToolAttemptRequest:
     publication: PromptToolPublication
     latest_user_text: str
     repeated: bool = False
+    enforce_direct_parameter_origins: bool = True
 
 
 @dataclass(frozen=True)
@@ -327,6 +333,24 @@ class ToolAttemptCoordinator:
                 ),
                 feedback=ToolAttemptFeedback.TOOL_OUTPUT,
             )
+
+        if request.enforce_direct_parameter_origins:
+            origin_validation = verify_direct_parameter_origins(
+                command_name,
+                params,
+                request.latest_user_text,
+            )
+            if not origin_validation.is_valid:
+                return ToolAttemptDecision(
+                    ToolAttemptAction.RESPOND,
+                    command_name,
+                    params,
+                    context=context,
+                    message=(
+                        origin_validation.error_message
+                        or "What parameters should I use for this action?"
+                    ),
+                )
 
         if not context.availability.enabled:
             return ToolAttemptDecision(

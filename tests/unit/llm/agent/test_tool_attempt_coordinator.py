@@ -212,7 +212,7 @@ def test_schema_rejection_prevents_registry_and_confirmation_checks() -> None:
     assert registry.reads == 0
 
 
-def test_published_action_is_not_rejected_by_host_text_classification() -> None:
+def test_published_action_with_explicit_values_is_not_host_reclassified() -> None:
     tool_name = "apply_bandpass_filter"
     coordinator, source, verifier, registry = _coordinator(
         _context(tool_name=tool_name),
@@ -222,7 +222,7 @@ def test_published_action_is_not_rejected_by_host_text_classification() -> None:
         _request(
             tool_name=tool_name,
             params={"low_freq": 4.0, "high_freq": 38.0},
-            text="Why is model training unavailable?",
+            text="Apply a 4 to 38 Hz bandpass filter.",
         )
     )
 

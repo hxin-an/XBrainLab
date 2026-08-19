@@ -244,21 +244,27 @@ command policy或fake backend。
 
 ## Candidate validation與claims
 
-Engineering candidate suite在新增`compute_saliency`後為50 cases：36個positive cases（18個target
-tool各2個）加既有14個challenge cases。Challenge必須包含五個missing-parameter、跨stage lifecycle、
-out-of-stage、general、ambiguous與multi-mutation；它們使用`respond_to_user`，不得執行替代工具。
-Candidate gates：
+Engineering candidate suite在新增`compute_saliency`後仍固定為50 cases：36個positive cases（18個
+target tool各2個）加14個challenge diagnostics。Challenge必須包含五個missing-parameter、跨stage
+lifecycle、out-of-stage、general、ambiguous與multi-mutation；raw score保留用來暴露2B模型限制，不把
+Host拒絕冒充raw-model accuracy。Candidate gates：
 
 - invalid／out-of-stage／stale execution、cancel後continuation與multi-mutation partial action皆為0。
-- 所有cases在repair budget內得到legal envelope；final stage acknowledgement 100%。
-- 36個positive全部得到exact final tool＋parameters；14個challenge全部得到stage-correct
-  `respond_to_user`，缺參數案例還必須指出缺少的欄位。
-- 50/50才通過；不得以平均分數、repair前結果或縮小denominator替代。
+- 36個positive全部得到exact final tool＋parameters，且五個direct preprocess的值都能從latest user
+  request驗證；完整值不新增confirmation。
+- 五個missing-parameter cases可以由模型直接`respond_to_user`，或由模型提出tool後被同一production
+  parameter-origin guard轉成一般Assistant追問；兩條路徑都必須零ApplicationService／ToolExecutor
+  execution，且追問指出缺少的欄位。
+- Candidate gate要求36/36 positive、其中10/10 direct preprocess origin checks，以及5/5
+  missing-parameter composed outcomes；其餘9個raw challenge
+  結果完整保存為known limitations，不加入promotion分母，也不得宣稱已解決。使用者已接受具完整明確
+  參數的ambiguous／multi-action request可能只執行模型選中的一個action；one-command cap後不得自動
+  執行第二項。
 - 真model safe E2E：Switch Dataset、Import GUI、direct Resample。
 
-這些是產品候選gate，不是thesis benchmark。Thesis evidence另由frozen source、case set、runner、model
-revision與至少三次repeat定義；mock、host-assisted normalization、dashboard或單次walkthrough不能
-宣稱raw-model accuracy。
+這些是產品候選gate，不是thesis benchmark或安全零容忍。Thesis evidence另由frozen source、case set、
+runner、model revision與至少三次repeat定義；mock、host-assisted guard、dashboard或單次walkthrough
+不能宣稱raw-model accuracy。
 
 目前產品在完成migration與同一exact-SHA candidate evidence前，不能宣稱Stable v2、18-tool
 runtime、model-free walkthrough或Assistant-ready。

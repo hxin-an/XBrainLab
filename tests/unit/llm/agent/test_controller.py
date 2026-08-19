@@ -2834,6 +2834,54 @@ class TestExecuteDebugTool:
 
         ctrl.panel_navigation_requested.emit.assert_not_called()
 
+    def test_parameter_origin_response_uses_normal_assistant_message(self, ctrl):
+        ctrl._finalize_turn = MagicMock()
+        ctrl._handle_tool_attempt_blocked = MagicMock()
+        decision = ToolAttemptDecision(
+            ToolAttemptAction.RESPOND,
+            "resample_data",
+            {"rate": 128},
+            context=_enabled_tool_context("resample_data", generation=17),
+            message="What resampling rate should I use?",
+        )
+
+        assert ctrl._present_tool_attempt_boundary(decision) is True
+
+        ctrl._finalize_turn.assert_called_once_with(
+            "What resampling rate should I use?"
+        )
+        ctrl._handle_tool_attempt_blocked.assert_not_called()
+        ctrl.panel_navigation_requested.emit.assert_not_called()
+
+    def test_model_invented_parameter_publishes_message_and_never_executes(
+        self,
+        ctrl,
+    ):
+        from XBrainLab.llm.agent.assembler import PromptToolPublication
+
+        ctrl._append_history("user", "Resample the EEG data.")
+        ctrl._turn_orchestrator.active_publication = PromptToolPublication(
+            tool_names=frozenset({"resample_data"}),
+            workflow_stage="data_loaded",
+            backend_generation=17,
+        )
+        _set_context_reader(
+            ctrl,
+            return_value=_enabled_tool_context("resample_data", generation=17),
+        )
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl._execute_tool_attempt = MagicMock()
+
+        ctrl._process_tool_calls(
+            [("resample_data", {"rate": 128})],
+            '{"tool_name":"resample_data","parameters":{"rate":128}}',
+        )
+
+        ctrl._execute_tool_attempt.assert_not_called()
+        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
+        assert presentation.kind is AssistantResponseKind.MESSAGE
+        assert presentation.text == "What resampling rate should I use?"
+
     def test_ready_debug_training_requests_confirmation_before_execution(self, ctrl):
         ctrl._turn_orchestrator.host_turn_generation = None
         ctrl._turn_orchestrator.host_turn_id = None

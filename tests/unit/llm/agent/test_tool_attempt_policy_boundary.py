@@ -241,6 +241,47 @@ def test_explicit_continue_request_authorizes_current_backend_candidate() -> Non
     assert verifier.calls == [(("preview_interpretation", {}), 0.9)]
 
 
+def test_explicit_direct_parameter_value_reaches_execution_boundary() -> None:
+    coordinator, source, verifier = _coordinator(
+        _context("resample_data", command_name="preprocess")
+    )
+
+    decision = coordinator.evaluate(
+        _request(
+            "resample_data",
+            params={"rate": 128},
+            text="Resample the EEG data to 128 Hz.",
+        )
+    )
+
+    assert decision.action is ToolAttemptAction.EXECUTE
+    assert source.reads == ["resample_data"]
+    assert verifier.calls == [(("resample_data", {"rate": 128}), 0.9)]
+
+
+def test_invented_direct_parameter_returns_assistant_question_without_execution() -> (
+    None
+):
+    coordinator, source, verifier = _coordinator(
+        _context("resample_data", command_name="preprocess")
+    )
+
+    decision = coordinator.evaluate(
+        _request(
+            "resample_data",
+            params={"rate": 128},
+            text="Resample the EEG data.",
+        )
+    )
+
+    assert decision.action is ToolAttemptAction.RESPOND
+    assert decision.message == "What resampling rate should I use?"
+    assert decision.result is None
+    assert decision.context == _context("resample_data", command_name="preprocess")
+    assert source.reads == ["resample_data"]
+    assert verifier.calls == [(("resample_data", {"rate": 128}), 0.9)]
+
+
 def test_natural_continue_request_only_authorizes_recommended_command() -> None:
     coordinator, source, verifier = _coordinator(
         _context(

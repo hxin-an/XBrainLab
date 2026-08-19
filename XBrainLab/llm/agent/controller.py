@@ -1252,6 +1252,11 @@ class LLMController(QObject):
         if decision.action is ToolAttemptAction.LOOP:
             self._handle_loop_detected(cmd)
             return True
+        if decision.action is ToolAttemptAction.RESPOND:
+            self._finalize_turn(
+                decision.message or "Please provide the required values."
+            )
+            return True
         if decision.action in {
             ToolAttemptAction.PUBLICATION_BLOCKED,
             ToolAttemptAction.PROVENANCE_BLOCKED,
@@ -2775,6 +2780,7 @@ class LLMController(QObject):
                 publication=publication,
                 latest_user_text=authorization_text,
                 repeated=repeated,
+                enforce_direct_parameter_origins=False,
             )
         )
         if self._present_tool_attempt_boundary(decision):
