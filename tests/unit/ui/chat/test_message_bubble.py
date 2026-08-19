@@ -662,7 +662,7 @@ class TestMessageBubble:
 
         assert bubble.get_text() == text
         assert text_edit.toPlainText() == text
-        assert text_edit.width() - natural_text_width <= 2.0
+        assert text_edit.width() - ceil(natural_text_width) <= 2
         document = text_edit.document()
         layout = document.documentLayout() if document is not None else None
         assert layout is not None

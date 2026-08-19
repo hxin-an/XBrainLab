@@ -4205,7 +4205,7 @@ def test_region_content_gate_rejects_ninety_nine_percent_blank_two_line_frame(
         )
 
 
-def test_assistant_stage_copy_review_rejects_stale_results_copy() -> None:
+def test_assistant_stage_copy_review_rejects_retired_stage_specific_copy() -> None:
     review = build_assistant_stage_copy_review(
         [
             {
@@ -4224,23 +4224,20 @@ def test_assistant_stage_copy_review_rejects_stale_results_copy() -> None:
     )
 
     assert review["passed"] is False
+    assert review["findings"][0]["expected_heading"] == "Get started with XBrainLab"
     assert review["findings"][0]["expected_intro"] == (
-        "Ask me to explain metrics, review available analyses, or recommend "
-        "what to inspect next."
+        "Choose a prompt or ask your own question."
     )
 
 
-def test_assistant_stage_copy_review_accepts_stage_heading_and_intro() -> None:
+def test_assistant_stage_copy_review_accepts_stable_onboarding_copy() -> None:
     review = build_assistant_stage_copy_review(
         [
             {
                 "phase": "assistant_empty_state",
                 "visible_text": [
-                    "Explore your results",
-                    (
-                        "Ask me to explain metrics, review available analyses, "
-                        "or recommend what to inspect next."
-                    ),
+                    "Get started with XBrainLab",
+                    "Choose a prompt or ask your own question.",
                 ],
                 "workflow_state": {
                     "raw": {"loaded": True},

@@ -3429,7 +3429,7 @@ class TestAgentManagerMethods:
         assert "Tool Output:" not in visible
         assert "command_name" not in visible
         assert manager.chat_panel.empty_state_widget.accessibleDescription() == (
-            "No EEG files are open yet."
+            "Choose a prompt or ask your own question."
         )
 
 

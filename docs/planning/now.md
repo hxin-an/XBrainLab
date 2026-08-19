@@ -56,6 +56,15 @@
    missing／pending／stale／cancelled／failed 都 fail closed。
 5. 以 merge commit 合併，確認 `main` post-merge checks，再建立／push `v0.7.0` tag與GitHub Release。
 
+Checkpoint（`2026-08-20`）：exact `95949fc4` 的212項focused tests、Ruff、format與MkDocs已通過，
+PR #40也已retarget到`main`；fresh CI隨後以三個直接相關的stale／platform oracle fail closed。Linux
+unit UI仍要求已核准刪除的stage-specific首頁copy；Linux human-like capture的quality review也仍把同一
+stage-specific copy matrix當必要契約，儘管chat geometry、runtime、signal、interaction等子項全PASS；
+macOS則因QTextBrowser整數寬14px減浮點glyph寬11.625px為2.375，讓直接`<=2.0`的subpixel assertion
+誤判。這三項只校正tests／validation script到已批准fixed onboarding與integer-pixel contract，不修改
+`XBrainLab/ui/`或其他產品source。舊SHA canonical handoff在complete-regression中被主agent終止，因任何
+修正都會使該dossier失效；新commit必須從頭重建。
+
 ### B. 單一 cleanup branch
 
 1. 從 tagged `main` 建立一條短期 cleanup branch；先量測 current inventory與 baseline，不碰產品 UI。
