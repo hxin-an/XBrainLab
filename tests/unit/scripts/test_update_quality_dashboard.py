@@ -172,6 +172,8 @@ def test_dashboard_handoff_profile_is_explicit() -> None:
             "build/handoff-evidence/deadbeef/dashboard",
             "--resource-calibration-path",
             str(calibration_path),
+            "--handoff-evidence-path",
+            "build/handoff-evidence/deadbeef/handoff-evidence.json",
         ]
     )
 
@@ -180,6 +182,84 @@ def test_dashboard_handoff_profile_is_explicit() -> None:
     assert args.expected_branch is None
     assert args.output_dir == Path("build/handoff-evidence/deadbeef/dashboard")
     assert args.resource_calibration_path == calibration_path
+    assert args.handoff_evidence_path == Path(
+        "build/handoff-evidence/deadbeef/handoff-evidence.json"
+    )
+
+
+def test_handoff_dashboard_summarizes_prior_manifest_without_running_checks(
+    tmp_path: Path,
+) -> None:
+    source_identity = {
+        "commit_sha": "a" * 40,
+        "source_digest": "b" * 64,
+        "dirty": False,
+    }
+    dossier = {
+        "schema_version": 5,
+        "profile": "handoff",
+        "source_identity": source_identity,
+        "execution_order": ["git-status", "resource-calibration"],
+        "checks": {
+            check_id: {
+                "check_id": check_id,
+                "passed": True,
+                "source_stable": True,
+                "source_before": source_identity,
+                "source_after": source_identity,
+            }
+            for check_id in ("git-status", "resource-calibration")
+        },
+    }
+    path = tmp_path / "handoff-evidence.json"
+    path.write_text(json.dumps(dossier), encoding="utf-8")
+
+    result = dashboard.handoff_manifest_summary_check(
+        path,
+        expected_check_ids=("git-status", "resource-calibration"),
+        commit="a" * 40,
+    )
+
+    assert result.status == "pass"
+    assert result.returncode == 0
+    assert "2 prior gates" in result.summary
+
+
+def test_handoff_dashboard_summary_rejects_failed_or_missing_prior_gate(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "handoff-evidence.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 5,
+                "profile": "handoff",
+                "source_identity": {
+                    "commit_sha": "a" * 40,
+                    "source_digest": "b" * 64,
+                    "dirty": False,
+                },
+                "execution_order": ["git-status"],
+                "checks": {
+                    "git-status": {
+                        "check_id": "git-status",
+                        "passed": False,
+                        "source_stable": True,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = dashboard.handoff_manifest_summary_check(
+        path,
+        expected_check_ids=("git-status", "resource-calibration"),
+        commit="a" * 40,
+    )
+
+    assert result.status == "fail"
+    assert "missing or out of order" in result.summary
 
 
 def test_dashboard_can_write_reports_to_a_sha_scoped_external_directory(tmp_path: Path):
@@ -1453,6 +1533,27 @@ def test_handoff_report_requires_external_manifest_sections_3_to_6(monkeypatch):
         "build_checks_for_mode",
         lambda **kwargs: build_calls.append(kwargs) or [],
     )
+    passing_check = lambda key: dashboard.CheckResult(  # noqa: E731
+        key=key,
+        label=key,
+        category="quality",
+        command="read evidence",
+        status="pass",
+        duration_seconds=0.0,
+        returncode=0,
+        summary="passed",
+        output_excerpt="",
+    )
+    monkeypatch.setattr(
+        dashboard,
+        "resource_calibration_evidence_check",
+        lambda **_kwargs: passing_check("resource_calibration"),
+    )
+    monkeypatch.setattr(
+        dashboard,
+        "handoff_manifest_summary_check",
+        lambda *_args, **_kwargs: passing_check("handoff_manifest_summary"),
+    )
     monkeypatch.setattr(
         dashboard,
         "write_report",
@@ -1470,6 +1571,7 @@ def test_handoff_report_requires_external_manifest_sections_3_to_6(monkeypatch):
         / "resource-guard"
         / "calibration.json"
     )
+    evidence_path = output_dir.parent / "handoff-evidence.json"
     exit_code = dashboard.main(
         [
             "--handoff",
@@ -1477,18 +1579,13 @@ def test_handoff_report_requires_external_manifest_sections_3_to_6(monkeypatch):
             str(output_dir),
             "--resource-calibration-path",
             str(calibration_path),
+            "--handoff-evidence-path",
+            str(evidence_path),
         ]
     )
 
     assert exit_code == 0
-    assert build_calls == [
-        {
-            "include_slow_checks": False,
-            "include_handoff_checks": True,
-            "resource_calibration_path": calibration_path,
-            "calibration_commit": "a" * 40,
-        }
-    ]
+    assert build_calls == []
     handoff_manifest = reports[0]["handoff_manifest"]
     assert handoff_manifest == {
         "schema_version": 1,
@@ -1499,6 +1596,8 @@ def test_handoff_report_requires_external_manifest_sections_3_to_6(monkeypatch):
         "dashboard_clean_last": True,
         "expected_branch": dashboard.DEFAULT_HANDOFF_BRANCH,
         "requires_upstream_sync": True,
+        "executed_check_ids": [],
+        "source_of_truth": "handoff gate records",
     }
     rendered = render_markdown(reports[0])
     assert "Dashboard summary only" in rendered

@@ -105,6 +105,12 @@ spine。Owner由2個transport/session owners降為0，`XBrainLab/` production淨
 Retained command／guidance／runner／architecture／diagnostics focused集合637項、3項retirement guards、
 architecture compliance、guidance audit、Ruff check／format與MkDocs strict均通過。
 
+Checkpoint（`2026-08-20`，source barrier）：canonical manifest現在只在開始與最終驗證各做一次完整
+source-byte fingerprint；每個gate仍在命令前後重新檢查branch／HEAD／tree／dirty paths／upstream，任何
+source mutation會立即使該gate失敗，最終dossier再以完整fingerprint fail closed。相同worktree量測完整
+fingerprint為9.510秒、輕量guard中位數1.412秒；52項recorder／manifest tests（含命令修改source的反例）、
+Ruff與basedpyright均通過。此切片不平行化gate、不減少gate或OutcomePolicy。
+
 ## Focused validation 與 stop condition
 
 - Release：version single-source test、已修改 ChatPanel／walkthrough suites、Ruff check／format check、

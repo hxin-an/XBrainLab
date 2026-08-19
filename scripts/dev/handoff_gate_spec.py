@@ -205,6 +205,12 @@ _QT_MNE = EnvironmentPolicy(
         ("MNE_DONTWRITE_HOME", "true"),
     )
 )
+_QT_XCB_MNE = EnvironmentPolicy(
+    required=(
+        ("QT_QPA_PLATFORM", "xcb"),
+        ("MNE_DONTWRITE_HOME", "true"),
+    )
+)
 _LOCAL_RUNTIME_OFFLINE = EnvironmentPolicy(
     required=(
         ("HF_HUB_OFFLINE", "1"),
@@ -891,6 +897,37 @@ _GATE_SPECS = (
         required_artifact_paths=("resource-calibration.json",),
     ),
     GateSpec(
+        check_id="startup-smoke",
+        section="8",
+        argv=(
+            "xvfb-run",
+            "-a",
+            *_POETRY_EXEC,
+            "python",
+            "scripts/dev/run_startup_smoke.py",
+        ),
+        timeout_seconds=120,
+        environment=_QT_XCB_MNE,
+        required_artifact_paths=("startup-smoke.json",),
+        stdout_artifact_path="startup-smoke.json",
+    ),
+    GateSpec(
+        check_id="ui-visual-baseline",
+        section="8",
+        argv=(
+            "xvfb-run",
+            "-a",
+            *_POETRY_EXEC,
+            "python",
+            "scripts/dev/capture_ui_baseline.py",
+            "--output-dir",
+            f"{EVIDENCE_ROOT_TOKEN}/ui/visual-baseline",
+        ),
+        timeout_seconds=900,
+        environment=_QT_XCB_MNE,
+        required_artifact_paths=("ui/visual-baseline",),
+    ),
+    GateSpec(
         check_id="handoff-dashboard",
         section="8",
         argv=(
@@ -903,6 +940,8 @@ _GATE_SPECS = (
             f"{EVIDENCE_ROOT_TOKEN}/dashboard",
             "--resource-calibration-path",
             f"{EVIDENCE_ROOT_TOKEN}/resource-calibration.json",
+            "--handoff-evidence-path",
+            f"{EVIDENCE_ROOT_TOKEN}/handoff-evidence.json",
         ),
         timeout_seconds=7200,
         required_artifact_paths=("resource-calibration.json", "dashboard"),

@@ -12,6 +12,7 @@ OWNED_RUNNER_PATHS = (
     ROOT / "scripts" / "dev" / "handoff_evidence_recorder.py",
     ROOT / "scripts" / "dev" / "run_tests.py",
     ROOT / "scripts" / "dev" / "update_quality_dashboard.py",
+    ROOT / "scripts" / "dev" / "run_startup_smoke.py",
 )
 
 _BROAD_TERMINATION_PATTERNS = {

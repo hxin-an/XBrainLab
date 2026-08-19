@@ -26,6 +26,10 @@ from scripts.dev.capture_ui_baseline import (
     REFERENCE_UI_DIR,
     validate_ui_artifacts,
 )
+from scripts.dev.handoff_evidence_recorder import (
+    SCHEMA_VERSION as HANDOFF_SCHEMA_VERSION,
+)
+from scripts.dev.handoff_gate_spec import HANDOFF_GATE_SPECS
 from scripts.dev.owned_process_group import spawn_owned_process, terminate_and_collect
 from scripts.dev.pytest_completion_attestation import (
     REQUIRED_PYTEST_RUNNER_ID,
@@ -565,6 +569,80 @@ def handoff_output_contract_check(
         status=status,
         duration_seconds=0.0,
         returncode=1 if failure else 0,
+        summary=summary,
+        output_excerpt="",
+    )
+
+
+def handoff_manifest_summary_check(
+    evidence_path: Path | None,
+    *,
+    expected_check_ids: tuple[str, ...],
+    commit: str,
+) -> CheckResult:
+    """Summarize already-recorded gates without rerunning their commands."""
+    started = time.monotonic()
+    failure = ""
+    payload: object = None
+    if evidence_path is None:
+        failure = "Handoff evidence path is required."
+    else:
+        try:
+            payload = json.loads(
+                evidence_path.expanduser().resolve().read_text(encoding="utf-8")
+            )
+        except (OSError, ValueError, TypeError) as error:
+            failure = f"Handoff evidence could not be read: {error}"
+    if not failure and not isinstance(payload, dict):
+        failure = "Handoff evidence is not a JSON object."
+    if not failure and isinstance(payload, dict):
+        source_identity = payload.get("source_identity")
+        execution_order = payload.get("execution_order")
+        checks = payload.get("checks")
+        if (
+            payload.get("schema_version") != HANDOFF_SCHEMA_VERSION
+            or payload.get("profile") != "handoff"
+        ):
+            failure = "Handoff evidence schema or profile is invalid."
+        elif not isinstance(source_identity, dict) or (
+            source_identity.get("commit_sha") != commit
+            or source_identity.get("dirty") is not False
+            or not source_identity.get("source_digest")
+        ):
+            failure = "Handoff evidence source identity is stale or incomplete."
+        elif (
+            execution_order != list(expected_check_ids)
+            or not isinstance(checks, dict)
+            or set(checks) != set(expected_check_ids)
+        ):
+            failure = "Handoff evidence gates are missing or out of order."
+        else:
+            for check_id in expected_check_ids:
+                record = checks.get(check_id)
+                if (
+                    not isinstance(record, dict)
+                    or record.get("check_id") != check_id
+                    or record.get("passed") is not True
+                    or record.get("source_stable") is not True
+                    or record.get("source_before") != source_identity
+                    or record.get("source_after") != source_identity
+                ):
+                    failure = f"Prior handoff gate is not passing: {check_id}."
+                    break
+    passed = not failure
+    summary = (
+        f"Summarized {len(expected_check_ids)} prior gates from the exact-source dossier."
+        if passed
+        else failure
+    )
+    return CheckResult(
+        key="handoff_manifest_summary",
+        label="Handoff Manifest Summary",
+        category="quality",
+        command="read prior exact-source handoff records",
+        status="pass" if passed else "fail",
+        duration_seconds=round(time.monotonic() - started, 3),
+        returncode=0 if passed else 1,
         summary=summary,
         output_excerpt="",
     )
@@ -1495,6 +1573,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Git-ignored path scoped by the current full commit SHA."
         ),
     )
+    parser.add_argument(
+        "--handoff-evidence-path",
+        type=Path,
+        default=None,
+        help="Existing exact-source dossier to summarize in --handoff mode.",
+    )
     return parser.parse_args(argv)
 
 
@@ -1536,6 +1620,25 @@ def main(argv: list[str] | None = None) -> int:
     if args.handoff and any(check.status == "fail" for check in preflight_checks):
         checks = preflight_checks
         git_state_after = collect_git_state()
+    elif args.handoff:
+        prior_check_ids = tuple(HANDOFF_GATE_SPECS)[:-1]
+        if tuple(HANDOFF_GATE_SPECS)[-1:] != ("handoff-dashboard",):
+            raise RuntimeError("Handoff dashboard must remain the final gate.")
+        checks = [
+            resource_calibration_evidence_check(
+                artifact_path=args.resource_calibration_path,
+                require_exact_source=True,
+                commit=git_state.commit,
+            ),
+            handoff_manifest_summary_check(
+                args.handoff_evidence_path,
+                expected_check_ids=prior_check_ids,
+                commit=git_state.commit,
+            ),
+        ]
+        checks[0:0] = preflight_checks
+        git_state_after = collect_git_state()
+        checks.append(source_stability_check(git_state, git_state_after))
     else:
         checks = build_checks_for_mode(
             include_slow_checks=include_slow_checks,
@@ -1572,6 +1675,8 @@ def main(argv: list[str] | None = None) -> int:
             "dashboard_clean_last": True,
             "expected_branch": handoff_expected_branch,
             "requires_upstream_sync": True,
+            "executed_check_ids": [],
+            "source_of_truth": "handoff gate records",
         }
     if report_output_dir is None:
         write_report(report)
