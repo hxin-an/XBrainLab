@@ -280,6 +280,7 @@ def run_visualization_render_walkthrough(
         },
         "application_evaluate": {},
         "application_visualize": {},
+        "saliency_compute": {},
         "three_d_runtime": three_d_runtime,
         "renders": [],
         "blocked_renders": [],
@@ -329,6 +330,17 @@ def run_visualization_render_walkthrough(
     _process_events(app, 800)
     panel.normalize_check.setChecked(True)
     _process_events(app, 150)
+
+    payload["saliency_compute"] = _compute_saliency_for_capture(
+        app,
+        panel,
+        service,
+        timeout_seconds=timeout_seconds,
+    )
+    payload["training"]["saliency_available"] = bool(
+        payload["saliency_compute"].get("saliency_available")
+    )
+    _process_events(app, 300)
 
     payload["ui_state"] = {
         "current_panel": "Visualization",
@@ -616,6 +628,51 @@ def _wait_for_saliency_render(
             return True
         time.sleep(0.01)
     return False
+
+
+def _compute_saliency_for_capture(
+    app: QApplication,
+    panel: Any,
+    service: Any,
+    *,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    """Exercise the visible Compute Saliency action and await its publication."""
+    outcome = panel.compute_saliency()
+    action_status = str(getattr(getattr(outcome, "status", None), "value", ""))
+    action_message = str(getattr(outcome, "message", "") or "")
+    button = panel.compute_saliency_btn
+    evidence = {
+        "ok": False,
+        "action_status": action_status,
+        "action_message": action_message,
+        "operation_phase": str(button.property("operationPhase") or ""),
+        "saliency_available": False,
+    }
+    if action_status not in {"accepted", "completed"}:
+        return evidence
+
+    deadline = time.monotonic() + max(0, timeout_seconds)
+    while time.monotonic() <= deadline:
+        app.processEvents()
+        state = service.get_state().to_dict()
+        saliency_available = bool(
+            _section(state, "visualization").get("saliency_available")
+        )
+        operation_phase = str(button.property("operationPhase") or "")
+        evidence.update(
+            {
+                "operation_phase": operation_phase,
+                "saliency_available": saliency_available,
+            }
+        )
+        if operation_phase in {"cancelled", "failed"}:
+            return evidence
+        if operation_phase == "completed" and saliency_available:
+            evidence["ok"] = True
+            return evidence
+        time.sleep(0.01)
+    return evidence
 
 
 def _wait_for_3d_capture_terminal_state(
@@ -1364,8 +1421,11 @@ def validate_visualization_render_payload(
         return False, "No completed tiny training run was captured."
     if not training.get("metrics_available"):
         return False, "Evaluation metrics were not available after tiny training."
-    # Training now finishes with metric-only evaluation; configured saliency is
-    # computed as a background visualization job when the panel opens.
+    # Training now finishes with metric-only evaluation. The walkthrough must
+    # exercise the same explicit Compute Saliency action as the visible panel.
+    saliency_compute = payload.get("saliency_compute") or {}
+    if not saliency_compute.get("ok"):
+        return False, "The visible Compute Saliency action did not complete."
 
     app_visualize = payload.get("application_visualize") or {}
     if not app_visualize.get("ok"):
@@ -2308,6 +2368,8 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- dataset preparation ok: `{payload['dataset_preparation']['ok']}`",
         f"- finished runs: `{payload.get('training', {}).get('finished_run_count')}`",
         f"- metrics available: `{payload.get('training', {}).get('metrics_available')}`",
+        f"- Compute Saliency action: `{(payload.get('saliency_compute') or {}).get('action_status', '')}`",
+        f"- Compute Saliency terminal: `{(payload.get('saliency_compute') or {}).get('operation_phase', '')}`",
         f"- saliency available: `{payload.get('training', {}).get('saliency_available')}`",
         f"- ready screenshot: `{payload.get('screenshots', {}).get('ready', '')}`",
         f"- elapsed seconds: `{payload['elapsed_seconds']}`",

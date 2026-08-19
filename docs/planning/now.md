@@ -100,6 +100,13 @@ compatibility path。刪除優先：不恢復B/C/D、RAG、confidence gate或Hos
    horizontal scrollbar由1變0且table evidence通過，故不修改`XBrainLab/ui/`。先以red test要求
    loaded fixture做同步layout settle，再修正capture script；36／36 scenarios通過後，所有candidate evidence
    必須在新exact commit完整重跑，不沿用`941af892`的部分dossier。
+9. Exact `251741a8` 的canonical handoff已通過complete regression、Granite／Assistant與
+   `dataset-narrow` 36／36，但`visualization-render`仍沿用退役的「開啟Visualization panel就會
+   背景計算saliency」假設；實際產品已依核准contract要求visible `Compute Saliency` action，
+   因此訓練成功但saliency仍未計算。修復只讓capture顯式呼叫既有panel action，等待
+   same-operation terminal與Application publication同時顯示available後才render；不復原自動compute，
+   不修改UI／backend／tool owners。先加explicit-action／terminal regression test，再重跑該gate與
+   全部new-exact-source handoff。
 
 ## Merge boundary
 
