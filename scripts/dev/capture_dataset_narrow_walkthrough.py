@@ -552,6 +552,11 @@ def _apply_loaded_state(panel: DatasetPanel) -> None:
         panel.table.setItem(0, column, QTableWidgetItem(text))
     panel.table.blockSignals(False)
     panel.data_surface.setCurrentWidget(panel.table)
+    # Mirror DatasetPanel._update_panel_content(): inserting the first row can
+    # introduce a vertical scrollbar and shrink the viewport after the empty
+    # surface was initially fitted.
+    panel._fit_table_columns_to_viewport()
+    panel._schedule_table_column_fit()
     window = panel.window()
     if not isinstance(window, QMainWindow):
         raise RuntimeError("Dataset capture shell lost its status bar.")

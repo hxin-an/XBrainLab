@@ -6,6 +6,7 @@ from scripts.dev.capture_dataset_narrow_walkthrough import (
     MINIMUM_FIXED_SIDEBAR_SHELL_WIDTH,
     _apply_loaded_state,
     _build_shell,
+    _dataset_table_evidence,
     _DatasetControllerFixture,
     _settle,
     _state_truth_evidence,
@@ -54,6 +55,7 @@ def test_dataset_capture_keeps_visible_state_publication_and_status_consistent(
     assert status_bar.currentMessage() == (
         "EEG data loaded · Ready for preprocessing or epoching"
     )
+    assert _dataset_table_evidence(panel)["passed"] is True
 
 
 def test_dataset_capture_gate_rejects_empty_ready_contradiction(qtbot) -> None:

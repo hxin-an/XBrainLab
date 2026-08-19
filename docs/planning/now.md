@@ -9,7 +9,7 @@ direct preprocess 加入必要參數的 latest-user-text provenance guard。明�
 補值時零執行，以一般藍色英文 Assistant bubble追問。完成條件是同一exact source完成自動驗證、
 真Granite host-aware evidence與正常ChatPanel真人手測入口；中間checkpoint不交付手測。
 
-目前 phase：`Active；Qt process-isolation blocker已閉合，建立新的exact-source candidate evidence`
+目前 phase：`Active；Qt process-isolation blocker已閉合，dataset-narrow fixture gap待閉合後重建exact-source candidate evidence`
 
 ## Exact-model evidence
 
@@ -93,6 +93,13 @@ compatibility path。刪除優先：不恢復B/C/D、RAG、confidence gate或Hos
    fresh processes中2673／2673通過，且每個shard仍由required-pytest attestation驗證零failed／error／
    skipped。下一步只重跑complete regression與同一新exact source handoff；任一shard或aggregate evidence
    不完整即停止，不以分片掩蓋失敗。
+8. Exact `941af892` 已以native GPU通過complete regression、Granite runtime／stable eval、RAG offline、
+   human-like product與UI reviewer fixes；`dataset-narrow`在18個loaded-summary scenarios皆因驗證fixture
+   直接新增table row、未像產品`update_panel()`於vertical scrollbar出現後重算column widths而失敗。
+   同一scenario呼叫產品已有refit後，header／viewport從256／233收旂為232／233，
+   horizontal scrollbar由1變0且table evidence通過，故不修改`XBrainLab/ui/`。先以red test要求
+   loaded fixture做同步layout settle，再修正capture script；36／36 scenarios通過後，所有candidate evidence
+   必須在新exact commit完整重跑，不沿用`941af892`的部分dossier。
 
 ## Merge boundary
 
