@@ -132,6 +132,18 @@ integration／regression groups，每階段最多兩個worker。各group使用�
 0 failed／error／xfail／xpass／deselected，八份attestation、八份log與八份coverage均存在；總時間
 1,327.47秒（22分07秒），相較舊complete-regression 1,527.20秒縮短約3分20秒。
 
+Checkpoint（`2026-08-20`，first full cleanup handoff）：exact pushed commit `1ea8051a` 的42/42 gates與
+final dossier verification全部PASS；完整regression為1,345.364秒，Data Import capture為217.527秒，
+handoff dashboard僅8.070秒，新增startup與visual baseline分別25.530與38.316秒。從第一個gate開始到
+dashboard完成約45分37秒，已較舊74分11秒縮短約28分34秒，但尚未達成不超過40分鐘的stop condition，
+因此仍是checkpoint。固定、checked-in的post-regression lanes已實作：完整regression前仍序列fail-fast；
+public fixture fetch／verify完成後，才讓單一offscreen Qt lane、單一Xvfb capture lane、單一GPU/model lane
+與單一public-data lane並行，各lane內保持原gate順序與cache/process ownership；並行gate只產生經驗證的
+deferred records，完成後才依registry order序列寫入dossier，再執行dashboard與final source/dossier驗證。
+沒有建立通用scheduler、沒有讓多個gate競寫dossier，也未縮減gate／artifact／OutcomePolicy；任一lane
+failure或source drift都使整體失敗，不能以其他lane成功補足。目前待同一clean／pushed exact source重跑
+42-gate handoff，只有總時間不超過40分鐘且final dossier通過才可升為candidate。
+
 ## Focused validation 與 stop condition
 
 - Release：version single-source test、已修改 ChatPanel／walkthrough suites、Ruff check／format check、

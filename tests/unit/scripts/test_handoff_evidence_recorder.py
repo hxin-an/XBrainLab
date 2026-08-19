@@ -18,6 +18,7 @@ from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
 )
 from scripts.dev.handoff_evidence_recorder import (
     HandoffEvidenceError,
+    persist_handoff_records,
     record_handoff_command,
     validate_handoff_dossier,
 )
@@ -178,6 +179,113 @@ def test_manifest_source_identity_uses_lightweight_per_gate_guard(
     assert record["passed"] is True
     assert record["source_before"] == source_identity
     assert record["source_after"] == source_identity
+
+
+def test_deferred_records_are_persisted_once_in_registry_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, sha, branch = _repo(tmp_path)
+    evidence_root = repo / "build" / "handoff-evidence" / sha
+    source_identity = collect_source_identity(repo, refresh=True)
+    first = GateSpec(
+        check_id="first-gate",
+        section="1",
+        argv=(sys.executable, "-c", "print('first')"),
+        timeout_seconds=30,
+    )
+    second = GateSpec(
+        check_id="second-gate",
+        section="2",
+        argv=(sys.executable, "-c", "print('second')"),
+        timeout_seconds=30,
+    )
+    _install_test_gates(monkeypatch, first, second)
+
+    records = [
+        record_handoff_command(
+            repo_root=repo,
+            evidence_root=evidence_root,
+            section=spec.section,
+            check_id=spec.check_id,
+            command=spec.argv,
+            timeout_seconds=spec.timeout_seconds,
+            expected_branch=branch,
+            require_upstream=False,
+            manifest_source_identity=source_identity,
+            defer_dossier_update=True,
+        )
+        for spec in (first, second)
+    ]
+
+    assert not (evidence_root / "handoff-evidence.json").exists()
+    persist_handoff_records(
+        repo_root=repo,
+        evidence_root=evidence_root,
+        records=records,
+        expected_branch=branch,
+        require_upstream=False,
+        manifest_source_identity=source_identity,
+    )
+
+    dossier = json.loads(
+        (evidence_root / "handoff-evidence.json").read_text(encoding="utf-8")
+    )
+    assert dossier["execution_order"] == ["first-gate", "second-gate"]
+    assert validate_handoff_dossier(
+        repo_root=repo,
+        evidence_root=evidence_root,
+        required_check_ids=("first-gate", "second-gate"),
+        expected_branch=branch,
+        require_upstream=False,
+    ) == (True, "")
+
+
+def test_deferred_record_persistence_rejects_out_of_order_records(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, sha, branch = _repo(tmp_path)
+    evidence_root = repo / "build" / "handoff-evidence" / sha
+    source_identity = collect_source_identity(repo, refresh=True)
+    first = GateSpec(
+        check_id="first-gate",
+        section="1",
+        argv=(sys.executable, "-c", "print('first')"),
+        timeout_seconds=30,
+    )
+    second = GateSpec(
+        check_id="second-gate",
+        section="2",
+        argv=(sys.executable, "-c", "print('second')"),
+        timeout_seconds=30,
+    )
+    _install_test_gates(monkeypatch, first, second)
+    records = [
+        record_handoff_command(
+            repo_root=repo,
+            evidence_root=evidence_root,
+            section=spec.section,
+            check_id=spec.check_id,
+            command=spec.argv,
+            timeout_seconds=spec.timeout_seconds,
+            expected_branch=branch,
+            require_upstream=False,
+            manifest_source_identity=source_identity,
+            defer_dossier_update=True,
+        )
+        for spec in (second, first)
+    ]
+
+    with pytest.raises(HandoffEvidenceError, match="registry order"):
+        persist_handoff_records(
+            repo_root=repo,
+            evidence_root=evidence_root,
+            records=records,
+            expected_branch=branch,
+            require_upstream=False,
+            manifest_source_identity=source_identity,
+        )
 
 
 def test_manifest_source_identity_guard_detects_gate_mutation(

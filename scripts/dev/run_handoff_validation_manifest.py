@@ -8,6 +8,7 @@ import json
 import shutil
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
 from scripts.dev.handoff_evidence_recorder import (
     DEFAULT_BRANCH,
     HandoffEvidenceError,
+    persist_handoff_records,
     record_handoff_command,
     validate_handoff_dossier,
 )
@@ -26,6 +28,63 @@ from scripts.dev.handoff_gate_spec import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
+
+_SERIAL_GATE_IDS = (
+    "git-status",
+    "git-head",
+    "git-upstream",
+    "git-divergence",
+    "git-worktrees",
+    "git-diff-check",
+    "ruff-check",
+    "ruff-format-check",
+    "basedpyright",
+    "mkdocs-strict",
+    "architecture-compliance",
+    "architecture-unit",
+    "persistence-path-stop-barrier",
+    "complete-regression",
+)
+_DEFERRED_PREREQUISITE_IDS = (
+    "fetch-required-ci",
+    "verify-required-ci",
+)
+_POST_REGRESSION_LANES = (
+    (
+        "command-spine",
+        "assistant-security-suite",
+        "assistant-frontend-contract",
+        "human-like-product",
+        "ui-reviewer-fixes",
+        "dataset-narrow",
+        "visualization-render",
+        "chatpanel-dpi",
+        "native-lifecycle-tests",
+        "preprocess-native-stress",
+        "ui-native-render-stress",
+        "real-data-interpretation-training",
+        "wizard-format-matrix",
+        "required-public-io",
+    ),
+    (
+        "data-import-wizard-capture",
+        "data-import-wizard-validate",
+        "startup-smoke",
+        "ui-visual-baseline",
+    ),
+    (
+        "granite-runtime",
+        "stable-assistant-model-eval",
+        "rag-offline",
+        "resource-calibration",
+    ),
+    (
+        "dataset-validation-matrix",
+        "data-interpretation-matrix",
+        "public-cross-source-training",
+    ),
+)
+_FINAL_GATE_IDS = ("handoff-dashboard",)
 
 
 class HandoffManifestError(RuntimeError):
@@ -63,8 +122,14 @@ def run_handoff_manifest(
         raise HandoffManifestError(
             "Handoff manifest requires a clean full-source identity."
         )
+    _validate_fixed_execution_plan(registered_ids)
     completed: list[str] = []
-    for check_id in REQUIRED_HANDOFF_CHECK_IDS:
+
+    def record_gate(
+        check_id: str,
+        *,
+        defer_dossier_update: bool,
+    ) -> dict[str, Any]:
         spec = HANDOFF_GATE_SPECS[check_id]
         print(
             f"[handoff] section {spec.section}: {check_id}",
@@ -84,17 +149,77 @@ def run_handoff_manifest(
             rag_cache_dir=rag_cache_dir,
             allow_external_evidence_root=allow_external_evidence_root,
             manifest_source_identity=manifest_source_identity,
+            defer_dossier_update=defer_dossier_update,
         )
+        return record
+
+    for check_id in _SERIAL_GATE_IDS:
+        record = record_gate(check_id, defer_dossier_update=False)
         completed.append(check_id)
         if not record.get("passed"):
-            reason = str(record.get("failure_reason") or "gate did not pass")
-            return {
-                "ok": False,
-                "reason": f"{check_id}: {reason}",
-                "completed_check_ids": completed,
-                "required_check_ids": list(REQUIRED_HANDOFF_CHECK_IDS),
-                "dossier_verified": False,
-            }
+            return _failed_result(check_id, record=record, completed=completed)
+
+    deferred_records: list[dict[str, Any]] = []
+    for check_id in _DEFERRED_PREREQUISITE_IDS:
+        record = record_gate(check_id, defer_dossier_update=True)
+        deferred_records.append(record)
+        if not record.get("passed"):
+            break
+
+    if _POST_REGRESSION_LANES and all(
+        record.get("passed") for record in deferred_records
+    ):
+
+        def record_lane(check_ids: tuple[str, ...]) -> list[dict[str, Any]]:
+            lane_records: list[dict[str, Any]] = []
+            for check_id in check_ids:
+                record = record_gate(check_id, defer_dossier_update=True)
+                lane_records.append(record)
+                if not record.get("passed"):
+                    break
+            return lane_records
+
+        with ThreadPoolExecutor(
+            max_workers=len(_POST_REGRESSION_LANES),
+            thread_name_prefix="handoff-lane",
+        ) as executor:
+            futures = [
+                executor.submit(record_lane, lane) for lane in _POST_REGRESSION_LANES
+            ]
+            for future in futures:
+                deferred_records.extend(future.result())
+
+    deferred_by_id = {str(record["check_id"]): record for record in deferred_records}
+    ordered_deferred = [
+        deferred_by_id[check_id]
+        for check_id in REQUIRED_HANDOFF_CHECK_IDS
+        if check_id in deferred_by_id
+    ]
+    persist_handoff_records(
+        repo_root=root,
+        evidence_root=output_root,
+        records=ordered_deferred,
+        expected_branch=expected_branch,
+        require_upstream=require_upstream,
+        model_cache_dir=model_cache_dir,
+        rag_cache_dir=rag_cache_dir,
+        allow_external_evidence_root=allow_external_evidence_root,
+        manifest_source_identity=manifest_source_identity,
+    )
+    completed.extend(str(record["check_id"]) for record in ordered_deferred)
+    for record in ordered_deferred:
+        if not record.get("passed"):
+            return _failed_result(
+                str(record["check_id"]),
+                record=record,
+                completed=completed,
+            )
+
+    for check_id in _FINAL_GATE_IDS:
+        record = record_gate(check_id, defer_dossier_update=False)
+        completed.append(check_id)
+        if not record.get("passed"):
+            return _failed_result(check_id, record=record, completed=completed)
 
     ok, reason = validate_handoff_dossier(
         repo_root=root,
@@ -112,6 +237,45 @@ def run_handoff_manifest(
         "completed_check_ids": completed,
         "required_check_ids": list(REQUIRED_HANDOFF_CHECK_IDS),
         "dossier_verified": ok,
+    }
+
+
+def _validate_fixed_execution_plan(registered_ids: tuple[str, ...]) -> None:
+    sequences = (
+        _SERIAL_GATE_IDS,
+        _DEFERRED_PREREQUISITE_IDS,
+        *_POST_REGRESSION_LANES,
+        _FINAL_GATE_IDS,
+    )
+    planned_ids = tuple(check_id for sequence in sequences for check_id in sequence)
+    if len(planned_ids) != len(set(planned_ids)) or set(planned_ids) != set(
+        registered_ids
+    ):
+        raise HandoffManifestError(
+            "Fixed handoff execution plan drifted from the required gate registry."
+        )
+    registry_index = {check_id: index for index, check_id in enumerate(registered_ids)}
+    for sequence in sequences:
+        indexes = tuple(registry_index[check_id] for check_id in sequence)
+        if indexes != tuple(sorted(indexes)):
+            raise HandoffManifestError(
+                "A fixed handoff lane drifted from registry order."
+            )
+
+
+def _failed_result(
+    check_id: str,
+    *,
+    record: dict[str, Any],
+    completed: list[str],
+) -> dict[str, Any]:
+    reason = str(record.get("failure_reason") or "gate did not pass")
+    return {
+        "ok": False,
+        "reason": f"{check_id}: {reason}",
+        "completed_check_ids": completed,
+        "required_check_ids": list(REQUIRED_HANDOFF_CHECK_IDS),
+        "dossier_verified": False,
     }
 
 

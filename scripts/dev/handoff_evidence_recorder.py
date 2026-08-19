@@ -77,6 +77,7 @@ def record_handoff_command(
     rag_cache_dir: Path | None = None,
     allow_external_evidence_root: bool = False,
     manifest_source_identity: Mapping[str, Any] | None = None,
+    defer_dossier_update: bool = False,
 ) -> dict[str, Any]:
     """Execute one gate and atomically append its exact-source evidence."""
     root = repo_root.expanduser().resolve(strict=True)
@@ -263,14 +264,94 @@ def record_handoff_command(
             _contained_output_path(output_root, spec.stdout_artifact_path),
             root=output_root,
         )
-    _update_dossier(
-        output_root,
-        checkout=checkout,
-        evidence_root_policy=evidence_root_policy,
-        source_identity=source_before,
-        record=record,
-    )
+    if not defer_dossier_update:
+        _update_dossier(
+            output_root,
+            checkout=checkout,
+            evidence_root_policy=evidence_root_policy,
+            source_identity=source_before,
+            record=record,
+        )
     return record
+
+
+def persist_handoff_records(
+    *,
+    repo_root: Path,
+    evidence_root: Path,
+    records: Sequence[Mapping[str, Any]],
+    expected_branch: str = DEFAULT_BRANCH,
+    require_upstream: bool = True,
+    model_cache_dir: Path | None = None,
+    rag_cache_dir: Path | None = None,
+    allow_external_evidence_root: bool = False,
+    manifest_source_identity: Mapping[str, Any] | None = None,
+) -> None:
+    """Validate and persist deferred gate records in canonical registry order."""
+    pending = tuple(records)
+    if not pending:
+        return
+    root = repo_root.expanduser().resolve(strict=True)
+    checkout = _checkout_identity(
+        root,
+        expected_branch=expected_branch,
+        require_upstream=require_upstream,
+    )
+    output_root, evidence_root_policy = _validated_evidence_root(
+        evidence_root,
+        repo_root=root,
+        commit_sha=str(checkout["commit_sha"]),
+        allow_external=allow_external_evidence_root,
+    )
+    source_identity = (
+        collect_source_identity(root, refresh=True)
+        if manifest_source_identity is None
+        else _validated_manifest_source_identity(
+            manifest_source_identity,
+            root=root,
+            checkout=checkout,
+        )
+    )
+    _require_clean_source(source_identity)
+    check_ids = tuple(
+        _validated_id(str(record.get("check_id", "")), field="check id")
+        for record in pending
+    )
+    if len(check_ids) != len(set(check_ids)):
+        raise HandoffEvidenceError("Deferred handoff records must be unique.")
+    registry_index = {name: index for index, name in enumerate(HANDOFF_GATE_SPECS)}
+    unknown = sorted(set(check_ids).difference(registry_index))
+    if unknown:
+        raise HandoffEvidenceError(
+            f"Deferred handoff records contain unregistered checks: {unknown}."
+        )
+    if check_ids != tuple(sorted(check_ids, key=registry_index.__getitem__)):
+        raise HandoffEvidenceError(
+            "Deferred handoff records must be persisted in registry order."
+        )
+    normalized_records: list[dict[str, Any]] = []
+    for check_id, raw_record in zip(check_ids, pending, strict=True):
+        record = dict(raw_record)
+        ok, reason = _validate_check_record(
+            output_root=output_root,
+            checkout=checkout,
+            current_source=source_identity,
+            check_id=check_id,
+            raw_record=record,
+            model_cache_dir=model_cache_dir,
+            rag_cache_dir=rag_cache_dir,
+        )
+        if not ok:
+            raise HandoffEvidenceError(f"Deferred handoff record is invalid: {reason}")
+        normalized_records.append(record)
+    for record in normalized_records:
+        _update_dossier(
+            output_root,
+            checkout=checkout,
+            evidence_root_policy=evidence_root_policy,
+            source_identity=source_identity,
+            record=record,
+        )
 
 
 def validate_handoff_dossier(
