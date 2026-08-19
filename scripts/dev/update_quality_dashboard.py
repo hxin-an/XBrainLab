@@ -1239,7 +1239,7 @@ def build_checks_for_mode(
             key="basedpyright_type_check",
             label="Basedpyright Type Check",
             category="quality",
-            command=f"{POETRY_RUN} basedpyright",
+            command=(f"{POETRY_PYTHON} scripts/dev/run_basedpyright_regression.py"),
             ui=False,
             validator=lambda code, output: validate_text_command(
                 code,

@@ -314,7 +314,11 @@ _GATE_SPECS = (
     GateSpec(
         check_id="basedpyright",
         section="1",
-        argv=(*_POETRY_EXEC, "basedpyright"),
+        argv=(
+            *_POETRY_EXEC,
+            "python",
+            "scripts/dev/run_basedpyright_regression.py",
+        ),
         timeout_seconds=3600,
     ),
     GateSpec(

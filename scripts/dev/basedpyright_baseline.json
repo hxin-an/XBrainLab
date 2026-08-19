@@ -1,0 +1,660 @@
+{
+  "schema_version": 1,
+  "source_sha_parts": [
+    "70274bed4c",
+    "41331965e7",
+    "d4795d0d16",
+    "520cb0aada"
+  ],
+  "basedpyright_version": "1.39.2",
+  "diagnostics": [
+    {
+      "path": "XBrainLab/backend/model_base/ShallowConvNet.py",
+      "rule": "reportPrivateImportUsage",
+      "start_line": 116,
+      "start_character": 18,
+      "end_line": 116,
+      "end_character": 21
+    },
+    {
+      "path": "XBrainLab/backend/model_base/SCCNet.py",
+      "rule": "reportPrivateImportUsage",
+      "start_line": 134,
+      "start_character": 18,
+      "end_line": 134,
+      "end_character": 21
+    },
+    {
+      "path": "XBrainLab/ui/panels/visualization/saliency_views/plot_3d_head.py",
+      "rule": "reportArgumentType",
+      "start_line": 230,
+      "start_character": 12,
+      "end_line": 230,
+      "end_character": 22
+    },
+    {
+      "path": "XBrainLab/ui/panels/dataset/data_interpretation_action_coordinator.py",
+      "rule": "reportArgumentType",
+      "start_line": 346,
+      "start_character": 12,
+      "end_line": 346,
+      "end_character": 22
+    },
+    {
+      "path": "XBrainLab/backend/training/training_plan.py",
+      "rule": "reportPrivateImportUsage",
+      "start_line": 193,
+      "start_character": 18,
+      "end_line": 193,
+      "end_character": 24
+    },
+    {
+      "path": "XBrainLab/backend/model_base/ShallowConvNet.py",
+      "rule": "reportPrivateImportUsage",
+      "start_line": 135,
+      "start_character": 21,
+      "end_line": 135,
+      "end_character": 25
+    },
+    {
+      "path": "XBrainLab/backend/model_base/EEGNet.py",
+      "rule": "reportPrivateImportUsage",
+      "start_line": 194,
+      "start_character": 21,
+      "end_line": 194,
+      "end_character": 25
+    },
+    {
+      "path": "XBrainLab/backend/training/epoch_runner.py",
+      "rule": "reportPrivateImportUsage",
+      "start_line": 161,
+      "start_character": 23,
+      "end_line": 161,
+      "end_character": 26
+    },
+    {
+      "path": "XBrainLab/backend/training/epoch_runner.py",
+      "rule": "reportPrivateImportUsage",
+      "start_line": 162,
+      "start_character": 23,
+      "end_line": 162,
+      "end_character": 26
+    },
+    {
+      "path": "XBrainLab/backend/training/evaluator.py",
+      "rule": "reportPrivateImportUsage",
+      "start_line": 228,
+      "start_character": 23,
+      "end_line": 228,
+      "end_character": 26
+    },
+    {
+      "path": "XBrainLab/backend/training/evaluator.py",
+      "rule": "reportPrivateImportUsage",
+      "start_line": 229,
+      "start_character": 23,
+      "end_line": 229,
+      "end_character": 26
+    },
+    {
+      "path": "XBrainLab/backend/training/option.py",
+      "rule": "reportPrivateImportUsage",
+      "start_line": 110,
+      "start_character": 22,
+      "end_line": 110,
+      "end_character": 27
+    },
+    {
+      "path": "XBrainLab/ui/main_window.py",
+      "rule": "reportAttributeAccessIssue",
+      "start_line": 1457,
+      "start_character": 17,
+      "end_line": 1457,
+      "end_character": 27
+    },
+    {
+      "path": "XBrainLab/backend/training/record/eval.py",
+      "rule": "reportArgumentType",
+      "start_line": 899,
+      "start_character": 26,
+      "end_line": 899,
+      "end_character": 27
+    },
+    {
+      "path": "XBrainLab/backend/training/training_plan.py",
+      "rule": "reportPrivateImportUsage",
+      "start_line": 192,
+      "start_character": 18,
+      "end_line": 192,
+      "end_character": 28
+    },
+    {
+      "path": "XBrainLab/backend/controller/visualization_controller.py",
+      "rule": "reportArgumentType",
+      "start_line": 207,
+      "start_character": 19,
+      "end_line": 209,
+      "end_character": 28
+    },
+    {
+      "path": "XBrainLab/backend/preprocessor/resample.py",
+      "rule": "reportCallIssue",
+      "start_line": 72,
+      "start_character": 24,
+      "end_line": 72,
+      "end_character": 28
+    },
+    {
+      "path": "XBrainLab/backend/preprocessor/resample.py",
+      "rule": "reportCallIssue",
+      "start_line": 71,
+      "start_character": 24,
+      "end_line": 71,
+      "end_character": 29
+    },
+    {
+      "path": "XBrainLab/ui/panels/visualization/saliency_views/plot_3d_head.py",
+      "rule": "reportArgumentType",
+      "start_line": 204,
+      "start_character": 21,
+      "end_line": 204,
+      "end_character": 30
+    },
+    {
+      "path": "XBrainLab/backend/training/record/eval.py",
+      "rule": "reportIndexIssue",
+      "start_line": 907,
+      "start_character": 28,
+      "end_line": 907,
+      "end_character": 30
+    },
+    {
+      "path": "XBrainLab/backend/load_data/raw.py",
+      "rule": "reportAttributeAccessIssue",
+      "start_line": 234,
+      "start_character": 26,
+      "end_line": 234,
+      "end_character": 32
+    },
+    {
+      "path": "XBrainLab/backend/training/record/eval.py",
+      "rule": "reportIndexIssue",
+      "start_line": 906,
+      "start_character": 26,
+      "end_line": 906,
+      "end_character": 32
+    },
+    {
+      "path": "XBrainLab/backend/model_base/ShallowConvNet.py",
+      "rule": "reportPrivateImportUsage",
+      "start_line": 116,
+      "start_character": 28,
+      "end_line": 116,
+      "end_character": 33
+    },
+    {
+      "path": "XBrainLab/backend/model_base/SCCNet.py",
+      "rule": "reportPrivateImportUsage",
+      "start_line": 134,
+      "start_character": 28,
+      "end_line": 134,
+      "end_character": 33
+    },
+    {
+      "path": "XBrainLab/backend/training/training_plan.py",
+      "rule": "reportPrivateImportUsage",
+      "start_line": 237,
+      "start_character": 24,
+      "end_line": 237,
+      "end_character": 33
+    },
+    {
+      "path": "XBrainLab/backend/load_data/raw.py",
+      "rule": "reportAttributeAccessIssue",
+      "start_line": 291,
+      "start_character": 29,
+      "end_line": 291,
+      "end_character": 33
+    },
+    {
+      "path": "XBrainLab/backend/application/evaluation_render.py",
+      "rule": "reportArgumentType",
+      "start_line": 1059,
+      "start_character": 20,
+      "end_line": 1059,
+      "end_character": 34
+    },
+    {
+      "path": "XBrainLab/ui/dialogs/model_settings_dialog.py",
+      "rule": "reportReturnType",
+      "start_line": 1185,
+      "start_character": 20,
+      "end_line": 1185,
+      "end_character": 34
+    },
+    {
+      "path": "XBrainLab/backend/load_data/raw.py",
+      "rule": "reportAttributeAccessIssue",
+      "start_line": 235,
+      "start_character": 26,
+      "end_line": 235,
+      "end_character": 34
+    },
+    {
+      "path": "XBrainLab/ui/dialogs/model_settings_dialog.py",
+      "rule": "reportOptionalMemberAccess",
+      "start_line": 1181,
+      "start_character": 22,
+      "end_line": 1181,
+      "end_character": 35
+    },
+    {
+      "path": "XBrainLab/ui/dialogs/model_settings_dialog.py",
+      "rule": "reportOptionalMemberAccess",
+      "start_line": 1180,
+      "start_character": 23,
+      "end_line": 1180,
+      "end_character": 36
+    },
+    {
+      "path": "XBrainLab/backend/load_data/raw.py",
+      "rule": "reportAttributeAccessIssue",
+      "start_line": 330,
+      "start_character": 29,
+      "end_line": 330,
+      "end_character": 37
+    },
+    {
+      "path": "XBrainLab/ui/panels/visualization/panel.py",
+      "rule": "reportAttributeAccessIssue",
+      "start_line": 1447,
+      "start_character": 27,
+      "end_line": 1447,
+      "end_character": 38
+    },
+    {
+      "path": "XBrainLab/backend/training/record/eval.py",
+      "rule": "reportIndexIssue",
+      "start_line": 905,
+      "start_character": 29,
+      "end_line": 905,
+      "end_character": 38
+    },
+    {
+      "path": "XBrainLab/backend/training/record/eval.py",
+      "rule": "reportOptionalSubscript",
+      "start_line": 908,
+      "start_character": 31,
+      "end_line": 908,
+      "end_character": 38
+    },
+    {
+      "path": "XBrainLab/ui/panels/preprocess/preview_widget.py",
+      "rule": "reportOptionalMemberAccess",
+      "start_line": 124,
+      "start_character": 37,
+      "end_line": 124,
+      "end_character": 39
+    },
+    {
+      "path": "XBrainLab/ui/panels/preprocess/preview_widget.py",
+      "rule": "reportOptionalMemberAccess",
+      "start_line": 216,
+      "start_character": 37,
+      "end_line": 216,
+      "end_character": 39
+    },
+    {
+      "path": "XBrainLab/backend/load_data/raw.py",
+      "rule": "reportAttributeAccessIssue",
+      "start_line": 309,
+      "start_character": 33,
+      "end_line": 309,
+      "end_character": 39
+    },
+    {
+      "path": "XBrainLab/backend/training/record/eval.py",
+      "rule": "reportArgumentType",
+      "start_line": 916,
+      "start_character": 34,
+      "end_line": 916,
+      "end_character": 41
+    },
+    {
+      "path": "XBrainLab/backend/training/record/eval.py",
+      "rule": "reportCallIssue",
+      "start_line": 916,
+      "start_character": 27,
+      "end_line": 916,
+      "end_character": 42
+    },
+    {
+      "path": "XBrainLab/backend/load_data/raw.py",
+      "rule": "reportAttributeAccessIssue",
+      "start_line": 331,
+      "start_character": 37,
+      "end_line": 331,
+      "end_character": 43
+    },
+    {
+      "path": "XBrainLab/backend/preprocessor/resample.py",
+      "rule": "reportCallIssue",
+      "start_line": 78,
+      "start_character": 39,
+      "end_line": 78,
+      "end_character": 43
+    },
+    {
+      "path": "XBrainLab/ui/main_window.py",
+      "rule": "reportOptionalMemberAccess",
+      "start_line": 395,
+      "start_character": 33,
+      "end_line": 395,
+      "end_character": 44
+    },
+    {
+      "path": "XBrainLab/ui/main_window.py",
+      "rule": "reportOptionalMemberAccess",
+      "start_line": 396,
+      "start_character": 33,
+      "end_line": 396,
+      "end_character": 44
+    },
+    {
+      "path": "XBrainLab/ui/main_window.py",
+      "rule": "reportOptionalMemberAccess",
+      "start_line": 397,
+      "start_character": 33,
+      "end_line": 397,
+      "end_character": 44
+    },
+    {
+      "path": "XBrainLab/ui/main_window.py",
+      "rule": "reportOptionalMemberAccess",
+      "start_line": 398,
+      "start_character": 33,
+      "end_line": 398,
+      "end_character": 44
+    },
+    {
+      "path": "XBrainLab/ui/main_window.py",
+      "rule": "reportOptionalMemberAccess",
+      "start_line": 399,
+      "start_character": 33,
+      "end_line": 399,
+      "end_character": 44
+    },
+    {
+      "path": "XBrainLab/ui/main_window.py",
+      "rule": "reportOptionalMemberAccess",
+      "start_line": 400,
+      "start_character": 33,
+      "end_line": 400,
+      "end_character": 44
+    },
+    {
+      "path": "XBrainLab/backend/load_data/raw.py",
+      "rule": "reportAttributeAccessIssue",
+      "start_line": 313,
+      "start_character": 40,
+      "end_line": 313,
+      "end_character": 45
+    },
+    {
+      "path": "XBrainLab/backend/load_data/raw.py",
+      "rule": "reportAttributeAccessIssue",
+      "start_line": 313,
+      "start_character": 40,
+      "end_line": 313,
+      "end_character": 45
+    },
+    {
+      "path": "XBrainLab/backend/preprocessor/resample.py",
+      "rule": "reportArgumentType",
+      "start_line": 49,
+      "start_character": 38,
+      "end_line": 49,
+      "end_character": 45
+    },
+    {
+      "path": "XBrainLab/backend/training/utils.py",
+      "rule": "reportPrivateImportUsage",
+      "start_line": 211,
+      "start_character": 41,
+      "end_line": 211,
+      "end_character": 46
+    },
+    {
+      "path": "XBrainLab/ui/main_window.py",
+      "rule": "reportOptionalMemberAccess",
+      "start_line": 394,
+      "start_character": 33,
+      "end_line": 394,
+      "end_character": 46
+    },
+    {
+      "path": "XBrainLab/ui/panels/preprocess/preview_widget.py",
+      "rule": "reportAttributeAccessIssue",
+      "start_line": 159,
+      "start_character": 36,
+      "end_line": 159,
+      "end_character": 49
+    },
+    {
+      "path": "XBrainLab/ui/panels/preprocess/preview_widget.py",
+      "rule": "reportAttributeAccessIssue",
+      "start_line": 246,
+      "start_character": 36,
+      "end_line": 246,
+      "end_character": 49
+    },
+    {
+      "path": "XBrainLab/ui/panels/preprocess/preview_widget.py",
+      "rule": "reportOptionalMemberAccess",
+      "start_line": 125,
+      "start_character": 37,
+      "end_line": 125,
+      "end_character": 50
+    },
+    {
+      "path": "XBrainLab/ui/panels/preprocess/preview_widget.py",
+      "rule": "reportOptionalMemberAccess",
+      "start_line": 217,
+      "start_character": 37,
+      "end_line": 217,
+      "end_character": 50
+    },
+    {
+      "path": "XBrainLab/ui/dialogs/dataset/data_splitting_preview_dialog.py",
+      "rule": "reportOptionalMemberAccess",
+      "start_line": 717,
+      "start_character": 34,
+      "end_line": 717,
+      "end_character": 51
+    },
+    {
+      "path": "XBrainLab/ui/dialogs/dataset/data_splitting_preview_dialog.py",
+      "rule": "reportOptionalMemberAccess",
+      "start_line": 1013,
+      "start_character": 42,
+      "end_line": 1013,
+      "end_character": 52
+    },
+    {
+      "path": "XBrainLab/ui/panels/visualization/saliency_views/plot_3d_head.py",
+      "rule": "reportArgumentType",
+      "start_line": 173,
+      "start_character": 38,
+      "end_line": 173,
+      "end_character": 52
+    },
+    {
+      "path": "XBrainLab/backend/preprocessor/resample.py",
+      "rule": "reportAttributeAccessIssue",
+      "start_line": 75,
+      "start_character": 47,
+      "end_line": 75,
+      "end_character": 54
+    },
+    {
+      "path": "XBrainLab/ui/panels/preprocess/preview_widget.py",
+      "rule": "reportOptionalMemberAccess",
+      "start_line": 124,
+      "start_character": 40,
+      "end_line": 124,
+      "end_character": 55
+    },
+    {
+      "path": "XBrainLab/ui/panels/preprocess/preview_widget.py",
+      "rule": "reportOptionalMemberAccess",
+      "start_line": 216,
+      "start_character": 40,
+      "end_line": 216,
+      "end_character": 55
+    },
+    {
+      "path": "XBrainLab/ui/panels/visualization/panel.py",
+      "rule": "reportArgumentType",
+      "start_line": 2508,
+      "start_character": 51,
+      "end_line": 2508,
+      "end_character": 57
+    },
+    {
+      "path": "XBrainLab/llm/core/downloader.py",
+      "rule": "reportPrivateImportUsage",
+      "start_line": 37,
+      "start_character": 38,
+      "end_line": 37,
+      "end_character": 59
+    },
+    {
+      "path": "XBrainLab/ui/panels/preprocess/preview_widget.py",
+      "rule": "reportCallIssue",
+      "start_line": 182,
+      "start_character": 48,
+      "end_line": 182,
+      "end_character": 60
+    },
+    {
+      "path": "XBrainLab/ui/panels/preprocess/preview_widget.py",
+      "rule": "reportCallIssue",
+      "start_line": 269,
+      "start_character": 48,
+      "end_line": 269,
+      "end_character": 60
+    },
+    {
+      "path": "XBrainLab/ui/panels/preprocess/preview_widget.py",
+      "rule": "reportCallIssue",
+      "start_line": 180,
+      "start_character": 49,
+      "end_line": 180,
+      "end_character": 61
+    },
+    {
+      "path": "XBrainLab/ui/panels/preprocess/preview_widget.py",
+      "rule": "reportCallIssue",
+      "start_line": 181,
+      "start_character": 49,
+      "end_line": 181,
+      "end_character": 61
+    },
+    {
+      "path": "XBrainLab/ui/panels/visualization/saliency_views/plot_3d_head.py",
+      "rule": "reportArgumentType",
+      "start_line": 214,
+      "start_character": 52,
+      "end_line": 214,
+      "end_character": 61
+    },
+    {
+      "path": "XBrainLab/ui/panels/preprocess/preview_widget.py",
+      "rule": "reportCallIssue",
+      "start_line": 267,
+      "start_character": 49,
+      "end_line": 267,
+      "end_character": 61
+    },
+    {
+      "path": "XBrainLab/ui/panels/preprocess/preview_widget.py",
+      "rule": "reportCallIssue",
+      "start_line": 268,
+      "start_character": 49,
+      "end_line": 268,
+      "end_character": 61
+    },
+    {
+      "path": "XBrainLab/backend/preprocessor/resample.py",
+      "rule": "reportArgumentType",
+      "start_line": 59,
+      "start_character": 54,
+      "end_line": 59,
+      "end_character": 61
+    },
+    {
+      "path": "XBrainLab/backend/training/record/artifact_store.py",
+      "rule": "reportArgumentType",
+      "start_line": 235,
+      "start_character": 46,
+      "end_line": 235,
+      "end_character": 63
+    },
+    {
+      "path": "XBrainLab/ui/components/single_plot_window.py",
+      "rule": "reportPrivateImportUsage",
+      "start_line": 14,
+      "start_character": 46,
+      "end_line": 14,
+      "end_character": 66
+    },
+    {
+      "path": "XBrainLab/backend/load_data/raw.py",
+      "rule": "reportAttributeAccessIssue",
+      "start_line": 331,
+      "start_character": 59,
+      "end_line": 331,
+      "end_character": 67
+    },
+    {
+      "path": "XBrainLab/backend/visualization/saliency_3d_engine.py",
+      "rule": "reportAttributeAccessIssue",
+      "start_line": 398,
+      "start_character": 64,
+      "end_line": 398,
+      "end_character": 69
+    },
+    {
+      "path": "XBrainLab/backend/visualization/saliency_3d_engine.py",
+      "rule": "reportOptionalMemberAccess",
+      "start_line": 398,
+      "start_character": 64,
+      "end_line": 398,
+      "end_character": 69
+    },
+    {
+      "path": "XBrainLab/ui/panels/visualization/panel.py",
+      "rule": "reportArgumentType",
+      "start_line": 1352,
+      "start_character": 58,
+      "end_line": 1352,
+      "end_character": 72
+    },
+    {
+      "path": "XBrainLab/backend/preprocessor/resample.py",
+      "rule": "reportAttributeAccessIssue",
+      "start_line": 72,
+      "start_character": 69,
+      "end_line": 72,
+      "end_character": 76
+    },
+    {
+      "path": "XBrainLab/backend/preprocessor/resample.py",
+      "rule": "reportCallIssue",
+      "start_line": 48,
+      "start_character": 72,
+      "end_line": 48,
+      "end_character": 78
+    }
+  ]
+}

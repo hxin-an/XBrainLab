@@ -58,6 +58,9 @@ Evidence root 預設必須是 repo-contained 且 ignored；只有明確傳入
 - User-like happy path與相鄰failure/cancel/retry/stale lifecycle。
 - Data/import/epoch/training/evaluation/visualization：canonical source-diverse dataset gate。
 - Static quality：Ruff、configured Basedpyright、architecture guards、diff check。
+- Basedpyright gate以locked analyzer version執行完整project analysis，並和checked-in、唯讀的既有
+  diagnostic allowlist比較；resolved diagnostics可單調減少，任何新增diagnostic fail closed。Gate不使用
+  Basedpyright會自動改寫的native baseline，也不把sandbox缺少第三方search paths的假綠當證據。
 - Docs：canonical truth、link/source audit、developer與user-site strict build。
 - Branch/CI：focused commits、pushed exact PR head、所有non-skipped checks completed/success。
 
