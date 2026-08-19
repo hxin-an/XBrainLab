@@ -112,6 +112,15 @@ compatibility path。刪除優先：不恢復B/C/D、RAG、confidence gate或Hos
     導致第一張760px artifact在capture前fail closed。只校正capture exact-text contract並加unit guard，
     不改產品Wizard、copy或layout；重跑全部Wizard artifacts／validator後，仍需以新exact commit
     從頭執行canonical handoff。
+11. Exact `426616b3` 已通過manifest前39個checks、完整11269 passed／51 policy-allowed skipped、
+    Granite 36／36 positive、五項missing-parameter host guard、public cross-source與原生UI證據；最後
+    `handoff-dashboard`卻另外執行未採用baseline contract的raw `mypy XBrainLab/`，把現有142項債務
+    全部判成candidate failure。同一dashboard與manifest已執行唯讀Basedpyright regression並確認相對
+    locked baseline零新增diagnostic。修復只讓`--handoff`使用canonical Basedpyright regression；raw
+    mypy只在使用者顯式`--include-slow-checks`時保留為diagnostic profile，不放寬任何manifest gate、
+    baseline或產品程式。先以dashboard CLI contract red test鎖定handoff不隱式啟用raw mypy，再重跑
+    focused dashboard tests並從新exact commit完整重建handoff dossier；dashboard或任一既有gate未PASS
+    即停止，不交付手測。
 
 ## Merge boundary
 
