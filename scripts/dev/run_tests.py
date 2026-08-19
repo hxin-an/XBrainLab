@@ -64,11 +64,6 @@ UNIT_DOMAIN_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("developer-scripts", ("tests/unit/scripts",)),
     ("ui", ("tests/unit/ui",)),
 )
-UNIT_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    UNIT_DOMAIN_SHARDS[0],
-    *((f"llm-{label}", paths) for label, paths in LLM_UNIT_SHARDS),
-    *UNIT_DOMAIN_SHARDS[2:],
-)
 UI_UNIT_ROOT_TESTS = tuple(
     str(path) for path in sorted(Path("tests/unit/ui").glob("test_*.py"))
 )
@@ -83,6 +78,12 @@ UI_UNIT_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("styles", ("tests/unit/ui/styles",)),
     ("training", ("tests/unit/ui/training",)),
     ("visualization", ("tests/unit/ui/visualization",)),
+)
+UNIT_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    UNIT_DOMAIN_SHARDS[0],
+    *((f"llm-{label}", paths) for label, paths in LLM_UNIT_SHARDS),
+    UNIT_DOMAIN_SHARDS[2],
+    *((f"ui-{label}", paths) for label, paths in UI_UNIT_SHARDS),
 )
 INTEGRATION_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("agent", ("tests/integration/agent",)),

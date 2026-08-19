@@ -9,7 +9,7 @@ direct preprocess 加入必要參數的 latest-user-text provenance guard。明�
 補值時零執行，以一般藍色英文 Assistant bubble追問。完成條件是同一exact source完成自動驗證、
 真Granite host-aware evidence與正常ChatPanel真人手測入口；中間checkpoint不交付手測。
 
-目前 phase：`Active；core green，修正 exact-source handoff 的 Basedpyright 基線後重建 candidate evidence`
+目前 phase：`Active；Qt process-isolation blocker已閉合，建立新的exact-source candidate evidence`
 
 ## Exact-model evidence
 
@@ -81,6 +81,18 @@ compatibility path。刪除優先：不恢復B/C/D、RAG、confidence gate或Hos
    integration base產生，記錄locked Basedpyright version，candidate不得新增項目；resolved項目允許
    單調減少。Basedpyright原生baseline已因一般check會自動改寫檔案、且不同環境可產生競態而拒絕，
    不得採用。若唯讀wrapper會吞掉新錯誤或在locked環境不可重現，停止施工而不放寬type-check policy。
+7. Exact `49bc1d7c` 已完成1064項Assistant adjacent tests、Ruff／format、唯讀Basedpyright regression、
+   MkDocs、36／36 Granite positive＋10／10 explicit-origin＋5／5 missing-origin host guard、四個public
+   source-diverse cases，且PR #40所有applicable non-skipped checks completed/success。Canonical handoff的
+   complete regression另在本機offscreen Qt重現pyqtgraph `AxisItem`已刪除後仍收到延遲paint event的
+   native abort；abort固定在dialogs中的pyqtgraph widget關閉後、下一個preprocess test處理延遲paint
+   event時發生，屬共享Qt process lifecycle blocker，不是本Assistant產品路徑失敗。`run_tests.py ui`與
+   Linux CI本來已用同一份`UI_UNIT_SHARDS`，只有default `unit/all`仍把整個UI樹放進單一process；修正後
+   default unit gate重用既有10個native-safe UI shards，沒有新runner、沒有skip、沒有減少assertion或
+   修改產品UI。新的契約test先以1個UI process對預期10個失敗，再轉綠；全部2673項UI tests已在10個
+   fresh processes中2673／2673通過，且每個shard仍由required-pytest attestation驗證零failed／error／
+   skipped。下一步只重跑complete regression與同一新exact source handoff；任一shard或aggregate evidence
+   不完整即停止，不以分片掩蓋失敗。
 
 ## Merge boundary
 
