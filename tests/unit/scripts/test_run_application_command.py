@@ -19,7 +19,6 @@ def _payload_file_args(path: Path) -> argparse.Namespace:
         payload=None,
         payload_file=path,
         list_schemas=False,
-        mcp_tools=False,
         include_legacy_compatibility=False,
     )
 
@@ -31,7 +30,6 @@ def _inline_payload_args(
         payload=payload,
         payload_file=None,
         list_schemas=False,
-        mcp_tools=False,
         include_legacy_compatibility=False,
     )
 
@@ -481,9 +479,7 @@ def test_cli_rejects_oversized_execution_output_without_partial_stdout(
     assert "Jane Doe" not in captured.err
 
 
-@pytest.mark.parametrize("mode", ("schemas", "mcp_tools"))
-def test_cli_bounds_schema_and_tool_transport_output(
-    mode: str,
+def test_cli_bounds_schema_output(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -494,8 +490,7 @@ def test_cli_bounds_schema_and_tool_transport_output(
     args = argparse.Namespace(
         payload=None,
         payload_file=None,
-        list_schemas=mode == "schemas",
-        mcp_tools=mode == "mcp_tools",
+        list_schemas=True,
         include_legacy_compatibility=False,
     )
 
@@ -515,12 +510,6 @@ def test_cli_bounds_schema_and_tool_transport_output(
         "command_specs",
         lambda *_args, **_kwargs: [OversizedSpec()],
     )
-    monkeypatch.setattr(
-        run_application_command,
-        "mcp_tool_specs",
-        lambda *_args, **_kwargs: [{"description": oversized_text}],
-    )
-
     return_code = run_application_command.main()
     captured = capsys.readouterr()
 

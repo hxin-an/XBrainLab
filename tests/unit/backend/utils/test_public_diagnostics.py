@@ -2167,11 +2167,7 @@ def test_product_code_cannot_install_a_log_handler_outside_central_logger() -> N
     findings: list[tuple[str, int, str]] = []
     for root in PRODUCT_LOG_ROOTS:
         for path in root.rglob("*.py"):
-            if (
-                path == LOGGER_MODULE
-                or path.is_relative_to(MODEL_CACHE_ROOT)
-                or "/mcp/" in path.as_posix()
-            ):
+            if path == LOGGER_MODULE or path.is_relative_to(MODEL_CACHE_ROOT):
                 continue
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for node in ast.walk(tree):

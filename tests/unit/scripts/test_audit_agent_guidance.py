@@ -72,26 +72,6 @@ def test_retired_external_eval_corpus_is_rejected(tmp_path: Path) -> None:
     assert any(f"retired external eval remains: {retired}" in error for error in errors)
 
 
-def test_invalid_mcp_metadata_fails_closed_without_crashing(tmp_path: Path) -> None:
-    skill = tmp_path / ".agents" / "skills" / "mcp-adapter-reviewer" / "SKILL.md"
-    skill.parent.mkdir(parents=True)
-    skill.write_text(
-        "---\n"
-        "name: mcp-adapter-reviewer\n"
-        'description: "Use only when the user explicitly requests MCP work."\n'
-        "---\n\n"
-        "# MCP Adapter Reviewer\n",
-        encoding="utf-8",
-    )
-    metadata = skill.parent / "agents" / "openai.yaml"
-    metadata.parent.mkdir()
-    metadata.write_text("[]\n", encoding="utf-8")
-
-    errors = audit_guidance(tmp_path)
-
-    assert "MCP metadata must be a mapping" in errors
-
-
 @pytest.mark.parametrize("command", ["ab", "score-human"])
 def test_parser_exposes_only_static_check(command: str) -> None:
     parser = build_parser()

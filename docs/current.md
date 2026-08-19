@@ -19,7 +19,7 @@ local Granite透過18個核准action進入相同GUI與Command workflow。
 | Evaluation | Individual fold/run支援Train、Validation、Test；cross-fold Summary只pool同一training round的disjoint Test masks。 | `All Folds`的Split只有Test是刻意的統計邊界。 |
 | Saliency | 明確Compute Saliency、累加method recompute、Map/Spectrogram/Topographic/3D publication存在。 | 不代表attribution具科學有效性，也不保證所有模型梯度相容。 |
 | Assistant | 固定Local Granite、strict envelope、18-action stage surface、parameter provenance、capability、confirmation、GUI handoff與model-free walkthrough存在。 | 2B模型不是安全零容忍；deterministic guards不代表語意意圖完全正確，也不外推到任意長session。 |
-| MCP | `v0.7.0` source仍保留opt-in compatibility implementation。 | 不是release能力；下一個cleanup branch會完整退役，不得作active product或thesis prerequisite。 |
+| MCP | Executable package、transport、CLI、capture、schema projection與tests已退役；provenance只留在Git history。 | 不是release能力；未來若要恢復，必須另開public contract、security與validation decision。 |
 | Packaging | Windows launcher與source啟動方式存在。 | 沒有signed installer。 |
 
 ## Evidence truth

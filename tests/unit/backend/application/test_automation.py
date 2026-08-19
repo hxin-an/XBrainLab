@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from tests.unit.backend.path_assertions import filesystem_path_key
+from XBrainLab.backend import application as application_package
 from XBrainLab.backend.application import (
     ApplicationService,
     AutomationPayloadError,
@@ -28,6 +29,14 @@ from XBrainLab.backend.application.training_submission import (
 from XBrainLab.backend.application.view_publication import (
     PUBLIC_VIEW_UNAVAILABLE_MESSAGE,
 )
+
+
+def test_retired_mcp_adapter_is_absent_from_product_package() -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    assert not list((repo_root / "XBrainLab" / "mcp").glob("*.py"))
+    assert "mcp_tool_specs" not in application_package.__all__
+
+
 from XBrainLab.backend.study import Study
 
 

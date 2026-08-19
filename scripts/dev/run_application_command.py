@@ -14,7 +14,6 @@ from XBrainLab.backend.application import (
     command_specs,
     execute_automation_payload,
     get_application_service,
-    mcp_tool_specs,
 )
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.public_diagnostics import (
@@ -78,11 +77,6 @@ def parse_args() -> argparse.Namespace:
         help="Print command schemas with current capability/autonomy policy.",
     )
     parser.add_argument(
-        "--mcp-tools",
-        action="store_true",
-        help="Print MCP-shaped tool schemas backed by ApplicationService commands.",
-    )
-    parser.add_argument(
         "--include-legacy-compatibility",
         action="store_true",
         help=(
@@ -130,16 +124,6 @@ def _run(args: argparse.Namespace) -> int:
             exit_code=0,
         )
 
-    if args.mcp_tools:
-        service = get_application_service(Study())
-        return _emit_public_json(
-            mcp_tool_specs(
-                service,
-                include_legacy_compatibility=args.include_legacy_compatibility,
-            ),
-            exit_code=0,
-        )
-
     try:
         payloads = _load_payloads(args)
     except _CliLimitError as error:
@@ -178,9 +162,7 @@ def _load_payloads(args: argparse.Namespace) -> list[dict[str, Any]]:
     elif args.payload_file:
         payload_text = _read_bounded_payload_file(args.payload_file).decode("utf-8")
     else:
-        raise SystemExit(
-            "Provide --payload, --payload-file, --list-schemas, or --mcp-tools."
-        )
+        raise SystemExit("Provide --payload, --payload-file, or --list-schemas.")
 
     data = json.loads(payload_text)
     if type(data) is dict:

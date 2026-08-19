@@ -96,10 +96,6 @@ INTEGRATION_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("training", ("tests/integration/training",)),
     ("ui", ("tests/integration/ui",)),
 )
-MCP_COMPATIBILITY_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("unit", ("tests/unit/mcp",)),
-    ("integration", ("tests/integration/mcp",)),
-)
 REGRESSION_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("regression", ("tests/regression",)),
 )
@@ -406,7 +402,7 @@ def unit(attestation_sink: list[dict[str, Any]] | None = None) -> None:
     configure_headless_ui_env()
     _assert_all_test_domains_declared(
         root=Path("tests/unit"),
-        shards=(*UNIT_DOMAIN_SHARDS, MCP_COMPATIBILITY_SHARDS[0]),
+        shards=UNIT_DOMAIN_SHARDS,
     )
     _run_shards(
         gate_name="Unit",
@@ -420,7 +416,7 @@ def integration(attestation_sink: list[dict[str, Any]] | None = None) -> None:
     configure_headless_ui_env()
     _assert_all_test_domains_declared(
         root=Path("tests/integration"),
-        shards=(*INTEGRATION_SHARDS, MCP_COMPATIBILITY_SHARDS[1]),
+        shards=INTEGRATION_SHARDS,
     )
     _run_shards(
         gate_name="Integration",
@@ -435,16 +431,6 @@ def regression(attestation_sink: list[dict[str, Any]] | None = None) -> None:
     _run_shards(
         gate_name="Regression",
         shards=REGRESSION_SHARDS,
-        attestation_sink=attestation_sink,
-    )
-
-
-def mcp_compatibility(attestation_sink: list[dict[str, Any]] | None = None) -> None:
-    """Run historical MCP compatibility checks outside the active product gate."""
-    configure_headless_ui_env()
-    _run_shards(
-        gate_name="MCP compatibility",
-        shards=MCP_COMPATIBILITY_SHARDS,
         attestation_sink=attestation_sink,
     )
 
@@ -719,7 +705,6 @@ def _parse_cli(argv: Sequence[str]) -> argparse.Namespace:
             "integration",
             "regression",
             "platform",
-            "mcp-compatibility",
             "all",
             *LINUX_CI_COMMANDS,
             *PLATFORM_CI_COMMANDS,
@@ -754,7 +739,6 @@ def _dispatch(
         "integration": integration,
         "regression": regression,
         "platform": platform,
-        "mcp-compatibility": mcp_compatibility,
         "all": all_tests,
     }
     commands[command](attestation_sink)

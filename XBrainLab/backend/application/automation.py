@@ -70,7 +70,7 @@ from .training_submission import attach_training_submission_provenance
 
 @dataclass(frozen=True)
 class AutomationCommandSpec:
-    """Serializable command schema suitable for CLI or MCP tool wrapping."""
+    """Serializable command schema for the headless command runner."""
 
     name: str
     taxonomy: str
@@ -291,35 +291,6 @@ def command_specs(
             )
         )
     return specs
-
-
-def mcp_tool_specs(
-    service: ApplicationService | None = None,
-    *,
-    include_legacy_compatibility: bool = False,
-) -> list[dict[str, Any]]:
-    """Return MCP-shaped tool specs backed by the same command schemas."""
-    return [
-        {
-            "name": spec.name,
-            "title": _tool_title(spec.name),
-            "description": spec.description,
-            "inputSchema": spec.input_schema,
-            "outputSchema": _automation_execution_output_schema(),
-            "x_xbrainlab": {
-                "taxonomy": spec.taxonomy,
-                "capability": spec.capability,
-                "execution": _execution_metadata(spec.capability),
-                "legacy_compatibility": spec.legacy_compatibility,
-                "primary_workflow": spec.primary_workflow,
-                "preferred_commands": list(spec.preferred_commands),
-            },
-        }
-        for spec in command_specs(
-            service,
-            include_legacy_compatibility=include_legacy_compatibility,
-        )
-    ]
 
 
 def build_command_from_payload(
@@ -852,10 +823,6 @@ def _command_description(command_name: CommandName, command_type: type[Any]) -> 
     return (command_type.__doc__ or "").strip().splitlines()[0]
 
 
-def _tool_title(name: str) -> str:
-    return name.replace("_", " ").title()
-
-
 def _is_legacy_compatibility(command_name: CommandName) -> bool:
     return command_name in LEGACY_COMPATIBILITY_COMMANDS
 
@@ -864,56 +831,6 @@ def _preferred_commands(command_name: CommandName) -> tuple[str, ...]:
     if _is_legacy_compatibility(command_name):
         return LEGACY_PREFERRED_COMMANDS
     return ()
-
-
-def _execution_metadata(capability: dict[str, Any] | None) -> dict[str, Any]:
-    if capability is None:
-        return {
-            "long_running": False,
-            "destructive": False,
-            "confirmation_required": False,
-            "requires_confirmation": False,
-            "decision_boundary": None,
-            "requires_http_job": False,
-            "supported_job_transports": [],
-        }
-    long_running = bool(capability.get("long_running", False))
-    return {
-        "long_running": long_running,
-        "destructive": bool(capability.get("destructive", False)),
-        "confirmation_required": bool(capability.get("confirmation_required", False)),
-        "requires_confirmation": bool(capability.get("requires_confirmation", False))
-        or bool(capability.get("confirmation_required", False)),
-        "decision_boundary": capability.get("decision_boundary"),
-        "requires_http_job": long_running,
-        "supported_job_transports": ["http"] if long_running else [],
-    }
-
-
-def _automation_execution_output_schema() -> dict[str, Any]:
-    return {
-        "type": "object",
-        "additionalProperties": True,
-        "properties": {
-            "accepted": {"type": "boolean"},
-            "command_name": {"type": "string", "nullable": True},
-            "verification": {"type": "object"},
-            "autonomy": {"type": "object"},
-            "capability": {"type": "object", "nullable": True},
-            "result": {"type": "object", "nullable": True},
-            "state": {"type": "object"},
-            "adapter": {"type": "object"},
-        },
-        "required": [
-            "accepted",
-            "command_name",
-            "verification",
-            "autonomy",
-            "capability",
-            "result",
-            "state",
-        ],
-    }
 
 
 def _payload_command_name(payload: dict[str, Any]) -> CommandName | None:

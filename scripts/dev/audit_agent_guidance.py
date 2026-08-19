@@ -14,6 +14,7 @@ import yaml
 
 RETIRED_SKILLS = (
     "clean-code-reviewer",
+    "mcp-adapter-reviewer",
     "pr-branch-governance",
     "software-design-reviewer",
 )
@@ -121,7 +122,7 @@ def _audit_skills(root: Path) -> list[str]:
             continue
         if not description.startswith("Use "):
             errors.append(f"{path}: description must start with 'Use '")
-        if name != "mcp-adapter-reviewer" and "Do not " not in description:
+        if "Do not " not in description:
             errors.append(f"{path}: description must include a 'Do not' boundary")
         if len(description) > MAX_DESCRIPTION_CHARS:
             errors.append(
@@ -192,34 +193,6 @@ def _audit_references(root: Path, guidance_files: Sequence[Path]) -> list[str]:
                 errors.append(
                     f"{path.relative_to(root)} references missing path: {token}"
                 )
-    return errors
-
-
-def _audit_mcp_policy(root: Path) -> list[str]:
-    errors: list[str] = []
-    skill = root / ".agents" / "skills" / "mcp-adapter-reviewer" / "SKILL.md"
-    if not skill.is_file():
-        return ["missing explicit-only mcp-adapter-reviewer skill"]
-    metadata_path = skill.parent / "agents" / "openai.yaml"
-    if not metadata_path.is_file():
-        return ["mcp-adapter-reviewer is missing agents/openai.yaml"]
-    try:
-        payload = yaml.safe_load(metadata_path.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        return [f"MCP metadata contains invalid YAML: {exc}"]
-    if not isinstance(payload, dict):
-        return ["MCP metadata must be a mapping"]
-
-    policy = payload.get("policy")
-    implicit = (
-        policy.get("allow_implicit_invocation") if isinstance(policy, dict) else None
-    )
-    if implicit is not False:
-        errors.append("mcp-adapter-reviewer must disable implicit invocation")
-    interface = payload.get("interface")
-    prompt = interface.get("default_prompt", "") if isinstance(interface, dict) else ""
-    if "$mcp-adapter-reviewer" not in prompt:
-        errors.append("MCP default_prompt must mention $mcp-adapter-reviewer")
     return errors
 
 
@@ -317,7 +290,6 @@ def audit_guidance(root: Path) -> list[str]:
     guidance_files = [agents_path]
     guidance_files.extend(sorted((root / ".agents").rglob("*.md")))
     errors.extend(_audit_references(root, guidance_files))
-    errors.extend(_audit_mcp_policy(root))
     return errors
 
 

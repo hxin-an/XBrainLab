@@ -38,7 +38,7 @@ human user 和 in-app assistant 都能操作同一套 EEG workflow 的桌面應�
 - assistant product runtime 已 local-only；remote backend modules 已從 product package 移除。
 - `openai` / `google-genai` 只允許留在 optional `legacy-remote-llm` dependency group /
   legacy fixture，不是產品 execution path。
-- MCP 已從 active product / thesis target 移除；既有 MCP artifacts 只保留為歷史探索或相容性證據。
+- MCP 已從 active product／thesis target與executable source退役；舊探索只由Git history保存。
 
 ## 和其他文件的關係
 

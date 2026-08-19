@@ -98,6 +98,13 @@ tests，沒有production consumer。已移除這些surface與`benchmark-llm` ent
 `XBrainLab/` production 0行；刪除前後相同338項Assistant／walkthrough／runner／architecture tests、
 architecture compliance及Ruff check／format均通過。
 
+Checkpoint（`2026-08-20`，MCP retirement）：已移除MCP stdio／HTTP package、job/session transport、
+`mcp_tool_specs`、`--mcp-tools`、client config/capture/launch scripts、runner gate、tests、architecture例外與
+repo-local skill；ApplicationService automation command schemas／payload execution仍是唯一headless command
+spine。Owner由2個transport/session owners降為0，`XBrainLab/` production淨刪1,036行、無新增owner。
+Retained command／guidance／runner／architecture／diagnostics focused集合637項、3項retirement guards、
+architecture compliance、guidance audit、Ruff check／format與MkDocs strict均通過。
+
 ## Focused validation 與 stop condition
 
 - Release：version single-source test、已修改 ChatPanel／walkthrough suites、Ruff check／format check、

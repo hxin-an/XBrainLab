@@ -10,7 +10,7 @@ handoff 不變量以 `AGENTS.md` 為唯一權威；這裡不複製清單或 curr
 1. 先讀 `AGENTS.md` 與任務直接涉及的 canonical source。
 2. 只載入一個 primary skill；跨領域真有必要時最多一個 secondary。
 3. 只有三步以上、需要 rollback 或 handoff 的任務才載入 workflow。
-4. Thesis/tool-call claim 才讀 `.agents/context/thesis.md`；MCP 只在使用者明確要求時載入。
+4. Thesis/tool-call claim 才讀 `.agents/context/thesis.md`；已退役的MCP surface不再dispatch。
 
 ## Skills
 
@@ -22,7 +22,6 @@ handoff 不變量以 `AGENTS.md` 為唯一權威；這裡不複製清單或 curr
 | EEG import/labels/BIDS | `data-interpretation-reviewer` |
 | Canonical docs | `docs-curator` |
 | MkDocs product UX | `docs-site-product-designer` |
-| Explicit MCP | `mcp-adapter-reviewer` |
 | Performance/resources | `performance-resource-reviewer` |
 | Bounded refactor | `refactor-slicer` |
 | Release/packaging | `release-packaging-reviewer` |

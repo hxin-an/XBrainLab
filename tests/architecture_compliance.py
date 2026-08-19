@@ -402,7 +402,6 @@ PRODUCT_SUCCESS_DIRECT_STUDY_STATE_TEST_FILES = (
     Path("tests/integration/ui/test_real_tools_e2e.py"),
 )
 PRODUCT_SUCCESS_DIRECT_STUDY_METHODS = ("get_datasets_generator",)
-MCP_DIRECT_STUDY_METHODS = ("get_controller", "get_datasets_generator")
 HEADLESS_VERIFIER_STATE_TRUTH_FILES = (
     Path("scripts/dev/verify_real_tools.py"),
     Path("scripts/dev/run_public_cross_source_training_smoke.py"),
@@ -470,7 +469,6 @@ UI_REFRESH_FALSE_READ_ONLY_COMMANDS = (
 PRODUCT_RUNTIME_BACKEND_FACADE_DIRS = (
     Path("XBrainLab/ui"),
     Path("XBrainLab/llm"),
-    Path("XBrainLab/mcp"),
 )
 MAPPED_REAL_TOOL_FILES = (
     Path("XBrainLab/llm/tools/__init__.py"),
@@ -646,10 +644,6 @@ PRODUCT_SUCCESS_WEAK_TEST_NAME_PATTERNS = (
     "init",
     "initialization",
     "initializes",
-)
-MCP_EXACT_EVIDENCE_TEST_DIRS = (
-    Path("tests/unit/mcp"),
-    Path("tests/integration/mcp"),
 )
 PIPELINE_STATE_EXACT_EVIDENCE_TEST = Path("tests/unit/llm/test_pipeline_state.py")
 LLM_PARSER_EXACT_EVIDENCE_TESTS = (
@@ -1241,13 +1235,6 @@ def check_architecture(root_dir: str) -> int:
             print(f" - {violation}")
         return 1
 
-    mcp_study_state_violations = check_mcp_direct_study_state_reads(Path(root_dir))
-    if mcp_study_state_violations:
-        print("\nMCP Direct Study State Read Violations Found:")
-        for violation in mcp_study_state_violations:
-            print(f" - {violation}")
-        return 1
-
     facade_usage_violations = check_product_runtime_backend_facade_usage(Path(root_dir))
     if facade_usage_violations:
         print("\nProduct Runtime BackendFacade Usage Violations Found:")
@@ -1334,13 +1321,6 @@ def check_architecture(root_dir: str) -> int:
     if generic_panel_assertion_violations:
         print("\nProduct Success Generic Panel Assertion Violations Found:")
         for violation in generic_panel_assertion_violations:
-            print(f" - {violation}")
-        return 1
-
-    mcp_weak_assertion_violations = check_mcp_weak_response_assertions(Path(root_dir))
-    if mcp_weak_assertion_violations:
-        print("\nMCP Weak Response Assertion Violations Found:")
-        for violation in mcp_weak_assertion_violations:
             print(f" - {violation}")
         return 1
 
@@ -7215,45 +7195,6 @@ def check_llm_direct_study_state_reads(root_dir: Path) -> list[str]:
     return violations
 
 
-def check_mcp_direct_study_state_reads(root_dir: Path) -> list[str]:
-    """Return MCP product code that infers status from mutable Study fields."""
-    violations: list[str] = []
-    mcp_dir = root_dir / "XBrainLab" / "mcp"
-    if not mcp_dir.exists():
-        return violations
-
-    for py_file in mcp_dir.rglob("*.py"):
-        if py_file.name == "__init__.py":
-            continue
-        source = py_file.read_text(encoding="utf-8")
-        try:
-            tree = ast.parse(source, filename=str(py_file))
-        except SyntaxError:
-            continue
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            visitor = _DirectStudyStateReadVisitor()
-            visitor.visit(node)
-            violations.extend(
-                f"{py_file.relative_to(root_dir)}:{attr.lineno} reads "
-                f"{_study_state_expression(source, attr)}; MCP product "
-                "status/progress state must come from the ApplicationService "
-                "state snapshot."
-                for attr in visitor.violations
-            )
-            method_visitor = _DirectStudyMethodCallVisitor(MCP_DIRECT_STUDY_METHODS)
-            method_visitor.visit(node)
-            violations.extend(
-                f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
-                f"{_study_state_expression(source, call.func)}; MCP product "
-                "status/progress state must come from ApplicationService "
-                "commands or state snapshots, not direct Study method access."
-                for call in method_visitor.violations
-            )
-    return violations
-
-
 def check_product_success_backend_facade_tests(root_dir: Path) -> list[str]:
     """Return product-success tests that still use BackendFacade as workflow truth."""
     violations: list[str] = []
@@ -7533,35 +7474,6 @@ def _is_generic_panel_instance_assertion(node: ast.AST) -> bool:
     if isinstance(panel_type, ast.Attribute):
         return panel_type.attr.endswith("Panel")
     return False
-
-
-def check_mcp_weak_response_assertions(root_dir: Path) -> list[str]:
-    """Return MCP tests that use generic non-None response assertions."""
-    violations: list[str] = []
-
-    for relative_dir in MCP_EXACT_EVIDENCE_TEST_DIRS:
-        test_dir = root_dir / relative_dir
-        if not test_dir.exists():
-            continue
-        for py_file in test_dir.rglob("*.py"):
-            if py_file.name == "__init__.py":
-                continue
-            source = py_file.read_text(encoding="utf-8")
-            try:
-                tree = ast.parse(source, filename=str(py_file))
-            except SyntaxError:
-                continue
-            visitor = _MCPWeakResponseAssertionVisitor()
-            visitor.visit(tree)
-            violations.extend(
-                f"{py_file.relative_to(root_dir)}:{name_node.lineno} uses "
-                f"generic non-None MCP assertion on {name_node.id!r}; assert "
-                "JSON-RPC envelope, request id, error/result separation, "
-                "structuredContent, adapter metadata, and command result truth "
-                "instead."
-                for name_node in visitor.violations
-            )
-    return violations
 
 
 def check_pipeline_state_weak_string_assertions(root_dir: Path) -> list[str]:
@@ -8282,17 +8194,6 @@ def check_docs_current_truth_overclaims(root_dir: Path) -> list[str]:
 
 def _docs_line_has_claim_boundary(lower_line: str) -> bool:
     return any(token.lower() in lower_line for token in DOC_CLAIM_BOUNDARY_TOKENS)
-
-
-class _MCPWeakResponseAssertionVisitor(ast.NodeVisitor):
-    def __init__(self) -> None:
-        self.violations: list[ast.Name] = []
-
-    def visit_Assert(self, node: ast.Assert) -> None:
-        name_node = _generic_non_none_assertion_name(node.test)
-        if name_node is not None:
-            self.violations.append(name_node)
-        self.generic_visit(node)
 
 
 class _GenericNonNoneAssertionVisitor(ast.NodeVisitor):

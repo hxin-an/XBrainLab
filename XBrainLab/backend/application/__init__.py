@@ -142,7 +142,6 @@ _EXPORT_MODULES: dict[str, str] = {
     "build_command_from_payload": ".automation",
     "command_specs": ".automation",
     "execute_automation_payload": ".automation",
-    "mcp_tool_specs": ".automation",
 }
 
 __all__ = [
@@ -264,7 +263,6 @@ __all__ = [
     "execute_automation_payload",
     "get_application_service",
     "map_exception",
-    "mcp_tool_specs",
 ]
 
 

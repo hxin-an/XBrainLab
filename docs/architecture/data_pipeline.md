@@ -393,7 +393,7 @@ Data Import wizard baseline 和仍未完成的產品化差距，不是新增目�
 | Mainstream label placement evidence | backend preview 會依資料結構支援 EEG event order、label time、label interval、label event code；UI 讀 `placement_reviews` 顯示 check，而不是靠前端硬猜。Blocked placement review 現在會成為 candidate blocker，不會只變成 confirmation。 | 仍不宣稱 full BIDS；BIDS inheritance、跨 datatype 和更複雜 run-level semantics 需要另外確認。 |
 | Actionable Review and Import checklist | preview / validation emits structured action items; UI renders only blockers / required decisions as first-layer cards with issue、impact、next action and target step. | `View import report` exposes report-only warnings、format capability、recipe trace and remap selectors; it is secondary detail, not the first-layer review layout. |
 | Import without labels / limited mode | `Continue without labels` is saved in choices and produces an authoritative `supervised_ready=false` handoff with structured blockers. Dataset/training capability policy consumes that handoff, so raw inspection/preprocessing can continue while supervised dataset/training remains blocked. | This does not infer missing class semantics or promise supervised readiness for unsupported sidecars. |
-| UI / agent / headless alignment | ApplicationService, tool definitions, real/mock tools, and state snapshot use the same extended command surface. | Broader tool-call eval waits until product stabilization. MCP is no longer active roadmap. |
+| UI / agent / headless alignment | ApplicationService, tool definitions, real/mock tools, and state snapshot use the same extended command surface. | Broader tool-call eval waits until product stabilization. Retired MCP transports are not part of this boundary. |
 
 ### Remaining gaps
 
