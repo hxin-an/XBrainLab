@@ -107,6 +107,11 @@ compatibility path。刪除優先：不恢復B/C/D、RAG、confidence gate或Hos
    same-operation terminal與Application publication同時顯示available後才render；不復原自動compute，
    不修改UI／backend／tool owners。先加explicit-action／terminal regression test，再重跑該gate與
    全部new-exact-source handoff。
+10. Exact `627f2ae3` 已在final dossier通過上述兩個blocker，但Data Import capture仍要求舊版
+    compact step labels `EEG Data／Metadata`，而現行base與branch的visible contract均為`EEG／Details`，
+    導致第一張760px artifact在capture前fail closed。只校正capture exact-text contract並加unit guard，
+    不改產品Wizard、copy或layout；重跑全部Wizard artifacts／validator後，仍需以新exact commit
+    從頭執行canonical handoff。
 
 ## Merge boundary
 

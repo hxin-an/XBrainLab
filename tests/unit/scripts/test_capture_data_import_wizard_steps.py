@@ -26,6 +26,16 @@ def test_default_data_import_evidence_uses_dev_artifact_namespace() -> None:
     assert "HISTORICAL_CHECKPOINT_OUTPUT_DIR" not in vars(capture_script)
 
 
+def test_compact_wizard_step_contract_matches_current_visible_labels() -> None:
+    assert capture_script.WIZARD_COMPACT_STEP_TEXT == (
+        "1. EEG",
+        "2. Labels",
+        "3. Details",
+        "4. Match",
+        "5. Review",
+    )
+
+
 def test_nested_placement_capture_keeps_full_logical_artifact_name(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
