@@ -13,6 +13,9 @@ from types import MappingProxyType
 import pytest
 
 import scripts.dev.handoff_evidence_recorder as recorder_module
+from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
+    collect_source_identity,
+)
 from scripts.dev.handoff_evidence_recorder import (
     HandoffEvidenceError,
     record_handoff_command,
@@ -142,6 +145,78 @@ def test_recorded_command_is_bound_to_clean_sha_and_hashed_logs(tmp_path) -> Non
         expected_branch=branch,
         require_upstream=False,
     ) == (True, "")
+
+
+def test_manifest_source_identity_uses_lightweight_per_gate_guard(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, sha, branch = _repo(tmp_path)
+    evidence_root = repo / "build" / "handoff-evidence" / sha
+    source_identity = collect_source_identity(repo, refresh=True)
+
+    def reject_full_rehash(*_args, **_kwargs):
+        raise AssertionError("per-gate recording must not rehash the full source tree")
+
+    monkeypatch.setattr(
+        recorder_module,
+        "collect_source_identity",
+        reject_full_rehash,
+    )
+    record = record_handoff_command(
+        repo_root=repo,
+        evidence_root=evidence_root,
+        section="1",
+        check_id="git-diff-check",
+        command=("git", "diff", "--check"),
+        timeout_seconds=30,
+        expected_branch=branch,
+        require_upstream=False,
+        manifest_source_identity=source_identity,
+    )
+
+    assert record["passed"] is True
+    assert record["source_before"] == source_identity
+    assert record["source_after"] == source_identity
+
+
+def test_manifest_source_identity_guard_detects_gate_mutation(
+    tmp_path, monkeypatch
+) -> None:
+    repo, sha, branch = _repo(tmp_path)
+    evidence_root = repo / "build" / "handoff-evidence" / sha
+    source_identity = collect_source_identity(repo, refresh=True)
+    command = (
+        sys.executable,
+        "-c",
+        "from pathlib import Path; Path('module.py').write_text('VALUE = 2\\n')",
+    )
+    _install_test_gate(
+        monkeypatch,
+        GateSpec(
+            check_id="manifest-mutating-command",
+            section="4",
+            argv=command,
+            timeout_seconds=30,
+        ),
+    )
+
+    record = record_handoff_command(
+        repo_root=repo,
+        evidence_root=evidence_root,
+        section="4",
+        check_id="manifest-mutating-command",
+        command=command,
+        timeout_seconds=30,
+        expected_branch=branch,
+        require_upstream=False,
+        manifest_source_identity=source_identity,
+    )
+
+    assert record["return_code"] == 0
+    assert record["passed"] is False
+    assert record["source_stable"] is False
+    assert "source changed" in record["failure_reason"].lower()
 
 
 def test_rerunning_an_earlier_gate_invalidates_later_dossier_records(

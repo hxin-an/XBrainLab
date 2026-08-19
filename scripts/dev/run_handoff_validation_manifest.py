@@ -11,6 +11,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
+    collect_source_identity,
+)
 from scripts.dev.handoff_evidence_recorder import (
     DEFAULT_BRANCH,
     HandoffEvidenceError,
@@ -53,6 +56,13 @@ def run_handoff_manifest(
         if expanded_evidence_root.is_absolute()
         else root / expanded_evidence_root
     ).resolve()
+    manifest_source_identity = collect_source_identity(root, refresh=True)
+    if manifest_source_identity.get("error"):
+        raise HandoffManifestError(str(manifest_source_identity["error"]))
+    if manifest_source_identity.get("dirty") is not False:
+        raise HandoffManifestError(
+            "Handoff manifest requires a clean full-source identity."
+        )
     completed: list[str] = []
     for check_id in REQUIRED_HANDOFF_CHECK_IDS:
         spec = HANDOFF_GATE_SPECS[check_id]
@@ -73,6 +83,7 @@ def run_handoff_manifest(
             model_cache_dir=model_cache_dir,
             rag_cache_dir=rag_cache_dir,
             allow_external_evidence_root=allow_external_evidence_root,
+            manifest_source_identity=manifest_source_identity,
         )
         completed.append(check_id)
         if not record.get("passed"):

@@ -38,6 +38,7 @@ def test_runner_records_every_required_gate_in_registry_order_then_verifies(
         "REQUIRED_HANDOFF_CHECK_IDS",
         tuple(spec.check_id for spec in specs),
     )
+    source_identity = {"source_digest": "a" * 64, "dirty": False}
     recorded: list[dict[str, Any]] = []
     verified: list[dict[str, Any]] = []
 
@@ -51,6 +52,11 @@ def test_runner_records_every_required_gate_in_registry_order_then_verifies(
 
     monkeypatch.setattr(runner, "record_handoff_command", fake_record)
     monkeypatch.setattr(runner, "validate_handoff_dossier", fake_verify)
+    monkeypatch.setattr(
+        runner,
+        "collect_source_identity",
+        lambda *_args, **_kwargs: source_identity,
+    )
     evidence_root = tmp_path / "external" / ("a" * 40)
 
     result = runner.run_handoff_manifest(
@@ -69,6 +75,8 @@ def test_runner_records_every_required_gate_in_registry_order_then_verifies(
     ]
     assert recorded[0]["command"] == specs[0].resolve_argv(evidence_root)
     assert recorded[1]["timeout_seconds"] == 20
+    assert recorded[0]["manifest_source_identity"] == source_identity
+    assert recorded[1]["manifest_source_identity"] == source_identity
     assert verified[0]["required_check_ids"] == ("first-gate", "second-gate")
     assert result == {
         "ok": True,
@@ -112,6 +120,14 @@ def test_runner_fails_closed_before_verification_when_a_gate_fails(
         return True, ""
 
     monkeypatch.setattr(runner, "validate_handoff_dossier", fake_verify)
+    monkeypatch.setattr(
+        runner,
+        "collect_source_identity",
+        lambda *_args, **_kwargs: {
+            "source_digest": "b" * 64,
+            "dirty": False,
+        },
+    )
 
     result = runner.run_handoff_manifest(
         repo_root=tmp_path,

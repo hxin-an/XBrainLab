@@ -76,6 +76,7 @@ def record_handoff_command(
     model_cache_dir: Path | None = None,
     rag_cache_dir: Path | None = None,
     allow_external_evidence_root: bool = False,
+    manifest_source_identity: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Execute one gate and atomically append its exact-source evidence."""
     root = repo_root.expanduser().resolve(strict=True)
@@ -126,7 +127,15 @@ def record_handoff_command(
     logs_dir.mkdir(parents=True, exist_ok=True)
     _prepare_registered_artifacts(output_root, spec=spec)
 
-    source_before = collect_source_identity(root, refresh=True)
+    source_before = (
+        collect_source_identity(root, refresh=True)
+        if manifest_source_identity is None
+        else _validated_manifest_source_identity(
+            manifest_source_identity,
+            root=root,
+            checkout=checkout,
+        )
+    )
     _require_clean_source(source_before)
     required_environment = _resolved_required_environment(
         spec,
@@ -173,7 +182,27 @@ def record_handoff_command(
         redactions=redactions,
     )
 
-    source_after = collect_source_identity(root, refresh=True)
+    if manifest_source_identity is None:
+        source_after = collect_source_identity(root, refresh=True)
+    else:
+        try:
+            checkout_after = _checkout_identity(
+                root,
+                expected_branch=expected_branch,
+                require_upstream=require_upstream,
+            )
+        except HandoffEvidenceError as error:
+            source_after = collect_source_identity(root, refresh=True)
+            source_after["gate_guard_error"] = str(error)
+        else:
+            source_after = (
+                source_before
+                if checkout_after == checkout
+                else {
+                    **collect_source_identity(root, refresh=True),
+                    "gate_guard_error": "Checkout identity changed during gate.",
+                }
+            )
     source_stable = bool(source_before.get("source_digest")) and (
         source_before == source_after
     )
@@ -545,6 +574,29 @@ def _checkout_identity(
         "upstream": upstream,
         "protected_dirty_paths": protected_paths,
     }
+
+
+def _validated_manifest_source_identity(
+    identity: Mapping[str, Any],
+    *,
+    root: Path,
+    checkout: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the manifest's full-source barrier for one lightweight gate run."""
+    candidate = dict(identity)
+    _require_clean_source(candidate)
+    expected = {
+        "repo_root": str(root),
+        "branch": checkout.get("branch"),
+        "commit_sha": checkout.get("commit_sha"),
+        "head_tree_sha": checkout.get("head_tree_sha"),
+    }
+    for key, value in expected.items():
+        if candidate.get(key) != value:
+            raise HandoffEvidenceError(f"Manifest source identity is stale ({key}).")
+    if not candidate.get("source_digest"):
+        raise HandoffEvidenceError("Manifest source identity digest is missing.")
+    return candidate
 
 
 def _dirty_paths(root: Path) -> tuple[list[str], list[str]]:
