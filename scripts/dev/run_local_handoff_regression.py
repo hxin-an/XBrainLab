@@ -9,6 +9,7 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from scripts.dev.owned_process_group import spawn_owned_process
 from scripts.dev.run_tests import (
@@ -16,6 +17,7 @@ from scripts.dev.run_tests import (
     LINUX_CI_UNCOVERED_COMMANDS,
     verify_linux_ci_evidence,
 )
+from scripts.dev.test_runtime_paths import select_test_temp_root
 
 ROOT = Path(__file__).resolve().parents[2]
 MAX_PARALLEL_GROUPS = 2
@@ -31,58 +33,60 @@ if tuple(command for phase in FIXED_PHASES for command in phase) != LINUX_CI_COM
 
 def _execute_group(command: str, *, evidence_dir: Path) -> int:
     """Run one canonical test group with process-owned temp and log paths."""
-    runtime_root = evidence_dir / "runtime" / command
-    temp_root = runtime_root / "tmp"
-    cache_root = runtime_root / "matplotlib"
-    temp_root.mkdir(parents=True, exist_ok=True)
-    cache_root.mkdir(parents=True, exist_ok=True)
+    evidence_dir.mkdir(parents=True, exist_ok=True)
     result_path = evidence_dir / f"{command}.json"
     log_path = evidence_dir / f"{command}.log"
-    environment = os.environ.copy()
-    environment.update(
-        {
-            "XBRAINLAB_TEST_TMPDIR": str(temp_root),
-            "MPLCONFIGDIR": str(cache_root),
-            "XBL_SHARED_CI_RUNNER": "1",
-        }
-    )
-    for name in ("COVERAGE_PROCESS_START", "XBL_TEST_COVERAGE"):
-        environment.pop(name, None)
-    if command in LINUX_CI_UNCOVERED_COMMANDS:
-        environment.pop("COVERAGE_FILE", None)
-    else:
-        environment["COVERAGE_FILE"] = str(evidence_dir / f".coverage.{command}")
-    argv = (
-        sys.executable,
-        "-m",
-        "scripts.dev.run_tests",
-        command,
-        "--result-json",
-        str(result_path),
-    )
-    timed_out = False
-    with log_path.open("w", encoding="utf-8") as log:
-        process, owner = spawn_owned_process(
-            argv,
-            cwd=ROOT,
-            env=environment,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            text=True,
+    temp_base = select_test_temp_root(ROOT)
+    temp_base.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix=f"handoff-{command}-", dir=temp_base) as temp_name:
+        temp_root = Path(temp_name)
+        cache_root = temp_root / "matplotlib"
+        cache_root.mkdir(parents=True, exist_ok=True)
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "XBRAINLAB_TEST_TMPDIR": str(temp_root),
+                "MPLCONFIGDIR": str(cache_root),
+                "XBL_SHARED_CI_RUNNER": "1",
+            }
         )
-        try:
-            return_code = process.wait(timeout=GROUP_TIMEOUT_SECONDS)
-        except subprocess.TimeoutExpired:
-            timed_out = True
-            owner.signal(force=False)
+        for name in ("COVERAGE_PROCESS_START", "XBL_TEST_COVERAGE"):
+            environment.pop(name, None)
+        if command in LINUX_CI_UNCOVERED_COMMANDS:
+            environment.pop("COVERAGE_FILE", None)
+        else:
+            environment["COVERAGE_FILE"] = str(evidence_dir / f".coverage.{command}")
+        argv = (
+            sys.executable,
+            "-m",
+            "scripts.dev.run_tests",
+            command,
+            "--result-json",
+            str(result_path),
+        )
+        timed_out = False
+        with log_path.open("w", encoding="utf-8") as log:
+            process, owner = spawn_owned_process(
+                argv,
+                cwd=ROOT,
+                env=environment,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
             try:
-                process.wait(timeout=TERMINATION_GRACE_SECONDS)
+                return_code = process.wait(timeout=GROUP_TIMEOUT_SECONDS)
             except subprocess.TimeoutExpired:
-                owner.signal(force=True)
-                process.wait(timeout=TERMINATION_GRACE_SECONDS)
-            return_code = 124
-        finally:
-            owner.close(grace_seconds=TERMINATION_GRACE_SECONDS)
+                timed_out = True
+                owner.signal(force=False)
+                try:
+                    process.wait(timeout=TERMINATION_GRACE_SECONDS)
+                except subprocess.TimeoutExpired:
+                    owner.signal(force=True)
+                    process.wait(timeout=TERMINATION_GRACE_SECONDS)
+                return_code = 124
+            finally:
+                owner.close(grace_seconds=TERMINATION_GRACE_SECONDS)
     if timed_out:
         with log_path.open("a", encoding="utf-8") as log:
             log.write(f"\nGroup exceeded {GROUP_TIMEOUT_SECONDS} seconds.\n")

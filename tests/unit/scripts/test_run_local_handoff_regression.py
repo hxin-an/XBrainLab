@@ -97,3 +97,6 @@ def test_group_execution_uses_owned_coverage_file_except_timing_group(
 
     assert environments[0]["COVERAGE_FILE"].endswith(f".coverage.{covered}")
     assert "COVERAGE_FILE" not in environments[1]
+    assert not Path(environments[0]["XBRAINLAB_TEST_TMPDIR"]).is_relative_to(
+        tmp_path / "covered"
+    )
