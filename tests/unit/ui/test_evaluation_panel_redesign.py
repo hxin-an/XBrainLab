@@ -2075,17 +2075,29 @@ def test_evaluation_panel_clears_metrics_when_detached_average_is_unavailable(
         monkeypatch,
         lambda *_args, **_kwargs: _serialized_evaluation_result(),
     )
-    runtime.render = lambda request: (
-        None
-        if isinstance(request.selection, EvaluationPlanIdentity)
-        else _detached_render(request)
-    )
+
+    def render(request):
+        if isinstance(request.selection, EvaluationPlanIdentity):
+            raise PreconditionError(
+                "No finished runs are available for this summary.",
+                diagnostics={
+                    "evaluation_final_unavailable": True,
+                    "retryable": False,
+                },
+            )
+        return _detached_render(request)
+
+    runtime.render = render
 
     panel = EvaluationPanel(parent=RealMainWindow())
     qtbot.addWidget(panel)
 
     panel.update_panel()
-    qtbot.waitUntil(lambda: panel.metrics_table.rowCount() > 0, timeout=1_000)
+    qtbot.waitUntil(
+        lambda: panel.metrics_table.rowCount() > 0
+        and panel.evaluation_background_work_idle(),
+        timeout=1_000,
+    )
 
     average_index = panel.run_combo.findText("Summary (Finished Runs)")
     assert average_index >= 0

@@ -130,6 +130,16 @@ compatibility path。刪除優先：不恢復B/C/D、RAG、confidence gate或Hos
     runner tests。其餘Linux jobs停在hosted runner system-dependency setup，先由新push建立fresh run，
     只有再次重現才修改workflow。新exact SHA仍須重跑local canonical handoff、人工抽查artifact，並等待
     PR所有applicable checks completed/success；任一pending／cancelled／failed都不交付手測。
+13. Exact `3f60daca` 已關閉Windows shard path separator問題，且local manifest再次40／40、dossier
+    verified；fresh PR run只剩Windows `platform-product-lifecycle`的Evaluation UI test失敗。該test以
+    `None`模擬「finished-run summary unavailable」，但backend-owned evaluation work明確要求一份
+    identity-bound publication或typed `PreconditionError`，所以fixture實際製造invalid-publication error；
+    test又在前一個render worker僅畫出table、尚未terminal時立刻切換summary，Windows較慢時會超過
+    硬編1秒。修復只把fixture改成產品真實的non-retryable unavailable error，並在切換前等待既有
+    background operation terminal；不修改Evaluation UI、backend或使用者可見行為，也不以增加timeout
+    掩蓋競態。該test、完整Evaluation panel與Windows product-lifecycle equivalent已875／875通過；
+    下一步由新exact SHA重建全部canonical handoff並等待PR所有applicable checks completed/success；
+    任一失敗即不交付手測。
 
 ## Merge boundary
 
