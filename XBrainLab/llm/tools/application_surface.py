@@ -9,7 +9,6 @@ from typing import Any, Protocol, cast
 
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
-    AttachLabelsCommand,
     ClearTrainingHistoryCommand,
     Command,
     CommandName,
@@ -1342,36 +1341,6 @@ def build_reload_interpretation_recipe_command(
     )
 
 
-def build_load_data_command(params: dict[str, Any]) -> None:
-    """Keep legacy direct loading closed at the assistant command boundary."""
-    del params
-
-
-def build_attach_labels_command(
-    params: dict[str, Any],
-) -> AttachLabelsCommand | None:
-    """Translate legacy label paths without dropping resource receipts."""
-    mapping = params.get("mapping")
-    if not isinstance(mapping, dict) or not mapping:
-        return None
-    normalized_mapping = {
-        str(key): str(value) for key, value in mapping.items() if str(value).strip()
-    }
-    if not normalized_mapping:
-        return None
-    return AttachLabelsCommand(
-        mapping=normalized_mapping,
-        label_paths=list(dict.fromkeys(normalized_mapping.values())),
-        label_format=_optional_str(params.get("label_format")),
-        selected_event_names=_optional_str_list(params.get("selected_event_names")),
-        resource_preflight_confirmed=_boolean_param(
-            params,
-            "resource_preflight_confirmed",
-        ),
-        resource_preflight_token=_optional_str(params.get("resource_preflight_token")),
-    )
-
-
 def _command_for_tool(
     tool_name: str,
     params: dict[str, Any],
@@ -1429,13 +1398,6 @@ def _command_for_tool(
 
     if tool_name == "reload_interpretation_recipe":
         return build_reload_interpretation_recipe_command(params)
-
-    if tool_name == "load_data":
-        build_load_data_command(params)
-        return None
-
-    if tool_name == "attach_labels":
-        return build_attach_labels_command(params)
 
     if tool_name == "apply_standard_preprocess":
         return build_standard_preprocess_command(params)
