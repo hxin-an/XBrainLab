@@ -435,7 +435,6 @@ ASSISTANT_RUNTIME_SELECTION_POLICY_CALLS = frozenset(
         "assistant_runtime_selection_from",
         "available_local_model_id",
         "default_local_model_id",
-        "fallback_local_model_id",
         "local_backend_ready",
         "local_backend_status_message",
         "local_model_policy_error",

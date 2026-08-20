@@ -245,13 +245,3 @@ def user_settings_path(
         )
         / SETTINGS_FILENAME
     )
-
-
-def legacy_repo_settings_path(*, repo_root: str | Path | None = None) -> Path:
-    """Return the legacy repo-root settings path for one-time migration only."""
-    root = (
-        Path(repo_root)
-        if repo_root is not None
-        else Path(__file__).resolve().parents[1]
-    )
-    return root / SETTINGS_FILENAME

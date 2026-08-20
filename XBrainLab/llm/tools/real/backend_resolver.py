@@ -99,7 +99,3 @@ class BackendClassRegistry:
         if optimizer_class is not None:
             return optimizer_class
         return cast(type[torch.optim.Optimizer], torch.optim.Adam)
-
-
-# Backward-compatible alias (deprecated — use BackendClassRegistry)
-BackendRegistryCompat = BackendClassRegistry

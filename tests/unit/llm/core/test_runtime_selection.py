@@ -47,7 +47,6 @@ def test_resolver_freezes_the_exact_launch_selection_and_settings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     primary = LLMConfig.default_local_model_id()
-    alternate = LLMConfig.fallback_local_model_id()
     config = _runtime_config(monkeypatch, model_id=primary)
     config.temperature = 0.25
 
@@ -63,14 +62,18 @@ def test_resolver_freezes_the_exact_launch_selection_and_settings(
     assert spec.outcome is AssistantRuntimeSelectionOutcome.EXACT
     assert spec.fallback_used is False
 
-    config.model_name = alternate
+    config.model_name = "microsoft/Phi-4-mini-instruct"
     config.temperature = 1.75
 
     launch_config = spec.build_config()
     assert launch_config.model_name == primary
     assert launch_config.temperature == 0.25
     with pytest.raises(FrozenInstanceError):
-        setattr(spec, "model_id", alternate)  # noqa: B010 - exercise frozen guard.
+        setattr(  # noqa: B010 - exercise frozen guard.
+            spec,
+            "model_id",
+            "microsoft/Phi-4-mini-instruct",
+        )
 
 
 def test_resolver_makes_cuda_to_cpu_fallback_explicit_before_launch(

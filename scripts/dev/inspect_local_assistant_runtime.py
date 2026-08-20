@@ -35,7 +35,6 @@ from XBrainLab.llm.core.model_catalog import (
     default_local_model_id,
     disallowed_cache_candidates,
     format_bytes,
-    legacy_local_model_ids,
     local_model_policy_error,
     local_model_spec,
 )
@@ -66,7 +65,6 @@ def classify_runtime(config: LLMConfig) -> dict[str, Any]:
         "policy_error": None,
         "allowed_local_models": allowed_local_model_ids(),
         "primary_local_model": default_local_model_id(),
-        "legacy_compatibility_models": legacy_local_model_ids(),
         "cache_dir": config.cache_dir,
         "cache_usage_bytes": 0,
         "cache_usage": "0.00 GB",
@@ -185,8 +183,6 @@ def render_markdown(result: dict[str, Any]) -> str:
         f"- inspected backend mode: `{result['inspected_backend_mode']}`",
         f"- inspected model id: `{result['inspected_model_id']}`",
         f"- primary local model: `{result['primary_local_model']}`",
-        "- legacy compatibility models: "
-        f"`{', '.join(result['legacy_compatibility_models'])}`",
         f"- cache identity: `{cache_identity_summary}`",
         f"- cache usage: `{result['cache_usage']}`",
         f"- max total cache: `{result['max_total_cache_gb']} GB`",

@@ -60,7 +60,7 @@ class TestBackendResolver:
         from XBrainLab.backend.model_base.EEGNet import EEGNet
         from XBrainLab.backend.model_base.SCCNet import SCCNet
         from XBrainLab.llm.tools.real.backend_resolver import (
-            BackendRegistryCompat as ToolRegistry,
+            BackendClassRegistry as ToolRegistry,
         )
 
         assert ToolRegistry.get_model_class("EEGNet") is EEGNet
@@ -70,7 +70,7 @@ class TestBackendResolver:
     def test_get_preprocessor_class(self):
         from XBrainLab.backend.preprocessor.filtering import Filtering
         from XBrainLab.llm.tools.real.backend_resolver import (
-            BackendRegistryCompat as ToolRegistry,
+            BackendClassRegistry as ToolRegistry,
         )
 
         assert ToolRegistry.get_preprocessor_class("bandpass") is Filtering
@@ -80,7 +80,7 @@ class TestBackendResolver:
         import torch
 
         from XBrainLab.llm.tools.real.backend_resolver import (
-            BackendRegistryCompat as ToolRegistry,
+            BackendClassRegistry as ToolRegistry,
         )
 
         assert ToolRegistry.get_optimizer_class("adam") is torch.optim.Adam

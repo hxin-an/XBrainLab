@@ -2657,7 +2657,7 @@ class TestSetModel:
         ctrl.sig_reinit.emit.assert_called_once_with(spec)
 
     def test_preserves_approved_local_model_identifier(self, ctrl):
-        spec = _runtime_launch_spec(LLMConfig.fallback_local_model_id())
+        spec = _runtime_launch_spec(LLMConfig.default_local_model_id())
 
         ctrl.set_model(spec)
 

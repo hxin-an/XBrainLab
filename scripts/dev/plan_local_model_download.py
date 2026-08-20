@@ -12,7 +12,6 @@ from XBrainLab.llm.core.model_catalog import (
     allowed_local_model_ids,
     default_local_model_id,
     format_bytes,
-    legacy_local_model_ids,
     local_model_spec,
     plan_model_download,
 )
@@ -30,7 +29,6 @@ def build_plan(model_id: str | None = None) -> dict[str, object]:
         "model_id": selected_model,
         "cache_dir": config.cache_dir,
         "primary_model": default_local_model_id(),
-        "legacy_compatibility_models": legacy_local_model_ids(),
         "allowed_models": allowed_local_model_ids(),
         "message": preflight.message,
         "estimated_download": format_bytes(preflight.estimated_download_bytes),
@@ -61,10 +59,6 @@ def _string_list(value: object, field_name: str) -> list[str]:
 
 def render_markdown(plan: dict[str, object]) -> str:
     """Render a concise human-readable preflight report."""
-    legacy_models = _string_list(
-        plan["legacy_compatibility_models"],
-        "legacy_compatibility_models",
-    )
     lines = [
         "# Local Model Download Preflight",
         "",
@@ -72,7 +66,6 @@ def render_markdown(plan: dict[str, object]) -> str:
         f"- model: `{plan['model_id']}`",
         f"- primary model: `{plan['primary_model']}`",
         "- automatic fallback: `disabled`",
-        f"- legacy explicit choices: `{', '.join(legacy_models)}`",
         f"- cache directory: `{plan['cache_dir']}`",
         f"- estimated download: `{plan['estimated_download']}`",
         f"- current cache: `{plan['current_cache']}`",
