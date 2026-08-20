@@ -251,6 +251,12 @@ control manifest。
   integration-rest 324.1秒；所有group telemetry可用，前三同時執行group peak RSS低於可用RAM的
   stop threshold。這閉合complete-regression目標，但planning更新後的final candidate仍須由下一次
   canonical handoff在同一source重跑並產生dossier。
+- `2026-08-20` Phase-2 candidate handoff checkpoint：exact commit `2a7190a6` 的identity、static、
+  architecture、complete regression、Assistant security／frontend、real-data與已完成UI gates通過；
+  `granite-runtime` 在載入模型前因MNE嘗試建立唯讀`~/.mne` lock而fail closed。根因是三個local-runtime
+  gates的offline cache environment漏帶repo既有的`MNE_DONTWRITE_HOME=true`，不是Granite、CUDA或
+  product regression。修正只補共享GateSpec environment與其contract test；先focused驗證Granite，
+  commit／push新exact SHA後才跑一次replacement canonical handoff，不重跑舊SHA追求計時。
 
 ## Focused validation 與 stop condition
 

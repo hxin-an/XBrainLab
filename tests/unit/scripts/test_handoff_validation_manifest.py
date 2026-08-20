@@ -286,6 +286,7 @@ def test_local_runtime_gates_bind_both_redacted_d_drive_cache_paths() -> None:
     for check_id in LOCAL_RUNTIME_CHECK_IDS:
         policy = HANDOFF_GATE_SPECS[check_id].environment
         offline_cache_environment = (
+            ("MNE_DONTWRITE_HOME", "true"),
             ("HF_HUB_OFFLINE", "1"),
             ("TRANSFORMERS_OFFLINE", "1"),
             ("XBRAINLAB_MODEL_CACHE_DIR", MODEL_CACHE_DIR_TOKEN),

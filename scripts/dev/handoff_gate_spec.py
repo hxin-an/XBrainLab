@@ -231,6 +231,7 @@ _QT_XCB_MNE = EnvironmentPolicy(
 )
 _LOCAL_RUNTIME_OFFLINE = EnvironmentPolicy(
     required=(
+        ("MNE_DONTWRITE_HOME", "true"),
         ("HF_HUB_OFFLINE", "1"),
         ("TRANSFORMERS_OFFLINE", "1"),
         ("XBRAINLAB_MODEL_CACHE_DIR", MODEL_CACHE_DIR_TOKEN),
