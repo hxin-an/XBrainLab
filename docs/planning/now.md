@@ -13,6 +13,13 @@ source checkout** 提供可信、可追溯、fail-closed 的啟動與小型產�
 source-run 方式提供 best-effort 支援。這條 branch 完成、經使用者 Windows 真人手測並合併後，才開始
 Braindecode vendoring。Data Import 與 4B Assistant 模型均不在本 slice。
 
+目前 checkpoint：A／B／C 的本地施工已完成；exact-source provenance、locked bootstrap/cache、native
+Windows／macOS source smoke、clean owned-tree shutdown及required artifact逐項驗證均已落地。Focused CI／
+startup contracts共131項通過，changed developer scripts的BasedPyright為0 error；本機offscreen另完成真
+五panel／ApplicationService／clean shutdown與真`run.py` entrypoint smoke。下一個也是唯一 remaining step是
+freeze exact branch head、取得remote Windows／macOS／Linux current-head CI與artifacts，然後交使用者做原生
+Windows手測；remote evidence與使用者批准前仍只稱checkpoint，不稱handoff-ready或可merge。
+
 ## 問題與證據
 
 - Current GitHub Actions 已在 Windows／macOS 跑 `platform-core-contracts` 與
