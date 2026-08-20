@@ -123,6 +123,7 @@ def test_native_platform_source_matrix_is_finite_native_and_required() -> None:
             "os": "windows-latest",
             "python": "3.11",
             "mode": "product",
+            "artifact_type": "xbrainlab.native_platform_product_smoke",
             "qt_platform": "windows",
             "runner_os": "Windows",
         },
@@ -131,6 +132,7 @@ def test_native_platform_source_matrix_is_finite_native_and_required() -> None:
             "os": "windows-latest",
             "python": "3.12",
             "mode": "startup",
+            "artifact_type": "xbrainlab.startup_smoke",
             "qt_platform": "windows",
             "runner_os": "Windows",
         },
@@ -139,6 +141,7 @@ def test_native_platform_source_matrix_is_finite_native_and_required() -> None:
             "os": "macos-latest",
             "python": "3.11",
             "mode": "product",
+            "artifact_type": "xbrainlab.native_platform_product_smoke",
             "qt_platform": "cocoa",
             "runner_os": "macOS",
         },
@@ -150,6 +153,11 @@ def test_native_platform_source_matrix_is_finite_native_and_required() -> None:
         step for step in steps if step.get("name") == "Verify required native evidence"
     )
     assert "verify_native_ci_evidence.py" in verification["run"]
+    assert "--expected-job-key ${{ matrix.key }}" in verification["run"]
+    assert "--expected-runner-os ${{ matrix.runner_os }}" in verification["run"]
+    assert "--expected-artifact-type ${{ matrix.artifact_type }}" in verification["run"]
+    assert "--expected-platform ${{ matrix.qt_platform }}" in verification["run"]
+    assert '--expected-isolated-root "${XBL_NATIVE_ROOT}"' in verification["run"]
     assert verification["if"] == "always()"
     upload = next(
         step for step in steps if step.get("name") == "Upload required native evidence"
@@ -176,3 +184,66 @@ def test_native_source_probes_require_platform_and_isolated_root() -> None:
         assert "--expected-platform ${{ matrix.qt_platform }}" in probe["run"]
         assert '--expected-isolated-root "${XBL_NATIVE_ROOT}"' in probe["run"]
         assert "QT_QPA_PLATFORM" not in probe.get("env", {})
+
+
+def test_authoritative_ci_artifacts_fail_closed_and_include_provenance() -> None:
+    workflow = _workflow(CI_WORKFLOW)
+    required_uploads = {
+        "linux-shard": (
+            "Upload shard evidence",
+            "Upload source provenance sidecar",
+        ),
+        "linux-test": ("Upload aggregate Linux evidence",),
+        "human-like-product": ("Upload human-like product evidence",),
+        "platform-test": ("Upload test results",),
+        "native-platform-source": ("Upload required native evidence",),
+        "ui-default-visual": ("Upload default-scale UI evidence",),
+        "ui-windows-dpi": ("Upload Windows DPI evidence",),
+        "public-dataset-gate": ("Upload public dataset gate reports",),
+    }
+    for job_key, upload_names in required_uploads.items():
+        steps = workflow["jobs"][job_key]["steps"]
+        for name in upload_names:
+            upload = next(step for step in steps if step.get("name") == name)
+            assert upload["with"]["if-no-files-found"] == "error"
+
+    provenance_jobs = {
+        "linux-shard",
+        "linux-test",
+        "human-like-product",
+        "platform-test",
+        "native-platform-source",
+        "ui-default-visual",
+        "ui-windows-dpi",
+        "public-dataset-gate",
+    }
+    for job_key in provenance_jobs:
+        steps = workflow["jobs"][job_key]["steps"]
+        recorders = [
+            step
+            for step in steps
+            if step.get("name")
+            in {
+                "Record exact source provenance",
+                "Record aggregate checkout provenance",
+            }
+        ]
+        assert recorders, job_key
+        assert all("ci_source_provenance.py" in step["run"] for step in recorders)
+
+    assert (
+        "test-results/ci-source-provenance.json"
+        in next(
+            step
+            for step in workflow["jobs"]["platform-test"]["steps"]
+            if step.get("name") == "Upload test results"
+        )["with"]["path"]
+    )
+    assert (
+        "test-results/ci-source-provenance.json"
+        in next(
+            step
+            for step in workflow["jobs"]["public-dataset-gate"]["steps"]
+            if step.get("name") == "Upload public dataset gate reports"
+        )["with"]["path"]
+    )

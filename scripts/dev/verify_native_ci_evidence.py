@@ -9,11 +9,6 @@ from pathlib import Path
 
 from scripts.dev.ci_source_provenance import validate_ci_source_provenance
 
-SUPPORTED_ARTIFACT_TYPES = {
-    "xbrainlab.startup_smoke",
-    "xbrainlab.native_platform_product_smoke",
-}
-
 
 def verify_native_ci_evidence(
     *,
@@ -21,6 +16,7 @@ def verify_native_ci_evidence(
     provenance_path: Path,
     expected_job_key: str,
     expected_runner_os: str,
+    expected_artifact_type: str,
     expected_qt_platform: str,
     expected_isolated_root: Path,
 ) -> tuple[str, ...]:
@@ -35,8 +31,8 @@ def verify_native_ci_evidence(
         if smoke is not None:
             failures.append("Native platform smoke artifact is malformed.")
     else:
-        if smoke.get("artifact_type") not in SUPPORTED_ARTIFACT_TYPES:
-            failures.append("Native platform smoke artifact type is unsupported.")
+        if smoke.get("artifact_type") != expected_artifact_type:
+            failures.append("Native platform smoke artifact type does not match.")
         if smoke.get("passed") is not True:
             failures.append("Native platform smoke did not pass.")
         if smoke.get("qt_platform") != expected_qt_platform:
@@ -62,6 +58,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--provenance", type=Path, required=True)
     parser.add_argument("--expected-job-key", required=True)
     parser.add_argument("--expected-runner-os", required=True)
+    parser.add_argument("--expected-artifact-type", required=True)
     parser.add_argument("--expected-platform", required=True)
     parser.add_argument("--expected-isolated-root", type=Path, required=True)
     return parser.parse_args()
@@ -74,6 +71,7 @@ def main() -> int:
         provenance_path=args.provenance,
         expected_job_key=args.expected_job_key,
         expected_runner_os=args.expected_runner_os,
+        expected_artifact_type=args.expected_artifact_type,
         expected_qt_platform=args.expected_platform,
         expected_isolated_root=args.expected_isolated_root,
     )

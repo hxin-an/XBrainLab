@@ -227,6 +227,7 @@ jobs:
             test-results
             !test-results/ci-source-provenance-*.json
           include-hidden-files: true
+          if-no-files-found: error
 
       - name: Upload source provenance sidecar
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -234,6 +235,7 @@ jobs:
         with:
           name: linux-source-provenance-${{ matrix.command }}
           path: test-results/ci-source-provenance-${{ matrix.command }}.json
+          if-no-files-found: error
 
   linux-test:
     name: Full Test Suite (Linux, py3.11)
@@ -313,6 +315,7 @@ jobs:
             linux-test-source-provenance.json
             test-results/*.xml
             coverage.xml
+          if-no-files-found: error
 
   human-like-product:
     name: Human-like Product Walkthrough
@@ -358,6 +361,12 @@ jobs:
         run: |
           poetry run -- python scripts/dev/capture_human_like_product_walkthrough.py \
             --output-dir build/dev-artifacts/human-like-product
+
+      - name: Record exact source provenance
+        run: >-
+          poetry run -- python scripts/dev/ci_source_provenance.py
+          --job-key human-like-product
+          --output build/dev-artifacts/human-like-product/ci-source-provenance.json
 
       - name: Upload human-like product evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -419,14 +428,23 @@ jobs:
           poetry run -- python scripts/dev/run_tests.py ${{ matrix.command }} \
             --result-json test-results/${{ matrix.command }}.json
 
+      - name: Record exact source provenance
+        if: always()
+        run: >-
+          poetry run -- python scripts/dev/ci_source_provenance.py
+          --job-key ${{ matrix.os }}-${{ matrix.command }}-py311
+          --output test-results/ci-source-provenance.json
+
       - name: Upload test results
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: test-results-${{ matrix.os }}-${{ matrix.command }}-py3.11
           path: |
-            test-results/*.json
+            test-results/${{ matrix.command }}.json
+            test-results/ci-source-provenance.json
             test-results/*.xml
+          if-no-files-found: error
 
   native-platform-source:
     name: Native Source Smoke (${{ matrix.key }})
@@ -445,18 +463,21 @@ jobs:
             os: windows-latest
             python: "3.11"
             mode: product
+            artifact_type: xbrainlab.native_platform_product_smoke
             qt_platform: windows
             runner_os: Windows
           - key: windows-startup-py312
             os: windows-latest
             python: "3.12"
             mode: startup
+            artifact_type: xbrainlab.startup_smoke
             qt_platform: windows
             runner_os: Windows
           - key: macos-product-py311
             os: macos-latest
             python: "3.11"
             mode: product
+            artifact_type: xbrainlab.native_platform_product_smoke
             qt_platform: cocoa
             runner_os: macOS
     steps:
@@ -525,6 +546,7 @@ jobs:
           --provenance test-results/ci-source-provenance.json
           --expected-job-key ${{ matrix.key }}
           --expected-runner-os ${{ matrix.runner_os }}
+          --expected-artifact-type ${{ matrix.artifact_type }}
           --expected-platform ${{ matrix.qt_platform }}
           --expected-isolated-root "${XBL_NATIVE_ROOT}"
 
@@ -584,12 +606,19 @@ jobs:
             --output-dir build/dev-artifacts/ui-baseline \
             --reference-dir tests/baselines/ui
 
+      - name: Record exact source provenance
+        run: >-
+          poetry run -- python scripts/dev/ci_source_provenance.py
+          --job-key ui-default-visual
+          --output build/dev-artifacts/ui-baseline/ci-source-provenance.json
+
       - name: Upload default-scale UI evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: ui-default-visual-regression
           path: build/dev-artifacts/ui-baseline
+          if-no-files-found: error
 
   ui-windows-dpi:
     name: UI Windows DPI Regression
@@ -633,12 +662,19 @@ jobs:
             --output-dir build/dev-artifacts/app-polish-dpi \
             --scale 1.0 --scale 1.25 --scale 1.5
 
+      - name: Record exact source provenance
+        run: >-
+          poetry run -- python scripts/dev/ci_source_provenance.py
+          --job-key ui-windows-dpi
+          --output build/dev-artifacts/app-polish-dpi/ci-source-provenance.json
+
       - name: Upload Windows DPI evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: ui-windows-dpi-regression
           path: build/dev-artifacts/app-polish-dpi
+          if-no-files-found: error
 
   public-dataset-gate:
     name: Required Public Multi-Dataset Gate
@@ -730,6 +766,12 @@ jobs:
           set -o pipefail
           poetry run -- python scripts/dev/run_public_cross_source_training_smoke.py --format json --strict | tee public-cross-source-smoke.json
 
+      - name: Record exact source provenance
+        run: >-
+          poetry run -- python scripts/dev/ci_source_provenance.py
+          --job-key public-dataset-gate
+          --output test-results/ci-source-provenance.json
+
       - name: Upload public dataset gate reports
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
@@ -739,5 +781,6 @@ jobs:
             dataset-validation-matrix.json
             data-interpretation-format-matrix.json
             public-cross-source-smoke.json
+            test-results/ci-source-provenance.json
             test-results/*.json
-          if-no-files-found: warn
+          if-no-files-found: error
