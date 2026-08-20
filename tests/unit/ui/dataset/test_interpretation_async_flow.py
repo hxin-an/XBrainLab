@@ -1261,7 +1261,11 @@ def test_real_async_revalidation_handoff_keeps_apply_as_visible_owner(
 
     with bind_interaction_completion(completion):
         outcome = handler._data_interpretation._review_interpretation_for_apply_async(
+            source_path="/data/sub-01",
+            source_hint="bids",
             choices={"class_map": {"1": "Target"}},
+            validated_choices={},
+            label_sources=["/data/sub-01/sub-01_events.tsv"],
             review_state=_review_state(publication_generation=17),
             dialog_result={"confirmed": True, "save_recipe": False},
         )
@@ -1535,7 +1539,7 @@ def test_confirm_import_revalidation_worker_failure_replaces_preparing_status(
     assert "Reopen Import EEG Data" in warning_text
 
 
-def test_confirm_import_revalidation_cancel_replaces_preparing_status(
+def test_confirm_import_resource_check_cancel_replaces_preparing_status(
     monkeypatch,
 ) -> None:
     panel = MagicMock()
@@ -1591,6 +1595,166 @@ def test_confirm_import_revalidation_cancel_replaces_preparing_status(
     assert statuses == [
         ("Dataset import cancelled", 7000),
     ]
+
+
+@pytest.mark.parametrize("cancelled_command", ["preview", "validation"])
+def test_confirm_import_revalidation_cancel_reopens_edited_review_without_failure(
+    monkeypatch,
+    cancelled_command: str,
+) -> None:
+    panel = MagicMock()
+    handler = DatasetActionHandler(panel)
+    coordinator = handler._data_interpretation
+    review_state = _review_state(publication_generation=17)
+    preview_state = replace(
+        review_state,
+        preview={"summary": "ready"},
+        publication_generation=18,
+    )
+    revised_choices = {"class_map": {"1": "Target"}}
+    statuses: list[tuple[str, int]] = []
+
+    class _Dialog:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        @staticmethod
+        def exec() -> bool:
+            return True
+
+        @staticmethod
+        def get_result() -> dict[str, Any]:
+            return {"confirmed": True, "choices": revised_choices}
+
+    monkeypatch.setattr(actions, "DataInterpretationPreviewDialog", _Dialog)
+    monkeypatch.setattr(
+        handler,
+        "_show_status",
+        lambda message, timeout_ms=7000: statuses.append((message, timeout_ms)),
+    )
+    monkeypatch.setattr(
+        coordinator,
+        "_review_state_from_parts",
+        MagicMock(return_value=preview_state),
+    )
+    execute = MagicMock(return_value=InteractionOutcome.accepted("scheduled"))
+    warning = MagicMock()
+    critical = MagicMock()
+    coordinator._bindings = replace(
+        coordinator._bindings,
+        execute_application_command_async=execute,
+        single_shot=lambda _delay, callback: callback(),
+        qt_object_deleted=lambda _owner: False,
+        reserve_interaction_continuation=lambda: None,
+        message_box=lambda: SimpleNamespace(warning=warning, critical=critical),
+    )
+
+    outcome = coordinator._continue_data_interpretation_import(
+        source_path="/data/sub-01",
+        source_hint="bids",
+        choices={},
+        label_sources=["/data/sub-01/sub-01_events.tsv"],
+        review_state=review_state,
+    )
+    assert outcome.status is InteractionStatus.ACCEPTED
+
+    if cancelled_command == "validation":
+        preview_terminal = execute.call_args.kwargs["on_result"](
+            _success_result(
+                "preview_interpretation",
+                preview={"summary": "ready"},
+                candidate={"candidate_id": "candidate-1"},
+            )
+        )
+        assert preview_terminal.status is InteractionStatus.ACCEPTED
+
+    reopen = MagicMock(return_value=InteractionOutcome.accepted("reopened"))
+    monkeypatch.setattr(coordinator, "_continue_data_interpretation_import", reopen)
+    terminal = execute.call_args.kwargs["on_result"](
+        _cancelled_result(
+            "validate_interpretation"
+            if cancelled_command == "validation"
+            else "preview_interpretation"
+        )
+    )
+
+    assert terminal.status is InteractionStatus.ACCEPTED
+    warning.assert_not_called()
+    critical.assert_not_called()
+    assert statuses == [
+        ("Dataset import cancelled · Review preserved", 7000),
+    ]
+    reopen.assert_called_once_with(
+        source_path="/data/sub-01",
+        source_hint="bids",
+        choices=revised_choices,
+        label_sources=["/data/sub-01/sub-01_events.tsv"],
+        review_state=(
+            preview_state if cancelled_command == "validation" else review_state
+        ),
+        initial_step="Review and Import",
+        validated_choices={},
+    )
+
+
+def test_reopened_revalidation_cancel_cannot_apply_unvalidated_edited_choices(
+    monkeypatch,
+) -> None:
+    panel = MagicMock()
+    handler = DatasetActionHandler(panel)
+    coordinator = handler._data_interpretation
+    review_state = _review_state(publication_generation=17)
+    revised_choices = {"class_map": {"1": "Target"}}
+
+    class _Dialog:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        @staticmethod
+        def exec() -> bool:
+            return True
+
+        @staticmethod
+        def get_result() -> dict[str, Any]:
+            return {"confirmed": True, "choices": revised_choices}
+
+    monkeypatch.setattr(actions, "DataInterpretationPreviewDialog", _Dialog)
+    revalidate = MagicMock(
+        return_value=InteractionOutcome.accepted("revalidation scheduled")
+    )
+    apply_review = MagicMock()
+    monkeypatch.setattr(
+        coordinator,
+        "_review_interpretation_for_apply_async",
+        revalidate,
+    )
+    monkeypatch.setattr(
+        coordinator,
+        "_apply_interpretation_async",
+        apply_review,
+    )
+
+    outcome = coordinator._continue_data_interpretation_import(
+        source_path="/data/sub-01",
+        source_hint="bids",
+        choices=revised_choices,
+        label_sources=["/data/sub-01/sub-01_events.tsv"],
+        review_state=review_state,
+        initial_step="Review and Import",
+        validated_choices={},
+    )
+
+    assert outcome.status is InteractionStatus.ACCEPTED
+    revalidate.assert_called_once_with(
+        source_path="/data/sub-01",
+        source_hint="bids",
+        choices=revised_choices,
+        validated_choices={},
+        label_sources=["/data/sub-01/sub-01_events.tsv"],
+        review_state=review_state,
+        dialog_result={"confirmed": True, "choices": revised_choices},
+    )
+    apply_review.assert_not_called()
 
 
 def test_blocked_review_closes_without_a_second_error_dialog(monkeypatch) -> None:

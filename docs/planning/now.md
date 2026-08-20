@@ -56,6 +56,13 @@ presentation boundary；不在同一 branch 重構 Load Data。
   event trace在 Confirm 後只觀察到 Review 的 Close／Hide，沒有第二個 product QDialog Show；修復先消除
   modal close call stack 內同步啟動後續 command 的 re-entrancy，再由 native hand-test 判定是否仍為 WSLg
   compositor-only artifact。
+- Exact `ddcf4500` 已通過 42/42 local handoff 與 applicable remote checks，但使用者 native 手測在
+  `Review and Import` 修改選項、按 `Confirm and Import`、再由 sidebar 按 `Cancel Import` 時，仍收到
+  `Interpretation preview failed` blocking OK dialog。Source trace 確認此時尚在 edited choices 的
+  `PreviewInterpretationCommand`／`ValidateInterpretationCommand` revalidation；兩個 result callback 都在
+  辨識 typed `ErrorType.CANCELLED` 前呼叫通用 failure presenter。既有 test 只模擬 resource-check cancel，
+  沒有送入真實 cancelled command result，因此未能攔截這個 presentation ordering defect。該 SHA 的
+  handoff evidence只保留為歷史，自動與手測 acceptance 均不得支撐 merge。
 
 ## Observable outcome
 
@@ -75,6 +82,10 @@ presentation boundary；不在同一 branch 重構 Load Data。
    status；不得顯示 error／success／Retry dialog，也不得晚到開啟 subject selector。
 8. `Confirm and Import` 接受 Review 後，Review dialog 必須完成 hide／destroy，且經過下一個 Qt event-loop
    turn後才啟動 revalidation／Apply；同一轉場不得新增或重顯 transient top-level dialog。
+9. Edited choices revalidation 收到 Preview 或 Validate typed cancellation 時，不得顯示 failure／success／
+   Retry dialog；只顯示 `Dataset import cancelled · Review preserved`，並在下一個 Qt event-loop turn重開
+   `Review and Import`。重開必須保留本次尚未 commit 的 edited choices、不重新 scan來源；再次 Confirm 後
+   可正常 revalidate並完成 Apply。MainWindow開始關閉時不得重開。
 
 ## Scope／non-goals
 
@@ -223,6 +234,10 @@ source-diverse data gate、exact commit、完整 handoff／remote CI，之後交
    walkthrough、canonical 42-gate handoff與remote CI；source改動後舊 dossier與manual observation全部失效。
 5. 交付同一 exact SHA 的 PhysicalMI native流程：pre-subject Cancel零popup、post-subject Cancel單一surface、
    Confirm零transient window、Apply Cancel後同review可重試。使用者明確通過前PR #42不得merge。
+6. 補 edited choices revalidation 的 Preview／Validate cancellation：先以 raw cancelled command result建立
+   red tests，再把 cancellation-first ordering 與現有 Apply cancel 的 review-reopen continuation收斂為同一
+   coordinator policy。取消後必須帶原 source context與 detached edited choices重開 Review，不讀取尚未
+   commit 的 backend publication，也不新增第二套 retry owner。
 
 Checkpoint（`2026-08-20`）：兩個 red tests 分別重現 cancelled catalog result 被通用 failure presenter
 轉成 blocking dialog，以及 accepted Review 在 QDialog destroyed 前同步 dispatch Apply。最小修復在辨識
@@ -232,6 +247,25 @@ Checkpoint（`2026-08-20`）：兩個 red tests 分別重現 cancelled catalog r
 lifecycle、5項 loading／真實BIDS cancel-retry、10項wizard format matrix、全專案Ruff／format、Basedpyright
 regression與4-source public smoke全部PASS。下一步是exact commit後的42-gate handoff／remote CI，再交付
 PhysicalMI native手測；自動證據不能判定WSLg compositor flash已消失。
+
+Checkpoint（`2026-08-20`，revalidation cancellation hand-test failure）：exact `ddcf4500` 的完整
+handoff／remote checks不能覆蓋使用者在 Confirm 後取消 edited-choice revalidation 的操作；native手測已
+證明 blocking `Interpretation preview failed` dialog仍存在。使用者已明確選擇取消後自動重開
+`Review and Import`，且保留剛修改的 choices。下一步只修改既有 Data Interpretation coordinator：Preview
+與 Validate callback在 failure presenter前處理 typed cancellation，重用 Apply cancellation 的 deferred
+review continuation；focused green、source-diverse evidence與新 exact-source 42-gate handoff通過後才重新
+交付手測。PR #42保持不可merge。
+
+Checkpoint（`2026-08-20`，revalidation cancellation focused green）：production只修改既有 Data
+Interpretation coordinator，`+125/-37`、淨增88行；沒有新增owner、state machine、receipt或backend
+command。Preview／Validate typed cancellation現在先於通用failure presenter處理，並與Apply cancellation
+共用同一deferred Review continuation。重開同時保存edited choices與最後已驗證choices；Validate已先發布
+新preview時沿用其candidate／generation、保留原review decision，下一次Confirm仍強制revalidate，不能直接
+Apply舊candidate。73項coordinator lifecycle、13項loading／wizard matrix、81項format後focused UI/import、
+兩條真BIDS cancel/reopen native-worker路徑、Ruff、Basedpyright regression、MkDocs strict與4-source public
+smoke均PASS。現有public BIDS tiny wizard無法穩定製造與PhysicalMI相同的final edited-choice projection，
+因此不以test-only state injection冒充完整E2E；新exact commit通過42-gate handoff／remote CI後，仍須使用者
+在PhysicalMI實際執行修改choice→Confirm→Cancel→Review重開→再次Confirm，才可恢復manual acceptance。
 
 ## Focused validation 與 stop condition
 
