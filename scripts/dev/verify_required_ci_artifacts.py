@@ -13,6 +13,7 @@ from scripts.dev.ci_source_provenance import validate_ci_source_provenance
 from scripts.dev.pytest_completion_attestation import (
     REQUIRED_PYTEST_RUNNER_ID,
     SHARDED_PYTEST_RUNNER_ID,
+    validate_attestation_payload,
 )
 
 ArtifactValidator = Callable[[Mapping[str, Any]], str | None]
@@ -23,17 +24,22 @@ def _pytest_failure(
     *,
     expected_runner: str,
 ) -> str | None:
-    if payload.get("schema_version") != 2 or payload.get("runner") != expected_runner:
-        return "pytest completion schema or runner does not match"
-    if payload.get("completed") is not True or payload.get("exit_code") != 0:
-        return "pytest execution did not complete successfully"
-    counts = payload.get("counts")
-    outcomes = payload.get("outcomes")
-    if not isinstance(counts, Mapping) or not isinstance(outcomes, Mapping):
-        return "pytest completion counts or outcomes are missing"
-    if not outcomes or not isinstance(counts.get("executed"), int):
-        return "pytest completion contains no terminal outcomes"
-    if counts.get("executed", 0) <= 0:
+    command_args = payload.get("command_args")
+    if not isinstance(command_args, list) or any(
+        not isinstance(item, str) for item in command_args
+    ):
+        return "pytest completion arguments are missing or malformed"
+    validated, failure = validate_attestation_payload(
+        payload,
+        expected_runner=expected_runner,
+        expected_args=command_args,
+        expected_exit_code=0,
+    )
+    if failure is not None or validated is None:
+        return failure or "pytest completion attestation is invalid"
+    counts = validated["counts"]
+    outcomes = validated["outcomes"]
+    if counts["executed"] <= 0 or not outcomes:
         return "pytest completion did not execute any tests"
     if any(counts.get(name) != 0 for name in ("failed", "errors")):
         return "pytest completion contains a failed or error outcome"

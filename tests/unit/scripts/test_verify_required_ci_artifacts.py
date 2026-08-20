@@ -67,6 +67,7 @@ def test_required_ci_artifacts_bind_producer_and_runner(monkeypatch, tmp_path) -
                 "runner": verifier.SHARDED_PYTEST_RUNNER_ID,
                 "completed": True,
                 "exit_code": 0,
+                "command_args": ["platform-core-contracts"],
                 "counts": {
                     "collected": 1,
                     "executed": 1,
@@ -108,6 +109,55 @@ def test_required_ci_artifacts_bind_producer_and_runner(monkeypatch, tmp_path) -
         "expected_github_job": "platform-test",
         "expected_runner_os": "Windows",
     }
+
+
+def test_required_ci_artifacts_reject_forged_failed_pytest_outcome(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    result = tmp_path / "result.json"
+    provenance = tmp_path / "provenance.json"
+    result.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "runner": verifier.SHARDED_PYTEST_RUNNER_ID,
+                "completed": True,
+                "exit_code": 0,
+                "command_args": ["platform-core-contracts"],
+                "counts": {
+                    "collected": 1,
+                    "executed": 1,
+                    "passed": 1,
+                    "failed": 0,
+                    "errors": 0,
+                    "skipped": 0,
+                    "xfailed": 0,
+                    "xpassed": 0,
+                    "deselected": 0,
+                },
+                "outcomes": {"tests/test_example.py::test_example": "failed"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    provenance.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        verifier,
+        "validate_ci_source_provenance",
+        lambda *_args, **_kwargs: ({}, None),
+    )
+
+    failures = verifier.verify_required_ci_artifacts(
+        required_artifacts=[("sharded-pytest", result)],
+        provenance_path=provenance,
+        expected_job_key="platform",
+        expected_github_job="platform-test",
+        expected_runner_os="Windows",
+    )
+
+    assert len(failures) == 1
+    assert "outcomes do not match counts" in failures[0]
 
 
 def test_required_ci_artifacts_reject_empty_wrong_type_and_failed_results(
