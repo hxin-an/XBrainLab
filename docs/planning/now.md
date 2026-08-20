@@ -194,8 +194,9 @@ control manifest。
   workflow；canonical strict GateSpec仍執行真CLI。Standalone checkout從10次heavy subprocess收斂為
   全script AST順序guard＋1次unrelated-cwd真啟動。Human-like payload與atomic publication tests共用一次
   exact immutable source snapshot；真capture仍在開始／結束各refresh。相對上一輪11,302 outcome，預期
-  exact count delta為30（22個重複training、5個mock controller、2個absorbed regression、1個duplicate
-  CLI），final denominator應為11,272；須由下一次complete regression attestation閉合。
+  exact count delta為31（22個重複training、5個mock controller、2個absorbed regression、1個duplicate
+  CLI、1個只保護已刪不存在路徑的source-guard案例），final denominator應為11,271；須由下一次
+  complete regression attestation閉合。
 
 ## Focused validation 與 stop condition
 
