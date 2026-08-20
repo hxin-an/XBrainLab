@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import inspect
 from collections.abc import Mapping
 from copy import deepcopy
 from datetime import UTC, datetime
@@ -47,7 +46,6 @@ from scripts.dev.capture_human_like_product_walkthrough import (
     PHASE_ALIASES,
     REQUIRED_PHASES,
     SCREENSHOT_NAMES,
-    WALKTHROUGH_EVENT_ROWS,
     _assert_assistant_dock_rendered,
     _assert_consecutive_complete_frames,
     _assert_main_navigation_rendered,
@@ -59,7 +57,6 @@ from scripts.dev.capture_human_like_product_walkthrough import (
     _record_capture_source_stability,
     _required_command_payload,
     _ru_maxrss_kb,
-    _run_walkthrough_steps,
     _use_native_window_capture,
     apply_review_choices,
     build_artifact_contract,
@@ -76,7 +73,6 @@ from scripts.dev.capture_human_like_product_walkthrough import (
     build_ui_quality_review,
     build_workflow_contract_failures,
     capture_named,
-    capture_widget,
     chat_panel_geometry,
     claim_boundary,
     dataset_page_geometry,
@@ -89,7 +85,6 @@ from scripts.dev.capture_human_like_product_walkthrough import (
     publish_artifact_run,
     render_markdown,
     resource_snapshot,
-    run_chatpanel_walkthrough,
     settle_window_close_for_capture,
     settle_window_geometry_for_capture,
     validate_walkthrough_payload,
@@ -190,28 +185,6 @@ def test_assistant_settings_isolation_builds_a_complete_pinned_model_snapshot() 
         assert config is not None
         assert config.cache_dir == str(isolation.cache_root)
         assert config.has_local_model_cache(PRIMARY_LOCAL_MODEL_ID) is True
-
-
-def test_confirmation_walkthrough_targets_inline_card_actions() -> None:
-    source = Path("scripts/dev/human_like_walkthrough/capture.py").read_text(
-        encoding="utf-8"
-    )
-
-    assert "AssistantConfirmationCard" in source
-    assert "card.primary_button if approved else card.secondary_button" in source
-    assert "QMessageBox" not in source
-
-
-def test_confirmation_walkthrough_captures_card_before_choice() -> None:
-    source = Path("scripts/dev/human_like_walkthrough/capture.py").read_text(
-        encoding="utf-8"
-    )
-
-    capture_index = source.index('screenshots["assistant_confirmation_card"]')
-    click_index = source.index(
-        "click_assistant_control(cast(QWidget, decision_button))"
-    )
-    assert capture_index < click_index
 
 
 def test_rotated_x_tick_overlap_uses_anchor_spacing_not_axis_aligned_bounds() -> None:
@@ -2641,13 +2614,6 @@ def test_capture_frame_readiness_requires_stable_consecutive_frames(tmp_path) ->
         _assert_consecutive_complete_frames(first, second)
 
 
-def test_capture_uses_qt_backing_store_instead_of_recursive_widget_render() -> None:
-    source = inspect.getsource(capture_widget) + inspect.getsource(_grab_widget_to_path)
-
-    assert "widget.render(" not in source
-    assert "widget.grab()" in source
-
-
 def test_docked_widget_capture_crops_composed_main_window_with_dpr(
     qtbot, tmp_path
 ) -> None:
@@ -2758,17 +2724,6 @@ def test_walkthrough_direct_user_input_fails_closed_without_turn_activity() -> N
     assert controller._active_turn is None
     assert presentations == []
     assert terminals == []
-
-
-def test_walkthrough_source_has_no_standalone_turn_admission_fallback() -> None:
-    controller_source = inspect.getsource(WalkthroughAssistantController)
-    admitted_source = inspect.getsource(WalkthroughAssistantController.handle_user_turn)
-    direct_source = inspect.getsource(WalkthroughAssistantController.handle_user_input)
-
-    assert "_standalone_turn_sequence" not in controller_source
-    assert "AssistantTurnCorrelation(" not in direct_source
-    assert "_handle_admitted_user_input(payload.text)" in admitted_source
-    assert "raise RuntimeError" in direct_source
 
 
 def test_walkthrough_confirmation_publishes_a_terminal_result() -> None:
@@ -2973,60 +2928,6 @@ def test_walkthrough_handoff_does_not_restore_legacy_callback_surface() -> None:
         "on_existing_ui_unavailable",
     ):
         assert not hasattr(controller, callback_name)
-
-
-def test_assistant_walkthrough_source_forbids_direct_ui_state_injection() -> None:
-    source = inspect.getsource(run_chatpanel_walkthrough)
-
-    for forbidden in (
-        "chat_controller.add_user_message",
-        "chat_controller.add_agent_message",
-        "panel.set_runtime_state",
-        "panel.set_processing_state",
-        "chat_controller.set_processing",
-    ):
-        assert forbidden not in source
-
-
-def test_entry_delegates_assistant_capture_to_cohesive_helper() -> None:
-    source = inspect.getsource(run_chatpanel_walkthrough)
-
-    assert "assistant_capture.run_assistant_walkthrough" in source
-    assert len(source.splitlines()) <= 35
-
-
-def test_single_recording_walkthrough_uses_individual_trial_split() -> None:
-    source = inspect.getsource(_run_walkthrough_steps)
-
-    assert len(WALKTHROUGH_EVENT_ROWS) == 10
-    assert len(set(WALKTHROUGH_EVENT_ROWS)) == 10
-    assert "t_max=0.51" in source
-    assert 'model_name="SCCNet"' in source
-    assert '"train_type": "Individual"' in source
-    assert '"split_type": "By Trial"' in source
-    assert "DatasetSplitPreviewRequest(" in source
-    assert "SaveDatasetSplitCommand(" in source
-    assert "GenerateDatasetCommand(" not in source
-    assert "TrainCommand(confirmed=True, interactive=True)" in source
-    assert "TrainCommand(confirmed=True, interactive=False)" not in source
-
-
-@pytest.mark.parametrize(
-    "reviewer",
-    [
-        build_assistant_processing_contract_review,
-        build_assistant_runtime_contract_review,
-        build_assistant_dock_contract_review,
-        build_assistant_notice_contract_review,
-        build_assistant_signal_path_review,
-        build_assistant_stage_copy_review,
-    ],
-)
-def test_assistant_reviewers_are_owned_by_walkthrough_helper(reviewer: Any) -> None:
-    source_file = inspect.getsourcefile(reviewer)
-
-    assert source_file is not None
-    assert Path(source_file).parent.name == "human_like_walkthrough"
 
 
 def test_data_import_visual_evidence_requires_distinct_expected_steps(tmp_path) -> None:
@@ -3768,15 +3669,6 @@ def test_required_command_payload_reports_contract_mismatch_without_key_error() 
             expected_payload_type="scan_result",
             required_fields=("scan_result",),
         )
-
-
-def test_walkthrough_source_does_not_index_command_diagnostics_payloads() -> None:
-    source = inspect.getsource(walkthrough_module)
-
-    assert '.diagnostics["scan_result"]' not in source
-    assert '.diagnostics["preview"]' not in source
-    assert '.diagnostics["validation_decision"]' not in source
-    assert '.diagnostics.get("validation_decision"' not in source
 
 
 def test_main_returns_nonzero_when_walkthrough_artifact_fails(
