@@ -257,6 +257,59 @@ jobs:
             test-results/*.xml
             coverage.xml
 
+  human-like-product:
+    name: Human-like Product Walkthrough
+    needs: changes
+    if: needs.changes.outputs.product == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      QT_QPA_PLATFORM: offscreen
+      MNE_DONTWRITE_HOME: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgl1 libegl1 libxkbcommon0 libdbus-1-3 libxcb-cursor0
+
+      - name: Install Poetry
+        run: |
+          pip install poetry
+          poetry config virtualenvs.create true
+          poetry config virtualenvs.in-project true
+
+      - name: Cache Poetry venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-3.11-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            venv-${{ runner.os }}-3.11-
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Capture human-like product walkthrough
+        run: |
+          poetry run -- python scripts/dev/capture_human_like_product_walkthrough.py \
+            --output-dir build/dev-artifacts/human-like-product
+
+      - name: Upload human-like product evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: human-like-product-walkthrough
+          path: build/dev-artifacts/human-like-product
+          if-no-files-found: error
+
   platform-test:
     name: Platform Tests (${{ matrix.os }}, ${{ matrix.command }}, py3.11)
     needs: changes

@@ -9,7 +9,7 @@
 runtime。這條 branch 會審查全部 tracked tests，不只處理幾個 E2E 檔；完成完整 handoff 與
 remote CI 後才交使用者做核心產品 walkthrough，通過前不合併。
 
-目前 phase：`E2E／pipeline claim cleanup checkpoint`
+目前 phase：`CI artifact de-dup complete; measured runner candidate next`
 
 本 branch 只修改 tests、test fixtures、developer validation／CI scripts 與直接相關文件；不修改
 `XBrainLab/` 產品 UI、ApplicationService、EEG semantics、training 或 Assistant 行為。若清理揭露
@@ -67,7 +67,7 @@ file／replacement mapping，不建立另一份萬筆 test manifest。
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | unit/backend | 186 | 1 | 0 | 1 | 0 | 0 | in progress |
 | unit/llm | 77 | 0 | 0 | 0 | 0 | 0 | pending |
-| unit/scripts | 70 | 0 | 0 | 0 | 0 | 0 | pending |
+| unit/scripts | 70 | 1 | 0 | 1 | 0 | 0 | in progress |
 | unit/ui | 120 | 3 | 0 | 3 | 0 | 0 | in progress |
 | unit/root | 10 | 1 | 0 | 1 | 0 | 0 | in progress |
 | integration/agent | 5 | 0 | 0 | 0 | 0 | 0 | pending |
@@ -78,7 +78,7 @@ file／replacement mapping，不建立另一份萬筆 test manifest。
 | integration/llm | 1 | 0 | 0 | 0 | 0 | 0 | pending |
 | integration/pipeline | 14 | 6 | 1 | 0 | 4 | 1 | in progress |
 | integration/training | 1 | 0 | 0 | 0 | 0 | 0 | pending |
-| integration/ui | 25 | 4 | 0 | 3 | 1 | 0 | in progress |
+| integration/ui | 25 | 5 | 0 | 3 | 1 | 1 | in progress |
 | regression | 2 | 0 | 0 | 0 | 0 | 0 | pending |
 
 ## Scope／non-goals
@@ -168,6 +168,12 @@ file／replacement mapping，不建立另一份萬筆 test manifest。
   boundary的名稱。刪除唯一以 MagicMock Dataset、跳過 type validation且隔離全部 artifact writers
   的假 pipeline test；其唯一 AUC claim已移入 real MNE Dataset trainer integration。選定 family
   baseline由 61變60 tests，exact delta為這一個弱測試；連同 architecture guards共341 tests通過。
+- `2026-08-20` CI artifact去重與runner candidate：刪除會在 `linux-integration-ui` 內再次啟動完整
+  human-like capture的 pytest wrapper；artifact producer保留為 local handoff canonical gate，remote CI
+  改成獨立平行 `human-like-product` job並上傳相同 artifact。直接執行capture成功，8個CI／partition
+  contracts通過。Local regression仍保留unit→integration barrier與八組membership，候選改為固定
+  三worker／longest-first，並記錄每組 wall／CPU／peak RSS／process count；目前只有5個runner unit
+  contracts通過，尚未以兩輪warm full regression採用效能claim。
 
 ## Focused validation 與 stop condition
 

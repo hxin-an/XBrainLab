@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from scripts.dev import run_local_handoff_regression as runner
@@ -11,7 +12,22 @@ def test_fixed_phases_partition_authoritative_linux_groups_once() -> None:
 
     assert flattened == run_tests.LINUX_CI_COMMANDS
     assert len(flattened) == len(set(flattened))
-    assert runner.MAX_PARALLEL_GROUPS == 2
+    assert runner.MAX_PARALLEL_GROUPS == 3
+
+
+def test_phase_order_is_deterministic_longest_first() -> None:
+    assert runner._ordered_phase_commands(runner.FIXED_PHASES[0]) == (
+        "linux-unit-scripts",
+        "linux-unit-ui",
+        "linux-unit-rest",
+        "linux-unit-backend",
+        "linux-unit-llm-agent",
+    )
+    assert runner._ordered_phase_commands(runner.FIXED_PHASES[1]) == (
+        "linux-integration-ui",
+        "linux-integration-rest",
+        "linux-integration-agent-timing",
+    )
 
 
 def test_failure_stops_before_next_phase_and_writes_failed_aggregate(
@@ -100,3 +116,9 @@ def test_group_execution_uses_owned_coverage_file_except_timing_group(
     assert not Path(environments[0]["XBRAINLAB_TEST_TMPDIR"]).is_relative_to(
         tmp_path / "covered"
     )
+    covered_telemetry = json.loads(
+        (tmp_path / "covered" / f"{covered}.telemetry.json").read_text(encoding="utf-8")
+    )
+    assert covered_telemetry["command"] == covered
+    assert covered_telemetry["return_code"] == 0
+    assert covered_telemetry["sampling_available"] is False
