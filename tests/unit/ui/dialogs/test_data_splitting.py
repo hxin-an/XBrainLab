@@ -96,6 +96,28 @@ class TestDrawRegion:
         r = DrawRegion(100, 50)
         r.set_to(30, 40, 0, 100)
 
+    def test_set_to_accepts_partial_ratio(self):
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DrawRegion
+
+        region = DrawRegion(5, 5)
+        region.set_from(0, 0)
+        region.set_to(3, 3, 0.2, 0.8)
+
+        assert region.to_canvas.sum() > 0
+
+    def test_set_to_ref_uses_existing_region(self):
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DrawRegion
+
+        reference = DrawRegion(5, 5)
+        reference.set_from(0, 0)
+        reference.set_to(5, 5, 0, 1)
+        region = DrawRegion(5, 5)
+        region.set_from(0, 0)
+
+        region.set_to_ref(3, 3, reference)
+
+        assert region.to_canvas.sum() > 0
+
     def test_change_to(self):
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DrawRegion
 
