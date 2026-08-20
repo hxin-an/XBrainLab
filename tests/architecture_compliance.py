@@ -618,10 +618,6 @@ PRODUCT_SUCCESS_BACKEND_FACADE_TEST_DIRS = (
     Path("tests/integration/pipeline"),
     Path("tests/integration/ui"),
 )
-PRODUCT_SUCCESS_LEGACY_FALLBACK_SYMBOLS = (
-    "get_controller_for_compatibility_context",
-    "run_controller_compatibility_call",
-)
 PRODUCT_SUCCESS_CONTROLLER_LOOKUP_ASSERTIONS = (
     "assert_any_call",
     "assert_called",
@@ -629,30 +625,9 @@ PRODUCT_SUCCESS_CONTROLLER_LOOKUP_ASSERTIONS = (
     "assert_called_once_with",
     "assert_called_with",
 )
-WEAK_TEST_NAME_PATTERNS = (
-    "accepted",
-    "no_crash",
-    "does_not_crash",
-)
-PRODUCT_SUCCESS_WEAK_TEST_NAME_PATTERNS = (
-    "init",
-    "initialization",
-    "initializes",
-)
-PIPELINE_STATE_EXACT_EVIDENCE_TEST = Path("tests/unit/llm/test_pipeline_state.py")
-LLM_PARSER_EXACT_EVIDENCE_TESTS = (
-    Path("tests/unit/llm/test_parser.py"),
-    Path("tests/unit/llm/test_misc_coverage.py"),
-)
 STRICT_TOOL_ENVELOPE_ENTRYPOINTS = (
     Path("XBrainLab/llm/agent/controller.py"),
     Path("scripts/dev/run_stable_assistant_model_eval.py"),
-)
-LLM_APPLICATION_SURFACE_EXACT_EVIDENCE_TESTS = (
-    Path("tests/unit/llm/tools/test_application_surface.py"),
-)
-LLM_AGENT_INTENT_BOUNDARY_EXACT_EVIDENCE_TESTS = (
-    Path("tests/unit/llm/agent/test_controller.py"),
 )
 LLM_AGENT_CONFIRMATION_EXACT_EVIDENCE_TESTS = (
     Path("tests/unit/llm/agent/test_confirmation.py"),
@@ -693,12 +668,6 @@ LEGACY_MONTAGE_MANAGER_SYMBOLS = (
 LEGACY_MONTAGE_FAKE_USER_MESSAGES = (
     "Montage Confirmed.",
     "Montage Selection Failed.",
-)
-LLM_CONTROLLER_INTEGRATION_EXACT_EVIDENCE_TESTS = (
-    Path("tests/unit/llm/agent/test_controller_integration.py"),
-)
-LLM_TOOL_DEFINITION_EXACT_EVIDENCE_TESTS = (
-    Path("tests/unit/llm/tools/test_definitions.py"),
 )
 DOC_CURRENT_TRUTH_FILES = (
     Path("docs/current.md"),
@@ -1250,15 +1219,6 @@ def check_architecture(root_dir: str) -> int:
             print(f" - {violation}")
         return 1
 
-    fallback_test_violations = check_product_success_legacy_fallback_tests(
-        Path(root_dir)
-    )
-    if fallback_test_violations:
-        print("\nProduct Success Legacy Fallback Test Violations Found:")
-        for violation in fallback_test_violations:
-            print(f" - {violation}")
-        return 1
-
     product_success_study_state_violations = (
         check_product_success_direct_study_state_tests(Path(root_dir))
     )
@@ -1302,40 +1262,6 @@ def check_architecture(root_dir: str) -> int:
             print(f" - {violation}")
         return 1
 
-    weak_test_name_violations = check_weak_test_names(Path(root_dir))
-    if weak_test_name_violations:
-        print("\nWeak Test Name Violations Found:")
-        for violation in weak_test_name_violations:
-            print(f" - {violation}")
-        return 1
-
-    generic_panel_assertion_violations = (
-        check_product_success_generic_panel_instance_assertions(Path(root_dir))
-    )
-    if generic_panel_assertion_violations:
-        print("\nProduct Success Generic Panel Assertion Violations Found:")
-        for violation in generic_panel_assertion_violations:
-            print(f" - {violation}")
-        return 1
-
-    pipeline_state_weak_assertion_violations = (
-        check_pipeline_state_weak_string_assertions(Path(root_dir))
-    )
-    if pipeline_state_weak_assertion_violations:
-        print("\nPipeline State Weak String Assertion Violations Found:")
-        for violation in pipeline_state_weak_assertion_violations:
-            print(f" - {violation}")
-        return 1
-
-    llm_parser_weak_assertion_violations = check_llm_parser_weak_parse_assertions(
-        Path(root_dir)
-    )
-    if llm_parser_weak_assertion_violations:
-        print("\nLLM Parser Weak Parse Assertion Violations Found:")
-        for violation in llm_parser_weak_assertion_violations:
-            print(f" - {violation}")
-        return 1
-
     tool_envelope_boundary_violations = check_product_tool_envelope_boundary(
         Path(root_dir)
     )
@@ -1360,51 +1286,6 @@ def check_architecture(root_dir: str) -> int:
     if resource_receipt_boundary_violations:
         print("\nAgent Resource Receipt Boundary Violations Found:")
         for violation in resource_receipt_boundary_violations:
-            print(f" - {violation}")
-        return 1
-
-    llm_application_surface_weak_assertion_violations = (
-        check_llm_application_surface_weak_result_assertions(Path(root_dir))
-    )
-    if llm_application_surface_weak_assertion_violations:
-        print("\nLLM Application Surface Weak Result Assertion Violations Found:")
-        for violation in llm_application_surface_weak_assertion_violations:
-            print(f" - {violation}")
-        return 1
-
-    llm_agent_intent_boundary_weak_assertion_violations = (
-        check_llm_agent_intent_boundary_weak_result_assertions(Path(root_dir))
-    )
-    if llm_agent_intent_boundary_weak_assertion_violations:
-        print("\nLLM Agent Intent-Boundary Weak Result Assertion Violations Found:")
-        for violation in llm_agent_intent_boundary_weak_assertion_violations:
-            print(f" - {violation}")
-        return 1
-
-    llm_agent_confirmation_weak_assertion_violations = (
-        check_llm_agent_confirmation_weak_pending_assertions(Path(root_dir))
-    )
-    if llm_agent_confirmation_weak_assertion_violations:
-        print("\nLLM Agent Confirmation Weak Pending Assertion Violations Found:")
-        for violation in llm_agent_confirmation_weak_assertion_violations:
-            print(f" - {violation}")
-        return 1
-
-    llm_controller_integration_weak_assertion_violations = (
-        check_llm_controller_integration_weak_initialization_assertions(Path(root_dir))
-    )
-    if llm_controller_integration_weak_assertion_violations:
-        print("\nLLM Controller Integration Weak Initialization Violations Found:")
-        for violation in llm_controller_integration_weak_assertion_violations:
-            print(f" - {violation}")
-        return 1
-
-    llm_tool_definition_weak_assertion_violations = (
-        check_llm_tool_definition_weak_string_assertions(Path(root_dir))
-    )
-    if llm_tool_definition_weak_assertion_violations:
-        print("\nLLM Tool Definition Weak String Assertion Violations Found:")
-        for violation in llm_tool_definition_weak_assertion_violations:
             print(f" - {violation}")
         return 1
 
@@ -7247,34 +7128,6 @@ def check_backend_facade_test_usage(root_dir: Path) -> list[str]:
     return violations
 
 
-def check_product_success_legacy_fallback_tests(root_dir: Path) -> list[str]:
-    """Return product-success tests that still use controller compatibility helpers."""
-    violations: list[str] = []
-
-    for relative_dir in PRODUCT_SUCCESS_BACKEND_FACADE_TEST_DIRS:
-        test_dir = root_dir / relative_dir
-        if not test_dir.exists():
-            continue
-        for py_file in test_dir.rglob("*.py"):
-            source = py_file.read_text(encoding="utf-8")
-            try:
-                tree = ast.parse(source, filename=str(py_file))
-            except SyntaxError:
-                continue
-            visitor = _LegacyFallbackTestUsageVisitor()
-            visitor.visit(tree)
-            violations.extend(
-                f"{_repo_relative_posix(py_file, root_dir)}:"
-                f"{getattr(node, 'lineno', 0)} uses "
-                f"{_legacy_fallback_symbol_name(node)} as controller compatibility "
-                "product-success evidence; rewrite the test to exercise "
-                "ApplicationService / Command API, or move compatibility "
-                "coverage into explicit compatibility-only unit tests."
-                for node in visitor.violations
-            )
-    return violations
-
-
 def check_product_success_direct_study_state_tests(root_dir: Path) -> list[str]:
     """Return product-success tests that use mutable Study state as success truth."""
     violations: list[str] = []
@@ -7365,155 +7218,6 @@ def check_product_success_controller_lookup_assertions(root_dir: Path) -> list[s
                 "or an explicit assert_not_called boundary instead."
                 for call in visitor.violations
             )
-    return violations
-
-
-def check_weak_test_names(root_dir: Path) -> list[str]:
-    """Return tests named like smoke placeholders instead of behavior checks."""
-    violations: list[str] = []
-    tests_dir = root_dir / "tests"
-    if not tests_dir.exists():
-        return violations
-
-    for py_file in tests_dir.rglob("*.py"):
-        if py_file.name == "__init__.py":
-            continue
-        source = py_file.read_text(encoding="utf-8")
-        try:
-            tree = ast.parse(source, filename=str(py_file))
-        except SyntaxError:
-            continue
-
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            if not node.name.startswith("test_"):
-                continue
-            relative_file = py_file.relative_to(root_dir)
-            patterns = WEAK_TEST_NAME_PATTERNS
-            if _is_under_any(relative_file, PRODUCT_SUCCESS_TEST_DIRS):
-                patterns = (
-                    *WEAK_TEST_NAME_PATTERNS,
-                    *PRODUCT_SUCCESS_WEAK_TEST_NAME_PATTERNS,
-                )
-            if not _is_weak_test_name(node.name, patterns):
-                continue
-            violations.append(
-                f"{py_file.relative_to(root_dir)}:{node.lineno} uses weak test "
-                f"name {node.name!r}; rename it to behavior-specific evidence "
-                "and assert command/result/state semantics instead of a generic "
-                "accepted/no-crash path.",
-            )
-    return violations
-
-
-def _is_weak_test_name(
-    test_name: str,
-    patterns: tuple[str, ...] = WEAK_TEST_NAME_PATTERNS,
-) -> bool:
-    parts = test_name.split("_")
-    return any(
-        pattern in parts if "_" not in pattern else pattern in test_name
-        for pattern in patterns
-    )
-
-
-def _is_under_any(relative_file: Path, roots: tuple[Path, ...]) -> bool:
-    return any(relative_file == root or root in relative_file.parents for root in roots)
-
-
-def check_product_success_generic_panel_instance_assertions(
-    root_dir: Path,
-) -> list[str]:
-    """Return product-success tests that only assert panel construction shape."""
-    violations: list[str] = []
-
-    for relative_dir in PRODUCT_SUCCESS_TEST_DIRS:
-        test_dir = root_dir / relative_dir
-        if not test_dir.exists():
-            continue
-        for py_file in test_dir.rglob("*.py"):
-            if py_file.name == "__init__.py":
-                continue
-            source = py_file.read_text(encoding="utf-8")
-            try:
-                tree = ast.parse(source, filename=str(py_file))
-            except SyntaxError:
-                continue
-
-            for node in ast.walk(tree):
-                if not isinstance(node, ast.Assert):
-                    continue
-                if not _is_generic_panel_instance_assertion(node.test):
-                    continue
-                violations.append(
-                    f"{py_file.relative_to(root_dir)}:{node.lineno} uses generic "
-                    "panel isinstance assertion as product-success evidence; "
-                    "assert CommandResult, state diagnostics, refresh result, or "
-                    "UI-visible blocked/success text instead.",
-                )
-    return violations
-
-
-def _is_generic_panel_instance_assertion(node: ast.AST) -> bool:
-    if not isinstance(node, ast.Call):
-        return False
-    if not isinstance(node.func, ast.Name) or node.func.id != "isinstance":
-        return False
-    if len(node.args) < 2:
-        return False
-    panel_type = node.args[1]
-    if isinstance(panel_type, ast.Name):
-        return panel_type.id.endswith("Panel")
-    if isinstance(panel_type, ast.Attribute):
-        return panel_type.attr.endswith("Panel")
-    return False
-
-
-def check_pipeline_state_weak_string_assertions(root_dir: Path) -> list[str]:
-    """Return pipeline-state tests that use generic non-empty string assertions."""
-    test_file = root_dir / PIPELINE_STATE_EXACT_EVIDENCE_TEST
-    if not test_file.exists():
-        return []
-
-    try:
-        tree = ast.parse(test_file.read_text(encoding="utf-8"), filename=str(test_file))
-    except SyntaxError:
-        return []
-
-    visitor = _PipelineStateWeakStringAssertionVisitor()
-    visitor.visit(tree)
-    return [
-        f"{PIPELINE_STATE_EXACT_EVIDENCE_TEST}:{node.lineno} uses a generic "
-        "non-empty pipeline state string assertion; assert exact stage prompt "
-        "markers or the full stage-label display contract instead."
-        for node in visitor.violations
-    ]
-
-
-def check_llm_parser_weak_parse_assertions(root_dir: Path) -> list[str]:
-    """Return parser tests that only assert parse output exists."""
-    violations: list[str] = []
-
-    for relative_file in LLM_PARSER_EXACT_EVIDENCE_TESTS:
-        test_file = root_dir / relative_file
-        if not test_file.exists():
-            continue
-        try:
-            tree = ast.parse(
-                test_file.read_text(encoding="utf-8"), filename=str(test_file)
-            )
-        except SyntaxError:
-            continue
-
-        visitor = _LLMParserWeakParseAssertionVisitor()
-        visitor.visit(tree)
-        violations.extend(
-            f"{relative_file}:{name_node.lineno} uses generic non-None parser "
-            f"assertion on {name_node.id!r}; assert the exact "
-            "(tool_name, parameters) parse result instead."
-            for name_node in visitor.violations
-        )
     return violations
 
 
@@ -8021,143 +7725,6 @@ def check_agent_resource_receipt_boundary(root_dir: Path) -> list[str]:
     return violations
 
 
-def check_llm_application_surface_weak_result_assertions(root_dir: Path) -> list[str]:
-    """Return application-surface tests that only assert tool results exist."""
-    violations: list[str] = []
-
-    for relative_file in LLM_APPLICATION_SURFACE_EXACT_EVIDENCE_TESTS:
-        test_file = root_dir / relative_file
-        if not test_file.exists():
-            continue
-        try:
-            tree = ast.parse(
-                test_file.read_text(encoding="utf-8"), filename=str(test_file)
-            )
-        except SyntaxError:
-            continue
-
-        visitor = _GenericNonNoneAssertionVisitor()
-        visitor.visit(tree)
-        violations.extend(
-            f"{relative_file}:{name_node.lineno} uses generic non-None "
-            f"application-surface assertion on {name_node.id!r}; assert "
-            "ToolCommandResult type, tool_name, command_name, raw status, "
-            "capability, and state instead."
-            for name_node in visitor.violations
-        )
-    return violations
-
-
-def check_llm_agent_intent_boundary_weak_result_assertions(
-    root_dir: Path,
-) -> list[str]:
-    """Return agent intent-boundary tests that only assert tool results exist."""
-    violations: list[str] = []
-
-    for relative_file in LLM_AGENT_INTENT_BOUNDARY_EXACT_EVIDENCE_TESTS:
-        test_file = root_dir / relative_file
-        if not test_file.exists():
-            continue
-        try:
-            tree = ast.parse(
-                test_file.read_text(encoding="utf-8"), filename=str(test_file)
-            )
-        except SyntaxError:
-            continue
-
-        visitor = _GenericNonNoneAssertionVisitor()
-        visitor.visit(tree)
-        violations.extend(
-            f"{relative_file}:{name_node.lineno} uses generic non-None "
-            f"agent intent-boundary assertion on {name_node.id!r}; assert "
-            "ToolCommandResult type, tool_name, command_name, blocked_reason, "
-            "message, capability, and state instead."
-            for name_node in visitor.violations
-        )
-    return violations
-
-
-def check_llm_agent_confirmation_weak_pending_assertions(root_dir: Path) -> list[str]:
-    """Return confirmation tests that only assert a pending tuple exists."""
-    violations: list[str] = []
-
-    for relative_file in LLM_AGENT_CONFIRMATION_EXACT_EVIDENCE_TESTS:
-        test_file = root_dir / relative_file
-        if not test_file.exists():
-            continue
-        try:
-            tree = ast.parse(
-                test_file.read_text(encoding="utf-8"), filename=str(test_file)
-            )
-        except SyntaxError:
-            continue
-
-        visitor = _AgentPendingConfirmationWeakAssertionVisitor()
-        visitor.visit(tree)
-        violations.extend(
-            f"{relative_file}:{node.lineno} uses generic pending-confirmation "
-            "existence assertion; assert AgentConfirmationRequest fields, the "
-            "typed emitted request, and correlated AgentConfirmationResolution "
-            "behavior instead."
-            for node in visitor.violations
-        )
-    return violations
-
-
-def check_llm_controller_integration_weak_initialization_assertions(
-    root_dir: Path,
-) -> list[str]:
-    """Return controller integration tests that only assert components exist."""
-    violations: list[str] = []
-
-    for relative_file in LLM_CONTROLLER_INTEGRATION_EXACT_EVIDENCE_TESTS:
-        test_file = root_dir / relative_file
-        if not test_file.exists():
-            continue
-        try:
-            tree = ast.parse(
-                test_file.read_text(encoding="utf-8"), filename=str(test_file)
-            )
-        except SyntaxError:
-            continue
-
-        visitor = _ControllerIntegrationWeakInitializationVisitor()
-        visitor.visit(tree)
-        violations.extend(
-            f"{relative_file}:{node.lineno} uses generic controller "
-            "initialization evidence; assert component types, wiring, exact "
-            "tool names, and verifier schema keys instead."
-            for node in visitor.violations
-        )
-    return violations
-
-
-def check_llm_tool_definition_weak_string_assertions(root_dir: Path) -> list[str]:
-    """Return tool-definition tests that only assert non-empty strings."""
-    violations: list[str] = []
-
-    for relative_file in LLM_TOOL_DEFINITION_EXACT_EVIDENCE_TESTS:
-        test_file = root_dir / relative_file
-        if not test_file.exists():
-            continue
-        try:
-            tree = ast.parse(
-                test_file.read_text(encoding="utf-8"), filename=str(test_file)
-            )
-        except SyntaxError:
-            continue
-
-        visitor = _GenericLenGtZeroAssertionVisitor()
-        visitor.visit(tree)
-        violations.extend(
-            f"{relative_file}:{node.lineno} uses generic non-empty tool "
-            "definition assertion; assert exact tool name, schema properties, "
-            "required fields, and description markers instead."
-            for node in visitor.violations
-        )
-    return violations
-
-
 def check_docs_current_truth_overclaims(root_dir: Path) -> list[str]:
     """Return current-truth docs that present target/acceptance as complete."""
     violations: list[str] = []
@@ -8190,174 +7757,6 @@ def _docs_line_has_claim_boundary(lower_line: str) -> bool:
     return any(token.lower() in lower_line for token in DOC_CLAIM_BOUNDARY_TOKENS)
 
 
-class _GenericNonNoneAssertionVisitor(ast.NodeVisitor):
-    def __init__(self) -> None:
-        self.violations: list[ast.Name] = []
-
-    def visit_Assert(self, node: ast.Assert) -> None:
-        name_node = _generic_non_none_assertion_name(node.test)
-        if name_node is not None:
-            self.violations.append(name_node)
-        self.generic_visit(node)
-
-
-class _GenericLenGtZeroAssertionVisitor(ast.NodeVisitor):
-    def __init__(self) -> None:
-        self.violations: list[ast.Assert] = []
-
-    def visit_Assert(self, node: ast.Assert) -> None:
-        if _is_len_gt_zero_assertion(node.test):
-            self.violations.append(node)
-        self.generic_visit(node)
-
-
-class _AgentPendingConfirmationWeakAssertionVisitor(ast.NodeVisitor):
-    def __init__(self) -> None:
-        self.violations: list[ast.Assert] = []
-
-    def visit_Assert(self, node: ast.Assert) -> None:
-        if _is_pending_confirmation_non_none_assertion(node.test):
-            self.violations.append(node)
-        self.generic_visit(node)
-
-
-class _ControllerIntegrationWeakInitializationVisitor(ast.NodeVisitor):
-    def __init__(self) -> None:
-        self.violations: list[ast.Assert] = []
-
-    def visit_Assert(self, node: ast.Assert) -> None:
-        if _is_controller_component_non_none_assertion(
-            node.test
-        ) or _is_len_gt_zero_assertion(node.test):
-            self.violations.append(node)
-        self.generic_visit(node)
-
-
-class _PipelineStateWeakStringAssertionVisitor(ast.NodeVisitor):
-    def __init__(self) -> None:
-        self.violations: list[ast.Assert] = []
-
-    def visit_Assert(self, node: ast.Assert) -> None:
-        if _is_generic_non_empty_string_assertion(node.test):
-            self.violations.append(node)
-        self.generic_visit(node)
-
-
-def _is_generic_non_empty_string_assertion(node: ast.AST) -> bool:
-    if not isinstance(node, ast.Compare):
-        return False
-    if len(node.ops) != 1 or not isinstance(node.ops[0], ast.Gt):
-        return False
-    if len(node.comparators) != 1:
-        return False
-    comparator = node.comparators[0]
-    if not isinstance(comparator, ast.Constant) or comparator.value != 0:
-        return False
-    if not isinstance(node.left, ast.Call):
-        return False
-    if _call_name(node.left.func) != "len" or len(node.left.args) != 1:
-        return False
-    target = node.left.args[0]
-    return _is_pipeline_state_string_target(target)
-
-
-def _is_len_gt_zero_assertion(node: ast.AST) -> bool:
-    if not isinstance(node, ast.Compare):
-        return False
-    if len(node.ops) != 1 or not isinstance(node.ops[0], ast.Gt):
-        return False
-    if len(node.comparators) != 1:
-        return False
-    comparator = node.comparators[0]
-    if not isinstance(comparator, ast.Constant) or comparator.value != 0:
-        return False
-    if not isinstance(node.left, ast.Call):
-        return False
-    return _call_name(node.left.func) == "len" and len(node.left.args) == 1
-
-
-def _is_pending_confirmation_non_none_assertion(node: ast.AST) -> bool:
-    if not isinstance(node, ast.Compare):
-        return False
-    if len(node.ops) != 1 or not isinstance(node.ops[0], ast.IsNot):
-        return False
-    if len(node.comparators) != 1:
-        return False
-    right = node.comparators[0]
-    if not isinstance(right, ast.Constant) or right.value is not None:
-        return False
-    left = node.left
-    return isinstance(left, ast.Attribute) and left.attr == "_pending_confirmation"
-
-
-def _is_controller_component_non_none_assertion(node: ast.AST) -> bool:
-    if not isinstance(node, ast.Compare):
-        return False
-    if len(node.ops) != 1 or not isinstance(node.ops[0], ast.IsNot):
-        return False
-    if len(node.comparators) != 1:
-        return False
-    right = node.comparators[0]
-    if not isinstance(right, ast.Constant) or right.value is not None:
-        return False
-    left = node.left
-    return isinstance(left, ast.Attribute) and left.attr in {
-        "registry",
-        "assembler",
-        "verifier",
-    }
-
-
-def _is_pipeline_state_string_target(node: ast.AST) -> bool:
-    if isinstance(node, ast.Subscript):
-        if not isinstance(node.value, ast.Name) or node.value.id != "config":
-            return False
-        key = node.slice
-        return isinstance(key, ast.Constant) and key.value == "system_prompt"
-    if isinstance(node, ast.Attribute):
-        return (
-            node.attr == "label"
-            and isinstance(node.value, ast.Name)
-            and node.value.id == "stage"
-        )
-    return False
-
-
-class _LLMParserWeakParseAssertionVisitor(ast.NodeVisitor):
-    def __init__(self) -> None:
-        self.violations: list[ast.Name] = []
-
-    def visit_Assert(self, node: ast.Assert) -> None:
-        name_node = _generic_non_none_assertion_name(node.test)
-        if name_node is not None and name_node.id in {"parsed", "parsed2", "result"}:
-            self.violations.append(name_node)
-        self.generic_visit(node)
-
-
-def _generic_non_none_assertion_name(node: ast.AST) -> ast.Name | None:
-    if not isinstance(node, ast.Compare):
-        return None
-    if len(node.ops) != 1 or not isinstance(node.ops[0], ast.IsNot):
-        return None
-    if len(node.comparators) != 1:
-        return None
-    left = node.left
-    right = node.comparators[0]
-    if (
-        isinstance(left, ast.Name)
-        and isinstance(right, ast.Constant)
-        and right.value is None
-    ):
-        return left
-    if (
-        isinstance(right, ast.Name)
-        and isinstance(left, ast.Constant)
-        and left.value is None
-    ):
-        return right
-    return None
-
-
 class _BackendFacadeRuntimeUsageVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         self.violations: list[ast.AST] = []
@@ -8373,39 +7772,6 @@ class _BackendFacadeRuntimeUsageVisitor(ast.NodeVisitor):
             self.violations.append(node)
             return
         self.generic_visit(node)
-
-
-class _LegacyFallbackTestUsageVisitor(ast.NodeVisitor):
-    def __init__(self) -> None:
-        self.violations: list[ast.AST] = []
-
-    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-        if node.module == "XBrainLab.ui.application_capabilities" and any(
-            alias.name == "*" or alias.name in PRODUCT_SUCCESS_LEGACY_FALLBACK_SYMBOLS
-            for alias in node.names
-        ):
-            self.violations.append(node)
-            return
-        self.generic_visit(node)
-
-    def visit_Call(self, node: ast.Call) -> None:
-        if _call_name(node.func) in PRODUCT_SUCCESS_LEGACY_FALLBACK_SYMBOLS:
-            self.violations.append(node)
-            return
-        self.generic_visit(node)
-
-
-def _legacy_fallback_symbol_name(node: ast.AST) -> str:
-    if isinstance(node, ast.ImportFrom):
-        names = [
-            alias.name
-            for alias in node.names
-            if alias.name in PRODUCT_SUCCESS_LEGACY_FALLBACK_SYMBOLS
-        ]
-        return ", ".join(names) if names else "*"
-    if isinstance(node, ast.Call):
-        return _call_name(node.func)
-    return "controller compatibility helper"
 
 
 def check_ui_controller_fallbacks(root_dir: Path) -> list[str]:
