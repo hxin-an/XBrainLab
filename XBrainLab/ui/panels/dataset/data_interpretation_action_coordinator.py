@@ -765,6 +765,14 @@ class DataInterpretationActionCoordinator:
         """Classify one detached path, then enter the existing owned flow."""
 
         def _handle_classification(result) -> InteractionOutcome:
+            error_type = getattr(
+                getattr(result, "error_type", None),
+                "value",
+                getattr(result, "error_type", None),
+            )
+            if result.failed and error_type == ErrorType.CANCELLED.value:
+                self._show_status("Dataset import cancelled")
+                return InteractionOutcome.cancelled(result.message)
             if self._result_failed(result, "EEG source discovery failed"):
                 return self._interaction_failure_outcome(result, result.message)
             diagnostics = getattr(result, "diagnostics", {})
@@ -1055,6 +1063,8 @@ class DataInterpretationActionCoordinator:
             self._close_loading_dialog(loading_token)
         accepted = bool(dialog.exec())
         if not accepted:
+            if isinstance(dialog, QObject):
+                dialog.deleteLater()
             return InteractionOutcome.cancelled(
                 "Data interpretation review was cancelled."
             )
@@ -1078,59 +1088,111 @@ class DataInterpretationActionCoordinator:
             dialog_result,
             label_sources,
         )
-        if next_label_sources != label_sources:
-            updated_choices = self._choices_after_label_source_change(updated_choices)
-            return self._start_interpretation_review_async(
-                source_path,
-                source_hint,
-                updated_choices,
-                next_label_sources,
-                initial_step=str(dialog_result.get("resume_step") or ""),
-            ) or InteractionOutcome.blocked(
-                "Data interpretation review could not be started."
-            )
 
-        if (
-            str(review_state.decision.get("decision")) == "blocked"
-            and updated_choices == choices
-        ):
-            if import_confirmed:
-                self._show_status("Dataset import blocked · Review the import settings")
-            return InteractionOutcome.blocked(
-                self._decision_reason(review_state.decision)
-            )
-
-        if updated_choices != choices:
-            resume_step = str(dialog_result.get("resume_step") or "").strip()
-            if resume_step == "Match Labels":
-                return self._repreview_interpretation_async(
-                    source_path=source_path,
-                    source_hint=source_hint,
-                    choices=updated_choices,
-                    label_sources=label_sources,
-                    review_state=review_state,
-                    initial_step=resume_step,
-                ) or InteractionOutcome.blocked(
-                    "Data interpretation preview could not be refreshed."
+        def _continue_after_review() -> InteractionOutcome:
+            continuation_choices = updated_choices
+            if next_label_sources != label_sources:
+                continuation_choices = self._choices_after_label_source_change(
+                    continuation_choices
                 )
-            return self._review_interpretation_for_apply_async(
-                choices=updated_choices,
-                review_state=review_state,
-                dialog_result=dialog_result,
-            ) or InteractionOutcome.blocked(
-                "Data interpretation review could not be refreshed."
+                return self._start_interpretation_review_async(
+                    source_path,
+                    source_hint,
+                    continuation_choices,
+                    next_label_sources,
+                    initial_step=str(dialog_result.get("resume_step") or ""),
+                ) or InteractionOutcome.blocked(
+                    "Data interpretation review could not be started."
+                )
+
+            if (
+                str(review_state.decision.get("decision")) == "blocked"
+                and continuation_choices == choices
+            ):
+                if import_confirmed:
+                    self._show_status(
+                        "Dataset import blocked · Review the import settings"
+                    )
+                return InteractionOutcome.blocked(
+                    self._decision_reason(review_state.decision)
+                )
+
+            if continuation_choices != choices:
+                resume_step = str(dialog_result.get("resume_step") or "").strip()
+                if resume_step == "Match Labels":
+                    return self._repreview_interpretation_async(
+                        source_path=source_path,
+                        source_hint=source_hint,
+                        choices=continuation_choices,
+                        label_sources=label_sources,
+                        review_state=review_state,
+                        initial_step=resume_step,
+                    ) or InteractionOutcome.blocked(
+                        "Data interpretation preview could not be refreshed."
+                    )
+                return self._review_interpretation_for_apply_async(
+                    choices=continuation_choices,
+                    review_state=review_state,
+                    dialog_result=dialog_result,
+                ) or InteractionOutcome.blocked(
+                    "Data interpretation review could not be refreshed."
+                )
+
+            def _retry_cancelled_apply() -> InteractionOutcome:
+                return self.review_current_import(
+                    initial_step="Review and Import",
+                    expected_identity=self._review_identity(review_state),
+                )
+
+            return self._apply_interpretation_async(
+                review_state,
+                dialog_result,
+                retry_cancelled_apply=_retry_cancelled_apply,
             )
 
-        def _retry_cancelled_apply() -> InteractionOutcome:
-            return self.review_current_import(
-                initial_step="Review and Import",
-                expected_identity=self._review_identity(review_state),
-            )
+        # The production preview is a QDialog.  Finish destroying that modal
+        # surface before opening resource confirmation or dispatching Apply;
+        # otherwise WSLg/native compositors can briefly render both modal
+        # lifecycles during the same call stack.  Plain injected test doubles
+        # retain the synchronous fallback because they have no Qt lifecycle.
+        if not isinstance(dialog, QObject):
+            return _continue_after_review()
 
-        return self._apply_interpretation_async(
-            review_state,
-            dialog_result,
-            retry_cancelled_apply=_retry_cancelled_apply,
+        continuation = self._bindings.reserve_interaction_continuation()
+        continuation_scheduled = False
+
+        def _start_review_continuation() -> None:
+            if continuation is not None:
+                continuation.start(_continue_after_review)
+            else:
+                _continue_after_review()
+
+        def _review_dialog_destroyed(*_args: object) -> None:
+            nonlocal continuation_scheduled
+            if continuation_scheduled:
+                return
+            continuation_scheduled = True
+            try:
+                self._bindings.single_shot(0, _start_review_continuation)
+            except Exception:
+                logger.exception("Could not continue the accepted dataset review")
+                message = "The accepted dataset review could not continue."
+                self._show_status("Dataset import failed · Review the import settings")
+                if continuation is not None:
+                    continuation.fail(message)
+
+        try:
+            dialog.destroyed.connect(_review_dialog_destroyed)
+            dialog.deleteLater()
+        except Exception:
+            logger.exception("Could not close the accepted dataset review")
+            message = "The accepted dataset review could not be closed safely."
+            if continuation is not None:
+                continuation.fail(message)
+            self._show_status("Dataset import failed · Review the import settings")
+            return InteractionOutcome.failed(message)
+        return InteractionOutcome.accepted(
+            "Dataset import will continue after the review closes."
         )
 
     def _preview_context_is_available(self) -> bool:

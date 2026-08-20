@@ -9,7 +9,7 @@ Import 時，取消控制看似凍結且 cancellation surface 不符合既有產
 dialog 的 `Cancel` 與 Dataset sidebar 的 `Cancel Import`，只修被 exact reproduction 證明的 lifecycle／
 presentation boundary；不在同一 branch 重構 Load Data。
 
-目前 phase：`Checkpoint — focused green, candidate validation pending`
+目前 phase：`Checkpoint — native hand-test findings under repair`
 
 ## 問題與證據
 
@@ -47,6 +47,15 @@ presentation boundary；不在同一 branch 重構 Load Data。
   只保留 dialog 內一個 `Cancel Import`；sidebar control 不對外顯示。Review 關閉後的真正 Apply 階段沒有
   modal，sidebar `Cancel Import` 仍是唯一長工作 cancellation 入口。取消完成不開另一個成功／Retry
   dialog，只以既有非阻塞 status surface 回饋。
+- Exact `b833bd31` 已通過 42/42 local handoff 與所有 applicable remote checks，但使用者 native 手測另發現：
+  BIDS subject selector 出現前由 sidebar 取消 source classification 時，cancelled `SCAN_SOURCE` result 仍被
+  通用 failure presenter 顯示為 blocking error；按 `Confirm and Import` 後另可見一次無法辨識內容的短暫
+  top-level window flash。因此該 SHA 的 manual acceptance 未通過，不得 merge。
+- Source trace 已確認 pre-subject popup 的原因是 `_start_source_classification_async` 在辨識
+  `ErrorType.CANCELLED` 前呼叫 `_result_failed()`；取消被錯誤轉成 critical dialog。兩次 bounded Qt dialog
+  event trace在 Confirm 後只觀察到 Review 的 Close／Hide，沒有第二個 product QDialog Show；修復先消除
+  modal close call stack 內同步啟動後續 command 的 re-entrancy，再由 native hand-test 判定是否仍為 WSLg
+  compositor-only artifact。
 
 ## Observable outcome
 
@@ -62,6 +71,10 @@ presentation boundary；不在同一 branch 重構 Load Data。
 6. 修復完成於單一 exact branch head；focused native-loader cancellation evidence、directly related lifecycle
    tests、source-diverse data gate、canonical handoff 與 remote CI 通過後，提供使用者一條
    Cancel→retry 手測流程。
+7. Subject selector 出現前取消 source classification 必須直接得到 typed cancelled terminal 與非阻塞
+   status；不得顯示 error／success／Retry dialog，也不得晚到開啟 subject selector。
+8. `Confirm and Import` 接受 Review 後，Review dialog 必須完成 hide／destroy，且經過下一個 Qt event-loop
+   turn後才啟動 revalidation／Apply；同一轉場不得新增或重顯 transient top-level dialog。
 
 ## Scope／non-goals
 
@@ -72,7 +85,8 @@ presentation boundary；不在同一 branch 重構 Load Data。
 - ApplicationService／OwnedWorkRegistry 與既有 Data Interpretation transaction 仍是唯一 authoritative
   owners；不新增 state、receipt、compatibility path 或第二套 error semantics。
 - UI 授權只涵蓋本次 cancellation ownership：loading dialog 的 cancel label／visibility、sidebar cancel
-  phase visibility 與非阻塞 terminal feedback。不改五步 wizard 其他 layout／copy，不改 source classifier。
+  phase visibility、非阻塞 terminal feedback，以及 Confirm 後 Review dialog teardown／continuation ordering。
+  不改五步 wizard 其他 layout／copy，不改 source classifier。
 
 ## 施工順序
 
@@ -195,6 +209,29 @@ surface 標成 user-cancelled。最小 green 將 dialog action 明確命名為 `
 real-fixture Qt paths與71項直接相鄰 unit/lifecycle tests合計73/73 PASS；production只改2 files、未新增
 owner。Default-scale offscreen screenshot 已人工檢查 hierarchy、contrast、footer位置與文字 fit。下一步是
 source-diverse data gate、exact commit、完整 handoff／remote CI，之後交使用者 native Cancel→retry 手測。
+
+### D. Native hand-test cancellation／dialog follow-up（active）
+
+1. 新增 pre-subject source classification cancellation red test：取消 result 不得呼叫 MessageBox、不得進
+   subject selector，必須發出 cancelled outcome、drain registry、保持 publication／Study state並可重試。
+2. 新增 Review acceptance lifecycle red test：dialog result先 detached snapshot；後續 revalidation／Apply
+   只有在 dialog destroyed 且下一個 Qt turn後才能 dispatch，並且只 dispatch一次。
+3. 最小 green 只重用既有 `ErrorType`、`InteractionOutcome`、interaction continuation lease與
+   `single_shot`；不新增 owner或通用視窗框架。Rejected review同樣明確 `deleteLater`，accepted review的
+   continuation由 destroyed signal排程。
+4. 重跑 post-subject modal cancel、真 BrainVision Apply cancel/reopen/retry、source-diverse gate、visual
+   walkthrough、canonical 42-gate handoff與remote CI；source改動後舊 dossier與manual observation全部失效。
+5. 交付同一 exact SHA 的 PhysicalMI native流程：pre-subject Cancel零popup、post-subject Cancel單一surface、
+   Confirm零transient window、Apply Cancel後同review可重試。使用者明確通過前PR #42不得merge。
+
+Checkpoint（`2026-08-20`）：兩個 red tests 分別重現 cancelled catalog result 被通用 failure presenter
+轉成 blocking dialog，以及 accepted Review 在 QDialog destroyed 前同步 dispatch Apply。最小修復在辨識
+`ErrorType.CANCELLED` 後直接發布 typed cancelled outcome；accepted／rejected Review 都明確
+`deleteLater`，accepted path只在 destroyed signal後的下一個 Qt turn透過既有 interaction continuation
+啟動後續工作。Production僅修改1 file，`+107/-45`、淨增62行，owner數不變。70項 import async
+lifecycle、5項 loading／真實BIDS cancel-retry、10項wizard format matrix、全專案Ruff／format、Basedpyright
+regression與4-source public smoke全部PASS。下一步是exact commit後的42-gate handoff／remote CI，再交付
+PhysicalMI native手測；自動證據不能判定WSLg compositor flash已消失。
 
 ## Focused validation 與 stop condition
 

@@ -238,6 +238,38 @@ def test_catalog_scan_publishes_owned_status_before_worker_is_scheduled(
     workers[0].signals.finished.emit()
 
 
+def test_cancelled_catalog_scan_closes_without_failure_dialog(monkeypatch) -> None:
+    """Cancelling pre-subject discovery is a terminal action, not an error."""
+    panel = MagicMock()
+    handler = DatasetActionHandler(panel)
+    coordinator = handler._data_interpretation
+    message_box = MagicMock()
+    statuses: list[str] = []
+    scheduled = MagicMock(return_value=InteractionOutcome.accepted("scheduled"))
+    subjects = MagicMock()
+    coordinator._bindings = replace(
+        coordinator._bindings,
+        message_box=lambda: message_box,
+    )
+    monkeypatch.setattr(handler, "_show_status", statuses.append)
+    monkeypatch.setattr(
+        coordinator,
+        "_execute_interpretation_command_async",
+        scheduled,
+    )
+    monkeypatch.setattr(coordinator, "_present_bids_subject_catalog", subjects)
+
+    started = coordinator._start_source_classification_async("/data/bids")
+    result = scheduled.call_args.kwargs["on_result"](_cancelled_result("scan_source"))
+
+    assert started.status is InteractionStatus.ACCEPTED
+    assert result.status is InteractionStatus.CANCELLED
+    assert statuses == ["Checking EEG source…", "Dataset import cancelled"]
+    message_box.critical.assert_not_called()
+    message_box.warning.assert_not_called()
+    subjects.assert_not_called()
+
+
 def test_label_configuration_merge_replaces_mutually_exclusive_source_state():
     base = {
         "skip_labels": True,
@@ -1397,6 +1429,54 @@ def test_confirm_import_does_not_mask_owned_status_before_async_revalidation(
     assert outcome.status is InteractionStatus.ACCEPTED
     assert statuses == []
     revalidate.assert_called_once()
+
+
+def test_confirm_import_waits_for_review_dialog_destruction_before_apply(
+    qtbot,
+    monkeypatch,
+) -> None:
+    """Accepted review must leave the native modal lifecycle before Apply."""
+    panel = QWidget()
+    qtbot.addWidget(panel)
+    handler = DatasetActionHandler(panel)
+    dialog_instances: list[QDialog] = []
+
+    class _Dialog(QDialog):
+        def __init__(self, parent, **_kwargs) -> None:
+            super().__init__(parent)
+            dialog_instances.append(self)
+
+        def exec(self) -> int:
+            return 1
+
+        @staticmethod
+        def get_result() -> dict[str, Any]:
+            return {"confirmed": True, "choices": {}}
+
+    monkeypatch.setattr(actions, "DataInterpretationPreviewDialog", _Dialog)
+    apply_started: list[bool] = []
+
+    def _apply(*_args, **_kwargs) -> InteractionOutcome:
+        apply_started.append(sip.isdeleted(dialog_instances[0]))
+        return InteractionOutcome.accepted("Apply scheduled.")
+
+    monkeypatch.setattr(
+        handler._data_interpretation,
+        "_apply_interpretation_async",
+        _apply,
+    )
+
+    outcome = handler._data_interpretation._continue_data_interpretation_import(
+        source_path="/data",
+        source_hint="bids",
+        choices={},
+        label_sources=[],
+        review_state=_review_state(publication_generation=17),
+    )
+
+    assert outcome.status is InteractionStatus.ACCEPTED
+    assert apply_started == []
+    qtbot.waitUntil(lambda: apply_started == [True], timeout=1_500)
 
 
 def test_confirm_import_revalidation_worker_failure_replaces_preparing_status(
