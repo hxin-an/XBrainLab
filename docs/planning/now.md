@@ -9,7 +9,7 @@
 runtime。這條 branch 會審查全部 tracked tests，不只處理幾個 E2E 檔；完成完整 handoff 與
 remote CI 後才交使用者做核心產品 walkthrough，通過前不合併。
 
-目前 phase：`Exact inventory and global-fixture characterization`
+目前 phase：`Global-fixture scoping complete; family claim cleanup next`
 
 本 branch 只修改 tests、test fixtures、developer validation／CI scripts 與直接相關文件；不修改
 `XBrainLab/` 產品 UI、ApplicationService、EEG semantics、training 或 Assistant 行為。若清理揭露
@@ -107,8 +107,9 @@ file／replacement mapping，不建立另一份萬筆 test manifest。
 ### B. Scope global test substitutions
 
 1. 建立 passing characterization，盤點 global modal acceptance與renderer replacement的直接使用者。
-2. 新增 opt-in `auto_accept_modals`、`allow_real_modals`與`mock_pyvista_runtime`。未聲明的 blocking
-   modal fail-fast；Cancel／Reject／Confirm tests使用真 widget driver。
+2. 新增 opt-in `auto_accept_modals`與`allow_real_modals`。未聲明的 blocking modal fail-fast；
+   Cancel／Reject／Confirm tests使用真 widget driver。PyVista／PyVistaQt在目前 pinned環境可直接
+   import，故不新增共享 fake fixture；需要 renderer fake 的 component test 必須在該 test 明確 patch。
 3. 按 subtree 遷移後移除 root autouse與global `sys.modules` replacement；保留 native subprocess gates。
 
 ### C. Clean every test family
@@ -154,6 +155,14 @@ file／replacement mapping，不建立另一份萬筆 test manifest。
 3. 在 clean／explained exact commit跑 canonical handoff，檢查 artifacts，再核對 exact PR head remote
    Linux、Windows、macOS、public-data與human-like jobs。
 4. 交付不依賴 test mocks 的核心手測流程；使用者明確通過並同意後才 merge main。
+
+## Checkpoints
+
+- `2026-08-20` global fixture scoping：移除 root collection-time PyVista／PyVistaQt／VTK
+  `sys.modules` replacement；未宣告 modal interaction 改為 fail-fast，component accepted path 與
+  qtbot real-modal path各自 opt in。`linux-unit-ui` 2,684 cases全數通過；Assistant import review、
+  resource refusal與visible BIDS Apply Cancel／retry三條 real-modal integration paths通過。下一步是
+  pipeline／training與 E2E-named test family 的 evidence truth清理，不開始 runner parallelism。
 
 ## Focused validation 與 stop condition
 

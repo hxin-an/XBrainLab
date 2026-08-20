@@ -41,11 +41,20 @@ class TestEventFilterDialog:
     def test_set_selection(self, dlg):
         dlg.set_selection(["left_hand", "feet"])
 
-    def test_get_selected_ids_empty(self, dlg):
+    def test_empty_selection_warns_and_keeps_dialog_unaccepted(self, dlg):
         dlg.set_all_checked(False)
-        dlg.accept()
-        result = dlg.get_selected_ids()
-        assert result == []
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.event_filter_dialog.QMessageBox.warning"
+        ) as warning:
+            dlg.accept()
+
+        warning.assert_called_once_with(
+            dlg,
+            "No Events Selected",
+            "Select at least one event to keep for synchronization.",
+        )
+        assert dlg.result() == QDialog.DialogCode.Rejected
+        assert dlg.get_selected_ids() == []
 
     def test_get_selected_ids_all(self, dlg):
         dlg.set_all_checked(True)

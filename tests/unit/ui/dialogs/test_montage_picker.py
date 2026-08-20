@@ -198,7 +198,15 @@ class TestAcceptReject:
         assert len(result) == 2
 
     def test_reset_saved_settings(self, dialog):
-        dialog.reset_saved_settings()
+        with patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog."
+            "QMessageBox.information"
+        ) as information:
+            dialog.reset_saved_settings()
+
+        information.assert_called_once()
+        assert information.call_args.args[0] is dialog
+        assert information.call_args.args[1] == "Reset"
 
 
 class TestMontagePickerEdgeCases:

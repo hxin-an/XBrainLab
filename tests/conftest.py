@@ -1,27 +1,13 @@
-"""Shared pytest fixtures and global test configuration.
-
-This conftest module provides:
-
-* Mocks for visualisation libraries (PyVista / VTK) that cannot run in a
-  headless CI environment.
-* An ``autouse`` fixture that patches blocking Qt dialog calls so tests
-  never hang waiting for user interaction.
-* A session-scoped fixture that forces matplotlib to a non-interactive
-  backend.
-* A ``test_app`` fixture that spins up a headless
-  :class:`~XBrainLab.ui.main_window.MainWindow` for integration tests.
-"""
+"""Shared pytest fixtures and fail-closed test-environment defaults."""
 
 # Global mocks have been disabled as the environment has all dependencies installed.
 # Previously, this file mocked mne, captum, and torch, which caused import errors.
 
 import logging
 import os
-import sys
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock, patch
+from typing import Any, NoReturn
 
 from scripts.dev.test_runtime_paths import (
     configure_test_temp_root,
@@ -64,82 +50,69 @@ except ImportError:
 import pytest
 from PyQt6.QtWidgets import QDialog, QMessageBox
 
-# --- MOCK VISUALIZATION LIBRARIES ---
-# This must be done at module level to prevent import errors during test collection
-# because the environment (headless/no-opengl) cannot support real VTK/PyVista.
 
-
-class MockBackgroundPlotter(MagicMock):
-    """Lightweight stand-in for ``pyvistaqt.BackgroundPlotter``.
-
-    Provides no-op implementations of commonly called plotter methods so
-    that code importing PyVista/VTK can be exercised in environments
-    without GPU or OpenGL support.
-
-    Attributes:
-        app_window: Mock application window handle.
-        ren_win: Mock render-window object.
-        interactor: Mock interactor object.
-    """
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """Initialise the mock plotter with mock sub-components."""
-        super().__init__()
-        self.app_window = MagicMock()
-        self.ren_win = MagicMock()
-        self.interactor = MagicMock()
-
-    def add_mesh(self, *args: Any, **kwargs: Any) -> None:
-        """No-op replacement for ``BackgroundPlotter.add_mesh``."""
-
-    def add_text(self, *args: Any, **kwargs: Any) -> None:
-        """No-op replacement for ``BackgroundPlotter.add_text``."""
-
-    def show(self) -> None:
-        """No-op replacement for ``BackgroundPlotter.show``."""
-
-    def close(self) -> None:
-        """No-op replacement for ``BackgroundPlotter.close``."""
-
-
-mock_pv = MagicMock()
-mock_pvqt = MagicMock()
-mock_pvqt.BackgroundPlotter = MockBackgroundPlotter
-
-sys.modules["pyvista"] = mock_pv
-sys.modules["pyvistaqt"] = mock_pvqt
-sys.modules["pyvista.plotting"] = MagicMock()
-sys.modules["vtkmodules"] = MagicMock()
-sys.modules["vtkmodules.vtkRenderingOpenGL2"] = MagicMock()
+def _unexpected_modal(*_args: Any, **_kwargs: Any) -> NoReturn:
+    raise AssertionError(
+        "Unexpected blocking Qt modal. Request auto_accept_modals for a bounded "
+        "component test or allow_real_modals for a qtbot-driven modal test."
+    )
 
 
 @pytest.fixture(autouse=True)
-def mock_ui_blocking():
-    """Globally mock blocking UI calls to prevent tests from hanging.
+def guard_unexpected_modal_interactions(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fail fast instead of silently accepting an undeclared product decision."""
+    if "allow_real_modals" in request.fixturenames:
+        return
+    for method_name in ("information", "warning", "critical", "question", "exec"):
+        monkeypatch.setattr(QMessageBox, method_name, _unexpected_modal)
+    monkeypatch.setattr(QDialog, "exec", _unexpected_modal)
 
-    Patches every ``QMessageBox`` static convenience method and both
-    ``QMessageBox.exec`` / ``QDialog.exec`` so that no modal dialog
-    blocks the event loop during test execution.
 
-    Yields:
-        None. The patches are active for the duration of each test.
-    """
-    # Patch QMessageBox static methods
-    with (
-        patch("PyQt6.QtWidgets.QMessageBox.information"),
-        patch("PyQt6.QtWidgets.QMessageBox.warning"),
-        patch("PyQt6.QtWidgets.QMessageBox.critical"),
-        patch("PyQt6.QtWidgets.QMessageBox.question") as mock_quest,
-        patch(
-            "PyQt6.QtWidgets.QMessageBox.exec",
-            return_value=QMessageBox.StandardButton.Ok,
-        ),
-        patch("PyQt6.QtWidgets.QDialog.exec", return_value=QDialog.DialogCode.Accepted),
-    ):
-        # Configure defaults
-        mock_quest.return_value = QMessageBox.StandardButton.Yes
+@pytest.fixture
+def auto_accept_modals(
+    guard_unexpected_modal_interactions: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Opt into the former non-blocking accepted result for component tests."""
+    del guard_unexpected_modal_interactions
+    monkeypatch.setattr(
+        QMessageBox,
+        "information",
+        lambda *_args, **_kwargs: QMessageBox.StandardButton.Ok,
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda *_args, **_kwargs: QMessageBox.StandardButton.Ok,
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "critical",
+        lambda *_args, **_kwargs: QMessageBox.StandardButton.Ok,
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes,
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "exec",
+        lambda *_args, **_kwargs: QMessageBox.StandardButton.Ok,
+    )
+    monkeypatch.setattr(
+        QDialog,
+        "exec",
+        lambda *_args, **_kwargs: QDialog.DialogCode.Accepted,
+    )
 
-        yield
+
+@pytest.fixture
+def allow_real_modals() -> None:
+    """Mark a test as using real modals driven through the Qt event loop."""
 
 
 @pytest.fixture(scope="session", autouse=True)
