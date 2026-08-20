@@ -127,7 +127,9 @@ def _execute_group(command: str, *, evidence_dir: Path) -> int:
     evidence_dir.mkdir(parents=True, exist_ok=True)
     result_path = evidence_dir / f"{command}.json"
     log_path = evidence_dir / f"{command}.log"
-    telemetry_path = evidence_dir / f"{command}.telemetry.json"
+    telemetry_dir = evidence_dir / "telemetry"
+    telemetry_dir.mkdir(parents=True, exist_ok=True)
+    telemetry_path = telemetry_dir / f"{command}.json"
     temp_base = select_test_temp_root(ROOT)
     temp_base.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(prefix=f"handoff-{command}-", dir=temp_base) as temp_name:

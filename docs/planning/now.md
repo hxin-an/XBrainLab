@@ -9,7 +9,7 @@
 runtime。這條 branch 會審查全部 tracked tests，不只處理幾個 E2E 檔；完成完整 handoff 與
 remote CI 後才交使用者做核心產品 walkthrough，通過前不合併。
 
-目前 phase：`CI artifact de-dup complete; measured runner candidate next`
+目前 phase：`Measured regression speedup accepted; remaining family／handoff cleanup`
 
 本 branch 只修改 tests、test fixtures、developer validation／CI scripts 與直接相關文件；不修改
 `XBrainLab/` 產品 UI、ApplicationService、EEG semantics、training 或 Assistant 行為。若清理揭露
@@ -174,6 +174,12 @@ file／replacement mapping，不建立另一份萬筆 test manifest。
   contracts通過。Local regression仍保留unit→integration barrier與八組membership，候選改為固定
   三worker／longest-first，並記錄每組 wall／CPU／peak RSS／process count；目前只有5個runner unit
   contracts通過，尚未以兩輪warm full regression採用效能claim。
+- `2026-08-20` complete regression量測：第一輪八組測試均通過，但telemetry與authoritative result
+  同層而被final verifier正確拒絕；telemetry移入獨立子目錄後，第二輪aggregate通過，11,302
+  executed／0 failed／8 optional-public skips。兩輪test-work為907.4與918.5秒，中位約913秒，較
+  1,353.3秒基線改善32.5%；前三高peak RSS合計約7.6 GiB。Integration-UI降至296–303秒，符合
+  移除重複human-like capture預期。Final exact source仍須再跑完整 regression與canonical handoff，
+  本checkpoint不宣稱handoff-ready。
 
 ## Focused validation 與 stop condition
 

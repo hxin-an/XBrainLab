@@ -117,7 +117,9 @@ def test_group_execution_uses_owned_coverage_file_except_timing_group(
         tmp_path / "covered"
     )
     covered_telemetry = json.loads(
-        (tmp_path / "covered" / f"{covered}.telemetry.json").read_text(encoding="utf-8")
+        (tmp_path / "covered" / "telemetry" / f"{covered}.json").read_text(
+            encoding="utf-8"
+        )
     )
     assert covered_telemetry["command"] == covered
     assert covered_telemetry["return_code"] == 0
