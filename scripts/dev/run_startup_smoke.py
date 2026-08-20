@@ -16,6 +16,7 @@ from scripts.dev.owned_process_group import spawn_owned_process, terminate_and_c
 ROOT = Path(__file__).resolve().parents[2]
 TIMEOUT_SECONDS = 25
 TERMINATION_GRACE_SECONDS = 5
+QUIESCENCE_GRACE_SECONDS = 5
 INITIALIZED_MARKER = "MainWindow initialized"
 CLOSE_REQUESTED_MARKER = "XBrainLab startup smoke close requested"
 PLATFORM_MARKER = "XBrainLab startup smoke platform:"
@@ -36,8 +37,10 @@ def run_startup_smoke(*, expected_platform: str | None = None) -> dict[str, obje
         text=True,
     )
     timed_out = False
+    process_tree_quiescent = False
     try:
         stdout, stderr = process.communicate(timeout=TIMEOUT_SECONDS)
+        process_tree_quiescent = owner.wait_for_exit(QUIESCENCE_GRACE_SECONDS)
     except subprocess.TimeoutExpired:
         timed_out = True
         stdout, stderr = terminate_and_collect(
@@ -62,6 +65,7 @@ def run_startup_smoke(*, expected_platform: str | None = None) -> dict[str, obje
         and bool(qt_platform)
         and platform_matches
         and not timed_out
+        and process_tree_quiescent
         and return_code == 0
     )
     return {
@@ -71,6 +75,7 @@ def run_startup_smoke(*, expected_platform: str | None = None) -> dict[str, obje
         "timeout_seconds": TIMEOUT_SECONDS,
         "timed_out": timed_out,
         "return_code": return_code,
+        "process_tree_quiescent": process_tree_quiescent,
         "saw_main_window_initialized": saw_initialized,
         "saw_close_requested": saw_close_requested,
         "qt_platform": qt_platform,
