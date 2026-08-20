@@ -42,10 +42,14 @@ Braindecode vendoring。Data Import 與 4B Assistant 模型均不在本 slice。
 4. 原生Windows以Qt `windows` plugin真正啟動`run.py`／MainWindow、materialize五個主要panels、走一條
    真ApplicationService小型lifecycle，並由正常Qt close path以return code 0結束；timeout、強制kill、
    native abort、殘留worker或owned process全部失敗。
-5. Windows完整platform tests保留Python 3.11；另以Python 3.12跑source startup smoke。測試temp path包含
-   空格與非ASCII字元。流程不依賴network、外部dataset、GPU或Assistant model。
+5. Windows native source-run使用獨立Windows-only step，不繼承platform matrix的
+   `QT_QPA_PLATFORM=offscreen`；它必須保持該變數unset，記錄並要求
+   `QGuiApplication.platformName() == "windows"`，且把`TEMP`、`TMP`、application settings與cache
+   roots隔離在同一個含空格與非ASCII字元的owned path。Windows完整platform tests保留Python 3.11；
+   另以Python 3.12跑source startup smoke。
 6. macOS在current ARM runner完成locked source install、platform tests與bounded clean startup／shutdown；
-   headless CI不宣稱互動式3D、notarization或真人desktop acceptance。
+   startup probe記錄並要求native `cocoa` plugin；headless CI不宣稱互動式3D、notarization或真人desktop
+   acceptance。
 7. Linux八shards、Windows／macOS lifecycle、Windows DPI與其provenance都是required evidence；缺少
    required artifact必須fail。Provider transport failure以清楚分類保留為incomplete evidence，不能讓job
    通過。
@@ -86,9 +90,12 @@ Braindecode vendoring。Data Import 與 4B Assistant 模型均不在本 slice。
 2. 新增developer-only bounded startup選項，使MainWindow顯示並進入event loop後由產品close path關閉；
    timeout改為failure，artifact記錄initialized、close requested、return code、timed out與bounded log tails。
 3. 在Windows native Qt `windows` plugin執行startup；Python 3.11沿用完整platform groups，Python 3.12只跑
-   startup smoke避免複製整套suite。
+   startup smoke避免複製整套suite。Native step不得設定`QT_QPA_PLATFORM`，並以含空格／非ASCII字元的
+   owned temp／settings／cache roots執行；macOS probe同樣驗證`cocoa`而非offscreen。
 4. 新增一條lower-mock platform smoke：真MainWindow／ApplicationService、五panel materialization、
-   小型本地資料command、含空格／非ASCII temp path與clean shutdown。macOS跑相同非3D範圍。
+   `QueryStateCommand(query="state")`的initial publication、未確認`NewSessionCommand()`的既有
+   confirmation-required結果、`NewSessionCommand(confirmed=True)`成功且empty-session generation改變，
+   以及clean shutdown。這條流程不得讀取EEG fixture或進Data Import；macOS跑相同非3D範圍。
 
 ### C. Artifact policy與final candidate
 
@@ -106,7 +113,9 @@ Braindecode vendoring。Data Import 與 4B Assistant 模型均不在本 slice。
 - CI scope／provenance：`tests/unit/scripts/test_ci_change_scope.py`與新增provenance contracts。
 - Linux evidence：`tests/unit/scripts/test_run_tests.py`、pytest completion／aggregate attestation contracts。
 - Workflow／artifact：既有CI public、human-like、UI visual contracts與新增platform artifact contract。
-- Startup：`run_startup_smoke` unit／subprocess contracts，加Windows／macOS platform smoke selectors。
+- Startup：`run_startup_smoke` unit／subprocess contracts，加Windows／macOS platform smoke selectors；後者
+  精確驗證五panel、native Qt plugin、隔離roots、initial query publication、New Session確認邊界、confirmed
+  generation transition與clean exit。
 - Static：changed Python files的Ruff／format；workflow YAML parse與action／cache contract。
 - 中途不跑complete regression或canonical handoff；remote platform workflow才是本slice的final evidence。
 
