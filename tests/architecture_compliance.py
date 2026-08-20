@@ -407,12 +407,6 @@ HEADLESS_VERIFIER_DIRECT_STUDY_METHODS = (
     "stop_training",
     "train",
 )
-PRODUCT_SUCCESS_TEST_DIRS = (
-    Path("tests/integration/backend"),
-    Path("tests/integration/io"),
-    Path("tests/integration/pipeline"),
-    Path("tests/integration/ui"),
-)
 UI_DIRECT_STUDY_CONTROLLER_LOOKUP_ALLOWED_FILES: tuple[str, ...] = ()
 UI_AGENT_WORKER_INTERNAL_TOKENS = (
     ".worker.engine",
@@ -11585,15 +11579,6 @@ def _check_application_publication_render_ledger(root_dir: Path) -> list[str]:
     return violations
 
 
-def _is_application_refresh_timer_call(node: ast.Call, method_name: str) -> bool:
-    return (
-        isinstance(node.func, ast.Attribute)
-        and node.func.attr == method_name
-        and isinstance(node.func.value, ast.Attribute)
-        and node.func.value.attr == "_application_refresh_timer"
-    )
-
-
 def check_evaluation_publication_refresh_boundary(root_dir: Path) -> list[str]:
     """Protect Evaluation's narrow publication-owned UI boundary."""
     violations: list[str] = []
@@ -12188,29 +12173,6 @@ def check_visualization_publication_refresh_boundary(root_dir: Path) -> list[str
             )
 
     return violations
-
-
-def _is_visualization_refresh_timer_call(node: ast.Call, method_name: str) -> bool:
-    return (
-        isinstance(node.func, ast.Attribute)
-        and node.func.attr == method_name
-        and isinstance(node.func.value, ast.Attribute)
-        and node.func.value.attr == "_application_refresh_timer"
-    )
-
-
-def _is_visualization_refresh_timer_timeout_connect(node: ast.Call) -> bool:
-    return (
-        isinstance(node.func, ast.Attribute)
-        and node.func.attr == "connect"
-        and isinstance(node.func.value, ast.Attribute)
-        and node.func.value.attr == "timeout"
-        and isinstance(node.func.value.value, ast.Attribute)
-        and node.func.value.value.attr == "_application_refresh_timer"
-        and len(node.args) == 1
-        and isinstance(node.args[0], ast.Attribute)
-        and node.args[0].attr == "_refresh_from_application_publication"
-    )
 
 
 def _panel_spec_attr(call: ast.Call) -> str | None:
