@@ -13,6 +13,7 @@ Usage::
 import argparse
 import os
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from time import monotonic, sleep
 from typing import Protocol
@@ -34,6 +35,7 @@ from XBrainLab.ui.qt_runtime import (
 configure_qt_platform_for_runtime()
 
 _RUN_ROOT = Path(__file__).resolve().parent
+_STARTUP_SMOKE_CLOSE_MS_ENV = "XBRAINLAB_STARTUP_SMOKE_CLOSE_MS"
 
 
 def _resolve_tool_debug_script(value: str) -> str:
@@ -230,6 +232,40 @@ def _configure_qt_application_attributes() -> None:
     )
 
 
+def _startup_smoke_close_delay_ms(
+    environ: Mapping[str, str] = os.environ,
+) -> int | None:
+    """Return the bounded developer-smoke close delay, if explicitly enabled."""
+    raw_value = environ.get(_STARTUP_SMOKE_CLOSE_MS_ENV, "").strip()
+    if not raw_value:
+        return None
+    try:
+        delay_ms = int(raw_value)
+    except ValueError as error:
+        raise ValueError("Startup smoke close delay must be an integer.") from error
+    if not 0 <= delay_ms <= 10_000:
+        raise ValueError("Startup smoke close delay must be between 0 and 10000 ms.")
+    return delay_ms
+
+
+def _schedule_startup_smoke_close(window: QWidget) -> None:
+    """Request normal product shutdown only for the explicit developer smoke."""
+    delay_ms = _startup_smoke_close_delay_ms()
+    if delay_ms is None:
+        return
+
+    print(
+        f"XBrainLab startup smoke platform: {QApplication.platformName()}",
+        flush=True,
+    )
+
+    def request_close() -> None:
+        print("XBrainLab startup smoke close requested", flush=True)
+        window.close()
+
+    QTimer.singleShot(delay_ms, request_close)
+
+
 def main() -> None:
     """Parse CLI arguments, create the application, and show the main window.
 
@@ -293,6 +329,7 @@ def main() -> None:
     window = MainWindow(study)
     _configure_product_window_lifetime(window)
     _present_main_window(app, splash, window)
+    _schedule_startup_smoke_close(window)
     if startup_geometry_diagnostics_enabled():
         logger.info(widget_geometry_diagnostic_line("main_window.after_show", window))
 

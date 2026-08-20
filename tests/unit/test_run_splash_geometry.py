@@ -3,6 +3,7 @@
 import inspect
 from pathlib import Path
 
+import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QApplication, QMainWindow
@@ -15,6 +16,7 @@ from run import (
     _create_splash_pixmap,
     _present_main_window,
     _show_centered_splash,
+    _startup_smoke_close_delay_ms,
     main,
 )
 
@@ -149,6 +151,17 @@ def test_product_entrypoint_configures_native_window_disposal() -> None:
     _configure_product_window_lifetime(window)
 
     assert window.attributes == [(Qt.WidgetAttribute.WA_DeleteOnClose, True)]
+
+
+def test_startup_smoke_close_delay_is_explicit_and_bounded() -> None:
+    assert _startup_smoke_close_delay_ms({}) is None
+    assert (
+        _startup_smoke_close_delay_ms({"XBRAINLAB_STARTUP_SMOKE_CLOSE_MS": "750"})
+        == 750
+    )
+
+    with pytest.raises(ValueError, match="between 0 and 10000"):
+        _startup_smoke_close_delay_ms({"XBRAINLAB_STARTUP_SMOKE_CLOSE_MS": "10001"})
 
 
 def test_main_drains_qt_runtime_after_event_loop_before_exiting():
