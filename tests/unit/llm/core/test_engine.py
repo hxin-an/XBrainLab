@@ -178,3 +178,19 @@ def test_remote_backend_modules_removed():
 
     assert importlib.util.find_spec("XBrainLab.llm.core.backends.api") is None
     assert importlib.util.find_spec("XBrainLab.llm.core.backends.gemini") is None
+
+
+@pytest.mark.parametrize("retired_mode", ("api", "gemini"))
+def test_retired_remote_mode_migrates_to_local_runtime(retired_mode: str) -> None:
+    config = LLMConfig(inference_mode=retired_mode)
+
+    assert config.inference_mode == "local"
+    assert config.assistant_runtime_selection().backend_mode == "local"
+
+
+@pytest.mark.parametrize("retired_mode", ("api", "gemini"))
+def test_engine_resolves_retired_remote_mode_to_local_model(retired_mode: str) -> None:
+    config = LLMConfig(inference_mode=retired_mode)
+    engine = LLMEngine(config)
+
+    assert engine._get_current_model_id(retired_mode) == config.model_name

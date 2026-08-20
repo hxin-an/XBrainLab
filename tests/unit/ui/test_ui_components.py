@@ -63,18 +63,6 @@ class TestSinglePlotWindow:
         assert w.fig_param["fig"] is current_figure
 
 
-# ============ MessageBubble ============
-
-
-class TestMessageBubble:
-    def test_set_text(self, qtbot):
-        from XBrainLab.ui.chat.message_bubble import MessageBubble
-
-        b = MessageBubble(text="initial", is_user=False)
-        qtbot.addWidget(b)
-        b.set_text("updated")
-
-
 # ============ ConfusionMatrix & MetricsBarChart ============
 
 

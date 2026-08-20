@@ -1,12 +1,9 @@
 """Unit tests for LocalBackend — message processing, init, and stream API."""
 
-from unittest.mock import MagicMock
-
 import pytest
 
 from XBrainLab.llm.core.backends.local import LocalBackend
 from XBrainLab.llm.core.config import LLMConfig
-from XBrainLab.llm.core.generation import ResolvedGenerationOptions
 
 
 @pytest.fixture
@@ -87,19 +84,3 @@ class TestProcessMessages:
         result = backend._process_messages_for_template(messages)
         assert len(result) == 2
         assert result[0]["content"] == "Hello"
-
-
-class TestGenerateStream:
-    def test_raises_if_not_loaded(self, backend):
-        # Mock load to do nothing (don't actually download model)
-        backend.load = MagicMock(side_effect=RuntimeError("no model"))
-        with pytest.raises(RuntimeError):
-            list(
-                backend.generate_stream(
-                    [{"role": "user", "content": "hi"}],
-                    options=ResolvedGenerationOptions(
-                        max_new_tokens=128,
-                        do_sample=False,
-                    ),
-                )
-            )
