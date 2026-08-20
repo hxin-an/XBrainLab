@@ -368,6 +368,15 @@ jobs:
           --job-key human-like-product
           --output build/dev-artifacts/human-like-product/ci-source-provenance.json
 
+      - name: Verify required human-like evidence
+        run: >-
+          poetry run -- python scripts/dev/verify_required_ci_artifacts.py
+          --required-json build/dev-artifacts/human-like-product/human-like-walkthrough.json
+          --provenance build/dev-artifacts/human-like-product/ci-source-provenance.json
+          --expected-job-key human-like-product
+          --expected-github-job human-like-product
+          --expected-runner-os Linux
+
       - name: Upload human-like product evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
@@ -434,6 +443,16 @@ jobs:
           poetry run -- python scripts/dev/ci_source_provenance.py
           --job-key ${{ matrix.os }}-${{ matrix.command }}-py311
           --output test-results/ci-source-provenance.json
+
+      - name: Verify required platform evidence
+        if: always()
+        run: >-
+          poetry run -- python scripts/dev/verify_required_ci_artifacts.py
+          --required-json test-results/${{ matrix.command }}.json
+          --provenance test-results/ci-source-provenance.json
+          --expected-job-key ${{ matrix.os }}-${{ matrix.command }}-py311
+          --expected-github-job platform-test
+          --expected-runner-os ${{ runner.os }}
 
       - name: Upload test results
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -612,6 +631,15 @@ jobs:
           --job-key ui-default-visual
           --output build/dev-artifacts/ui-baseline/ci-source-provenance.json
 
+      - name: Verify required default-scale UI evidence
+        run: >-
+          poetry run -- python scripts/dev/verify_required_ci_artifacts.py
+          --required-json build/dev-artifacts/ui-baseline/ui-baseline-evidence.json
+          --provenance build/dev-artifacts/ui-baseline/ci-source-provenance.json
+          --expected-job-key ui-default-visual
+          --expected-github-job ui-default-visual
+          --expected-runner-os Linux
+
       - name: Upload default-scale UI evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
@@ -667,6 +695,15 @@ jobs:
           poetry run -- python scripts/dev/ci_source_provenance.py
           --job-key ui-windows-dpi
           --output build/dev-artifacts/app-polish-dpi/ci-source-provenance.json
+
+      - name: Verify required Windows DPI evidence
+        run: >-
+          poetry run -- python scripts/dev/verify_required_ci_artifacts.py
+          --required-json build/dev-artifacts/app-polish-dpi/dpi-gate.json
+          --provenance build/dev-artifacts/app-polish-dpi/ci-source-provenance.json
+          --expected-job-key ui-windows-dpi
+          --expected-github-job ui-windows-dpi
+          --expected-runner-os Windows
 
       - name: Upload Windows DPI evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -771,6 +808,19 @@ jobs:
           poetry run -- python scripts/dev/ci_source_provenance.py
           --job-key public-dataset-gate
           --output test-results/ci-source-provenance.json
+
+      - name: Verify required public dataset evidence
+        run: >-
+          poetry run -- python scripts/dev/verify_required_ci_artifacts.py
+          --required-json dataset-validation-matrix.json
+          --required-json data-interpretation-format-matrix.json
+          --required-json public-cross-source-smoke.json
+          --required-json test-results/public-bids-visible-ui.json
+          --required-json test-results/required-public-io.json
+          --provenance test-results/ci-source-provenance.json
+          --expected-job-key public-dataset-gate
+          --expected-github-job public-dataset-gate
+          --expected-runner-os Linux
 
       - name: Upload public dataset gate reports
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

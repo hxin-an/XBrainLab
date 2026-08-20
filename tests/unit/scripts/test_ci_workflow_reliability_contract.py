@@ -239,11 +239,57 @@ def test_authoritative_ci_artifacts_fail_closed_and_include_provenance() -> None
             if step.get("name") == "Upload test results"
         )["with"]["path"]
     )
+
+
+def test_multifile_authoritative_jobs_verify_every_primary_result_before_upload() -> (
+    None
+):
+    jobs = _workflow(CI_WORKFLOW)["jobs"]
+    expected = {
+        "human-like-product": (
+            "Verify required human-like evidence",
+            ("human-like-walkthrough.json",),
+        ),
+        "platform-test": (
+            "Verify required platform evidence",
+            ("test-results/${{ matrix.command }}.json",),
+        ),
+        "ui-default-visual": (
+            "Verify required default-scale UI evidence",
+            ("ui-baseline-evidence.json",),
+        ),
+        "ui-windows-dpi": (
+            "Verify required Windows DPI evidence",
+            ("dpi-gate.json",),
+        ),
+        "public-dataset-gate": (
+            "Verify required public dataset evidence",
+            (
+                "dataset-validation-matrix.json",
+                "data-interpretation-format-matrix.json",
+                "public-cross-source-smoke.json",
+                "public-bids-visible-ui.json",
+                "required-public-io.json",
+            ),
+        ),
+    }
+    for job_key, (step_name, required_paths) in expected.items():
+        step = next(
+            item for item in jobs[job_key]["steps"] if item.get("name") == step_name
+        )
+        assert "verify_required_ci_artifacts.py" in step["run"]
+        assert "--provenance" in step["run"]
+        assert "--expected-job-key" in step["run"]
+        assert "--expected-github-job" in step["run"]
+        assert "--expected-runner-os" in step["run"]
+        for path in required_paths:
+            assert "--required-json" in step["run"]
+            assert path in step["run"]
     assert (
         "test-results/ci-source-provenance.json"
         in next(
             step
-            for step in workflow["jobs"]["public-dataset-gate"]["steps"]
+            for step in jobs["public-dataset-gate"]["steps"]
             if step.get("name") == "Upload public dataset gate reports"
         )["with"]["path"]
     )
