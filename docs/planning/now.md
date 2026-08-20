@@ -138,7 +138,7 @@ control manifest。
 
 ### A. Exact inventory and evidence taxonomy
 
-1. 固定 exact tracked files、pytest node collection、八組 Linux partition、42-gate registry與 baseline
+1. 固定 exact tracked files、pytest node collection、八組 Linux partition、40-gate registry與 baseline
    durations。每個 family 產生 ignored working inventory，ledger只記 aggregate完成度。
 2. 對每個 file 決定 `keep | rewrite | move_rename | delete`：unit可 mock external collaborator但不
    mock同一 owner decision；integration side effect必經 owner public entry；native／model／public-data
@@ -199,6 +199,11 @@ control manifest。
 
 ## Checkpoints
 
+- `2026-08-20` exact-node attestation去重：pytest completion schema升為v2並保存每個node的terminal
+  outcome；complete regression明列architecture與persistence七個required selectors，缺少或非pass即由
+  recorder fail closed。因而移除handoff中兩個同source重跑的`architecture-unit`與
+  `persistence-path-stop-barrier` gate；獨立architecture source checker、完整regression、coverage與所有
+  native／real-data／artifact gates不變。這是evidence重用，不是刪除測試。
 - `2026-08-20` global fixture scoping：移除 root collection-time PyVista／PyVistaQt／VTK
   `sys.modules` replacement；未宣告 modal interaction 改為 fail-fast，component accepted path 與
   qtbot real-modal path各自 opt in。`linux-unit-ui` 2,684 cases全數通過；Assistant import review、

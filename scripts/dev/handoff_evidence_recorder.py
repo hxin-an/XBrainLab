@@ -28,7 +28,11 @@ from scripts.dev.handoff_gate_spec import (
     GateSpec,
 )
 from scripts.dev.owned_process_group import spawn_owned_process, terminate_and_collect
-from scripts.dev.pytest_completion_attestation import COUNT_NAMES, validate_attestation
+from scripts.dev.pytest_completion_attestation import (
+    COUNT_NAMES,
+    required_outcome_failure,
+    validate_attestation,
+)
 from scripts.dev.pytest_terminal_summary import parse_terminal_outcomes
 from scripts.dev.sensitive_path_redaction import (
     contains_sensitive_path as _contains_sensitive_path,
@@ -984,6 +988,7 @@ def _outcome_policy_record(spec: GateSpec) -> dict[str, Any]:
         "allowed_return_codes": list(spec.outcome.allowed_return_codes),
         "require_pytest_attestation": spec.outcome.require_pytest_attestation,
         "forbidden_pytest_outcomes": list(spec.outcome.forbidden_pytest_outcomes),
+        "required_pytest_selectors": list(spec.required_pytest_selectors),
     }
 
 
@@ -1064,12 +1069,18 @@ def _validated_pytest_attestation(
         return None, "Registered pytest completion policy is malformed."
     runner, expected_args = contract
     path = _contained_output_path(output_root, spec.pytest_attestation_path)
-    return validate_attestation(
+    attestation, failure = validate_attestation(
         path,
         expected_runner=runner,
         expected_args=expected_args,
         expected_exit_code=return_code,
     )
+    if failure is None and attestation is not None:
+        failure = required_outcome_failure(
+            attestation,
+            spec.required_pytest_selectors,
+        )
+    return attestation, failure
 
 
 def _file_record(path: Path, *, root: Path) -> dict[str, Any]:

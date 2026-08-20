@@ -1057,6 +1057,57 @@ def test_pytest_skip_summary_cannot_be_recorded_as_pass(
     assert "disallowed pytest outcome" in record["failure_reason"].lower()
 
 
+def test_pytest_required_selector_without_terminal_evidence_fails_closed(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _sha, branch = _repo(tmp_path)
+    (repo / "test_required_gate.py").write_text(
+        "def test_present():\n    pass\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "test_required_gate.py")
+    _git(repo, "commit", "-qm", "add required gate")
+    sha = _git(repo, "rev-parse", "HEAD")
+    evidence_root = repo / "build" / "handoff-evidence" / sha
+    attestation = "pytest-attestations/pytest-required-selector.json"
+    runner = Path(recorder_module.__file__).with_name("run_required_pytest_gate.py")
+    spec = GateSpec(
+        check_id="pytest-required-selector",
+        section="7",
+        argv=(
+            sys.executable,
+            str(runner),
+            "--result-json",
+            f"{EVIDENCE_ROOT_TOKEN}/{attestation}",
+            "--",
+            "-q",
+            "test_required_gate.py",
+        ),
+        timeout_seconds=30,
+        outcome=OutcomePolicy.pytest_strict(),
+        required_artifact_paths=(attestation,),
+        pytest_attestation_path=attestation,
+        required_pytest_selectors=("test_required_gate.py::test_missing",),
+    )
+    _install_test_gate(monkeypatch, spec)
+
+    record = record_handoff_command(
+        repo_root=repo,
+        evidence_root=evidence_root,
+        section="7",
+        check_id=spec.check_id,
+        command=spec.resolve_argv(evidence_root),
+        timeout_seconds=30,
+        expected_branch=branch,
+        require_upstream=False,
+    )
+
+    assert record["return_code"] == 0
+    assert record["passed"] is False
+    assert "no terminal evidence" in record["failure_reason"].lower()
+
+
 def test_early_pytest_exit_with_fake_summary_cannot_be_recorded_as_pass(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,

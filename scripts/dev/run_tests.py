@@ -22,6 +22,7 @@ from scripts.dev.pytest_completion_attestation import (
     REQUIRED_PYTEST_RUNNER_ID,
     SHARDED_PYTEST_RUNNER_ID,
     aggregate_counts,
+    aggregate_outcomes,
     build_attestation,
     validate_attestation,
     write_attestation,
@@ -538,6 +539,7 @@ def verify_linux_ci_evidence(
             command_args=("all",),
             exit_code=exit_code,
             counts=aggregate_counts(attestations),
+            outcomes=aggregate_outcomes(attestations),
         ),
     )
     if failures:
@@ -784,6 +786,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 command_args=(parsed.command,),
                 exit_code=exit_code,
                 counts=aggregate_counts(attestations),
+                outcomes=aggregate_outcomes(attestations),
             ),
         )
     return exit_code
