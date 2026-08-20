@@ -11,7 +11,6 @@ from pathlib import Path
 from threading import Event
 from typing import Any
 
-import mne
 import pytest
 from PyQt6.QtCore import QPoint, QRect, Qt, QThreadPool, QTimer
 from PyQt6.QtTest import QTest
@@ -37,7 +36,10 @@ from scripts.dev.fetch_public_eeg_fixtures import (
     resolve_public_fixture_dir,
 )
 from tests.integration.ui.modal_helpers import visible_modal_dialog
-from XBrainLab.backend.application import get_application_service
+from XBrainLab.backend.application import (
+    data_interpretation_scan,
+    get_application_service,
+)
 from XBrainLab.backend.application.owned_work import OwnedWorkPhase
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.study import Study
@@ -1460,50 +1462,51 @@ def test_visible_bids_apply_cancel_reopens_identical_review_and_retries(
     )
 
 
-def test_visible_file_review_cancel_discards_late_real_loader_and_retries(
+def test_visible_bids_subject_review_has_one_cancel_surface_and_retries(
     qtbot: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Cancelling initial review must discard a late real EDF loader result."""
-    _require_manifest_group("physionet-edf-motor")
+    """Post-subject loading must expose one cancel and discard late metadata."""
+    _require_manifest_group("mne-bids-tiny-eeg")
 
     monkeypatch.setattr(
         QFileDialog,
-        "getOpenFileNames",
+        "getExistingDirectory",
         staticmethod(
-            lambda _parent, _title, _directory, _filter, **_kwargs: (
-                [str(PHYSIONET_MOTOR_EDF)],
-                "",
-            )
+            lambda _parent, _title, _directory, **_kwargs: str(PUBLIC_BIDS_ROOT)
         ),
     )
-    original_read_raw_edf = mne.io.read_raw_edf
-    read_started = Event()
-    release_read = Event()
-    real_read_finished = Event()
-    block_first_read = True
+    original_bids_summary = data_interpretation_scan._bids_summary
+    metadata_read_started = Event()
+    release_metadata_read = Event()
+    real_metadata_read_finished = Event()
+    block_materialized_summary = True
 
-    def _blocking_read_raw_edf(*args: Any, **kwargs: Any):
-        nonlocal block_first_read
-        if block_first_read:
-            block_first_read = False
-            read_started.set()
-            if not release_read.wait(timeout=20.0):
-                raise TimeoutError("Timed out waiting to release real EDF read.")
+    def _blocking_bids_summary(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        nonlocal block_materialized_summary
+        if block_materialized_summary and kwargs.get("materialize") is True:
+            block_materialized_summary = False
+            metadata_read_started.set()
+            if not release_metadata_read.wait(timeout=20.0):
+                raise TimeoutError("Timed out waiting to release BIDS metadata read.")
             try:
-                return original_read_raw_edf(*args, **kwargs)
+                return original_bids_summary(*args, **kwargs)
             finally:
-                real_read_finished.set()
-        return original_read_raw_edf(*args, **kwargs)
+                real_metadata_read_finished.set()
+        return original_bids_summary(*args, **kwargs)
 
-    monkeypatch.setattr(mne.io, "read_raw_edf", _blocking_read_raw_edf)
+    monkeypatch.setattr(
+        data_interpretation_scan,
+        "_bids_summary",
+        _blocking_bids_summary,
+    )
     host, panel, runtime = _build_dataset_panel(qtbot)
     service = get_application_service(host.study)
     before = runtime.get_view_publication()
-    driver = _start_wizard_driver(skip_labels=True)
+    driver = _start_wizard_driver(source_picker="folder")
 
     QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
-    qtbot.waitUntil(read_started.is_set, timeout=45_000)
+    qtbot.waitUntil(metadata_read_started.is_set, timeout=45_000)
     driver.timer.stop()
     loading = visible_modal_dialog()
     assert isinstance(loading, DataInterpretationLoadingDialog)
@@ -1511,11 +1514,16 @@ def test_visible_file_review_cancel_discards_late_real_loader_and_retries(
         panel.action_handler._data_interpretation._active_loading_operation_id
     )
     assert isinstance(operation_id, str) and operation_id
+    assert loading.cancel_button.text() == "Cancel Import"
     assert loading.cancel_button.isEnabled()
+    assert not panel.sidebar.import_cancel_btn.isVisibleTo(panel)
 
+    cancel_started_at = time.monotonic()
     QTEST.mouseClick(loading.cancel_button, Qt.MouseButton.LeftButton)
-    release_read.set()
-    qtbot.waitUntil(real_read_finished.is_set, timeout=20_000)
+    assert time.monotonic() - cancel_started_at <= 0.1
+    assert not loading.isVisible()
+    release_metadata_read.set()
+    qtbot.waitUntil(real_metadata_read_finished.is_set, timeout=20_000)
     qtbot.waitUntil(
         lambda: service.get_owned_operation(operation_id).phase
         is OwnedWorkPhase.CANCELLED,
@@ -1528,9 +1536,12 @@ def test_visible_file_review_cancel_discards_late_real_loader_and_retries(
     qtbot.wait(100)
     assert runtime.get_view_publication() == before
     assert host.study.loaded_data_list == []
-    assert not isinstance(visible_modal_dialog(), DataInterpretationPreviewDialog)
+    assert visible_modal_dialog() is None
 
-    retry_driver = _start_wizard_driver(skip_labels=True)
+    retry_driver = _start_wizard_driver(
+        source_picker="folder",
+        resolve_bids_values=True,
+    )
     QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
     _wait_for_applied_interpretation(
         qtbot,

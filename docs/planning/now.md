@@ -4,12 +4,12 @@
 
 ## 目前焦點
 
-在已合併的 `v0.7.0` cleanup baseline 上，確認真實 EEG loader 仍在執行時取消 Import 是否會造成
-native lifecycle 崩潰。此 slice 只處理一個 owner boundary：取消後不得提交部分資料、不得讓晚到
-callback 重開已關閉視窗，且同一來源必須可重新 Import 成功；不在同一 branch 重構 Load Data 或調整
-Import GUI。若真實 loader 證據已通過，就不為無法重現的 defect 增加 production code。
+在已合併的 `v0.7.0` cleanup baseline 上，重現使用者於 BIDS subject selection 按 Continue 後取消
+Import 時，取消控制看似凍結且 cancellation surface 不符合既有產品風格的問題。先分清中央 loading
+dialog 的 `Cancel` 與 Dataset sidebar 的 `Cancel Import`，只修被 exact reproduction 證明的 lifecycle／
+presentation boundary；不在同一 branch 重構 Load Data。
 
-目前 phase：`Checkpoint — native-loader cancellation evidence complete`
+目前 phase：`Checkpoint — focused green, candidate validation pending`
 
 ## 問題與證據
 
@@ -37,6 +37,16 @@ Import GUI。若真實 loader 證據已通過，就不為無法重現的 defect 
   執行原始 MNE／BrainVision loader，單檔 review 取消後仍執行原始 MNE／EDF loader；兩者均得到 typed
   cancelled terminal、registry drainage、authoritative state 不變、無晚到 wizard，且同來源 retry 正式
   Apply 成功。兩項 focused tests 分別約 13 秒與 6 秒，沒有 native abort，故目前沒有 production red test。
+- 使用者已將 exact control 確認為 Dataset sidebar 的 `Cancel Import`；所稱提示框是 cancellation 成功後
+  出現的 surface。Source trace 顯示 subject Continue 後的 `DataInterpretationLoadingDialog` 是 modal，
+  但 operation presenter 同時把 modal 背後的 sidebar cancel 顯示為 active。Sidebar cancel 只取消 owned
+  operation，沒有 reject loading dialog；晚到 cancelled result 因而仍可能被 active loading dialog 當成
+  failure／Retry surface。中央 dialog 自己的 Cancel 則會關閉 dialog、取消 operation，且現有 exact Qt
+  path 已證明 terminal cancelled、state 不變與 retry 成功。
+- 使用者於 `2026-08-20` 明確授權此次 UI 修復，並核准 deletion/reuse-first 方向：loading modal 存在時
+  只保留 dialog 內一個 `Cancel Import`；sidebar control 不對外顯示。Review 關閉後的真正 Apply 階段沒有
+  modal，sidebar `Cancel Import` 仍是唯一長工作 cancellation 入口。取消完成不開另一個成功／Retry
+  dialog，只以既有非阻塞 status surface 回饋。
 
 ## Observable outcome
 
@@ -46,7 +56,10 @@ Import GUI。若真實 loader 證據已通過，就不為無法重現的 defect 
 3. MainWindow 或 Import UI 關閉後，晚到 loader／review callback 不得重新顯示 dialog 或觸碰 quiescing
    widget。
 4. 取消後重新開啟 Import，使用同一來源能重新得到 review 並完成一次正式 Apply。
-5. 修復完成於單一 exact branch head；focused native-loader cancellation evidence、directly related lifecycle
+5. Subject Continue 後準備 review 時只能看到 modal 內一個 `Cancel Import`；sidebar cancel 必須隱藏。
+   Apply 真正載入且 review 已關閉時，sidebar `Cancel Import` 必須保持可見、可按。取消 terminal 不得
+   轉成 error／Retry 或另一個 blocking success dialog，只保留短暫非阻塞 status feedback。
+6. 修復完成於單一 exact branch head；focused native-loader cancellation evidence、directly related lifecycle
    tests、source-diverse data gate、canonical handoff 與 remote CI 通過後，提供使用者一條
    Cancel→retry 手測流程。
 
@@ -58,8 +71,8 @@ Import GUI。若真實 loader 證據已通過，就不為無法重現的 defect 
   Load Data module refactor、不處理 Stop Training、不增加通用 cancellation framework。
 - ApplicationService／OwnedWorkRegistry 與既有 Data Interpretation transaction 仍是唯一 authoritative
   owners；不新增 state、receipt、compatibility path 或第二套 error semantics。
-- 此 slice 預期不需修改 `XBrainLab/ui/` 或可見 layout／文案。若根因要求可見 UI change，先停止並取得
-  新的明確 UI 授權；既有對後續 source-classification UX 的授權不自動擴張到本 bug。
+- UI 授權只涵蓋本次 cancellation ownership：loading dialog 的 cancel label／visibility、sidebar cancel
+  phase visibility 與非阻塞 terminal feedback。不改五步 wizard 其他 layout／copy，不改 source classifier。
 
 ## 施工順序
 
@@ -159,27 +172,29 @@ dossier 全部 PASS，總 wall time 2,226.162 秒（37 分 06 秒）；所有 ap
 通過後，PR #41 以 merge commit `19d866f7` 合入 `main`。40 分鐘仍是 full handoff 硬門檻，30 分鐘只作
 後續 test-quality cleanup 的 stretch goal；日常修復不重跑完整 manifest。
 
-### C. Import Cancel native-loader evidence（checkpoint complete）
+### C. Import Cancel single-surface repair（focused green）
 
 1. 從 main merge `19d866f7` 確認既有 file／folder／BIDS routing 與 offscreen cancellation baseline，
    不改產品。
 2. 新增最小 red reproduction：真實 public EEG loader 已進入 I/O／materialization 後取消 owned operation，
    驗證 native process 存活、typed cancelled terminal、registry drainage、state 不變、no late dialog 與
    retry 成功。
-3. 追蹤 cancel owner、loader checkpoint、transaction commit guard 及 Qt callback token；只修第一個被 red
-   test 證明違反的 boundary，重用既有 owner，不建立通用抽象。
+3. 追蹤 cancel owner、loader checkpoint、transaction commit guard 及 Qt callback token；red test 已確認
+   modal loading dialog 與背後 sidebar 同時呈現 cancellation control。Loading 階段只保留 dialog owner，
+   Apply 階段才顯示 sidebar owner，不建立通用抽象。
 4. 用相同 red test 轉 green，再跑直接相鄰的 BIDS cancel/reopen、ApplicationService owned-work、dialog
    close 與 public source-diverse import evidence。
 5. 完整 candidate 才跑 canonical handoff 與 remote CI，產生一條真實 Cancel→reopen→retry 手測指令；
    使用者明確通過前 PR 保持 draft 且不得 merge。
 
-Checkpoint（`2026-08-20`）：既有 BIDS Apply cancel test 已移除 in-memory Raw 替身，取消後會完成原始
-BrainVision loader，再驗證取消 operation、state non-commit、preserved review reopen 與 real retry；另新增
-單檔 PhysioNet EDF 在 initial review loader active 時取消的完整路徑，驗證晚到真實 MNE read 不開 wizard、
-registry 歸零、state 不變及同檔 retry 成功。兩項以 offscreen Qt、`prlimit --core=0` 和 timeout 實跑
-2/2 PASS。因沒有可重現的 product failure，本 slice production `+0/-0/net 0 LOC`，不增加 cancellation
-owner 或 compatibility path；若使用者 native 手測仍閃退，下一步需要該次 exact source、觸發階段與 native
-terminal log，不能從 WSL X11 shutdown 推導產品修復。
+Checkpoint（`2026-08-20`）：red test 在真實 BIDS metadata work active 時確認舊 UI 同時呈現 modal
+`Cancel` 與 sidebar `Cancel Import`；modal 外控制造成錯誤 ownership，sidebar cancel 又不會把 loading
+surface 標成 user-cancelled。最小 green 將 dialog action 明確命名為 `Cancel Import`，loading operation bind
+後隱藏 sidebar duplicate，並讓 dialog cancel 重用既有 `OwnedOperationPresenter`；terminal 只在 status bar
+顯示 `Dataset import cancelled`。Apply 階段仍由既有 sidebar control 取消真實 BrainVision loader。兩條
+real-fixture Qt paths與71項直接相鄰 unit/lifecycle tests合計73/73 PASS；production只改2 files、未新增
+owner。Default-scale offscreen screenshot 已人工檢查 hierarchy、contrast、footer位置與文字 fit。下一步是
+source-diverse data gate、exact commit、完整 handoff／remote CI，之後交使用者 native Cancel→retry 手測。
 
 ## Focused validation 與 stop condition
 

@@ -20,7 +20,7 @@ def test_loading_dialog_shows_wizard_context_and_cancel(qtbot):
     assert dialog.progress_bar.minimum() == 0
     assert dialog.progress_bar.maximum() == 0
     assert dialog.progress_bar.property("operationKind") == ""
-    assert dialog.cancel_button.text() == "Cancel"
+    assert dialog.cancel_button.text() == "Cancel Import"
     assert dialog.cancel_button.icon().isNull()
     assert all(label.isVisible() for label in dialog.step_labels)
 
@@ -39,7 +39,7 @@ def test_loading_dialog_error_state_supports_retry_without_technical_traceback(q
     assert not dialog.progress_bar.isVisible()
     assert dialog.retry_button.isVisible()
     assert dialog.retry_button.text() == "Retry"
-    assert dialog.cancel_button.text() == "Cancel"
+    assert dialog.cancel_button.text() == "Cancel Import"
     visible_text = " ".join(
         label.text() for label in dialog.findChildren(QLabel) if label.isVisible()
     )

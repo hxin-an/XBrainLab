@@ -125,7 +125,7 @@ class DataInterpretationLoadingDialog(BaseDialog):
         footer = QHBoxLayout()
         footer.setContentsMargins(0, 0, 0, 0)
         footer.setSpacing(8)
-        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button = QPushButton("Cancel Import")
         self.cancel_button.setObjectName("DataImportLoadingSecondaryButton")
         self.cancel_button.clicked.connect(self.reject)
         self.retry_button = QPushButton("Retry")

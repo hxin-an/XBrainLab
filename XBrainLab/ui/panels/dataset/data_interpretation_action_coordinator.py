@@ -206,6 +206,7 @@ class DataInterpretationActionCoordinator:
         self._active_loading_dialog: Any | None = None
         self._active_loading_token: object | None = None
         self._active_loading_operation_id: str | None = None
+        self._loading_cancel_operation_id: str | None = None
         self._operation_presenter: OwnedOperationPresenter | None = None
         timer_parent = self.panel if isinstance(self.panel, QObject) else None
         self._loading_progress_timer = QTimer(timer_parent)
@@ -269,10 +270,16 @@ class DataInterpretationActionCoordinator:
             return
         operation_id = self._active_loading_operation_id
         if operation_id is not None:
-            self._bindings.cancel_application_operation(
-                self.panel,
-                operation_id,
-            )
+            presenter = self._operation_presenter
+            if presenter is not None and presenter.active_operation_id == operation_id:
+                cancel_requested = presenter.request_cancel()
+            else:
+                cancel_requested = self._bindings.cancel_application_operation(
+                    self.panel,
+                    operation_id,
+                )
+            if cancel_requested:
+                self._loading_cancel_operation_id = operation_id
         dialog = self._active_loading_dialog
         self._active_loading_token = None
         self._active_loading_dialog = None
@@ -357,7 +364,22 @@ class DataInterpretationActionCoordinator:
                 operation_id,
             ),
         )
+        self._operation_presenter.terminal.connect(
+            self._handle_owned_operation_terminal
+        )
         return self._operation_presenter
+
+    def _handle_owned_operation_terminal(
+        self,
+        operation_id: str,
+        phase: str,
+    ) -> None:
+        """Settle cancellation initiated from the modal import surface."""
+        if operation_id != self._loading_cancel_operation_id:
+            return
+        self._loading_cancel_operation_id = None
+        if phase == "cancelled":
+            self._show_status("Dataset import cancelled")
 
     def _close_loading_dialog(self, token: object | None = None) -> None:
         if token is not None and self._active_loading_token is not token:
@@ -1166,6 +1188,10 @@ class DataInterpretationActionCoordinator:
                 presenter.bind(operation_id, stage="Preparing import")
             if self._active_loading_token is not None:
                 self._active_loading_operation_id = operation_id
+                sidebar = getattr(self.panel, "sidebar", None)
+                cancel_button = getattr(sidebar, "import_cancel_btn", None)
+                if cancel_button is not None:
+                    cancel_button.setVisible(False)
                 dialog = self._active_loading_dialog
                 progress_bar = getattr(dialog, "progress_bar", None)
                 if progress_bar is not None:
