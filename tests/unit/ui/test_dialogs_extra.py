@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtWidgets import (
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QLabel,
@@ -30,9 +29,6 @@ class TestEventFilterDialog:
         d = EventFilterDialog(None, events)
         qtbot.addWidget(d)
         return d
-
-    def test_creates(self, dlg):
-        assert isinstance(dlg, QDialog)
 
     def test_set_all_checked(self, dlg):
         dlg.set_all_checked(True)
@@ -148,9 +144,6 @@ class TestManualSplitDialog:
         qtbot.addWidget(d)
         return d
 
-    def test_creates(self, dlg):
-        assert isinstance(dlg, QDialog)
-
     def test_accept(self, dlg):
         # Select first 2 items
         for i in range(2):
@@ -192,9 +185,6 @@ class TestChannelSelectionDialog:
         qtbot.addWidget(d)
         return d
 
-    def test_creates(self, dlg):
-        assert isinstance(dlg, QDialog)
-
     def test_set_all_checked(self, dlg):
         dlg.set_all_checked(True)
         dlg.set_all_checked(False)
@@ -227,12 +217,6 @@ class TestOptimizerSettingDialog:
         d = OptimizerSettingDialog(None)
         qtbot.addWidget(d)
         return d
-
-    def test_creates(self, dlg):
-        assert isinstance(dlg, QDialog)
-
-    def test_has_algo_combo(self, dlg):
-        assert isinstance(dlg.algo_combo, QComboBox)
 
     def test_on_algo_select(self, dlg):
         dlg.on_algo_select("Adam")
@@ -285,9 +269,6 @@ class TestEpochingDialog:
         )
         qtbot.addWidget(d)
         return d
-
-    def test_creates(self, dlg):
-        assert isinstance(dlg, QDialog)
 
     def test_toggle_baseline(self, dlg):
         dlg.toggle_baseline(True)

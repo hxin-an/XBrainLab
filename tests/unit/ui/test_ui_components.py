@@ -67,20 +67,6 @@ class TestSinglePlotWindow:
 
 
 class TestMessageBubble:
-    def test_creates_user(self, qtbot):
-        from XBrainLab.ui.chat.message_bubble import MessageBubble
-
-        b = MessageBubble(text="Hello!", is_user=True)
-        qtbot.addWidget(b)
-        assert isinstance(b, MessageBubble)
-
-    def test_creates_assistant(self, qtbot):
-        from XBrainLab.ui.chat.message_bubble import MessageBubble
-
-        b = MessageBubble(text="Hi there!", is_user=False)
-        qtbot.addWidget(b)
-        assert isinstance(b, MessageBubble)
-
     def test_set_text(self, qtbot):
         from XBrainLab.ui.chat.message_bubble import MessageBubble
 
@@ -93,15 +79,6 @@ class TestMessageBubble:
 
 
 class TestConfusionMatrix:
-    def test_creates(self, qtbot):
-        from XBrainLab.ui.panels.evaluation.confusion_matrix import (
-            ConfusionMatrixWidget,
-        )
-
-        w = ConfusionMatrixWidget()
-        qtbot.addWidget(w)
-        assert isinstance(w, ConfusionMatrixWidget)
-
     def test_update_plot_no_data(self, qtbot):
         from XBrainLab.ui.panels.evaluation.confusion_matrix import (
             ConfusionMatrixWidget,
@@ -257,15 +234,6 @@ class TestConfusionMatrix:
 
 
 class TestMetricsBarChart:
-    def test_creates(self, qtbot):
-        from XBrainLab.ui.panels.evaluation.metrics_bar_chart import (
-            MetricsBarChartWidget,
-        )
-
-        w = MetricsBarChartWidget()
-        qtbot.addWidget(w)
-        assert isinstance(w, MetricsBarChartWidget)
-
     def test_update_plot_no_data(self, qtbot):
         from XBrainLab.ui.panels.evaluation.metrics_bar_chart import (
             MetricsBarChartWidget,
@@ -417,13 +385,6 @@ class TestMetricsBarChart:
 
 
 class TestHistoryTable:
-    def test_creates(self, qtbot):
-        from XBrainLab.ui.panels.training.history_table import TrainingHistoryTable
-
-        w = TrainingHistoryTable()
-        qtbot.addWidget(w)
-        assert isinstance(w, TrainingHistoryTable)
-
     def test_clear_history(self, qtbot):
         from XBrainLab.ui.panels.training.history_table import TrainingHistoryTable
 
@@ -438,13 +399,6 @@ class TestHistoryTable:
 
 
 class TestFilteringDialog:
-    def test_creates(self, qtbot):
-        from XBrainLab.ui.dialogs.preprocess.filtering_dialog import FilteringDialog
-
-        d = FilteringDialog(None)
-        qtbot.addWidget(d)
-        assert isinstance(d, FilteringDialog)
-
     def test_get_params_default(self, qtbot):
         from XBrainLab.ui.dialogs.preprocess.filtering_dialog import FilteringDialog
 
@@ -469,9 +423,6 @@ class TestDatasetPanel:
             p = DatasetPanel(controller=ctrl)
             qtbot.addWidget(p)
             yield p
-
-    def test_creates(self, panel):
-        assert isinstance(panel, QWidget)
 
     def test_update_panel(self, panel):
         panel.update_panel()
@@ -501,9 +452,6 @@ class TestTrainingPanel:
                 parent=parent,
             )
             yield p
-
-    def test_creates(self, panel):
-        assert isinstance(panel, QWidget)
 
     def test_update_panel(self, panel):
         panel.update_panel()
