@@ -194,9 +194,17 @@ control manifest。
   workflow；canonical strict GateSpec仍執行真CLI。Standalone checkout從10次heavy subprocess收斂為
   全script AST順序guard＋1次unrelated-cwd真啟動。Human-like payload與atomic publication tests共用一次
   exact immutable source snapshot；真capture仍在開始／結束各refresh。相對上一輪11,302 outcome，預期
-  exact count delta為31（22個重複training、5個mock controller、2個absorbed regression、1個duplicate
-  CLI、1個只保護已刪不存在路徑的source-guard案例），final denominator應為11,271；須由下一次
-  complete regression attestation閉合。
+  預估node delta原為31；final authoritative attestation已取代人工估算，exact denominator為11,265。
+  File-level deletion仍精確是22個重複training案例所在檔、5個mock-controller案例所在檔、2個
+  absorbed regression、1個duplicate CLI與1個只保護已刪不存在路徑的source-guard；pytest參數展開與
+  partition aggregate只採attestation真值，不再用手算作claim。
+- `2026-08-20` final complete regression：exact commit `50dd6d41` 的八組aggregate PASS，11,265
+  collected／executed、11,257 passed、8個既有 `optional_public_fixture` skips，0 failed／error／
+  xfail／xpass／deselect。Runner wall約790秒（13分10秒），相較baseline 1,353.293秒改善41.6%；
+  `linux-unit-scripts` 由約546.7秒降至256.3秒。Phase-1 longest為UI 371.0秒，phase-2 longest為
+  integration-rest 324.1秒；所有group telemetry可用，前三同時執行group peak RSS低於可用RAM的
+  stop threshold。這閉合complete-regression目標，但planning更新後的final candidate仍須由下一次
+  canonical handoff在同一source重跑並產生dossier。
 
 ## Focused validation 與 stop condition
 
