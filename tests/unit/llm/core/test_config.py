@@ -634,12 +634,12 @@ class TestAssistantRuntimeSelection:
 
         selection = cfg.apply_runtime_selection(
             "local",
-            model_id=LLMConfig.fallback_local_model_id(),
+            model_id=LLMConfig.default_local_model_id(),
         )
 
         assert cfg.inference_mode == "local"
         assert cfg.active_mode == "local"
-        assert cfg.model_name == LLMConfig.fallback_local_model_id()
+        assert cfg.model_name == LLMConfig.default_local_model_id()
         assert selection.backend_mode == "local"
-        assert selection.model_id == LLMConfig.fallback_local_model_id()
+        assert selection.model_id == LLMConfig.default_local_model_id()
         assert selection.ui_active_mode == "local"

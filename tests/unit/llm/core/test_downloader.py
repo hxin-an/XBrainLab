@@ -67,6 +67,29 @@ def _patch_download_process_context(process, result_queue):
     )
 
 
+def test_model_downloader_publishes_failure_after_thread_terminal() -> None:
+    downloader = ModelDownloader()
+    thread = MagicMock()
+    downloader._thread = thread
+    downloader.worker = MagicMock()
+    downloader._active_target = MagicMock(repo_id="repo/id")
+    downloader.failed = MagicMock()
+    downloader.terminal = MagicMock()
+
+    downloader._record_failure("error msg")
+
+    assert downloader._thread is thread
+    downloader.failed.emit.assert_not_called()
+
+    downloader._on_thread_finished()
+
+    assert downloader._thread is None
+    outcome = downloader.terminal.emit.call_args.args[0]
+    assert outcome.status is ModelDownloadStatus.FAILED
+    assert outcome.target.repo_id == "repo/id"
+    downloader.failed.emit.assert_called_once_with(outcome)
+
+
 class _AmbiguousStartProcess:
     """Reliable fake for a child created before parent-side start failure."""
 

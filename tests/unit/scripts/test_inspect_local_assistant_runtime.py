@@ -102,8 +102,7 @@ def test_render_markdown_includes_classification(tmp_path: Path):
     assert "classification" in rendered
     assert "current backend mode" in rendered
     assert "inspected backend mode" in rendered
-    assert "legacy compatibility models" in rendered
-    assert "fallback local model" not in rendered
+    assert "primary local model" in rendered
 
 
 def test_runtime_cli_outputs_redacted_cache_identity(

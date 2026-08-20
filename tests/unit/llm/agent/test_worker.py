@@ -299,19 +299,6 @@ class TestInitializeAgent:
             )
             engine.load_model.assert_called_once()
 
-    def test_initialize_agent_supports_an_explicit_legacy_model(self, worker):
-        legacy_model = LLMConfig.fallback_local_model_id()
-        spec = _launch_spec(legacy_model)
-        with patch("XBrainLab.llm.agent.worker.LLMEngine") as MockEng:
-            engine = MockEng.return_value
-
-            worker.initialize_agent(spec)
-
-            assert MockEng.call_args.args[0].model_name == legacy_model
-            assert spec.requested_model_id == legacy_model
-            assert spec.fallback_used is False
-            engine.load_model.assert_called_once()
-
     def test_error_on_failure(self, worker):
         with patch(
             "XBrainLab.llm.agent.worker.LLMEngine",
@@ -658,7 +645,7 @@ class TestGenerateFromMessages:
         fresh = LLMConfig()
         fresh.inference_mode = "gemini"
         fresh.active_mode = "gemini"
-        fresh.model_name = LLMConfig.fallback_local_model_id()
+        fresh.model_name = LLMConfig.default_local_model_id()
         fresh.temperature = 1.25
 
         with (
@@ -898,7 +885,7 @@ class TestOnGenerationError:
 
 class TestReinitializeAgent:
     def test_model_selection_recovers_an_uninitialized_runtime(self, worker):
-        model_id = LLMConfig.fallback_local_model_id()
+        model_id = LLMConfig.default_local_model_id()
         spec = _launch_spec(model_id)
         worker.engine = None
         worker.initialize_agent = MagicMock()
@@ -918,7 +905,7 @@ class TestReinitializeAgent:
         worker.generation_thread = running_thread
 
         request = _activation_request(
-            LLMConfig.fallback_local_model_id(),
+            LLMConfig.default_local_model_id(),
             activation_id=31,
         )
         worker.reinitialize_agent(request)
@@ -935,7 +922,7 @@ class TestReinitializeAgent:
     def test_successful_switch_publishes_terminal_for_same_activation(self, worker):
         initial_spec = _launch_spec(LLMConfig.default_local_model_id())
         request = _activation_request(
-            LLMConfig.fallback_local_model_id(),
+            LLMConfig.default_local_model_id(),
             activation_id=32,
         )
         engine = MagicMock()
@@ -959,7 +946,7 @@ class TestReinitializeAgent:
     def test_failed_switch_publishes_terminal_for_same_activation(self, worker):
         initial_spec = _launch_spec(LLMConfig.default_local_model_id())
         request = _activation_request(
-            LLMConfig.fallback_local_model_id(),
+            LLMConfig.default_local_model_id(),
             activation_id=33,
         )
         engine = MagicMock()
@@ -1066,6 +1053,6 @@ class TestReinitializeAgent:
         engine.switch_backend.side_effect = RuntimeError("fail")
         worker.engine = engine
         worker._runtime_launch_spec = old_spec
-        worker.reinitialize_agent(_launch_spec(LLMConfig.fallback_local_model_id()))
+        worker.reinitialize_agent(_launch_spec(LLMConfig.default_local_model_id()))
         worker.error.emit.assert_called_once()
         assert engine.config.model_name == old_spec.model_id

@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import torch
@@ -11,6 +11,30 @@ def test_set_seed():
     seed_target = 42
     assert isinstance(result, int)
     assert seed.set_seed(seed_target) == seed_target
+
+
+def test_set_seed_configures_cuda_determinism() -> None:
+    with patch("XBrainLab.backend.utils.seed.torch") as mock_torch:
+        mock_torch.cuda.is_available.return_value = True
+        mock_torch.backends.cudnn = MagicMock()
+
+        assert seed.set_seed(42, deterministic=True) == 42
+
+    mock_torch.cuda.manual_seed.assert_called_once_with(42)
+    mock_torch.cuda.manual_seed_all.assert_called_once_with(42)
+    assert mock_torch.backends.cudnn.benchmark is False
+    assert mock_torch.backends.cudnn.deterministic is True
+
+
+def test_set_seed_leaves_cuda_nondeterministic_when_requested() -> None:
+    with patch("XBrainLab.backend.utils.seed.torch") as mock_torch:
+        mock_torch.cuda.is_available.return_value = True
+        mock_torch.backends.cudnn = MagicMock()
+
+        assert seed.set_seed(42, deterministic=False) == 42
+
+    assert mock_torch.backends.cudnn.benchmark is True
+    assert mock_torch.backends.cudnn.deterministic is False
 
 
 def test_get_random_state():

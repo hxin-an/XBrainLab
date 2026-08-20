@@ -48,12 +48,7 @@ EXPECTED_CLASS_MAP = {
     "4": "tongue",
 }
 EXPECTED_TARGET_EVENT_CODES = {"769", "770", "771", "772"}
-
-
-@pytest.fixture(autouse=True)
-def mock_ui_blocking() -> None:
-    """Use the real wizard modal loop instead of the suite-wide dialog patch."""
-    yield
+pytestmark = pytest.mark.usefixtures("allow_real_modals")
 
 
 class _RefreshProbe:

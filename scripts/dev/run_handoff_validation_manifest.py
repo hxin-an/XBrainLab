@@ -41,8 +41,6 @@ _SERIAL_GATE_IDS = (
     "basedpyright",
     "mkdocs-strict",
     "architecture-compliance",
-    "architecture-unit",
-    "persistence-path-stop-barrier",
     "complete-regression",
 )
 _DEFERRED_PREREQUISITE_IDS = (

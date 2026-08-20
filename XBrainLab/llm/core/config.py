@@ -24,7 +24,6 @@ from XBrainLab.llm.core.config_paths import (
 from XBrainLab.llm.core.model_catalog import (
     allowed_local_model_ids,
     default_local_model_id,
-    fallback_local_model_id,
     local_model_policy_error,
     model_cache_candidates,
     model_cache_complete,
@@ -328,11 +327,6 @@ class LLMConfig:
     def default_local_model_id() -> str:
         """Return the primary supported local model ID."""
         return default_local_model_id()
-
-    @staticmethod
-    def fallback_local_model_id() -> str:
-        """Return the fallback supported local model ID."""
-        return fallback_local_model_id()
 
     @staticmethod
     def _default_settings_path() -> str:

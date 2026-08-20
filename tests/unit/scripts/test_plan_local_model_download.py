@@ -19,7 +19,6 @@ def test_build_plan_reports_primary_model(tmp_path: Path):
     assert plan["ok"] is True
     assert plan["model_id"] == "ibm-granite/granite-3.3-2b-instruct"
     assert plan["primary_model"] == "ibm-granite/granite-3.3-2b-instruct"
-    assert plan["legacy_compatibility_models"] == []
     assert "Qwen" not in "\n".join(cast(list[str], plan["allowed_models"]))
 
 

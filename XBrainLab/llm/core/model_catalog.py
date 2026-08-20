@@ -41,11 +41,6 @@ RETIRED_LOCAL_MODEL_IDS = frozenset(
     }
 )
 
-# Compatibility aliases remain exact Granite so old non-product callers cannot
-# reintroduce a second product model through the former fallback API.
-FALLBACK_LOCAL_MODEL_ID = PRIMARY_LOCAL_MODEL_ID
-FALLBACK_LOCAL_MODEL_REVISION = PRIMARY_LOCAL_MODEL_REVISION
-
 DISALLOWED_LOCAL_MODEL_PREFIXES = (
     "Qwen/",
     "deepseek-ai/",
@@ -167,23 +162,9 @@ def allowed_local_model_ids() -> list[str]:
     return [spec.repo_id for spec in LOCAL_MODEL_SPECS]
 
 
-def legacy_local_model_ids() -> list[str]:
-    """Return legacy product choices.
-
-    Retired model IDs are recognized only to provide migration guidance and
-    are not product choices.
-    """
-    return []
-
-
 def default_local_model_id() -> str:
     """Return the product default local model ID."""
     return PRIMARY_LOCAL_MODEL_ID
-
-
-def fallback_local_model_id() -> str:
-    """Return exact Granite through the former fallback compatibility API."""
-    return FALLBACK_LOCAL_MODEL_ID
 
 
 def local_model_spec(repo_id: str | None) -> LocalModelSpec | None:
@@ -222,11 +203,6 @@ def local_model_policy_error(repo_id: str | None) -> str | None:
             f"Supported models: {supported}."
         )
     return None
-
-
-def safe_model_cache_name(repo_id: str) -> str:
-    """Return the legacy local-dir name, retained for cleanup compatibility."""
-    return repo_id.replace("/", "_")
 
 
 def hf_model_cache_name(repo_id: str) -> str:

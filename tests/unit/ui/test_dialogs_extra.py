@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtWidgets import (
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QLabel,
@@ -31,9 +30,6 @@ class TestEventFilterDialog:
         qtbot.addWidget(d)
         return d
 
-    def test_creates(self, dlg):
-        assert isinstance(dlg, QDialog)
-
     def test_set_all_checked(self, dlg):
         dlg.set_all_checked(True)
         dlg.set_all_checked(False)
@@ -41,11 +37,20 @@ class TestEventFilterDialog:
     def test_set_selection(self, dlg):
         dlg.set_selection(["left_hand", "feet"])
 
-    def test_get_selected_ids_empty(self, dlg):
+    def test_empty_selection_warns_and_keeps_dialog_unaccepted(self, dlg):
         dlg.set_all_checked(False)
-        dlg.accept()
-        result = dlg.get_selected_ids()
-        assert result == []
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.event_filter_dialog.QMessageBox.warning"
+        ) as warning:
+            dlg.accept()
+
+        warning.assert_called_once_with(
+            dlg,
+            "No Events Selected",
+            "Select at least one event to keep for synchronization.",
+        )
+        assert dlg.result() == QDialog.DialogCode.Rejected
+        assert dlg.get_selected_ids() == []
 
     def test_get_selected_ids_all(self, dlg):
         dlg.set_all_checked(True)
@@ -139,9 +144,6 @@ class TestManualSplitDialog:
         qtbot.addWidget(d)
         return d
 
-    def test_creates(self, dlg):
-        assert isinstance(dlg, QDialog)
-
     def test_accept(self, dlg):
         # Select first 2 items
         for i in range(2):
@@ -183,9 +185,6 @@ class TestChannelSelectionDialog:
         qtbot.addWidget(d)
         return d
 
-    def test_creates(self, dlg):
-        assert isinstance(dlg, QDialog)
-
     def test_set_all_checked(self, dlg):
         dlg.set_all_checked(True)
         dlg.set_all_checked(False)
@@ -218,12 +217,6 @@ class TestOptimizerSettingDialog:
         d = OptimizerSettingDialog(None)
         qtbot.addWidget(d)
         return d
-
-    def test_creates(self, dlg):
-        assert isinstance(dlg, QDialog)
-
-    def test_has_algo_combo(self, dlg):
-        assert isinstance(dlg.algo_combo, QComboBox)
 
     def test_on_algo_select(self, dlg):
         dlg.on_algo_select("Adam")
@@ -276,9 +269,6 @@ class TestEpochingDialog:
         )
         qtbot.addWidget(d)
         return d
-
-    def test_creates(self, dlg):
-        assert isinstance(dlg, QDialog)
 
     def test_toggle_baseline(self, dlg):
         dlg.toggle_baseline(True)

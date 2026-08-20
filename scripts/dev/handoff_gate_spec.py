@@ -86,6 +86,7 @@ class GateSpec:
     preserved_input_artifact_paths: tuple[str, ...] = ()
     stdout_artifact_path: str | None = None
     pytest_attestation_path: str | None = None
+    required_pytest_selectors: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not _SAFE_ID.fullmatch(self.check_id):
@@ -105,6 +106,19 @@ class GateSpec:
         elif self.pytest_attestation_path is not None:
             raise ValueError(
                 f"Gate {self.check_id!r} registers pytest evidence without a policy."
+            )
+        if (
+            self.required_pytest_selectors
+            and not self.outcome.require_pytest_attestation
+        ):
+            raise ValueError(
+                f"Gate {self.check_id!r} requires pytest selectors without evidence."
+            )
+        if len(self.required_pytest_selectors) != len(
+            set(self.required_pytest_selectors)
+        ) or any(not selector for selector in self.required_pytest_selectors):
+            raise ValueError(
+                f"Gate {self.check_id!r} pytest selectors must be unique and non-empty."
             )
         if len(self.required_artifact_paths) != len(set(self.required_artifact_paths)):
             raise ValueError(f"Gate {self.check_id!r} repeats an artifact path.")
@@ -217,6 +231,7 @@ _QT_XCB_MNE = EnvironmentPolicy(
 )
 _LOCAL_RUNTIME_OFFLINE = EnvironmentPolicy(
     required=(
+        ("MNE_DONTWRITE_HOME", "true"),
         ("HF_HUB_OFFLINE", "1"),
         ("TRANSFORMERS_OFFLINE", "1"),
         ("XBRAINLAB_MODEL_CACHE_DIR", MODEL_CACHE_DIR_TOKEN),
@@ -344,56 +359,6 @@ _GATE_SPECS = (
         timeout_seconds=900,
     ),
     GateSpec(
-        check_id="architecture-unit",
-        section="2",
-        argv=(
-            *_POETRY_EXEC,
-            "python",
-            "-m",
-            "scripts.dev.run_required_pytest_gate",
-            "--result-json",
-            f"{EVIDENCE_ROOT_TOKEN}/pytest-attestations/architecture-unit.json",
-            "--",
-            "--capture=sys",
-            "tests/unit/test_architecture.py",
-            "tests/unit/test_architecture_compliance.py",
-            "tests/unit/test_evaluation_read_side_architecture.py",
-            "-q",
-        ),
-        timeout_seconds=1200,
-        outcome=_STRICT_PYTEST,
-        required_artifact_paths=("pytest-attestations/architecture-unit.json",),
-        pytest_attestation_path="pytest-attestations/architecture-unit.json",
-    ),
-    GateSpec(
-        check_id="persistence-path-stop-barrier",
-        section="2",
-        argv=(
-            *_PRLIMIT,
-            *_POETRY_EXEC,
-            "python",
-            "-m",
-            "scripts.dev.run_required_pytest_gate",
-            "--result-json",
-            f"{EVIDENCE_ROOT_TOKEN}/pytest-attestations/persistence-path-stop-barrier.json",
-            "--",
-            "--capture=sys",
-            "tests/unit/backend/training/record/test_safe_artifact_store.py",
-            "tests/unit/backend/training/record/test_output_path_policy.py",
-            "tests/unit/backend/utils/test_filesystem_identity.py",
-            "tests/unit/backend/training/test_trainer_optimizer_step_stop_barrier.py",
-            "-q",
-        ),
-        timeout_seconds=1200,
-        outcome=_STRICT_PYTEST,
-        required_artifact_paths=(
-            "pytest-attestations/persistence-path-stop-barrier.json",
-        ),
-        pytest_attestation_path=(
-            "pytest-attestations/persistence-path-stop-barrier.json"
-        ),
-    ),
-    GateSpec(
         check_id="complete-regression",
         section="2",
         argv=(
@@ -414,6 +379,15 @@ _GATE_SPECS = (
             "complete-regression-shards",
         ),
         pytest_attestation_path="pytest-attestations/complete-regression.json",
+        required_pytest_selectors=(
+            "tests/unit/test_architecture.py",
+            "tests/unit/test_architecture_compliance.py",
+            "tests/unit/test_evaluation_read_side_architecture.py",
+            "tests/unit/backend/training/record/test_safe_artifact_store.py",
+            "tests/unit/backend/training/record/test_output_path_policy.py",
+            "tests/unit/backend/utils/test_filesystem_identity.py",
+            "tests/unit/backend/training/test_trainer_optimizer_step_stop_barrier.py",
+        ),
     ),
     GateSpec(
         check_id="command-spine",

@@ -11,7 +11,6 @@ from XBrainLab.llm.agent.verifier import PathProvenanceVerifier
 from XBrainLab.llm.tools import authorized_paths
 from XBrainLab.llm.tools.application_surface import (
     ToolAvailability,
-    build_load_data_command,
     execute_application_tool_command,
 )
 from XBrainLab.llm.tools.authorized_paths import (
@@ -266,75 +265,6 @@ def test_verifier_uses_final_windows_identity_for_selected_root(
 
     assert result.is_valid is False
     assert type(params["directory"]) is str
-
-
-def test_load_data_builder_rejects_replaced_authorized_directory(
-    tmp_path: Path,
-) -> None:
-    selected = tmp_path / "selected"
-    target = selected / "sub-01"
-    target.mkdir(parents=True)
-    (target / "safe.gdf").touch()
-    outside = tmp_path / "outside"
-    outside.mkdir()
-    private = outside / "private.gdf"
-    private.touch()
-    authorized = authorize_existing_path(
-        target,
-        authorized_root=selected,
-        expected_kind="directory",
-    )
-    target.rename(selected / "displaced")
-    try:
-        target.symlink_to(outside, target_is_directory=True)
-    except OSError as exc:  # pragma: no cover - host privilege boundary
-        pytest.skip(f"symlink unavailable: {type(exc).__name__}")
-
-    command = build_load_data_command({"paths": [authorized]})
-
-    assert command is None
-    assert str(private) not in repr(command)
-
-
-@pytest.mark.parametrize("target_kind", ("file", "directory"))
-def test_load_data_builder_rejects_plain_paths_without_provenance(
-    tmp_path: Path,
-    target_kind: PathKind,
-) -> None:
-    target = tmp_path / ("recording.edf" if target_kind == "file" else "session")
-    if target_kind == "file":
-        target.touch()
-    else:
-        target.mkdir()
-        (target / "recording.edf").touch()
-
-    command = build_load_data_command({"paths": [str(target)]})
-
-    assert command is None
-
-
-@pytest.mark.parametrize("target_kind", ("file", "directory"))
-def test_load_data_builder_does_not_downgrade_grants_to_lexical_paths(
-    tmp_path: Path,
-    target_kind: PathKind,
-) -> None:
-    selected = tmp_path / "selected"
-    selected.mkdir()
-    target = selected / ("recording.edf" if target_kind == "file" else "sub-01")
-    if target_kind == "file":
-        target.touch()
-    else:
-        target.mkdir()
-        (target / "recording.edf").touch()
-    authorized = authorize_existing_path(
-        target,
-        authorized_root=selected,
-        expected_kind=target_kind,
-    )
-
-    command = build_load_data_command({"paths": [authorized]})
-
-    assert command is None
 
 
 class _LoadDataRejectingRuntime:

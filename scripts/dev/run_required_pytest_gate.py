@@ -129,6 +129,12 @@ class RequiredPytestGate:
             counts[outcome] += 1
         return counts
 
+    def outcomes(self) -> dict[str, str]:
+        """Return exact node terminal outcomes for downstream subset evidence."""
+        outcomes = dict(self._outcomes)
+        outcomes.update(dict.fromkeys(self.deselected, "deselected"))
+        return dict(sorted(outcomes.items()))
+
     def failure_summary(self) -> str:
         groups = (
             ("skipped", self.skipped),
@@ -202,6 +208,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             command_args=logical_args,
             exit_code=final_exit_code,
             counts=observer.counts(),
+            outcomes=observer.outcomes(),
         ),
     )
     return final_exit_code

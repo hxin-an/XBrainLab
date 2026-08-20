@@ -117,7 +117,7 @@ def test_generation_settings_reload_cannot_reselect_the_active_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     active_model = LLMConfig.default_local_model_id()
-    other_model = LLMConfig.fallback_local_model_id()
+    other_model = "microsoft/Phi-4-mini-instruct"
     spec = _launch_spec(monkeypatch, active_model)
     engine = MagicMock()
     engine.config = spec.build_config()
@@ -146,14 +146,14 @@ def test_generation_settings_reload_cannot_reselect_the_active_model(
     thread_class.return_value.start.assert_called_once_with()
 
 
-def test_worker_model_switch_consumes_the_same_exact_spec_without_resolution(
+def test_worker_model_reselection_consumes_the_same_exact_spec_without_resolution(
     worker,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     initial_model = LLMConfig.default_local_model_id()
-    target_model = LLMConfig.fallback_local_model_id()
+    reselected_model = LLMConfig.default_local_model_id()
     initial_spec = _launch_spec(monkeypatch, initial_model)
-    target_spec = _launch_spec(monkeypatch, target_model)
+    target_spec = _launch_spec(monkeypatch, reselected_model)
     engine = MagicMock()
     engine.config = initial_spec.build_config()
     engine.active_backend = object()

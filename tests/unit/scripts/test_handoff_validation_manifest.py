@@ -32,8 +32,6 @@ EXPECTED_HANDOFF_CHECK_IDS = (
     "basedpyright",
     "mkdocs-strict",
     "architecture-compliance",
-    "architecture-unit",
-    "persistence-path-stop-barrier",
     "complete-regression",
     "command-spine",
     "assistant-security-suite",
@@ -102,6 +100,17 @@ def test_strict_pytest_outcome_requires_a_recognized_pytest_entrypoint() -> None
             argv=(sys.executable, "-c", "print('2 passed in 0.01s')"),
             timeout_seconds=30,
             outcome=OutcomePolicy.pytest_strict(),
+        )
+
+
+def test_required_pytest_selectors_require_attested_evidence() -> None:
+    with pytest.raises(ValueError, match="selectors without evidence"):
+        GateSpec(
+            check_id="unattested-subset",
+            section="2",
+            argv=(sys.executable, "-c", "raise SystemExit(0)"),
+            timeout_seconds=30,
+            required_pytest_selectors=("tests/unit/test_example.py",),
         )
 
 
@@ -277,6 +286,7 @@ def test_local_runtime_gates_bind_both_redacted_d_drive_cache_paths() -> None:
     for check_id in LOCAL_RUNTIME_CHECK_IDS:
         policy = HANDOFF_GATE_SPECS[check_id].environment
         offline_cache_environment = (
+            ("MNE_DONTWRITE_HOME", "true"),
             ("HF_HUB_OFFLINE", "1"),
             ("TRANSFORMERS_OFFLINE", "1"),
             ("XBRAINLAB_MODEL_CACHE_DIR", MODEL_CACHE_DIR_TOKEN),
@@ -312,16 +322,16 @@ def test_gate_registry_tracks_security_and_artifact_policy() -> None:
         in command_spine.argv
     )
 
-    persistence = HANDOFF_GATE_SPECS["persistence-path-stop-barrier"]
-    assert "tests/unit/backend/training/record/test_safe_artifact_store.py" in (
-        persistence.argv
+    complete = HANDOFF_GATE_SPECS["complete-regression"]
+    assert "tests/unit/test_architecture_compliance.py" in (
+        complete.required_pytest_selectors
     )
-    assert "tests/unit/backend/training/record/test_output_path_policy.py" in (
-        persistence.argv
+    assert "tests/unit/backend/training/record/test_safe_artifact_store.py" in (
+        complete.required_pytest_selectors
     )
     assert (
         "tests/unit/backend/training/test_trainer_optimizer_step_stop_barrier.py"
-        in persistence.argv
+        in complete.required_pytest_selectors
     )
 
     granite = HANDOFF_GATE_SPECS["granite-runtime"]

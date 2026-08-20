@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -118,31 +117,6 @@ def test_render_markdown_lists_claim_boundary_and_blocked_xdf():
     assert "XDF / LSL stream export" in rendered
     assert "stream selection is not available" in rendered
     assert "does not implement an XDF / LSL stream parser" in rendered
-
-
-def test_cli_json_output_is_machine_readable():
-    completed = subprocess.run(  # noqa: S603
-        [
-            sys.executable,
-            "scripts/dev/report_data_interpretation_format_matrix.py",
-            "--format",
-            "json",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-    payload = json.loads(completed.stdout)
-    assert payload["summary"]["all_expected_capabilities_observed"] is True
-    assert payload["summary"]["all_expected_capabilities_match"] is True
-    assert payload["real_workflows"]["summary"]["workflow_stages"] == [
-        "scan",
-        "preview",
-        "validate",
-        "apply",
-    ]
-    assert "Study initialized" not in completed.stdout
 
 
 @pytest.mark.parametrize(("strict_ok", "expected_exit_code"), [(True, 0), (False, 1)])

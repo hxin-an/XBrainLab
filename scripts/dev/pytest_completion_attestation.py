@@ -9,7 +9,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 REQUIRED_PYTEST_RUNNER_ID = "xbrainlab.required-pytest-gate"
 SHARDED_PYTEST_RUNNER_ID = "xbrainlab.sharded-test-runner"
 OUTCOME_NAMES = (
@@ -30,6 +30,7 @@ def build_attestation(
     command_args: Sequence[str],
     exit_code: int,
     counts: Mapping[str, int],
+    outcomes: Mapping[str, str],
 ) -> dict[str, Any]:
     """Build one normalized completed-run payload."""
     normalized_counts = {name: int(counts.get(name, 0)) for name in COUNT_NAMES}
@@ -40,6 +41,9 @@ def build_attestation(
         "exit_code": int(exit_code),
         "command_args": [str(part) for part in command_args],
         "counts": normalized_counts,
+        "outcomes": dict(
+            sorted((str(key), str(value)) for key, value in outcomes.items())
+        ),
     }
 
 
@@ -104,6 +108,17 @@ def validate_attestation(
         return None, "Pytest completion attestation executed count is inconsistent."
     if counts["collected"] != counts["executed"] + counts["deselected"]:
         return None, "Pytest completion attestation collected count is inconsistent."
+    outcomes = raw.get("outcomes")
+    if not isinstance(outcomes, dict) or any(
+        not isinstance(nodeid, str) or not nodeid or outcome not in OUTCOME_NAMES
+        for nodeid, outcome in outcomes.items()
+    ):
+        return None, "Pytest completion attestation outcomes are malformed."
+    outcome_counts = dict.fromkeys(OUTCOME_NAMES, 0)
+    for outcome in outcomes.values():
+        outcome_counts[outcome] += 1
+    if any(outcome_counts[name] != counts[name] for name in OUTCOME_NAMES):
+        return None, "Pytest completion attestation outcomes do not match counts."
     return raw, None
 
 
@@ -121,3 +136,44 @@ def aggregate_counts(attestations: Sequence[Mapping[str, Any]]) -> dict[str, int
             if isinstance(value, int) and not isinstance(value, bool):
                 totals[name] += value
     return totals
+
+
+def aggregate_outcomes(attestations: Sequence[Mapping[str, Any]]) -> dict[str, str]:
+    """Merge disjoint shard outcomes and reject duplicate execution evidence."""
+    merged: dict[str, str] = {}
+    for attestation in attestations:
+        outcomes = attestation.get("outcomes", {})
+        if not isinstance(outcomes, Mapping):
+            continue
+        for nodeid, outcome in outcomes.items():
+            key = str(nodeid)
+            if key in merged:
+                raise ValueError(f"Duplicate pytest outcome for {key!r}.")
+            merged[key] = str(outcome)
+    return dict(sorted(merged.items()))
+
+
+def required_outcome_failure(
+    attestation: Mapping[str, Any],
+    selectors: Sequence[str],
+) -> str | None:
+    """Return why required file/node selectors lack passing terminal evidence."""
+    outcomes = attestation.get("outcomes", {})
+    if not isinstance(outcomes, Mapping):
+        return "Pytest completion attestation outcomes are malformed."
+    for selector in selectors:
+        matches = {
+            str(nodeid): str(outcome)
+            for nodeid, outcome in outcomes.items()
+            if str(nodeid) == selector or str(nodeid).startswith(f"{selector}::")
+        }
+        if not matches:
+            return f"Required pytest selector {selector!r} has no terminal evidence."
+        nonpassing = sorted(
+            nodeid for nodeid, outcome in matches.items() if outcome != "passed"
+        )
+        if nonpassing:
+            return f"Required pytest selector {selector!r} did not pass: " + ", ".join(
+                nonpassing
+            )
+    return None

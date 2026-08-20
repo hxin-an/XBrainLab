@@ -1487,9 +1487,11 @@ def test_confirm_import_revalidation_worker_failure_replaces_preparing_status(
     monkeypatch,
 ) -> None:
     panel = MagicMock()
-    handler = DatasetActionHandler(panel)
     revised_choices = {"class_map": {"1": "Target"}}
     statuses: list[tuple[str, int]] = []
+    message_box = MagicMock()
+    monkeypatch.setattr(actions, "QMessageBox", message_box)
+    handler = DatasetActionHandler(panel)
 
     class _Dialog:
         def __init__(self, *_args, **_kwargs) -> None:
@@ -1531,10 +1533,8 @@ def test_confirm_import_revalidation_worker_failure_replaces_preparing_status(
     assert statuses == [
         ("Dataset import failed · Review the import settings", 7000),
     ]
-    handler._data_interpretation._bindings.message_box().warning.assert_called_once()
-    warning_text = (
-        handler._data_interpretation._bindings.message_box().warning.call_args.args[2]
-    )
+    message_box.warning.assert_called_once()
+    warning_text = message_box.warning.call_args.args[2]
     assert "revalidation failed" in warning_text
     assert "Reopen Import EEG Data" in warning_text
 

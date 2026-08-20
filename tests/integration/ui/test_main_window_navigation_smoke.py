@@ -1,10 +1,10 @@
-"""End-to-end UI tests exercising real widget interactions via pytest-qt.
+"""Main-window navigation and panel-structure smoke tests via pytest-qt.
 
 These tests launch a headless ``MainWindow`` (backed by a real ``Study``)
-and drive the user-facing controls through ``qtbot``.  They validate:
+and drive controls through ``qtbot``. They do not execute the product data or
+training workflow. They validate:
 
 * Panel navigation via button clicks
-* Dataset panel load-file interaction
 * Training panel widget presence
 * AI assistant dock toggle
 * Status-bar updates on panel switch

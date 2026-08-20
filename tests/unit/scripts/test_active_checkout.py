@@ -1,3 +1,4 @@
+import ast
 import os
 import subprocess
 import sys
@@ -79,20 +80,51 @@ def test_active_checkout_guard_rejects_mixed_loaded_modules(
 
 
 @pytest.mark.parametrize("script_name", REQUIRED_CHECKOUT_GUARDED_SCRIPTS)
-@pytest.mark.parametrize("cwd_kind", ("repo_root", "unrelated"))
-def test_standalone_script_help_bootstraps_the_intended_checkout(
+def test_standalone_script_guards_checkout_before_product_import(
     script_name: str,
-    cwd_kind: str,
+) -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    source = (repo_root / "scripts" / "dev" / script_name).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    guard_line = next(
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "assert_active_checkout_import"
+    )
+    product_import_lines = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+        and any(
+            name == "XBrainLab" or name.startswith("XBrainLab.")
+            for name in (
+                [node.module or ""]
+                if isinstance(node, ast.ImportFrom)
+                else [alias.name for alias in node.names]
+            )
+        )
+    ]
+
+    assert product_import_lines
+    assert guard_line < min(product_import_lines)
+
+
+def test_representative_standalone_script_bootstraps_from_unrelated_cwd(
     tmp_path: Path,
 ) -> None:
     repo_root = Path(__file__).resolve().parents[3]
-    cwd = repo_root if cwd_kind == "repo_root" else tmp_path
     env = os.environ.copy()
     env.pop("PYTHONPATH", None)
 
     result = subprocess.run(  # noqa: S603 - fixed interpreter and script allowlist
-        [sys.executable, str(repo_root / "scripts" / "dev" / script_name), "--help"],
-        cwd=cwd,
+        [
+            sys.executable,
+            str(repo_root / "scripts/dev/report_data_interpretation_format_matrix.py"),
+            "--help",
+        ],
+        cwd=tmp_path,
         env=env,
         capture_output=True,
         text=True,

@@ -1,8 +1,8 @@
-"""
-E2E pipeline tests exercising the Study facade with TrainingManager delegation.
+"""Study facade and TrainingManager integration contracts.
 
 Covers: Study.generate_plan, train, stop_training, export_output_csv,
-        clean cascade, append plan, saliency propagation, and error paths.
+clean cascade, append plan, saliency propagation, and error paths. The tests
+construct facade state directly; they are not product-workflow evidence.
 """
 
 from unittest.mock import MagicMock, patch

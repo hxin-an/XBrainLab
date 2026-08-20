@@ -8,18 +8,6 @@ from typing import Any
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.tools.base import BaseTool
 
-LEGACY_COMPATIBILITY_TOOLS: dict[str, str] = {
-    "load_data": (
-        "Legacy compatibility path for direct file loading. Prefer "
-        "scan_source -> preview_interpretation -> validate_interpretation -> "
-        "apply_interpretation for new data entry workflows."
-    ),
-    "attach_labels": (
-        "Legacy compatibility path for already-loaded data. Prefer Data "
-        "Interpretation preview choices for label/event metadata."
-    ),
-}
-
 TOOL_TAXONOMY: dict[str, str] = AGENT_ACTION_CONTRACTS.taxonomy()
 
 
@@ -44,9 +32,6 @@ def tool_contract_for_llm(
         "description": tool.description,
         "parameters": parameters,
     }
-    if tool.name in LEGACY_COMPATIBILITY_TOOLS:
-        payload["legacy_compatibility"] = True
-        payload["routing_note"] = LEGACY_COMPATIBILITY_TOOLS[tool.name]
     return payload
 
 

@@ -350,6 +350,7 @@ def _write_linux_ci_evidence(root: Path) -> None:
                 command_args=(command,),
                 exit_code=0,
                 counts=counts,
+                outcomes={f"tests/{command}.py::test_passes": "passed"},
             ),
         )
         if command not in run_tests.LINUX_CI_UNCOVERED_COMMANDS:
@@ -739,6 +740,10 @@ def test_main_attests_aggregate_shard_completion(monkeypatch, tmp_path) -> None:
                 command_args=("tests/unit/ui", "-q"),
                 exit_code=0,
                 counts=counts,
+                outcomes={
+                    f"tests/unit/ui/test_example.py::test_{index}": "passed"
+                    for index in range(3)
+                },
             )
         )
 

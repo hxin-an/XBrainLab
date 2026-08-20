@@ -56,13 +56,27 @@ def _pytest_attestation(
         "xpassed": 0,
         "deselected": 0,
     }
+    selected_counts = counts or default_counts
+    outcomes: dict[str, str] = {}
+    for outcome in (
+        "passed",
+        "failed",
+        "errors",
+        "skipped",
+        "xfailed",
+        "xpassed",
+        "deselected",
+    ):
+        for index in range(selected_counts[outcome]):
+            outcomes[f"tests/example.py::test_{outcome}_{index}"] = outcome
     write_attestation(
         path,
         build_attestation(
             runner=REQUIRED_PYTEST_RUNNER_ID,
             command_args=args,
             exit_code=exit_code,
-            counts=counts or default_counts,
+            counts=selected_counts,
+            outcomes=outcomes,
         ),
     )
     return path
@@ -1005,6 +1019,7 @@ def test_run_check_requires_wrapper_completion_attestation(monkeypatch):
                     "xpassed": 0,
                     "deselected": 0,
                 },
+                outcomes={"tests/example.py::test_passes": "passed"},
             ),
         )
         return subprocess.CompletedProcess(args, 0, "1 passed", ""), False

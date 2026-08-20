@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import shutil
 import time
-from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Event
@@ -93,7 +92,10 @@ REQUIRE_REAL_FIXTURES = (
     os.environ.get("XBRAINLAB_REQUIRE_REAL_FIXTURES", "").strip() == "1"
 )
 
-pytestmark = pytest.mark.optional_public_fixture
+pytestmark = [
+    pytest.mark.optional_public_fixture,
+    pytest.mark.usefixtures("allow_real_modals"),
+]
 
 
 @dataclass(frozen=True)
@@ -169,12 +171,6 @@ PUBLIC_FOLDER_ACCEPTANCE_CASES = (
         SLEEP_EDFX_PSG,
     ),
 )
-
-
-@pytest.fixture(autouse=True)
-def mock_ui_blocking() -> Iterator[None]:
-    """Use the real modal wizard instead of the suite-wide dialog patch."""
-    yield
 
 
 class _RefreshProbe:
