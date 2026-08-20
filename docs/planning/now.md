@@ -9,7 +9,13 @@
 runtime。這條 branch 會審查全部 tracked tests，不只處理幾個 E2E 檔；完成完整 handoff 與
 remote CI 後才交使用者做核心產品 walkthrough，通過前不合併。
 
-目前 phase：`All test families reviewed; final regression／handoff candidate validation`
+目前 phase：`Phase 2 — owner／claim deep sweep and compatibility retirement`
+
+`7eab03e9` 的 family ledger、complete regression、canonical handoff 與 remote CI 是 Phase 1
+checkpoint：它證明 global fixture scope、明顯 fake E2E／duplicate execution 與 runner topology 已
+收斂，但不證明 531 個 current test files 內的每個 retained claim 都已完成深度審查。Phase 2 會在
+同一條 PR #43 繼續；一旦 source 改變，Phase 1 handoff 只保留為歷史 baseline，不再作 candidate
+證據。
 
 本 branch 只修改 tests、test fixtures、developer validation／CI scripts 與直接相關文件；不修改
 `XBrainLab/` 產品 UI、ApplicationService、EEG semantics、training 或 Assistant 行為。若清理揭露
@@ -41,8 +47,9 @@ remote CI 後才交使用者做核心產品 walkthrough，通過前不合併。
 
 ## Observable outcome
 
-1. 全部 534 個 baseline test files 都取得 `keep | rewrite | move_rename | delete` disposition；
-   family ledger 無未審查項目。每個 delete 都有 exact replacement 與 count delta。
+1. 全部 531 個 current `test_*.py` 都取得 exact-SHA、per-file disposition；mixed files 必須列出
+   實際保留／移除的 node 或 claim，而不能只以 family-level `keep` 代表完成。每個 merge／delete
+   都有 exact replacement 或同一 PR 已退役的 source contract、focused evidence 與 count delta。
 2. 每個保留測試都對應 reachable defect、observable transition、real side effect 或明確 claim；
    mocked delegation 不稱 E2E，integration mock 不得取代同一 authoritative owner。
 3. Root conftest 不再全域決定 modal outcome或 renderer availability。Fake renderer、accepted modal
@@ -52,9 +59,9 @@ remote CI 後才交使用者做核心產品 walkthrough，通過前不合併。
 5. Linux complete regression 仍執行相同八個 authoritative groups、coverage、completion
    attestation 與完整 collection。相同環境的 focused pytest 不再重跑；不同 environment／artifact
    claims 仍獨立執行。
-6. Runtime work不以固定分鐘取代品質，但 complete regression 與 full handoff 的兩輪 warm median
-   都必須有至少 10% 可重複改善；不得靠 skip、提高 timeout、縮小 denominator 或移除 unique
-   evidence 達成。
+6. Runtime work不以固定分鐘取代品質。Phase 2 中途不重跑 complete regression 或 handoff；所有
+   owner slices 完成並 freeze exact SHA 後只跑一次 canonical handoff。不得靠 skip、提高 timeout、
+   縮小 denominator 或移除 unique evidence 達成改善，也不為取得更好的計時數字重跑。
 7. Final exact branch head 的 focused baselines、完整 regression、canonical handoff、remote CI與
    artifact inventory全部通過後，才交使用者手測 Data Import → Preprocess → Epoch／Split →
    one-epoch Training → Evaluation／Saliency。
@@ -92,13 +99,40 @@ control manifest。
 
 - In scope：全部 test families、fixtures、mock scope、obsolete／duplicate tests、lower-mock
   replacements、source guards、CI／handoff duplicate execution、fixed runner topology、resource timing、
-  orphan test/dev assets與validation docs。
-- Non-goals：不修改產品行為、不把所有 unit 改成 integration、不追求 GPU 高使用率、不建立通用
-  scheduler／distributed control plane、不用 test count 或 LOC reduction 當成功標準。
+  orphan test/dev assets、validation docs，以及沒有 current production／dev caller 的 non-UI
+  compatibility aliases／diagnostic surfaces。
+- Non-goals：不修改產品 UI／可見行為、不把所有 unit 改成 integration、不追求 GPU 高使用率、
+  不建立通用 scheduler／distributed control plane、不用 test count 或 LOC reduction 當成功標準。
 - 產品 owner 數前後均不變。Test policy 從 root-global substitutions 收斂成 scoped fixtures；runner仍由
   既有 `run_tests.py`／`run_local_handoff_regression.py` 擁有。
 - CI 與 local handoff 是不同環境 claim；Windows、macOS、public-data、native、model與人工驗收不能
   被 Linux complete regression 取代。
+
+## Phase 2 active execution
+
+1. 以 current Git tree 為 denominator 產生 ignored exact-SHA per-file audit evidence：`path`、owner／
+   claim、`keep-primary | keep-unique | mixed-trim | merge-into | delete-obsolete | move-support`、
+   replacement、原因與 focused evidence。Canonical plan 只保存 aggregate 與 hash，不建立 531-row
+   permanent control plane。
+2. 先移除 caller inventory 為零的 non-UI compatibility APIs：`BackendRegistryCompat`、
+   `safe_model_cache_name()`、未使用的 duplicate platform settings-path helper、fallback model-ID
+   aliases，以及 `legacy_local_model_ids()` 與兩個 dev report fields。再獨立退休 Assistant registry
+   無法到達的 legacy `load_data`／`attach_labels` proposal／diagnostic branches；published 18-tool
+   surface 不變。
+3. 保留 current v0.7 runtime boundaries：Data Compatibility label/import commands、repo-root settings
+   到 per-user settings 的 one-time migration、retired model-ID migration guidance、current artifact
+   schemas，以及仍由 UI callers 使用的 compatibility paths。任何需要 `XBrainLab/ui/` 修改的 retirement
+   停止並另列 product follow-up。
+4. Architecture policy、ApplicationService、Data Import、Training、Assistant、UI component、capture／
+   script、integration／regression families 依 owner／observable claim 全盤審查；檔案大小只決定優先
+   順序，不是 scope boundary。Retained high-risk side effects 必須連到 lower-mock evidence；歷史 migration
+   guards 與同義 AST／pixel／private-helper assertions 在有替代後移除。
+5. 每個 owner 一個可回退 checkpoint commit，只跑 identical characterization 與直接相鄰 focused
+   evidence。Phase 2 不執行 standalone complete regression、full handoff或重複計時。
+6. 全部 critical runtime nodes 都取得 eliminated／batched／rescheduled／retained-with-reason disposition
+   後 freeze exact SHA，跑一次 canonical handoff、檢查 artifacts、push exact PR head並等待所有
+   non-skipped CI success，最後交使用者做核心產品 walkthrough。任何 source change 使先前人工批准
+   與 handoff 失效。
 
 ## 施工順序
 
