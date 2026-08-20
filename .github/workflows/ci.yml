@@ -21,6 +21,10 @@ concurrency:
   group: ${{ github.workflow }}-product-scope-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  POETRY_VERSION: "2.3.4"
+  CI_PYTHON_VERSION: "3.11"
+
 jobs:
   changes:
     name: Detect Change Scope
@@ -30,12 +34,12 @@ jobs:
       ui_visual: ${{ steps.scope.outputs.ui_visual }}
       agent_guidance: ${{ steps.scope.outputs.agent_guidance }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
 
@@ -77,12 +81,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
 
@@ -125,12 +129,12 @@ jobs:
     if: needs.changes.outputs.product == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
 
@@ -169,12 +173,12 @@ jobs:
       XBL_SHARED_CI_RUNNER: "1"
       COVERAGE_FILE: test-results/.coverage.${{ matrix.command }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
 
@@ -186,20 +190,18 @@ jobs:
 
       - name: Install Poetry
         run: |
-          pip install poetry
+          python -m pip install "poetry==${POETRY_VERSION}"
           poetry config virtualenvs.create true
           poetry config virtualenvs.in-project true
 
       - name: Cache Poetry venv
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .venv
-          key: venv-${{ runner.os }}-3.11-${{ hashFiles('poetry.lock') }}
-          restore-keys: |
-            venv-${{ runner.os }}-3.11-
+          key: venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry install --no-interaction
+        run: poetry sync --no-interaction
 
       - name: Run authoritative Linux shard
         env:
@@ -217,7 +219,7 @@ jobs:
           --output test-results/ci-source-provenance-${{ matrix.command }}.json
 
       - name: Upload shard evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: linux-shard-${{ matrix.command }}
@@ -227,7 +229,7 @@ jobs:
           include-hidden-files: true
 
       - name: Upload source provenance sidecar
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: linux-source-provenance-${{ matrix.command }}
@@ -239,12 +241,12 @@ jobs:
     if: always() && needs.changes.outputs.product == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
 
@@ -258,14 +260,14 @@ jobs:
           --output linux-test-source-provenance.json
 
       - name: Download Linux shard evidence
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: linux-shard-*
           path: test-results
           merge-multiple: true
 
       - name: Download source provenance sidecars
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: linux-source-provenance-*
           path: source-provenance
@@ -287,7 +289,7 @@ jobs:
           coverage report
 
       - name: Upload aggregate Linux evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: test-results-ubuntu-latest-py3.11
@@ -310,12 +312,12 @@ jobs:
       QT_QPA_PLATFORM: offscreen
       MNE_DONTWRITE_HOME: "true"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
 
@@ -327,20 +329,18 @@ jobs:
 
       - name: Install Poetry
         run: |
-          pip install poetry
+          python -m pip install "poetry==${POETRY_VERSION}"
           poetry config virtualenvs.create true
           poetry config virtualenvs.in-project true
 
       - name: Cache Poetry venv
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .venv
-          key: venv-${{ runner.os }}-3.11-${{ hashFiles('poetry.lock') }}
-          restore-keys: |
-            venv-${{ runner.os }}-3.11-
+          key: venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry install --no-interaction
+        run: poetry sync --no-interaction
 
       - name: Capture human-like product walkthrough
         run: |
@@ -348,7 +348,7 @@ jobs:
             --output-dir build/dev-artifacts/human-like-product
 
       - name: Upload human-like product evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: human-like-product-walkthrough
@@ -374,31 +374,29 @@ jobs:
       QT_QPA_PLATFORM: offscreen
       XBL_SHARED_CI_RUNNER: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
 
       - name: Install Poetry
         run: |
-          pip install poetry
+          python -m pip install "poetry==${POETRY_VERSION}"
           poetry config virtualenvs.create true
           poetry config virtualenvs.in-project true
 
       - name: Cache Poetry venv
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .venv
-          key: venv-${{ runner.os }}-3.11-${{ hashFiles('poetry.lock') }}
-          restore-keys: |
-            venv-${{ runner.os }}-3.11-
+          key: venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry install --no-interaction
+        run: poetry sync --no-interaction
 
       - name: Run focused platform test gates
         env:
@@ -410,7 +408,7 @@ jobs:
             --result-json test-results/${{ matrix.command }}.json
 
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: test-results-${{ matrix.os }}-${{ matrix.command }}-py3.11
@@ -428,12 +426,12 @@ jobs:
       QT_QPA_PLATFORM: offscreen
       MNE_DONTWRITE_HOME: "true"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
 
@@ -445,20 +443,18 @@ jobs:
 
       - name: Install Poetry
         run: |
-          pip install poetry
+          python -m pip install "poetry==${POETRY_VERSION}"
           poetry config virtualenvs.create true
           poetry config virtualenvs.in-project true
 
       - name: Cache Poetry venv
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .venv
-          key: venv-${{ runner.os }}-3.11-${{ hashFiles('poetry.lock') }}
-          restore-keys: |
-            venv-${{ runner.os }}-3.11-
+          key: venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry install --no-interaction
+        run: poetry sync --no-interaction
 
       - name: Capture and compare approved default-scale UI
         run: |
@@ -467,7 +463,7 @@ jobs:
             --reference-dir tests/baselines/ui
 
       - name: Upload default-scale UI evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: ui-default-visual-regression
@@ -485,31 +481,29 @@ jobs:
     env:
       MNE_DONTWRITE_HOME: "true"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
 
       - name: Install Poetry
         run: |
-          pip install poetry
+          python -m pip install "poetry==${POETRY_VERSION}"
           poetry config virtualenvs.create true
           poetry config virtualenvs.in-project true
 
       - name: Cache Poetry venv
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .venv
-          key: venv-${{ runner.os }}-3.11-${{ hashFiles('poetry.lock') }}
-          restore-keys: |
-            venv-${{ runner.os }}-3.11-
+          key: venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry install --no-interaction
+        run: poetry sync --no-interaction
 
       - name: Capture Windows 100/125/150 percent UI matrix
         run: |
@@ -518,7 +512,7 @@ jobs:
             --scale 1.0 --scale 1.25 --scale 1.5
 
       - name: Upload Windows DPI evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: ui-windows-dpi-regression
@@ -533,12 +527,12 @@ jobs:
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
 
@@ -550,31 +544,27 @@ jobs:
 
       - name: Install Poetry
         run: |
-          pip install poetry
+          python -m pip install "poetry==${POETRY_VERSION}"
           poetry config virtualenvs.create true
           poetry config virtualenvs.in-project true
 
       - name: Cache Poetry venv
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .venv
-          key: public-dataset-venv-${{ runner.os }}-3.11-${{ hashFiles('poetry.lock') }}
-          restore-keys: |
-            public-dataset-venv-${{ runner.os }}-3.11-
+          key: public-dataset-venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
-        run: poetry install --no-interaction
+        run: poetry sync --no-interaction
 
       - name: Prepare public gate evidence directory
         run: mkdir -p test-results
 
       - name: Cache pinned public EEG fixtures
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: tests/fixtures/data/public
           key: public-eeg-required-ci-f7bb9c3938cdaad72cc6843ee6ba1c22d403ff5ec6c5432fc51459de0d44983e
-          restore-keys: |
-            public-eeg-required-ci-
 
       - name: Fetch pinned size-bounded public fixtures
         run: poetry run -- python scripts/dev/fetch_public_eeg_fixtures.py --profile required-ci
@@ -619,7 +609,7 @@ jobs:
           poetry run -- python scripts/dev/run_public_cross_source_training_smoke.py --format json --strict | tee public-cross-source-smoke.json
 
       - name: Upload public dataset gate reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: public-dataset-gate-reports

@@ -782,7 +782,8 @@ def test_ci_uses_full_linux_and_focused_cross_platform_runners() -> None:
         step
         for job in jobs.values()
         for step in job.get("steps", ())
-        if step.get("uses") == "actions/checkout@v4"
+        if step.get("uses")
+        == "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
     ]
     assert len(checkout_steps) == 10
     assert all(
