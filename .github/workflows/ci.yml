@@ -41,7 +41,7 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.11"
+          python-version: ${{ env.CI_PYTHON_VERSION }}
 
       - name: Detect CI change scope
         id: scope
@@ -88,7 +88,7 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.11"
+          python-version: ${{ env.CI_PYTHON_VERSION }}
 
       - name: Install focused validation dependencies
         run: >-
@@ -136,7 +136,7 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.11"
+          python-version: ${{ env.CI_PYTHON_VERSION }}
 
       - name: Install dependencies
         run: pip install "ruff>=0.14.0,<0.15"
@@ -180,7 +180,7 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.11"
+          python-version: ${{ env.CI_PYTHON_VERSION }}
 
       - name: Install system dependencies
         run: |
@@ -248,14 +248,26 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.11"
+          python-version: ${{ env.CI_PYTHON_VERSION }}
 
-      - name: Install aggregate dependencies
-        run: pip install "coverage>=7,<8" pytest
+      - name: Install Poetry
+        run: |
+          python -m pip install "poetry==${POETRY_VERSION}"
+          poetry config virtualenvs.create true
+          poetry config virtualenvs.in-project true
+
+      - name: Cache Poetry venv
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ runner.arch }}-py${{ env.CI_PYTHON_VERSION }}-poetry-${{ env.POETRY_VERSION }}-${{ hashFiles('poetry.lock') }}
+
+      - name: Install dependencies
+        run: poetry sync --no-interaction
 
       - name: Record aggregate checkout provenance
         run: >-
-          python scripts/dev/ci_source_provenance.py
+          poetry run -- python scripts/dev/ci_source_provenance.py
           --job-key linux-test
           --output linux-test-source-provenance.json
 
@@ -274,7 +286,7 @@ jobs:
 
       - name: Verify complete shard evidence
         run: |
-          python -m scripts.dev.run_tests verify-linux-ci \
+          poetry run -- python -m scripts.dev.run_tests verify-linux-ci \
             --evidence-dir test-results \
             --provenance-dir source-provenance \
             --expected-provenance linux-test-source-provenance.json \
@@ -284,9 +296,9 @@ jobs:
         env:
           COVERAGE_FILE: test-results/.coverage
         run: |
-          coverage combine test-results
-          coverage xml -o coverage.xml
-          coverage report
+          poetry run -- coverage combine test-results
+          poetry run -- coverage xml -o coverage.xml
+          poetry run -- coverage report
 
       - name: Upload aggregate Linux evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -319,7 +331,7 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.11"
+          python-version: ${{ env.CI_PYTHON_VERSION }}
 
       - name: Install system dependencies
         run: |
@@ -381,7 +393,7 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.11"
+          python-version: ${{ env.CI_PYTHON_VERSION }}
 
       - name: Install Poetry
         run: |
@@ -433,7 +445,7 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.11"
+          python-version: ${{ env.CI_PYTHON_VERSION }}
 
       - name: Install system dependencies
         run: |
@@ -488,7 +500,7 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.11"
+          python-version: ${{ env.CI_PYTHON_VERSION }}
 
       - name: Install Poetry
         run: |
@@ -534,7 +546,7 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.11"
+          python-version: ${{ env.CI_PYTHON_VERSION }}
 
       - name: Install system dependencies
         run: |

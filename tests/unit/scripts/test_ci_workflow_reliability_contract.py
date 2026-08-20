@@ -57,12 +57,12 @@ def test_ci_poetry_bootstrap_and_venv_cache_are_lock_exact() -> None:
         if step.get("name") == "Install dependencies"
         and str(step.get("run", "")).startswith("poetry ")
     ]
-    assert len(poetry_installers) == 6
+    assert len(poetry_installers) == 7
     assert all(
         'python -m pip install "poetry==${POETRY_VERSION}"' in step["run"]
         for step in poetry_installers
     )
-    assert len(dependency_installers) == 6
+    assert len(dependency_installers) == 7
     assert all(
         step["run"] == "poetry sync --no-interaction" for step in dependency_installers
     )
@@ -70,7 +70,7 @@ def test_ci_poetry_bootstrap_and_venv_cache_are_lock_exact() -> None:
     venv_cache_steps = [
         step for step in steps if str(step.get("with", {}).get("path", "")) == ".venv"
     ]
-    assert len(venv_cache_steps) == 6
+    assert len(venv_cache_steps) == 7
     for step in venv_cache_steps:
         cache = step["with"]
         assert "restore-keys" not in cache
@@ -79,6 +79,23 @@ def test_ci_poetry_bootstrap_and_venv_cache_are_lock_exact() -> None:
         assert "py${{ env.CI_PYTHON_VERSION }}" in key
         assert "poetry-${{ env.POETRY_VERSION }}" in key
         assert "${{ hashFiles('poetry.lock') }}" in key
+
+    for job in workflow["jobs"].values():
+        job_steps = job.get("steps", ())
+        if not any(step in venv_cache_steps for step in job_steps):
+            continue
+        setup_python = next(
+            step
+            for step in job_steps
+            if str(step.get("uses", "")).startswith("actions/setup-python@")
+        )
+        assert setup_python["with"]["python-version"] == (
+            "${{ env.CI_PYTHON_VERSION }}"
+        )
+
+    workflow_text = CI_WORKFLOW.read_text(encoding="utf-8")
+    assert 'pip install "coverage>=7,<8" pytest' not in workflow_text
+    assert "poetry run -- coverage combine test-results" in workflow_text
 
 
 def test_public_fixture_cache_does_not_restore_a_stale_manifest() -> None:
