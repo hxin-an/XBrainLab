@@ -12,7 +12,6 @@ from threading import Event
 from typing import Any
 
 import mne
-import numpy as np
 import pytest
 from PyQt6.QtCore import QPoint, QRect, Qt, QThreadPool, QTimer
 from PyQt6.QtTest import QTest
@@ -41,12 +40,14 @@ from tests.integration.ui.modal_helpers import visible_modal_dialog
 from XBrainLab.backend.application import get_application_service
 from XBrainLab.backend.application.owned_work import OwnedWorkPhase
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
-from XBrainLab.backend.load_data.raw import Raw
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.application_capabilities import application_ui_runtime
 from XBrainLab.ui.async_command_runner import application_command_registry
 from XBrainLab.ui.dialogs.dataset.bids_subject_selection_dialog import (
     BidsSubjectSelectionDialog,
+)
+from XBrainLab.ui.dialogs.dataset.data_interpretation_loading_dialog import (
+    DataInterpretationLoadingDialog,
 )
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
@@ -1049,17 +1050,17 @@ def _non_interpretation_state(
     return serialized
 
 
-def _block_first_apply_raw_load(service: Any) -> tuple[Event, Event]:
-    """Pause the first detached Raw prepare without altering the BIDS review.
+def _block_first_apply_raw_load(service: Any) -> tuple[Event, Event, Event]:
+    """Pause the first detached Raw prepare at the real loader boundary.
 
-    The review itself is built from the pinned BIDS fixture.  The cancelled
-    operation deliberately returns a tiny in-memory ``Raw`` after it is
-    released: it is never committed, while avoiding native BrainVision I/O
-    after cancellation in an offscreen Qt worker.  The retry uses the real
-    production loader for the same selected BIDS recording.
+    Cancellation wins while the production factory call is active.  Releasing
+    the barrier still executes the original MNE/BrainVision loader so this
+    test proves that a late native result is discarded rather than committed.
+    The retry then uses the same production loader again for the same source.
     """
     load_started = Event()
     release_load = Event()
+    real_load_finished = Event()
     original_factory = service.dataset._raw_factory_provider()
     should_block = True
 
@@ -1072,18 +1073,14 @@ def _block_first_apply_raw_load(service: Any) -> tuple[Event, Event]:
                 load_started.set()
                 if not release_load.wait(timeout=20.0):
                     raise TimeoutError("Timed out waiting to release BIDS Raw load.")
-                return Raw(
-                    str(path),
-                    mne.io.RawArray(
-                        np.zeros((1, 200)),
-                        mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg"),
-                        verbose="ERROR",
-                    ),
-                )
+                try:
+                    return original_factory.load(path)
+                finally:
+                    real_load_finished.set()
             return original_factory.load(path)
 
     service.dataset._raw_factory_provider = lambda: _BlockingRawFactory
-    return load_started, release_load
+    return load_started, release_load, real_load_finished
 
 
 @pytest.mark.parametrize(
@@ -1373,7 +1370,9 @@ def test_visible_bids_apply_cancel_reopens_identical_review_and_retries(
     )
     host, panel, runtime = _build_dataset_panel(qtbot)
     service = get_application_service(host.study)
-    load_started, release_load = _block_first_apply_raw_load(service)
+    load_started, release_load, real_load_finished = _block_first_apply_raw_load(
+        service
+    )
     driver = _start_wizard_driver(
         resolve_bids_values=True,
         source_picker="folder",
@@ -1423,6 +1422,7 @@ def test_visible_bids_apply_cancel_reopens_identical_review_and_retries(
     QTEST.mouseClick(panel.sidebar.import_cancel_btn, Qt.MouseButton.LeftButton)
     assert time.monotonic() - cancel_started_at <= 0.1
     release_load.set()
+    qtbot.waitUntil(real_load_finished.is_set, timeout=20_000)
     qtbot.waitUntil(
         lambda: service.get_owned_operation(cancelled_operation_id).phase
         is OwnedWorkPhase.CANCELLED,
@@ -1458,6 +1458,89 @@ def test_visible_bids_apply_cancel_reopens_identical_review_and_retries(
     assert service.get_owned_operation(retry_operation_id).phase is (
         OwnedWorkPhase.COMPLETED
     )
+
+
+def test_visible_file_review_cancel_discards_late_real_loader_and_retries(
+    qtbot: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cancelling initial review must discard a late real EDF loader result."""
+    _require_manifest_group("physionet-edf-motor")
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileNames",
+        staticmethod(
+            lambda _parent, _title, _directory, _filter, **_kwargs: (
+                [str(PHYSIONET_MOTOR_EDF)],
+                "",
+            )
+        ),
+    )
+    original_read_raw_edf = mne.io.read_raw_edf
+    read_started = Event()
+    release_read = Event()
+    real_read_finished = Event()
+    block_first_read = True
+
+    def _blocking_read_raw_edf(*args: Any, **kwargs: Any):
+        nonlocal block_first_read
+        if block_first_read:
+            block_first_read = False
+            read_started.set()
+            if not release_read.wait(timeout=20.0):
+                raise TimeoutError("Timed out waiting to release real EDF read.")
+            try:
+                return original_read_raw_edf(*args, **kwargs)
+            finally:
+                real_read_finished.set()
+        return original_read_raw_edf(*args, **kwargs)
+
+    monkeypatch.setattr(mne.io, "read_raw_edf", _blocking_read_raw_edf)
+    host, panel, runtime = _build_dataset_panel(qtbot)
+    service = get_application_service(host.study)
+    before = runtime.get_view_publication()
+    driver = _start_wizard_driver(skip_labels=True)
+
+    QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(read_started.is_set, timeout=45_000)
+    driver.timer.stop()
+    loading = visible_modal_dialog()
+    assert isinstance(loading, DataInterpretationLoadingDialog)
+    operation_id = (
+        panel.action_handler._data_interpretation._active_loading_operation_id
+    )
+    assert isinstance(operation_id, str) and operation_id
+    assert loading.cancel_button.isEnabled()
+
+    QTEST.mouseClick(loading.cancel_button, Qt.MouseButton.LeftButton)
+    release_read.set()
+    qtbot.waitUntil(real_read_finished.is_set, timeout=20_000)
+    qtbot.waitUntil(
+        lambda: service.get_owned_operation(operation_id).phase
+        is OwnedWorkPhase.CANCELLED,
+        timeout=20_000,
+    )
+    qtbot.waitUntil(
+        lambda: application_command_registry().active_count(panel) == 0,
+        timeout=20_000,
+    )
+    qtbot.wait(100)
+    assert runtime.get_view_publication() == before
+    assert host.study.loaded_data_list == []
+    assert not isinstance(visible_modal_dialog(), DataInterpretationPreviewDialog)
+
+    retry_driver = _start_wizard_driver(skip_labels=True)
+    QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
+    _wait_for_applied_interpretation(
+        qtbot,
+        retry_driver,
+        runtime,
+        panel,
+        timeout=60_000,
+    )
+    assert retry_driver.errors == []
+    assert runtime.get_view_publication().state.raw.count == 1
 
 
 def test_bids_missing_events_preserves_data_state_then_valid_root_recovers(

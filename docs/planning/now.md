@@ -4,12 +4,12 @@
 
 ## 目前焦點
 
-將使用者已在 `fix/assistant-direct-parameter-provenance-v1` 手測通過的 Local Assistant 初版封版為
-`v0.7.0`，經同一 exact source 的 PR、CI 與 handoff evidence 合併到 `main`。封版期間不再改產品行為；
-完成 release 後，才從乾淨 `main` 建立唯一的 cleanup branch，連續完成過時 Assistant／MCP surface
-移除與驗證加速，直到下一個完整候選可交使用者手測才停。
+在已合併的 `v0.7.0` cleanup baseline 上，確認真實 EEG loader 仍在執行時取消 Import 是否會造成
+native lifecycle 崩潰。此 slice 只處理一個 owner boundary：取消後不得提交部分資料、不得讓晚到
+callback 重開已關閉視窗，且同一來源必須可重新 Import 成功；不在同一 branch 重構 Load Data 或調整
+Import GUI。若真實 loader 證據已通過，就不為無法重現的 defect 增加 production code。
 
-目前 phase：`Active — repository cleanup and validation acceleration`
+目前 phase：`Checkpoint — native-loader cancellation evidence complete`
 
 ## 問題與證據
 
@@ -26,30 +26,40 @@
   focused gate的不同 outcome／claim contract仍須保留。
 - Root `settings.json` 是使用者本機 runtime 設定，已修改但不屬於 release tree；全程不得 stage、commit、
   revert、覆寫或隱藏。
+- Cleanup PR #41 exact head `8bb8599b` 已於 `2026-08-20` 依使用者手測批准，以 merge commit
+  `19d866f7796412f5cb23f0148449d61bd8fa9420` 合入 `main`；42/42 handoff gates 與所有 applicable
+  remote checks 均成功。新修復從該 merge commit 建立 `fix/import-cancel-native-loader-v1`。
+- 現有 offscreen BIDS Apply cancellation 證據能驗證 cancelled terminal、authoritative state 不變、同一
+  review 重開與 retry 成功，但取消中的第一次 raw load 使用 in-memory Raw 替身，沒有覆蓋真實 MNE／
+  BrainVision loader 正在 I/O 時的取消與晚到 Qt delivery。使用者已實際遇到 Import Cancel 崩潰，因此
+  此缺口是本 slice 的 red-first reproduction target。
+- Exact branch source 已以兩條低 mock Qt integration 路徑補上真實 loader 證據：BIDS Apply 取消後仍
+  執行原始 MNE／BrainVision loader，單檔 review 取消後仍執行原始 MNE／EDF loader；兩者均得到 typed
+  cancelled terminal、registry drainage、authoritative state 不變、無晚到 wizard，且同來源 retry 正式
+  Apply 成功。兩項 focused tests 分別約 13 秒與 6 秒，沒有 native abort，故目前沒有 production red test。
 
 ## Observable outcome
 
-1. 將已手測的產品 bytes 與 release metadata commit 成單一 exact branch head；沒有額外 UI／Assistant 行為
-   變更。
-2. `pyproject.toml`、runtime fallback、changelog、README、current／architecture truth 一致指向 `0.7.0`，
-   並只宣稱 bounded local Assistant baseline。
-3. PR #40 精確改以 `main` 為 base；同一 head 的 applicable non-skipped checks 全部
-   `completed/success`，canonical handoff dossier 對同一 clean/explained source 通過。
-4. 使用 merge commit 合入 `main`；main post-merge checks 通過後建立 annotated tag 與 GitHub Release
-   `v0.7.0`。
-5. 從 tagged `main` 建立唯一 cleanup branch。該 branch 以短 coherent commits 完成清理與加速，最終一次
-   產生完整候選與手測指令；中途 checkpoint 不要求使用者反覆手測，也不合併到 `main`。
+1. 真實 loader 在 owned operation active 期間收到 Cancel，不會 native abort、閃退或留下無 owner worker。
+2. Cancelled operation 只發布一次 typed cancelled terminal；raw data、interpretation review、publication 與
+   pipeline state 保持取消前 truth，不產生部分 commit。
+3. MainWindow 或 Import UI 關閉後，晚到 loader／review callback 不得重新顯示 dialog 或觸碰 quiescing
+   widget。
+4. 取消後重新開啟 Import，使用同一來源能重新得到 review 並完成一次正式 Apply。
+5. 修復完成於單一 exact branch head；focused native-loader cancellation evidence、directly related lifecycle
+   tests、source-diverse data gate、canonical handoff 與 remote CI 通過後，提供使用者一條
+   Cancel→retry 手測流程。
 
 ## Scope／non-goals
 
-- Release slice 只包含已手測產品 source、版本與 current truth；不新增功能、不調整 UI、不改 model、tool
-  surface、dataset、training 或 scientific behavior。
-- `v0.7.0` 不宣稱 signed installer、安全零容忍、任意 dataset 支援、科學模型品質、完整 thesis evidence，
-  或 MCP 產品能力。固定 Granite 2B 的語意限制仍是明示邊界。
-- Cleanup branch 才處理已核准的完整 MCP retirement、無 caller 的舊 Assistant scripts/tests，以及 local
-  handoff 重複工作。不得藉清理改變既有 GUI workflow 或建立第二套 owner／state／validation control plane。
-- Remote CI 約十分鐘的跨平台基礎不因 local handoff 過慢而移除；Windows/macOS 與有意義的 real-data、
-  lifecycle、安全 gates 保留。
+- In scope：真實 public EEG 來源的一次 native loader cancellation、operation registry drainage、state
+  rollback／non-commit、late-callback suppression 與 same-source retry。
+- Non-goals：不改 file／folder／BIDS 分類、不改 label／event 語意、不改五步 wizard layout／copy、不做
+  Load Data module refactor、不處理 Stop Training、不增加通用 cancellation framework。
+- ApplicationService／OwnedWorkRegistry 與既有 Data Interpretation transaction 仍是唯一 authoritative
+  owners；不新增 state、receipt、compatibility path 或第二套 error semantics。
+- 此 slice 預期不需修改 `XBrainLab/ui/` 或可見 layout／文案。若根因要求可見 UI change，先停止並取得
+  新的明確 UI 授權；既有對後續 source-classification UX 的授權不自動擴張到本 bug。
 
 ## 施工順序
 
@@ -144,15 +154,43 @@ deferred records，完成後才依registry order序列寫入dossier，再執行d
 failure或source drift都使整體失敗，不能以其他lane成功補足。目前待同一clean／pushed exact source重跑
 42-gate handoff，只有總時間不超過40分鐘且final dossier通過才可升為candidate。
 
+Completion（`2026-08-20`）：exact `8bb8599b` 的 42/42 gates、11,294 項 complete regression 與 final
+dossier 全部 PASS，總 wall time 2,226.162 秒（37 分 06 秒）；所有 applicable PR checks 成功。使用者手測
+通過後，PR #41 以 merge commit `19d866f7` 合入 `main`。40 分鐘仍是 full handoff 硬門檻，30 分鐘只作
+後續 test-quality cleanup 的 stretch goal；日常修復不重跑完整 manifest。
+
+### C. Import Cancel native-loader evidence（checkpoint complete）
+
+1. 從 main merge `19d866f7` 確認既有 file／folder／BIDS routing 與 offscreen cancellation baseline，
+   不改產品。
+2. 新增最小 red reproduction：真實 public EEG loader 已進入 I/O／materialization 後取消 owned operation，
+   驗證 native process 存活、typed cancelled terminal、registry drainage、state 不變、no late dialog 與
+   retry 成功。
+3. 追蹤 cancel owner、loader checkpoint、transaction commit guard 及 Qt callback token；只修第一個被 red
+   test 證明違反的 boundary，重用既有 owner，不建立通用抽象。
+4. 用相同 red test 轉 green，再跑直接相鄰的 BIDS cancel/reopen、ApplicationService owned-work、dialog
+   close 與 public source-diverse import evidence。
+5. 完整 candidate 才跑 canonical handoff 與 remote CI，產生一條真實 Cancel→reopen→retry 手測指令；
+   使用者明確通過前 PR 保持 draft 且不得 merge。
+
+Checkpoint（`2026-08-20`）：既有 BIDS Apply cancel test 已移除 in-memory Raw 替身，取消後會完成原始
+BrainVision loader，再驗證取消 operation、state non-commit、preserved review reopen 與 real retry；另新增
+單檔 PhysioNet EDF 在 initial review loader active 時取消的完整路徑，驗證晚到真實 MNE read 不開 wizard、
+registry 歸零、state 不變及同檔 retry 成功。兩項以 offscreen Qt、`prlimit --core=0` 和 timeout 實跑
+2/2 PASS。因沒有可重現的 product failure，本 slice production `+0/-0/net 0 LOC`，不增加 cancellation
+owner 或 compatibility path；若使用者 native 手測仍閃退，下一步需要該次 exact source、觸發階段與 native
+terminal log，不能從 WSL X11 shutdown 推導產品修復。
+
 ## Focused validation 與 stop condition
 
-- Release：version single-source test、已修改 ChatPanel／walkthrough suites、Ruff check／format check、
-  MkDocs strict、canonical handoff dossier、PR與main exact-SHA checks。
-- Cleanup deletion：`rg` caller inventory、registry／architecture guards、對應 focused tests與完整 regression；
-  發現真實production caller即保留該surface並停止該刪除。
-- Handoff acceleration：不得減少assertion、允許新的skip、放寬OutcomePolicy或沿用舊source evidence。
-  Recorder source identity、dashboard evidence與capture manifest任一無法在final重新驗證即回退該slice。
-- 目標以相同 warm environment 將local handoff由約74分鐘降低到不超過40分鐘；若未達標，保留已證明
-  等價且有淨收益的slice，重新profile，不以刪安全gate湊數。
-- cleanup product/UI source若意外改變、owner數增加、MCP retirement觸及active product caller，或需要
-  新public contract決策，立即停止擴張並回報。最終source改動後，先前手測證據不外推。
+- Red-first focused evidence 必須實際進入 native loader seam；只 patch 成 in-memory Raw 或只驗 button
+  callback 不支持本修復 claim。
+- 同一測試必須觀察 cancelled terminal、registry drainage、authoritative state 不變、late callback
+  suppression 與 retry；若無法觀察其中一項，先改善 test seam 而非放寬 assertion。
+- Native Qt／MNE 驗證使用 `prlimit --core=0` 與明確 timeout；只終止本 test 明確啟動的 PID。
+- Focused green 後才依 `docs/validation/README.md` 選 directly related lifecycle 與 source-diverse evidence；
+  完整 handoff 只在交使用者手測前執行，硬門檻 40 分鐘。
+- 若 red test 顯示崩潰來自 WSL X server／使用者關閉 display，而產品 process／state 正常，停止產品修復並
+  回報 environment boundary；不增加產品複雜度掩蓋環境問題。
+- Scope-complete 需有 exact-source focused green；handoff-ready 另需 canonical dossier、remote CI 與手測
+  指令。
