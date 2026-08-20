@@ -485,6 +485,9 @@ def run_platform_ci_group(
 def verify_linux_ci_evidence(
     evidence_dir: Path,
     result_path: Path,
+    *,
+    provenance_dir: Path | None = None,
+    expected_provenance_path: Path | None = None,
 ) -> int:
     """Fail closed unless every Linux group and coverage file is present."""
     evidence_root = evidence_dir.expanduser().resolve()
@@ -508,12 +511,17 @@ def verify_linux_ci_evidence(
     failures: list[str] = []
     attestations: list[dict[str, Any]] = []
 
-    _aggregate_provenance, provenance_failures = verify_linux_source_provenance(
-        evidence_root,
-        expected_job_keys=LINUX_CI_COMMANDS,
-        aggregate_path=evidence_root / "all-linux-source-provenance.json",
-    )
-    failures.extend(provenance_failures)
+    if provenance_dir is not None or expected_provenance_path is not None:
+        if provenance_dir is None or expected_provenance_path is None:
+            failures.append("Linux CI provenance inputs are incomplete.")
+        else:
+            _aggregate_provenance, provenance_failures = verify_linux_source_provenance(
+                provenance_dir,
+                expected_job_keys=LINUX_CI_COMMANDS,
+                expected_provenance_path=expected_provenance_path,
+                aggregate_path=evidence_root / "all-linux-source-provenance.json",
+            )
+            failures.extend(provenance_failures)
 
     if actual_results != expected_results:
         failures.append(
@@ -724,6 +732,8 @@ def _parse_cli(argv: Sequence[str]) -> argparse.Namespace:
     )
     parser.add_argument("--result-json", type=Path)
     parser.add_argument("--evidence-dir", type=Path)
+    parser.add_argument("--provenance-dir", type=Path)
+    parser.add_argument("--expected-provenance", type=Path)
     parsed = parser.parse_args(list(argv))
     if parsed.result_json is None:
         configured = os.environ.get("XBL_PYTEST_RESULT_JSON", "").strip()
@@ -760,14 +770,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     parsed = _parse_cli(sys.argv[1:] if argv is None else argv)
     result_path: Path | None = parsed.result_json
     if parsed.command == "verify-linux-ci":
-        if result_path is None or parsed.evidence_dir is None:
+        if (
+            result_path is None
+            or parsed.evidence_dir is None
+            or parsed.provenance_dir is None
+            or parsed.expected_provenance is None
+        ):
             print(
-                "verify-linux-ci requires --evidence-dir and --result-json.",
+                "verify-linux-ci requires --evidence-dir, --provenance-dir, "
+                "--expected-provenance, and --result-json.",
                 file=sys.stderr,
             )
             return 2
         result_path.unlink(missing_ok=True)
-        return verify_linux_ci_evidence(parsed.evidence_dir, result_path)
+        return verify_linux_ci_evidence(
+            parsed.evidence_dir,
+            result_path,
+            provenance_dir=parsed.provenance_dir,
+            expected_provenance_path=parsed.expected_provenance,
+        )
     if result_path is not None:
         result_path.unlink(missing_ok=True)
     attestations: list[dict[str, Any]] | None = [] if result_path else None

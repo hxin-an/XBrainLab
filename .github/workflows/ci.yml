@@ -221,8 +221,17 @@ jobs:
         if: always()
         with:
           name: linux-shard-${{ matrix.command }}
-          path: test-results
+          path: |
+            test-results
+            !test-results/ci-source-provenance-*.json
           include-hidden-files: true
+
+      - name: Upload source provenance sidecar
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-source-provenance-${{ matrix.command }}
+          path: test-results/ci-source-provenance-${{ matrix.command }}.json
 
   linux-test:
     name: Full Test Suite (Linux, py3.11)
@@ -242,6 +251,12 @@ jobs:
       - name: Install aggregate dependencies
         run: pip install "coverage>=7,<8" pytest
 
+      - name: Record aggregate checkout provenance
+        run: >-
+          python scripts/dev/ci_source_provenance.py
+          --job-key linux-test
+          --output linux-test-source-provenance.json
+
       - name: Download Linux shard evidence
         uses: actions/download-artifact@v4
         with:
@@ -249,10 +264,18 @@ jobs:
           path: test-results
           merge-multiple: true
 
+      - name: Download source provenance sidecars
+        uses: actions/download-artifact@v4
+        with:
+          pattern: linux-source-provenance-*
+          path: source-provenance
+
       - name: Verify complete shard evidence
         run: |
           python -m scripts.dev.run_tests verify-linux-ci \
             --evidence-dir test-results \
+            --provenance-dir source-provenance \
+            --expected-provenance linux-test-source-provenance.json \
             --result-json test-results/all-regression.json
 
       - name: Combine coverage
@@ -272,7 +295,8 @@ jobs:
             test-results/all-regression.json
             test-results/all-linux-source-provenance.json
             test-results/linux-*.json
-            test-results/ci-source-provenance-linux-*.json
+            source-provenance/**/*.json
+            linux-test-source-provenance.json
             test-results/*.xml
             coverage.xml
 

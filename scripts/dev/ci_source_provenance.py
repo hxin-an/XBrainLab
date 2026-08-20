@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -15,6 +16,8 @@ from typing import Any
 
 CI_SOURCE_PROVENANCE_SCHEMA = "xbrainlab.ci-source-provenance.v1"
 LINUX_PROVENANCE_PREFIX = "ci-source-provenance-"
+LINUX_PROVENANCE_ARTIFACT_PREFIX = "linux-source-provenance-"
+_GIT_OBJECT_RE = re.compile(r"[0-9a-f]{40}")
 
 _COMMON_IDENTITY_FIELDS = (
     "event_name",
@@ -75,6 +78,14 @@ def build_ci_source_provenance(
         raise ValueError("CI source provenance requires a non-empty job key.")
     if not expected_head:
         raise ValueError("CI source provenance cannot determine the expected head SHA.")
+    for label, value in (
+        ("github SHA", github_sha),
+        ("expected head SHA", expected_head),
+        ("checked-out head SHA", checked_head),
+        ("checked-out tree SHA", checked_tree),
+    ):
+        if _GIT_OBJECT_RE.fullmatch(value) is None:
+            raise ValueError(f"CI source provenance {label} is not a Git SHA.")
     if checked_head != expected_head:
         raise ValueError(
             "CI checkout does not match the expected event head "
@@ -123,6 +134,9 @@ def validate_ci_source_provenance(
     path: Path,
     *,
     expected_job_key: str,
+    expected_github_job: str | None = None,
+    expected_runner_os: str | None = None,
+    expected_runner_arch: str | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
     """Validate one exact-source payload without accepting partial evidence."""
     try:
@@ -140,6 +154,17 @@ def validate_ci_source_provenance(
             return None, f"CI source provenance field {field!r} is malformed."
     if not payload["expected_head_sha"]:
         return None, "CI source provenance expected head is missing."
+    for field in (
+        "github_sha",
+        "expected_head_sha",
+        "pull_request_head_sha",
+        "pull_request_base_sha",
+        "checked_out_head_sha",
+        "checked_out_tree_sha",
+    ):
+        value = payload[field]
+        if value and _GIT_OBJECT_RE.fullmatch(value) is None:
+            return None, f"CI source provenance field {field!r} is not a Git SHA."
     if payload["checked_out_head_sha"] != payload["expected_head_sha"]:
         return None, "CI source provenance checkout does not match its expected head."
     if not payload["checked_out_tree_sha"]:
@@ -149,57 +174,108 @@ def validate_ci_source_provenance(
             return None, "CI pull-request provenance head is inconsistent."
         if not payload["pull_request_base_sha"]:
             return None, "CI pull-request provenance base is missing."
+    if expected_github_job is not None and payload["github_job"] != expected_github_job:
+        return None, "CI source provenance producer job does not match."
+    if expected_runner_os is not None and payload["runner_os"] != expected_runner_os:
+        return None, "CI source provenance runner OS does not match."
+    if (
+        expected_runner_arch is not None
+        and payload["runner_arch"] != expected_runner_arch
+    ):
+        return None, "CI source provenance runner architecture does not match."
     return payload, None
 
 
 def verify_linux_source_provenance(
-    evidence_dir: Path,
+    provenance_dir: Path,
     *,
     expected_job_keys: Sequence[str],
+    expected_provenance_path: Path,
     aggregate_path: Path,
 ) -> tuple[dict[str, Any] | None, tuple[str, ...]]:
-    """Require exactly one matching provenance file for every Linux group."""
-    root = evidence_dir.expanduser().resolve()
-    expected_names = {
-        f"{LINUX_PROVENANCE_PREFIX}{job_key}.json" for job_key in expected_job_keys
+    """Require one producer-isolated payload per Linux group and current checkout."""
+    root = provenance_dir.expanduser().resolve()
+    expected_directories = {
+        f"{LINUX_PROVENANCE_ARTIFACT_PREFIX}{job_key}" for job_key in expected_job_keys
     }
-    actual_names = {path.name for path in root.glob(f"{LINUX_PROVENANCE_PREFIX}*.json")}
+    actual_directories = (
+        {path.name for path in root.iterdir() if path.is_dir()}
+        if root.is_dir()
+        else set()
+    )
+    root_files = (
+        {path.name for path in root.iterdir() if path.is_file()}
+        if root.is_dir()
+        else set()
+    )
     failures: list[str] = []
-    if actual_names != expected_names:
+    if actual_directories != expected_directories or root_files:
         failures.append(
-            "Linux CI provenance set mismatch "
-            f"(expected {sorted(expected_names)}, got {sorted(actual_names)})."
+            "Linux CI provenance artifact set mismatch "
+            f"(expected directories {sorted(expected_directories)}, "
+            f"got directories {sorted(actual_directories)} and files "
+            f"{sorted(root_files)})."
         )
+
+    expected_payload, expected_failure = validate_ci_source_provenance(
+        expected_provenance_path,
+        expected_job_key="linux-test",
+        expected_github_job="linux-test",
+        expected_runner_os="Linux",
+    )
+    if expected_failure is not None:
+        failures.append(f"linux-test: {expected_failure}")
 
     payloads: list[dict[str, Any]] = []
     for job_key in expected_job_keys:
+        artifact_dir = root / f"{LINUX_PROVENANCE_ARTIFACT_PREFIX}{job_key}"
+        expected_file = artifact_dir / f"{LINUX_PROVENANCE_PREFIX}{job_key}.json"
+        contained_files = (
+            {
+                path.relative_to(artifact_dir).as_posix()
+                for path in artifact_dir.rglob("*")
+                if path.is_file()
+            }
+            if artifact_dir.is_dir()
+            else set()
+        )
+        if contained_files != {expected_file.name}:
+            failures.append(
+                f"{job_key}: provenance artifact contents differ "
+                f"(got {sorted(contained_files)})."
+            )
         payload, failure = validate_ci_source_provenance(
-            root / f"{LINUX_PROVENANCE_PREFIX}{job_key}.json",
+            expected_file,
             expected_job_key=job_key,
+            expected_github_job="linux-shard",
+            expected_runner_os="Linux",
         )
         if failure is not None:
             failures.append(f"{job_key}: {failure}")
         elif payload is not None:
             payloads.append(payload)
 
-    if payloads:
-        reference = tuple(payloads[0][field] for field in _COMMON_IDENTITY_FIELDS)
-        for payload in payloads[1:]:
+    if expected_payload is not None:
+        reference = tuple(expected_payload[field] for field in _COMMON_IDENTITY_FIELDS)
+        for payload in payloads:
             identity = tuple(payload[field] for field in _COMMON_IDENTITY_FIELDS)
             if identity != reference:
                 failures.append(
-                    f"{payload['job_key']}: CI source provenance identity differs."
+                    f"{payload['job_key']}: CI source provenance differs from "
+                    "the aggregate job checkout."
                 )
 
     aggregate_path.unlink(missing_ok=True)
     if failures:
         return None, tuple(failures)
+    if expected_payload is None or len(payloads) != len(expected_job_keys):
+        return None, ("Linux CI source provenance is incomplete.",)
 
     aggregate = {
         "schema": CI_SOURCE_PROVENANCE_SCHEMA,
         "artifact_type": "linux-ci-source-aggregate",
         "job_keys": list(expected_job_keys),
-        "source": {field: payloads[0][field] for field in _COMMON_IDENTITY_FIELDS},
+        "source": {field: expected_payload[field] for field in _COMMON_IDENTITY_FIELDS},
         "members": payloads,
     }
     write_json_atomic(aggregate_path, aggregate)
