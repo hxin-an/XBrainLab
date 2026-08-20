@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from PyQt6.QtCore import QObject, QTimer
-from PyQt6.QtWidgets import QFileDialog, QMessageBox
+from PyQt6.QtWidgets import QFileDialog, QMessageBox, QWidget
 
 from XBrainLab.backend.application.commands import (
     ApplyInterpretationCommand,
@@ -206,6 +206,7 @@ class DataInterpretationActionCoordinator:
         self._active_loading_dialog: Any | None = None
         self._active_loading_token: object | None = None
         self._active_loading_operation_id: str | None = None
+        self._loading_cancel_operation_id: str | None = None
         self._operation_presenter: OwnedOperationPresenter | None = None
         timer_parent = self.panel if isinstance(self.panel, QObject) else None
         self._loading_progress_timer = QTimer(timer_parent)
@@ -269,10 +270,16 @@ class DataInterpretationActionCoordinator:
             return
         operation_id = self._active_loading_operation_id
         if operation_id is not None:
-            self._bindings.cancel_application_operation(
-                self.panel,
-                operation_id,
-            )
+            presenter = self._operation_presenter
+            if presenter is not None and presenter.active_operation_id == operation_id:
+                cancel_requested = presenter.request_cancel()
+            else:
+                cancel_requested = self._bindings.cancel_application_operation(
+                    self.panel,
+                    operation_id,
+                )
+            if cancel_requested:
+                self._loading_cancel_operation_id = operation_id
         dialog = self._active_loading_dialog
         self._active_loading_token = None
         self._active_loading_dialog = None
@@ -341,7 +348,7 @@ class DataInterpretationActionCoordinator:
             return self._operation_presenter
         sidebar = getattr(self.panel, "sidebar", None)
         cancel_button = getattr(sidebar, "import_cancel_btn", None)
-        if cancel_button is None or not isinstance(self.panel, QObject):
+        if cancel_button is None or not isinstance(self.panel, QWidget):
             return None
         self._operation_presenter = OwnedOperationPresenter(
             self.panel,
@@ -357,7 +364,22 @@ class DataInterpretationActionCoordinator:
                 operation_id,
             ),
         )
+        self._operation_presenter.terminal.connect(
+            self._handle_owned_operation_terminal
+        )
         return self._operation_presenter
+
+    def _handle_owned_operation_terminal(
+        self,
+        operation_id: str,
+        phase: str,
+    ) -> None:
+        """Settle cancellation initiated from the modal import surface."""
+        if operation_id != self._loading_cancel_operation_id:
+            return
+        self._loading_cancel_operation_id = None
+        if phase == "cancelled":
+            self._show_status("Dataset import cancelled")
 
     def _close_loading_dialog(self, token: object | None = None) -> None:
         if token is not None and self._active_loading_token is not token:
@@ -743,6 +765,14 @@ class DataInterpretationActionCoordinator:
         """Classify one detached path, then enter the existing owned flow."""
 
         def _handle_classification(result) -> InteractionOutcome:
+            error_type = getattr(
+                getattr(result, "error_type", None),
+                "value",
+                getattr(result, "error_type", None),
+            )
+            if result.failed and error_type == ErrorType.CANCELLED.value:
+                self._show_status("Dataset import cancelled")
+                return InteractionOutcome.cancelled(result.message)
             if self._result_failed(result, "EEG source discovery failed"):
                 return self._interaction_failure_outcome(result, result.message)
             diagnostics = getattr(result, "diagnostics", {})
@@ -975,7 +1005,11 @@ class DataInterpretationActionCoordinator:
         review_state: _InterpretationReviewState,
         initial_step: str = "",
         loading_token: object | None = None,
+        validated_choices: dict[str, Any] | None = None,
     ) -> InteractionOutcome:
+        comparison_choices = (
+            dict(validated_choices) if validated_choices is not None else dict(choices)
+        )
         dialog_kwargs: dict[str, Any] = {
             "scan_result": review_state.scan,
             "preview": review_state.preview,
@@ -1033,6 +1067,8 @@ class DataInterpretationActionCoordinator:
             self._close_loading_dialog(loading_token)
         accepted = bool(dialog.exec())
         if not accepted:
+            if isinstance(dialog, QObject):
+                dialog.deleteLater()
             return InteractionOutcome.cancelled(
                 "Data interpretation review was cancelled."
             )
@@ -1056,59 +1092,115 @@ class DataInterpretationActionCoordinator:
             dialog_result,
             label_sources,
         )
-        if next_label_sources != label_sources:
-            updated_choices = self._choices_after_label_source_change(updated_choices)
-            return self._start_interpretation_review_async(
-                source_path,
-                source_hint,
-                updated_choices,
-                next_label_sources,
-                initial_step=str(dialog_result.get("resume_step") or ""),
-            ) or InteractionOutcome.blocked(
-                "Data interpretation review could not be started."
-            )
 
-        if (
-            str(review_state.decision.get("decision")) == "blocked"
-            and updated_choices == choices
-        ):
-            if import_confirmed:
-                self._show_status("Dataset import blocked · Review the import settings")
-            return InteractionOutcome.blocked(
-                self._decision_reason(review_state.decision)
-            )
+        def _continue_after_review() -> InteractionOutcome:
+            continuation_choices = updated_choices
+            if next_label_sources != label_sources:
+                continuation_choices = self._choices_after_label_source_change(
+                    continuation_choices
+                )
+                return self._start_interpretation_review_async(
+                    source_path,
+                    source_hint,
+                    continuation_choices,
+                    next_label_sources,
+                    initial_step=str(dialog_result.get("resume_step") or ""),
+                ) or InteractionOutcome.blocked(
+                    "Data interpretation review could not be started."
+                )
 
-        if updated_choices != choices:
-            resume_step = str(dialog_result.get("resume_step") or "").strip()
-            if resume_step == "Match Labels":
-                return self._repreview_interpretation_async(
+            if (
+                str(review_state.decision.get("decision")) == "blocked"
+                and continuation_choices == comparison_choices
+            ):
+                if import_confirmed:
+                    self._show_status(
+                        "Dataset import blocked · Review the import settings"
+                    )
+                return InteractionOutcome.blocked(
+                    self._decision_reason(review_state.decision)
+                )
+
+            if continuation_choices != comparison_choices:
+                resume_step = str(dialog_result.get("resume_step") or "").strip()
+                if resume_step == "Match Labels":
+                    return self._repreview_interpretation_async(
+                        source_path=source_path,
+                        source_hint=source_hint,
+                        choices=continuation_choices,
+                        label_sources=label_sources,
+                        review_state=review_state,
+                        initial_step=resume_step,
+                    ) or InteractionOutcome.blocked(
+                        "Data interpretation preview could not be refreshed."
+                    )
+                return self._review_interpretation_for_apply_async(
                     source_path=source_path,
                     source_hint=source_hint,
-                    choices=updated_choices,
+                    choices=continuation_choices,
+                    validated_choices=comparison_choices,
                     label_sources=label_sources,
                     review_state=review_state,
-                    initial_step=resume_step,
+                    dialog_result=dialog_result,
                 ) or InteractionOutcome.blocked(
-                    "Data interpretation preview could not be refreshed."
+                    "Data interpretation review could not be refreshed."
                 )
-            return self._review_interpretation_for_apply_async(
-                choices=updated_choices,
-                review_state=review_state,
-                dialog_result=dialog_result,
-            ) or InteractionOutcome.blocked(
-                "Data interpretation review could not be refreshed."
+
+            def _retry_cancelled_apply() -> InteractionOutcome:
+                return self.review_current_import(
+                    initial_step="Review and Import",
+                    expected_identity=self._review_identity(review_state),
+                )
+
+            return self._apply_interpretation_async(
+                review_state,
+                dialog_result,
+                retry_cancelled_apply=_retry_cancelled_apply,
             )
 
-        def _retry_cancelled_apply() -> InteractionOutcome:
-            return self.review_current_import(
-                initial_step="Review and Import",
-                expected_identity=self._review_identity(review_state),
-            )
+        # The production preview is a QDialog.  Finish destroying that modal
+        # surface before opening resource confirmation or dispatching Apply;
+        # otherwise WSLg/native compositors can briefly render both modal
+        # lifecycles during the same call stack.  Plain injected test doubles
+        # retain the synchronous fallback because they have no Qt lifecycle.
+        if not isinstance(dialog, QObject):
+            return _continue_after_review()
 
-        return self._apply_interpretation_async(
-            review_state,
-            dialog_result,
-            retry_cancelled_apply=_retry_cancelled_apply,
+        continuation = self._bindings.reserve_interaction_continuation()
+        continuation_scheduled = False
+
+        def _start_review_continuation() -> None:
+            if continuation is not None:
+                continuation.start(_continue_after_review)
+            else:
+                _continue_after_review()
+
+        def _review_dialog_destroyed(*_args: object) -> None:
+            nonlocal continuation_scheduled
+            if continuation_scheduled:
+                return
+            continuation_scheduled = True
+            try:
+                self._bindings.single_shot(0, _start_review_continuation)
+            except Exception:
+                logger.exception("Could not continue the accepted dataset review")
+                message = "The accepted dataset review could not continue."
+                self._show_status("Dataset import failed · Review the import settings")
+                if continuation is not None:
+                    continuation.fail(message)
+
+        try:
+            dialog.destroyed.connect(_review_dialog_destroyed)
+            dialog.deleteLater()
+        except Exception:
+            logger.exception("Could not close the accepted dataset review")
+            message = "The accepted dataset review could not be closed safely."
+            if continuation is not None:
+                continuation.fail(message)
+            self._show_status("Dataset import failed · Review the import settings")
+            return InteractionOutcome.failed(message)
+        return InteractionOutcome.accepted(
+            "Dataset import will continue after the review closes."
         )
 
     def _preview_context_is_available(self) -> bool:
@@ -1166,6 +1258,10 @@ class DataInterpretationActionCoordinator:
                 presenter.bind(operation_id, stage="Preparing import")
             if self._active_loading_token is not None:
                 self._active_loading_operation_id = operation_id
+                sidebar = getattr(self.panel, "sidebar", None)
+                cancel_button = getattr(sidebar, "import_cancel_btn", None)
+                if cancel_button is not None:
+                    cancel_button.setVisible(False)
                 dialog = self._active_loading_dialog
                 progress_bar = getattr(dialog, "progress_bar", None)
                 if progress_bar is not None:
@@ -1392,6 +1488,11 @@ class DataInterpretationActionCoordinator:
         error_title: str,
         loading_token: object | None = None,
         on_terminal: Callable[[InteractionOutcome], None] | None = None,
+        on_cancelled: Callable[
+            [_InterpretationReviewState | None],
+            InteractionOutcome,
+        ]
+        | None = None,
     ) -> InteractionOutcome | None:
         """Rebuild choices from the admitted scan, then validate the candidate."""
 
@@ -1403,6 +1504,24 @@ class DataInterpretationActionCoordinator:
             }:
                 on_terminal(outcome)
             return outcome
+
+        def _cancelled_command_outcome(
+            result,
+            *,
+            preserved_state: _InterpretationReviewState | None = None,
+        ) -> InteractionOutcome | None:
+            error_type = getattr(
+                getattr(result, "error_type", None),
+                "value",
+                getattr(result, "error_type", None),
+            )
+            if not result.failed or error_type != ErrorType.CANCELLED.value:
+                return None
+            if loading_token is not None:
+                self._close_loading_dialog(loading_token)
+            if on_cancelled is not None:
+                return _terminal(on_cancelled(preserved_state))
+            return _terminal(InteractionOutcome.cancelled(result.message))
 
         def _handle_async_error(error: tuple, fallback_message: str) -> None:
             message = (
@@ -1441,7 +1560,14 @@ class DataInterpretationActionCoordinator:
             *,
             preview: dict[str, Any],
             candidate: dict[str, Any],
+            preview_state: _InterpretationReviewState,
         ) -> InteractionOutcome:
+            cancelled = _cancelled_command_outcome(
+                validation_result,
+                preserved_state=preview_state,
+            )
+            if cancelled is not None:
+                return cancelled
             if self._result_failed(
                 validation_result,
                 "Interpretation validation failed",
@@ -1482,6 +1608,9 @@ class DataInterpretationActionCoordinator:
             return on_validated(validated_state)
 
         def _handle_preview_result(preview_result) -> InteractionOutcome:
+            cancelled = _cancelled_command_outcome(preview_result)
+            if cancelled is not None:
+                return cancelled
             resource_outcome = self._preview_resource_preflight_outcome(
                 preview_result,
                 retry=lambda token: _dispatch_preview(
@@ -1541,6 +1670,7 @@ class DataInterpretationActionCoordinator:
                     result,
                     preview=preview,
                     candidate=candidate,
+                    preview_state=preview_state,
                 ),
                 error_title="Interpretation validation failed",
                 expected_publication_generation=(preview_state.publication_generation),
@@ -1649,7 +1779,11 @@ class DataInterpretationActionCoordinator:
     def _review_interpretation_for_apply_async(
         self,
         *,
+        source_path: str,
+        source_hint: str,
         choices: dict[str, Any],
+        validated_choices: dict[str, Any],
+        label_sources: list[str],
         review_state: _InterpretationReviewState,
         dialog_result: dict[str, Any],
     ) -> InteractionOutcome | None:
@@ -1685,17 +1819,91 @@ class DataInterpretationActionCoordinator:
                 retry_cancelled_apply=_retry_cancelled_apply,
             )
 
+        preserved_review_state = review_state
+
+        def _retry_cancelled_revalidation() -> InteractionOutcome:
+            return self._continue_data_interpretation_import(
+                source_path=source_path,
+                source_hint=source_hint,
+                choices=dict(choices),
+                label_sources=list(label_sources),
+                review_state=preserved_review_state,
+                initial_step="Review and Import",
+                validated_choices=dict(validated_choices),
+            )
+
+        def _reopen_cancelled_review(
+            preview_state: _InterpretationReviewState | None,
+        ) -> InteractionOutcome:
+            nonlocal preserved_review_state
+            if preview_state is not None:
+                preserved_review_state = _InterpretationReviewState(
+                    scan=dict(preview_state.scan),
+                    preview=dict(preview_state.preview),
+                    candidate=dict(preview_state.candidate),
+                    candidate_id=preview_state.candidate_id,
+                    decision=dict(review_state.decision),
+                    publication_generation=preview_state.publication_generation,
+                )
+            return self._schedule_cancelled_review_reopen(
+                _retry_cancelled_revalidation,
+                cancelled_message="The operation was cancelled.",
+            )
+
         started = self._preview_and_validate_interpretation_async(
             choices=choices,
             review_state=review_state,
             on_validated=_apply_validated_review,
             error_title="Interpretation preview failed",
             on_terminal=_replace_preparing_status,
+            on_cancelled=_reopen_cancelled_review,
         )
         if started is not None:
             return started
         self._show_status("Dataset import failed · Review the import settings")
         return None
+
+    def _schedule_cancelled_review_reopen(
+        self,
+        retry: Callable[[], InteractionOutcome] | None,
+        *,
+        cancelled_message: str,
+    ) -> InteractionOutcome:
+        """Reopen one preserved review after the current Qt callback settles."""
+        self._show_status("Dataset import cancelled · Review preserved")
+        if retry is None:
+            return InteractionOutcome.cancelled(cancelled_message)
+
+        continuation = self._bindings.reserve_interaction_continuation()
+
+        def _resume_cancelled_review() -> None:
+            main_window = getattr(self._host, "main_window", None)
+            if self._bindings.qt_object_deleted(self.panel) or (
+                getattr(main_window, "_closing_in_progress", False) is True
+            ):
+                if continuation is not None:
+                    continuation.fail(
+                        "XBrainLab started closing before the preserved dataset "
+                        "review could reopen."
+                    )
+                return
+            if continuation is not None:
+                continuation.start(retry)
+            else:
+                retry()
+
+        try:
+            self._bindings.single_shot(0, _resume_cancelled_review)
+        except Exception:
+            logger.exception("Could not reopen cancelled dataset review")
+            message = "The preserved dataset review could not be reopened."
+            self._show_status("Dataset import failed · Review the import settings")
+            if continuation is not None:
+                continuation.fail(message)
+            return InteractionOutcome.failed(message)
+        return InteractionOutcome.accepted(
+            "Dataset import was cancelled and the preserved review will reopen."
+        )
 
     def _apply_interpretation_async(
         self,
@@ -1717,41 +1925,9 @@ class DataInterpretationActionCoordinator:
                 getattr(apply_result, "error_type", None),
             )
             if apply_result.failed and error_type == ErrorType.CANCELLED.value:
-                self._show_status("Dataset import cancelled · Review preserved")
-                if retry_cancelled_apply is None:
-                    return InteractionOutcome.cancelled(apply_result.message)
-                retry = retry_cancelled_apply
-                continuation = self._bindings.reserve_interaction_continuation()
-
-                def _resume_cancelled_apply() -> None:
-                    main_window = getattr(self._host, "main_window", None)
-                    if self._bindings.qt_object_deleted(self.panel) or (
-                        getattr(main_window, "_closing_in_progress", False) is True
-                    ):
-                        if continuation is not None:
-                            continuation.fail(
-                                "XBrainLab started closing before the preserved "
-                                "dataset review could reopen."
-                            )
-                        return
-                    if continuation is not None:
-                        continuation.start(retry)
-                    else:
-                        retry()
-
-                try:
-                    self._bindings.single_shot(0, _resume_cancelled_apply)
-                except Exception:
-                    logger.exception("Could not reopen cancelled dataset review")
-                    message = "The preserved dataset review could not be reopened."
-                    self._show_status(
-                        "Dataset import failed · Review the import settings"
-                    )
-                    if continuation is not None:
-                        continuation.fail(message)
-                    return InteractionOutcome.failed(message)
-                return InteractionOutcome.accepted(
-                    "Dataset import was cancelled and the preserved review will reopen."
+                return self._schedule_cancelled_review_reopen(
+                    retry_cancelled_apply,
+                    cancelled_message=apply_result.message,
                 )
 
             resource_preflight = self._resource_preflight_view(apply_result)

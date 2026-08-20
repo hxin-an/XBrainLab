@@ -4,12 +4,12 @@
 
 ## 目前焦點
 
-將使用者已在 `fix/assistant-direct-parameter-provenance-v1` 手測通過的 Local Assistant 初版封版為
-`v0.7.0`，經同一 exact source 的 PR、CI 與 handoff evidence 合併到 `main`。封版期間不再改產品行為；
-完成 release 後，才從乾淨 `main` 建立唯一的 cleanup branch，連續完成過時 Assistant／MCP surface
-移除與驗證加速，直到下一個完整候選可交使用者手測才停。
+在已合併的 `v0.7.0` cleanup baseline 上，重現使用者於 BIDS subject selection 按 Continue 後取消
+Import 時，取消控制看似凍結且 cancellation surface 不符合既有產品風格的問題。先分清中央 loading
+dialog 的 `Cancel` 與 Dataset sidebar 的 `Cancel Import`，只修被 exact reproduction 證明的 lifecycle／
+presentation boundary；不在同一 branch 重構 Load Data。
 
-目前 phase：`Active — repository cleanup and validation acceleration`
+目前 phase：`Checkpoint — native hand-test findings under repair`
 
 ## 問題與證據
 
@@ -26,30 +26,78 @@
   focused gate的不同 outcome／claim contract仍須保留。
 - Root `settings.json` 是使用者本機 runtime 設定，已修改但不屬於 release tree；全程不得 stage、commit、
   revert、覆寫或隱藏。
+- Cleanup PR #41 exact head `8bb8599b` 已於 `2026-08-20` 依使用者手測批准，以 merge commit
+  `19d866f7796412f5cb23f0148449d61bd8fa9420` 合入 `main`；42/42 handoff gates 與所有 applicable
+  remote checks 均成功。新修復從該 merge commit 建立 `fix/import-cancel-native-loader-v1`。
+- 現有 offscreen BIDS Apply cancellation 證據能驗證 cancelled terminal、authoritative state 不變、同一
+  review 重開與 retry 成功，但取消中的第一次 raw load 使用 in-memory Raw 替身，沒有覆蓋真實 MNE／
+  BrainVision loader 正在 I/O 時的取消與晚到 Qt delivery。使用者已實際遇到 Import Cancel 崩潰，因此
+  此缺口是本 slice 的 red-first reproduction target。
+- Exact branch source 已以兩條低 mock Qt integration 路徑補上真實 loader 證據：BIDS Apply 取消後仍
+  執行原始 MNE／BrainVision loader，單檔 review 取消後仍執行原始 MNE／EDF loader；兩者均得到 typed
+  cancelled terminal、registry drainage、authoritative state 不變、無晚到 wizard，且同來源 retry 正式
+  Apply 成功。兩項 focused tests 分別約 13 秒與 6 秒，沒有 native abort，故目前沒有 production red test。
+- 使用者已將 exact control 確認為 Dataset sidebar 的 `Cancel Import`；所稱提示框是 cancellation 成功後
+  出現的 surface。Source trace 顯示 subject Continue 後的 `DataInterpretationLoadingDialog` 是 modal，
+  但 operation presenter 同時把 modal 背後的 sidebar cancel 顯示為 active。Sidebar cancel 只取消 owned
+  operation，沒有 reject loading dialog；晚到 cancelled result 因而仍可能被 active loading dialog 當成
+  failure／Retry surface。中央 dialog 自己的 Cancel 則會關閉 dialog、取消 operation，且現有 exact Qt
+  path 已證明 terminal cancelled、state 不變與 retry 成功。
+- 使用者於 `2026-08-20` 明確授權此次 UI 修復，並核准 deletion/reuse-first 方向：loading modal 存在時
+  只保留 dialog 內一個 `Cancel Import`；sidebar control 不對外顯示。Review 關閉後的真正 Apply 階段沒有
+  modal，sidebar `Cancel Import` 仍是唯一長工作 cancellation 入口。取消完成不開另一個成功／Retry
+  dialog，只以既有非阻塞 status surface 回饋。
+- Exact `b833bd31` 已通過 42/42 local handoff 與所有 applicable remote checks，但使用者 native 手測另發現：
+  BIDS subject selector 出現前由 sidebar 取消 source classification 時，cancelled `SCAN_SOURCE` result 仍被
+  通用 failure presenter 顯示為 blocking error；按 `Confirm and Import` 後另可見一次無法辨識內容的短暫
+  top-level window flash。因此該 SHA 的 manual acceptance 未通過，不得 merge。
+- Source trace 已確認 pre-subject popup 的原因是 `_start_source_classification_async` 在辨識
+  `ErrorType.CANCELLED` 前呼叫 `_result_failed()`；取消被錯誤轉成 critical dialog。兩次 bounded Qt dialog
+  event trace在 Confirm 後只觀察到 Review 的 Close／Hide，沒有第二個 product QDialog Show；修復先消除
+  modal close call stack 內同步啟動後續 command 的 re-entrancy，再由 native hand-test 判定是否仍為 WSLg
+  compositor-only artifact。
+- Exact `ddcf4500` 已通過 42/42 local handoff 與 applicable remote checks，但使用者 native 手測在
+  `Review and Import` 修改選項、按 `Confirm and Import`、再由 sidebar 按 `Cancel Import` 時，仍收到
+  `Interpretation preview failed` blocking OK dialog。Source trace 確認此時尚在 edited choices 的
+  `PreviewInterpretationCommand`／`ValidateInterpretationCommand` revalidation；兩個 result callback 都在
+  辨識 typed `ErrorType.CANCELLED` 前呼叫通用 failure presenter。既有 test 只模擬 resource-check cancel，
+  沒有送入真實 cancelled command result，因此未能攔截這個 presentation ordering defect。該 SHA 的
+  handoff evidence只保留為歷史，自動與手測 acceptance 均不得支撐 merge。
 
 ## Observable outcome
 
-1. 將已手測的產品 bytes 與 release metadata commit 成單一 exact branch head；沒有額外 UI／Assistant 行為
-   變更。
-2. `pyproject.toml`、runtime fallback、changelog、README、current／architecture truth 一致指向 `0.7.0`，
-   並只宣稱 bounded local Assistant baseline。
-3. PR #40 精確改以 `main` 為 base；同一 head 的 applicable non-skipped checks 全部
-   `completed/success`，canonical handoff dossier 對同一 clean/explained source 通過。
-4. 使用 merge commit 合入 `main`；main post-merge checks 通過後建立 annotated tag 與 GitHub Release
-   `v0.7.0`。
-5. 從 tagged `main` 建立唯一 cleanup branch。該 branch 以短 coherent commits 完成清理與加速，最終一次
-   產生完整候選與手測指令；中途 checkpoint 不要求使用者反覆手測，也不合併到 `main`。
+1. 真實 loader 在 owned operation active 期間收到 Cancel，不會 native abort、閃退或留下無 owner worker。
+2. Cancelled operation 只發布一次 typed cancelled terminal；raw data、interpretation review、publication 與
+   pipeline state 保持取消前 truth，不產生部分 commit。
+3. MainWindow 或 Import UI 關閉後，晚到 loader／review callback 不得重新顯示 dialog 或觸碰 quiescing
+   widget。
+4. 取消後重新開啟 Import，使用同一來源能重新得到 review 並完成一次正式 Apply。
+5. Subject Continue 後準備 review 時只能看到 modal 內一個 `Cancel Import`；sidebar cancel 必須隱藏。
+   Apply 真正載入且 review 已關閉時，sidebar `Cancel Import` 必須保持可見、可按。取消 terminal 不得
+   轉成 error／Retry 或另一個 blocking success dialog，只保留短暫非阻塞 status feedback。
+6. 修復完成於單一 exact branch head；focused native-loader cancellation evidence、directly related lifecycle
+   tests、source-diverse data gate、canonical handoff 與 remote CI 通過後，提供使用者一條
+   Cancel→retry 手測流程。
+7. Subject selector 出現前取消 source classification 必須直接得到 typed cancelled terminal 與非阻塞
+   status；不得顯示 error／success／Retry dialog，也不得晚到開啟 subject selector。
+8. `Confirm and Import` 接受 Review 後，Review dialog 必須完成 hide／destroy，且經過下一個 Qt event-loop
+   turn後才啟動 revalidation／Apply；同一轉場不得新增或重顯 transient top-level dialog。
+9. Edited choices revalidation 收到 Preview 或 Validate typed cancellation 時，不得顯示 failure／success／
+   Retry dialog；只顯示 `Dataset import cancelled · Review preserved`，並在下一個 Qt event-loop turn重開
+   `Review and Import`。重開必須保留本次尚未 commit 的 edited choices、不重新 scan來源；再次 Confirm 後
+   可正常 revalidate並完成 Apply。MainWindow開始關閉時不得重開。
 
 ## Scope／non-goals
 
-- Release slice 只包含已手測產品 source、版本與 current truth；不新增功能、不調整 UI、不改 model、tool
-  surface、dataset、training 或 scientific behavior。
-- `v0.7.0` 不宣稱 signed installer、安全零容忍、任意 dataset 支援、科學模型品質、完整 thesis evidence，
-  或 MCP 產品能力。固定 Granite 2B 的語意限制仍是明示邊界。
-- Cleanup branch 才處理已核准的完整 MCP retirement、無 caller 的舊 Assistant scripts/tests，以及 local
-  handoff 重複工作。不得藉清理改變既有 GUI workflow 或建立第二套 owner／state／validation control plane。
-- Remote CI 約十分鐘的跨平台基礎不因 local handoff 過慢而移除；Windows/macOS 與有意義的 real-data、
-  lifecycle、安全 gates 保留。
+- In scope：真實 public EEG 來源的一次 native loader cancellation、operation registry drainage、state
+  rollback／non-commit、late-callback suppression 與 same-source retry。
+- Non-goals：不改 file／folder／BIDS 分類、不改 label／event 語意、不改五步 wizard layout／copy、不做
+  Load Data module refactor、不處理 Stop Training、不增加通用 cancellation framework。
+- ApplicationService／OwnedWorkRegistry 與既有 Data Interpretation transaction 仍是唯一 authoritative
+  owners；不新增 state、receipt、compatibility path 或第二套 error semantics。
+- UI 授權只涵蓋本次 cancellation ownership：loading dialog 的 cancel label／visibility、sidebar cancel
+  phase visibility、非阻塞 terminal feedback，以及 Confirm 後 Review dialog teardown／continuation ordering。
+  不改五步 wizard 其他 layout／copy，不改 source classifier。
 
 ## 施工順序
 
@@ -144,15 +192,91 @@ deferred records，完成後才依registry order序列寫入dossier，再執行d
 failure或source drift都使整體失敗，不能以其他lane成功補足。目前待同一clean／pushed exact source重跑
 42-gate handoff，只有總時間不超過40分鐘且final dossier通過才可升為candidate。
 
+Completion（`2026-08-20`）：exact `8bb8599b` 的 42/42 gates、11,294 項 complete regression 與 final
+dossier 全部 PASS，總 wall time 2,226.162 秒（37 分 06 秒）；所有 applicable PR checks 成功。使用者手測
+通過後，PR #41 以 merge commit `19d866f7` 合入 `main`。40 分鐘仍是 full handoff 硬門檻，30 分鐘只作
+後續 test-quality cleanup 的 stretch goal；日常修復不重跑完整 manifest。
+
+### C. Import Cancel single-surface repair（focused green）
+
+1. 從 main merge `19d866f7` 確認既有 file／folder／BIDS routing 與 offscreen cancellation baseline，
+   不改產品。
+2. 新增最小 red reproduction：真實 public EEG loader 已進入 I/O／materialization 後取消 owned operation，
+   驗證 native process 存活、typed cancelled terminal、registry drainage、state 不變、no late dialog 與
+   retry 成功。
+3. 追蹤 cancel owner、loader checkpoint、transaction commit guard 及 Qt callback token；red test 已確認
+   modal loading dialog 與背後 sidebar 同時呈現 cancellation control。Loading 階段只保留 dialog owner，
+   Apply 階段才顯示 sidebar owner，不建立通用抽象。
+4. 用相同 red test 轉 green，再跑直接相鄰的 BIDS cancel/reopen、ApplicationService owned-work、dialog
+   close 與 public source-diverse import evidence。
+5. 完整 candidate 才跑 canonical handoff 與 remote CI，產生一條真實 Cancel→reopen→retry 手測指令；
+   使用者明確通過前 PR 保持 draft 且不得 merge。
+
+Checkpoint（`2026-08-20`）：red test 在真實 BIDS metadata work active 時確認舊 UI 同時呈現 modal
+`Cancel` 與 sidebar `Cancel Import`；modal 外控制造成錯誤 ownership，sidebar cancel 又不會把 loading
+surface 標成 user-cancelled。最小 green 將 dialog action 明確命名為 `Cancel Import`，loading operation bind
+後隱藏 sidebar duplicate，並讓 dialog cancel 重用既有 `OwnedOperationPresenter`；terminal 只在 status bar
+顯示 `Dataset import cancelled`。Apply 階段仍由既有 sidebar control 取消真實 BrainVision loader。兩條
+real-fixture Qt paths與71項直接相鄰 unit/lifecycle tests合計73/73 PASS；production只改2 files、未新增
+owner。Default-scale offscreen screenshot 已人工檢查 hierarchy、contrast、footer位置與文字 fit。下一步是
+source-diverse data gate、exact commit、完整 handoff／remote CI，之後交使用者 native Cancel→retry 手測。
+
+### D. Native hand-test cancellation／dialog follow-up（active）
+
+1. 新增 pre-subject source classification cancellation red test：取消 result 不得呼叫 MessageBox、不得進
+   subject selector，必須發出 cancelled outcome、drain registry、保持 publication／Study state並可重試。
+2. 新增 Review acceptance lifecycle red test：dialog result先 detached snapshot；後續 revalidation／Apply
+   只有在 dialog destroyed 且下一個 Qt turn後才能 dispatch，並且只 dispatch一次。
+3. 最小 green 只重用既有 `ErrorType`、`InteractionOutcome`、interaction continuation lease與
+   `single_shot`；不新增 owner或通用視窗框架。Rejected review同樣明確 `deleteLater`，accepted review的
+   continuation由 destroyed signal排程。
+4. 重跑 post-subject modal cancel、真 BrainVision Apply cancel/reopen/retry、source-diverse gate、visual
+   walkthrough、canonical 42-gate handoff與remote CI；source改動後舊 dossier與manual observation全部失效。
+5. 交付同一 exact SHA 的 PhysicalMI native流程：pre-subject Cancel零popup、post-subject Cancel單一surface、
+   Confirm零transient window、Apply Cancel後同review可重試。使用者明確通過前PR #42不得merge。
+6. 補 edited choices revalidation 的 Preview／Validate cancellation：先以 raw cancelled command result建立
+   red tests，再把 cancellation-first ordering 與現有 Apply cancel 的 review-reopen continuation收斂為同一
+   coordinator policy。取消後必須帶原 source context與 detached edited choices重開 Review，不讀取尚未
+   commit 的 backend publication，也不新增第二套 retry owner。
+
+Checkpoint（`2026-08-20`）：兩個 red tests 分別重現 cancelled catalog result 被通用 failure presenter
+轉成 blocking dialog，以及 accepted Review 在 QDialog destroyed 前同步 dispatch Apply。最小修復在辨識
+`ErrorType.CANCELLED` 後直接發布 typed cancelled outcome；accepted／rejected Review 都明確
+`deleteLater`，accepted path只在 destroyed signal後的下一個 Qt turn透過既有 interaction continuation
+啟動後續工作。Production僅修改1 file，`+107/-45`、淨增62行，owner數不變。70項 import async
+lifecycle、5項 loading／真實BIDS cancel-retry、10項wizard format matrix、全專案Ruff／format、Basedpyright
+regression與4-source public smoke全部PASS。下一步是exact commit後的42-gate handoff／remote CI，再交付
+PhysicalMI native手測；自動證據不能判定WSLg compositor flash已消失。
+
+Checkpoint（`2026-08-20`，revalidation cancellation hand-test failure）：exact `ddcf4500` 的完整
+handoff／remote checks不能覆蓋使用者在 Confirm 後取消 edited-choice revalidation 的操作；native手測已
+證明 blocking `Interpretation preview failed` dialog仍存在。使用者已明確選擇取消後自動重開
+`Review and Import`，且保留剛修改的 choices。下一步只修改既有 Data Interpretation coordinator：Preview
+與 Validate callback在 failure presenter前處理 typed cancellation，重用 Apply cancellation 的 deferred
+review continuation；focused green、source-diverse evidence與新 exact-source 42-gate handoff通過後才重新
+交付手測。PR #42保持不可merge。
+
+Checkpoint（`2026-08-20`，revalidation cancellation focused green）：production只修改既有 Data
+Interpretation coordinator，`+125/-37`、淨增88行；沒有新增owner、state machine、receipt或backend
+command。Preview／Validate typed cancellation現在先於通用failure presenter處理，並與Apply cancellation
+共用同一deferred Review continuation。重開同時保存edited choices與最後已驗證choices；Validate已先發布
+新preview時沿用其candidate／generation、保留原review decision，下一次Confirm仍強制revalidate，不能直接
+Apply舊candidate。73項coordinator lifecycle、13項loading／wizard matrix、81項format後focused UI/import、
+兩條真BIDS cancel/reopen native-worker路徑、Ruff、Basedpyright regression、MkDocs strict與4-source public
+smoke均PASS。現有public BIDS tiny wizard無法穩定製造與PhysicalMI相同的final edited-choice projection，
+因此不以test-only state injection冒充完整E2E；新exact commit通過42-gate handoff／remote CI後，仍須使用者
+在PhysicalMI實際執行修改choice→Confirm→Cancel→Review重開→再次Confirm，才可恢復manual acceptance。
+
 ## Focused validation 與 stop condition
 
-- Release：version single-source test、已修改 ChatPanel／walkthrough suites、Ruff check／format check、
-  MkDocs strict、canonical handoff dossier、PR與main exact-SHA checks。
-- Cleanup deletion：`rg` caller inventory、registry／architecture guards、對應 focused tests與完整 regression；
-  發現真實production caller即保留該surface並停止該刪除。
-- Handoff acceleration：不得減少assertion、允許新的skip、放寬OutcomePolicy或沿用舊source evidence。
-  Recorder source identity、dashboard evidence與capture manifest任一無法在final重新驗證即回退該slice。
-- 目標以相同 warm environment 將local handoff由約74分鐘降低到不超過40分鐘；若未達標，保留已證明
-  等價且有淨收益的slice，重新profile，不以刪安全gate湊數。
-- cleanup product/UI source若意外改變、owner數增加、MCP retirement觸及active product caller，或需要
-  新public contract決策，立即停止擴張並回報。最終source改動後，先前手測證據不外推。
+- Red-first focused evidence 必須實際進入 native loader seam；只 patch 成 in-memory Raw 或只驗 button
+  callback 不支持本修復 claim。
+- 同一測試必須觀察 cancelled terminal、registry drainage、authoritative state 不變、late callback
+  suppression 與 retry；若無法觀察其中一項，先改善 test seam 而非放寬 assertion。
+- Native Qt／MNE 驗證使用 `prlimit --core=0` 與明確 timeout；只終止本 test 明確啟動的 PID。
+- Focused green 後才依 `docs/validation/README.md` 選 directly related lifecycle 與 source-diverse evidence；
+  完整 handoff 只在交使用者手測前執行，硬門檻 40 分鐘。
+- 若 red test 顯示崩潰來自 WSL X server／使用者關閉 display，而產品 process／state 正常，停止產品修復並
+  回報 environment boundary；不增加產品複雜度掩蓋環境問題。
+- Scope-complete 需有 exact-source focused green；handoff-ready 另需 canonical dossier、remote CI 與手測
+  指令。
