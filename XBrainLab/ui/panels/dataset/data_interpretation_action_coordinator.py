@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from PyQt6.QtCore import QObject, QTimer
-from PyQt6.QtWidgets import QFileDialog, QMessageBox
+from PyQt6.QtWidgets import QFileDialog, QMessageBox, QWidget
 
 from XBrainLab.backend.application.commands import (
     ApplyInterpretationCommand,
@@ -348,7 +348,7 @@ class DataInterpretationActionCoordinator:
             return self._operation_presenter
         sidebar = getattr(self.panel, "sidebar", None)
         cancel_button = getattr(sidebar, "import_cancel_btn", None)
-        if cancel_button is None or not isinstance(self.panel, QObject):
+        if cancel_button is None or not isinstance(self.panel, QWidget):
             return None
         self._operation_presenter = OwnedOperationPresenter(
             self.panel,
