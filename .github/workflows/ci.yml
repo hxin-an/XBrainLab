@@ -371,7 +371,7 @@ jobs:
       - name: Verify required human-like evidence
         run: >-
           poetry run -- python scripts/dev/verify_required_ci_artifacts.py
-          --required-json build/dev-artifacts/human-like-product/human-like-walkthrough.json
+          --required-artifact human-like=build/dev-artifacts/human-like-product/human-like-walkthrough.json
           --provenance build/dev-artifacts/human-like-product/ci-source-provenance.json
           --expected-job-key human-like-product
           --expected-github-job human-like-product
@@ -448,7 +448,7 @@ jobs:
         if: always()
         run: >-
           poetry run -- python scripts/dev/verify_required_ci_artifacts.py
-          --required-json test-results/${{ matrix.command }}.json
+          --required-artifact sharded-pytest=test-results/${{ matrix.command }}.json
           --provenance test-results/ci-source-provenance.json
           --expected-job-key ${{ matrix.os }}-${{ matrix.command }}-py311
           --expected-github-job platform-test
@@ -634,7 +634,7 @@ jobs:
       - name: Verify required default-scale UI evidence
         run: >-
           poetry run -- python scripts/dev/verify_required_ci_artifacts.py
-          --required-json build/dev-artifacts/ui-baseline/ui-baseline-evidence.json
+          --required-artifact ui-baseline=build/dev-artifacts/ui-baseline/ui-baseline-evidence.json
           --provenance build/dev-artifacts/ui-baseline/ci-source-provenance.json
           --expected-job-key ui-default-visual
           --expected-github-job ui-default-visual
@@ -699,7 +699,7 @@ jobs:
       - name: Verify required Windows DPI evidence
         run: >-
           poetry run -- python scripts/dev/verify_required_ci_artifacts.py
-          --required-json build/dev-artifacts/app-polish-dpi/dpi-gate.json
+          --required-artifact windows-dpi=build/dev-artifacts/app-polish-dpi/dpi-gate.json
           --provenance build/dev-artifacts/app-polish-dpi/ci-source-provenance.json
           --expected-job-key ui-windows-dpi
           --expected-github-job ui-windows-dpi
@@ -812,11 +812,11 @@ jobs:
       - name: Verify required public dataset evidence
         run: >-
           poetry run -- python scripts/dev/verify_required_ci_artifacts.py
-          --required-json dataset-validation-matrix.json
-          --required-json data-interpretation-format-matrix.json
-          --required-json public-cross-source-smoke.json
-          --required-json test-results/public-bids-visible-ui.json
-          --required-json test-results/required-public-io.json
+          --required-artifact dataset-validation=dataset-validation-matrix.json
+          --required-artifact data-interpretation-format=data-interpretation-format-matrix.json
+          --required-artifact public-cross-source=public-cross-source-smoke.json
+          --required-artifact required-pytest=test-results/public-bids-visible-ui.json
+          --required-artifact required-pytest=test-results/required-public-io.json
           --provenance test-results/ci-source-provenance.json
           --expected-job-key public-dataset-gate
           --expected-github-job public-dataset-gate

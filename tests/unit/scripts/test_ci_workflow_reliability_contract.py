@@ -248,32 +248,35 @@ def test_multifile_authoritative_jobs_verify_every_primary_result_before_upload(
     expected = {
         "human-like-product": (
             "Verify required human-like evidence",
-            ("human-like-walkthrough.json",),
+            (("human-like", "human-like-walkthrough.json"),),
         ),
         "platform-test": (
             "Verify required platform evidence",
-            ("test-results/${{ matrix.command }}.json",),
+            (("sharded-pytest", "test-results/${{ matrix.command }}.json"),),
         ),
         "ui-default-visual": (
             "Verify required default-scale UI evidence",
-            ("ui-baseline-evidence.json",),
+            (("ui-baseline", "ui-baseline-evidence.json"),),
         ),
         "ui-windows-dpi": (
             "Verify required Windows DPI evidence",
-            ("dpi-gate.json",),
+            (("windows-dpi", "dpi-gate.json"),),
         ),
         "public-dataset-gate": (
             "Verify required public dataset evidence",
             (
-                "dataset-validation-matrix.json",
-                "data-interpretation-format-matrix.json",
-                "public-cross-source-smoke.json",
-                "public-bids-visible-ui.json",
-                "required-public-io.json",
+                ("dataset-validation", "dataset-validation-matrix.json"),
+                (
+                    "data-interpretation-format",
+                    "data-interpretation-format-matrix.json",
+                ),
+                ("public-cross-source", "public-cross-source-smoke.json"),
+                ("required-pytest", "public-bids-visible-ui.json"),
+                ("required-pytest", "required-public-io.json"),
             ),
         ),
     }
-    for job_key, (step_name, required_paths) in expected.items():
+    for job_key, (step_name, required_artifacts) in expected.items():
         step = next(
             item for item in jobs[job_key]["steps"] if item.get("name") == step_name
         )
@@ -282,8 +285,9 @@ def test_multifile_authoritative_jobs_verify_every_primary_result_before_upload(
         assert "--expected-job-key" in step["run"]
         assert "--expected-github-job" in step["run"]
         assert "--expected-runner-os" in step["run"]
-        for path in required_paths:
-            assert "--required-json" in step["run"]
+        for contract, path in required_artifacts:
+            assert "--required-artifact" in step["run"]
+            assert f"--required-artifact {contract}=" in step["run"]
             assert path in step["run"]
     assert (
         "test-results/ci-source-provenance.json"
