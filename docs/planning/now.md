@@ -199,6 +199,13 @@ control manifest。
 
 ## Checkpoints
 
+- `2026-08-20` Phase 2 owner／claim sweep：相對`7eab03e9`目前47個檔案合計+440／-2,769，
+  淨減2,329行；tracked `test_*.py`由531降至526。刪除兩個generic LLM coverage檔、重複的
+  white-box controller coverage、兩個remote-mode分散檔，並將唯一CUDA seed、download terminal、
+  retired-mode與Data Splitting edge claims移到真正owner suite。Human-like capture移除108行只讀
+  private source字串的snapshot tests，保留真Qt signal、artifact tamper／atomic publish、pixel／geometry、
+  resource與source-identity gates。ApplicationService、Data Import wizard、Assistant state machine與native
+  lifecycle大檔因仍各自擁有unique mutation／rollback／visible lifecycle claims而保留；不以行數刪除。
 - `2026-08-20` exact-node attestation去重：pytest completion schema升為v2並保存每個node的terminal
   outcome；complete regression明列architecture與persistence七個required selectors，缺少或非pass即由
   recorder fail closed。因而移除handoff中兩個同source重跑的`architecture-unit`與
