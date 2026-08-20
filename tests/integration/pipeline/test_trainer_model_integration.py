@@ -82,8 +82,8 @@ def _make_synthetic_dataset():
     return dataset, n_classes, n_channels, n_samples
 
 
-class TestFullPipeline:
-    """Historical suite name for focused trainer/evaluation integration."""
+class TestTrainerModelIntegration:
+    """Focused trainer/evaluation integration on real Dataset objects."""
 
     @pytest.fixture
     def synthetic_dataset(self):
@@ -125,6 +125,7 @@ class TestFullPipeline:
             # Metrics should exist
             assert RecordKey.LOSS in record.train
             assert RecordKey.ACC in record.train
+            assert RecordKey.AUC in record.train
 
             # Loss should be list of floats
             losses = record.train[RecordKey.LOSS]
@@ -137,6 +138,10 @@ class TestFullPipeline:
             accs = record.train[RecordKey.ACC]
             for acc in accs:
                 assert 0.0 <= acc <= 100.0
+
+            aucs = record.train[RecordKey.AUC]
+            assert len(aucs) == 2
+            assert all(np.isfinite(auc) for auc in aucs)
 
             # Eval record should exist
             assert record.eval_record is not None

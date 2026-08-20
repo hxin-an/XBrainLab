@@ -9,7 +9,7 @@
 runtime。這條 branch 會審查全部 tracked tests，不只處理幾個 E2E 檔；完成完整 handoff 與
 remote CI 後才交使用者做核心產品 walkthrough，通過前不合併。
 
-目前 phase：`Global-fixture scoping complete; family claim cleanup next`
+目前 phase：`E2E／pipeline claim cleanup checkpoint`
 
 本 branch 只修改 tests、test fixtures、developer validation／CI scripts 與直接相關文件；不修改
 `XBrainLab/` 產品 UI、ApplicationService、EEG semantics、training 或 Assistant 行為。若清理揭露
@@ -65,20 +65,20 @@ file／replacement mapping，不建立另一份萬筆 test manifest。
 
 | Family | Baseline files | Reviewed | Keep | Rewrite | Move／rename | Delete | Status |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| unit/backend | 186 | 0 | 0 | 0 | 0 | 0 | pending |
+| unit/backend | 186 | 1 | 0 | 1 | 0 | 0 | in progress |
 | unit/llm | 77 | 0 | 0 | 0 | 0 | 0 | pending |
 | unit/scripts | 70 | 0 | 0 | 0 | 0 | 0 | pending |
-| unit/ui | 120 | 0 | 0 | 0 | 0 | 0 | pending |
-| unit/root | 10 | 0 | 0 | 0 | 0 | 0 | pending |
+| unit/ui | 120 | 3 | 0 | 3 | 0 | 0 | in progress |
+| unit/root | 10 | 1 | 0 | 1 | 0 | 0 | in progress |
 | integration/agent | 5 | 0 | 0 | 0 | 0 | 0 | pending |
 | integration/backend | 10 | 0 | 0 | 0 | 0 | 0 | pending |
 | integration/controller | 3 | 0 | 0 | 0 | 0 | 0 | pending |
 | integration/debug | 1 | 0 | 0 | 0 | 0 | 0 | pending |
 | integration/io | 9 | 0 | 0 | 0 | 0 | 0 | pending |
 | integration/llm | 1 | 0 | 0 | 0 | 0 | 0 | pending |
-| integration/pipeline | 14 | 0 | 0 | 0 | 0 | 0 | pending |
+| integration/pipeline | 14 | 6 | 1 | 0 | 4 | 1 | in progress |
 | integration/training | 1 | 0 | 0 | 0 | 0 | 0 | pending |
-| integration/ui | 25 | 0 | 0 | 0 | 0 | 0 | pending |
+| integration/ui | 25 | 4 | 0 | 3 | 1 | 0 | in progress |
 | regression | 2 | 0 | 0 | 0 | 0 | 0 | pending |
 
 ## Scope／non-goals
@@ -163,6 +163,11 @@ file／replacement mapping，不建立另一份萬筆 test manifest。
   qtbot real-modal path各自 opt in。`linux-unit-ui` 2,684 cases全數通過；Assistant import review、
   resource refusal與visible BIDS Apply Cancel／retry三條 real-modal integration paths通過。下一步是
   pipeline／training與 E2E-named test family 的 evidence truth清理，不開始 runner parallelism。
+- `2026-08-20` E2E／pipeline claim cleanup：將 mocked UI presentation移到 unit/UI，將 MainWindow
+  navigation、Study facade、trainer/model compute與 real-data command-spine測試改成反映真實
+  boundary的名稱。刪除唯一以 MagicMock Dataset、跳過 type validation且隔離全部 artifact writers
+  的假 pipeline test；其唯一 AUC claim已移入 real MNE Dataset trainer integration。選定 family
+  baseline由 61變60 tests，exact delta為這一個弱測試；連同 architecture guards共341 tests通過。
 
 ## Focused validation 與 stop condition
 

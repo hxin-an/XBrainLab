@@ -48,14 +48,11 @@ EXPECTED_A01T_SPLIT_SUMMARY = {
 
 
 @pytest.mark.skipif(not os.path.exists(GDF_FILE), reason="Real test data not found")
-def test_real_data_pipeline(tmp_path):
-    """
-    Test the full pipeline with REAL data (A01T.gdf).
-    This verifies that:
-    1. Real GDF files can be loaded.
-    2. Preprocessing works on real data.
-    3. Dataset generation works with real epochs.
-    4. Training loop runs successfully with real data shapes.
+def test_real_data_command_spine(tmp_path):
+    """Run real A01T data through the ApplicationService command spine.
+
+    Artifact writers are isolated here, so persistence/reload evidence belongs
+    to the public cross-source training smoke rather than this test.
     """
     service = ApplicationService()
 
