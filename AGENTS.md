@@ -53,8 +53,8 @@ public contracts.
 - `main` 是唯一產品基線；一條短 task branch 只承擔一個主要目標。
 - `ApplicationService / Command API` 是 UI、Assistant 與 scripts 共用的 command spine；同一
   workflow 不得建立第二套 state、capability policy 或 error semantics。
-- MCP 只在使用者明確要求時 opt in。不恢復 `Prep Gate`、`Repair Loop`、`AQ-*`、retired
-  skills 或 legacy dispatch surfaces。
+- MCP executable surface 已退役；若未來重新啟用，必須另開 public contract／security decision。不恢復
+  `Prep Gate`、`Repair Loop`、`AQ-*`、retired skills 或 legacy dispatch surfaces。
 - 開始前讀 `git status --short --branch` 與 current branch，保留不是本 agent 產生的修改。
 - Root `settings.json` 是使用者本機 runtime 設定；不得 stage、commit、revert、覆寫或隱藏。
 - 禁止未經要求使用 `git reset --hard`、`git checkout --` 或廣泛清理。

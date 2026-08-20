@@ -376,12 +376,10 @@ policy，並將 JSON payload 驗證後轉成 typed command 再呼叫 `Applicatio
 `import_labels` 仍可呼叫，但 metadata 明確標為非 primary workflow，並提供 Data Interpretation
 preferred commands。
 
-Historical boundary: MCP stdio / HTTP adapter code, tests, and artifacts may remain in the
-repository, but MCP has exited the active product and thesis roadmap. Retained transport details
-are compatibility history, not a current support, security, client-certification, or handoff claim.
-Only an explicit user-requested opt-in scope should reopen them, and any future adapter must still
-delegate through `backend.application.automation` / `ApplicationService` rather than create a
-second state, capability, or workflow truth.
+Historical boundary: MCP stdio／HTTP package、schema projection、CLI、capture與tests已從executable
+source退役；舊transport provenance只存在Git history。任何未來adapter都需要新的public
+contract／security decision，且仍必須delegate through
+`backend.application.automation`／`ApplicationService`，不得建立第二份state、capability或workflow truth。
 
 `ApplicationService` 現在直接組合同一個 `Study` 擁有的 focused product ports：
 
@@ -713,7 +711,7 @@ feedback 與 UI interaction outcomes 的共同 privacy boundary。預設 `PUBLIC
 - default `XBrainLab` rotating file / console handlers 在 record 傳給其他 handler 前 redaction，
   exception traceback 也只保留 safe basename、line / exception type 與已遮罩 detail。source
   guard 禁止 product modules 另裝 `FileHandler` / `StreamHandler` 或設 `propagate=False` 繞過
-  central handler；inactive MCP compatibility code 不在這個 active product guard 內。
+  central handler。
 
 Detailed diagnostics 不是 settings 或 UI toggle。只有受控診斷程式碼明確傳入
 `DiagnosticDisclosure.DETAILED` 才可開啟；這個 mode 仍套用相同 layout/control policy 並移除

@@ -27,8 +27,6 @@ from tests.architecture_compliance import (
     check_llm_parser_weak_parse_assertions,
     check_llm_tool_definition_weak_string_assertions,
     check_mapped_real_tool_command_ownership,
-    check_mcp_direct_study_state_reads,
-    check_mcp_weak_response_assertions,
     check_montage_command_ownership,
     check_pending_interaction_compatibility_api,
     check_pipeline_state_weak_string_assertions,
@@ -3238,12 +3236,6 @@ def _write_llm_file(root, source: str) -> None:
     path.write_text(source, encoding="utf-8")
 
 
-def _write_mcp_file(root, source: str) -> None:
-    path = root / "XBrainLab" / "mcp" / "http_server.py"
-    path.parent.mkdir(parents=True)
-    path.write_text(source, encoding="utf-8")
-
-
 def _write_headless_verifier_file(root, source: str) -> None:
     path = root / "scripts" / "dev" / "verify_real_tools.py"
     path.parent.mkdir(parents=True)
@@ -3354,44 +3346,6 @@ def test_visualization_panel_uses_command_state(qtbot):
     )
 
     assert check_product_success_generic_panel_instance_assertions(tmp_path) == []
-
-
-def test_mcp_weak_response_assertion_guard_flags_non_none_response(tmp_path):
-    path = tmp_path / "tests" / "unit" / "mcp" / "test_server.py"
-    path.parent.mkdir(parents=True)
-    path.write_text(
-        """
-def test_mcp_response_exists(server):
-    response = server.handle_message({"method": "tools/list", "id": 1})
-    assert response is not None
-""",
-        encoding="utf-8",
-    )
-
-    violations = check_mcp_weak_response_assertions(tmp_path)
-
-    assert len(violations) == 1
-    assert "generic non-None MCP assertion" in violations[0]
-    assert "JSON-RPC envelope" in violations[0]
-
-
-def test_mcp_weak_response_assertion_guard_allows_exact_protocol_shape(tmp_path):
-    path = tmp_path / "tests" / "integration" / "mcp" / "test_stdio_server.py"
-    path.parent.mkdir(parents=True)
-    path.write_text(
-        """
-def test_mcp_response_shape(server):
-    response = server.handle_message({"method": "tools/list", "id": 1})
-    assert isinstance(response, dict), response
-    assert response["jsonrpc"] == "2.0"
-    assert response["id"] == 1
-    assert "error" not in response
-    assert response["result"]["tools"][0]["name"] == "scan_source"
-""",
-        encoding="utf-8",
-    )
-
-    assert check_mcp_weak_response_assertions(tmp_path) == []
 
 
 def test_pipeline_state_weak_string_guard_flags_generic_non_empty_assertions(tmp_path):
@@ -6101,62 +6055,6 @@ def _legacy_study_pipeline_stage(study):
 
     assert len(violations) == 1
     assert "study.loaded_data_list" in violations[0]
-
-
-def test_mcp_direct_study_state_guard_flags_service_study_progress_read(tmp_path):
-    _write_mcp_file(
-        tmp_path,
-        """
-def _training_progress_message(service):
-    trainer = service.study.trainer
-    if trainer is not None:
-        return trainer.get_progress_text()
-    return "Training is not running."
-""",
-    )
-
-    violations = check_mcp_direct_study_state_reads(tmp_path)
-
-    assert len(violations) == 1
-    assert "service.study.trainer" in violations[0]
-    assert "ApplicationService state snapshot" in violations[0]
-
-
-def test_mcp_direct_study_state_guard_rejects_named_legacy_helper(tmp_path):
-    _write_mcp_file(
-        tmp_path,
-        """
-def _legacy_training_progress_message(service):
-    trainer = service.study.trainer
-    if trainer is not None:
-        return trainer.get_progress_text()
-    return "Training is not running."
-""",
-    )
-
-    violations = check_mcp_direct_study_state_reads(tmp_path)
-
-    assert len(violations) == 1
-    assert "service.study.trainer" in violations[0]
-
-
-def test_mcp_direct_study_state_guard_flags_service_study_controller_lookup(
-    tmp_path,
-):
-    _write_mcp_file(
-        tmp_path,
-        """
-def _training_progress_message(service):
-    controller = service.study.get_controller("training")
-    return controller.get_progress_text()
-""",
-    )
-
-    violations = check_mcp_direct_study_state_reads(tmp_path)
-
-    assert len(violations) == 1
-    assert "service.study.get_controller" in violations[0]
-    assert "ApplicationService" in violations[0]
 
 
 def test_controller_study_get_controller_guard_flags_product_fallback(tmp_path):

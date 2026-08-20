@@ -55,7 +55,7 @@ product evidence claim boundary。讀本頁時先看下方「目前距離目標�
 | focused services | Data Interpretation、preprocess、dataset、training、analysis、lifecycle。 | 邊界要靠 tests 和 architecture guard 維持。 |
 | `Study` / managers | domain state、data lifecycle、training lifecycle。 | product path 不應直接繞過 command spine；lower-level domain tests 仍可 setup state。 |
 | assistant / scripts | tool / JSON payload 轉 command；real `Study` pipeline stage 來自 ApplicationService state snapshot。 | assistant baseline 要等 current truth、verification boundary 和 UI product path 重新穩定。 |
-| MCP | 既有 adapter code / tests / artifacts 是歷史探索或相容性證據。 | 已從 active roadmap 移除；不再作為產品架構目標、handoff gate 或 thesis evidence 前置。 |
+| MCP | 無active executable owner；舊adapter provenance只存在Git history。 | 未來恢復必須另開public contract／security decision，不得從history自動復活。 |
 
 ## Roadmap 對應
 
@@ -78,7 +78,6 @@ product evidence claim boundary。讀本頁時先看下方「目前距離目標�
 | evidence overclaim | dashboard PASS 或 offscreen smoke 被誤解成 product complete。 | Validation docs must keep human desktop acceptance and long local-model sessions as separate claims. |
 | weak product tests returning | product-success test 可能退回 no-crash、generic string 或 generic widget assertion。 | Architecture guard now blocks known weak shapes; add new exact-evidence guards only when a real weak pattern appears. |
 | Data Interpretation maturity | 資料語意錯會污染後續 training / evidence。 | MVP 先處理代表性 ambiguity，不誇大 final support。 |
-| MCP overhang | 歷史 MCP docs / artifacts 容易讓人誤以為它仍是 roadmap。 | Current / roadmap / validation docs 明確標示 MCP 已退出 active plan；records 保留歷史即可。 |
 
 ## 深入頁面
 

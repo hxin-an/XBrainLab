@@ -17,8 +17,8 @@ XBrainLab 要先成為一個能在 Windows 本地穩定操作的 EEG / BCI 桌�
 -> UI、assistant、scripts 看到同一份 workflow truth
 ```
 
-MCP 已從 active product / thesis roadmap 移除。既有 MCP code、tests、artifacts 只保留為
-歷史探索或相容性證據，不再是 MVP、release candidate、thesis evidence 或 handoff gate 的必要項目。
+MCP 已從active product／thesis roadmap與executable source退役。舊探索只由Git history保存，
+不再是MVP、release candidate、thesis evidence或handoff gate的必要項目。
 
 ## 定型 Roadmap
 

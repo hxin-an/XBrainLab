@@ -60,6 +60,8 @@ EXPECTED_HANDOFF_CHECK_IDS = (
     "required-public-io",
     "public-cross-source-training",
     "resource-calibration",
+    "startup-smoke",
+    "ui-visual-baseline",
     "handoff-dashboard",
 )
 LOCAL_RUNTIME_CHECK_IDS = (
@@ -115,8 +117,9 @@ def test_complete_regression_uses_the_bounded_fail_closed_full_runner() -> None:
         "run",
         "--",
         "python",
-        "scripts/dev/run_tests.py",
-        "all",
+        "scripts/dev/run_local_handoff_regression.py",
+        "--evidence-dir",
+        f"{EVIDENCE_ROOT_TOKEN}/complete-regression-shards",
         "--result-json",
         f"{EVIDENCE_ROOT_TOKEN}/pytest-attestations/complete-regression.json",
     )
@@ -144,6 +147,10 @@ def test_complete_regression_uses_the_bounded_fail_closed_full_runner() -> None:
     )
     assert spec.pytest_attestation_path == (
         "pytest-attestations/complete-regression.json"
+    )
+    assert spec.required_artifact_paths == (
+        "pytest-attestations/complete-regression.json",
+        "complete-regression-shards",
     )
 
 
@@ -221,7 +228,8 @@ def test_resource_calibration_is_generated_then_preserved_for_dashboard() -> Non
         f"{EVIDENCE_ROOT_TOKEN}/resource-calibration.json",
     )
     assert calibration.required_artifact_paths == ("resource-calibration.json",)
-    assert dashboard.argv[-2:] == (
+    calibration_index = dashboard.argv.index("--resource-calibration-path")
+    assert dashboard.argv[calibration_index : calibration_index + 2] == (
         "--resource-calibration-path",
         f"{EVIDENCE_ROOT_TOKEN}/resource-calibration.json",
     )
@@ -230,10 +238,39 @@ def test_resource_calibration_is_generated_then_preserved_for_dashboard() -> Non
         "dashboard",
     )
     assert dashboard.preserved_input_artifact_paths == ("resource-calibration.json",)
-    assert REQUIRED_HANDOFF_CHECK_IDS[-2:] == (
+    assert REQUIRED_HANDOFF_CHECK_IDS[-4:] == (
         "resource-calibration",
+        "startup-smoke",
+        "ui-visual-baseline",
         "handoff-dashboard",
     )
+
+
+def test_startup_and_visual_baseline_are_explicit_pre_dashboard_gates() -> None:
+    startup = HANDOFF_GATE_SPECS["startup-smoke"]
+    baseline = HANDOFF_GATE_SPECS["ui-visual-baseline"]
+    dashboard = HANDOFF_GATE_SPECS["handoff-dashboard"]
+
+    assert startup.argv[-1] == "scripts/dev/run_startup_smoke.py"
+    assert startup.required_artifact_paths == ("startup-smoke.json",)
+    assert startup.stdout_artifact_path == "startup-smoke.json"
+    assert baseline.argv[-2:] == (
+        "--output-dir",
+        f"{EVIDENCE_ROOT_TOKEN}/ui/visual-baseline",
+    )
+    assert baseline.required_artifact_paths == ("ui/visual-baseline",)
+    assert REQUIRED_HANDOFF_CHECK_IDS.index("startup-smoke") < (
+        REQUIRED_HANDOFF_CHECK_IDS.index("handoff-dashboard")
+    )
+    assert REQUIRED_HANDOFF_CHECK_IDS.index("ui-visual-baseline") < (
+        REQUIRED_HANDOFF_CHECK_IDS.index("handoff-dashboard")
+    )
+    assert dashboard.argv[-2:] == (
+        "--handoff-evidence-path",
+        f"{EVIDENCE_ROOT_TOKEN}/handoff-evidence.json",
+    )
+    capture = HANDOFF_GATE_SPECS["data-import-wizard-capture"]
+    assert "xvfb-run" not in capture.argv
 
 
 def test_local_runtime_gates_bind_both_redacted_d_drive_cache_paths() -> None:

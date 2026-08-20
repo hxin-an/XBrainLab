@@ -224,7 +224,6 @@ test-backend = "scripts.dev.run_tests:backend"
 test-ui = "scripts.dev.run_tests:ui"
 test-llm = "scripts.dev.run_tests:run_llm_tests"
 test-remote = "scripts.dev.run_tests:run_remote_tests"
-benchmark-llm = "scripts.agent.benchmarks.simple_bench:main"
 # test-all = "scripts.dev.run_tests:all_tests"
 
 [tool.poe.tasks]

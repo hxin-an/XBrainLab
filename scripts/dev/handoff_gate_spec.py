@@ -192,6 +192,10 @@ def _pytest_attestation_contract(
             return None
         command = runner_args[0]
         return SHARDED_PYTEST_RUNNER_ID, (command,)
+    if runner_name == "run_local_handoff_regression.py":
+        if "--evidence-dir" not in runner_args or "--result-json" not in runner_args:
+            return None
+        return SHARDED_PYTEST_RUNNER_ID, ("all",)
     return None
 
 
@@ -202,6 +206,12 @@ _QT = EnvironmentPolicy(required=(("QT_QPA_PLATFORM", "offscreen"),))
 _QT_MNE = EnvironmentPolicy(
     required=(
         ("QT_QPA_PLATFORM", "offscreen"),
+        ("MNE_DONTWRITE_HOME", "true"),
+    )
+)
+_QT_XCB_MNE = EnvironmentPolicy(
+    required=(
+        ("QT_QPA_PLATFORM", "xcb"),
         ("MNE_DONTWRITE_HOME", "true"),
     )
 )
@@ -390,15 +400,19 @@ _GATE_SPECS = (
             *_PRLIMIT,
             *_POETRY_EXEC,
             "python",
-            "scripts/dev/run_tests.py",
-            "all",
+            "scripts/dev/run_local_handoff_regression.py",
+            "--evidence-dir",
+            f"{EVIDENCE_ROOT_TOKEN}/complete-regression-shards",
             "--result-json",
             f"{EVIDENCE_ROOT_TOKEN}/pytest-attestations/complete-regression.json",
         ),
         timeout_seconds=7200,
         environment=_QT_MNE_LOCAL_RUNTIME,
         outcome=_COMPLETE_REGRESSION_OUTCOME,
-        required_artifact_paths=("pytest-attestations/complete-regression.json",),
+        required_artifact_paths=(
+            "pytest-attestations/complete-regression.json",
+            "complete-regression-shards",
+        ),
         pytest_attestation_path="pytest-attestations/complete-regression.json",
     ),
     GateSpec(
@@ -627,10 +641,6 @@ _GATE_SPECS = (
         section="5",
         argv=(
             *_PRLIMIT,
-            "xvfb-run",
-            "-a",
-            "-s",
-            "-screen 0 1600x1400x24",
             *_POETRY_EXEC,
             "python",
             "scripts/dev/capture_data_import_wizard_steps.py",
@@ -891,6 +901,37 @@ _GATE_SPECS = (
         required_artifact_paths=("resource-calibration.json",),
     ),
     GateSpec(
+        check_id="startup-smoke",
+        section="8",
+        argv=(
+            "xvfb-run",
+            "-a",
+            *_POETRY_EXEC,
+            "python",
+            "scripts/dev/run_startup_smoke.py",
+        ),
+        timeout_seconds=120,
+        environment=_QT_XCB_MNE,
+        required_artifact_paths=("startup-smoke.json",),
+        stdout_artifact_path="startup-smoke.json",
+    ),
+    GateSpec(
+        check_id="ui-visual-baseline",
+        section="8",
+        argv=(
+            "xvfb-run",
+            "-a",
+            *_POETRY_EXEC,
+            "python",
+            "scripts/dev/capture_ui_baseline.py",
+            "--output-dir",
+            f"{EVIDENCE_ROOT_TOKEN}/ui/visual-baseline",
+        ),
+        timeout_seconds=900,
+        environment=_QT_XCB_MNE,
+        required_artifact_paths=("ui/visual-baseline",),
+    ),
+    GateSpec(
         check_id="handoff-dashboard",
         section="8",
         argv=(
@@ -903,6 +944,8 @@ _GATE_SPECS = (
             f"{EVIDENCE_ROOT_TOKEN}/dashboard",
             "--resource-calibration-path",
             f"{EVIDENCE_ROOT_TOKEN}/resource-calibration.json",
+            "--handoff-evidence-path",
+            f"{EVIDENCE_ROOT_TOKEN}/handoff-evidence.json",
         ),
         timeout_seconds=7200,
         required_artifact_paths=("resource-calibration.json", "dashboard"),

@@ -17,7 +17,6 @@ CAPTURE_SOURCES = (
     DEV_SCRIPTS / "run_chatpanel_ui_dpi_gate.py",
     DEV_SCRIPTS / "run_teacher_handoff_gate.py",
     DEV_SCRIPTS / "update_quality_dashboard.py",
-    DEV_SCRIPTS / "write_mcp_client_config.py",
 )
 TRACKED_DEFAULT_ALLOWLIST: set[tuple[str, str]] = set()
 OUTPUT_OPTIONS = {"--artifact-dir", "--artifacts-dir", "--eval-dir", "--output-dir"}

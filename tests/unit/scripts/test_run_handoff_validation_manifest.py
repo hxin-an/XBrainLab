@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from threading import Barrier
 from types import MappingProxyType
 from typing import Any
 
@@ -8,6 +9,16 @@ import pytest
 
 import scripts.dev.run_handoff_validation_manifest as runner
 from scripts.dev.handoff_gate_spec import GateSpec
+
+
+def _install_serial_plan(
+    monkeypatch: pytest.MonkeyPatch,
+    *check_ids: str,
+) -> None:
+    monkeypatch.setattr(runner, "_SERIAL_GATE_IDS", tuple(check_ids))
+    monkeypatch.setattr(runner, "_DEFERRED_PREREQUISITE_IDS", ())
+    monkeypatch.setattr(runner, "_POST_REGRESSION_LANES", ())
+    monkeypatch.setattr(runner, "_FINAL_GATE_IDS", ())
 
 
 def test_runner_records_every_required_gate_in_registry_order_then_verifies(
@@ -38,6 +49,8 @@ def test_runner_records_every_required_gate_in_registry_order_then_verifies(
         "REQUIRED_HANDOFF_CHECK_IDS",
         tuple(spec.check_id for spec in specs),
     )
+    _install_serial_plan(monkeypatch, *(spec.check_id for spec in specs))
+    source_identity = {"source_digest": "a" * 64, "dirty": False}
     recorded: list[dict[str, Any]] = []
     verified: list[dict[str, Any]] = []
 
@@ -51,6 +64,11 @@ def test_runner_records_every_required_gate_in_registry_order_then_verifies(
 
     monkeypatch.setattr(runner, "record_handoff_command", fake_record)
     monkeypatch.setattr(runner, "validate_handoff_dossier", fake_verify)
+    monkeypatch.setattr(
+        runner,
+        "collect_source_identity",
+        lambda *_args, **_kwargs: source_identity,
+    )
     evidence_root = tmp_path / "external" / ("a" * 40)
 
     result = runner.run_handoff_manifest(
@@ -69,6 +87,8 @@ def test_runner_records_every_required_gate_in_registry_order_then_verifies(
     ]
     assert recorded[0]["command"] == specs[0].resolve_argv(evidence_root)
     assert recorded[1]["timeout_seconds"] == 20
+    assert recorded[0]["manifest_source_identity"] == source_identity
+    assert recorded[1]["manifest_source_identity"] == source_identity
     assert verified[0]["required_check_ids"] == ("first-gate", "second-gate")
     assert result == {
         "ok": True,
@@ -95,6 +115,7 @@ def test_runner_fails_closed_before_verification_when_a_gate_fails(
         MappingProxyType({spec.check_id: spec}),
     )
     monkeypatch.setattr(runner, "REQUIRED_HANDOFF_CHECK_IDS", (spec.check_id,))
+    _install_serial_plan(monkeypatch, spec.check_id)
     monkeypatch.setattr(
         runner,
         "record_handoff_command",
@@ -112,6 +133,14 @@ def test_runner_fails_closed_before_verification_when_a_gate_fails(
         return True, ""
 
     monkeypatch.setattr(runner, "validate_handoff_dossier", fake_verify)
+    monkeypatch.setattr(
+        runner,
+        "collect_source_identity",
+        lambda *_args, **_kwargs: {
+            "source_digest": "b" * 64,
+            "dirty": False,
+        },
+    )
 
     result = runner.run_handoff_manifest(
         repo_root=tmp_path,
@@ -143,6 +172,7 @@ def test_runner_rejects_registry_required_id_drift(monkeypatch) -> None:
         MappingProxyType({spec.check_id: spec}),
     )
     monkeypatch.setattr(runner, "REQUIRED_HANDOFF_CHECK_IDS", ("missing-gate",))
+    _install_serial_plan(monkeypatch, "registered-gate")
 
     with pytest.raises(runner.HandoffManifestError, match="registry drift"):
         runner.run_handoff_manifest(
@@ -154,3 +184,163 @@ def test_runner_rejects_registry_required_id_drift(monkeypatch) -> None:
             require_upstream=False,
             allow_external_evidence_root=True,
         )
+
+
+def test_post_regression_lanes_run_concurrently_then_persist_in_registry_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    check_ids = (
+        "serial-gate",
+        "lane-a-first",
+        "lane-a-second",
+        "lane-b",
+        "fetch-gate",
+        "dashboard-gate",
+    )
+    specs = tuple(
+        GateSpec(
+            check_id=check_id,
+            section="1",
+            argv=("python", "-c", f"print('{check_id}')"),
+            timeout_seconds=10,
+        )
+        for check_id in check_ids
+    )
+    monkeypatch.setattr(
+        runner,
+        "HANDOFF_GATE_SPECS",
+        MappingProxyType({spec.check_id: spec for spec in specs}),
+    )
+    monkeypatch.setattr(runner, "REQUIRED_HANDOFF_CHECK_IDS", check_ids)
+    monkeypatch.setattr(runner, "_SERIAL_GATE_IDS", ("serial-gate",))
+    monkeypatch.setattr(runner, "_DEFERRED_PREREQUISITE_IDS", ("fetch-gate",))
+    monkeypatch.setattr(
+        runner,
+        "_POST_REGRESSION_LANES",
+        (("lane-a-first", "lane-a-second"), ("lane-b",)),
+    )
+    monkeypatch.setattr(runner, "_FINAL_GATE_IDS", ("dashboard-gate",))
+    source_identity = {"source_digest": "d" * 64, "dirty": False}
+    first_lane_barrier = Barrier(2)
+    events: list[str] = []
+    persisted: list[str] = []
+
+    def fake_record(**kwargs: Any) -> dict[str, Any]:
+        check_id = kwargs["check_id"]
+        events.append(f"start:{check_id}")
+        if check_id in {"lane-a-first", "lane-b"}:
+            first_lane_barrier.wait(timeout=2)
+        events.append(f"end:{check_id}")
+        return {"check_id": check_id, "passed": True}
+
+    def fake_persist(**kwargs: Any) -> None:
+        persisted.extend(record["check_id"] for record in kwargs["records"])
+        events.append("persist")
+
+    monkeypatch.setattr(runner, "record_handoff_command", fake_record)
+    monkeypatch.setattr(runner, "persist_handoff_records", fake_persist)
+    monkeypatch.setattr(
+        runner,
+        "validate_handoff_dossier",
+        lambda **_kwargs: (True, ""),
+    )
+    monkeypatch.setattr(
+        runner,
+        "collect_source_identity",
+        lambda *_args, **_kwargs: source_identity,
+    )
+    evidence_root = tmp_path / "external" / ("d" * 40)
+
+    result = runner.run_handoff_manifest(
+        repo_root=tmp_path,
+        evidence_root=evidence_root,
+        model_cache_dir=Path("/mnt/d/XBrainLabCache/models"),
+        rag_cache_dir=Path("/mnt/d/XBrainLabCache/rag"),
+        expected_branch="test-branch",
+        require_upstream=False,
+        allow_external_evidence_root=True,
+    )
+
+    assert result["ok"] is True
+    assert events.index("end:fetch-gate") < events.index("start:lane-a-first")
+    assert events.index("end:fetch-gate") < events.index("start:lane-b")
+    assert events.index("end:lane-a-first") < events.index("start:lane-a-second")
+    assert persisted == [
+        "lane-a-first",
+        "lane-a-second",
+        "lane-b",
+        "fetch-gate",
+    ]
+    assert events.index("persist") < events.index("start:dashboard-gate")
+
+
+def test_failed_parallel_lane_prevents_final_gate_and_dossier_verification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    check_ids = ("serial-gate", "lane-a", "lane-b", "dashboard-gate")
+    specs = tuple(
+        GateSpec(
+            check_id=check_id,
+            section="1",
+            argv=("python", "-c", f"print('{check_id}')"),
+            timeout_seconds=10,
+        )
+        for check_id in check_ids
+    )
+    monkeypatch.setattr(
+        runner,
+        "HANDOFF_GATE_SPECS",
+        MappingProxyType({spec.check_id: spec for spec in specs}),
+    )
+    monkeypatch.setattr(runner, "REQUIRED_HANDOFF_CHECK_IDS", check_ids)
+    monkeypatch.setattr(runner, "_SERIAL_GATE_IDS", ("serial-gate",))
+    monkeypatch.setattr(runner, "_DEFERRED_PREREQUISITE_IDS", ())
+    monkeypatch.setattr(
+        runner,
+        "_POST_REGRESSION_LANES",
+        (("lane-a",), ("lane-b",)),
+    )
+    monkeypatch.setattr(runner, "_FINAL_GATE_IDS", ("dashboard-gate",))
+    source_identity = {"source_digest": "e" * 64, "dirty": False}
+    executed: list[str] = []
+    verified = False
+
+    def fake_record(**kwargs: Any) -> dict[str, Any]:
+        check_id = kwargs["check_id"]
+        executed.append(check_id)
+        return {
+            "check_id": check_id,
+            "passed": check_id != "lane-a",
+            "failure_reason": "lane failed" if check_id == "lane-a" else "",
+        }
+
+    def fake_verify(**_kwargs: Any) -> tuple[bool, str]:
+        nonlocal verified
+        verified = True
+        return True, ""
+
+    monkeypatch.setattr(runner, "record_handoff_command", fake_record)
+    monkeypatch.setattr(runner, "persist_handoff_records", lambda **_kwargs: None)
+    monkeypatch.setattr(runner, "validate_handoff_dossier", fake_verify)
+    monkeypatch.setattr(
+        runner,
+        "collect_source_identity",
+        lambda *_args, **_kwargs: source_identity,
+    )
+
+    result = runner.run_handoff_manifest(
+        repo_root=tmp_path,
+        evidence_root=tmp_path / "external" / ("e" * 40),
+        model_cache_dir=Path("/mnt/d/XBrainLabCache/models"),
+        rag_cache_dir=Path("/mnt/d/XBrainLabCache/rag"),
+        expected_branch="test-branch",
+        require_upstream=False,
+        allow_external_evidence_root=True,
+    )
+
+    assert result["ok"] is False
+    assert "dashboard-gate" not in executed
+    assert verified is False
+    assert result["reason"] == "lane-a: lane failed"

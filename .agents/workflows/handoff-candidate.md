@@ -39,7 +39,7 @@ Exercise one user-like path and adjacent failure/cancel/repeat behavior. Select 
 - Backend/ApplicationService: focused command test plus architecture/source guard.
 - Async/resource: lifecycle, stale-callback, cleanup, and bounded-time evidence.
 - Docs-only/guidance-only: focused contract tests, source audit, diff check, and MkDocs strict build.
-- MCP: only when the user explicitly requested MCP scope.
+- MCP: executable surface retired; no current handoff gate exists.
 
 If a required gate is too slow or unavailable, return a checkpoint; do not silently reduce it.
 

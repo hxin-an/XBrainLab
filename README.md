@@ -13,7 +13,7 @@ Import and review EEG data
 
 `ApplicationService / Command API` 是 GUI、Assistant 與開發 scripts 共用的產品命令邊界。
 `v0.7.0` 加入 bounded local Assistant baseline：固定 Granite 模型使用strict structured envelope、
-18個核准action與既有GUI／Command owners。MCP不是本版本產品能力。
+18個核准action與既有GUI／Command owners。歷史MCP executable surface已退役。
 
 ## 啟動
 

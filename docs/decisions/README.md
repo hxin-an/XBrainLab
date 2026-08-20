@@ -34,7 +34,7 @@
 | local LLM 下載需受容量邊界控制 | active | 可下載模型，但單模型原則 10GB 內、總 cache 原則 20GB 內；27B+ 需使用者明確同意。 |
 | local LLM 不使用中國模型 | active | 不使用中國公司或中國來源模型；Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 等不列入 primary / fallback 選型。 |
 | 資料匯入目標是 Data Interpretation System | active | 使用者提供資料位置後，系統應建立可預覽、可驗證、可重跑的資料解讀；不以單純 load file / attach label 心智模型作為終局設計。 |
-| MCP 從 active roadmap 移除 | active | MCP 不再是 MVP、release candidate、handoff gate 或 thesis evidence 前置；既有 MCP code/tests/artifacts 只保留為歷史探索或相容性證據。只有使用者明確要求時才 opt in；未來若要恢復，需另開決策重新定義 scope、security、session ownership、client matrix 和 validation cost。 |
+| MCP executable surface 退役 | active | MCP 不再是 MVP、release candidate、handoff gate 或 thesis evidence 前置；package、transport、CLI、capture、schema projection、tests與repo skill已移除，provenance只留Git history。未來若要恢復，需另開決策重新定義scope、security、session ownership、client matrix和validation cost。 |
 | Roadmap 五階段定型 | active | 產品主線固定為 Rebaseline -> Desktop MVP -> Product Polish / Release Candidate -> Assistant MVP -> Thesis Evidence。阻礙使用或理解的 UI/UX 屬於 Desktop MVP blocker；美感、一致性和低風險 polish 屬於 Product Polish / Release Candidate。 |
 | Product-Quality Closure Delivery Flow | superseded 2026-08-04 | `stabilize/product-quality-closure` 已依使用者決定收斂到 `main` 作 development checkpoint。這不代表 release 或 product completion；後續以短 task branch 回到 `main`，並由 current Now / Validation 定義下一個 candidate gate。 |
 | Desktop MVP Delivery Flow | superseded | `stabilize/desktop-mvp` 是較早 delivery flow，保留作決策歷史，不再是 current branch、task base、merge destination 或 validation authority。 |

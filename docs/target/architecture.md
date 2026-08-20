@@ -86,8 +86,8 @@ assistant 應該：
 - 收到 structured result。
 - 遇到 destructive / long-running / semantic ambiguity 時要求確認。
 
-MCP 已從 active target 移除。既有 MCP 探索不再定義目標架構，也不作為 release 或 thesis
-前置條件；若未來重新啟用，必須另開 decision。
+MCP 已從 active target 與 executable source 退役。舊探索只存在Git history，不定義目標架構，也不
+作為release或thesis前置條件；若未來重新啟用，必須另開decision。
 
 ## 目前不要誤解
 

@@ -264,9 +264,6 @@ def test_linux_ci_groups_partition_the_authoritative_suite_exactly_once() -> Non
         *Path("tests/unit").rglob("test_*.py"),
         *Path("tests/integration").rglob("test_*.py"),
         *Path("tests/regression").rglob("test_*.py"),
-    } - {
-        *Path("tests/unit/mcp").rglob("test_*.py"),
-        *Path("tests/integration/mcp").rglob("test_*.py"),
     }
 
     assert Counter(grouped_files) == Counter(authoritative_files)
@@ -408,12 +405,7 @@ def test_linux_ci_evidence_verifier_fails_closed_for_missing_coverage(
 
 def test_declared_integration_shards_cover_every_test_domain() -> None:
     declared_paths = {
-        Path(path)
-        for _label, paths in (
-            *run_tests.INTEGRATION_SHARDS,
-            run_tests.MCP_COMPATIBILITY_SHARDS[1],
-        )
-        for path in paths
+        Path(path) for _label, paths in run_tests.INTEGRATION_SHARDS for path in paths
     }
     actual_domains = {
         path
@@ -552,19 +544,11 @@ def test_default_unit_gate_uses_the_ui_native_process_boundaries(
     assert all("tests/unit/ui" not in call for call in ui_calls)
 
 
-def test_mcp_compatibility_is_explicitly_outside_default_all_gate() -> None:
-    assert run_tests.MCP_COMPATIBILITY_SHARDS == (
-        ("unit", ("tests/unit/mcp",)),
-        ("integration", ("tests/integration/mcp",)),
-    )
-    assert all(
-        "mcp" not in path
-        for _label, paths in (
-            *run_tests.UNIT_SHARDS,
-            *run_tests.INTEGRATION_SHARDS,
-        )
-        for path in paths
-    )
+def test_retired_mcp_gate_is_not_exposed_by_test_runner() -> None:
+    parser = run_tests._parse_cli
+
+    with pytest.raises(SystemExit):
+        parser(["mcp-compatibility"])
 
 
 def test_regression_gate_is_declared() -> None:

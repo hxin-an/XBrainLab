@@ -154,19 +154,32 @@ def main(argv: list[str] | None = None) -> int:
         choices=tuple(PLACEMENT_MODE_SCREENSHOTS),
         help=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "--placement-batch",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     args = parser.parse_args(argv)
     expected_surfaces = [spec.filename for spec in specs]
     selected_set = set(args.only or expected_surfaces)
     output_dir = args.output_dir.expanduser().resolve()
-    if args.placement_mode:
+    if args.placement_mode or args.placement_batch:
         if os.environ.get("XBRAINLAB_PLACEMENT_CAPTURE_CHILD") != "1":
-            parser.error("--placement-mode is reserved for isolated child capture")
-        selected = next(
-            spec
-            for spec in placement_specs
-            if spec.placement_mode == args.placement_mode
+            parser.error(
+                "placement capture options are reserved for isolated child capture"
+            )
+        if args.placement_mode and args.placement_batch:
+            parser.error("placement mode and batch options are mutually exclusive")
+        selected = (
+            placement_specs
+            if args.placement_batch
+            else tuple(
+                spec
+                for spec in placement_specs
+                if spec.placement_mode == args.placement_mode
+            )
         )
-        _capture_specs_in_process((selected,), output_dir)
+        _capture_specs_in_process(selected, output_dir)
         return 0
     if args.validate_only:
         if args.only:
@@ -414,16 +427,19 @@ def _capture_specs_in_isolated_processes(
     specs: Sequence[CanonicalCaptureSpec],
     staging_dir: Path,
 ) -> None:
-    """Capture every canonical frame in a fresh Qt process and Xvfb display."""
+    """Capture each canonical scenario family in a fresh Qt/Xvfb boundary."""
     script = Path(__file__).resolve()
     xvfb = shutil.which("Xvfb")
     if xvfb is None:
         raise RuntimeError("Complete Data Import capture requires Xvfb.")
     child_environment = dict(os.environ)
     child_environment["QT_QPA_PLATFORM"] = "xcb"
-    for spec in specs:
+    for batch in _canonical_capture_batches(specs):
         server, display = _start_xvfb(xvfb)
         child_environment["DISPLAY"] = display
+        only_arguments = [
+            argument for spec in batch for argument in ("--only", spec.filename)
+        ]
         try:
             completed = subprocess.run(  # noqa: S603 - current Python executable.
                 [
@@ -431,8 +447,7 @@ def _capture_specs_in_isolated_processes(
                     str(script),
                     "--output-dir",
                     str(staging_dir),
-                    "--only",
-                    spec.filename,
+                    *only_arguments,
                 ],
                 cwd=ROOT,
                 check=False,
@@ -442,13 +457,37 @@ def _capture_specs_in_isolated_processes(
             _stop_xvfb(server)
         if completed.returncode != 0:
             raise RuntimeError(
-                f"Data Import child capture failed: {spec.filename} "
+                "Data Import scenario-family capture failed: "
+                f"{', '.join(spec.filename for spec in batch)} "
                 f"(exit {completed.returncode})."
             )
-        if not (staging_dir / spec.filename).is_file():
-            raise RuntimeError(
-                f"Data Import child capture did not publish: {spec.filename}."
-            )
+        for spec in batch:
+            if not (staging_dir / spec.filename).is_file():
+                raise RuntimeError(
+                    f"Data Import child capture did not publish: {spec.filename}."
+                )
+
+
+def _canonical_capture_batches(
+    specs: Sequence[CanonicalCaptureSpec],
+) -> tuple[tuple[CanonicalCaptureSpec, ...], ...]:
+    """Return the four explicit canonical scenario-family process batches."""
+    prefix_families = (
+        ("01-", "03-"),
+        ("02-",),
+        ("04-",),
+        ("05-",),
+    )
+    batches = tuple(
+        tuple(spec for spec in specs if spec.filename.startswith(prefixes))
+        for prefixes in prefix_families
+    )
+    nonempty = tuple(batch for batch in batches if batch)
+    flattened = [spec.filename for batch in nonempty for spec in batch]
+    expected = [spec.filename for spec in specs]
+    if len(flattened) != len(set(flattened)) or set(flattened) != set(expected):
+        raise RuntimeError("Data Import scenario-family inventory is incomplete.")
+    return nonempty
 
 
 def _capture_placement_specs_in_isolated_processes(
@@ -466,29 +505,29 @@ def _capture_placement_specs_in_isolated_processes(
     for spec in specs:
         if not spec.placement_mode:
             raise RuntimeError(f"Placement capture has no mode: {spec.filename}")
-        server, display = _start_xvfb(xvfb)
-        child_environment["DISPLAY"] = display
-        try:
-            completed = subprocess.run(  # noqa: S603 - current Python executable.
-                [
-                    sys.executable,
-                    str(script),
-                    "--output-dir",
-                    str(staging_dir),
-                    "--placement-mode",
-                    spec.placement_mode,
-                ],
-                cwd=ROOT,
-                check=False,
-                env=child_environment,
-            )
-        finally:
-            _stop_xvfb(server)
-        if completed.returncode != 0:
-            raise RuntimeError(
-                f"Data Import placement capture failed: {spec.placement_mode} "
-                f"(exit {completed.returncode})."
-            )
+    server, display = _start_xvfb(xvfb)
+    child_environment["DISPLAY"] = display
+    try:
+        completed = subprocess.run(  # noqa: S603 - current Python executable.
+            [
+                sys.executable,
+                str(script),
+                "--output-dir",
+                str(staging_dir),
+                "--placement-batch",
+            ],
+            cwd=ROOT,
+            check=False,
+            env=child_environment,
+        )
+    finally:
+        _stop_xvfb(server)
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "Data Import placement-family capture failed "
+            f"(exit {completed.returncode})."
+        )
+    for spec in specs:
         if not (staging_dir / spec.filename).is_file():
             raise RuntimeError(
                 f"Data Import placement capture did not publish: {spec.filename}."
