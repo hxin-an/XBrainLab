@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from scripts.dev.ci_source_provenance import verify_linux_source_provenance
 from scripts.dev.owned_process_group import spawn_owned_process, terminate_and_collect
 from scripts.dev.pytest_completion_attestation import (
     REQUIRED_PYTEST_RUNNER_ID,
@@ -506,6 +507,13 @@ def verify_linux_ci_evidence(
     }
     failures: list[str] = []
     attestations: list[dict[str, Any]] = []
+
+    _aggregate_provenance, provenance_failures = verify_linux_source_provenance(
+        evidence_root,
+        expected_job_keys=LINUX_CI_COMMANDS,
+        aggregate_path=evidence_root / "all-linux-source-provenance.json",
+    )
+    failures.extend(provenance_failures)
 
     if actual_results != expected_results:
         failures.append(

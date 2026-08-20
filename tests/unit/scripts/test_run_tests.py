@@ -355,6 +355,27 @@ def _write_linux_ci_evidence(root: Path) -> None:
         )
         if command not in run_tests.LINUX_CI_UNCOVERED_COMMANDS:
             (root / f".coverage.{command}").write_bytes(b"coverage-data")
+        provenance = {
+            "schema": "xbrainlab.ci-source-provenance.v1",
+            "job_key": command,
+            "event_name": "pull_request",
+            "repository": "hxin-an/XBrainLab",
+            "workflow": "CI",
+            "github_job": "linux-shard",
+            "run_id": "123",
+            "run_attempt": "1",
+            "runner_os": "Linux",
+            "runner_arch": "X64",
+            "github_sha": "head-sha",
+            "expected_head_sha": "head-sha",
+            "pull_request_head_sha": "head-sha",
+            "pull_request_base_sha": "base-sha",
+            "checked_out_head_sha": "head-sha",
+            "checked_out_tree_sha": "tree-sha",
+        }
+        (root / f"ci-source-provenance-{command}.json").write_text(
+            json.dumps(provenance), encoding="utf-8"
+        )
 
 
 def test_linux_ci_evidence_verifier_aggregates_every_required_group(tmp_path) -> None:
@@ -368,6 +389,7 @@ def test_linux_ci_evidence_verifier_aggregates_every_required_group(tmp_path) ->
     assert payload["command_args"] == ["all"]
     assert payload["exit_code"] == 0
     assert payload["counts"]["passed"] == len(run_tests.LINUX_CI_GROUPS)
+    assert (tmp_path / "all-linux-source-provenance.json").exists()
 
 
 def test_linux_ci_evidence_verifier_accepts_owned_parallel_coverage_fragments(
@@ -697,6 +719,21 @@ def test_ci_uses_full_linux_and_focused_cross_platform_runners() -> None:
     workflow_text = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
     workflow = yaml.safe_load(workflow_text)
     jobs = workflow["jobs"]
+
+    expected_checkout_ref = (
+        "${{ github.event_name == 'pull_request' && "
+        "github.event.pull_request.head.sha || github.sha }}"
+    )
+    checkout_steps = [
+        step
+        for job in jobs.values()
+        for step in job.get("steps", ())
+        if step.get("uses") == "actions/checkout@v4"
+    ]
+    assert len(checkout_steps) == 10
+    assert all(
+        step.get("with") == {"ref": expected_checkout_ref} for step in checkout_steps
+    )
 
     assert jobs["linux-shard"]["strategy"]["matrix"] == {
         "command": list(run_tests.LINUX_CI_COMMANDS),

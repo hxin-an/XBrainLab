@@ -31,6 +31,8 @@ jobs:
       agent_guidance: ${{ steps.scope.outputs.agent_guidance }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -76,6 +78,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -122,6 +126,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -164,6 +170,8 @@ jobs:
       COVERAGE_FILE: test-results/.coverage.${{ matrix.command }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -202,6 +210,12 @@ jobs:
           poetry run -- python scripts/dev/run_tests.py ${{ matrix.command }} \
             --result-json test-results/${{ matrix.command }}.json
 
+      - name: Record exact source provenance
+        run: >-
+          poetry run -- python scripts/dev/ci_source_provenance.py
+          --job-key ${{ matrix.command }}
+          --output test-results/ci-source-provenance-${{ matrix.command }}.json
+
       - name: Upload shard evidence
         uses: actions/upload-artifact@v4
         if: always()
@@ -217,6 +231,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -254,6 +270,9 @@ jobs:
           name: test-results-ubuntu-latest-py3.11
           path: |
             test-results/all-regression.json
+            test-results/all-linux-source-provenance.json
+            test-results/linux-*.json
+            test-results/ci-source-provenance-linux-*.json
             test-results/*.xml
             coverage.xml
 
@@ -268,6 +287,8 @@ jobs:
       MNE_DONTWRITE_HOME: "true"
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -330,6 +351,8 @@ jobs:
       XBL_SHARED_CI_RUNNER: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -382,6 +405,8 @@ jobs:
       MNE_DONTWRITE_HOME: "true"
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -437,6 +462,8 @@ jobs:
       MNE_DONTWRITE_HOME: "true"
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -483,6 +510,8 @@ jobs:
       QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Python
         uses: actions/setup-python@v5
