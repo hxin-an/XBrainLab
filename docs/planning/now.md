@@ -9,7 +9,7 @@
 runtime。這條 branch 會審查全部 tracked tests，不只處理幾個 E2E 檔；完成完整 handoff 與
 remote CI 後才交使用者做核心產品 walkthrough，通過前不合併。
 
-目前 phase：`Measured regression speedup accepted; remaining family／handoff cleanup`
+目前 phase：`All test families reviewed; final regression／handoff candidate validation`
 
 本 branch 只修改 tests、test fixtures、developer validation／CI scripts 與直接相關文件；不修改
 `XBrainLab/` 產品 UI、ApplicationService、EEG semantics、training 或 Assistant 行為。若清理揭露
@@ -33,7 +33,8 @@ remote CI 後才交使用者做核心產品 walkthrough，通過前不合併。
 - Exact source `95da47f7` 的 canonical handoff 為 42/42 PASS、11,300 executed、0 failed，
   wall 2,232.165 秒（37 分 12 秒）；complete regression 1,353.293 秒（22 分 33 秒）。
 - 本機有 16 logical CPUs、約 30 GiB RAM；local runner 固定最多兩個 outer groups，八組內又
-  產生 29 次串行 pytest collection/process。低 CPU 利用率主要來自 fixed phase、process isolation、
+  原先產生29次串行pytest collection/process。清理沒有獨立claim的integration/training shard後為28次；
+  低CPU利用率主要來自fixed phase、process isolation、
   長尾 group 與 wait／IO，不是 GPU 沒被使用。
 - GPU 只適合 Granite runtime、stable model eval 與 resource calibration；unit、Qt、IO、MNE
   與 CPU training tests 不得為提高 utilization 改用 GPU。
@@ -65,21 +66,27 @@ file／replacement mapping，不建立另一份萬筆 test manifest。
 
 | Family | Baseline files | Reviewed | Keep | Rewrite | Move／rename | Delete | Status |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| unit/backend | 186 | 1 | 0 | 1 | 0 | 0 | in progress |
-| unit/llm | 77 | 0 | 0 | 0 | 0 | 0 | pending |
-| unit/scripts | 70 | 1 | 0 | 1 | 0 | 0 | in progress |
-| unit/ui | 120 | 3 | 0 | 3 | 0 | 0 | in progress |
-| unit/root | 10 | 1 | 0 | 1 | 0 | 0 | in progress |
-| integration/agent | 5 | 0 | 0 | 0 | 0 | 0 | pending |
-| integration/backend | 10 | 0 | 0 | 0 | 0 | 0 | pending |
-| integration/controller | 3 | 0 | 0 | 0 | 0 | 0 | pending |
-| integration/debug | 1 | 0 | 0 | 0 | 0 | 0 | pending |
-| integration/io | 9 | 0 | 0 | 0 | 0 | 0 | pending |
-| integration/llm | 1 | 0 | 0 | 0 | 0 | 0 | pending |
-| integration/pipeline | 14 | 6 | 1 | 0 | 4 | 1 | in progress |
-| integration/training | 1 | 0 | 0 | 0 | 0 | 0 | pending |
-| integration/ui | 25 | 5 | 0 | 3 | 1 | 1 | in progress |
-| regression | 2 | 0 | 0 | 0 | 0 | 0 | pending |
+| unit/backend | 186 | 186 | 185 | 1 | 0 | 0 | complete |
+| unit/llm | 77 | 77 | 77 | 0 | 0 | 0 | complete |
+| unit/scripts | 70 | 70 | 65 | 5 | 0 | 0 | complete |
+| unit/ui | 120 | 120 | 117 | 3 | 0 | 0 | complete |
+| unit/root | 10 | 10 | 9 | 1 | 0 | 0 | complete |
+| integration/agent | 5 | 5 | 5 | 0 | 0 | 0 | complete |
+| integration/backend | 10 | 10 | 10 | 0 | 0 | 0 | complete |
+| integration/controller | 3 | 3 | 2 | 0 | 0 | 1 | complete |
+| integration/debug | 1 | 1 | 1 | 0 | 0 | 0 | complete |
+| integration/io | 9 | 9 | 9 | 0 | 0 | 0 | complete |
+| integration/llm | 1 | 1 | 1 | 0 | 0 | 0 | complete |
+| integration/pipeline | 14 | 14 | 9 | 0 | 4 | 1 | complete |
+| integration/training | 1 | 1 | 0 | 0 | 0 | 1 | complete |
+| integration/ui | 25 | 25 | 20 | 3 | 1 | 1 | complete |
+| regression | 2 | 2 | 1 | 0 | 0 | 1 | complete |
+
+兩個新增的target-side contract files（root fixture policy與remote human-like CI gate）不屬於534個
+baseline denominator；一個moved pipeline presentation file進入unit/UI。Current tree因此是531個test
+files。保留的mock只證明明列的external/resource/model/UI seam；同owner成功與artifact claim仍由
+ApplicationService、real EEG、native subprocess或public cross-source lower-mock gate擁有，不建立逐node
+control manifest。
 
 ## Scope／non-goals
 
@@ -180,6 +187,15 @@ file／replacement mapping，不建立另一份萬筆 test manifest。
   1,353.3秒基線改善32.5%；前三高peak RSS合計約7.6 GiB。Integration-UI降至296–303秒，符合
   移除重複human-like capture預期。Final exact source仍須再跑完整 regression與canonical handoff，
   本checkpoint不宣稱handoff-ready。
+- `2026-08-20` final family／script cleanup：全部534個baseline files完成family-level disposition。
+  刪除只剩mock delegation且已被unit controller覆蓋的training-controller integration、混入純float
+  tautology／重複UI unit／重複ApplicationService state的integration/training file，以及已被一般三模型
+  minimum-sample contract吸收的epoch-duration regression。移除format-matrix在unit suite內重跑完整CLI
+  workflow；canonical strict GateSpec仍執行真CLI。Standalone checkout從10次heavy subprocess收斂為
+  全script AST順序guard＋1次unrelated-cwd真啟動。Human-like payload與atomic publication tests共用一次
+  exact immutable source snapshot；真capture仍在開始／結束各refresh。相對上一輪11,302 outcome，預期
+  exact count delta為30（22個重複training、5個mock controller、2個absorbed regression、1個duplicate
+  CLI），final denominator應為11,272；須由下一次complete regression attestation閉合。
 
 ## Focused validation 與 stop condition
 

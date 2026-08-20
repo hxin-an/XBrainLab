@@ -391,14 +391,10 @@ UI_DIRECT_STUDY_STATE_ATTRIBUTES = (
 )
 PRODUCT_SUCCESS_DIRECT_STUDY_STATE_TEST_FILES = (
     Path("tests/integration/backend/test_application_service_workflow.py"),
-    Path("tests/integration/pipeline/test_all_real_tools.py"),
-    Path("tests/integration/pipeline/test_integration_real_tools.py"),
     Path("tests/integration/pipeline/test_preprocess_validation.py"),
     Path("tests/integration/pipeline/test_real_data_command_spine.py"),
-    Path("tests/integration/training/test_training_integration.py"),
     Path("tests/integration/ui/test_epoch_runtime.py"),
     Path("tests/integration/ui/test_product_walkthrough.py"),
-    Path("tests/integration/ui/test_real_tools_e2e.py"),
 )
 PRODUCT_SUCCESS_DIRECT_STUDY_METHODS = ("get_datasets_generator",)
 HEADLESS_VERIFIER_STATE_TRUTH_FILES = (

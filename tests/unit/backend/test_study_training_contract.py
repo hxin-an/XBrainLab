@@ -10,12 +10,9 @@ from XBrainLab import Study
 from XBrainLab.backend.training import TrainingEvaluation, TrainingOption
 
 _TRAINING_OUTPUT_TEST_PATHS = (
-    "tests/regression/test_epoch_duration_bug.py",
-    "tests/integration/training/test_training_integration.py",
     "tests/integration/pipeline/test_study_training_facade.py",
     "tests/integration/pipeline/test_trainer_model_integration.py",
     "tests/integration/pipeline/test_real_data_command_spine.py",
-    "tests/integration/controller/test_training_controller.py",
     "tests/unit/ui/test_training_result_presentation.py",
     "tests/unit/backend/test_study_training_contract.py",
 )

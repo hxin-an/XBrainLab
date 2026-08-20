@@ -93,7 +93,6 @@ INTEGRATION_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("io", ("tests/integration/io",)),
     ("llm", ("tests/integration/llm",)),
     ("pipeline", ("tests/integration/pipeline",)),
-    ("training", ("tests/integration/training",)),
     ("ui", ("tests/integration/ui",)),
 )
 REGRESSION_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -225,7 +224,6 @@ LINUX_CI_GROUPS: tuple[tuple[str, tuple[tuple[str, tuple[str, ...]], ...]], ...]
             ("io", ("tests/integration/io",)),
             ("llm", ("tests/integration/llm",)),
             ("pipeline", ("tests/integration/pipeline",)),
-            ("training", ("tests/integration/training",)),
             ("root-contracts", INTEGRATION_ROOT_TESTS),
             *REGRESSION_SHARDS,
         ),

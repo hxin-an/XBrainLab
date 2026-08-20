@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+from collections.abc import Mapping
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
@@ -162,6 +163,12 @@ from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
 )
+
+
+@pytest.fixture(scope="module")
+def source_identity_snapshot() -> Mapping[str, Any]:
+    """Share one exact checkout snapshot across source-independent unit cases."""
+    return collect_source_identity(walkthrough_module.ROOT, refresh=True)
 
 
 def _admit_walkthrough_turn(
@@ -1018,6 +1025,7 @@ def _write_valid_screenshot_artifacts(
     payload: dict[str, Any],
     directory: Path,
     *,
+    source_identity: Mapping[str, Any],
     monkeypatch: pytest.MonkeyPatch | None = None,
 ) -> None:
     screenshot_hashes: dict[str, str] = {}
@@ -1055,7 +1063,7 @@ def _write_valid_screenshot_artifacts(
                 },
             }
         )
-    identity = collect_source_identity(walkthrough_module.ROOT, refresh=True)
+    identity = dict(source_identity)
     generated_at = datetime.now(UTC)
     payload["artifact_run"] = walkthrough_module._build_artifact_run_manifest(
         payload,
@@ -1100,9 +1108,15 @@ def _write_valid_screenshot_artifacts(
 def test_validate_walkthrough_payload_recomputes_published_screenshot_hashes(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
+    source_identity_snapshot: Mapping[str, Any],
 ) -> None:
     payload = _base_payload()
-    _write_valid_screenshot_artifacts(payload, tmp_path, monkeypatch=monkeypatch)
+    _write_valid_screenshot_artifacts(
+        payload,
+        tmp_path,
+        source_identity=source_identity_snapshot,
+        monkeypatch=monkeypatch,
+    )
 
     ok, reason = validate_walkthrough_payload(payload, require_files=True)
 
@@ -1116,9 +1130,14 @@ def test_validate_walkthrough_payload_recomputes_published_screenshot_hashes(
 
 def test_walkthrough_artifact_manifest_binds_source_environment_and_claims(
     tmp_path: Path,
+    source_identity_snapshot: Mapping[str, Any],
 ) -> None:
     payload = _base_payload()
-    _write_valid_screenshot_artifacts(payload, tmp_path)
+    _write_valid_screenshot_artifacts(
+        payload,
+        tmp_path,
+        source_identity=source_identity_snapshot,
+    )
 
     run = payload["artifact_run"]
     assert run["generator"] == ("scripts/dev/capture_human_like_product_walkthrough.py")
@@ -1140,9 +1159,15 @@ def test_validate_walkthrough_payload_rejects_undecodable_png_with_matching_hash
     tmp_path: Path,
     corruption: str,
     monkeypatch: pytest.MonkeyPatch,
+    source_identity_snapshot: Mapping[str, Any],
 ) -> None:
     payload = _base_payload()
-    _write_valid_screenshot_artifacts(payload, tmp_path, monkeypatch=monkeypatch)
+    _write_valid_screenshot_artifacts(
+        payload,
+        tmp_path,
+        source_identity=source_identity_snapshot,
+        monkeypatch=monkeypatch,
+    )
     key = next(iter(payload["screenshots"]))
     path = Path(payload["screenshots"][key])
     if corruption == "text":
@@ -1163,9 +1188,15 @@ def test_validate_walkthrough_payload_rejects_undecodable_png_with_matching_hash
 def test_validate_walkthrough_payload_rechecks_saved_pixel_evidence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    source_identity_snapshot: Mapping[str, Any],
 ) -> None:
     payload = _base_payload()
-    _write_valid_screenshot_artifacts(payload, tmp_path, monkeypatch=monkeypatch)
+    _write_valid_screenshot_artifacts(
+        payload,
+        tmp_path,
+        source_identity=source_identity_snapshot,
+        monkeypatch=monkeypatch,
+    )
     key = next(iter(payload["screenshots"]))
     path = Path(payload["screenshots"][key])
     Image.new("RGB", (64, 48), color="black").save(path, format="PNG")
@@ -1182,9 +1213,15 @@ def test_validate_walkthrough_payload_rechecks_saved_pixel_evidence(
 def test_validate_walkthrough_payload_rechecks_saved_frame_readiness(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    source_identity_snapshot: Mapping[str, Any],
 ) -> None:
     payload = _base_payload()
-    _write_valid_screenshot_artifacts(payload, tmp_path, monkeypatch=monkeypatch)
+    _write_valid_screenshot_artifacts(
+        payload,
+        tmp_path,
+        source_identity=source_identity_snapshot,
+        monkeypatch=monkeypatch,
+    )
     payload["ui_quality_review"]["screenshot_review"][0]["frame_readiness"][
         "stable"
     ] = False
@@ -1198,9 +1235,15 @@ def test_validate_walkthrough_payload_rechecks_saved_frame_readiness(
 def test_validate_walkthrough_payload_rechecks_saved_full_window_geometry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    source_identity_snapshot: Mapping[str, Any],
 ) -> None:
     payload = _base_payload()
-    _write_valid_screenshot_artifacts(payload, tmp_path, monkeypatch=monkeypatch)
+    _write_valid_screenshot_artifacts(
+        payload,
+        tmp_path,
+        source_identity=source_identity_snapshot,
+        monkeypatch=monkeypatch,
+    )
     phase = next(
         item
         for item in payload["phases"]
@@ -3625,7 +3668,10 @@ def test_assistant_empty_capture_requires_current_action_button(
         _assert_assistant_dock_rendered(dock, screenshot)
 
 
-def test_failed_artifact_run_does_not_mix_with_latest_success(tmp_path) -> None:
+def test_failed_artifact_run_does_not_mix_with_latest_success(
+    tmp_path,
+    source_identity_snapshot: Mapping[str, Any],
+) -> None:
     latest = tmp_path / "walkthrough"
     latest.mkdir()
     (latest / "old.png").write_bytes(b"old-screenshot")
@@ -3646,6 +3692,8 @@ def test_failed_artifact_run_does_not_mix_with_latest_success(tmp_path) -> None:
         output_dir=latest,
         payload=payload,
         run_id="run-failed",
+        source_identity_at_start=source_identity_snapshot,
+        source_identity_at_completion=source_identity_snapshot,
     )
 
     assert published == tmp_path / "walkthrough-runs" / "run-failed"
@@ -3734,6 +3782,7 @@ def test_walkthrough_source_does_not_index_command_diagnostics_payloads() -> Non
 def test_main_returns_nonzero_when_walkthrough_artifact_fails(
     monkeypatch,
     tmp_path,
+    source_identity_snapshot: Mapping[str, Any],
 ) -> None:
     class FakeApplication:
         def setStyle(self, _style: str) -> None:
@@ -3759,6 +3808,11 @@ def test_main_returns_nonzero_when_walkthrough_artifact_fails(
         walkthrough_module,
         "publish_artifact_run",
         lambda **_kwargs: output_dir,
+    )
+    monkeypatch.setattr(
+        walkthrough_module,
+        "collect_source_identity",
+        lambda *_args, **_kwargs: source_identity_snapshot,
     )
     monkeypatch.setattr(
         walkthrough_module.sys,
@@ -3799,7 +3853,10 @@ def test_default_artifact_entry_uses_dev_artifact_namespace() -> None:
     ) == DEFAULT_OUTPUT_DIR
 
 
-def test_failed_current_artifact_run_is_saved_beside_current(tmp_path) -> None:
+def test_failed_current_artifact_run_is_saved_beside_current(
+    tmp_path,
+    source_identity_snapshot: Mapping[str, Any],
+) -> None:
     latest = tmp_path / "human-like-walkthrough-runs" / "current"
     latest.mkdir(parents=True)
     (latest / "old.png").write_bytes(b"old-screenshot")
@@ -3819,6 +3876,8 @@ def test_failed_current_artifact_run_is_saved_beside_current(tmp_path) -> None:
         output_dir=latest,
         payload=payload,
         run_id="run-failed",
+        source_identity_at_start=source_identity_snapshot,
+        source_identity_at_completion=source_identity_snapshot,
     )
 
     assert published == latest.parent / "run-failed"
@@ -3826,7 +3885,10 @@ def test_failed_current_artifact_run_is_saved_beside_current(tmp_path) -> None:
     assert (published / "new.png").read_bytes() == b"new-screenshot"
 
 
-def test_successful_artifact_run_replaces_latest_as_one_directory(tmp_path) -> None:
+def test_successful_artifact_run_replaces_latest_as_one_directory(
+    tmp_path,
+    source_identity_snapshot: Mapping[str, Any],
+) -> None:
     latest = tmp_path / "walkthrough"
     latest.mkdir()
     (latest / "stale.png").write_bytes(b"stale")
@@ -3846,6 +3908,8 @@ def test_successful_artifact_run_replaces_latest_as_one_directory(tmp_path) -> N
         output_dir=latest,
         payload=payload,
         run_id="run-passed",
+        source_identity_at_start=source_identity_snapshot,
+        source_identity_at_completion=source_identity_snapshot,
     )
 
     assert published == latest
@@ -3860,6 +3924,7 @@ def test_artifact_publication_does_not_rename_live_staging_directory(
     monkeypatch,
     tmp_path,
     status,
+    source_identity_snapshot: Mapping[str, Any],
 ) -> None:
     output_dir = tmp_path / "walkthrough"
     staging = tmp_path / f".walkthrough-staging-{status}"
@@ -3886,6 +3951,8 @@ def test_artifact_publication_does_not_rename_live_staging_directory(
         output_dir=output_dir,
         payload=payload,
         run_id=f"run-{status}",
+        source_identity_at_start=source_identity_snapshot,
+        source_identity_at_completion=source_identity_snapshot,
     )
 
     assert published.is_dir()

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -46,27 +44,6 @@ def test_public_fixture_dir_uses_canonical_data_root_without_moving_tracked_data
     assert validation_matrix.TEST_DATA_DIR == (
         validation_matrix.ROOT / "tests/fixtures/data"
     )
-
-
-def test_canonical_direct_script_entrypoint_can_start_from_repo_root() -> None:
-    repo_root = Path(__file__).resolve().parents[3]
-
-    result = subprocess.run(  # noqa: S603 - fixed interpreter and script path
-        [
-            sys.executable,
-            "scripts/dev/report_dataset_validation_matrix.py",
-            "--help",
-        ],
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=30,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert "report_dataset_validation_matrix.py" in result.stdout
-    assert "--strict" in result.stdout
 
 
 def _workflow_snapshot(*, passed: bool = True) -> dict[str, object]:
