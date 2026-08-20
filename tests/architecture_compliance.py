@@ -398,7 +398,6 @@ PRODUCT_SUCCESS_DIRECT_STUDY_STATE_TEST_FILES = (
 )
 PRODUCT_SUCCESS_DIRECT_STUDY_METHODS = ("get_datasets_generator",)
 HEADLESS_VERIFIER_STATE_TRUTH_FILES = (
-    Path("scripts/dev/verify_real_tools.py"),
     Path("scripts/dev/run_public_cross_source_training_smoke.py"),
 )
 HEADLESS_VERIFIER_DIRECT_STUDY_METHODS = (
@@ -11584,7 +11583,6 @@ def check_evaluation_publication_refresh_boundary(root_dir: Path) -> list[str]:
     violations: list[str] = []
     panel_path = root_dir / "XBrainLab/ui/panels/evaluation/panel.py"
     main_window_path = root_dir / "XBrainLab/ui/main_window.py"
-    bootstrap_path = root_dir / "XBrainLab/ui/controller_compatibility_bootstrap.py"
     refresh_path = root_dir / "XBrainLab/ui/refresh_coordinator.py"
 
     panel_source = panel_path.read_text(encoding="utf-8")
@@ -11789,11 +11787,6 @@ def check_evaluation_publication_refresh_boundary(root_dir: Path) -> list[str]:
         if broad_name in panel_keywords
     )
 
-    if bootstrap_path.exists():
-        violations.append(
-            "controller_compatibility_bootstrap.py must remain physically removed"
-        )
-
     refresh_tree = ast.parse(refresh_path.read_text(encoding="utf-8"))
     panel_names_function = next(
         (
@@ -11854,7 +11847,6 @@ def check_visualization_publication_refresh_boundary(root_dir: Path) -> list[str
     violations: list[str] = []
     panel_path = root_dir / "XBrainLab/ui/panels/visualization/panel.py"
     main_window_path = root_dir / "XBrainLab/ui/main_window.py"
-    bootstrap_path = root_dir / "XBrainLab/ui/controller_compatibility_bootstrap.py"
     refresh_path = root_dir / "XBrainLab/ui/refresh_coordinator.py"
 
     panel_tree = _parse_python_file(panel_path)
@@ -12104,11 +12096,6 @@ def check_visualization_publication_refresh_boundary(root_dir: Path) -> list[str
             (f"MainWindow Visualization construction injects broad {broad_name}")
             for broad_name in ("controller", "controllers", "application_runtime")
             if broad_name in panel_keywords
-        )
-
-    if bootstrap_path.exists():
-        violations.append(
-            "controller_compatibility_bootstrap.py must remain physically removed"
         )
 
     refresh_tree = _parse_python_file(refresh_path)

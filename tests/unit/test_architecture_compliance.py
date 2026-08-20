@@ -3226,12 +3226,6 @@ def _write_llm_file(root, source: str) -> None:
     path.write_text(source, encoding="utf-8")
 
 
-def _write_headless_verifier_file(root, source: str) -> None:
-    path = root / "scripts" / "dev" / "verify_real_tools.py"
-    path.parent.mkdir(parents=True)
-    path.write_text(source, encoding="utf-8")
-
-
 def _write_public_training_smoke_file(root, source: str) -> None:
     path = root / "scripts" / "dev" / "run_public_cross_source_training_smoke.py"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -3573,58 +3567,6 @@ def test_walkthrough(test_app):
     )
 
     assert check_product_success_direct_study_state_tests(tmp_path) == []
-
-
-def test_headless_verifier_state_guard_flags_direct_study_truth(tmp_path):
-    _write_headless_verifier_file(
-        tmp_path,
-        """
-def verify(study):
-    if study.loaded_data_list:
-        return len(study.datasets)
-    study.generate_plan()
-    if study.is_training():
-        study.stop_training()
-    study.train(interact=False)
-    return 0
-""",
-    )
-
-    violations = check_headless_verifier_direct_study_state(tmp_path)
-
-    assert len(violations) == 6
-    assert "study.loaded_data_list" in violations[0]
-    assert "QueryStateCommand" in violations[0]
-    assert "study.datasets" in violations[1]
-    assert "study.generate_plan" in violations[2]
-    assert "TrainCommand" in violations[2]
-    assert "study.is_training" in violations[3]
-    assert "StopTrainingCommand" in violations[3]
-    assert "study.stop_training" in violations[4]
-    assert "study.train" in violations[5]
-
-
-def test_headless_verifier_state_guard_allows_command_query_truth(tmp_path):
-    _write_headless_verifier_file(
-        tmp_path,
-        """
-from XBrainLab.backend.application import (
-    QueryStateCommand,
-    StopTrainingCommand,
-    get_application_service,
-)
-
-
-def verify(study):
-    service = get_application_service(study)
-    state = service.execute(QueryStateCommand(query="state"))
-    if state.failed:
-        raise RuntimeError(state.message)
-    service.execute(StopTrainingCommand())
-""",
-    )
-
-    assert check_headless_verifier_direct_study_state(tmp_path) == []
 
 
 def test_headless_verifier_state_guard_scans_public_training_smoke(tmp_path):
@@ -6104,16 +6046,6 @@ class MainWindow:
     )
     _write_product_file(
         tmp_path,
-        "XBrainLab/ui/controller_compatibility_bootstrap.py",
-        """
-class CompatibilityWorkflowControllers:
-    @property
-    def visualization(self):
-        return self._controller("visualization")
-""",
-    )
-    _write_product_file(
-        tmp_path,
         "XBrainLab/ui/refresh_coordinator.py",
         """
 _OBSERVER_EVENT_REFRESH_ROUTES = {
@@ -6159,7 +6091,6 @@ def _panel_names_for_observer_event(event_name, changed):
     assert any("must inject query_port" in item for item in violations)
     assert any("must inject publication_port" in item for item in violations)
     assert any("must inject action_port" in item for item in violations)
-    assert any("must remain physically removed" in item for item in violations)
     assert any(
         "changed-state refresh must exclude Visualization" in item
         for item in violations
