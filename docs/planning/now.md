@@ -93,9 +93,10 @@ Braindecode vendoring。Data Import 與 4B Assistant 模型均不在本 slice。
    startup smoke避免複製整套suite。Native step不得設定`QT_QPA_PLATFORM`，並以含空格／非ASCII字元的
    owned temp／settings／cache roots執行；macOS probe同樣驗證`cocoa`而非offscreen。
 4. 新增一條lower-mock platform smoke：真MainWindow／ApplicationService、五panel materialization、
-   `QueryStateCommand(query="state")`的initial publication、未確認`NewSessionCommand()`的既有
-   confirmation-required結果、`NewSessionCommand(confirmed=True)`成功且empty-session generation改變，
-   以及clean shutdown。這條流程不得讀取EEG fixture或進Data Import；macOS跑相同非3D範圍。
+   `QueryStateCommand(query="state")`的initial publication、空session的`NewSessionCommand()`既有
+   no-confirmation安全執行與generation transition，以及clean shutdown。非空session的destructive
+   confirmation由既有ApplicationService contract測試保護，不在native smoke繞過command spine偽造資料。
+   這條流程不得讀取EEG fixture或進Data Import；macOS跑相同非3D範圍。
 
 ### C. Artifact policy與final candidate
 
@@ -114,8 +115,9 @@ Braindecode vendoring。Data Import 與 4B Assistant 模型均不在本 slice。
 - Linux evidence：`tests/unit/scripts/test_run_tests.py`、pytest completion／aggregate attestation contracts。
 - Workflow／artifact：既有CI public、human-like、UI visual contracts與新增platform artifact contract。
 - Startup：`run_startup_smoke` unit／subprocess contracts，加Windows／macOS platform smoke selectors；後者
-  精確驗證五panel、native Qt plugin、隔離roots、initial query publication、New Session確認邊界、confirmed
-  generation transition與clean exit。
+  精確驗證五panel、native Qt plugin、隔離roots、initial query publication、空session New Session
+  no-confirmation capability與generation transition、clean exit；非空destructive confirmation另由focused
+  ApplicationService contract驗證。
 - Static：changed Python files的Ruff／format；workflow YAML parse與action／cache contract。
 - 中途不跑complete regression或canonical handoff；remote platform workflow才是本slice的final evidence。
 
