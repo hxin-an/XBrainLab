@@ -12,6 +12,9 @@ import sys
 from pathlib import Path
 
 from scripts.dev.owned_process_group import spawn_owned_process, terminate_and_collect
+from scripts.dev.run_native_platform_product_smoke import (
+    validate_isolated_environment,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 TIMEOUT_SECONDS = 25
@@ -23,8 +26,17 @@ PLATFORM_MARKER = "XBrainLab startup smoke platform:"
 STARTUP_CLOSE_DELAY_MS = "1000"
 
 
-def run_startup_smoke(*, expected_platform: str | None = None) -> dict[str, object]:
+def run_startup_smoke(
+    *,
+    expected_platform: str | None = None,
+    expected_isolated_root: str | Path | None = None,
+) -> dict[str, object]:
     """Launch the real entrypoint and stop only its owned process tree."""
+    isolated_environment = (
+        validate_isolated_environment(expected_isolated_root)
+        if expected_isolated_root is not None
+        else {}
+    )
     argv = (sys.executable, "run.py")
     environment = os.environ.copy()
     environment["XBRAINLAB_STARTUP_SMOKE_CLOSE_MS"] = STARTUP_CLOSE_DELAY_MS
@@ -80,6 +92,12 @@ def run_startup_smoke(*, expected_platform: str | None = None) -> dict[str, obje
         "saw_close_requested": saw_close_requested,
         "qt_platform": qt_platform,
         "expected_qt_platform": expected_platform,
+        "isolated_root": (
+            str(Path(expected_isolated_root).expanduser().resolve())
+            if expected_isolated_root is not None
+            else None
+        ),
+        "isolated_environment": isolated_environment,
         "passed": passed,
         "stdout_tail": stdout[-4_000:],
         "stderr_tail": stderr[-4_000:],
@@ -89,12 +107,25 @@ def run_startup_smoke(*, expected_platform: str | None = None) -> dict[str, obje
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected-platform")
+    parser.add_argument("--expected-isolated-root")
+    parser.add_argument("--output", type=Path)
     return parser.parse_args()
 
 
 def main() -> int:
     args = _parse_args()
-    result = run_startup_smoke(expected_platform=args.expected_platform)
+    result = run_startup_smoke(
+        expected_platform=args.expected_platform,
+        expected_isolated_root=args.expected_isolated_root,
+    )
+    if args.output is not None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        temporary = args.output.with_suffix(f"{args.output.suffix}.tmp")
+        temporary.write_text(
+            json.dumps(result, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        temporary.replace(args.output)
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if result["passed"] else 1
 

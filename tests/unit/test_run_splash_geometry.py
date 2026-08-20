@@ -8,10 +8,12 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QApplication, QMainWindow
 
+import run as run_entrypoint
 from run import (
     _configure_application_identity,
     _configure_product_window_lifetime,
     _configure_qt_application_attributes,
+    _configure_startup_smoke_qsettings,
     _create_centered_splash,
     _create_splash_pixmap,
     _present_main_window,
@@ -33,6 +35,53 @@ def test_qt_application_attributes_keep_file_dialogs_in_qt():
     _configure_qt_application_attributes()
 
     assert QApplication.testAttribute(Qt.ApplicationAttribute.AA_DontUseNativeDialogs)
+
+
+def test_startup_smoke_qsettings_is_explicit_and_isolated(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    assert _configure_startup_smoke_qsettings({}) is None
+
+    settings_root = tmp_path / "Native settings"
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        run_entrypoint.QSettings,
+        "setDefaultFormat",
+        lambda *args: calls.append(args),
+    )
+    monkeypatch.setattr(
+        run_entrypoint.QSettings,
+        "setPath",
+        lambda *args: calls.append(args),
+    )
+    resolved = _configure_startup_smoke_qsettings(
+        {
+            "XBRAINLAB_STARTUP_SMOKE_CLOSE_MS": "1000",
+            "XBRAINLAB_CONFIG_DIR": str(settings_root),
+        }
+    )
+
+    assert resolved == settings_root.resolve()
+    assert settings_root.is_dir()
+    assert calls[0] == (run_entrypoint.QSettings.Format.IniFormat,)
+    assert calls[1] == (
+        run_entrypoint.QSettings.Format.IniFormat,
+        run_entrypoint.QSettings.Scope.UserScope,
+        str(settings_root),
+    )
+
+
+def test_startup_smoke_qsettings_rejects_missing_or_relative_config() -> None:
+    with pytest.raises(ValueError, match="requires an isolated"):
+        _configure_startup_smoke_qsettings({"XBRAINLAB_STARTUP_SMOKE_CLOSE_MS": "1000"})
+    with pytest.raises(ValueError, match="must be absolute"):
+        _configure_startup_smoke_qsettings(
+            {
+                "XBRAINLAB_STARTUP_SMOKE_CLOSE_MS": "1000",
+                "XBRAINLAB_CONFIG_DIR": "relative/settings",
+            }
+        )
 
 
 class _SplashStub:

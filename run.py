@@ -36,6 +36,7 @@ configure_qt_platform_for_runtime()
 
 _RUN_ROOT = Path(__file__).resolve().parent
 _STARTUP_SMOKE_CLOSE_MS_ENV = "XBRAINLAB_STARTUP_SMOKE_CLOSE_MS"
+_CONFIG_DIR_ENV = "XBRAINLAB_CONFIG_DIR"
 
 
 def _resolve_tool_debug_script(value: str) -> str:
@@ -232,6 +233,28 @@ def _configure_qt_application_attributes() -> None:
     )
 
 
+def _configure_startup_smoke_qsettings(
+    environ: Mapping[str, str] = os.environ,
+) -> Path | None:
+    """Keep the explicit startup smoke out of the runner's native settings."""
+    if not environ.get(_STARTUP_SMOKE_CLOSE_MS_ENV, "").strip():
+        return None
+    raw_path = environ.get(_CONFIG_DIR_ENV, "").strip()
+    if not raw_path:
+        raise ValueError("Startup smoke requires an isolated XBRAINLAB_CONFIG_DIR.")
+    settings_root = Path(raw_path).expanduser()
+    if not settings_root.is_absolute():
+        raise ValueError("Startup smoke config path must be absolute.")
+    settings_root.mkdir(parents=True, exist_ok=True)
+    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+    QSettings.setPath(
+        QSettings.Format.IniFormat,
+        QSettings.Scope.UserScope,
+        str(settings_root),
+    )
+    return settings_root.resolve()
+
+
 def _startup_smoke_close_delay_ms(
     environ: Mapping[str, str] = os.environ,
 ) -> int | None:
@@ -288,6 +311,7 @@ def main() -> None:
     args = parser.parse_args()
 
     _configure_qt_application_attributes()
+    _configure_startup_smoke_qsettings()
     app = QApplication(sys.argv)
     _configure_application_identity(app)
 

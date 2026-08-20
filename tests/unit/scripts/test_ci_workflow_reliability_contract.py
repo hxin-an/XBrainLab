@@ -57,12 +57,12 @@ def test_ci_poetry_bootstrap_and_venv_cache_are_lock_exact() -> None:
         if step.get("name") == "Install dependencies"
         and str(step.get("run", "")).startswith("poetry ")
     ]
-    assert len(poetry_installers) == 7
+    assert len(poetry_installers) == 8
     assert all(
         'python -m pip install "poetry==${POETRY_VERSION}"' in step["run"]
         for step in poetry_installers
     )
-    assert len(dependency_installers) == 7
+    assert len(dependency_installers) == 8
     assert all(
         step["run"] == "poetry sync --no-interaction" for step in dependency_installers
     )
@@ -70,17 +70,19 @@ def test_ci_poetry_bootstrap_and_venv_cache_are_lock_exact() -> None:
     venv_cache_steps = [
         step for step in steps if str(step.get("with", {}).get("path", "")) == ".venv"
     ]
-    assert len(venv_cache_steps) == 7
+    assert len(venv_cache_steps) == 8
     for step in venv_cache_steps:
         cache = step["with"]
         assert "restore-keys" not in cache
         key = cache["key"]
         assert "${{ runner.os }}-${{ runner.arch }}" in key
-        assert "py${{ env.CI_PYTHON_VERSION }}" in key
+        assert (
+            "py${{ env.CI_PYTHON_VERSION }}" in key or "py${{ matrix.python }}" in key
+        )
         assert "poetry-${{ env.POETRY_VERSION }}" in key
         assert "${{ hashFiles('poetry.lock') }}" in key
 
-    for job in workflow["jobs"].values():
+    for job_key, job in workflow["jobs"].items():
         job_steps = job.get("steps", ())
         if not any(step in venv_cache_steps for step in job_steps):
             continue
@@ -89,9 +91,14 @@ def test_ci_poetry_bootstrap_and_venv_cache_are_lock_exact() -> None:
             for step in job_steps
             if str(step.get("uses", "")).startswith("actions/setup-python@")
         )
-        assert setup_python["with"]["python-version"] == (
-            "${{ env.CI_PYTHON_VERSION }}"
+        expected_python = (
+            "${{ matrix.python }}"
+            if job_key == "native-platform-source"
+            else "${{ env.CI_PYTHON_VERSION }}"
         )
+        assert setup_python["with"]["python-version"] == expected_python
+        cache_step = next(step for step in job_steps if step in venv_cache_steps)
+        assert f"py{expected_python}" in cache_step["with"]["key"]
 
     workflow_text = CI_WORKFLOW.read_text(encoding="utf-8")
     assert 'pip install "coverage>=7,<8" pytest' not in workflow_text
@@ -104,3 +111,68 @@ def test_public_fixture_cache_does_not_restore_a_stale_manifest() -> None:
         step for step in steps if step.get("name") == "Cache pinned public EEG fixtures"
     )
     assert "restore-keys" not in fixture_cache["with"]
+
+
+def test_native_platform_source_matrix_is_finite_native_and_required() -> None:
+    workflow = _workflow(CI_WORKFLOW)
+    job = workflow["jobs"]["native-platform-source"]
+    assert "QT_QPA_PLATFORM" not in job.get("env", {})
+    assert job["strategy"]["matrix"]["include"] == [
+        {
+            "key": "windows-product-py311",
+            "os": "windows-latest",
+            "python": "3.11",
+            "mode": "product",
+            "qt_platform": "windows",
+            "runner_os": "Windows",
+        },
+        {
+            "key": "windows-startup-py312",
+            "os": "windows-latest",
+            "python": "3.12",
+            "mode": "startup",
+            "qt_platform": "windows",
+            "runner_os": "Windows",
+        },
+        {
+            "key": "macos-product-py311",
+            "os": "macos-latest",
+            "python": "3.11",
+            "mode": "product",
+            "qt_platform": "cocoa",
+            "runner_os": "macOS",
+        },
+    ]
+
+    steps = job["steps"]
+    assert any(step.get("name") == "Prepare isolated native paths" for step in steps)
+    verification = next(
+        step for step in steps if step.get("name") == "Verify required native evidence"
+    )
+    assert "verify_native_ci_evidence.py" in verification["run"]
+    assert verification["if"] == "always()"
+    upload = next(
+        step for step in steps if step.get("name") == "Upload required native evidence"
+    )
+    assert upload["if"] == "always()"
+    assert upload["with"]["if-no-files-found"] == "error"
+    assert "native-platform-smoke.json" in upload["with"]["path"]
+    assert "ci-source-provenance.json" in upload["with"]["path"]
+
+
+def test_native_source_probes_require_platform_and_isolated_root() -> None:
+    steps = _workflow(CI_WORKFLOW)["jobs"]["native-platform-source"]["steps"]
+    probes = [
+        step
+        for step in steps
+        if step.get("name")
+        in {
+            "Run native MainWindow product lifecycle",
+            "Run native entrypoint startup lifecycle",
+        }
+    ]
+    assert len(probes) == 2
+    for probe in probes:
+        assert "--expected-platform ${{ matrix.qt_platform }}" in probe["run"]
+        assert '--expected-isolated-root "${XBL_NATIVE_ROOT}"' in probe["run"]
+        assert "QT_QPA_PLATFORM" not in probe.get("env", {})
