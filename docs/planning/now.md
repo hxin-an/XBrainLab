@@ -61,8 +61,12 @@ basedpyright皆通過，`84d64ff9`獨立gate已PASS。LaBraM／EEGSym family目�
 InterpolatedLaBraM與EEGSym；support只擴充直接需要的MLP、parameter rescale與兩個hemisphere channel
 helpers，remote loader文件與surface均未移入。三個contracts完成upstream strict state-dict／deterministic
 output parity，Labram／EEGSym完成finite backward；全部既有legacy family加provenance focused suite為
-83 passed，Ruff／format／basedpyright皆通過。下一步是提交本family並取得同一獨立gate的exact-commit
-複核，通過前不開始SignalJEPA／LUNA family。
+83 passed，Ruff／format／basedpyright皆通過，`8190155d`獨立gate已PASS。SignalJEPA／LUNA family
+目前加入SignalJEPA、InterpolatedSignalJEPA、三個classification variants與LUNA；兩個source只依賴
+local legacy base／modules，Hub／download文件與可執行loader surface均未移入。六個contracts完成upstream
+strict state-dict／deterministic output parity，SignalJEPA／LUNA完成finite backward；全部既有legacy family
+加provenance focused suite為92 passed，Ruff／format／basedpyright皆通過。下一步是提交本family並取得
+同一獨立gate的exact-commit複核，通過前不開始REVE family。
 Legacy IDs與UI cutover仍未開始。
 
 ## 問題與證據

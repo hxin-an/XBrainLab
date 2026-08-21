@@ -28,12 +28,20 @@ from .fblightconvnet import FBLightConvNet
 from .fbmsnet import FBMSNet
 from .ifnet import IFNet
 from .labram import InterpolatedLaBraM, Labram
+from .luna import LUNA
 from .medformer import MEDFormer
 from .msvtnet import MSVTNet
 from .mvpformer import MVPFormer
 from .patchedtransformer import PBT
 from .sccnet import SCCNet
 from .shallow_fbcsp import ShallowFBCSPNet
+from .signal_jepa import (
+    InterpolatedSignalJEPA,
+    SignalJEPA,
+    SignalJEPA_Contextual,
+    SignalJEPA_PostLocal,
+    SignalJEPA_PreLocal,
+)
 from .sinc_shallow import SincShallowNet
 from .sleep_stager_blanco_2020 import SleepStagerBlanco2020
 from .sleep_stager_chambon_2018 import SleepStagerChambon2018
@@ -54,6 +62,7 @@ __all__ = [
     "DGCNN",
     "EEGDINO",
     "EEGPT",
+    "LUNA",
     "PBT",
     "SSTDPN",
     "ATCNet",
@@ -82,6 +91,7 @@ __all__ = [
     "InterpolatedBIOT",
     "InterpolatedEEGPT",
     "InterpolatedLaBraM",
+    "InterpolatedSignalJEPA",
     "Labram",
     "MEDFormer",
     "MSVTNet",
@@ -90,6 +100,10 @@ __all__ = [
     "SPARCNet",
     "STEEGFormer",
     "ShallowFBCSPNet",
+    "SignalJEPA",
+    "SignalJEPA_Contextual",
+    "SignalJEPA_PostLocal",
+    "SignalJEPA_PreLocal",
     "SincShallowNet",
     "SleepStagerBlanco2020",
     "SleepStagerChambon2018",
