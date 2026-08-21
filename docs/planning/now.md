@@ -26,8 +26,10 @@ Model Selection combo 改為可搜尋、可理解 unavailable reason 的完整�
 Data Import 與 4B Assistant 模型不在本 slice。
 
 施工 checkpoint：catalog／provider chain至`627c5492`已由獨立gate確認無blocker／major；metadata
-discovery保持barrel-free，只有checked provider status能啟用projection。61-symbol逐檔provenance manifest
-已進入驗證，hash／license／excluded set全數閉合後才開始legacy source copy；UI cutover仍未開始。
+discovery保持barrel-free，只有checked provider status能啟用projection。`f27eabfa`已鎖定61-symbol逐檔
+provenance、hash、license與excluded set。第一個baseline convolution family已完成private namespace、minimal
+no-Hub base、support provenance與六個model的strict state-dict／deterministic output parity；focused catalog、
+provenance及baseline驗證為39 passed，尚待本commit的獨立gate。Legacy IDs與UI cutover仍未開始。
 
 ## 問題與證據
 

@@ -13,6 +13,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[4]
 _MANIFEST_PATH = (
     _REPO_ROOT / "XBrainLab/backend/model_base/legacy_braindecode/PROVENANCE.tsv"
 )
+_SUPPORT_MANIFEST_PATH = _MANIFEST_PATH.with_name("SUPPORT_PROVENANCE.tsv")
 _APPROVED_LEGACY_LICENSES = {"BSD-3-Clause", "MIT", "Apache-2.0"}
 _EXCLUDED_SYMBOLS = {
     "BrainModule",
@@ -31,6 +32,15 @@ def _manifest_rows() -> list[dict[str, str]]:
     return list(csv.DictReader(lines, delimiter="\t"))
 
 
+def _support_manifest_rows() -> list[dict[str, str]]:
+    lines = [
+        line
+        for line in _SUPPORT_MANIFEST_PATH.read_text(encoding="utf-8").splitlines()
+        if not line.startswith("#")
+    ]
+    return list(csv.DictReader(lines, delimiter="\t"))
+
+
 def test_model_provenance_covers_every_pinned_contract_once() -> None:
     rows = _manifest_rows()
     manifested_symbols = [
@@ -44,7 +54,7 @@ def test_model_provenance_covers_every_pinned_contract_once() -> None:
 
 
 def test_model_provenance_matches_exact_installed_sources() -> None:
-    package_root = Path(distribution("braindecode").locate_file(""))
+    package_root = Path(str(distribution("braindecode").locate_file("")))
 
     for row in _manifest_rows():
         source_path = package_root / row["upstream_path"]
@@ -82,3 +92,33 @@ def test_catalog_legacy_eligibility_matches_provenance_allowlist() -> None:
         assert spec.license_id == row["license"]
         assert spec.legacy_copy_allowed is expected_allowed
         assert bool(spec.legacy_unavailable_reason) is not expected_allowed
+
+
+def test_legacy_support_provenance_matches_exact_installed_sources() -> None:
+    package_root = Path(str(distribution("braindecode").locate_file("")))
+    rows = _support_manifest_rows()
+
+    assert len(rows) == 11
+    assert len({row["upstream_path"] for row in rows}) == len(rows)
+    assert len({row["local_path"] for row in rows}) == len(rows)
+    for row in rows:
+        source_path = package_root / row["upstream_path"]
+        local_path = _SUPPORT_MANIFEST_PATH.parent / row["local_path"]
+        assert source_path.is_file(), row["upstream_path"]
+        assert local_path.is_file(), row["local_path"]
+        actual_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
+        assert actual_hash == row["sha256"], row["upstream_path"]
+        assert set(row["license"].split(" AND ")) <= _APPROVED_LEGACY_LICENSES
+        assert row["copy_mode"] in {"adapted-minimal", "namespace-only"}
+
+
+def test_legacy_notice_excludes_restricted_source_and_retains_license_texts() -> None:
+    root = _SUPPORT_MANIFEST_PATH.parent
+    notice = (root / "NOTICE.md").read_text(encoding="utf-8")
+
+    assert "braindecode==1.6.1" in notice
+    assert "GeneralizedGaussianFilter" in notice
+    assert (root / "LICENSE-BSD-3-Clause.txt").is_file()
+    assert "Permission is hereby granted" in (root / "LICENSE-MIT.txt").read_text(
+        encoding="utf-8"
+    )

@@ -1,0 +1,15 @@
+# source=braindecode==1.6.1
+# wheel_sha256=400594d8af168453c6e826c34b8a887620d3e90c9b3fbb7d32ceb08c56f243d2
+# source_url=https://github.com/braindecode/braindecode/tree/v1.6.1
+upstream_path	sha256	license	copy_mode	local_path
+braindecode/models/base.py	3b7a6499da9a0602d61e95a4545ee577403de53e37445ca7a3b9ad9328b4f1ab	BSD-3-Clause	adapted-minimal	models/base.py
+braindecode/functional/functions.py	96597c0041a08898adfbb64a335f5651461549cd0e58d94e9f2f3f9bad188484	BSD-3-Clause	namespace-only	functional/functions.py
+braindecode/functional/initialization.py	367efbde110c59560361eba716fef7b5dc5db5c6305c50bb3381f3adf5ac6874	BSD-3-Clause	namespace-only	functional/initialization.py
+braindecode/modules/activation.py	5ea88844e8764c5b261d3a662466bb0a4d38647cd45a78e09bd18f57ebde485a	BSD-3-Clause	namespace-only	modules/activation.py
+braindecode/modules/blocks.py	e83e34710e02886af22d60500b1df962ce9bd0688ddd0d285977aa8da4318c68	BSD-3-Clause	namespace-only	modules/blocks.py
+braindecode/modules/convolution.py	6fa8ef4a9d5b4bcb242147d7d99b67fc91f2c57f2ade1bda12ac8e9b336746c7	BSD-3-Clause	namespace-only	modules/convolution.py
+braindecode/modules/layers.py	c63c5a850b517137036b2ac401d252aed65fec70e3f2da8341e8eb2768e02b98	BSD-3-Clause AND MIT	namespace-only	modules/layers.py
+braindecode/modules/linear.py	bcc6e42799b65cbf587b4869bea6b6255389fde8507e4c10afd5814790bdd5ed	BSD-3-Clause	namespace-only	modules/linear.py
+braindecode/modules/parametrization.py	b13bd5db5fac769aa9898d8fcf00de6e2ed2784be4170f320e003a3aa243a37e	BSD-3-Clause	namespace-only	modules/parametrization.py
+braindecode/modules/wrapper.py	de580d8dcc09d4aaded93094a2e2a9129e9c89d160a7a2c10c359034b3af4508	BSD-3-Clause	namespace-only	modules/wrapper.py
+braindecode/util.py	f58ec662b3a7261bb0f4c51ae49479796055c97a4bccd658ca244255ff2690c7	BSD-3-Clause	adapted-minimal	util.py
