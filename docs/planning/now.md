@@ -88,8 +88,8 @@ provider true import preflight在Python-owned background thread執行，Matplotl
 3 local；找不到原ID時Confirm保持disabled，不替使用者選另一個identity。Catalog＋UI focused suite為52 passed，
 focused offscreen screenshot亦已人工檢視。`5cd736a3`的獨立gate發現Enter可繞過hidden／no-match selection；
 目前已讓keyboard與`accept()`共用visible＋enabled＋Confirm guard，並以no-match及hidden-selection兩條red→green
-regression關閉，UI focused suite為23 passed。下一步提交修正並re-gate；通過後才進入全部selectable models
-的catalog construction／forward與family workflow matrix，不提前執行full handoff。
+regression關閉，UI focused suite為23 passed；`5b6b4016` re-gate已PASS。UI checkpoint正式關閉。下一步進入
+全部selectable models的catalog construction／forward與family workflow matrix，不提前執行full handoff。
 
 ## 問題與證據
 
