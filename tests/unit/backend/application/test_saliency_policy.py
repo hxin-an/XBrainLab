@@ -1,5 +1,6 @@
 """Tests for shared saliency command/UI policy."""
 
+import os
 import subprocess
 import sys
 
@@ -29,12 +30,18 @@ def test_policy_methods_follow_visualization_supported_method_names():
 
 
 def test_policy_import_does_not_cold_start_visualization_stack() -> None:
+    child_environment = os.environ.copy()
+    for name in tuple(child_environment):
+        if name.startswith("COV_CORE_"):
+            child_environment.pop(name)
+
     probe = subprocess.run(  # noqa: S603 - fixed interpreter and inline probe
         [
             sys.executable,
             "-c",
             (
-                "import sys; "
+                "import os; import sys; "
+                "assert not any(name.startswith('COV_CORE_') for name in os.environ); "
                 "import XBrainLab.backend.application.saliency_policy; "
                 "assert 'XBrainLab.backend.visualization' not in sys.modules; "
                 "assert 'matplotlib.pyplot' not in sys.modules"
@@ -42,6 +49,7 @@ def test_policy_import_does_not_cold_start_visualization_stack() -> None:
         ],
         check=False,
         capture_output=True,
+        env=child_environment,
         text=True,
         timeout=10,
     )

@@ -237,6 +237,25 @@ Qt `xcb`、close requested、return 0及process-tree quiescent，九個mutable p
 temporary root；sandbox內同命令因不能連X display而native abort，未被計為產品失敗或pass。修復只觸及
 既有dev runner與test，production `+0/-0/net 0`、owner數不變；Ruff／format／diff check通過。下一步建立
 checkpoint並由既有獨立gate複核，PASS後push新exact head，再執行replacement canonical handoff。
+`735d8a91`的replacement handoff已關閉startup isolation，但complete regression在unit phase fail closed：
+`linux-unit-backend`的5,342個cases中只有
+`test_policy_import_does_not_cold_start_visualization_stack`失敗，原因是其10秒subprocess probe timeout；
+其餘5,341 passed，integration依unit barrier正確未啟動。修復scope只處理這個cold-import test seam：先以
+無coverage與handoff相同coverage argv各執行一次，確認產品import contract與`COV_CORE_*` child
+instrumentation的差異；若確認，僅讓該probe child不繼承coverage activation，父pytest coverage、10秒
+watchdog、`visualization`／`matplotlib.pyplot` absence assertions與產品碼全部保持不變。Non-goals是不提高
+timeout、不把import assertion改弱、不改saliency產品行為、runner topology或coverage policy。Focused
+validation為同一selector在canonical coverage argv下由red轉green、完整saliency policy file、Ruff／format／
+diff check；若無coverage仍timeout、child隔離後assertion失敗，或父coverage artifact消失即停止並按產品import
+defect重新分類。通過後建立一個tests/docs-only checkpoint，交既有獨立gate複核並push；之後只執行一次新的
+exact-source canonical handoff，不為計時重跑。
+Focused red evidence來自`735d8a91` canonical backend shard的10秒timeout；同selector在無coverage時
+為1 passed／4.54 seconds，加入父coverage但未隔離child時雖在空載環境通過，整體增至21.61 seconds。
+Probe現只移除其child environment的`COV_CORE_*`並反向斷言未繼承；同selector＋coverage為
+1 passed／11.97 seconds，完整saliency policy file＋coverage為18 passed／12.19 seconds，父pytest仍產生
+coverage artifact。產品source、assertions、watchdog與runner皆未改（production `+0/-0/net 0`，owner數
+不變）；Python Ruff／format、MkDocs strict與diff check均通過。下一步建立checkpoint並交既有獨立gate；
+PASS後push並只跑一次replacement canonical handoff。
 
 ## 問題與證據
 
