@@ -12,6 +12,7 @@ from XBrainLab.backend import model_base
 from XBrainLab.backend.model_base import model_catalog
 from XBrainLab.backend.model_base.model_catalog import (
     BRAINCDECODE_SOURCE_REVISION,
+    BraindecodeProviderStatus,
     braindecode_provider_status,
     default_model_id,
     discover_braindecode_model_specs,
@@ -156,13 +157,32 @@ def test_broken_provider_disables_visible_upstream_projection(monkeypatch) -> No
 
     monkeypatch.setattr(model_catalog.importlib, "import_module", fail_import)
 
-    specs = discover_braindecode_model_specs()
+    status = braindecode_provider_status()
+    specs = discover_braindecode_model_specs(provider_status=status)
 
     assert specs
     assert all(spec.available is False for spec in specs)
     assert all(
         "provider could not be loaded" in spec.unavailable_reason for spec in specs
     )
+
+
+def test_checked_provider_enables_only_eligible_projection() -> None:
+    specs = discover_braindecode_model_specs(
+        provider_status=BraindecodeProviderStatus(
+            available=True,
+            installed_version="1.6.1",
+            reason="",
+            checked=True,
+        )
+    )
+
+    assert next(
+        spec for spec in specs if spec.model_id == "braindecode.eegnet"
+    ).available
+    assert not next(
+        spec for spec in specs if spec.model_id == "braindecode.eegminer"
+    ).available
 
 
 def test_catalog_import_does_not_eagerly_import_braindecode_models() -> None:
@@ -173,6 +193,28 @@ def test_catalog_import_does_not_eagerly_import_braindecode_models() -> None:
             (
                 "import sys; "
                 "import XBrainLab.backend.model_base.model_catalog; "
+                "assert 'braindecode.models' not in sys.modules"
+            ),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert process.returncode == 0, process.stderr
+
+
+def test_catalog_discovery_does_not_import_braindecode_models_barrel() -> None:
+    process = subprocess.run(  # noqa: S603 - current interpreter, fixed test code
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; "
+                "from XBrainLab.backend import model_base; "
+                "from XBrainLab.backend.model_base.model_catalog import "
+                "discover_model_specs; "
+                "discover_model_specs(model_base); "
                 "assert 'braindecode.models' not in sys.modules"
             ),
         ],

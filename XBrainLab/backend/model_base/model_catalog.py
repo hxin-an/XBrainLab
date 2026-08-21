@@ -74,6 +74,7 @@ class BraindecodeProviderStatus:
     available: bool
     installed_version: str | None
     reason: str
+    checked: bool
 
 
 def _parameter(key: str, label: str, default: Any, description: str) -> ModelParameter:
@@ -363,8 +364,14 @@ def braindecode_provider_status() -> BraindecodeProviderStatus:
                 "The pinned Braindecode provider could not be loaded "
                 f"({type(exc).__name__})."
             ),
+            checked=True,
         )
-    return installation_status
+    return BraindecodeProviderStatus(
+        available=True,
+        installed_version=installation_status.installed_version,
+        reason="",
+        checked=True,
+    )
 
 
 def _braindecode_installation_status() -> BraindecodeProviderStatus:
@@ -374,6 +381,7 @@ def _braindecode_installation_status() -> BraindecodeProviderStatus:
             available=False,
             installed_version=None,
             reason=f"{BRAINCDECODE_SOURCE_REVISION} is not installed.",
+            checked=True,
         )
     try:
         installed_version = importlib.metadata.version("braindecode")
@@ -382,6 +390,7 @@ def _braindecode_installation_status() -> BraindecodeProviderStatus:
             available=False,
             installed_version=None,
             reason=f"{BRAINCDECODE_SOURCE_REVISION} is not installed.",
+            checked=True,
         )
     expected_version = BRAINCDECODE_SOURCE_REVISION.partition("==")[2]
     if installed_version != expected_version:
@@ -392,11 +401,13 @@ def _braindecode_installation_status() -> BraindecodeProviderStatus:
                 f"{BRAINCDECODE_SOURCE_REVISION} is required; "
                 f"found braindecode=={installed_version}."
             ),
+            checked=True,
         )
     return BraindecodeProviderStatus(
         available=True,
         installed_version=installed_version,
-        reason="",
+        reason="Braindecode provider readiness has not been checked.",
+        checked=False,
     )
 
 
@@ -404,21 +415,28 @@ def discover_model_specs(
     local_model_module: ModuleType,
     *,
     include_braindecode: bool = True,
+    provider_status: BraindecodeProviderStatus | None = None,
 ) -> tuple[ModelSpec, ...]:
     """Return curated external models followed by locally implemented models."""
     local_models = inspect.getmembers(local_model_module, inspect.isclass)
     known_local_models = any(name in _LOCAL_DISPLAY_NAMES for name, _ in local_models)
     specs: list[ModelSpec] = []
     if include_braindecode and known_local_models:
-        specs.extend(_braindecode_specs())
+        specs.extend(_braindecode_specs(provider_status=provider_status))
     for class_name, model_class in local_models:
         specs.append(_local_model_spec(class_name, model_class))
     return tuple(specs)
 
 
-def discover_braindecode_model_specs() -> tuple[ModelSpec, ...]:
+def discover_braindecode_model_specs(
+    *,
+    provider_status: BraindecodeProviderStatus | None = None,
+) -> tuple[ModelSpec, ...]:
     """Return the complete pinned upstream catalog, including unavailable entries."""
-    return _braindecode_specs(BRAINCDECODE_CATALOG_ENTRIES)
+    return _braindecode_specs(
+        BRAINCDECODE_CATALOG_ENTRIES,
+        provider_status=provider_status,
+    )
 
 
 def get_model_spec(model_name: str) -> ModelSpec:
@@ -449,8 +467,10 @@ def get_model_spec(model_name: str) -> ModelSpec:
 
 def _braindecode_specs(
     entries: tuple[BraindecodeCatalogEntry, ...] | None = None,
+    *,
+    provider_status: BraindecodeProviderStatus | None = None,
 ) -> tuple[ModelSpec, ...]:
-    provider_status = braindecode_provider_status()
+    projected_status = provider_status or _braindecode_installation_status()
     selected_entries = entries
     if selected_entries is None:
         entries_by_id = {
@@ -460,7 +480,7 @@ def _braindecode_specs(
             entries_by_id[model_id] for model_id in BRAINDECODE_MODEL_IDS
         )
     return tuple(
-        _braindecode_model_spec(entry, provider_status) for entry in selected_entries
+        _braindecode_model_spec(entry, projected_status) for entry in selected_entries
     )
 
 
