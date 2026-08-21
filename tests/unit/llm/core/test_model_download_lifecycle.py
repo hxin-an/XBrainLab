@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -31,7 +30,7 @@ PRIMARY_MODEL_REVISION = (
     "707f574c62054322f6b5b04b6d075f0a8f05e0f0"  # pragma: allowlist secret
 )
 VALID_TEST_WEIGHT_BYTES = 300_000_000
-THREAD_START_HARD_CEILING_SECONDS = 0.75
+BACKGROUND_WORK_WAIT_SECONDS = 5.0
 
 
 def _write_complete_model_cache(cache_dir: Path) -> Path:
@@ -179,35 +178,35 @@ def test_recursive_cache_cleanup_is_background_owned_and_in_close_fence(
     partial_path.mkdir()
     entered_cleanup = threading.Event()
     release_cleanup = threading.Event()
+    cleanup_timed_out = threading.Event()
     heartbeat: list[bool] = []
 
     def slow_rmtree(path: str) -> None:
         assert Path(path) == partial_path
         entered_cleanup.set()
-        release_cleanup.wait(timeout=2.0)
+        if not release_cleanup.wait(timeout=BACKGROUND_WORK_WAIT_SECONDS):
+            cleanup_timed_out.set()
 
     with patch(
         "XBrainLab.llm.core.model_download_lifecycle.shutil.rmtree",
         side_effect=slow_rmtree,
     ):
-        started_at = time.monotonic()
         assert lifecycle.request_cache_removal(
             "repo/id",
             str(tmp_path),
             reason=ModelCacheCleanupReason.USER_DELETE,
         )
-        elapsed = time.monotonic() - started_at
-
-        # Shared runners can spend hundreds of milliseconds admitting a native
-        # thread. The heartbeat below proves the two-second cleanup itself does
-        # not occupy the GUI thread; this remains a separate hard upper bound.
-        assert elapsed < THREAD_START_HARD_CEILING_SECONDS
+        # A synchronous regression cannot return before the blocked worker's
+        # finite wait expires. This causal check avoids measuring shared-runner
+        # thread-admission jitter as if it were GUI work.
+        assert cleanup_timed_out.is_set() is False
         qtbot.waitUntil(entered_cleanup.is_set, timeout=1000)
         assert lifecycle.is_idle() is False
         assert lifecycle.request_shutdown() is False
 
         QTimer.singleShot(0, lambda: heartbeat.append(True))
         qtbot.waitUntil(lambda: bool(heartbeat), timeout=1000)
+        assert cleanup_timed_out.is_set() is False
 
         release_cleanup.set()
         qtbot.waitUntil(lifecycle.is_idle, timeout=2000)
@@ -525,6 +524,7 @@ def test_model_status_inspection_runs_outside_gui_thread(
     )
     entered = threading.Event()
     release = threading.Event()
+    inspection_timed_out = threading.Event()
     heartbeat: list[bool] = []
     result = ModelStatusInspectionResult.unavailable(
         request,
@@ -533,7 +533,8 @@ def test_model_status_inspection_runs_outside_gui_thread(
 
     def inspect(_request):
         entered.set()
-        release.wait(timeout=2.0)
+        if not release.wait(timeout=BACKGROUND_WORK_WAIT_SECONDS):
+            inspection_timed_out.set()
         return result
 
     outcomes: list[ModelStatusInspectionResult] = []
@@ -543,18 +544,18 @@ def test_model_status_inspection_runs_outside_gui_thread(
         "XBrainLab.llm.core.model_download_lifecycle.inspect_model_status",
         side_effect=inspect,
     ):
-        started_at = time.monotonic()
         assert lifecycle.request_model_inspection(request) is True
-        elapsed = time.monotonic() - started_at
-        # The heartbeat below proves the two-second inspection itself does not
-        # occupy the GUI thread. Keep scheduler admission separately bounded.
-        assert elapsed < THREAD_START_HARD_CEILING_SECONDS
+        # The blocked worker must remain unfinished until this test releases
+        # it. A synchronous call therefore fails causally after a finite wait,
+        # independent of native thread-admission latency.
+        assert inspection_timed_out.is_set() is False
         qtbot.waitUntil(entered.is_set, timeout=1000)
         assert lifecycle._inspection_thread is not None
         inspection_thread_name = lifecycle._inspection_thread.objectName()
 
         QTimer.singleShot(0, lambda: heartbeat.append(True))
         qtbot.waitUntil(lambda: bool(heartbeat), timeout=1000)
+        assert inspection_timed_out.is_set() is False
         release.set()
         qtbot.waitUntil(lambda: bool(outcomes), timeout=2000)
 

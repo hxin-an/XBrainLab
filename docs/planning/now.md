@@ -275,6 +275,16 @@ CLI forwarding及artifact budget有focused coverage；Ruff／format、MkDocs str
 其餘所有non-skipped remote checks已completed／success，只有已分類的macOS smoke失敗。下一步建立
 tests／scripts／CI checkpoint並交既有獨立gate；PASS後push，等待新exact-head remote CI全綠，再對final
 SHA執行一次canonical handoff。
+`c0173c49`的macOS native product smoke已在真實ARM64 runner通過，Windows native product／startup、DPI、
+product lifecycle、macOS platform、Linux八shard及aggregate也通過；唯一新失敗是Windows
+`platform-core-contracts`的model-status background-thread unit test。產品work沒有在GUI thread執行，失敗來自
+shared runner的`QThread.start()` admission耗時1.094秒，超過測試歷史上由50ms→150ms→750ms反覆放寬的
+wall-clock oracle。修復scope只把cache cleanup與model inspection兩條同型test改為causal synchronization：
+release前worker不得完成，Qt heartbeat必須在worker仍blocked時被處理；同步退化會由finite 5秒worker wait
+精確失敗。不得提高產品timeout、改lifecycle source、retry pytest、放寬heartbeat／shutdown assertion或改CI
+topology。先以舊750ms oracle對1.094秒remote evidence為red，focused執行完整lifecycle test與Windows
+platform-core selector contract；Ruff／format／diff check通過後建立新checkpoint交同一獨立gate。PASS後push
+並等待新exact-head全綠；因source再變，最後仍只跑一次新SHA canonical handoff，不為計時重跑。
 
 ## 問題與證據
 
