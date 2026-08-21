@@ -147,6 +147,11 @@ timeout，不把macOS best-effort升格為真人desktop claim；focused validati
 collection/cardinality，不在本機重跑model matrix。Registry／Windows-full／macOS-family policy focused
 tests為5 passed；Linux collection保留54個model execution cases（另含3個inventory／platform policy cases），
 Ruff／format通過，basedpyright只有既有PyYAML source-resolution warning。
+`08b39997`獨立gate已PASS。Canonical truth sync更新`current.md`的model-catalog邊界、backend的唯一owner／
+artifact identity／legacy license closure、UI的search／provider recovery投影，以及validation的exact-source
+Braindecode candidate與Windows手測契約；不新增第二份plan或歷史worklog。MkDocs strict build通過。下一步
+提交docs checkpoint，之後freeze product source、產生exact-source Model Selection UI artifact並執行一次
+canonical handoff；若任何gate失敗，只修其recorded owner後建立新的candidate，不為計時重跑。
 
 ## 問題與證據
 

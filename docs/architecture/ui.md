@@ -1,6 +1,6 @@
 # UI 目前架構
 
-最後更新：`2026-08-13`
+最後更新：`2026-08-21`
 
 ## 範圍
 
@@ -158,6 +158,13 @@ blocked reason copy、command execution、post-command refresh，以及 mock / c
 | Evaluation / visualization / saliency | `evaluate`、`visualize`、`saliency` | Model Summary、metrics、Saliency publication 與 render preparation 在 background work 執行，以 request / generation / producer identity 擋 stale result。Training terminal 不自動算 Saliency；visible `Compute Saliency` 是唯一 product admission。 |
 | Montage | `QueryStateCommand(state)`、`apply_montage` | dialog channel defaults 走 state query；confirmed positions 走 `ApplyMontageCommand`；picker/matching 仍是 UI request。 |
 | Chat diagnostics | `ApplicationViewPublication` | assistant status、decision context、tool policy 讀同一 generation 的 state/capability，不把 missing capability 顯示成 debug error。 |
+
+Model Selection dialog只render `ModelCatalog`的detached projection：search可匹配name、stable ID、alias、
+family與task；disabled row顯示catalog-owned reason且不能Confirm。Provider readiness在Python-owned background
+worker做bounded preflight；完成前不阻塞Qt thread。Healthy provider顯示upstream IDs；unavailable provider
+顯示recovery banner與distinct `legacy.braindecode.*` IDs，並保留原selection，不自動替換identity。Backend
+在`ConfigureTrainingCommand` mutation前以當下Epochs signal context重新admit，因此stale UI projection不能
+繞過dataset compatibility。
 
 MainWindow close 先 fence application work、送出 cancellable-operation intents，再等待 backend
 registry、training/evaluation/saliency/render workers、Qt owners 與 product subprocess inventory 收斂。

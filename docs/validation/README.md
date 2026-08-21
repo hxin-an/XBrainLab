@@ -94,6 +94,25 @@ Assistant candidate必須在同一clean/explained exact source依序閉合下列
    透過真GUI；confirmation/cancel/navigation terminal不可由script預先批准。
 5. PR所有applicable non-skipped checks completed/success後，才記錄manual acceptance與merge同意。
 
+### Braindecode catalog candidate
+
+Braindecode catalog／legacy recovery變更在final exact source需閉合下列證據：
+
+1. Catalog／license guard證明61個pinned upstream contracts、54個selectable classification models、57個
+   permissive legacy sources、四個CC BY-NC exclusions，以及no-barrel discovery／no-Hub legacy closure。
+2. Linux與Windows對54個selectable upstream IDs各執行compatible-context constructor、finite forward及
+   finite gradient；macOS至少執行六個catalog family representatives。每個family另有一條real CPU
+   one-epoch → selected checkpoint → safe artifact reload → evaluation → Gradient saliency workflow。
+3. Exact-source UI artifact顯示searchable healthy catalog。Windows真人驗收再確認：搜尋`EEGNet`與
+   `EEGConformer`、disabled reason、no-match／Cancel、100／125／150% DPI；以EEGNet及EEGConformer各走
+   CPU one epoch、Evaluation與explicit Compute Saliency。
+4. Provider unavailable walkthrough只可顯示distinct `legacy.braindecode.*` recovery IDs，不得自動改變原
+   selection；explicit recovery selection完成後的artifact必須記錄legacy provider／revision。恢復provider後
+   persisted legacy ID仍不得被rebind成upstream。
+
+此candidate不宣稱scientific accuracy、預訓練權重品質、non-classification task、REVE position-bank支援，
+或macOS真人desktop acceptance。
+
 #### Assistant manual walkthrough commands
 
 從repo root啟動，每份profile使用fresh process與fresh session；不加`--model`，diagnostic
