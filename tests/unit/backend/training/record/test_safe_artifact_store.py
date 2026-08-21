@@ -442,6 +442,53 @@ def test_training_record_does_not_assign_provider_to_identityless_artifact(
         recovery.load()
 
 
+def test_training_record_rejects_malformed_provider_identity(
+    tmp_path: Path,
+    dataset,  # noqa: F811
+    training_option,  # noqa: F811
+    model_holder,  # noqa: F811
+) -> None:
+    model_identity = {
+        "model_id": "braindecode.eegnet",
+        "provider": "braindecode",
+        "source_revision": "braindecode==1.6.1",
+    }
+    with patch.object(TrainRecord, "init_dir"):
+        record = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            0,
+            model_identity=model_identity,
+        )
+    record.target_path = str(tmp_path)
+    record._artifact_io_path = str(tmp_path)
+    record.export_checkpoint()
+    manifest_path = tmp_path / "record"
+    manifest = _read_manifest(manifest_path)
+    manifest["payload"]["model_identity"] = {"provider": "braindecode"}
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+    with patch.object(TrainRecord, "init_dir"):
+        restored = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            0,
+            model_identity=model_identity,
+        )
+    restored.target_path = str(tmp_path)
+    restored._artifact_io_path = str(tmp_path)
+
+    with pytest.raises(RuntimeError, match="model identity is malformed"):
+        restored.load()
+
+
 def test_legacy_training_record_is_rejected_without_deserialization(
     tmp_path: Path,
     dataset,  # noqa: F811

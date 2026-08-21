@@ -256,7 +256,12 @@ def _decode_training_artifact(
             else loaded_value
         )
         normalized_best[key] = normalized_value
-    model_identity = _normalize_model_identity(data.get("model_identity"))
+    try:
+        model_identity = _normalize_model_identity(data.get("model_identity"))
+    except ArtifactStoreError as exc:
+        raise UnsupportedArtifactError(
+            "Training artifact model identity is malformed. Start a new training run."
+        ) from exc
     return train, val, test, normalized_best, seed, epoch, model_identity
 
 
