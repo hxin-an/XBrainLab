@@ -166,6 +166,7 @@ exclude = [
 include = ["XBrainLab"]
 exclude = [
     "XBrainLab/llm/core/models",
+    "XBrainLab/backend/model_base/legacy_braindecode",
 ]
 pythonVersion = "3.12"
 typeCheckingMode = "basic"

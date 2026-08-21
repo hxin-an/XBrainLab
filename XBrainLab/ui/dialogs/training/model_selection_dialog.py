@@ -499,8 +499,10 @@ class ModelSelectionDialog(BaseDialog):
                 else "Braindecode 1.6.1 is unavailable. Showing reviewed local "
                 "recovery models; no model identity was changed automatically."
             )
-            self.provider_banner.style().unpolish(self.provider_banner)
-            self.provider_banner.style().polish(self.provider_banner)
+            style = self.provider_banner.style()
+            if style is not None:
+                style.unpolish(self.provider_banner)
+                style.polish(self.provider_banner)
 
     def _read_signal_context(self) -> dict[str, Any] | None:
         return get_training_model_signal_context(
@@ -579,6 +581,8 @@ class ModelSelectionDialog(BaseDialog):
         current_visible = False
         for index in range(self.model_results.count()):
             item = self.model_results.item(index)
+            if item is None:
+                continue
             search_text = str(item.data(Qt.ItemDataRole.UserRole + 1) or "")
             visible = not query or all(token in search_text for token in query.split())
             item.setHidden(not visible)
@@ -619,12 +623,13 @@ class ModelSelectionDialog(BaseDialog):
     def _move_result_selection(self, direction: int) -> None:
         if self.model_results is None:
             return
-        candidates = [
-            index
-            for index in range(self.model_results.count())
-            if not self.model_results.item(index).isHidden()
-            and bool(self.model_results.item(index).flags() & Qt.ItemFlag.ItemIsEnabled)
-        ]
+        candidates: list[int] = []
+        for index in range(self.model_results.count()):
+            item = self.model_results.item(index)
+            if item is None:
+                continue
+            if not item.isHidden() and bool(item.flags() & Qt.ItemFlag.ItemIsEnabled):
+                candidates.append(index)
         if not candidates:
             return
         current = self.model_results.currentRow()

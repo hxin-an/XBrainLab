@@ -206,6 +206,22 @@ saliency或artifact fail-closed規則。若仍有其他failure即停止並按新
 Shared integration fixture補齊後，該file 35 passed，原16個lifecycle cases已跨過producer identity並完成
 各自assertions；production `+0/-0/net 0`、owner數不變。下一步做Ruff／diff check、checkpoint與獨立gate，
 PASS後才push並重建exact-source evidence。
+`cdb222fb`在具備原生CUDA權限的replacement handoff先通過source preflight、Ruff與format，之後由
+basedpyright fail closed，尚未進入complete regression。相同gate在sandbox錯誤觀察為0 diagnostics；在
+handoff相同原生權限下可穩定重現624個observed diagnostics，其中537個new diagnostics只位於逐檔保留的
+`legacy_braindecode`第三方原碼，另7個位於XBrainLab-owned Model Selection Qt Optional access。修復scope
+只包含：(1)將exact legacy third-party namespace加入basedpyright exclude，同時保留provenance、model parity、
+54-model execution與六family workflow作其authoritative evidence；(2)實際收斂Model Selection的optional
+style／list-item access；(3)加入typecheck config contract，防止排除範圍擴張至catalog／adapter／UI。
+不更新baseline、不逐行改寫上游vendored演算法、不忽略XBrainLab-owned diagnostics，也不改可見UI行為。
+Focused validation須在原生權限下使basedpyright regression為0 new diagnostics，並通過selector、typecheck
+contract、Ruff與format；若exclude涵蓋legacy namespace以外、仍有owned-code diagnostics或任何selector
+行為改變即停止。通過後建立新SHA並交既有獨立gate，只有PASS才執行replacement canonical handoff。
+修復完成後selector＋typecheck contract為29 passed，Ruff／format／diff check通過；原生權限下的
+basedpyright regression為80 observed、0 new、1 resolved，沒有更新81筆既有baseline。排除範圍只包含
+reviewed legacy third-party namespace與原有LLM model source，catalog／adapter／artifact／UI仍受檢；
+production變更為UI null-safe access `+14/-7/net +7`，owner數不變且沒有可見行為改動。下一步建立
+checkpoint並由既有獨立gate複核，PASS後push新exact head並執行replacement canonical handoff。
 
 ## 問題與證據
 
