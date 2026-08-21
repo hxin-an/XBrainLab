@@ -1363,7 +1363,10 @@ class Epochs:
         """Return arguments needed for model initialization.
 
         Returns:
-            Dict with keys ``n_classes``, ``channels``, ``samples``, ``sfreq``.
+            Constructor context including signal dimensions and detached MNE
+            channel metadata. Catalog factories consume ``chs_info`` only when
+            the selected architecture declares it; older direct model holders
+            ignore it.
 
         """
         return {
@@ -1371,7 +1374,27 @@ class Epochs:
             "channels": len(self.ch_names),
             "samples": self.data.shape[-1],
             "sfreq": self.sfreq,
+            "chs_info": self._model_channel_info(),
         }
+
+    def _model_channel_info(self) -> list[dict]:
+        info = mne.create_info(
+            ch_names=self.ch_names,
+            sfreq=self.sfreq,
+            ch_types="eeg",
+        )
+        if self.channel_position is not None:
+            if len(self.channel_position) != len(info["chs"]):
+                raise RuntimeError(
+                    "Montage positions do not match the model channel context."
+                )
+            for channel, position in zip(
+                info["chs"],
+                self.channel_position,
+                strict=True,
+            ):
+                channel["loc"][:3] = np.asarray(position, dtype=float)
+        return [dict(channel) for channel in info["chs"]]
 
     def get_data(self) -> np.ndarray:
         """Return the epoch data array.

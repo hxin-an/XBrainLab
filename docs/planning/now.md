@@ -69,9 +69,14 @@ strict state-dict／deterministic output parity，SignalJEPA／LUNA完成finite 
 最後一個REVE family目前已移入其BSD model source，但刪除position-bank HTTP／cache／JSON loader與
 remote pretrained surface；legacy forward只接受caller明確提供的`pos`，channel-name lookup在沒有local
 position data時fail closed。REVE完成upstream strict state-dict／deterministic output parity與finite backward；
-全部既有legacy family加provenance focused suite為96 passed，Ruff／format／basedpyright皆通過。下一步是
-提交REVE並取得同一獨立gate的exact-commit複核；通過後legacy vendoring family才算關閉。
-Legacy IDs與UI cutover仍未開始。
+全部既有legacy family加provenance focused suite為96 passed，Ruff／format／basedpyright皆通過，
+`fe4b3959`獨立gate已PASS；57個permissive contracts的legacy vendoring正式關閉，四個restricted contracts
+只保留metadata。Admission第一個checkpoint目前已建立provider-aware projection：healthy時顯示完整61個
+upstream contracts，provider unavailable時改列57個distinct `legacy.braindecode.*` recovery IDs，且explicit
+legacy ID在healthy環境仍可解析但不會顯示整份legacy catalog。Catalog factory只傳model宣告的signal context，
+Epochs補上detached `chs_info`，TrainingService拒絕disabled contract並把provider／revision寫入ModelHolder；
+相關catalog、training service、epochs focused suite為422 passed。下一步是提交本checkpoint並取得同一獨立gate
+複核，再完成training artifact／evaluation／saliency identity；UI search cutover仍未開始。
 
 ## 問題與證據
 

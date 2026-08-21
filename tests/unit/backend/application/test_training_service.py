@@ -413,7 +413,27 @@ def test_training_service_resolves_braindecode_catalog_model() -> None:
     assert message == "Model configured: braindecode.eegnet."
     assert training.model_holder.model_id == "braindecode.eegnet"
     assert training.model_holder.display_name == "EEGNet (Braindecode)"
+    assert training.model_holder.provider == "braindecode"
+    assert training.model_holder.source_revision == "braindecode==1.6.1"
     assert training.model_holder.model_params_map == {"F1": 12}
+
+
+def test_training_service_rejects_catalog_model_marked_unavailable(monkeypatch) -> None:
+    service, _training = _service()
+    monkeypatch.setattr(
+        training_service_module,
+        "get_model_spec",
+        lambda _name: SimpleNamespace(
+            available=False,
+            display_name="REVE (Braindecode)",
+            unavailable_reason="Reviewed electrode positions are required.",
+        ),
+    )
+
+    with pytest.raises(ValueError, match="Reviewed electrode positions are required"):
+        service.handle_configure_training(
+            ConfigureTrainingCommand(model_name="braindecode.reve"),
+        )
 
 
 @pytest.mark.parametrize(

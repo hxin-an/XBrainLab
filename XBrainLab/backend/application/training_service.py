@@ -485,12 +485,17 @@ class TrainingCommandService:
     ) -> ModelHolder:
         """Build a detached holder through the same catalog used by configure."""
         model_spec = get_model_spec(model_name)
+        if not model_spec.available:
+            reason = model_spec.unavailable_reason or "Model is unavailable."
+            raise ValueError(f"{model_spec.display_name} cannot be selected. {reason}")
         return ModelHolder(
             model_spec.factory,
             dict(model_params),
             pretrained_weight_path,
             model_id=model_spec.model_id,
             display_name=model_spec.display_name,
+            provider=model_spec.provider,
+            source_revision=model_spec.source_revision,
         )
 
     @staticmethod

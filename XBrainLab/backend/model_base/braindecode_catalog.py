@@ -50,6 +50,12 @@ _NON_CLASSIFICATION_TASKS = {
     "EMG2QwertyNet": "sequence",
     "MetaNeuromotorHand": "sequence",
 }
+_EXTERNAL_RESOURCE_MODELS = {
+    "REVE": (
+        "Unavailable because the current offline training workflow does not "
+        "provide the reviewed electrode-position bank required by REVE."
+    ),
+}
 _MIT_MODELS = {"CTNet", "IFNet", "MEDFormer", "TCFormer"}
 _APACHE_MODELS = {"LUNA", "MVPFormer"}
 
@@ -139,6 +145,8 @@ def _unavailable_reason(class_name: str) -> str:
             "Unavailable because the current training workflow supports "
             "classification outputs only."
         )
+    if class_name in _EXTERNAL_RESOURCE_MODELS:
+        return _EXTERNAL_RESOURCE_MODELS[class_name]
     return ""
 
 

@@ -12,10 +12,12 @@ from XBrainLab.backend import model_base
 from XBrainLab.backend.model_base import model_catalog
 from XBrainLab.backend.model_base.model_catalog import (
     BRAINCDECODE_SOURCE_REVISION,
+    LEGACY_BRAINCDECODE_SOURCE_REVISION,
     BraindecodeProviderStatus,
     braindecode_provider_status,
     default_model_id,
     discover_braindecode_model_specs,
+    discover_legacy_braindecode_model_specs,
     discover_model_specs,
     get_model_spec,
 )
@@ -35,10 +37,34 @@ _BASELINE_FORWARD_MODEL_IDS = (
 )
 
 
-def test_catalog_exposes_curated_braindecode_and_legacy_models() -> None:
-    specs = discover_model_specs(model_base)
+def _healthy_provider() -> BraindecodeProviderStatus:
+    return BraindecodeProviderStatus(
+        available=True,
+        installed_version="1.6.1",
+        reason="",
+        checked=True,
+    )
 
-    assert [spec.model_id for spec in specs[:10]] == list(BRAINDECODE_MODEL_IDS)
+
+def _missing_provider() -> BraindecodeProviderStatus:
+    return BraindecodeProviderStatus(
+        available=False,
+        installed_version=None,
+        reason="braindecode==1.6.1 is not installed.",
+        checked=True,
+    )
+
+
+def test_catalog_exposes_complete_upstream_and_xbrainlab_models() -> None:
+    specs = discover_model_specs(model_base, provider_status=_healthy_provider())
+
+    assert [spec.model_id for spec in specs[:61]] == [
+        spec.model_id
+        for spec in discover_braindecode_model_specs(
+            provider_status=_healthy_provider()
+        )
+    ]
+    assert set(BRAINDECODE_MODEL_IDS).issubset({spec.model_id for spec in specs[:61]})
     assert default_model_id() == "braindecode.eegnet"
     assert {spec.display_name for spec in specs} >= {
         "EEGNet (Braindecode)",
@@ -56,9 +82,49 @@ def test_catalog_exposes_curated_braindecode_and_legacy_models() -> None:
         "SCCNet (XBrainLab)",
     }
     assert all(
-        spec.source_revision == BRAINCDECODE_SOURCE_REVISION for spec in specs[:10]
+        spec.source_revision == BRAINCDECODE_SOURCE_REVISION for spec in specs[:61]
     )
-    assert all(spec.provider == "braindecode" for spec in specs[:10])
+    assert all(spec.provider == "braindecode" for spec in specs[:61])
+
+
+def test_missing_upstream_projects_distinct_legacy_recovery_ids() -> None:
+    specs = discover_model_specs(model_base, provider_status=_missing_provider())
+    legacy_specs = [spec for spec in specs if spec.provider == "legacy-braindecode"]
+
+    assert len(legacy_specs) == 57
+    assert all(spec.model_id.startswith("legacy.braindecode.") for spec in legacy_specs)
+    assert all(
+        spec.source_revision == LEGACY_BRAINCDECODE_SOURCE_REVISION
+        for spec in legacy_specs
+    )
+    assert not any(spec.model_id.startswith("braindecode.") for spec in specs)
+    assert not any(spec.aliases == ("EEGMiner",) for spec in legacy_specs)
+
+
+def test_healthy_upstream_hides_legacy_recovery_catalog() -> None:
+    specs = discover_model_specs(model_base, provider_status=_healthy_provider())
+
+    assert not any(spec.model_id.startswith("legacy.braindecode.") for spec in specs)
+
+
+def test_explicit_legacy_id_remains_resolvable_while_upstream_is_healthy() -> None:
+    spec = get_model_spec(
+        "legacy.braindecode.eegnet",
+        provider_status=_healthy_provider(),
+    )
+
+    assert spec.model_id == "legacy.braindecode.eegnet"
+    assert spec.provider == "legacy-braindecode"
+
+
+def test_legacy_catalog_contains_only_reviewed_permissive_source() -> None:
+    specs = discover_legacy_braindecode_model_specs()
+
+    assert len(specs) == 57
+    assert all(spec.legacy_copy_allowed for spec in specs)
+    assert {spec.aliases[0] for spec in specs}.isdisjoint(
+        {"BrainModule", "EEGMiner", "EMG2QwertyNet", "MetaNeuromotorHand"}
+    )
 
 
 def test_complete_braindecode_inventory_has_61_pinned_contracts() -> None:
@@ -260,6 +326,32 @@ def test_braindecode_factory_contains_third_party_matplotlib_style_changes(
 
     assert built["n_outputs"] == 2
     assert matplotlib.rcParams["font.size"] == original_font_size
+
+
+def test_factory_passes_only_declared_signal_context(monkeypatch) -> None:
+    spec = get_model_spec(
+        "braindecode.interpolatedeegpt",
+        provider_status=_healthy_provider(),
+    )
+    original_import_module = model_catalog.importlib.import_module
+
+    def import_module(name: str):
+        if name == "braindecode.models.eegpt":
+            return SimpleNamespace(InterpolatedEEGPT=lambda **kwargs: kwargs)
+        return original_import_module(name)
+
+    monkeypatch.setattr(model_catalog.importlib, "import_module", import_module)
+    chs_info = [{"ch_name": "C3"}, {"ch_name": "C4"}]
+
+    built = spec.factory(
+        n_classes=2,
+        channels=2,
+        samples=128,
+        sfreq=128.0,
+        chs_info=chs_info,
+    )
+
+    assert built == {"n_outputs": 2, "n_times": 128, "chs_info": chs_info}
 
 
 @pytest.mark.parametrize("model_id", _BASELINE_FORWARD_MODEL_IDS)
