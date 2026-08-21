@@ -61,6 +61,11 @@ def _validate_loaded_model_identity(
     loaded: dict[str, str] | None,
     current: dict[str, str] | None,
 ) -> None:
+    if current is not None and loaded is None:
+        raise UnsupportedArtifactError(
+            "Training artifact has no model provider identity. Start a new training "
+            "run instead of assigning it to the configured model."
+        )
     if loaded is not None and current is not None and loaded != current:
         raise UnsupportedArtifactError(
             "Training artifact model identity does not match the configured model. "

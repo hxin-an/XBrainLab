@@ -404,6 +404,44 @@ def test_training_record_rejects_different_provider_identity(
         recovery.load()
 
 
+def test_training_record_does_not_assign_provider_to_identityless_artifact(
+    tmp_path: Path,
+    dataset,  # noqa: F811
+    training_option,  # noqa: F811
+    model_holder,  # noqa: F811
+) -> None:
+    with patch.object(TrainRecord, "init_dir"):
+        unknown = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            0,
+        )
+    unknown.target_path = str(tmp_path)
+    unknown._artifact_io_path = str(tmp_path)
+    unknown.export_checkpoint()
+
+    with patch.object(TrainRecord, "init_dir"):
+        recovery = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            0,
+            model_identity={
+                "model_id": "legacy.braindecode.eegnet",
+                "provider": "legacy-braindecode",
+                "source_revision": "braindecode==1.6.1+xbrainlab-reviewed",
+            },
+        )
+    recovery.target_path = str(tmp_path)
+    recovery._artifact_io_path = str(tmp_path)
+
+    with pytest.raises(RuntimeError, match="no model provider identity"):
+        recovery.load()
+
+
 def test_legacy_training_record_is_rejected_without_deserialization(
     tmp_path: Path,
     dataset,  # noqa: F811
