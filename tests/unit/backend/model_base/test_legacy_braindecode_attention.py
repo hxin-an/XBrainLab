@@ -205,8 +205,15 @@ def test_local_steegformer_never_downloads_channel_metadata() -> None:
     source_path = Path(legacy_models.__file__).parent / "steegformer.py"
     source = source_path.read_text(encoding="utf-8")
 
-    assert "huggingface_hub" not in source
-    assert "hf_hub_download" not in source
+    for forbidden_surface in (
+        "Hugging Face Hub",
+        "Hub API",
+        "_hub_mixin_config",
+        "from_pretrained",
+        "hf_hub_download",
+        "huggingface_hub",
+    ):
+        assert forbidden_surface not in source
 
     with pytest.raises(ValueError, match="chan_pos_idx"):
         legacy_models.STEEGFormer(

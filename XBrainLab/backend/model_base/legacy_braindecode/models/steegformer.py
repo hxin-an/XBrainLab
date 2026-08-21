@@ -122,56 +122,11 @@ class STEEGFormer(EEGModuleMixin, nn.Module):
          - 16
          - 256
 
-    .. rubric:: Pre-trained weights
-
-    Ready-to-use checkpoints are re-hosted on the Hugging Face Hub under the
-    braindecode organization. These repos convert the official MAE encoder
-    checkpoints to braindecode's key names and include ``config.json`` plus
-    ``model.safetensors``/``pytorch_model.bin``:
-
-    .. list-table::
-       :header-rows: 1
-
-       * - Variant
-         - Hub repo
-         - Notes
-       * - small
-         - ``braindecode/STEEGFormer-small``
-         - 145-slot channel vocabulary
-       * - base
-         - ``braindecode/STEEGFormer-base``
-         - 145-slot channel vocabulary
-       * - large
-         - ``braindecode/STEEGFormer-large``
-         - 145-slot channel vocabulary
-       * - largeV2
-         - ``braindecode/STEEGFormer-largeV2``
-         - 256-slot HBN channel vocabulary
-
-    Use the regular Hub API to load a re-hosted checkpoint::
-
-        model = STEEGFormer.from_pretrained(
-            "braindecode/STEEGFormer-small", n_outputs=4, n_chans=22
-        )
-
-    The re-hosted repos save complete braindecode model files, so they include a
-    classification head tensor for serialization. Only the encoder weights are
-    from the official MAE pretraining; pass ``n_outputs`` for the downstream
-    task so the head is rebuilt as needed.
-
-    To regenerate the re-hosted files from the official GitHub checkpoints, run
-    the standalone ``convert_steegformer_checkpoints.py`` archived in each Hub
-    repo; the model itself loads braindecode-format state dicts, so
-    ``from_pretrained`` needs no conversion.
-
     .. note::
-        Numerical equivalence of the encoder features with the reference
-        implementation has been verified on the released checkpoints. The
-        channel-to-vocabulary mapping is resolved from the electrode names
-        in ``chs_info`` (looked up in :data:`STEEGFORMER_CHANNEL_ORDER`, the
-        BENDR/LaBraM convention); when ``chs_info`` is absent or a name is
-        unknown, it falls back to the identity mapping (channel ``i`` -> slot
-        ``i``) with a warning. Pass ``chan_pos_idx`` to override explicitly.
+        This legacy recovery implementation is offline. When ``chs_info`` is
+        absent it uses identity channel positions. When montage metadata is
+        present, pass a reviewed ``chan_pos_idx`` explicitly; the model never
+        retrieves a channel vocabulary or weights.
 
     Parameters
     ----------
@@ -274,8 +229,7 @@ class STEEGFormer(EEGModuleMixin, nn.Module):
         # Priority: explicit ``chan_pos_idx`` wins; otherwise resolve from the
         # electrode names in ``chs_info`` (BENDR/LaBraM convention); if neither
         # is usable, fall back to the identity mapping (channel i -> slot i).
-        explicit_chan_pos = chan_pos_idx is not None
-        if explicit_chan_pos:
+        if chan_pos_idx is not None:
             chan_pos_idx = torch.as_tensor(chan_pos_idx, dtype=torch.long)
         else:
             chan_pos_idx = self._chan_pos_idx_from_chs_info()
@@ -291,20 +245,10 @@ class STEEGFormer(EEGModuleMixin, nn.Module):
                 f"chan_pos_idx values must be in [0, {n_chans_pos}), got range "
                 f"[{int(chan_pos_idx.min())}, {int(chan_pos_idx.max())}]."
             )
-        # Non-persistent: the channel->vocab-slot selection is montage-specific
-        # and is recomputed from chan_pos_idx at construction, so it must NOT be
-        # baked into a pushed checkpoint (it would clobber or shape-mismatch a
-        # different montage on from_pretrained).
+        # Non-persistent: the channel-to-slot selection is montage-specific and
+        # is recomputed from chan_pos_idx at construction. It must not be baked
+        # into a model state and reused with a different montage.
         self.register_buffer("channel_indices", chan_pos_idx, persistent=False)
-        # An EXPLICIT chan_pos_idx must survive the (JSON) config round-trip: the
-        # Hub config layer drops numpy/tensor values, silently reverting to the
-        # identity mapping. Store the resolved slots as a JSON-able list. An
-        # auto-resolved mapping is left untouched (None) so chs_info re-resolves
-        # per montage on reload.
-        if explicit_chan_pos:
-            cfg = getattr(self, "_hub_mixin_config", None)
-            if isinstance(cfg, dict):
-                cfg["chan_pos_idx"] = chan_pos_idx.tolist()
 
         # Patch embedding + positional embeddings + CLS token.
         self.patch_embed = PatchTokenizer(
@@ -359,11 +303,7 @@ class STEEGFormer(EEGModuleMixin, nn.Module):
             nn.init.zeros_(module.bias)
 
     def reset_head(self, n_outputs):
-        """Replace the linear classification head for a new ``n_outputs``.
-
-        Called by :meth:`from_pretrained` when the requested number of outputs
-        differs from the pre-trained checkpoint (whose head is discarded).
-        """
+        """Replace the linear classification head for a new ``n_outputs``."""
         self._n_outputs = n_outputs
         self.final_layer = nn.Linear(self.embed_dim, n_outputs)
         self._init_weights(self.final_layer)  # match the constructor's head init
