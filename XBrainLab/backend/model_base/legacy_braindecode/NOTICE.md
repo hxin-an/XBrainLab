@@ -22,6 +22,16 @@ this family; unrelated upstream implementations are not copied in advance.
 The vendored IFNet adaptation retains its upstream MIT notice in
 `LICENSE-MIT-IFNet.txt`.
 
+CTNet, MEDFormer, and TCFormer retain their MIT source headers; the standard
+license text is included in `LICENSE-MIT.txt`. MVPFormer retains its IBM and
+Apache-2.0 source notice; the Apache License 2.0 text is included in
+`LICENSE-Apache-2.0.txt`.
+
+The legacy STEEGFormer adaptation intentionally removes the upstream Hub
+channel-vocabulary lookup. With no montage metadata it retains the documented
+identity mapping; with `chs_info`, callers must supply a reviewed
+`chan_pos_idx` explicitly. No legacy model downloads metadata or weights.
+
 No CC-BY-NC or patent-restricted model source is included. In particular,
 EEGMiner, MetaNeuromotorHand, EMG2QwertyNet, BrainModule, and the
 GeneralizedGaussianFilter implementation are excluded from this namespace.

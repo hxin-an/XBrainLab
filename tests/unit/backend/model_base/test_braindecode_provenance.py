@@ -105,13 +105,13 @@ def test_legacy_support_provenance_matches_exact_installed_sources() -> None:
     package_root = Path(str(distribution("braindecode").locate_file("")))
     rows = _support_manifest_rows()
 
-    assert len(rows) == 14
+    assert len(rows) == 15
     assert len({row["upstream_path"] for row in rows}) == len(rows)
     assert len({row["local_path"] for row in rows}) == len(rows)
     manifested_symbols = [
         symbol for row in rows for symbol in row["symbols"].split(",")
     ]
-    assert len(manifested_symbols) == len(set(manifested_symbols)) == 31
+    assert len(manifested_symbols) == len(set(manifested_symbols)) == 53
     for row in rows:
         source_path = package_root / row["upstream_path"]
         local_path = _SUPPORT_MANIFEST_PATH.parent / row["local_path"]
@@ -132,6 +132,8 @@ def test_legacy_notice_excludes_restricted_source_and_retains_license_texts() ->
     assert "GeneralizedGaussianFilter" in notice
     assert (root / "LICENSE-BSD-3-Clause.txt").is_file()
     assert (root / "LICENSE-MIT-IFNet.txt").is_file()
+    assert (root / "LICENSE-MIT.txt").is_file()
+    assert (root / "LICENSE-Apache-2.0.txt").is_file()
 
 
 def test_legacy_executable_source_excludes_unrelated_or_restricted_symbols() -> None:

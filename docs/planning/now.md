@@ -38,7 +38,15 @@ gate要求移除未使用的support symbols後已收斂到18個實際primitive�
 provenance與三個family的focused驗證為55 passed，且`09f5482b`獨立gate已PASS。Convolutional／TCN
 family目前再加入EEGInceptionMI、EEGITNet、EEGTCNet、EEGSimpleConv、SPARCNet、ContraWR、TSception、
 SyncNet、SincShallowNet與SSTDPN；十個model皆完成strict state-dict／deterministic output parity，三個代表
-完成finite backward，新增support只限MaxNorm與MaxNormLinear，尚待本family commit的獨立gate。
+完成finite backward，新增support只限MaxNorm與MaxNormLinear，且`f183d0de`獨立gate已PASS。下一個
+bounded family為attention／transformer；STEEGFormer的upstream Hub channel-index下載不會移入legacy，
+legacy contract改為使用者顯式提供index或在無channel metadata時沿用identity mapping，禁止網路fallback。
+本family現已加入ATCNet、AttentionBaseNet、CTNet、EEGConformer、MEDFormer、MSVTNet、MVPFormer、
+PBT、STEEGFormer與TCFormer；10個model皆完成strict state-dict／deterministic output parity，三個代表完成
+finite backward。Support closure只新增12個實際attention primitives、PatchTokenizer、FeedForwardBlock、
+DropPath、Conv1dWithConstraint與6個直接所需functional symbols；STEEGFormer的Hub lookup已刪除並有
+fail-closed regression。六個family加provenance focused suite為58 passed，Ruff／format／basedpyright皆通過，
+下一步是本commit獨立gate。
 Legacy IDs與UI cutover仍未開始。
 
 ## 問題與證據

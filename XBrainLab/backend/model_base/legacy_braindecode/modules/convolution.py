@@ -63,6 +63,15 @@ class Conv2dWithConstraint(nn.Conv2d):
         register_parametrization(self, "weight", MaxNormParametrize(self.max_norm))
 
 
+class Conv1dWithConstraint(nn.Conv1d):
+    """One-dimensional convolution with a max-norm weight constraint."""
+
+    def __init__(self, *args, max_norm: float = 1.0, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.max_norm = max_norm
+        register_parametrization(self, "weight", MaxNormParametrize(self.max_norm))
+
+
 class CombinedConv(nn.Module):
     """Merge temporal and spatial convolution weights at forward time."""
 

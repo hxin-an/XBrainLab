@@ -7,6 +7,8 @@ import torch
 from einops.layers.torch import Rearrange
 from torch import nn
 
+from ..functional import drop_path
+
 
 class Ensure4d(nn.Module):
     """Append singleton dimensions until an input tensor is four-dimensional."""
@@ -29,6 +31,20 @@ class Chomp1d(nn.Module):
 
     def forward(self, x):
         return x[:, :, : -self.chomp_size].contiguous()
+
+
+class DropPath(nn.Module):
+    """Drop residual paths per sample during training."""
+
+    def __init__(self, drop_prob=None):
+        super().__init__()
+        self.drop_prob = drop_prob
+
+    def forward(self, x):
+        return drop_path(x, self.drop_prob, self.training)
+
+    def extra_repr(self) -> str:
+        return f"p={self.drop_prob}"
 
 
 class SqueezeFinalOutput(nn.Module):
