@@ -21,6 +21,13 @@ _EXCLUDED_SYMBOLS = {
     "EMG2QwertyNet",
     "MetaNeuromotorHand",
 }
+_BANNED_LEGACY_SOURCE_TERMS = {
+    "BrainModule",
+    "ChannelMerger",
+    "FourierEmb",
+    "GeneralizedGaussianFilter",
+    "SubjectLayers",
+}
 
 
 def _manifest_rows() -> list[dict[str, str]]:
@@ -101,6 +108,10 @@ def test_legacy_support_provenance_matches_exact_installed_sources() -> None:
     assert len(rows) == 11
     assert len({row["upstream_path"] for row in rows}) == len(rows)
     assert len({row["local_path"] for row in rows}) == len(rows)
+    manifested_symbols = [
+        symbol for row in rows for symbol in row["symbols"].split(",")
+    ]
+    assert len(manifested_symbols) == len(set(manifested_symbols)) == 18
     for row in rows:
         source_path = package_root / row["upstream_path"]
         local_path = _SUPPORT_MANIFEST_PATH.parent / row["local_path"]
@@ -109,7 +120,8 @@ def test_legacy_support_provenance_matches_exact_installed_sources() -> None:
         actual_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
         assert actual_hash == row["sha256"], row["upstream_path"]
         assert set(row["license"].split(" AND ")) <= _APPROVED_LEGACY_LICENSES
-        assert row["copy_mode"] in {"adapted-minimal", "namespace-only"}
+        assert row["copy_mode"] in {"adapted-minimal", "symbol-subset"}
+        assert row["symbols"]
 
 
 def test_legacy_notice_excludes_restricted_source_and_retains_license_texts() -> None:
@@ -119,6 +131,13 @@ def test_legacy_notice_excludes_restricted_source_and_retains_license_texts() ->
     assert "braindecode==1.6.1" in notice
     assert "GeneralizedGaussianFilter" in notice
     assert (root / "LICENSE-BSD-3-Clause.txt").is_file()
-    assert "Permission is hereby granted" in (root / "LICENSE-MIT.txt").read_text(
-        encoding="utf-8"
+
+
+def test_legacy_executable_source_excludes_unrelated_or_restricted_symbols() -> None:
+    root = _SUPPORT_MANIFEST_PATH.parent
+    executable_source = "\n".join(
+        path.read_text(encoding="utf-8") for path in sorted(root.rglob("*.py"))
     )
+
+    for banned_term in _BANNED_LEGACY_SOURCE_TERMS:
+        assert banned_term not in executable_source

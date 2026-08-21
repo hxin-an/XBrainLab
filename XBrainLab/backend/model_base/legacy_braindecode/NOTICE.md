@@ -15,10 +15,9 @@ and configuration serialization behavior are deliberately excluded. The
 local `np_to_th` helper is likewise a minimal adaptation.
 
 Braindecode source without a file-level override is distributed under the
-BSD 3-Clause license in `LICENSE-BSD-3-Clause.txt`. Portions of
-`modules/layers.py` were adapted upstream from Meta's MIT-licensed VISSL and
-neuraltrain implementations; the MIT terms are retained in source and in
-`LICENSE-MIT.txt`.
+BSD 3-Clause license in `LICENSE-BSD-3-Clause.txt`. Support modules are
+symbol-level subsets containing only the primitives required by the models in
+this family; unrelated upstream implementations are not copied in advance.
 
 No CC-BY-NC or patent-restricted model source is included. In particular,
 EEGMiner, MetaNeuromotorHand, EMG2QwertyNet, BrainModule, and the
