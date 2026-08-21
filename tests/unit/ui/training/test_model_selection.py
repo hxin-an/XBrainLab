@@ -265,6 +265,44 @@ class TestModelSelection:
             qtbot.keyClick(dialog.search_input, Qt.Key.Key_Return)
         base_accept.assert_called_once()
 
+    def test_no_match_enter_cannot_accept_hidden_selection(self, qtbot):
+        dialog = ModelSelectionDialog(
+            None,
+            MagicMock(),
+            provider_status=HEALTHY_PROVIDER,
+        )
+        qtbot.addWidget(dialog)
+        dialog.show()
+        assert dialog.search_input is not None
+
+        dialog.search_input.setText("not a real architecture")
+        with patch("PyQt6.QtWidgets.QDialog.accept") as base_accept:
+            qtbot.keyClick(dialog.search_input, Qt.Key.Key_Return)
+
+        base_accept.assert_not_called()
+        assert dialog.get_result() is None
+
+    def test_enter_first_selects_visible_result_when_old_selection_is_hidden(
+        self,
+        qtbot,
+    ):
+        dialog = ModelSelectionDialog(
+            None,
+            MagicMock(),
+            provider_status=HEALTHY_PROVIDER,
+        )
+        qtbot.addWidget(dialog)
+        dialog.show()
+        assert dialog.search_input is not None
+
+        dialog.search_input.setText("braindecode.atcnet")
+        with patch("PyQt6.QtWidgets.QDialog.accept") as base_accept:
+            qtbot.keyClick(dialog.search_input, Qt.Key.Key_Return)
+
+        base_accept.assert_not_called()
+        assert dialog._selected_model_id == "braindecode.atcnet"
+        assert dialog.get_result() is None
+
     def test_provider_preflight_is_background_and_preserves_user_selection(
         self,
         qtbot,

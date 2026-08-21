@@ -583,7 +583,7 @@ class ModelSelectionDialog(BaseDialog):
                 self._move_result_selection(1 if key == Qt.Key.Key_Down else -1)
                 return True
             if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-                if self.model_results is not None and self.model_results.currentItem():
+                if self._current_result_is_actionable():
                     self.accept()
                 else:
                     self._move_result_selection(1)
@@ -631,6 +631,23 @@ class ModelSelectionDialog(BaseDialog):
         if self._selected_model_id is None:
             return None
         return self._spec_by_id.get(self._selected_model_id)
+
+    def _current_result_is_actionable(self) -> bool:
+        if self.model_results is None:
+            return False
+        item = self.model_results.currentItem()
+        spec = self._spec_for_item(item)
+        return bool(
+            item is not None
+            and not item.isHidden()
+            and item.flags() & Qt.ItemFlag.ItemIsEnabled
+            and item.flags() & Qt.ItemFlag.ItemIsSelectable
+            and spec is not None
+            and spec.available
+            and spec.model_id == self._selected_model_id
+            and self.confirm_btn is not None
+            and self.confirm_btn.isEnabled()
+        )
 
     def _select_spec(self, spec: ModelSpec | None) -> None:
         if spec is None or not spec.available:
@@ -749,7 +766,7 @@ class ModelSelectionDialog(BaseDialog):
             QMessageBox: Warning if parameter parsing fails.
 
         """
-        if not self.params_table:
+        if not self.params_table or not self._current_result_is_actionable():
             return
 
         spec = self._selected_spec()

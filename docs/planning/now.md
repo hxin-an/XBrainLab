@@ -86,8 +86,10 @@ family／task filter、disabled reason、no-match、keyboard、selection preserv
 provider true import preflight在Python-owned background thread執行，Matplotlib style side effect由既有lock＋
 `rc_context`隔離。Healthy projection顯示61 upstream＋3 local，missing／broken provider顯示57 distinct recovery＋
 3 local；找不到原ID時Confirm保持disabled，不替使用者選另一個identity。Catalog＋UI focused suite為52 passed，
-focused offscreen screenshot亦已人工檢視。下一步提交本checkpoint並取得同一獨立gate複核；其後進入全部
-selectable models的catalog construction／forward與family workflow matrix，不提前執行full handoff。
+focused offscreen screenshot亦已人工檢視。`5cd736a3`的獨立gate發現Enter可繞過hidden／no-match selection；
+目前已讓keyboard與`accept()`共用visible＋enabled＋Confirm guard，並以no-match及hidden-selection兩條red→green
+regression關閉，UI focused suite為23 passed。下一步提交修正並re-gate；通過後才進入全部selectable models
+的catalog construction／forward與family workflow matrix，不提前執行full handoff。
 
 ## 問題與證據
 
