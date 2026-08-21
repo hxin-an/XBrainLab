@@ -214,6 +214,15 @@ def test_platform_native_lifecycle_tests_keep_separate_process_boundaries() -> N
     assert len(set(path_to_label.values())) == len(native_lifecycle_paths)
 
 
+def test_platform_product_gate_includes_braindecode_catalog_runtime() -> None:
+    groups = dict(run_tests.PLATFORM_CI_GROUPS)
+    product_shards = dict(groups["platform-product-lifecycle"])
+
+    assert product_shards["braindecode-catalog-runtime"] == (
+        "tests/integration/pipeline/test_braindecode_catalog_matrix.py",
+    )
+
+
 def test_platform_ci_groups_partition_focused_platform_gate_exactly_once() -> None:
     grouped_shards = [
         shard for _command, shards in run_tests.PLATFORM_CI_GROUPS for shard in shards

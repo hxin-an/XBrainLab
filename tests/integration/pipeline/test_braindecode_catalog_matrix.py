@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gc
+import sys
 from typing import Any
 
 import mne
@@ -52,6 +53,29 @@ _STATIC_SELECTABLE_MODEL_IDS = tuple(
     )
     if spec.available
 )
+_MACOS_FAMILY_REPRESENTATIVES = frozenset(
+    {
+        "braindecode.eegnet",
+        "braindecode.eegconformer",
+        "braindecode.fbcnet",
+        "braindecode.biot",
+        "braindecode.dgcnn",
+        "braindecode.deepsleepnet",
+    }
+)
+
+
+def _model_ids_for_platform(platform: str) -> tuple[str, ...]:
+    if platform == "darwin":
+        return tuple(
+            model_id
+            for model_id in _STATIC_SELECTABLE_MODEL_IDS
+            if model_id in _MACOS_FAMILY_REPRESENTATIVES
+        )
+    return _STATIC_SELECTABLE_MODEL_IDS
+
+
+_PLATFORM_MODEL_IDS = _model_ids_for_platform(sys.platform)
 
 
 def _standard_chs_info(channels: int, sfreq: float) -> list[dict[str, Any]]:
@@ -109,7 +133,15 @@ def test_static_selectable_inventory_remains_complete() -> None:
     assert len(set(_STATIC_SELECTABLE_MODEL_IDS)) == 54
 
 
-@pytest.mark.parametrize("model_id", _STATIC_SELECTABLE_MODEL_IDS)
+def test_windows_matrix_keeps_every_selectable_model() -> None:
+    assert _model_ids_for_platform("win32") == _STATIC_SELECTABLE_MODEL_IDS
+
+
+def test_macos_matrix_is_bounded_to_family_representatives() -> None:
+    assert set(_model_ids_for_platform("darwin")) == _MACOS_FAMILY_REPRESENTATIVES
+
+
+@pytest.mark.parametrize("model_id", _PLATFORM_MODEL_IDS)
 def test_selectable_upstream_model_builds_and_supports_finite_gradient(
     model_id: str,
 ) -> None:

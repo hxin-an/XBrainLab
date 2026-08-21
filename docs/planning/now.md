@@ -140,6 +140,13 @@ model defect。Harness改用`Epochs.set_channels()`正式套用同一standard mo
 （6 passed／9.88 seconds）。每例均使用真Trainer、真safe artifact IO、fresh strict-load、test evaluation及
 Gradient saliency；未patch persistence或model owner。下一步提交checkpoint並由同一獨立gate複核；不再重跑
 此workflow matrix，除非相關training／artifact／saliency source再變。
+`e34d2c81`獨立gate已PASS。Platform checkpoint只重用既有`platform-product-lifecycle` registry：Windows
+執行54個selectable upstream models的bounded construction／forward／gradient matrix；macOS在同一test module
+只執行六個family representatives，Linux authoritative integration仍執行完整54個。這不新增CI job、runner或
+timeout，不把macOS best-effort升格為真人desktop claim；focused validation只跑runner contract與本機Linux
+collection/cardinality，不在本機重跑model matrix。Registry／Windows-full／macOS-family policy focused
+tests為5 passed；Linux collection保留54個model execution cases（另含3個inventory／platform policy cases），
+Ruff／format通過，basedpyright只有既有PyYAML source-resolution warning。
 
 ## 問題與證據
 
