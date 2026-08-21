@@ -117,14 +117,23 @@ def test_explicit_legacy_id_remains_resolvable_while_upstream_is_healthy() -> No
     assert spec.provider == "legacy-braindecode"
 
 
+def test_unavailable_provider_does_not_resolve_bare_name_to_legacy() -> None:
+    with pytest.raises(ValueError, match="Unknown model architecture"):
+        get_model_spec("ATCNet", provider_status=_missing_provider())
+
+
+def test_unavailable_provider_preserves_historical_local_bare_name() -> None:
+    spec = get_model_spec("EEGNet", provider_status=_missing_provider())
+
+    assert spec.model_id == "xbrainlab.eegnet"
+
+
 def test_legacy_catalog_contains_only_reviewed_permissive_source() -> None:
     specs = discover_legacy_braindecode_model_specs()
 
     assert len(specs) == 57
     assert all(spec.legacy_copy_allowed for spec in specs)
-    assert {spec.aliases[0] for spec in specs}.isdisjoint(
-        {"BrainModule", "EEGMiner", "EMG2QwertyNet", "MetaNeuromotorHand"}
-    )
+    assert all(spec.aliases == () for spec in specs)
 
 
 def test_complete_braindecode_inventory_has_61_pinned_contracts() -> None:

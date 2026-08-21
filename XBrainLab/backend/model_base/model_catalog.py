@@ -432,14 +432,18 @@ def discover_model_specs(
     known_local_models = any(name in _LOCAL_DISPLAY_NAMES for name, _ in local_models)
     specs: list[ModelSpec] = []
     if include_braindecode and known_local_models:
-        projected_status = provider_status or _braindecode_installation_status()
-        if projected_status.checked and not projected_status.available:
+        if provider_status is None:
+            # The current combo-based dialog has not adopted provider readiness
+            # yet.  Preserve its curated projection until the search UI owns one
+            # checked snapshot instead of partially exposing the new catalog.
+            specs.extend(_braindecode_specs())
+        elif provider_status.checked and not provider_status.available:
             specs.extend(discover_legacy_braindecode_model_specs())
         else:
             specs.extend(
                 _braindecode_specs(
                     BRAINCDECODE_CATALOG_ENTRIES,
-                    provider_status=projected_status,
+                    provider_status=provider_status,
                 )
             )
     for class_name, model_class in local_models:
@@ -489,11 +493,14 @@ def get_model_spec(
         spec.model_id.casefold() == normalized for spec in specs
     ):
         specs.extend(discover_legacy_braindecode_model_specs())
-    by_value = {
-        value.casefold(): spec
-        for spec in specs
-        for value in (spec.model_id, spec.display_name, *spec.aliases)
-    }
+    by_value: dict[str, ModelSpec] = {}
+    for spec in specs:
+        values = (
+            (spec.model_id,)
+            if spec.provider == LEGACY_BRAINCDECODE_PROVIDER
+            else (spec.model_id, spec.display_name, *spec.aliases)
+        )
+        by_value.update({value.casefold(): spec for value in values})
     for spec in specs:
         class_name = getattr(spec.factory, "__name__", "")
         if spec.source == "xbrainlab":
@@ -592,7 +599,7 @@ def _legacy_braindecode_model_spec(entry: BraindecodeCatalogEntry) -> ModelSpec:
         source_revision=LEGACY_BRAINCDECODE_SOURCE_REVISION,
         family=entry.family,
         task=entry.task,
-        aliases=(entry.class_name,),
+        aliases=(),
         license_id=entry.license_id,
         required_inputs=entry.required_inputs,
         available=entry.available and not entry.legacy_unavailable_reason,
