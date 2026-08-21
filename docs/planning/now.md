@@ -125,6 +125,21 @@ contract修復，不重跑整個舊diagnostic矩陣。
 optional-input abstraction、不觸發網路、也不假裝具有預訓練montage alignment。以單一factory regression
 及該model matrix selector驗證，不重跑54-model matrix。Focused STEEGFormer regression為2 passed／
 4.52 seconds，原Hub vocabulary／identity-fallback warning已消失；Ruff／format／basedpyright通過。
+`48a031a9`獨立gate已PASS。下一個workflow checkpoint不重跑54-model construction matrix，也不新增
+training／artifact／saliency owner：以六個catalog family的代表`EEGNet`（Convolutional）、`EEGConformer`
+（Attention）、`FBCNet`（Filter bank）、`BIOT`（Foundation）、`DGCNN`（Graph）及`DeepSleepNet`
+（Sleep），在同一真實MNE-backed 22-channel／256-sample兩類Dataset上，各走CPU one epoch。每一case必須
+由checked catalog取得factory與exact provider identity、產生selected validation checkpoint、完成test
+evaluation、寫出safe record／EvalRecord／model-state artifacts，並用artifact reader strict-load至fresh同ID model。
+每一family另只算`Gradient` saliency並驗證finite attribution及producer identity；不跑SmoothGrad family、
+不比較scientific metrics。先以EEGNet單一selector打通harness；任何產品contract不相容即停在該family修正，
+不把測試改成mock trainer／mock persistence。
+Workflow matrix已完成：EEGNet先以單一case通過；其餘family第一次執行時DGCNN正確拒絕只有MNE Info、
+但尚未commit到`Epochs.channel_position`的montage，確認是test harness沒有走產品reviewed-montage state而非
+model defect。Harness改用`Epochs.set_channels()`正式套用同一standard montage後，六個family整檔一次通過
+（6 passed／9.88 seconds）。每例均使用真Trainer、真safe artifact IO、fresh strict-load、test evaluation及
+Gradient saliency；未patch persistence或model owner。下一步提交checkpoint並由同一獨立gate複核；不再重跑
+此workflow matrix，除非相關training／artifact／saliency source再變。
 
 ## 問題與證據
 
