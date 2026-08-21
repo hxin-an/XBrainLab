@@ -162,7 +162,7 @@ ApplicationService command spine。修復只新增一個ApplicationService-owned
 Focused validation必須證明product dialog只使用typed runtime query、無runtime時回到metadata-only projection，
 並重跑architecture-compliance。建立新frozen SHA後才執行一次replacement canonical handoff；舊SHA的失敗
 evidence保留為歷史，不重跑其完整suite。
-修復已收斂為5個production files、production `+60/-10/net +50`、owner數不變；3個focused behavior
+第一版修復收斂為5個production files、production `+60/-10/net +50`、owner數不變；3個focused behavior
 cases、Ruff、basedpyright、MkDocs strict與architecture-compliance均通過。下一步提交並由既有獨立gate
 複核；只有新SHA通過後才重建exact-source UI artifact與replacement canonical handoff。
 獨立gate指出第一版仍漏接typed product wiring：`TrainingPanel`在typed mode刻意不保留controller，真實
@@ -171,6 +171,8 @@ query owner位於既有`_query_port`；只將controller傳入dialog會錯誤退�
 真widget＋typed fake port證明context read發生且不相容model被disabled；standalone context才允許fallback。
 Typed port wiring已補齊；5個focused cases、Ruff、basedpyright與architecture-compliance通過。第一版
 `31f31d1c`尚未push，會以同一focused commit amend後重新取得獨立gate，不保留兩個假候選SHA。
+最終修復為6個production files、production `+75/-11/net +64`、owner數不變；`f0a77b80`獨立
+re-gate已PASS。
 
 ## 問題與證據
 
