@@ -126,7 +126,7 @@ def _license(class_name: str) -> str:
         return "MIT"
     if class_name in _APACHE_MODELS:
         return "Apache-2.0"
-    return "UNVERIFIED"
+    return "BSD-3-Clause"
 
 
 def _unavailable_reason(class_name: str) -> str:
@@ -147,6 +147,7 @@ def _entry(
     module_name: str,
     required_inputs: tuple[str, ...],
 ) -> BraindecodeCatalogEntry:
+    legacy_copy_allowed = class_name not in _RESTRICTED_MODELS
     return BraindecodeCatalogEntry(
         class_name=class_name,
         module_name=module_name,
@@ -155,6 +156,12 @@ def _entry(
         task=_task(class_name),
         license_id=_license(class_name),
         unavailable_reason=_unavailable_reason(class_name),
+        legacy_copy_allowed=legacy_copy_allowed,
+        legacy_unavailable_reason=(
+            ""
+            if legacy_copy_allowed
+            else "Local recovery source is excluded by its noncommercial license."
+        ),
     )
 
 

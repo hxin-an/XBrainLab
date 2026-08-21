@@ -84,13 +84,13 @@ def test_complete_inventory_matches_upstream_constructor_contract() -> None:
     assert actual == expected
 
 
-def test_unverified_source_is_not_eligible_for_legacy_copy() -> None:
+def test_verified_permissive_source_is_eligible_for_legacy_copy() -> None:
     specs = {spec.model_id: spec for spec in discover_braindecode_model_specs()}
 
     eegnet = specs["braindecode.eegnet"]
-    assert eegnet.license_id == "UNVERIFIED"
-    assert eegnet.legacy_copy_allowed is False
-    assert "provenance" in eegnet.legacy_unavailable_reason.casefold()
+    assert eegnet.license_id == "BSD-3-Clause"
+    assert eegnet.legacy_copy_allowed is True
+    assert eegnet.legacy_unavailable_reason == ""
 
 
 def test_catalog_surfaces_restricted_and_non_classification_models_as_unavailable() -> (

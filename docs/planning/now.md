@@ -25,9 +25,9 @@ Model Selection combo 改為可搜尋、可理解 unavailable reason 的完整�
 
 Data Import 與 4B Assistant 模型不在本 slice。
 
-施工 checkpoint：`2522fedd` 已建立不改公開 10-model surface 的 61-contract inventory與exact
-dependency pin。獨立 gate 指出的「未驗證source不可當BSD／legacy eligible」已由`2a5d0886`關閉；
-provider preflight現正接入使用者可見projection，該re-gate關閉前不進入legacy source copy或UI cutover。
+施工 checkpoint：catalog／provider chain至`627c5492`已由獨立gate確認無blocker／major；metadata
+discovery保持barrel-free，只有checked provider status能啟用projection。61-symbol逐檔provenance manifest
+已進入驗證，hash／license／excluded set全數閉合後才開始legacy source copy；UI cutover仍未開始。
 
 ## 問題與證據
 
