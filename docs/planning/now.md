@@ -198,6 +198,14 @@ Scoped child-coverage isolation完成後，完整runtime-process file在原cover
 `tests/unit/llm/core`為242 passed；父pytest仍產出coverage且所有原watchdog未變。Ruff、format與diff
 check通過，production `+0/-0/net 0`、owner數不變。下一步建立checkpoint並由獨立gate確認沒有coverage／
 topology降級；PASS後push並建立新的exact-source candidate。
+`0d0eeaaa`的新candidate已使全部unit groups通過，但integration-rest的
+`test_saliency_view_publication_lifecycle.py`有16個case在共同fixture建立producer identity時失敗；該fixture
+以`object.__new__(TrainRecord)`繞過constructor且漏設`model_identity`，所以尚未進入各自race／cancel／render
+assertion。修復只補上同一fixture的`model_holder.catalog_identity`，完整執行該integration file；不改product
+saliency或artifact fail-closed規則。若仍有其他failure即停止並按新record分類。
+Shared integration fixture補齊後，該file 35 passed，原16個lifecycle cases已跨過producer identity並完成
+各自assertions；production `+0/-0/net 0`、owner數不變。下一步做Ruff／diff check、checkpoint與獨立gate，
+PASS後才push並重建exact-source evidence。
 
 ## 問題與證據
 
