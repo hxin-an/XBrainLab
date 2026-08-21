@@ -450,7 +450,7 @@ def get_model_spec(model_name: str) -> ModelSpec:
 def _braindecode_specs(
     entries: tuple[BraindecodeCatalogEntry, ...] | None = None,
 ) -> tuple[ModelSpec, ...]:
-    provider_status = _braindecode_installation_status()
+    provider_status = braindecode_provider_status()
     selected_entries = entries
     if selected_entries is None:
         entries_by_id = {

@@ -143,6 +143,28 @@ def test_braindecode_provider_status_rejects_import_failure(monkeypatch) -> None
     assert "ImportError" in status.reason
 
 
+def test_broken_provider_disables_visible_upstream_projection(monkeypatch) -> None:
+    monkeypatch.setattr(
+        model_catalog.importlib.util, "find_spec", lambda _name: object()
+    )
+    monkeypatch.setattr(
+        model_catalog.importlib.metadata, "version", lambda _name: "1.6.1"
+    )
+
+    def fail_import(_name: str):
+        raise ImportError("missing transitive dependency")
+
+    monkeypatch.setattr(model_catalog.importlib, "import_module", fail_import)
+
+    specs = discover_braindecode_model_specs()
+
+    assert specs
+    assert all(spec.available is False for spec in specs)
+    assert all(
+        "provider could not be loaded" in spec.unavailable_reason for spec in specs
+    )
+
+
 def test_catalog_import_does_not_eagerly_import_braindecode_models() -> None:
     process = subprocess.run(  # noqa: S603 - current interpreter, fixed test code
         [
