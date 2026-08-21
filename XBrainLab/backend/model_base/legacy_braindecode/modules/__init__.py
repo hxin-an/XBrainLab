@@ -11,7 +11,8 @@ from .convolution import (
 )
 from .filter import FilterBankLayer
 from .layers import Chomp1d, Ensure4d, SqueezeFinalOutput
-from .linear import LinearWithConstraint
+from .linear import LinearWithConstraint, MaxNormLinear
+from .parametrization import MaxNormParametrize
 from .stats import (
     LogPowerLayer,
     LogVarLayer,
@@ -39,6 +40,8 @@ __all__ = [
     "LogPowerLayer",
     "LogVarLayer",
     "MaxLayer",
+    "MaxNormLinear",
+    "MaxNormParametrize",
     "MeanLayer",
     "SafeLog",
     "Square",

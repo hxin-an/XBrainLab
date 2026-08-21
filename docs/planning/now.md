@@ -35,8 +35,11 @@ gate要求移除未使用的support symbols後已收斂到18個實際primitive�
 獨立gate已PASS。Filter-bank family目前加入FBCNet、FBMSNet、FBLightConvNet與IFNet；mixed-license
 `filter.py`只摘取BSD的`FilterBankLayer`，未帶入`GeneralizedGaussianFilter`，IFNet另保留MIT notice。
 四個model皆完成strict state-dict／deterministic output parity，FBCNet／IFNet完成finite backward；catalog、
-provenance與三個family的focused驗證為55 passed，尚待本family commit的獨立gate。Legacy IDs與UI cutover
-仍未開始。
+provenance與三個family的focused驗證為55 passed，且`09f5482b`獨立gate已PASS。Convolutional／TCN
+family目前再加入EEGInceptionMI、EEGITNet、EEGTCNet、EEGSimpleConv、SPARCNet、ContraWR、TSception、
+SyncNet、SincShallowNet與SSTDPN；十個model皆完成strict state-dict／deterministic output parity，三個代表
+完成finite backward，新增support只限MaxNorm與MaxNormLinear，尚待本family commit的獨立gate。
+Legacy IDs與UI cutover仍未開始。
 
 ## 問題與證據
 
