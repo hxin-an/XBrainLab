@@ -60,6 +60,8 @@ class ModelSpec:
     required_inputs: tuple[str, ...] = ()
     available: bool = True
     unavailable_reason: str = ""
+    legacy_copy_allowed: bool = False
+    legacy_unavailable_reason: str = ""
 
     def default_parameters(self) -> dict[str, Any]:
         return {parameter.key: parameter.default for parameter in self.parameters}
@@ -347,7 +349,26 @@ def model_command_names() -> tuple[str, ...]:
 
 
 def braindecode_provider_status() -> BraindecodeProviderStatus:
-    """Return a fail-closed status for the exact supported upstream release."""
+    """Run the provider import preflight and return a fail-closed status."""
+    installation_status = _braindecode_installation_status()
+    if not installation_status.available:
+        return installation_status
+    try:
+        importlib.import_module("braindecode.models.eegnet")
+    except Exception as exc:
+        return BraindecodeProviderStatus(
+            available=False,
+            installed_version=installation_status.installed_version,
+            reason=(
+                "The pinned Braindecode provider could not be loaded "
+                f"({type(exc).__name__})."
+            ),
+        )
+    return installation_status
+
+
+def _braindecode_installation_status() -> BraindecodeProviderStatus:
+    """Inspect package identity without importing the heavyweight provider."""
     if importlib.util.find_spec("braindecode") is None:
         return BraindecodeProviderStatus(
             available=False,
@@ -429,7 +450,7 @@ def get_model_spec(model_name: str) -> ModelSpec:
 def _braindecode_specs(
     entries: tuple[BraindecodeCatalogEntry, ...] | None = None,
 ) -> tuple[ModelSpec, ...]:
-    provider_status = braindecode_provider_status()
+    provider_status = _braindecode_installation_status()
     selected_entries = entries
     if selected_entries is None:
         entries_by_id = {
@@ -471,6 +492,8 @@ def _braindecode_model_spec(
         required_inputs=entry.required_inputs,
         available=not unavailable_reasons,
         unavailable_reason=" ".join(unavailable_reasons),
+        legacy_copy_allowed=entry.legacy_copy_allowed,
+        legacy_unavailable_reason=entry.legacy_unavailable_reason,
     )
 
 
@@ -526,4 +549,5 @@ def _local_model_spec(class_name: str, model_class: type) -> ModelSpec:
         aliases=(class_name,),
         license_id="XBrainLab",
         required_inputs=("n_classes", "channels", "samples", "sfreq"),
+        legacy_copy_allowed=True,
     )

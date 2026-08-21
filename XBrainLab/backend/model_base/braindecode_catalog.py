@@ -24,6 +24,10 @@ class BraindecodeCatalogEntry:
     task: str
     license_id: str
     unavailable_reason: str = ""
+    legacy_copy_allowed: bool = False
+    legacy_unavailable_reason: str = (
+        "Local recovery source is unavailable until per-file provenance is verified."
+    )
 
     @property
     def model_id(self) -> str:
@@ -122,7 +126,7 @@ def _license(class_name: str) -> str:
         return "MIT"
     if class_name in _APACHE_MODELS:
         return "Apache-2.0"
-    return "BSD-3-Clause"
+    return "UNVERIFIED"
 
 
 def _unavailable_reason(class_name: str) -> str:

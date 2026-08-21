@@ -83,6 +83,15 @@ def test_complete_inventory_matches_upstream_constructor_contract() -> None:
     assert actual == expected
 
 
+def test_unverified_source_is_not_eligible_for_legacy_copy() -> None:
+    specs = {spec.model_id: spec for spec in discover_braindecode_model_specs()}
+
+    eegnet = specs["braindecode.eegnet"]
+    assert eegnet.license_id == "UNVERIFIED"
+    assert eegnet.legacy_copy_allowed is False
+    assert "provenance" in eegnet.legacy_unavailable_reason.casefold()
+
+
 def test_catalog_surfaces_restricted_and_non_classification_models_as_unavailable() -> (
     None
 ):
@@ -112,6 +121,26 @@ def test_braindecode_provider_status_requires_exact_pinned_version(monkeypatch) 
     assert status.available is False
     assert status.installed_version == "1.6.2"
     assert BRAINCDECODE_SOURCE_REVISION in status.reason
+
+
+def test_braindecode_provider_status_rejects_import_failure(monkeypatch) -> None:
+    monkeypatch.setattr(
+        model_catalog.importlib.util, "find_spec", lambda _name: object()
+    )
+    monkeypatch.setattr(
+        model_catalog.importlib.metadata, "version", lambda _name: "1.6.1"
+    )
+
+    def fail_import(_name: str):
+        raise ImportError("missing transitive dependency")
+
+    monkeypatch.setattr(model_catalog.importlib, "import_module", fail_import)
+
+    status = braindecode_provider_status()
+
+    assert status.available is False
+    assert status.installed_version == "1.6.1"
+    assert "ImportError" in status.reason
 
 
 def test_catalog_import_does_not_eagerly_import_braindecode_models() -> None:
