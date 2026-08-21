@@ -7968,6 +7968,7 @@ def _saliency_recompute_service() -> tuple[
     record.repeat = 0
     record.seed = 7
     record.plan_id = "saliency-plan"
+    record.model_identity = model_holder.catalog_identity
 
     holder = object.__new__(TrainingPlanHolder)
     holder.model_holder = cast(Any, model_holder)

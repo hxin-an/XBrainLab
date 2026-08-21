@@ -173,6 +173,20 @@ Typed port wiring已補齊；5個focused cases、Ruff、basedpyright與architect
 `31f31d1c`尚未push，會以同一focused commit amend後重新取得獨立gate，不保留兩個假候選SHA。
 最終修復為6個production files、production `+75/-11/net +64`、owner數不變；`f0a77b80`獨立
 re-gate已PASS。
+`555ff17f`的replacement canonical handoff在complete regression fail closed。這不是selector evidence
+遺失：`linux-unit-backend`有9個由新model identity／channel metadata contract暴露的失真測試fixture，另有
+一個cold-import timeout；`linux-unit-rest`的兩個真spawn lifecycle cases在重型54-model backend matrix並行
+時未能於既有watchdog內啟動。修復scope只包含：(1)讓saliency、Epochs與ModelHolder fixtures帶有真實
+constructor會建立的identity／channel欄位；(2)讓local handoff runner禁止resource-heavy backend group與
+spawn-sensitive rest group重疊，但保留八個authoritative Linux groups、unit→integration barrier、coverage與
+fail-closed outcome policy。Non-goals是不增加watchdog掩蓋競爭、不刪模型／測試、不改產品行為、CI matrix
+或handtest contract。Focused validation為受影響fixture tests、spawn/cold-import cases、runner scheduling
+contract、Ruff與architecture guard；通過後建立新frozen SHA，才執行一次新的replacement handoff。若
+focused cases仍在隔離狀態失敗、任何test count／coverage policy改變，或排程仍允許兩group重疊即停止。
+修復沒有production source變更（production `+0/-0/net 0`，owner數不變）；原9個fixture failures與3個
+spawn／cold-import cases均在原watchdog下通過，runner scheduling tests 6 passed，Ruff、format、
+basedpyright與architecture-compliance通過。下一步建立單一checkpoint commit並交既有獨立gate複核；
+只有PASS後才push並執行新的exact-source replacement handoff。
 
 ## 問題與證據
 
