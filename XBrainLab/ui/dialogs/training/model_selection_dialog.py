@@ -5,19 +5,21 @@ signature and supports loading pretrained weights.
 """
 
 import os
-from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QModelIndex, Qt
+from PyQt6.QtCore import QEvent, QModelIndex, QObject, Qt, QTimer
+from PyQt6.QtGui import QKeyEvent
 from PyQt6.QtWidgets import (
     QAbstractItemView,
-    QComboBox,
     QFileDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -29,9 +31,12 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.backend import model_base
 from XBrainLab.backend.model_base.model_catalog import (
+    BraindecodeProviderStatus,
     ModelSpec,
+    braindecode_provider_status,
     default_model_id,
     discover_model_specs,
+    get_model_spec,
 )
 from XBrainLab.backend.training import ModelHolder
 from XBrainLab.ui.components.user_error_presentation import (
@@ -39,15 +44,12 @@ from XBrainLab.ui.components.user_error_presentation import (
     present_unexpected_error,
 )
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.core.worker import PythonThreadWorker
 from XBrainLab.ui.dialogs.common import (
     configure_dark_table,
     fit_table_height_to_contents,
 )
 from XBrainLab.ui.styles.theme import Theme
-
-_CHEVRON_DOWN_ICON = (
-    Path(__file__).resolve().parents[3] / "resources" / "icons" / "chevron-down.svg"
-).as_posix()
 
 
 class ModelSelectionDialog(BaseDialog):
@@ -60,10 +62,9 @@ class ModelSelectionDialog(BaseDialog):
         controller: Application controller for data access.
         pretrained_weight_path: Path to pretrained weight file, or None.
         model_holder: Configured ModelHolder after acceptance.
-        model_combo: QComboBox for selecting the model architecture.
+        search_input: Search field for narrowing the model catalog.
+        model_results: Searchable list of model architectures.
         params_table: QTableWidget displaying model-specific parameters.
-        model_map: Dictionary mapping model names to model classes.
-        model_list: List of available model class names.
 
     """
 
@@ -72,6 +73,8 @@ class ModelSelectionDialog(BaseDialog):
         parent,
         controller,
         initial_model_name: str | None = None,
+        *,
+        provider_status: BraindecodeProviderStatus | None = None,
     ):
         self.controller = controller
 
@@ -79,50 +82,51 @@ class ModelSelectionDialog(BaseDialog):
         self.model_holder: ModelHolder | None = None
 
         # UI Elements
-        self.model_combo: QComboBox | None = None
+        self.search_input: QLineEdit | None = None
+        self.model_results: QListWidget | None = None
+        self.provider_banner: QLabel | None = None
+        self.no_match_label: QLabel | None = None
         self.params_table: QTableWidget | None = None
         self.params_group: QFrame | None = None
         self.confirm_btn: QPushButton | None = None
         self.weight_label: QLabel | None = None
         self.weight_btn: QPushButton | None = None
         self.content_scroll: QScrollArea | None = None
+        self._provider_worker: PythonThreadWorker | None = None
+        self._provider_status = provider_status
+        self._selected_model_id: str | None = None
+        self._applying_catalog = False
+        self._selection_changed_while_pending = False
+        self._provider_check_pending = provider_status is None
 
-        # Fetch model list
+        # Render a cheap metadata projection immediately. A checked provider
+        # snapshot replaces it asynchronously after the dialog is visible.
         self.model_specs = discover_model_specs(model_base)
-        self.model_map = {spec.display_name: spec.factory for spec in self.model_specs}
-        self._spec_by_name = {spec.display_name: spec for spec in self.model_specs}
-        self.model_list = [spec.display_name for spec in self.model_specs]
-        self.initial_model_name = self._canonical_model_name(initial_model_name)
+        self._spec_by_id = {spec.model_id: spec for spec in self.model_specs}
+        self.initial_model_id = self._canonical_model_id(initial_model_name)
 
         super().__init__(parent, title="Model Selection")
         self.setMinimumSize(600, 360)
 
-        # Init with first model
-        if self.model_list:
-            selected_model_name = (
-                self.model_combo.currentText()
-                if self.model_combo is not None
-                else self.model_list[0]
-            )
-            self.on_model_select(selected_model_name)
+        self._apply_catalog(self.model_specs, preserve_id=self.initial_model_id)
+        if provider_status is None:
+            QTimer.singleShot(0, self._start_provider_preflight)
+        else:
+            self._apply_provider_status(provider_status)
         self.fit_to_content(
             minimum_width=640,
             minimum_height=452,
             maximum_height=620,
         )
+        QTimer.singleShot(0, self._focus_search_input)
 
-    def _canonical_model_name(self, model_name: str | None) -> str | None:
+    def _canonical_model_id(self, model_name: str | None) -> str | None:
         if not isinstance(model_name, str):
             default_id = default_model_id()
-            return next(
-                (
-                    spec.display_name
-                    for spec in self.model_specs
-                    if spec.model_id == default_id
-                ),
-                self.model_list[0] if self.model_list else None,
-            )
-        requested_name = model_name.casefold()
+            return default_id if default_id in self._spec_by_id else None
+        requested_name = model_name.strip().casefold()
+        if requested_name.startswith(("braindecode.", "legacy.braindecode.")):
+            return requested_name
         for spec in self.model_specs:
             factory_name = getattr(spec.factory, "__name__", "").casefold()
             if requested_name in {
@@ -130,11 +134,12 @@ class ModelSelectionDialog(BaseDialog):
                 spec.display_name.casefold(),
                 factory_name,
             }:
-                return spec.display_name
-        return None
+                return spec.model_id
+        default_id = default_model_id()
+        return default_id if default_id in self._spec_by_id else None
 
     def init_ui(self):
-        """Initialize the dialog UI with model combo, parameter table, and buttons."""
+        """Initialize the searchable model catalog and parameter editor."""
         self.setObjectName("ModelSelectionDialog")
         self.setStyleSheet(self._dialog_style())
         layout = QVBoxLayout(self)
@@ -177,28 +182,56 @@ class ModelSelectionDialog(BaseDialog):
         setup_title.setObjectName("SectionTitle")
         setup_layout.addWidget(setup_title, 0, 0, 1, 3)
 
-        setup_layout.addWidget(QLabel("Model"), 1, 0)
-        model_combo = QComboBox()
-        self.model_combo = model_combo
-        model_combo.setObjectName("ModelSelectionCombo")
-        model_combo.addItems(self.model_list)
-        if self.initial_model_name is not None:
-            model_combo.setCurrentText(self.initial_model_name)
-        model_combo.currentTextChanged.connect(self.on_model_select)
-        setup_layout.addWidget(model_combo, 1, 1)
+        provider_banner = QLabel("Checking Braindecode 1.6.1 availability…")
+        self.provider_banner = provider_banner
+        provider_banner.setObjectName("ModelProviderBanner")
+        provider_banner.setWordWrap(True)
+        setup_layout.addWidget(provider_banner, 1, 0, 1, 3)
 
-        setup_layout.addWidget(QLabel("Pretrained weight"), 2, 0)
+        setup_layout.addWidget(QLabel("Search models"), 2, 0)
+        search_input = QLineEdit()
+        self.search_input = search_input
+        search_input.setObjectName("ModelSearchInput")
+        search_input.setPlaceholderText("Search by name, family, task, or model ID")
+        search_input.setClearButtonEnabled(True)
+        search_input.installEventFilter(self)
+        search_input.textChanged.connect(self.filter_models)
+        setup_layout.addWidget(search_input, 2, 1, 1, 2)
+
+        model_results = QListWidget()
+        self.model_results = model_results
+        model_results.setObjectName("ModelSearchResults")
+        model_results.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        model_results.setAlternatingRowColors(True)
+        model_results.setTextElideMode(Qt.TextElideMode.ElideRight)
+        model_results.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        model_results.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        model_results.setMinimumHeight(150)
+        model_results.setMaximumHeight(230)
+        model_results.currentItemChanged.connect(self._on_result_changed)
+        model_results.itemDoubleClicked.connect(lambda _item: self.accept())
+        setup_layout.addWidget(model_results, 3, 0, 1, 3)
+
+        no_match_label = QLabel("No models match this search.")
+        self.no_match_label = no_match_label
+        no_match_label.setObjectName("ModelNoMatchLabel")
+        no_match_label.setVisible(False)
+        setup_layout.addWidget(no_match_label, 4, 0, 1, 3)
+
+        setup_layout.addWidget(QLabel("Pretrained weight"), 5, 0)
         weight_label = QLabel("None")
         self.weight_label = weight_label
         weight_label.setObjectName("PretrainedWeightLabel")
         weight_label.setMinimumHeight(28)
         weight_label.setWordWrap(False)
-        setup_layout.addWidget(weight_label, 2, 1)
+        setup_layout.addWidget(weight_label, 5, 1)
         weight_btn = QPushButton("Load")
         self.weight_btn = weight_btn
         weight_btn.setFixedWidth(76)
         weight_btn.clicked.connect(self.load_pretrained_weight)
-        setup_layout.addWidget(weight_btn, 2, 2)
+        setup_layout.addWidget(weight_btn, 5, 2)
         setup_layout.setColumnStretch(1, 1)
         content_layout.addWidget(setup_frame)
 
@@ -279,24 +312,45 @@ class ModelSelectionDialog(BaseDialog):
             background: transparent;
             font-weight: 700;
         }}
-        QDialog#ModelSelectionDialog QComboBox {{
+        QDialog#ModelSelectionDialog QLineEdit#ModelSearchInput {{
             background: {Theme.METRICS_TABLE_BG};
             color: {Theme.TEXT_PRIMARY};
             border: 1px solid {Theme.METRICS_TABLE_BORDER};
             border-radius: 4px;
-            padding: 4px 28px 4px 8px;
+            padding: 5px 8px;
             min-height: 22px;
         }}
-        QDialog#ModelSelectionDialog QComboBox::drop-down {{
-            subcontrol-origin: padding;
-            subcontrol-position: top right;
-            border: none;
-            width: 24px;
+        QDialog#ModelSelectionDialog QListWidget#ModelSearchResults {{
+            background: {Theme.METRICS_TABLE_BG};
+            alternate-background-color: {Theme.BACKGROUND_MID};
+            color: {Theme.TEXT_PRIMARY};
+            border: 1px solid {Theme.METRICS_TABLE_BORDER};
+            border-radius: 4px;
+            padding: 2px;
         }}
-        QDialog#ModelSelectionDialog QComboBox::down-arrow {{
-            image: url("{_CHEVRON_DOWN_ICON}");
-            width: 10px;
-            height: 10px;
+        QDialog#ModelSelectionDialog QListWidget#ModelSearchResults::item {{
+            padding: 7px 8px;
+            border-radius: 3px;
+        }}
+        QDialog#ModelSelectionDialog QListWidget#ModelSearchResults::item:selected {{
+            background: {Theme.TABLE_SELECTION};
+            color: {Theme.TEXT_PRIMARY};
+        }}
+        QDialog#ModelSelectionDialog QLabel#ModelProviderBanner {{
+            background: {Theme.METRICS_TABLE_BG};
+            color: {Theme.TEXT_SECONDARY};
+            border: 1px solid {Theme.METRICS_TABLE_BORDER};
+            border-radius: 4px;
+            padding: 7px 9px;
+        }}
+        QDialog#ModelSelectionDialog QLabel#ModelProviderBanner[recovery="true"] {{
+            color: #f0c36b;
+            border-color: #8a6d2f;
+            background: #332b1d;
+        }}
+        QDialog#ModelSelectionDialog QLabel#ModelNoMatchLabel {{
+            color: {Theme.TEXT_MUTED};
+            padding: 4px 2px;
         }}
         QDialog#ModelSelectionDialog QLabel#PretrainedWeightLabel {{
             background: {Theme.METRICS_TABLE_BG};
@@ -365,17 +419,239 @@ class ModelSelectionDialog(BaseDialog):
         }}
         """
 
-    def on_model_select(self, model_name):
+    def _start_provider_preflight(self) -> None:
+        if self._provider_worker is not None:
+            return
+        worker = PythonThreadWorker(
+            braindecode_provider_status,
+            name="xbrainlab-braindecode-provider-check",
+            daemon=True,
+        )
+        self._provider_worker = worker
+        worker.signals.result.connect(self._apply_provider_status)
+        worker.signals.error.connect(self._provider_preflight_failed)
+        worker.start()
+
+    def _provider_preflight_failed(self, _error: object) -> None:
+        self._apply_provider_status(
+            BraindecodeProviderStatus(
+                available=False,
+                installed_version=None,
+                reason="Braindecode provider readiness could not be verified.",
+                checked=True,
+            )
+        )
+
+    def _apply_provider_status(self, status: object) -> None:
+        if not isinstance(status, BraindecodeProviderStatus) or not status.checked:
+            self._provider_preflight_failed(status)
+            return
+        self._provider_status = status
+        preserve_id = (
+            self._selected_model_id
+            if self._selection_changed_while_pending
+            else self.initial_model_id
+        )
+        specs = list(discover_model_specs(model_base, provider_status=status))
+        if (
+            status.available
+            and preserve_id
+            and preserve_id.startswith("legacy.braindecode.")
+        ):
+            try:
+                persisted = get_model_spec(preserve_id, provider_status=status)
+            except ValueError:
+                persisted = None
+            if persisted is not None:
+                specs.append(persisted)
+        self._provider_check_pending = False
+        self._apply_catalog(
+            tuple(specs),
+            preserve_id=preserve_id,
+            fallback_to_first=preserve_id is None,
+        )
+        if self.provider_banner is not None:
+            recovery = status.checked and not status.available
+            self.provider_banner.setProperty("recovery", recovery)
+            self.provider_banner.setText(
+                "Braindecode 1.6.1 is ready. Showing the upstream model catalog."
+                if status.available
+                else "Braindecode 1.6.1 is unavailable. Showing reviewed local "
+                "recovery models; no model identity was changed automatically."
+            )
+            self.provider_banner.style().unpolish(self.provider_banner)
+            self.provider_banner.style().polish(self.provider_banner)
+
+    def _apply_catalog(
+        self,
+        specs: tuple[ModelSpec, ...],
+        *,
+        preserve_id: str | None,
+        fallback_to_first: bool = True,
+    ) -> None:
+        self.model_specs = specs
+        self._spec_by_id = {spec.model_id: spec for spec in specs}
+        if self.model_results is None:
+            return
+        self.model_results.blockSignals(True)
+        self.model_results.clear()
+        selected_item: QListWidgetItem | None = None
+        first_available: QListWidgetItem | None = None
+        for spec in specs:
+            detail = f"{spec.family} · {spec.task} · {spec.model_id}"
+            if not spec.available:
+                detail = f"Unavailable — {spec.unavailable_reason}"
+            item = QListWidgetItem(f"{spec.display_name}\n{detail}")
+            item.setData(Qt.ItemDataRole.UserRole, spec.model_id)
+            item.setData(
+                Qt.ItemDataRole.UserRole + 1,
+                " ".join(
+                    (
+                        spec.display_name,
+                        spec.model_id,
+                        *spec.aliases,
+                        spec.family,
+                        spec.task,
+                    )
+                ).casefold(),
+            )
+            item.setToolTip(spec.unavailable_reason or detail)
+            if not spec.available:
+                item.setFlags(
+                    item.flags()
+                    & ~Qt.ItemFlag.ItemIsEnabled
+                    & ~Qt.ItemFlag.ItemIsSelectable
+                )
+            elif first_available is None:
+                first_available = item
+            if spec.model_id == preserve_id and spec.available:
+                selected_item = item
+            self.model_results.addItem(item)
+        self.model_results.blockSignals(False)
+        chosen = selected_item or (first_available if fallback_to_first else None)
+        if chosen is not None:
+            self._applying_catalog = True
+            try:
+                self.model_results.setCurrentItem(chosen)
+                self._select_spec(self._spec_for_item(chosen))
+            finally:
+                self._applying_catalog = False
+        else:
+            self.model_results.setCurrentItem(None)
+            self._selected_model_id = None
+            if self.params_table is not None:
+                self.params_table.setRowCount(0)
+            if self.confirm_btn is not None:
+                self.confirm_btn.setEnabled(False)
+        self.filter_models(self.search_input.text() if self.search_input else "")
+
+    def filter_models(self, text: str) -> None:
+        if self.model_results is None:
+            return
+        query = " ".join(str(text).casefold().split())
+        visible_count = 0
+        current_visible = False
+        for index in range(self.model_results.count()):
+            item = self.model_results.item(index)
+            search_text = str(item.data(Qt.ItemDataRole.UserRole + 1) or "")
+            visible = not query or all(token in search_text for token in query.split())
+            item.setHidden(not visible)
+            if visible:
+                visible_count += 1
+                if item.data(Qt.ItemDataRole.UserRole) == self._selected_model_id:
+                    current_visible = True
+        if self.no_match_label is not None:
+            self.no_match_label.setVisible(visible_count == 0)
+        if self.confirm_btn is not None:
+            selected = self._selected_spec()
+            self.confirm_btn.setEnabled(
+                bool(selected is not None and selected.available and current_visible)
+            )
+
+    def eventFilter(  # noqa: N802
+        self,
+        watched: QObject | None,
+        event: QEvent,
+    ) -> bool:
+        if (
+            watched is self.search_input
+            and isinstance(event, QKeyEvent)
+            and event.type() == QEvent.Type.KeyPress
+        ):
+            key = event.key()
+            if key in (Qt.Key.Key_Down, Qt.Key.Key_Up):
+                self._move_result_selection(1 if key == Qt.Key.Key_Down else -1)
+                return True
+            if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                if self.model_results is not None and self.model_results.currentItem():
+                    self.accept()
+                else:
+                    self._move_result_selection(1)
+                return True
+        return super().eventFilter(watched, event)
+
+    def _move_result_selection(self, direction: int) -> None:
+        if self.model_results is None:
+            return
+        candidates = [
+            index
+            for index in range(self.model_results.count())
+            if not self.model_results.item(index).isHidden()
+            and bool(self.model_results.item(index).flags() & Qt.ItemFlag.ItemIsEnabled)
+        ]
+        if not candidates:
+            return
+        current = self.model_results.currentRow()
+        if current not in candidates:
+            target = candidates[0 if direction > 0 else -1]
+        else:
+            offset = candidates.index(current) + direction
+            target = candidates[max(0, min(offset, len(candidates) - 1))]
+        self.model_results.setCurrentRow(target)
+
+    def _on_result_changed(
+        self,
+        current: QListWidgetItem | None,
+        _previous: QListWidgetItem | None,
+    ) -> None:
+        if self._provider_check_pending and not self._applying_catalog:
+            self._selection_changed_while_pending = True
+        self._select_spec(self._spec_for_item(current))
+
+    def _focus_search_input(self) -> None:
+        if self.search_input is not None:
+            self.search_input.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def _spec_for_item(self, item: QListWidgetItem | None) -> ModelSpec | None:
+        if item is None:
+            return None
+        return self._spec_by_id.get(str(item.data(Qt.ItemDataRole.UserRole)))
+
+    def _selected_spec(self) -> ModelSpec | None:
+        if self._selected_model_id is None:
+            return None
+        return self._spec_by_id.get(self._selected_model_id)
+
+    def _select_spec(self, spec: ModelSpec | None) -> None:
+        if spec is None or not spec.available:
+            if self.confirm_btn is not None:
+                self.confirm_btn.setEnabled(False)
+            return
+        self._selected_model_id = spec.model_id
+        self.on_model_select(spec)
+        self.filter_models(self.search_input.text() if self.search_input else "")
+
+    def on_model_select(self, model: ModelSpec | str):
         """Populate the parameter table based on the selected model.
 
         Args:
-            model_name: Name of the selected model class.
+            model: Selected catalog specification or stable model ID.
 
         """
         if not self.params_table or not self.params_group:
             return
 
-        spec = self._spec_by_name[model_name]
+        spec = model if isinstance(model, ModelSpec) else self._spec_by_id[model]
         self.params_table.setRowCount(0)
 
         if spec:
@@ -473,10 +749,14 @@ class ModelSelectionDialog(BaseDialog):
             QMessageBox: Warning if parameter parsing fails.
 
         """
-        if not self.model_combo or not self.params_table:
+        if not self.params_table:
             return
 
-        spec: ModelSpec = self._spec_by_name[self.model_combo.currentText()]
+        spec = self._selected_spec()
+        if spec is None or not spec.available:
+            if self.confirm_btn is not None:
+                self.confirm_btn.setEnabled(False)
+            return
         model_params_map = {}
 
         try:
@@ -513,6 +793,8 @@ class ModelSelectionDialog(BaseDialog):
                 self.pretrained_weight_path,
                 model_id=spec.model_id,
                 display_name=spec.display_name,
+                provider=spec.provider,
+                source_revision=spec.source_revision,
             )
             super().accept()
 

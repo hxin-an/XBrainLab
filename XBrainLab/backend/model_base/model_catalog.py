@@ -359,7 +359,9 @@ def braindecode_provider_status() -> BraindecodeProviderStatus:
     if not installation_status.available:
         return installation_status
     try:
-        importlib.import_module("braindecode.models.eegnet")
+        matplotlib = importlib.import_module("matplotlib")
+        with _BRAINCDECODE_MATPLOTLIB_STYLE_LOCK, matplotlib.rc_context():
+            importlib.import_module("braindecode.models.eegnet")
     except Exception as exc:
         return BraindecodeProviderStatus(
             available=False,

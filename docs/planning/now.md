@@ -80,7 +80,14 @@ Epochs補上detached `chs_info`，TrainingService拒絕disabled contract並把pr
 目前把exact model ID／provider／source revision寫入ModelHolder、每個新TrainingRecord與saliency producer
 fingerprint；同目錄checkpoint／evaluation records因此由training record identity約束，upstream artifact用
 legacy identity重開會fail closed，舊artifact缺identity時不會被補寫或冒充某個provider。相關focused suite為
-171 passed。下一步提交本checkpoint並取得獨立gate；UI search cutover仍未開始。
+108 passed；malformed identity也會在任何record mutation／evaluation load前以typed error fail closed，
+`168dd127`獨立gate已PASS。Model Selection search cutover目前已完成可搜尋result list、name／ID／alias／
+family／task filter、disabled reason、no-match、keyboard、selection preservation與provider recovery presentation；
+provider true import preflight在Python-owned background thread執行，Matplotlib style side effect由既有lock＋
+`rc_context`隔離。Healthy projection顯示61 upstream＋3 local，missing／broken provider顯示57 distinct recovery＋
+3 local；找不到原ID時Confirm保持disabled，不替使用者選另一個identity。Catalog＋UI focused suite為52 passed，
+focused offscreen screenshot亦已人工檢視。下一步提交本checkpoint並取得同一獨立gate複核；其後進入全部
+selectable models的catalog construction／forward與family workflow matrix，不提前執行full handoff。
 
 ## 問題與證據
 

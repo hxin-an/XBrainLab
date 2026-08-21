@@ -1,3 +1,4 @@
+from threading import Event
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,8 +13,40 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem,
 )
 
+from XBrainLab.backend.model_base.model_catalog import BraindecodeProviderStatus
 from XBrainLab.ui.dialogs.training import ModelSelectionDialog
 from XBrainLab.ui.styles.theme import Theme
+
+HEALTHY_PROVIDER = BraindecodeProviderStatus(
+    available=True,
+    installed_version="1.6.1",
+    reason="",
+    checked=True,
+)
+MISSING_PROVIDER = BraindecodeProviderStatus(
+    available=False,
+    installed_version=None,
+    reason="Braindecode 1.6.1 is not installed.",
+    checked=True,
+)
+
+
+def _result_item(dialog: ModelSelectionDialog, model_id: str):
+    assert dialog.model_results is not None
+    for index in range(dialog.model_results.count()):
+        item = dialog.model_results.item(index)
+        if item.data(Qt.ItemDataRole.UserRole) == model_id:
+            return item
+    raise AssertionError(f"Model result was not found: {model_id}")
+
+
+def _visible_model_ids(dialog: ModelSelectionDialog) -> list[str]:
+    assert dialog.model_results is not None
+    return [
+        str(dialog.model_results.item(index).data(Qt.ItemDataRole.UserRole))
+        for index in range(dialog.model_results.count())
+        if not dialog.model_results.item(index).isHidden()
+    ]
 
 
 # Dummy model for testing
@@ -63,23 +96,37 @@ class TestModelSelection:
             mock_getmembers.return_value = [("DummyModel", DummyModel)]
 
             mock_controller = MagicMock()
-            dialog = ModelSelectionDialog(None, mock_controller)
+            dialog = ModelSelectionDialog(
+                None,
+                mock_controller,
+                provider_status=HEALTHY_PROVIDER,
+            )
             qtbot.addWidget(dialog)
             return dialog
 
     def test_init(self, dialog):
         assert dialog.windowTitle() == "Model Selection"
-        assert dialog.model_combo.count() == 1
-        assert dialog.model_combo.currentText() == "DummyModel"
+        assert dialog.model_results is not None
+        assert dialog.model_results.count() == 1
+        assert dialog._selected_model_id == "xbrainlab.dummymodel"
 
     def test_product_catalog_defaults_to_braindecode_eegnet(self, qtbot):
-        dialog = ModelSelectionDialog(None, MagicMock())
+        dialog = ModelSelectionDialog(
+            None,
+            MagicMock(),
+            provider_status=HEALTHY_PROVIDER,
+        )
         qtbot.addWidget(dialog)
 
-        assert dialog.model_combo.currentText() == "EEGNet (Braindecode)"
-        assert dialog.model_combo.count() == 13
-        assert dialog.model_combo.findText("EEGNet (XBrainLab)") >= 0
-        assert dialog.model_combo.findText("CTNet (Braindecode)") >= 0
+        assert dialog.model_results is not None
+        assert dialog._selected_model_id == "braindecode.eegnet"
+        assert dialog.model_results.count() == 64
+        assert _result_item(dialog, "xbrainlab.eegnet") is not None
+        assert _result_item(dialog, "braindecode.ctnet") is not None
+        unavailable = _result_item(dialog, "braindecode.eegminer")
+        assert not unavailable.flags() & Qt.ItemFlag.ItemIsEnabled
+        assert "license" in unavailable.toolTip().casefold()
+        assert dialog.params_table is not None
         parameter_keys = {
             dialog.params_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
             for row in range(dialog.params_table.rowCount())
@@ -87,6 +134,178 @@ class TestModelSelection:
         assert parameter_keys.isdisjoint(
             {"n_outputs", "n_chans", "n_times", "sfreq"},
         )
+
+    def test_search_matches_name_alias_family_task_and_stable_id(self, qtbot):
+        dialog = ModelSelectionDialog(
+            None,
+            MagicMock(),
+            provider_status=HEALTHY_PROVIDER,
+        )
+        qtbot.addWidget(dialog)
+        assert dialog.search_input is not None
+
+        dialog.search_input.setText("eegconformer")
+        assert _visible_model_ids(dialog) == ["braindecode.eegconformer"]
+
+        dialog.search_input.setText("attention classification")
+        visible = _visible_model_ids(dialog)
+        assert "braindecode.eegconformer" in visible
+        assert "braindecode.ctnet" in visible
+
+        dialog.search_input.setText("braindecode.atcnet")
+        assert _visible_model_ids(dialog) == ["braindecode.atcnet"]
+
+    def test_no_match_preserves_selection_but_disables_confirm(self, qtbot):
+        dialog = ModelSelectionDialog(
+            None,
+            MagicMock(),
+            provider_status=HEALTHY_PROVIDER,
+        )
+        qtbot.addWidget(dialog)
+        assert dialog.search_input is not None
+        assert dialog.confirm_btn is not None
+        assert dialog.no_match_label is not None
+
+        selected_id = dialog._selected_model_id
+        dialog.search_input.setText("not a real architecture")
+        assert dialog._selected_model_id == selected_id
+        assert dialog.no_match_label.isVisible() is False
+        assert dialog.no_match_label.isHidden() is False
+        assert not dialog.confirm_btn.isEnabled()
+
+        dialog.search_input.clear()
+        assert dialog._selected_model_id == selected_id
+        assert dialog.confirm_btn.isEnabled()
+
+    def test_missing_provider_requires_explicit_recovery_selection(self, qtbot):
+        dialog = ModelSelectionDialog(
+            None,
+            MagicMock(),
+            provider_status=MISSING_PROVIDER,
+        )
+        qtbot.addWidget(dialog)
+        assert dialog.model_results is not None
+        assert dialog.provider_banner is not None
+        assert dialog.confirm_btn is not None
+
+        assert dialog.model_results.count() == 60
+        assert dialog._selected_model_id is None
+        assert not dialog.confirm_btn.isEnabled()
+        assert "local recovery" in dialog.provider_banner.text().casefold()
+        assert _result_item(dialog, "legacy.braindecode.eegnet") is not None
+        with pytest.raises(AssertionError):
+            _result_item(dialog, "braindecode.eegnet")
+
+        recovery = _result_item(dialog, "legacy.braindecode.eegnet")
+        dialog.model_results.setCurrentItem(recovery)
+        assert dialog._selected_model_id == "legacy.braindecode.eegnet"
+        assert dialog.confirm_btn.isEnabled()
+
+    def test_persisted_recovery_id_is_not_rebound_when_provider_recovers(self, qtbot):
+        dialog = ModelSelectionDialog(
+            None,
+            MagicMock(),
+            initial_model_name="legacy.braindecode.eegnet",
+            provider_status=HEALTHY_PROVIDER,
+        )
+        qtbot.addWidget(dialog)
+
+        assert dialog._selected_model_id == "legacy.braindecode.eegnet"
+        assert _result_item(dialog, "legacy.braindecode.eegnet") is not None
+        assert _result_item(dialog, "braindecode.eegnet") is not None
+
+    def test_confirm_binds_exact_catalog_provider_identity(self, qtbot):
+        dialog = ModelSelectionDialog(
+            None,
+            MagicMock(),
+            provider_status=HEALTHY_PROVIDER,
+        )
+        qtbot.addWidget(dialog)
+        assert dialog.model_results is not None
+        selected = _result_item(dialog, "braindecode.ctnet")
+        dialog.model_results.setCurrentItem(selected)
+
+        with patch("PyQt6.QtWidgets.QDialog.accept") as base_accept:
+            dialog.accept()
+
+        base_accept.assert_called_once()
+        holder = dialog.get_result()
+        assert holder is not None
+        assert holder.model_id == "braindecode.ctnet"
+        assert holder.provider == "braindecode"
+        assert holder.source_revision
+
+    def test_reject_does_not_create_or_change_model_selection(self, qtbot):
+        dialog = ModelSelectionDialog(
+            None,
+            MagicMock(),
+            provider_status=HEALTHY_PROVIDER,
+        )
+        qtbot.addWidget(dialog)
+
+        dialog.reject()
+
+        assert dialog.get_result() is None
+
+    def test_keyboard_moves_to_filtered_result_and_confirms(self, qtbot):
+        dialog = ModelSelectionDialog(
+            None,
+            MagicMock(),
+            provider_status=HEALTHY_PROVIDER,
+        )
+        qtbot.addWidget(dialog)
+        dialog.show()
+        assert dialog.search_input is not None
+
+        dialog.search_input.setText("braindecode.atcnet")
+        qtbot.keyClick(dialog.search_input, Qt.Key.Key_Down)
+        assert dialog._selected_model_id == "braindecode.atcnet"
+
+        with patch("PyQt6.QtWidgets.QDialog.accept") as base_accept:
+            qtbot.keyClick(dialog.search_input, Qt.Key.Key_Return)
+        base_accept.assert_called_once()
+
+    def test_provider_preflight_is_background_and_preserves_user_selection(
+        self,
+        qtbot,
+    ):
+        started = Event()
+        release = Event()
+
+        def checked_status_after_release():
+            started.set()
+            release.wait(timeout=2)
+            return HEALTHY_PROVIDER
+
+        with patch(
+            "XBrainLab.ui.dialogs.training.model_selection_dialog."
+            "braindecode_provider_status",
+            side_effect=checked_status_after_release,
+        ):
+            dialog = ModelSelectionDialog(None, MagicMock())
+            qtbot.addWidget(dialog)
+            dialog.show()
+            qtbot.waitUntil(started.is_set, timeout=1_000)
+
+            assert dialog.search_input is not None
+            assert dialog.search_input.isEnabled()
+            assert dialog.model_results is not None
+            dialog.search_input.setText("sccnet")
+            local_sccnet = _result_item(dialog, "xbrainlab.sccnet")
+            dialog.model_results.setCurrentItem(local_sccnet)
+            assert dialog._selected_model_id == "xbrainlab.sccnet"
+
+            release.set()
+            qtbot.waitUntil(
+                lambda: not dialog._provider_check_pending,
+                timeout=2_000,
+            )
+
+        assert dialog._selected_model_id == "xbrainlab.sccnet"
+        assert dialog.search_input.text() == "sccnet"
+        assert dialog._provider_worker is not None
+        dialog._provider_worker.join(timeout=1)
+        assert not dialog._provider_worker.is_alive()
 
     def test_params_population(self, dialog):
         # Verify params table is populated
@@ -126,9 +345,9 @@ class TestModelSelection:
         assert dialog.findChild(QDialogButtonBox) is None
         assert dialog.confirm_btn is not None
         assert dialog.confirm_btn.text() == "Confirm"
-        assert "chevron-down.svg" in dialog.styleSheet()
+        assert "QListWidget#ModelSearchResults" in dialog.styleSheet()
 
-    def test_default_content_does_not_show_scrollbar_gutter(self, dialog, qtbot):
+    def test_default_catalog_scrolls_without_hiding_confirm(self, dialog, qtbot):
         dialog.show()
         qtbot.wait(50)
 
@@ -136,7 +355,9 @@ class TestModelSelection:
         assert scroll is not None
         scrollbar = scroll.verticalScrollBar()
         assert scrollbar is not None
-        assert scrollbar.maximum() == 0
+        assert scrollbar.maximum() > 0
+        assert dialog.confirm_btn is not None
+        assert dialog.confirm_btn.isVisibleTo(dialog)
 
     def test_model_sections_do_not_draw_internal_vertical_frame_lines(self, dialog):
         sections = dialog.findChildren(QFrame, "ModelSection")
@@ -149,11 +370,15 @@ class TestModelSelection:
         scrollbar_style = scrollbar_style.split("}", 1)[0]
         assert "background: transparent;" in scrollbar_style
 
-    def test_realistic_parameter_count_does_not_force_outer_scrollbar(self, qtbot):
+    def test_realistic_parameter_count_keeps_bounded_catalog_scroll(self, qtbot):
         with patch("inspect.getmembers") as mock_getmembers:
             mock_getmembers.return_value = [("FiveParamModel", FiveParamModel)]
 
-            dialog = ModelSelectionDialog(None, MagicMock())
+            dialog = ModelSelectionDialog(
+                None,
+                MagicMock(),
+                provider_status=HEALTHY_PROVIDER,
+            )
             qtbot.addWidget(dialog)
 
         dialog.show()
@@ -163,7 +388,9 @@ class TestModelSelection:
         assert scroll is not None
         scrollbar = scroll.verticalScrollBar()
         assert scrollbar is not None
-        assert scrollbar.maximum() == 0
+        assert scrollbar.maximum() > 0
+        assert dialog.confirm_btn is not None
+        assert dialog.confirm_btn.isVisibleTo(dialog)
 
     def test_realistic_parameters_use_product_labels_and_preserve_raw_keys(
         self,
@@ -171,9 +398,14 @@ class TestModelSelection:
     ):
         with patch("inspect.getmembers") as mock_getmembers:
             mock_getmembers.return_value = [("FiveParamModel", FiveParamModel)]
-            dialog = ModelSelectionDialog(None, MagicMock())
+            dialog = ModelSelectionDialog(
+                None,
+                MagicMock(),
+                provider_status=HEALTHY_PROVIDER,
+            )
             qtbot.addWidget(dialog)
 
+        assert dialog.params_table is not None
         labels_by_key = {
             dialog.params_table.item(row, 0).data(
                 Qt.ItemDataRole.UserRole
@@ -221,7 +453,11 @@ class TestModelSelection:
                 ("NoEditableParamModel", NoEditableParamModel)
             ]
 
-            dialog = ModelSelectionDialog(None, MagicMock())
+            dialog = ModelSelectionDialog(
+                None,
+                MagicMock(),
+                provider_status=HEALTHY_PROVIDER,
+            )
             qtbot.addWidget(dialog)
 
         assert dialog.params_group is not None
@@ -236,7 +472,11 @@ class TestModelSelection:
         with patch("inspect.getmembers") as mock_getmembers:
             mock_getmembers.return_value = [("ManyParamModel", ManyParamModel)]
 
-            dialog = ModelSelectionDialog(None, MagicMock())
+            dialog = ModelSelectionDialog(
+                None,
+                MagicMock(),
+                provider_status=HEALTHY_PROVIDER,
+            )
             qtbot.addWidget(dialog)
 
         dialog.resize(600, 300)

@@ -219,6 +219,32 @@ def test_braindecode_provider_status_rejects_import_failure(monkeypatch) -> None
     assert "ImportError" in status.reason
 
 
+def test_braindecode_provider_preflight_contains_matplotlib_style_changes(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        model_catalog.importlib.util, "find_spec", lambda _name: object()
+    )
+    monkeypatch.setattr(
+        model_catalog.importlib.metadata, "version", lambda _name: "1.6.1"
+    )
+    original_import_module = model_catalog.importlib.import_module
+    original_font_size = matplotlib.rcParams["font.size"]
+
+    def import_module(name: str):
+        if name == "braindecode.models.eegnet":
+            matplotlib.rcParams["font.size"] = float(original_font_size) + 7.0
+            return SimpleNamespace(EEGNet=object())
+        return original_import_module(name)
+
+    monkeypatch.setattr(model_catalog.importlib, "import_module", import_module)
+
+    status = braindecode_provider_status()
+
+    assert status.available is True
+    assert matplotlib.rcParams["font.size"] == original_font_size
+
+
 def test_broken_provider_disables_visible_upstream_projection(monkeypatch) -> None:
     monkeypatch.setattr(
         model_catalog.importlib.util, "find_spec", lambda _name: object()

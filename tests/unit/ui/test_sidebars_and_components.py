@@ -1402,26 +1402,31 @@ class TestTrainingSidebar:
         self,
         qtbot,
     ):
+        from XBrainLab.backend.model_base.model_catalog import (
+            BraindecodeProviderStatus,
+        )
         from XBrainLab.ui.dialogs.training import ModelSelectionDialog
+
+        provider_status = BraindecodeProviderStatus(True, "1.6.1", "", True)
 
         selected = ModelSelectionDialog(
             None,
             MagicMock(),
             initial_model_name="sccnet",
+            provider_status=provider_status,
         )
         qtbot.addWidget(selected)
-        assert selected.model_combo is not None
-        assert selected.model_combo.currentText() == "SCCNet (XBrainLab)"
+        assert selected._selected_model_id == "xbrainlab.sccnet"
 
         unknown = ModelSelectionDialog(
             None,
             MagicMock(),
             initial_model_name="not-a-real-model",
+            provider_status=provider_status,
         )
         qtbot.addWidget(unknown)
-        assert unknown.model_combo is not None
-        assert unknown.model_combo.currentText() == unknown.model_list[0]
-        assert unknown.model_combo.findText("not-a-real-model") == -1
+        assert unknown._selected_model_id == "braindecode.eegnet"
+        assert "not-a-real-model" not in {spec.model_id for spec in unknown.model_specs}
 
     def test_check_ready_to_train_uses_published_blockers_without_controller_fallback(
         self,
