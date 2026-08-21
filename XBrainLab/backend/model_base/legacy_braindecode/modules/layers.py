@@ -17,6 +17,20 @@ class Ensure4d(nn.Module):
         return x
 
 
+class Chomp1d(nn.Module):
+    """Remove a fixed number of samples from the end of a sequence."""
+
+    def __init__(self, chomp_size):
+        super().__init__()
+        self.chomp_size = chomp_size
+
+    def extra_repr(self):
+        return f"chomp_size={self.chomp_size}"
+
+    def forward(self, x):
+        return x[:, :, : -self.chomp_size].contiguous()
+
+
 class SqueezeFinalOutput(nn.Module):
     """Remove the final feature dimension and a singleton time dimension."""
 

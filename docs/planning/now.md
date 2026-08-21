@@ -30,7 +30,9 @@ discovery保持barrel-free，只有checked provider status能啟用projection。
 provenance、hash、license與excluded set。第一個baseline convolution family已完成private namespace、minimal
 no-Hub base、逐symbol support provenance與六個model的strict state-dict／deterministic output parity；獨立
 gate要求移除未使用的support symbols後已收斂到18個實際primitive，並新增restricted／unrelated source guard。
-Focused catalog、provenance及baseline驗證為40 passed，尚待修正commit的gate複核。Legacy IDs與UI cutover
+`861ce481`的複核已PASS。Sleep／temporal family再加入7個models與3個實際support primitives；每個model
+已完成upstream strict state-dict／deterministic output parity，兩個代表完成finite backward，與baseline／
+provenance／catalog合併focused驗證為49 passed，尚待本family commit的獨立gate。Legacy IDs與UI cutover
 仍未開始。
 
 ## 問題與證據

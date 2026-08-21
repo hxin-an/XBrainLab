@@ -125,6 +125,44 @@ class CombinedConv(nn.Module):
         )
 
 
+class CausalConv1d(nn.Conv1d):
+    """One-dimensional convolution padded and cropped to preserve causality."""
+
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        kernel_size,
+        dilation=1,
+        **kwargs,
+    ):
+        if "padding" in kwargs:
+            raise ValueError(
+                "The padding parameter is controlled internally by "
+                f"{type(self).__name__}."
+            )
+        super().__init__(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            dilation=dilation,
+            padding=(kernel_size - 1) * dilation,
+            **kwargs,
+        )
+
+    def forward(self, inputs):
+        output = functional.conv1d(
+            inputs,
+            self.weight,
+            self.bias,
+            stride=self.stride,
+            padding=self.padding,
+            dilation=self.dilation,
+            groups=self.groups,
+        )
+        return output[..., : -self.padding[0]]
+
+
 class DepthwiseConv2d(nn.Conv2d):
     """Depthwise convolution with an explicit channel multiplier."""
 
