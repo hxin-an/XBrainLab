@@ -21,11 +21,13 @@ from .eegnet import EEGNet
 from .eegnex import EEGNeX
 from .eegpt import EEGPT, InterpolatedEEGPT
 from .eegsimpleconv import EEGSimpleConv
+from .eegsym import EEGSym
 from .eegtcnet import EEGTCNet
 from .fbcnet import FBCNet
 from .fblightconvnet import FBLightConvNet
 from .fbmsnet import FBMSNet
 from .ifnet import IFNet
+from .labram import InterpolatedLaBraM, Labram
 from .medformer import MEDFormer
 from .msvtnet import MSVTNet
 from .mvpformer import MVPFormer
@@ -70,6 +72,7 @@ __all__ = [
     "EEGNeX",
     "EEGNet",
     "EEGSimpleConv",
+    "EEGSym",
     "EEGTCNet",
     "FBCNet",
     "FBLightConvNet",
@@ -78,6 +81,8 @@ __all__ = [
     "InterpolatedBENDR",
     "InterpolatedBIOT",
     "InterpolatedEEGPT",
+    "InterpolatedLaBraM",
+    "Labram",
     "MEDFormer",
     "MSVTNet",
     "MVPFormer",

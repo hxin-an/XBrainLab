@@ -198,6 +198,39 @@ class InceptionBlock(nn.Module):
         return torch.cat([branch(x) for branch in self.branches], 1)
 
 
+class MLP(nn.Sequential):
+    """Multilayer perceptron used by LaBraM transformer blocks."""
+
+    def __init__(
+        self,
+        in_features: int,
+        hidden_features=None,
+        out_features=None,
+        activation=nn.GELU,
+        drop=0.0,
+        normalize=False,
+    ):
+        normalization = nn.LayerNorm if normalize else lambda: None
+        output_features = out_features or in_features
+        hidden = hidden_features or (in_features, in_features)
+        layers = []
+        for before, after in zip(
+            (in_features, *hidden),
+            (*hidden, output_features),
+            strict=True,
+        ):
+            layers.extend(
+                [
+                    nn.Linear(in_features=before, out_features=after),
+                    activation(),
+                    normalization(),
+                ]
+            )
+        layers = layers[:-2]
+        layers.append(nn.Dropout(p=drop))
+        super().__init__(*(layer for layer in layers if layer is not None))
+
+
 class FeedForwardBlock(nn.Sequential):
     """Feedforward network block.
 

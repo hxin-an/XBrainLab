@@ -57,8 +57,12 @@ CBraMod、CodeBrain、DGCNN與EEGDINO；support只擴充直接需要的
 `CrissCrossTransformerEncoderLayer`與`extract_channel_locations_from_chs_info`，四個model的remote
 loader文件與surface均未移入。四個contracts完成upstream strict state-dict／deterministic output parity及
 finite backward；全部既有legacy family加provenance focused suite為77 passed，Ruff／format／
-basedpyright皆通過。下一步是提交本family並取得同一獨立gate的exact-commit複核，通過前不開始剩餘
-foundation models。
+basedpyright皆通過，`84d64ff9`獨立gate已PASS。LaBraM／EEGSym family目前再加入Labram、
+InterpolatedLaBraM與EEGSym；support只擴充直接需要的MLP、parameter rescale與兩個hemisphere channel
+helpers，remote loader文件與surface均未移入。三個contracts完成upstream strict state-dict／deterministic
+output parity，Labram／EEGSym完成finite backward；全部既有legacy family加provenance focused suite為
+83 passed，Ruff／format／basedpyright皆通過。下一步是提交本family並取得同一獨立gate的exact-commit
+複核，通過前不開始SignalJEPA／LUNA family。
 Legacy IDs與UI cutover仍未開始。
 
 ## 問題與證據

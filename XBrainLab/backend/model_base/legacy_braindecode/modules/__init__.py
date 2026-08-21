@@ -16,7 +16,7 @@ from .attention import (
     MultiHeadAttention,
     SqueezeAndExcitation,
 )
-from .blocks import FeedForwardBlock, InceptionBlock, PatchTokenizer
+from .blocks import MLP, FeedForwardBlock, InceptionBlock, PatchTokenizer
 from .convolution import (
     AvgPool2dWithConv,
     CausalConv1d,
@@ -46,6 +46,7 @@ __all__ = [
     "ECA",
     "FCA",
     "GCT",
+    "MLP",
     "SRM",
     "AvgPool2dWithConv",
     "CATLite",
