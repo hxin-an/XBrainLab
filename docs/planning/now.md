@@ -222,6 +222,21 @@ basedpyright regression為80 observed、0 new、1 resolved，沒有更新81筆�
 reviewed legacy third-party namespace與原有LLM model source，catalog／adapter／artifact／UI仍受檢；
 production變更為UI null-safe access `+14/-7/net +7`，owner數不變且沒有可見行為改動。下一步建立
 checkpoint並由既有獨立gate複核，PASS後push新exact head並執行replacement canonical handoff。
+`18d43be4`的replacement handoff已通過source/static、complete regression、Assistant／GPU、UI／native
+lifecycle及source-diverse data gates，但在deferred record聚合時由`startup-smoke` fail closed。Artifact顯示
+entrypoint在MainWindow前拒絕缺少`XBRAINLAB_CONFIG_DIR`；這是CI reliability已新增的正確產品安全要求，
+而local canonical handoff的startup runner仍未提供隔離root。修復只在既有`run_startup_smoke.py` owner內：
+未顯式提供root的local probe自建一個含空格與非ASCII的owned temporary root，重用
+`build_isolated_environment()`產生全部mutable paths並只注入child；CI顯式root路徑與`run.py` fail-closed
+要求保持不變。先讓現有clean-close test對缺少isolated root／environment轉紅，再實作並跑startup unit、
+prepare-native contract及一次focused xvfb startup command。若root逃出owned temp、child未收到全部required env、
+product設定被寫入真實user path、cleanup掩蓋surviving child或CI explicit-root contract改變即停止。
+紅測先以`isolated_root=None`精確失敗；修復後startup＋prepare-native unit contracts為8 passed，包含local
+owned-root cleanup與CI explicit-root preservation。原生Xvfb focused smoke實際觀察MainWindow initialized、
+Qt `xcb`、close requested、return 0及process-tree quiescent，九個mutable paths全位於含空格與非ASCII的
+temporary root；sandbox內同命令因不能連X display而native abort，未被計為產品失敗或pass。修復只觸及
+既有dev runner與test，production `+0/-0/net 0`、owner數不變；Ruff／format／diff check通過。下一步建立
+checkpoint並由既有獨立gate複核，PASS後push新exact head，再執行replacement canonical handoff。
 
 ## 問題與證據
 
