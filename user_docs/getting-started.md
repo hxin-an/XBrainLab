@@ -1,134 +1,90 @@
----
-hide:
-  - navigation
----
+# Getting started
 
-# Getting Started
-
-<p class="page-kicker">From source checkout to a reviewed import</p>
-
-<p class="portal-lede">Set up the development build, confirm the empty Dataset
-workspace, and import a small EEG scope whose labels and metadata you can explain.</p>
-
-<div class="setup-path" markdown>
-  <div><span>1</span><strong>Install</strong><small>Prepare the managed environment.</small></div>
-  <div><span>2</span><strong>Launch</strong><small>Confirm the Dataset workspace opens.</small></div>
-  <div><span>3</span><strong>Review</strong><small>Apply an import only after its scope is clear.</small></div>
-</div>
-
-!!! note "Development distribution"
-    The current project does not ship a signed installer, so setup uses the repository
-    environment. The optional assistant is not required for the EEG workflow.
+This guide takes you from a source checkout to a reviewed EEG import. You do not need
+the local Assistant to use the EEG workflow.
 
 ## Before you begin
 
 You need:
 
-- Python `3.11` or `3.12`.
-- Poetry for the managed environment.
-- Enough local storage for the scientific Python stack and your EEG data.
-- EEG recordings you are permitted to process.
-- Label/event files and protocol notes when the recording does not contain complete
-  class semantics.
+- Python 3.11 or 3.12;
+- Poetry;
+- enough local storage for the Python environment and your EEG data;
+- recordings you are permitted to process;
+- protocol notes or label files when event meanings are not embedded in the recording.
 
-Do not configure or download a local language model merely to use import,
-preprocessing, epoching, training, evaluation, or visualization.
+The current project does not provide a signed Windows installer.
 
-## Install the application environment
+## 1. Install the environment
 
-From the XBrainLab repository root:
+From the repository root:
 
 ```bash
 poetry install
 ```
 
-To include the optional local assistant runtime:
+Install the optional local Assistant runtime only if you plan to use it:
 
 ```bash
 poetry install --with llm
 ```
 
-These commands describe the development distribution. A general-purpose Windows
-installer, code signing, and first-run setup have not been released.
-
-## Launch XBrainLab
-
-Use the managed environment:
+## 2. Launch XBrainLab
 
 ```bash
-poetry run -- python run.py
+poetry run python run.py
 ```
 
-A configured project machine may also have the repository's Windows-to-WSL launcher.
-That launcher is environment-specific; its presence is not evidence that another
-machine has been installed correctly.
-
-When the window opens, confirm that you can see the five workflow tabs:
+The main window should open on **Dataset** and show these top-level areas:
 
 `Dataset` · `Preprocess` · `Training` · `Evaluation` · `Visualization`
 
-<div class="screen-checks" markdown>
-  <strong>Startup check values</strong>
+If the window does not open, see [XBrainLab does not start](troubleshooting.md#xbrainlab-does-not-start).
 
-  - Selected tab: **Dataset**.
-  - Empty state: **No EEG data loaded**.
-  - Available source actions: **Import file**, **Import folder**, **Import BIDS**, **Reload recipe**.
-</div>
+## 3. Choose a small first dataset
 
-## Prepare a first dataset
+Start with one subject or a few runs whose protocol you understand. Before importing,
+identify:
 
-Keep the initial scope small and interpretable:
+- whether labels come from events, annotations, or separate files;
+- which values represent analysis classes;
+- which subject, session, task, and run fields must survive into the split;
+- whether the source should remain read-only.
 
-1. Start with one subject or a few known runs.
-2. Place protocol notes beside your working copy of the data.
-3. Identify whether labels are embedded events, annotations, or separate files.
-4. Know which event or column represents the analysis class.
-5. Decide which metadata must be preserved for the intended split.
-6. Keep the source data unchanged; write recipes and outputs elsewhere.
+Do not use an unfamiliar large dataset as the first setup check.
 
-For a known route, use either the [Graz 2a](case-studies/graz-2a.md) or
-[OpenNeuro P300](case-studies/openneuro-ds003061.md) case study as a review checklist.
+## 4. Open the correct import route
 
-## Complete the first import
+In **Dataset**, choose the action that matches the source:
 
-In **Dataset**, select the import action that matches the source:
-
-| Source | Use |
+| Source | Action |
 | --- | --- |
-| One EEG recording | **Import file** |
+| One recording | **Import file** |
 | Several recordings in a normal folder | **Import folder** |
 | A BIDS dataset root | **Import BIDS** |
-| A previously reviewed import | **Reload recipe** |
+| A saved reviewed import | **Reload recipe** |
 
-The import review contains five tasks:
+The import review walks through five tasks:
 
-1. **Choose EEG Data**: verify the exact selected scope.
-2. **Load Labels**: use discovered carriers, add label files, or continue without labels.
-3. **Review Metadata**: inspect subject, session, task, and run identity.
-4. **Match Labels**: confirm carrier pairing, class source, and placement.
-5. **Review and Import**: resolve blockers and confirm only when the summary matches the study.
+1. **Choose EEG Data** — confirm the selected files or BIDS entities.
+2. **Load Labels** — use discovered labels, add a label source, or continue without
+   labels when the intended task allows it.
+3. **Review Metadata** — inspect subject, session, task, and run identity.
+4. **Match Labels** — confirm how rows or event codes map to the recordings.
+5. **Review and Import** — resolve blocked items before applying the import.
 
-<div class="screen-checks" markdown>
-  <strong>Import review check values</strong>
+## 5. Check the imported session
 
-  - **EEG data**, **Label source**, and **Label placement** match the intended scope.
-  - **Metadata** notes are understood before import.
-  - **Resource check** is safe for the selected data.
-  - **Recipe: Not saved** is optional and does not imply an import failure.
-</div>
+After import, read **Data Summary** before opening Preprocess:
 
-## Confirm a usable session
+- the recording count matches the selected scope;
+- subject/session/task/run values match the study;
+- event and class counts are plausible;
+- channel count and sampling rate match the acquisition;
+- every warning is understood.
 
-After import, check the **Data Summary** before proceeding:
+If any of these values are wrong, fix the import before preprocessing. Once epochs or a
+training plan exist, reset the workflow deliberately instead of replacing upstream data
+inside the same run.
 
-- EEG file count matches the selected scope.
-- Subject/session/task/run values match the study, when available.
-- Event and class counts are plausible for the protocol.
-- Channel count and sampling rate match the acquisition.
-- Warnings are understood and recorded.
-
-If those facts are wrong, correct the import before preprocessing. If epochs or a
-training plan already exist, close and reopen XBrainLab before loading a different study;
-do not silently replace upstream data.
-
-[Continue with the development-build workflow](workflow.md){ .md-button .md-button--primary }
+Next: [Run an EEG workflow](workflow.md).
