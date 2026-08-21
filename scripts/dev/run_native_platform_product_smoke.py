@@ -24,6 +24,7 @@ REQUIRED_ISOLATED_ENV = (
 )
 PANEL_NAMES = ("dataset", "preprocess", "training", "evaluation", "visualization")
 PANEL_TIMEOUT_MS = 20_000
+MAX_PANEL_TIMEOUT_MS = 60_000
 SHUTDOWN_TIMEOUT_MS = 20_000
 
 
@@ -75,8 +76,14 @@ def run_native_product_smoke(
     *,
     expected_platform: str,
     expected_isolated_root: str | Path,
+    panel_timeout_ms: int = PANEL_TIMEOUT_MS,
 ) -> dict[str, Any]:
     """Run the real MainWindow, command spine, panel routing, and close path."""
+    if not 1 <= panel_timeout_ms <= MAX_PANEL_TIMEOUT_MS:
+        raise ValueError(
+            "The native panel timeout must be between 1 and "
+            f"{MAX_PANEL_TIMEOUT_MS} milliseconds."
+        )
     isolated_environment = validate_isolated_environment(expected_isolated_root)
     isolated_root = Path(expected_isolated_root).expanduser().resolve()
 
@@ -135,7 +142,7 @@ def run_native_product_smoke(
 
     materialized_panels: list[dict[str, str]] = []
     for index, name in enumerate(PANEL_NAMES):
-        panel = open_workflow_panel(window, index, timeout_ms=PANEL_TIMEOUT_MS)
+        panel = open_workflow_panel(window, index, timeout_ms=panel_timeout_ms)
         materialized_panels.append(
             {"index": str(index), "name": name, "class": type(panel).__name__}
         )
@@ -183,6 +190,7 @@ def run_native_product_smoke(
         "isolated_root": str(isolated_root),
         "isolated_environment": isolated_environment,
         "qsettings_root": str(qsettings_root),
+        "panel_timeout_ms": panel_timeout_ms,
         "panels": materialized_panels,
         "initial_query_ok": initial_query.ok,
         "empty_session_confirmation_required": (
@@ -209,6 +217,11 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected-platform", required=True)
     parser.add_argument("--expected-isolated-root", required=True)
+    parser.add_argument(
+        "--panel-timeout-ms",
+        type=int,
+        default=PANEL_TIMEOUT_MS,
+    )
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()
 
@@ -219,6 +232,7 @@ def main() -> int:
         result = run_native_product_smoke(
             expected_platform=args.expected_platform,
             expected_isolated_root=args.expected_isolated_root,
+            panel_timeout_ms=args.panel_timeout_ms,
         )
     except BaseException as error:
         result = {

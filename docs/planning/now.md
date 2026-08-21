@@ -256,6 +256,25 @@ Probe現只移除其child environment的`COV_CORE_*`並反向斷言未繼承；�
 coverage artifact。產品source、assertions、watchdog與runner皆未改（production `+0/-0/net 0`，owner數
 不變）；Python Ruff／format、MkDocs strict與diff check均通過。下一步建立checkpoint並交既有獨立gate；
 PASS後push並只跑一次replacement canonical handoff。
+PR #45在exact head `398c4e56`啟動完整remote scope後，Windows product／startup與macOS platform
+contracts通過，但required `macos-product-py311`在Training panel（index 2）既有20秒first-open watchdog
+fail closed。這不是本branch regression：同一PR base／current main `8d8dcf60`的相同job亦以同一panel 2
+timeout失敗。兩份macOS ARM64 log均顯示fresh isolated `MPLCONFIGDIR`在probe期間第一次建立Matplotlib
+font cache；main lifecycle step約32秒後於20秒panel budget終止，沒有construction exception或provider
+transport failure。修復scope只調整dev／CI evidence contract：Windows仍保留20秒per-panel上限；macOS
+product row顯式使用45秒上限，以涵蓋fresh native font-cache cold start且仍bounded，artifact記錄實際budget。
+不得retry test、移除macOS job、改成continue-on-error、預熱／共用user cache、改產品／UI，或放寬shutdown、
+platform、isolated-root與five-panel assertions。先讓workflow contract對platform-specific budget與CLI wiring轉紅，
+再做最小script／workflow修復；focused validation為native smoke unit、CI workflow reliability contract、Ruff／
+format／MkDocs／diff check。若macOS exact-head rerun仍timeout、出現materialization exception，或任何其他
+non-skipped check失敗即停止按新owner分類。此tests／scripts／CI source變更會使舊local dossier失效；remote
+全綠後仍需對final SHA執行一次canonical handoff，才交使用者手測。
+Workflow contract先因兩個product rows缺少platform-specific budget而精確轉紅；修復後native smoke與CI
+reliability兩個files為19 passed。Windows 20秒與macOS 45秒由finite matrix明列，runner拒絕超過60秒，
+CLI forwarding及artifact budget有focused coverage；Ruff／format、MkDocs strict與diff check通過。舊SHA的
+其餘所有non-skipped remote checks已completed／success，只有已分類的macOS smoke失敗。下一步建立
+tests／scripts／CI checkpoint並交既有獨立gate；PASS後push，等待新exact-head remote CI全綠，再對final
+SHA執行一次canonical handoff。
 
 ## 問題與證據
 

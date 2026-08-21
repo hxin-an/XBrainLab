@@ -485,6 +485,7 @@ jobs:
             artifact_type: xbrainlab.native_platform_product_smoke
             qt_platform: windows
             runner_os: Windows
+            panel_timeout_ms: 20000
           - key: windows-startup-py312
             os: windows-latest
             python: "3.12"
@@ -499,6 +500,7 @@ jobs:
             artifact_type: xbrainlab.native_platform_product_smoke
             qt_platform: cocoa
             runner_os: macOS
+            panel_timeout_ms: 45000
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -538,6 +540,7 @@ jobs:
           poetry run -- python scripts/dev/run_native_platform_product_smoke.py
           --expected-platform ${{ matrix.qt_platform }}
           --expected-isolated-root "${XBL_NATIVE_ROOT}"
+          --panel-timeout-ms ${{ matrix.panel_timeout_ms }}
           --output test-results/native-platform-smoke.json
 
       - name: Run native entrypoint startup lifecycle
