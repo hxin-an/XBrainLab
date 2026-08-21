@@ -46,7 +46,14 @@ PBT、STEEGFormer與TCFormer；10個model皆完成strict state-dict／determinis
 finite backward。Support closure只新增12個實際attention primitives、PatchTokenizer、FeedForwardBlock、
 DropPath、Conv1dWithConstraint與6個直接所需functional symbols；STEEGFormer的Hub lookup已刪除並有
 fail-closed regression。六個family加provenance focused suite為58 passed，Ruff／format／basedpyright皆通過，
-下一步是本commit獨立gate。
+`c71e5266`的獨立gate指出STEEGFormer仍保留Hub loader surface；`0f1cf3c9`已刪除相關文件、
+`_hub_mixin_config`與`from_pretrained`語意，擴充source guard後re-gate PASS。Attention／transformer family
+正式關閉。Foundation core／interpolated family目前加入EEGPT、BIOT、BENDR及其三個Interpolated variants；
+support closure只新增`InterpolatedModel`與`ChannelInterpolationLayer`所需的6個實際symbols，三個model的
+remote loader文件與surface均未移入。六個contracts完成upstream strict state-dict／deterministic output
+parity，三個base model完成finite backward；全部既有legacy family加provenance focused suite為68 passed，
+Ruff／format／basedpyright皆通過。下一步是提交本family並取得同一獨立gate的exact-commit複核，通過前
+不開始剩餘foundation models。
 Legacy IDs與UI cutover仍未開始。
 
 ## 問題與證據

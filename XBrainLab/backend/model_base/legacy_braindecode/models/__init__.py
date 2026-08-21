@@ -3,6 +3,8 @@
 from .atcnet import ATCNet
 from .attentionbasenet import AttentionBaseNet
 from .attn_sleep import AttnSleep
+from .bendr import BENDR, InterpolatedBENDR
+from .biot import BIOT, InterpolatedBIOT
 from .contrawr import ContraWR
 from .ctnet import CTNet
 from .deep4 import Deep4Net
@@ -13,6 +15,7 @@ from .eeginception_mi import EEGInceptionMI
 from .eegitnet import EEGITNet
 from .eegnet import EEGNet
 from .eegnex import EEGNeX
+from .eegpt import EEGPT, InterpolatedEEGPT
 from .eegsimpleconv import EEGSimpleConv
 from .eegtcnet import EEGTCNet
 from .fbcnet import FBCNet
@@ -40,6 +43,9 @@ from .usleep import USleep
 
 __all__ = [
     "BDTCN",
+    "BENDR",
+    "BIOT",
+    "EEGPT",
     "PBT",
     "SSTDPN",
     "ATCNet",
@@ -61,6 +67,9 @@ __all__ = [
     "FBLightConvNet",
     "FBMSNet",
     "IFNet",
+    "InterpolatedBENDR",
+    "InterpolatedBIOT",
+    "InterpolatedEEGPT",
     "MEDFormer",
     "MSVTNet",
     "MVPFormer",

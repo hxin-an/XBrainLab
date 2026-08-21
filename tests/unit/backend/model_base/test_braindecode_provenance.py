@@ -105,13 +105,13 @@ def test_legacy_support_provenance_matches_exact_installed_sources() -> None:
     package_root = Path(str(distribution("braindecode").locate_file("")))
     rows = _support_manifest_rows()
 
-    assert len(rows) == 15
+    assert len(rows) == 17
     assert len({row["upstream_path"] for row in rows}) == len(rows)
     assert len({row["local_path"] for row in rows}) == len(rows)
     manifested_symbols = [
         symbol for row in rows for symbol in row["symbols"].split(",")
     ]
-    assert len(manifested_symbols) == len(set(manifested_symbols)) == 53
+    assert len(manifested_symbols) == len(set(manifested_symbols)) == 59
     for row in rows:
         source_path = package_root / row["upstream_path"]
         local_path = _SUPPORT_MANIFEST_PATH.parent / row["local_path"]
