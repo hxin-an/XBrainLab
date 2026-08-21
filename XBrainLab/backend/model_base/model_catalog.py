@@ -734,6 +734,11 @@ def _adapt_braindecode_inputs(
     required = {name: standard_values[name] for name in entry.required_inputs}
     if entry.class_name == "AttnSleep" and float(standard_values["sfreq"]) == 125.0:
         required["d_model"] = 100
+    if entry.class_name == "STEEGFormer":
+        # Upstream resolves ``chs_info`` through a network-fetched vocabulary.
+        # XBrainLab trains from scratch, so use a deterministic local slot for
+        # each reviewed input channel and never trigger that hidden download.
+        required["chan_pos_idx"] = list(range(int(standard_values["n_chans"])))
     return required
 
 

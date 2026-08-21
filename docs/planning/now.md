@@ -110,6 +110,21 @@ single-channel 30-second 100／125 Hz contract，125 Hz由同一adapter固定其
 reason，TrainingCommandService在任何configuration mutation前重新讀Epochs model args並fail closed。三個
 focused files目前127 passed，Ruff／format／basedpyright通過。下一步為提交本checkpoint、獨立gate複核，
 之後才建立compatible-context construction／finite-forward matrix；不再執行前述兩個diagnostic矩陣。
+`a44918a7`獨立gate已PASS。Model matrix下一個slice不新增runner或availability owner：47個一般contract沿用
+22-channel／256-sample／standard montage context；七個特殊contract分別使用Blanco 512 samples、AttnSleep
+single-channel 3000 samples at 100 Hz、Labram canonical 128-channel／400 samples、InterpolatedLaBraM
+22-channel／400 samples、LUNA 22-channel／280 samples、CBraMod 22-channel／400 samples及EEGDINO
+19-channel／256 samples。每個static-eligible upstream ID必須由同一catalog projection判為available，以產品
+factory與default params產生`(1, 4)`finite logits及至少一個finite gradient；不量scientific accuracy、不以
+construction結果回寫availability。Focused evidence是一個獨立integration matrix，任一model失敗即停在該
+contract修復，不重跑整個舊diagnostic矩陣。
+第一輪完整matrix已一次通過：54個static-eligible upstream IDs全數由產品factory產生`(1, 4)`finite logits
+與finite gradient，inventory case合計55 passed／15.25 seconds。Run同時暴露STEEGFormer沒有收到既有
+`chs_info`後仍嘗試從Hub下載channel vocabulary並在離線時退回identity mapping；產品從零訓練而不載入
+預訓練embedding，因此同一既有adapter明確傳入deterministic local `chan_pos_idx=range(n_chans)`，不新增
+optional-input abstraction、不觸發網路、也不假裝具有預訓練montage alignment。以單一factory regression
+及該model matrix selector驗證，不重跑54-model matrix。Focused STEEGFormer regression為2 passed／
+4.52 seconds，原Hub vocabulary／identity-fallback warning已消失；Ruff／format／basedpyright通過。
 
 ## 問題與證據
 

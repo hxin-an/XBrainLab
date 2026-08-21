@@ -598,6 +598,37 @@ def test_factory_passes_only_declared_signal_context(monkeypatch) -> None:
     assert built == {"n_outputs": 2, "n_times": 128, "chs_info": chs_info}
 
 
+def test_factory_passes_local_steegformer_channel_mapping(monkeypatch) -> None:
+    spec = get_model_spec(
+        "braindecode.steegformer",
+        provider_status=_healthy_provider(),
+    )
+    original_import_module = model_catalog.importlib.import_module
+
+    def import_module(name: str):
+        if name == "braindecode.models.steegformer":
+            return SimpleNamespace(STEEGFormer=lambda **kwargs: kwargs)
+        return original_import_module(name)
+
+    monkeypatch.setattr(model_catalog.importlib, "import_module", import_module)
+    chs_info = [{"ch_name": "C3"}, {"ch_name": "C4"}]
+
+    built = spec.factory(
+        n_classes=2,
+        channels=2,
+        samples=128,
+        sfreq=128.0,
+        chs_info=chs_info,
+    )
+
+    assert built == {
+        "n_chans": 2,
+        "n_outputs": 2,
+        "n_times": 128,
+        "chan_pos_idx": [0, 1],
+    }
+
+
 @pytest.mark.parametrize("model_id", _BASELINE_FORWARD_MODEL_IDS)
 def test_curated_braindecode_model_builds_for_standard_eeg_input(model_id: str) -> None:
     spec = get_model_spec(model_id)
