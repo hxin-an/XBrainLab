@@ -7,11 +7,13 @@ the model-library import cost during application startup.
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import importlib.metadata
 import importlib.util
 import inspect
-from collections.abc import Callable
+import math
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from threading import RLock
 from types import ModuleType
@@ -33,6 +35,20 @@ _BRAINCDECODE_MATPLOTLIB_STYLE_LOCK = RLock()
 LEGACY_BRAINCDECODE_PROVIDER = "legacy-braindecode"
 LEGACY_BRAINCDECODE_SOURCE_REVISION = (
     f"{BRAINCDECODE_SOURCE_REVISION}+xbrainlab-reviewed"
+)
+_POSITION_REQUIRED_MODELS = frozenset(
+    {
+        "DGCNN",
+        "InterpolatedBENDR",
+        "InterpolatedBIOT",
+        "InterpolatedEEGPT",
+        "InterpolatedLaBraM",
+        "SignalJEPA_Contextual",
+    }
+)
+_LABRAM_CHANNEL_ORDER_SHA256 = (
+    "4b10c66b7efa84bc3f4d30a6807db4e"  # pragma: allowlist secret
+    "1eedb2ef348866a04fb3fcf0274264c70"  # pragma: allowlist secret
 )
 
 
@@ -422,6 +438,7 @@ def discover_model_specs(
     *,
     include_braindecode: bool = True,
     provider_status: BraindecodeProviderStatus | None = None,
+    signal_context: Mapping[str, Any] | None = None,
 ) -> tuple[ModelSpec, ...]:
     """Return the provider-aware training catalog and local models.
 
@@ -435,17 +452,21 @@ def discover_model_specs(
     specs: list[ModelSpec] = []
     if include_braindecode and known_local_models:
         if provider_status is None:
-            # The current combo-based dialog has not adopted provider readiness
-            # yet.  Preserve its curated projection until the search UI owns one
-            # checked snapshot instead of partially exposing the new catalog.
-            specs.extend(_braindecode_specs())
+            # The searchable dialog renders this cheap metadata projection while
+            # its one checked provider snapshot is still running in the background.
+            specs.extend(_braindecode_specs(signal_context=signal_context))
         elif provider_status.checked and not provider_status.available:
-            specs.extend(discover_legacy_braindecode_model_specs())
+            specs.extend(
+                discover_legacy_braindecode_model_specs(
+                    signal_context=signal_context,
+                )
+            )
         else:
             specs.extend(
                 _braindecode_specs(
                     BRAINCDECODE_CATALOG_ENTRIES,
                     provider_status=provider_status,
+                    signal_context=signal_context,
                 )
             )
     for class_name, model_class in local_models:
@@ -456,18 +477,23 @@ def discover_model_specs(
 def discover_braindecode_model_specs(
     *,
     provider_status: BraindecodeProviderStatus | None = None,
+    signal_context: Mapping[str, Any] | None = None,
 ) -> tuple[ModelSpec, ...]:
     """Return the complete pinned upstream catalog, including unavailable entries."""
     return _braindecode_specs(
         BRAINCDECODE_CATALOG_ENTRIES,
         provider_status=provider_status,
+        signal_context=signal_context,
     )
 
 
-def discover_legacy_braindecode_model_specs() -> tuple[ModelSpec, ...]:
+def discover_legacy_braindecode_model_specs(
+    *,
+    signal_context: Mapping[str, Any] | None = None,
+) -> tuple[ModelSpec, ...]:
     """Return reviewed local recovery contracts with distinct stable IDs."""
     return tuple(
-        _legacy_braindecode_model_spec(entry)
+        _legacy_braindecode_model_spec(entry, signal_context=signal_context)
         for entry in BRAINCDECODE_CATALOG_ENTRIES
         if entry.legacy_copy_allowed
     )
@@ -477,6 +503,7 @@ def get_model_spec(
     model_name: str,
     *,
     provider_status: BraindecodeProviderStatus | None = None,
+    signal_context: Mapping[str, Any] | None = None,
 ) -> ModelSpec:
     """Resolve a stable id, display label, or compatible legacy model name."""
     model_base = importlib.import_module("XBrainLab.backend.model_base")
@@ -489,12 +516,17 @@ def get_model_spec(
         discover_model_specs(
             model_base,
             provider_status=effective_status,
+            signal_context=signal_context,
         )
     )
     if requested_is_legacy and not any(
         spec.model_id.casefold() == normalized for spec in specs
     ):
-        specs.extend(discover_legacy_braindecode_model_specs())
+        specs.extend(
+            discover_legacy_braindecode_model_specs(
+                signal_context=signal_context,
+            )
+        )
     by_value: dict[str, ModelSpec] = {}
     for spec in specs:
         values = (
@@ -523,6 +555,7 @@ def _braindecode_specs(
     entries: tuple[BraindecodeCatalogEntry, ...] | None = None,
     *,
     provider_status: BraindecodeProviderStatus | None = None,
+    signal_context: Mapping[str, Any] | None = None,
 ) -> tuple[ModelSpec, ...]:
     projected_status = provider_status or _braindecode_installation_status()
     selected_entries = entries
@@ -534,13 +567,20 @@ def _braindecode_specs(
             entries_by_id[model_id] for model_id in BRAINDECODE_MODEL_IDS
         )
     return tuple(
-        _braindecode_model_spec(entry, projected_status) for entry in selected_entries
+        _braindecode_model_spec(
+            entry,
+            projected_status,
+            signal_context=signal_context,
+        )
+        for entry in selected_entries
     )
 
 
 def _braindecode_model_spec(
     entry: BraindecodeCatalogEntry,
     provider_status: BraindecodeProviderStatus,
+    *,
+    signal_context: Mapping[str, Any] | None = None,
 ) -> ModelSpec:
     curated_parameters = {
         class_name: parameters
@@ -556,8 +596,15 @@ def _braindecode_model_spec(
         provider_reason = (
             provider_status.reason or "Braindecode provider is unavailable."
         )
+    dataset_reason = (
+        _dataset_unavailable_reason(entry.class_name, signal_context)
+        if entry.available and provider_status.available and provider_status.checked
+        else ""
+    )
     unavailable_reasons = tuple(
-        reason for reason in (entry.unavailable_reason, provider_reason) if reason
+        reason
+        for reason in (entry.unavailable_reason, provider_reason, dataset_reason)
+        if reason
     )
     return ModelSpec(
         model_id=entry.model_id,
@@ -573,7 +620,10 @@ def _braindecode_model_spec(
         license_id=entry.license_id,
         required_inputs=entry.required_inputs,
         available=(
-            entry.available and provider_status.available and provider_status.checked
+            entry.available
+            and provider_status.available
+            and provider_status.checked
+            and not dataset_reason
         ),
         unavailable_reason=" ".join(unavailable_reasons),
         legacy_copy_allowed=entry.legacy_copy_allowed,
@@ -581,14 +631,27 @@ def _braindecode_model_spec(
     )
 
 
-def _legacy_braindecode_model_spec(entry: BraindecodeCatalogEntry) -> ModelSpec:
+def _legacy_braindecode_model_spec(
+    entry: BraindecodeCatalogEntry,
+    *,
+    signal_context: Mapping[str, Any] | None = None,
+) -> ModelSpec:
     curated_parameters = {
         class_name: parameters
         for class_name, _display_name, parameters in _BRAINCDECODE_MODELS
     }
+    dataset_reason = (
+        _dataset_unavailable_reason(entry.class_name, signal_context)
+        if entry.available and not entry.legacy_unavailable_reason
+        else ""
+    )
     unavailable_reasons = tuple(
         reason
-        for reason in (entry.unavailable_reason, entry.legacy_unavailable_reason)
+        for reason in (
+            entry.unavailable_reason,
+            entry.legacy_unavailable_reason,
+            dataset_reason,
+        )
         if reason
     )
     return ModelSpec(
@@ -604,7 +667,11 @@ def _legacy_braindecode_model_spec(entry: BraindecodeCatalogEntry) -> ModelSpec:
         aliases=(),
         license_id=entry.license_id,
         required_inputs=entry.required_inputs,
-        available=entry.available and not entry.legacy_unavailable_reason,
+        available=(
+            entry.available
+            and not entry.legacy_unavailable_reason
+            and not dataset_reason
+        ),
         unavailable_reason=" ".join(unavailable_reasons),
         legacy_copy_allowed=entry.legacy_copy_allowed,
         legacy_unavailable_reason=entry.legacy_unavailable_reason,
@@ -664,7 +731,123 @@ def _adapt_braindecode_inputs(
         raise ValueError(
             f"{entry.class_name} requires signal context: {', '.join(missing)}."
         )
-    return {name: standard_values[name] for name in entry.required_inputs}
+    required = {name: standard_values[name] for name in entry.required_inputs}
+    if entry.class_name == "AttnSleep" and float(standard_values["sfreq"]) == 125.0:
+        required["d_model"] = 100
+    return required
+
+
+def _dataset_unavailable_reason(
+    class_name: str,
+    signal_context: Mapping[str, Any] | None,
+) -> str:
+    """Return a deterministic dataset compatibility reason without model imports."""
+    if signal_context is None:
+        return ""
+    channels = _positive_int(signal_context.get("channels"))
+    samples = _positive_int(signal_context.get("samples"))
+    sfreq = _positive_float(signal_context.get("sfreq"))
+    chs_info = signal_context.get("chs_info")
+
+    if class_name in _POSITION_REQUIRED_MODELS and not _has_finite_positions(
+        chs_info,
+        channels,
+    ):
+        return (
+            "This model requires reviewed, finite electrode positions for every "
+            "selected channel."
+        )
+    if class_name == "SleepStagerBlanco2020":
+        if samples is None or samples < 450:
+            return "SleepStagerBlanco2020 requires epochs with at least 450 samples."
+        if channels is None or channels % 2:
+            return (
+                "SleepStagerBlanco2020 requires an even number of EEG channels "
+                "with its default grouped convolutions."
+            )
+    if class_name == "AttnSleep" and not (
+        channels == 1
+        and (
+            (sfreq == 100.0 and samples == 3_000)
+            or (sfreq == 125.0 and samples == 3_750)
+        )
+    ):
+        return (
+            "AttnSleep requires a single-channel 30-second epoch at 100 Hz "
+            "(3,000 samples) or 125 Hz (3,750 samples)."
+        )
+    if class_name == "Labram":
+        if not _matches_labram_channel_order(chs_info, channels):
+            return (
+                "Labram requires its canonical 128-channel order. Use "
+                "InterpolatedLaBraM with a reviewed montage for other layouts."
+            )
+        if samples is None or samples % 200:
+            return "Labram requires an epoch length divisible by 200 samples."
+    if class_name == "InterpolatedLaBraM" and (samples is None or samples % 200):
+        return "InterpolatedLaBraM requires an epoch length divisible by 200 samples."
+    if class_name == "LUNA" and (samples is None or samples % 40):
+        return "LUNA requires an epoch length divisible by 40 samples."
+    if class_name == "CBraMod" and (samples is None or samples % 200):
+        return "CBraMod requires an epoch length divisible by 200 samples."
+    if class_name == "EEGDINO" and (channels is None or channels > 19):
+        return "EEGDINO currently supports at most 19 channels."
+    return ""
+
+
+def _positive_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return value
+
+
+def _positive_float(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) and number > 0 else None
+
+
+def _has_finite_positions(chs_info: object, channels: int | None) -> bool:
+    if not isinstance(chs_info, (list, tuple)) or channels is None:
+        return False
+    if len(chs_info) != channels:
+        return False
+    positions: list[tuple[float, float, float]] = []
+    for channel in chs_info:
+        if not isinstance(channel, Mapping):
+            return False
+        location = channel.get("loc")
+        try:
+            position = tuple(float(value) for value in location[:3])  # type: ignore[index]
+        except (TypeError, ValueError):
+            return False
+        if len(position) != 3 or not all(math.isfinite(value) for value in position):
+            return False
+        positions.append(position)
+    if not positions or all(all(value == 0.0 for value in item) for item in positions):
+        return False
+    return len(positions) == 1 or len(set(positions)) > 1
+
+
+def _matches_labram_channel_order(
+    chs_info: object,
+    channels: int | None,
+) -> bool:
+    if channels != 128 or not isinstance(chs_info, (list, tuple)):
+        return False
+    if len(chs_info) != channels:
+        return False
+    names: list[str] = []
+    for channel in chs_info:
+        if not isinstance(channel, Mapping):
+            return False
+        name = channel.get("ch_name")
+        if not isinstance(name, str) or not name.strip():
+            return False
+        names.append(name.strip().upper())
+    digest = hashlib.sha256("\0".join(names).encode("utf-8")).hexdigest()
+    return digest == _LABRAM_CHANNEL_ORDER_SHA256
 
 
 def _local_model_spec(class_name: str, model_class: type) -> ModelSpec:

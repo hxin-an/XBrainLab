@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from types import SimpleNamespace
+from typing import Any
 
 import matplotlib
 import pytest
@@ -53,6 +54,39 @@ def _missing_provider() -> BraindecodeProviderStatus:
         reason="braindecode==1.6.1 is not installed.",
         checked=True,
     )
+
+
+def _signal_context(
+    *,
+    channels: int = 22,
+    samples: int = 256,
+    sfreq: float = 128.0,
+    finite_positions: bool = True,
+    channel_names: list[str] | None = None,
+) -> dict[str, Any]:
+    names = channel_names or [f"EEG {index:03d}" for index in range(channels)]
+    return {
+        "n_classes": 4,
+        "channels": channels,
+        "samples": samples,
+        "sfreq": sfreq,
+        "chs_info": [
+            {
+                "ch_name": name,
+                "loc": [
+                    *(
+                        [0.01 + index * 0.001, 0.02, 0.03]
+                        if finite_positions
+                        else [float("nan")] * 3
+                    ),
+                    0.0,
+                    0.0,
+                    0.0,
+                ],
+            }
+            for index, name in enumerate(names)
+        ],
+    }
 
 
 def test_catalog_exposes_complete_upstream_and_xbrainlab_models() -> None:
@@ -331,6 +365,181 @@ def test_catalog_discovery_does_not_import_braindecode_models_barrel() -> None:
                 "from XBrainLab.backend.model_base.model_catalog import "
                 "discover_model_specs; "
                 "discover_model_specs(model_base); "
+                "assert 'braindecode.models' not in sys.modules"
+            ),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert process.returncode == 0, process.stderr
+
+
+@pytest.mark.parametrize(
+    ("model_id", "signal_context", "reason"),
+    [
+        (
+            "braindecode.interpolatedeegpt",
+            _signal_context(finite_positions=False),
+            "electrode positions",
+        ),
+        (
+            "braindecode.dgcnn",
+            _signal_context(finite_positions=False),
+            "electrode positions",
+        ),
+        (
+            "braindecode.signaljepa_contextual",
+            _signal_context(finite_positions=False),
+            "electrode positions",
+        ),
+        (
+            "braindecode.sleepstagerblanco2020",
+            _signal_context(samples=449),
+            "450 samples",
+        ),
+        (
+            "braindecode.attnsleep",
+            _signal_context(channels=2, samples=3_000, sfreq=100.0),
+            "single-channel",
+        ),
+        (
+            "braindecode.labram",
+            _signal_context(channels=128, samples=400),
+            "canonical 128-channel order",
+        ),
+        (
+            "braindecode.interpolatedlabram",
+            _signal_context(samples=256),
+            "divisible by 200",
+        ),
+        (
+            "braindecode.luna",
+            _signal_context(samples=256),
+            "divisible by 40",
+        ),
+        (
+            "braindecode.cbramod",
+            _signal_context(samples=256),
+            "divisible by 200",
+        ),
+        (
+            "braindecode.eegdino",
+            _signal_context(channels=22),
+            "at most 19 channels",
+        ),
+    ],
+)
+def test_dataset_context_disables_incompatible_model_before_construction(
+    model_id: str,
+    signal_context: dict[str, Any],
+    reason: str,
+) -> None:
+    specs = {
+        spec.model_id: spec
+        for spec in discover_braindecode_model_specs(
+            provider_status=_healthy_provider(),
+            signal_context=signal_context,
+        )
+    }
+
+    assert specs[model_id].available is False
+    assert reason in specs[model_id].unavailable_reason
+
+
+def test_dataset_context_keeps_compatible_specialized_models_available() -> None:
+    from XBrainLab.backend.model_base.legacy_braindecode.models.labram import (
+        LABRAM_CHANNEL_ORDER,
+    )
+
+    cases = {
+        "braindecode.interpolatedeegpt": _signal_context(),
+        "braindecode.dgcnn": _signal_context(),
+        "braindecode.signaljepa_contextual": _signal_context(),
+        "braindecode.sleepstagerblanco2020": _signal_context(samples=450),
+        "braindecode.attnsleep": _signal_context(
+            channels=1,
+            samples=3_000,
+            sfreq=100.0,
+        ),
+        "braindecode.labram": _signal_context(
+            channels=128,
+            samples=400,
+            channel_names=list(LABRAM_CHANNEL_ORDER),
+        ),
+        "braindecode.interpolatedlabram": _signal_context(samples=400),
+        "braindecode.luna": _signal_context(samples=280),
+        "braindecode.cbramod": _signal_context(samples=400),
+        "braindecode.eegdino": _signal_context(channels=19),
+    }
+
+    for model_id, signal_context in cases.items():
+        spec = get_model_spec(
+            model_id,
+            provider_status=_healthy_provider(),
+            signal_context=signal_context,
+        )
+        assert spec.available, (model_id, spec.unavailable_reason)
+
+
+def test_legacy_recovery_uses_the_same_dataset_compatibility_projection() -> None:
+    specs = {
+        spec.model_id: spec
+        for spec in discover_legacy_braindecode_model_specs(
+            signal_context=_signal_context(samples=256),
+        )
+    }
+
+    blocked = specs["legacy.braindecode.cbramod"]
+    assert blocked.available is False
+    assert "divisible by 200" in blocked.unavailable_reason
+
+
+def test_attnsleep_adapter_uses_documented_125_hz_embedding_size(monkeypatch) -> None:
+    spec = get_model_spec(
+        "braindecode.attnsleep",
+        provider_status=_healthy_provider(),
+        signal_context=_signal_context(channels=1, samples=3_750, sfreq=125.0),
+    )
+    original_import_module = model_catalog.importlib.import_module
+
+    def import_module(name: str):
+        if name == "braindecode.models.attn_sleep":
+            return SimpleNamespace(AttnSleep=lambda **kwargs: kwargs)
+        return original_import_module(name)
+
+    monkeypatch.setattr(model_catalog.importlib, "import_module", import_module)
+
+    built = spec.factory(
+        n_classes=5,
+        channels=1,
+        samples=3_750,
+        sfreq=125.0,
+        chs_info=_signal_context(
+            channels=1,
+            samples=3_750,
+            sfreq=125.0,
+        )["chs_info"],
+    )
+
+    assert built["d_model"] == 100
+
+
+def test_dataset_projection_does_not_import_braindecode_models_barrel() -> None:
+    process = subprocess.run(  # noqa: S603 - current interpreter, fixed test code
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; "
+                "from XBrainLab.backend.model_base.model_catalog import "
+                "BraindecodeProviderStatus, discover_braindecode_model_specs; "
+                "discover_braindecode_model_specs("
+                "provider_status=BraindecodeProviderStatus("
+                "available=True, installed_version='1.6.1', reason='', checked=True), "
+                "signal_context={'channels': 22, 'samples': 256, 'sfreq': 128.0, "
+                "'chs_info': []}); "
                 "assert 'braindecode.models' not in sys.modules"
             ),
         ],

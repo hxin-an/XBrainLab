@@ -1,4 +1,5 @@
 from threading import Event
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -134,6 +135,34 @@ class TestModelSelection:
         assert parameter_keys.isdisjoint(
             {"n_outputs", "n_chans", "n_times", "sfreq"},
         )
+
+    def test_dataset_context_disables_incompatible_model_with_visible_reason(
+        self,
+        qtbot,
+    ):
+        controller = SimpleNamespace(
+            get_epoch_data=lambda: SimpleNamespace(
+                get_model_args=lambda: {
+                    "n_classes": 4,
+                    "channels": 22,
+                    "samples": 256,
+                    "sfreq": 128.0,
+                    "chs_info": [],
+                }
+            )
+        )
+        dialog = ModelSelectionDialog(
+            None,
+            controller,
+            provider_status=HEALTHY_PROVIDER,
+        )
+        qtbot.addWidget(dialog)
+
+        blocked = _result_item(dialog, "braindecode.cbramod")
+        allowed = _result_item(dialog, "braindecode.eegnet")
+        assert not blocked.flags() & Qt.ItemFlag.ItemIsEnabled
+        assert "divisible by 200" in blocked.toolTip()
+        assert allowed.flags() & Qt.ItemFlag.ItemIsEnabled
 
     def test_search_matches_name_alias_family_task_and_stable_id(self, qtbot):
         dialog = ModelSelectionDialog(

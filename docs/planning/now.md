@@ -91,6 +91,26 @@ focused offscreen screenshot亦已人工檢視。`5cd736a3`的獨立gate發現En
 regression關閉，UI focused suite為23 passed；`5b6b4016` re-gate已PASS。UI checkpoint正式關閉。下一步進入
 全部selectable models的catalog construction／forward與family workflow matrix，不提前執行full handoff。
 
+Model matrix第一輪bounded diagnostic已完成且不重跑：目前static catalog的54個selectable upstream contracts，
+在22-channel／512-sample且無montage context有43個產生finite logits；在22-channel／256-sample且有標準10–20
+montage context有47個產生finite logits。失敗不是單一factory defect，而是可靜態描述的signal contract：
+interpolated／DGCNN／SignalJEPA contextual需要finite electrode positions；SleepStagerBlanco2020與AttnSleep
+需要較長sleep windows，AttnSleep另有原始100／125 Hz window contract；Labram需要原始128-channel order及
+200-sample patch divisibility，InterpolatedLaBraM需要montage及相同divisibility；LUNA／CBraMod分別需要40／
+200-sample patch divisibility；EEGDINO目前最多19 channels。下一個coherent change會在既有ModelCatalog加入
+pure dataset-context availability projection，Model Selection只從`controller.get_epoch_data().get_model_args()`
+取得detached snapshot，TrainingCommandService在configure時用同一projection重新admit。禁止UI自行推導、
+禁止trial construction決定availability、禁止遇到constructor error後fallback。Focused tests要證明各條件的
+allow／block、UI reason、UI與command一致及每個enabled contract的bounded construction／finite forward。
+目前pure projection與兩個consumer已完成：interpolated／DGCNN／SignalJEPA contextual會要求reviewed finite
+positions；SleepStagerBlanco2020要求至少450 samples且預設group-compatible channel count；AttnSleep只接受
+single-channel 30-second 100／125 Hz contract，125 Hz由同一adapter固定其documented `d_model=100`；Labram
+要求canonical 128-channel order與200-sample divisibility，InterpolatedLaBraM／LUNA／CBraMod分別檢查其
+200／40／200 patch contract，EEGDINO限制最多19 channels。Upstream與legacy recovery共用判定；UI只顯示
+reason，TrainingCommandService在任何configuration mutation前重新讀Epochs model args並fail closed。三個
+focused files目前127 passed，Ruff／format／basedpyright通過。下一步為提交本checkpoint、獨立gate複核，
+之後才建立compatible-context construction／finite-forward matrix；不再執行前述兩個diagnostic矩陣。
+
 ## 問題與證據
 
 - Current catalog只手工發布10個`braindecode.*`模型與3個`xbrainlab.*`本地模型；Braindecode 1.6.1

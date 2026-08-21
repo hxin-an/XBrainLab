@@ -94,6 +94,7 @@ class ModelSelectionDialog(BaseDialog):
         self.content_scroll: QScrollArea | None = None
         self._provider_worker: PythonThreadWorker | None = None
         self._provider_status = provider_status
+        self._signal_context = self._read_signal_context()
         self._selected_model_id: str | None = None
         self._applying_catalog = False
         self._selection_changed_while_pending = False
@@ -101,7 +102,10 @@ class ModelSelectionDialog(BaseDialog):
 
         # Render a cheap metadata projection immediately. A checked provider
         # snapshot replaces it asynchronously after the dialog is visible.
-        self.model_specs = discover_model_specs(model_base)
+        self.model_specs = discover_model_specs(
+            model_base,
+            signal_context=self._signal_context,
+        )
         self._spec_by_id = {spec.model_id: spec for spec in self.model_specs}
         self.initial_model_id = self._canonical_model_id(initial_model_name)
 
@@ -452,14 +456,24 @@ class ModelSelectionDialog(BaseDialog):
             if self._selection_changed_while_pending
             else self.initial_model_id
         )
-        specs = list(discover_model_specs(model_base, provider_status=status))
+        specs = list(
+            discover_model_specs(
+                model_base,
+                provider_status=status,
+                signal_context=self._signal_context,
+            )
+        )
         if (
             status.available
             and preserve_id
             and preserve_id.startswith("legacy.braindecode.")
         ):
             try:
-                persisted = get_model_spec(preserve_id, provider_status=status)
+                persisted = get_model_spec(
+                    preserve_id,
+                    provider_status=status,
+                    signal_context=self._signal_context,
+                )
             except ValueError:
                 persisted = None
             if persisted is not None:
@@ -481,6 +495,13 @@ class ModelSelectionDialog(BaseDialog):
             )
             self.provider_banner.style().unpolish(self.provider_banner)
             self.provider_banner.style().polish(self.provider_banner)
+
+    def _read_signal_context(self) -> dict[str, Any] | None:
+        epoch_getter = getattr(self.controller, "get_epoch_data", None)
+        epoch_data = epoch_getter() if callable(epoch_getter) else None
+        args_getter = getattr(epoch_data, "get_model_args", None)
+        value = args_getter() if callable(args_getter) else None
+        return dict(value) if isinstance(value, dict) else None
 
     def _apply_catalog(
         self,
