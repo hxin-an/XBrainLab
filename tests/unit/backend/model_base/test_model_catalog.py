@@ -185,6 +185,21 @@ def test_checked_provider_enables_only_eligible_projection() -> None:
     ).available
 
 
+def test_unchecked_provider_cannot_enable_projection_without_reason() -> None:
+    specs = discover_braindecode_model_specs(
+        provider_status=BraindecodeProviderStatus(
+            available=True,
+            installed_version="1.6.1",
+            reason="",
+            checked=False,
+        )
+    )
+
+    eegnet = next(spec for spec in specs if spec.model_id == "braindecode.eegnet")
+    assert eegnet.available is False
+    assert "not been checked" in eegnet.unavailable_reason
+
+
 def test_catalog_import_does_not_eagerly_import_braindecode_models() -> None:
     process = subprocess.run(  # noqa: S603 - current interpreter, fixed test code
         [

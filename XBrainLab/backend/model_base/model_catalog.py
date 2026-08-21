@@ -492,10 +492,18 @@ def _braindecode_model_spec(
         class_name: parameters
         for class_name, _display_name, parameters in _BRAINCDECODE_MODELS
     }
+    provider_reason = ""
+    if not provider_status.checked:
+        provider_reason = (
+            provider_status.reason
+            or "Braindecode provider readiness has not been checked."
+        )
+    elif not provider_status.available:
+        provider_reason = (
+            provider_status.reason or "Braindecode provider is unavailable."
+        )
     unavailable_reasons = tuple(
-        reason
-        for reason in (entry.unavailable_reason, provider_status.reason)
-        if reason
+        reason for reason in (entry.unavailable_reason, provider_reason) if reason
     )
     return ModelSpec(
         model_id=entry.model_id,
@@ -510,7 +518,9 @@ def _braindecode_model_spec(
         aliases=(entry.class_name,),
         license_id=entry.license_id,
         required_inputs=entry.required_inputs,
-        available=not unavailable_reasons,
+        available=(
+            entry.available and provider_status.available and provider_status.checked
+        ),
         unavailable_reason=" ".join(unavailable_reasons),
         legacy_copy_allowed=entry.legacy_copy_allowed,
         legacy_unavailable_reason=entry.legacy_unavailable_reason,
