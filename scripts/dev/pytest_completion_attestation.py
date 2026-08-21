@@ -81,6 +81,22 @@ def validate_attestation(
         return None, "Pytest completion attestation was not produced."
     except (OSError, json.JSONDecodeError):
         return None, "Pytest completion attestation is unreadable."
+    return validate_attestation_payload(
+        raw,
+        expected_runner=expected_runner,
+        expected_args=expected_args,
+        expected_exit_code=expected_exit_code,
+    )
+
+
+def validate_attestation_payload(
+    raw: object,
+    *,
+    expected_runner: str,
+    expected_args: Sequence[str],
+    expected_exit_code: int,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Validate an already-decoded completion payload against its invocation."""
     if not isinstance(raw, dict):
         return None, "Pytest completion attestation is malformed."
     if raw.get("schema_version") != SCHEMA_VERSION:

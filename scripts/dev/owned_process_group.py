@@ -21,6 +21,7 @@ WINDOWS_NEW_PROCESS_GROUP = int(
 WINDOWS_CTRL_BREAK_EVENT = int(getattr(signal, "CTRL_BREAK_EVENT", 1))
 WINDOWS_TASKKILL_TIMEOUT_SECONDS = 15
 WINDOWS_JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
+WINDOWS_JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION = 1
 WINDOWS_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
 DEFAULT_TERMINATION_GRACE_SECONDS = 5.0
 
@@ -77,6 +78,19 @@ class _JobObjectExtendedLimitInformation(Structure):
     )
 
 
+class _JobObjectBasicAccountingInformation(Structure):
+    _fields_ = (
+        ("TotalUserTime", c_ulonglong),
+        ("TotalKernelTime", c_ulonglong),
+        ("ThisPeriodTotalUserTime", c_ulonglong),
+        ("ThisPeriodTotalKernelTime", c_ulonglong),
+        ("TotalPageFaultCount", wintypes.DWORD),
+        ("TotalProcesses", wintypes.DWORD),
+        ("ActiveProcesses", wintypes.DWORD),
+        ("TotalTerminatedProcesses", wintypes.DWORD),
+    )
+
+
 class _WindowsJobHandle:
     """Own one Windows process tree until the handle is explicitly closed."""
 
@@ -120,6 +134,24 @@ class _WindowsJobHandle:
         if not self._closed:
             self._kernel32.TerminateJobObject(self._handle, 1)
 
+    def has_active_processes(self) -> bool:
+        if self._closed:
+            return False
+        accounting = _JobObjectBasicAccountingInformation()
+        returned_length = wintypes.DWORD()
+        queried = bool(
+            self._kernel32.QueryInformationJobObject(
+                self._handle,
+                WINDOWS_JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION,
+                byref(accounting),
+                sizeof(accounting),
+                byref(returned_length),
+            )
+        )
+        if not queried:
+            raise OSError("Could not inspect the gate process Job Object.")
+        return bool(accounting.ActiveProcesses)
+
     def close(self) -> None:
         if self._closed:
             return
@@ -142,6 +174,22 @@ class OwnedProcessGroup:
             self._windows_job.terminate()
             return
         signal_owned_group(self.process, force=force)
+
+    def wait_for_exit(self, timeout_seconds: float) -> bool:
+        """Observe a naturally quiescent owned tree without terminating it."""
+        deadline = time.monotonic() + max(0.0, timeout_seconds)
+        while True:
+            if self._windows_job is not None:
+                active = self._windows_job.has_active_processes()
+            elif _platform_name() == "posix":
+                active = _posix_group_exists(self.process.pid)
+            else:
+                active = self.process.poll() is None
+            if not active:
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
 
     def close(
         self, *, grace_seconds: float = DEFAULT_TERMINATION_GRACE_SECONDS
@@ -356,15 +404,21 @@ def _close_capture_streams(process: subprocess.Popen[str]) -> None:
 def _wait_for_posix_group_exit(pid: int, timeout_seconds: float) -> bool:
     deadline = time.monotonic() + max(0.0, timeout_seconds)
     while True:
-        try:
-            os.killpg(pid, 0)
-        except ProcessLookupError:
+        if not _posix_group_exists(pid):
             return True
-        except PermissionError:
-            return False
         if time.monotonic() >= deadline:
             return False
         time.sleep(0.02)
+
+
+def _posix_group_exists(pid: int) -> bool:
+    try:
+        os.killpg(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 def _taskkill_exact_pid_tree(pid: int, *, force: bool) -> bool:

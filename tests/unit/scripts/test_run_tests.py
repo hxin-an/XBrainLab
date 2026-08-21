@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from scripts.dev import run_tests
+from scripts.dev import ci_source_provenance, run_tests
 from scripts.dev.pytest_completion_attestation import (
     REQUIRED_PYTEST_RUNNER_ID,
     SHARDED_PYTEST_RUNNER_ID,
@@ -368,6 +368,82 @@ def test_linux_ci_evidence_verifier_aggregates_every_required_group(tmp_path) ->
     assert payload["command_args"] == ["all"]
     assert payload["exit_code"] == 0
     assert payload["counts"]["passed"] == len(run_tests.LINUX_CI_GROUPS)
+    assert not (tmp_path / "all-linux-source-provenance.json").exists()
+
+
+def _write_remote_linux_provenance(
+    root: Path,
+    *,
+    member_tree: str = "c" * 40,
+) -> tuple[Path, Path]:
+    provenance_root = root / "source-provenance"
+    common = {
+        "schema": ci_source_provenance.CI_SOURCE_PROVENANCE_SCHEMA,
+        "event_name": "pull_request",
+        "repository": "hxin-an/XBrainLab",
+        "workflow": "CI",
+        "run_id": "123",
+        "run_attempt": "1",
+        "runner_os": "Linux",
+        "runner_arch": "X64",
+        "github_sha": "e" * 40,
+        "expected_head_sha": "a" * 40,
+        "pull_request_head_sha": "a" * 40,
+        "pull_request_base_sha": "b" * 40,
+        "checked_out_head_sha": "a" * 40,
+    }
+    for command in run_tests.LINUX_CI_COMMANDS:
+        artifact_dir = (
+            provenance_root
+            / f"{ci_source_provenance.LINUX_PROVENANCE_ARTIFACT_PREFIX}{command}"
+        )
+        artifact_dir.mkdir(parents=True)
+        payload = {
+            **common,
+            "job_key": command,
+            "github_job": "linux-shard",
+            "checked_out_tree_sha": member_tree,
+        }
+        (artifact_dir / f"ci-source-provenance-{command}.json").write_text(
+            json.dumps(payload), encoding="utf-8"
+        )
+    expected_path = root / "linux-test-source-provenance.json"
+    expected_path.write_text(
+        json.dumps(
+            {
+                **common,
+                "job_key": "linux-test",
+                "github_job": "linux-test",
+                "checked_out_tree_sha": "c" * 40,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return provenance_root, expected_path
+
+
+def test_linux_ci_evidence_verifier_rejects_all_stale_remote_members(
+    tmp_path,
+) -> None:
+    result_path = tmp_path / "all-regression.json"
+    _write_linux_ci_evidence(tmp_path)
+    provenance_root, expected_path = _write_remote_linux_provenance(
+        tmp_path,
+        member_tree="d" * 40,
+    )
+
+    assert (
+        run_tests.verify_linux_ci_evidence(
+            tmp_path,
+            result_path,
+            provenance_dir=provenance_root,
+            expected_provenance_path=expected_path,
+        )
+        == 1
+    )
+    assert not (tmp_path / "all-linux-source-provenance.json").exists()
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert payload["exit_code"] == 1
 
 
 def test_linux_ci_evidence_verifier_accepts_owned_parallel_coverage_fragments(
@@ -698,6 +774,22 @@ def test_ci_uses_full_linux_and_focused_cross_platform_runners() -> None:
     workflow = yaml.safe_load(workflow_text)
     jobs = workflow["jobs"]
 
+    expected_checkout_ref = (
+        "${{ github.event_name == 'pull_request' && "
+        "github.event.pull_request.head.sha || github.sha }}"
+    )
+    checkout_steps = [
+        step
+        for job in jobs.values()
+        for step in job.get("steps", ())
+        if step.get("uses")
+        == "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
+    ]
+    assert len(checkout_steps) == 11
+    assert all(
+        step.get("with") == {"ref": expected_checkout_ref} for step in checkout_steps
+    )
+
     assert jobs["linux-shard"]["strategy"]["matrix"] == {
         "command": list(run_tests.LINUX_CI_COMMANDS),
     }
@@ -709,8 +801,26 @@ def test_ci_uses_full_linux_and_focused_cross_platform_runners() -> None:
     assert jobs["linux-shard"]["strategy"]["max-parallel"] == 8
     assert jobs["linux-shard"]["env"]["XBL_SHARED_CI_RUNNER"] == "1"
     assert jobs["platform-test"]["env"]["XBL_SHARED_CI_RUNNER"] == "1"
+    linux_shard_steps = {
+        step.get("name"): step for step in jobs["linux-shard"]["steps"]
+    }
+    sidecar_upload = linux_shard_steps["Upload source provenance sidecar"]
+    assert sidecar_upload["with"]["name"] == (
+        "linux-source-provenance-${{ matrix.command }}"
+    )
+    assert sidecar_upload["with"]["path"] == (
+        "test-results/ci-source-provenance-${{ matrix.command }}.json"
+    )
+    linux_test_steps = {step.get("name"): step for step in jobs["linux-test"]["steps"]}
+    provenance_download = linux_test_steps["Download source provenance sidecars"]
+    assert provenance_download["with"] == {
+        "pattern": "linux-source-provenance-*",
+        "path": "source-provenance",
+    }
     assert workflow_text.count("scripts/dev/run_tests.py ${{ matrix.command }}") == 2
     assert "python -m scripts.dev.run_tests verify-linux-ci" in workflow_text
+    assert "--provenance-dir source-provenance" in workflow_text
+    assert "--expected-provenance linux-test-source-provenance.json" in workflow_text
     assert "python scripts/dev/run_tests.py verify-linux-ci" not in workflow_text
     assert "fetch-depth: 0" not in workflow_text
     assert "coverage combine test-results" in workflow_text

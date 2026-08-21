@@ -195,6 +195,49 @@ def test_windows_owner_closes_job_after_parent_already_exited(monkeypatch) -> No
     assert calls == ["terminate", "close"]
 
 
+def test_windows_owner_observes_job_quiescence_without_terminating(monkeypatch) -> None:
+    monkeypatch.setattr(owned_process_group, "_platform_name", lambda: "nt")
+    calls: list[str] = []
+
+    class FakeJob:
+        def __init__(self, _process) -> None:
+            pass
+
+        def has_active_processes(self) -> bool:
+            calls.append("inspect")
+            return False
+
+        def terminate(self) -> None:
+            calls.append("terminate")
+
+        def close(self) -> None:
+            calls.append("close")
+
+    monkeypatch.setattr(owned_process_group, "_WindowsJobHandle", FakeJob)
+    owner = owned_process_group.own_process_group(_FakeProcess(running=False))
+
+    assert owner.wait_for_exit(0) is True
+    assert calls == ["inspect"]
+
+
+@pytest.mark.platform_contract
+@POSIX_ONLY
+def test_posix_owner_reports_surviving_group_without_signalling(monkeypatch) -> None:
+    monkeypatch.setattr(owned_process_group, "_platform_name", lambda: "posix")
+    monkeypatch.setattr(
+        owned_process_group,
+        "_posix_group_exists",
+        lambda _pid: True,
+    )
+    process = _FakeProcess(running=False)
+    owner = owned_process_group.own_process_group(process)
+
+    assert owner.wait_for_exit(0) is False
+    assert process.signals == []
+    assert process.terminated is False
+    assert process.killed is False
+
+
 def test_windows_spawn_releases_target_only_after_job_ownership(monkeypatch) -> None:
     monkeypatch.setattr(owned_process_group, "_platform_name", lambda: "nt")
     events: list[str] = []
