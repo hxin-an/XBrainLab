@@ -4,134 +4,159 @@
 
 ## 目前焦點
 
-`refactor/test-quality-runtime-v1` 已由 PR #43 在 exact head
-`f97f0be636f9465a4303581f0943e29ae9a4150e` 完成 40/40 canonical handoff、remote CI 與使用者核心
-workflow 手測，並以 merge commit `616eda0a261560d17cfa35dc93e5906115e5c14e` 合併至 `main`。
+CI reliability branch 已在 PR #44 的 exact head
+`a679f1417649f4266a2af84809684e40b2109293` 完成所有 applicable non-skipped checks，使用者於
+`2026-08-21` 回報 Windows 與 Linux 真人手測正常，並以 merge commit
+`8d8dcf6030d0b4bd79783b3a086e1efa101d0cd2` 合併至 `main`。
 
-目前唯一 active slice 是 branch `ci/native-platform-reliability-v1`：先讓 CI 能對 **原生 Windows
-source checkout** 提供可信、可追溯、fail-closed 的啟動與小型產品 lifecycle 證據；macOS 以相同
-source-run 方式提供 best-effort 支援。這條 branch 完成、經使用者 Windows 真人手測並合併後，才開始
-Braindecode vendoring。Data Import 與 4B Assistant 模型均不在本 slice。
+目前唯一 active slice 是 branch `feature/braindecode-full-catalog-v1`：固定 Braindecode `1.6.1`
+的完整模型目錄，以 upstream Braindecode 作正常 provider，將逐檔確認可重散布的模型碼移入
+XBrainLab 作 provider unavailable 時才顯示的本地 recovery／legacy catalog，並把現行 13 項的
+Model Selection combo 改為可搜尋、可理解 unavailable reason 的完整目錄。
 
-目前 checkpoint：A／B／C 的本地施工已完成；exact-source provenance、locked bootstrap/cache、native
-Windows／macOS source smoke、clean owned-tree shutdown及required artifact逐項驗證均已落地。Focused CI／
-startup contracts共131項通過，changed developer scripts的BasedPyright為0 error；本機offscreen另完成真
-五panel／ApplicationService／clean shutdown與真`run.py` entrypoint smoke。下一個也是唯一 remaining step是
-freeze exact branch head、取得remote Windows／macOS／Linux current-head CI與artifacts，然後交使用者做原生
-Windows手測；remote evidence與使用者批准前仍只稱checkpoint，不稱handoff-ready或可merge。
+使用者已明確確認：
+
+- upstream 與 legacy 使用不同 stable ID，禁止 silent fallback；
+- 所有 upstream model contracts 都可搜尋，不符合目前產品能力者 disabled 並顯示原因；
+- legacy 正常時隱藏，只有 upstream provider unavailable 時才顯示；
+- legacy source包含逐檔確認的 BSD-3-Clause、MIT、Apache-2.0 code，保留 notices；
+- 授權本 slice 使用單一 branch／單一超大型 PR、多個可回退 commit，並對約 `35,000+`
+  production LOC 明確例外；所有 commit 完成及 final evidence閉合後才交付一次手測。
+
+Data Import 與 4B Assistant 模型不在本 slice。
 
 ## 問題與證據
 
-- Current GitHub Actions 已在 Windows／macOS 跑 `platform-core-contracts` 與
-  `platform-product-lifecycle`，Windows 另有原生 Qt `windows` plugin 的 100／125／150% DPI capture；
-  這些是有價值的 component／lifecycle 證據。
-- PR jobs 預設 checkout GitHub merge ref，但 artifact 沒有記錄 checked-out HEAD、PR head／base、run ID
-  或 attempt；green check 不能單獨證明 repo policy 要求的 exact PR head。
-- Linux 八 shard aggregate 能拒絕 missing／unknown result與coverage fragment，但 aggregate artifact未保存
-  每個 shard 的 source provenance，Windows／macOS／UI／public artifacts 多數仍允許
-  `if-no-files-found: warn`。
-- CI 每個 job 執行未固定版本的 `pip install poetry`；`.venv` cache key 缺少architecture與Poetry
-  version，並以 broad restore key復用舊lock環境。Current lock由Poetry `2.3.4`產生。
-- `scripts/dev/run_startup_smoke.py` 看到 `MainWindow initialized` 後，即使 GUI 只能由25秒timeout強制
-  終止仍可判定passed；它不能證明Qt event loop、MainWindow workers與owned children能乾淨關閉。
-- 近期存在兩種必須分開的失敗：Windows assertion／lifecycle failure屬repo failure；GitHub
-  ArtifactService、codeload、429／503／timeout屬provider control-plane failure。Provider failure可在服務
-  恢復後重跑，但不能改寫為pass，也不能藉retry pytest掩蓋真紅。
+- Current catalog只手工發布10個`braindecode.*`模型與3個`xbrainlab.*`本地模型；Braindecode 1.6.1
+  自己維護61個model construction contracts。原本QComboBox無法清楚呈現數十個model、task、provider
+  與unavailable reason。
+- Current factory以`import braindecode.models`載入整個barrel。目錄取得、UI startup與model execution
+  沒有分離，barrel也會接觸未選用的model/module和額外import side effects。
+- Braindecode 1.6.1 `models/`約33,020 LOC。直接可辨識的source licenses包括BSD-3-Clause、MIT、
+  Apache-2.0及至少四個CC BY-NC model；package NOTICE沒有完整列出所有檔案級例外，不能把整個package
+  或NOTICE視為單一授權。
+- 明確不得移入可發布legacy namespace的model為`EEGMiner`、`MetaNeuromotorHand`、
+  `EMG2QwertyNet`、`BrainModule`；`GeneralizedGaussianFilter`另有CC BY-NC與專利
+  `GB2609265`聲明。Mixed module只能摘取已確認permissive symbol。
+- Braindecode包含一般classification、sleep、foundation／pretrained、interpolated及非classification
+  output contracts。Current Trainer預期class logits；「在上游存在」不等於「可由目前supervised
+  classification workflow執行」。
+- Current`ModelSpec`只表達ID、顯示名、source、factory及少量手工參數；`model_requirements.py`只精確
+  描述三個XBrainLab local model。UI、capability、training、checkpoint和saliency尚未共享完整provider／
+  task／input／revision contract。
 
 ## Observable outcome
 
-1. PR workflow明確測試PR head SHA；每個authoritative job保存同一schema的source provenance，Linux
-   aggregate拒絕missing、stale、duplicate或互相矛盾的provenance。Final merge另核對current base。
-2. Poetry固定為`2.3.4`；cache identity含OS、architecture、Python、Poetry與lock hash，跨lock不再復用
-  舊`.venv`；安裝使用`poetry sync --no-interaction`清掉stale packages。
-3. Existing GitHub actions固定到其已核准major目前解析出的immutable commit SHA；不在本slice猜測或
-   升級未知major。
-4. 原生Windows以Qt `windows` plugin真正啟動`run.py`／MainWindow、materialize五個主要panels、走一條
-   真ApplicationService小型lifecycle，並由正常Qt close path以return code 0結束；timeout、強制kill、
-   native abort、殘留worker或owned process全部失敗。
-5. Windows native source-run使用獨立Windows-only step，不繼承platform matrix的
-   `QT_QPA_PLATFORM=offscreen`；它必須保持該變數unset，記錄並要求
-   `QGuiApplication.platformName() == "windows"`，且把`TEMP`、`TMP`、application settings與cache
-   roots隔離在同一個含空格與非ASCII字元的owned path。Windows完整platform tests保留Python 3.11；
-   另以Python 3.12跑source startup smoke。
-6. macOS在current ARM runner完成locked source install、platform tests與bounded clean startup／shutdown；
-   startup probe記錄並要求native `cocoa` plugin；headless CI不宣稱互動式3D、notarization或真人desktop
-   acceptance。
-7. Linux八shards、Windows／macOS lifecycle、Windows DPI與其provenance都是required evidence；缺少
-   required artifact必須fail。Provider transport failure以清楚分類保留為incomplete evidence，不能讓job
-   通過。
-8. Final exact branch head的focused contracts、remote CI與required artifacts全部成功後，才交使用者在
-   原生Windows做source install、啟動、panel navigation、小型資料流程、close／reopen。使用者明確同意
-   前不合併。
+1. Catalog以checked-in Braindecode 1.6.1 metadata列出61個model contracts；目錄與搜尋不import
+   `braindecode.models` barrel。所有ID唯一，default仍為`braindecode.eegnet`，既有10個upstream ID和
+   三個`xbrainlab.*`語意不變。
+2. Upstream IDs使用`braindecode.<model>`；本地副本使用`legacy.braindecode.<model>`；既有
+   `xbrainlab.*`仍代表原本XBrainLab implementations。Training artifact、checkpoint、evaluation與
+   saliency provenance記錄exact model ID、provider及source revision。
+3. `ModelSpec`／catalog projection能表達provider、revision、family、task、aliases、license class、
+   input requirements、parameter schema、static／dataset-scoped availability及user-safe disabled reason。
+4. 每個與current supervised classification workflow相容的upstream model在本slice完成adapter後才可選；
+   non-classification、license-restricted、需要未支援modality或external pretrained resource者disabled。
+   `adapter not implemented`不是final candidate可接受的disabled reason。
+5. Upstream provider正常時Model Selection只顯示upstream catalog。Package不存在、版本不是1.6.1或
+   provider preflight失敗時，dialog顯示明確banner並改列可用legacy models；不自動改變已選ID、不執行
+   自動fallback。單一model的shape、parameter、checkpoint或training failure必須保留真正typed error。
+6. Model Selection使用搜尋欄與可捲動結果列表，支援name、stable ID、alias、family與task；disabled row
+   顯示reason且不能Confirm。Keyboard、clear、no-match、cancel、selection preservation、narrow width及
+   Windows 100／125／150% DPI均有明確行為。
+7. Legacy namespace只含逐檔／逐symbol確認的BSD-3-Clause、MIT、Apache-2.0 closure，保留copyright、
+   license notice、Braindecode version、upstream path與hash；不得import installed Braindecode作隱藏依賴，
+   不含CC BY-NC／patent code，也不silent下載weights。
+8. Final exact head在Windows與Linux完成automated evidence後才交使用者手測；source再變即撤銷批准。
 
-## Scope／non-goals
+## Scope／non-goals與complexity review
 
-- In scope：`.github/workflows/`、CI scope／attestation／provenance developer scripts、startup smoke、
-  platform-focused tests、直接必要的`run.py` developer-only clean-exit seam，以及準確文件。
-- Non-goals：不做installer、signing、notarization、WSLg launcher redesign、GPU／CUDA、Local Assistant、
-  Braindecode、Data Import、test shard刪除、timeout放寬或generic retry system。
-- 正常產品啟動、UI layout、copy與workflow行為不得改變；本slice不修改`XBrainLab/ui/`。User-visible UI
-  modification authorization：not applicable。使用者已明確授權原生Windows source-run與CI施工。
-- Owners before／after不變：GitHub workflow仍是remote routing owner；`run_tests.py`仍是platform test
-  membership owner；`run.py`仍是產品entrypoint。新增的provenance／smoke資料只是pure DTO／validator，
-  不建立第二套CI scheduler、product state或lifecycle owner。
-- Deletion candidates：timeout-is-success startup判定、unversioned Poetry bootstrap、cross-lock restore key、
-  required artifact的warn policy與過時PyVista workflow註解。
+- In scope：model catalog／factory／requirements、training model identity、permissive vendored model closure、
+  Model Selection UI、直接必要的checkpoint／evaluation／saliency provenance、tests、CI selectors與canonical
+  truth。
+- Non-goals：Data Import、4B Assistant model、Trainer task-generalization、非classification trainer、遠端
+  pretrained model下載、installer／signing、Braindecode版本升級、scientific accuracy claim。
+- User-visible UI modification authorization：已確認。核准範圍只限Model Selection搜尋、result list、
+  unavailable state與provider recovery presentation；不重新設計Training其他頁面。
+- Owners before／after：`ModelCatalog`仍是唯一model discovery／identity／factory／availability owner；
+  `ApplicationService／TrainingCommandService`仍是configure／admission owner；UI只render catalog projection；
+  checkpoint／evaluation／saliency各自既有owner不變。Owner count不增加。
+- Explicit exception：預估legacy model sources約29k permissive model LOC，加精準support closure、adapters、
+  catalog與UI後約`35k–40k`production LOC，遠超normal 1,500 LOC ceiling。使用者核准單一超大型PR；施工仍
+  必須以family commits、focused evidence和per-commit rollback控制風險。
+- Deletion candidates：現行10-model `_BRAINCDECODE_MODELS`手工tuple、broad barrel factory、QComboBox-only
+  selector、依model name token判斷的零散requirements、只為barrel side effect存在的workaround。Braindecode
+  dependency保留，因它是primary provider。
 
 ## 施工順序
 
-### A. Exact-source與bootstrap contract
+### A. Catalog／license／provider contract
 
-1. 建立最小immutable CI provenance payload與validator：event、run／attempt、expected ref、PR head／base、
-   checked-out HEAD／tree。所有authoritative jobs使用同一helper；PR checkout明確指定head SHA。
-2. 擴充Linux aggregate，保存八個raw shard attestations／provenance並拒絕不一致source；不修改八組
-   membership、coverage與pytest outcome policy。
-3. 固定Poetry與cache identity，移除broad restore fallback，改用sync install；用workflow contract tests
-   保護Windows、macOS、Linux與public lanes。
-4. 將現有official action major解析成審查過的immutable SHA並保留version註解；無官方核實時停止該項，
-   不自行猜測版本。
+1. 建立exact 1.6.1 model inventory和per-file／per-symbol provenance manifest；61個contracts逐一標記task、
+   family、constructor context、license、primary module與產品eligibility。Ambiguous source先blocked，不猜。
+2. 先加passing characterization：既有10個ID/default、三個local names、lazy startup、ModelHolder／artifact
+   identity及current dialog selection。新增target contract tests需先red於完整membership／search／recovery。
+3. 擴充immutable`ModelSpec`和catalog projection；用explicit module/class metadata建upstream factories，
+   移除目錄enumeration對barrel import的依賴。Provider preflight只判斷package／exact version／bounded
+   provider load，不把model-specific execution error誤判成provider outage。
 
-### B. Native startup與小型產品lifecycle
+### B. Legacy permissive closure
 
-1. 先建立current startup smoke characterization：`MainWindow initialized`但timeout仍passed。
-2. 新增developer-only bounded startup選項，使MainWindow顯示並進入event loop後由產品close path關閉；
-   timeout改為failure，artifact記錄initialized、close requested、return code、timed out與bounded log tails。
-3. 在Windows native Qt `windows` plugin執行startup；Python 3.11沿用完整platform groups，Python 3.12只跑
-   startup smoke避免複製整套suite。Native step不得設定`QT_QPA_PLATFORM`，並以含空格／非ASCII字元的
-   owned temp／settings／cache roots執行；macOS probe同樣驗證`cocoa`而非offscreen。
-4. 新增一條lower-mock platform smoke：真MainWindow／ApplicationService、五panel materialization、
-   `QueryStateCommand(query="state")`的initial publication、空session的`NewSessionCommand()`既有
-   no-confirmation安全執行與generation transition，以及clean shutdown。非空session的destructive
-   confirmation由既有ApplicationService contract測試保護，不在native smoke繞過command spine偽造資料。
-   這條流程不得讀取EEG fixture或進Data Import；macOS跑相同非3D範圍。
+1. 建立private legacy namespace與third-party notices。Common base／functional／modules只保留實際model
+   callers；mixed-license files按symbol拆分，不copy barrels、Hub publishing、datasets或skorch trainer。
+2. 依dependency family分commit移入：baseline convolution、sleep／temporal、filter-bank、inception／TCN、
+   attention／transformer、foundation／interpolated。每個commit列新增source、license、direct dependencies、
+   parity models與rollback path。
+3. Legacy imports只能指向XBrainLab legacy namespace或XBrainLab明確direct dependencies。若Braindecode
+   package移除後legacy import失敗，該family不得完成。
+4. Restricted models只保留upstream disabled metadata；不得為達membership而移入source。
 
-### C. Artifact policy與final candidate
+### C. Admission／artifact與UI
 
-1. Required producer在upload前驗證artifact schema／source，並將`if-no-files-found`改為`error`；producer
-   command本身仍須return 0，artifact不能取代測試結果。
-2. 保留`cancel-in-progress: true`；cancelled舊SHA不能認列。只允許GitHub action本身對idempotent
-   transport做bounded retry，不在repo重跑pytest、coverage或attestation。
-3. 每個meaningful checkpoint由最多兩個唯讀subagent gate：release／platform reviewer與
-   validation reviewer。Blocker以後續commit關閉，不讓subagent與root同時改同檔。
-4. Branch freeze後只push一次final candidate；核對所有scope-derived non-skipped checks與required
-   artifacts。提供原生Windows手測指令與預期結果；source再變即撤銷批准。
+1. 將signal context映射、minimum samples、chs_info／montage、sfreq／n_times、task output與pretrained
+   resource requirement集中成catalog-owned pure adapters；UI與TrainingService使用相同結果。
+2. Provider與source revision寫入ModelHolder、training plan／record及saliency producer identity。舊
+   `braindecode.*` state dict只由同ID upstream factory strict-load；legacy ID沒有silent migration。
+3. 以搜尋欄＋result model／list取代combo。Upstream healthy只顯示upstream；provider unavailable時顯示
+   recovery banner和legacy results。若current persisted selection本來就是legacy ID，resolver仍可執行，
+   但healthy catalog不因此顯示整份legacy list。
+4. Selection、search query與provider status不得建立第二份catalog；UI只持有detached projection和目前
+   selection。Cancel不mutation；no-match／disabled不能Confirm。
+
+### D. Candidate與merge
+
+1. 每個meaningful commit後只跑family-focused tests，由最多一個獨立subagent gate審architecture／license／
+   test evidence；blocker／major以後續commit關閉後才進下一family。
+2. 中途不反覆跑complete regression或canonical handoff。所有family、UI、artifact與source guards完成後
+   freeze branch，執行一次full handoff、push exact head並等待remote current-head CI。
+3. 產生exact-source UI screenshots／walkthrough與Windows操作清單；使用者手測通過並明確同意merge後才
+   merge。任何product source改動都使manual acceptance失效。
 
 ## Focused validation
 
-- CI scope／provenance：`tests/unit/scripts/test_ci_change_scope.py`與新增provenance contracts。
-- Linux evidence：`tests/unit/scripts/test_run_tests.py`、pytest completion／aggregate attestation contracts。
-- Workflow／artifact：既有CI public、human-like、UI visual contracts與新增platform artifact contract。
-- Startup：`run_startup_smoke` unit／subprocess contracts，加Windows／macOS platform smoke selectors；後者
-  精確驗證五panel、native Qt plugin、隔離roots、initial query publication、空session New Session
-  no-confirmation capability與generation transition、clean exit；非空destructive confirmation另由focused
-  ApplicationService contract驗證。
-- Static：changed Python files的Ruff／format；workflow YAML parse與action／cache contract。
-- 中途不跑complete regression或canonical handoff；remote platform workflow才是本slice的final evidence。
+- Catalog／provider：既有`test_model_catalog`characterization，加exact 61 membership、unique IDs、default、
+  provider version、no barrel enumeration、no silent fallback及provider unavailable projection。
+- License／source：provenance manifest completeness、allowed license set、hash/path、legacy self-contained imports，
+  banned model／symbol／patent-source absence。
+- Model parity：每個selectable upstream model以適當synthetic context執行constructor、forward與finite
+  backward；每個legacy model比對upstream 1.6.1 state-dict keys／shapes及deterministic loaded-state output。
+  Disabled model只驗證typed reason，不進Trainer。
+- Workflow：每個model family至少一條real CPU one-epoch → selected checkpoint → save/reload → evaluation；
+  支援gradient的family另驗證saliency。Data semantics仍由既有source-diverse gate擁有。
+- UI：search／alias／family、keyboard、clear、no-match、disabled、selection preservation、cancel、healthy／
+  unavailable provider、narrow window與default-scale screenshot；Windows跑100／125／150% native DPI。
+- Platforms：Linux完整model matrix；Windows執行所有selectable model的bounded construction／forward及native
+  selector smoke；macOS執行catalog／import contract和resource-bounded代表family，不宣稱真人desktop。
+- Final handtest：正常Braindecode目錄搜尋，EEGNet與至少一個transformer完成CPU training／evaluation／
+  Compute Saliency；provider unavailable walkthrough只顯示legacy且不自動換ID；artifact reopen及close／reopen。
 
 ## Stop conditions
 
-- 任一變更縮小Linux八shards、coverage、Windows／macOS、public-data或UI evidence範圍。
-- 新增skip／xfail／deselect allowance、提高timeout或重跑pytest以取得green。
-- Startup只能靠kill、worker／child未釋放、native abort、cache hit／miss結果不同或provenance不一致。
-- 需要UI可見修改、新authoritative owner、installer／packaging或超出直接platform blocker的產品修正。
-- GitHub provider outage：保留exact run／step evidence，等待Status恢復後重跑同SHA；不修改source追綠。
+- 任一copied file／symbol的license或來源不能逐項確認，或完成某model必須帶入CC BY-NC／patent code。
+- 需要silent provider fallback、同一stable ID代表不同implementation、第二套model／training／checkpoint owner，
+  或UI自行推導availability。
+- 任一selectable model不能在其declared input contract下construct／forward，或只能靠未核准remote download。
+- Provider preflight會阻塞UI、造成native abort，或legacy仍暗中依賴installed Braindecode。
+- Windows model matrix出現unbounded memory／time、native abort或不可重現結果；停止該family並回報，不以
+  skip、timeout放寬或降級claim取得green。
+- Scope需要擴到non-classification Trainer、Data Import、4B Assistant或installer時停止並取得新決策。
