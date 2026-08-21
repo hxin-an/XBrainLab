@@ -52,8 +52,13 @@ fail-closed regression。六個family加provenance focused suite為58 passed，R
 support closure只新增`InterpolatedModel`與`ChannelInterpolationLayer`所需的6個實際symbols，三個model的
 remote loader文件與surface均未移入。六個contracts完成upstream strict state-dict／deterministic output
 parity，三個base model完成finite backward；全部既有legacy family加provenance focused suite為68 passed，
-Ruff／format／basedpyright皆通過。下一步是提交本family並取得同一獨立gate的exact-commit複核，通過前
-不開始剩餘foundation models。
+Ruff／format／basedpyright皆通過，`61735254`獨立gate已PASS。Foundation leaf family目前再加入
+CBraMod、CodeBrain、DGCNN與EEGDINO；support只擴充直接需要的
+`CrissCrossTransformerEncoderLayer`與`extract_channel_locations_from_chs_info`，四個model的remote
+loader文件與surface均未移入。四個contracts完成upstream strict state-dict／deterministic output parity及
+finite backward；全部既有legacy family加provenance focused suite為77 passed，Ruff／format／
+basedpyright皆通過。下一步是提交本family並取得同一獨立gate的exact-commit複核，通過前不開始剩餘
+foundation models。
 Legacy IDs與UI cutover仍未開始。
 
 ## 問題與證據

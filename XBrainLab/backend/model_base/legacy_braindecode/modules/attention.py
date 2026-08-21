@@ -1,4 +1,4 @@
-# ruff: noqa: A001, E501, N812, UP008, UP045
+# ruff: noqa: A001, E501, N812, RUF012, UP008, UP045
 """
 Attention modules used in the AttentionBaseNet from Martin Wimpff (2023).
 
@@ -912,3 +912,104 @@ class MultiHeadAttention(nn.Module):
 
         out = self.rearrange_unstack(out)
         return self.projection(out)
+
+
+class CrissCrossTransformerEncoderLayer(nn.Module):
+    """Criss-cross spatial/temporal attention layer used by CBraMod."""
+
+    __constants__ = ["norm_first"]
+
+    def __init__(
+        self,
+        d_model: int,
+        nhead: int,
+        dim_feedforward: int = 2048,
+        dropout: float = 0.1,
+        activation: type[nn.Module] = nn.GELU,
+        layer_norm_eps: float = 1e-5,
+        batch_first: bool = False,
+        norm_first: bool = False,
+        bias: bool = True,
+    ) -> None:
+        super().__init__()
+        self.self_attn_s = nn.MultiheadAttention(
+            d_model // 2,
+            nhead // 2,
+            dropout=dropout,
+            bias=bias,
+            batch_first=batch_first,
+        )
+        self.self_attn_t = nn.MultiheadAttention(
+            d_model // 2,
+            nhead // 2,
+            dropout=dropout,
+            bias=bias,
+            batch_first=batch_first,
+        )
+        self.linear1 = nn.Linear(d_model, dim_feedforward, bias=bias)
+        self.dropout = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(dim_feedforward, d_model, bias=bias)
+        self.norm_first = norm_first
+        self.norm1 = nn.LayerNorm(d_model, eps=layer_norm_eps)
+        self.norm2 = nn.LayerNorm(d_model, eps=layer_norm_eps)
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(dropout)
+        self.activation = activation()
+
+    def forward(
+        self,
+        src: Tensor,
+        src_mask: Optional[Tensor] = None,
+        src_key_padding_mask: Optional[Tensor] = None,
+        is_causal: bool = False,
+    ) -> Tensor:
+        del is_causal
+        x = src
+        x = x + self._sa_block(self.norm1(x), src_mask, src_key_padding_mask)
+        x = x + self._ff_block(self.norm2(x))
+        return x
+
+    def _sa_block(
+        self,
+        x: Tensor,
+        attn_mask: Optional[Tensor],
+        key_padding_mask: Optional[Tensor],
+    ) -> Tensor:
+        batch_size, n_chans, n_patches, patch_size = x.shape
+        spatial = x[:, :, :, : patch_size // 2]
+        temporal = x[:, :, :, patch_size // 2 :]
+        spatial = rearrange(spatial, "b c n p2 -> (b n) c p2")
+        temporal = rearrange(temporal, "b c n p2 -> (b c) n p2")
+        spatial = self.self_attn_s(
+            spatial,
+            spatial,
+            spatial,
+            attn_mask=attn_mask,
+            key_padding_mask=key_padding_mask,
+            need_weights=False,
+        )[0]
+        spatial = rearrange(
+            spatial,
+            "(b n) c p2 -> b c n p2",
+            b=batch_size,
+            n=n_patches,
+        )
+        temporal = self.self_attn_t(
+            temporal,
+            temporal,
+            temporal,
+            attn_mask=attn_mask,
+            key_padding_mask=key_padding_mask,
+            need_weights=False,
+        )[0]
+        temporal = rearrange(
+            temporal,
+            "(b c) n p2 -> b c n p2",
+            b=batch_size,
+            c=n_chans,
+        )
+        return self.dropout1(torch.concat((spatial, temporal), dim=3))
+
+    def _ff_block(self, x: Tensor) -> Tensor:
+        x = self.linear2(self.dropout(self.activation(self.linear1(x))))
+        return self.dropout2(x)

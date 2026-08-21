@@ -5,11 +5,15 @@ from .attentionbasenet import AttentionBaseNet
 from .attn_sleep import AttnSleep
 from .bendr import BENDR, InterpolatedBENDR
 from .biot import BIOT, InterpolatedBIOT
+from .cbramod import CBraMod
+from .codebrain import CodeBrain
 from .contrawr import ContraWR
 from .ctnet import CTNet
 from .deep4 import Deep4Net
 from .deepsleepnet import DeepSleepNet
+from .dgcnn import DGCNN
 from .eegconformer import EEGConformer
+from .eegdino import EEGDINO
 from .eeginception_erp import EEGInceptionERP
 from .eeginception_mi import EEGInceptionMI
 from .eegitnet import EEGITNet
@@ -45,13 +49,17 @@ __all__ = [
     "BDTCN",
     "BENDR",
     "BIOT",
+    "DGCNN",
+    "EEGDINO",
     "EEGPT",
     "PBT",
     "SSTDPN",
     "ATCNet",
     "AttentionBaseNet",
     "AttnSleep",
+    "CBraMod",
     "CTNet",
+    "CodeBrain",
     "ContraWR",
     "Deep4Net",
     "DeepSleepNet",

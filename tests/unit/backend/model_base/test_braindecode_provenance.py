@@ -111,7 +111,7 @@ def test_legacy_support_provenance_matches_exact_installed_sources() -> None:
     manifested_symbols = [
         symbol for row in rows for symbol in row["symbols"].split(",")
     ]
-    assert len(manifested_symbols) == len(set(manifested_symbols)) == 59
+    assert len(manifested_symbols) == len(set(manifested_symbols)) == 61
     for row in rows:
         source_path = package_root / row["upstream_path"]
         local_path = _SUPPORT_MANIFEST_PATH.parent / row["local_path"]
