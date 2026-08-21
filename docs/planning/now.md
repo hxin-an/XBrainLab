@@ -187,6 +187,17 @@ focused cases仍在隔離狀態失敗、任何test count／coverage policy改變
 spawn／cold-import cases均在原watchdog下通過，runner scheduling tests 6 passed，Ruff、format、
 basedpyright與architecture-compliance通過。下一步建立單一checkpoint commit並交既有獨立gate複核；
 只有PASS後才push並執行新的exact-source replacement handoff。
+`0b7d7168`的replacement handoff確認fixture與backend/rest排程問題已關閉，但`linux-unit-rest`仍有5個
+runtime-process startup timeout。完整runtime-process test file在獨立process且保留`--cov`時可重現，移除
+coverage時原watchdog通過；根因是pytest-cov的`COV_CORE_*`被spawn child繼承，child啟動coverage造成
+process-lifecycle probe本身失真。完整core selector進一步證明Downloader的真spawn seam同樣受影響，因此
+下一修復只在`tests/unit/llm/core` scoped fixture啟動真child前移除child-only coverage env，
+父pytest／其餘group coverage、八group topology與產品timeout不變；先跑完整runtime-process file，再跑
+完整`tests/unit/llm/core`的canonical coverage argv。兩者未全通過即停止，不重跑handoff。
+Scoped child-coverage isolation完成後，完整runtime-process file在原coverage argv為10 passed，完整
+`tests/unit/llm/core`為242 passed；父pytest仍產出coverage且所有原watchdog未變。Ruff、format與diff
+check通過，production `+0/-0/net 0`、owner數不變。下一步建立checkpoint並由獨立gate確認沒有coverage／
+topology降級；PASS後push並建立新的exact-source candidate。
 
 ## 問題與證據
 
