@@ -19,6 +19,9 @@ BSD 3-Clause license in `LICENSE-BSD-3-Clause.txt`. Support modules are
 symbol-level subsets containing only the primitives required by the models in
 this family; unrelated upstream implementations are not copied in advance.
 
+The vendored IFNet adaptation retains its upstream MIT notice in
+`LICENSE-MIT-IFNet.txt`.
+
 No CC-BY-NC or patent-restricted model source is included. In particular,
 EEGMiner, MetaNeuromotorHand, EMG2QwertyNet, BrainModule, and the
 GeneralizedGaussianFilter implementation are excluded from this namespace.

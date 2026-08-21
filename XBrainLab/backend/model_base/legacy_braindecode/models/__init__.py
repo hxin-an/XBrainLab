@@ -6,6 +6,10 @@ from .deepsleepnet import DeepSleepNet
 from .eeginception_erp import EEGInceptionERP
 from .eegnet import EEGNet
 from .eegnex import EEGNeX
+from .fbcnet import FBCNet
+from .fblightconvnet import FBLightConvNet
+from .fbmsnet import FBMSNet
+from .ifnet import IFNet
 from .sccnet import SCCNet
 from .shallow_fbcsp import ShallowFBCSPNet
 from .sleep_stager_blanco_2020 import SleepStagerBlanco2020
@@ -22,6 +26,10 @@ __all__ = [
     "EEGInceptionERP",
     "EEGNeX",
     "EEGNet",
+    "FBCNet",
+    "FBLightConvNet",
+    "FBMSNet",
+    "IFNet",
     "SCCNet",
     "ShallowFBCSPNet",
     "SleepStagerBlanco2020",

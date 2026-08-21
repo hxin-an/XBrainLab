@@ -56,7 +56,7 @@ class AvgPool2dWithConv(nn.Module):
 class Conv2dWithConstraint(nn.Conv2d):
     """Two-dimensional convolution with max-norm parametrization."""
 
-    def __init__(self, *args, max_norm=1, **kwargs):
+    def __init__(self, *args, max_norm: float = 1.0, **kwargs):
         super().__init__(*args, **kwargs)
         self.max_norm = max_norm
         nn.init.xavier_uniform_(self.weight, gain=1)

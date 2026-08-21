@@ -31,8 +31,11 @@ provenance、hash、license與excluded set。第一個baseline convolution famil
 no-Hub base、逐symbol support provenance與六個model的strict state-dict／deterministic output parity；獨立
 gate要求移除未使用的support symbols後已收斂到18個實際primitive，並新增restricted／unrelated source guard。
 `861ce481`的複核已PASS。Sleep／temporal family再加入7個models與3個實際support primitives；每個model
-已完成upstream strict state-dict／deterministic output parity，兩個代表完成finite backward，與baseline／
-provenance／catalog合併focused驗證為49 passed，尚待本family commit的獨立gate。Legacy IDs與UI cutover
+已完成upstream strict state-dict／deterministic output parity，兩個代表完成finite backward，且`2fa43d1c`
+獨立gate已PASS。Filter-bank family目前加入FBCNet、FBMSNet、FBLightConvNet與IFNet；mixed-license
+`filter.py`只摘取BSD的`FilterBankLayer`，未帶入`GeneralizedGaussianFilter`，IFNet另保留MIT notice。
+四個model皆完成strict state-dict／deterministic output parity，FBCNet／IFNet完成finite backward；catalog、
+provenance與三個family的focused驗證為55 passed，尚待本family commit的獨立gate。Legacy IDs與UI cutover
 仍未開始。
 
 ## 問題與證據

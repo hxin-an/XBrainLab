@@ -9,8 +9,18 @@ from .convolution import (
     Conv2dWithConstraint,
     DepthwiseConv2d,
 )
+from .filter import FilterBankLayer
 from .layers import Chomp1d, Ensure4d, SqueezeFinalOutput
 from .linear import LinearWithConstraint
+from .stats import (
+    LogPowerLayer,
+    LogVarLayer,
+    MaxLayer,
+    MeanLayer,
+    StatLayer,
+    StdLayer,
+    VarLayer,
+)
 from .wrapper import Expression
 
 __all__ = [
@@ -22,10 +32,18 @@ __all__ = [
     "DepthwiseConv2d",
     "Ensure4d",
     "Expression",
+    "FilterBankLayer",
     "InceptionBlock",
     "LinearWithConstraint",
     "LogActivation",
+    "LogPowerLayer",
+    "LogVarLayer",
+    "MaxLayer",
+    "MeanLayer",
     "SafeLog",
     "Square",
     "SqueezeFinalOutput",
+    "StatLayer",
+    "StdLayer",
+    "VarLayer",
 ]
