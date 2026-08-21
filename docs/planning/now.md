@@ -65,8 +65,12 @@ output parity，Labram／EEGSym完成finite backward；全部既有legacy family
 目前加入SignalJEPA、InterpolatedSignalJEPA、三個classification variants與LUNA；兩個source只依賴
 local legacy base／modules，Hub／download文件與可執行loader surface均未移入。六個contracts完成upstream
 strict state-dict／deterministic output parity，SignalJEPA／LUNA完成finite backward；全部既有legacy family
-加provenance focused suite為92 passed，Ruff／format／basedpyright皆通過。下一步是提交本family並取得
-同一獨立gate的exact-commit複核，通過前不開始REVE family。
+加provenance focused suite為92 passed，Ruff／format／basedpyright皆通過，`c0d045b3`獨立gate已PASS。
+最後一個REVE family目前已移入其BSD model source，但刪除position-bank HTTP／cache／JSON loader與
+remote pretrained surface；legacy forward只接受caller明確提供的`pos`，channel-name lookup在沒有local
+position data時fail closed。REVE完成upstream strict state-dict／deterministic output parity與finite backward；
+全部既有legacy family加provenance focused suite為96 passed，Ruff／format／basedpyright皆通過。下一步是
+提交REVE並取得同一獨立gate的exact-commit複核；通過後legacy vendoring family才算關閉。
 Legacy IDs與UI cutover仍未開始。
 
 ## 問題與證據

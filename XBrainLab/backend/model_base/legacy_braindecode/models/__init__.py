@@ -33,6 +33,7 @@ from .medformer import MEDFormer
 from .msvtnet import MSVTNet
 from .mvpformer import MVPFormer
 from .patchedtransformer import PBT
+from .reve import REVE
 from .sccnet import SCCNet
 from .shallow_fbcsp import ShallowFBCSPNet
 from .signal_jepa import (
@@ -64,6 +65,7 @@ __all__ = [
     "EEGPT",
     "LUNA",
     "PBT",
+    "REVE",
     "SSTDPN",
     "ATCNet",
     "AttentionBaseNet",
