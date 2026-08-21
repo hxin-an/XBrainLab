@@ -477,9 +477,11 @@ taxonomy 都以這套 Data Interpretation command sequence 作為產品資料入
   models可選。Upstream `braindecode.*`與local `legacy.braindecode.*`是不同stable identity，construction／
   training failure不會改走另一provider。
 - `ModelHolder`、`TrainRecord`與saliency producer identity保存exact model ID、provider與source revision。
-  Persisted identity缺漏、malformed或不符時fail closed；同一目錄的checkpoint／evaluation不得被目前選定的
-  provider重新標記。Legacy source只包含逐symbol確認的BSD-3-Clause、MIT或Apache-2.0 closure，不載入
-  installed Braindecode，也不包含Hub/download、CC BY-NC或patent-linked code。
+  Identified／model-backed reopen遇到identity缺漏、malformed或不符時fail closed；identityless舊safe record
+  只允許在current identity同樣unknown時讀取statistics，仍不得rebind、re-export成某個provider。同一目錄的
+  checkpoint／evaluation不得被目前選定的provider重新標記。Legacy source只包含逐symbol確認的
+  BSD-3-Clause、MIT或Apache-2.0 closure，不載入installed Braindecode，也不包含Hub/download、CC BY-NC或
+  patent-linked code。
 - Timed hyperparameter search、trial orchestration、pruning 和 automatic model selection 沒有
   command / service / tool contract；它們只在 roadmap，不能從 recommended-defaults surface 推論
   已實作。

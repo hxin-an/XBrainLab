@@ -152,6 +152,9 @@ artifact identity／legacy license closure、UI的search／provider recovery投�
 Braindecode candidate與Windows手測契約；不新增第二份plan或歷史worklog。MkDocs strict build通過。下一步
 提交docs checkpoint，之後freeze product source、產生exact-source Model Selection UI artifact並執行一次
 canonical handoff；若任何gate失敗，只修其recorded owner後建立新的candidate，不為計時重跑。
+Docs gate指出architecture將identityless legacy stats-only compatibility寫成全面fail closed；實作的正確邊界是
+identified／model-backed reopen拒絕缺漏／malformed／mismatch，而current identity同樣unknown時可讀舊statistics
+且不可rebind／re-export。只修正該canonical wording後re-gate，不改產品或重跑model tests。
 
 ## 問題與證據
 
