@@ -59,6 +59,11 @@ def test_model_holder_preserves_stable_catalog_identity():
     assert holder.display_name == "EEGNet (Braindecode)"
     assert holder.provider == "braindecode"
     assert holder.source_revision == "braindecode==1.6.1"
+    assert holder.catalog_identity == {
+        "model_id": "braindecode.eegnet",
+        "provider": "braindecode",
+        "source_revision": "braindecode==1.6.1",
+    }
     assert holder.get_model_desc_str() == "EEGNet (Braindecode)"
 
 

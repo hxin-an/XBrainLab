@@ -76,7 +76,11 @@ upstream contracts，provider unavailable時改列57個distinct `legacy.braindec
 legacy ID在healthy環境仍可解析但不會顯示整份legacy catalog。Catalog factory只傳model宣告的signal context，
 Epochs補上detached `chs_info`，TrainingService拒絕disabled contract並把provider／revision寫入ModelHolder；
 相關catalog、training service、epochs focused suite為422 passed。下一步是提交本checkpoint並取得同一獨立gate
-複核，再完成training artifact／evaluation／saliency identity；UI search cutover仍未開始。
+複核；`0f2d04ac`已關閉legacy alias與舊dialog projection findings，re-gate PASS。Artifact identity checkpoint
+目前把exact model ID／provider／source revision寫入ModelHolder、每個新TrainingRecord與saliency producer
+fingerprint；同目錄checkpoint／evaluation records因此由training record identity約束，upstream artifact用
+legacy identity重開會fail closed，舊artifact缺identity時不會被補寫或冒充某個provider。相關focused suite為
+171 passed。下一步提交本checkpoint並取得獨立gate；UI search cutover仍未開始。
 
 ## 問題與證據
 

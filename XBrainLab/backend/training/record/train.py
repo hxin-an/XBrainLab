@@ -40,6 +40,32 @@ if TYPE_CHECKING:
 
 TRAIN_RECORD_SCHEMA_VERSION = 1
 EVALUATION_SPLITS = ("training", "validation", "test")
+_MODEL_IDENTITY_FIELDS = {"model_id", "provider", "source_revision"}
+
+
+def _normalize_model_identity(value: object) -> dict[str, str] | None:
+    if value is None:
+        return None
+    if type(value) is not dict or set(value) != _MODEL_IDENTITY_FIELDS:
+        raise ArtifactStoreError("Training model identity is malformed.")
+    normalized: dict[str, str] = {}
+    for field in sorted(_MODEL_IDENTITY_FIELDS):
+        item = value[field]
+        if not isinstance(item, str) or not item.strip():
+            raise ArtifactStoreError("Training model identity is malformed.")
+        normalized[field] = item.strip()
+    return normalized
+
+
+def _validate_loaded_model_identity(
+    loaded: dict[str, str] | None,
+    current: dict[str, str] | None,
+) -> None:
+    if loaded is not None and current is not None and loaded != current:
+        raise UnsupportedArtifactError(
+            "Training artifact model identity does not match the configured model. "
+            "Start a new training run."
+        )
 
 
 def _prepare_figure(
@@ -160,6 +186,7 @@ def _decode_training_artifact(
     dict[str, Any],
     int,
     int,
+    dict[str, str] | None,
 ]:
     record_schema_version = data.get("record_schema_version")
     if (
@@ -224,7 +251,8 @@ def _decode_training_artifact(
             else loaded_value
         )
         normalized_best[key] = normalized_value
-    return train, val, test, normalized_best, seed, epoch
+    model_identity = _normalize_model_identity(data.get("model_identity"))
+    return train, val, test, normalized_best, seed, epoch, model_identity
 
 
 class TrainRecord:
@@ -277,6 +305,7 @@ class TrainRecord:
         option: TrainingOption,
         seed: int,
         plan_id: str | None = None,
+        model_identity: dict[str, str] | None = None,
     ):
         """Initialize a training record.
 
@@ -299,6 +328,7 @@ class TrainRecord:
         self.option = option
         self.seed = seed
         self.plan_id = plan_id
+        self.model_identity = _normalize_model_identity(model_identity)
         self.model = model
         self.optim = self.option.get_optim(model)
         self.criterion = self.option.criterion
@@ -669,6 +699,8 @@ class TrainRecord:
                 "best_record": self.best_record,
                 "seed": self.seed,
             }
+            if self.model_identity is not None:
+                payload["model_identity"] = dict(self.model_identity)
             write_json_npz_artifact(
                 os.path.join(target_path, "record"),
                 artifact_type=TRAINING_RECORD_ARTIFACT_TYPE,
@@ -710,10 +742,15 @@ class TrainRecord:
                             loaded_best,
                             seed,
                             epoch,
+                            loaded_model_identity,
                         ) = _decode_training_artifact(
                             data,
                             arrays,
                             best_record_keys=set(self.best_record),
+                        )
+                        _validate_loaded_model_identity(
+                            loaded_model_identity,
+                            self.model_identity,
                         )
                         self.best_record.update(loaded_best)
                         self.train = train
@@ -721,6 +758,8 @@ class TrainRecord:
                         self._legacy_test_history = test
                         self.seed = seed
                         self.epoch = epoch
+                        if loaded_model_identity is not None:
+                            self.model_identity = loaded_model_identity
                     except (FilesystemIdentityError, UnsupportedArtifactError):
                         raise
                     except Exception as e:

@@ -378,6 +378,7 @@ class TrainingPlanHolder:
                     option=self.option,
                     seed=seed,
                     plan_id=self.plan_id,
+                    model_identity=self.model_holder.catalog_identity,
                 ),
             )
         self._validate_loaded_saliency_artifacts()
@@ -973,6 +974,9 @@ class TrainingPlanHolder:
             },
         }
         model_component = {
+            "model_id": self.model_holder.model_id,
+            "provider": self.model_holder.provider,
+            "source_revision": self.model_holder.source_revision,
             "model_type": self._qualified_type_name(self.model_holder.target_model),
             "model_params": self.model_holder.model_params_map,
             "input_contract": _read_model_args_for_identity(epoch_data),

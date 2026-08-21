@@ -51,6 +51,15 @@ class ModelHolder:
         """Return an isolated snapshot of configured model parameters."""
         return deepcopy(self._model_params_map)
 
+    @property
+    def catalog_identity(self) -> dict[str, str]:
+        """Return the stable model/provider identity bound to new artifacts."""
+        return {
+            "model_id": self.model_id,
+            "provider": self.provider,
+            "source_revision": self.source_revision,
+        }
+
     def get_model_desc_str(self) -> str:
         """Get a human-readable model description string.
 
