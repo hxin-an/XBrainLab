@@ -1120,10 +1120,16 @@ class TrainingSidebar(QWidget):
         self,
         suggested_model: str | None,
     ) -> Any | InteractionOutcome:
+        query_port = self._panel_port("_query_port")
+        dialog_kwargs: dict[str, Any] = {
+            "initial_model_name": suggested_model,
+        }
+        if query_port is not None:
+            dialog_kwargs["query_port"] = query_port
         win = ModelSelectionDialog(
             self,
             self.controller,
-            initial_model_name=suggested_model,
+            **dialog_kwargs,
         )
         if not win.exec():
             return InteractionOutcome.cancelled("Model selection was cancelled.")

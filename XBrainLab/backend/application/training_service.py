@@ -52,6 +52,9 @@ from .training_snapshot import (
     model_params_snapshot as build_model_params_snapshot,
 )
 from .training_snapshot import (
+    model_signal_context_snapshot as build_model_signal_context_snapshot,
+)
+from .training_snapshot import (
     training_option_snapshot as build_training_option_snapshot,
 )
 from .training_submission import training_submission_edited_fields
@@ -501,11 +504,7 @@ class TrainingCommandService:
         )
 
     def _model_signal_context(self) -> dict[str, Any] | None:
-        epoch_getter = getattr(self.training, "get_epoch_data", None)
-        epoch_data = epoch_getter() if callable(epoch_getter) else None
-        args_getter = getattr(epoch_data, "get_model_args", None)
-        value = args_getter() if callable(args_getter) else None
-        return dict(value) if isinstance(value, dict) else None
+        return build_model_signal_context_snapshot(self.training)
 
     @staticmethod
     def _resolve_optimizer(name: str) -> type[torch.optim.Optimizer]:

@@ -456,6 +456,26 @@ def test_training_recommendation_previews_model_family_without_committing_model(
     model_lookup.assert_not_called()
 
 
+def test_training_model_signal_context_is_detached_from_epoch_state():
+    service = ApplicationService(Study())
+    source = {
+        "n_classes": 4,
+        "channels": 22,
+        "samples": 256,
+        "sfreq": 128.0,
+        "chs_info": [],
+    }
+    service.training.get_epoch_data = MagicMock(
+        return_value=SimpleNamespace(get_model_args=lambda: source),
+    )
+
+    context = service.get_training_model_signal_context()
+
+    assert context == source
+    assert context is not source
+    assert service.get_view_publication().state.training.model_name is None
+
+
 def test_training_recommendation_previews_device_in_backend_owned_context():
     service = ApplicationService(Study())
 

@@ -52,3 +52,12 @@ def training_option_snapshot(option: Any) -> dict[str, Any]:
         "output_dir": getattr(option, "output_dir", None),
         "evaluation_option": evaluation_value,
     }
+
+
+def model_signal_context_snapshot(training: Any) -> dict[str, Any] | None:
+    """Return detached epoch shape/channel metadata used for model admission."""
+    epoch_getter = getattr(training, "get_epoch_data", None)
+    epoch_data = epoch_getter() if callable(epoch_getter) else None
+    args_getter = getattr(epoch_data, "get_model_args", None)
+    value = args_getter() if callable(args_getter) else None
+    return dict(value) if isinstance(value, dict) else None

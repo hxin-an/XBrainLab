@@ -139,17 +139,22 @@ class TestModelSelection:
     def test_dataset_context_disables_incompatible_model_with_visible_reason(
         self,
         qtbot,
+        monkeypatch,
     ):
+        signal_context = {
+            "n_classes": 4,
+            "channels": 22,
+            "samples": 256,
+            "sfreq": 128.0,
+            "chs_info": [],
+        }
+        monkeypatch.setattr(
+            "XBrainLab.ui.dialogs.training.model_selection_dialog."
+            "get_training_model_signal_context",
+            lambda _context, **_kwargs: signal_context,
+        )
         controller = SimpleNamespace(
-            get_epoch_data=lambda: SimpleNamespace(
-                get_model_args=lambda: {
-                    "n_classes": 4,
-                    "channels": 22,
-                    "samples": 256,
-                    "sfreq": 128.0,
-                    "chs_info": [],
-                }
-            )
+            get_epoch_data=lambda: pytest.fail("dialog bypassed ApplicationService"),
         )
         dialog = ModelSelectionDialog(
             None,
@@ -160,6 +165,35 @@ class TestModelSelection:
 
         blocked = _result_item(dialog, "braindecode.cbramod")
         allowed = _result_item(dialog, "braindecode.eegnet")
+        assert not blocked.flags() & Qt.ItemFlag.ItemIsEnabled
+        assert "divisible by 200" in blocked.toolTip()
+        assert allowed.flags() & Qt.ItemFlag.ItemIsEnabled
+
+    def test_typed_query_port_drives_dataset_context_admission(self, qtbot):
+        signal_context = {
+            "n_classes": 4,
+            "channels": 22,
+            "samples": 256,
+            "sfreq": 128.0,
+            "chs_info": [],
+        }
+        query_port = SimpleNamespace(
+            get_training_model_signal_context=MagicMock(
+                return_value=signal_context,
+            ),
+        )
+
+        dialog = ModelSelectionDialog(
+            None,
+            None,
+            provider_status=HEALTHY_PROVIDER,
+            query_port=query_port,
+        )
+        qtbot.addWidget(dialog)
+
+        blocked = _result_item(dialog, "braindecode.cbramod")
+        allowed = _result_item(dialog, "braindecode.eegnet")
+        query_port.get_training_model_signal_context.assert_called_once_with()
         assert not blocked.flags() & Qt.ItemFlag.ItemIsEnabled
         assert "divisible by 200" in blocked.toolTip()
         assert allowed.flags() & Qt.ItemFlag.ItemIsEnabled

@@ -39,6 +39,10 @@ from XBrainLab.backend.model_base.model_catalog import (
     get_model_spec,
 )
 from XBrainLab.backend.training import ModelHolder
+from XBrainLab.ui.application_capabilities import (
+    TrainingQueryPort,
+    get_training_model_signal_context,
+)
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
@@ -75,8 +79,10 @@ class ModelSelectionDialog(BaseDialog):
         initial_model_name: str | None = None,
         *,
         provider_status: BraindecodeProviderStatus | None = None,
+        query_port: TrainingQueryPort | None = None,
     ):
         self.controller = controller
+        self._query_port = query_port
 
         self.pretrained_weight_path: str | None = None
         self.model_holder: ModelHolder | None = None
@@ -497,11 +503,10 @@ class ModelSelectionDialog(BaseDialog):
             self.provider_banner.style().polish(self.provider_banner)
 
     def _read_signal_context(self) -> dict[str, Any] | None:
-        epoch_getter = getattr(self.controller, "get_epoch_data", None)
-        epoch_data = epoch_getter() if callable(epoch_getter) else None
-        args_getter = getattr(epoch_data, "get_model_args", None)
-        value = args_getter() if callable(args_getter) else None
-        return dict(value) if isinstance(value, dict) else None
+        return get_training_model_signal_context(
+            self.controller,
+            runtime=self._query_port,
+        )
 
     def _apply_catalog(
         self,
