@@ -8,6 +8,8 @@ the model-library import cost during application startup.
 from __future__ import annotations
 
 import importlib
+import importlib.metadata
+import importlib.util
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -15,7 +17,13 @@ from threading import RLock
 from types import ModuleType
 from typing import Any
 
+from XBrainLab.backend.model_base.braindecode_catalog import (
+    BRAINCDECODE_CATALOG_ENTRIES,
+    BRAINCDECODE_SOURCE_REVISION,
+    BraindecodeCatalogEntry,
+)
 from XBrainLab.backend.model_catalog_contract import (
+    BRAINDECODE_MODEL_IDS,
     DEFAULT_MODEL_ID,
     TRAINING_MODEL_NAMES,
 )
@@ -43,9 +51,27 @@ class ModelSpec:
     source: str
     factory: ModelFactory
     parameters: tuple[ModelParameter, ...] = ()
+    provider: str = "xbrainlab"
+    source_revision: str = "xbrainlab"
+    family: str = "Local"
+    task: str = "classification"
+    aliases: tuple[str, ...] = ()
+    license_id: str = "XBrainLab"
+    required_inputs: tuple[str, ...] = ()
+    available: bool = True
+    unavailable_reason: str = ""
 
     def default_parameters(self) -> dict[str, Any]:
         return {parameter.key: parameter.default for parameter in self.parameters}
+
+
+@dataclass(frozen=True, slots=True)
+class BraindecodeProviderStatus:
+    """Availability of the one pinned upstream Braindecode provider."""
+
+    available: bool
+    installed_version: str | None
+    reason: str
 
 
 def _parameter(key: str, label: str, default: Any, description: str) -> ModelParameter:
@@ -320,6 +346,39 @@ def model_command_names() -> tuple[str, ...]:
     return TRAINING_MODEL_NAMES
 
 
+def braindecode_provider_status() -> BraindecodeProviderStatus:
+    """Return a fail-closed status for the exact supported upstream release."""
+    if importlib.util.find_spec("braindecode") is None:
+        return BraindecodeProviderStatus(
+            available=False,
+            installed_version=None,
+            reason=f"{BRAINCDECODE_SOURCE_REVISION} is not installed.",
+        )
+    try:
+        installed_version = importlib.metadata.version("braindecode")
+    except importlib.metadata.PackageNotFoundError:
+        return BraindecodeProviderStatus(
+            available=False,
+            installed_version=None,
+            reason=f"{BRAINCDECODE_SOURCE_REVISION} is not installed.",
+        )
+    expected_version = BRAINCDECODE_SOURCE_REVISION.partition("==")[2]
+    if installed_version != expected_version:
+        return BraindecodeProviderStatus(
+            available=False,
+            installed_version=installed_version,
+            reason=(
+                f"{BRAINCDECODE_SOURCE_REVISION} is required; "
+                f"found braindecode=={installed_version}."
+            ),
+        )
+    return BraindecodeProviderStatus(
+        available=True,
+        installed_version=installed_version,
+        reason="",
+    )
+
+
 def discover_model_specs(
     local_model_module: ModuleType,
     *,
@@ -336,6 +395,11 @@ def discover_model_specs(
     return tuple(specs)
 
 
+def discover_braindecode_model_specs() -> tuple[ModelSpec, ...]:
+    """Return the complete pinned upstream catalog, including unavailable entries."""
+    return _braindecode_specs(BRAINCDECODE_CATALOG_ENTRIES)
+
+
 def get_model_spec(model_name: str) -> ModelSpec:
     """Resolve a stable id, display label, or compatible legacy model name."""
     model_base = importlib.import_module("XBrainLab.backend.model_base")
@@ -344,7 +408,7 @@ def get_model_spec(model_name: str) -> ModelSpec:
     by_value = {
         value.casefold(): spec
         for spec in specs
-        for value in (spec.model_id, spec.display_name)
+        for value in (spec.model_id, spec.display_name, *spec.aliases)
     }
     for spec in specs:
         class_name = getattr(spec.factory, "__name__", "")
@@ -362,27 +426,62 @@ def get_model_spec(model_name: str) -> ModelSpec:
     return result
 
 
-def _braindecode_specs() -> tuple[ModelSpec, ...]:
-    return tuple(
-        ModelSpec(
-            model_id=f"braindecode.{class_name.casefold()}",
-            display_name=f"{display_name} (Braindecode)",
-            source="braindecode",
-            factory=_braindecode_factory(class_name),
-            parameters=parameters,
+def _braindecode_specs(
+    entries: tuple[BraindecodeCatalogEntry, ...] | None = None,
+) -> tuple[ModelSpec, ...]:
+    provider_status = braindecode_provider_status()
+    selected_entries = entries
+    if selected_entries is None:
+        entries_by_id = {
+            entry.model_id: entry for entry in BRAINCDECODE_CATALOG_ENTRIES
+        }
+        selected_entries = tuple(
+            entries_by_id[model_id] for model_id in BRAINDECODE_MODEL_IDS
         )
-        for class_name, display_name, parameters in _BRAINCDECODE_MODELS
+    return tuple(
+        _braindecode_model_spec(entry, provider_status) for entry in selected_entries
     )
 
 
-def _braindecode_factory(class_name: str) -> ModelFactory:
+def _braindecode_model_spec(
+    entry: BraindecodeCatalogEntry,
+    provider_status: BraindecodeProviderStatus,
+) -> ModelSpec:
+    curated_parameters = {
+        class_name: parameters
+        for class_name, _display_name, parameters in _BRAINCDECODE_MODELS
+    }
+    unavailable_reasons = tuple(
+        reason
+        for reason in (entry.unavailable_reason, provider_status.reason)
+        if reason
+    )
+    return ModelSpec(
+        model_id=entry.model_id,
+        display_name=f"{entry.class_name} (Braindecode)",
+        source="braindecode",
+        factory=_braindecode_factory(entry.module_name, entry.class_name),
+        parameters=curated_parameters.get(entry.class_name, ()),
+        provider="braindecode",
+        source_revision=BRAINCDECODE_SOURCE_REVISION,
+        family=entry.family,
+        task=entry.task,
+        aliases=(entry.class_name,),
+        license_id=entry.license_id,
+        required_inputs=entry.required_inputs,
+        available=not unavailable_reasons,
+        unavailable_reason=" ".join(unavailable_reasons),
+    )
+
+
+def _braindecode_factory(module_name: str, class_name: str) -> ModelFactory:
     def build_model(**kwargs: Any) -> Any:
         # Braindecode imports visualization helpers that apply a global
         # Seaborn/Matplotlib theme. Model construction is a backend operation;
         # it must not silently change geometry and fonts in later product plots.
         matplotlib = importlib.import_module("matplotlib")
         with _BRAINCDECODE_MATPLOTLIB_STYLE_LOCK, matplotlib.rc_context():
-            models = importlib.import_module("braindecode.models")
+            models = importlib.import_module(module_name)
             model_class = getattr(models, class_name)
             required = {
                 "n_outputs": kwargs.pop("n_classes"),
@@ -420,4 +519,11 @@ def _local_model_spec(class_name: str, model_class: type) -> ModelSpec:
         source="xbrainlab",
         factory=model_class,
         parameters=tuple(parameters),
+        provider="xbrainlab",
+        source_revision="xbrainlab",
+        family="Local",
+        task="classification",
+        aliases=(class_name,),
+        license_id="XBrainLab",
+        required_inputs=("n_classes", "channels", "samples", "sfreq"),
     )

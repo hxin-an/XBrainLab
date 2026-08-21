@@ -11,11 +11,27 @@ import torch
 from XBrainLab.backend import model_base
 from XBrainLab.backend.model_base import model_catalog
 from XBrainLab.backend.model_base.model_catalog import (
+    BRAINCDECODE_SOURCE_REVISION,
+    braindecode_provider_status,
     default_model_id,
+    discover_braindecode_model_specs,
     discover_model_specs,
     get_model_spec,
 )
 from XBrainLab.backend.model_catalog_contract import BRAINDECODE_MODEL_IDS
+
+_BASELINE_FORWARD_MODEL_IDS = (
+    "braindecode.eegnet",
+    "braindecode.shallowfbcspnet",
+    "braindecode.deep4net",
+    "braindecode.eegconformer",
+    "braindecode.atcnet",
+    "braindecode.eeginceptionerp",
+    "braindecode.sccnet",
+    "braindecode.eegnex",
+    "braindecode.eegitnet",
+    "braindecode.ctnet",
+)
 
 
 def test_catalog_exposes_curated_braindecode_and_legacy_models() -> None:
@@ -38,6 +54,64 @@ def test_catalog_exposes_curated_braindecode_and_legacy_models() -> None:
         "ShallowConvNet (XBrainLab)",
         "SCCNet (XBrainLab)",
     }
+    assert all(
+        spec.source_revision == BRAINCDECODE_SOURCE_REVISION for spec in specs[:10]
+    )
+    assert all(spec.provider == "braindecode" for spec in specs[:10])
+
+
+def test_complete_braindecode_inventory_has_61_pinned_contracts() -> None:
+    specs = discover_braindecode_model_specs()
+
+    assert len(specs) == 61
+    assert len({spec.model_id for spec in specs}) == 61
+    assert all(spec.model_id.startswith("braindecode.") for spec in specs)
+    assert all(spec.source_revision == BRAINCDECODE_SOURCE_REVISION for spec in specs)
+    assert all(spec.provider == "braindecode" for spec in specs)
+
+
+def test_complete_inventory_matches_upstream_constructor_contract() -> None:
+    from braindecode.models.util import models_mandatory_parameters
+
+    specs = discover_braindecode_model_specs()
+    actual = [(spec.aliases[0], spec.required_inputs) for spec in specs]
+    expected = [
+        (class_name, tuple(required_inputs))
+        for class_name, required_inputs, _example_kwargs in models_mandatory_parameters
+    ]
+
+    assert actual == expected
+
+
+def test_catalog_surfaces_restricted_and_non_classification_models_as_unavailable() -> (
+    None
+):
+    specs = {spec.model_id: spec for spec in discover_braindecode_model_specs()}
+
+    restricted = specs["braindecode.eegminer"]
+    assert restricted.available is False
+    assert restricted.license_id == "CC-BY-NC-4.0"
+    assert "license" in restricted.unavailable_reason.casefold()
+
+    representation = specs["braindecode.signaljepa"]
+    assert representation.available is False
+    assert representation.task == "representation"
+    assert "classification" in representation.unavailable_reason.casefold()
+
+
+def test_braindecode_provider_status_requires_exact_pinned_version(monkeypatch) -> None:
+    monkeypatch.setattr(
+        model_catalog.importlib.util, "find_spec", lambda _name: object()
+    )
+    monkeypatch.setattr(
+        model_catalog.importlib.metadata, "version", lambda _name: "1.6.2"
+    )
+
+    status = braindecode_provider_status()
+
+    assert status.available is False
+    assert status.installed_version == "1.6.2"
+    assert BRAINCDECODE_SOURCE_REVISION in status.reason
 
 
 def test_catalog_import_does_not_eagerly_import_braindecode_models() -> None:
@@ -67,7 +141,7 @@ def test_braindecode_factory_contains_third_party_matplotlib_style_changes(
     original_font_size = matplotlib.rcParams["font.size"]
 
     def import_module(name: str):
-        if name == "braindecode.models":
+        if name == "braindecode.models.eegnet":
             matplotlib.rcParams["font.size"] = float(original_font_size) + 7.0
             return SimpleNamespace(EEGNet=lambda **kwargs: kwargs)
         return original_import_module(name)
@@ -80,7 +154,7 @@ def test_braindecode_factory_contains_third_party_matplotlib_style_changes(
     assert matplotlib.rcParams["font.size"] == original_font_size
 
 
-@pytest.mark.parametrize("model_id", BRAINDECODE_MODEL_IDS)
+@pytest.mark.parametrize("model_id", _BASELINE_FORWARD_MODEL_IDS)
 def test_curated_braindecode_model_builds_for_standard_eeg_input(model_id: str) -> None:
     spec = get_model_spec(model_id)
     model = spec.factory(
