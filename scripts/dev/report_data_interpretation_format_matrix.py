@@ -1532,11 +1532,12 @@ def build_real_workflow_snapshot(
 
 
 def build_import_loading_profile(repo_root: Path = ROOT) -> dict[str, Any]:
-    """Capture one cold and one warm command-path sample for import triage.
+    """Capture two fresh-service command-path samples for import triage.
 
-    The warm sample is intentionally a second fresh ApplicationService in the
-    same process: it measures the user-visible filesystem/OS-cache condition
-    without pretending that a prior reviewed interpretation is reusable.
+    The repeat sample is intentionally a second fresh ApplicationService in
+    the same process. It does not control OS page cache and must not be called
+    a cold/warm cache comparison; it only rules out a prior reviewed
+    interpretation being reused.
     """
     cases_by_id = {case.case_id: case for case in REAL_WORKFLOW_CASES}
     file_case = cases_by_id["derived_edf"]
@@ -1564,7 +1565,10 @@ def build_import_loading_profile(repo_root: Path = ROOT) -> dict[str, Any]:
             ("bids", cases_by_id["public_mne_bids_eeg"], repo_root),
         )
         for source_shape, case, case_root in cases:
-            for cache_state in ("cold", "warm"):
+            for pass_name in (
+                "first_fresh_service_pass",
+                "repeat_fresh_service_pass",
+            ):
                 sample = run_real_workflow_case(
                     case,
                     case_root,
@@ -1573,7 +1577,7 @@ def build_import_loading_profile(repo_root: Path = ROOT) -> dict[str, Any]:
                 samples.append(
                     {
                         "source_shape": source_shape,
-                        "cache_state": cache_state,
+                        "pass": pass_name,
                         "case_id": case.case_id,
                         "status": sample["status"],
                         "failed_stage": sample["failed_stage"],
@@ -1583,11 +1587,12 @@ def build_import_loading_profile(repo_root: Path = ROOT) -> dict[str, Any]:
     return {
         "kind": "data_import_loading_baseline",
         "command_path": list(WORKFLOW_STAGES),
-        "warm_definition": "fresh ApplicationService in the same process",
+        "repeat_pass_definition": "fresh ApplicationService in the same process",
         "samples": samples,
         "claim_boundary": (
-            "One-shot local baseline only; it does not establish a performance "
-            "budget or justify cache, loader, or EEG-semantic changes."
+            "One-shot local baseline only. First/repeat fresh-service passes do "
+            "not control OS page cache, establish a performance budget, or justify "
+            "cache, loader, or EEG-semantic changes."
         ),
     }
 
@@ -2917,7 +2922,7 @@ def main() -> int:
         "--profile-import-loading",
         action="store_true",
         help=(
-            "Write one cold and one warm Data Import timing baseline for the "
+            "Write one first and one repeat fresh-service Data Import baseline for the "
             "single-file, folder, and BIDS real command paths."
         ),
     )
