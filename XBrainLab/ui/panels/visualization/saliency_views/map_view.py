@@ -23,6 +23,7 @@ class SaliencyMapWidget(BaseSaliencyView):
     """
 
     class_selected = pyqtSignal(object)
+    _scrollable_canvas = True
 
     def init_ui(self):
         super().init_ui()

@@ -181,43 +181,6 @@ class Saliency3D:
 
         self.plotter.add_camera_orientation_widget()
 
-        self.plotter.add_slider_widget(
-            callback=self._set_time_seconds,
-            rng=self.engine.time_range_seconds,
-            value=self.engine.initial_time_seconds,
-            title="Epoch time (s)",
-            fmt="%.3f",
-            color="white",
-            pointa=(0.025, 0.08),
-            pointb=(0.31, 0.08),
-            style="modern",
-            interaction_event="always",
-        )
-
-        self.plotter.add_checkbox_button_widget(
-            self.channelBox,
-            value=self.showChannel,
-            position=(25, 200),
-            **CHECKBOX_KWARGS,
-        )
-        self.plotter.add_text(
-            "Electrodes",
-            position=(60, 197),
-            **CHECKBOX_TEXT_KWARGS,
-        )
-
-        self.plotter.add_checkbox_button_widget(
-            self.headBox,
-            value=self.showHead,
-            position=(25, 250),
-            **CHECKBOX_KWARGS,
-        )
-        self.plotter.add_text(
-            "Head surface",
-            position=(60, 247),
-            **CHECKBOX_TEXT_KWARGS,
-        )
-
         self.channelActor = [self.plotter.add_mesh(ch, color="w") for ch in self.chs]
 
         # Initialize scalars should be done by engine.update_scalars call in __init__?
