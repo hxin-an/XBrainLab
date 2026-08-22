@@ -20,6 +20,7 @@ from scripts.dev.report_data_interpretation_format_matrix import (
     _reviewed_choice_evidence,
     _workflow_choices,
     build_format_capability_snapshot,
+    build_import_loading_profile,
     build_real_workflow_snapshot,
     capture_public_fixture_facts,
     render_markdown,
@@ -262,6 +263,37 @@ def test_real_workflow_timing_is_opt_in_and_records_each_command(tmp_path: Path)
         and timing["rss_bytes"] > 0
         for timing in result["timings"].values()
     )
+
+
+def test_import_loading_profile_labels_fresh_service_passes_without_cache_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = tmp_path / "tests/fixtures/data/multiformat/A01T-mini-real.edf"
+    fixture.parent.mkdir(parents=True)
+    fixture.write_bytes(b"fixture")
+    observed: list[tuple[str, bool]] = []
+
+    def _run(case, repo_root, *, collect_timing):
+        observed.append((case.case_id, collect_timing))
+        return {
+            "status": "passed",
+            "failed_stage": "",
+            "timings": {"scan": {"wall_seconds": 0.0}},
+        }
+
+    monkeypatch.setattr(format_matrix, "run_real_workflow_case", _run)
+
+    profile = build_import_loading_profile(tmp_path)
+
+    assert len(profile["samples"]) == 6
+    assert [sample["pass"] for sample in profile["samples"]] == [
+        "first_fresh_service_pass",
+        "repeat_fresh_service_pass",
+    ] * 3
+    assert profile["repeat_pass_definition"].startswith("fresh ApplicationService")
+    assert profile["repeat_pass_definition"].endswith("same process")
+    assert all(collect_timing for _case_id, collect_timing in observed)
 
 
 def test_nonempty_fake_fixture_does_not_count_as_real_workflow_evidence(
