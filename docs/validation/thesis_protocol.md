@@ -147,11 +147,11 @@ Local tool-call eval 不是每個小修都跑 full primary / fallback x3。正�
 
 Release / thesis local gate 前必須先記錄 disk / cache / `nvidia-smi` VRAM preflight。舊
 21-action deterministic／local runners已隨Stable v2 surface退役，不能再用歷史121-case artifact
-刷新current claim。產品重建期間只使用`scripts/dev/run_stable_assistant_model_eval.py`的48-case
-target gate（34 positive＋14 challenge）；它要求exact stage、tool、parameters／response contract與
+刷新current claim。產品重建期間只使用`scripts/dev/run_stable_assistant_model_eval.py`的50-case
+target gate（36 positive＋14 challenge）；它要求exact stage、tool、parameters／response contract與
 schema，但不是thesis benchmark。
 正式thesis runner必須等產品surface凍結後另以approved target cases重建，並重新定義repeat、resource
-preflight、confidence interval與artifact schema；不得把產品48-case結果升格為thesis-ready rerun。
+preflight、confidence interval與artifact schema；不得把產品50-case結果升格為thesis-ready rerun。
 
 Local LLM CLI 的 process exit 與 artifact contract 如下：
 
@@ -362,7 +362,7 @@ build/dev-artifacts/thesis/<run_id>/
 ## Current Gap
 
 舊121-case deterministic／primary／fallback artifacts屬superseded provenance，不能作為Stable v2
-或thesis-candidate current evidence。Current產品層只有48-case bounded target selection gate；
+或thesis-candidate current evidence。Current產品層只有50-case bounded target selection gate；
 正式thesis benchmark、repeat-run matrix、confidence interval、resource／latency條件與dashboard均待
 產品主線穩定後重建。tool-call benchmark也不能取代UI、launcher或import wizard的產品驗收evidence。
 

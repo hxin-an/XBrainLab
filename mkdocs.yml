@@ -44,19 +44,15 @@ exclude_docs: |
 
 nav:
   - 首頁: index.md
+  - 開發者入門:
+      - 開發者指南: developer/README.md
+      - 本機環境: developer/local-setup.md
+      - Repository 與 Owners: developer/repository-map.md
+      - 測試與驗證: developer/testing.md
+      - 變更與驗證流程: developer/change-workflow.md
   - 專案現況:
       - 目前真相: current.md
-  - 決策:
-      - 決策紀錄: decisions/README.md
-  - 產品計畫:
       - 下一步: planning/now.md
-      - Roadmap: planning/roadmap.md
-  - 目標:
-      - 目標總覽: target/README.md
-      - 目標架構: target/architecture.md
-      - 產品需求: target/requirements.md
-      - Data Interpretation 目標: target/data_interpretation_system.md
-      - Assistant 目標: target/agent.md
   - 目前架構:
       - 架構總覽: architecture/README.md
       - Data Pipeline: architecture/data_pipeline.md
@@ -66,10 +62,18 @@ nav:
   - 驗證:
       - 驗證策略: validation/README.md
       - Thesis Protocol: validation/thesis_protocol.md
-  - 歷史:
-      - 歷史索引: records/README.md
+  - 產品方向:
+      - Roadmap: planning/roadmap.md
+      - 目標總覽: target/README.md
+      - 目標架構: target/architecture.md
+      - 產品需求: target/requirements.md
+      - Data Interpretation 目標: target/data_interpretation_system.md
+      - Assistant 目標: target/agent.md
+      - 決策紀錄: decisions/README.md
   - 研究:
       - EEG Import / Label Design: research/bci_eeg_import_label_design_source.md
+  - 歷史:
+      - 歷史索引: records/README.md
 plugins:
   - search
   - mkdocstrings:

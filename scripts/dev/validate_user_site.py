@@ -54,6 +54,8 @@ REQUIRED_PAGES = (
     "index.md",
     "getting-started.md",
     "workflow.md",
+    "assistant.md",
+    "troubleshooting.md",
     "case-studies/index.md",
     "case-studies/graz-2a.md",
     "case-studies/openneuro-ds003061.md",
@@ -457,19 +459,15 @@ def _check_case_page(path: Path, failures: list[str]) -> Path | None:
             )
 
         page_stage = _section(evidence_section, 3, heading)
-        expected_badge = f"evidence-badge--{stage_status}"
-        if (
-            expected_badge not in page_stage
-            or str(stage_status).capitalize() not in page_stage
-        ):
+        expected_status = f"**Status:** {str(stage_status).capitalize()}"
+        if expected_status not in page_stage:
             _fail(
-                f"{path.relative_to(ROOT)} badge disagrees for stage {heading}",
+                f"{path.relative_to(ROOT)} status disagrees for stage {heading}",
                 failures,
             )
 
     if not identity_complete and any(
-        badge in body
-        for badge in ("evidence-badge--observed", "evidence-badge--bounded")
+        status in body for status in ("**Status:** Observed", "**Status:** Bounded")
     ):
         _fail(f"{path.relative_to(ROOT)} promotes evidence without identity", failures)
 
@@ -816,20 +814,18 @@ def _render_moabb_page(
         supplement_block = f"\n\n{supplement}" if supplement else ""
         stage_sections.append(
             f"### {heading}\n\n"
-            f'<span class="evidence-badge evidence-badge--{stage_status}">'
-            f"{str(stage_status).capitalize()}</span>\n\n{detail_lines}"
+            f"**Status:** {str(stage_status).capitalize()}.\n\n{detail_lines}"
             f"{supplement_block}\n"
         )
 
     published = status == "bounded"
-    execution_label = "Exact identified run" if published else "Execution pending"
     evidence_summary = (
-        "This page publishes bounded observations from one exact automated XBrainLab run. "
-        "Metrics and screenshots apply only to the identity and limitations below."
+        "This page includes bounded observations from one identified automated "
+        "XBrainLab run. They apply only to the identity and limits below."
         if published
         else (
-            "This is a manifest-generated execution guide. It contains no completed "
-            "XBrainLab run, metric, or saliency claim."
+            "This guide defines inputs and review checks. It does not publish a "
+            "completed XBrainLab run, metric, or saliency result."
         )
     )
     expected_status = (
@@ -842,10 +838,19 @@ def _render_moabb_page(
         "new run identity before changing any source, choice, preprocessing, model, or seed."
         if published
         else (
-            "After the import checkpoint matches, apply the planned settings one stage at a "
-            "time and capture a run ID, app revision, dataset revision, and immutable evidence "
-            "files. Until those fields are published below, every stage remains pending and "
-            "Unverified."
+            "After the import checkpoint matches, apply the settings one stage at a "
+            "time. The guide remains Unverified until a run ID, app revision, dataset "
+            "revision, and immutable evidence files are published together."
+        )
+    )
+    claim_boundary = (
+        "The values below describe one identified automated run. They do not prove "
+        "compatibility with another dataset, source revision, model, or environment."
+        if published
+        else (
+            "The source contract identifies intended inputs and choices, not a "
+            "completed XBrainLab run. Observed or Bounded status requires a complete "
+            "identity and immutable evidence files."
         )
     )
 
@@ -862,25 +867,19 @@ def _render_moabb_page(
                 "",
                 f"# {metadata['title']}",
                 "",
-                '<div class="case-summary" markdown>',
-                f"  <div><span>Paradigm</span><strong>{dataset['paradigm']}</strong></div>",
-                (
-                    "  <div><span>Route scope</span><strong>"
-                    f"{_selection_scope(dataset)}</strong></div>"
-                ),
-                f"  <div><span>Source format</span><strong>{dataset['source_format']}</strong></div>",
-                f"  <div><span>Published evidence</span><strong>{status_label}</strong></div>",
-                "</div>",
-                "",
-                f'<span class="evidence-badge evidence-badge--{status}">{status_label}</span> '
-                f'<span class="scope-label">{execution_label}</span>',
+                "| | This guide uses |",
+                "| --- | --- |",
+                f"| Paradigm | {dataset['paradigm']} |",
+                f"| Scope | {_selection_scope(dataset)} |",
+                f"| Source format | {dataset['source_format']} |",
+                f"| Published run | {status_label} |",
                 "",
                 evidence_summary,
                 "",
                 "## Run this dataset",
                 "",
-                "Follow the route only while each checkpoint matches. The values below come "
-                "from the linked source contract; they are planned inputs, not observed results.",
+                "Continue only while the selected files, labels, and visible checks match "
+                "this page.",
                 "",
                 "### Source and version",
                 "",
@@ -902,9 +901,9 @@ def _render_moabb_page(
                 "### App action",
                 "",
                 "1. Obtain only the files listed above and verify every checksum before opening the app.",
-                "2. Start the XBrainLab development build and choose **Load Data**.",
+                "2. Open **Dataset** in XBrainLab.",
                 (
-                    f"3. Use the **{import_contract['source_hint']}** route and select "
+                    f"3. Use **Import {import_contract['source_hint']}** and select "
                     f"{_code(import_contract['entrypoint'])}."
                 ),
                 "4. Keep the import review open until the selected files and labels match this page.",
@@ -933,31 +932,28 @@ def _render_moabb_page(
                 "",
                 "## Evidence identity",
                 "",
-                '<div class="evidence-identity" markdown>',
-                f"<p><strong>Evidence state</strong><br>{status_label}</p>",
+                '??? info "Evidence record"',
+                f"    - **Status:** {status_label}",
                 (
-                    f"<p><strong>Source journey</strong><br>"
-                    f"[{source['profile_id']}]({source_manifest_link})</p>"
+                    f"    - **Source journey:** "
+                    f"[{source['profile_id']}]({source_manifest_link})"
                 ),
-                f"<p><strong>Source contract SHA-256</strong><br>{_code(source_digest)}</p>",
+                f"    - **Source contract SHA-256:** {_code(source_digest)}",
                 (
-                    f"<p><strong>MOABB release</strong><br>{_code(release['version'])} at "
-                    f"{_code(release['commit'])}</p>"
+                    f"    - **MOABB release:** {_code(release['version'])} at "
+                    f"{_code(release['commit'])}"
                 ),
-                f"<p><strong>Manifest ID</strong><br>{_evidence_value(evidence_identity['manifest_id'])}</p>",
-                f"<p><strong>App revision</strong><br>{_evidence_value(evidence_identity['app_revision'])}</p>",
-                f"<p><strong>Run ID</strong><br>{_evidence_value(evidence_identity['run_id'])}</p>",
-                f"<p><strong>Dataset revision</strong><br>{_evidence_value(evidence_identity['dataset_revision'])}</p>",
+                f"    - **Manifest ID:** {_evidence_value(evidence_identity['manifest_id'])}",
+                f"    - **App revision:** {_evidence_value(evidence_identity['app_revision'])}",
+                f"    - **Run ID:** {_evidence_value(evidence_identity['run_id'])}",
+                f"    - **Dataset revision:** {_evidence_value(evidence_identity['dataset_revision'])}",
                 (
-                    f"<p><strong>Evidence files</strong><br>"
-                    f"{_evidence_links(evidence_identity['evidence_files'], from_case_page=True)}</p>"
+                    f"    - **Evidence files:** "
+                    f"{_evidence_links(evidence_identity['evidence_files'], from_case_page=True)}"
                 ),
-                "</div>",
                 "",
                 '!!! warning "Claim boundary"',
-                "    The linked journey manifest identifies intended inputs and choices. It does not "
-                "identify a completed XBrainLab run. Observed or Bounded status requires all identity "
-                "fields and evidence files above.",
+                f"    {claim_boundary}",
                 "",
                 "## Evidence and limits",
                 "",
@@ -1423,6 +1419,8 @@ def _check_built_site(built_dir: Path, failures: list[str]) -> None:
         "index.html",
         "getting-started/index.html",
         "workflow/index.html",
+        "assistant/index.html",
+        "troubleshooting/index.html",
         "case-studies/index.html",
         "case-studies/graz-2a/index.html",
         "case-studies/openneuro-ds003061/index.html",

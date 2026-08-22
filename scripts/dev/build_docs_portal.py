@@ -156,11 +156,14 @@ def validate_portal(
     portal_root = portal_root.resolve()
     guide_root = portal_root / guide_subpath
     developer_index = portal_root / "index.html"
+    developer_testing = portal_root / "developer/testing/index.html"
     user_index = guide_root / "index.html"
 
     for index in (developer_index, user_index):
         if not index.is_file():
             raise PortalBuildError(f"missing portal entry page: {index}")
+    if not developer_testing.is_file():
+        raise PortalBuildError(f"missing developer testing guide: {developer_testing}")
 
     _require_material_assets(portal_root)
     _require_material_assets(guide_root)
@@ -169,6 +172,10 @@ def validate_portal(
     user_refs = _references(user_index)
     if f"{guide_subpath.as_posix()}/" not in developer_refs:
         raise PortalBuildError("developer homepage does not link to the user guide")
+    if "developer/testing/" not in developer_refs:
+        raise PortalBuildError(
+            "developer homepage does not link to the developer testing guide"
+        )
     if "../" not in user_refs:
         raise PortalBuildError("user guide homepage does not link to engineering docs")
 

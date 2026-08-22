@@ -1,142 +1,51 @@
----
-hide:
-  - navigation
----
+# XBrainLab User Guide
 
-# XBrainLab
+XBrainLab is a local desktop application for preparing EEG data, training a model, and
+reviewing evaluation and saliency results. The application keeps the analysis on your
+machine; the optional Assistant uses the same workflow controls as the desktop UI.
 
-<p class="page-kicker">Local EEG workflow · development build</p>
+!!! info "Current distribution"
+    XBrainLab is currently distributed as a source-based desktop application. There is
+    no signed installer. Follow [Getting started](getting-started.md) to install and run
+    the application from a repository checkout.
 
-<p class="portal-lede">Use the desktop app to review EEG data, prepare epochs,
-configure a split and model, and inspect evaluation or visualization views. Start with
-a reviewed import; each later stage depends on the decisions made before it.</p>
+## Start here
 
-<div class="portal-actions">
-  <div>
-    <span class="action-label">New session</span>
-    <strong>Set up and review your first import</strong>
-    <p>Launch the development build, choose a small dataset scope, and confirm labels and metadata before continuing.</p>
-    <a class="md-button md-button--primary" href="getting-started/">Start with setup</a>
-  </div>
-  <div>
-    <span class="action-label">Returning user</span>
-    <strong>Continue from the active checkpoint</strong>
-    <p>Check the dependency order, stop conditions, and review values for the stage you are working in.</p>
-    <a class="md-button" href="workflow/">Open the desktop workflow</a>
-  </div>
-</div>
+- **First time using XBrainLab?** Install the application and complete one reviewed
+  import in [Getting started](getting-started.md).
+- **Already have a dataset loaded?** Follow the stage-by-stage checks in
+  [Run an EEG workflow](workflow.md).
+- **Want to use the local Assistant?** Read [Use the Assistant](assistant.md) before
+  enabling the model runtime.
+- **Something is blocked or unavailable?** Start with
+  [Troubleshooting](troubleshooting.md).
+- **Working with a known public dataset?** Choose a scoped example from the
+  [Dataset guides](case-studies/index.md).
 
-<div class="status-strip status-strip--compact" markdown>
-  <div>
-    <span class="status-label">Distribution</span>
-    <strong>Source-based development build; no signed installer</strong>
-  </div>
-  <div>
-    <span class="status-label">Workflow available</span>
-    <strong>Import, preprocess, epoch, split/train, evaluate, visualize</strong>
-  </div>
-  <div>
-    <span class="status-label">Dataset evidence</span>
-    <strong>All five run guides remain Unverified</strong>
-  </div>
-</div>
+## Workflow at a glance
 
-!!! warning "Dataset completion is not claimed"
-    Neither the Graz nor OpenNeuro route publishes an identified manual run from import
-    through saliency. The three MOABB routes are execution-pending guides, not completed
-    runs. Every page remains **Unverified** until a manifest ID, app revision, run ID,
-    and evidence files are published together.
+| Stage | What you decide | What to check before continuing |
+| --- | --- | --- |
+| Import | Which recordings, labels, and metadata belong to this analysis | Selected files, event meanings, subject/session/run identity |
+| Preprocess | Which signal operations are appropriate | Sampling rate, channel types, preview, operation history |
+| Epoch | Which event and time window define a trial | Anchor event, timing, class counts, rejected boundaries |
+| Split | What must remain independent | Subject/session/run grouping and leakage risk |
+| Train | Which model and settings define the run | Dataset, split, model, resources, terminal status |
+| Evaluate | Which fold, run, and split a result describes | Selection identity and compatible test masks |
+| Visualize | Which trained run and input a saliency view uses | Method, class, channel order, source values |
 
-<div class="screen-checks" markdown>
-  <strong>Check the desktop view</strong>
+XBrainLab can execute this workflow, but it cannot decide whether a preprocessing
+choice, split, metric, or saliency interpretation is scientifically appropriate for
+your study. Keep the protocol and analysis decisions with the run record.
 
-  - Top tabs: **Dataset**, **Preprocess**, **Training**, **Evaluation**, **Visualization**.
-  - Dataset actions: **Import file**, **Import folder**, **Import BIDS**, **Reload recipe**.
-  - Empty-state text: **No EEG data loaded**.
-</div>
+## What the guide does not claim
 
-## One workflow, six checkpoints
+Recognizing a file format does not guarantee that arbitrary files of that format have
+correct event or label semantics. A successful training run does not establish an
+unbiased scientific result. See [Limits and safety](faq-limits.md) before using an
+output in a report or publication.
 
-These are product checkpoints. A dataset only advances when its own expected values are
-reviewed and its stop conditions remain clear.
+[Open Getting started](getting-started.md){ .md-button .md-button--primary }
 
-<ol class="workflow-rail">
-  <li><strong>Interpret</strong><span>Choose scope, labels, and metadata; stop on an unexplained mismatch.</span></li>
-  <li><strong>Preprocess</strong><span>Apply a study-specific operation and verify the visible history.</span></li>
-  <li><strong>Epoch</strong><span>Choose an anchor and time window; check counts before continuing.</span></li>
-  <li><strong>Split</strong><span>Hold out the unit required by the research question.</span></li>
-  <li><strong>Train</strong><span>Bind model and settings to the selected dataset and split.</span></li>
-  <li><strong>Inspect</strong><span>Read evaluation or saliency only for an identified trained run.</span></li>
-</ol>
-
-## What the desktop app is for
-
-<div class="purpose-list" markdown>
-  <div markdown>
-  **Review data before analysis**
-
-  Keep selected files, label carriers, subject/session/task/run metadata, and decisions
-  visible before they become active workflow state.
-  </div>
-  <div markdown>
-  **Run a dependency-ordered sequence**
-
-  Preserve prerequisites while moving through preprocessing, epoching, dataset
-  generation, training, evaluation, and visualization.
-  </div>
-  <div markdown>
-  **Stop at the right boundary**
-
-  Treat empty and blocked states as missing prerequisites. Reset or begin a new session
-  when an earlier data decision must change.
-  </div>
-  <div markdown>
-  **Keep the core workflow local**
-
-  The optional local assistant is not required for import, preprocessing, training, or
-  result review.
-  </div>
-</div>
-
-## Choose a dataset run guide
-
-These pages provide exact scopes and checkpoint instructions. They do not become
-manual-completion evidence until their identity blocks are populated from a publishable
-evidence manifest.
-
-<div class="grid cards case-links route-cards" markdown>
-
--   **Graz / BCI Competition IV 2a**
-
-    Page scenario: `A01T.gdf`, `A02T.gdf`, `A03T.gdf` with matching MAT label files.
-
-    **Evidence identity:** Unverified.
-
-    [Run the Graz route](case-studies/graz-2a.md)
-
--   **OpenNeuro ds003061 P300**
-
-    Page scenario: `sub-001`, session `01`, task `P300`, runs `1`, `2`, and `3`.
-
-    **Evidence identity:** Unverified.
-
-    [Run the OpenNeuro route](case-studies/openneuro-ds003061.md)
-
--   **MOABB compact execution routes**
-
-    Ofner2017 subject `1`, `imagination` runs `1`–`9`; PhysionetMI subject `1`
-    runs `4` and `6`; Lee2021Mobile ERP subject `1`, session `01`, `task-ERP`.
-
-    **Execution state:** Pending. **Evidence identity:** Unverified.
-
-    [Review the three MOABB guides](case-studies/index.md)
-
-</div>
-
-!!! warning "Research interpretation remains your responsibility"
-    XBrainLab can execute and display an analysis route. Protocol validity, leakage
-    control, split design, preprocessing choices, statistical interpretation, and
-    publication claims still require study-specific review. See [FAQ and Limits](faq-limits.md).
-
-Maintainers can review project status, architecture, and validation in the
+Project status, architecture, and validation contracts are maintained in the
 <a href="../">engineering documentation</a>.

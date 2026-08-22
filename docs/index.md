@@ -1,27 +1,51 @@
-# XBrainLab Engineering Portal
+# XBrainLab 工程文件
 
-這個站只提供目前工程權威與目標入口，不展示 mutable dashboard、tracked screenshot 或歷史
-checkpoint。
+這個網站說明目前產品如何組成、哪些事實可以宣稱，以及變更需要哪些驗證。內容主要提供給
+貢獻者與維護者；桌面應用程式使用者請從 <a href="guide/">使用者指南</a>開始。
 
-桌面操作與資料集流程請前往 <a href="guide/">使用者指南</a>；本頁只維護工程現況、架構與驗證
-入口。
+## 開始貢獻
 
-| 問題 | 唯一入口 |
+第一次接觸這個 repository 時：
+
+1. [建立本機開發環境](developer/local-setup.md)。
+2. [找到預計修改行為的 owner](developer/repository-map.md)。
+3. [選擇能直接證明變更的測試](developer/testing.md)。
+4. [規劃、驗證並提交一個聚焦的變更](developer/change-workflow.md)。
+
+## 我該跑哪個測試？
+
+不需要每次把所有測試都跑一遍。先依這次修改的範圍選一個入口：
+
+| 這次修改 | 測試入口 |
 | --- | --- |
-| 現在能相信什麼 | [Current](current.md) |
-| 接下來做什麼 | [Now](planning/now.md) |
-| 目前如何實作 | [Architecture](architecture/README.md) |
-| 目標態是什麼 | [Target](target/README.md) |
-| 如何判讀測試與 evidence | [Validation](validation/README.md) |
-| 重要產品決策 | [Decisions](decisions/README.md) |
+| 一個明確行為或錯誤 | [執行對應的 pytest test file 或 test node](developer/testing.md#focused-test) |
+| Backend | [Backend 測試集](developer/testing.md#domain-test) |
+| 桌面 UI | [UI 測試集](developer/testing.md#domain-test) |
+| Assistant 或 tool call | [LLM suite、五份 GUI walkthrough 與真模型測試](developer/testing.md#tool-call-tests) |
+| 文件網站 | [文件 portal build](developer/testing.md#docs-test) |
+| 候選版本 | [執行完整 handoff manifest](developer/testing.md#handoff) |
 
-## Product boundary
+完整命令、適用時機，以及每項結果可以證明到什麼程度，見[測試與驗證](developer/testing.md)。
 
-XBrainLab 是本地 EEG desktop product。Desktop workflow 已收斂到共同的 ApplicationService command
-spine；Assistant 是下一階段，MCP 不在 active product/thesis roadmap。
+## 找到權威答案
 
-Release、CI、人工驗收與科學品質是不同證據層級。只有 tag、GitHub Release、合併 PR 與同一
-exact SHA 的 handoff evidence 能支撐 release 查詢；舊 artifact 名稱或 Git history 不能當 current
-truth。
+| 問題 | 權威來源 |
+| --- | --- |
+| 產品基線目前有哪些事實？ | [目前狀態](current.md) |
+| 現在優先處理什麼？ | [Now](planning/now.md) |
+| 現行系統如何實作？ | [目前架構](architecture/README.md) |
+| 已核准的目標邊界是什麼？ | [目標架構](target/README.md) |
+| 哪些證據足以支持一項宣稱？ | [驗證契約](validation/README.md) |
+| 哪些長期決策仍然有效？ | [決策紀錄](decisions/README.md) |
 
-歷史文件的索引在 [Historical Records](records/README.md)，詳細內容由 Git history 保存。
+這些來源回答不同問題。目標文件不能證明功能已經存在；歷史 artifact 或通過的測試，也不能
+取代目前 source、對應 exact source 的證據，或必要的人工作業驗收。
+
+## 產品邊界
+
+XBrainLab 是本機 EEG 桌面產品。GUI、Assistant 與開發 scripts 共用
+`ApplicationService / Command API` command spine。目前交付的是 source／GUI 基線，不是已簽章
+安裝程式，也不構成科學認證。
+
+歷史實作細節仍可透過 Git history 與 [records 索引](records/README.md)查閱，但不參與目前的
+active dispatch。

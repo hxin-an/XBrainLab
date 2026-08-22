@@ -8,20 +8,18 @@ generated_from: moabb-datasets-v1
 
 # Lee2021Mobile ERP
 
-<div class="case-summary" markdown>
-  <div><span>Paradigm</span><strong>p300_erp</strong></div>
-  <div><span>Route scope</span><strong>Subject(s) 1; session(s) 01; run(s) task-ERP; BrainVision source</strong></div>
-  <div><span>Source format</span><strong>BrainVision</strong></div>
-  <div><span>Published evidence</span><strong>Unverified</strong></div>
-</div>
+| | This guide uses |
+| --- | --- |
+| Paradigm | p300_erp |
+| Scope | Subject(s) 1; session(s) 01; run(s) task-ERP; BrainVision source |
+| Source format | BrainVision |
+| Published run | Unverified |
 
-<span class="evidence-badge evidence-badge--unverified">Unverified</span> <span class="scope-label">Execution pending</span>
-
-This is a manifest-generated execution guide. It contains no completed XBrainLab run, metric, or saliency claim.
+This guide defines inputs and review checks. It does not publish a completed XBrainLab run, metric, or saliency result.
 
 ## Run this dataset
 
-Follow the route only while each checkpoint matches. The values below come from the linked source contract; they are planned inputs, not observed results.
+Continue only while the selected files, labels, and visible checks match this page.
 
 ### Source and version
 
@@ -40,8 +38,8 @@ Follow the route only while each checkpoint matches. The values below come from 
 ### App action
 
 1. Obtain only the files listed above and verify every checksum before opening the app.
-2. Start the XBrainLab development build and choose **Load Data**.
-3. Use the **file** route and select `lee2021mobile/sub-01/ses-01/eeg/sub-01_ses-01_task-ERP_eeg.vhdr`.
+2. Open **Dataset** in XBrainLab.
+3. Use **Import file** and select `lee2021mobile/sub-01/ses-01/eeg/sub-01_ses-01_task-ERP_eeg.vhdr`.
 4. Keep the import review open until the selected files and labels match this page.
 
 ### Choices
@@ -65,30 +63,29 @@ Stop before preprocessing if a checksum differs, the selected file set changes, 
 
 ### Next step
 
-After the import checkpoint matches, apply the planned settings one stage at a time and capture a run ID, app revision, dataset revision, and immutable evidence files. Until those fields are published below, every stage remains pending and Unverified.
+After the import checkpoint matches, apply the settings one stage at a time. The guide remains Unverified until a run ID, app revision, dataset revision, and immutable evidence files are published together.
 
 ## Evidence identity
 
-<div class="evidence-identity" markdown>
-<p><strong>Evidence state</strong><br>Unverified</p>
-<p><strong>Source journey</strong><br>[moabb-compact-user-journeys-v1](../assets/manifests/moabb-datasets-v1.json)</p>
-<p><strong>Source contract SHA-256</strong><br>`61097550c8fb6afeb9156c9fbe9207f471eb2d04799cf16672ac4937686a70b9`</p>
-<p><strong>MOABB release</strong><br>`1.5.0` at `140809d8c48bdf2be953951ff75f688122edee34`</p>
-<p><strong>Manifest ID</strong><br>Not published</p>
-<p><strong>App revision</strong><br>Not published</p>
-<p><strong>Run ID</strong><br>Not published</p>
-<p><strong>Dataset revision</strong><br>Not published</p>
-<p><strong>Evidence files</strong><br>None published</p>
-</div>
+??? info "Evidence record"
+    - **Status:** Unverified
+    - **Source journey:** [moabb-compact-user-journeys-v1](../assets/manifests/moabb-datasets-v1.json)
+    - **Source contract SHA-256:** `61097550c8fb6afeb9156c9fbe9207f471eb2d04799cf16672ac4937686a70b9`
+    - **MOABB release:** `1.5.0` at `140809d8c48bdf2be953951ff75f688122edee34`
+    - **Manifest ID:** Not published
+    - **App revision:** Not published
+    - **Run ID:** Not published
+    - **Dataset revision:** Not published
+    - **Evidence files:** None published
 
 !!! warning "Claim boundary"
-    The linked journey manifest identifies intended inputs and choices. It does not identify a completed XBrainLab run. Observed or Bounded status requires all identity fields and evidence files above.
+    The source contract identifies intended inputs and choices, not a completed XBrainLab run. Observed or Bounded status requires a complete identity and immutable evidence files.
 
 ## Evidence and limits
 
 ### Source and dataset
 
-<span class="evidence-badge evidence-badge--unverified">Unverified</span>
+**Status:** Unverified.
 
 - Planned source files: `lee2021mobile/sub-01/ses-01/eeg/sub-01_ses-01_task-ERP_eeg.eeg`, `lee2021mobile/sub-01/ses-01/eeg/sub-01_ses-01_task-ERP_eeg.vhdr`, `lee2021mobile/sub-01/ses-01/eeg/sub-01_ses-01_task-ERP_eeg.vmrk`, `lee2021mobile/sub-01/ses-01/eeg/sub-01_ses-01_task-ERP_channels.tsv`, `lee2021mobile/sub-01/ses-01/eeg/sub-01_ses-01_task-ERP_events.tsv`.
 - Dataset license in the source contract: `CC-BY-4.0`.
@@ -96,7 +93,7 @@ After the import checkpoint matches, apply the planned settings one stage at a t
 
 ### Import scope
 
-<span class="evidence-badge evidence-badge--unverified">Unverified</span>
+**Status:** Unverified.
 
 - Open `lee2021mobile/sub-01/ses-01/eeg/sub-01_ses-01_task-ERP_eeg.vhdr` using the `file` route.
 - Expected selected EEG files: `lee2021mobile/sub-01/ses-01/eeg/sub-01_ses-01_task-ERP_eeg.vhdr`.
@@ -104,7 +101,7 @@ After the import checkpoint matches, apply the planned settings one stage at a t
 
 ### Labels and metadata
 
-<span class="evidence-badge evidence-badge--unverified">Unverified</span>
+**Status:** Unverified.
 
 - Label carrier: `embedded_events`.
 - `sub-01_ses-01_task-ERP_eeg.vhdr`: `Stimulus/S  1` = NonTarget, `Stimulus/S  2` = Target.
@@ -112,28 +109,28 @@ After the import checkpoint matches, apply the planned settings one stage at a t
 
 ### Preprocess
 
-<span class="evidence-badge evidence-badge--unverified">Unverified</span>
+**Status:** Unverified.
 
 - Planned setting: band-pass `0.5` to `20.0` Hz.
 - Published XBrainLab run evidence: None.
 
 ### Epoch
 
-<span class="evidence-badge evidence-badge--unverified">Unverified</span>
+**Status:** Unverified.
 
 - Planned window: `-0.25` to `1.0` s; baseline `None`; labels `Target`, `NonTarget`.
 - Published XBrainLab run evidence: None.
 
 ### Split
 
-<span class="evidence-badge evidence-badge--unverified">Unverified</span>
+**Status:** Unverified.
 
 - Planned split: `0.2` test and `0.2` validation by `trial`; `individual` mode.
 - Published XBrainLab run evidence: None.
 
 ### Model and training
 
-<span class="evidence-badge evidence-badge--unverified">Unverified</span>
+**Status:** Unverified.
 
 - Planned profile: `EEGNet`, `cpu`, up to `30` epochs, batch `32`, learning rate `0.001`, `adam`.
 - Stopping boundary from the source contract: Fixed 30-epoch upper bound with validation-AUC checkpoint selection for the imbalanced ERP task; the held-out test split is not used for stopping.
@@ -141,7 +138,7 @@ After the import checkpoint matches, apply the planned settings one stage at a t
 
 ### Evaluation
 
-<span class="evidence-badge evidence-badge--unverified">Unverified</span>
+**Status:** Unverified.
 
 - Planned held-out split: `test`.
 - Planned acceptance comparisons: `roc_auc_ovr` > `auc_chance_baseline`; `balanced_accuracy` > `chance_baseline`.
@@ -151,7 +148,7 @@ After the import checkpoint matches, apply the planned settings one stage at a t
 
 ### Saliency
 
-<span class="evidence-badge evidence-badge--unverified">Unverified</span>
+**Status:** Unverified.
 
 - Planned methods: `Gradient`, `Gradient * Input`.
 - No saliency image is published on this page.
@@ -159,7 +156,7 @@ After the import checkpoint matches, apply the planned settings one stage at a t
 
 ### Reproducibility and limitations
 
-<span class="evidence-badge evidence-badge--unverified">Unverified</span>
+**Status:** Unverified.
 
 - Planned seed: `1731`.
 - Source contract SHA-256: `61097550c8fb6afeb9156c9fbe9207f471eb2d04799cf16672ac4937686a70b9`.

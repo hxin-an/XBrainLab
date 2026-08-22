@@ -29,6 +29,7 @@ poetry run python run.py
 
 ## 文件入口
 
+- [新貢獻者指南](docs/developer/README.md)
 - [目前產品真相](docs/current.md)
 - [目前工作與下一階段](docs/planning/now.md)
 - [目前架構](docs/architecture/README.md)
