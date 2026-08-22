@@ -211,18 +211,61 @@ timeout 30m prlimit --core=0 -- \
 
 ### C. 打開 GUI：檢查實際互動
 
-先使用不載入模型的 `--tool-debug`，檢查 ChatPanel 和 MainWindow 的確認、GUI handoff、取消、
-錯誤恢復與結果顯示：
+`--tool-debug` 會用正常的 ChatPanel 和 MainWindow 路徑顯示工具呼叫，但不建立或載入 Granite。
+目前有五份 GUI walkthrough profile：
+
+| Profile | 主要檢查內容 |
+| --- | --- |
+| Response Presentation | Assistant 回覆 bubble，以及回覆後的 panel navigation |
+| Contract Failures | 前置條件不足時的 blocked 結果，以及 blocked 後能否繼續操作 |
+| GUI Cancellation Recovery | 使用者取消 dialog 後，GUI 是否回到可操作狀態 |
+| Complete Workflow | Dataset、Preprocess、Training、Evaluation 到 Visualization 的完整流程 |
+| Lifecycle / Routing | Start、Stop、Clear、Reset，以及各 panel 和 visualization route |
+
+每次只選一份 profile，使用新的 process 和 session。以下五條都是可直接從 repository root
+啟動 GUI 的命令。
+
+檢查一般回覆 bubble 與後續 navigation：
+
+```bash
+poetry run python run.py \
+  --tool-debug scripts/dev/agent_tool_walkthrough/response-presentation.json
+```
+
+檢查 blocked、失敗顯示與錯誤後恢復：
 
 ```bash
 poetry run python run.py \
   --tool-debug scripts/dev/agent_tool_walkthrough/contract-failures.json
+```
+
+檢查取消 dialog 後能否恢復操作：
+
+```bash
+poetry run python run.py \
+  --tool-debug scripts/dev/agent_tool_walkthrough/gui-cancellation.json
+```
+
+檢查從資料匯入到 saliency 的完整 GUI workflow：
+
+```bash
 poetry run python run.py \
   --tool-debug scripts/dev/agent_tool_walkthrough/complete-workflow.json
 ```
 
-執行後要由測試者依 profile 的步驟實際操作並觀察畫面。其他已核准 profile 與操作步驟見
-[Assistant 人工操作驗證](../validation/README.md#assistant-manual-walkthrough-commands)。
+檢查 training lifecycle、reset 與所有主要 route：
+
+```bash
+poetry run python run.py \
+  --tool-debug scripts/dev/agent_tool_walkthrough/lifecycle-routing.json
+```
+
+XBrainLab 開啟後，依畫面顯示的目前 step 操作，而且每個 step 只送出一次。Dialog、confirmation、
+navigation 或 training 尚未顯示 terminal 結果時，不要進到下一步。若畫面不符合預期，記錄
+step ID 和 screenshot 後停止該次 session。
+
+Profile JSON 是實際步驟順序的權威來源；完整的人工驗收條件與 Complete Workflow 測試資料設定
+見[Assistant 人工操作驗證](../validation/README.md#assistant-manual-walkthrough-commands)。
 
 若要讓真 Granite 經由可見的 ChatPanel 執行 Data Interpretation 的
 scan → preview → validate，使用：

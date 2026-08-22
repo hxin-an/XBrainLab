@@ -21,7 +21,7 @@
 | 一個明確行為或錯誤 | [執行對應的 pytest test file 或 test node](developer/testing.md#focused-test) |
 | Backend | [Backend 測試集](developer/testing.md#domain-test) |
 | 桌面 UI | [UI 測試集](developer/testing.md#domain-test) |
-| Assistant 或 tool call | [先跑 LLM suite，再選擇是否需要真模型或 GUI](developer/testing.md#tool-call-tests) |
+| Assistant 或 tool call | [LLM suite、五份 GUI walkthrough 與真模型測試](developer/testing.md#tool-call-tests) |
 | 文件網站 | [文件 portal build](developer/testing.md#docs-test) |
 | 候選版本 | [執行完整 handoff manifest](developer/testing.md#handoff) |
 
