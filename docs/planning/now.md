@@ -73,11 +73,21 @@ subprocess全部完成並在22秒內通過；Ruff、format與Basedpyright無新d
 完整components selector加正式coverage皆無法重現，後者為`471 passed`、79秒。因此不變更
 product／test semantics、timeout或runner topology；允許一次新clean SHA的replacement，同類timeout
 再現即停止並另門runner reliability slice。
+replacement handoff的complete regression已通過，但`visualization-render`在完成四張截圖、JSON、
+Markdown與MainWindow close後以native `-11`終止。同argv／Qt／MNE環境單獨執行無法
+重現且exit 0，但capture source確實在`window.close()`後立即`app.quit()`，沒有等待既有
+`shutdown_completed`或在QApplication存活時drain native wrappers。只修正capture／evidence owner：
+bounded wait typed clean-shutdown snapshot、驗證owned workers／subprocesses為零、使用既有Qt drain helper。
+Product MainWindow／renderer不變，validator必須fail closed拒絕缺少或不潔淨的shutdown evidence。
+capture修正後focused validator為`64 passed`；同Qt／MNE環境的真MainWindow walkthrough在約8秒內
+exit 0，四個render皆通過，typed shutdown snapshot記錄application closed、idle、worker/subprocess為零、
+視窗不可見且無uncaught exception。Ruff、format與diff check通過；現有capture腳本其他區段的13個
+Optional basedpyright diagnostics不屬本次shutdown diff，留給其原owner，不在closure擴修。
 
 下一步固定為：
 
-1. 凍結與push新clean exact source，執行一次replacement canonical handoff。同一components
-   timeout再現即停止；其他失敗只修復記錄的owner，不為追時間重跑。
+1. 凍結已通過focused capture的new exact SHA並執行replacement canonical handoff。
+   同一components timeout或post-artifact native `-11`再現即停止；其他失敗只修復記錄的owner。
 2. 自動evidence完整後交付Windows／Linux手測：modal default／Escape／destructive action；single-file、
    folder、BIDS review/cancel/retry且status不重複跑百分比；Saliency All／Single、long class／many channel、
    zoom／pan／reset、3D class／epoch-time／camera controls與close lifecycle。

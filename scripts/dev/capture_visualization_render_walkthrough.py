@@ -16,15 +16,19 @@ import sys
 import tempfile
 import time
 import traceback
+from contextlib import suppress
 from io import BytesIO
 from pathlib import Path
 from typing import Any, cast
 
-from XBrainLab.ui.qt_runtime import configure_qt_platform_for_runtime
+from XBrainLab.ui.qt_runtime import (
+    configure_qt_platform_for_runtime,
+    drain_qt_runtime_after_event_loop,
+)
 
 configure_qt_platform_for_runtime()
 
-from PyQt6.QtCore import QBuffer, QIODevice, QTimer
+from PyQt6.QtCore import QBuffer, QEventLoop, QIODevice, QTimer
 from PyQt6.QtGui import QColor, QPixmap
 from PyQt6.QtWidgets import QApplication, QLabel, QMessageBox, QScrollArea, QWidget
 
@@ -88,6 +92,7 @@ THREE_D_TAB_SPECS: list[dict[str, str]] = [
 UNCAUGHT_EXCEPTIONS: list[str] = []
 DETERMINISTIC_CAPTURE_SEED = 1729
 _RUNTIME_DEPENDENT = "<runtime-dependent>"
+SHUTDOWN_TIMEOUT_MS = 20_000
 _UNPAINTED_CAPTURE_SENTINEL = QColor(255, 0, 255)
 SALIENCY_RENDER_TIMEOUT_MS = 15_000
 THREE_D_CAPTURE_TIMEOUT_MS = 12_000
@@ -289,6 +294,7 @@ def run_visualization_render_walkthrough(
         "dismissed_dialogs": [],
         "screenshots": {"ready": ""},
         "final_state": {},
+        "shutdown": {},
         "ui_state": {},
         "elapsed_seconds": 0.0,
         "uncaught_exceptions": [],
@@ -376,15 +382,69 @@ def run_visualization_render_walkthrough(
                 )
 
     payload["final_state"] = service.get_state().to_dict()
+    payload["shutdown"] = _close_window_for_capture(app, window)
     payload["uncaught_exceptions"] = list(UNCAUGHT_EXCEPTIONS)
     _seal_source_identity(payload)
     ok, reason = validate_visualization_render_payload(payload)
     payload["status"] = "passed" if ok else "failed"
     payload["failure_reason"] = "" if ok else reason
     payload["elapsed_seconds"] = round(time.monotonic() - started_at, 3)
-    window.close()
-    app.quit()
     return payload
+
+
+def _shutdown_snapshot_is_clean(snapshot: object) -> bool:
+    if not isinstance(snapshot, dict):
+        return False
+    return (
+        snapshot.get("application_closed") is True
+        and snapshot.get("pre_close_application_idle") is True
+        and snapshot.get("pre_close_remaining_workers") == 0
+        and snapshot.get("pre_close_remaining_subprocesses") == 0
+        and isinstance(snapshot.get("close_attempt_id"), str)
+        and bool(str(snapshot["close_attempt_id"]).strip())
+    )
+
+
+def _close_window_for_capture(app: QApplication, window: Any) -> dict[str, Any]:
+    """Observe clean MainWindow shutdown before native wrappers are finalized."""
+    snapshots: list[dict[str, Any]] = []
+    shutdown_loop = QEventLoop()
+    shutdown_timer = QTimer()
+    shutdown_timer.setSingleShot(True)
+
+    def _finish_shutdown(snapshot: object) -> None:
+        if isinstance(snapshot, dict):
+            snapshots.append(dict(snapshot))
+        if shutdown_loop.isRunning():
+            shutdown_loop.quit()
+
+    app.setQuitOnLastWindowClosed(False)
+    window.shutdown_completed.connect(_finish_shutdown)
+    shutdown_timer.timeout.connect(shutdown_loop.quit)
+    shutdown_timer.start(SHUTDOWN_TIMEOUT_MS)
+    QTimer.singleShot(0, window.close)
+    shutdown_loop.exec()
+    timed_out = not snapshots and not shutdown_timer.isActive()
+    shutdown_timer.stop()
+    app.processEvents()
+
+    snapshot = snapshots[-1] if snapshots else None
+    try:
+        window_visible = bool(window.isVisible())
+    except RuntimeError:
+        window_visible = False
+    clean = _shutdown_snapshot_is_clean(snapshot) and not window_visible
+    if clean:
+        with suppress(RuntimeError):
+            window.deleteLater()
+    drain_qt_runtime_after_event_loop(app)
+    app.quit()
+    return {
+        "ok": clean,
+        "timed_out": timed_out,
+        "window_visible": window_visible,
+        "snapshot": snapshot or {},
+    }
 
 
 def _prepare_tiny_trained_state(
@@ -1416,6 +1476,15 @@ def validate_visualization_render_payload(
         first = str(payload["uncaught_exceptions"][0]).splitlines()[-1]
         return False, f"Uncaught Qt/runtime exception during capture: {first}"
 
+    shutdown = payload.get("shutdown") or {}
+    if (
+        shutdown.get("ok") is not True
+        or shutdown.get("timed_out") is not False
+        or shutdown.get("window_visible") is not False
+        or not _shutdown_snapshot_is_clean(shutdown.get("snapshot"))
+    ):
+        return False, "MainWindow did not publish a clean terminal shutdown."
+
     training = payload.get("training") or {}
     if int(training.get("finished_run_count") or 0) < 1:
         return False, "No completed tiny training run was captured."
@@ -2389,7 +2458,11 @@ def stable_artifact_payload(payload: dict[str, Any]) -> dict[str, Any]:
 def _mask_runtime_values(value: Any) -> None:
     if isinstance(value, dict):
         for key in list(value):
-            if key in {"available_ram_bytes", "available_vram_bytes"}:
+            if key in {
+                "available_ram_bytes",
+                "available_vram_bytes",
+                "close_attempt_id",
+            }:
                 value[key] = _RUNTIME_DEPENDENT
             elif key == "metrics" and isinstance(value[key], dict):
                 value[key] = {"status": "available"}
@@ -2428,6 +2501,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- ready screenshot: `{payload.get('screenshots', {}).get('ready', '')}`",
         f"- elapsed seconds: `{payload['elapsed_seconds']}`",
         f"- uncaught exceptions: `{len(payload.get('uncaught_exceptions') or [])}`",
+        f"- clean shutdown: `{bool((payload.get('shutdown') or {}).get('ok'))}`",
         "",
         "## Rendered Tabs",
         "",

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import numpy as np
+import pytest
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 from PIL import Image
@@ -711,6 +712,18 @@ def _base_payload():
                 "montage_available": True,
             },
         },
+        "shutdown": {
+            "ok": True,
+            "timed_out": False,
+            "window_visible": False,
+            "snapshot": {
+                "application_closed": True,
+                "pre_close_application_idle": True,
+                "pre_close_remaining_workers": 0,
+                "pre_close_remaining_subprocesses": 0,
+                "close_attempt_id": "capture-close-attempt",
+            },
+        },
         "ui_state": {
             "current_panel": "Visualization",
             "control_layout": {
@@ -885,6 +898,40 @@ def test_validate_visualization_payload_accepts_rendered_tabs(tmp_path):
 
     assert ok is True, reason
     assert reason == ""
+
+
+@pytest.mark.parametrize(
+    "shutdown",
+    [
+        {},
+        {
+            "ok": False,
+            "timed_out": True,
+            "window_visible": True,
+            "snapshot": {},
+        },
+        {
+            "ok": True,
+            "timed_out": False,
+            "window_visible": False,
+            "snapshot": {
+                "application_closed": True,
+                "pre_close_application_idle": True,
+                "pre_close_remaining_workers": 1,
+                "pre_close_remaining_subprocesses": 0,
+                "close_attempt_id": "capture-close-attempt",
+            },
+        },
+    ],
+)
+def test_validate_visualization_payload_requires_clean_shutdown(tmp_path, shutdown):
+    payload = _payload_with_screenshots(tmp_path)
+    payload["shutdown"] = shutdown
+
+    ok, reason = validate_visualization_render_payload(payload)
+
+    assert ok is False
+    assert reason == "MainWindow did not publish a clean terminal shutdown."
 
 
 def test_validate_visualization_payload_requires_explicit_compute_terminal(tmp_path):
