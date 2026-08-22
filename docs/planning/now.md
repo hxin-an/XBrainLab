@@ -45,10 +45,16 @@ Focused suites、Ruff、format、diff check、MkDocs strict及clean exact-source
 ModalAlert Qt button Optional、Saliency Matplotlib dynamic attributes／mouse event typing、Visualization
 widget dispatch與optional cancel binding；完整regression與後續gate未執行。
 
+`1d9a5d04` 的direct analyzer雖為0 error，replacement recorded gate仍在sanitized environment辨識出13個
+new diagnostics：Matplotlib callback需要接受base Event、axis limit需收斂成built-in float，另有一個
+PyVista `add_scalar_bar` external typing seam。這些仍屬同一typed-boundary repair；不得更新baseline或加入
+ignore來放行。
+
 下一步固定為：
 
-1. 只修正上述17個typed boundaries，不改可見行為；用直接Basedpyright與modal／saliency focused
-   behavior tests驗證，並由新clean pushed SHA執行一次replacement canonical handoff。
+1. 只修正上述17個及replacement gate揭露的13個typed boundaries，不改可見行為；用單一recorded
+   Basedpyright gate與modal／saliency focused behavior tests驗證；單一gate通過前不再啟動完整
+   canonical manifest。
 2. 自動evidence完整後交付Windows／Linux手測：modal default／Escape／destructive action；single-file、
    folder、BIDS review/cancel/retry且status不重複跑百分比；Saliency All／Single、long class／many channel、
    zoom／pan／reset、3D class／epoch-time／camera controls與close lifecycle。

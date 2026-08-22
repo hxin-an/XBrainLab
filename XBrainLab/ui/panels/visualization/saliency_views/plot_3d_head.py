@@ -1,4 +1,5 @@
 import contextlib
+from typing import Any, cast
 
 import pyvista as pv
 from matplotlib import colormaps
@@ -194,7 +195,7 @@ class Saliency3D:
             cmap=self.cmap,
             show_scalar_bar=False,
         )
-        self.plotter.add_scalar_bar(
+        cast(Any, self.plotter).add_scalar_bar(
             "saliency",
             interactive=False,
             vertical=False,

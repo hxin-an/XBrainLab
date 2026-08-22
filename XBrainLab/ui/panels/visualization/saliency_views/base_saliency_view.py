@@ -14,7 +14,7 @@ from typing import Any, cast
 
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
-from matplotlib.backend_bases import MouseEvent
+from matplotlib.backend_bases import Event, MouseEvent
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PyQt6 import sip
@@ -1095,56 +1095,61 @@ class BaseSaliencyView(QWidget):
         canvas.mpl_connect("motion_notify_event", self._on_canvas_motion)
         canvas.mpl_connect("button_release_event", self._on_canvas_release)
 
-    def _on_canvas_scroll(self, event: MouseEvent) -> None:
-        axis = getattr(event, "inaxes", None)
+    def _on_canvas_scroll(self, event: Event) -> None:
+        mouse_event = cast(MouseEvent, event)
+        axis = getattr(mouse_event, "inaxes", None)
         if axis is None or not getattr(axis, "images", None):
             return
-        xdata = getattr(event, "xdata", None)
-        ydata = getattr(event, "ydata", None)
+        xdata = getattr(mouse_event, "xdata", None)
+        ydata = getattr(mouse_event, "ydata", None)
         if xdata is None or ydata is None:
             return
-        factor = 0.8 if getattr(event, "step", 0) > 0 else 1.25
+        factor = 0.8 if getattr(mouse_event, "step", 0) > 0 else 1.25
         x0, x1 = axis.get_xlim()
         y0, y1 = axis.get_ylim()
         axis.set_xlim(xdata - (xdata - x0) * factor, xdata + (x1 - xdata) * factor)
         axis.set_ylim(ydata - (ydata - y0) * factor, ydata + (y1 - ydata) * factor)
         self._draw_canvas_now()
 
-    def _on_canvas_press(self, event: MouseEvent) -> None:
-        axis = getattr(event, "inaxes", None)
+    def _on_canvas_press(self, event: Event) -> None:
+        mouse_event = cast(MouseEvent, event)
+        axis = getattr(mouse_event, "inaxes", None)
         if (
-            getattr(event, "button", None) != 1
+            getattr(mouse_event, "button", None) != 1
             or axis is None
             or not getattr(axis, "images", None)
-            or getattr(event, "xdata", None) is None
-            or getattr(event, "ydata", None) is None
+            or getattr(mouse_event, "xdata", None) is None
+            or getattr(mouse_event, "ydata", None) is None
         ):
             return
+        x_limits = axis.get_xlim()
+        y_limits = axis.get_ylim()
         self._pan_state = (
             axis,
-            float(event.xdata),
-            float(event.ydata),
-            axis.get_xlim(),
-            axis.get_ylim(),
+            float(mouse_event.xdata),
+            float(mouse_event.ydata),
+            (float(x_limits[0]), float(x_limits[1])),
+            (float(y_limits[0]), float(y_limits[1])),
         )
 
-    def _on_canvas_motion(self, event: MouseEvent) -> None:
+    def _on_canvas_motion(self, event: Event) -> None:
+        mouse_event = cast(MouseEvent, event)
         state = self._pan_state
-        if state is None or getattr(event, "inaxes", None) is not state[0]:
+        if state is None or getattr(mouse_event, "inaxes", None) is not state[0]:
             return
         if (
-            getattr(event, "xdata", None) is None
-            or getattr(event, "ydata", None) is None
+            getattr(mouse_event, "xdata", None) is None
+            or getattr(mouse_event, "ydata", None) is None
         ):
             return
         axis, start_x, start_y, xlim, ylim = state
-        dx = start_x - float(event.xdata)
-        dy = start_y - float(event.ydata)
+        dx = start_x - float(mouse_event.xdata)
+        dy = start_y - float(mouse_event.ydata)
         axis.set_xlim(xlim[0] + dx, xlim[1] + dx)
         axis.set_ylim(ylim[0] + dy, ylim[1] + dy)
         self._draw_canvas_now()
 
-    def _on_canvas_release(self, _event: MouseEvent) -> None:
+    def _on_canvas_release(self, _event: Event) -> None:
         self._pan_state = None
 
     def _dispose_candidate_canvas(
