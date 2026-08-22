@@ -54,11 +54,19 @@ ignore來放行。
 Topo／Spectrogram renderer tests未帶新增的class display參數；(b) 臨時worktree借用main editable venv，
 11個scripts tests被active-checkout guard正確阻擋。前者以等同既有all-class行為的default arguments收斂；
 後者只用lock-exact worktree Poetry sync修正執行環境，不修改或放寬checkout guard。
+`1640d683` replacement handoff通過static／architecture後，complete regression在scripts shard揭露
+三個測試環境contract：兩個capture tests觸發確定性download-failure alert卻未明確interaction
+fixture；一個missing-fixture test沒有隔離handoff提供的`XBRAINLAB_DATA_DIR`。只在這三個
+tests明確declare modal與空cache環境，不變更product modal、public fixture resolver或runner policy。
+這三個red nodes已在handoff同款`XBRAINLAB_DATA_DIR`環境下通過；Modal／Data Import／Saliency
+focused behavior suites為`407 passed`，authoritative scripts shard為`1155 passed`，兩個非重疊
+subagent closure gate無新blocker／major。Saliency的舊capture不屬於final integration SHA，因此不用它
+作為candidate evidence；由final canonical visualization gate重產exact-source artifact。
 
 下一步固定為：
 
-1. 在已同步lock-exact Poetry環境的clean exact source上執行一次canonical handoff；失敗時只修復
-   記錄的owner，不為追時間重跑。
+1. 凍結與push新clean exact source，在lock-exact Poetry環境執行一次replacement canonical
+   handoff；若失敗，只修復記錄的owner，不為追時間重跑。
 2. 自動evidence完整後交付Windows／Linux手測：modal default／Escape／destructive action；single-file、
    folder、BIDS review/cancel/retry且status不重複跑百分比；Saliency All／Single、long class／many channel、
    zoom／pan／reset、3D class／epoch-time／camera controls與close lifecycle。

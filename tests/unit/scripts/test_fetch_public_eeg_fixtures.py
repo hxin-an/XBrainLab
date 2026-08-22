@@ -387,6 +387,7 @@ def test_required_ci_verify_only_fails_when_fixture_cache_is_missing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
+    monkeypatch.delenv("XBRAINLAB_DATA_DIR", raising=False)
     monkeypatch.setattr(fixture_fetcher, "PUBLIC_DIR", tmp_path)
     monkeypatch.setattr(
         sys,
