@@ -50,20 +50,20 @@ class TestVRAMConflictChecker:
         with (
             patch.object(VRAMConflictChecker, "_is_local_mode", return_value=True),
             patch.object(VRAMConflictChecker, "_is_3d_active", return_value=True),
-            patch("XBrainLab.ui.components.vram_checker.QMessageBox") as mock_box,
+            patch("XBrainLab.ui.components.vram_checker.show_alert") as show_alert,
         ):
             checker.check(switching_to_local=True, switching_to_3d=True)
-            mock_box.warning.assert_called_once()
+            show_alert.assert_called_once()
 
     def test_no_warning_when_local_but_no_3d(self, make_checker):
         checker = make_checker()
         with (
             patch.object(VRAMConflictChecker, "_is_local_mode", return_value=True),
             patch.object(VRAMConflictChecker, "_is_3d_active", return_value=False),
-            patch("XBrainLab.ui.components.vram_checker.QMessageBox") as mock_box,
+            patch("XBrainLab.ui.components.vram_checker.show_alert") as show_alert,
         ):
             checker.check(switching_to_local=True)
-            mock_box.warning.assert_not_called()
+            show_alert.assert_not_called()
 
     def test_on_viz_tab_changed_triggers_check_for_3d(self, make_checker):
         checker = make_checker()

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from PyQt6.QtWidgets import (
-    QDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -17,9 +16,10 @@ from XBrainLab.llm.core.model_catalog import (
     local_model_spec,
     plan_model_download,
 )
+from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
-class LocalRuntimeFirstRunDialog(QDialog):
+class LocalRuntimeFirstRunDialog(BaseDialog):
     """Explain local runtime cost before loading or downloading a model."""
 
     ENABLE = "enable"
@@ -29,14 +29,15 @@ class LocalRuntimeFirstRunDialog(QDialog):
     DISABLE = "disable"
 
     def __init__(self, parent=None, config: LLMConfig | None = None):
-        super().__init__(parent)
         self.config = config or LLMConfig()
         self.choice = self.LATER
-        self.setWindowTitle("Local Assistant Runtime")
-        self.setMinimumWidth(520)
-        self._init_ui()
+        super().__init__(
+            parent=parent,
+            title="Local Assistant Runtime",
+            width=520,
+        )
 
-    def _init_ui(self) -> None:
+    def init_ui(self) -> None:
         model_id = self.config.model_name
         spec = local_model_spec(model_id)
         preflight = plan_model_download(model_id, self.config.cache_dir)
