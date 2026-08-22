@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -76,3 +77,41 @@ def test_native_smoke_artifact_is_atomic_json(tmp_path) -> None:
 
     assert json.loads(output.read_text(encoding="utf-8")) == payload
     assert not output.with_suffix(".json.tmp").exists()
+
+
+@pytest.mark.parametrize("panel_timeout_ms", (0, smoke.MAX_PANEL_TIMEOUT_MS + 1))
+def test_native_product_smoke_rejects_unbounded_panel_timeout(
+    panel_timeout_ms,
+    tmp_path,
+) -> None:
+    with pytest.raises(ValueError, match="native panel timeout"):
+        smoke.run_native_product_smoke(
+            expected_platform="cocoa",
+            expected_isolated_root=tmp_path,
+            panel_timeout_ms=panel_timeout_ms,
+        )
+
+
+def test_main_forwards_explicit_panel_timeout(monkeypatch, tmp_path) -> None:
+    output = tmp_path / "native.json"
+    observed = {}
+    monkeypatch.setattr(
+        smoke,
+        "_parse_args",
+        lambda: SimpleNamespace(
+            expected_platform="cocoa",
+            expected_isolated_root=tmp_path,
+            panel_timeout_ms=45_000,
+            output=output,
+        ),
+    )
+
+    def _run(**kwargs):
+        observed.update(kwargs)
+        return {"schema_version": 1, "passed": True}
+
+    monkeypatch.setattr(smoke, "run_native_product_smoke", _run)
+
+    assert smoke.main() == 0
+    assert observed["panel_timeout_ms"] == 45_000
+    assert json.loads(output.read_text(encoding="utf-8"))["passed"] is True

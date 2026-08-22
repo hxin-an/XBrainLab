@@ -31,6 +31,8 @@ class ModelHolder:
         *,
         model_id: str | None = None,
         display_name: str | None = None,
+        provider: str = "xbrainlab",
+        source_revision: str = "xbrainlab",
     ):
         self.target_model = target_model
         self._model_params_map = deepcopy(model_params_map)
@@ -41,11 +43,22 @@ class ModelHolder:
             "__name__",
             str(target_model),
         )
+        self.provider = str(provider)
+        self.source_revision = str(source_revision)
 
     @property
     def model_params_map(self) -> dict[str, Any]:
         """Return an isolated snapshot of configured model parameters."""
         return deepcopy(self._model_params_map)
+
+    @property
+    def catalog_identity(self) -> dict[str, str]:
+        """Return the stable model/provider identity bound to new artifacts."""
+        return {
+            "model_id": self.model_id,
+            "provider": self.provider,
+            "source_revision": self.source_revision,
+        }
 
     def get_model_desc_str(self) -> str:
         """Get a human-readable model description string.
@@ -78,7 +91,14 @@ class ModelHolder:
             A new instance of the target model with weights loaded if applicable.
 
         """
-        model = self.target_model(**self._model_params_map, **args)
+        model_args = dict(args)
+        if not getattr(
+            self.target_model,
+            "__xbrainlab_accepts_signal_context__",
+            False,
+        ):
+            model_args.pop("chs_info", None)
+        model = self.target_model(**self._model_params_map, **model_args)
         if self.pretrained_weight_path:
             model.load_state_dict(
                 torch.load(self.pretrained_weight_path, weights_only=True),

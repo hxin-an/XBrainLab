@@ -7,21 +7,49 @@ the model-library import cost during application startup.
 
 from __future__ import annotations
 
+import hashlib
 import importlib
+import importlib.metadata
+import importlib.util
 import inspect
-from collections.abc import Callable
+import math
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from threading import RLock
 from types import ModuleType
 from typing import Any
 
+from XBrainLab.backend.model_base.braindecode_catalog import (
+    BRAINCDECODE_CATALOG_ENTRIES,
+    BRAINCDECODE_SOURCE_REVISION,
+    BraindecodeCatalogEntry,
+)
 from XBrainLab.backend.model_catalog_contract import (
+    BRAINDECODE_MODEL_IDS,
     DEFAULT_MODEL_ID,
     TRAINING_MODEL_NAMES,
 )
 
 ModelFactory = Callable[..., Any]
 _BRAINCDECODE_MATPLOTLIB_STYLE_LOCK = RLock()
+LEGACY_BRAINCDECODE_PROVIDER = "legacy-braindecode"
+LEGACY_BRAINCDECODE_SOURCE_REVISION = (
+    f"{BRAINCDECODE_SOURCE_REVISION}+xbrainlab-reviewed"
+)
+_POSITION_REQUIRED_MODELS = frozenset(
+    {
+        "DGCNN",
+        "InterpolatedBENDR",
+        "InterpolatedBIOT",
+        "InterpolatedEEGPT",
+        "InterpolatedLaBraM",
+        "SignalJEPA_Contextual",
+    }
+)
+_LABRAM_CHANNEL_ORDER_SHA256 = (
+    "4b10c66b7efa84bc3f4d30a6807db4e"  # pragma: allowlist secret
+    "1eedb2ef348866a04fb3fcf0274264c70"  # pragma: allowlist secret
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,9 +71,30 @@ class ModelSpec:
     source: str
     factory: ModelFactory
     parameters: tuple[ModelParameter, ...] = ()
+    provider: str = "xbrainlab"
+    source_revision: str = "xbrainlab"
+    family: str = "Local"
+    task: str = "classification"
+    aliases: tuple[str, ...] = ()
+    license_id: str = "XBrainLab"
+    required_inputs: tuple[str, ...] = ()
+    available: bool = True
+    unavailable_reason: str = ""
+    legacy_copy_allowed: bool = False
+    legacy_unavailable_reason: str = ""
 
     def default_parameters(self) -> dict[str, Any]:
         return {parameter.key: parameter.default for parameter in self.parameters}
+
+
+@dataclass(frozen=True, slots=True)
+class BraindecodeProviderStatus:
+    """Availability of the one pinned upstream Braindecode provider."""
+
+    available: bool
+    installed_version: str | None
+    reason: str
+    checked: bool
 
 
 def _parameter(key: str, label: str, default: Any, description: str) -> ModelParameter:
@@ -320,32 +369,172 @@ def model_command_names() -> tuple[str, ...]:
     return TRAINING_MODEL_NAMES
 
 
+def braindecode_provider_status() -> BraindecodeProviderStatus:
+    """Run the provider import preflight and return a fail-closed status."""
+    installation_status = _braindecode_installation_status()
+    if not installation_status.available:
+        return installation_status
+    try:
+        matplotlib = importlib.import_module("matplotlib")
+        with _BRAINCDECODE_MATPLOTLIB_STYLE_LOCK, matplotlib.rc_context():
+            importlib.import_module("braindecode.models.eegnet")
+    except Exception as exc:
+        return BraindecodeProviderStatus(
+            available=False,
+            installed_version=installation_status.installed_version,
+            reason=(
+                "The pinned Braindecode provider could not be loaded "
+                f"({type(exc).__name__})."
+            ),
+            checked=True,
+        )
+    return BraindecodeProviderStatus(
+        available=True,
+        installed_version=installation_status.installed_version,
+        reason="",
+        checked=True,
+    )
+
+
+def _braindecode_installation_status() -> BraindecodeProviderStatus:
+    """Inspect package identity without importing the heavyweight provider."""
+    if importlib.util.find_spec("braindecode") is None:
+        return BraindecodeProviderStatus(
+            available=False,
+            installed_version=None,
+            reason=f"{BRAINCDECODE_SOURCE_REVISION} is not installed.",
+            checked=True,
+        )
+    try:
+        installed_version = importlib.metadata.version("braindecode")
+    except importlib.metadata.PackageNotFoundError:
+        return BraindecodeProviderStatus(
+            available=False,
+            installed_version=None,
+            reason=f"{BRAINCDECODE_SOURCE_REVISION} is not installed.",
+            checked=True,
+        )
+    expected_version = BRAINCDECODE_SOURCE_REVISION.partition("==")[2]
+    if installed_version != expected_version:
+        return BraindecodeProviderStatus(
+            available=False,
+            installed_version=installed_version,
+            reason=(
+                f"{BRAINCDECODE_SOURCE_REVISION} is required; "
+                f"found braindecode=={installed_version}."
+            ),
+            checked=True,
+        )
+    return BraindecodeProviderStatus(
+        available=True,
+        installed_version=installed_version,
+        reason="Braindecode provider readiness has not been checked.",
+        checked=False,
+    )
+
+
 def discover_model_specs(
     local_model_module: ModuleType,
     *,
     include_braindecode: bool = True,
+    provider_status: BraindecodeProviderStatus | None = None,
+    signal_context: Mapping[str, Any] | None = None,
 ) -> tuple[ModelSpec, ...]:
-    """Return curated external models followed by locally implemented models."""
+    """Return the provider-aware training catalog and local models.
+
+    A checked healthy provider projects the complete upstream inventory.  A
+    checked unavailable provider projects only the separately identified local
+    recovery implementations.  An unchecked provider remains fail-closed and
+    never causes an implicit recovery projection.
+    """
     local_models = inspect.getmembers(local_model_module, inspect.isclass)
     known_local_models = any(name in _LOCAL_DISPLAY_NAMES for name, _ in local_models)
     specs: list[ModelSpec] = []
     if include_braindecode and known_local_models:
-        specs.extend(_braindecode_specs())
+        if provider_status is None:
+            # The searchable dialog renders this cheap metadata projection while
+            # its one checked provider snapshot is still running in the background.
+            specs.extend(_braindecode_specs(signal_context=signal_context))
+        elif provider_status.checked and not provider_status.available:
+            specs.extend(
+                discover_legacy_braindecode_model_specs(
+                    signal_context=signal_context,
+                )
+            )
+        else:
+            specs.extend(
+                _braindecode_specs(
+                    BRAINCDECODE_CATALOG_ENTRIES,
+                    provider_status=provider_status,
+                    signal_context=signal_context,
+                )
+            )
     for class_name, model_class in local_models:
         specs.append(_local_model_spec(class_name, model_class))
     return tuple(specs)
 
 
-def get_model_spec(model_name: str) -> ModelSpec:
+def discover_braindecode_model_specs(
+    *,
+    provider_status: BraindecodeProviderStatus | None = None,
+    signal_context: Mapping[str, Any] | None = None,
+) -> tuple[ModelSpec, ...]:
+    """Return the complete pinned upstream catalog, including unavailable entries."""
+    return _braindecode_specs(
+        BRAINCDECODE_CATALOG_ENTRIES,
+        provider_status=provider_status,
+        signal_context=signal_context,
+    )
+
+
+def discover_legacy_braindecode_model_specs(
+    *,
+    signal_context: Mapping[str, Any] | None = None,
+) -> tuple[ModelSpec, ...]:
+    """Return reviewed local recovery contracts with distinct stable IDs."""
+    return tuple(
+        _legacy_braindecode_model_spec(entry, signal_context=signal_context)
+        for entry in BRAINCDECODE_CATALOG_ENTRIES
+        if entry.legacy_copy_allowed
+    )
+
+
+def get_model_spec(
+    model_name: str,
+    *,
+    provider_status: BraindecodeProviderStatus | None = None,
+    signal_context: Mapping[str, Any] | None = None,
+) -> ModelSpec:
     """Resolve a stable id, display label, or compatible legacy model name."""
     model_base = importlib.import_module("XBrainLab.backend.model_base")
     normalized = str(model_name).strip().casefold()
-    specs = discover_model_specs(model_base)
-    by_value = {
-        value.casefold(): spec
-        for spec in specs
-        for value in (spec.model_id, spec.display_name)
-    }
+    requested_is_legacy = normalized.startswith("legacy.braindecode.")
+    effective_status = provider_status
+    if effective_status is None and not requested_is_legacy:
+        effective_status = braindecode_provider_status()
+    specs = list(
+        discover_model_specs(
+            model_base,
+            provider_status=effective_status,
+            signal_context=signal_context,
+        )
+    )
+    if requested_is_legacy and not any(
+        spec.model_id.casefold() == normalized for spec in specs
+    ):
+        specs.extend(
+            discover_legacy_braindecode_model_specs(
+                signal_context=signal_context,
+            )
+        )
+    by_value: dict[str, ModelSpec] = {}
+    for spec in specs:
+        values = (
+            (spec.model_id,)
+            if spec.provider == LEGACY_BRAINCDECODE_PROVIDER
+            else (spec.model_id, spec.display_name, *spec.aliases)
+        )
+        by_value.update({value.casefold(): spec for value in values})
     for spec in specs:
         class_name = getattr(spec.factory, "__name__", "")
         if spec.source == "xbrainlab":
@@ -362,38 +551,308 @@ def get_model_spec(model_name: str) -> ModelSpec:
     return result
 
 
-def _braindecode_specs() -> tuple[ModelSpec, ...]:
-    return tuple(
-        ModelSpec(
-            model_id=f"braindecode.{class_name.casefold()}",
-            display_name=f"{display_name} (Braindecode)",
-            source="braindecode",
-            factory=_braindecode_factory(class_name),
-            parameters=parameters,
+def _braindecode_specs(
+    entries: tuple[BraindecodeCatalogEntry, ...] | None = None,
+    *,
+    provider_status: BraindecodeProviderStatus | None = None,
+    signal_context: Mapping[str, Any] | None = None,
+) -> tuple[ModelSpec, ...]:
+    projected_status = provider_status or _braindecode_installation_status()
+    selected_entries = entries
+    if selected_entries is None:
+        entries_by_id = {
+            entry.model_id: entry for entry in BRAINCDECODE_CATALOG_ENTRIES
+        }
+        selected_entries = tuple(
+            entries_by_id[model_id] for model_id in BRAINDECODE_MODEL_IDS
         )
-        for class_name, display_name, parameters in _BRAINCDECODE_MODELS
+    return tuple(
+        _braindecode_model_spec(
+            entry,
+            projected_status,
+            signal_context=signal_context,
+        )
+        for entry in selected_entries
     )
 
 
-def _braindecode_factory(class_name: str) -> ModelFactory:
+def _braindecode_model_spec(
+    entry: BraindecodeCatalogEntry,
+    provider_status: BraindecodeProviderStatus,
+    *,
+    signal_context: Mapping[str, Any] | None = None,
+) -> ModelSpec:
+    curated_parameters = {
+        class_name: parameters
+        for class_name, _display_name, parameters in _BRAINCDECODE_MODELS
+    }
+    provider_reason = ""
+    if not provider_status.checked:
+        provider_reason = (
+            provider_status.reason
+            or "Braindecode provider readiness has not been checked."
+        )
+    elif not provider_status.available:
+        provider_reason = (
+            provider_status.reason or "Braindecode provider is unavailable."
+        )
+    dataset_reason = (
+        _dataset_unavailable_reason(entry.class_name, signal_context)
+        if entry.available and provider_status.available and provider_status.checked
+        else ""
+    )
+    unavailable_reasons = tuple(
+        reason
+        for reason in (entry.unavailable_reason, provider_reason, dataset_reason)
+        if reason
+    )
+    return ModelSpec(
+        model_id=entry.model_id,
+        display_name=f"{entry.class_name} (Braindecode)",
+        source="braindecode",
+        factory=_braindecode_factory(entry),
+        parameters=curated_parameters.get(entry.class_name, ()),
+        provider="braindecode",
+        source_revision=BRAINCDECODE_SOURCE_REVISION,
+        family=entry.family,
+        task=entry.task,
+        aliases=(entry.class_name,),
+        license_id=entry.license_id,
+        required_inputs=entry.required_inputs,
+        available=(
+            entry.available
+            and provider_status.available
+            and provider_status.checked
+            and not dataset_reason
+        ),
+        unavailable_reason=" ".join(unavailable_reasons),
+        legacy_copy_allowed=entry.legacy_copy_allowed,
+        legacy_unavailable_reason=entry.legacy_unavailable_reason,
+    )
+
+
+def _legacy_braindecode_model_spec(
+    entry: BraindecodeCatalogEntry,
+    *,
+    signal_context: Mapping[str, Any] | None = None,
+) -> ModelSpec:
+    curated_parameters = {
+        class_name: parameters
+        for class_name, _display_name, parameters in _BRAINCDECODE_MODELS
+    }
+    dataset_reason = (
+        _dataset_unavailable_reason(entry.class_name, signal_context)
+        if entry.available and not entry.legacy_unavailable_reason
+        else ""
+    )
+    unavailable_reasons = tuple(
+        reason
+        for reason in (
+            entry.unavailable_reason,
+            entry.legacy_unavailable_reason,
+            dataset_reason,
+        )
+        if reason
+    )
+    return ModelSpec(
+        model_id=f"legacy.braindecode.{entry.class_name.casefold()}",
+        display_name=f"{entry.class_name} (Local recovery)",
+        source=LEGACY_BRAINCDECODE_PROVIDER,
+        factory=_legacy_braindecode_factory(entry),
+        parameters=curated_parameters.get(entry.class_name, ()),
+        provider=LEGACY_BRAINCDECODE_PROVIDER,
+        source_revision=LEGACY_BRAINCDECODE_SOURCE_REVISION,
+        family=entry.family,
+        task=entry.task,
+        aliases=(),
+        license_id=entry.license_id,
+        required_inputs=entry.required_inputs,
+        available=(
+            entry.available
+            and not entry.legacy_unavailable_reason
+            and not dataset_reason
+        ),
+        unavailable_reason=" ".join(unavailable_reasons),
+        legacy_copy_allowed=entry.legacy_copy_allowed,
+        legacy_unavailable_reason=entry.legacy_unavailable_reason,
+    )
+
+
+def _braindecode_factory(entry: BraindecodeCatalogEntry) -> ModelFactory:
     def build_model(**kwargs: Any) -> Any:
         # Braindecode imports visualization helpers that apply a global
         # Seaborn/Matplotlib theme. Model construction is a backend operation;
         # it must not silently change geometry and fonts in later product plots.
         matplotlib = importlib.import_module("matplotlib")
         with _BRAINCDECODE_MATPLOTLIB_STYLE_LOCK, matplotlib.rc_context():
-            models = importlib.import_module("braindecode.models")
-            model_class = getattr(models, class_name)
-            required = {
-                "n_outputs": kwargs.pop("n_classes"),
-                "n_chans": kwargs.pop("channels"),
-                "n_times": kwargs.pop("samples"),
-                "sfreq": kwargs.pop("sfreq"),
-            }
+            models = importlib.import_module(entry.module_name)
+            model_class = getattr(models, entry.class_name)
+            required = _adapt_braindecode_inputs(entry, kwargs)
             return model_class(**required, **kwargs)
 
-    build_model.__name__ = f"Braindecode{class_name}"
+    build_model.__name__ = f"Braindecode{entry.class_name}"
+    build_model.__xbrainlab_accepts_signal_context__ = True  # type: ignore[attr-defined]
     return build_model
+
+
+def _legacy_braindecode_factory(entry: BraindecodeCatalogEntry) -> ModelFactory:
+    module_name = entry.module_name.replace(
+        "braindecode.models",
+        "XBrainLab.backend.model_base.legacy_braindecode.models",
+        1,
+    )
+
+    def build_model(**kwargs: Any) -> Any:
+        model_module = importlib.import_module(module_name)
+        model_class = getattr(model_module, entry.class_name)
+        required = _adapt_braindecode_inputs(entry, kwargs)
+        return model_class(**required, **kwargs)
+
+    build_model.__name__ = f"LegacyBraindecode{entry.class_name}"
+    build_model.__xbrainlab_accepts_signal_context__ = True  # type: ignore[attr-defined]
+    return build_model
+
+
+def _adapt_braindecode_inputs(
+    entry: BraindecodeCatalogEntry,
+    kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    standard_values = {
+        "n_outputs": kwargs.pop("n_classes"),
+        "n_chans": kwargs.pop("channels"),
+        "n_times": kwargs.pop("samples"),
+        "sfreq": kwargs.pop("sfreq"),
+        "chs_info": kwargs.pop("chs_info", None),
+    }
+    missing = [
+        name for name in entry.required_inputs if standard_values.get(name) is None
+    ]
+    if missing:
+        raise ValueError(
+            f"{entry.class_name} requires signal context: {', '.join(missing)}."
+        )
+    required = {name: standard_values[name] for name in entry.required_inputs}
+    if entry.class_name == "AttnSleep" and float(standard_values["sfreq"]) == 125.0:
+        required["d_model"] = 100
+    if entry.class_name == "STEEGFormer":
+        # Upstream resolves ``chs_info`` through a network-fetched vocabulary.
+        # XBrainLab trains from scratch, so use a deterministic local slot for
+        # each reviewed input channel and never trigger that hidden download.
+        required["chan_pos_idx"] = list(range(int(standard_values["n_chans"])))
+    return required
+
+
+def _dataset_unavailable_reason(
+    class_name: str,
+    signal_context: Mapping[str, Any] | None,
+) -> str:
+    """Return a deterministic dataset compatibility reason without model imports."""
+    if signal_context is None:
+        return ""
+    channels = _positive_int(signal_context.get("channels"))
+    samples = _positive_int(signal_context.get("samples"))
+    sfreq = _positive_float(signal_context.get("sfreq"))
+    chs_info = signal_context.get("chs_info")
+
+    if class_name in _POSITION_REQUIRED_MODELS and not _has_finite_positions(
+        chs_info,
+        channels,
+    ):
+        return (
+            "This model requires reviewed, finite electrode positions for every "
+            "selected channel."
+        )
+    if class_name == "SleepStagerBlanco2020":
+        if samples is None or samples < 450:
+            return "SleepStagerBlanco2020 requires epochs with at least 450 samples."
+        if channels is None or channels % 2:
+            return (
+                "SleepStagerBlanco2020 requires an even number of EEG channels "
+                "with its default grouped convolutions."
+            )
+    if class_name == "AttnSleep" and not (
+        channels == 1
+        and (
+            (sfreq == 100.0 and samples == 3_000)
+            or (sfreq == 125.0 and samples == 3_750)
+        )
+    ):
+        return (
+            "AttnSleep requires a single-channel 30-second epoch at 100 Hz "
+            "(3,000 samples) or 125 Hz (3,750 samples)."
+        )
+    if class_name == "Labram":
+        if not _matches_labram_channel_order(chs_info, channels):
+            return (
+                "Labram requires its canonical 128-channel order. Use "
+                "InterpolatedLaBraM with a reviewed montage for other layouts."
+            )
+        if samples is None or samples % 200:
+            return "Labram requires an epoch length divisible by 200 samples."
+    if class_name == "InterpolatedLaBraM" and (samples is None or samples % 200):
+        return "InterpolatedLaBraM requires an epoch length divisible by 200 samples."
+    if class_name == "LUNA" and (samples is None or samples % 40):
+        return "LUNA requires an epoch length divisible by 40 samples."
+    if class_name == "CBraMod" and (samples is None or samples % 200):
+        return "CBraMod requires an epoch length divisible by 200 samples."
+    if class_name == "EEGDINO" and (channels is None or channels > 19):
+        return "EEGDINO currently supports at most 19 channels."
+    return ""
+
+
+def _positive_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return value
+
+
+def _positive_float(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) and number > 0 else None
+
+
+def _has_finite_positions(chs_info: object, channels: int | None) -> bool:
+    if not isinstance(chs_info, (list, tuple)) or channels is None:
+        return False
+    if len(chs_info) != channels:
+        return False
+    positions: list[tuple[float, float, float]] = []
+    for channel in chs_info:
+        if not isinstance(channel, Mapping):
+            return False
+        location = channel.get("loc")
+        try:
+            position = tuple(float(value) for value in location[:3])  # type: ignore[index]
+        except (TypeError, ValueError):
+            return False
+        if len(position) != 3 or not all(math.isfinite(value) for value in position):
+            return False
+        positions.append(position)
+    if not positions or all(all(value == 0.0 for value in item) for item in positions):
+        return False
+    return len(positions) == 1 or len(set(positions)) > 1
+
+
+def _matches_labram_channel_order(
+    chs_info: object,
+    channels: int | None,
+) -> bool:
+    if channels != 128 or not isinstance(chs_info, (list, tuple)):
+        return False
+    if len(chs_info) != channels:
+        return False
+    names: list[str] = []
+    for channel in chs_info:
+        if not isinstance(channel, Mapping):
+            return False
+        name = channel.get("ch_name")
+        if not isinstance(name, str) or not name.strip():
+            return False
+        names.append(name.strip().upper())
+    digest = hashlib.sha256("\0".join(names).encode("utf-8")).hexdigest()
+    return digest == _LABRAM_CHANNEL_ORDER_SHA256
 
 
 def _local_model_spec(class_name: str, model_class: type) -> ModelSpec:
@@ -420,4 +879,12 @@ def _local_model_spec(class_name: str, model_class: type) -> ModelSpec:
         source="xbrainlab",
         factory=model_class,
         parameters=tuple(parameters),
+        provider="xbrainlab",
+        source_revision="xbrainlab",
+        family="Local",
+        task="classification",
+        aliases=(class_name,),
+        license_id="XBrainLab",
+        required_inputs=("n_classes", "channels", "samples", "sfreq"),
+        legacy_copy_allowed=True,
     )

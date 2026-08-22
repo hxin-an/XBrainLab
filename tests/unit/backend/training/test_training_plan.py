@@ -582,6 +582,29 @@ def test_saliency_producer_identity_is_stable_for_same_training_run(base_holder)
     assert first.fingerprint == second.fingerprint
 
 
+def test_saliency_rejects_holder_identity_different_from_captured_run(base_holder):
+    record = base_holder.get_plans()[0]
+    record.best_val_loss_model = record.model.state_dict()
+    baseline = base_holder.build_saliency_producer_identity(
+        record,
+        evaluation_split="test",
+    )
+    original_provider = base_holder.model_holder.provider
+    original_revision = base_holder.model_holder.source_revision
+    base_holder.model_holder.provider = "legacy-braindecode"
+    base_holder.model_holder.source_revision = "braindecode==1.6.1+xbrainlab-reviewed"
+
+    with pytest.raises(ValueError, match="no longer matches"):
+        base_holder.build_saliency_producer_identity(
+            record,
+            evaluation_split="test",
+        )
+
+    base_holder.model_holder.provider = original_provider
+    base_holder.model_holder.source_revision = original_revision
+    assert baseline.model_fingerprint
+
+
 def test_saliency_producer_identity_separates_dataset_split_run_and_model(
     base_holder,
 ):

@@ -196,6 +196,9 @@ from .training_snapshot import (
     model_params_snapshot as build_model_params_snapshot,
 )
 from .training_snapshot import (
+    model_signal_context_snapshot as build_model_signal_context_snapshot,
+)
+from .training_snapshot import (
     training_option_snapshot as build_training_option_snapshot,
 )
 from .view_event_publisher import (
@@ -1432,6 +1435,24 @@ class ApplicationService(Observable):
             return EpochDialogContext.unavailable(
                 publication_generation=publication.generation,
             )
+        finally:
+            self._command_lock.release()
+
+    def get_training_model_signal_context(self) -> dict[str, Any] | None:
+        """Return detached epoch metadata used to admit model selections."""
+        acquired = self._command_lock.acquire(
+            timeout=_CONTEXT_READ_LOCK_WAIT_SECONDS,
+        )
+        if not acquired:
+            return None
+        try:
+            self._ensure_open()
+            if self._mutation_in_progress:
+                return None
+            return build_model_signal_context_snapshot(self.training)
+        except (AttributeError, TypeError, ValueError):
+            logger.error("Failed to read model signal context.", exc_info=True)
+            return None
         finally:
             self._command_lock.release()
 

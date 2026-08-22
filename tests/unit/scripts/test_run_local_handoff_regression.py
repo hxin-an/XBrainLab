@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from scripts.dev import run_local_handoff_regression as runner
@@ -28,6 +30,39 @@ def test_phase_order_is_deterministic_longest_first() -> None:
         "linux-integration-rest",
         "linux-integration-agent-timing",
     )
+
+
+def test_spawn_sensitive_rest_group_waits_for_heavy_backend_group(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    backend_started = threading.Event()
+    release_backend = threading.Event()
+    rest_started = threading.Event()
+
+    def fake_group(command: str, *, evidence_dir: Path) -> int:
+        del evidence_dir
+        if command == "linux-unit-backend":
+            backend_started.set()
+            assert release_backend.wait(timeout=2.0)
+        elif command == "linux-unit-rest":
+            rest_started.set()
+        return 0
+
+    monkeypatch.setattr(runner, "_execute_group", fake_group)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        result = executor.submit(
+            runner._run_phase,
+            runner.FIXED_PHASES[0],
+            evidence_dir=tmp_path,
+        )
+        assert backend_started.wait(timeout=2.0)
+        assert rest_started.wait(timeout=0.1) is False
+        release_backend.set()
+        outcomes = result.result(timeout=2.0)
+
+    assert rest_started.is_set()
+    assert set(outcomes) == set(runner.FIXED_PHASES[0])
 
 
 def test_failure_stops_before_next_phase_and_writes_failed_aggregate(

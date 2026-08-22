@@ -9,7 +9,7 @@ import os
 import subprocess
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -50,6 +50,19 @@ GROUP_SCHEDULING_WEIGHTS_SECONDS = {
 }
 if frozenset(GROUP_SCHEDULING_WEIGHTS_SECONDS) != frozenset(LINUX_CI_COMMANDS):
     raise RuntimeError("Local handoff scheduling weights drifted from Linux groups.")
+
+# The backend group now contains the complete Braindecode construction/parity
+# matrix. Running it beside the spawn-sensitive runtime tests in unit-rest can
+# starve real child-process startup without representing a product defect. Keep
+# both authoritative groups and their coverage, but never overlap this pair in
+# the local handoff runner. Remote CI already runs each group on its own runner.
+GROUP_PREDECESSORS = {
+    "linux-unit-rest": frozenset({"linux-unit-backend"}),
+}
+if not set(GROUP_PREDECESSORS).issubset(LINUX_CI_COMMANDS):
+    raise RuntimeError("Local handoff predecessor keys drifted from Linux groups.")
+if not set().union(*GROUP_PREDECESSORS.values()).issubset(LINUX_CI_COMMANDS):
+    raise RuntimeError("Local handoff predecessors drifted from Linux groups.")
 
 
 def _ordered_phase_commands(commands: tuple[str, ...]) -> tuple[str, ...]:
@@ -221,16 +234,45 @@ def _execute_group(command: str, *, evidence_dir: Path) -> int:
 
 def _run_phase(commands: tuple[str, ...], *, evidence_dir: Path) -> dict[str, int]:
     ordered_commands = _ordered_phase_commands(commands)
+    phase_commands = frozenset(commands)
+    pending = list(ordered_commands)
+    outcomes: dict[str, int] = {}
+    completed: set[str] = set()
     with ThreadPoolExecutor(max_workers=MAX_PARALLEL_GROUPS) as executor:
-        futures = {
-            command: executor.submit(
-                _execute_group,
-                command,
-                evidence_dir=evidence_dir,
-            )
-            for command in ordered_commands
-        }
-        return {command: future.result() for command, future in futures.items()}
+        futures: dict[Future[int], str] = {}
+        while pending or futures:
+            while pending and len(futures) < MAX_PARALLEL_GROUPS:
+                runnable_index = next(
+                    (
+                        index
+                        for index, command in enumerate(pending)
+                        if (
+                            GROUP_PREDECESSORS.get(command, frozenset())
+                            & phase_commands
+                        ).issubset(completed)
+                    ),
+                    None,
+                )
+                if runnable_index is None:
+                    break
+                command = pending.pop(runnable_index)
+                future = executor.submit(
+                    _execute_group,
+                    command,
+                    evidence_dir=evidence_dir,
+                )
+                futures[future] = command
+            if not futures:
+                blocked = ", ".join(pending)
+                raise RuntimeError(
+                    f"Local handoff group predecessor cycle blocked: {blocked}"
+                )
+            done, _ = wait(futures, return_when=FIRST_COMPLETED)
+            for future in done:
+                command = futures.pop(future)
+                outcomes[command] = future.result()
+                completed.add(command)
+    return outcomes
 
 
 def run_local_handoff_regression(

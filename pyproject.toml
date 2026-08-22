@@ -19,7 +19,7 @@ h5py = "^3.10.0"
 # EEG Analysis
 mne = "^1.6.0"
 pymatreader = ">=1.2.2,<2"
-braindecode = ">=1.6,<1.7"
+braindecode = "==1.6.1"
 
 # Deep Learning Core (Required for Backend & LLM)
 torch = "^2.11.0"
@@ -166,6 +166,7 @@ exclude = [
 include = ["XBrainLab"]
 exclude = [
     "XBrainLab/llm/core/models",
+    "XBrainLab/backend/model_base/legacy_braindecode",
 ]
 pythonVersion = "3.12"
 typeCheckingMode = "basic"

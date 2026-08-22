@@ -126,6 +126,7 @@ def test_native_platform_source_matrix_is_finite_native_and_required() -> None:
             "artifact_type": "xbrainlab.native_platform_product_smoke",
             "qt_platform": "windows",
             "runner_os": "Windows",
+            "panel_timeout_ms": 20_000,
         },
         {
             "key": "windows-startup-py312",
@@ -144,6 +145,7 @@ def test_native_platform_source_matrix_is_finite_native_and_required() -> None:
             "artifact_type": "xbrainlab.native_platform_product_smoke",
             "qt_platform": "cocoa",
             "runner_os": "macOS",
+            "panel_timeout_ms": 45_000,
         },
     ]
 
@@ -166,6 +168,13 @@ def test_native_platform_source_matrix_is_finite_native_and_required() -> None:
     assert upload["with"]["if-no-files-found"] == "error"
     assert "native-platform-smoke.json" in upload["with"]["path"]
     assert "ci-source-provenance.json" in upload["with"]["path"]
+
+    product_probe = next(
+        step
+        for step in steps
+        if step.get("name") == "Run native MainWindow product lifecycle"
+    )
+    assert "--panel-timeout-ms ${{ matrix.panel_timeout_ms }}" in product_probe["run"]
 
 
 def test_native_source_probes_require_platform_and_isolated_root() -> None:

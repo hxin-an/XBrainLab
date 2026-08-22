@@ -1,6 +1,6 @@
 # Backend 目前架構
 
-最後更新：`2026-08-13`
+最後更新：`2026-08-21`
 
 ## 快速讀法
 
@@ -470,6 +470,18 @@ taxonomy 都以這套 Data Interpretation command sequence 作為產品資料入
 - Training terminal path 只發布 metrics。只有 explicit `SaliencyCommand`（由 visible
   `Compute Saliency` action 觸發）才建立 exact completed-run target 並排程 attribution；
   generation 或 producer identity 不符的結果不得發布。
+- `ModelCatalog`是model identity、provider、factory、license、task與dataset-context availability的唯一
+  owner。Pinned Braindecode 1.6.1 metadata discovery不載入`braindecode.models` barrel；checked provider
+  正常時投影61個upstream contracts，其中54個符合目前classification workflow。Provider不存在、版本不符或
+  import preflight失敗時，UI可列57個permissive local recovery contracts，但只有符合相同dataset contract的
+  models可選。Upstream `braindecode.*`與local `legacy.braindecode.*`是不同stable identity，construction／
+  training failure不會改走另一provider。
+- `ModelHolder`、`TrainRecord`與saliency producer identity保存exact model ID、provider與source revision。
+  Identified／model-backed reopen遇到identity缺漏、malformed或不符時fail closed；identityless舊safe record
+  只允許在current identity同樣unknown時讀取statistics，仍不得rebind、re-export成某個provider。同一目錄的
+  checkpoint／evaluation不得被目前選定的provider重新標記。Legacy source只包含逐symbol確認的
+  BSD-3-Clause、MIT或Apache-2.0 closure，不載入installed Braindecode，也不包含Hub/download、CC BY-NC或
+  patent-linked code。
 - Timed hyperparameter search、trial orchestration、pruning 和 automatic model selection 沒有
   command / service / tool contract；它們只在 roadmap，不能從 recommended-defaults surface 推論
   已實作。

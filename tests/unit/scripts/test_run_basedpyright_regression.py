@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import tomllib
+
 from scripts.dev.handoff_gate_spec import HANDOFF_GATE_SPECS
 from scripts.dev.run_basedpyright_regression import (
     BASELINE_PATH,
@@ -85,3 +87,12 @@ def test_checked_in_baseline_and_all_handoff_consumers_are_read_only() -> None:
     )
     assert "scripts/dev/run_basedpyright_regression.py" in dashboard_source
     assert "--writebaseline" not in dashboard_source
+
+
+def test_typecheck_excludes_only_reviewed_third_party_model_source() -> None:
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert config["tool"]["basedpyright"]["exclude"] == [
+        "XBrainLab/llm/core/models",
+        "XBrainLab/backend/model_base/legacy_braindecode",
+    ]

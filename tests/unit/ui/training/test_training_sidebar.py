@@ -427,6 +427,26 @@ def test_init_ui(sidebar):
     assert sidebar.scroll_area.content_layout.itemAt(0).widget() is sidebar.info_panel
 
 
+def test_model_selection_receives_typed_training_query_port(sidebar):
+    query_port = MagicMock()
+    sidebar.panel.__dict__["_query_port"] = query_port
+    sidebar.panel._typed_port_mode = True
+
+    with patch(
+        "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog",
+    ) as dialog:
+        dialog.return_value.exec.return_value = False
+        outcome = sidebar._collect_model_selection(None)
+
+    assert outcome.status.value == "cancelled"
+    dialog.assert_called_once_with(
+        sidebar,
+        sidebar.controller,
+        initial_model_name=None,
+        query_port=query_port,
+    )
+
+
 def test_execution_section_does_not_show_persistent_resource_status(sidebar):
     visible_text = " ".join(
         label.text() for label in sidebar.findChildren(QLabel) if label.isVisible()

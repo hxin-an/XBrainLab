@@ -628,12 +628,16 @@ def test_epochs_info(epochs):
     assert epochs.get_data_length() == block_size * len(subject_list) * len(
         session_list
     )
-    assert epochs.get_model_args() == {
+    model_args = epochs.get_model_args()
+    chs_info = model_args.pop("chs_info")
+    assert model_args == {
         "n_classes": len(event_id),
         "channels": len(ch_names),
         "samples": epoch_duration * fs,
         "sfreq": fs,
     }
+    assert [channel["ch_name"] for channel in chs_info] == ch_names
+    assert all(len(channel["loc"]) == 12 for channel in chs_info)
     assert epochs.get_data().shape == (
         block_size * len(subject_list) * len(session_list),
         len(ch_names),

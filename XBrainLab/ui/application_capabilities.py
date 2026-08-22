@@ -210,6 +210,10 @@ class TrainingQueryPort(Protocol):
         """Return detached Training configuration state."""
         ...
 
+    def get_training_model_signal_context(self) -> dict[str, Any] | None:
+        """Return detached epoch metadata used for model admission."""
+        ...
+
     def get_training_recommendation(
         self,
         *,
@@ -584,6 +588,9 @@ class _StudyApplicationUiRuntime:
 
     def get_epoch_dialog_context(self) -> EpochDialogContext:
         return self._service().get_epoch_dialog_context()
+
+    def get_training_model_signal_context(self) -> dict[str, Any] | None:
+        return self._service().get_training_model_signal_context()
 
     def get_dataset_split_context(
         self,
@@ -1077,6 +1084,23 @@ def get_epoch_dialog_context(
         logger.error("Application runtime returned an invalid epoch dialog context.")
         return EpochDialogContext.unavailable()
     return dialog_context
+
+
+def get_training_model_signal_context(
+    context: Any,
+    *,
+    runtime: TrainingQueryPort | None = None,
+) -> dict[str, Any] | None:
+    """Read detached model-admission metadata through ApplicationService."""
+    query_port = runtime if runtime is not None else application_ui_runtime(context)
+    if query_port is None:
+        return None
+    try:
+        value = query_port.get_training_model_signal_context()
+    except Exception:
+        logger.error("Failed to read model signal context.", exc_info=True)
+        return None
+    return dict(value) if isinstance(value, dict) else None
 
 
 def get_training_resource_preflight(

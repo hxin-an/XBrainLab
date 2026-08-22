@@ -57,6 +57,11 @@ class TestTrainingFix(unittest.TestCase):
         self.mock_model_holder.target_model = MagicMock()
         self.mock_model_holder.target_model.__name__ = "TestModel"
         self.mock_model_holder.get_model.return_value = self.mock_model
+        self.mock_model_holder.catalog_identity = {
+            "model_id": "xbrainlab.test-model",
+            "provider": "xbrainlab",
+            "source_revision": "test",
+        }
 
         self.saliency_params = {}
 

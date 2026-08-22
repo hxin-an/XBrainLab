@@ -302,8 +302,20 @@ def test_training_record_round_trip_uses_safe_store_and_state_dicts(
 ) -> None:
     seed = set_seed(42)
     model = model_holder.get_model({})
+    model_identity = {
+        "model_id": "braindecode.eegnet",
+        "provider": "braindecode",
+        "source_revision": "braindecode==1.6.1",
+    }
     with patch.object(TrainRecord, "init_dir"):
-        record = TrainRecord(0, dataset, model, training_option, seed)
+        record = TrainRecord(
+            0,
+            dataset,
+            model,
+            training_option,
+            seed,
+            model_identity=model_identity,
+        )
     record.target_path = str(tmp_path)
     record._artifact_io_path = str(tmp_path)
     record.update_train({RecordKey.LOSS: 0.5, RecordKey.ACC: 75.0})
@@ -315,6 +327,7 @@ def test_training_record_round_trip_uses_safe_store_and_state_dicts(
     manifest = _read_manifest(tmp_path / "record")
     assert manifest["artifact_store_schema_version"] == 1
     assert manifest["artifact_type"] == "xbrainlab.training_record"
+    assert manifest["payload"]["model_identity"] == model_identity
     with np.load(tmp_path / "record.npz", allow_pickle=False) as archive:
         assert archive.files
         assert all(not archive[name].dtype.hasobject for name in archive.files)
@@ -329,7 +342,14 @@ def test_training_record_round_trip_uses_safe_store_and_state_dicts(
         assert all(isinstance(value, torch.Tensor) for value in state.values())
 
     with patch.object(TrainRecord, "init_dir"):
-        loaded = TrainRecord(0, dataset, model_holder.get_model({}), training_option, 0)
+        loaded = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            0,
+            model_identity=model_identity,
+        )
     loaded.target_path = str(tmp_path)
     loaded._artifact_io_path = str(tmp_path)
     loaded.load()
@@ -337,6 +357,136 @@ def test_training_record_round_trip_uses_safe_store_and_state_dicts(
     assert loaded.epoch == 1
     assert loaded.train[RecordKey.LOSS] == [0.5]
     assert loaded.val[RecordKey.ACC] == [70.0]
+    assert loaded.model_identity == model_identity
+
+
+def test_training_record_rejects_different_provider_identity(
+    tmp_path: Path,
+    dataset,  # noqa: F811
+    training_option,  # noqa: F811
+    model_holder,  # noqa: F811
+) -> None:
+    upstream_identity = {
+        "model_id": "braindecode.eegnet",
+        "provider": "braindecode",
+        "source_revision": "braindecode==1.6.1",
+    }
+    with patch.object(TrainRecord, "init_dir"):
+        record = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            0,
+            model_identity=upstream_identity,
+        )
+    record.target_path = str(tmp_path)
+    record._artifact_io_path = str(tmp_path)
+    record.export_checkpoint()
+
+    with patch.object(TrainRecord, "init_dir"):
+        recovery = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            0,
+            model_identity={
+                "model_id": "legacy.braindecode.eegnet",
+                "provider": "legacy-braindecode",
+                "source_revision": "braindecode==1.6.1+xbrainlab-reviewed",
+            },
+        )
+    recovery.target_path = str(tmp_path)
+    recovery._artifact_io_path = str(tmp_path)
+
+    with pytest.raises(RuntimeError, match="model identity does not match"):
+        recovery.load()
+
+
+def test_training_record_does_not_assign_provider_to_identityless_artifact(
+    tmp_path: Path,
+    dataset,  # noqa: F811
+    training_option,  # noqa: F811
+    model_holder,  # noqa: F811
+) -> None:
+    with patch.object(TrainRecord, "init_dir"):
+        unknown = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            0,
+        )
+    unknown.target_path = str(tmp_path)
+    unknown._artifact_io_path = str(tmp_path)
+    unknown.export_checkpoint()
+
+    with patch.object(TrainRecord, "init_dir"):
+        recovery = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            0,
+            model_identity={
+                "model_id": "legacy.braindecode.eegnet",
+                "provider": "legacy-braindecode",
+                "source_revision": "braindecode==1.6.1+xbrainlab-reviewed",
+            },
+        )
+    recovery.target_path = str(tmp_path)
+    recovery._artifact_io_path = str(tmp_path)
+
+    with pytest.raises(RuntimeError, match="no model provider identity"):
+        recovery.load()
+
+
+def test_training_record_rejects_malformed_provider_identity(
+    tmp_path: Path,
+    dataset,  # noqa: F811
+    training_option,  # noqa: F811
+    model_holder,  # noqa: F811
+) -> None:
+    model_identity = {
+        "model_id": "braindecode.eegnet",
+        "provider": "braindecode",
+        "source_revision": "braindecode==1.6.1",
+    }
+    with patch.object(TrainRecord, "init_dir"):
+        record = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            0,
+            model_identity=model_identity,
+        )
+    record.target_path = str(tmp_path)
+    record._artifact_io_path = str(tmp_path)
+    record.export_checkpoint()
+    manifest_path = tmp_path / "record"
+    manifest = _read_manifest(manifest_path)
+    manifest["payload"]["model_identity"] = {"provider": "braindecode"}
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+    with patch.object(TrainRecord, "init_dir"):
+        restored = TrainRecord(
+            0,
+            dataset,
+            model_holder.get_model({}),
+            training_option,
+            0,
+            model_identity=model_identity,
+        )
+    restored.target_path = str(tmp_path)
+    restored._artifact_io_path = str(tmp_path)
+
+    with pytest.raises(RuntimeError, match="model identity is malformed"):
+        restored.load()
 
 
 def test_legacy_training_record_is_rejected_without_deserialization(

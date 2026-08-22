@@ -58,6 +58,7 @@ from XBrainLab.ui.application_capabilities import (
     get_command_review_context,
     get_epoch_dialog_context,
     get_interpretation_review,
+    get_training_model_signal_context,
     release_application_shutdown_fence,
     request_application_shutdown_fence,
     run_controller_compatibility_call,
@@ -78,13 +79,16 @@ class _ApplicationRuntimeFake:
         publication: ApplicationViewPublication | None = None,
         execute: Callable[[Command], CommandResult] | None = None,
         epoch_dialog_context: EpochDialogContext | None = None,
+        model_signal_context: dict[str, Any] | None = None,
     ) -> None:
         self._publication = publication
         self._execute = execute
         self._epoch_dialog_context = epoch_dialog_context
+        self._model_signal_context = model_signal_context
         self.commands: list[Command] = []
         self.publication_reads = 0
         self.epoch_dialog_context_reads = 0
+        self.model_signal_context_reads = 0
         self.shutdown_requests = 0
         self.shutdown_releases = 0
         self.shutdown_release_succeeds = True
@@ -146,6 +150,14 @@ class _ApplicationRuntimeFake:
                 "epoch dialog context was not configured for this fake"
             )
         return self._epoch_dialog_context
+
+    def get_training_model_signal_context(self) -> dict[str, Any] | None:
+        self.model_signal_context_reads += 1
+        return (
+            dict(self._model_signal_context)
+            if self._model_signal_context is not None
+            else None
+        )
 
     def get_saliency_render(self, request: Any) -> Any:
         raise AssertionError(
@@ -399,6 +411,27 @@ def test_epoch_dialog_context_delegates_one_typed_runtime_read(qtbot):
 
     assert context is expected
     assert runtime.epoch_dialog_context_reads == 1
+    assert runtime.publication_reads == 0
+    assert runtime.commands == []
+
+
+def test_training_model_signal_context_delegates_detached_runtime_read(qtbot):
+    widget = QWidget()
+    qtbot.addWidget(widget)
+    source = {
+        "n_classes": 4,
+        "channels": 22,
+        "samples": 256,
+        "sfreq": 128.0,
+        "chs_info": [],
+    }
+    runtime = _ApplicationRuntimeFake(model_signal_context=source)
+
+    context = get_training_model_signal_context(widget, runtime=runtime)
+
+    assert context == source
+    assert context is not source
+    assert runtime.model_signal_context_reads == 1
     assert runtime.publication_reads == 0
     assert runtime.commands == []
 

@@ -59,6 +59,7 @@ from XBrainLab.backend.application.training_service import (
 from XBrainLab.backend.application.training_submission import (
     attach_training_submission_provenance,
 )
+from XBrainLab.backend.model_base import model_catalog as model_catalog_module
 from XBrainLab.backend.training import option as training_option_module
 from XBrainLab.backend.training_state_contract import (
     TrainingOutcomeState,
@@ -413,7 +414,61 @@ def test_training_service_resolves_braindecode_catalog_model() -> None:
     assert message == "Model configured: braindecode.eegnet."
     assert training.model_holder.model_id == "braindecode.eegnet"
     assert training.model_holder.display_name == "EEGNet (Braindecode)"
+    assert training.model_holder.provider == "braindecode"
+    assert training.model_holder.source_revision == "braindecode==1.6.1"
     assert training.model_holder.model_params_map == {"F1": 12}
+
+
+def test_training_service_rejects_catalog_model_marked_unavailable(monkeypatch) -> None:
+    service, _training = _service()
+    monkeypatch.setattr(
+        training_service_module,
+        "get_model_spec",
+        lambda _name, **_kwargs: SimpleNamespace(
+            available=False,
+            display_name="REVE (Braindecode)",
+            unavailable_reason="Reviewed electrode positions are required.",
+        ),
+    )
+
+    with pytest.raises(ValueError, match="Reviewed electrode positions are required"):
+        service.handle_configure_training(
+            ConfigureTrainingCommand(model_name="braindecode.reve"),
+        )
+
+
+def test_training_service_rechecks_dataset_model_compatibility_before_mutation(
+    monkeypatch,
+) -> None:
+    service, training = _service()
+    existing_holder = object()
+    training.model_holder = existing_holder
+    training.get_epoch_data = lambda: SimpleNamespace(  # type: ignore[attr-defined]
+        get_model_args=lambda: {
+            "n_classes": 4,
+            "channels": 22,
+            "samples": 256,
+            "sfreq": 128.0,
+            "chs_info": [],
+        }
+    )
+    monkeypatch.setattr(
+        model_catalog_module,
+        "braindecode_provider_status",
+        lambda: model_catalog_module.BraindecodeProviderStatus(
+            available=True,
+            installed_version="1.6.1",
+            reason="",
+            checked=True,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="divisible by 200"):
+        service.handle_configure_training(
+            ConfigureTrainingCommand(model_name="braindecode.cbramod"),
+        )
+
+    assert training.model_holder is existing_holder
 
 
 @pytest.mark.parametrize(

@@ -378,6 +378,7 @@ class TrainingPlanHolder:
                     option=self.option,
                     seed=seed,
                     plan_id=self.plan_id,
+                    model_identity=self.model_holder.catalog_identity,
                 ),
             )
         self._validate_loaded_saliency_artifacts()
@@ -938,6 +939,17 @@ class TrainingPlanHolder:
         optimizer = option.optim
         evaluation_option = option.evaluation_option
         pretrained_path = self.model_holder.pretrained_weight_path
+        record_model_identity = train_record.model_identity
+        if record_model_identity is None:
+            raise ValueError(
+                "Saliency unavailable because the training run has no model provider "
+                "identity. Start a new training run."
+            )
+        if record_model_identity != self.model_holder.catalog_identity:
+            raise ValueError(
+                "Saliency unavailable because the training run model identity no "
+                "longer matches the configured model."
+            )
 
         dataset_component = {
             "dataset_type": self._qualified_type_name(self.dataset),
@@ -973,6 +985,7 @@ class TrainingPlanHolder:
             },
         }
         model_component = {
+            **record_model_identity,
             "model_type": self._qualified_type_name(self.model_holder.target_model),
             "model_params": self.model_holder.model_params_map,
             "input_contract": _read_model_args_for_identity(epoch_data),

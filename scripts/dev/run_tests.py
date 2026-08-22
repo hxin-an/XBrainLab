@@ -187,6 +187,10 @@ PLATFORM_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
         "preprocess-native-lifecycle",
         ("tests/integration/ui/test_preprocess_native_lifecycle.py",),
     ),
+    (
+        "braindecode-catalog-runtime",
+        ("tests/integration/pipeline/test_braindecode_catalog_matrix.py",),
+    ),
 )
 PLATFORM_CI_GROUPS: tuple[tuple[str, tuple[tuple[str, tuple[str, ...]], ...]], ...] = (
     ("platform-core-contracts", PLATFORM_SHARDS[:2]),

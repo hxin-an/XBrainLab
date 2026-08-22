@@ -16,7 +16,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from PyQt6 import sip
-from PyQt6.QtCore import QEventLoop, QObject, QThread, QTimer, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QEventLoop, QObject, Qt, QThread, QTimer, pyqtSignal, pyqtSlot
 from PyQt6.QtTest import QSignalSpy
 from PyQt6.QtWidgets import (
     QApplication,
@@ -594,10 +594,21 @@ def _run_scripted_dialog(
 
 
 def _model_dialog_accepts_eegnet(dialog: QDialog) -> None:
+    from XBrainLab.backend.model_base.model_catalog import (
+        BraindecodeProviderStatus,
+    )
+
     assert isinstance(dialog, ModelSelectionDialog)
-    assert dialog.model_combo is not None
+    assert dialog.model_results is not None
     assert dialog.confirm_btn is not None
-    dialog.model_combo.setCurrentText("EEGNet")
+    dialog._apply_provider_status(BraindecodeProviderStatus(True, "1.6.1", "", True))
+    for index in range(dialog.model_results.count()):
+        item = dialog.model_results.item(index)
+        if item.data(Qt.ItemDataRole.UserRole) == "braindecode.eegnet":
+            dialog.model_results.setCurrentItem(item)
+            break
+    else:
+        raise AssertionError("Braindecode EEGNet was not offered")
     dialog.confirm_btn.click()
 
 

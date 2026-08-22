@@ -80,6 +80,7 @@ from XBrainLab.backend.dataset import (
     TrainingType,
     ValSplitByType,
 )
+from XBrainLab.backend.model_base.model_catalog import BraindecodeProviderStatus
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantTurnActivity,
     AssistantTurnActivityPhase,
@@ -278,13 +279,13 @@ def _settle_chat_panel_capture(app: QApplication, panel: ChatPanel) -> None:
 
 
 def _model_selection_dialog() -> QWidget:
-    dialog = ModelSelectionDialog(None, MagicMock())
-    if dialog.model_combo is not None:
-        index = dialog.model_combo.findText("EEGNet")
-        if index >= 0:
-            dialog.model_combo.setCurrentIndex(index)
+    dialog = ModelSelectionDialog(
+        None,
+        MagicMock(),
+        provider_status=BraindecodeProviderStatus(True, "1.6.1", "", True),
+    )
     dialog.adjustSize()
-    dialog.resize(QSize(680, max(dialog.sizeHint().height(), 440)))
+    dialog.resize(QSize(680, max(dialog.sizeHint().height(), 452)))
     return dialog
 
 

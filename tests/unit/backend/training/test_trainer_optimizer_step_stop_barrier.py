@@ -56,6 +56,7 @@ def _real_holder(tmp_path: Path, name: str) -> TrainingPlanHolder:
     epoch_data.label_map = {0: "left", 1: "right"}
     epoch_data.ch_names = ["Cz"]
     epoch_data.sfreq = 1.0
+    epoch_data.channel_position = None
 
     split_config = DataSplittingConfig(TrainingType.FULL, False, [], [])
     dataset = Dataset(epoch_data, split_config)

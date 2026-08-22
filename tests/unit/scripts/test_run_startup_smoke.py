@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 from scripts.dev import run_startup_smoke as smoke
+from scripts.dev.prepare_native_ci_environment import build_isolated_environment
+from scripts.dev.run_native_platform_product_smoke import REQUIRED_ISOLATED_ENV
 
 
 class _TimedOutProcess:
@@ -92,6 +95,16 @@ def test_startup_smoke_accepts_clean_native_close(monkeypatch) -> None:
     assert result["saw_close_requested"] is True
     assert result["process_tree_quiescent"] is True
     assert captured_environment["XBRAINLAB_STARTUP_SMOKE_CLOSE_MS"] == "1000"
+    isolated_root = Path(str(result["isolated_root"]))
+    assert " " in isolated_root.name
+    assert any(ord(character) > 127 for character in isolated_root.name)
+    isolated_environment = result["isolated_environment"]
+    assert isinstance(isolated_environment, dict)
+    assert set(isolated_environment) == set(REQUIRED_ISOLATED_ENV)
+    for name, path in isolated_environment.items():
+        assert captured_environment[name] == path
+        Path(path).relative_to(isolated_root)
+    assert not isolated_root.exists()
     assert owner.closed is True
 
 
@@ -108,6 +121,35 @@ def test_startup_smoke_rejects_wrong_native_platform(monkeypatch) -> None:
 
     assert result["passed"] is False
     assert result["qt_platform"] == "windows"
+
+
+def test_startup_smoke_preserves_explicit_ci_isolation(monkeypatch, tmp_path) -> None:
+    process = _CompletedProcess()
+    owner = _Owner()
+    isolated_root = tmp_path / "Native 測試"
+    isolated_environment = build_isolated_environment(isolated_root)
+    for name, value in isolated_environment.items():
+        monkeypatch.setenv(name, value)
+    captured_environment: dict[str, str] = {}
+
+    def spawn(*_args, **kwargs):
+        captured_environment.update(kwargs["env"])
+        return process, owner
+
+    monkeypatch.setattr(smoke, "spawn_owned_process", spawn)
+
+    result = smoke.run_startup_smoke(
+        expected_platform="windows",
+        expected_isolated_root=isolated_root,
+    )
+
+    assert result["passed"] is True
+    assert result["isolated_root"] == str(isolated_root.resolve())
+    assert result["isolated_environment"] == isolated_environment
+    assert isolated_root.exists()
+    for name, value in isolated_environment.items():
+        assert captured_environment[name] == value
+    assert owner.closed is True
 
 
 def test_startup_smoke_rejects_owned_child_that_survives_parent(monkeypatch) -> None:

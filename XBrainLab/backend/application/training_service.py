@@ -52,6 +52,9 @@ from .training_snapshot import (
     model_params_snapshot as build_model_params_snapshot,
 )
 from .training_snapshot import (
+    model_signal_context_snapshot as build_model_signal_context_snapshot,
+)
+from .training_snapshot import (
     training_option_snapshot as build_training_option_snapshot,
 )
 from .training_submission import training_submission_edited_fields
@@ -136,6 +139,7 @@ class TrainingCommandService:
                 command.model_name,
                 command.model_params,
                 pretrained_weight_path=command.pretrained_weight_path,
+                signal_context=self._model_signal_context(),
             )
 
         self.training.apply_configuration(
@@ -482,16 +486,25 @@ class TrainingCommandService:
         model_params: dict[str, Any],
         *,
         pretrained_weight_path: str | None = None,
+        signal_context: dict[str, Any] | None = None,
     ) -> ModelHolder:
         """Build a detached holder through the same catalog used by configure."""
-        model_spec = get_model_spec(model_name)
+        model_spec = get_model_spec(model_name, signal_context=signal_context)
+        if not model_spec.available:
+            reason = model_spec.unavailable_reason or "Model is unavailable."
+            raise ValueError(f"{model_spec.display_name} cannot be selected. {reason}")
         return ModelHolder(
             model_spec.factory,
             dict(model_params),
             pretrained_weight_path,
             model_id=model_spec.model_id,
             display_name=model_spec.display_name,
+            provider=model_spec.provider,
+            source_revision=model_spec.source_revision,
         )
+
+    def _model_signal_context(self) -> dict[str, Any] | None:
+        return build_model_signal_context_snapshot(self.training)
 
     @staticmethod
     def _resolve_optimizer(name: str) -> type[torch.optim.Optimizer]:
