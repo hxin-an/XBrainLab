@@ -122,27 +122,36 @@ class ModalAlertDialog(BaseDialog):
                 if self._destructive
                 else QDialogButtonBox.ButtonRole.AcceptRole
             )
-            self.confirm_button = button_box.addButton(confirm_text, role)
-            self.confirm_button.setObjectName(
+            confirm_button = button_box.addButton(confirm_text, role)
+            if confirm_button is None:
+                raise RuntimeError("Confirmation button could not be created")
+            self.confirm_button = confirm_button
+            confirm_button.setObjectName(
                 "ModalDestructiveConfirmButton"
                 if self._destructive
                 else "PrimaryConfirmButton"
             )
-            self.cancel_button = button_box.addButton(
+            cancel_button = button_box.addButton(
                 self._cancel_text,
                 QDialogButtonBox.ButtonRole.RejectRole,
             )
-            self.cancel_button.setObjectName("AssistantSecondaryButton")
+            if cancel_button is None:
+                raise RuntimeError("Cancel button could not be created")
+            self.cancel_button = cancel_button
+            cancel_button.setObjectName("AssistantSecondaryButton")
             if self._destructive:
-                self.confirm_button.clicked.connect(self.accept)
+                confirm_button.clicked.connect(self.accept)
             else:
                 button_box.accepted.connect(self.accept)
             button_box.rejected.connect(self.reject)
         else:
-            self.acknowledge_button = button_box.addButton(
+            acknowledge_button = button_box.addButton(
                 "OK", QDialogButtonBox.ButtonRole.AcceptRole
             )
-            self.acknowledge_button.setObjectName("PrimaryConfirmButton")
+            if acknowledge_button is None:
+                raise RuntimeError("Acknowledge button could not be created")
+            self.acknowledge_button = acknowledge_button
+            acknowledge_button.setObjectName("PrimaryConfirmButton")
             button_box.accepted.connect(self.accept)
         if self.is_confirmation:
             if self.confirm_button is None:

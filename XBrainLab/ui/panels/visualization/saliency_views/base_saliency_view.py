@@ -13,6 +13,8 @@ from types import ModuleType
 from typing import Any, cast
 
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
+from matplotlib.backend_bases import MouseEvent
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PyQt6 import sip
@@ -841,7 +843,7 @@ class BaseSaliencyView(QWidget):
         self._saliency_coverage: SaliencyMethodCoverageSnapshot | None = None
         self._render_commit_guard: Callable[[int, int], bool] | None = None
         self._pan_state: (
-            tuple[object, float, float, tuple[float, float], tuple[float, float]] | None
+            tuple[Axes, float, float, tuple[float, float], tuple[float, float]] | None
         ) = None
         self._initial_axis_limits: dict[
             int,
@@ -863,14 +865,15 @@ class BaseSaliencyView(QWidget):
         Theme.apply_matplotlib_dark_theme(self.fig)
 
         if getattr(self, "_scrollable_canvas", False):
-            self._canvas_scroll_area = QScrollArea(self)
-            self._canvas_scroll_area.setWidgetResizable(True)
-            self._canvas_scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
-            self._canvas_scroll_area.setHorizontalScrollBarPolicy(
+            scroll_area = QScrollArea(self)
+            scroll_area.setWidgetResizable(True)
+            scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+            scroll_area.setHorizontalScrollBarPolicy(
                 Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
             )
-            self._canvas_scroll_area.setWidget(self.canvas)
-            self.main_layout.addWidget(self._canvas_scroll_area)
+            scroll_area.setWidget(self.canvas)
+            self._canvas_scroll_area = scroll_area
+            self.main_layout.addWidget(scroll_area)
         else:
             self.main_layout.addWidget(self.canvas)
 
@@ -1092,7 +1095,7 @@ class BaseSaliencyView(QWidget):
         canvas.mpl_connect("motion_notify_event", self._on_canvas_motion)
         canvas.mpl_connect("button_release_event", self._on_canvas_release)
 
-    def _on_canvas_scroll(self, event: object) -> None:
+    def _on_canvas_scroll(self, event: MouseEvent) -> None:
         axis = getattr(event, "inaxes", None)
         if axis is None or not getattr(axis, "images", None):
             return
@@ -1107,7 +1110,7 @@ class BaseSaliencyView(QWidget):
         axis.set_ylim(ydata - (ydata - y0) * factor, ydata + (y1 - ydata) * factor)
         self._draw_canvas_now()
 
-    def _on_canvas_press(self, event: object) -> None:
+    def _on_canvas_press(self, event: MouseEvent) -> None:
         axis = getattr(event, "inaxes", None)
         if (
             getattr(event, "button", None) != 1
@@ -1125,7 +1128,7 @@ class BaseSaliencyView(QWidget):
             axis.get_ylim(),
         )
 
-    def _on_canvas_motion(self, event: object) -> None:
+    def _on_canvas_motion(self, event: MouseEvent) -> None:
         state = self._pan_state
         if state is None or getattr(event, "inaxes", None) is not state[0]:
             return
@@ -1141,7 +1144,7 @@ class BaseSaliencyView(QWidget):
         axis.set_ylim(ylim[0] + dy, ylim[1] + dy)
         self._draw_canvas_now()
 
-    def _on_canvas_release(self, _event: object) -> None:
+    def _on_canvas_release(self, _event: MouseEvent) -> None:
         self._pan_state = None
 
     def _dispose_candidate_canvas(

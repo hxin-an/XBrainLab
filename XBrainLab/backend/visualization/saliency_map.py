@@ -1,6 +1,6 @@
 """Channel-by-time saliency map visualiser."""
 
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -81,7 +81,7 @@ class SaliencyMapViz(Visualizer):
         else:
             cols = min(3, max(1, int(np.ceil(np.sqrt(visible_label_number)))))
             rows = int(np.ceil(visible_label_number / cols))
-            fig._xbrainlab_min_canvas_height = max(420, rows * 240)
+            cast(Any, fig)._xbrainlab_min_canvas_height = max(420, rows * 240)
         # Reserving this column prevents the colorbar from competing with the
         # final data axes when a compact desktop canvas is fitted later.
         grid = fig.add_gridspec(
@@ -98,7 +98,7 @@ class SaliencyMapViz(Visualizer):
         ):
             ax = fig.add_subplot(grid[plot_index // cols, plot_index % cols])
             ax.set_gid(f"saliency-class:{label_key!r}")
-            ax._xbrainlab_class_key = label_key
+            cast(Any, ax)._xbrainlab_class_key = label_key
             plot_axes.append(ax)
 
             image = ax.imshow(

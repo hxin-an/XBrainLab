@@ -4,9 +4,10 @@
 
 ## 目前焦點
 
-GUI polish integration已完成implementation與focused validation，現在沒有另一個active product
-implementation。Commit本身是下一個candidate source；只有同一clean exact source的canonical handoff、
-Windows／Linux真人手測、PR applicable non-skipped checks全部success後才能merge。
+GUI polish integration的product implementation與focused validation已完成，但第一個candidate
+`ab52ebb2` 在canonical handoff的Basedpyright gate fail closed，因此目前是checkpoint。下一個active
+repair只修正本次modal／saliency新增的typed boundary；只有新clean exact source的replacement
+handoff、Windows／Linux真人手測、PR applicable non-skipped checks全部success後才能merge。
 
 本candidate整合三個已取得明確UI授權、可獨立回退的checkpoint：
 
@@ -40,11 +41,14 @@ command、publication、cancel、rollback與saliency data；UI只擁有presentat
 
 Focused suites、Ruff、format、diff check、MkDocs strict及clean exact-source Visualization walkthrough已
 通過。Public-fixture cases在獨立worktree缺資料時只記為skip，不能替代canonical source-diverse dataset gate。
+`ab52ebb2` handoff在完成identity／Ruff後停於Basedpyright：17個new diagnostics只來自本次
+ModalAlert Qt button Optional、Saliency Matplotlib dynamic attributes／mouse event typing、Visualization
+widget dispatch與optional cancel binding；完整regression與後續gate未執行。
 
 下一步固定為：
 
-1. 在本candidate source只跑一次`.agents/workflows/handoff-candidate.md`；若失敗，只修recorded owner並
-   由新SHA做一次replacement，不為計時或成功率重跑同SHA。
+1. 只修正上述17個typed boundaries，不改可見行為；用直接Basedpyright與modal／saliency focused
+   behavior tests驗證，並由新clean pushed SHA執行一次replacement canonical handoff。
 2. 自動evidence完整後交付Windows／Linux手測：modal default／Escape／destructive action；single-file、
    folder、BIDS review/cancel/retry且status不重複跑百分比；Saliency All／Single、long class／many channel、
    zoom／pan／reset、3D class／epoch-time／camera controls與close lifecycle。

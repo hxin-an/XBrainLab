@@ -1244,6 +1244,8 @@ class VisualizationPanel(BasePanel):
     def on_update(self):
         """Gather settings and call update_plot on current tab."""
         current_widget = self.tabs.currentWidget()
+        if current_widget is None:
+            return
         self._hide_saliency_action_bar()
         if self._application_summary_dirty or self.last_application_query is None:
             self._refresh_application_query(
@@ -1489,22 +1491,34 @@ class VisualizationPanel(BasePanel):
                 typed_render_publication,
                 display_key=display_key,
             )
-        elif current_widget and hasattr(current_widget, "update_plot"):
-            if current_widget in {self.tab_map, self.tab_topo}:
-                current_widget.update_plot(
-                    typed_render_publication,
-                    absolute,
-                    selected_label_key=self.saliency_class_combo.currentData(),
-                    display_mode=str(self.saliency_view_mode.currentData() or "all"),
-                )
+        elif current_widget in {self.tab_map, self.tab_topo}:
+            if current_widget is self.tab_map:
+                target_widget = self.tab_map
             else:
-                current_widget.update_plot(typed_render_publication, absolute)
+                target_widget = self.tab_topo
+            target_widget.update_plot(
+                typed_render_publication,
+                absolute,
+                selected_label_key=self.saliency_class_combo.currentData(),
+                display_mode=str(self.saliency_view_mode.currentData() or "all"),
+            )
             self._publish_saliency_render_identity(
                 current_widget,
                 typed_render_publication,
             )
             self._bind_native_render_terminal(
                 current_widget,
+                typed_render_publication,
+                display_key=display_key,
+            )
+        elif current_widget is self.tab_3d:
+            self.tab_3d.update_plot(typed_render_publication, absolute)
+            self._publish_saliency_render_identity(
+                self.tab_3d,
+                typed_render_publication,
+            )
+            self._bind_native_render_terminal(
+                self.tab_3d,
                 typed_render_publication,
                 display_key=display_key,
             )
@@ -2604,6 +2618,8 @@ class VisualizationPanel(BasePanel):
         )
 
     def _cancel_native_render_binding(self, widget: QWidget | None) -> bool:
+        if widget is None:
+            return True
         binding = self._native_render_bindings.get(widget)
         if binding is None:
             return True
