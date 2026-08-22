@@ -1,4 +1,5 @@
 from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
     LocalRuntimeFirstRunDialog,
 )
@@ -10,6 +11,7 @@ def test_local_runtime_first_run_dialog_shows_preflight(qtbot, tmp_path):
     qtbot.addWidget(dialog)
 
     assert dialog.windowTitle() == "Local Assistant Runtime"
+    assert isinstance(dialog, BaseDialog)
     assert dialog.download_btn.text() == "Download"
     assert dialog.later_btn.text() == "Later"
     assert dialog.disable_btn.text() == "Disable"

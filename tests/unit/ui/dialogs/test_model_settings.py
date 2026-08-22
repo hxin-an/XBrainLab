@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtWidgets import QMessageBox, QPushButton
+from PyQt6.QtWidgets import QPushButton
 
 from XBrainLab.llm.agent.runtime_state import (
     AssistantRuntimePhase,
@@ -738,12 +738,14 @@ class TestLocalModelSection:
             projected_cache_bytes=23_000_000_000,
             cleanup_candidates=("/models/blocked",),
         )
-        with patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning:
+        with patch(
+            "XBrainLab.ui.dialogs.model_settings_dialog.show_alert"
+        ) as mock_warning:
             dialog._start_download()
 
         assert dialog.is_downloading is False
         mock_warning.assert_called_once()
-        rendered = str(mock_warning.call_args.args[2])
+        rendered = str(mock_warning.call_args.kwargs["message"])
         assert "/models" not in rendered
         assert "/models/blocked" not in rendered
 
@@ -772,10 +774,10 @@ class TestLocalModelSection:
         )
         dialog.download_lifecycle.idle = True
 
-        with patch("PyQt6.QtWidgets.QMessageBox.critical") as critical:
+        with patch("XBrainLab.ui.dialogs.model_settings_dialog.show_alert") as critical:
             dialog.on_download_failed(outcome)
 
-        rendered = " ".join(str(value) for value in critical.call_args.args)
+        rendered = str(critical.call_args.kwargs["message"])
         assert sensitive not in rendered
         assert "Check the application log" in rendered
 
@@ -796,10 +798,10 @@ class TestLocalModelSection:
         )
         dialog.download_lifecycle.idle = True
 
-        with patch("PyQt6.QtWidgets.QMessageBox.critical") as critical:
+        with patch("XBrainLab.ui.dialogs.model_settings_dialog.show_alert") as critical:
             dialog.on_download_failed(outcome)
 
-        rendered = " ".join(str(value) for value in critical.call_args.args)
+        rendered = str(critical.call_args.kwargs["message"])
         assert MODEL_DOWNLOAD_TIMEOUT_PUBLIC_MESSAGE in rendered
         assert "/private/cache" not in rendered
         assert "hf_super_secret" not in rendered
@@ -833,10 +835,10 @@ class TestLocalModelSection:
         )
         dialog.download_lifecycle.idle = True
 
-        with patch("PyQt6.QtWidgets.QMessageBox.warning") as warning:
+        with patch("XBrainLab.ui.dialogs.model_settings_dialog.show_alert") as warning:
             dialog.on_cache_cleanup_finished(result)
 
-        rendered = " ".join(str(value) for value in warning.call_args.args)
+        rendered = str(warning.call_args.kwargs["message"])
         assert sensitive not in rendered
         assert result.public_message in rendered
 
@@ -856,7 +858,9 @@ class TestLocalModelSection:
         )
         dialog.download_lifecycle.idle = True
 
-        with patch.object(QMessageBox, "information") as information:
+        with patch(
+            "XBrainLab.ui.dialogs.model_settings_dialog.show_alert"
+        ) as information:
             dialog.on_cache_cleanup_finished(result)
 
         information.assert_not_called()
@@ -888,7 +892,7 @@ class TestLocalModelSection:
             model_path="/path/to/model",
         )
         dialog.download_lifecycle.idle = True
-        with patch("PyQt6.QtWidgets.QMessageBox.information"):
+        with patch("XBrainLab.ui.dialogs.model_settings_dialog.show_alert"):
             dialog.on_download_finished(outcome)
 
         assert dialog.is_downloading is False
@@ -915,16 +919,10 @@ class TestLocalModelSection:
         assert not hasattr(dialog, "_cleanup_partial_files")
 
     def test_delete_model_aborts_when_agent_manager_blocks(self, dialog):
-        from PyQt6.QtWidgets import QMessageBox
-
         dialog.local_downloaded = True
         dialog.agent_manager.prepare_model_deletion.return_value = False
         with (
-            patch.object(
-                QMessageBox,
-                "warning",
-                return_value=QMessageBox.StandardButton.Yes,
-            ),
+            patch("XBrainLab.ui.dialogs.model_settings_dialog.show_alert"),
             patch("shutil.rmtree") as mock_rmtree,
         ):
             dialog._delete_model()
@@ -935,34 +933,39 @@ class TestLocalModelSection:
         self,
         dialog,
     ):
-        delete_box, delete_button = dialog._build_destructive_confirmation(
-            title="Delete Model",
-            text="Delete the selected model?",
-            confirm_text="Delete Model",
-        )
-        disable_box, disable_button = dialog._build_destructive_confirmation(
-            title="Disable Assistant",
-            text="Disable Assistant?",
-            confirm_text="Disable Assistant",
+        from XBrainLab.ui.components.modal_presentation import (
+            AlertSeverity,
+            ModalAlertDialog,
         )
 
-        for box, confirm_button, expected_text in (
-            (delete_box, delete_button, "Delete Model"),
-            (disable_box, disable_button, "Disable Assistant"),
+        delete_box = ModalAlertDialog(
+            severity=AlertSeverity.WARNING,
+            title="Delete Model",
+            message="Delete the selected model?",
+            confirm_text="Delete Model",
+            destructive=True,
+        )
+        disable_box = ModalAlertDialog(
+            severity=AlertSeverity.WARNING,
+            title="Disable Assistant",
+            message="Disable Assistant?",
+            confirm_text="Disable Assistant",
+            destructive=True,
+        )
+
+        for box, expected_text in (
+            (delete_box, "Delete Model"),
+            (disable_box, "Disable Assistant"),
         ):
-            cancel_button = next(
-                button for button in box.buttons() if button.text() == "Cancel"
-            )
+            confirm_button = box.confirm_button
+            cancel_button = box.cancel_button
+            assert confirm_button is not None
+            assert cancel_button is not None
             assert confirm_button.text() == expected_text
-            assert confirm_button.objectName() == "AssistantDestructiveConfirmButton"
+            assert confirm_button.objectName() == "ModalDestructiveConfirmButton"
             assert cancel_button.objectName() == "AssistantSecondaryButton"
-            assert box.styleSheet() == dialog.styleSheet()
-            assert (
-                box.buttonRole(confirm_button) is QMessageBox.ButtonRole.DestructiveRole
-            )
-            assert box.buttonRole(cancel_button) is QMessageBox.ButtonRole.RejectRole
-            assert box.defaultButton() is cancel_button
-            assert box.escapeButton() is cancel_button
+            assert box.objectName() == "XBrainLabModalAlert"
+            assert cancel_button.isDefault()
 
     def test_runtime_loading_disables_delete_until_loading_finishes(
         self,
@@ -1019,15 +1022,12 @@ class TestLocalModelSection:
         )
         created.local_downloaded = True
 
-        with patch.object(QMessageBox, "warning") as warning:
+        with patch("XBrainLab.ui.dialogs.model_settings_dialog.show_alert") as warning:
             created._delete_model()
 
-        warning.assert_called_once_with(
-            created,
-            "Assistant Model In Use",
-            "The Assistant is using this model. Open Advanced, choose Disable, "
-            "and wait for unloading to finish before deleting it.",
-        )
+        warning.assert_called_once()
+        assert warning.call_args.kwargs["title"] == "Assistant Model In Use"
+        assert "using this model" in warning.call_args.kwargs["message"]
         assert lifecycle.removal_requests == []
 
     def test_delete_rechecks_runtime_after_user_confirmation(self, dialog):
@@ -1040,7 +1040,7 @@ class TestLocalModelSection:
                 "_confirm_destructive_action",
                 return_value=True,
             ),
-            patch.object(QMessageBox, "warning") as warning,
+            patch("XBrainLab.ui.dialogs.model_settings_dialog.show_alert") as warning,
         ):
             dialog._delete_model()
 
@@ -1221,7 +1221,9 @@ class TestActivateAndSave:
                 "_confirm_destructive_action",
                 return_value=True,
             ),
-            patch.object(QMessageBox, "information") as information,
+            patch(
+                "XBrainLab.ui.dialogs.model_settings_dialog.show_alert"
+            ) as information,
         ):
             created.on_disable_assistant_clicked()
 
@@ -1229,7 +1231,7 @@ class TestActivateAndSave:
         assert created.assistant_state_label.text() == "Assistant is enabled"
         assert created.disable_assistant_btn.text() == "Disable"
         information.assert_called_once()
-        assert "Stop" in str(information.call_args.args[2])
+        assert "Stop" in str(information.call_args.kwargs["message"])
 
     def test_save_failure_stays_open_and_shows_actionable_inline_error(self, dialog):
         dialog.check_local_model_status()
@@ -1297,7 +1299,9 @@ class TestActivateAndSave:
         )
         with (
             patch.object(LLMConfig, "save_to_file") as mock_save,
-            patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,
+            patch(
+                "XBrainLab.ui.dialogs.model_settings_dialog.show_alert"
+            ) as mock_critical,
         ):
             dialog.on_activate_clicked()
 
