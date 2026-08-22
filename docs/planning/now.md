@@ -4,10 +4,11 @@
 
 ## 目前焦點
 
-GUI polish integration的product implementation與focused validation已完成，但第一個candidate
-`ab52ebb2` 在canonical handoff的Basedpyright gate fail closed，因此目前是checkpoint。下一個active
-repair只修正本次modal／saliency新增的typed boundary；只有新clean exact source的replacement
-handoff、Windows／Linux真人手測、PR applicable non-skipped checks全部success後才能merge。
+GUI polish integration的product implementation、focused validation與subagent gate已完成。前三個
+canonical handoff checkpoint揭露的typed boundary、private renderer all-class compatibility與臨時
+worktree editable-environment問題都已收旂。目前只等待新clean exact source的replacement
+handoff；完成後交付Windows／Linux真人手測，PR applicable non-skipped checks全部
+success後才能merge。
 
 本candidate整合三個已取得明確UI授權、可獨立回退的checkpoint：
 
@@ -32,7 +33,7 @@ handoff、Windows／Linux真人手測、PR applicable non-skipped checks全部su
 
 ## Complexity與ownership
 
-整合相對`main`為20個production files、`+923/-262/net +661`，觸發跨surface complexity review但未新增
+整合相對`main`為20個production files、`+963/-266/net +697`，觸發跨surface complexity review但未新增
 authoritative owner。Deletion／reuse包括raw first-run QDialog與第一批QMessageBox construction、第二個
 Data Import polling timer與重複loading fields、PyVista slider／checkbox／text overlays。Backend仍擁有
 command、publication、cancel、rollback與saliency data；UI只擁有presentation與native canvas lifecycle。
@@ -56,9 +57,8 @@ Topo／Spectrogram renderer tests未帶新增的class display參數；(b) 臨時
 
 下一步固定為：
 
-1. 為三個pure renderer adapter補上`selected_label_key=None`、`display_mode="all"`預設，並用三個
-   failing nodes加Map對稱性測試驗證，且direct adapter assertion需明確確認這組all-class預設；worktree
-   環境用既有lockfile sync後只做scripts collect guard。不放寬active-checkout或runner evidence policy。
+1. 在已同步lock-exact Poetry環境的clean exact source上執行一次canonical handoff；失敗時只修復
+   記錄的owner，不為追時間重跑。
 2. 自動evidence完整後交付Windows／Linux手測：modal default／Escape／destructive action；single-file、
    folder、BIDS review/cancel/retry且status不重複跑百分比；Saliency All／Single、long class／many channel、
    zoom／pan／reset、3D class／epoch-time／camera controls與close lifecycle。
