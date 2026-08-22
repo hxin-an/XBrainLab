@@ -1,13 +1,9 @@
-"""Model selection dialog for choosing deep learning architectures.
-
-Dynamically generates parameter inputs based on the selected model class
-signature and supports loading pretrained weights.
-"""
+"""Searchable model selection with catalog defaults and pretrained weights."""
 
 import os
 from typing import Any
 
-from PyQt6.QtCore import QEvent, QModelIndex, QObject, Qt, QTimer
+from PyQt6.QtCore import QEvent, QObject, Qt, QTimer
 from PyQt6.QtGui import QKeyEvent
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -15,7 +11,6 @@ from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -23,8 +18,6 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -49,18 +42,13 @@ from XBrainLab.ui.components.user_error_presentation import (
 )
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.core.worker import PythonThreadWorker
-from XBrainLab.ui.dialogs.common import (
-    configure_dark_table,
-    fit_table_height_to_contents,
-)
 from XBrainLab.ui.styles.theme import Theme
 
 
 class ModelSelectionDialog(BaseDialog):
     """Dialog for selecting a deep learning model architecture.
 
-    Dynamically generates parameter inputs based on the model class
-    constructor signature, with support for loading pretrained weights.
+    Uses reviewed catalog defaults and supports loading pretrained weights.
 
     Attributes:
         controller: Application controller for data access.
@@ -68,8 +56,6 @@ class ModelSelectionDialog(BaseDialog):
         model_holder: Configured ModelHolder after acceptance.
         search_input: Search field for narrowing the model catalog.
         model_results: Searchable list of model architectures.
-        params_table: QTableWidget displaying model-specific parameters.
-
     """
 
     def __init__(
@@ -92,8 +78,6 @@ class ModelSelectionDialog(BaseDialog):
         self.model_results: QListWidget | None = None
         self.provider_banner: QLabel | None = None
         self.no_match_label: QLabel | None = None
-        self.params_table: QTableWidget | None = None
-        self.params_group: QFrame | None = None
         self.confirm_btn: QPushButton | None = None
         self.weight_label: QLabel | None = None
         self.weight_btn: QPushButton | None = None
@@ -149,7 +133,7 @@ class ModelSelectionDialog(BaseDialog):
         return default_id if default_id in self._spec_by_id else None
 
     def init_ui(self):
-        """Initialize the searchable model catalog and parameter editor."""
+        """Initialize the searchable model catalog."""
         self.setObjectName("ModelSelectionDialog")
         self.setStyleSheet(self._dialog_style())
         layout = QVBoxLayout(self)
@@ -245,49 +229,6 @@ class ModelSelectionDialog(BaseDialog):
         setup_layout.setColumnStretch(1, 1)
         content_layout.addWidget(setup_frame)
 
-        # Parameters Table
-        params_group = QFrame()
-        self.params_group = params_group
-        params_group.setObjectName("ModelSection")
-        params_group.setFrameShape(QFrame.Shape.NoFrame)
-        params_group.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Fixed,
-        )
-        group_layout = QVBoxLayout(params_group)
-        group_layout.setContentsMargins(12, 12, 12, 12)
-        group_layout.setSpacing(10)
-        params_title = QLabel("Model parameters")
-        params_title.setObjectName("SectionTitle")
-        group_layout.addWidget(params_title)
-        params_table = QTableWidget()
-        self.params_table = params_table
-        params_table.setColumnCount(2)
-        params_table.setHorizontalHeaderLabels(["Parameter", "Value"])
-        params_table.setAlternatingRowColors(True)
-        params_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        params_table.setSelectionBehavior(
-            QAbstractItemView.SelectionBehavior.SelectRows
-        )
-        params_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        params_table.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Fixed,
-        )
-        params_table.setMaximumHeight(240)
-        configure_dark_table(
-            params_table,
-            object_name="ModelParamsTable",
-            no_selection=True,
-        )
-        header = params_table.horizontalHeader()
-        if header is not None:
-            header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        vertical_header = params_table.verticalHeader()
-        if vertical_header is not None:
-            vertical_header.setVisible(False)
-        group_layout.addWidget(params_table)
-        content_layout.addWidget(params_group, stretch=0)
         layout.addWidget(content_scroll, stretch=0)
 
         # Buttons
@@ -493,16 +434,20 @@ class ModelSelectionDialog(BaseDialog):
         if self.provider_banner is not None:
             recovery = status.checked and not status.available
             self.provider_banner.setProperty("recovery", recovery)
-            self.provider_banner.setText(
-                "Braindecode 1.6.1 is ready. Showing the upstream model catalog."
-                if status.available
-                else "Braindecode 1.6.1 is unavailable. Showing reviewed local "
-                "recovery models; no model identity was changed automatically."
-            )
+            if status.available:
+                self.provider_banner.clear()
+                self.provider_banner.setVisible(False)
+            else:
+                self.provider_banner.setText(
+                    "Braindecode 1.6.1 is unavailable. Showing reviewed local "
+                    "recovery models; no model identity was changed automatically."
+                )
+                self.provider_banner.setVisible(True)
             style = self.provider_banner.style()
             if style is not None:
                 style.unpolish(self.provider_banner)
                 style.polish(self.provider_banner)
+            self._resize_dialog_to_content()
 
     def _read_signal_context(self) -> dict[str, Any] | None:
         return get_training_model_signal_context(
@@ -567,8 +512,6 @@ class ModelSelectionDialog(BaseDialog):
         else:
             self.model_results.setCurrentItem(None)
             self._selected_model_id = None
-            if self.params_table is not None:
-                self.params_table.setRowCount(0)
             if self.confirm_btn is not None:
                 self.confirm_btn.setEnabled(False)
         self.filter_models(self.search_input.text() if self.search_input else "")
@@ -686,70 +629,7 @@ class ModelSelectionDialog(BaseDialog):
                 self.confirm_btn.setEnabled(False)
             return
         self._selected_model_id = spec.model_id
-        self.on_model_select(spec)
         self.filter_models(self.search_input.text() if self.search_input else "")
-
-    def on_model_select(self, model: ModelSpec | str):
-        """Populate the parameter table based on the selected model.
-
-        Args:
-            model: Selected catalog specification or stable model ID.
-
-        """
-        if not self.params_table or not self.params_group:
-            return
-
-        spec = model if isinstance(model, ModelSpec) else self._spec_by_id[model]
-        self.params_table.setRowCount(0)
-
-        if spec:
-            rows = list(spec.parameters)
-            self.params_table.setRowCount(len(rows))
-            for i, parameter in enumerate(rows):
-                item_param = QTableWidgetItem(parameter.label)
-                item_param.setData(Qt.ItemDataRole.UserRole, parameter.key)
-                item_param.setToolTip(parameter.tooltip)
-                item_param.setFlags(item_param.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                self.params_table.setItem(i, 0, item_param)
-                value = "" if parameter.default is None else str(parameter.default)
-                value_item = QTableWidgetItem(value)
-                value_item.setToolTip(parameter.tooltip)
-                self.params_table.setItem(i, 1, value_item)
-
-            if not rows:
-                self._show_no_editable_params()
-        self._resize_params_table_to_content()
-        self._clear_params_table_selection()
-        self.params_group.setVisible(True)
-        self._resize_dialog_to_content()
-
-    def _show_no_editable_params(self) -> None:
-        """Render an explicit empty state instead of hiding the parameter table."""
-        if not self.params_table:
-            return
-        self.params_table.setRowCount(1)
-        name_item = QTableWidgetItem("No editable parameters")
-        name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        value_item = QTableWidgetItem("This model only uses data-derived settings.")
-        value_item.setFlags(value_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        self.params_table.setItem(0, 0, name_item)
-        self.params_table.setItem(0, 1, value_item)
-        self._resize_params_table_to_content()
-        self._clear_params_table_selection()
-
-    def _resize_params_table_to_content(self) -> None:
-        """Keep the parameter table compact instead of filling the dialog."""
-        if not self.params_table:
-            return
-
-        target_height = fit_table_height_to_contents(
-            self.params_table,
-            max_visible_rows=7,
-            minimum_rows=1,
-            padding=8,
-        )
-        if self.params_group:
-            self.params_group.setMaximumHeight(target_height + 58)
 
     def _resize_dialog_to_content(self) -> None:
         """Resize normal content high enough so the scroll area is not a gutter."""
@@ -758,16 +638,6 @@ class ModelSelectionDialog(BaseDialog):
             minimum_height=452,
             maximum_height=620,
         )
-
-    def _clear_params_table_selection(self) -> None:
-        """Avoid a misleading initial selected row in the parameter table."""
-        if not self.params_table:
-            return
-        self.params_table.clearSelection()
-        self.params_table.setCurrentIndex(QModelIndex())
-        selection_model = self.params_table.selectionModel()
-        if selection_model is not None:
-            selection_model.clear()
 
     def load_pretrained_weight(self):
         """Open a file dialog to load or clear pretrained model weights."""
@@ -791,13 +661,8 @@ class ModelSelectionDialog(BaseDialog):
             self.weight_btn.setText("Clear")
 
     def accept(self):
-        """Build the ModelHolder from current selections and accept.
-
-        Raises:
-            QMessageBox: Warning if parameter parsing fails.
-
-        """
-        if not self.params_table or not self._current_result_is_actionable():
+        """Build the ModelHolder from current selections and accept."""
+        if not self._current_result_is_actionable():
             return
 
         spec = self._selected_spec()
@@ -805,36 +670,13 @@ class ModelSelectionDialog(BaseDialog):
             if self.confirm_btn is not None:
                 self.confirm_btn.setEnabled(False)
             return
-        model_params_map = {}
+        model_params_map = {
+            parameter.key: parameter.default
+            for parameter in spec.parameters
+            if parameter.default is not None
+        }
 
         try:
-            for row in range(self.params_table.rowCount()):
-                item0 = self.params_table.item(row, 0)
-                param = (
-                    item0.data(Qt.ItemDataRole.UserRole) if item0 is not None else None
-                )
-                if not isinstance(param, str) or not param:
-                    continue
-
-                item1 = self.params_table.item(row, 1)
-                value_text = item1.text() if item1 else ""
-
-                value: Any = None
-
-                # Simple type inference (could be improved)
-                if value_text:
-                    if value_text.isdigit():
-                        value = int(value_text)
-                    elif value_text.replace(".", "", 1).isdigit():
-                        value = float(value_text)
-                    elif value_text == "True":
-                        value = True
-                    elif value_text == "False":
-                        value = False
-                    else:
-                        value = value_text
-                    model_params_map[param] = value
-
             self.model_holder = ModelHolder(
                 spec.factory,
                 model_params_map,

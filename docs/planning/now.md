@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-08-21`
+最後更新：`2026-08-22`
 
 ## 目前焦點
 
@@ -22,6 +22,33 @@ Model Selection combo 改為可搜尋、可理解 unavailable reason 的完整�
 - legacy source包含逐檔確認的 BSD-3-Clause、MIT、Apache-2.0 code，保留 notices；
 - 授權本 slice 使用單一 branch／單一超大型 PR、多個可回退 commit，並對約 `35,000+`
   production LOC 明確例外；所有 commit 完成及 final evidence閉合後才交付一次手測。
+
+Final Model Selection refinement 已取得明確 UI 授權：正常 provider ready banner 是不必要的
+資訊噪音；現行 Model parameters 表只涵蓋64個visible contracts中的13個，另外51個只顯示
+no-editable-parameters，且文字型別推斷與重新開啟不保留自訂值，不足以作為完整進階設定。
+本 refinement 的 observable outcome 是：(1) provider checking期間保留短暫狀態，healthy完成後整列
+隱藏，provider unavailable時仍保留local recovery警示；(2)移除Model parameters編輯區，Confirm直接
+使用catalog目前的非`None`預設值，保持未手動修改時的既有模型建構語意；(3)`model_params` command、
+resource preview、artifact與script contract保持不變；(4)現行disabled／unavailable rows、reason、
+dataset-context admission、stable IDs、provider recovery與pretrained-weight行為完全不改。
+Scope只包含既有Model Selection widget、直接相關catalog UI metadata、tests、visual artifact與truth sync；
+不改Training其他頁面、availability分類／文案、model factory、catalog membership或backend owner。
+Owners before／after不變；deletion candidates是QTableWidget參數編輯器、文字parser、empty／resize／selection
+helpers；`ModelSpec`的key／default／label metadata仍保留為reviewed default contract，不另做backend
+schema refactor。先跑既有selector characterization，再加
+healthy-banner-hidden與catalog-default Confirm regressions，完成後跑同一focused suite、Ruff／format、
+basedpyright、exact-source default-scale artifact，最後freeze新SHA並只跑一次canonical handoff。
+若default model parameters、unavailable行為、provider identity、search／keyboard／Confirm、pretrained
+weight或Training command結果改變，立即停止而不以UI簡化為由接受回歸。任何source變更使`a9ca317f`
+舊handoff evidence失效；新exact head閉合後才交付Windows／Linux真人手測。
+
+Refinement實作已完成：Model Selection production diff為單一owner file `+21/-179/net -158`，owner數
+不變；正常banner與參數表／parser已刪，recovery banner、unavailable rows、search／keyboard、pretrained
+weight與backend admission未改。Selector baseline由25 passed收斂為18個observable cases；直接耦合的
+catalog／TrainingService／sidebar合計185 passed，capture／DPI script contracts為49 passed。Ruff全repo、
+format check、configured basedpyright與MkDocs strict均通過；provisional Xvfb screenshot已人工確認無clipping、
+overlap、雙重scroll或舊參數卡高度。下一步只建立focused commit、產生clean exact-source artifact並執行
+一次canonical handoff；若失敗只修recorded owner，不為計時重跑。
 
 Data Import 與 4B Assistant 模型不在本 slice。
 

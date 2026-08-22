@@ -5,7 +5,7 @@ from typing import Any, cast
 import pytest
 from PIL import Image, ImageDraw
 from PyQt6.QtCore import QPoint
-from PyQt6.QtWidgets import QAbstractButton, QApplication
+from PyQt6.QtWidgets import QAbstractButton, QApplication, QLabel, QTableWidget
 
 from scripts.dev.app_polish_capture_contract import (
     APP_POLISH_SURFACES,
@@ -34,6 +34,7 @@ from scripts.dev.capture_ui_polish_surfaces import (
     _epoching_bids_interval_duration_dialog,
     _epoching_internal_events_dialog,
     _evaluation_controls_panel,
+    _model_selection_dialog,
     _publish_capture,
     _settle_capture_widget,
     _surface_contract,
@@ -52,6 +53,18 @@ from scripts.dev.human_like_walkthrough.readiness import (
     assert_consecutive_complete_frames,
 )
 from XBrainLab.ui.styles.stylesheets import Stylesheets
+
+
+def test_model_selection_capture_uses_compact_product_geometry(qtbot) -> None:
+    dialog = _model_selection_dialog()
+    qtbot.addWidget(dialog)
+
+    banner = dialog.findChild(QLabel, "ModelProviderBanner")
+    assert banner is not None
+    assert banner.isHidden()
+    assert dialog.findChild(QTableWidget) is None
+    assert dialog.width() == 680
+    assert 452 <= dialog.height() < 520
 
 
 def test_data_splitting_preview_capture_uses_current_worker_lifecycle(qtbot) -> None:

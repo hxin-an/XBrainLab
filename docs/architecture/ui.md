@@ -161,9 +161,11 @@ blocked reason copy、command execution、post-command refresh，以及 mock / c
 
 Model Selection dialog只render `ModelCatalog`的detached projection：search可匹配name、stable ID、alias、
 family與task；disabled row顯示catalog-owned reason且不能Confirm。Provider readiness在Python-owned background
-worker做bounded preflight；完成前不阻塞Qt thread。Healthy provider顯示upstream IDs；unavailable provider
-顯示recovery banner與distinct `legacy.braindecode.*` IDs，並保留原selection，不自動替換identity。Backend
-在`ConfigureTrainingCommand` mutation前以當下Epochs signal context重新admit，因此stale UI projection不能
+worker做bounded preflight；完成前不阻塞Qt thread。Healthy provider顯示upstream IDs並收起正常狀態提示；
+unavailable provider顯示recovery banner與distinct `legacy.braindecode.*` IDs，並保留原selection，不自動
+替換identity。Dialog不提供部分model-specific constructor參數的文字編輯器；Confirm使用catalog reviewed
+defaults，typed `model_params` contract仍由training command與resource／artifact owners保留。Backend在
+`ConfigureTrainingCommand` mutation前以當下Epochs signal context重新admit，因此stale UI projection不能
 繞過dataset compatibility。
 
 MainWindow close 先 fence application work、送出 cancellable-operation intents，再等待 backend

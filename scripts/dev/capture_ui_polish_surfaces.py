@@ -285,7 +285,7 @@ def _model_selection_dialog() -> QWidget:
         provider_status=BraindecodeProviderStatus(True, "1.6.1", "", True),
     )
     dialog.adjustSize()
-    dialog.resize(QSize(680, max(dialog.sizeHint().height(), 520)))
+    dialog.resize(QSize(680, max(dialog.sizeHint().height(), 452)))
     return dialog
 
 
