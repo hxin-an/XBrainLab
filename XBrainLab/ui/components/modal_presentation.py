@@ -133,7 +133,10 @@ class ModalAlertDialog(BaseDialog):
                 QDialogButtonBox.ButtonRole.RejectRole,
             )
             self.cancel_button.setObjectName("AssistantSecondaryButton")
-            button_box.accepted.connect(self.accept)
+            if self._destructive:
+                self.confirm_button.clicked.connect(self.accept)
+            else:
+                button_box.accepted.connect(self.accept)
             button_box.rejected.connect(self.reject)
         else:
             self.acknowledge_button = button_box.addButton(
