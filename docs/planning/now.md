@@ -4,108 +4,60 @@
 
 ## 目前焦點
 
-CI reliability 與 Braindecode full catalog 已分別由 PR #44、PR #45 合併至 `main`；PR #46
-完成使用者／開發者文件整理。現在唯一 active slice 是 branch
-`integration/gui-polish-v1`：整合三個已完成 focused gate 的 GUI polish checkpoint，對同一個
-final source 只做一次 canonical handoff，再交付 Windows／Linux 真人手測。
+GUI polish integration已完成implementation與focused validation，現在沒有另一個active product
+implementation。Commit本身是下一個candidate source；只有同一clean exact source的canonical handoff、
+Windows／Linux真人手測、PR applicable non-skipped checks全部success後才能merge。
 
-使用者已明確授權以下可見變更：
+本candidate整合三個已取得明確UI授權、可獨立回退的checkpoint：
 
-- 建立 XBrainLab 風格的 warning／confirmation modal，第一批只遷移 Model Runtime 相關流程；
-- Saliency 提供 `All classes` 比較與 `Single class` 細看，保留共享色階與 canonical class
-  identity；
-- Map／Spectrogram／Topographic colorbar 不得壓住圖，dense class／channel 初始畫面要可讀，
-  single-class canvas可zoom／pan／reset；
-- 3D controls移出PyVista canvas，時間明確稱為epoch-relative time；沒有reviewed anchor DTO時
-  不顯示虛構event marker；
-- Data Import 移除 admission／discovery 內部術語與重複0–100進度，只呈現連續且誠實的
-  phase狀態；loading presentation可重構，但不改資料解讀、cancel ownership或Apply semantics。
+- XBrainLab-styled Modal presentation foundation：第一批只遷移Model Settings、VRAM warning與
+  Local Runtime first-run。Caller仍決定copy、recovery與mutation；Cancel是default、Escape reject，
+  destructive confirm必須explicit accept。
+- Data Import loading presentation：使用單一presentation session投影既有backend operation，移除
+  admission／discovery內部術語與重複0–100；cancel、late-callback fence、rollback與Apply-cancel
+  exact-review reopen仍由既有ApplicationService／OwnedWork owner決定。
+- Saliency readability：2D views在共享色階下支援`All classes`與`Single class`，class selection使用
+  canonical key；Map提供必要的垂直scroll與detail zoom／pan／reset，colorbar不得覆蓋plot或sidebar。
+  3D controls位於Qt layout，時間只稱`Epoch time (s)`；沒有reviewed anchor DTO時不顯示event marker。
 
-## 問題與證據
+## Claim boundary
 
-1. Product仍有大量native `QMessageBox`；Fusion／MainWindow stylesheet不能可靠套用到top-level
-   modal。第一個bounded checkpoint只建立presentation seam並遷移Model Settings、VRAM warning與
-   Local Runtime first-run，不宣稱全產品220個call site已完成。
-2. 舊Saliency 2D grid無class selector，所有channel labels會堆疊；共享colorbar配置可與plot
-   相交。舊3D把time／checkbox overlays放在PyVista canvas，且`Time (s)`容易被誤讀為recording
-   event timeline。
-3. Data Import的backend checkpoints直接把`Admitting Data Import discovery`投影到使用者畫面；
-   Review、Preview、Validate與Apply各自有command-local progress domain，因此status bar會看似多次
-   從0跑到100。既有cancel／late-callback／rollback fence是正確owner，不應為了畫面連續性重寫。
-4. 實測profile目前只支持同process中兩個fresh `ApplicationService` pass；不控制OS page cache，
-   因此不能稱cold／warm benchmark，也沒有證據支持更深的loader／hashing語意優化。
+- 不宣稱所有native warning dialogs都已遷移；其餘call sites留給後續bounded product slice。
+- 不改Data Interpretation、BIDS、label、event或loader semantics；profiling只比較同process中的first／
+  repeat fresh-service pass，不控制OS page cache，也不支持效能預算或cache／hash／loader重構結論。
+- `All classes`是多個class-specific plots的同頁比較，不是跨class數學aggregate。
+- Saliency不代表科學有效性、brain source localisation或因果；offscreen evidence不代表Windows native
+  focus／DPI或interactive 3D acceptance。
 
-## Observable outcome
+## Complexity與ownership
 
-- Destructive confirmation按鈕能真的回傳Accepted；Cancel仍是default，Escape仍reject。
-- Saliency `All classes`同時顯示所有class-specific views；`Single class`用同一canonical key在
-  Map、Spectrogram、Topographic與3D同步，重名display label不會選錯class。
-- 切換All／Single或class一定使native render binding失效並重繪；clear、error或replace後沒有
-  stale 3D scene controls。
-- Map使用可縮放寬度與必要的垂直scroll，不以水平scroll把shared colorbar藏起來；capture也只把
-  scroll viewport的可見framebuffer寫回shell，不覆蓋sidebar。
-- 3D controls位於Qt layout外層，文字為`Epoch time (s)`；沒有verified anchor時只顯示class／event
-  code identity，不宣稱0秒是event。
-- Data Import loading只有一個presentation session；Review／revalidation／Apply使用phase＋
-  indeterminate狀態，不把不同command counters偽裝成一條global百分比。Cancel仍精確作用於current
-  backend operation，Apply cancel仍重開同一份review。
-- Profiling artifact使用`first_fresh_service_pass`／`repeat_fresh_service_pass`，明示同process定義與
-  claim boundary，不產生效能結論。
+整合相對`main`為20個production files、`+923/-262/net +661`，觸發跨surface complexity review但未新增
+authoritative owner。Deletion／reuse包括raw first-run QDialog與第一批QMessageBox construction、第二個
+Data Import polling timer與重複loading fields、PyVista slider／checkbox／text overlays。Backend仍擁有
+command、publication、cancel、rollback與saliency data；UI只擁有presentation與native canvas lifecycle。
 
-## Scope／non-goals與complexity review
+## Candidate validation與人工驗收
 
-Scope只包含三個已批准checkpoint的整合、直接回歸測試、current truth sync、visual artifacts與
-final handoff。Non-goals：不全面替換所有warning panels、不改Data Interpretation／BIDS／label／event
-semantics、不新增Saliency scientific aggregation或brain source localisation、不重新設計renderer、
-不以未校準profile改cache／hash／loader、不改ApplicationService command spine。
+Focused suites、Ruff、format、diff check、MkDocs strict及clean exact-source Visualization walkthrough已
+通過。Public-fixture cases在獨立worktree缺資料時只記為skip，不能替代canonical source-diverse dataset gate。
 
-Owners before／after不變：backend仍擁有command、publication、cancel、rollback與saliency data；
-VisualizationPanel／render views只擁有可見選擇與canvas lifecycle；modal seam只呈現caller已決定的
-title／message／buttons，不成為error／confirmation policy owner；Data Import coordinator只擁有連續
-presentation token，不取代OwnedWorkRegistry operation identity。
+下一步固定為：
 
-Complexity由三個可獨立回退的commit family承擔，而不是一個不可分的大改：
-
-- modal foundation刪除第一批raw QMessageBox construction與raw first-run QDialog；
-- Data Import刪除第二個250ms polling timer、重複loading fields與散落projection；
-- Saliency刪除PyVista slider／checkbox／text overlays，重用現有publication與renderer owners。
-
-三條線合計觸及超過12個production files，已觸發並完成本complexity review；沒有新增authoritative
-owner。Integration commit保留原checkpoint粒度，任一family可單獨revert。若整合需要新增owner、第二套
-state、compatibility path或超出已批准UI行為，立即停止並向使用者取得新決策。
-
-## 施工順序
-
-1. 從`main`建立integration branch，依原順序cherry-pick Modal、Data Import、Saliency commits；只處理
-   真實conflict，不重寫已通過的產品行為。
-2. 校準`docs/planning/now.md`與`docs/current.md`；已合併的Braindecode施工紀錄留在Git／PR歷史，
-   不再充當active dispatch。
-3. 跑三個family的combined focused suites、Ruff／format／diff check；生成同一clean exact source的
-   modal、Data Import與Visualization artifacts並人工檢視。
-4. Freeze exact SHA，依`.agents/workflows/handoff-candidate.md`只跑一次canonical handoff。失敗時只修
-   recorded owner，建立新SHA後做一次replacement；不為計時或成功率重跑同SHA。
-5. 交付Windows／Linux手測清單。只有使用者明確回報final SHA產品行為正常並同意merge，才開PR、
-   等待全部applicable non-skipped checks在同一head完成success後合併。
-
-## Focused validation
-
-- Modal：button role／default／Escape／long copy／VRAM／first-run／Model Settings實際click。
-- Data Import：OwnedOperationPresenter、loading dialog、BIDS subject cancel、Review／Preview／Validate／
-  Apply chain、Apply cancel exact-review reopen、profile schema。
-- Saliency：backend visualizers、VisualizationPanel render binding、async canvas lifecycle、3D cache／worker、
-  capture script scroll clipping與exact-source walkthrough。
-- Static：Ruff check、Ruff format check、`git diff --check`；docs truth改變後跑MkDocs strict。
-- Final：canonical handoff一次；offscreen artifact不取代Windows native modal focus／DPI、interactive 3D、
-  scroll／zoom與Data Import cancel手測。
+1. 在本candidate source只跑一次`.agents/workflows/handoff-candidate.md`；若失敗，只修recorded owner並
+   由新SHA做一次replacement，不為計時或成功率重跑同SHA。
+2. 自動evidence完整後交付Windows／Linux手測：modal default／Escape／destructive action；single-file、
+   folder、BIDS review/cancel/retry且status不重複跑百分比；Saliency All／Single、long class／many channel、
+   zoom／pan／reset、3D class／epoch-time／camera controls與close lifecycle。
+3. 使用者明確確認final source產品行為正常並同意merge後才開PR；PR head、base與所有applicable checks
+   必須精確一致且completed/success。
 
 ## Stop conditions
 
-- 任一產品owner、command／publication identity、cancel／rollback或artifact identity改變；
-- All／Single class選擇可繞過canonical key、切換不重繪、colorbar不可見或覆蓋plot／sidebar；
-- modal destructive action無法accept，Cancel／Escape semantics改變，或raw exception漏到使用者；
-- Data Import出現多次假百分比、Cancel作用到stale operation、late callback重開dialog或partial commit；
-- 新skip／xfail／deselect、native abort、leaked process、source identity不符、artifact缺失或final check不是
-  exact current head。
+- 任一owner、command／publication identity、cancel／rollback或artifact identity改變；
+- modal destructive action無法accept，Cancel／Escape semantics改變或raw exception漏出；
+- Data Import出現假overall percentage、Cancel作用到stale operation、late dialog或partial commit；
+- All／Single切換不重繪、重名class選錯identity、colorbar不可見／疊圖或stale 3D controls可操作；
+- 新skip／xfail／deselect、native abort、leaked process、source identity不符、required artifact缺失，或
+  final check不是exact current head。
 
-任一stop condition發生時，本slice停在checkpoint；不得以其他family已通過、provider outage、retry或
-人工目測掩蓋。
+任一條件發生即停在checkpoint；不得以其他family已通過、provider outage、retry或人工目測掩蓋。
