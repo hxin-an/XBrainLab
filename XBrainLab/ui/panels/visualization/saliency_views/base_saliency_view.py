@@ -1114,20 +1114,22 @@ class BaseSaliencyView(QWidget):
     def _on_canvas_press(self, event: Event) -> None:
         mouse_event = cast(MouseEvent, event)
         axis = getattr(mouse_event, "inaxes", None)
+        xdata = getattr(mouse_event, "xdata", None)
+        ydata = getattr(mouse_event, "ydata", None)
         if (
             getattr(mouse_event, "button", None) != 1
             or axis is None
             or not getattr(axis, "images", None)
-            or getattr(mouse_event, "xdata", None) is None
-            or getattr(mouse_event, "ydata", None) is None
+            or xdata is None
+            or ydata is None
         ):
             return
         x_limits = axis.get_xlim()
         y_limits = axis.get_ylim()
         self._pan_state = (
             axis,
-            float(mouse_event.xdata),
-            float(mouse_event.ydata),
+            float(xdata),
+            float(ydata),
             (float(x_limits[0]), float(x_limits[1])),
             (float(y_limits[0]), float(y_limits[1])),
         )
@@ -1137,14 +1139,13 @@ class BaseSaliencyView(QWidget):
         state = self._pan_state
         if state is None or getattr(mouse_event, "inaxes", None) is not state[0]:
             return
-        if (
-            getattr(mouse_event, "xdata", None) is None
-            or getattr(mouse_event, "ydata", None) is None
-        ):
+        xdata = getattr(mouse_event, "xdata", None)
+        ydata = getattr(mouse_event, "ydata", None)
+        if xdata is None or ydata is None:
             return
         axis, start_x, start_y, xlim, ylim = state
-        dx = start_x - float(mouse_event.xdata)
-        dy = start_y - float(mouse_event.ydata)
+        dx = start_x - float(xdata)
+        dy = start_y - float(ydata)
         axis.set_xlim(xlim[0] + dx, xlim[1] + dx)
         axis.set_ylim(ylim[0] + dy, ylim[1] + dy)
         self._draw_canvas_now()

@@ -172,7 +172,8 @@ class Saliency3D:
                     color=Theme.TEXT_PRIMARY,
                 )
         else:
-            self.plotter.remove_actor(self.headActor)
+            if self.headActor is not None:
+                self.plotter.remove_actor(self.headActor)
             self.headActor = None
 
     def get_3d_head_plot(self):

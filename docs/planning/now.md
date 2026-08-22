@@ -46,8 +46,8 @@ ModalAlert Qt button Optional、Saliency Matplotlib dynamic attributes／mouse e
 widget dispatch與optional cancel binding；完整regression與後續gate未執行。
 
 `1d9a5d04` 的direct analyzer雖為0 error，replacement recorded gate仍在sanitized environment辨識出13個
-new diagnostics：Matplotlib callback需要接受base Event、axis limit需收斂成built-in float，另有一個
-PyVista `add_scalar_bar` external typing seam。這些仍屬同一typed-boundary repair；不得更新baseline或加入
+new diagnostics：Matplotlib callback需要接受base Event、axis limit需收斂成built-in float，另有窄幅
+PyVista actor／scalar-bar external typing seam。這些仍屬同一typed-boundary repair；不得更新baseline或加入
 ignore來放行。
 
 下一步固定為：
