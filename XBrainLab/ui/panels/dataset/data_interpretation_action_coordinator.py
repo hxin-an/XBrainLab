@@ -115,6 +115,20 @@ class _PublishedInterpretationReview:
     identity: InterpretationReviewIdentity
 
 
+@dataclass(slots=True)
+class _LoadingSession:
+    """UI-only identity for one visible import loading surface.
+
+    ApplicationService remains the owner of command state and cancellation.
+    This record only fences the dialog against late asynchronous delivery.
+    """
+
+    dialog: Any
+    token: object
+    operation_id: str | None = None
+    cancel_operation_id: str | None = None
+
+
 @dataclass(frozen=True, slots=True)
 class DataInterpretationActionBindings:
     """Replaceable UI/application ports resolved by the composition root."""
@@ -203,17 +217,8 @@ class DataInterpretationActionCoordinator:
         self._loading_dialog_class = (
             loading_dialog_class or _default_loading_dialog_class
         )
-        self._active_loading_dialog: Any | None = None
-        self._active_loading_token: object | None = None
-        self._active_loading_operation_id: str | None = None
-        self._loading_cancel_operation_id: str | None = None
+        self._loading_session: _LoadingSession | None = None
         self._operation_presenter: OwnedOperationPresenter | None = None
-        timer_parent = self.panel if isinstance(self.panel, QObject) else None
-        self._loading_progress_timer = QTimer(timer_parent)
-        self._loading_progress_timer.setInterval(250)
-        self._loading_progress_timer.timeout.connect(
-            self._refresh_loading_operation_status
-        )
         self._busy_control_states: list[tuple[Any, bool]] = []
         self._bindings = bindings or default_data_interpretation_action_bindings()
         self._recipe_reload = DataInterpretationRecipeReloadCoordinator(
@@ -235,10 +240,7 @@ class DataInterpretationActionCoordinator:
             self._loading_dialog_parent(),
             initial_step=initial_step,
         )
-        self._active_loading_dialog = dialog
-        self._active_loading_token = token
-        self._active_loading_operation_id = None
-        self._loading_progress_timer.stop()
+        self._loading_session = _LoadingSession(dialog=dialog, token=token)
         dialog.rejected.connect(lambda: self._cancel_loading_dialog(token))
         dialog.retry_requested.connect(
             lambda: retry() if self._loading_dialog_is_active(token) else None
@@ -258,17 +260,21 @@ class DataInterpretationActionCoordinator:
         return top_level if top_level is not self.panel else None
 
     def _loading_dialog_is_active(self, token: object) -> bool:
-        dialog = self._active_loading_dialog
+        session = self._loading_session
+        dialog = session.dialog if session is not None else None
         return bool(
-            self._active_loading_token is token
+            session is not None
+            and session.token is token
             and dialog is not None
             and not bool(getattr(dialog, "cancelled_by_user", False))
         )
 
     def _cancel_loading_dialog(self, token: object) -> None:
-        if self._active_loading_token is not token:
+        session = self._loading_session
+        if session is None or session.token is not token:
             return
-        operation_id = self._active_loading_operation_id
+        operation_id = session.operation_id
+        cancel_requested = False
         if operation_id is not None:
             presenter = self._operation_presenter
             if presenter is not None and presenter.active_operation_id == operation_id:
@@ -279,12 +285,15 @@ class DataInterpretationActionCoordinator:
                     operation_id,
                 )
             if cancel_requested:
-                self._loading_cancel_operation_id = operation_id
-        dialog = self._active_loading_dialog
-        self._active_loading_token = None
-        self._active_loading_dialog = None
-        self._active_loading_operation_id = None
-        self._loading_progress_timer.stop()
+                session.cancel_operation_id = operation_id
+        dialog = session.dialog
+        # Retain the session's operation identity until its terminal snapshot
+        # arrives, so a successful modal cancellation still receives exactly
+        # one status outcome without keeping a dead dialog alive.
+        if operation_id is None or not cancel_requested:
+            self._loading_session = None
+        else:
+            session.dialog = None
         if dialog is not None:
             dialog.deleteLater()
 
@@ -367,6 +376,9 @@ class DataInterpretationActionCoordinator:
         self._operation_presenter.terminal.connect(
             self._handle_owned_operation_terminal
         )
+        self._operation_presenter.snapshot_updated.connect(
+            self._present_loading_operation_snapshot
+        )
         return self._operation_presenter
 
     def _handle_owned_operation_terminal(
@@ -375,20 +387,21 @@ class DataInterpretationActionCoordinator:
         phase: str,
     ) -> None:
         """Settle cancellation initiated from the modal import surface."""
-        if operation_id != self._loading_cancel_operation_id:
+        session = self._loading_session
+        if session is None or operation_id != session.cancel_operation_id:
             return
-        self._loading_cancel_operation_id = None
+        session.cancel_operation_id = None
         if phase == "cancelled":
             self._show_status("Dataset import cancelled")
+        if session.dialog is None:
+            self._loading_session = None
 
     def _close_loading_dialog(self, token: object | None = None) -> None:
-        if token is not None and self._active_loading_token is not token:
+        session = self._loading_session
+        if session is None or (token is not None and session.token is not token):
             return
-        dialog = self._active_loading_dialog
-        self._active_loading_token = None
-        self._active_loading_dialog = None
-        self._active_loading_operation_id = None
-        self._loading_progress_timer.stop()
+        dialog = session.dialog
+        self._loading_session = None
         if dialog is None:
             return
         dialog.accept()
@@ -403,7 +416,8 @@ class DataInterpretationActionCoordinator:
     ) -> None:
         if not self._loading_dialog_is_active(token):
             return
-        dialog = self._active_loading_dialog
+        session = self._loading_session
+        dialog = session.dialog if session is not None else None
         if dialog is None:
             return
         dialog.show_error(
@@ -1255,23 +1269,23 @@ class DataInterpretationActionCoordinator:
         def _bind_loading_operation(operation_id: str) -> None:
             presenter = self._ensure_operation_presenter()
             if presenter is not None:
-                presenter.bind(operation_id, stage="Preparing import")
-            if self._active_loading_token is not None:
-                self._active_loading_operation_id = operation_id
+                presenter.bind(operation_id, stage="Preparing selected EEG data")
+            session = self._loading_session
+            if session is not None:
+                session.operation_id = operation_id
                 sidebar = getattr(self.panel, "sidebar", None)
                 cancel_button = getattr(sidebar, "import_cancel_btn", None)
                 if cancel_button is not None:
                     cancel_button.setVisible(False)
-                dialog = self._active_loading_dialog
+                dialog = session.dialog
                 progress_bar = getattr(dialog, "progress_bar", None)
                 if progress_bar is not None:
                     progress_bar.setProperty("operationId", operation_id)
                     progress_bar.setProperty("operationKind", "")
-                    progress_bar.setProperty("stage", "Preparing import")
+                    progress_bar.setProperty("stage", "Preparing selected EEG data")
                     progress_bar.setProperty("progress", "indeterminate")
                     progress_bar.setProperty("indeterminate", True)
                     progress_bar.setProperty("operationPhase", "pending")
-                self._loading_progress_timer.start()
 
         if self._bindings.execute_application_command_async(
             self.panel,
@@ -1318,52 +1332,44 @@ class DataInterpretationActionCoordinator:
             return self._interaction_failure_outcome(result, result.message)
         return InteractionOutcome.completed(result.message)
 
-    def _refresh_loading_operation_status(self) -> None:
-        """Project backend stage truth into the active cancellable dialog."""
-        operation_id = self._active_loading_operation_id
-        dialog = self._active_loading_dialog
-        if operation_id is None or dialog is None:
-            self._loading_progress_timer.stop()
+    def _present_loading_operation_snapshot(
+        self,
+        operation_id: str,
+        snapshot: Any,
+    ) -> None:
+        """Mirror the presenter's one snapshot into the active modal only."""
+        session = self._loading_session
+        if session is None or session.operation_id != operation_id:
             return
-        snapshot = self._bindings.get_application_operation(
-            self.panel,
-            operation_id,
-        )
-        if snapshot is None:
-            return
-        phase = str(getattr(snapshot.phase, "value", snapshot.phase))
+        dialog = session.dialog
+        raw_phase = getattr(snapshot, "phase", "running")
+        phase = str(getattr(raw_phase, "value", raw_phase))
         raw_kind = getattr(snapshot, "kind", "")
         kind = str(getattr(raw_kind, "value", raw_kind) or "")
-        if phase in {"completed", "cancelled", "failed"}:
-            self._loading_progress_timer.stop()
-        stage = str(getattr(snapshot, "stage", "") or "Working")
-        completed = getattr(snapshot, "completed", None)
-        total = getattr(snapshot, "total", None)
-        if isinstance(completed, int) and isinstance(total, int):
-            detail = f"{completed} of {total} items complete"
-        elif bool(getattr(snapshot, "cancel_requested", False)):
-            detail = "Cancelling safely…"
-        else:
-            detail = "Working…"
+        title = self._loading_phase_title(kind)
+        detail = (
+            "Cancelling safely…"
+            if bool(getattr(snapshot, "cancel_requested", False))
+            or phase == "cancelling"
+            else "Working…"
+        )
         set_stage = getattr(dialog, "set_stage", None)
         if callable(set_stage):
-            set_stage(stage, detail)
+            set_stage(title, detail)
         progress_bar = getattr(dialog, "progress_bar", None)
         if progress_bar is not None:
             progress_bar.setProperty("operationId", operation_id)
             progress_bar.setProperty("operationKind", kind)
-            progress_bar.setProperty("stage", stage)
-            progress_bar.setProperty(
-                "progress",
-                f"{completed}/{total}"
-                if isinstance(completed, int) and isinstance(total, int)
-                else "indeterminate",
-            )
-            progress_bar.setProperty(
-                "indeterminate",
-                not (isinstance(completed, int) and isinstance(total, int)),
-            )
+            progress_bar.setProperty("stage", title)
+            progress_bar.setProperty("progress", "indeterminate")
+            progress_bar.setProperty("indeterminate", True)
             progress_bar.setProperty("operationPhase", phase)
+
+    @staticmethod
+    def _loading_phase_title(kind: str) -> str:
+        if kind == "import_apply":
+            return "Importing reviewed EEG data"
+        return "Checking selected EEG data"
 
     def _start_interpretation_review_async(
         self,
@@ -1441,13 +1447,14 @@ class DataInterpretationActionCoordinator:
             if loading_token is not None and self._loading_dialog_is_active(
                 loading_token
             ):
-                dialog = self._active_loading_dialog
+                session = self._loading_session
+                dialog = session.dialog if session is not None else None
                 if dialog is not None:
                     dialog.set_stage(
-                        "Preparing import review",
+                        "Preparing selected EEG data",
                         "Scanning the selected EEG data and nearby label files.",
                     )
-            self._show_status("Preparing import review...")
+            self._show_status("Preparing selected EEG data...")
             return self._execute_interpretation_command_async(
                 ReviewInterpretationCommand(
                     source_path=source_path,
@@ -1756,10 +1763,11 @@ class DataInterpretationActionCoordinator:
             if loading_token is not None and self._loading_dialog_is_active(
                 loading_token
             ):
-                dialog = self._active_loading_dialog
+                session = self._loading_session
+                dialog = session.dialog if session is not None else None
                 if dialog is not None:
                     dialog.set_stage(
-                        "Updating label matches",
+                        "Checking selected EEG data",
                         "Checking the selected label values and EEG events.",
                     )
             return self._preview_and_validate_interpretation_async(

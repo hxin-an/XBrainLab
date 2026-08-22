@@ -1507,7 +1507,7 @@ def test_visible_bids_subject_review_has_one_cancel_surface_and_retries(
     loading = visible_modal_dialog()
     assert isinstance(loading, DataInterpretationLoadingDialog)
     operation_id = (
-        panel.action_handler._data_interpretation._active_loading_operation_id
+        panel.action_handler._data_interpretation._loading_session.operation_id
     )
     assert isinstance(operation_id, str) and operation_id
     assert loading.cancel_button.text() == "Cancel Import"

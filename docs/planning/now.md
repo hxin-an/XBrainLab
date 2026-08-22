@@ -2,7 +2,7 @@
 
 最後更新：`2026-08-22`
 
-## 目前焦點
+## 歷史 snapshot（非 active dispatch）
 
 CI reliability 與 Braindecode full catalog 已分別由 PR #44、PR #45 合併至 `main`；PR #46
 完成使用者／開發者文件整理。現在唯一 active slice 是 branch

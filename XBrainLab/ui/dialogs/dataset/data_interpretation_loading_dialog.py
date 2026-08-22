@@ -98,7 +98,7 @@ class DataInterpretationLoadingDialog(BaseDialog):
         self.progress_bar.setObjectName("DataImportLoadingProgress")
         self.progress_bar.setProperty("operationId", "")
         self.progress_bar.setProperty("operationKind", "")
-        self.progress_bar.setProperty("stage", "Preparing import review")
+        self.progress_bar.setProperty("stage", "Preparing selected EEG data")
         self.progress_bar.setProperty("progress", "indeterminate")
         self.progress_bar.setProperty("indeterminate", True)
         self.progress_bar.setProperty("operationPhase", "pending")
@@ -139,12 +139,12 @@ class DataInterpretationLoadingDialog(BaseDialog):
 
         if self.initial_step == "Match Labels":
             self.set_stage(
-                "Updating label matches",
+                "Checking selected EEG data",
                 "Checking the selected label values and EEG events.",
             )
         else:
             self.set_stage(
-                "Preparing import review",
+                "Preparing selected EEG data",
                 "Scanning the selected EEG data and nearby label files.",
             )
         self._apply_style()
@@ -180,7 +180,7 @@ class DataInterpretationLoadingDialog(BaseDialog):
 
     def _request_retry(self) -> None:
         self.set_stage(
-            "Preparing import review",
+            "Preparing selected EEG data",
             "Checking the selected source again.",
         )
         self.retry_requested.emit()

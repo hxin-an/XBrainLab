@@ -233,6 +233,37 @@ def test_real_workflow_case_proves_scan_preview_validate_and_apply(tmp_path: Pat
     assert result["observations"]["label_apply_status"] == "not_applicable"
 
 
+def test_real_workflow_timing_is_opt_in_and_records_each_command(tmp_path: Path):
+    fixture = tmp_path / "timed_raw.fif"
+    info = mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg")
+    mne.io.RawArray(np.zeros((1, 500)), info, verbose="ERROR").save(
+        fixture,
+        overwrite=True,
+        verbose="ERROR",
+    )
+    case = RealWorkflowCase(
+        case_id="timed_fif",
+        title="Timed real FIF lifecycle",
+        evidence_scope="test",
+        dataset_source_id="unit-test-source",
+        source_family="unit test",
+        format_name="FIF",
+        tier_category="Generic EEG files with internal events / annotations",
+        source_entry=fixture.name,
+    )
+
+    result = run_real_workflow_case(case, tmp_path, collect_timing=True)
+
+    assert result["status"] == "passed"
+    assert set(result["timings"]) == {"scan", "preview", "validate", "apply"}
+    assert all(
+        timing["wall_seconds"] >= 0
+        and timing["cpu_seconds"] >= 0
+        and timing["rss_bytes"] > 0
+        for timing in result["timings"].values()
+    )
+
+
 def test_nonempty_fake_fixture_does_not_count_as_real_workflow_evidence(
     tmp_path: Path,
 ):
