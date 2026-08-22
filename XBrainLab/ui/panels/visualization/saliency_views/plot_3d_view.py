@@ -416,6 +416,8 @@ class Saliency3DPlotWidget(QWidget):
         return True
 
     def _clear_plot_widgets(self) -> bool:
+        self._saliency_scene = None
+        self.scene_controls.hide()
         plotter = self.plotter_widget
         delete_later: Callable[[], object] | None = None
         if plotter is not None:
@@ -675,9 +677,14 @@ class Saliency3DPlotWidget(QWidget):
         *,
         method: str,
     ) -> None:
-        class_names = [item.display_name for item in classes]
-        self._class_coverage = {item.display_name: item for item in classes}
-        if not class_names:
+        class_keys = [
+            item.store_key if item.store_key is not None else item.class_index
+            for item in classes
+        ]
+        self._class_coverage = {
+            repr(key): item for key, item in zip(class_keys, classes, strict=True)
+        }
+        if not class_keys:
             self.class_controls.hide()
             self.class_combo.clear()
             return
@@ -689,10 +696,10 @@ class Saliency3DPlotWidget(QWidget):
         previous = self.class_combo.currentData()
         self._selector_syncing = True
         self.class_combo.blockSignals(True)
-        if existing != class_names:
+        if existing != [str(key) for key in class_keys]:
             self.class_combo.clear()
-            for coverage in classes:
-                self.class_combo.addItem(coverage.display_name, coverage.display_name)
+            for coverage, class_key in zip(classes, class_keys, strict=True):
+                self.class_combo.addItem(coverage.display_name, class_key)
         model = cast(QStandardItemModel, self.class_combo.model())
         for index, coverage in enumerate(classes):
             item = model.item(index)
@@ -703,7 +710,7 @@ class Saliency3DPlotWidget(QWidget):
                     if coverage.available
                     else self._unavailable_class_message(method, coverage)
                 )
-        selected_index = self.class_combo.findData(str(previous))
+        selected_index = self.class_combo.findData(previous)
         if selected_index < 0 or not classes[selected_index].available:
             selected_index = next(
                 (index for index, coverage in enumerate(classes) if coverage.available),
@@ -730,12 +737,18 @@ class Saliency3DPlotWidget(QWidget):
             (
                 item
                 for item in self._class_coverage.values()
-                if item.store_key == class_key
+                if (item.store_key if item.store_key is not None else item.class_index)
+                == class_key
             ),
             None,
         )
         if coverage is not None:
-            index = self.class_combo.findData(coverage.display_name)
+            key = (
+                coverage.store_key
+                if coverage.store_key is not None
+                else coverage.class_index
+            )
+            index = self.class_combo.findData(key)
             if index >= 0:
                 self.class_combo.setCurrentIndex(index)
 
@@ -743,7 +756,7 @@ class Saliency3DPlotWidget(QWidget):
         if self._selector_syncing or index < 0 or self._current_plot_request is None:
             return
         selected = self.class_combo.itemData(index)
-        coverage = self._class_coverage.get(str(selected))
+        coverage = self._class_coverage.get(repr(selected))
         if coverage is None or not coverage.available:
             self.show_message(
                 self._unavailable_class_message(

@@ -318,7 +318,7 @@ class VisualizationPanel(BasePanel):
                 int,
                 str,
                 SaliencyRenderPublication,
-                tuple[bool, bool],
+                tuple[object, ...],
             ],
         ] = {}
 
@@ -1387,7 +1387,12 @@ class VisualizationPanel(BasePanel):
             if current_widget is self.tab_spectro
             else request
         )
-        display_key = (bool(absolute), bool(normalize))
+        display_key = (
+            bool(absolute),
+            bool(normalize),
+            str(self.saliency_view_mode.currentData() or "all"),
+            self.saliency_class_combo.currentData(),
+        )
         active_binding = self._native_render_bindings.get(current_widget)
         if (
             active_binding is not None
@@ -2527,7 +2532,7 @@ class VisualizationPanel(BasePanel):
         widget: QWidget,
         publication: SaliencyRenderPublication,
         *,
-        display_key: tuple[bool, bool],
+        display_key: tuple[object, ...],
     ) -> None:
         operation_id = str(publication.operation_id or "").strip()
         generation = getattr(widget, "active_render_generation", None)
