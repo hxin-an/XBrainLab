@@ -26,7 +26,7 @@ configure_qt_platform_for_runtime()
 
 from PyQt6.QtCore import QBuffer, QIODevice, QTimer
 from PyQt6.QtGui import QColor, QPixmap
-from PyQt6.QtWidgets import QApplication, QLabel, QMessageBox, QWidget
+from PyQt6.QtWidgets import QApplication, QLabel, QMessageBox, QScrollArea, QWidget
 
 from scripts.dev.capture_chatpanel_local_tool_chain_walkthrough import (
     _clear_saved_main_window_geometry,
@@ -1870,25 +1870,74 @@ def _capture_matplotlib_window(
 
     parent = canvas.parentWidget()
     layout = parent.layout() if parent is not None else None
-    if parent is None or layout is None or layout.indexOf(canvas) < 0:
+    scroll_area = parent.parentWidget() if parent is not None else None
+    scroll_owned = (
+        isinstance(scroll_area, QScrollArea) and scroll_area.widget() is canvas
+    )
+    layout_owned = layout is not None and layout.indexOf(canvas) >= 0
+    if parent is None or not (layout_owned or scroll_owned):
         print("Matplotlib canvas is not owned by a visible Qt layout.", file=sys.stderr)
         return 3
 
-    placeholder = QWidget(parent)
+    capture_geometry = canvas_geometry
+    if scroll_owned:
+        viewport = scroll_area.viewport()
+        viewport_geometry = _widget_geometry(viewport, window)
+        if viewport_geometry.get("ok") is False:
+            print(
+                "Scrollable Matplotlib viewport geometry is unavailable.",
+                file=sys.stderr,
+            )
+            return 3
+        array = np.asarray(framebuffer)
+        canvas_width = max(int(canvas.width()), 1)
+        canvas_height = max(int(canvas.height()), 1)
+        x_offset = int(scroll_area.horizontalScrollBar().value())
+        y_offset = int(scroll_area.verticalScrollBar().value())
+        visible_width = min(int(viewport.width()), canvas_width - x_offset)
+        visible_height = min(int(viewport.height()), canvas_height - y_offset)
+        if visible_width <= 0 or visible_height <= 0:
+            print(
+                "Scrollable Matplotlib canvas has no visible region.", file=sys.stderr
+            )
+            return 3
+        x_scale = array.shape[1] / canvas_width
+        y_scale = array.shape[0] / canvas_height
+        x0 = max(0, round(x_offset * x_scale))
+        y0 = max(0, round(y_offset * y_scale))
+        x1 = min(array.shape[1], round((x_offset + visible_width) * x_scale))
+        y1 = min(array.shape[0], round((y_offset + visible_height) * y_scale))
+        framebuffer = array[y0:y1, x0:x1].copy()
+        capture_geometry = viewport_geometry
+
+    placeholder = QWidget(scroll_area if scroll_owned else parent)
     placeholder.setObjectName("VisualizationCaptureCanvasPlaceholder")
     placeholder.setFixedSize(canvas.size())
     placeholder.setStyleSheet("background: transparent; border: none;")
-    replaced_item = layout.replaceWidget(canvas, placeholder)
-    if replaced_item is None:
-        placeholder.deleteLater()
-        print("Failed to isolate the Matplotlib canvas for capture.", file=sys.stderr)
-        return 3
+    if scroll_owned:
+        detached_canvas = scroll_area.takeWidget()
+        if detached_canvas is not canvas:
+            placeholder.deleteLater()
+            print(
+                "Failed to isolate the scrollable Matplotlib canvas.", file=sys.stderr
+            )
+            return 3
+        scroll_area.setWidget(placeholder)
+    else:
+        replaced_item = layout.replaceWidget(canvas, placeholder)
+        if replaced_item is None:
+            placeholder.deleteLater()
+            print(
+                "Failed to isolate the Matplotlib canvas for capture.", file=sys.stderr
+            )
+            return 3
 
     capture_code = 3
     try:
         canvas.hide()
         placeholder.show()
-        layout.activate()
+        if layout is not None:
+            layout.activate()
         QApplication.sendPostedEvents()
         QApplication.processEvents()
         capture_code = _capture_fully_rendered_window(
@@ -1898,10 +1947,15 @@ def _capture_matplotlib_window(
             validate_complete=False,
         )
     finally:
-        layout.replaceWidget(placeholder, canvas)
+        if scroll_owned:
+            scroll_area.takeWidget()
+            scroll_area.setWidget(canvas)
+        else:
+            layout.replaceWidget(placeholder, canvas)
         placeholder.hide()
         canvas.show()
-        layout.activate()
+        if layout is not None:
+            layout.activate()
         placeholder.deleteLater()
         QApplication.sendPostedEvents()
         QApplication.processEvents()
@@ -1912,7 +1966,7 @@ def _capture_matplotlib_window(
         _compose_native_framebuffer(
             output_path,
             framebuffer,
-            region_geometry=canvas_geometry,
+            region_geometry=capture_geometry,
             window_size={"width": int(window.width()), "height": int(window.height())},
         )
         _normalize_png_artifact(output_path)

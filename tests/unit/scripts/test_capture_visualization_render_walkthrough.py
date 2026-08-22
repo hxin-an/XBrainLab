@@ -9,7 +9,15 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 from PIL import Image
 from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QLabel, QMainWindow, QTabWidget, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QScrollArea,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from scripts.dev import capture_visualization_render_walkthrough as capture_script
 from scripts.dev.capture_visualization_render_walkthrough import (
@@ -360,6 +368,58 @@ def test_matplotlib_window_capture_falls_back_to_visible_qt_canvas(
     with Image.open(screenshot) as image:
         red, green, blue = image.getpixel((120, 120))
         assert red > green > blue
+
+
+def test_matplotlib_window_capture_preserves_scroll_area_canvas(
+    qapp,
+    tmp_path,
+) -> None:
+    class FramebufferCanvas(QWidget):
+        def draw(self) -> None:
+            return None
+
+        def buffer_rgba(self) -> np.ndarray:
+            frame = np.zeros((60, 160, 4), dtype=np.uint8)
+            frame[:, :, 0] = 180
+            frame[:, :, 1] = 70
+            frame[:, :, 2] = 45
+            frame[:, :, 3] = 255
+            return frame
+
+    window = QMainWindow()
+    content = QWidget()
+    layout = QHBoxLayout(content)
+    scroll_area = QScrollArea()
+    scroll_area.setWidgetResizable(False)
+    canvas = FramebufferCanvas()
+    canvas.setFixedSize(260, 180)
+    scroll_area.setWidget(canvas)
+    sidebar = QLabel("Sidebar")
+    sidebar.setStyleSheet("background: rgb(20, 150, 40); color: white;")
+    sidebar.setFixedWidth(90)
+    layout.addWidget(scroll_area, 1)
+    layout.addWidget(sidebar)
+    window.setCentralWidget(content)
+    window.resize(340, 240)
+    window.show()
+    qapp.processEvents()
+    geometry = capture_script._widget_geometry(canvas, window)
+    screenshot = tmp_path / "scrollable-matplotlib-window.png"
+
+    capture_code = _capture_matplotlib_window(
+        window,
+        canvas,
+        screenshot,
+        canvas_geometry=geometry,
+        validate_complete=False,
+    )
+
+    assert capture_code == 0
+    assert scroll_area.widget() is canvas
+    assert canvas.isVisible()
+    with Image.open(screenshot) as image:
+        red, green, blue = image.getpixel((300, 120))
+        assert green > blue > red
 
 
 def test_three_d_artifact_claims_follow_the_actual_runtime() -> None:

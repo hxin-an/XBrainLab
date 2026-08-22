@@ -7,6 +7,7 @@ import threading
 import time
 import weakref
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -66,6 +67,55 @@ def test_saliency_render_result_is_published_on_widget_thread(qtbot):
         qtbot.waitUntil(lambda: bool(publish_threads), timeout=3000)
 
     assert publish_threads == [view.thread()]
+
+
+def test_detail_canvas_zoom_pan_and_reset_follow_replacement_canvas(qtbot):
+    view = BaseSaliencyView()
+    qtbot.addWidget(view)
+    first = Figure()
+    first_axis = first.add_subplot(111)
+    first_axis.imshow([[0.0, 1.0], [2.0, 3.0]])
+    assert view._replace_figure(first) is True
+    initial_xlim = first_axis.get_xlim()
+    initial_ylim = first_axis.get_ylim()
+
+    view._on_canvas_scroll(
+        SimpleNamespace(
+            inaxes=first_axis,
+            xdata=0.5,
+            ydata=0.5,
+            step=1,
+        )
+    )
+    assert first_axis.get_xlim() != initial_xlim
+    view._on_canvas_press(
+        SimpleNamespace(
+            button=1,
+            inaxes=first_axis,
+            xdata=0.5,
+            ydata=0.5,
+        )
+    )
+    view._on_canvas_motion(
+        SimpleNamespace(
+            inaxes=first_axis,
+            xdata=0.7,
+            ydata=0.8,
+        )
+    )
+    view._on_canvas_release(SimpleNamespace())
+    view.reset_view()
+    assert first_axis.get_xlim() == pytest.approx(initial_xlim)
+    assert first_axis.get_ylim() == pytest.approx(initial_ylim)
+
+    second = Figure()
+    second_axis = second.add_subplot(111)
+    second_axis.imshow([[5.0, 6.0], [7.0, 8.0]])
+    assert view._replace_figure(second) is True
+
+    assert id(first_axis) not in view._initial_axis_limits
+    assert id(second_axis) in view._initial_axis_limits
+    assert view._pan_state is None
 
 
 def test_cross_view_worker_waits_until_gui_install_is_terminal(qtbot):

@@ -1520,12 +1520,13 @@ class VisualizationPanel(BasePanel):
             for item in coverage.classes:
                 if item.available:
                     self.saliency_class_combo.addItem(item.display_name, item.store_key)
+            if self.saliency_class_combo.count() > 0:
+                index = self.saliency_class_combo.findData(previous)
+                self.saliency_class_combo.setCurrentIndex(max(index, 0))
         if self.saliency_class_combo.count() == 0:
             self.saliency_class_combo.hide()
             self.saliency_class_label.hide()
             return
-        index = self.saliency_class_combo.findData(previous)
-        self.saliency_class_combo.setCurrentIndex(max(index, 0))
         show_class = self.saliency_view_mode.currentData() == "single"
         self.saliency_class_combo.setVisible(show_class)
         self.saliency_class_label.setVisible(show_class)

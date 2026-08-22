@@ -66,17 +66,17 @@ def _saliency_with_time_axis() -> tuple[
     return saliency, plotter, engine, update
 
 
-def test_3d_slider_uses_seconds_and_converts_callback_to_sample_index() -> None:
+def test_3d_scene_has_no_overlay_slider_and_accepts_epoch_time_seconds() -> None:
     saliency, plotter, engine, update = _saliency_with_time_axis()
 
     saliency.get_3d_head_plot()
 
-    slider = plotter.slider_kwargs
-    assert slider["title"] == "Time (s)"
-    assert slider["rng"] == (-0.2, 0.0)
-    assert slider["value"] == -0.2
+    # The Qt view owns the visible ``Epoch time (s)`` control.  Keeping the
+    # PyVista canvas free of overlays prevents controls and labels from
+    # covering the saliency surface.
+    assert plotter.slider_kwargs == {}
 
-    slider["callback"](-0.04)
+    saliency._set_time_seconds(-0.04)
 
     engine.sample_index_for_time.assert_called_once_with(-0.04)
     assert saliency.param["sample_index"] == 2

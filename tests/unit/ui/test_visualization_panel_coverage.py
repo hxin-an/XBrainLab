@@ -250,6 +250,8 @@ def _make_panel(
 
     def _widget_factory(parent=None):
         widget = cast(Any, QWidget(parent))
+        widget.class_selected = MagicMock()
+        widget.select_class_key = MagicMock()
         widget.show_error = MagicMock()
         widget.show_message = MagicMock()
         widget.set_saliency_coverage = MagicMock()
@@ -342,6 +344,113 @@ def _current_widget(panel) -> Any:
     widget = panel.tabs.currentWidget()
     assert widget is not None
     return cast(Any, widget)
+
+
+def test_overview_class_activation_invalidates_existing_native_binding(qtbot):
+    """Changing display mode/class must rerender an already bound canvas."""
+    coverage = SaliencyMethodCoverageSnapshot(
+        method="Gradient",
+        available=True,
+        complete=True,
+        classes=[
+            SaliencyClassCoverageSnapshot(
+                class_index=0,
+                display_name="motor",
+                event_code=10,
+                store_key="left-key",
+                available=True,
+            ),
+            SaliencyClassCoverageSnapshot(
+                class_index=1,
+                display_name="motor",
+                event_code=20,
+                store_key="right-key",
+                available=True,
+            ),
+        ],
+    )
+    result = _visualization_result(
+        _run_coverage(
+            plan_index=0,
+            run_index=0,
+            model_name="EEGNet",
+            methods=(coverage,),
+        )
+    )
+    panel = _make_real_saliency_panel(qtbot)
+    publication = _publish_panel_state(panel, result)
+    run_identity = SaliencyRunIdentity(
+        plan=SaliencyPlanIdentity(plan_index=0),
+        run_index=0,
+    )
+    _select_run(panel, run_identity)
+    render_data = SaliencyRenderData(
+        method="Gradient",
+        saliency_by_class={
+            "left-key": np.ones((1, 2, 3)),
+            "right-key": np.ones((1, 2, 3)) * 2,
+        },
+        class_map=(("left-key", "motor"), ("right-key", "motor")),
+        event_ids={"motor": 10},
+        channel_names=("C3", "C4"),
+        channel_positions=((-0.04, 0.0, 0.08), (0.04, 0.0, 0.08)),
+        sfreq=128.0,
+        tmin=-0.2,
+    )
+    base_render = SaliencyRenderPublication(
+        request=SaliencyRenderRequest(
+            publication_generation=publication.generation,
+            run=run_identity,
+            method="Gradient",
+            view="channel_time",
+        ),
+        generation=publication.generation,
+        training_generation=1,
+        data=render_data,
+    )
+    panel.tab_map.update_plot = MagicMock()
+
+    def render_for(request):
+        return replace(base_render, request=request)
+
+    def cancel_binding(widget):
+        panel._native_render_bindings.pop(widget, None)
+        return True
+
+    with (
+        patch.object(panel, "_saliency_render_is_cached", return_value=True),
+        patch.object(
+            panel,
+            "_saliency_render_publication",
+            side_effect=render_for,
+        ),
+        patch.object(panel, "_bind_native_render_terminal"),
+        patch.object(
+            panel,
+            "_cancel_native_render_binding",
+            side_effect=cancel_binding,
+        ) as cancel,
+    ):
+        panel.on_update()
+        first_publication = panel.tab_map.update_plot.call_args.args[0]
+        panel._native_render_bindings[panel.tab_map] = (
+            1,
+            publication.generation,
+            "render-overview",
+            first_publication,
+            (False, False, "all", "left-key"),
+        )
+
+        panel._open_saliency_class_detail("right-key")
+
+    assert cancel.call_count == 1
+    assert panel.tab_map.update_plot.call_count == 2
+    assert panel.tab_map.update_plot.call_args.kwargs == {
+        "selected_label_key": "right-key",
+        "display_mode": "single",
+    }
+    assert panel.saliency_view_mode.currentData() == "single"
+    assert panel.saliency_class_combo.currentData() == "right-key"
 
 
 @pytest.mark.parametrize(
@@ -533,7 +642,7 @@ def test_real_panel_close_ignores_global_pool_saturation_before_submission(
             global_release.wait(timeout=5.0)
             global_finished.set()
 
-    def render(_data, _absolute) -> Figure:
+    def render(_data, _absolute, *_display_options) -> Figure:
         render_started.set()
         assert render_release.wait(timeout=5.0)
         figure = Figure()
@@ -932,7 +1041,7 @@ def test_cancelled_shutdown_resubmits_2d_publication_to_true_worker(
     worker_threads: list[int] = []
     render_count = 0
 
-    def render(_data, _absolute) -> Figure:
+    def render(_data, _absolute, *_display_options) -> Figure:
         nonlocal render_count
         render_count += 1
         worker_threads.append(threading.get_ident())

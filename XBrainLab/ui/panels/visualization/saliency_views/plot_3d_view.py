@@ -222,6 +222,7 @@ class Saliency3DPlotWidget(QWidget):
             _PreparedEngineCacheEntry,
         ] = OrderedDict()
         self._class_coverage: dict[str, SaliencyClassCoverageSnapshot] = {}
+        self._requested_class_key: object | None = None
         self._saliency_coverage: SaliencyMethodCoverageSnapshot | None = None
         self._post_training_saliency_status = PostTrainingSaliencyStatus.idle()
         self._selector_syncing = False
@@ -603,7 +604,7 @@ class Saliency3DPlotWidget(QWidget):
                     "Recompute saliency to continue.",
                 )
                 return
-            selected_coverage = self._class_coverage.get(str(selected_event))
+            selected_coverage = self._class_coverage.get(repr(selected_event))
             if selected_coverage is None or not selected_coverage.available:
                 self.show_message(
                     self._unavailable_class_message(method, selected_coverage),
@@ -693,7 +694,11 @@ class Saliency3DPlotWidget(QWidget):
             str(self.class_combo.itemData(index))
             for index in range(self.class_combo.count())
         ]
-        previous = self.class_combo.currentData()
+        previous = (
+            self._requested_class_key
+            if self._requested_class_key is not None
+            else self.class_combo.currentData()
+        )
         self._selector_syncing = True
         self.class_combo.blockSignals(True)
         if existing != [str(key) for key in class_keys]:
@@ -721,8 +726,10 @@ class Saliency3DPlotWidget(QWidget):
         self._selector_syncing = False
         selected_coverage = classes[selected_index] if selected_index >= 0 else None
         if selected_coverage is None:
+            self._requested_class_key = None
             self.class_semantics.clear()
         else:
+            self._requested_class_key = self.class_combo.itemData(selected_index)
             event = selected_coverage.event_code
             event_text = f" · Event code: {event}" if event is not None else ""
             self.class_semantics.setText(
@@ -733,6 +740,7 @@ class Saliency3DPlotWidget(QWidget):
 
     def select_class_key(self, class_key: object) -> None:
         """Select a backend-admitted class key from the shared 2D controls."""
+        self._requested_class_key = class_key
         coverage = next(
             (
                 item
@@ -756,6 +764,7 @@ class Saliency3DPlotWidget(QWidget):
         if self._selector_syncing or index < 0 or self._current_plot_request is None:
             return
         selected = self.class_combo.itemData(index)
+        self._requested_class_key = selected
         coverage = self._class_coverage.get(repr(selected))
         if coverage is None or not coverage.available:
             self.show_message(
