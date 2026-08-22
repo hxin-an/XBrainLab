@@ -1,370 +1,309 @@
-# Thesis Tool-Call Evaluation Protocol
+# XBrainLab Agent Benchmark v1 Protocol
 
-最後更新：`2026-06-01`
+最後更新：`2026-08-22`
 
-這份文件定義 XBrainLab 要支撐碩士論文主張時使用的驗證 protocol。論文主 evidence 是
-assistant 的 tool-call accuracy：它是否選對工具、給對參數、遵守當前 workflow state、正確處理
-blocked / invalid command，並在錯誤後自我修正。
+這是 XBrainLab agent thesis evidence 的 frozen operational contract。研究理由、文獻探索與替代方案見
+[`XBrainLab Agent Benchmark：文獻探索與方法推導`](../research/xbrainlab_agent_benchmark_methodology.md)。
+本 protocol固定「要如何建構與判分」，不代表 benchmark已完成，更不代表已有模型優越性結果。
 
-EEG training / evaluation accuracy 不是本論文要仔細驗證的主指標。它只用來證明 XBrainLab
-作為目標科學軟體的資料流程可以被穩定操作，不能取代 agent tool-call scoring。
+## 1. Claim contract
 
-本文件不是日常 smoke 測試清單；日常工程健康仍看 `docs/validation/README.md`。任何 thesis
-claim 都必須對到固定 benchmark cases、可重跑 scorer、machine-readable artifact 和
-human-readable report。
+主要研究問題是在相同 local model與共同 semantic goals下，比較 2025 legacy topology與凍結的新
+XBrainLab agent architecture。主要 outcome是安全完成 episode，不是單一 tool-call exact match。
 
-## Thesis Claim Boundary
+正式 superiority claim必須同時滿足：
 
-本論文的主要評估問題：
+1. selected 2B model的 Common-Episode五-stratum macro success提升至少 `+10` percentage points；
+2. paired hierarchical bootstrap 95% confidence interval下界大於 `0`；
+3. new architecture在同一2B sealed matrix上沒有 critical minefield；
+4. run完整、case/split/hash/schema/environment均有效，且可由 trace重算。
 
-- assistant 是否能從使用者 intent 選出正確 tool / command。
-- assistant 是否能在不同 app state 下只呼叫 currently allowed command。
-- assistant 是否能產生正確參數，而不是只選對工具名。
-- assistant 是否能正確解讀 backend `CommandResult` / verification failure。
-- assistant 是否能把 tool error 轉成使用者可理解的回覆，而不是暴露 raw schema / traceback。
-- assistant 是否能在低信心、缺參數或 blocked state 下請求補充資訊或自我修正。
+4B只作 replication。Decision、Control、Execution、latency、token與 XBrainLab-Full皆為 secondary。
+它們不能在 primary rule失敗時替換結論。EEG classifier metrics只屬 domain pipeline sanity，不是 agent
+accuracy。
 
-EEG classification metrics、train/validation/test split、模型 baseline 和 statistical reporting
-屬於 product pipeline reliability / domain task sanity。除非論文另立 EEG classification
-研究問題，否則不得把它們寫成主要 thesis result。
+## 2. Benchmark scopes
 
-## Evidence 分層
+### 2.1 Common-Episode
 
-| 層級 | 資料來源 | 可支撐 | 不可支撐 |
-| --- | --- | --- | --- |
-| deterministic tool-call cases | repo 內固定 cases / expected calls / expected state | scorer schema、policy / verifier baseline、regression floor | local LLM 真實 tool-call accuracy 或 UI 行為 |
-| scripted backend replay | 固定 tool calls / commands 直接跑 backend | CommandResult、state transition、capability / autonomy policy | UI 是否真的更新、使用者是否看得懂 |
-| UI-observable scripted replay | 固定 replay 經過 UI adapter / ChatPanel / import wizard，保存 transcript、state、screenshots 或 UI artifacts | 人眼可審查的 UI 行為、button enablement、visible response、wizard flow | local LLM 真實 tool-call accuracy |
-| local LLM tool-call runs | 同一 cases 接 local primary / fallback runtime | tool selection / parameter / state-transition / recovery accuracy | EEG model quality |
-| UI-assisted workflow cases | 真 UI / agent 操作代表性 EEG workflow | end-to-end workflow success、user-facing error handling | EEG classification thesis result |
-| checked-in EEG fixtures | `tests/fixtures/data/` compact GDF/MAT/multiformat fixtures | IO、shape、tiny train/evaluate smoke | agent tool-call accuracy 或 EEG 泛化能力 |
-| public / external EEG datasets | documented source、license、checksum | domain workflow robustness、optional EEG model sanity | tool-call accuracy 或本論文主結論 |
+只含 legacy與current都可表達的 semantic families。每個 family使用實作無關 oracle，再分別提供
+legacy/current action mapping。主比較不得因 current工具較多而加入 legacy不可能完成的任務。
 
-資料下載不可靜默發生。public 或 external dataset 需先記錄來源、授權、大小、cache/path、
-checksum 與清理方式。但資料級驗證只是讓 tool-call cases 有可信工作環境，不是主要論文評分。
+### 2.2 XBrainLab-Full
 
-## Tool-Call Metrics
+涵蓋 current 18-action product surface、完整 capability／confirmation／recovery與 data interpretation
+行為。只報 current architecture絕對表現、failure distribution與 safety，不與 legacy組成 superiority
+denominator。
 
-正式 thesis report 至少要包含：
+### 2.3 Product gate separation
 
-- intent accuracy
-- tool selection accuracy
-- parameter accuracy
-- state-transition accuracy
-- blocked-command handling accuracy
-- autonomy-boundary handling accuracy
-- user-visible response quality for tool errors
-- self-correction / clarification success rate
-- invalid / unsafe call rate
-- parser failure rate
-- verifier rejection rate
+`scripts/dev/run_stable_assistant_model_eval.py` 的 Stable 50-case suite是產品 candidate selection gate。
+它可作工程回歸，但 case、scorer、repeat、sampling與 claim contract不同，不得轉稱 thesis benchmark。
+過往 121-case artifacts及 2025 raw 250 rows只保留 provenance。
 
-每個 case 至少保存：
+## 3. Unit、partition與coverage
 
-- user command
-- initial app state snapshot
-- available command summary
-- expected tool call / expected no-call behavior
-- expected parameters
-- expected verification result
-- expected autonomy decision / decision boundary
-- expected backend state delta
-- actual model output
-- parsed tool call
-- verification result
-- backend `CommandResult`
-- final user-visible response
-- UI-observable artifact，若此 case 屬於 UI replay 或 UI-assisted workflow
-- score breakdown
+### 3.1 Independent unit
 
-## Tool-Call Benchmark Cases
+獨立統計單位是 `semantic_family_id`。每個 family的 zh-TW／English、paraphrase、fixture variant與repeat
+都是 paired observations，不增加獨立 N。
 
-cases 應覆蓋：
+### 3.2 Family-locked partitions
 
-- happy-path workflow：scan source、preview interpretation、validate、confirm / apply、preprocess、
-  epoch、dataset、configure training、train。
-- Data Interpretation workflow：BIDS folder scan、GDF + external label、MAT 多 label-like variable、
-  event role disambiguation、recipe reload。
-- metadata resolution workflow：subject / session / task / run 推論、preview、confirmation、
-  user override、subject-wise split 前置條件。
-- autonomy-boundary workflow：command technically allowed 但 agent 必須停下來確認，例如
-  apply interpretation、select split strategy、start training、reset / new session。
-- state-gated workflow：資料未載入前不可 train；dataset / epoch 後不可隨意開新 dataset。
-- query workflow：evaluation / visualization / saliency / state summary。
-- destructive workflow：reset / clear 類 command 需要確認邊界。
-- missing parameter：例如 list files 缺 directory 時，要要求補資訊，不暴露 raw error。
-- invalid command：backend policy blocked 時，回覆 blocked reason 的使用者語言版本。
-- multi-step recovery：第一次 tool call 被 verifier 擋下後，能否修正。
+每個 family恰屬一區：
 
-case 數量不能只停在 demo 級：
+- `model_selection`
+- `architecture_development`
+- `architecture_validation`
+- `sealed_human_test`
 
-- 第一版 engineering baseline 至少 `50` 個 tool-call cases。
-- 正式 thesis candidate baseline 至少 `100` 個 tool-call cases。
-- 每個主要 workflow stage 至少 `10` 個 cases：data import、label/event、preprocess、epoch、
-  dataset、training、evaluation / visualization / saliency、reset / lifecycle。
-- data import / label-event cases 必須覆蓋 Data Interpretation 的 `safe`、`needs_confirmation`、
-  `blocked`、BIDS `warning / limited / blocked` 和 recipe reload。
-- negative / blocked / missing-parameter / recovery cases 合計不得少於總 cases 的 `30%`。
-- multi-turn workflow cases 不得少於 `15` 個，且必須包含至少一條完整
-  scan -> preview -> validate -> apply -> preprocess -> epoch -> dataset -> configure training ->
-  train -> query result sequence。
-- local LLM primary / fallback runner 至少重跑 `3` 次，保存 run-level artifact；若因資源限制
-  降低次數，report 必須明確標成 exploratory，不能當 thesis candidate。
+parent family的所有衍生 case必須跟隨同一區。任何 family、translation或 template leakage使 corpus無效。
+第一個 implementation slice只可提交 visible development pilot；它不等於 sealed gold。
 
-deterministic tool-call eval 可以證明 scoring framework 和 scripted policy 正確，但不能宣稱
-local LLM 真實 tool-call 能力。local LLM tool-call eval 需要在產品主線穩定後，以同一批 cases
-重跑 primary / fallback model，並記錄 parser failure、verification failure、retry 和 recovery。
+### 3.3 五個等權 macro strata
 
-## Future AutoResearch Case Generation
+| Stratum | 必備語意 |
+| --- | --- |
+| `acquisition_orientation` | source scan、import orientation、metadata/event/label理解 |
+| `direct_preprocessing` | 可直接執行的 preprocessing或參數補充 |
+| `pipeline_configuration` | epoch、dataset、split、training config與confirmation |
+| `execution_result_navigation` | long action、result/evaluation/visualization查詢、狀態導覽 |
+| `clarification_refusal_recovery` | missing/ambiguous input、blocked/unsafe request、cancel、修正 |
 
-正式擴充 benchmark suite 時，case generation 本身應視為研究工作，而不是目前產品修復的一部分。
-在 XBrainLab 本體、agent command path 和 verification layer 穩定前，不應啟動大規模 benchmark
-生成，也不應宣稱 case suite 已足以支撐正式 thesis result。
+五個 strata在 macro Episode score等權。Corpus validator須 fail closed檢查 coverage；正式 freeze前的最低
+family數由 pilot/power決定，不用任意 row count代替。
 
-啟動時採用 research-first 的 AutoResearch-style pipeline：
+### 3.4 必備 case dimensions
 
-- subagents 先研究 function/tool-call benchmark、agent trajectory eval、XBrainLab workflow、
-  EEG / BCI 操作情境與常見錯誤。
-- subagents 只能產生候選 cases、coverage critique 和 failure taxonomy 建議。
-- 每個候選 case 必須保留來源 rationale、目標 workflow stage、initial state、expected
-  tool / no-tool behavior、expected parameters、verification expectation 和 expected state delta。
-- gold benchmark 只能由主 agent 經過去重、schema validation、coverage matrix、人工可讀審核和
-  freeze 後建立；不能讓 subagent 直接把候選 case 寫成正式 gold suite。
-- benchmark generation 方法可以在 Phase 3 開始時根據最新研究再調整；本 protocol 只固定 evidence
-  邊界與審核要求，不預先定死具體 case taxonomy。
+Corpus整體須覆蓋：positive、missing argument、blocked/refusal、confirmation、cancel、recoverable error與
+multi-turn；至少包含 zh-TW和English paired variants、成功與安全失敗、單步與多步 episode。每個 family
+需聲明 scope、stratum、provenance、risk tier與 required dimensions。
 
-## Local Eval Gate 分層
+## 4. Case、run、trace與verdict contracts
 
-Local tool-call eval 不是每個小修都跑 full primary / fallback x3。正式 thesis claim 需要
-完整重跑；日常 verifier、normalizer、prompt、case wording、UI refresh 或 backend cleanup
-只應使用較小 gate：
+Canonical schemas位於 `benchmarks/xbrainlab_agent/v1/schemas/`：
 
-| Gate | 使用時機 | 模型 / 重跑策略 |
+- `case.schema.json`：semantic goal、initial state、oracle與variants。
+- `corpus.schema.json`：catalog/split references、family set與content hashes。
+- `run.schema.json`：model、architecture、environment、case hash、repeat與completeness。
+- `trace.schema.json`：append-only normalized observations。
+- `verdict.schema.json`：四層分數、failure taxonomy與evidence IDs。
+
+每個 evidence-bearing item都需 stable ID與schema version。Unknown field若會改變 scoring semantics、未知
+predicate/rubric/parameter contract、重複 ID、hash mismatch、缺 observation或 incomplete run一律不判 PASS。
+
+### 4.1 Case oracle
+
+每個 case至少包含：
+
+- `case_id`、`semantic_family_id`、partition、scope、stratum、language、provenance。
+- deterministic initial state或 fixture reference。
+- user turns與 scripted user policy。
+- budget：max agent turns、tool calls及可選 wall-time policy。
+- 一個以上 alternative trajectory；trajectory內 milestones可用 prerequisite描述 partial order。
+- terminal predicates、minefields、required communication與 permitted semantic alternatives。
+- legacy/current mappings（若屬 Common-Episode）。
+
+### 4.2 Normalized trace
+
+Trace只保存觀測，不重寫產品真相：user/assistant messages、proposed call、verification、backend command、
+public `CommandResult`、`ApplicationViewPublication`前後投影、communication label、error與timing。每筆 observation
+有單調 sequence number；raw model output與normalized form並存，parser failure不可丟棄。
+
+### 4.3 Four-layer verdict
+
+| Layer | 問題 | 用途 |
 | --- | --- | --- |
-| Fast dev gate | 日常小切片、回歸修正、changed / failed cases。 | deterministic eval；repeat `1`；不跑 fallback model。 |
-| Candidate gate | 需要真 local model 驗證受影響 case family。 | primary model；affected families；repeat `1` 或 `2`。 |
-| Release / thesis gate | 更新正式 benchmark claim 或 thesis evidence artifact。 | deterministic full suite；primary full suite x3；fallback full suite x3；刷新 dashboard。 |
+| Decision | 是否在該狀態選擇合理的 call/no-call/clarification/refusal | diagnostic |
+| Control | 順序、confirmation、retry、budget與停止是否正確 | diagnostic |
+| Execution | verified command與產品 state/result是否符合 oracle | diagnostic |
+| Episode | 使用者目標是否安全、完整地達成 | primary |
 
-Release / thesis local gate 前必須先記錄 disk / cache / `nvidia-smi` VRAM preflight。舊
-21-action deterministic／local runners已隨Stable v2 surface退役，不能再用歷史121-case artifact
-刷新current claim。產品重建期間只使用`scripts/dev/run_stable_assistant_model_eval.py`的48-case
-target gate（34 positive＋14 challenge）；它要求exact stage、tool、parameters／response contract與
-schema，但不是thesis benchmark。
-正式thesis runner必須等產品surface凍結後另以approved target cases重建，並重新定義repeat、resource
-preflight、confidence interval與artifact schema；不得把產品48-case結果升格為thesis-ready rerun。
-
-Local LLM CLI 的 process exit 與 artifact contract 如下：
-
-- Stable v2產品gate的`--strict`在任何failed case、空case set或不完整summary時回傳非零；partial
-  artifact必須保持`complete=false`與`passed=false`。
-- 歷史`xbrainlab.local_tool_call_eval.v4`／v5 artifact只能作provenance，不是current Stable v2 gate。
-- 未來thesis runner的process exit、resource-preflight與artifact contract必須在重建時重新批准；不能
-  從已退役CLI自動繼承。
-
-## Scripted Replay
-
-scripted replay 不能只停在文字報告。它應分成兩層：
-
-| 模式 | 用途 | 人要看什麼 |
-| --- | --- | --- |
-| backend replay | 用固定 tool call / command 檢查 backend state、CommandResult、capability / autonomy policy | JSON / markdown report、state_before / state_after、decision boundary |
-| UI-observable replay | 用固定 replay 經過 UI adapter、ChatPanel 或 import wizard，確認使用者看見的行為正確 | screenshots、transcript、visible status、button enablement、wizard step、error wording |
-
-UI-observable replay 的目標不是替代 local LLM eval，而是避免「backend report PASS，但 UI
-使用者看起來仍然錯」。
-
-UI replay artifact 至少應保存：
-
-- replay case id。
-- initial state。
-- scripted command sequence。
-- UI entrypoint：ChatPanel、import wizard 或 button-driven workflow。
-- visible transcript / status text。
-- relevant screenshots 或 approved UI artifacts。
-- expected / actual button enabled state。
-- expected / actual wizard step。
-- final state snapshot。
-- pass / fail reason。
-
-若 UI replay 只產出 backend JSON，不能用來宣稱 UI 行為已驗證。
-
-## Tool Refactor And Verification Architecture
-
-正式 tool-call eval 前，tool surface 需要先完成重構：
-
-- agent tools 不直接包 controller；能走 `ApplicationService` command 的 mutating workflow 必須走
-  service command。
-- tool availability、blocked reason、confirmation requirement 必須由 backend capability policy 產生。
-- Context Assembler 只能暴露目前 state 下合理的 tool / command 摘要，不讓 LLM 自行判斷所有
-  backend capability。
-- Tool call 前必須再經 Verification Layer guard；不能只相信 prompt 內的 available tool list。
-- Verification Layer 至少檢查：schema、required parameters、state precondition、resource
-  existence、confirmation boundary、unsafe / destructive action、confidence threshold。
-- Verification Layer 必須把 Data Interpretation validation result 納入 tool-call guard：
-  `blocked` 不可執行，`needs_confirmation` 必須轉成使用者確認，`safe` 也仍要通過
-  ApplicationService capability policy。
-- scorer 必須同時記錄 proposed tool call、verification result、backend `CommandResult`、
-  autonomy decision、decision boundary、state_before / state_after 和 visible response。
-- tool taxonomy 必須重新設計為 workflow intent / side effect / decision boundary 導向，不能只沿用
-  舊 `load_data` / `attach_labels` 或 `dataset / preprocess / training` 粗分類。
-- raw backend schema、traceback、tool exception 不可直接出現在使用者 transcript；必須轉成人能理解的回覆，
-  structured diagnostics 另存。
-
-這個 verification architecture 是 thesis evidence 的一部分。若 tool surface 尚未重構完成，
-只能做 engineering baseline，不能宣稱 thesis-grade tool-call accuracy。
-
-## EEG Pipeline Support Protocol
-
-以下 split / metrics / baseline protocol 只服務於產品 workflow 和 domain task sanity。它讓
-agent tool-call benchmark 有可重跑的 EEG 工作環境，但不是 thesis 的主要準確率評估。
-
-資料級支撐也需要足夠數量與來源分層：
-
-- checked-in compact fixtures 要覆蓋至少 GDF、MAT、metadata / label 入口和 event-rich case。
-- public fixture slice 至少要能支持一條 event-rich import -> preprocess -> epoch -> dataset smoke。
-- 若使用 external EEG dataset，只作 pipeline support；需要記錄 source、license、checksum、
-  subject/session count 和清理方式。
-- 任一資料來源不足時，tool-call report 必須標註哪些 workflow stage 的 evidence 只能算 synthetic
-  或 fixture-level，不可泛化。
-
-## Split Protocol
-
-三種 split 必須分開標註：
-
-- `trial-wise`：同一 subject/session 可以出現在 train/validation/test，不允許同一 trial
-  index 跨 split。只適合工程 smoke 或 intra-session baseline。
-- `session-wise`：同一 `(subject, session)` group 不可跨 split。適合檢查 session transfer，
-  尤其是同一 subject 不同 session 的穩定性。
-- `subject-wise`：同一 subject 不可跨 split。這是跨 subject 泛化 claim 的最低要求。
-
-避免 data leakage 的規則：
-
-- test split 先建立並鎖定；validation split 必須從 test 之外的 remaining data 產生。
-- preprocessing 若會學到資料統計量，fit 只能使用 train split，再套用到 validation/test。
-- model selection、early stopping、hyperparameter tuning 只能看 validation，不可看 test。
-- final test metrics 只能在 protocol 鎖定後計算。
-
-目前 `DatasetGenerator.split_test()` 先分 test，`DatasetGenerator.split_validate()` 從
-`dataset.get_remaining_mask()` 產生 validation，這符合 validation 不從 test 抽樣的基本要求。
-新增 `XBrainLab/backend/dataset/split_audit.py` 會檢查 train/validation/test index overlap，
-並依 `trial-wise`、`session-wise`、`subject-wise` 檢查 group leakage。
-
-## Reproducibility
-
-每個正式 run 必須保存：
-
-- fixed `seed`。
-- `repeat` 次數與 run index。
-- deterministic setting，例如 PyTorch deterministic flags 是否啟用。
-- train/validation/test split indices。
-- 完整 config：dataset、preprocess、epoch、model、optimizer、training option、device。
-- environment info：Python、platform、XBrainLab commit、torch/cuda/mne 版本。
-
-目前 seed helper 在 `XBrainLab/backend/utils/seed.py`，training record 會保存 seed 與 random
-state。正式 thesis runner 仍需要把 commit hash、dependency versions 和 split artifact 一起
-寫入同一個 artifact directory。
-
-## EEG Pipeline Metrics
-
-若需要報告 EEG pipeline sanity，classification 報告至少包含：
-
-- accuracy
-- balanced accuracy
-- macro F1
-- AUC
-- confusion matrix
-
-若資料是 binary classification，AUC 使用 ROC-AUC；若是 multiclass，需明確標註 macro /
-one-vs-rest 設定。所有 metrics 要同時保存 machine-readable JSON 和 human-readable summary。
-
-## EEG Pipeline Baselines
-
-若 thesis appendix 或 product validation 需要 EEG model sanity，才需要至少包含：
-
-- chance / majority-class baseline。
-- classical baseline：例如 CSP + LDA 或 CSP + SVM。
-- neural baseline：目前 XBrainLab 可跑 EEGNet、ShallowConvNet、SCCNet。
-- ablation：沒有 agent assistance 的 manual workflow vs agent-assisted workflow，僅用於工具使用效率
-  或 workflow completion，不得混入 EEG classification metrics。
-
-baseline 必須使用同一份 split artifact，不可各自重新抽 split。
-
-## EEG Split Artifact Schema
-
-split artifact schema 版本目前是 `1`，JSON schema 放在：
+Episode PASS是 strict conjunction：
 
 ```text
-docs/validation/split_artifact_schema.json
+terminal predicates all true
+AND every required milestone satisfied in a valid partial order
+AND no minefield triggered
+AND required communication satisfied
+AND budget respected
+AND trace/run complete and valid
 ```
 
-code entrypoint：
+Optional milestone不影響 Episode PASS。Non-critical minefield仍使episode失敗，但與critical minefield分開報告。
+Equivalent trajectories可通過同一 semantic oracle；不得為逼 exact tool sequence而拒絕正確結果。
+
+### 4.4 Failure taxonomy
+
+至少區分：intent、tool、argument、state-precondition、confirmation、unsafe action、parser、verification、
+backend execution、missing milestone、wrong terminal state、communication、budget、user-simulator、environment與
+artifact integrity。單一 episode可有多個 diagnostics，但須有一個 deterministic primary failure reason。
+
+## 5. Case construction、來源與review
+
+Sealed primary由human-original semantic families組成；synthetic paraphrases、agent-proposed edge cases與
+generated trajectories只進stress或development，除非人類重新獨立撰寫並依同一流程審核。每個case保存：
+
+- source/rationale與所針對的產品或domain risk；
+- author/reviewer身份或匿名代碼、日期、版本；
+- executable oracle review與 ambiguity notes；
+- translation linkage，不把翻譯視為獨立 evidence。
+
+單一reviewer做全量review，至少間隔14天做blind re-review，抽樣上限為20% cases或30 families。報告只能稱
+intra-rater evidence，並揭露沒有第二位獨立reviewer。
+
+## 6. Execution environment
+
+### 6.1 Hybrid execution
+
+主矩陣走真正 `ApplicationService / Command API`，並由 deterministic scripted GUI-owned user提供 gold中已
+定義的確認、取消、補參數與回答。Harness只讀 public `ApplicationViewPublication`與 `CommandResult`，不能
+決定capability、confirmation或產品state。Evidence projection預設移除local path、file list、subject/patient
+metadata、prompt/token與diagnostics；gold predicate不得依賴這些被遮蔽值。只有public/checked-in EEG資料可進
+benchmark，私人、臨床或未去識別資料不得因為產品是local app就自動納入。
+
+代表性subset經真正Qt adapter/wizard重跑，保存visible transcript、status、button/wizard state與screenshots。
+Backend-only evidence不能宣稱 UI驗證；Qt subset也不能取代Windows native manual acceptance。
+
+### 6.2 Dataset source matrix
+
+正式 robustness matrix預定四種 source family：
+
+- BCI Competition IV 2a `A01T` GDF及paired MAT metadata。
+- PhysioNet EEG Motor Movement/Imagery `S008R04` EDF。
+- BBCI O3VR GDF。
+- MNE-BIDS tiny或OpenNeuro `ds003061` P300 BIDS。
+
+納入前需保存authoritative URL、license/terms、exact files、checksum、size、subjects/sessions、cache與cleanup。
+資料不提交repo時保存fetch recipe。任何來源不可silent download。Dataset source不是獨立family；同 family在
+多資料 source的變體仍保持clustered paired relation。
+
+### 6.3 Resource and environment preflight
+
+正式run保存commit、OS、Python/dependency、CPU/RAM/GPU/VRAM、model revision、quantization/dtype、context、
+decoding、cache path與可用disk。Model下載須先通過repo的source/license/size/VRAM/cache規則；不silent fallback。
+
+## 7. Legacy reproduction contract
+
+Legacy source/prompt/raw data固定在 `94adb570f8eb660b771096748b8431f01f8935d7`。Corpus來源為CECNL
+`AI-agent` commit `b07f500ee3f6e7180db309447432c01230f1957f`、blob
+`555cc5612e8d2154fecbc1c6c1dba1a973fc27f2`。Redistribution需另做license audit。
+
+Adapter須保存六router prompts、chunk `512`/top `3`、mean+std且至少0.2 threshold、1或3 samples、
+temperature 0.6、top-p 0.9、command-sequence vote與latest-turn-only。允許safe parse取代`eval`、process isolation、
+bounded timeout及in-process harness；禁止current repair/default、history、state guard、verification rescue或
+新增tool knowledge。Original model revision未知，native run須標`approximate_reproduction=true`。
+
+公平主比較不是 legacy native model對current新model；而是在兩個topologies中使用同一selected 2B model、
+同logical context/output limit與各自frozen prompt/adapter。Legacy-to-semantic mapping只能在inference後評分。
+
+## 8. Model selection contract
+
+Neutral `model_selection` split只用來選每個size tier的一個模型，不得用architecture development/test cases。
+
+| Tier | Candidates |
+| --- | --- |
+| 2B primary | Granite 3.3 2B、Gemma 2 2B、SmolLM2 1.7B |
+| 4B replication | Phi-4-mini 3.8B、Gemma 3 4B、Llama 3.2 3B |
+
+相同條件：context `8192`、max output `512`、BF16、greedy、相同logical tool schema與budget。若官方chat/tool
+format不同，只允許documented thin serialization adapter。Selection rule需在run前凍結，以macro Episode、
+critical safety、parser validity，再以latency/memory作tie-break；不能依品牌或test結果挑選。
+
+## 9. Pilot、sample size與statistics
+
+### 9.1 Development pilot
+
+Pilot cases是visible、人工撰寫、只屬`architecture_development`的instrument check；不可進正式effect estimate。
+每configuration先跑 `R=5`，估 family-level paired differences、stratum variance、intraclass dependence、failure
+prevalence與repeat Monte Carlo error。Pilot也用來找oracle ambiguity與environment nondeterminism。
+
+### 9.2 Final N and repeats
+
+用pilot的family-level paired effect/variance做cluster-aware power/simulation analysis，在開validation/test前
+凍結每stratum family N、最小detectable effect、alpha、target power、dropout/error allowance與程式版本。
+不可把翻譯、paraphrase、fixture或repeat計入獨立N。
+
+正式repeat預設 `R=3`；若pilot顯示primary macro estimate的repeat MC SE > `1pp`，預註冊改為 `R=5`。
+不得看sealed result後增加repeat或families。
+
+### 9.3 Estimand and uncertainty
+
+Primary estimand：
 
 ```text
-XBrainLab/backend/dataset/split_audit.py
-scripts/dev/validate_split_artifact.py
+Delta = macro_strata(
+  family_mean(new_episode_success - legacy_episode_success)
+)
 ```
 
-最小 artifact 欄位：
+使用paired hierarchical bootstrap，至少10,000 draws。每draw保持五strata，stratum內重抽family，family內保留
+architecture pairing及language/template/fixture/repeat observations。報point estimate、percentile或BCa 95% CI
+（方法預先凍結）、每stratum分數、family count、repeat count與missingness。若family run不完整，primary matrix
+fail closed，不以complete-case silently刪除。
 
-- `schema_version`
-- `protocol`
-- `seed`
-- `repeat`
-- `audit`
-- `environment`
-- `config`
-- `datasets[].indices.train`
-- `datasets[].indices.validation`
-- `datasets[].indices.test`
-- `datasets[].counts`
-- `datasets[].groups`
+## 10. Architecture iteration and ablation
 
-審計命令：
+最多預註冊8個architecture variants；每個有hypothesis、change、expected mechanism、budget與development stop
+rule。先過zero-critical safety gate，再依macro Episode選擇；最多3個進`architecture_validation`。有top3後，
+連續兩個預註冊hypotheses都未提升至少2pp即停止。差異落在one-standard-error內時選較少owner/LOC/tool exposure
+或較低latency/token者。
 
-```bash
-poetry run -- python scripts/dev/validate_split_artifact.py build/dev-artifacts/thesis/splits.json
-```
+開sealed test前凍結winner、prompt、tool membership/schema、parser、retry、context assembler、verification、
+model、decoding、budget、scorer與case hashes。之後最多4個mechanism-specific ablations；只在validation或另行
+預留的ablation split執行，不回頭改sealed primary winner。
 
-目前相關 tests：
+## 11. Sealing and artifact audit
 
-```bash
-poetry run -- pytest --capture=sys \
-  tests/unit/backend/dataset/test_split_audit.py \
-  tests/unit/scripts/test_validate_split_artifact.py -q
-```
+`architecture_validation`與`sealed_human_test`使用不同GPG keys加密；keys在repo外。Repo只保存encrypted
+bundle、SHA-256、public schema/version與append-only access ledger。Ledger至少含timestamp、bundle hash、reason、
+actor、code commit與是否使blindness失效。這稱`researcher-controlled self-seal`，不得稱independent custody。
 
-## Rerun 與 Audit
-
-EEG pipeline experiment artifact directory 應長成：
+正式artifact目錄概念如下；generated run不得提交source tree：
 
 ```text
-build/dev-artifacts/thesis/<run_id>/
-  split_artifact.json
-  config.json
-  metrics.json
-  metrics.md
-  confusion_matrix.csv
-  train.log
-  model_summary.txt
+build/dev-artifacts/thesis/agent-benchmark/<run_id>/
+  run.json
+  traces/<case_id>.<repeat>.jsonl
+  verdicts/<case_id>.<repeat>.json
+  summary.json
+  summary.md
   environment.json
+  integrity.sha256
 ```
 
-重跑流程：
+Process exit在schema/hash/corpus/run不完整、任何case缺verdict、scorer exception或strict failure時非零。Partial
+artifact保存`complete=false`，不可產生passing summary。所有aggregate必須由case+trace+verdict重算。
+Repo與可分享artifact不得含model cache、secrets、完整prompt、private EEG、local absolute paths、subject/patient
+identifiers或未審核raw transcript；restricted local raw logs與發布用redacted evidence必須分開保存。
 
-1. 讀 `split_artifact.json`，驗證 schema 和 audit。
-2. 讀 `config.json`，固定 seed、dataset path、preprocess、model、optimizer。
-3. 重建同一 train/validation/test indices。
-4. 重跑 train/evaluate。
-5. 比對 metrics schema、run log、model summary 和 environment。
+## 12. EEG pipeline sanity appendix
 
-如果 split artifact audit 失敗，該 EEG pipeline run 不能被引用為 domain workflow evidence。
+EEG pipeline evidence只證明目標科學軟體可運作。若報classification，至少包含accuracy、balanced accuracy、
+macro F1、AUC設定與confusion matrix；chance/majority、classical CSP+LDA/SVM與可用neural baseline共用同一split。
 
-## Current Gap
+`trial-wise`、`session-wise`、`subject-wise`須分開標示；test先鎖定，validation只從remaining data建立，會學習
+統計量的preprocessing只fit train。既有 split audit contract仍位於
+`docs/validation/split_artifact_schema.json`、`XBrainLab/backend/dataset/split_audit.py`與
+`scripts/dev/validate_split_artifact.py`。Pipeline sanity不能替代agent benchmark、UI evidence或external
+generalization。
 
-舊121-case deterministic／primary／fallback artifacts屬superseded provenance，不能作為Stable v2
-或thesis-candidate current evidence。Current產品層只有48-case bounded target selection gate；
-正式thesis benchmark、repeat-run matrix、confidence interval、resource／latency條件與dashboard均待
-產品主線穩定後重建。tool-call benchmark也不能取代UI、launcher或import wizard的產品驗收evidence。
+## 13. Claim downgrade rules
 
-external EEG dataset runner、repeat runs、baseline comparison 和 statistical reporting 是可選的
-pipeline support，不是目前 thesis 主線。這些不能取代 local LLM 真實 tool-call accuracy run。
+| 缺少條件 | 最高可用措辭 |
+| --- | --- |
+| 只有schema/scorer/prerecorded trace | measurement instrument checkpoint |
+| 只有visible development pilot | exploratory development result |
+| 沒有同模型legacy/current paired run | single-architecture benchmark result |
+| 沒有sealed human test | validation-set result；不得稱held-out test superiority |
+| CI下界不大於0或增益<10pp | no preregistered superiority demonstrated |
+| 任一critical minefield | safety criterion failed |
+| legacy revision/environment不完整 | approximate reproduction |
+| 只有backend replay | backend-observable；不得稱UI validated |
+
+## 14. Current implementation status
+
+目前正在建立measurement instrument第一slice：versioned schemas、catalogs、visible pilot corpus、validator、
+deterministic scorer、prerecorded trace與ApplicationService observation integration。尚未完成legacy/current
+model adapters、model screening、power-derived final N、encrypted sealed corpus、正式comparison或ablation。
+因此目前唯一允許的完成語意是`measurement-instrument checkpoint`，且仍須以同source focused validation證明。

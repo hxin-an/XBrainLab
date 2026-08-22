@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xbrainlab.org/schemas/agent-benchmark/v1/run.schema.json",
+  "title": "XBrainLab Agent Benchmark Run v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "benchmark_id", "architecture_id", "model", "environment", "case_ids", "repeat_count", "complete"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "benchmark_id": {"type": "string", "minLength": 1},
+    "architecture_id": {"type": "string", "minLength": 1},
+    "model": {"type": "object"},
+    "environment": {"type": "object"},
+    "case_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+    "repeat_count": {"type": "integer", "minimum": 1},
+    "complete": {"type": "boolean"}
+  }
+}

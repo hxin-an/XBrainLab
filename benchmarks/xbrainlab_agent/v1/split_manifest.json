@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark_id": "xbrainlab-agent-benchmark-v1-pilot",
+  "unit": "semantic_family_id",
+  "sealed": false,
+  "family_partitions": {
+    "pilot.scan-source.v1": "architecture_development",
+    "pilot.orientation-summary.v1": "architecture_development",
+    "pilot.preprocess-filter.v1": "architecture_development",
+    "pilot.preprocess-missing-cutoff.v1": "architecture_development",
+    "pilot.configure-training-confirm.v1": "architecture_development",
+    "pilot.cancel-dataset-split.v1": "architecture_development",
+    "pilot.query-evaluation-result.v1": "architecture_development",
+    "pilot.start-training-confirm.v1": "architecture_development",
+    "pilot.missing-directory.v1": "architecture_development",
+    "pilot.blocked-training.v1": "architecture_development",
+    "pilot.cancel-reset.v1": "architecture_development",
+    "pilot.recover-invalid-preprocess.v1": "architecture_development"
+  },
+  "note": "Translations, variants, fixtures, and repeats inherit the family partition and do not add independent N."
+}

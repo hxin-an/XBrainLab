@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0.0",
+  "predicate_ids": [
+    "event.command_ok",
+    "event.command_seen",
+    "event.communication",
+    "event.verification_rejected",
+    "state.path_equals"
+  ],
+  "rubric_ids": ["episode.strict_conjunction.v1"],
+  "parameter_contract_ids": ["none.v1", "path.v1", "preprocess.v1", "training.v1"],
+  "dimension_ids": [
+    "positive",
+    "missing_argument",
+    "blocked_refusal",
+    "confirmation",
+    "cancel",
+    "recoverable_error",
+    "multi_turn"
+  ]
+}

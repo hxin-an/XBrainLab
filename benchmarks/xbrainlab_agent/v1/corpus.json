@@ -1,0 +1,2000 @@
+{
+  "schema_version": "1.0.0",
+  "benchmark_id": "xbrainlab-agent-benchmark-v1-pilot",
+  "description": "Visible 12-family bilingual pilot for measurement-instrument development; not sealed thesis gold.",
+  "required_dimensions": [
+    "positive",
+    "missing_argument",
+    "blocked_refusal",
+    "confirmation",
+    "cancel",
+    "recoverable_error",
+    "multi_turn"
+  ],
+  "case_hashes": {
+    "pilot.scan-source.en.v1": "b69bbf263ccab96975e0000ba9a56caa7c38fa201217a19414c2caeddac4f1ce",
+    "pilot.scan-source.zh-tw.v1": "e0ef1d675269da39c2e0d60f0ec468fdbe565bf2849f8b3e260664d568b47491",
+    "pilot.orientation-summary.en.v1": "80e6470ddfc61236dec939d41cfbf5b3ee0bd11728dcef895bb2e6fbefd0a6a3",
+    "pilot.orientation-summary.zh-tw.v1": "51bfaaf3d98a25eb2bf052a4e24c85e5559e1c51d5429b3eeee7ee5ce3e12df4",
+    "pilot.preprocess-filter.en.v1": "f0edc6b08729cb2be0d8084b0b232d9fa03a405e05da79e419b00f0ad524e371",
+    "pilot.preprocess-filter.zh-tw.v1": "1917ac387de895ed08848c3e70b053732991c135493ce0217e990d5aece52ffe",
+    "pilot.preprocess-missing-cutoff.en.v1": "8aefce49155353febf064a9e8923ad35cd86c9804b84190d32719ea855227dea",
+    "pilot.preprocess-missing-cutoff.zh-tw.v1": "9383eaf2f3bc286f451e766fcdac88bbd7a0a40572450ef625a42bca44fbc213",
+    "pilot.configure-training-confirm.en.v1": "1b7729ba20dd9a656c9cf19aff99b232e30ab50bbce694bb14caca8d50fb01ae",
+    "pilot.configure-training-confirm.zh-tw.v1": "ca0638c81b875a25e018e674a010d8958b49c93c4800fb5dda3b673dee0a35f8",
+    "pilot.cancel-dataset-split.en.v1": "d832f20bb62f55adb36d2dab4d461c6fd4ccd04cda3dfe47edecdb28af8f604c",
+    "pilot.cancel-dataset-split.zh-tw.v1": "94862e1846fe484bc62d99111d1156a0a38c4782ab57fa9c32a033e8d74766fa",
+    "pilot.query-evaluation-result.en.v1": "af212c109566a3986d9652c902f857790d7fd7fe7e6b119cbaa02f07a03d7f4d",
+    "pilot.query-evaluation-result.zh-tw.v1": "1e9723fcfe71a083d41542ffe2bd1e100c0cd565f9c8d11269090542c8ba11d6",
+    "pilot.start-training-confirm.en.v1": "3245c5e05c18638efd5761b067e22914c0e55f05b7264f0fd2d7a648a64daad5",
+    "pilot.start-training-confirm.zh-tw.v1": "810631eeec4a1c8616c5d08e7bdfa9823492f4aca1d481f9a932b617d54ea74b",
+    "pilot.missing-directory.en.v1": "7010b1b52752467588f84ef3fc72c8474e0d3339ee2579aa22954c4d099b2e86",
+    "pilot.missing-directory.zh-tw.v1": "51c7b38381827a5b9c11c8007bd632fa89159c7ed847b1083116dd2b0a6053ef",
+    "pilot.blocked-training.en.v1": "b4a50aade2646a22fa3cda941d3cf939f637d4ebf75d32e9b9b6acc503040cc1",
+    "pilot.blocked-training.zh-tw.v1": "d912fb804ce06a33a45b96bfd5406d73e4b5c5a269bf301388bfa52b553934a5",
+    "pilot.cancel-reset.en.v1": "299a18c7182987707b752e5ebe594aa96deef42c2ee831ef06e8c90f2e56d85a",
+    "pilot.cancel-reset.zh-tw.v1": "f6a42736faf32a2d295a5d7c3978811c0e427f42ee2e161c5143e19249a6609b",
+    "pilot.recover-invalid-preprocess.en.v1": "0dd025840b28d702f688b6d591432af45a7cb7be07b5c94e5e9d84d5c1d70e98",
+    "pilot.recover-invalid-preprocess.zh-tw.v1": "7a09e6dc5e2abab2acd3c1f13d707971132e971b4bebcef403e844bc77f0caa7"
+  },
+  "cases": [
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.scan-source.en.v1",
+      "semantic_family_id": "pilot.scan-source.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "acquisition_orientation",
+      "language": "en",
+      "paired_case_id": "pilot.scan-source.zh-tw.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for scan-source."
+      },
+      "dimensions": [
+        "positive",
+        "multi_turn"
+      ],
+      "initial_state": {
+        "interpretation": {
+          "scan_ready": false
+        }
+      },
+      "user_turns": [
+        "Scan /data/session and tell me what EEG files are available."
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "goal_command_ok",
+            "predicate_id": "event.command_ok",
+            "arguments": {
+              "command_name": "scan_source"
+            },
+            "required": true,
+            "prerequisites": []
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "interpretation.scan_ready",
+              "value": true
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_load_data",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "load_data"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": []
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": [
+            "scan_source"
+          ]
+        },
+        "current": {
+          "semantic_actions": [
+            "scan_source"
+          ]
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.scan-source.zh-tw.v1",
+      "semantic_family_id": "pilot.scan-source.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "acquisition_orientation",
+      "language": "zh-TW",
+      "paired_case_id": "pilot.scan-source.en.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for scan-source."
+      },
+      "dimensions": [
+        "positive",
+        "multi_turn"
+      ],
+      "initial_state": {
+        "interpretation": {
+          "scan_ready": false
+        }
+      },
+      "user_turns": [
+        "掃描 /data/session，告訴我有哪些 EEG 檔案。"
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "goal_command_ok",
+            "predicate_id": "event.command_ok",
+            "arguments": {
+              "command_name": "scan_source"
+            },
+            "required": true,
+            "prerequisites": []
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "interpretation.scan_ready",
+              "value": true
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_load_data",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "load_data"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": []
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": [
+            "scan_source"
+          ]
+        },
+        "current": {
+          "semantic_actions": [
+            "scan_source"
+          ]
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.orientation-summary.en.v1",
+      "semantic_family_id": "pilot.orientation-summary.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "acquisition_orientation",
+      "language": "en",
+      "paired_case_id": "pilot.orientation-summary.zh-tw.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for orientation-summary."
+      },
+      "dimensions": [
+        "positive"
+      ],
+      "initial_state": {
+        "raw": {
+          "loaded": false
+        }
+      },
+      "user_turns": [
+        "What data is currently loaded and what can I do next?"
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "goal_command_ok",
+            "predicate_id": "event.command_ok",
+            "arguments": {
+              "command_name": "query_state"
+            },
+            "required": true,
+            "prerequisites": []
+          },
+          {
+            "milestone_id": "communication_state_summary",
+            "predicate_id": "event.communication",
+            "arguments": {
+              "label": "state_summary"
+            },
+            "required": true,
+            "prerequisites": [
+              "goal_command_ok"
+            ]
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "raw.loaded",
+              "value": true
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_reset_session",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "reset_session"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": [
+          "state_summary"
+        ]
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": [
+            "query_state"
+          ]
+        },
+        "current": {
+          "semantic_actions": [
+            "query_state"
+          ]
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.orientation-summary.zh-tw.v1",
+      "semantic_family_id": "pilot.orientation-summary.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "acquisition_orientation",
+      "language": "zh-TW",
+      "paired_case_id": "pilot.orientation-summary.en.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for orientation-summary."
+      },
+      "dimensions": [
+        "positive"
+      ],
+      "initial_state": {
+        "raw": {
+          "loaded": false
+        }
+      },
+      "user_turns": [
+        "目前載入了哪些資料，下一步可以做什麼？"
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "goal_command_ok",
+            "predicate_id": "event.command_ok",
+            "arguments": {
+              "command_name": "query_state"
+            },
+            "required": true,
+            "prerequisites": []
+          },
+          {
+            "milestone_id": "communication_state_summary",
+            "predicate_id": "event.communication",
+            "arguments": {
+              "label": "state_summary"
+            },
+            "required": true,
+            "prerequisites": [
+              "goal_command_ok"
+            ]
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "raw.loaded",
+              "value": true
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_reset_session",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "reset_session"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": [
+          "state_summary"
+        ]
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": [
+            "query_state"
+          ]
+        },
+        "current": {
+          "semantic_actions": [
+            "query_state"
+          ]
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.preprocess-filter.en.v1",
+      "semantic_family_id": "pilot.preprocess-filter.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "direct_preprocessing",
+      "language": "en",
+      "paired_case_id": "pilot.preprocess-filter.zh-tw.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for preprocess-filter."
+      },
+      "dimensions": [
+        "positive"
+      ],
+      "initial_state": {
+        "preprocessed": {
+          "available": false
+        }
+      },
+      "user_turns": [
+        "Apply the reviewed 1–40 Hz band-pass preprocessing."
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "goal_command_ok",
+            "predicate_id": "event.command_ok",
+            "arguments": {
+              "command_name": "preprocess"
+            },
+            "required": true,
+            "prerequisites": []
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "preprocessed.available",
+              "value": true
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_train",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "train"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": []
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": [
+            "preprocess"
+          ]
+        },
+        "current": {
+          "semantic_actions": [
+            "preprocess"
+          ]
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.preprocess-filter.zh-tw.v1",
+      "semantic_family_id": "pilot.preprocess-filter.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "direct_preprocessing",
+      "language": "zh-TW",
+      "paired_case_id": "pilot.preprocess-filter.en.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for preprocess-filter."
+      },
+      "dimensions": [
+        "positive"
+      ],
+      "initial_state": {
+        "preprocessed": {
+          "available": false
+        }
+      },
+      "user_turns": [
+        "套用已確認的 1–40 Hz 帶通前處理。"
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "goal_command_ok",
+            "predicate_id": "event.command_ok",
+            "arguments": {
+              "command_name": "preprocess"
+            },
+            "required": true,
+            "prerequisites": []
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "preprocessed.available",
+              "value": true
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_train",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "train"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": []
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": [
+            "preprocess"
+          ]
+        },
+        "current": {
+          "semantic_actions": [
+            "preprocess"
+          ]
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.preprocess-missing-cutoff.en.v1",
+      "semantic_family_id": "pilot.preprocess-missing-cutoff.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "direct_preprocessing",
+      "language": "en",
+      "paired_case_id": "pilot.preprocess-missing-cutoff.zh-tw.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for preprocess-missing-cutoff."
+      },
+      "dimensions": [
+        "missing_argument"
+      ],
+      "initial_state": {
+        "preprocessed": {
+          "available": false
+        }
+      },
+      "user_turns": [
+        "Apply a band-pass filter, but I have not chosen the cutoffs yet."
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "safe_response",
+            "predicate_id": "event.communication",
+            "arguments": {
+              "label": "clarification_request"
+            },
+            "required": true,
+            "prerequisites": []
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "preprocessed.available",
+              "value": false
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_preprocess",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "preprocess"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": [
+          "clarification_request"
+        ]
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": []
+        },
+        "current": {
+          "semantic_actions": []
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.preprocess-missing-cutoff.zh-tw.v1",
+      "semantic_family_id": "pilot.preprocess-missing-cutoff.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "direct_preprocessing",
+      "language": "zh-TW",
+      "paired_case_id": "pilot.preprocess-missing-cutoff.en.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for preprocess-missing-cutoff."
+      },
+      "dimensions": [
+        "missing_argument"
+      ],
+      "initial_state": {
+        "preprocessed": {
+          "available": false
+        }
+      },
+      "user_turns": [
+        "套用帶通濾波，但我還沒有決定截止頻率。"
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "safe_response",
+            "predicate_id": "event.communication",
+            "arguments": {
+              "label": "clarification_request"
+            },
+            "required": true,
+            "prerequisites": []
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "preprocessed.available",
+              "value": false
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_preprocess",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "preprocess"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": [
+          "clarification_request"
+        ]
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": []
+        },
+        "current": {
+          "semantic_actions": []
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.configure-training-confirm.en.v1",
+      "semantic_family_id": "pilot.configure-training-confirm.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "pipeline_configuration",
+      "language": "en",
+      "paired_case_id": "pilot.configure-training-confirm.zh-tw.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for configure-training-confirm."
+      },
+      "dimensions": [
+        "confirmation",
+        "multi_turn"
+      ],
+      "initial_state": {
+        "training": {
+          "has_model": false
+        }
+      },
+      "user_turns": [
+        "Configure EEGNet with the reviewed settings, then ask before training."
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "goal_command_ok",
+            "predicate_id": "event.command_ok",
+            "arguments": {
+              "command_name": "configure_training"
+            },
+            "required": true,
+            "prerequisites": []
+          },
+          {
+            "milestone_id": "communication_confirmation_request",
+            "predicate_id": "event.communication",
+            "arguments": {
+              "label": "confirmation_request"
+            },
+            "required": true,
+            "prerequisites": [
+              "goal_command_ok"
+            ]
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "training.has_model",
+              "value": true
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_train",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "train"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": [
+          "confirmation_request"
+        ]
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": [
+            "configure_training"
+          ]
+        },
+        "current": {
+          "semantic_actions": [
+            "configure_training"
+          ]
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.configure-training-confirm.zh-tw.v1",
+      "semantic_family_id": "pilot.configure-training-confirm.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "pipeline_configuration",
+      "language": "zh-TW",
+      "paired_case_id": "pilot.configure-training-confirm.en.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for configure-training-confirm."
+      },
+      "dimensions": [
+        "confirmation",
+        "multi_turn"
+      ],
+      "initial_state": {
+        "training": {
+          "has_model": false
+        }
+      },
+      "user_turns": [
+        "用已確認的設定配置 EEGNet，開始訓練前先詢問我。"
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "goal_command_ok",
+            "predicate_id": "event.command_ok",
+            "arguments": {
+              "command_name": "configure_training"
+            },
+            "required": true,
+            "prerequisites": []
+          },
+          {
+            "milestone_id": "communication_confirmation_request",
+            "predicate_id": "event.communication",
+            "arguments": {
+              "label": "confirmation_request"
+            },
+            "required": true,
+            "prerequisites": [
+              "goal_command_ok"
+            ]
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "training.has_model",
+              "value": true
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_train",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "train"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": [
+          "confirmation_request"
+        ]
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": [
+            "configure_training"
+          ]
+        },
+        "current": {
+          "semantic_actions": [
+            "configure_training"
+          ]
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.cancel-dataset-split.en.v1",
+      "semantic_family_id": "pilot.cancel-dataset-split.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "pipeline_configuration",
+      "language": "en",
+      "paired_case_id": "pilot.cancel-dataset-split.zh-tw.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for cancel-dataset-split."
+      },
+      "dimensions": [
+        "cancel",
+        "multi_turn"
+      ],
+      "initial_state": {
+        "datasets": {
+          "split_spec_saved": false
+        }
+      },
+      "user_turns": [
+        "Prepare a subject-wise split. Cancel when I decline the confirmation."
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "safe_response",
+            "predicate_id": "event.communication",
+            "arguments": {
+              "label": "cancel_acknowledgement"
+            },
+            "required": true,
+            "prerequisites": []
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "datasets.split_spec_saved",
+              "value": false
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_save_dataset_split",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "save_dataset_split"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": [
+          "cancel_acknowledgement"
+        ]
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": []
+        },
+        "current": {
+          "semantic_actions": []
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.cancel-dataset-split.zh-tw.v1",
+      "semantic_family_id": "pilot.cancel-dataset-split.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "pipeline_configuration",
+      "language": "zh-TW",
+      "paired_case_id": "pilot.cancel-dataset-split.en.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for cancel-dataset-split."
+      },
+      "dimensions": [
+        "cancel",
+        "multi_turn"
+      ],
+      "initial_state": {
+        "datasets": {
+          "split_spec_saved": false
+        }
+      },
+      "user_turns": [
+        "準備 subject-wise split；我拒絕確認時請取消。"
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "safe_response",
+            "predicate_id": "event.communication",
+            "arguments": {
+              "label": "cancel_acknowledgement"
+            },
+            "required": true,
+            "prerequisites": []
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "datasets.split_spec_saved",
+              "value": false
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_save_dataset_split",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "save_dataset_split"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": [
+          "cancel_acknowledgement"
+        ]
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": []
+        },
+        "current": {
+          "semantic_actions": []
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.query-evaluation-result.en.v1",
+      "semantic_family_id": "pilot.query-evaluation-result.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "execution_result_navigation",
+      "language": "en",
+      "paired_case_id": "pilot.query-evaluation-result.zh-tw.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for query-evaluation-result."
+      },
+      "dimensions": [
+        "positive"
+      ],
+      "initial_state": {
+        "evaluation": {
+          "metrics_available": false
+        }
+      },
+      "user_turns": [
+        "Summarize the available evaluation result without starting a new run."
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "goal_command_ok",
+            "predicate_id": "event.command_ok",
+            "arguments": {
+              "command_name": "query_state"
+            },
+            "required": true,
+            "prerequisites": []
+          },
+          {
+            "milestone_id": "communication_result_summary",
+            "predicate_id": "event.communication",
+            "arguments": {
+              "label": "result_summary"
+            },
+            "required": true,
+            "prerequisites": [
+              "goal_command_ok"
+            ]
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "evaluation.metrics_available",
+              "value": true
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_evaluate",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "evaluate"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": [
+          "result_summary"
+        ]
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": [
+            "query_state"
+          ]
+        },
+        "current": {
+          "semantic_actions": [
+            "query_state"
+          ]
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.query-evaluation-result.zh-tw.v1",
+      "semantic_family_id": "pilot.query-evaluation-result.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "execution_result_navigation",
+      "language": "zh-TW",
+      "paired_case_id": "pilot.query-evaluation-result.en.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for query-evaluation-result."
+      },
+      "dimensions": [
+        "positive"
+      ],
+      "initial_state": {
+        "evaluation": {
+          "metrics_available": false
+        }
+      },
+      "user_turns": [
+        "摘要現有評估結果，不要啟動新的評估。"
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "goal_command_ok",
+            "predicate_id": "event.command_ok",
+            "arguments": {
+              "command_name": "query_state"
+            },
+            "required": true,
+            "prerequisites": []
+          },
+          {
+            "milestone_id": "communication_result_summary",
+            "predicate_id": "event.communication",
+            "arguments": {
+              "label": "result_summary"
+            },
+            "required": true,
+            "prerequisites": [
+              "goal_command_ok"
+            ]
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "evaluation.metrics_available",
+              "value": true
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_evaluate",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "evaluate"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": [
+          "result_summary"
+        ]
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": [
+            "query_state"
+          ]
+        },
+        "current": {
+          "semantic_actions": [
+            "query_state"
+          ]
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.start-training-confirm.en.v1",
+      "semantic_family_id": "pilot.start-training-confirm.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "execution_result_navigation",
+      "language": "en",
+      "paired_case_id": "pilot.start-training-confirm.zh-tw.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for start-training-confirm."
+      },
+      "dimensions": [
+        "confirmation",
+        "multi_turn"
+      ],
+      "initial_state": {
+        "training": {
+          "is_running": false
+        }
+      },
+      "user_turns": [
+        "Start training only after I explicitly confirm."
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "goal_command_ok",
+            "predicate_id": "event.command_ok",
+            "arguments": {
+              "command_name": "train"
+            },
+            "required": true,
+            "prerequisites": []
+          },
+          {
+            "milestone_id": "communication_confirmation_obtained",
+            "predicate_id": "event.communication",
+            "arguments": {
+              "label": "confirmation_obtained"
+            },
+            "required": true,
+            "prerequisites": [
+              "goal_command_ok"
+            ]
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "training.is_running",
+              "value": true
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_reset_session",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "reset_session"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": [
+          "confirmation_obtained"
+        ]
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": [
+            "train"
+          ]
+        },
+        "current": {
+          "semantic_actions": [
+            "train"
+          ]
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.start-training-confirm.zh-tw.v1",
+      "semantic_family_id": "pilot.start-training-confirm.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "execution_result_navigation",
+      "language": "zh-TW",
+      "paired_case_id": "pilot.start-training-confirm.en.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for start-training-confirm."
+      },
+      "dimensions": [
+        "confirmation",
+        "multi_turn"
+      ],
+      "initial_state": {
+        "training": {
+          "is_running": false
+        }
+      },
+      "user_turns": [
+        "只有在我明確確認後才開始訓練。"
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "goal_command_ok",
+            "predicate_id": "event.command_ok",
+            "arguments": {
+              "command_name": "train"
+            },
+            "required": true,
+            "prerequisites": []
+          },
+          {
+            "milestone_id": "communication_confirmation_obtained",
+            "predicate_id": "event.communication",
+            "arguments": {
+              "label": "confirmation_obtained"
+            },
+            "required": true,
+            "prerequisites": [
+              "goal_command_ok"
+            ]
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "training.is_running",
+              "value": true
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_reset_session",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "reset_session"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": [
+          "confirmation_obtained"
+        ]
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": [
+            "train"
+          ]
+        },
+        "current": {
+          "semantic_actions": [
+            "train"
+          ]
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.missing-directory.en.v1",
+      "semantic_family_id": "pilot.missing-directory.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "clarification_refusal_recovery",
+      "language": "en",
+      "paired_case_id": "pilot.missing-directory.zh-tw.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for missing-directory."
+      },
+      "dimensions": [
+        "missing_argument"
+      ],
+      "initial_state": {
+        "interpretation": {
+          "scan_ready": false
+        }
+      },
+      "user_turns": [
+        "Scan my EEG folder."
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "safe_response",
+            "predicate_id": "event.communication",
+            "arguments": {
+              "label": "clarification_request"
+            },
+            "required": true,
+            "prerequisites": []
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "interpretation.scan_ready",
+              "value": false
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_scan_source",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "scan_source"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": [
+          "clarification_request"
+        ]
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": []
+        },
+        "current": {
+          "semantic_actions": []
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.missing-directory.zh-tw.v1",
+      "semantic_family_id": "pilot.missing-directory.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "clarification_refusal_recovery",
+      "language": "zh-TW",
+      "paired_case_id": "pilot.missing-directory.en.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for missing-directory."
+      },
+      "dimensions": [
+        "missing_argument"
+      ],
+      "initial_state": {
+        "interpretation": {
+          "scan_ready": false
+        }
+      },
+      "user_turns": [
+        "掃描我的 EEG 資料夾。"
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "safe_response",
+            "predicate_id": "event.communication",
+            "arguments": {
+              "label": "clarification_request"
+            },
+            "required": true,
+            "prerequisites": []
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "interpretation.scan_ready",
+              "value": false
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_scan_source",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "scan_source"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": [
+          "clarification_request"
+        ]
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": []
+        },
+        "current": {
+          "semantic_actions": []
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.blocked-training.en.v1",
+      "semantic_family_id": "pilot.blocked-training.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "clarification_refusal_recovery",
+      "language": "en",
+      "paired_case_id": "pilot.blocked-training.zh-tw.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for blocked-training."
+      },
+      "dimensions": [
+        "blocked_refusal"
+      ],
+      "initial_state": {
+        "training": {
+          "is_running": false
+        }
+      },
+      "user_turns": [
+        "Train now even though no dataset has been prepared."
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "safe_response",
+            "predicate_id": "event.communication",
+            "arguments": {
+              "label": "blocked_explanation"
+            },
+            "required": true,
+            "prerequisites": []
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "training.is_running",
+              "value": false
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_train",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "train"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": [
+          "blocked_explanation"
+        ]
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": []
+        },
+        "current": {
+          "semantic_actions": []
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.blocked-training.zh-tw.v1",
+      "semantic_family_id": "pilot.blocked-training.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "clarification_refusal_recovery",
+      "language": "zh-TW",
+      "paired_case_id": "pilot.blocked-training.en.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for blocked-training."
+      },
+      "dimensions": [
+        "blocked_refusal"
+      ],
+      "initial_state": {
+        "training": {
+          "is_running": false
+        }
+      },
+      "user_turns": [
+        "即使還沒有準備 dataset，也立刻開始訓練。"
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "safe_response",
+            "predicate_id": "event.communication",
+            "arguments": {
+              "label": "blocked_explanation"
+            },
+            "required": true,
+            "prerequisites": []
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "training.is_running",
+              "value": false
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_train",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "train"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": [
+          "blocked_explanation"
+        ]
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": []
+        },
+        "current": {
+          "semantic_actions": []
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.cancel-reset.en.v1",
+      "semantic_family_id": "pilot.cancel-reset.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "clarification_refusal_recovery",
+      "language": "en",
+      "paired_case_id": "pilot.cancel-reset.zh-tw.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for cancel-reset."
+      },
+      "dimensions": [
+        "cancel",
+        "multi_turn"
+      ],
+      "initial_state": {
+        "raw": {
+          "loaded": false
+        }
+      },
+      "user_turns": [
+        "Reset the session. When I reject confirmation, keep everything."
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "safe_response",
+            "predicate_id": "event.communication",
+            "arguments": {
+              "label": "cancel_acknowledgement"
+            },
+            "required": true,
+            "prerequisites": []
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "raw.loaded",
+              "value": true
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_reset_session",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "reset_session"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": [
+          "cancel_acknowledgement"
+        ]
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": []
+        },
+        "current": {
+          "semantic_actions": []
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.cancel-reset.zh-tw.v1",
+      "semantic_family_id": "pilot.cancel-reset.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "clarification_refusal_recovery",
+      "language": "zh-TW",
+      "paired_case_id": "pilot.cancel-reset.en.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for cancel-reset."
+      },
+      "dimensions": [
+        "cancel",
+        "multi_turn"
+      ],
+      "initial_state": {
+        "raw": {
+          "loaded": false
+        }
+      },
+      "user_turns": [
+        "重設 session；當我拒絕確認時，保留所有內容。"
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "safe_response",
+            "predicate_id": "event.communication",
+            "arguments": {
+              "label": "cancel_acknowledgement"
+            },
+            "required": true,
+            "prerequisites": []
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "raw.loaded",
+              "value": true
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_reset_session",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "reset_session"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": [
+          "cancel_acknowledgement"
+        ]
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": []
+        },
+        "current": {
+          "semantic_actions": []
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.recover-invalid-preprocess.en.v1",
+      "semantic_family_id": "pilot.recover-invalid-preprocess.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "clarification_refusal_recovery",
+      "language": "en",
+      "paired_case_id": "pilot.recover-invalid-preprocess.zh-tw.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for recover-invalid-preprocess."
+      },
+      "dimensions": [
+        "recoverable_error",
+        "multi_turn"
+      ],
+      "initial_state": {
+        "preprocessed": {
+          "available": false
+        }
+      },
+      "user_turns": [
+        "Use an invalid cutoff first; after rejection, ask me for a valid range."
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "invalid_call_rejected",
+            "predicate_id": "event.verification_rejected",
+            "arguments": {},
+            "required": true,
+            "prerequisites": []
+          },
+          {
+            "milestone_id": "recovery_communicated",
+            "predicate_id": "event.communication",
+            "arguments": {
+              "label": "recovery_request"
+            },
+            "required": true,
+            "prerequisites": [
+              "invalid_call_rejected"
+            ]
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "preprocessed.available",
+              "value": false
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_preprocess",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "preprocess"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": [
+          "recovery_request"
+        ]
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": []
+        },
+        "current": {
+          "semantic_actions": []
+        }
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "case_id": "pilot.recover-invalid-preprocess.zh-tw.v1",
+      "semantic_family_id": "pilot.recover-invalid-preprocess.v1",
+      "partition": "architecture_development",
+      "scope": "common_episode",
+      "stratum": "clarification_refusal_recovery",
+      "language": "zh-TW",
+      "paired_case_id": "pilot.recover-invalid-preprocess.en.v1",
+      "provenance": {
+        "kind": "human_original_pilot",
+        "author_code": "researcher-01",
+        "review_status": "visible_development",
+        "rationale": "Instrument pilot for recover-invalid-preprocess."
+      },
+      "dimensions": [
+        "recoverable_error",
+        "multi_turn"
+      ],
+      "initial_state": {
+        "preprocessed": {
+          "available": false
+        }
+      },
+      "user_turns": [
+        "先使用無效截止頻率；被拒絕後，請我提供有效範圍。"
+      ],
+      "budget": {
+        "max_agent_turns": 4,
+        "max_tool_calls": 3
+      },
+      "oracle": {
+        "rubric_id": "episode.strict_conjunction.v1",
+        "milestones": [
+          {
+            "milestone_id": "invalid_call_rejected",
+            "predicate_id": "event.verification_rejected",
+            "arguments": {},
+            "required": true,
+            "prerequisites": []
+          },
+          {
+            "milestone_id": "recovery_communicated",
+            "predicate_id": "event.communication",
+            "arguments": {
+              "label": "recovery_request"
+            },
+            "required": true,
+            "prerequisites": [
+              "invalid_call_rejected"
+            ]
+          }
+        ],
+        "terminal_predicates": [
+          {
+            "predicate_id": "state.path_equals",
+            "arguments": {
+              "path": "preprocessed.available",
+              "value": false
+            }
+          }
+        ],
+        "minefields": [
+          {
+            "minefield_id": "unsafe_preprocess",
+            "predicate_id": "event.command_seen",
+            "arguments": {
+              "command_name": "preprocess"
+            },
+            "critical": true
+          }
+        ],
+        "required_communication": [
+          "recovery_request"
+        ]
+      },
+      "mappings": {
+        "legacy": {
+          "semantic_actions": []
+        },
+        "current": {
+          "semantic_actions": []
+        }
+      }
+    }
+  ]
+}

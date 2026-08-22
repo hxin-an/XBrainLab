@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0.0",
+  "case_id": "pilot.scan-source.en.v1",
+  "run_id": "prerecorded-instrument-check-v1",
+  "repeat_index": 0,
+  "complete": true,
+  "observations": [
+    {
+      "sequence": 1,
+      "kind": "command_result",
+      "payload": {
+        "command_name": "scan_source",
+        "status": "ok"
+      }
+    },
+    {
+      "sequence": 2,
+      "kind": "publication",
+      "payload": {
+        "generation": 2,
+        "state": {
+          "interpretation": {
+            "scan_ready": true
+          }
+        }
+      }
+    }
+  ],
+  "usage": {
+    "agent_turns": 1,
+    "tool_calls": 1
+  }
+}

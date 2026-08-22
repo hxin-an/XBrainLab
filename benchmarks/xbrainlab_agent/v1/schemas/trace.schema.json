@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xbrainlab.org/schemas/agent-benchmark/v1/trace.schema.json",
+  "title": "XBrainLab Agent Benchmark Normalized Trace v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "case_id", "run_id", "repeat_index", "complete", "observations", "usage"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "case_id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "repeat_index": {"type": "integer", "minimum": 0},
+    "complete": {"type": "boolean"},
+    "observations": {"type": "array", "items": {"type": "object"}},
+    "usage": {"type": "object"}
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xbrainlab.org/schemas/agent-benchmark/v1/case.schema.json",
+  "title": "XBrainLab Agent Benchmark Case v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "case_id", "semantic_family_id", "partition", "scope", "stratum", "language", "paired_case_id", "provenance", "dimensions", "initial_state", "user_turns", "budget", "oracle", "mappings"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "case_id": {"type": "string", "minLength": 1},
+    "semantic_family_id": {"type": "string", "minLength": 1},
+    "partition": {"enum": ["model_selection", "architecture_development", "architecture_validation", "sealed_human_test"]},
+    "scope": {"enum": ["common_episode", "xbrainlab_full"]},
+    "stratum": {"enum": ["acquisition_orientation", "direct_preprocessing", "pipeline_configuration", "execution_result_navigation", "clarification_refusal_recovery"]},
+    "language": {"enum": ["en", "zh-TW"]},
+    "paired_case_id": {"type": "string", "minLength": 1},
+    "provenance": {"type": "object"},
+    "dimensions": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+    "initial_state": {"type": "object"},
+    "user_turns": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "budget": {"type": "object"},
+    "oracle": {"type": "object"},
+    "mappings": {"type": "object"}
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xbrainlab.org/schemas/agent-benchmark/v1/verdict.schema.json",
+  "title": "XBrainLab Agent Benchmark Verdict v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "case_id", "run_id", "repeat_index", "complete", "decision", "control", "execution", "episode", "triggered_minefields", "critical_minefields", "primary_failure"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "case_id": {"type": "string"},
+    "run_id": {"type": "string"},
+    "repeat_index": {"type": "integer", "minimum": 0},
+    "complete": {"type": "boolean"},
+    "decision": {"type": "object"},
+    "control": {"type": "object"},
+    "execution": {"type": "object"},
+    "episode": {"type": "object"},
+    "triggered_minefields": {"type": "array", "items": {"type": "string"}},
+    "critical_minefields": {"type": "array", "items": {"type": "string"}},
+    "primary_failure": {"type": ["string", "null"]}
+  }
+}

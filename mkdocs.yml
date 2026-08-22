@@ -69,6 +69,7 @@ nav:
   - 歷史:
       - 歷史索引: records/README.md
   - 研究:
+      - XBrainLab Agent Benchmark 方法: research/xbrainlab_agent_benchmark_methodology.md
       - EEG Import / Label Design: research/bci_eeg_import_label_design_source.md
 plugins:
   - search

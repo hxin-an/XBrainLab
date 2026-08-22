@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xbrainlab.org/schemas/agent-benchmark/v1/corpus.schema.json",
+  "title": "XBrainLab Agent Benchmark Corpus v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "benchmark_id", "description", "required_dimensions", "case_hashes", "cases"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "benchmark_id": {"const": "xbrainlab-agent-benchmark-v1-pilot"},
+    "description": {"type": "string"},
+    "required_dimensions": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "case_hashes": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}},
+    "cases": {"type": "array", "minItems": 1, "items": {"$ref": "case.schema.json"}}
+  }
+}
