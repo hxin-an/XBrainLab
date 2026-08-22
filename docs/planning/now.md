@@ -68,11 +68,16 @@ final handoff的`chatpanel-dpi`進一步暴露standalone capture仍patch舊`QMes
 unexpected-modal fail-fast。不改product modal或DPI gate timeout／artifact policy。
 原三個red nodes在此fail-fast設定下再次`3 passed`，standalone ChatPanel DPI gate的三個scale
 subprocess全部完成並在22秒內通過；Ruff、format與Basedpyright無新diagnostic。
+`25335fe1` handoff的unit UI components inner shard在約200 nodes後單次超過1200秒；其他
+2195個UI nodes已通過，telemetry顯示UI shard peak RSS約1.7 GiB且無OOM。可疑node、前後檔案群與
+完整components selector加正式coverage皆無法重現，後者為`471 passed`、79秒。因此不變更
+product／test semantics、timeout或runner topology；允許一次新clean SHA的replacement，同類timeout
+再現即停止並另門runner reliability slice。
 
 下一步固定為：
 
-1. 凍結與push新clean exact source，執行一次replacement canonical handoff。失敗時只修復
-   記錄的owner，不為追時間重跑。
+1. 凍結與push新clean exact source，執行一次replacement canonical handoff。同一components
+   timeout再現即停止；其他失敗只修復記錄的owner，不為追時間重跑。
 2. 自動evidence完整後交付Windows／Linux手測：modal default／Escape／destructive action；single-file、
    folder、BIDS review/cancel/retry且status不重複跑百分比；Saliency All／Single、long class／many channel、
    zoom／pan／reset、3D class／epoch-time／camera controls與close lifecycle。
