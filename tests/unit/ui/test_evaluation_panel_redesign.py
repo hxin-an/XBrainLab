@@ -1394,6 +1394,7 @@ def test_cancelled_desktop_close_retries_real_evaluation_panel_render(
         and panel._evaluation_render.operation_id != first_operation_id,
         timeout=1_000,
     )
+    qtbot.waitUntil(panel.evaluation_background_work_idle, timeout=1_000)
 
     assert panel.evaluation_background_work_idle() is True
     assert runtime._evaluation_registry.active_snapshots() == ()

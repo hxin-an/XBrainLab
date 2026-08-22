@@ -50,6 +50,13 @@ format check、configured basedpyright與MkDocs strict均通過；provisional Xv
 overlap、雙重scroll或舊參數卡高度。下一步只建立focused commit、產生clean exact-source artifact並執行
 一次canonical handoff；若失敗只修recorded owner，不為計時重跑。
 
+Exact `b25ee339` 的第一次canonical handoff已按規則在complete-regression停止：8,289個已執行
+cases中8,288 passed、1個既有Evaluation lifecycle test失敗；失敗測試在retry render publication到達後
+立即斷言worker已由稍後的finished callback釋放，屬observable terminal之前的test race，沒有Model
+Selection或產品source failure。修正scope只為該test等待既有`evaluation_background_work_idle` terminal；
+不改Evaluation product lifecycle、timeout或UI。先以該node的重複focused執行證明race已收斂，再建立
+replacement exact SHA並執行一次replacement canonical handoff；不為計時或成功率重跑舊SHA。
+
 Data Import 與 4B Assistant 模型不在本 slice。
 
 施工 checkpoint：catalog／provider chain至`627c5492`已由獨立gate確認無blocker／major；metadata
