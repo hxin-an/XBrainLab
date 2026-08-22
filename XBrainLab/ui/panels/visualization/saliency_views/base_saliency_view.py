@@ -833,6 +833,13 @@ class BaseSaliencyView(QWidget):
         self._native_plot_cleanup_state: _NativePlotCleanupState | None = None
         self._saliency_coverage: SaliencyMethodCoverageSnapshot | None = None
         self._render_commit_guard: Callable[[int, int], bool] | None = None
+        self._pan_state: (
+            tuple[object, float, float, tuple[float, float], tuple[float, float]] | None
+        ) = None
+        self._initial_axis_limits: dict[
+            int,
+            tuple[tuple[float, float], tuple[float, float]],
+        ] = {}
 
         self.init_ui()
 
@@ -1027,8 +1034,85 @@ class BaseSaliencyView(QWidget):
             return False
 
         self._release_previous_plot(old_canvas, old_figure)
+        self._install_canvas_interactions(installed_canvas)
         self.error_label.hide()
         return True
+
+    def reset_view(self) -> None:
+        """Restore the rendered axes to their data extents."""
+        if self.fig is None:
+            return
+        for axis in self.fig.axes:
+            limits = self._initial_axis_limits.get(id(axis))
+            if axis.images and limits is not None:
+                axis.set_xlim(limits[0])
+                axis.set_ylim(limits[1])
+        self._draw_canvas_now()
+
+    def _install_canvas_interactions(self, canvas: FigureCanvas) -> None:
+        """Enable pointer-local zoom and drag pan for detailed saliency plots."""
+        figure = canvas.figure
+        self._initial_axis_limits = {
+            id(axis): (axis.get_xlim(), axis.get_ylim())
+            for axis in figure.axes
+            if axis.images
+        }
+        canvas.mpl_connect("scroll_event", self._on_canvas_scroll)
+        canvas.mpl_connect("button_press_event", self._on_canvas_press)
+        canvas.mpl_connect("motion_notify_event", self._on_canvas_motion)
+        canvas.mpl_connect("button_release_event", self._on_canvas_release)
+
+    def _on_canvas_scroll(self, event: object) -> None:
+        axis = getattr(event, "inaxes", None)
+        if axis is None or not getattr(axis, "images", None):
+            return
+        xdata = getattr(event, "xdata", None)
+        ydata = getattr(event, "ydata", None)
+        if xdata is None or ydata is None:
+            return
+        factor = 0.8 if getattr(event, "step", 0) > 0 else 1.25
+        x0, x1 = axis.get_xlim()
+        y0, y1 = axis.get_ylim()
+        axis.set_xlim(xdata - (xdata - x0) * factor, xdata + (x1 - xdata) * factor)
+        axis.set_ylim(ydata - (ydata - y0) * factor, ydata + (y1 - ydata) * factor)
+        self._draw_canvas_now()
+
+    def _on_canvas_press(self, event: object) -> None:
+        axis = getattr(event, "inaxes", None)
+        if (
+            getattr(event, "button", None) != 1
+            or axis is None
+            or not getattr(axis, "images", None)
+            or getattr(event, "xdata", None) is None
+            or getattr(event, "ydata", None) is None
+        ):
+            return
+        self._pan_state = (
+            axis,
+            float(event.xdata),
+            float(event.ydata),
+            axis.get_xlim(),
+            axis.get_ylim(),
+        )
+
+    def _on_canvas_motion(self, event: object) -> None:
+        state = self._pan_state
+        if state is None or getattr(event, "inaxes", None) is not state[0]:
+            return
+        if (
+            getattr(event, "xdata", None) is None
+            or getattr(event, "ydata", None) is None
+        ):
+            return
+        axis, start_x, start_y, xlim, ylim = state
+        dx = start_x - float(event.xdata)
+        dy = start_y - float(event.ydata)
+        axis.set_xlim(xlim[0] + dx, xlim[1] + dx)
+        axis.set_ylim(ylim[0] + dy, ylim[1] + dy)
+        self._draw_canvas_now()
+
+    def _on_canvas_release(self, _event: object) -> None:
+        self._pan_state = None
 
     def _dispose_candidate_canvas(
         self,

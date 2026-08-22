@@ -185,7 +185,7 @@ class Saliency3D:
             callback=self._set_time_seconds,
             rng=self.engine.time_range_seconds,
             value=self.engine.initial_time_seconds,
-            title="Time (s)",
+            title="Epoch time (s)",
             fmt="%.3f",
             color="white",
             pointa=(0.025, 0.08),
@@ -201,7 +201,7 @@ class Saliency3D:
             **CHECKBOX_KWARGS,
         )
         self.plotter.add_text(
-            "Show channel",
+            "Electrodes",
             position=(60, 197),
             **CHECKBOX_TEXT_KWARGS,
         )
@@ -212,7 +212,11 @@ class Saliency3D:
             position=(25, 250),
             **CHECKBOX_KWARGS,
         )
-        self.plotter.add_text("Show head", position=(60, 247), **CHECKBOX_TEXT_KWARGS)
+        self.plotter.add_text(
+            "Head surface",
+            position=(60, 247),
+            **CHECKBOX_TEXT_KWARGS,
+        )
 
         self.channelActor = [self.plotter.add_mesh(ch, color="w") for ch in self.chs]
 

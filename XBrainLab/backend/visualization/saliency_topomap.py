@@ -21,7 +21,14 @@ class SaliencyTopoMapViz(Visualizer):
     subplot is created per class label.
     """
 
-    def _get_plt(self, method, absolute: bool) -> Any:
+    def _get_plt(
+        self,
+        method,
+        absolute: bool,
+        *,
+        selected_label_key: object | None = None,
+        display_mode: str = "all",
+    ) -> Any:
         """Render the topographic saliency map figure.
 
         Args:
@@ -99,10 +106,22 @@ class SaliencyTopoMapViz(Visualizer):
             absolute=absolute,
             normalized=bool(getattr(self.epoch_data, "normalized", False)),
         )
+        if display_mode not in {"all", "single"}:
+            raise ValueError("display_mode must be 'all' or 'single'")
+        plotted_by_label = display_by_label
+        if display_mode == "single":
+            plotted_by_label = [
+                item for item in display_by_label if item[0] == selected_label_key
+            ]
+            if not plotted_by_label:
+                raise ValueError("Selected saliency class is not available.")
+        visible_label_number = len(plotted_by_label)
+        rows = 1 if visible_label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
+        cols = int(np.ceil(visible_label_number / rows))
         plot_axes = []
         image = None
         for plot_index, (_label_key, label_name, data) in enumerate(
-            display_by_label,
+            plotted_by_label,
         ):
             ax = fig.add_subplot(rows, cols, plot_index + 1)
             plot_axes.append(ax)
