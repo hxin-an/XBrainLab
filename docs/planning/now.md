@@ -62,11 +62,17 @@ tests明確declare modal與空cache環境，不變更product modal、public fixt
 focused behavior suites為`407 passed`，authoritative scripts shard為`1155 passed`，兩個非重疊
 subagent closure gate無新blocker／major。Saliency的舊capture不屬於final integration SHA，因此不用它
 作為candidate evidence；由final canonical visualization gate重產exact-source artifact。
+final handoff的`chatpanel-dpi`進一步暴露standalone capture仍patch舊`QMessageBox.critical`，
+未隔離新`show_alert`，因此在download-failure evidence卡住至180秒timeout。Pytest不得以
+`auto_accept_modals`掩蓋此問題；capture script改為明確patch已遷移的presentation seam，原測試維持
+unexpected-modal fail-fast。不改product modal或DPI gate timeout／artifact policy。
+原三個red nodes在此fail-fast設定下再次`3 passed`，standalone ChatPanel DPI gate的三個scale
+subprocess全部完成並在22秒內通過；Ruff、format與Basedpyright無新diagnostic。
 
 下一步固定為：
 
-1. 凍結與push新clean exact source，在lock-exact Poetry環境執行一次replacement canonical
-   handoff；若失敗，只修復記錄的owner，不為追時間重跑。
+1. 凍結與push新clean exact source，執行一次replacement canonical handoff。失敗時只修復
+   記錄的owner，不為追時間重跑。
 2. 自動evidence完整後交付Windows／Linux手測：modal default／Escape／destructive action；single-file、
    folder、BIDS review/cancel/retry且status不重複跑百分比；Saliency All／Single、long class／many channel、
    zoom／pan／reset、3D class／epoch-time／camera controls與close lifecycle。

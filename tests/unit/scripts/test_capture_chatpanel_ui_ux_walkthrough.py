@@ -176,9 +176,8 @@ def test_source_fingerprint_manifest_covers_every_runtime_capture_owner() -> Non
 
 
 def test_capture_walkthrough_replays_real_widget_and_writes_gate(
-    qapp, tmp_path, auto_accept_modals
+    qapp, tmp_path
 ) -> None:
-    del auto_accept_modals
     payload = capture_walkthrough(qapp, tmp_path)
     current_fingerprint = source_fingerprint()
 
@@ -370,10 +369,7 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
     assert "does not demonstrate windows native dpi" in readme.lower()
 
 
-def test_validate_payload_rejects_one_failed_geometry_check(
-    qapp, tmp_path, auto_accept_modals
-) -> None:
-    del auto_accept_modals
+def test_validate_payload_rejects_one_failed_geometry_check(qapp, tmp_path) -> None:
     payload = capture_walkthrough(qapp, tmp_path)
     broken = copy.deepcopy(payload)
     broken["screens"][0]["checks"]["no_horizontal_scroll"] = False
