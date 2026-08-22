@@ -9,16 +9,19 @@ import gc
 import io
 import json
 import logging
+import shutil
 import tempfile
+import time
 import warnings
 from collections import Counter
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
 import mne
 import numpy as np
+import psutil
 from scipy.io import savemat
 
 if __package__:
@@ -44,6 +47,7 @@ from XBrainLab.backend.utils.logger import logger as xbrainlab_logger
 ARTIFACT_DIR = ROOT / "build" / "dev-artifacts" / "data-interpretation"
 ARTIFACT_JSON = "format-capability-matrix.json"
 ARTIFACT_MARKDOWN = "format-capability-matrix.md"
+IMPORT_LOADING_PROFILE_JSON = "import-loading-profile.json"
 _REPO_PUBLIC_FIXTURE_DIR = Path("tests/fixtures/data/public")
 WORKFLOW_STAGES = ("scan", "preview", "validate", "apply")
 REQUIRED_PUBLIC_SOURCE_FAMILIES = frozenset(
@@ -1223,6 +1227,8 @@ def build_format_capability_snapshot() -> dict[str, Any]:
 def run_real_workflow_case(
     case: RealWorkflowCase,
     repo_root: Path = ROOT,
+    *,
+    collect_timing: bool = False,
 ) -> dict[str, Any]:
     """Run one real file through scan, preview, validate, and apply."""
     source_path = _resolve_source_entry(case.source_entry, repo_root)
@@ -1273,26 +1279,55 @@ def run_real_workflow_case(
         return result
 
     service: ApplicationService | None = None
+    timings: dict[str, dict[str, int | float | None]] = {}
     with _suppress_application_info_logs(), mne.use_log_level("ERROR"):
         try:
             service = get_application_service(Study())
-            scan = service.execute(
+            process = psutil.Process()
+
+            def _execute(stage: str, command: Any) -> Any:
+                if not collect_timing:
+                    return service.execute(command)
+                cpu_before = process.cpu_times()
+                io_before = process.io_counters()
+                started = time.perf_counter()
+                command_result = service.execute(command)
+                cpu_after = process.cpu_times()
+                io_after = process.io_counters()
+                timings[stage] = {
+                    "wall_seconds": round(time.perf_counter() - started, 6),
+                    "cpu_seconds": round(
+                        (cpu_after.user - cpu_before.user)
+                        + (cpu_after.system - cpu_before.system),
+                        6,
+                    ),
+                    "rss_bytes": process.memory_info().rss,
+                    "read_bytes": max(io_after.read_bytes - io_before.read_bytes, 0),
+                    "write_bytes": max(
+                        io_after.write_bytes - io_before.write_bytes,
+                        0,
+                    ),
+                }
+                return command_result
+
+            scan = _execute(
+                "scan",
                 ScanSourceCommand(
                     source_path=str(source_path),
                     source_hint=case.source_hint,
-                )
+                ),
             )
             stages["scan"] = _stage_evidence(scan)
             if not scan.ok:
                 return _failed_workflow_result(result, "scan", scan.message)
 
             choices = _workflow_choices(case, repo_root)
-            preview = service.execute(PreviewInterpretationCommand(choices=choices))
+            preview = _execute("preview", PreviewInterpretationCommand(choices=choices))
             stages["preview"] = _stage_evidence(preview)
             if not preview.ok:
                 return _failed_workflow_result(result, "preview", preview.message)
 
-            validation = service.execute(ValidateInterpretationCommand())
+            validation = _execute("validate", ValidateInterpretationCommand())
             stages["validate"] = _stage_evidence(validation)
             if not validation.ok:
                 return _failed_workflow_result(
@@ -1312,7 +1347,8 @@ def run_real_workflow_case(
                     + "; ".join(validation_payload.get("blocked_reasons", [])),
                 )
 
-            apply_result = service.execute(
+            apply_result = _execute(
+                "apply",
                 ApplyInterpretationCommand(confirmed=True),
             )
             stages["apply"] = _stage_evidence(apply_result)
@@ -1424,6 +1460,8 @@ def run_real_workflow_case(
                     "reason": "Real ApplicationService lifecycle passed.",
                 }
             )
+            if collect_timing:
+                result["timings"] = timings
         except Exception as exc:
             failed_stage = next(
                 (stage for stage in WORKFLOW_STAGES if not bool(stages[stage]["ok"])),
@@ -1491,6 +1529,80 @@ def build_real_workflow_snapshot(
             ),
         },
     }
+
+
+def build_import_loading_profile(repo_root: Path = ROOT) -> dict[str, Any]:
+    """Capture one cold and one warm command-path sample for import triage.
+
+    The warm sample is intentionally a second fresh ApplicationService in the
+    same process: it measures the user-visible filesystem/OS-cache condition
+    without pretending that a prior reviewed interpretation is reusable.
+    """
+    cases_by_id = {case.case_id: case for case in REAL_WORKFLOW_CASES}
+    file_case = cases_by_id["derived_edf"]
+    samples: list[dict[str, Any]] = []
+    with tempfile.TemporaryDirectory(prefix="xbrainlab-import-profile-") as temp_dir:
+        folder_root = Path(temp_dir)
+        folder_name = "single-recording-folder"
+        folder_source = folder_root / folder_name
+        folder_source.mkdir()
+        source_file = _resolve_source_entry(file_case.source_entry, repo_root)
+        shutil.copy2(source_file, folder_source / source_file.name)
+        cases = (
+            ("single_file", file_case, repo_root),
+            (
+                "folder",
+                replace(
+                    file_case,
+                    case_id="single_recording_folder",
+                    title="Single-recording folder import lifecycle",
+                    source_entry=folder_name,
+                    source_hint="folder",
+                ),
+                folder_root,
+            ),
+            ("bids", cases_by_id["public_mne_bids_eeg"], repo_root),
+        )
+        for source_shape, case, case_root in cases:
+            for cache_state in ("cold", "warm"):
+                sample = run_real_workflow_case(
+                    case,
+                    case_root,
+                    collect_timing=True,
+                )
+                samples.append(
+                    {
+                        "source_shape": source_shape,
+                        "cache_state": cache_state,
+                        "case_id": case.case_id,
+                        "status": sample["status"],
+                        "failed_stage": sample["failed_stage"],
+                        "timings": sample.get("timings", {}),
+                    }
+                )
+    return {
+        "kind": "data_import_loading_baseline",
+        "command_path": list(WORKFLOW_STAGES),
+        "warm_definition": "fresh ApplicationService in the same process",
+        "samples": samples,
+        "claim_boundary": (
+            "One-shot local baseline only; it does not establish a performance "
+            "budget or justify cache, loader, or EEG-semantic changes."
+        ),
+    }
+
+
+def write_import_loading_profile(
+    profile: Mapping[str, Any],
+    output_dir: Path,
+) -> Path:
+    """Write the ignored, local-only import loading baseline artifact."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / IMPORT_LOADING_PROFILE_JSON
+    path.write_text(
+        json.dumps(profile, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return path
 
 
 def summarize_real_workflow_results(
@@ -2801,7 +2913,23 @@ def main() -> int:
         default=ARTIFACT_DIR,
         help="Artifact output directory when --write-artifacts is set.",
     )
+    parser.add_argument(
+        "--profile-import-loading",
+        action="store_true",
+        help=(
+            "Write one cold and one warm Data Import timing baseline for the "
+            "single-file, folder, and BIDS real command paths."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.profile_import_loading:
+        profile_path = write_import_loading_profile(
+            build_import_loading_profile(),
+            args.output_dir,
+        )
+        print(f"Wrote {profile_path}")
+        return 0
 
     snapshot = build_data_interpretation_validation_snapshot()
     if args.write_artifacts:

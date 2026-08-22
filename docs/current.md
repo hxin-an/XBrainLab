@@ -13,7 +13,7 @@ local Granite透過18個核准action進入相同GUI與Command workflow。
 | 區域 | 目前能相信 | 邊界 |
 | --- | --- | --- |
 | Command spine | `ApplicationService / Command API` 是 GUI、Assistant 與 scripts 共用的產品命令入口。 | Lower-level domain tests 仍可直接使用 Study/managers；不得把它們接回產品 UI mutation。 |
-| Data import | Formal BIDS subject selection、reviewed import、external/internal label mapping、recipe與多格式 loader存在。 | 不是 full BIDS validator，也不能外推到所有資料集與 proprietary formats。 |
+| Data import | Formal BIDS subject selection、reviewed import、external/internal label mapping、recipe與多格式 loader存在；loading以穩定 phase/activity 呈現，不把各 command 的局部計數當整體百分比。 | 不是 full BIDS validator，也不能外推到所有資料集與 proprietary formats。 |
 | Preprocess / Epoch | Filtering、resample、rereference、normalize、channel selection與reviewed epoch flow存在，長工作有 owned lifecycle。 | Protocol choice與科學正確性仍由使用者負責。 |
 | Split / Training | Split preview、training settings、fold/repeat plans與training history存在。每次 Start Training有獨立 round identity。 | Recommendation不是AutoML或最佳參數保證。 |
 | Model catalog | Pinned Braindecode 1.6.1提供61個可搜尋contracts，其中54個符合目前classification workflow而可選；provider失效時改列distinct `legacy.braindecode.*` recovery IDs。Model Selection使用catalog reviewed defaults。 | 不可選contracts會顯示license、task或resource reason；桌面UI不提供model constructor調參；upstream與legacy禁止silent fallback，catalog execution不代表科學品質。 |

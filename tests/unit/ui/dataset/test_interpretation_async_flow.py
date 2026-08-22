@@ -1869,7 +1869,7 @@ def test_repreview_hands_loading_ownership_to_the_visible_preview(
     assert outcome.status is InteractionStatus.CANCELLED
     loading.accept.assert_not_called()
     loading_token = continue_flow.call_args.kwargs["loading_token"]
-    assert loading_token is handler._data_interpretation._active_loading_token
+    assert loading_token is handler._data_interpretation._loading_session.token
 
 
 def test_apply_uses_the_generation_reviewed_by_the_user(qtbot, monkeypatch):
@@ -2800,7 +2800,7 @@ def test_review_flow_uses_slow_worker_without_blocking_gui(qtbot, monkeypatch):
 
     assert started is not None
     assert started.status is InteractionStatus.ACCEPTED
-    assert statuses == ["Preparing import review..."]
+    assert statuses == ["Preparing selected EEG data..."]
     assert elapsed < 0.1
     assert len(loading_dialogs) == 1
     assert loading_dialogs[0].visible is True
@@ -2808,12 +2808,12 @@ def test_review_flow_uses_slow_worker_without_blocking_gui(qtbot, monkeypatch):
     QTimer.singleShot(0, lambda: heartbeat.append(True))
     qtbot.waitUntil(lambda: bool(heartbeat), timeout=1000)
 
-    loading_token = handler._data_interpretation._active_loading_token
+    loading_token = handler._data_interpretation._loading_session.token
     worker_release.set()
     qtbot.waitUntil(lambda: continue_flow.call_count == 1, timeout=1000)
     assert loading_dialogs[0].closed is False
     assert continue_flow.call_args.kwargs["loading_token"] is loading_token
-    assert statuses == ["Preparing import review...", "Import review ready."]
+    assert statuses == ["Preparing selected EEG data...", "Import review ready."]
     handler._data_interpretation._close_loading_dialog(loading_token)
 
 
@@ -2849,13 +2849,13 @@ def test_review_keeps_atomic_loading_ownership_across_slow_preview_construction(
         def __init__(self, parent, **_kwargs) -> None:
             super().__init__(parent)
             preview_instances.append(self)
-            loading = handler._data_interpretation._active_loading_dialog
+            loading = handler._data_interpretation._loading_session.dialog
             progress = getattr(loading, "progress_bar", None)
             assert loading is not None and loading.isVisible()
             assert progress is not None
             assert progress.property("operationId") == "review-operation-1"
             time.sleep(5.1)
-            assert loading is handler._data_interpretation._active_loading_dialog
+            assert loading is handler._data_interpretation._loading_session.dialog
             assert loading.isVisible()
             assert progress.property("operationId") == "review-operation-1"
 
@@ -2939,7 +2939,7 @@ def test_review_keeps_atomic_loading_ownership_across_slow_preview_construction(
     qtbot.waitUntil(lambda: bool(preview_results), timeout=8_000)
     assert preview_results == [int(QDialog.DialogCode.Rejected)]
     assert release_visibility == [True]
-    assert handler._data_interpretation._active_loading_dialog is None
+    assert handler._data_interpretation._loading_session is None
 
 
 def test_loading_dialog_projects_owned_operation_kind(qtbot) -> None:
@@ -2953,7 +2953,8 @@ def test_loading_dialog_projects_owned_operation_kind(qtbot) -> None:
         initial_step="",
         retry=lambda: None,
     )
-    coordinator._active_loading_operation_id = "apply-operation-1"
+    assert coordinator._loading_session is not None
+    coordinator._loading_session.operation_id = "apply-operation-1"
     coordinator._bindings = replace(
         coordinator._bindings,
         get_application_operation=lambda _owner, _operation_id: SimpleNamespace(
@@ -2966,9 +2967,13 @@ def test_loading_dialog_projects_owned_operation_kind(qtbot) -> None:
         ),
     )
 
-    coordinator._refresh_loading_operation_status()
+    coordinator._present_loading_operation_snapshot(
+        "apply-operation-1",
+        coordinator._bindings.get_application_operation(panel, "apply-operation-1"),
+    )
 
-    loading = coordinator._active_loading_dialog
+    assert coordinator._loading_session is not None
+    loading = coordinator._loading_session.dialog
     assert loading is not None
     assert loading.progress_bar.property("operationKind") == "import_apply"
     coordinator._close_loading_dialog(token)
@@ -2986,7 +2991,8 @@ def test_preview_constructor_failure_keeps_recoverable_loading_error(
         initial_step="",
         retry=lambda: None,
     )
-    loading = handler._data_interpretation._active_loading_dialog
+    assert handler._data_interpretation._loading_session is not None
+    loading = handler._data_interpretation._loading_session.dialog
     assert loading is not None
 
     class _BrokenPreviewDialog:
@@ -3005,8 +3011,9 @@ def test_preview_constructor_failure_keeps_recoverable_loading_error(
     )
 
     assert outcome.status is InteractionStatus.FAILED
-    assert handler._data_interpretation._active_loading_token is token
-    assert handler._data_interpretation._active_loading_dialog is loading
+    assert handler._data_interpretation._loading_session is not None
+    assert handler._data_interpretation._loading_session.token is token
+    assert handler._data_interpretation._loading_session.dialog is loading
     assert loading.isVisible()
     assert loading.status_title.text() == "Import review could not be prepared"
     assert loading.retry_button.isVisible()
@@ -3057,7 +3064,7 @@ def test_preview_does_not_exec_after_transition_context_is_invalidated(
 
     assert outcome.status is InteractionStatus.CANCELLED
     assert exec_calls == []
-    assert handler._data_interpretation._active_loading_dialog is None
+    assert handler._data_interpretation._loading_session is None
 
 
 def test_loading_dialog_is_not_disabled_with_the_busy_dataset_panel(qtbot):
@@ -3071,7 +3078,8 @@ def test_loading_dialog_is_not_disabled_with_the_busy_dataset_panel(qtbot):
         initial_step="",
         retry=lambda: None,
     )
-    dialog = handler._data_interpretation._active_loading_dialog
+    assert handler._data_interpretation._loading_session is not None
+    dialog = handler._data_interpretation._loading_session.dialog
     panel.setEnabled(False)
 
     assert handler._data_interpretation._loading_dialog_is_active(token)
@@ -3197,15 +3205,8 @@ def test_cancelled_review_loading_does_not_reopen_wizard(qtbot, monkeypatch):
 
     assert outcome is not None
     assert worker_started.wait(timeout=1.0)
-    loading = handler._data_interpretation._active_loading_dialog
-    qtbot.waitUntil(
-        lambda: bool(loading.stages) and loading.stages[-1][0] == "Reading BIDS events",
-        timeout=1_000,
-    )
-    assert loading.stages[-1] == (
-        "Reading BIDS events",
-        "2 of 5 items complete",
-    )
+    assert handler._data_interpretation._loading_session is not None
+    loading = handler._data_interpretation._loading_session.dialog
     loading.cancelled_by_user = True
     loading.rejected.emit()
     assert cancelled_operations == ["review-operation-1"]

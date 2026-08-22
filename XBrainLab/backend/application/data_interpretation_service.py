@@ -274,7 +274,7 @@ class DataInterpretationCommandService:
         application_boundary: ApplicationDiscoveryBoundary,
     ) -> InterpretationDiscoveryPlan:
         """Capture immutable review state before detached filesystem work."""
-        owned_work_checkpoint("Admitting Data Import discovery")
+        owned_work_checkpoint("Preparing selected EEG data")
         return InterpretationDiscoveryPlan.capture(
             command,
             application=application_boundary,
@@ -318,7 +318,7 @@ class DataInterpretationCommandService:
             safe_preview_admissions=detached._safe_preview_admissions,
             bids_dataset_indexes=detached._bids_dataset_indexes,
         )
-        owned_work_checkpoint("Data Import discovery prepared")
+        owned_work_checkpoint("Checking selected EEG data")
         return prepared
 
     def commit_prepared_interpretation_discovery(

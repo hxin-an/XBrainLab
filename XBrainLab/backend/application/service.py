@@ -3042,7 +3042,7 @@ class ApplicationService(Observable):
         """Run source discovery outside the shared lock and publish if current."""
         name = command_name(command)
         with self._command_lock:
-            owned_work_checkpoint("Admitting Data Import discovery")
+            owned_work_checkpoint("Preparing selected EEG data")
             admission = self.shutdown_lifecycle.snapshot()
             if admission.closed:
                 return self._closed_command_result(command)
@@ -3117,7 +3117,7 @@ class ApplicationService(Observable):
                 )
 
         with self._command_lock:
-            owned_work_checkpoint("Admitting prepared Data Import discovery")
+            owned_work_checkpoint("Checking selected EEG data")
             admission = self.shutdown_lifecycle.snapshot()
             if admission.closed:
                 return self._closed_command_result(command)
@@ -3314,7 +3314,7 @@ class ApplicationService(Observable):
         """Prepare Raw data outside the command lock, then commit a guarded payload."""
         name = CommandName.APPLY_INTERPRETATION
         with self._command_lock:
-            owned_work_checkpoint("Admitting interpretation apply")
+            owned_work_checkpoint("Preparing reviewed EEG import")
             admission = self.shutdown_lifecycle.snapshot()
             if admission.closed:
                 return self._closed_command_result(command)

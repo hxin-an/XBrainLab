@@ -2,7 +2,7 @@
 
 最後更新：`2026-08-22`
 
-## 目前焦點
+## 歷史 snapshot（非 active dispatch）
 
 CI reliability branch 已在 PR #44 的 exact head
 `a679f1417649f4266a2af84809684e40b2109293` 完成所有 applicable non-skipped checks，使用者於
