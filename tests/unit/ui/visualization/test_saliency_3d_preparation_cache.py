@@ -151,8 +151,10 @@ def widget(qtbot, monkeypatch) -> Saliency3DPlotWidget:
 
 
 def _select_class(widget: Saliency3DPlotWidget, name: str) -> None:
+    index = widget.class_combo.findText(name)
+    widget._requested_class_key = widget.class_combo.itemData(index)
     widget._selector_syncing = True
-    widget.class_combo.setCurrentIndex(widget.class_combo.findText(name))
+    widget.class_combo.setCurrentIndex(index)
     widget._selector_syncing = False
 
 

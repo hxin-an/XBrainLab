@@ -864,8 +864,11 @@ class BaseSaliencyView(QWidget):
 
         if getattr(self, "_scrollable_canvas", False):
             self._canvas_scroll_area = QScrollArea(self)
-            self._canvas_scroll_area.setWidgetResizable(False)
+            self._canvas_scroll_area.setWidgetResizable(True)
             self._canvas_scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+            self._canvas_scroll_area.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+            )
             self._canvas_scroll_area.setWidget(self.canvas)
             self.main_layout.addWidget(self._canvas_scroll_area)
         else:

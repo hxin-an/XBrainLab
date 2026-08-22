@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QGridLayout,
     QGroupBox,
@@ -48,13 +49,18 @@ from XBrainLab.ui.interaction_outcome import (
 )
 
 
+class _SaliencyWidgetStub(QWidget):
+    class_selected = pyqtSignal(object)
+
+
 def _widget_factory(parent=None):
-    widget = QWidget(parent)
+    widget = _SaliencyWidgetStub(parent)
     mock_widget = cast(Any, widget)
     mock_widget.show_error = MagicMock()
     mock_widget.show_message = MagicMock()
     mock_widget.set_saliency_coverage = MagicMock()
     mock_widget.update_plot = MagicMock()
+    mock_widget.select_class_key = MagicMock()
     mock_widget.repaint = MagicMock()
     return widget
 
@@ -188,6 +194,20 @@ def test_visualization_selectors_have_visible_dropdown_affordance(qtbot):
         style = combo.styleSheet()
         assert "QComboBox::down-arrow" in style
         assert "chevron-down.svg" in style
+
+
+def test_saliency_view_selector_is_inside_the_visible_control_bar(qtbot) -> None:
+    panel, _ = _make_panel(qtbot)
+    panel.resize(800, 800)
+    panel.show()
+    qtbot.waitExposed(panel)
+
+    assert panel.saliency_view_label.isVisible()
+    assert panel.saliency_view_mode.isVisible()
+    assert (
+        panel.saliency_view_mode.geometry().bottom()
+        <= panel.ctrl_bar.contentsRect().bottom()
+    )
 
 
 def test_visualization_shutdown_cancels_active_explicit_saliency(qtbot, monkeypatch):
@@ -857,7 +877,11 @@ def test_spectrogram_normalize_uses_raw_publication_and_display_transform(
     publication, absolute = spectrogram.update_plot.call_args.args
     assert publication.data.normalized is False
     assert absolute is False
-    assert spectrogram.update_plot.call_args.kwargs == {"display_normalized": True}
+    assert spectrogram.update_plot.call_args.kwargs == {
+        "display_normalized": True,
+        "selected_label_key": None,
+        "display_mode": "all",
+    }
 
 
 def test_visualization_controls_stay_in_a_compact_two_row_grid(qtbot):
@@ -3915,4 +3939,6 @@ def test_visualization_panel_uses_typed_render_publication_without_live_getters(
             operation_id="render-operation",
         ),
         False,
+        selected_label_key=None,
+        display_mode="all",
     )

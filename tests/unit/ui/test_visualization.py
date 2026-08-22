@@ -382,10 +382,17 @@ class TestSaliencyMapWidget:
             visualizer.get_plt.assert_called_once_with(
                 method="Gradient",
                 absolute=False,
+                selected_label_key=None,
+                display_mode="all",
             )
         assert w.fig is new_fig
         assert w.canvas is not None
-        assert w.canvas.parent() is w
+        assert w._canvas_scroll_area is not None
+        assert w.canvas.parent() is w._canvas_scroll_area.viewport()
+        assert w._canvas_scroll_area.widgetResizable()
+        assert w._canvas_scroll_area.horizontalScrollBarPolicy() is (
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         assert not w.error_label.isVisible()
 
     def test_update_plot_renders_visualizer_in_background_worker(self, qtbot):
@@ -414,8 +421,35 @@ class TestSaliencyMapWidget:
             visualizer.get_plt.assert_called_once_with(
                 method="Gradient",
                 absolute=False,
+                selected_label_key=None,
+                display_mode="all",
             )
         assert not w.error_label.isVisible()
+
+    def test_overview_tile_emits_exact_canonical_class_key(self, qtbot):
+        from types import SimpleNamespace
+
+        from matplotlib.figure import Figure
+
+        from XBrainLab.ui.panels.visualization.saliency_views.map_view import (
+            SaliencyMapWidget,
+        )
+
+        widget = SaliencyMapWidget()
+        qtbot.addWidget(widget)
+        figure = Figure()
+        axis = figure.add_subplot(111)
+        axis.imshow([[1.0, 2.0], [3.0, 4.0]])
+        canonical_key = ("subject", 7)
+        axis._xbrainlab_class_key = canonical_key
+        selected: list[object] = []
+        widget.class_selected.connect(selected.append)
+
+        widget._on_tile_activated(
+            SimpleNamespace(button=1, inaxes=axis),
+        )
+
+        assert selected == [canonical_key]
 
     def test_update_plot_blocks_partial_class_coverage_before_renderer(self, qtbot):
         from XBrainLab.ui.panels.visualization.saliency_views.map_view import (
@@ -580,8 +614,20 @@ class TestSaliencySpectrogramWidget:
         publication = _render_publication()
 
         with patch.object(widget, "_render_figure_async") as render_async:
-            widget.update_plot(publication, False, display_normalized=False)
-            widget.update_plot(publication, False, display_normalized=True)
+            widget.update_plot(
+                publication,
+                False,
+                display_normalized=False,
+                selected_label_key=0,
+                display_mode="single",
+            )
+            widget.update_plot(
+                publication,
+                False,
+                display_normalized=True,
+                selected_label_key=0,
+                display_mode="single",
+            )
 
         assert render_async.call_count == 2
         render_callables = [call.args[0] for call in render_async.call_args_list]
@@ -602,6 +648,14 @@ class TestSaliencySpectrogramWidget:
         assert [render_callable.args[3] for render_callable in render_callables] == [
             False,
             True,
+        ]
+        assert [render_callable.args[4] for render_callable in render_callables] == [
+            0,
+            0,
+        ]
+        assert [render_callable.args[5] for render_callable in render_callables] == [
+            "single",
+            "single",
         ]
 
 
@@ -757,6 +811,8 @@ class TestSaliency3DPlotWidget:
             w.plot_layout.addWidget(label)
             w.plot_layout.addWidget(plotter)
             cast(Any, w).plotter_widget = plotter
+            cast(Any, w)._saliency_scene = MagicMock()
+            w.scene_controls.show()
 
             w.clear_plot()
 
@@ -764,6 +820,50 @@ class TestSaliency3DPlotWidget:
             assert plotter.closed is True
             assert plotter.deleted is True
             assert w.plotter_widget is None
+            assert cast(Any, w)._saliency_scene is None
+            assert w.scene_controls.isHidden()
+
+    def test_3d_pending_canonical_key_survives_first_duplicate_name_sync(
+        self,
+        qtbot,
+    ):
+        with patch(
+            "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
+        ):
+            from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
+                Saliency3DPlotWidget,
+            )
+
+            widget = Saliency3DPlotWidget(parent=None)
+            qtbot.addWidget(widget)
+            classes = [
+                SaliencyClassCoverageSnapshot(
+                    class_index=0,
+                    display_name="motor",
+                    store_key="left-run",
+                    available=True,
+                ),
+                SaliencyClassCoverageSnapshot(
+                    class_index=1,
+                    display_name="motor",
+                    store_key="right-run",
+                    available=True,
+                ),
+            ]
+
+            widget.select_class_key("right-run")
+            widget._sync_class_selector(classes, method="Gradient")
+
+            assert [
+                widget.class_combo.itemText(index)
+                for index in range(widget.class_combo.count())
+            ] == ["motor", "motor"]
+            assert [
+                widget.class_combo.itemData(index)
+                for index in range(widget.class_combo.count())
+            ] == ["left-run", "right-run"]
+            assert widget.class_combo.currentData() == "right-run"
+            assert cast(Any, widget)._class_coverage[repr("right-run")] == classes[1]
 
     def test_update_plot_blocks_offscreen_before_qtinteractor(self, qtbot, monkeypatch):
         monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
@@ -822,8 +922,8 @@ class TestSaliency3DPlotWidget:
             assert w.class_combo.itemText(0) == "left"
             assert w.class_combo.itemText(1) == "right"
             assert start_engine.call_count == 2
-            assert start_engine.call_args_list[0].args[1] == "left"
-            assert start_engine.call_args_list[1].args[1] == "right"
+            assert start_engine.call_args_list[0].args[1] == 0
+            assert start_engine.call_args_list[1].args[1] == 1
 
     def test_3d_class_selector_blocks_missing_saliency_class_without_rendering(
         self,
@@ -851,9 +951,9 @@ class TestSaliency3DPlotWidget:
             ):
                 w.update_plot(publication, False)
                 assert start_engine.call_count == 1
-                assert w.class_combo.currentData() == "left"
+                assert w.class_combo.currentData() == 0
 
-                right_index = w.class_combo.findData("right")
+                right_index = w.class_combo.findData(1)
                 assert right_index >= 0
                 right_item = cast(
                     QStandardItemModel,
@@ -929,8 +1029,8 @@ class TestSaliency3DPlotWidget:
                 widget.update_plot(publication, False)
 
             assert start_engine.call_count == 1
-            assert start_engine.call_args.args[1] == "left"
-            right_index = widget.class_combo.findData("right")
+            assert start_engine.call_args.args[1] == 0
+            right_index = widget.class_combo.findData(1)
             right_item = cast(
                 QStandardItemModel,
                 widget.class_combo.model(),
@@ -1229,7 +1329,7 @@ class TestSaliency3DPlotWidget:
         assert captured_kwargs["method"] == "VarGrad"
         assert captured_kwargs["absolute"] is True
 
-    def test_3d_head_plot_uses_tuple_slider_range_for_pyvista(self):
+    def test_3d_head_plot_leaves_interaction_controls_to_qt(self):
         from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_head import (
             Saliency3D,
         )
@@ -1281,7 +1381,7 @@ class TestSaliency3DPlotWidget:
 
         saliency.get_3d_head_plot()
 
-        assert saliency.plotter.slider_ranges == [(-0.2, 0.72)]
+        assert saliency.plotter.slider_ranges == []
 
     def test_3d_head_plot_centers_scene_after_adding_meshes(self):
         from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_head import (

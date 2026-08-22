@@ -72,13 +72,13 @@ class SaliencySpectrogramWidget(BaseSaliencyView):
                         publication.request.run,
                         method,
                     ),
-                    selected_label_key,
-                    display_mode,
                     (
                         publication.data.normalized
                         if display_normalized is None
                         else bool(display_normalized)
                     ),
+                    selected_label_key,
+                    display_mode,
                 ),
                 error_context="saliency spectrogram",
                 publication_generation=publication.generation,
