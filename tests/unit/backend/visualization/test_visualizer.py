@@ -957,6 +957,30 @@ def test_saliency_map_detail_keeps_shared_scale_and_reserves_colorbar_column():
     plt.close(fig)
 
 
+def test_saliency_map_overview_declares_minimum_scrollable_tile_height():
+    epochs = Epochs(get_preprocessed_data_list(2))
+    epochs.label_map = {index: f"class {index}" for index in range(8)}
+    epochs.event_id = {f"class {index}": index for index in range(8)}
+    gradient = {index: np.ones((1, len(ch_names), 32)) for index in range(8)}
+    eval_record = _bound_eval_record(
+        epochs,
+        np.arange(8),
+        np.ones((8, 8)),
+        gradient,
+        gradient.copy(),
+        gradient.copy(),
+        gradient.copy(),
+        gradient.copy(),
+    )
+
+    fig = VisualizerType.SaliencyMap.value(eval_record, epochs).get_plt(
+        "Gradient", False
+    )
+
+    assert fig._xbrainlab_min_canvas_height >= 720
+    plt.close(fig)
+
+
 def test_topomap_colorbar_tight_bounds_leave_readable_right_margin():
     epochs = Epochs(get_preprocessed_data_list(2))
     epochs.label_map = {0: "left", 1: "right"}

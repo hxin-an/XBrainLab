@@ -2,55 +2,6 @@
 
 最後更新：`2026-08-22`
 
-## Active slice: Saliency readability
-
-### Problem and evidence
-
-The current 2D saliency map always renders every true class in a fixed one/two-row
-grid.  It has no focused class view, dense channel labels collide at realistic
-channel counts, and the shared colorbar can overlap the right-most axes.  The 3D
-view exposes controls inside the renderer although its epoch-relative, true-class
-mean semantics are not visible to the user.
-
-### Outcome, scope and non-goals
-
-Deliver an `All classes` comparison page (one tile per true class, never a
-mathematical aggregate) and a `Single class` detailed page with class selection,
-tile-to-detail navigation, shared display scale, channel tick decimation and
-zoom/pan/reset.  The 3D view remains single-class and moves its explanatory
-controls into Qt.  In scope are the saliency presentation widgets, their
-visualizer layout, focused tests and visual artifact.  Saliency calculation,
-normalization, saved DTO truth, backend owners, event-anchor semantics and
-Visualization warning dialogs are explicitly out of scope.
-
-### Owners, deletion and implementation
-
-- Owners before/after: ApplicationService and the saliency renderer remain data
-  publication owners; visualization widgets own only local presentation state.
-  No new state or scientific owner is introduced.
-- Deletion candidates: fixed row layout, implicit `fig.colorbar(ax=...)` layout,
-  renderer-overlay controls, and duplicated per-view class selection.
-- Add observable red regressions for non-overlapping colorbar, class-mode
-  navigation/selection and detailed-view tick limits before the change.  Retain
-  existing rendering characterization for lifecycle work.
-- Use canonical class keys, reset zoom on changed publication/class/mode, preserve
-  a shared scale, and do not draw an event marker without a verified anchor.
-- Complexity review accepted: 2D selection/layout work is `+294/-33/net +261`
-  production LOC across ten production files. Owners remain unchanged; the extra
-  files are the existing Map/Spectrogram/Topo presentation consumers plus their
-  shared canvas and panel, not new owners.  Commit one contains 2D behavior;
-  commit two must delete redundant 3D local/overlay controls rather than add an
-  adapter layer.
-
-### Focused validation and stop condition
-
-Run focused visualization tests plus offscreen render coverage for 2/8 classes,
-long labels and dense channels; manually inspect the exact-source artifact.  Run
-Ruff and format in check-only mode.  Stop if the change requires a new backend
-owner/DTO truth, alters numerical saliency, or crosses the UI slice complexity
-ceiling without a separate review.  UI authorization is explicit in the approved
-GUI-polish plan.
-
 ## 目前焦點
 
 CI reliability branch 已在 PR #44 的 exact head
