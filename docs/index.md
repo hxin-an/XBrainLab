@@ -12,17 +12,20 @@
 3. [選擇能直接證明變更的測試](developer/testing.md)。
 4. [規劃、驗證並提交一個聚焦的變更](developer/change-workflow.md)。
 
-## 常用驗證
+## 我該跑哪個測試？
 
-```bash
-poetry run python scripts/dev/run_tests.py backend
-poetry run python scripts/dev/run_tests.py ui
-poetry run python scripts/dev/run_tests.py llm
-poetry run python scripts/dev/build_docs_portal.py
-```
+不需要每次把所有測試都跑一遍。先依這次修改的範圍選一個入口：
 
-這些是不同 scope 的入口，不是每個變更都要全部執行。如何選 focused selector、integration、
-tool-call 真模型評分或完整 handoff，見[測試與驗證](developer/testing.md)。
+| 這次修改 | 測試入口 |
+| --- | --- |
+| 一個明確行為或錯誤 | [執行對應的 pytest test file 或 test node](developer/testing.md#focused-test) |
+| Backend | [Backend 測試集](developer/testing.md#domain-test) |
+| 桌面 UI | [UI 測試集](developer/testing.md#domain-test) |
+| Assistant 或 tool call | [先跑 LLM suite，再選擇是否需要真模型或 GUI](developer/testing.md#tool-call-tests) |
+| 文件網站 | [文件 portal build](developer/testing.md#docs-test) |
+| 候選版本 | [執行完整 handoff manifest](developer/testing.md#handoff) |
+
+完整命令、適用時機，以及每項結果可以證明到什麼程度，見[測試與驗證](developer/testing.md)。
 
 ## 找到權威答案
 

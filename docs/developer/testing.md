@@ -1,79 +1,100 @@
 # 測試與驗證
 
-先選擇能直接觀察本次變更的最小測試，再決定是否需要擴大到 subsystem、真模型或完整
-handoff。測試通過只支持它實際觀察到的行為，不會自動證明整套產品、科學品質或真人操作。
+如果只修改一個功能，先跑能直接觀察該功能的測試；不要一開始就跑全部測試。只有準備交付
+候選版本時，才需要執行完整 handoff 驗證。
 
-所有命令都從 repository root 執行。
+本頁所有命令都要在 repository root 執行。
 
-## 開始前確認 source
+## 我現在該跑哪一個？ { #choose-test }
+
+先找出這次改動屬於哪一種情況：
+
+| 這次改了什麼 | 先執行 | 接著看 |
+| --- | --- | --- |
+| 一個函式、錯誤或明確行為 | 直接覆蓋該行為的 pytest test file 或 test node | [只測這次修改](#focused-test) |
+| Backend | Backend 測試集 | [命令與說明](#domain-test) |
+| 桌面 UI | UI 測試集 | [命令與說明](#domain-test) |
+| Assistant 或 tool call | LLM 測試集 | [三層 tool-call 測試](#tool-call-tests) |
+| 文件或 MkDocs | 文件 portal build | [命令與說明](#docs-test) |
+| 準備交付候選版本 | 完整 handoff manifest | [準備交付候選版本](#handoff) |
+
+測試通過只代表該測試實際觀察到的行為通過。例如，unit test 通過不代表真人操作 GUI 已通過，
+真模型選對工具也不代表工具已成功執行。
+
+## 每次開始前都先確認
 
 ```bash
 git status --short --branch
 git diff --check
 ```
 
-先確認 branch、既有 dirty files 與本次 scope。Root `settings.json` 是本機 runtime 設定，不得
-stage、revert 或藏起來換取 clean status。
+第一條命令用來確認目前 branch，以及工作區內是否已有別人的修改。第二條命令會檢查 diff 的
+空白與 patch 格式問題。
 
-## 選擇測試層級
+Root `settings.json` 是使用者本機的 runtime 設定。不要 stage、revert 或隱藏它，也不要為了讓
+工作區看起來乾淨而覆寫它。
 
-| 層級 | 適合使用時機 | 不能單獨證明 |
-| --- | --- | --- |
-| Focused test | 一個 behavior、defect 或 state transition | 相鄰 subsystem 或完整 workflow |
-| Domain runner | Backend、UI、LLM 或完整 unit／integration family | 真人 GUI、real dataset diversity |
-| Docs build | 導覽、連結、search index 與網站輸出 | 產品 runtime 行為 |
-| Local model eval | 固定模型對 frozen tool-call cases 的輸出 | Tool execution、完整 UI workflow、thesis accuracy |
-| Handoff manifest | 同一 exact source 的完整工程 dossier | 使用者 manual acceptance 或科學認證 |
+## 只測這次修改 { #focused-test }
 
-## 執行 focused test
-
-單一 test file 或 test node：
+知道是哪個 test file 時，直接執行該檔案：
 
 ```bash
 poetry run python -m pytest --capture=sys tests/path/test_file.py -q
-poetry run python -m pytest --capture=sys tests/path/test_file.py::test_name -q
 ```
 
-把範例 selector 換成會直接失敗於本次 defect 或 contract 的真實 selector。Qt、MNE、PyTorch 或
-其他可能 native abort 的 Linux／WSL 測試，加入明確 timeout 並停用 core dump：
+只想執行其中一個 test 時，在檔名後加上 test 名稱：
+
+```bash
+poetry run python -m pytest --capture=sys \
+  tests/path/test_file.py::test_name -q
+```
+
+上面的 `tests/path/test_file.py` 和 `test_name` 都是範例，必須換成這次實際修改所對應的測試。
+優先選擇「若這次改壞就會失敗」的測試，而不是只碰巧執行到相關程式碼的測試。
+
+Qt、MNE、PyTorch 等 native library 有機會讓程序直接中止。在 Linux 或 WSL 執行這類測試時，
+加入 10 分鐘 timeout，並停用 core dump：
 
 ```bash
 timeout 10m prlimit --core=0 -- \
   poetry run python -m pytest --capture=sys tests/path/test_file.py -q
 ```
 
-不要只用 mock-heavy test 宣稱 native GUI、真實 dataset 或本機模型已經完成。
+## 測整個功能區 { #domain-test }
 
-## 執行 domain suite
+Repository runner 會替容易發生 native crash 的測試設定 headless 環境、程序隔離和 timeout。
+先選與這次改動相符的一個功能區：
 
-Repository runner 會為 native-heavy domains 設定 headless 環境、process isolation、timeout 與
-pytest completion attestation。每次只選與變更相符的最小 command：
+| 功能區 | 命令 |
+| --- | --- |
+| Backend command 與 service | `poetry run python scripts/dev/run_tests.py backend` |
+| Qt UI | `poetry run python scripts/dev/run_tests.py ui` |
+| Assistant、LLM 與 tool-call contract | `poetry run python scripts/dev/run_tests.py llm` |
+
+需要檢查更大的測試集合時，再使用下列命令：
 
 ```bash
-poetry run python scripts/dev/run_tests.py backend
-poetry run python scripts/dev/run_tests.py ui
-poetry run python scripts/dev/run_tests.py llm
 poetry run python scripts/dev/run_tests.py unit
 poetry run python scripts/dev/run_tests.py integration
 poetry run python scripts/dev/run_tests.py regression
 ```
 
-`all` 會依序執行 unit、integration 與 regression，成本高於一般 focused change，而且仍不等於
-handoff-ready：
+`all` 會依序執行 unit、integration 和 regression，因此時間較長：
 
 ```bash
 poetry run python scripts/dev/run_tests.py all
 ```
 
-可用 command 與 selector ownership 以 runner 的 help 和 source 為準：
+即使 `all` 通過，也不代表 GUI 已由真人操作驗收，或候選版本已達到 handoff-ready。若要查看
+runner 目前支援的選項，執行：
 
 ```bash
 poetry run python scripts/dev/run_tests.py --help
 ```
 
-## 靜態品質
+## 檢查 Python 程式碼品質
 
-只檢查本次修改的 Python paths：
+把範例路徑換成本次修改的 Python 檔案：
 
 ```bash
 poetry run ruff check path/to/changed.py tests/path/test_changed.py
@@ -82,12 +103,17 @@ poetry run python scripts/dev/run_basedpyright_regression.py
 git diff --check
 ```
 
-Basedpyright runner 以 checked-in allowlist 判斷是否增加 diagnostic；不要用 analyzer 自動改寫的
-baseline 取代它。
+- `ruff check`：檢查 lint 問題。
+- `ruff format --check`：檢查格式，但不修改檔案。
+- `run_basedpyright_regression.py`：確認型別檢查沒有增加新的 diagnostic。
+- `git diff --check`：檢查 diff 的空白與 patch 格式。
 
-## 文件網站
+Basedpyright runner 會使用 repository 內已提交的 allowlist。不要用型別分析器自動產生的新
+baseline 取代它，否則可能把新問題一起接受進去。
 
-修改 user guide、engineering docs、MkDocs 設定或 portal builder 時：
+## 測文件網站 { #docs-test }
+
+修改 user guide、工程文件、`mkdocs.yml` 或 portal builder 時，依序執行：
 
 ```bash
 poetry run python scripts/dev/validate_user_site.py
@@ -96,20 +122,34 @@ poetry run python scripts/dev/validate_user_site.py \
   --built-dir build/dev-artifacts/docs-portal-review/guide
 ```
 
-Portal builder 會以 strict mode 建置兩站，組成 `/` 與 `/guide/`，再檢查 local URLs、Material
-assets 與兩份 search index。修改 `AGENTS.md`、skills 或 workflows 時另跑：
+三條命令分別檢查：
+
+1. User guide 的來源檔案與導覽結構。
+2. 工程站和 user guide 能否以 strict mode 建置，且本機連結、Material assets 與 search index
+   是否完整。
+3. 建置後的 `/guide/` 輸出是否仍符合 user-site contract。
+
+若修改的是 `AGENTS.md`、repo-local skills 或 workflows，另外執行：
 
 ```bash
 poetry run python scripts/dev/audit_agent_guidance.py check --format json
 ```
 
-## Tool-call 測試
+## 測 Assistant tool call { #tool-call-tests }
 
-Tool-call 有三種不同層級。請在結果中寫清楚使用哪一層，以及它不能支持的 claim。
+Tool-call 測試分成三層，回答的是三個不同問題：
 
-### 1. Deterministic contract
+| 層級 | 回答的問題 | 是否載入 Granite | 是否真的執行工具 |
+| --- | --- | --- | --- |
+| A. Contract 測試 | 工具清單、JSON、參數檢查與執行邊界是否正確？ | 否 | 測試依案例而定 |
+| B. 真模型選擇評分 | Granite 面對固定 prompt 時，是否選對工具並填對參數？ | 是 | 否 |
+| C. GUI 操作檢查 | 確認、取消、handoff、結果顯示和完整互動是否正確？ | 視命令而定 | 是 |
 
-先跑 Assistant unit domains，再驗證 frozen cases、scorer 與 walkthrough profile contract：
+不要把其中一層的結果當成另外兩層的證據。
+
+### A. 不載入模型：先檢查 contract
+
+先執行 Assistant 測試集，以及固定案例、評分器與 GUI walkthrough profile 的單元測試：
 
 ```bash
 poetry run python scripts/dev/run_tests.py llm
@@ -118,8 +158,13 @@ poetry run python -m pytest --capture=sys \
   tests/unit/scripts/test_agent_walkthrough_profiles.py -q
 ```
 
-需要檢查 backend-owned admission、recovery 與 execution boundary 時，使用 focused integration
-checkpoint：
+這一層會檢查目前 18 個可執行 action 的名稱、stage 和 JSON schema，也會檢查非工具決策
+`respond_to_user`、參數防護、確認流程和結構化結果。也就是說，模型是在「回覆使用者」或
+「選擇一個可執行 action」之間做決定；`respond_to_user` 本身不屬於 18 個可執行 action。
+
+因為 Granite 沒有在這裡回答 prompt，所以這些測試不能證明真模型的工具選擇正確率。
+
+若修改了 backend admission、錯誤恢復或執行邊界，再執行這組 integration test：
 
 ```bash
 timeout 30m prlimit --core=0 -- \
@@ -130,14 +175,12 @@ timeout 30m prlimit --core=0 -- \
   tests/integration/agent/test_strict_recovery_execution_boundary.py -q
 ```
 
-這一層可驗證 strict envelope、current model-facing projection、parameter guard、confirmation 與
-structured result contract；因為沒有讓 Granite 回答 frozen prompts，不能稱為真模型 tool-call
-accuracy。
+### B. 載入 Granite：評分工具選擇
 
-### 2. 真 Granite selection eval
+這個評分會真的讓 Granite 回答固定 prompt，但不會執行模型選出的工具。
 
-先確認 active decision 指定的 Granite 3.3 2B 已存在於 D-mounted cache，且 model／RAG cache 路徑
-符合容量與 privacy policy。這個 command 強制 offline，不會下載或 silent fallback：
+執行前先確認 active decision 指定的 Granite 3.3 2B 已存在 D-mounted cache。將下列兩個範例
+路徑換成本機實際位置：
 
 ```bash
 export XBRAINLAB_MODEL_CACHE_DIR=/mnt/d/path/to/model-cache
@@ -153,17 +196,23 @@ timeout 30m prlimit --core=0 -- \
   --json-out build/dev-artifacts/stable-assistant-model-eval.json
 ```
 
-目前 runner 固定執行 50 cases：36 個 positive 與 14 個 challenge。Candidate gate 要求 36/36
-positive exact tool＋parameters、10/10 explicit parameter-origin guards 與 5/5 missing-parameter
-host guards；其餘 raw challenge 保留為 diagnostic limitations。
+`HF_HUB_OFFLINE=1` 和 `TRANSFORMERS_OFFLINE=1` 會禁止執行期間下載模型，也不允許靜默改用另一個
+模型。
 
-這份 report 只支持該 exact model、revision、source、case set 與 deterministic guard 的 bounded
-selection 結論，不支持完整 tool execution、任意長 session 或 thesis-grade accuracy。
+目前 runner 固定執行 50 個案例：36 個 positive cases 和 14 個 challenge cases。候選 gate 要求：
 
-### 3. GUI 與 terminal behavior
+- 36/36 positive cases 的工具與參數完全正確。
+- 10/10 明確參數來源檢查通過。
+- 5/5 缺少參數時的 host guard 通過。
 
-Model-free `--tool-debug` 使用正常 ChatPanel／MainWindow 路徑測 confirmation、GUI handoff、cancel、
-recovery 與 visible terminal，不會建立或載入 Granite：
+其餘 challenge 結果用來記錄模型限制，不計入上述候選 gate。產生的 JSON report 只支持該次
+使用的 exact model、revision、source 和 50 個固定案例；它不能證明任意對話、工具實際執行或
+論文等級的整體正確率。
+
+### C. 打開 GUI：檢查實際互動
+
+先使用不載入模型的 `--tool-debug`，檢查 ChatPanel 和 MainWindow 的確認、GUI handoff、取消、
+錯誤恢復與結果顯示：
 
 ```bash
 poetry run python run.py \
@@ -172,10 +221,11 @@ poetry run python run.py \
   --tool-debug scripts/dev/agent_tool_walkthrough/complete-workflow.json
 ```
 
-其他 approved profiles 與人工 step contract 見[驗證策略](../validation/README.md#assistant-manual-walkthrough-commands)。
+執行後要由測試者依 profile 的步驟實際操作並觀察畫面。其他已核准 profile 與操作步驟見
+[Assistant 人工操作驗證](../validation/README.md#assistant-manual-walkthrough-commands)。
 
-若要讓真 Granite 經過 visible ChatPanel 執行 Data Interpretation 的 scan → preview → validate，
-使用本機 tool-chain capture：
+若要讓真 Granite 經由可見的 ChatPanel 執行 Data Interpretation 的
+scan → preview → validate，使用：
 
 ```bash
 MNE_DONTWRITE_HOME=true \
@@ -187,14 +237,16 @@ timeout 10m prlimit --core=0 -- \
   --output-dir build/dev-artifacts/chatpanel-local-tool-chain
 ```
 
-這個 command 需要可見 Qt display，會為可重複截圖清除 XBrainLab 儲存的 main-window geometry，並在
-`build/dev-artifacts/` 寫入 transcript、JSON 與 screenshots。它只覆蓋三個指定工具，不等於完整
-18-action workflow。
+這個命令需要可見的 Qt display。為了產生可重複比較的截圖，它會清除 XBrainLab 儲存的主視窗
+位置與大小，並在 `build/dev-artifacts/` 寫入 transcript、JSON 和 screenshots。它只檢查三個
+指定 action，不代表全部 18 個可執行 action 都完成端到端驗證。
 
-## 完整 handoff
+## 準備交付候選版本 { #handoff }
 
-只有要宣稱 candidate handoff-ready 時才執行完整 manifest。Runner 要求 clean、pushed exact source，
-並從唯一 registry 取得 gate argv、timeout、environment 與 artifact contract：
+這不是日常開發命令。只有要宣稱某個 exact commit 已經 handoff-ready 時才執行完整 manifest。
+
+Runner 會要求來源已 commit、工作區狀態符合規則，而且 exact source 已 push。先填入實際 cache
+路徑和候選 branch：
 
 ```bash
 export XBRAINLAB_MODEL_CACHE_DIR=/mnt/d/path/to/model-cache
@@ -207,10 +259,18 @@ poetry run python scripts/dev/run_handoff_validation_manifest.py \
   --expected-branch "$XBL_CANDIDATE_BRANCH"
 ```
 
-不要複製或手動縮減 `scripts/dev/handoff_gate_spec.py` 的 command list。缺少 required gate、使用
-不同 SHA、pending／skipped CI 或沒有適用的 manual acceptance 時，只能回報 checkpoint 或 blocked。
+完整 gate 清單的唯一權威來源是 `scripts/dev/handoff_gate_spec.py`，不要把其中的命令複製到其他
+文件後自行刪減。若 required gate 缺少、不同 gate 使用不同 SHA、CI 尚未成功，或必要的人工驗收
+不存在，就不能宣稱 handoff-ready。
 
-## 回報結果
+## 怎麼回報測試結果
 
-至少記錄 command、selector、exit status、source identity、環境限制，以及結果支持和不支持的
-claim。一般 focused run 不需要建立永久 receipt；只有 evidence contract 明確要求時才保存 artifact。
+測試回報至少要回答五件事：
+
+1. 執行了哪一條命令和哪個 test selector。
+2. 命令是否成功，以及通過／失敗數量。
+3. 測試對應哪一個 branch、commit，工作區是否有未提交修改。
+4. 是否有環境限制，例如沒有 GPU、沒有可見 Qt display 或使用 offline mode。
+5. 結果能證明什麼，以及明確不能證明什麼。
+
+一般 focused test 不需要另外建立永久 receipt；只有驗證契約明確要求時才保存 artifact。
