@@ -920,6 +920,43 @@ def test_saliency_class_panels_share_one_colorbar(visualizer_type):
     plt.close(fig)
 
 
+def test_saliency_map_detail_keeps_shared_scale_and_reserves_colorbar_column():
+    epochs = Epochs(get_preprocessed_data_list(2))
+    epochs.label_map = {0: "left", 1: "right"}
+    epochs.event_id = {"left": 0, "right": 1}
+    epochs.ch_names = [f"EEG {index:02d}" for index in range(32)]
+    gradient = {
+        0: np.ones((2, 32, 64)),
+        1: np.ones((2, 32, 64)) * 3,
+    }
+    eval_record = _bound_eval_record(
+        epochs,
+        np.array([0, 1, 0, 1]),
+        np.ones((4, 2)),
+        gradient,
+        gradient.copy(),
+        gradient.copy(),
+        gradient.copy(),
+        gradient.copy(),
+    )
+
+    fig = VisualizerType.SaliencyMap.value(eval_record, epochs).get_plt(
+        "Gradient",
+        False,
+        selected_label_key=1,
+        display_mode="single",
+    )
+    image_axes = [axis for axis in fig.axes if axis.images]
+    colorbar_axis = next(axis for axis in fig.axes if not axis.images)
+
+    assert len(image_axes) == 1
+    assert image_axes[0].get_title() == "right"
+    assert image_axes[0].images[0].get_clim()[1] == pytest.approx(3.0)
+    assert image_axes[0].get_position().x1 < colorbar_axis.get_position().x0
+    assert len(image_axes[0].get_yticks()) <= 12
+    plt.close(fig)
+
+
 def test_topomap_colorbar_tight_bounds_leave_readable_right_margin():
     epochs = Epochs(get_preprocessed_data_list(2))
     epochs.label_map = {0: "left", 1: "right"}

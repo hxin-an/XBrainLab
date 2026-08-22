@@ -258,7 +258,7 @@ class Saliency3DPlotWidget(QWidget):
         class_layout = QHBoxLayout(self.class_controls)
         class_layout.setContentsMargins(8, 6, 8, 0)
         class_layout.setSpacing(8)
-        class_label = QLabel("Class:", self.class_controls)
+        class_label = QLabel("True class:", self.class_controls)
         class_label.setStyleSheet(
             f"color: {Theme.TEXT_SECONDARY}; background: transparent;"
         )
@@ -269,6 +269,16 @@ class Saliency3DPlotWidget(QWidget):
         self.class_combo.currentIndexChanged.connect(self._on_class_changed)
         class_layout.addWidget(class_label)
         class_layout.addWidget(self.class_combo)
+        self.class_semantics = QLabel(self.class_controls)
+        self.class_semantics.setWordWrap(True)
+        self.class_semantics.setStyleSheet(
+            f"color: {Theme.TEXT_MUTED}; background: transparent;"
+        )
+        self.class_semantics.setToolTip(
+            "Colour shows mean attribution for the selected true class at the "
+            "chosen epoch-relative time. It is not source localisation."
+        )
+        class_layout.addWidget(self.class_semantics, stretch=1)
         class_layout.addStretch(1)
         self.class_controls.hide()
         layout.addWidget(self.class_controls)
@@ -675,7 +685,32 @@ class Saliency3DPlotWidget(QWidget):
         self.class_combo.setCurrentIndex(selected_index)
         self.class_combo.blockSignals(False)
         self._selector_syncing = False
+        selected_coverage = classes[selected_index] if selected_index >= 0 else None
+        if selected_coverage is None:
+            self.class_semantics.clear()
+        else:
+            event = selected_coverage.event_code
+            event_text = f" · Event code: {event}" if event is not None else ""
+            self.class_semantics.setText(
+                "Mean over EEG epochs"
+                f"{event_text} · epoch-relative time · not source localisation"
+            )
         self.class_controls.show()
+
+    def select_class_key(self, class_key: object) -> None:
+        """Select a backend-admitted class key from the shared 2D controls."""
+        coverage = next(
+            (
+                item
+                for item in self._class_coverage.values()
+                if item.store_key == class_key
+            ),
+            None,
+        )
+        if coverage is not None:
+            index = self.class_combo.findData(coverage.display_name)
+            if index >= 0:
+                self.class_combo.setCurrentIndex(index)
 
     def _on_class_changed(self, index: int) -> None:
         if self._selector_syncing or index < 0 or self._current_plot_request is None:

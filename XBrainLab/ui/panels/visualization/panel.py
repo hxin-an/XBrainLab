@@ -4,7 +4,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
-from PyQt6.QtCore import QEvent, Qt, QThread
+from PyQt6.QtCore import QEvent, QSignalBlocker, Qt, QThread
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -458,6 +458,23 @@ class VisualizationPanel(BasePanel):
         )
         self.normalize_check.setStyleSheet(Stylesheets.CHECKBOX_MUTED)
         self.normalize_check.stateChanged.connect(self.on_update)
+
+        self.saliency_view_mode = QComboBox()
+        self.saliency_view_mode.addItem("All classes", "all")
+        self.saliency_view_mode.addItem("Single class", "single")
+        self.saliency_view_mode.setStyleSheet(Stylesheets.COMBO_BOX)
+        self.saliency_view_mode.currentIndexChanged.connect(self.on_update)
+        self.saliency_class_combo = QComboBox()
+        self.saliency_class_combo.setMinimumWidth(130)
+        self.saliency_class_combo.setStyleSheet(Stylesheets.COMBO_BOX)
+        self.saliency_class_combo.currentIndexChanged.connect(self.on_update)
+        self.saliency_class_combo.hide()
+        self.saliency_view_label = QLabel("Saliency view:")
+        self.saliency_class_label = QLabel("True class:")
+        self.saliency_reset_view = QPushButton("Reset view")
+        self.saliency_reset_view.setStyleSheet(Stylesheets.BTN_GHOST)
+        self.saliency_reset_view.clicked.connect(self._reset_saliency_detail_view)
+        self.saliency_reset_view.hide()
         self._controls_single_row = None
         self._apply_visualization_control_layout(single_row=False)
         left_layout.addWidget(self.ctrl_bar)
@@ -480,6 +497,7 @@ class VisualizationPanel(BasePanel):
 
         # Tab 1: Saliency Map
         self.tab_map = SaliencyMapWidget(self)
+        self.tab_map.class_selected.connect(self._open_saliency_class_detail)
         self.tab_map.setObjectName("SaliencyMapRenderStatus")
         self.tab_map.setProperty("renderStatus", "idle")
         self.tab_map.setProperty("operationId", "")
@@ -754,6 +772,11 @@ class VisualizationPanel(BasePanel):
         """Hide Absolute without changing any responsive control grid slots."""
         self.ctrl_layout.removeWidget(self.abs_check)
         self.ctrl_layout.removeWidget(self.normalize_check)
+        self.ctrl_layout.removeWidget(self.saliency_view_label)
+        self.ctrl_layout.removeWidget(self.saliency_view_mode)
+        self.ctrl_layout.removeWidget(self.saliency_class_label)
+        self.ctrl_layout.removeWidget(self.saliency_class_combo)
+        self.ctrl_layout.removeWidget(self.saliency_reset_view)
 
         spectrogram_active = hasattr(
             self, "tabs"
@@ -773,6 +796,18 @@ class VisualizationPanel(BasePanel):
 
         self.ctrl_layout.addWidget(self.abs_check, row, absolute_column)
         self.ctrl_layout.addWidget(self.normalize_check, row, normalize_column)
+        if self._controls_single_row:
+            self.ctrl_layout.addWidget(self.saliency_view_label, 1, 0)
+            self.ctrl_layout.addWidget(self.saliency_view_mode, 1, 1)
+            self.ctrl_layout.addWidget(self.saliency_class_label, 1, 2)
+            self.ctrl_layout.addWidget(self.saliency_class_combo, 1, 3)
+            self.ctrl_layout.addWidget(self.saliency_reset_view, 1, 4)
+        else:
+            self.ctrl_layout.addWidget(self.saliency_view_label, 2, 0)
+            self.ctrl_layout.addWidget(self.saliency_view_mode, 2, 1)
+            self.ctrl_layout.addWidget(self.saliency_class_label, 2, 2)
+            self.ctrl_layout.addWidget(self.saliency_class_combo, 2, 3)
+            self.ctrl_layout.addWidget(self.saliency_reset_view, 2, 4)
 
     def _cross_fold_choices_from_query(
         self,
@@ -1292,6 +1327,9 @@ class VisualizationPanel(BasePanel):
             method_name,
             SaliencyMethodCoverageSnapshot(method=method_name),
         )
+        self._sync_saliency_class_controls(selected_coverage)
+        if hasattr(self, "tab_3d"):
+            self.tab_3d.select_class_key(self.saliency_class_combo.currentData())
         self._publish_saliency_view_state(
             current_widget,
             coverage=selected_coverage,
@@ -1434,6 +1472,8 @@ class VisualizationPanel(BasePanel):
                 typed_render_publication,
                 absolute,
                 display_normalized=normalize,
+                selected_label_key=self.saliency_class_combo.currentData(),
+                display_mode=str(self.saliency_view_mode.currentData() or "all"),
             )
             self._publish_saliency_render_identity(
                 self.tab_spectro,
@@ -1445,7 +1485,15 @@ class VisualizationPanel(BasePanel):
                 display_key=display_key,
             )
         elif current_widget and hasattr(current_widget, "update_plot"):
-            current_widget.update_plot(typed_render_publication, absolute)
+            if current_widget in {self.tab_map, self.tab_topo}:
+                current_widget.update_plot(
+                    typed_render_publication,
+                    absolute,
+                    selected_label_key=self.saliency_class_combo.currentData(),
+                    display_mode=str(self.saliency_view_mode.currentData() or "all"),
+                )
+            else:
+                current_widget.update_plot(typed_render_publication, absolute)
             self._publish_saliency_render_identity(
                 current_widget,
                 typed_render_publication,
@@ -1455,6 +1503,50 @@ class VisualizationPanel(BasePanel):
                 typed_render_publication,
                 display_key=display_key,
             )
+
+    def _sync_saliency_class_controls(
+        self,
+        coverage: SaliencyMethodCoverageSnapshot,
+    ) -> None:
+        """Project admitted class keys without using display text as identity."""
+        previous = self.saliency_class_combo.currentData()
+        with QSignalBlocker(self.saliency_class_combo):
+            self.saliency_class_combo.clear()
+            for item in coverage.classes:
+                if item.available:
+                    self.saliency_class_combo.addItem(item.display_name, item.store_key)
+        if self.saliency_class_combo.count() == 0:
+            self.saliency_class_combo.hide()
+            self.saliency_class_label.hide()
+            return
+        index = self.saliency_class_combo.findData(previous)
+        self.saliency_class_combo.setCurrentIndex(max(index, 0))
+        show_class = self.saliency_view_mode.currentData() == "single"
+        self.saliency_class_combo.setVisible(show_class)
+        self.saliency_class_label.setVisible(show_class)
+        self.saliency_reset_view.setVisible(show_class)
+
+    def _open_saliency_class_detail(self, class_key: object) -> None:
+        """Turn an overview tile activation into an exact-key detailed view."""
+        index = self.saliency_class_combo.findData(class_key)
+        if index < 0:
+            return
+        with QSignalBlocker(self.saliency_class_combo):
+            self.saliency_class_combo.setCurrentIndex(index)
+        with QSignalBlocker(self.saliency_view_mode):
+            self.saliency_view_mode.setCurrentIndex(
+                self.saliency_view_mode.findData("single"),
+            )
+        self.saliency_class_combo.show()
+        self.saliency_class_label.show()
+        self.saliency_reset_view.show()
+        self.on_update()
+
+    def _reset_saliency_detail_view(self) -> None:
+        widget = self.tabs.currentWidget()
+        reset_view = getattr(widget, "reset_view", None)
+        if callable(reset_view):
+            reset_view()
 
     def _saliency_render_publication(
         self,

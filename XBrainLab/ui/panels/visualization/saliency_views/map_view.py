@@ -1,5 +1,7 @@
 from functools import partial
 
+from PyQt6.QtCore import pyqtSignal
+
 from XBrainLab.backend.application.saliency_render import (
     SaliencyRenderData,
     SaliencyRenderPublication,
@@ -19,6 +21,8 @@ class SaliencyMapWidget(BaseSaliencyView):
     """Widget for visualizing 2D Saliency Maps.
     Uses Matplotlib backend.
     """
+
+    class_selected = pyqtSignal(object)
 
     def init_ui(self):
         super().init_ui()
@@ -41,6 +45,9 @@ class SaliencyMapWidget(BaseSaliencyView):
         self,
         publication: SaliencyRenderPublication,
         absolute: bool,
+        *,
+        selected_label_key: object | None = None,
+        display_mode: str = "all",
     ) -> None:
         if not isinstance(publication, SaliencyRenderPublication):
             message = "saliency render publication is invalid"
@@ -52,7 +59,13 @@ class SaliencyMapWidget(BaseSaliencyView):
             method = data.method
             self.require_complete_saliency_coverage(method)
             self._render_figure_async(
-                partial(SaliencyMapWidget._render_plot, data, absolute),
+                partial(
+                    SaliencyMapWidget._render_plot,
+                    data,
+                    absolute,
+                    selected_label_key,
+                    display_mode,
+                ),
                 error_context="saliency map",
                 publication_generation=publication.generation,
             )
@@ -63,6 +76,28 @@ class SaliencyMapWidget(BaseSaliencyView):
             self.show_error(SALIENCY_PREPARATION_FAILED_TEXT)
 
     @staticmethod
-    def _render_plot(data: SaliencyRenderData, absolute: bool):
+    def _render_plot(
+        data: SaliencyRenderData,
+        absolute: bool,
+        selected_label_key: object | None,
+        display_mode: str,
+    ):
         visualizer = VisualizerType.SaliencyMap.value(data)
-        return visualizer.get_plt(method=data.method, absolute=absolute)
+        return visualizer.get_plt(
+            method=data.method,
+            absolute=absolute,
+            selected_label_key=selected_label_key,
+            display_mode=display_mode,
+        )
+
+    def _install_canvas_interactions(self, canvas) -> None:
+        super()._install_canvas_interactions(canvas)
+        canvas.mpl_connect("button_release_event", self._on_tile_activated)
+
+    def _on_tile_activated(self, event: object) -> None:
+        axis = getattr(event, "inaxes", None)
+        if getattr(event, "button", None) != 1 or axis is None:
+            return
+        key = getattr(axis, "_xbrainlab_class_key", None)
+        if key is not None:
+            self.class_selected.emit(key)

@@ -47,6 +47,8 @@ class SaliencySpectrogramWidget(BaseSaliencyView):
         absolute: bool,
         *,
         display_normalized: bool | None = None,
+        selected_label_key: object | None = None,
+        display_mode: str = "all",
     ) -> None:
         del absolute
         if not isinstance(publication, SaliencyRenderPublication):
@@ -70,6 +72,8 @@ class SaliencySpectrogramWidget(BaseSaliencyView):
                         publication.request.run,
                         method,
                     ),
+                    selected_label_key,
+                    display_mode,
                     (
                         publication.data.normalized
                         if display_normalized is None
@@ -91,6 +95,8 @@ class SaliencySpectrogramWidget(BaseSaliencyView):
         preparation_cache: SaliencySpectrogramPreparationCache,
         preparation_key: tuple[object, ...],
         display_normalized: bool,
+        selected_label_key: object | None,
+        display_mode: str,
     ):
         visualizer = VisualizerType.SaliencySpectrogramMap.value(data)
         return visualizer.get_plt(
@@ -98,6 +104,8 @@ class SaliencySpectrogramWidget(BaseSaliencyView):
             display_normalized=display_normalized,
             preparation_cache=preparation_cache,
             preparation_key=preparation_key,
+            selected_label_key=selected_label_key,
+            display_mode=display_mode,
         )
 
     def closeEvent(self, event):  # noqa: N802
