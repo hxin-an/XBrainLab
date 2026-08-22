@@ -35,6 +35,12 @@ Visualization warning dialogs are explicitly out of scope.
   existing rendering characterization for lifecycle work.
 - Use canonical class keys, reset zoom on changed publication/class/mode, preserve
   a shared scale, and do not draw an event marker without a verified anchor.
+- Complexity review accepted: 2D selection/layout work is `+294/-33/net +261`
+  production LOC across ten production files. Owners remain unchanged; the extra
+  files are the existing Map/Spectrogram/Topo presentation consumers plus their
+  shared canvas and panel, not new owners.  Commit one contains 2D behavior;
+  commit two must delete redundant 3D local/overlay controls rather than add an
+  adapter layer.
 
 ### Focused validation and stop condition
 

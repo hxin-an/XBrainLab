@@ -19,7 +19,9 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QSizePolicy,
+    QSlider,
     QVBoxLayout,
     QWidget,
 )
@@ -223,6 +225,7 @@ class Saliency3DPlotWidget(QWidget):
         self._saliency_coverage: SaliencyMethodCoverageSnapshot | None = None
         self._post_training_saliency_status = PostTrainingSaliencyStatus.idle()
         self._selector_syncing = False
+        self._saliency_scene: Saliency3D | None = None
         self.init_ui()
 
     def set_post_training_saliency_status(
@@ -282,6 +285,30 @@ class Saliency3DPlotWidget(QWidget):
         class_layout.addStretch(1)
         self.class_controls.hide()
         layout.addWidget(self.class_controls)
+
+        self.scene_controls = QWidget(self)
+        scene_layout = QHBoxLayout(self.scene_controls)
+        scene_layout.setContentsMargins(8, 0, 8, 0)
+        scene_layout.addWidget(QLabel("Epoch time (s):", self.scene_controls))
+        self.time_slider = QSlider(Qt.Orientation.Horizontal, self.scene_controls)
+        self.time_slider.setRange(0, 1000)
+        self.time_slider.valueChanged.connect(self._set_epoch_time)
+        scene_layout.addWidget(self.time_slider, stretch=1)
+        self.electrodes_button = QPushButton("Electrodes", self.scene_controls)
+        self.electrodes_button.setCheckable(True)
+        self.electrodes_button.setChecked(True)
+        self.electrodes_button.toggled.connect(self._toggle_electrodes)
+        scene_layout.addWidget(self.electrodes_button)
+        self.head_button = QPushButton("Head surface", self.scene_controls)
+        self.head_button.setCheckable(True)
+        self.head_button.setChecked(True)
+        self.head_button.toggled.connect(self._toggle_head)
+        scene_layout.addWidget(self.head_button)
+        self.reset_camera_button = QPushButton("Reset view", self.scene_controls)
+        self.reset_camera_button.clicked.connect(self._reset_camera)
+        scene_layout.addWidget(self.reset_camera_button)
+        self.scene_controls.hide()
+        layout.addWidget(self.scene_controls)
 
         # Plot Area
         self.plot_container = QWidget()
@@ -1081,10 +1108,37 @@ class Saliency3DPlotWidget(QWidget):
                 self.show_error("3D saliency engine could not initialize.")
                 return
             saliency.get_3d_head_plot()
+            self._saliency_scene = saliency
+            self.scene_controls.show()
         except Exception as e:
             logger.error("Error executing 3D plot: %s", e, exc_info=True)
             if not self._qt_object_deleted(self):
                 self.show_error(SALIENCY_RENDER_FAILED_TEXT)
+
+    def _set_epoch_time(self, value: int) -> None:
+        scene = self._saliency_scene
+        if scene is None or scene.engine is None:
+            return
+        low, high = scene.engine.time_range_seconds
+        scene._set_time_seconds(low + (high - low) * value / 1000)
+
+    def _toggle_electrodes(self, checked: bool) -> None:
+        scene = self._saliency_scene
+        if scene is not None:
+            scene.channelBox.ctrl = checked
+            scene.update()
+
+    def _toggle_head(self, checked: bool) -> None:
+        scene = self._saliency_scene
+        if scene is not None:
+            scene.headBox.ctrl = checked
+            scene.update()
+
+    def _reset_camera(self) -> None:
+        if self.plotter_widget is not None:
+            reset = getattr(self.plotter_widget, "reset_camera", None)
+            if callable(reset):
+                reset()
 
     @staticmethod
     def _qt_object_deleted(obj) -> bool:

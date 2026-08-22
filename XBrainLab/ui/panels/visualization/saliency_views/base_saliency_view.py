@@ -17,7 +17,14 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PyQt6 import sip
 from PyQt6.QtCore import QEvent, QObject, Qt, QThread, QThreadPool, pyqtSignal, pyqtSlot
-from PyQt6.QtWidgets import QApplication, QLabel, QSizePolicy, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QApplication,
+    QLabel,
+    QScrollArea,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from XBrainLab.backend.application.state import SaliencyMethodCoverageSnapshot
 from XBrainLab.ui.core.worker import Worker
@@ -840,6 +847,7 @@ class BaseSaliencyView(QWidget):
             int,
             tuple[tuple[float, float], tuple[float, float]],
         ] = {}
+        self._canvas_scroll_area: QScrollArea | None = None
 
         self.init_ui()
 
@@ -854,7 +862,14 @@ class BaseSaliencyView(QWidget):
         # Apply Theme
         Theme.apply_matplotlib_dark_theme(self.fig)
 
-        self.main_layout.addWidget(self.canvas)
+        if getattr(self, "_scrollable_canvas", False):
+            self._canvas_scroll_area = QScrollArea(self)
+            self._canvas_scroll_area.setWidgetResizable(False)
+            self._canvas_scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+            self._canvas_scroll_area.setWidget(self.canvas)
+            self.main_layout.addWidget(self._canvas_scroll_area)
+        else:
+            self.main_layout.addWidget(self.canvas)
 
         # 2. Error Message (Hidden by default)
         self.error_label = QLabel()
@@ -987,7 +1002,10 @@ class BaseSaliencyView(QWidget):
         if hasattr(canvas, "_draw_pending"):
             canvas._draw_pending = False
         with suppress(RuntimeError):
-            self.main_layout.removeWidget(canvas)
+            if self._canvas_scroll_area is not None:
+                self._canvas_scroll_area.takeWidget()
+            else:
+                self.main_layout.removeWidget(canvas)
         with suppress(RuntimeError):
             canvas.hide()
             canvas.close()
@@ -1021,7 +1039,14 @@ class BaseSaliencyView(QWidget):
         self.fig = figure
         self.canvas = installed_canvas
         try:
-            self.main_layout.insertWidget(0, installed_canvas)
+            min_height = int(getattr(figure, "_xbrainlab_min_canvas_height", 0))
+            if min_height > 0:
+                installed_canvas.setMinimumHeight(min_height)
+            if self._canvas_scroll_area is not None:
+                old_canvas = self._canvas_scroll_area.takeWidget()
+                self._canvas_scroll_area.setWidget(installed_canvas)
+            else:
+                self.main_layout.insertWidget(0, installed_canvas)
             installed_canvas.show()
             self.main_layout.activate()
             self._fit_current_figure()
@@ -1030,6 +1055,8 @@ class BaseSaliencyView(QWidget):
             self.fig = old_figure
             self.canvas = old_canvas
             self._dispose_candidate_canvas(installed_canvas, figure)
+            if self._canvas_scroll_area is not None and old_canvas is not None:
+                self._canvas_scroll_area.setWidget(old_canvas)
             self._display_error(SALIENCY_RENDER_FAILED_TEXT)
             return False
 
@@ -1120,7 +1147,10 @@ class BaseSaliencyView(QWidget):
         figure: Figure,
     ) -> None:
         with suppress(RuntimeError):
-            self.main_layout.removeWidget(canvas)
+            if self._canvas_scroll_area is not None:
+                self._canvas_scroll_area.takeWidget()
+            else:
+                self.main_layout.removeWidget(canvas)
             canvas.hide()
             canvas.close()
             canvas.setParent(None)
@@ -1137,7 +1167,8 @@ class BaseSaliencyView(QWidget):
         if canvas is not None:
             if hasattr(canvas, "_draw_pending"):
                 canvas._draw_pending = False
-            self.main_layout.removeWidget(canvas)
+            if self._canvas_scroll_area is None:
+                self.main_layout.removeWidget(canvas)
             with suppress(RuntimeError):
                 canvas.hide()
                 canvas.close()

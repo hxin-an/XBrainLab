@@ -81,6 +81,7 @@ class SaliencyMapViz(Visualizer):
         else:
             cols = min(3, max(1, int(np.ceil(np.sqrt(visible_label_number)))))
             rows = int(np.ceil(visible_label_number / cols))
+            fig._xbrainlab_min_canvas_height = max(420, rows * 240)
         # Reserving this column prevents the colorbar from competing with the
         # final data axes when a compact desktop canvas is fitted later.
         grid = fig.add_gridspec(
