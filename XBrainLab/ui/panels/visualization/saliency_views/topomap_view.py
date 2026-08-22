@@ -96,8 +96,8 @@ class SaliencyTopographicMapWidget(BaseSaliencyView):
     def _render_plot(
         data: SaliencyRenderData,
         absolute: bool,
-        selected_label_key: object | None,
-        display_mode: str,
+        selected_label_key: object | None = None,
+        display_mode: str = "all",
     ):
         visualizer = VisualizerType.SaliencyTopoMap.value(data)
         return visualizer.get_plt(

@@ -3282,6 +3282,8 @@ class TestTopoMapView:
         mock_vt.SaliencyTopoMap.value.return_value.get_plt.assert_called_once_with(
             method="grad",
             absolute=False,
+            selected_label_key=None,
+            display_mode="all",
         )
 
 
@@ -3342,6 +3344,8 @@ class TestSpectrogramView:
             display_normalized=False,
             preparation_cache=widget._preparation_cache,
             preparation_key=preparation_key,
+            selected_label_key=None,
+            display_mode="all",
         )
 
     @patch(

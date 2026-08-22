@@ -95,8 +95,8 @@ class SaliencySpectrogramWidget(BaseSaliencyView):
         preparation_cache: SaliencySpectrogramPreparationCache,
         preparation_key: tuple[object, ...],
         display_normalized: bool,
-        selected_label_key: object | None,
-        display_mode: str,
+        selected_label_key: object | None = None,
+        display_mode: str = "all",
     ):
         visualizer = VisualizerType.SaliencySpectrogramMap.value(data)
         return visualizer.get_plt(

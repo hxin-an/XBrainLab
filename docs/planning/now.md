@@ -49,12 +49,16 @@ widget dispatch與optional cancel binding；完整regression與後續gate未執�
 new diagnostics：Matplotlib callback需要接受base Event、axis limit需收斂成built-in float，另有窄幅
 PyVista actor／scalar-bar external typing seam。這些仍屬同一typed-boundary repair；不得更新baseline或加入
 ignore來放行。
+`ac85437c` 的recorded Basedpyright已通過；完整regression其後揭露兩類checkpoint：(a) 三個舊private
+Topo／Spectrogram renderer tests未帶新增的class display參數；(b) 臨時worktree借用main editable venv，
+11個scripts tests被active-checkout guard正確阻擋。前者以等同既有all-class行為的default arguments收斂；
+後者只用lock-exact worktree Poetry sync修正執行環境，不修改或放寬checkout guard。
 
 下一步固定為：
 
-1. 只修正上述17個及replacement gate揭露的13個typed boundaries，不改可見行為；用單一recorded
-   Basedpyright gate與modal／saliency focused behavior tests驗證；單一gate通過前不再啟動完整
-   canonical manifest。
+1. 為三個pure renderer adapter補上`selected_label_key=None`、`display_mode="all"`預設，並用三個
+   failing nodes加Map對稱性測試驗證，且direct adapter assertion需明確確認這組all-class預設；worktree
+   環境用既有lockfile sync後只做scripts collect guard。不放寬active-checkout或runner evidence policy。
 2. 自動evidence完整後交付Windows／Linux手測：modal default／Escape／destructive action；single-file、
    folder、BIDS review/cancel/retry且status不重複跑百分比；Saliency All／Single、long class／many channel、
    zoom／pan／reset、3D class／epoch-time／camera controls與close lifecycle。
