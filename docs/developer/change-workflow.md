@@ -35,15 +35,8 @@ code。新的 abstraction 必須服務真實 production caller 或 unsafe／exte
 
 ## 4. 驗證行為
 
-選擇能直接觀察所改 contract 的最小測試。常見檢查包括：
-
-```bash
-poetry run ruff check <changed Python paths>
-poetry run ruff format --check <changed Python paths>
-poetry run python scripts/dev/run_basedpyright_regression.py
-poetry run python -m pytest <focused selectors>
-git diff --check
-```
+從[測試與驗證](testing.md)選擇能直接觀察所改 contract 的最小 command。該頁集中維護 focused
+selector、domain runner、docs、tool-call 與 handoff 的執行方式，這裡不複製 command list。
 
 Qt、PyTorch 與 MNE 檢查需要明確 timeout 並停用 core dump。只有 mock 的測試不能證明 native GUI
 materialization、真實 dataset 路徑或本機模型決策。

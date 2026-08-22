@@ -35,18 +35,10 @@ poetry run python run.py
 Repository root 的 `settings.json` 保存本機 runtime 設定，不屬於 feature change，必須維持
 uncommitted。
 
-## 執行小範圍環境檢查
+## 驗證環境
 
-選擇能直接覆蓋預計修改區域的最小檢查，例如：
-
-```bash
-poetry run python -m pytest tests/unit/backend -q
-poetry run python -m pytest tests/unit/ui -q
-poetry run python -m pytest tests/unit/llm -q
-```
-
-這些是較廣的目錄範例，不是每個 patch 的必跑命令。如果單一 test file 或 test node 已能直接
-證明變更行為，優先使用較聚焦的 selector。
+安裝完成後，不要從完整 regression 開始。到[測試與驗證](testing.md)選擇與預計修改區域相符的
+focused test 或 domain runner；該頁也說明 Qt／MNE／PyTorch、文件網站與本機 Granite 的執行條件。
 
 ## 產生檔與本機資料
 

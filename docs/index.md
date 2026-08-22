@@ -9,7 +9,20 @@
 
 1. [建立本機開發環境](developer/local-setup.md)。
 2. [找到預計修改行為的 owner](developer/repository-map.md)。
-3. [規劃、驗證並提交一個聚焦的變更](developer/change-workflow.md)。
+3. [選擇能直接證明變更的測試](developer/testing.md)。
+4. [規劃、驗證並提交一個聚焦的變更](developer/change-workflow.md)。
+
+## 常用驗證
+
+```bash
+poetry run python scripts/dev/run_tests.py backend
+poetry run python scripts/dev/run_tests.py ui
+poetry run python scripts/dev/run_tests.py llm
+poetry run python scripts/dev/build_docs_portal.py
+```
+
+這些是不同 scope 的入口，不是每個變更都要全部執行。如何選 focused selector、integration、
+tool-call 真模型評分或完整 handoff，見[測試與驗證](developer/testing.md)。
 
 ## 找到權威答案
 

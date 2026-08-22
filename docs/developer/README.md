@@ -9,7 +9,7 @@
 2. [找到負責該行為的 subsystem](repository-map.md)。
 3. 閱讀該 subsystem 對應的 current 與 target 文件。
 4. 在短期 task branch 上完成一個 coherent change。
-5. 執行能直接觀察所改行為的 focused validation。
+5. 從[測試與驗證](testing.md)選擇能直接觀察所改行為的 focused validation。
 6. 透過 pull request 提交變更。
 
 ## 避免常見錯誤的規則
@@ -28,4 +28,5 @@ Repository root 的 `AGENTS.md` 同時約束人工與自動化貢獻者。
 
 - [本機環境](local-setup.md)
 - [Repository 與 owners](repository-map.md)
+- [測試與驗證](testing.md)
 - [變更與驗證流程](change-workflow.md)

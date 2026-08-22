@@ -8,7 +8,13 @@ import pytest
 from scripts.dev.build_docs_portal import PortalBuildError, assemble_portal
 
 
-def _write_site(root: Path, *, homepage_link: str, marker: str) -> None:
+def _write_site(
+    root: Path,
+    *,
+    homepage_link: str,
+    marker: str,
+    include_developer_testing: bool = False,
+) -> None:
     (root / "assets/stylesheets").mkdir(parents=True)
     (root / "assets/javascripts/workers").mkdir(parents=True)
     (root / "search").mkdir(parents=True)
@@ -25,17 +31,21 @@ def _write_site(root: Path, *, homepage_link: str, marker: str) -> None:
         json.dumps({"config": {}, "docs": [{"location": "", "title": marker}]}),
         encoding="utf-8",
     )
-    (root / "index.html").write_text(
-        "\n".join(
-            (
-                "<!doctype html>",
-                '<link rel="stylesheet" href="assets/stylesheets/main.test.min.css">',
-                '<script src="assets/javascripts/bundle.test.min.js"></script>',
-                f'<a href="{homepage_link}">{marker}</a>',
-            )
-        ),
-        encoding="utf-8",
-    )
+    homepage_lines = [
+        "<!doctype html>",
+        '<link rel="stylesheet" href="assets/stylesheets/main.test.min.css">',
+        '<script src="assets/javascripts/bundle.test.min.js"></script>',
+        f'<a href="{homepage_link}">{marker}</a>',
+    ]
+    if include_developer_testing:
+        homepage_lines.append('<a href="developer/testing/">Testing</a>')
+        testing_dir = root / "developer/testing"
+        testing_dir.mkdir(parents=True)
+        (testing_dir / "index.html").write_text(
+            "<!doctype html><p>Developer testing guide</p>",
+            encoding="utf-8",
+        )
+    (root / "index.html").write_text("\n".join(homepage_lines), encoding="utf-8")
 
 
 def test_assemble_portal_keeps_developer_root_and_isolates_user_assets(
@@ -44,7 +54,12 @@ def test_assemble_portal_keeps_developer_root_and_isolates_user_assets(
     developer = tmp_path / "developer"
     user = tmp_path / "user"
     output = tmp_path / "portal"
-    _write_site(developer, homepage_link="guide/", marker="developer")
+    _write_site(
+        developer,
+        homepage_link="guide/",
+        marker="developer",
+        include_developer_testing=True,
+    )
     _write_site(user, homepage_link="../", marker="user")
     (user / "404.html").write_text(
         '<link rel="icon" href="/assets/images/favicon.png">', encoding="utf-8"
@@ -64,7 +79,7 @@ def test_assemble_portal_keeps_developer_root_and_isolates_user_assets(
     )
     assert not (output / "guide/404.html").exists()
     assert not (output / "stale.txt").exists()
-    assert validation.html_pages == 2
+    assert validation.html_pages == 3
     assert validation.search_documents == 2
 
 
@@ -74,7 +89,12 @@ def test_assemble_portal_rejects_reserved_route_without_replacing_output(
     developer = tmp_path / "developer"
     user = tmp_path / "user"
     output = tmp_path / "portal"
-    _write_site(developer, homepage_link="guide/", marker="developer")
+    _write_site(
+        developer,
+        homepage_link="guide/",
+        marker="developer",
+        include_developer_testing=True,
+    )
     _write_site(user, homepage_link="../", marker="user")
     (developer / "guide").mkdir()
     output.mkdir()
@@ -90,12 +110,51 @@ def test_assemble_portal_rejects_root_relative_user_asset_url(tmp_path: Path) ->
     developer = tmp_path / "developer"
     user = tmp_path / "user"
     output = tmp_path / "portal"
-    _write_site(developer, homepage_link="guide/", marker="developer")
+    _write_site(
+        developer,
+        homepage_link="guide/",
+        marker="developer",
+        include_developer_testing=True,
+    )
     _write_site(user, homepage_link="../", marker="user")
     with (user / "index.html").open("a", encoding="utf-8") as stream:
         stream.write('\n<img src="/assets/images/non-relocatable.png">\n')
 
     with pytest.raises(PortalBuildError, match="not path-relocatable"):
+        assemble_portal(developer, user, output)
+
+    assert not output.exists()
+
+
+def test_assemble_portal_requires_developer_testing_route(tmp_path: Path) -> None:
+    developer = tmp_path / "developer"
+    user = tmp_path / "user"
+    output = tmp_path / "portal"
+    _write_site(developer, homepage_link="guide/", marker="developer")
+    _write_site(user, homepage_link="../", marker="user")
+
+    with pytest.raises(PortalBuildError, match="developer testing guide"):
+        assemble_portal(developer, user, output)
+
+    assert not output.exists()
+
+
+def test_assemble_portal_requires_homepage_link_to_developer_testing(
+    tmp_path: Path,
+) -> None:
+    developer = tmp_path / "developer"
+    user = tmp_path / "user"
+    output = tmp_path / "portal"
+    _write_site(developer, homepage_link="guide/", marker="developer")
+    testing_dir = developer / "developer/testing"
+    testing_dir.mkdir(parents=True)
+    (testing_dir / "index.html").write_text(
+        "<!doctype html><p>Developer testing guide</p>",
+        encoding="utf-8",
+    )
+    _write_site(user, homepage_link="../", marker="user")
+
+    with pytest.raises(PortalBuildError, match="homepage does not link"):
         assemble_portal(developer, user, output)
 
     assert not output.exists()

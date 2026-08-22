@@ -48,6 +48,7 @@ nav:
       - 開發者指南: developer/README.md
       - 本機環境: developer/local-setup.md
       - Repository 與 Owners: developer/repository-map.md
+      - 測試與驗證: developer/testing.md
       - 變更與驗證流程: developer/change-workflow.md
   - 專案現況:
       - 目前真相: current.md
