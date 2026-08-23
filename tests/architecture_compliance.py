@@ -779,13 +779,6 @@ MUTABLE_OBJECT_BOUNDARY_DEBT_ALLOWLIST = (
         "assignment",
     ),
     MutableObjectBoundaryDebt(
-        "XBrainLab/ui/panels/training/training_manager.py",
-        "TrainingManagerWindow.__init__",
-        MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
-        "assignment",
-        2,
-    ),
-    MutableObjectBoundaryDebt(
         "XBrainLab/ui/panels/visualization/panel.py",
         "VisualizationPanel._refresh_application_query",
         MUTABLE_BOUNDARY_UI_DOMAIN_STORAGE,
