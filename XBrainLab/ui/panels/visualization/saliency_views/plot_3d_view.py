@@ -21,7 +21,7 @@ from PyQt6.QtCore import (
     QThreadPool,
     QTimer,
 )
-from PyQt6.QtGui import QStandardItemModel
+from PyQt6.QtGui import QResizeEvent, QStandardItemModel
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -295,8 +295,6 @@ class Saliency3DPlotWidget(QWidget):
         class_layout.addStretch(1)
         self.class_controls.hide()
 
-        # Only the temporal selector belongs below the canvas.  Scene actions
-        # are overlay controls so they stay next to the 3-D object they alter.
         self.scene_controls = QWidget(self)
         self.scene_controls.setObjectName("Saliency3DEpochTimeControls")
         scene_layout = QHBoxLayout(self.scene_controls)
@@ -1231,7 +1229,7 @@ class Saliency3DPlotWidget(QWidget):
             if callable(reset):
                 reset()
 
-    def resizeEvent(self, event: QEvent) -> None:  # noqa: N802
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
         self._position_scene_overlay()
 
