@@ -153,7 +153,7 @@ class OptimizerSettingDialog(BaseDialog):
         """Parse and validate optimizer parameters, then accept the dialog.
 
         Raises:
-            QMessageBox: Warning if parameter validation or test
+            Warning dialog: shown if parameter validation or test
                 instantiation fails.
 
         """

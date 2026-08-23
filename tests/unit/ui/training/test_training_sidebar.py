@@ -6,7 +6,7 @@ from typing import Any, cast
 from unittest.mock import MagicMock, call, patch
 
 import pytest
-from PyQt6.QtWidgets import QGroupBox, QLabel, QMainWindow, QMessageBox, QPushButton
+from PyQt6.QtWidgets import QGroupBox, QLabel, QMainWindow, QPushButton
 
 from XBrainLab.backend.application import (
     ChangedState,
@@ -462,7 +462,7 @@ def test_on_start_clicked(sidebar):
 
     # Test Start
     sidebar.controller.is_training.return_value = False
-    with patch("XBrainLab.ui.panels.training.sidebar.QMessageBox.warning") as warning:
+    with patch("XBrainLab.ui.panels.training.sidebar.show_warning") as warning:
         sidebar.start_training_ui_action()
     sidebar.controller.start_training.assert_not_called()
     warning.assert_called_once()
@@ -718,10 +718,9 @@ def test_start_training_warning_is_confirmed_on_gui_then_redispatched(sidebar):
             "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
             side_effect=dispatch,
         ),
-        patch.object(
-            QMessageBox,
-            "question",
-            return_value=QMessageBox.StandardButton.Yes,
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.ask_confirmation",
+            return_value=True,
         ) as question,
     ):
         sidebar.start_training_ui_action()
@@ -735,7 +734,7 @@ def test_start_training_warning_is_confirmed_on_gui_then_redispatched(sidebar):
     assert len(calls) == 2
     assert calls[1][1].resource_preflight_confirmed is True
     assert calls[1][1].resource_preflight_token == receipt
-    message = question.call_args.args[2]
+    message = question.call_args.kwargs["message"]
     assert "Model: EEGNet" in message
     assert "Batch size: 256" in message
     assert "Estimated VRAM required: 7.0 GB" in message
@@ -775,10 +774,9 @@ def test_start_training_confirmation_keeps_the_reviewed_publication_generation(
             "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
             side_effect=_dispatch,
         ),
-        patch.object(
-            QMessageBox,
-            "question",
-            return_value=QMessageBox.StandardButton.Yes,
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.ask_confirmation",
+            return_value=True,
         ),
     ):
         sidebar.start_training_ui_action()
@@ -1191,12 +1189,11 @@ def test_start_training_warning_without_receipt_fails_closed(sidebar):
             "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
             side_effect=dispatch,
         ),
-        patch.object(
-            QMessageBox,
-            "question",
-            return_value=QMessageBox.StandardButton.Yes,
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.ask_confirmation",
+            return_value=True,
         ),
-        patch.object(QMessageBox, "critical") as critical,
+        patch("XBrainLab.ui.panels.training.sidebar.show_error") as critical,
     ):
         sidebar.start_training_ui_action()
         callbacks[0][0](
@@ -1223,10 +1220,9 @@ def test_start_training_unknown_retries_once_before_prompt(sidebar):
             "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
             side_effect=dispatch,
         ),
-        patch.object(
-            QMessageBox,
-            "question",
-            return_value=QMessageBox.StandardButton.No,
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.ask_confirmation",
+            return_value=False,
         ) as question,
     ):
         sidebar.start_training_ui_action()
@@ -1253,7 +1249,7 @@ def test_start_training_async_failure_uses_existing_error_surface(sidebar):
             "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
             side_effect=dispatch,
         ),
-        patch.object(QMessageBox, "critical") as critical,
+        patch("XBrainLab.ui.panels.training.sidebar.show_error") as critical,
     ):
         sidebar.start_training_ui_action()
         callbacks[0][0](_training_result(error_type=ErrorType.TRAINING))
@@ -1264,7 +1260,7 @@ def test_start_training_async_failure_uses_existing_error_surface(sidebar):
 
 def test_stop_training(sidebar):
     sidebar.controller.is_training.return_value = True
-    with patch("XBrainLab.ui.panels.training.sidebar.QMessageBox.warning") as warning:
+    with patch("XBrainLab.ui.panels.training.sidebar.show_warning") as warning:
         sidebar.stop_training()
     sidebar.controller.stop_training.assert_not_called()
     warning.assert_called_once()
@@ -1907,7 +1903,7 @@ def test_training_configuration_fails_before_dialog_without_product_review(
         patch(
             "XBrainLab.ui.panels.training.sidebar.execute_application_command",
         ) as execute,
-        patch.object(QMessageBox, "warning") as warning,
+        patch("XBrainLab.ui.panels.training.sidebar.show_warning") as warning,
     ):
         outcome = getattr(sidebar, action_name)()
 
@@ -1934,7 +1930,7 @@ def test_start_training_fails_before_dispatch_when_product_review_disappears(
             return_value=enabled,
         ),
         patch.object(sidebar, "_dispatch_start_training") as dispatch,
-        patch.object(QMessageBox, "warning") as warning,
+        patch("XBrainLab.ui.panels.training.sidebar.show_warning") as warning,
     ):
         sidebar.start_training_ui_action()
 
@@ -1960,8 +1956,8 @@ def test_clear_history_fails_before_confirmation_when_publication_disappears(
             "XBrainLab.ui.panels.training.sidebar.get_command_capability",
             return_value=enabled,
         ),
-        patch.object(QMessageBox, "question") as question,
-        patch.object(QMessageBox, "warning") as warning,
+        patch("XBrainLab.ui.panels.training.sidebar.ask_confirmation") as question,
+        patch("XBrainLab.ui.panels.training.sidebar.show_warning") as warning,
         patch(
             "XBrainLab.ui.panels.training.sidebar.execute_application_command",
         ) as execute,
@@ -2220,7 +2216,7 @@ def test_data_splitting_context_fails_closed_when_product_binding_disappears(
             "XBrainLab.ui.panels.training.sidebar.get_dataset_split_dialog_binding",
             return_value=None,
         ) as get_binding,
-        patch.object(QMessageBox, "warning") as warning,
+        patch("XBrainLab.ui.panels.training.sidebar.show_warning") as warning,
     ):
         context = sidebar._data_splitting_dialog_context(
             expected_publication_generation=91,
@@ -2257,7 +2253,7 @@ def test_data_splitting_context_stale_publication_requires_review(sidebar):
             "XBrainLab.ui.panels.training.sidebar.get_dataset_split_dialog_binding",
             side_effect=error,
         ),
-        patch.object(QMessageBox, "warning") as warning,
+        patch("XBrainLab.ui.panels.training.sidebar.show_warning") as warning,
     ):
         binding = sidebar._data_splitting_dialog_context(
             expected_publication_generation=92,

@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QAbstractItemView, QMainWindow, QMessageBox
+from PyQt6.QtWidgets import QAbstractItemView, QMainWindow
 
 from XBrainLab.backend.application import CommandCapability, CommandName
 from XBrainLab.backend.application.preprocess_render import (
@@ -651,7 +651,7 @@ def test_preprocess_action_fails_closed_without_product_review(
         patch(
             "XBrainLab.ui.panels.preprocess.sidebar.FilteringDialog",
         ) as dialog,
-        patch.object(QMessageBox, "warning") as warning,
+        patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning") as warning,
     ):
         panel.sidebar.open_filtering()
 
@@ -693,8 +693,8 @@ def test_reset_preprocess_fails_closed_without_product_capability(qtbot):
                 "real product actions must not consult controller compatibility"
             ),
         ) as compatibility_call,
-        patch.object(QMessageBox, "warning") as warning,
-        patch.object(QMessageBox, "question") as question,
+        patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning") as warning,
+        patch("XBrainLab.ui.panels.preprocess.sidebar.ask_confirmation") as question,
         patch(
             "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
         ) as execute,
