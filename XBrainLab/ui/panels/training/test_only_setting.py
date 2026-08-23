@@ -8,13 +8,13 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QVBoxLayout,
 )
 
 from XBrainLab.backend.training import TestOnlyOption, parse_device_name
 from XBrainLab.backend.training.input_contract import DEFAULT_TRAINING_OUTPUT_DIR
+from XBrainLab.ui.components.modal_message_box import ModalMessageBox as QMessageBox
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
