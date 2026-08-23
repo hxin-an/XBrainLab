@@ -1334,7 +1334,7 @@ class EpochingDialog(BaseDialog):
         """Validate parameters and accept the dialog.
 
         Raises:
-            QMessageBox: Warning if no events are selected or time range
+            Warning dialog: shown if no events are selected or time range
                 is invalid.
 
         """

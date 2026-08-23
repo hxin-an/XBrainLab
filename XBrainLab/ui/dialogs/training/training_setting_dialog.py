@@ -1003,7 +1003,7 @@ class TrainingSettingDialog(BaseDialog):
         """Validate all inputs, build TrainingOption, and accept the dialog.
 
         Raises:
-            QMessageBox: Warning if input validation fails.
+            Warning dialog: shown if input validation fails.
 
         """
         if self._device_recommendation_refresh_failed:

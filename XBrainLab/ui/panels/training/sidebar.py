@@ -13,9 +13,6 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PyQt6.QtWidgets import (
-    QMessageBox as QtMessageBox,
-)
 
 from XBrainLab.backend.application import (
     ApplicationError,
@@ -794,14 +791,14 @@ class TrainingSidebar(QWidget):
         def _handle_generate_result(result) -> InteractionOutcome:
             if is_stale_publication_result(result):
                 self._show_message_box(
-                    QtMessageBox.Icon.Warning,
+                    AlertSeverity.WARNING,
                     "Review Data Splitting Again",
                     result.message,
                 )
                 return InteractionOutcome.blocked(result.message)
             if result.failed:
                 self._show_message_box(
-                    QtMessageBox.Icon.Critical,
+                    AlertSeverity.CRITICAL,
                     "Data Splitting Failed",
                     result.message,
                 )
@@ -856,17 +853,10 @@ class TrainingSidebar(QWidget):
 
     def _show_message_box(
         self,
-        icon: QtMessageBox.Icon,
+        severity: AlertSeverity,
         title: str,
         text: str,
     ) -> None:
-        severity = (
-            AlertSeverity.CRITICAL
-            if icon is QtMessageBox.Icon.Critical
-            else AlertSeverity.WARNING
-            if icon is QtMessageBox.Icon.Warning
-            else AlertSeverity.INFORMATION
-        )
         show_alert(self, severity=severity, title=title, message=text)
 
     def _compatibility_data_splitting_preflight_blocked(self) -> bool:
