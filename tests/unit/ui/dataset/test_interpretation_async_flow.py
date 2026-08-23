@@ -249,7 +249,9 @@ def test_cancelled_catalog_scan_closes_without_failure_dialog(monkeypatch) -> No
     subjects = MagicMock()
     coordinator._bindings = replace(
         coordinator._bindings,
-        message_box=lambda: message_box,
+        show_warning=message_box.warning,
+        show_error=message_box.critical,
+        ask_confirmation=lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(handler, "_show_status", statuses.append)
     monkeypatch.setattr(
@@ -602,7 +604,7 @@ def test_review_current_import_identity_mismatch_fails_closed(
     )
     monkeypatch.setattr(actions, "application_ui_runtime", lambda _panel: runtime)
     warning = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+    monkeypatch.setattr(actions, "show_warning", warning)
     continue_review = MagicMock()
     monkeypatch.setattr(
         handler._data_interpretation,
@@ -647,7 +649,7 @@ def test_review_current_import_rejects_identity_change_during_read(
 
     runtime = _ChangingRuntime(matching, review)
     monkeypatch.setattr(actions, "application_ui_runtime", lambda _panel: runtime)
-    monkeypatch.setattr(actions.QMessageBox, "warning", MagicMock())
+    monkeypatch.setattr(actions, "show_warning", MagicMock())
     continue_review = MagicMock()
     monkeypatch.setattr(
         handler._data_interpretation,
@@ -674,7 +676,7 @@ def test_review_current_import_without_runtime_fails_closed(monkeypatch) -> None
     handler = DatasetActionHandler(panel)
     monkeypatch.setattr(actions, "application_ui_runtime", lambda _panel: None)
     warning = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+    monkeypatch.setattr(actions, "show_warning", warning)
     continue_review = MagicMock()
     monkeypatch.setattr(
         handler._data_interpretation,
@@ -1489,8 +1491,8 @@ def test_confirm_import_revalidation_worker_failure_replaces_preparing_status(
     panel = MagicMock()
     revised_choices = {"class_map": {"1": "Target"}}
     statuses: list[tuple[str, int]] = []
-    message_box = MagicMock()
-    monkeypatch.setattr(actions, "QMessageBox", message_box)
+    warning = MagicMock()
+    monkeypatch.setattr(actions, "show_warning", warning)
     handler = DatasetActionHandler(panel)
 
     class _Dialog:
@@ -1533,8 +1535,8 @@ def test_confirm_import_revalidation_worker_failure_replaces_preparing_status(
     assert statuses == [
         ("Dataset import failed · Review the import settings", 7000),
     ]
-    message_box.warning.assert_called_once()
-    warning_text = message_box.warning.call_args.args[2]
+    warning.assert_called_once()
+    warning_text = warning.call_args.args[2]
     assert "revalidation failed" in warning_text
     assert "Reopen Import EEG Data" in warning_text
 
@@ -1646,7 +1648,9 @@ def test_confirm_import_revalidation_cancel_reopens_edited_review_without_failur
         single_shot=lambda _delay, callback: callback(),
         qt_object_deleted=lambda _owner: False,
         reserve_interaction_continuation=lambda: None,
-        message_box=lambda: SimpleNamespace(warning=warning, critical=critical),
+        show_warning=warning,
+        show_error=critical,
+        ask_confirmation=lambda *_args, **_kwargs: False,
     )
 
     outcome = coordinator._continue_data_interpretation_import(
@@ -1774,8 +1778,16 @@ def test_blocked_review_closes_without_a_second_error_dialog(monkeypatch) -> Non
             return {"confirmed": False, "choices": {}}
 
     monkeypatch.setattr(actions, "DataInterpretationPreviewDialog", _Dialog)
-    critical = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "critical", critical)
+    present_error = MagicMock(
+        return_value=(
+            "XBrainLab could not prepare the Data Import review. "
+            "Reopen the source and try again."
+        )
+    )
+    handler._data_interpretation._bindings = replace(
+        handler._data_interpretation._bindings,
+        present_unexpected_error=present_error,
+    )
     review_state = replace(
         _review_state(),
         decision={
@@ -1794,7 +1806,7 @@ def test_blocked_review_closes_without_a_second_error_dialog(monkeypatch) -> Non
     )
 
     assert outcome.status is InteractionStatus.BLOCKED
-    critical.assert_not_called()
+    present_error.assert_not_called()
 
 
 def test_choice_repreview_uses_existing_scan_without_rescanning(monkeypatch) -> None:
@@ -1965,7 +1977,7 @@ def test_apply_failure_explains_that_existing_data_was_preserved(
     critical = MagicMock()
     handler._data_interpretation._bindings = replace(
         handler._data_interpretation._bindings,
-        message_box=lambda: SimpleNamespace(critical=critical),
+        show_error=critical,
     )
 
     outcome = handler._data_interpretation._apply_interpretation_async(
@@ -2069,7 +2081,7 @@ def test_apply_owned_cancel_reopens_review_without_presenting_a_failure(
         single_shot=lambda _delay, callback: callback(),
         qt_object_deleted=lambda _owner: False,
         reserve_interaction_continuation=lambda: None,
-        message_box=lambda: SimpleNamespace(critical=critical),
+        show_error=critical,
     )
 
     outcome = handler._data_interpretation._apply_interpretation_async(
@@ -2439,7 +2451,7 @@ def test_label_import_real_runtime_fails_closed_without_second_publication_read(
     monkeypatch.setattr(actions, "has_real_application_context", lambda _panel: True)
     monkeypatch.setattr(actions, "get_command_capability", capability_read)
     monkeypatch.setattr(actions, "ImportLabelDialog", dialog_factory)
-    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+    monkeypatch.setattr(actions, "show_warning", warning)
 
     handler.import_label()
 
@@ -2470,7 +2482,7 @@ def test_recipe_save_uses_generation_reviewed_before_question(
 
     def question(*_args, **_kwargs):
         current_generation["value"] = 32
-        return actions.QMessageBox.StandardButton.Yes
+        return True
 
     def execute_async(
         _command,
@@ -2494,10 +2506,10 @@ def test_recipe_save_uses_generation_reviewed_before_question(
     monkeypatch.setattr(
         handler._data_interpretation, "_recipe_save_block_reason", lambda: None
     )
-    monkeypatch.setattr(actions.QMessageBox, "question", question)
+    monkeypatch.setattr(actions, "ask_confirmation", question)
     monkeypatch.setattr(
-        actions.QMessageBox,
-        "warning",
+        actions,
+        "show_warning",
         lambda *args: warnings.append(args),
     )
     monkeypatch.setattr(
@@ -2621,8 +2633,16 @@ def test_worker_exception_cleans_up_and_reports_without_nested_wait(
         "application_ui_runtime",
         lambda _study: _Service(),
     )
-    critical = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "critical", critical)
+    present_error = MagicMock(
+        return_value=(
+            "XBrainLab could not prepare the Data Import review. "
+            "Reopen the source and try again."
+        )
+    )
+    handler._data_interpretation._bindings = replace(
+        handler._data_interpretation._bindings,
+        present_unexpected_error=present_error,
+    )
 
     outcome = handler._data_interpretation._execute_interpretation_command_async(
         QueryStateCommand(),
@@ -2632,16 +2652,16 @@ def test_worker_exception_cleans_up_and_reports_without_nested_wait(
     assert outcome is not None
     assert outcome.status is InteractionStatus.ACCEPTED
 
-    qtbot.waitUntil(lambda: critical.call_count == 1, timeout=1000)
+    qtbot.waitUntil(lambda: present_error.call_count == 1, timeout=1000)
     qtbot.waitUntil(
         lambda: application_command_registry().active_count(panel) == 0,
         timeout=1000,
     )
-    assert critical.call_args.args[2] == (
+    assert present_error.call_args.args[1].value.title == "Interpretation review failed"
+    assert present_error.return_value == (
         "XBrainLab could not prepare the Data Import review. "
         "Reopen the source and try again."
     )
-    assert "scan failed" not in critical.call_args.args[2]
     assert cast(Any, panel).set_busy.call_args_list == [((True,),), ((False,),)]
 
 
@@ -3260,9 +3280,9 @@ def test_review_warning_confirmation_retries_before_opening_preview(
         lambda _study: _Service(),
     )
     monkeypatch.setattr(
-        actions.QMessageBox,
-        "question",
-        lambda *_args, **_kwargs: actions.QMessageBox.StandardButton.Yes,
+        actions,
+        "ask_confirmation",
+        lambda *_args, **_kwargs: True,
     )
     single_shot = MagicMock(side_effect=lambda _delay, callback: callback())
     monkeypatch.setattr(actions.QTimer, "singleShot", single_shot)
@@ -3319,8 +3339,8 @@ def test_review_warning_without_typed_challenge_never_resubmits(
     )
     question = MagicMock()
     critical = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "question", question)
-    monkeypatch.setattr(actions.QMessageBox, "critical", critical)
+    monkeypatch.setattr(actions, "ask_confirmation", question)
+    monkeypatch.setattr(actions, "show_error", critical)
 
     outcome = handler._data_interpretation._start_interpretation_review_async(
         "/tmp/sub-01_raw.fif",
@@ -3369,8 +3389,8 @@ def test_review_warning_with_mismatched_challenge_command_never_resubmits(
     )
     question = MagicMock()
     critical = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "question", question)
-    monkeypatch.setattr(actions.QMessageBox, "critical", critical)
+    monkeypatch.setattr(actions, "ask_confirmation", question)
+    monkeypatch.setattr(actions, "show_error", critical)
 
     outcome = handler._data_interpretation._start_interpretation_review_async(
         "/tmp/sub-01_raw.fif",
@@ -3417,8 +3437,8 @@ def test_review_blocking_resource_result_never_resubmits(
     )
     question = MagicMock()
     critical = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "question", question)
-    monkeypatch.setattr(actions.QMessageBox, "critical", critical)
+    monkeypatch.setattr(actions, "ask_confirmation", question)
+    monkeypatch.setattr(actions, "show_error", critical)
 
     handler._data_interpretation._start_interpretation_review_async(
         "/tmp/sub-01_raw.fif",
@@ -3498,9 +3518,9 @@ def test_reload_warning_confirmation_retries_with_receipt_and_same_continuation(
         ),
     )
     monkeypatch.setattr(
-        actions.QMessageBox,
-        "question",
-        lambda *_args, **_kwargs: actions.QMessageBox.StandardButton.Yes,
+        actions,
+        "ask_confirmation",
+        lambda *_args, **_kwargs: True,
     )
     single_shot = MagicMock(side_effect=lambda _delay, callback: callback())
     monkeypatch.setattr(actions.QTimer, "singleShot", single_shot)
@@ -3579,9 +3599,9 @@ def test_reloaded_preview_warning_retries_with_receipt_and_same_continuation(
         lambda **_kwargs: _review_state(publication_generation=22),
     )
     monkeypatch.setattr(
-        actions.QMessageBox,
-        "question",
-        lambda *_args, **_kwargs: actions.QMessageBox.StandardButton.Yes,
+        actions,
+        "ask_confirmation",
+        lambda *_args, **_kwargs: True,
     )
     single_shot = MagicMock(side_effect=lambda _delay, callback: callback())
     monkeypatch.setattr(actions.QTimer, "singleShot", single_shot)
@@ -3702,9 +3722,9 @@ def test_apply_warning_confirmation_resubmits_trusted_receipt_async(
         lambda _study: _Service(),
     )
     monkeypatch.setattr(
-        actions.QMessageBox,
-        "question",
-        lambda *_args, **_kwargs: actions.QMessageBox.StandardButton.Yes,
+        actions,
+        "ask_confirmation",
+        lambda *_args, **_kwargs: True,
     )
     status = MagicMock()
     monkeypatch.setattr(handler, "_show_status", status)
@@ -3759,9 +3779,9 @@ def test_apply_warning_handoff_ack_completes_without_result_refresh(
         command_result_refresh,
     )
     monkeypatch.setattr(
-        actions.QMessageBox,
-        "question",
-        lambda *_args, **_kwargs: actions.QMessageBox.StandardButton.Yes,
+        actions,
+        "ask_confirmation",
+        lambda *_args, **_kwargs: True,
     )
     status = MagicMock()
     monkeypatch.setattr(handler, "_show_status", status)
@@ -3813,9 +3833,9 @@ def test_apply_warning_handoff_refusal_reports_only_cancelled(
         lambda _study: _Service(),
     )
     monkeypatch.setattr(
-        actions.QMessageBox,
-        "question",
-        lambda *_args, **_kwargs: actions.QMessageBox.StandardButton.No,
+        actions,
+        "ask_confirmation",
+        lambda *_args, **_kwargs: False,
     )
     status = MagicMock()
     monkeypatch.setattr(handler, "_show_status", status)
@@ -3866,12 +3886,12 @@ def test_apply_warning_handoff_retry_start_failure_reports_only_failed(
         lambda _study: _Service(),
     )
     monkeypatch.setattr(
-        actions.QMessageBox,
-        "question",
-        lambda *_args, **_kwargs: actions.QMessageBox.StandardButton.Yes,
+        actions,
+        "ask_confirmation",
+        lambda *_args, **_kwargs: True,
     )
     warning = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+    monkeypatch.setattr(actions, "show_warning", warning)
     real_execute_async = actions.execute_application_command_async
 
     def _execute_or_reject_retry(context, command, **kwargs):
@@ -3926,7 +3946,7 @@ def test_apply_resource_callback_is_dropped_after_owner_deletion(qtbot, monkeypa
         "application_ui_runtime",
         lambda _study: _Service(),
     )
-    monkeypatch.setattr(actions.QMessageBox, "question", question)
+    monkeypatch.setattr(actions, "ask_confirmation", question)
 
     outcome = handler._data_interpretation._apply_interpretation_async(
         _review_state(),
@@ -3969,8 +3989,8 @@ def test_apply_blocking_resource_result_is_presented_without_resubmit(
     )
     critical = MagicMock()
     question = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "critical", critical)
-    monkeypatch.setattr(actions.QMessageBox, "question", question)
+    monkeypatch.setattr(actions, "show_error", critical)
+    monkeypatch.setattr(actions, "ask_confirmation", question)
 
     outcome = handler._data_interpretation._apply_interpretation_async(
         _review_state(),
@@ -4019,7 +4039,7 @@ def test_import_label_fails_before_target_or_dialog_when_review_capability_is_mi
         target_reader,
     )
     monkeypatch.setattr(actions, "ImportLabelDialog", dialog)
-    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+    monkeypatch.setattr(actions, "show_warning", warning)
 
     handler.import_label()
 
@@ -4045,7 +4065,7 @@ def test_recipe_save_fails_before_chooser_when_review_capability_is_missing(
     monkeypatch.setattr(
         handler._data_interpretation, "_execute_interpretation_command_async", execute
     )
-    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+    monkeypatch.setattr(actions, "show_warning", warning)
 
     started = handler._data_interpretation._save_interpretation_recipe()
 
@@ -4060,13 +4080,13 @@ def test_recipe_offer_fails_before_confirmation_when_review_capability_is_missin
     monkeypatch,
 ):
     handler = _real_study_dataset_handler(qtbot)
-    question = MagicMock(return_value=actions.QMessageBox.StandardButton.No)
+    question = MagicMock(return_value=False)
     monkeypatch.setattr(
         actions,
         "get_command_review_context",
         lambda *_args: _missing_capability_review(),
     )
-    monkeypatch.setattr(actions.QMessageBox, "question", question)
+    monkeypatch.setattr(actions, "ask_confirmation", question)
 
     message = handler._offer_label_recipe_save(
         SimpleNamespace(diagnostics={"recipe_updated": True}),
@@ -4090,7 +4110,7 @@ def test_recipe_reload_fails_before_chooser_when_product_review_disappears(
     )
     monkeypatch.setattr(actions, "get_command_review_context", lambda *_args: None)
     monkeypatch.setattr(actions.QFileDialog, "getOpenFileName", chooser)
-    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+    monkeypatch.setattr(actions, "show_warning", warning)
 
     handler.reload_interpretation_recipe()
 
@@ -4111,7 +4131,7 @@ def test_smart_parser_fails_before_query_when_product_review_disappears(
     monkeypatch.setattr(actions, "get_command_capability", lambda *_args: enabled)
     monkeypatch.setattr(handler, "_smart_parse_filenames", query)
     monkeypatch.setattr(actions, "SmartParserDialog", dialog)
-    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+    monkeypatch.setattr(actions, "show_warning", warning)
 
     handler.open_smart_parser()
 

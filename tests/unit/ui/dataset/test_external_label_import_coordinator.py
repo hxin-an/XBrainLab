@@ -142,7 +142,9 @@ def test_product_label_targets_are_detached_from_generation_bound_backend_rows()
         )
 
     bindings = ExternalLabelImportBindings(
-        message_box=lambda: SimpleNamespace(warning=warnings),
+        show_warning=warnings,
+        show_error=MagicMock(),
+        ask_confirmation=lambda *_args, **_kwargs: False,
         get_command_review_context=lambda *_args, **_kwargs: None,
         get_command_capability=lambda *_args, **_kwargs: None,
         has_real_application_context=lambda *_args, **_kwargs: True,
@@ -237,7 +239,9 @@ def test_product_sequence_label_event_review_uses_detached_backend_evidence() ->
             return {"769"}
 
     bindings = ExternalLabelImportBindings(
-        message_box=lambda: SimpleNamespace(warning=warnings),
+        show_warning=warnings,
+        show_error=MagicMock(),
+        ask_confirmation=lambda *_args, **_kwargs: False,
         get_command_review_context=lambda *_args, **_kwargs: None,
         get_command_capability=lambda *_args, **_kwargs: None,
         has_real_application_context=lambda *_args, **_kwargs: True,
