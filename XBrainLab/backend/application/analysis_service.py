@@ -291,6 +291,31 @@ class AnalysisCommandService:
             if available_views
             else "No visualization views are ready yet."
         )
+        holders = tuple(self.training_runtime.training_plan_holders())
+        saliency_cross_fold_choices = build_saliency_cross_fold_choices(holders)
+        saliency_choice_members = {
+            tuple(
+                (member.plan.plan_index, member.run_index)
+                for member in choice.identity.members
+            )
+            for choice in saliency_cross_fold_choices
+        }
+        evaluation_cross_fold_choices = []
+        for choice in build_evaluation_cross_fold_choices(holders):
+            payload = choice.to_dict()
+            members = tuple(
+                (member.plan.plan_index, member.run_index)
+                for member in choice.identity.members
+            )
+            available = members in saliency_choice_members
+            payload["saliency_available"] = available
+            payload["saliency_reason"] = (
+                ""
+                if available
+                else "Saliency has not been computed for this Fold Set. "
+                "Use Compute Saliency to continue."
+            )
+            evaluation_cross_fold_choices.append(payload)
         diagnostics: dict[str, Any] = {
             "payload_type": "visualization_summary",
             "available": bool(available_views),
@@ -311,11 +336,9 @@ class AnalysisCommandService:
             "saliency_configured": state.visualization.saliency_configured,
             "saliency_available": state.visualization.saliency_available,
             "saliency_cross_fold_choices": [
-                choice.to_dict()
-                for choice in build_saliency_cross_fold_choices(
-                    self.training_runtime.training_plan_holders()
-                )
+                choice.to_dict() for choice in saliency_cross_fold_choices
             ],
+            "evaluation_cross_fold_choices": evaluation_cross_fold_choices,
         }
         return (
             message,

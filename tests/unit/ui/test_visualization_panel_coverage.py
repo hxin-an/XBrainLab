@@ -59,6 +59,7 @@ def _complete_coverage(method: str = "Gradient") -> SaliencyMethodCoverageSnapsh
 def _visualization_result(
     *run_coverages: SaliencyRunCoverageSnapshot,
     cross_fold_choices: tuple[dict[str, object], ...] = (),
+    evaluation_cross_fold_choices: tuple[dict[str, object], ...] = (),
 ) -> CommandResult:
     state = replace(
         ApplicationStateSnapshot.empty(),
@@ -79,6 +80,7 @@ def _visualization_result(
             "available": True,
             "plot_views_available": True,
             "saliency_cross_fold_choices": list(cross_fold_choices),
+            "evaluation_cross_fold_choices": list(evaluation_cross_fold_choices),
         },
     )
 
@@ -1299,7 +1301,7 @@ class TestRefreshCombos:
 
         identity = panel.run_combo.currentData()
         assert isinstance(identity, SaliencyCrossFoldIdentity)
-        assert panel.run_combo.currentText() == "Run 1 (Summary)"
+        assert panel.run_combo.currentText() == "Run 1"
         assert [member.plan.plan_index for member in identity.members] == [0, 1]
         coverage = panel._published_coverage_for_selection()
         assert coverage is not None
@@ -1350,6 +1352,54 @@ class TestRefreshCombos:
         assert rendered.request.normalize is True
         assert rendered.data.normalized is True
         assert rendered.data.fold_count == 2
+
+    def test_evaluation_admitted_fold_set_is_selectable_before_saliency_exists(
+        self,
+        panel_and_controller,
+    ):
+        """Newly finished folds must not inherit an earlier rendered result."""
+        panel, _controller = panel_and_controller
+        admitted = {
+            "identity": {
+                "members": [
+                    {"plan_index": 2, "run_index": 0},
+                    {"plan_index": 3, "run_index": 0},
+                ]
+            },
+            "display_name": "Fold Set 2",
+            "run_label": "Run 1 (Summary)",
+            "evaluation_splits": ["test"],
+            "fold_count": 2,
+            "sample_count": 12,
+            "saliency_available": False,
+            "saliency_reason": "Saliency has not been computed for this Fold Set.",
+        }
+        result = _visualization_result(
+            _run_coverage(plan_index=0, run_index=0, model_name="EEGNet"),
+            _run_coverage(
+                plan_index=2,
+                run_index=0,
+                model_name="EEGNet",
+                methods=(SaliencyMethodCoverageSnapshot(method="Gradient"),),
+            ),
+            _run_coverage(
+                plan_index=3,
+                run_index=0,
+                model_name="EEGNet",
+                methods=(SaliencyMethodCoverageSnapshot(method="Gradient"),),
+            ),
+            evaluation_cross_fold_choices=(admitted,),
+        )
+
+        _publish_panel_state(panel, result)
+
+        fold_set_index = panel.plan_combo.findText("Fold Set 2")
+        assert fold_set_index > 0
+        # First publication defaults to the latest admitted training round.
+        assert panel.plan_combo.currentIndex() == fold_set_index
+        assert panel.run_combo.currentText() == "Run 1"
+        assert isinstance(panel.run_combo.currentData(), SaliencyCrossFoldIdentity)
+        assert panel._published_coverage_for_selection() == {}
 
     def test_cross_fold_normalize_during_first_load_reschedules_owned_variant(
         self,

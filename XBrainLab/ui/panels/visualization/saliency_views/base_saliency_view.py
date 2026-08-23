@@ -850,6 +850,7 @@ class BaseSaliencyView(QWidget):
             tuple[tuple[float, float], tuple[float, float]],
         ] = {}
         self._canvas_scroll_area: QScrollArea | None = None
+        self._detail_interactions_enabled = True
 
         self.init_ui()
 
@@ -1082,6 +1083,10 @@ class BaseSaliencyView(QWidget):
                 axis.set_ylim(limits[1])
         self._draw_canvas_now()
 
+    def set_detail_interactions_enabled(self, enabled: bool) -> None:
+        """Keep overview tiles click-only; detail mode owns zoom and pan."""
+        self._detail_interactions_enabled = bool(enabled)
+
     def _install_canvas_interactions(self, canvas: FigureCanvas) -> None:
         """Enable pointer-local zoom and drag pan for detailed saliency plots."""
         figure = canvas.figure
@@ -1096,6 +1101,8 @@ class BaseSaliencyView(QWidget):
         canvas.mpl_connect("button_release_event", self._on_canvas_release)
 
     def _on_canvas_scroll(self, event: Event) -> None:
+        if not self._detail_interactions_enabled:
+            return
         mouse_event = cast(MouseEvent, event)
         axis = getattr(mouse_event, "inaxes", None)
         if axis is None or not getattr(axis, "images", None):
@@ -1112,6 +1119,8 @@ class BaseSaliencyView(QWidget):
         self._draw_canvas_now()
 
     def _on_canvas_press(self, event: Event) -> None:
+        if not self._detail_interactions_enabled:
+            return
         mouse_event = cast(MouseEvent, event)
         axis = getattr(mouse_event, "inaxes", None)
         xdata = getattr(mouse_event, "xdata", None)
@@ -1135,6 +1144,8 @@ class BaseSaliencyView(QWidget):
         )
 
     def _on_canvas_motion(self, event: Event) -> None:
+        if not self._detail_interactions_enabled:
+            return
         mouse_event = cast(MouseEvent, event)
         state = self._pan_state
         if state is None or getattr(mouse_event, "inaxes", None) is not state[0]:

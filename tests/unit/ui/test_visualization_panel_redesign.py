@@ -203,9 +203,9 @@ def test_saliency_view_selector_is_inside_the_visible_control_bar(qtbot) -> None
     qtbot.waitExposed(panel)
 
     assert panel.saliency_view_label.isVisible()
-    assert panel.saliency_view_mode.isVisible()
+    assert panel.saliency_combo.isVisible()
     assert (
-        panel.saliency_view_mode.geometry().bottom()
+        panel.saliency_combo.geometry().bottom()
         <= panel.ctrl_bar.contentsRect().bottom()
     )
 

@@ -552,6 +552,19 @@ def test_analysis_service_keeps_appended_fold_round_summaries_independent() -> N
         for choice in first_diagnostics["cross_fold_choices"]
     ] == [(0, 1), (2, 3)]
 
+    _message, visualization = _expect_payload(
+        service.handle_visualize(VisualizeCommand(view="summary")),
+    )
+    assert [
+        choice["display_name"]
+        for choice in visualization["evaluation_cross_fold_choices"]
+    ] == ["Fold Set 1", "Fold Set 2"]
+    assert all(
+        choice["saliency_available"] is False
+        and "Compute Saliency" in choice["saliency_reason"]
+        for choice in visualization["evaluation_cross_fold_choices"]
+    )
+
 
 def test_analysis_service_reports_validation_fallback_provenance() -> None:
     plan = _Plan(

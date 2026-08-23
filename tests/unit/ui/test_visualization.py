@@ -893,7 +893,7 @@ class TestSaliency3DPlotWidget:
             )
             assert w.class_combo.count() == 1
             assert w.class_combo.currentText() == "left"
-            assert not w.class_controls.isHidden()
+            assert w.class_controls.isHidden()
 
     def test_3d_class_selector_restarts_render_for_selected_class(self, qtbot):
         with patch(
