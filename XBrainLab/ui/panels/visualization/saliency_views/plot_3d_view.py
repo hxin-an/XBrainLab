@@ -902,6 +902,7 @@ class Saliency3DPlotWidget(QWidget):
             request_id,
             publication_generation,
         ):
+            self._active_scene_key = None
             self.show_error(
                 _worker_start_failure_message(
                     "3D engine renderer",
@@ -1061,6 +1062,8 @@ class Saliency3DPlotWidget(QWidget):
             )
         except Exception as exc:
             logger.exception("Could not initialize the 3D saliency geometry.")
+            if self._is_current_request(request_id, publication_generation):
+                self._active_scene_key = None
             if not self._qt_object_deleted(self):
                 self.show_error(
                     _worker_start_failure_message(
@@ -1089,6 +1092,7 @@ class Saliency3DPlotWidget(QWidget):
             diagnostic,
             formatted_traceback,
         )
+        self._active_scene_key = None
         self.show_error(SALIENCY_RENDER_FAILED_TEXT)
 
     def _on_engine_worker_finished(self, worker: Worker) -> None:
@@ -1445,6 +1449,7 @@ class Saliency3DPlotWidget(QWidget):
         if self._shutdown_requested:
             return
         self._shutdown_requested = True
+        self._active_scene_key = None
         self._invalidate_async_requests()
         self._clear_prepared_engine_cache()
 

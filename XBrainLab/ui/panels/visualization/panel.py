@@ -812,9 +812,9 @@ class VisualizationPanel(BasePanel):
             self.ctrl_layout.addWidget(self.saliency_combo, 0, 9)
             self.ctrl_layout.addWidget(self.saliency_reset_view, 0, 10)
         elif layout_mode == "medium":
-            self.ctrl_layout.addWidget(self.saliency_view_label, 1, 0)
-            self.ctrl_layout.addWidget(self.saliency_combo, 1, 1)
-            self.ctrl_layout.addWidget(self.saliency_reset_view, 1, 2)
+            self.ctrl_layout.addWidget(self.saliency_view_label, 2, 0)
+            self.ctrl_layout.addWidget(self.saliency_combo, 2, 1)
+            self.ctrl_layout.addWidget(self.saliency_reset_view, 2, 2)
         else:
             self.ctrl_layout.addWidget(self.saliency_view_label, 2, 0)
             self.ctrl_layout.addWidget(self.saliency_combo, 2, 1)
@@ -1627,6 +1627,19 @@ class VisualizationPanel(BasePanel):
                 index = self.saliency_class_combo.findData(previous)
                 self.saliency_class_combo.setCurrentIndex(max(index, 0))
             selected = self.saliency_combo.findData(previous)
+            if (
+                selected <= 0
+                and hasattr(self, "tabs")
+                and self.tabs.currentWidget() is getattr(self, "tab_3d", None)
+            ):
+                selected = next(
+                    (
+                        index
+                        for index in range(1, self.saliency_combo.count())
+                        if self.saliency_combo.itemData(index) is not None
+                    ),
+                    selected,
+                )
             self.saliency_combo.setCurrentIndex(max(selected, 0))
         class_key = self.saliency_combo.currentData()
         with QSignalBlocker(self.saliency_view_mode):

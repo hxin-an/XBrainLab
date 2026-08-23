@@ -235,6 +235,67 @@ def test_visualization_controls_use_responsive_layout_modes(
     assert (normalize_row, normalize_column) < (absolute_row, absolute_column)
 
 
+def test_medium_visualization_controls_do_not_overlap_transform_and_reset_actions(
+    qtbot,
+) -> None:
+    """The medium layout gives transforms and detail reset distinct grid cells."""
+    panel, _ = _make_panel(qtbot)
+    panel._apply_visualization_control_layout("medium")
+
+    controls = (
+        panel.method_label,
+        panel.method_combo,
+        panel.normalize_check,
+        panel.abs_check,
+        panel.saliency_view_label,
+        panel.saliency_combo,
+        panel.saliency_reset_view,
+    )
+    occupied_cells: dict[tuple[int, int], QWidget] = {}
+    for control in controls:
+        index = panel.ctrl_layout.indexOf(control)
+        assert index >= 0
+        row, column, row_span, column_span = panel.ctrl_layout.getItemPosition(index)
+        for cell_row in range(row, row + row_span):
+            for cell_column in range(column, column + column_span):
+                assert (cell_row, cell_column) not in occupied_cells
+                occupied_cells[(cell_row, cell_column)] = control
+
+
+def test_switching_to_3d_from_all_classes_selects_the_first_renderable_class(
+    qtbot,
+) -> None:
+    panel, _ = _make_panel(qtbot)
+    _publish_panel_state(
+        panel,
+        _application_query_with_saliency_state(
+            PostTrainingSaliencyStatus.idle(),
+            _complete_coverage("Gradient", "left", "right"),
+        ),
+    )
+    coverage = replace(
+        _complete_coverage("Gradient", "left", "right"),
+        classes=[
+            SaliencyClassCoverageSnapshot(
+                class_index=index,
+                display_name=name,
+                store_key=index,
+                available=True,
+            )
+            for index, name in enumerate(("left", "right"))
+        ],
+    )
+    panel._sync_saliency_class_controls(coverage)
+    assert panel.saliency_combo.currentData() is None
+    assert panel.saliency_combo.count() == 3
+    panel.tabs.setCurrentWidget(panel.tab_3d)
+    panel._sync_saliency_class_controls(coverage)
+
+    assert panel.tabs.currentWidget() is panel.tab_3d
+    assert panel.saliency_combo.currentData() == 0
+    assert panel.saliency_combo.currentText() == "left"
+
+
 def test_spectrogram_does_not_reserve_absolute_control_hole(qtbot) -> None:
     panel, _ = _make_panel(qtbot)
     panel._apply_visualization_control_layout("medium")
