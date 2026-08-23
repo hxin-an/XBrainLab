@@ -448,7 +448,6 @@ def test_global_exception_handler_uses_safe_central_presenter(qtbot):
             "XBrainLab.ui.main_window.present_unexpected_error",
             create=True,
         ) as present,
-        patch("XBrainLab.ui.main_window.QMessageBox"),
     ):
         global_exception_handler(RuntimeError, error, None)
 

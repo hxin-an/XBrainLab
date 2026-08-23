@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import mne
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QMessageBox, QPushButton, QWidget
+from PyQt6.QtWidgets import QPushButton, QWidget
 
 from XBrainLab.ui.panels.dataset.sidebar import (
     _ACTION_TEXT_HORIZONTAL_PADDING,
@@ -314,9 +314,8 @@ def test_open_channel_selection_refuses_real_study_preflight_fallback(qtbot):
             "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
             return_value=None,
         ),
-        patch.object(
-            QMessageBox,
-            "warning",
+        patch(
+            "XBrainLab.ui.panels.dataset.sidebar.show_warning",
             side_effect=lambda *args: warning_calls.append(args),
         ),
         patch.object(
@@ -380,11 +379,6 @@ def test_channel_selection_binds_reviewed_publication_without_false_warning(
         return success_result
 
     with (
-        patch.object(
-            QMessageBox,
-            "question",
-            return_value=QMessageBox.StandardButton.Yes,
-        ),
         patch(
             "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog",
         ) as dialog,
@@ -392,8 +386,8 @@ def test_channel_selection_binds_reviewed_publication_without_false_warning(
             "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
             side_effect=execute,
         ),
-        patch.object(QMessageBox, "warning") as warning,
-        patch.object(QMessageBox, "critical") as critical,
+        patch("XBrainLab.ui.panels.dataset.sidebar.show_warning") as warning,
+        patch("XBrainLab.ui.panels.dataset.sidebar.show_error") as critical,
         patch.object(widget, "_show_status") as show_status,
     ):
         dialog.return_value.exec.return_value = True
@@ -461,7 +455,7 @@ def test_channel_selection_uses_captured_channels_when_montage_settles(
         patch(
             "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog",
         ) as dialog,
-        patch.object(QMessageBox, "warning") as warning,
+        patch("XBrainLab.ui.panels.dataset.sidebar.show_warning") as warning,
     ):
         dialog.return_value.exec.return_value = False
         widget.open_channel_selection()
@@ -529,8 +523,8 @@ def test_channel_selection_metadata_change_uses_dataset_warning(
             "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
             side_effect=execute,
         ),
-        patch.object(QMessageBox, "warning") as warning,
-        patch.object(QMessageBox, "critical") as critical,
+        patch("XBrainLab.ui.panels.dataset.sidebar.show_warning") as warning,
+        patch("XBrainLab.ui.panels.dataset.sidebar.show_error") as critical,
         patch.object(widget, "_show_status") as show_status,
     ):
         dialog.return_value.exec.return_value = True
@@ -604,8 +598,8 @@ def test_channel_selection_raw_change_uses_channels_warning(qtbot, raw_change):
             "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
             side_effect=execute,
         ),
-        patch.object(QMessageBox, "warning") as warning,
-        patch.object(QMessageBox, "critical") as critical,
+        patch("XBrainLab.ui.panels.dataset.sidebar.show_warning") as warning,
+        patch("XBrainLab.ui.panels.dataset.sidebar.show_error") as critical,
     ):
         dialog.return_value.exec.return_value = True
         dialog.return_value.get_result.return_value = ["C3", "C4"]

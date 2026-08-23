@@ -94,7 +94,9 @@ def test_channel_selection_behavior_and_copy_are_unchanged(qtbot) -> None:
         dialog.list_widget.item(index).checkState() is Qt.CheckState.Unchecked
         for index in range(dialog.list_widget.count())
     )
-    with patch("PyQt6.QtWidgets.QMessageBox.warning") as warning:
+    with patch(
+        "XBrainLab.ui.dialogs.dataset.channel_selection_dialog.show_warning"
+    ) as warning:
         dialog.accept()
         warning.assert_called_once_with(
             dialog,

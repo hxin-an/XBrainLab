@@ -8,11 +8,12 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QDialog, QGroupBox, QMainWindow, QMessageBox
+from PyQt6.QtWidgets import QDialog, QGroupBox, QMainWindow
 
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
 )
+from XBrainLab.ui.components.modal_presentation import AlertSeverity
 from XBrainLab.ui.interaction_outcome import InteractionStatus
 
 
@@ -203,8 +204,6 @@ class TestPreprocessSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         study = Study()
@@ -214,7 +213,9 @@ class TestPreprocessSidebar:
         sidebar.panel.main_window.study = study
         sidebar.panel.controller.is_epoched.return_value = True
 
-        with patch.object(QMessageBox, "warning") as mock_warning:
+        with patch(
+            "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
+        ) as mock_warning:
             assert sidebar.check_lock() is False
 
         mock_warning.assert_not_called()
@@ -223,8 +224,6 @@ class TestPreprocessSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         sidebar.panel.main_window.study = Study()
@@ -237,7 +236,9 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.get_command_capability",
                 return_value=None,
             ),
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
+            ) as mock_warning,
         ):
             assert sidebar.check_lock() is True
 
@@ -252,8 +253,6 @@ class TestPreprocessSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         study = Study()
@@ -263,7 +262,9 @@ class TestPreprocessSidebar:
         sidebar.panel.main_window.study = study
         sidebar.panel.controller.has_data.return_value = False
 
-        with patch.object(QMessageBox, "warning") as mock_warning:
+        with patch(
+            "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
+        ) as mock_warning:
             assert sidebar.check_data_loaded() is True
 
         mock_warning.assert_not_called()
@@ -272,8 +273,6 @@ class TestPreprocessSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         sidebar.panel.main_window.study = Study()
@@ -286,7 +285,9 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.get_command_capability",
                 return_value=None,
             ),
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
+            ) as mock_warning,
         ):
             assert sidebar.check_data_loaded() is False
 
@@ -307,8 +308,9 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=None,
             ) as mock_execute,
-            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
+            ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = (1.0, 40.0, [50.0])
@@ -338,9 +340,10 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=None,
             ) as mock_execute,
-            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
-            patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,
-            patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
+            ) as mock_warning,
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_error") as mock_critical,
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = (1.0, 40.0, [50.0])
@@ -352,7 +355,6 @@ class TestPreprocessSidebar:
         assert mock_warning.call_args.args[1] == "Filtering Blocked"
         assert "could not safely complete" in mock_warning.call_args.args[2]
         mock_critical.assert_not_called()
-        mock_info.assert_not_called()
 
     def test_open_filtering_uses_async_for_real_study(self, sidebar):
         from XBrainLab.backend.application import PreprocessCommand
@@ -377,7 +379,6 @@ class TestPreprocessSidebar:
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
             ) as sync_execute,
-            patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info,
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = (1.0, 40.0, [50.0])
@@ -388,7 +389,6 @@ class TestPreprocessSidebar:
         assert isinstance(command, PreprocessCommand)
         sync_execute.assert_not_called()
         sidebar.panel.controller.apply_filter.assert_not_called()
-        mock_info.assert_not_called()
 
     def test_open_filtering_binds_dialog_to_reviewed_publication(self, sidebar):
         from XBrainLab.backend.application import CommandCapability
@@ -434,8 +434,9 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=None,
             ) as mock_execute,
-            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
+            ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = 256
@@ -460,8 +461,9 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=None,
             ) as mock_execute,
-            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
+            ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = ["Cz"]
@@ -511,8 +513,9 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 side_effect=execute_for,
             ) as mock_execute,
-            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
+            ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = ["Cz"]
@@ -597,8 +600,9 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=None,
             ) as mock_execute,
-            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
+            ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = "z-score"
@@ -618,7 +622,7 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=_command_result(),
             ) as mock_execute,
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning"),
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = "z-score"
@@ -638,8 +642,9 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=None,
             ) as mock_execute,
-            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
+            ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = (
@@ -751,7 +756,7 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=failure,
             ),
-            patch("PyQt6.QtWidgets.QMessageBox.critical"),
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_error"),
         ):
             dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             dialog.return_value.get_params.return_value = (
@@ -776,8 +781,7 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=None,
             ),
-            patch("PyQt6.QtWidgets.QMessageBox.warning"),
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning"),
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = (
@@ -827,8 +831,9 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 side_effect=execute_for,
             ) as mock_execute,
-            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
+            ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = (
@@ -875,8 +880,9 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 side_effect=execute_for,
             ) as mock_execute,
-            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
+            ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = (
@@ -963,7 +969,7 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.get_epoch_dialog_context",
                 return_value=dialog_context,
             ) as read_dialog_context,
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning"),
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = (
@@ -1088,8 +1094,8 @@ class TestPreprocessSidebar:
                 "execute_application_command_async",
                 side_effect=fake_async,
             ),
-            patch.object(QMessageBox, "warning") as warning,
-            patch.object(QMessageBox, "critical") as critical,
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning") as warning,
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_error") as critical,
             patch.object(sidebar, "_handle_epoch_command_success") as success,
         ):
             dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
@@ -1137,7 +1143,7 @@ class TestPreprocessSidebar:
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog"
             ) as epoch_dialog,
-            patch("PyQt6.QtWidgets.QMessageBox.warning") as warning,
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning") as warning,
         ):
             outcome = sidebar.open_epoching()
 
@@ -1179,13 +1185,14 @@ class TestPreprocessSidebar:
         sidebar.panel.controller.get_preprocessed_data_list.assert_not_called()
 
     def test_reset_preprocess(self, sidebar):
-        from PyQt6.QtWidgets import QMessageBox
-
         with (
-            patch.object(
-                QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.ask_confirmation",
+                return_value=True,
             ),
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
+            ) as mock_warning,
         ):
             sidebar.reset_preprocess()
 
@@ -1197,19 +1204,16 @@ class TestPreprocessSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         with (
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.ask_confirmation",
+                return_value=True,
             ),
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=_command_result(),
             ),
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning"),
         ):
             sidebar.reset_preprocess()
 
@@ -1250,17 +1254,16 @@ class TestPreprocessSidebar:
         )
 
         with (
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.ask_confirmation",
+                return_value=True,
             ),
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=stale_result,
             ) as execute,
-            patch.object(QMessageBox, "warning") as warning,
-            patch.object(QMessageBox, "critical") as critical,
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning") as warning,
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_error") as critical,
             patch.object(sidebar, "_show_status") as show_status,
         ):
             sidebar.reset_preprocess()
@@ -1280,8 +1283,6 @@ class TestPreprocessSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         study = Study()
@@ -1294,17 +1295,18 @@ class TestPreprocessSidebar:
         sidebar.panel.controller.has_data.return_value = False
 
         with (
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.ask_confirmation",
+                return_value=True,
             ) as mock_question,
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
+            ) as mock_warning,
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=_command_result(),
             ) as mock_execute,
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning"),
         ):
             sidebar.reset_preprocess()
 
@@ -1320,16 +1322,18 @@ class TestPreprocessSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         sidebar.panel.main_window.study = Study()
         sidebar.panel.controller.has_data.return_value = True
 
         with (
-            patch.object(QMessageBox, "question") as mock_question,
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.ask_confirmation"
+            ) as mock_question,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
+            ) as mock_warning,
         ):
             sidebar.reset_preprocess()
 
@@ -1345,8 +1349,6 @@ class TestPreprocessSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         study = Study()
@@ -1357,17 +1359,18 @@ class TestPreprocessSidebar:
         sidebar.panel.controller.has_data.return_value = True
 
         with (
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.ask_confirmation",
+                return_value=True,
             ),
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=None,
             ),
-            patch.object(QMessageBox, "warning") as mock_warning,
-            patch.object(QMessageBox, "critical") as mock_critical,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
+            ) as mock_warning,
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_error") as mock_critical,
         ):
             sidebar.reset_preprocess()
 
@@ -1496,8 +1499,8 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 return_value=None,
             ),
-            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_alert"),
         ):
             MockDlg.return_value.exec.return_value = QDialog.DialogCode.Accepted
             MockDlg.return_value.get_result.return_value = generator
@@ -1613,7 +1616,7 @@ class TestTrainingSidebar:
             expected_publication_generation=generation,
         )
         message_box.assert_called_once_with(
-            QMessageBox.Icon.Warning,
+            AlertSeverity.WARNING,
             "Review Data Splitting Again",
             stale_result.message,
         )
@@ -1670,16 +1673,15 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
                 return_value=publication,
             ),
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ask_confirmation",
+                return_value=True,
             ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 return_value=stale_result,
             ) as execute,
-            patch.object(QMessageBox, "warning") as warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as warning,
             patch.object(sidebar, "_show_status") as show_status,
         ):
             sidebar.clear_history()
@@ -1735,8 +1737,6 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.application import (
             CommandCapability,
             CommandName,
@@ -1776,10 +1776,9 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.get_dataset_split_dialog_binding",
                 return_value=binding,
             ),
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ask_confirmation",
+                return_value=True,
             ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
@@ -1789,7 +1788,7 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
                 return_value=True,
             ) as mock_execute_async,
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch("XBrainLab.ui.panels.training.sidebar.show_alert"),
         ):
             MockDlg.return_value.exec.return_value = QDialog.DialogCode.Accepted
             MockDlg.return_value.get_result.return_value = generator
@@ -1811,8 +1810,6 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         sidebar.panel.main_window.study = Study()
@@ -1824,7 +1821,7 @@ class TestTrainingSidebar:
             patch(
                 "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog"
             ) as mock_dialog,
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
         ):
             sidebar.split_data()
 
@@ -1839,8 +1836,6 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         sidebar.panel.main_window.study = Study()
@@ -1866,7 +1861,7 @@ class TestTrainingSidebar:
             patch(
                 "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog",
             ) as mock_dialog,
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
         ):
             sidebar.split_data()
 
@@ -1882,8 +1877,6 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.application import (
             SaveDatasetSplitCommand,
         )
@@ -1921,10 +1914,9 @@ class TestTrainingSidebar:
             patch(
                 "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog"
             ) as mock_dialog,
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ask_confirmation",
+                return_value=True,
             ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
@@ -1934,8 +1926,8 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
                 side_effect=fake_async,
             ),
-            patch.object(QMessageBox, "warning") as mock_warning,
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_alert"),
         ):
             mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             mock_dialog.return_value.get_result.return_value = generator
@@ -1957,8 +1949,6 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.application import CommandCapability, CommandName
         from XBrainLab.backend.study import Study
 
@@ -1994,10 +1984,9 @@ class TestTrainingSidebar:
                 return_value=_dataset_split_dialog_binding(generation=41),
             ),
             patch("XBrainLab.ui.panels.training.sidebar.DataSplittingDialog") as dialog,
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.No,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ask_confirmation",
+                return_value=False,
             ) as question,
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command"
@@ -2022,8 +2011,6 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.application import (
             SaveDatasetSplitCommand,
         )
@@ -2052,10 +2039,9 @@ class TestTrainingSidebar:
             patch(
                 "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog"
             ) as mock_dialog,
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ask_confirmation",
+                return_value=True,
             ) as mock_question,
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
@@ -2065,8 +2051,8 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 return_value=_command_result(),
             ) as mock_execute_sync,
-            patch.object(QMessageBox, "warning") as mock_warning,
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_alert"),
         ):
             mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             mock_dialog.return_value.get_result.return_value = generator
@@ -2089,8 +2075,6 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.application import SaveDatasetSplitCommand
         from XBrainLab.backend.application.dataset_split_preview import (
             DatasetSplitContext,
@@ -2132,8 +2116,8 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
                 side_effect=fake_async,
             ) as mock_async,
-            patch.object(QMessageBox, "warning") as mock_warning,
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_alert"),
         ):
             mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             mock_dialog.return_value.get_result.return_value = generator
@@ -2164,8 +2148,6 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.application import CommandCapability, CommandName
         from XBrainLab.backend.study import Study
 
@@ -2196,7 +2178,7 @@ class TestTrainingSidebar:
             patch(
                 "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog",
             ) as mock_dialog,
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
         ):
             sidebar.split_data()
 
@@ -2214,8 +2196,6 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         study = Study()
@@ -2241,9 +2221,9 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
                 return_value=False,
             ),
-            patch.object(QMessageBox, "warning") as mock_warning,
-            patch.object(QMessageBox, "critical") as mock_critical,
-            patch.object(QMessageBox, "information") as mock_info,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_error") as mock_critical,
+            patch("XBrainLab.ui.panels.training.sidebar.show_alert") as mock_info,
         ):
             mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             mock_dialog.return_value.get_result.return_value = generator
@@ -2261,8 +2241,6 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         study = Study()
@@ -2289,14 +2267,13 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
                 return_value=False,
             ),
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ask_confirmation",
+                return_value=True,
             ),
-            patch.object(QMessageBox, "warning") as mock_warning,
-            patch.object(QMessageBox, "critical") as mock_critical,
-            patch.object(QMessageBox, "information") as mock_info,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_error") as mock_critical,
+            patch("XBrainLab.ui.panels.training.sidebar.show_alert") as mock_info,
         ):
             mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             mock_dialog.return_value.get_result.return_value = generator
@@ -2543,8 +2520,8 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 return_value=None,
             ) as mock_execute,
-            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
-            patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_alert") as mock_info,
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_result.return_value = mock_holder
@@ -2582,8 +2559,8 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 return_value=_command_result(),
             ) as mock_execute,
-            patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info,
-            patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,
+            patch("XBrainLab.ui.panels.training.sidebar.show_alert") as mock_info,
+            patch("XBrainLab.ui.panels.training.sidebar.show_error") as mock_critical,
         ):
             mock_dialog.return_value.exec.return_value = True
             mock_dialog.return_value.get_result.return_value = mock_holder
@@ -2622,7 +2599,7 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 return_value=failure,
             ),
-            patch("PyQt6.QtWidgets.QMessageBox.critical"),
+            patch("XBrainLab.ui.panels.training.sidebar.show_error"),
         ):
             dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             dialog.return_value.get_result.return_value = mock_holder
@@ -2631,8 +2608,6 @@ class TestTrainingSidebar:
         assert outcome.status is InteractionStatus.FAILED
 
     def test_select_model_refuses_real_study_controller_fallback(self, sidebar):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         sidebar.panel.main_window.study = Study()
@@ -2654,9 +2629,9 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 return_value=None,
             ),
-            patch.object(QMessageBox, "warning") as mock_warning,
-            patch.object(QMessageBox, "critical") as mock_critical,
-            patch.object(QMessageBox, "information") as mock_info,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_error") as mock_critical,
+            patch("XBrainLab.ui.panels.training.sidebar.show_alert") as mock_info,
         ):
             mock_dialog.return_value.exec.return_value = True
             mock_dialog.return_value.get_result.return_value = mock_holder
@@ -2675,8 +2650,6 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         study = Study()
@@ -2688,7 +2661,7 @@ class TestTrainingSidebar:
             patch(
                 "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog"
             ) as mock_dialog,
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
         ):
             outcome = sidebar.select_model()
 
@@ -2704,8 +2677,6 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         sidebar.panel.main_window.study = Study()
@@ -2721,7 +2692,7 @@ class TestTrainingSidebar:
             patch(
                 "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog",
             ) as mock_dialog,
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
         ):
             sidebar.select_model()
 
@@ -2732,10 +2703,8 @@ class TestTrainingSidebar:
         assert "could not safely complete" in mock_warning.call_args.args[2]
 
     def test_stop_training(self, sidebar):
-        from PyQt6.QtWidgets import QMessageBox
-
         sidebar.panel.controller.is_training.return_value = True
-        with patch.object(QMessageBox, "warning") as mock_warning:
+        with patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning:
             sidebar.stop_training()
 
         sidebar.panel.controller.stop_training.assert_not_called()
@@ -2768,8 +2737,6 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         study = Study()
@@ -2782,7 +2749,7 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 return_value=None,
             ),
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
         ):
             sidebar.stop_training()
 
@@ -2795,8 +2762,6 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         sidebar.panel.main_window.study = Study()
@@ -2812,7 +2777,7 @@ class TestTrainingSidebar:
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
             ) as mock_execute,
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
         ):
             sidebar.stop_training()
 
@@ -2827,8 +2792,6 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         sidebar.panel.main_window.study = Study()
@@ -2838,7 +2801,7 @@ class TestTrainingSidebar:
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
             ) as mock_execute,
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
         ):
             sidebar.stop_training()
 
@@ -2851,13 +2814,12 @@ class TestTrainingSidebar:
         sidebar.panel.controller.stop_training.assert_not_called()
 
     def test_clear_history(self, sidebar):
-        from PyQt6.QtWidgets import QMessageBox
-
         with (
-            patch.object(
-                QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ask_confirmation",
+                return_value=True,
             ),
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
         ):
             sidebar.clear_history()
 
@@ -2869,15 +2831,12 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.application import ClearTrainingHistoryCommand
 
         with (
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ask_confirmation",
+                return_value=True,
             ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
@@ -2890,16 +2849,16 @@ class TestTrainingSidebar:
         sidebar.panel.controller.clear_history.assert_not_called()
 
     def test_clear_history_uses_backend_capability_before_confirm(self, sidebar):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         sidebar.panel.main_window.study = Study()
         sidebar.panel.controller.is_training.return_value = False
 
         with (
-            patch.object(QMessageBox, "question") as mock_question,
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ask_confirmation"
+            ) as mock_question,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
         ):
             sidebar.clear_history()
 
@@ -2912,8 +2871,6 @@ class TestTrainingSidebar:
         sidebar.panel.controller.clear_history.assert_not_called()
 
     def test_clear_history_refuses_real_study_controller_fallback(self, sidebar):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.application.capabilities import CommandCapability
         from XBrainLab.backend.study import Study
 
@@ -2934,16 +2891,15 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
                 return_value=None,
             ),
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ask_confirmation",
+                return_value=True,
             ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 return_value=None,
             ),
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
         ):
             sidebar.clear_history()
 
@@ -2953,8 +2909,6 @@ class TestTrainingSidebar:
         assert "could not safely complete" in mock_warning.call_args.args[2]
 
     def test_clear_history_refuses_real_study_preflight_fallback(self, sidebar):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         sidebar.panel.main_window.study = Study()
@@ -2971,8 +2925,10 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
                 return_value=None,
             ),
-            patch.object(QMessageBox, "question") as mock_question,
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ask_confirmation"
+            ) as mock_question,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
         ):
             sidebar.clear_history()
 
@@ -2985,7 +2941,7 @@ class TestTrainingSidebar:
 
     def test_training_setting_while_training(self, sidebar):
         sidebar.panel.controller.is_training.return_value = True
-        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
+        with patch("XBrainLab.ui.panels.training.sidebar.show_warning"):
             outcome = sidebar.training_setting()
 
         assert outcome.status is InteractionStatus.BLOCKED
@@ -3013,7 +2969,7 @@ class TestTrainingSidebar:
             patch(
                 "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog"
             ) as dialog,
-            patch.object(QMessageBox, "warning") as warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as warning,
         ):
             outcome = sidebar.training_setting({"batch_size": "32"})
 
@@ -3053,7 +3009,7 @@ class TestTrainingSidebar:
             patch(
                 "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog"
             ) as dialog,
-            patch.object(QMessageBox, "warning") as warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as warning,
         ):
             outcome = sidebar.training_setting()
 
@@ -3139,7 +3095,7 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 return_value=failure,
             ),
-            patch("PyQt6.QtWidgets.QMessageBox.critical"),
+            patch("XBrainLab.ui.panels.training.sidebar.show_error"),
         ):
             dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             dialog.return_value.get_result.return_value = option
@@ -3164,7 +3120,7 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 return_value=None,
             ) as mock_execute,
-            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
         ):
             outcome = sidebar.training_setting()
 
@@ -3245,7 +3201,7 @@ class TestTrainingSidebar:
                 "get_result",
                 return_value=option,
             ),
-            patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info,
+            patch("XBrainLab.ui.panels.training.sidebar.show_alert") as mock_info,
         ):
             outcome = sidebar.training_setting()
 
@@ -3259,8 +3215,6 @@ class TestTrainingSidebar:
         sidebar.panel.show_status_message.assert_called_with("Training settings saved")
 
     def test_training_setting_refuses_real_study_controller_fallback(self, sidebar):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.application import (
             ConfigureTrainingCommand,
             QueryStateCommand,
@@ -3314,9 +3268,9 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 side_effect=execute_for,
             ),
-            patch.object(QMessageBox, "warning") as mock_warning,
-            patch.object(QMessageBox, "critical") as mock_critical,
-            patch.object(QMessageBox, "information") as mock_info,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_error") as mock_critical,
+            patch("XBrainLab.ui.panels.training.sidebar.show_alert") as mock_info,
         ):
             mock_dialog.return_value.exec.return_value = True
             mock_dialog.return_value.get_result.return_value = option
@@ -3333,8 +3287,6 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         study = Study()
@@ -3346,7 +3298,7 @@ class TestTrainingSidebar:
             patch(
                 "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog"
             ) as mock_dialog,
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
         ):
             sidebar.training_setting()
 
@@ -3367,7 +3319,7 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.get_command_capability",
                 return_value=None,
             ),
-            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
         ):
             sidebar.start_training_ui_action()
 
@@ -3379,8 +3331,6 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.application import TrainCommand
 
         capability = SimpleNamespace(
@@ -3403,10 +3353,9 @@ class TestTrainingSidebar:
                     publication_generation=1,
                 ),
             ),
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.No,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ask_confirmation",
+                return_value=False,
             ) as mock_question,
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
@@ -3424,8 +3373,6 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.application import TrainCommand
 
         capability = SimpleNamespace(
@@ -3441,10 +3388,9 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.get_command_capability",
                 return_value=capability,
             ),
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ask_confirmation",
+                return_value=True,
             ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command_async"
@@ -3460,8 +3406,6 @@ class TestTrainingSidebar:
         sidebar.panel.controller.start_training.assert_not_called()
 
     def test_start_training_refuses_real_study_controller_fallback(self, sidebar):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
 
         capability = SimpleNamespace(
@@ -3485,8 +3429,8 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
                 return_value=False,
             ),
-            patch.object(QMessageBox, "warning") as mock_warning,
-            patch.object(QMessageBox, "critical") as mock_critical,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_error") as mock_critical,
         ):
             sidebar.start_training_ui_action()
 
@@ -3518,7 +3462,7 @@ class TestTrainingSidebar:
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command_async"
             ) as mock_execute,
-            patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,
+            patch("XBrainLab.ui.panels.training.sidebar.show_error") as mock_critical,
         ):
             mock_execute.side_effect = lambda *_args, on_result, **_kwargs: (
                 on_result(_command_result()) or True
@@ -3533,8 +3477,6 @@ class TestTrainingSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         capability = SimpleNamespace(
             enabled=True,
             reasons=[],
@@ -3548,10 +3490,9 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.get_command_capability",
                 return_value=capability,
             ),
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ask_confirmation",
+                return_value=True,
             ),
             patch(
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command_async"
@@ -3576,8 +3517,8 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.get_command_capability",
                 return_value=None,
             ),
-            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
-            patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,
+            patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
+            patch("XBrainLab.ui.panels.training.sidebar.show_error") as mock_critical,
         ):
             sidebar.start_training_ui_action()
 
@@ -3685,7 +3626,7 @@ class TestDatasetSidebar:
             patch(
                 "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog",
             ) as mock_dialog,
-            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
+            patch("XBrainLab.ui.panels.dataset.sidebar.show_warning") as mock_warning,
         ):
             outcome = sb.open_channel_selection()
 
@@ -3698,8 +3639,6 @@ class TestDatasetSidebar:
         self,
         qtbot,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.application import PreprocessCommand
         from XBrainLab.backend.study import Study
         from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
@@ -3717,10 +3656,9 @@ class TestDatasetSidebar:
         qtbot.addWidget(sb)
 
         with (
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.show_warning",
+                return_value=True,
             ) as question,
             patch(
                 "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog",
@@ -3729,7 +3667,7 @@ class TestDatasetSidebar:
                 "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
                 return_value=_command_result(),
             ) as mock_execute,
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch("XBrainLab.ui.panels.dataset.sidebar.show_warning") as mock_warning,
         ):
             mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             mock_dialog.return_value.get_result.return_value = ["Cz", "Pz"]
@@ -3747,8 +3685,6 @@ class TestDatasetSidebar:
         self,
         qtbot,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.application import (
             PreprocessCommand,
             get_application_service,
@@ -3792,11 +3728,6 @@ class TestDatasetSidebar:
             raise AssertionError(f"unexpected command: {command!r}")
 
         with (
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
-            ),
             patch(
                 "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
                 return_value=publication,
@@ -3808,7 +3739,7 @@ class TestDatasetSidebar:
                 "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
                 side_effect=execute_for,
             ) as mock_execute,
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch("XBrainLab.ui.panels.dataset.sidebar.show_warning") as mock_warning,
         ):
             mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             mock_dialog.return_value.get_result.return_value = ["Cz", "Pz"]
@@ -3825,8 +3756,6 @@ class TestDatasetSidebar:
         self,
         qtbot,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.application import (
             PreprocessCommand,
             get_application_service,
@@ -3867,10 +3796,9 @@ class TestDatasetSidebar:
             raise AssertionError(f"unexpected command: {command!r}")
 
         with (
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.show_warning",
+                return_value=True,
             ),
             patch(
                 "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
@@ -3883,8 +3811,8 @@ class TestDatasetSidebar:
                 "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
                 side_effect=execute_for,
             ),
-            patch.object(QMessageBox, "warning") as mock_warning,
-            patch.object(QMessageBox, "critical") as mock_critical,
+            patch("XBrainLab.ui.panels.dataset.sidebar.show_warning") as mock_warning,
+            patch("XBrainLab.ui.panels.dataset.sidebar.show_error") as mock_critical,
         ):
             mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             mock_dialog.return_value.get_result.return_value = ["Cz", "Pz"]
@@ -3900,8 +3828,6 @@ class TestDatasetSidebar:
         self,
         qtbot,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.study import Study
         from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
 
@@ -3916,10 +3842,9 @@ class TestDatasetSidebar:
         qtbot.addWidget(sb)
 
         with (
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.show_warning",
+                return_value=True,
             ),
             patch(
                 "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
@@ -3936,7 +3861,7 @@ class TestDatasetSidebar:
             patch(
                 "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog",
             ) as mock_dialog,
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch("XBrainLab.ui.panels.dataset.sidebar.show_warning") as mock_warning,
         ):
             sb.open_channel_selection()
 
@@ -3951,8 +3876,6 @@ class TestDatasetSidebar:
         self,
         sidebar,
     ):
-        from PyQt6.QtWidgets import QMessageBox
-
         from XBrainLab.backend.application import PreprocessCommand
 
         raw = MagicMock()
@@ -3961,10 +3884,9 @@ class TestDatasetSidebar:
         sidebar.panel.controller.is_locked.return_value = False
         sidebar.panel.controller.get_loaded_data_list.return_value = [raw]
         with (
-            patch.object(
-                QMessageBox,
-                "question",
-                return_value=QMessageBox.StandardButton.Yes,
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.show_warning",
+                return_value=True,
             ),
             patch(
                 "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
@@ -3977,8 +3899,7 @@ class TestDatasetSidebar:
             patch(
                 "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog"
             ) as MockDlg,
-            patch.object(QMessageBox, "information") as mock_info,
-            patch.object(QMessageBox, "warning") as mock_warning,
+            patch("XBrainLab.ui.panels.dataset.sidebar.show_warning") as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = QDialog.DialogCode.Accepted
             MockDlg.return_value.get_result.return_value = ["Fp1", "Fp2"]
@@ -3991,6 +3912,5 @@ class TestDatasetSidebar:
         MockDlg.assert_called_once_with(sidebar, ["Fp1", "Fp2"])
         sidebar.panel.controller.apply_channel_selection.assert_not_called()
         sidebar.panel.update_panel.assert_not_called()
-        mock_info.assert_not_called()
         mock_warning.assert_called_once()
         assert mock_warning.call_args.args[1] == "Channel Selection Blocked"
