@@ -11,6 +11,9 @@ from XBrainLab.ui.components.modal_presentation import (
     ModalAlertDialog,
     ask_confirmation,
     show_alert,
+    show_error,
+    show_information,
+    show_warning,
 )
 
 
@@ -27,6 +30,31 @@ def test_alert_uses_xbrainlab_dialog_shell_and_wraps_message(qtbot):
     assert dialog.windowTitle() == "Storage warning"
     assert dialog.severity_label.text() == "Warning"
     assert dialog.acknowledge_button.text() == "OK"
+
+
+def test_short_alert_fits_content_without_fixed_vertical_gaps(qtbot):
+    dialog = ModalAlertDialog(
+        severity=AlertSeverity.WARNING,
+        title="Storage warning",
+        message="Storage is almost full.",
+    )
+    qtbot.addWidget(dialog)
+
+    assert 420 <= dialog.width() <= 640
+    assert dialog.height() < 210
+
+
+def test_long_alert_uses_bounded_scrollable_message_view(qtbot):
+    dialog = ModalAlertDialog(
+        severity=AlertSeverity.CRITICAL,
+        title="Resource report",
+        message="A detailed resource diagnostic line.\n" * 40,
+    )
+    qtbot.addWidget(dialog)
+
+    assert dialog.message_scroll_area is not None
+    assert dialog.message_scroll_area.maximumHeight() == 320
+    assert dialog.width() <= 640
 
 
 def test_confirmation_keeps_cancel_as_default_and_escape_returns_rejected(qtbot):
@@ -142,6 +170,35 @@ def test_public_functions_preserve_exec_result_mapping(monkeypatch):
     assert constructed[0].get("confirm_text") is None
     assert constructed[1]["confirm_text"] == "Delete"
     assert constructed[1]["destructive"] is True
+
+
+def test_severity_facades_delegate_to_shared_modal(monkeypatch):
+    calls: list[dict[str, object]] = []
+
+    def _show_alert(parent, *, severity, title, message):
+        calls.append(
+            {
+                "parent": parent,
+                "severity": severity,
+                "title": title,
+                "message": message,
+            }
+        )
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.components.modal_presentation.show_alert",
+        _show_alert,
+    )
+
+    show_information(None, "Saved", "The file was saved.")
+    show_warning(None, "Review", "Review the selected values.")
+    show_error(None, "Failed", "The operation failed.")
+
+    assert [call["severity"] for call in calls] == [
+        AlertSeverity.INFORMATION,
+        AlertSeverity.WARNING,
+        AlertSeverity.CRITICAL,
+    ]
 
 
 def test_public_confirmation_maps_rejected_result_to_false(monkeypatch):

@@ -13,9 +13,11 @@ from typing import Any
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialogButtonBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
 )
 
@@ -42,6 +44,12 @@ _SEVERITY_COLORS = {
     AlertSeverity.CRITICAL: Theme.ACCENT_ERROR,
 }
 
+_MODAL_MINIMUM_WIDTH = 420
+_MODAL_MAXIMUM_WIDTH = 640
+_LONG_MESSAGE_CHARACTER_THRESHOLD = 700
+_LONG_MESSAGE_LINE_THRESHOLD = 14
+_LONG_MESSAGE_MAXIMUM_HEIGHT = 320
+
 
 class ModalAlertDialog(BaseDialog):
     """A compact, accessible modal alert or confirmation dialog."""
@@ -63,12 +71,16 @@ class ModalAlertDialog(BaseDialog):
         self._cancel_text = cancel_text
         self._destructive = destructive
         self.message_label: QLabel
+        self.message_scroll_area: QScrollArea | None = None
         self.severity_label: QLabel
         self.acknowledge_button: QPushButton
         self.confirm_button: QPushButton | None = None
         self.cancel_button: QPushButton | None = None
-        super().__init__(parent=parent, title=title, width=460, height=210)
-        self.fit_to_content(minimum_width=460)
+        super().__init__(parent=parent, title=title, width=_MODAL_MINIMUM_WIDTH)
+        self.fit_to_content(
+            minimum_width=_MODAL_MINIMUM_WIDTH,
+            maximum_width=_MODAL_MAXIMUM_WIDTH,
+        )
         if self.cancel_button is not None:
             # BaseDialog intentionally strips default styling globally.  A
             # confirmation is the exception: its safe action must receive
@@ -89,8 +101,8 @@ class ModalAlertDialog(BaseDialog):
         self.setStyleSheet(self.styleSheet() + self._presentation_stylesheet())
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(22, 20, 22, 18)
-        layout.setSpacing(12)
+        layout.setContentsMargins(18, 14, 18, 14)
+        layout.setSpacing(8)
 
         heading_row = QHBoxLayout()
         self.severity_label = QLabel(_SEVERITY_LABELS[self._severity])
@@ -109,7 +121,20 @@ class ModalAlertDialog(BaseDialog):
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
         self.message_label.setAccessibleName("Message")
-        layout.addWidget(self.message_label)
+        if self._message_needs_scroll_area():
+            message_scroll_area = QScrollArea()
+            self.message_scroll_area = message_scroll_area
+            message_scroll_area.setObjectName("ModalAlertMessageScrollArea")
+            message_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+            message_scroll_area.setWidgetResizable(True)
+            message_scroll_area.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            message_scroll_area.setMaximumHeight(_LONG_MESSAGE_MAXIMUM_HEIGHT)
+            message_scroll_area.setWidget(self.message_label)
+            layout.addWidget(message_scroll_area)
+        else:
+            layout.addWidget(self.message_label)
 
         button_box = QDialogButtonBox()
         button_box.setObjectName("ModalAlertButtons")
@@ -158,6 +183,12 @@ class ModalAlertDialog(BaseDialog):
                 raise RuntimeError("Confirmation button was not created")
             self.acknowledge_button = self.confirm_button
         layout.addWidget(button_box, alignment=Qt.AlignmentFlag.AlignRight)
+
+    def _message_needs_scroll_area(self) -> bool:
+        return (
+            len(self._message) > _LONG_MESSAGE_CHARACTER_THRESHOLD
+            or self._message.count("\n") >= _LONG_MESSAGE_LINE_THRESHOLD
+        )
 
     def _presentation_stylesheet(self) -> str:
         accent = _SEVERITY_COLORS[self._severity]
@@ -225,3 +256,33 @@ def ask_confirmation(
         destructive=destructive,
     )
     return dialog.exec() == dialog.DialogCode.Accepted
+
+
+def show_information(parent: Any, title: str, message: str) -> None:
+    """Present a compact informational acknowledgement."""
+    show_alert(
+        parent,
+        severity=AlertSeverity.INFORMATION,
+        title=title,
+        message=message,
+    )
+
+
+def show_warning(parent: Any, title: str, message: str) -> None:
+    """Present a compact warning acknowledgement."""
+    show_alert(
+        parent,
+        severity=AlertSeverity.WARNING,
+        title=title,
+        message=message,
+    )
+
+
+def show_error(parent: Any, title: str, message: str) -> None:
+    """Present a compact critical-error acknowledgement."""
+    show_alert(
+        parent,
+        severity=AlertSeverity.CRITICAL,
+        title=title,
+        message=message,
+    )
