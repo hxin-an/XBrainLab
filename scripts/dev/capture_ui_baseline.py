@@ -24,7 +24,10 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageStat
 
-from XBrainLab.ui.qt_runtime import configure_qt_platform_for_runtime
+from XBrainLab.ui.qt_runtime import (
+    configure_qt_platform_for_runtime,
+    drain_qt_runtime_after_event_loop,
+)
 
 configure_qt_platform_for_runtime()
 
@@ -46,7 +49,7 @@ ARTIFACTS_DIR = ROOT / "build" / "dev-artifacts" / "ui-baseline"
 OUTPUT_PATH = ARTIFACTS_DIR / "main-window-initial.png"
 REFERENCE_UI_DIR = ROOT / "tests" / "baselines" / "ui"
 MANIFEST_NAME = "ui-baseline-evidence.json"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 ARTIFACT_TYPE = "xbrainlab.ui_visual_baseline"
 GENERATOR = "scripts/dev/capture_ui_baseline.py"
 AI_DOCK_STEP = "ai-dock"
@@ -60,6 +63,7 @@ MAX_CONSECUTIVE_FRAME_CHANGED_RATIO = 0.02
 MAX_UI_MEAN_DIFF = 1.5
 MAX_UI_CHANGED_RATIO = 0.02
 PIXEL_DIFF_THRESHOLD = 12
+SHUTDOWN_TIMEOUT_MS = 20_000
 CAPTURE_STEPS = [
     ("main-window-initial.png", None),
     ("panel-dataset.png", 0),
@@ -184,6 +188,7 @@ def build_ui_baseline_evidence(
     qt_platform: str,
     qt_style: str,
     device_pixel_ratio: float,
+    shutdown: Mapping[str, object],
 ) -> dict[str, object]:
     """Build exact-source evidence only after candidate/reference comparison passes."""
     comparisons: dict[str, dict[str, float | str]] = {}
@@ -205,11 +210,13 @@ def build_ui_baseline_evidence(
             "qt_style": qt_style,
             "device_pixel_ratio": float(device_pixel_ratio),
         },
+        "shutdown": dict(shutdown),
         "expected_artifacts": list(EXPECTED_UI_ARTIFACTS),
         "screenshots": _artifact_manifest(output_dir),
         "references": _artifact_manifest(reference_dir),
         "comparisons": comparisons,
-        "passed": all(item.get("status") == "pass" for item in comparisons.values()),
+        "passed": all(item.get("status") == "pass" for item in comparisons.values())
+        and _shutdown_evidence_is_clean(shutdown),
         "claim_boundary": (
             "Automated default-scale Qt comparison; not Windows human acceptance."
         ),
@@ -251,6 +258,8 @@ def validate_ui_baseline_evidence(
     )
     if not ok:
         return ok, reason
+    if not _shutdown_evidence_is_clean(payload.get("shutdown")):
+        return False, "UI baseline did not publish a clean terminal shutdown."
     if payload.get("expected_artifacts") != list(EXPECTED_UI_ARTIFACTS):
         return False, "UI baseline artifact inventory is incomplete."
     for key, root in (("screenshots", output_dir), ("references", reference_dir)):
@@ -286,6 +295,30 @@ def _clear_saved_main_window_geometry() -> None:
     settings = QSettings("XBrainLab", "XBrainLab")
     settings.remove("main_window/geometry")
     settings.sync()
+
+
+def _shutdown_snapshot_is_clean(snapshot: object) -> bool:
+    if not isinstance(snapshot, Mapping):
+        return False
+    return (
+        snapshot.get("application_closed") is True
+        and snapshot.get("pre_close_application_idle") is True
+        and snapshot.get("pre_close_remaining_workers") == 0
+        and snapshot.get("pre_close_remaining_subprocesses") == 0
+        and isinstance(snapshot.get("close_attempt_id"), str)
+        and bool(str(snapshot["close_attempt_id"]).strip())
+    )
+
+
+def _shutdown_evidence_is_clean(shutdown: object) -> bool:
+    if not isinstance(shutdown, Mapping):
+        return False
+    return (
+        shutdown.get("ok") is True
+        and shutdown.get("timed_out") is False
+        and shutdown.get("window_visible") is False
+        and _shutdown_snapshot_is_clean(shutdown.get("snapshot"))
+    )
 
 
 def _set_baseline_window_geometry(window) -> None:
@@ -379,18 +412,42 @@ def _prepare_capture_step(window, step_target) -> None:
     open_workflow_panel(window, step_target)
 
 
-def capture_window(app: QApplication, output_path: Path) -> int:
+def capture_window(
+    app: QApplication,
+    output_path: Path,
+) -> tuple[int, dict[str, object]]:
     """Launch the main window and capture the shell plus all five panels."""
     from XBrainLab.backend.application.runtime import get_application_service
     from XBrainLab.backend.study import Study
     from XBrainLab.ui.main_window import MainWindow
 
-    result: dict[str, int] = {"code": 3}
+    result: dict[str, int | bool] = {"code": 3, "shutdown_requested": False}
+    shutdown_snapshots: list[dict[str, object]] = []
+    shutdown_timer = QTimer()
+    shutdown_timer.setSingleShot(True)
 
     _clear_saved_main_window_geometry()
     study = Study()
     get_application_service(study)
     window = MainWindow(study)
+    app.setQuitOnLastWindowClosed(False)
+
+    def _shutdown_completed(snapshot: object) -> None:
+        if isinstance(snapshot, Mapping):
+            shutdown_snapshots.append(dict(snapshot))
+        shutdown_timer.stop()
+        app.quit()
+
+    def _request_shutdown(code: int) -> None:
+        if bool(result["shutdown_requested"]):
+            return
+        result["code"] = code
+        result["shutdown_requested"] = True
+        shutdown_timer.start(SHUTDOWN_TIMEOUT_MS)
+        QTimer.singleShot(0, window.close)
+
+    window.shutdown_completed.connect(_shutdown_completed)
+    shutdown_timer.timeout.connect(app.quit)
     _set_baseline_window_geometry(window)
     window.show()
 
@@ -428,8 +485,7 @@ def capture_window(app: QApplication, output_path: Path) -> int:
         result["code"] = _capture_window_frame(window, first_frame)
         if result["code"] != 0:
             first_frame.unlink(missing_ok=True)
-            window.close()
-            app.quit()
+            _request_shutdown(int(result["code"]))
             return
 
         QTimer.singleShot(
@@ -458,13 +514,11 @@ def capture_window(app: QApplication, output_path: Path) -> int:
             result["code"] = _validate_consecutive_frames(first_frame, step_output)
         first_frame.unlink(missing_ok=True)
         if result["code"] != 0:
-            window.close()
-            app.quit()
+            _request_shutdown(int(result["code"]))
             return
 
         if step_index + 1 >= len(CAPTURE_STEPS):
-            window.close()
-            app.quit()
+            _request_shutdown(0)
             return
 
         QTimer.singleShot(
@@ -474,7 +528,30 @@ def capture_window(app: QApplication, output_path: Path) -> int:
 
     QTimer.singleShot(2500, lambda: _run_step(0))
     app.exec()
-    return result["code"]
+    timed_out = (
+        bool(result["shutdown_requested"])
+        and not shutdown_snapshots
+        and not shutdown_timer.isActive()
+    )
+    shutdown_timer.stop()
+    snapshot = shutdown_snapshots[-1] if shutdown_snapshots else {}
+    try:
+        window_visible = bool(window.isVisible())
+    except RuntimeError:
+        window_visible = False
+    clean = _shutdown_snapshot_is_clean(snapshot) and not window_visible
+    if clean:
+        window.deleteLater()
+    drain_qt_runtime_after_event_loop(app)
+    app.quit()
+    shutdown = {
+        "ok": clean,
+        "timed_out": timed_out,
+        "window_visible": window_visible,
+        "snapshot": snapshot,
+    }
+    code = int(result["code"])
+    return (code if clean else 9), shutdown
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -524,7 +601,7 @@ def main(argv: list[str] | None = None) -> int:
     source_at_start = collect_source_identity(ROOT, refresh=True)
     app = QApplication([sys.argv[0]])
     app.setStyle("Fusion")
-    code = capture_window(app, output_dir / OUTPUT_PATH.name)
+    code, shutdown = capture_window(app, output_dir / OUTPUT_PATH.name)
     if code != 0:
         return code
     source_at_end = collect_source_identity(ROOT, refresh=True)
@@ -543,6 +620,7 @@ def main(argv: list[str] | None = None) -> int:
         qt_platform=QApplication.platformName(),
         qt_style=app.style().objectName(),
         device_pixel_ratio=(screen.devicePixelRatio() if screen is not None else 0.0),
+        shutdown=shutdown,
     )
     _write_manifest(output_dir, evidence)
     ok, reason = validate_ui_baseline_evidence(

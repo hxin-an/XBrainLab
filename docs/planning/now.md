@@ -99,11 +99,25 @@ strict handoff selectors掃描顯示只剩該檔未用canonical resolver；`requ
 Focused結果為wizard `10 passed`、required-public-io `39 passed`，兩者皆0 skip／xfail／deselect且
 observer exit 0；後者實際涵蓋public formats、BIDS與cross-source training。Ruff、format與diff check
 通過。Behavior gates本身會在canonical root退化時skip並fail closed，故不另增source-string guard。
+`991579e1` exact handoff已讓complete regression、Visualization clean shutdown、native與三個strict
+public-data gates連續通過；最後只因`ui-visual-baseline`正確偵測`panel-visualization.png`的2.03%漂移
+而fail closed。舊／新圖人工比對確認差異只包含已核准的Saliency view／True class controls新增與重排，
+其餘shell、empty-state、summary/configuration未變。只更新該一張canonical reference，其他baseline不動；
+先用同capture驗證exact inventory與零drift，再提交最後candidate。
+更新reference後native focused capture已證明7張artifact為max mean diff 0／changed 0%，但成功訊息後以
+native 139終止。`capture_ui_baseline.py`仍在最後一張圖後直接`window.close(); app.quit()`，沒有等待
+既有`shutdown_completed`或drain Qt native wrappers，與已修復的Visualization capture為同一evidence
+lifecycle defect。只修dev capture：所有capture terminal先走bounded typed shutdown，驗證idle／worker／
+subprocess為零，event loop返回後使用既有`drain_qt_runtime_after_event_loop`；evidence validator拒絕缺漏或
+不潔淨snapshot。MainWindow、renderer與產品UI不變。
+修正後unit regression為`9 passed`；Ruff、format、Basedpyright與diff check皆綠。Native Xvfb capture
+產出7張完全相符的reference（max mean diff 0／changed 0%），typed snapshot為application closed、idle、
+worker/subprocess 0、window不可見、無timeout，process exit 0；同一manifest validate-only亦通過。
 
 下一步固定為：
 
-1. 凍結／push已通過兩個相鄰strict gates的新SHA並執行一次exact-source replacement handoff。
-   這是source binding重建，不作效能量測；同類既知failure再現即停止。
+1. 凍結／push已通過baseline lifecycle與zero-drift focused evidence的最後SHA，執行exact-source
+   replacement handoff；同類post-artifact native abort再現即停止。
 2. 自動evidence完整後交付Windows／Linux手測：modal default／Escape／destructive action；single-file、
    folder、BIDS review/cancel/retry且status不重複跑百分比；Saliency All／Single、long class／many channel、
    zoom／pan／reset、3D class／epoch-time／camera controls與close lifecycle。

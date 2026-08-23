@@ -9,6 +9,7 @@ from scripts.dev.capture_ui_baseline import (
     AI_DOCK_STEP,
     EXPECTED_UI_ARTIFACTS,
     _prepare_capture_step,
+    _shutdown_snapshot_is_clean,
     _validate_consecutive_frames,
     build_ui_baseline_evidence,
     is_nearly_black,
@@ -67,6 +68,18 @@ def test_baseline_evidence_binds_candidate_references_and_source(tmp_path):
         qt_platform="offscreen",
         qt_style="fusion",
         device_pixel_ratio=1.0,
+        shutdown={
+            "ok": True,
+            "timed_out": False,
+            "window_visible": False,
+            "snapshot": {
+                "application_closed": True,
+                "pre_close_application_idle": True,
+                "pre_close_remaining_workers": 0,
+                "pre_close_remaining_subprocesses": 0,
+                "close_attempt_id": "ui-baseline-close-attempt",
+            },
+        },
     )
 
     ok, reason = validate_ui_baseline_evidence(
@@ -90,6 +103,57 @@ def test_baseline_evidence_binds_candidate_references_and_source(tmp_path):
     )
     assert not ok
     assert "references changed" in reason
+
+
+def test_baseline_evidence_rejects_missing_clean_shutdown(tmp_path):
+    candidate_dir = tmp_path / "candidate"
+    reference_dir = tmp_path / "references"
+    candidate_dir.mkdir()
+    reference_dir.mkdir()
+    for filename in EXPECTED_UI_ARTIFACTS:
+        Image.new("RGB", (24, 16), (32, 48, 64)).save(candidate_dir / filename)
+        Image.new("RGB", (24, 16), (32, 48, 64)).save(reference_dir / filename)
+    source_identity = collect_source_identity(refresh=True)
+    payload = build_ui_baseline_evidence(
+        output_dir=candidate_dir,
+        reference_dir=reference_dir,
+        source_identity=source_identity,
+        qt_platform="offscreen",
+        qt_style="fusion",
+        device_pixel_ratio=1.0,
+        shutdown={},
+    )
+
+    ok, reason = validate_ui_baseline_evidence(
+        payload,
+        output_dir=candidate_dir,
+        reference_dir=reference_dir,
+        current_source_identity=source_identity,
+    )
+
+    assert ok is False
+    assert reason == "UI baseline did not publish a clean terminal shutdown."
+
+
+def test_shutdown_snapshot_requires_owned_work_to_be_idle():
+    assert _shutdown_snapshot_is_clean(
+        {
+            "application_closed": True,
+            "pre_close_application_idle": True,
+            "pre_close_remaining_workers": 0,
+            "pre_close_remaining_subprocesses": 0,
+            "close_attempt_id": "ui-baseline-close-attempt",
+        }
+    )
+    assert not _shutdown_snapshot_is_clean(
+        {
+            "application_closed": True,
+            "pre_close_application_idle": True,
+            "pre_close_remaining_workers": 1,
+            "pre_close_remaining_subprocesses": 0,
+            "close_attempt_id": "ui-baseline-close-attempt",
+        }
+    )
 
 
 def _ready_switch_page(index, *, on_ready):
