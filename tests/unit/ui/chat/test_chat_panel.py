@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtCore import QEvent, QMimeData, QPoint, QRect, QSize, Qt
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QInputMethodEvent
 from PyQt6.QtWidgets import (
     QApplication,
     QBoxLayout,
@@ -2158,6 +2158,43 @@ class TestChatPanelSendMessage:
         chat_panel.accept_composer_submission("first line\nsecond line")
 
         assert chat_panel.input_field.text() == ""
+
+    def test_composer_enter_does_not_submit_active_ime_preedit(
+        self,
+        chat_panel,
+        qtbot,
+    ):
+        composer = chat_panel.input_field
+        composer.setFocus()
+        submit_requested = MagicMock()
+        composer.submit_requested.connect(submit_requested)
+        QApplication.sendEvent(composer, QInputMethodEvent("zhong", []))
+
+        qtbot.keyClick(composer, Qt.Key.Key_Return)
+
+        submit_requested.assert_not_called()
+        commit = QInputMethodEvent()
+        commit.setCommitString("中")
+        QApplication.sendEvent(composer, commit)
+        assert composer.text() == "中"
+
+    def test_composer_commits_chinese_then_next_enter_submits(
+        self,
+        chat_panel,
+        qtbot,
+    ):
+        composer = chat_panel.input_field
+        composer.setFocus()
+        QApplication.sendEvent(composer, QInputMethodEvent("zhong", []))
+        commit = QInputMethodEvent()
+        commit.setCommitString("中")
+
+        QApplication.sendEvent(composer, commit)
+
+        assert composer.text() == "中"
+        with qtbot.waitSignal(chat_panel.send_message, timeout=1000) as emitted:
+            qtbot.keyClick(composer, Qt.Key.Key_Return)
+        assert emitted.args == ["中"]
 
     def test_composer_refits_text_entered_before_show(
         self,
