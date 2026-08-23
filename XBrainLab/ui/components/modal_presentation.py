@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.dialog_button_policy import _SAFE_DEFAULT_PROPERTY
 from XBrainLab.ui.styles.theme import Theme
 
 
@@ -164,6 +165,7 @@ class ModalAlertDialog(BaseDialog):
                 raise RuntimeError("Cancel button could not be created")
             self.cancel_button = cancel_button
             cancel_button.setObjectName("AssistantSecondaryButton")
+            cancel_button.setProperty(_SAFE_DEFAULT_PROPERTY, True)
             if self._destructive:
                 confirm_button.clicked.connect(self.accept)
             else:

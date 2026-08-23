@@ -7,6 +7,7 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication, QDialog, QPushButton
 
 _POLICY_ATTRIBUTE = "_xbrainlab_dialog_button_policy"
+_SAFE_DEFAULT_PROPERTY = "_xbrainlab_preserve_safe_default"
 _NORMALIZED_LABELS = {"ok", "cancel"}
 _NORMALIZE_EVENTS = {
     QEvent.Type.ParentChange,
@@ -63,6 +64,8 @@ def _is_standard_dialog_button(button: QPushButton) -> bool:
 def _normalize_button(button: QPushButton) -> None:
     button.setIcon(QIcon())
     button.setIconSize(QSize(0, 0))
+    if button.property(_SAFE_DEFAULT_PROPERTY):
+        return
     button.setAutoDefault(False)
     button.setDefault(False)
 
