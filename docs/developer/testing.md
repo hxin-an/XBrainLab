@@ -276,7 +276,7 @@ HF_HUB_OFFLINE=1 \
 TRANSFORMERS_OFFLINE=1 \
 timeout 10m prlimit --core=0 -- \
   poetry run python scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py \
-  --model ibm-granite/granite-3.3-2b-instruct \
+  --model ibm-granite/granite-4.0-micro \
   --output-dir build/dev-artifacts/chatpanel-local-tool-chain
 ```
 

@@ -76,6 +76,28 @@ def test_resolver_freezes_the_exact_launch_selection_and_settings(
         )
 
 
+@pytest.mark.parametrize(
+    "model_id",
+    [
+        "ibm-granite/granite-4.0-micro",
+        "ibm-granite/granite-3.3-2b-instruct",
+    ],
+)
+def test_resolver_accepts_each_catalog_model_exactly_without_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    model_id: str,
+) -> None:
+    config = _runtime_config(monkeypatch, model_id=model_id)
+
+    resolution = AssistantRuntimeLaunchResolver().resolve(config)
+
+    assert resolution.launch_spec is not None
+    assert resolution.launch_spec.requested_model_id == model_id
+    assert resolution.launch_spec.model_id == model_id
+    assert resolution.launch_spec.outcome is AssistantRuntimeSelectionOutcome.EXACT
+    assert resolution.launch_spec.fallback_used is False
+
+
 def test_resolver_makes_cuda_to_cpu_fallback_explicit_before_launch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

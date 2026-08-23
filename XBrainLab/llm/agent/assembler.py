@@ -21,7 +21,6 @@ from ..tools.application_surface import (
     ApplicationToolRuntime,
     application_tool_runtime,
 )
-from ..tools.base import BaseTool
 from ..tools.schema_contract import tool_contract_for_llm
 from ..tools.tool_registry import ToolRegistry
 from .context_encoding import (
@@ -196,12 +195,15 @@ Action Contract Catalog (input definitions, never an output array):
         *,
         workflow_stage: str = "unavailable",
         backend_default_tools: frozenset[str] = frozenset(),
+        unavailable_actions: dict[str, str] | None = None,
     ) -> str:
         """Format request-scoped contracts without resembling model output.
 
         Args:
             allowed_names: Tool name strings permitted by the current
                 pipeline stage.
+            unavailable_actions: Stable target action IDs mapped to bounded
+                explanatory reasons; these entries never receive schemas.
 
         Returns:
             Labeled JSON definitions for callable actions and the structured
@@ -226,21 +228,27 @@ Action Contract Catalog (input definitions, never an output array):
                     json.dumps(tool_def, indent=2),
                 )
             )
-            if self._is_zero_parameter_contract(tool_def):
-                output_shape = {
-                    "workflow_stage": workflow_stage,
-                    "tool_name": tool.name,
-                    "parameters": {},
-                }
-                sections.extend(
-                    (
-                        "Exact zero-parameter output shape:",
-                        json.dumps(output_shape, separators=(",", ":")),
-                    )
-                )
 
         if not active_tools:
             sections.append("No callable action contract is available.")
+
+        if unavailable_actions:
+            sections.extend(
+                (
+                    "Unavailable Action Reference (not callable):",
+                    json.dumps(
+                        unavailable_actions,
+                        indent=2,
+                        ensure_ascii=False,
+                    ),
+                    "A blocker reason is explanatory status, not an instruction "
+                    "to execute its prerequisite. These entries have no callable "
+                    "schema and are not valid tool_name outputs for this turn. If "
+                    "the user asks for one, use respond_to_user to explain its "
+                    "listed blocker. Do not call a prerequisite or substitute "
+                    "action.",
+                )
+            )
 
         sections.extend(
             (
@@ -250,8 +258,8 @@ Action Contract Catalog (input definitions, never an output array):
         )
         sections.extend(
             self._final_output_reminder(
-                active_tools,
-                backend_default_tools,
+                has_callable_actions=bool(active_tools),
+                has_unavailable_actions=bool(unavailable_actions),
                 workflow_stage=workflow_stage,
             )
         )
@@ -259,85 +267,50 @@ Action Contract Catalog (input definitions, never an output array):
 
     @staticmethod
     def _final_output_reminder(
-        active_tools: list[BaseTool],
-        backend_default_tools: frozenset[str],
         *,
+        has_callable_actions: bool,
+        has_unavailable_actions: bool,
         workflow_stage: str,
     ) -> tuple[str, ...]:
-        """Place the current turn's strict shape after the longer schema catalog."""
-        if len(active_tools) != 1:
-            return (
-                "Final output reminder:",
-                "Begin the response immediately with { and end it immediately with "
-                "}. Output only one bare JSON object. When the chosen action "
-                "contract has no parameter properties, copy its exact "
-                "zero-parameter output shape and use an empty parameters object; "
-                "all choices are made by the user in the opened product UI.",
+        """Place precision-first decision shapes after the schema catalog."""
+        sections = [
+            "Decision checkpoint (apply after reading the catalog):",
+            "Choose a callable action only when the latest user request asks for "
+            "exactly one listed action, unambiguously, with every required input. "
+            "Use respond_to_user for informational, negated, unavailable, "
+            "ambiguous, incomplete, or multi-action requests. For multiple "
+            "actions, ask which one to do first and call none. Never claim an "
+            "action completed without a trusted tool result.",
+        ]
+        if has_unavailable_actions:
+            sections.append(
+                "When the request matches an unavailable entry, state that entry's "
+                "listed reason instead of asking for the unavailable action's "
+                "settings; do not execute a prerequisite named by that reason."
             )
-
-        tool = active_tools[0]
-        tool_def = tool_contract_for_llm(
-            tool,
-            use_backend_defaults=tool.name in backend_default_tools,
-        )
-        parameters = tool_def.get("parameters")
-        properties = (
-            parameters.get("properties") if isinstance(parameters, dict) else None
-        )
-        if properties == {}:
-            exact = json.dumps(
-                {
-                    "workflow_stage": workflow_stage,
-                    "tool_name": tool.name,
-                    "parameters": {},
-                },
-                separators=(",", ":"),
+        if has_callable_actions:
+            sections.extend(
+                (
+                    "Generic action envelope:",
+                    '{"workflow_stage":"'
+                    + workflow_stage
+                    + '","tool_name":"<exact enabled action name>",'
+                    '"parameters":{...}}',
+                    "The parameters object must match the chosen contract. Use {} "
+                    "only when that contract has no parameter properties; never "
+                    "invent choices that belong to the opened product UI.",
+                )
             )
-            return (
-                "Final output reminder:",
-                "Return one bare JSON object, never an array or a wrapped object: "
-                f"{exact}",
+        sections.extend(
+            (
+                "Final no-action envelope (replace the message placeholder):",
+                '{"workflow_stage":"'
+                + workflow_stage
+                + '","tool_name":"respond_to_user","parameters":{"message":'
+                '"<concise response or one clarifying question>"}}',
             )
-
-        supported_names = (
-            ", ".join(sorted(str(name) for name in properties))
-            if isinstance(properties, dict) and properties
-            else "none"
         )
-        return (
-            "Final output reminder:",
-            "Return one bare JSON object, never an array or a wrapped object. "
-            f'For a direct action, tool_name must be "{tool.name}" and parameters '
-            "must be an object. Copy every supported value explicitly stated in "
-            "the latest user request into parameters, even when it is optional. "
-            f"Supported parameter names: {supported_names}. Omit an optional "
-            "parameter only when the request does not state it.",
-        )
-
-    @staticmethod
-    def _is_zero_parameter_contract(tool_def: dict[str, Any]) -> bool:
-        """Return whether an action accepts no model-provided parameters."""
-        parameters = tool_def.get("parameters")
-        if not isinstance(parameters, dict):
-            return False
-        supported_keys = {
-            "type",
-            "properties",
-            "required",
-            "additionalProperties",
-            "title",
-            "description",
-        }
-        if set(parameters).difference(supported_keys):
-            return False
-        properties = parameters.get("properties")
-        required = parameters.get("required")
-        return bool(
-            parameters.get("type") == "object"
-            and properties == {}
-            and parameters.get("additionalProperties") is False
-            and required in (None, [])
-        )
+        return tuple(sections)
 
     def _application_allowed_tools(
         self,
@@ -364,7 +337,9 @@ Action Contract Catalog (input definitions, never an output array):
         return sorted(
             name
             for name in fallback
-            if name in registered_names and name in model_tool_names
+            if name in registered_names
+            and name in model_tool_names
+            and name in policy_read.published_tools
         )
 
     def rag_allowed_tool_names(self, latest_user_text: str) -> frozenset[str]:
@@ -388,20 +363,36 @@ Action Contract Catalog (input definitions, never an output array):
         )
         return frozenset(allowed_tools)
 
-    def _blocked_tool_reason_map(
+    def _unavailable_action_reason_map(
         self,
         policy_read: PromptPolicyReadResult,
         *,
-        relevant_commands: set[str] | None = None,
+        callable_tools: set[str],
+        workflow_stage: str,
     ) -> dict[str, str]:
-        """Return blockers that were relevant to this exact prompt turn."""
-        if policy_read.publication_error is not None:
+        """Project non-callable registered targets from the same publication."""
+        if not policy_read.policy_applies or policy_read.publication_error is not None:
             return {}
-        return {
-            tool_name: str(reason)
-            for tool_name, reason in policy_read.blocked_reason_map().items()
-            if reason and (relevant_commands is None or tool_name in relevant_commands)
+        registered_targets = {
+            tool.name
+            for tool in self.registry.get_all_tools()
+            if tool.name in AGENT_ACTION_CONTRACTS.model_tool_names()
         }
+        backend_reasons = policy_read.blocked_reason_map()
+        unavailable: dict[str, str] = {}
+        for tool_name in sorted(registered_targets - callable_tools):
+            reason = backend_reasons.get(tool_name)
+            if reason:
+                unavailable[tool_name] = reason
+            elif tool_name in policy_read.published_tools:
+                unavailable[tool_name] = (
+                    f"This action is not callable in workflow stage '{workflow_stage}'."
+                )
+            else:
+                unavailable[tool_name] = (
+                    "This action is unavailable in the current workflow state."
+                )
+        return unavailable
 
     def build_system_prompt(self, latest_user_text: str = "") -> str:
         """Construct the host-controlled policy and action-contract message.
@@ -436,9 +427,15 @@ Action Contract Catalog (input definitions, never an output array):
             config["tools"],
             policy_read,
         )
+        unavailable_actions = self._unavailable_action_reason_map(
+            policy_read,
+            callable_tools=set(allowed_tools),
+            workflow_stage=workflow_stage,
+        )
         tools_str = self._format_tools(
             allowed_tools,
             workflow_stage=workflow_stage,
+            unavailable_actions=unavailable_actions,
         )
         if workflow_status_unavailable:
             unavailable_reason = (
@@ -463,15 +460,11 @@ Action Contract Catalog (input definitions, never an output array):
                 publication=publication,
             )
 
-        blocked_reasons = self._blocked_tool_reason_map(
-            policy_read,
-            relevant_commands=set(allowed_tools),
-        )
         self._latest_tool_publication = PromptToolPublication(
             tool_names=frozenset(allowed_tools),
             workflow_stage=workflow_stage,
             backend_generation=policy_read.backend_generation,
-            blocked_reasons=tuple(sorted(blocked_reasons.items())),
+            blocked_reasons=tuple(unavailable_actions.items()),
             recommended_command=decision_context.recommended_next_step,
             authorized_command=self._turn_authorized_command,
         )

@@ -29,8 +29,12 @@ from XBrainLab.llm.core.model_catalog import (
     plan_model_download,
 )
 
-PRIMARY_MODEL_ID = "ibm-granite/granite-3.3-2b-instruct"
+PRIMARY_MODEL_ID = "ibm-granite/granite-4.0-micro"
 PRIMARY_MODEL_REVISION = (
+    "56111ae135df9c53a78c99028e7bc24035a9e979"  # pragma: allowlist secret
+)
+LOWER_MEMORY_MODEL_ID = "ibm-granite/granite-3.3-2b-instruct"
+LOWER_MEMORY_MODEL_REVISION = (
     "707f574c62054322f6b5b04b6d075f0a8f05e0f0"  # pragma: allowlist secret
 )
 RETIRED_MODEL_IDS = (
@@ -181,10 +185,14 @@ def test_catalog_excludes_chinese_model_providers():
 
 def test_catalog_pins_supported_models_to_immutable_revisions() -> None:
     primary = local_model_spec(PRIMARY_MODEL_ID)
+    lower_memory = local_model_spec(LOWER_MEMORY_MODEL_ID)
 
     assert primary is not None
     assert primary.revision == PRIMARY_MODEL_REVISION
     assert len(primary.revision) == 40
+    assert lower_memory is not None
+    assert lower_memory.revision == LOWER_MEMORY_MODEL_REVISION
+    assert len(lower_memory.revision) == 40
 
 
 def test_primary_granite_catalog_metadata_is_truthful() -> None:
@@ -192,26 +200,38 @@ def test_primary_granite_catalog_metadata_is_truthful() -> None:
 
     assert allowed_local_model_ids()[0] == PRIMARY_MODEL_ID
     assert primary is not None
-    assert primary.label == "Granite 3.3 2B Instruct (Primary)"
+    assert primary.label == "Granite 4.0 Micro 3B (Recommended)"
     assert primary.provider == "IBM"
     assert primary.role == "primary"
     assert primary.license == "Apache-2.0"
-    assert primary.parameters == "2.5B (2B class)"
-    assert primary.context_tokens == 128_000
+    assert primary.parameters == "3B dense"
+    assert primary.context_tokens == 131_072
     assert primary.runtime_context_tokens == 8_192
-    assert primary.estimated_download_gb == pytest.approx(5.08)
+    assert primary.estimated_download_gb == pytest.approx(6.82)
     assert primary.estimated_download_gb < 10.0
+    assert primary.estimated_vram_gb == pytest.approx(8.0)
     assert primary.quantization.startswith("BF16 safetensors")
     assert "trust_remote_code" not in {field.name for field in fields(LocalModelSpec)}
     assert primary.supports_system_role is True
     assert primary.preferred_cuda_dtype == "bfloat16"
     assert primary.source_url == (
-        "https://huggingface.co/ibm-granite/granite-3.3-2b-instruct"
+        "https://huggingface.co/ibm-granite/granite-4.0-micro"
     )
 
 
-def test_product_catalog_contains_exact_granite_only() -> None:
-    assert allowed_local_model_ids() == [PRIMARY_MODEL_ID]
+def test_lower_memory_granite_remains_selectable_without_becoming_fallback() -> None:
+    lower_memory = local_model_spec(LOWER_MEMORY_MODEL_ID)
+
+    assert lower_memory is not None
+    assert lower_memory.label == "Granite 3.3 2B (Lower memory)"
+    assert lower_memory.role == "lower-memory"
+    assert lower_memory.parameters == "2.5B (2B class)"
+    assert lower_memory.estimated_download_gb == pytest.approx(5.08)
+    assert lower_memory.estimated_vram_gb == pytest.approx(6.0)
+
+
+def test_product_catalog_contains_only_two_exact_granite_choices() -> None:
+    assert allowed_local_model_ids() == [PRIMARY_MODEL_ID, LOWER_MEMORY_MODEL_ID]
 
     for model_id in RETIRED_MODEL_IDS:
         assert local_model_spec(model_id) is None

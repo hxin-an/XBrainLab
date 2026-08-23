@@ -213,7 +213,7 @@ def test_unknown_ram_query_fails_closed_recoverably_before_load(
     ("available_bytes", "expected_risk"),
     [
         (None, "unknown"),
-        (8 * BYTES_PER_GB, "warning"),
+        (10 * BYTES_PER_GB, "warning"),
     ],
 )
 def test_persisted_runtime_notice_does_not_confirm_current_memory_risk(
@@ -263,7 +263,7 @@ def test_resource_risk_is_rechecked_for_every_activation(
     def _query_ram() -> dict[str, int | None]:
         nonlocal query_count
         query_count += 1
-        return _ram_status(available_bytes=8 * BYTES_PER_GB)
+        return _ram_status(available_bytes=10 * BYTES_PER_GB)
 
     monkeypatch.setattr(
         ResourceChecker,
@@ -375,4 +375,4 @@ def test_catalog_estimate_drives_selected_device_admission() -> None:
     spec = local_model_spec(PRIMARY_LOCAL_MODEL_ID)
 
     assert spec is not None
-    assert spec.estimated_vram_gb * BYTES_PER_GB == 6 * BYTES_PER_GB
+    assert spec.estimated_vram_gb * BYTES_PER_GB == 8 * BYTES_PER_GB

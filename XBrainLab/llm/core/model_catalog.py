@@ -30,8 +30,12 @@ class CacheScanCancellation(Protocol):
     def is_set(self) -> bool: ...
 
 
-PRIMARY_LOCAL_MODEL_ID = "ibm-granite/granite-3.3-2b-instruct"
+PRIMARY_LOCAL_MODEL_ID = "ibm-granite/granite-4.0-micro"
 PRIMARY_LOCAL_MODEL_REVISION = (
+    "56111ae135df9c53a78c99028e7bc24035a9e979"  # pragma: allowlist secret
+)
+LOWER_MEMORY_LOCAL_MODEL_ID = "ibm-granite/granite-3.3-2b-instruct"
+LOWER_MEMORY_LOCAL_MODEL_REVISION = (
     "707f574c62054322f6b5b04b6d075f0a8f05e0f0"  # pragma: allowlist secret
 )
 RETIRED_LOCAL_MODEL_IDS = frozenset(
@@ -132,9 +136,33 @@ LOCAL_MODEL_SPECS: tuple[LocalModelSpec, ...] = (
     LocalModelSpec(
         repo_id=PRIMARY_LOCAL_MODEL_ID,
         revision=PRIMARY_LOCAL_MODEL_REVISION,
-        label="Granite 3.3 2B Instruct (Primary)",
+        label="Granite 4.0 Micro 3B (Recommended)",
         provider="IBM",
         role="primary",
+        license="Apache-2.0",
+        parameters="3B dense",
+        context_tokens=131_072,
+        estimated_download_gb=6.82,
+        estimated_vram_gb=8.0,
+        quantization=(
+            "BF16 safetensors; optional runtime 4-bit if bitsandbytes is installed"
+        ),
+        runtime_context_tokens=8_192,
+        supports_system_role=True,
+        preferred_cuda_dtype="bfloat16",
+        source_url="https://huggingface.co/ibm-granite/granite-4.0-micro",
+        notes=(
+            "IBM Granite 4.0 Micro dense instruction model with multilingual "
+            "dialog, improved tool calling, and 128K-class context support; "
+            "the pinned BF16 snapshot remains under 10GB."
+        ),
+    ),
+    LocalModelSpec(
+        repo_id=LOWER_MEMORY_LOCAL_MODEL_ID,
+        revision=LOWER_MEMORY_LOCAL_MODEL_REVISION,
+        label="Granite 3.3 2B (Lower memory)",
+        provider="IBM",
+        role="lower-memory",
         license="Apache-2.0",
         parameters="2.5B (2B class)",
         context_tokens=128_000,

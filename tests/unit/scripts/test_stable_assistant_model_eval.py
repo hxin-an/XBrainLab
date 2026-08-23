@@ -5,16 +5,21 @@ from unittest.mock import patch
 
 from scripts.dev.run_stable_assistant_model_eval import (
     DEFAULT_CHALLENGES,
+    DEFAULT_PRECISION_CASES,
     _build_report,
+    _evaluation_generation_policy,
     _experiment_identity,
     _stable_eval_config,
     build_case_messages,
+    evaluate_case_trajectory,
     load_challenge_cases,
+    load_precision_cases,
     load_target_cases,
     score_challenge_response,
     score_missing_parameter_host_guard,
     score_model_response,
     score_positive_parameter_host_guard,
+    score_precision_response,
     target_tool_registry,
 )
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
@@ -67,6 +72,337 @@ def test_challenge_cases_extend_positive_matrix_to_exact_50_case_gate() -> None:
         "out_of_stage",
     }
     assert len(load_target_cases(GOLD_SET)) + len(cases) == 50
+
+
+def test_precision_cases_cover_tools_and_bilingual_no_action_categories() -> None:
+    cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+
+    assert len(cases) == 24
+    assert {case.requested_tool for case in cases if case.requested_tool} == (
+        AGENT_ACTION_CONTRACTS.model_tool_names()
+    )
+    assert {case.category for case in cases} == {
+        "ambiguous",
+        "general",
+        "missing_parameter",
+        "multi_action",
+        "negated",
+        "out_of_stage",
+    }
+    assert sum(case.category == "general" for case in cases) == 2
+    assert sum(case.category == "ambiguous" for case in cases) == 2
+    assert sum(case.category == "multi_action" for case in cases) == 2
+
+
+def test_precision_scoring_uses_parser_and_host_attempt_outcome_not_keywords() -> None:
+    registry = target_tool_registry()
+    cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    missing = next(case for case in cases if case.case_id == "missing_bandpass_en")
+    out_of_stage = next(
+        case for case in cases if case.case_id == "start_before_setup_zh"
+    )
+    general = next(case for case in cases if case.case_id == "general_en")
+
+    direct_response = (
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '"parameters":{"message":"Please provide the cutoff values."}}'
+    )
+    false_completion = (
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '"parameters":{"message":"The filter has been completed."}}'
+    )
+    placeholder_response = (
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '"parameters":{"message":"<concise response or one clarifying question>"}}'
+    )
+    model_default = (
+        '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
+        '"parameters":{"low_freq":0.5,"high_freq":45}}'
+    )
+    blocked_start = (
+        '{"workflow_stage":"data_loaded","tool_name":"start_training","parameters":{}}'
+    )
+    accidental_navigation = (
+        '{"workflow_stage":"empty","tool_name":"switch_panel",'
+        '"parameters":{"panel_name":"training"}}'
+    )
+    wrong_stage_block = (
+        '{"workflow_stage":"training","tool_name":"start_training","parameters":{}}'
+    )
+
+    direct_score = score_precision_response(missing, direct_response, registry)
+    guarded_score = score_precision_response(missing, model_default, registry)
+    blocked_score = score_precision_response(out_of_stage, blocked_start, registry)
+
+    assert direct_score.passed is True
+    assert score_precision_response(missing, false_completion, registry).passed is False
+    assert (
+        score_precision_response(missing, placeholder_response, registry).passed
+        is False
+    )
+    assert guarded_score.passed is True
+    assert blocked_score.passed is True
+    assert (
+        score_precision_response(general, accidental_navigation, registry).passed
+        is False
+    )
+    assert (
+        score_precision_response(out_of_stage, wrong_stage_block, registry).passed
+        is False
+    )
+    assert direct_score.product_outcome is not None
+    assert direct_score.product_outcome.disposition == "respond"
+    assert guarded_score.product_outcome is not None
+    assert guarded_score.product_outcome.disposition == "respond"
+    assert guarded_score.product_outcome.message
+    assert blocked_score.product_outcome is not None
+    assert blocked_score.product_outcome.disposition == "blocked"
+    assert blocked_score.product_outcome.message
+    for score in (direct_score, guarded_score, blocked_score):
+        outcome = score.product_outcome
+        assert outcome is not None
+        assert outcome.confirmation_requested is False
+        assert outcome.gui_handoff_permitted is False
+        assert outcome.application_service_permitted is False
+        assert outcome.tool_executor_permitted is False
+        assert outcome.state_mutation_permitted is False
+
+
+def test_trajectory_retries_format_error_with_product_policy_and_scores_final() -> None:
+    registry = target_tool_registry()
+    case = next(
+        case
+        for case in load_precision_cases(DEFAULT_PRECISION_CASES)
+        if case.case_id == "general_en"
+    )
+    responses = iter(
+        (
+            '{"workflow_stage":"empty","tool_name":"respond_to_user",',
+            (
+                '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+                '"parameters":{"message":"I can explain the EEG workflow; '
+                'which part would you like to understand?"}}'
+            ),
+        )
+    )
+    generated_messages: list[list[dict[str, str]]] = []
+
+    def generate(messages: list[dict[str, str]]) -> str:
+        generated_messages.append(messages)
+        return next(responses)
+
+    trajectory = evaluate_case_trajectory(case, registry, generate)
+
+    assert trajectory.raw_score.passed is False
+    assert trajectory.final_score.passed is True
+    assert trajectory.final_response.endswith("}}")
+    assert [attempt.recovery_action for attempt in trajectory.attempts] == [
+        "retry_format",
+        "accept_no_tool",
+    ]
+    assert [attempt.taxonomy for attempt in trajectory.attempts] == [
+        "format_error_retry",
+        "recovered_plain_text",
+    ]
+    assert len(generated_messages) == 2
+    assert "FORMAT CORRECTION REQUIRED" in generated_messages[1][1]["content"]
+    assert generated_messages[1][-1] == {
+        "role": "user",
+        "content": case.user_input,
+    }
+
+
+def test_trajectory_exhaustion_is_visible_safe_failure_after_two_retries() -> None:
+    registry = target_tool_registry()
+    case = next(
+        case
+        for case in load_precision_cases(DEFAULT_PRECISION_CASES)
+        if case.case_id == "multi_en"
+    )
+    generated_messages: list[list[dict[str, str]]] = []
+
+    def generate(messages: list[dict[str, str]]) -> str:
+        generated_messages.append(messages)
+        return "not one JSON object"
+
+    trajectory = evaluate_case_trajectory(case, registry, generate)
+
+    assert trajectory.raw_score.passed is False
+    assert trajectory.final_score.passed is False
+    assert trajectory.final_score.failure_type == "output_format"
+    assert len(generated_messages) == 3
+    assert generated_messages[2][1]["content"].count("FORMAT CORRECTION REQUIRED") == 2
+    assert [attempt.recovery_action for attempt in trajectory.attempts] == [
+        "retry_format",
+        "retry_format",
+        "exhausted",
+    ]
+    outcome = trajectory.final_score.product_outcome
+    assert outcome is not None
+    assert outcome.disposition == "format_recovery_exhausted"
+    assert outcome.message
+    assert outcome.confirmation_requested is False
+    assert outcome.gui_handoff_permitted is False
+    assert outcome.application_service_permitted is False
+    assert outcome.tool_executor_permitted is False
+    assert outcome.state_mutation_permitted is False
+
+
+def test_trajectory_retries_stage_mismatch_like_product_controller() -> None:
+    registry = target_tool_registry()
+    case = next(
+        case
+        for case in load_precision_cases(DEFAULT_PRECISION_CASES)
+        if case.case_id == "general_en"
+    )
+    responses = iter(
+        (
+            (
+                '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+                '"parameters":{"message":"How can I help?"}}'
+            ),
+            (
+                '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+                '"parameters":{"message":"How can I help with your EEG workflow?"}}'
+            ),
+        )
+    )
+
+    trajectory = evaluate_case_trajectory(
+        case,
+        registry,
+        lambda _messages: next(responses),
+    )
+
+    assert trajectory.raw_score.failure_type == "workflow_stage"
+    assert trajectory.final_score.passed is True
+    assert trajectory.attempts[0].workflow_stage == "data_loaded"
+    assert trajectory.attempts[0].envelope_status == "format_error"
+    assert trajectory.attempts[0].recovery_action == "retry_format"
+
+
+def test_trajectory_does_not_turn_recovered_unsafe_action_into_a_pass() -> None:
+    registry = target_tool_registry()
+    case = next(
+        case
+        for case in load_precision_cases(DEFAULT_PRECISION_CASES)
+        if case.case_id == "general_en"
+    )
+    responses = iter(
+        (
+            "not one JSON object",
+            (
+                '{"workflow_stage":"empty","tool_name":"switch_panel",'
+                '"parameters":{"panel_name":"training"}}'
+            ),
+        )
+    )
+
+    trajectory = evaluate_case_trajectory(
+        case,
+        registry,
+        lambda _messages: next(responses),
+    )
+
+    assert trajectory.raw_score.passed is False
+    assert trajectory.final_score.passed is False
+    assert trajectory.final_score.parsed_tool == "switch_panel"
+    assert trajectory.final_score.product_outcome is not None
+    assert trajectory.final_score.product_outcome.disposition in {
+        "confirmation",
+        "execute",
+    }
+
+
+def test_evaluation_uses_product_structured_generation_budget_not_legacy_128_cap() -> (
+    None
+):
+    config = LLMConfig(max_new_tokens=384, do_sample=True)
+
+    policy = _evaluation_generation_policy(config)
+
+    assert policy == {
+        "profile": "structured_decision",
+        "max_new_tokens": 384,
+        "do_sample": False,
+        "max_format_recovery_attempts": 2,
+    }
+
+    config.max_new_tokens = 1_024
+    assert _evaluation_generation_policy(config)["max_new_tokens"] == 512
+
+
+def test_precision_report_is_separate_from_frozen_core_gate() -> None:
+    core_results = (
+        [
+            {
+                "suite": "positive",
+                "score": {"passed": True},
+                **(
+                    {"parameter_origin_guard": {"applicable": True, "passed": True}}
+                    if index < 10
+                    else {}
+                ),
+            }
+            for index in range(36)
+        ]
+        + [
+            {
+                "suite": "challenge",
+                "score": {"passed": False},
+                "host_guard": {"applicable": True, "passed": True},
+            }
+            for _ in range(5)
+        ]
+        + [{"suite": "challenge", "score": {"passed": False}} for _ in range(9)]
+    )
+    report = _build_report(
+        model_id="ibm-granite/granite-3.3-2b-instruct",
+        results=[
+            *core_results,
+            *[
+                {
+                    "suite": "precision",
+                    "raw_score": {"passed": index > 0},
+                    "score": {"passed": True},
+                }
+                for index in range(24)
+            ],
+        ],
+        expected_case_count=50,
+        complete=True,
+    )
+
+    assert report["schema_version"] == "xbrainlab.stable_assistant_model_eval.v6"
+    assert report["suite_summary"]["positive"]["case_count"] == 36
+    assert report["suite_summary"]["challenge"]["case_count"] == 14
+    assert report["summary"] == {
+        "expected_case_count": 50,
+        "case_count": 50,
+        "passed_count": 36,
+        "failed_count": 14,
+        "complete": True,
+        "passed": True,
+    }
+    assert report["precision_summary"] == {
+        "expected_case_count": 24,
+        "case_count": 24,
+        "passed_count": 24,
+        "failed_count": 0,
+        "complete": True,
+        "passed": True,
+    }
+    assert report["candidate_gate"]["frozen_core_passed"] is True
+    assert report["candidate_gate"]["precision_no_action"] == {
+        "required": 24,
+        "passed": 24,
+    }
+    assert report["candidate_gate"]["passed"] is True
+    assert report["raw_generation_summary"] == {
+        "positive": {"case_count": 36, "passed_count": 36, "failed_count": 0},
+        "challenge": {"case_count": 14, "passed_count": 0, "failed_count": 14},
+        "precision": {"case_count": 24, "passed_count": 23, "failed_count": 1},
+    }
 
 
 def test_challenge_score_requires_strict_response_envelope_and_message_contract() -> (
@@ -134,6 +470,49 @@ def test_case_messages_publish_stage_tools_without_retired_surface() -> None:
     assert '"name": "switch_panel"' in system
     assert '"name": "query_state"' not in system
     assert messages[-1] == {"role": "user", "content": case.user_input}
+
+
+def test_precision_messages_project_backend_unavailable_actions_without_schemas() -> (
+    None
+):
+    registry = target_tool_registry()
+    cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    epochs = next(case for case in cases if case.case_id == "epochs_before_data_zh")
+    model = next(case for case in cases if case.case_id == "model_before_epochs_zh")
+
+    epochs_system = build_case_messages(epochs, registry)[0]["content"]
+    model_system = build_case_messages(model, registry)[0]["content"]
+
+    assert "Unavailable Action Reference (not callable):" in epochs_system
+    assert (
+        '"create_epochs": "Load raw data before creating EEG epochs."' in epochs_system
+    )
+    assert '"name": "create_epochs"' not in epochs_system
+    assert (
+        '"select_model": "This action is not callable in workflow stage '
+        "'data_loaded'.\"" in model_system
+    )
+    assert '"name": "select_model"' not in model_system
+
+
+def test_precision_exact_unavailable_call_uses_backend_reason_at_attempt_boundary() -> (
+    None
+):
+    registry = target_tool_registry()
+    case = next(
+        case
+        for case in load_precision_cases(DEFAULT_PRECISION_CASES)
+        if case.case_id == "epochs_before_data_zh"
+    )
+    response = '{"workflow_stage":"empty","tool_name":"create_epochs","parameters":{}}'
+
+    score = score_precision_response(case, response, registry)
+
+    assert score.passed is True
+    assert score.product_outcome is not None
+    assert score.product_outcome.disposition == "blocked"
+    assert score.product_outcome.message is not None
+    assert "Load raw data before creating EEG epochs." in score.product_outcome.message
 
 
 def test_score_accepts_only_exact_stage_tool_and_schema() -> None:
@@ -292,9 +671,19 @@ def test_candidate_report_requires_positive_and_host_guard_gates() -> None:
         "positive_exact": {"required": 36, "passed": 36},
         "explicit_parameter_host_guard": {"required": 10, "passed": 10},
         "missing_parameter_host_guard": {"required": 5, "passed": 5},
-        "passed": True,
+        "frozen_core_passed": True,
+        "precision_no_action": {"required": 24, "passed": 0},
+        "passed": False,
     }
-    assert report["summary"]["passed"] is True
+    assert report["summary"]["passed"] is False
+    assert report["precision_summary"] == {
+        "expected_case_count": 24,
+        "case_count": 0,
+        "passed_count": 0,
+        "failed_count": 0,
+        "complete": False,
+        "passed": False,
+    }
 
 
 def test_experiment_identity_binds_source_and_ignores_only_protected_settings(
@@ -302,8 +691,10 @@ def test_experiment_identity_binds_source_and_ignores_only_protected_settings(
 ) -> None:
     positives = tmp_path / "positive.json"
     challenges = tmp_path / "challenge.json"
+    precision = tmp_path / "precision.json"
     positives.write_text("positive\n", encoding="utf-8")
     challenges.write_text("challenge\n", encoding="utf-8")
+    precision.write_text("precision\n", encoding="utf-8")
 
     with patch(
         "scripts.dev.run_stable_assistant_model_eval.subprocess.check_output",
@@ -315,6 +706,7 @@ def test_experiment_identity_binds_source_and_ignores_only_protected_settings(
         identity = _experiment_identity(
             cases_path=positives,
             challenges_path=challenges,
+            precision_cases_path=precision,
         )
 
     assert identity["source_sha"] == "abc123"
@@ -323,3 +715,4 @@ def test_experiment_identity_binds_source_and_ignores_only_protected_settings(
     ]
     assert len(identity["positive_cases_sha256"]) == 64
     assert len(identity["challenge_cases_sha256"]) == 64
+    assert len(identity["precision_cases_sha256"]) == 64

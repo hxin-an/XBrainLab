@@ -150,6 +150,38 @@ def test_unpublished_tool_is_blocked_with_prompt_generation_before_context_read(
     assert verifier.calls == []
 
 
+def test_unavailable_reference_reason_blocks_before_any_execution_boundary() -> None:
+    coordinator, source, verifier = _coordinator(_context("create_epochs"))
+    publication = PromptToolPublication(
+        tool_names=frozenset({"import_eeg_data", "switch_panel"}),
+        backend_generation=48,
+        blocked_reasons=(
+            ("create_epochs", "Load raw data before creating EEG epochs."),
+        ),
+    )
+
+    decision = coordinator.evaluate(
+        _request(
+            "create_epochs",
+            text="Create epochs now.",
+            publication=publication,
+        )
+    )
+
+    assert decision.action is ToolAttemptAction.PUBLICATION_BLOCKED
+    assert decision.result is not None
+    assert decision.result.error_type == "precondition"
+    assert decision.result.blocked_reason == (
+        "Load raw data before creating EEG epochs."
+    )
+    assert decision.result.diagnostics == {
+        "publication_generation": 48,
+        "published_tool_count": 2,
+    }
+    assert source.reads == []
+    assert verifier.calls == []
+
+
 def test_unpublished_legacy_attach_labels_is_rejected_before_verification() -> None:
     coordinator, source, verifier = _coordinator(_context("attach_labels"))
     publication = PromptToolPublication(

@@ -79,6 +79,7 @@ from .response_presentation import (
 from .runtime_state import AssistantRuntimePhase, AssistantRuntimeSnapshot
 from .strict_envelope_recovery import (
     DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY,
+    STRICT_ENVELOPE_EXHAUSTED_MESSAGE,
     StrictEnvelopeRecoveryAction,
     StrictEnvelopeRecoveryRequest,
 )
@@ -1148,10 +1149,7 @@ class LLMController(QObject):
             return True
 
         logger.error("Max retries reached for JSON error.")
-        message = (
-            "The assistant could not produce a valid assistant action. Try again "
-            "or describe one workflow step more specifically."
-        )
+        message = STRICT_ENVELOPE_EXHAUSTED_MESSAGE
         self._publish_response(message, kind=AssistantResponseKind.ERROR)
         self.metrics.finish_turn()
         self.status_update.emit("Invalid assistant action")

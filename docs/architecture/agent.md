@@ -1,6 +1,6 @@
 # Agent 目前架構
 
-最後更新：`2026-08-18`
+最後更新：`2026-08-24`
 
 ## 範圍
 
@@ -187,13 +187,13 @@ apply與recipe lifecycle仍由既有Data Interpretation/ApplicationService owner
 - Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 等模型不列入 product / legacy 選型。
 - 優先考慮非中國來源、授權清楚、可本地部署的模型。
 
-2026-08-01 local runtime truth：
+2026-08-24 local runtime truth：
 
 | role | model | provider | estimated download | cache status | smoke |
 | --- | --- | --- | ---: | --- | --- |
-| primary | `ibm-granite/granite-3.3-2b-instruct` | IBM | 5.08 GB | cached | prompt / structured / real GPU boundary workflow PASS |
-| historical cache/evidence only | `microsoft/Phi-4-mini-instruct` | Microsoft | 7.69 GB | root checkout cache only | not selectable; older ChatPanel evidence only |
-| historical evidence only | `microsoft/Phi-3.5-mini-instruct` | Microsoft | 7.64 GB | not required by current candidate | not selectable; no current full ChatPanel run |
+| primary | `ibm-granite/granite-4.0-micro` | IBM | 6.82 GB | exact revision cached | product `LLMEngine` structured turn PASS；peak allocated 6,771.76 MiB |
+| lower-memory | `ibm-granite/granite-3.3-2b-instruct` | IBM | 5.08 GB | exact revision cached | selectable；既有supported selection不被改寫 |
+| diagnostic cache only | `mistralai/Ministral-3-3B-Instruct-2512-BF16` | Mistral AI | 7.73 GB exact allow-list | cached but not selectable | product Transformers不支援`ministral3` text config；配置階段fail closed，VRAM allocation 0 |
 
 每個 checkout 的已下載模型相容 cache 預設位於：
 
@@ -206,15 +206,12 @@ XBrainLab/llm/core/models
 `XBrainLabCache/models` 與 `XBrainLabCache/rag`。這是 deployment/runtime policy；模型選擇、
 quota 與 snapshot 驗證仍由 application-side catalog contract 決定。
 
-Model cache facts are path-scoped. The closure worktree currently contains only exact Granite and
-uses about `5.07 GB`; the root checkout used by the installed Desktop launcher contains about
-`12.77 GB` because retired Phi content is still present there. Runtime evidence must record the
-selected cache path, branch, full SHA, dirty state and model revision before either number is used.
-Granite is the exact product primary. The real boundary artifact covers one model-owned scan, host-owned
-parameter-free preview / validate continuation, typed Data Import review handoff, cancellation and
-shutdown; it is not a long-session or raw-model accuracy claim.
-Phi entries above document historical cache/evidence only. The product catalog accepts exact
-Granite 3.3 2B; Phi cannot be selected and never becomes a fallback.
+Model cache facts are path-scoped. 本次產品scanner在active cache量到3B `6,815,496,013` bytes、2B
+`5,071,897,896` bytes、diagnostic-only Ministral `7,732,474,788` bytes，總量`19,619,868,697` bytes；仍低於原本
+20 GB policy，沒有使用使用者另給的10 GB diagnostic緩衝。Runtime evidence仍必須記錄selected cache
+path、branch、full SHA、dirty state與model revision後才能引用。Granite 4.0 Micro 3B是exact primary，
+Granite 3.3 2B只作明確lower-memory selection；任一selection unavailable都不silent fallback。Ministral
+cache不代表product support，Settings不發布它。Phi仍不可選，也不會成為fallback。
 舊 Qwen cache 已刪除，catalog / architecture guards 會阻止被禁用來源重新進入 product path。
 
 新增 runtime policy：
@@ -246,10 +243,11 @@ Granite 3.3 2B; Phi cannot be selected and never becomes a fallback.
 
 `LLMConfig` 和 `AssistantRuntimeSelection` 是 runtime truth。UI 顯示文字不能當成真實 backend 狀態。
 
-目前只宣稱Granite固定正向selection suite的checkpoint。Host保留strict schema、stage/publication、
+目前只宣稱Granite固定正向selection suite與bounded no-action checkpoint。Host保留strict schema、stage/publication、
 capability與confirmation verification，但不做intent narrowing或deterministic continuation。這種
 工程evidence不能替代真人workflow或thesis accuracy，也不能把歷史`117/117`、`121/121`或Phi
-candidate分數移植成Granite claim；candidate必須以同一frozen source完成composed 50-case report gate。
+candidate分數移植成Granite claim；3B目前維持36/36 positive、10/10 direct parameter-origin、5/5
+missing-parameter host guard與20/24 final no-action outcomes，未達24/24所以不是handoff-ready。
 4-bit loading 仍是 optional path；`accelerate` / `bitsandbytes` 不是預設產品啟動硬需求。
 
 Gemini/API 不再列為產品驗證目標；default dependencies 不包含 remote SDK。若歷史研究需要遠端
@@ -455,12 +453,11 @@ settings全部完成後才是`dataset_ready`。
 已在本輪 runtime 驗證的部分：
 
 - local model catalog、download preflight 和 health-check script 存在。
-- closure-worktree runtime inspection 回報 Granite 3.3 2B `gpu-ready`，其 path-scoped cache 約
-  `5.07 GB / 20 GB`；root launcher cache 的 `12.77 GB` 不是同一個 checkout。
-- frozen Granite 34個positive selection cases曾在先前exact source通過；本candidate新增
-  `compute_saliency`後固定跑36 positive＋14 challenge diagnostics。Promotion要求36/36 positive與
-  5/5 missing-parameter composed host outcomes；舊34-case結果不能代替，其他raw challenge failure仍是
-  明示model limitation。
+- active cache的3B與2B都通過exact revision／completeness inspection；3B真產品引擎的structured
+  no-action turn首輪通過，峰值allocated／reserved為`6,771.76 / 6,872.00 MiB`，關閉後已釋放。
+- Granite 3B固定跑36 positive＋14 challenge diagnostics＋24 precision。Final checkpoint為36/36
+  positive、10/10 direct parameter-origin、5/5 missing-parameter host guard與20/24 precision；四個
+  remaining failures完整保留，不能用舊34-case或較小分母替代。
 - local runtime unavailable 時，chat panel 會保持可開並顯示原因；first-run consent 只在
   local backend 還未 acknowledged 且即將啟用時出現。
 - no-model diagnostic runtime可走真ChatPanel、MainWindow、ApplicationService與tool correlation，
@@ -475,7 +472,7 @@ settings全部完成後才是`dataset_ready`。
 - agent 操作完整資料 pipeline 的端到端正確性。
 - 真 Windows launcher / human desktop acceptance。
 - 長時間真人桌面 session、跨重啟 cache lifecycle 與 frozen Granite benchmark。
-- 最終composed Granite gate、真model safe E2E與三份真人frontend walkthrough尚未在同一candidate
+- 24/24 no-action promotion gate、真model safe E2E與三份真人frontend walkthrough尚未在同一candidate
   source閉合。
 - Windows native layout、dialog interaction與完整PhysioNet CPU workflow仍需要使用者手測。
 
@@ -519,8 +516,8 @@ host-assisted或`121/121` reports不得作為current Granite accuracy。只有�
 
 Stable v2的tool membership、backend-owned stage、strict envelope、thin Host、GUI terminal、diagnostic
 walkthrough與candidate gates只由[Agent target](../target/agent.md)定義。Current source已完成18-tool
-cutover與obsolete wrapper removal；`v0.7.0`只把它宣稱為經真人workflow驗收的bounded Local Assistant
-baseline，不把固定2B模型或deterministic host guards宣稱為安全零容忍或語意正確性保證。
+cutover與obsolete wrapper removal；3B primary／2B lower-memory catalog仍只是bounded Local Assistant
+checkpoint，不把任一固定模型或deterministic host guards宣稱為安全零容忍或語意正確性保證。
 
 ## 文件狀態
 

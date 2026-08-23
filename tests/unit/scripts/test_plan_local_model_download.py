@@ -17,8 +17,12 @@ def test_build_plan_reports_primary_model(tmp_path: Path):
         plan = build_plan()
 
     assert plan["ok"] is True
-    assert plan["model_id"] == "ibm-granite/granite-3.3-2b-instruct"
-    assert plan["primary_model"] == "ibm-granite/granite-3.3-2b-instruct"
+    assert plan["model_id"] == "ibm-granite/granite-4.0-micro"
+    assert plan["primary_model"] == "ibm-granite/granite-4.0-micro"
+    assert plan["allowed_models"] == [
+        "ibm-granite/granite-4.0-micro",
+        "ibm-granite/granite-3.3-2b-instruct",
+    ]
     assert "Qwen" not in "\n".join(cast(list[str], plan["allowed_models"]))
 
 
@@ -45,4 +49,4 @@ def test_render_markdown_includes_cache_and_source(tmp_path: Path):
     assert "Local Model Download Preflight" in rendered
     assert "cache directory" in rendered
     assert "automatic fallback: `disabled`" in rendered
-    assert "huggingface.co/ibm-granite/granite-3.3-2b-instruct" in rendered
+    assert "huggingface.co/ibm-granite/granite-4.0-micro" in rendered
