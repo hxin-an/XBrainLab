@@ -7,7 +7,6 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
     QGroupBox,
-    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -40,6 +39,8 @@ from XBrainLab.ui.application_capabilities import (
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
+from XBrainLab.ui.components.modal_message_box import ModalMessageBox as QMessageBox
+from XBrainLab.ui.components.modal_presentation import AlertSeverity, ask_confirmation
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
@@ -1099,15 +1100,16 @@ class PreprocessSidebar(QWidget):
             reset_capability.confirmation_required
             or reset_capability.requires_confirmation
         )
-        if needs_confirmation:
-            reply = QMessageBox.question(
-                self,
-                "Confirm Reset",
-                "Are you sure you want to reset all preprocessing steps?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            )
-            if reply != QMessageBox.StandardButton.Yes:
-                return
+        if needs_confirmation and not ask_confirmation(
+            self,
+            severity=AlertSeverity.WARNING,
+            title="Confirm Reset",
+            message="Are you sure you want to reset all preprocessing steps?",
+            confirm_text="Reset preprocessing",
+            cancel_text="Cancel",
+            destructive=True,
+        ):
+            return
 
         try:
             result = execute_application_command(

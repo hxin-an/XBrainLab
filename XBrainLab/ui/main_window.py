@@ -35,7 +35,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
-    QMessageBox,
     QPushButton,
     QSizePolicy,
     QStackedWidget,
@@ -67,6 +66,7 @@ from XBrainLab.ui.application_publication_renderer import (
     DesktopApplicationPublicationRenderer,
 )
 from XBrainLab.ui.async_command_runner import application_command_registry
+from XBrainLab.ui.components.modal_presentation import AlertSeverity, ask_confirmation
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
@@ -2168,16 +2168,19 @@ class MainWindow(QMainWindow):
         if self._shutdown_only_mode or sip.isdeleted(self):
             return
         self._shutdown_only_mode = True
-        reply = QMessageBox.question(
+        if ask_confirmation(
             self,
-            "XBrainLab cannot resume safely",
-            "The application could not restore its command state after the close "
-            "attempt. Retry recovery, or close XBrainLab now. Unsaved work may be "
-            "lost if you close.",
-            QMessageBox.StandardButton.Retry | QMessageBox.StandardButton.Close,
-            QMessageBox.StandardButton.Retry,
-        )
-        if reply == QMessageBox.StandardButton.Close:
+            severity=AlertSeverity.CRITICAL,
+            title="XBrainLab cannot resume safely",
+            message=(
+                "The application could not restore its command state after the close "
+                "attempt. Retry recovery, or close XBrainLab now. Unsaved work may be "
+                "lost if you close."
+            ),
+            confirm_text="Close XBrainLab",
+            cancel_text="Retry recovery",
+            destructive=True,
+        ):
             self._assistant_shutdown_attempts = 0
             self._force_shutdown_requested = True
             QTimer.singleShot(0, self.close)

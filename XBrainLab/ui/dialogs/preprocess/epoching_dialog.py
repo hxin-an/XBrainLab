@@ -21,7 +21,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -40,6 +39,7 @@ from XBrainLab.backend.application.epoch_context import (
     validated_epoch_context_availability,
     validated_epoch_window_mode,
 )
+from XBrainLab.ui.components.modal_message_box import ModalMessageBox as QMessageBox
 from XBrainLab.ui.components.presentation import fit_table_to_all_rows
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import (

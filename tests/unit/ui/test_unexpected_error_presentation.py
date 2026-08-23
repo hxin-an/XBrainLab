@@ -7,7 +7,7 @@ import logging
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtWidgets import QMainWindow
@@ -534,46 +534,37 @@ def test_worker_error_presentation_fails_closed_for_hostile_payloads(
     error_info,
     caplog,
 ) -> None:
-    message_box = MagicMock()
-
-    with _capture_public_xbrainlab_logs(caplog):
+    with (
+        _capture_public_xbrainlab_logs(caplog),
+        patch("XBrainLab.ui.components.user_error_presentation.show_alert") as alert,
+    ):
         message = present_unexpected_error(
             None,
             UnexpectedErrorContext.PREPROCESS_EXECUTION,
             error_info=error_info,
-            message_box=message_box,
         )
 
     assert message == _PREPROCESS_MESSAGE
-    message_box.critical.assert_called_once_with(
-        None,
-        "Preprocessing could not be applied",
-        _PREPROCESS_MESSAGE,
-    )
+    assert alert.call_args.kwargs["message"] == _PREPROCESS_MESSAGE
     _assert_logged_exception(caplog)
 
 
 def test_worker_logging_failure_does_not_hide_stable_message(monkeypatch) -> None:
-    message_box = MagicMock()
     monkeypatch.setattr(
         user_error_presentation.logger,
         "error",
         MagicMock(side_effect=RuntimeError("logger failed")),
     )
 
-    message = present_unexpected_error(
-        None,
-        UnexpectedErrorContext.PREPROCESS_EXECUTION,
-        error_info=(RuntimeError, RuntimeError(_SENTINEL), _SENTINEL),
-        message_box=message_box,
-    )
+    with patch("XBrainLab.ui.components.user_error_presentation.show_alert") as alert:
+        message = present_unexpected_error(
+            None,
+            UnexpectedErrorContext.PREPROCESS_EXECUTION,
+            error_info=(RuntimeError, RuntimeError(_SENTINEL), _SENTINEL),
+        )
 
     assert message == _PREPROCESS_MESSAGE
-    message_box.critical.assert_called_once_with(
-        None,
-        "Preprocessing could not be applied",
-        _PREPROCESS_MESSAGE,
-    )
+    assert alert.call_args.kwargs["message"] == _PREPROCESS_MESSAGE
 
 
 def test_training_settings_unexpected_exception_uses_stable_warning(

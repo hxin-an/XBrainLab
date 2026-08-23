@@ -14,7 +14,6 @@ from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QPlainTextEdit,
     QSizePolicy,
     QStyle,
@@ -27,6 +26,10 @@ from XBrainLab.backend.controller.chat_controller import (
     ChatMessagePresentationKind,
 )
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.ui.components.modal_presentation import (
+    AlertSeverity,
+    ask_confirmation,
+)
 from XBrainLab.ui.styles.theme import Theme
 
 from .styles import (
@@ -623,14 +626,14 @@ class MessageBubble(QWidget):
             )
             return False
 
-        reply = QMessageBox.question(
+        if not ask_confirmation(
             self,
-            "Open external link?",
-            f"Open this website in your browser?\n\n{host}",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
+            severity=AlertSeverity.WARNING,
+            title="Open external link?",
+            message=f"Open this website in your browser?\n\n{host}",
+            confirm_text="Open link",
+            cancel_text="Cancel",
+        ):
             return False
         return QDesktopServices.openUrl(url)
 
