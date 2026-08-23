@@ -311,6 +311,25 @@ handoff／execution admission，因此不是安全零誤動作候選。暫存報
 checkpoint commit後必須重跑，不能作handoff-ready證據。Settings artifact位於
 `/tmp/xbrainlab-assistant-settings-convergence/`；offscreen PASS不取代Windows真人判斷。
 
+Exact checkpoint第一次真`MainWindow → AgentManager → controller thread → Granite → ChatPanel`
+walkthrough暴露的是validation drift，不是產品失敗：3B實際成功載入，第一輪約2秒回覆「目前可匯入EEG」且
+零tool execution，shutdown／thread cleanup全通過；但舊capture仍要求已退役的`query_state`，因此在正確
+no-action response後錯誤fail，並在final payload重新讀persisted Phi selection而覆蓋本次明確`--model 3B`
+identity。這兩項直接使full-chain evidence無法判讀，屬本slice內的必要validation修理；不改production、
+prompt或UI。先以capture unit tests改鎖兩輪informational request都零tool，並鎖inspected／actual model
+identity；再刪除retired query expectation、讓payload使用preflight inspection加controller runtime snapshot。
+Focused green後建立replacement commit，重跑74 cases、Settings artifact與真ChatPanel兩輪；任何產品source
+行為都不再修改。Root `settings.json`維持使用者既有dirty檔，不stage、不改寫也不拿來作artifact identity。
+
+Validation drift已依上述red→green修正，production `+0/-0/net 0`、owner不變。修正後真ChatPanel兩輪
+walkthrough PASS：preflight與controller snapshot都精確為Granite 4.0 Micro 3B；第一輪workflow readiness
+回覆約2.0秒、第二輪EEG preprocessing解釋約1.6秒，兩輪都是單句且tool count皆0。Visible screenshots已
+人工確認conversation hierarchy、wrapping、composer與空Dataset context無clipping／overlap；post-close
+runtime／dispatcher為closed、controller released、registered／running generation threads皆0，GPU也釋放。
+Development artifact為`/tmp/xbrainlab-chatpanel-local-fixed/`，JSON SHA-256
+`de1b5432b7d828b8765d2ba2dfbe8c25cb8fb36870eaaea6353f12daa4055c40`。這證明真組裝與兩輪資訊回覆循環，
+不證明18個GUI action或complete EEG workflow；replacement commit後仍需以新exact SHA重跑並取代本artifact。
+
 施工 checkpoint：catalog／provider chain至`627c5492`已由獨立gate確認無blocker／major；metadata
 discovery保持barrel-free，只有checked provider status能啟用projection。`f27eabfa`已鎖定61-symbol逐檔
 provenance、hash、license與excluded set。第一個baseline convolution family已完成private namespace、minimal

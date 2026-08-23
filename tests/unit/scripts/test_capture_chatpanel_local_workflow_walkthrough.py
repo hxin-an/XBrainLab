@@ -5,12 +5,14 @@ from PIL import Image
 
 from scripts.dev.capture_chatpanel_local_workflow_walkthrough import (
     DEFAULT_OUTPUT_DIR,
+    DEFAULT_PROMPTS,
     ROOT,
     _assistant_is_ready,
     _build_post_close_evidence,
     _disable_first_run_dialog_for_unattended_capture,
     _has_unpainted_main_surface,
     _prepare_isolated_settings,
+    _runtime_summary,
     _turn_contract_failure,
     render_markdown,
 )
@@ -120,37 +122,27 @@ def test_assistant_ready_requires_visible_enabled_idle_controls() -> None:
     assert _assistant_is_ready(manager) is False
 
 
-def test_walkthrough_contract_requires_state_tool_then_no_tool_explanation() -> None:
+def test_walkthrough_contract_requires_two_no_tool_informational_answers() -> None:
+    assert all("query_state" not in prompt for prompt in DEFAULT_PROMPTS)
+    assert all("state query tool" not in prompt.lower() for prompt in DEFAULT_PROMPTS)
     assert (
         _turn_contract_failure(
             0,
             "The dataset is empty, so importing EEG data is the next available step.",
-            [{"name": "query_state", "success": True}],
+            [],
         )
         is None
     )
-    assert "query_state" in (_turn_contract_failure(0, "Ready.", []) or "")
-    assert "exactly once" in (
+    assert "must not call" in (
         _turn_contract_failure(
             0,
             "Ready.",
-            [
-                {"name": "query_state", "success": True},
-                {"name": "query_state", "success": True},
-            ],
+            [{"name": "import_eeg_data", "success": True}],
         )
         or ""
     )
-    assert "must not call other tools" in (
-        _turn_contract_failure(
-            0,
-            "Ready.",
-            [
-                {"name": "query_state", "success": True},
-                {"name": "preprocess", "success": True},
-            ],
-        )
-        or ""
+    assert "workflow readiness" in (
+        _turn_contract_failure(0, "Everything is fine.", []) or ""
     )
 
     assert (
@@ -165,7 +157,7 @@ def test_walkthrough_contract_requires_state_tool_then_no_tool_explanation() -> 
         _turn_contract_failure(
             1,
             "EEG preprocessing prepares the signal.",
-            [{"name": "query_state", "success": True}],
+            [{"name": "import_eeg_data", "success": True}],
         )
         or ""
     )
@@ -181,8 +173,8 @@ def test_walkthrough_contract_requires_state_tool_then_no_tool_explanation() -> 
         _turn_contract_failure(
             1,
             (
-                "The current workflow status cannot be determined without the state "
-                "query tool. EEG preprocessing prepares signals for analysis."
+                "The current XBrainLab workflow status is empty. "
+                "EEG preprocessing prepares signals for analysis."
             ),
             [],
         )
@@ -199,6 +191,34 @@ def test_walkthrough_contract_requires_state_tool_then_no_tool_explanation() -> 
         )
         or ""
     )
+
+
+def test_runtime_summary_preserves_inspected_and_loaded_model_identity() -> None:
+    runtime = {
+        "classification": "gpu-ready",
+        "current_model_id": "ibm-granite/granite-4.0-micro",
+        "message": "Local runtime ready.",
+        "cache_dir": "/redacted/cache",
+        "cache_usage": "6.82 GB",
+        "cache_usage_bytes": 6_820_000_000,
+        "has_local_cache": True,
+        "gpu_fallback_reason": None,
+    }
+
+    matched = _runtime_summary(
+        runtime,
+        loaded_model_id="ibm-granite/granite-4.0-micro",
+    )
+    mismatched = _runtime_summary(
+        runtime,
+        loaded_model_id="ibm-granite/granite-3.3-2b-instruct",
+    )
+
+    assert matched["model_id"] == "ibm-granite/granite-4.0-micro"
+    assert matched["inspected_model_id"] == "ibm-granite/granite-4.0-micro"
+    assert matched["model_identity_matches"] is True
+    assert mismatched["model_id"] == "ibm-granite/granite-3.3-2b-instruct"
+    assert mismatched["model_identity_matches"] is False
 
 
 def test_walkthrough_capture_rejects_large_unpainted_left_surface(tmp_path) -> None:
@@ -249,8 +269,8 @@ def test_render_markdown_lists_turns_and_tools() -> None:
         "failure_reason": "",
         "runtime": {
             "classification": "gpu-ready",
-            "model_id": "microsoft/Phi-4-mini-instruct",
-            "cache_usage": "15.34 GB",
+            "model_id": "ibm-granite/granite-4.0-micro",
+            "cache_usage": "19.62 GB",
         },
         "hf_offline": {
             "HF_HUB_OFFLINE": "1",
@@ -263,7 +283,7 @@ def test_render_markdown_lists_turns_and_tools() -> None:
                 "index": 1,
                 "prompt": "Check state.",
                 "assistant_text": "Application state snapshot ready.",
-                "new_tool_count": 1,
+                "new_tool_count": 0,
                 "screenshot": "turn-1.png",
             },
             {
@@ -274,14 +294,7 @@ def test_render_markdown_lists_turns_and_tools() -> None:
                 "screenshot": "turn-2.png",
             },
         ],
-        "executed_tools": [
-            {
-                "name": "query_state",
-                "success": True,
-                "duration_ms": 1.0,
-                "error": None,
-            }
-        ],
+        "executed_tools": [],
         "ui_state": {
             "send_button_text": "Send",
             "send_button_enabled": True,
@@ -304,7 +317,8 @@ def test_render_markdown_lists_turns_and_tools() -> None:
 
     assert "Turn 1" in rendered
     assert "Turn 2" in rendered
-    assert "`query_state`: `ok`" in rendered
+    assert "## Executed Tools" in rendered
+    assert "- none" in rendered
     assert "Epoch creation is not available yet." in rendered
     assert "runtime state: `closed`" in rendered
     assert "registered generation threads: `0`" in rendered
