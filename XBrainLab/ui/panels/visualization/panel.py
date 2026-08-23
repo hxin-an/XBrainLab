@@ -277,7 +277,9 @@ class VisualizationPanel(BasePanel):
             SaliencyCrossFoldIdentity,
             _SaliencyCrossFoldChoice,
         ] = {}
-        self._known_saliency_plan_indexes: set[int] = set()
+        self._known_evaluation_cross_fold_identities: set[SaliencyCrossFoldIdentity] = (
+            set()
+        )
         self.last_application_query: CommandResult | None = None
         self.last_saliency_query: CommandResult | None = None
         self._last_active_saliency_view: QWidget | None = None
@@ -727,7 +729,7 @@ class VisualizationPanel(BasePanel):
     def _refresh_control_layout_for_width(self) -> None:
         if not hasattr(self, "ctrl_bar"):
             return
-        available_width = max(self.ctrl_bar.width(), self.width() - 340)
+        available_width = max(self.ctrl_bar.width(), self.width())
         if available_width >= 1080:
             layout_mode = "wide"
         elif available_width >= 700:
@@ -896,6 +898,43 @@ class VisualizationPanel(BasePanel):
         by_identity = {choice.identity: choice for choice in choices}
         return tuple(by_identity.values())
 
+    def _evaluation_cross_fold_identities_from_query(
+        self,
+        choices: tuple[_SaliencyCrossFoldChoice, ...],
+    ) -> set[SaliencyCrossFoldIdentity]:
+        """Return only backend-admitted Fold Sets, never inferred exact folds."""
+        payload = self._visualization_query_payload()
+        raw_choices = (
+            payload.get("evaluation_cross_fold_choices", []) if payload else []
+        )
+        if not isinstance(raw_choices, list):
+            return set()
+        raw_members: set[tuple[tuple[int, int], ...]] = set()
+        for raw in raw_choices:
+            identity = raw.get("identity") if isinstance(raw, dict) else None
+            members = identity.get("members") if isinstance(identity, dict) else None
+            if not isinstance(members, list):
+                continue
+            try:
+                raw_members.add(
+                    tuple(
+                        (int(member["plan_index"]), int(member["run_index"]))
+                        for member in members
+                        if isinstance(member, dict)
+                    )
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
+        return {
+            choice.identity
+            for choice in choices
+            if tuple(
+                (member.plan.plan_index, member.run_index)
+                for member in choice.identity.members
+            )
+            in raw_members
+        }
+
     def refresh_combos(self):
         """Refresh plan/run identities from one immutable view publication."""
         if self._application_summary_dirty or self.last_application_query is None:
@@ -990,33 +1029,31 @@ class VisualizationPanel(BasePanel):
         for plan_identity in plan_order:
             self.plan_combo.addItem(plan_labels[plan_identity], plan_identity)
 
-        admitted_indexes = {
-            identity.plan_index
-            for identity in self._runs_by_plan
-            if isinstance(identity, SaliencyPlanIdentity)
-        }
-        new_indexes = admitted_indexes - self._known_saliency_plan_indexes
-        self._known_saliency_plan_indexes = admitted_indexes
+        evaluation_identities = self._evaluation_cross_fold_identities_from_query(
+            cross_fold_choices,
+        )
+        new_evaluation_identities = (
+            evaluation_identities - self._known_evaluation_cross_fold_identities
+        )
+        self._known_evaluation_cross_fold_identities = evaluation_identities
 
         # A newly admitted training round must not leave the user looking at a
         # previous round's completed saliency. Prefer its aggregate Fold Set;
         # if it is not cross-validation, select its first exact fold instead.
         if self.plan_combo.count() > 1:
             selected_index = 1
-            if new_indexes:
-                newest = max(new_indexes)
+            if new_evaluation_identities:
+                newest = max(
+                    new_evaluation_identities,
+                    key=lambda identity: max(
+                        member.plan.plan_index for member in identity.members
+                    ),
+                )
                 for i in range(1, self.plan_combo.count()):
                     candidate = self.plan_combo.itemData(i)
-                    if (
-                        isinstance(candidate, _SaliencyCrossFoldGroup)
-                        and newest in candidate.plan_indexes
-                    ):
-                        selected_index = i
-                        break
-                    if (
-                        isinstance(candidate, SaliencyPlanIdentity)
-                        and candidate.plan_index == newest
-                    ):
+                    if isinstance(candidate, _SaliencyCrossFoldGroup) and tuple(
+                        candidate.plan_indexes
+                    ) == tuple(member.plan.plan_index for member in newest.members):
                         selected_index = i
                         break
             else:
