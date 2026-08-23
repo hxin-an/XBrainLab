@@ -1127,6 +1127,8 @@ class Saliency3DPlotWidget(QWidget):
             absolute=absolute,
             prepared_engine=prepared_engine,
             prepared_channel_count=prepared_channel_count,
+            request_id=request_id,
+            publication_generation=publication_generation,
         )
 
     def _do_3d_plot(
@@ -1138,6 +1140,8 @@ class Saliency3DPlotWidget(QWidget):
         absolute=False,
         prepared_engine=None,
         prepared_channel_count=None,
+        request_id: int | None = None,
+        publication_generation: int | None = None,
     ):
         try:
             if self._qt_object_deleted(self) or self._qt_object_deleted(
@@ -1159,9 +1163,17 @@ class Saliency3DPlotWidget(QWidget):
             init_error = getattr(saliency, "init_error", "")
             if init_error:
                 logger.error("3D saliency engine initialization failed: %s", init_error)
+                self._clear_active_scene_key_for_current_render(
+                    request_id,
+                    publication_generation,
+                )
                 self.show_error(safe_saliency_detail(init_error))
                 return
             if getattr(saliency, "engine", None) is None:
+                self._clear_active_scene_key_for_current_render(
+                    request_id,
+                    publication_generation,
+                )
                 self.show_error("3D saliency engine could not initialize.")
                 return
             saliency.get_3d_head_plot()
@@ -1171,8 +1183,24 @@ class Saliency3DPlotWidget(QWidget):
             self._position_scene_overlay()
         except Exception as e:
             logger.error("Error executing 3D plot: %s", e, exc_info=True)
+            self._clear_active_scene_key_for_current_render(
+                request_id,
+                publication_generation,
+            )
             if not self._qt_object_deleted(self):
                 self.show_error(SALIENCY_RENDER_FAILED_TEXT)
+
+    def _clear_active_scene_key_for_current_render(
+        self,
+        request_id: int | None,
+        publication_generation: int | None,
+    ) -> None:
+        """Release only the scene owned by this still-current render callback."""
+        if request_id is not None and self._is_current_request(
+            request_id,
+            publication_generation,
+        ):
+            self._active_scene_key = None
 
     def _set_epoch_time(self, value: int) -> None:
         scene = self._saliency_scene
