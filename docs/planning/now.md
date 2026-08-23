@@ -76,6 +76,16 @@ handoff 後一次性交付真人手測。
 5. Training／Preprocess／App／Chat：分批遷移 modal，保留 receipt、destructive、external-link 與 shutdown semantics。
 6. 非作者 subagent review、focused closure、canonical exact-source handoff，最後才交付真人手測。
 
+## 目前施工狀態
+
+- 步驟 1–5 與非作者 review closure 已完成並以可回退 commit 收斂；production UI 的 raw
+  `QMessageBox` source guard 已通過，沒有加入 compatibility alias。
+- Global dialog policy 的安全 Cancel default 與 3D preparation／final scene failure retry 已由
+  policy-installed keyboard、same-scene retry與stale-key tests保護；非作者closure無blocking finding。
+- 同一整合focused denominator為926 passed；Ruff、format、Basedpyright、diff與raw `QMessageBox` guard均通過。
+  Production diff為`+887/-613`、touched 1,500，未超過強制拆分門檻；owner數不變。
+- 下一步是凍結exact source、完成artifact review與canonical handoff；在此之前維持checkpoint。
+
 ## Focused validation
 
 - Red／green tests：Cancel Import exact choices、無 visible Cancel Evaluation、Fold Set unavailable/Compute、
