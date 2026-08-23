@@ -5,7 +5,7 @@ from __future__ import annotations
 from math import ceil
 
 from PyQt6.QtCore import QMimeData, Qt, pyqtSignal
-from PyQt6.QtGui import QKeyEvent, QResizeEvent, QShowEvent
+from PyQt6.QtGui import QInputMethodEvent, QKeyEvent, QResizeEvent, QShowEvent
 from PyQt6.QtWidgets import QPlainTextEdit
 
 from XBrainLab.chat_contract import MAX_CHAT_MESSAGE_CONTENT_LENGTH
@@ -22,6 +22,7 @@ class AssistantComposer(QPlainTextEdit):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._enforcing_character_limit = False
+        self._ime_preedit_active = False
         self.setTabChangesFocus(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         document = self.document()
@@ -36,11 +37,23 @@ class AssistantComposer(QPlainTextEdit):
             super().keyPressEvent(event)
             return
         is_enter = event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+        if is_enter and self._ime_preedit_active:
+            event.accept()
+            return
         if is_enter and not (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
             self.submit_requested.emit()
             event.accept()
             return
         super().keyPressEvent(event)
+
+    def inputMethodEvent(  # noqa: N802
+        self,
+        event: QInputMethodEvent | None,
+    ) -> None:
+        """Keep candidate-selection keys inside an active IME composition."""
+        if event is not None:
+            self._ime_preedit_active = bool(event.preeditString())
+        super().inputMethodEvent(event)
 
     def showEvent(self, event: QShowEvent | None) -> None:  # noqa: N802
         """Fit text entered before the composer had its final viewport width."""

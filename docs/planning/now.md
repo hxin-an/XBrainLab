@@ -259,6 +259,49 @@ Granite 4.0 Micro 3B v7 run維持36/36 positive、10/10 direct origin、5/5 miss
 recovery才通過，因此只能宣稱final product-policy continuation，不宣稱第一發JSON紀律改善。下一步是固定
 clean exact commit並重跑同一v7 report，再交使用者Windows手測；尚未取得manual acceptance或merge授權。
 
+Exact `fc425eff` 已固定並完成同一v7 report：36/36 positive、10/10 direct origin、5/5 missing guard、
+20/24 precision與5/5 clarification final皆維持，完整Assistant agent／evaluator suite仍為945 passed。
+使用者於 `2026-08-24` 回報另一個交付前blocker：Assistant composer使用中文IME時，候選組字的Enter
+會被誤當成送出；因此clarification候選先不交付，改由下列同一手測候選承接，仍不開PR、不merge。
+
+### Follow-up slice：Assistant Chinese IME composition
+
+Branch `fix/assistant-chinese-ime-v1` 從exact `fc425eff` 疊加，只修正既有
+`AssistantComposer` 無條件攔截Enter造成的中文IME組字誤送。使用者已於 `2026-08-24` 明確授權本次
+`XBrainLab/ui/` 可見輸入行為修正，並要求完成後與clarification continuation一起交付手測；沒有取得
+merge授權。
+
+Observable outcome：IME仍有preedit組字時，Enter不得發出`submit_requested`或建立turn；IME commit後的
+中文文字必須留在composer，之後一般Enter才送出一次。既有Shift+Enter換行、英文Enter送出、字數上限、
+draft保留、ChatPanel admission與bubble呈現完全不改。Scope只含既有composer owner、直接回歸測試與必要
+truth sync；non-goals是版面／文案 redesign、全域event filter、其他輸入元件、Assistant turn lifecycle或
+backend修正。
+
+Complexity review：owner before／after皆為既有`AssistantComposer`；沿用Qt的`QInputMethodEvent` preedit／
+commit lifecycle與既有key event入口，不新增module、public class、state machine或第二份submit policy。
+預估production只改1個既有file、低於30 LOC；若需要全域IME owner、觸及超過2個production files，或必須
+改變Enter／Shift+Enter public contract即停止並另行決定。
+
+TDD順序：先用真實Qt input-method event建立red case，證明preedit期間Enter目前會送出；再於composer保存
+bounded composition flag，讓已通過platform IME filter的組字Enter不emit也不插入換行，並由
+commit／empty-preedit清除狀態。
+測試同時證明中文commit內容保留、結束組字後Enter只送出一次，以及既有multiline contract不退步。
+
+Focused validation：以`prlimit --core=0`與timeout執行composer／ChatPanel Qt tests、直接相關chat UI suite、
+Ruff check／format check與diff check；固定clean exact commit後，因combined候選source已改變，重跑同一
+Granite 3B v7 Assistant report確認clarification與安全分數未退步。Qt offscreen只作engineering evidence；
+Windows native手測必須實際用中文IME以Enter選字、確認不提早送出，再驗證一般Enter送出與第二輪補參數。
+任何preedit仍送出、commit文字遺失、重複送出、Shift+Enter退步或native IME無法選字皆失敗，不形成
+handoff-ready；只有同一SHA經使用者明確手測通過並批准merge後才走PR。
+
+Implementation checkpoint：`AssistantComposer` 現以Qt preedit event保存bounded composition flag；
+組字期間抵達widget的Enter會被消費，不emit也不插入換行，commit／empty-preedit event恢復一般Enter。
+第一個red證明原實作會emit一次；加強後的red另證明單純呼叫base會產生`"\n中"`，目前兩者皆已由
+observable regression關閉。Production只改1個既有file，`+14/-1/net +13 LOC`，owner數不變；完整
+chat UI同類suite為233 passed，Ruff check／format check與diff check通過。Exact-source screenshot、
+combined v7 model report與Windows native手測仍依上述contract執行；offscreen green不代表中文輸入法
+已由真人驗收，也不改變既有20/24 no-action checkpoint。
+
 ### Parallel diagnostic：capability-first local model under 4B
 
 使用者於`2026-08-24`澄清4B只是產品預計上限，不是必須填滿的規格；選擇依據是非中國來源、
