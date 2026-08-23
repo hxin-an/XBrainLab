@@ -83,11 +83,20 @@ capture修正後focused validator為`64 passed`；同Qt／MNE環境的真MainWin
 exit 0，四個render皆通過，typed shutdown snapshot記錄application closed、idle、worker/subprocess為零、
 視窗不可見且無uncaught exception。Ruff、format與diff check通過；現有capture腳本其他區段的13個
 Optional basedpyright diagnostics不屬本次shutdown diff，留給其原owner，不在closure擴修。
+exact `e0917959` replacement handoff的complete regression、Visualization clean shutdown與native lanes
+皆通過；最後由`real-data-interpretation-training`以2個disallowed skip fail closed。兩個必要fixture
+實際存在於`XBRAINLAB_DATA_DIR/datasets/public-fixtures`，但該單一test檔仍硬編碼空的
+`tests/fixtures/data/public`，與其餘public-data gates使用的canonical resolver不一致。只修正test/evidence
+routing，保留strict zero-skip policy與三條真資料workflow；不下載、不改產品data semantics。
+修正後同一required-pytest observer實際回報`4 passed`、`executed=4`、`skipped=0`、`exit_code=0`；
+包含canonical-root regression、Graz external labels完整訓練、MNE-BIDS epoch/split readiness與PhysioNet
+internal events完整訓練。Ruff、format與diff check通過。
 
 下一步固定為：
 
-1. 凍結已通過focused capture的new exact SHA並執行replacement canonical handoff。
-   同一components timeout或post-artifact native `-11`再現即停止；其他失敗只修復記錄的owner。
+1. Canonical runner沒有resume介面，且reboot已清除`/tmp`內未完成的deferred dossier；舊SHA records
+   不得拼入新source。凍結／push已通過real-data strict gate的新SHA後，執行一次必要的exact-source
+   replacement handoff。這是source binding重建，不作效能量測；同類既知failure再現即停止。
 2. 自動evidence完整後交付Windows／Linux手測：modal default／Escape／destructive action；single-file、
    folder、BIDS review/cancel/retry且status不重複跑百分比；Saliency All／Single、long class／many channel、
    zoom／pan／reset、3D class／epoch-time／camera controls與close lifecycle。
