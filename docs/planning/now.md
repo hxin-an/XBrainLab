@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-08-23`
+最後更新：`2026-08-24`
 
 ## 目前焦點
 
@@ -91,12 +91,18 @@ handoff 後一次性交付真人手測。
 - Draft PR另確認Windows／macOS lifecycle只被同一Dataset test seams阻擋；platform native lifecycle本身
   通過。Default visual candidate只有Visualization panel改變，且符合已核准的selector/order/layout outcome，
   但CI verifier仍只接受舊schema v1，和capture的canonical schema v2不一致。
-- 下一步限定tests-only：依owner校準到實際`show_warning`／`show_error`／`ask_confirmation`／
-  `present_unexpected_error` helper，保留直接call argument與absence assertions；Spectrogram測試改保護
-  no-suptitle outcome；artifact verifier只接受目前schema v2並對其他版本fail closed。各affected selector、
-  integration／platform shards與完整shard通過後，review exact-source candidate並更新唯一有意變更的approved
-  Visualization reference，再重新凍結SHA並從頭跑canonical manifest。
-  若需要任何production修改、測試只能靠auto-accept modal或削弱observable assertion才會通過，立即停止。
+- Tests-only closure 已改到實際 `show_warning`／`show_error`／`ask_confirmation`／
+  `present_unexpected_error` helper，並移除會掩蓋意外 modal 的成功路徑 patch；沒有加入 auto-accept 或
+  production alias。Spectrogram no-suptitle、UI baseline schema v2 fail-closed contract、完整 unit UI
+  `2,686 passed`、integration UI `115 passed / 17 optional-public-fixture skipped` 與 verifier contract
+  `33 passed` 均通過。
+- 唯一有意變更的 Visualization reference 已由目前 production source 重新 capture、目視審查並更新；
+  本地 exact-source offscreen 與前一 Linux CI/Xvfb candidate 位元組相同，更新後七張 baseline 為
+  `0.00%` diff。本機 Xvfb 因唯讀 `/tmp/.X11-unix` owner/mode 錯誤無法啟動，不以 offscreen 取代最終
+  Linux CI/Xvfb、Windows native 或真人 acceptance。
+- 下一步只執行 source quality gates、凍結並 push exact SHA、從頭重跑 canonical manifest，以及確認同一
+  SHA 的所有 non-skipped CI completed/success；任何失敗都回到 checkpoint。若需要任何 production 修改、
+  測試只能靠 auto-accept modal 或削弱 observable assertion才會通過，立即停止並使目前 evidence 失效。
 
 ## Focused validation
 
