@@ -33,7 +33,10 @@ class DataInterpretationRecipeReloadBindings(Protocol):
     """Application and Qt ports shared with the parent interpretation flow."""
 
     @property
-    def message_box(self) -> Callable[[], Any]: ...
+    def show_warning(self) -> Callable[[Any, str, str], None]: ...
+
+    @property
+    def show_error(self) -> Callable[[Any, str, str], None]: ...
 
     @property
     def file_dialog(self) -> Callable[[], Any]: ...
@@ -130,7 +133,7 @@ class DataInterpretationRecipeReloadCoordinator:
         if review_context is None and self._bindings.has_real_application_context(
             self.panel
         ):
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Recipe Reload Blocked",
                 _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
@@ -142,14 +145,14 @@ class DataInterpretationRecipeReloadCoordinator:
             else None
         )
         if review_context is not None and reload_capability is None:
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Recipe Reload Blocked",
                 _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
             )
             return
         if reload_capability is not None and not reload_capability.enabled:
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Recipe Reload Blocked",
                 self._bindings.blocked_reason(
@@ -205,7 +208,7 @@ class DataInterpretationRecipeReloadCoordinator:
 
         started = _dispatch()
         if not started:
-            self._bindings.message_box().critical(
+            self._bindings.show_error(
                 self.panel,
                 "Recipe reload unavailable",
                 "Data Interpretation command service is unavailable.",
@@ -234,7 +237,7 @@ class DataInterpretationRecipeReloadCoordinator:
                 decision=decision,
             )
         except (ApplicationError, ControllerCompatibilityUnavailableError) as exc:
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Import review changed",
                 str(exc),
@@ -268,7 +271,7 @@ class DataInterpretationRecipeReloadCoordinator:
             str(decision.get("decision")) == "blocked"
             and dialog_choices == base_choices
         ):
-            self._bindings.message_box().critical(
+            self._bindings.show_error(
                 self.panel,
                 "Interpretation blocked",
                 decision_reason(decision),
@@ -317,7 +320,7 @@ class DataInterpretationRecipeReloadCoordinator:
 
             started = _dispatch_preview()
             if not started:
-                self._bindings.message_box().critical(
+                self._bindings.show_error(
                     self.panel,
                     "Interpretation preview unavailable",
                     "Data Interpretation command service is unavailable.",
@@ -347,7 +350,7 @@ class DataInterpretationRecipeReloadCoordinator:
                 decision={},
             )
         except (ApplicationError, ControllerCompatibilityUnavailableError) as exc:
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Import review changed",
                 str(exc),
@@ -369,7 +372,7 @@ class DataInterpretationRecipeReloadCoordinator:
             ),
         )
         if not started:
-            self._bindings.message_box().critical(
+            self._bindings.show_error(
                 self.panel,
                 "Interpretation validation unavailable",
                 "Data Interpretation command service is unavailable.",
@@ -392,7 +395,7 @@ class DataInterpretationRecipeReloadCoordinator:
             return
         decision = diagnostic_payload(validation_result, "validation_decision")
         if str(decision.get("decision")) == "blocked":
-            self._bindings.message_box().critical(
+            self._bindings.show_error(
                 self.panel,
                 "Interpretation blocked",
                 decision_reason(decision),
@@ -406,7 +409,7 @@ class DataInterpretationRecipeReloadCoordinator:
                 decision=decision,
             )
         except (ApplicationError, ControllerCompatibilityUnavailableError) as exc:
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Import review changed",
                 str(exc),
@@ -418,11 +421,11 @@ class DataInterpretationRecipeReloadCoordinator:
         if not result.failed:
             return False
         if self._bindings.is_stale_publication_result(result):
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Review Data Import Again",
                 result.message,
             )
         else:
-            self._bindings.message_box().critical(self.panel, title, result.message)
+            self._bindings.show_error(self.panel, title, result.message)
         return True

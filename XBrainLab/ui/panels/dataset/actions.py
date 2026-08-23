@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QInputDialog,
     QMenu,
-    QMessageBox,
 )
 
 from XBrainLab.backend.application.commands import (
@@ -45,6 +44,12 @@ from XBrainLab.ui.application_capabilities import (
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.async_command_runner import qt_object_deleted
+from XBrainLab.ui.components.modal_presentation import (
+    AlertSeverity,
+    ask_confirmation,
+    show_error,
+    show_warning,
+)
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
@@ -195,7 +200,11 @@ class DatasetActionHandler:
             preview_dialog_class=_data_interpretation_preview_dialog_class,
             bids_subject_dialog_class=_bids_subject_selection_dialog_class,
             bindings=DataInterpretationActionBindings(
-                message_box=lambda: QMessageBox,
+                show_warning=lambda *args, **kwargs: show_warning(*args, **kwargs),
+                show_error=lambda *args, **kwargs: show_error(*args, **kwargs),
+                ask_confirmation=lambda *args, **kwargs: ask_confirmation(
+                    *args, **kwargs
+                ),
                 file_dialog=lambda: QFileDialog,
                 single_shot=lambda *args, **kwargs: QTimer.singleShot(
                     *args,
@@ -250,7 +259,11 @@ class DatasetActionHandler:
             import_label_dialog_class=_import_label_dialog_class,
             label_mapping_dialog_class=_label_mapping_dialog_class,
             bindings=ExternalLabelImportBindings(
-                message_box=lambda: QMessageBox,
+                show_warning=lambda *args, **kwargs: show_warning(*args, **kwargs),
+                show_error=lambda *args, **kwargs: show_error(*args, **kwargs),
+                ask_confirmation=lambda *args, **kwargs: ask_confirmation(
+                    *args, **kwargs
+                ),
                 get_command_review_context=lambda *args, **kwargs: (
                     get_command_review_context(*args, **kwargs)
                 ),
@@ -301,7 +314,7 @@ class DatasetActionHandler:
             return True, run_controller_compatibility_call(self.panel, fallback)
         except ControllerCompatibilityUnavailableError as exc:
             if warn_when_unavailable:
-                QMessageBox.warning(self.panel, blocked_title, str(exc))
+                show_warning(self.panel, blocked_title, str(exc))
             return False, None
 
     def _compatibility_filenames_for_smart_parse(self) -> list[str] | None:
@@ -322,7 +335,7 @@ class DatasetActionHandler:
     ) -> CompatibilityLabelTargets:
         controller = self.controller
         if controller is None:
-            QMessageBox.warning(
+            show_warning(
                 self.panel,
                 "Add Labels Blocked",
                 "Dataset controller unavailable.",
@@ -442,7 +455,7 @@ class DatasetActionHandler:
             error_msg = "\n".join(errors[:10])
             if len(errors) > 10:
                 error_msg += f"\n...and {len(errors) - 10} more errors."
-            QMessageBox.warning(
+            show_warning(
                 self.panel,
                 "Import Warnings",
                 f"Failed files:\n{error_msg}",
@@ -458,7 +471,7 @@ class DatasetActionHandler:
             CommandName.APPLY_SMART_PARSE,
         )
         if review_context is None and has_real_application_context(self.panel):
-            QMessageBox.warning(
+            show_warning(
                 self.panel,
                 "Smart Parse Blocked",
                 _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
@@ -473,14 +486,14 @@ class DatasetActionHandler:
             )
         )
         if review_context is not None and smart_parse_capability is None:
-            QMessageBox.warning(
+            show_warning(
                 self.panel,
                 "Smart Parse Blocked",
                 _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
             )
             return
         if smart_parse_capability is not None and not smart_parse_capability.enabled:
-            QMessageBox.warning(
+            show_warning(
                 self.panel,
                 "Smart Parse Blocked",
                 blocked_reason(
@@ -493,7 +506,7 @@ class DatasetActionHandler:
         if smart_parse_capability is None:
             controller = self.controller
             if controller is None:
-                QMessageBox.critical(
+                show_error(
                     self.panel,
                     "Error",
                     "Dataset controller unavailable.",
@@ -506,7 +519,7 @@ class DatasetActionHandler:
             if not available:
                 return
             if is_locked:
-                QMessageBox.warning(self.panel, "Blocked", "Dataset is locked.")
+                show_warning(self.panel, "Blocked", "Dataset is locked.")
                 return
 
             available, has_data = self._compatibility_controller_value(
@@ -516,7 +529,7 @@ class DatasetActionHandler:
             if not available:
                 return
             if not has_data:
-                QMessageBox.warning(self.panel, "Warning", "No data loaded.")
+                show_warning(self.panel, "Warning", "No data loaded.")
                 return
 
         reviewed_generation = (
@@ -530,7 +543,7 @@ class DatasetActionHandler:
         if filepaths is None:
             return
         if not filepaths:
-            QMessageBox.warning(self.panel, "Warning", "No data loaded.")
+            show_warning(self.panel, "Warning", "No data loaded.")
             return
         dialog_class = _smart_parser_dialog_class()
         dialog = dialog_class(filepaths, self.panel)
@@ -548,7 +561,7 @@ class DatasetActionHandler:
                     expected_publication_generation=reviewed_generation,
                 )
             if result is None:
-                QMessageBox.warning(
+                show_warning(
                     self.panel,
                     "Smart Parse Blocked",
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -556,13 +569,13 @@ class DatasetActionHandler:
                 return
             elif result.failed:
                 if is_stale_publication_result(result):
-                    QMessageBox.warning(
+                    show_warning(
                         self.panel,
                         "Review Smart Parse Again",
                         result.message,
                     )
                 else:
-                    QMessageBox.critical(self.panel, "Error", result.message)
+                    show_error(self.panel, "Error", result.message)
                 return
             else:
                 count = int(result.diagnostics.get("success_count", 0))
@@ -596,7 +609,7 @@ class DatasetActionHandler:
                 if result.recoverable
                 else "Smart Parse Failed"
             )
-            QMessageBox.warning(
+            show_warning(
                 self.panel,
                 title,
                 result.message,
@@ -782,7 +795,7 @@ class DatasetActionHandler:
         title: str,
         action_description: str,
     ) -> None:
-        QMessageBox.warning(
+        show_warning(
             self.panel,
             title,
             "The selected Dataset files changed or could not be verified. "
@@ -802,7 +815,7 @@ class DatasetActionHandler:
             CommandName.UPDATE_METADATA,
         )
         if review_context is None and has_real_application_context(self.panel):
-            QMessageBox.warning(
+            show_warning(
                 self.panel,
                 "Metadata Update Blocked",
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -814,14 +827,14 @@ class DatasetActionHandler:
             else None
         )
         if review_context is not None and metadata_capability is None:
-            QMessageBox.warning(
+            show_warning(
                 self.panel,
                 "Metadata Update Blocked",
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
             )
             return
         if metadata_capability is not None and not metadata_capability.enabled:
-            QMessageBox.warning(
+            show_warning(
                 self.panel,
                 "Metadata Update Blocked",
                 blocked_reason(
@@ -866,7 +879,7 @@ class DatasetActionHandler:
                 ),
             )
             if result is None:
-                QMessageBox.warning(
+                show_warning(
                     self.panel,
                     "Metadata Update Blocked",
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -874,13 +887,13 @@ class DatasetActionHandler:
                 return
             elif result.failed:
                 if is_stale_publication_result(result):
-                    QMessageBox.warning(
+                    show_warning(
                         self.panel,
                         "Review Metadata Again",
                         result.message,
                     )
                 else:
-                    QMessageBox.critical(self.panel, "Error", result.message)
+                    show_error(self.panel, "Error", result.message)
                 return
 
     def _remove_files(
@@ -892,7 +905,7 @@ class DatasetActionHandler:
             CommandName.REMOVE_FILES,
         )
         if review_context is None and has_real_application_context(self.panel):
-            QMessageBox.warning(
+            show_warning(
                 self.panel,
                 "Remove Files Blocked",
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -904,14 +917,14 @@ class DatasetActionHandler:
             else None
         )
         if review_context is not None and remove_capability is None:
-            QMessageBox.warning(
+            show_warning(
                 self.panel,
                 "Remove Files Blocked",
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
             )
             return
         if remove_capability is not None and not remove_capability.enabled:
-            QMessageBox.warning(
+            show_warning(
                 self.panel,
                 "Remove Files Blocked",
                 blocked_reason(
@@ -929,14 +942,14 @@ class DatasetActionHandler:
             )
             return
 
-        if (
-            QMessageBox.question(
-                self.panel,
-                "Confirm",
-                f"Remove {len(selection.rows)} files?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            )
-            == QMessageBox.StandardButton.Yes
+        if ask_confirmation(
+            self.panel,
+            severity=AlertSeverity.WARNING,
+            title="Confirm",
+            message=f"Remove {len(selection.rows)} files?",
+            confirm_text="Remove files",
+            cancel_text="Cancel",
+            destructive=True,
         ):
             rows = self._resolve_table_selection(
                 selection,
@@ -957,7 +970,7 @@ class DatasetActionHandler:
                 ),
             )
             if result is None:
-                QMessageBox.warning(
+                show_warning(
                     self.panel,
                     "Remove Files Blocked",
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -965,11 +978,11 @@ class DatasetActionHandler:
                 return
             elif result.failed:
                 if is_stale_publication_result(result):
-                    QMessageBox.warning(
+                    show_warning(
                         self.panel,
                         "Review File Removal Again",
                         result.message,
                     )
                 else:
-                    QMessageBox.critical(self.panel, "Error", result.message)
+                    show_error(self.panel, "Error", result.message)
                 return

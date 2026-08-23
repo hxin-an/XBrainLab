@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from PyQt6.QtCore import QObject, QTimer
-from PyQt6.QtWidgets import QFileDialog, QMessageBox, QWidget
+from PyQt6.QtWidgets import QFileDialog, QWidget
 
 from XBrainLab.backend.application.commands import (
     ApplyInterpretationCommand,
@@ -49,6 +49,12 @@ from XBrainLab.ui.application_capabilities import (
     is_stale_publication_result,
 )
 from XBrainLab.ui.async_command_runner import qt_object_deleted
+from XBrainLab.ui.components.modal_presentation import (
+    AlertSeverity,
+    ask_confirmation,
+    show_error,
+    show_warning,
+)
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
@@ -133,7 +139,9 @@ class _LoadingSession:
 class DataInterpretationActionBindings:
     """Replaceable UI/application ports resolved by the composition root."""
 
-    message_box: Callable[[], Any]
+    show_warning: Callable[[Any, str, str], None]
+    show_error: Callable[[Any, str, str], None]
+    ask_confirmation: Callable[..., bool]
     file_dialog: Callable[[], Any]
     single_shot: Callable[..., Any]
     application_ui_runtime: Callable[..., Any]
@@ -155,7 +163,9 @@ class DataInterpretationActionBindings:
 def default_data_interpretation_action_bindings() -> DataInterpretationActionBindings:
     """Build production bindings for direct coordinator use."""
     return DataInterpretationActionBindings(
-        message_box=lambda: QMessageBox,
+        show_warning=show_warning,
+        show_error=show_error,
+        ask_confirmation=ask_confirmation,
         file_dialog=lambda: QFileDialog,
         single_shot=QTimer.singleShot,
         application_ui_runtime=application_ui_runtime,
@@ -462,9 +472,7 @@ class DataInterpretationActionCoordinator:
         if not available:
             return True
         if is_locked:
-            self._bindings.message_box().warning(
-                self.panel, blocked_title, locked_message
-            )
+            self._bindings.show_warning(self.panel, blocked_title, locked_message)
             return True
         return False
 
@@ -478,7 +486,7 @@ class DataInterpretationActionCoordinator:
                 scan_capability,
                 "Data interpretation is not available right now.",
             )
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Interpretation Blocked",
                 message,
@@ -487,7 +495,7 @@ class DataInterpretationActionCoordinator:
         if scan_capability is None and self._bindings.has_real_application_context(
             self.panel
         ):
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Interpretation Blocked",
                 _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
@@ -500,7 +508,7 @@ class DataInterpretationActionCoordinator:
         if scan_capability is None:
             if controller is None:
                 message = "Dataset controller unavailable."
-                self._bindings.message_box().critical(
+                self._bindings.show_error(
                     self.panel,
                     "Import failed",
                     message,
@@ -534,7 +542,7 @@ class DataInterpretationActionCoordinator:
                 if outcome is not None:
                     return outcome
                 message = "Data Interpretation command service is unavailable."
-                self._bindings.message_box().critical(
+                self._bindings.show_error(
                     self.panel,
                     "Interpretation unavailable",
                     message,
@@ -544,7 +552,6 @@ class DataInterpretationActionCoordinator:
                 message = self._bindings.present_unexpected_error(
                     self.panel,
                     UnexpectedErrorContext.DATA_IMPORT,
-                    message_box=self._bindings.message_box(),
                 )
                 return InteractionOutcome.failed(message)
 
@@ -559,14 +566,14 @@ class DataInterpretationActionCoordinator:
                 return outcome
             if scan_capability is not None:
                 message = "Data Interpretation command service is unavailable."
-                self._bindings.message_box().critical(
+                self._bindings.show_error(
                     self.panel,
                     "Interpretation unavailable",
                     message,
                 )
                 return InteractionOutcome.failed(message)
             if self._bindings.has_real_application_context(self.panel):
-                self._bindings.message_box().warning(
+                self._bindings.show_warning(
                     self.panel,
                     "Interpretation Blocked",
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -581,14 +588,14 @@ class DataInterpretationActionCoordinator:
                 ),
             )
             if result is not None and result.failed:
-                self._bindings.message_box().critical(
+                self._bindings.show_error(
                     self.panel,
                     "Import failed",
                     result.message,
                 )
                 return self._interaction_failure_outcome(result, result.message)
             if result is None:
-                self._bindings.message_box().warning(
+                self._bindings.show_warning(
                     self.panel,
                     "Interpretation Blocked",
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -602,7 +609,6 @@ class DataInterpretationActionCoordinator:
             message = self._bindings.present_unexpected_error(
                 self.panel,
                 UnexpectedErrorContext.DATA_IMPORT,
-                message_box=self._bindings.message_box(),
             )
             return InteractionOutcome.failed(message)
 
@@ -622,7 +628,7 @@ class DataInterpretationActionCoordinator:
             published_review = self._read_interpretation_review(expected_identity)
         except (ApplicationError, ControllerCompatibilityUnavailableError) as exc:
             message = str(exc)
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Import review unavailable",
                 message,
@@ -647,7 +653,6 @@ class DataInterpretationActionCoordinator:
             message = self._bindings.present_unexpected_error(
                 self.panel,
                 UnexpectedErrorContext.DATA_IMPORT_REVIEW,
-                message_box=self._bindings.message_box(),
             )
             return InteractionOutcome.failed(message)
 
@@ -841,7 +846,7 @@ class DataInterpretationActionCoordinator:
         try:
             handled = self._run_data_interpretation_import([source_path])
             if not handled:
-                self._bindings.message_box().critical(
+                self._bindings.show_error(
                     self.panel,
                     "Interpretation unavailable",
                     "Data Interpretation command service is unavailable.",
@@ -850,7 +855,6 @@ class DataInterpretationActionCoordinator:
             self._bindings.present_unexpected_error(
                 self.panel,
                 UnexpectedErrorContext.DATA_IMPORT,
-                message_box=self._bindings.message_box(),
             )
 
     def import_bids_source(self):
@@ -871,7 +875,7 @@ class DataInterpretationActionCoordinator:
         try:
             handled = self._start_bids_subject_selection_async(source_path)
             if not handled:
-                self._bindings.message_box().critical(
+                self._bindings.show_error(
                     self.panel,
                     "Interpretation unavailable",
                     "Data Interpretation command service is unavailable.",
@@ -880,7 +884,6 @@ class DataInterpretationActionCoordinator:
             self._bindings.present_unexpected_error(
                 self.panel,
                 UnexpectedErrorContext.DATA_IMPORT,
-                message_box=self._bindings.message_box(),
             )
 
     def _start_bids_subject_selection_async(
@@ -918,7 +921,7 @@ class DataInterpretationActionCoordinator:
             or int(catalog.get("eeg_file_count") or 0) <= 0
         ):
             message = "No importable BIDS subjects were found in this folder."
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 "No BIDS subjects found",
                 message,
@@ -960,7 +963,7 @@ class DataInterpretationActionCoordinator:
         """Return whether the UI can start a Data Interpretation source flow."""
         capability = self._bindings.get_command_capability(self.panel, command_name)
         if capability is not None and not capability.enabled:
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 blocked_title,
                 self._bindings.blocked_reason(
@@ -973,7 +976,7 @@ class DataInterpretationActionCoordinator:
         if capability is None:
             controller = self.controller
             if controller is None:
-                self._bindings.message_box().critical(
+                self._bindings.show_error(
                     self.panel,
                     "Import failed",
                     "Dataset controller unavailable.",
@@ -1259,7 +1262,6 @@ class DataInterpretationActionCoordinator:
                 self.panel,
                 unexpected_error_context,
                 error_info=error,
-                message_box=self._bindings.message_box(),
                 title=error_title,
             )
 
@@ -1304,7 +1306,7 @@ class DataInterpretationActionCoordinator:
                 "Data interpretation command was scheduled."
             )
         if self._bindings.has_real_application_context(self.panel):
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 blocked_title,
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -1539,7 +1541,7 @@ class DataInterpretationActionCoordinator:
             if loading_token is not None:
                 self._show_loading_error(loading_token, message)
                 return
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 error_title,
                 "The import settings could not be revalidated.\n\n"
@@ -1557,7 +1559,7 @@ class DataInterpretationActionCoordinator:
             if loading_token is not None:
                 self._show_loading_error(loading_token, message)
             else:
-                self._bindings.message_box().warning(
+                self._bindings.show_warning(
                     self.panel, "Import review changed", message
                 )
             return _terminal(InteractionOutcome.blocked(message))
@@ -1606,7 +1608,7 @@ class DataInterpretationActionCoordinator:
                 if loading_token is not None:
                     self._show_loading_error(loading_token, str(exc))
                 else:
-                    self._bindings.message_box().warning(
+                    self._bindings.show_warning(
                         self.panel,
                         "Import review changed",
                         str(exc),
@@ -1665,7 +1667,7 @@ class DataInterpretationActionCoordinator:
                 if loading_token is not None:
                     self._show_loading_error(loading_token, str(exc))
                 else:
-                    self._bindings.message_box().warning(
+                    self._bindings.show_warning(
                         self.panel,
                         "Import review changed",
                         str(exc),
@@ -1692,7 +1694,7 @@ class DataInterpretationActionCoordinator:
             if started is not None:
                 return _terminal(started)
             message = "Data Interpretation validation service is unavailable."
-            self._bindings.message_box().critical(
+            self._bindings.show_error(
                 self.panel,
                 "Interpretation validation unavailable",
                 message,
@@ -1952,22 +1954,21 @@ class DataInterpretationActionCoordinator:
                             "Retry the import to run a fresh check."
                         )
                         self._show_status("Dataset import blocked · Retry the import")
-                        self._bindings.message_box().critical(
+                        self._bindings.show_error(
                             self.panel,
                             "Dataset Resource Check",
                             message,
                         )
                         return InteractionOutcome.blocked(message)
-                    reply = self._bindings.message_box().question(
+                    if not self._bindings.ask_confirmation(
                         self.panel,
-                        "Dataset Resource Check",
-                        (resource_preflight.message or apply_result.message)
+                        severity=AlertSeverity.WARNING,
+                        title="Dataset Resource Check",
+                        message=(resource_preflight.message or apply_result.message)
                         + "\n\nContinue importing this dataset?",
-                        self._bindings.message_box().StandardButton.Yes
-                        | self._bindings.message_box().StandardButton.No,
-                        self._bindings.message_box().StandardButton.No,
-                    )
-                    if reply != self._bindings.message_box().StandardButton.Yes:
+                        confirm_text="Continue",
+                        cancel_text="Cancel",
+                    ):
                         self._show_status("Dataset import cancelled")
                         return InteractionOutcome.cancelled(
                             "Dataset import was cancelled during the resource check."
@@ -2013,7 +2014,7 @@ class DataInterpretationActionCoordinator:
                     )
                 if risk_level == "blocking":
                     self._show_status("Dataset import blocked · Check available memory")
-                    self._bindings.message_box().critical(
+                    self._bindings.show_error(
                         self.panel,
                         "Dataset Resource Check",
                         resource_preflight.message or apply_result.message,
@@ -2029,7 +2030,7 @@ class DataInterpretationActionCoordinator:
                 and state_preserved
                 and not self._bindings.is_stale_publication_result(apply_result)
             ):
-                self._bindings.message_box().critical(
+                self._bindings.show_error(
                     self.panel,
                     "Interpretation apply failed",
                     apply_result.message + "\n\nExisting data was preserved.",
@@ -2076,7 +2077,6 @@ class DataInterpretationActionCoordinator:
                     self.panel,
                     UnexpectedErrorContext.DATA_INTERPRETATION_APPLY,
                     error_info=error,
-                    message_box=self._bindings.message_box(),
                     title="Interpretation apply failed",
                 )
 
@@ -2146,9 +2146,7 @@ class DataInterpretationActionCoordinator:
         risk_level = preflight.risk_level
         if risk_level == "blocking":
             message = preflight.message or result.message
-            self._bindings.message_box().critical(
-                self.panel, "Dataset Resource Check", message
-            )
+            self._bindings.show_error(self.panel, "Dataset Resource Check", message)
             return InteractionOutcome.blocked(message)
         error_type = getattr(
             getattr(result, "error_type", None),
@@ -2166,9 +2164,7 @@ class DataInterpretationActionCoordinator:
                 "The resource check could not be confirmed safely. "
                 "Retry the import to run a fresh check."
             )
-            self._bindings.message_box().critical(
-                self.panel, "Dataset Resource Check", message
-            )
+            self._bindings.show_error(self.panel, "Dataset Resource Check", message)
             return InteractionOutcome.blocked(message)
         result_command = str(getattr(result, "command_name", "") or "").strip().lower()
         if challenge.command_name.strip().lower() != result_command:
@@ -2176,20 +2172,17 @@ class DataInterpretationActionCoordinator:
                 "The resource confirmation did not match this import action. "
                 "Retry the import to run a fresh check."
             )
-            self._bindings.message_box().critical(
-                self.panel, "Dataset Resource Check", message
-            )
+            self._bindings.show_error(self.panel, "Dataset Resource Check", message)
             return InteractionOutcome.blocked(message)
-        reply = self._bindings.message_box().question(
+        if not self._bindings.ask_confirmation(
             self.panel,
-            "Dataset Resource Check",
-            (preflight.message or result.message)
+            severity=AlertSeverity.WARNING,
+            title="Dataset Resource Check",
+            message=(preflight.message or result.message)
             + "\n\nContinue building the import preview?",
-            self._bindings.message_box().StandardButton.Yes
-            | self._bindings.message_box().StandardButton.No,
-            self._bindings.message_box().StandardButton.No,
-        )
-        if reply != self._bindings.message_box().StandardButton.Yes:
+            confirm_text="Continue",
+            cancel_text="Cancel",
+        ):
             return InteractionOutcome.cancelled(
                 "Dataset import preview was cancelled during the resource check."
             )
@@ -2254,13 +2247,13 @@ class DataInterpretationActionCoordinator:
         if not present:
             return True
         if self._bindings.is_stale_publication_result(result):
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Review Data Import Again",
                 result.message,
             )
         else:
-            self._bindings.message_box().critical(self.panel, title, result.message)
+            self._bindings.show_error(self.panel, title, result.message)
         return True
 
     @staticmethod
@@ -2303,7 +2296,7 @@ class DataInterpretationActionCoordinator:
         if review_context is None and self._bindings.has_real_application_context(
             self.panel
         ):
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Recipe Save Blocked",
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -2316,7 +2309,7 @@ class DataInterpretationActionCoordinator:
             else None
         )
         if review_context is not None and save_capability is None:
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Recipe Save Blocked",
                 _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
@@ -2334,7 +2327,7 @@ class DataInterpretationActionCoordinator:
             else None
         )
         if recipe_block_reason is not None:
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Recipe Save Blocked",
                 recipe_block_reason,
@@ -2356,7 +2349,7 @@ class DataInterpretationActionCoordinator:
                     if self._bindings.is_stale_publication_result(result)
                     else "Recipe not saved"
                 )
-                self._bindings.message_box().warning(self.panel, title, result.message)
+                self._bindings.show_warning(self.panel, title, result.message)
                 complete("")
                 return
             complete("Recipe saved." if recipe_path else "Recipe kept in this session.")
