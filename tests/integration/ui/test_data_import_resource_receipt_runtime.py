@@ -31,7 +31,6 @@ from XBrainLab.backend.application.resource_preflight import (
 from XBrainLab.backend.application.service import ApplicationService
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.async_command_runner import application_command_registry
-from XBrainLab.ui.components.modal_presentation import ModalAlertDialog
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.interaction_outcome import (
     InteractionCompletionEvent,
@@ -273,19 +272,15 @@ def _answer_next_message_box(
 
     def _poll() -> None:
         widget = visible_modal_dialog()
-        if not isinstance(widget, ModalAlertDialog):
+        if not isinstance(widget, QMessageBox):
             return
-        target = (
-            widget.confirm_button
-            if button is QMessageBox.StandardButton.Yes
-            else widget.cancel_button
-        )
+        target = widget.button(button)
         if target is None:
             answer.errors.append(f"Message box did not expose {button!r}.")
             widget.reject()
             answer.timer.stop()
             return
-        answer.observed.append((widget.windowTitle(), widget.message_label.text()))
+        answer.observed.append((widget.windowTitle(), widget.text()))
         if before_click is not None:
             before_click()
         target.click()

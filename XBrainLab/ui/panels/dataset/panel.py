@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QStackedWidget,
@@ -53,9 +54,6 @@ from XBrainLab.ui.application_capabilities import (
 )
 from XBrainLab.ui.application_publication_renderer import (
     ApplicationPublicationRenderLedger,
-)
-from XBrainLab.ui.components.modal_presentation import (
-    StyledModalMessageBox as QMessageBox,
 )
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
