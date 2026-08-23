@@ -19,7 +19,7 @@ local Granite透過18個核准action進入相同GUI與Command workflow。
 | Model catalog | Pinned Braindecode 1.6.1提供61個可搜尋contracts，其中54個符合目前classification workflow而可選；provider失效時改列distinct `legacy.braindecode.*` recovery IDs。Model Selection使用catalog reviewed defaults。 | 不可選contracts會顯示license、task或resource reason；桌面UI不提供model constructor調參；upstream與legacy禁止silent fallback，catalog execution不代表科學品質。 |
 | Evaluation | Individual fold/run支援Train、Validation、Test；cross-fold Summary只pool同一training round的disjoint Test masks。 | `All Folds`的Split只有Test是刻意的統計邊界。 |
 | Saliency | 明確Compute Saliency、累加method recompute、Map/Spectrogram/Topographic/3D publication存在。 | 不代表attribution具科學有效性，也不保證所有模型梯度相容。 |
-| Assistant | Local catalog以Granite 4.0 Micro 3B作recommended primary、Granite 3.3 2B作lower-memory選項；strict envelope、18-action stage surface、parameter provenance、capability、confirmation、GUI handoff與model-free walkthrough存在。 | 3B no-action checkpoint為20/24，仍有兩個錯誤action proposal與兩個multi-action格式失敗；deterministic guards不代表安全零容忍或語意完全正確，也不外推到任意長session。 |
+| Assistant | Local catalog以Granite 4.0 Micro 3B作recommended primary、Granite 3.3 2B作lower-memory選項；strict envelope、18-action stage surface、parameter provenance、一次性direct-input clarification continuation、capability、confirmation、GUI handoff與model-free walkthrough存在。 | 3B v7 checkpoint的clarification final為5/5，但raw第一發為0/5、需1–2次format recovery；no-action仍為20/24，包含兩個錯誤action proposal與兩個multi-action格式失敗。Deterministic guards不代表安全零容忍或任意長session。 |
 | MCP | Executable package、transport、CLI、capture、schema projection與tests已退役；provenance只留在Git history。 | 不是release能力；未來若要恢復，必須另開public contract、security與validation decision。 |
 | Packaging | Windows launcher與source啟動方式存在。 | 沒有signed installer。 |
 

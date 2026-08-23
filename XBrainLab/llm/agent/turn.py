@@ -227,6 +227,50 @@ class AssistantTurnScope(str, Enum):
 
 
 @dataclass(frozen=True, slots=True)
+class AssistantToolInputReceipt:
+    """One-shot evidence linking a direct-input answer to an earlier action."""
+
+    command_name: str
+    original_user_text: str
+    question: str
+    publication_generation: int
+
+    def __post_init__(self) -> None:
+        fields = {
+            "command_name": ("command", self.command_name, 128),
+            "original_user_text": (
+                "original request",
+                self.original_user_text,
+                MAX_CHAT_MESSAGE_CONTENT_LENGTH,
+            ),
+            "question": ("question", self.question, MAX_CHAT_MESSAGE_CONTENT_LENGTH),
+        }
+        for field, (label, value, limit) in fields.items():
+            bounded = bounded_chat_string(
+                value,
+                field_name=f"Assistant tool-input {label}",
+                maximum_length=limit,
+            ).strip()
+            if not bounded:
+                raise ValueError("Assistant tool-input receipt text must not be empty.")
+            object.__setattr__(self, field, bounded)
+        generation = self.publication_generation
+        if (
+            isinstance(generation, bool)
+            or not isinstance(generation, int)
+            or generation < 0
+        ):
+            raise ValueError("Tool-input publication generation must be non-negative.")
+
+    def matches(self, command_name: str, publication_generation: int | None) -> bool:
+        """Return whether this receipt can inform one current proposal."""
+        return (
+            self.command_name == command_name
+            and self.publication_generation == publication_generation
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class AssistantTurnDeliveryAcknowledgement:
     """Controller delivery evidence returned through the host transport."""
 

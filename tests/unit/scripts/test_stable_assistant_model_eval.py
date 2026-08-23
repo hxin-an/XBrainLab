@@ -5,17 +5,22 @@ from unittest.mock import patch
 
 from scripts.dev.run_stable_assistant_model_eval import (
     DEFAULT_CHALLENGES,
+    DEFAULT_CLARIFICATION_CASES,
     DEFAULT_PRECISION_CASES,
     _build_report,
     _evaluation_generation_policy,
     _experiment_identity,
     _stable_eval_config,
     build_case_messages,
+    build_clarification_messages,
     evaluate_case_trajectory,
+    evaluate_clarification_trajectory,
     load_challenge_cases,
+    load_clarification_cases,
     load_precision_cases,
     load_target_cases,
     score_challenge_response,
+    score_clarification_response,
     score_missing_parameter_host_guard,
     score_model_response,
     score_positive_parameter_host_guard,
@@ -92,6 +97,108 @@ def test_precision_cases_cover_tools_and_bilingual_no_action_categories() -> Non
     assert sum(case.category == "general" for case in cases) == 2
     assert sum(case.category == "ambiguous" for case in cases) == 2
     assert sum(case.category == "multi_action" for case in cases) == 2
+
+
+def test_clarification_cases_cover_each_direct_parameter_tool_once() -> None:
+    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    cases = load_clarification_cases(
+        DEFAULT_CLARIFICATION_CASES,
+        precision_cases=precision_cases,
+    )
+
+    assert len(cases) == 5
+    assert {case.expected_tool for case in cases} == {
+        "apply_bandpass_filter",
+        "apply_notch_filter",
+        "resample_data",
+        "set_reference",
+        "normalize_data",
+    }
+    assert {case.source_case_id for case in cases} == {
+        case.case_id for case in precision_cases if case.category == "missing_parameter"
+    }
+
+
+def test_clarification_prompt_and_score_use_product_receipt_boundary() -> None:
+    registry = target_tool_registry()
+    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    case = next(
+        item
+        for item in load_clarification_cases(
+            DEFAULT_CLARIFICATION_CASES,
+            precision_cases=precision_cases,
+        )
+        if item.expected_tool == "resample_data"
+    )
+    source = next(
+        item for item in precision_cases if item.case_id == case.source_case_id
+    )
+    messages, prompt_publication, backend_publication, receipt = (
+        build_clarification_messages(
+            case,
+            source,
+            question="What resampling rate should I use?",
+            registry=registry,
+        )
+    )
+
+    assert messages[-1] == {"role": "user", "content": "128 Hz"}
+    assert "tool_input_clarification" in messages[1]["content"]
+    response = (
+        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
+        '"parameters":{"rate":128}}'
+    )
+    score = score_clarification_response(
+        case,
+        response,
+        registry,
+        prompt_publication=prompt_publication,
+        backend_publication=backend_publication,
+        receipt=receipt,
+    )
+
+    assert score.passed is True
+    assert score.product_outcome is not None
+    assert score.product_outcome.disposition == "execute_boundary"
+    assert score.product_outcome.tool_executor_permitted is True
+
+
+def test_clarification_trajectory_uses_product_format_recovery() -> None:
+    registry = target_tool_registry()
+    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    case = next(
+        item
+        for item in load_clarification_cases(
+            DEFAULT_CLARIFICATION_CASES,
+            precision_cases=precision_cases,
+        )
+        if item.expected_tool == "resample_data"
+    )
+    source = next(
+        item for item in precision_cases if item.case_id == case.source_case_id
+    )
+    responses = iter(
+        (
+            '{"workflow_stage":"data_loaded","tool_name":"resample_data",',
+            (
+                '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
+                '"parameters":{"rate":128}}'
+            ),
+        )
+    )
+
+    trajectory = evaluate_clarification_trajectory(
+        case,
+        source,
+        question="What resampling rate should I use?",
+        registry=registry,
+        generate_response=lambda _messages: next(responses),
+    )
+
+    assert trajectory.raw_score.passed is False
+    assert trajectory.final_score.passed is True
+    assert len(trajectory.attempts) == 2
+    assert trajectory.attempts[0].recovery_action == "retry_format"
 
 
 def test_precision_scoring_uses_parser_and_host_attempt_outcome_not_keywords() -> None:
@@ -368,12 +475,20 @@ def test_precision_report_is_separate_from_frozen_core_gate() -> None:
                 }
                 for index in range(24)
             ],
+            *[
+                {
+                    "suite": "clarification",
+                    "raw_score": {"passed": True},
+                    "score": {"passed": True},
+                }
+                for _ in range(5)
+            ],
         ],
         expected_case_count=50,
         complete=True,
     )
 
-    assert report["schema_version"] == "xbrainlab.stable_assistant_model_eval.v6"
+    assert report["schema_version"] == "xbrainlab.stable_assistant_model_eval.v7"
     assert report["suite_summary"]["positive"]["case_count"] == 36
     assert report["suite_summary"]["challenge"]["case_count"] == 14
     assert report["summary"] == {
@@ -397,11 +512,24 @@ def test_precision_report_is_separate_from_frozen_core_gate() -> None:
         "required": 24,
         "passed": 24,
     }
+    assert report["candidate_gate"]["clarification_continuation"] == {
+        "required": 5,
+        "passed": 5,
+    }
     assert report["candidate_gate"]["passed"] is True
     assert report["raw_generation_summary"] == {
         "positive": {"case_count": 36, "passed_count": 36, "failed_count": 0},
         "challenge": {"case_count": 14, "passed_count": 0, "failed_count": 14},
         "precision": {"case_count": 24, "passed_count": 23, "failed_count": 1},
+        "clarification": {"case_count": 5, "passed_count": 5, "failed_count": 0},
+    }
+    assert report["clarification_summary"] == {
+        "expected_case_count": 5,
+        "case_count": 5,
+        "passed_count": 5,
+        "failed_count": 0,
+        "complete": True,
+        "passed": True,
     }
 
 
@@ -673,6 +801,7 @@ def test_candidate_report_requires_positive_and_host_guard_gates() -> None:
         "missing_parameter_host_guard": {"required": 5, "passed": 5},
         "frozen_core_passed": True,
         "precision_no_action": {"required": 24, "passed": 0},
+        "clarification_continuation": {"required": 5, "passed": 0},
         "passed": False,
     }
     assert report["summary"]["passed"] is False
@@ -692,9 +821,11 @@ def test_experiment_identity_binds_source_and_ignores_only_protected_settings(
     positives = tmp_path / "positive.json"
     challenges = tmp_path / "challenge.json"
     precision = tmp_path / "precision.json"
+    clarification = tmp_path / "clarification.json"
     positives.write_text("positive\n", encoding="utf-8")
     challenges.write_text("challenge\n", encoding="utf-8")
     precision.write_text("precision\n", encoding="utf-8")
+    clarification.write_text("clarification\n", encoding="utf-8")
 
     with patch(
         "scripts.dev.run_stable_assistant_model_eval.subprocess.check_output",
@@ -707,6 +838,7 @@ def test_experiment_identity_binds_source_and_ignores_only_protected_settings(
             cases_path=positives,
             challenges_path=challenges,
             precision_cases_path=precision,
+            clarification_cases_path=clarification,
         )
 
     assert identity["source_sha"] == "abc123"
@@ -716,3 +848,4 @@ def test_experiment_identity_binds_source_and_ignores_only_protected_settings(
     assert len(identity["positive_cases_sha256"]) == 64
     assert len(identity["challenge_cases_sha256"]) == 64
     assert len(identity["precision_cases_sha256"]) == 64
+    assert len(identity["clarification_cases_sha256"]) == 64

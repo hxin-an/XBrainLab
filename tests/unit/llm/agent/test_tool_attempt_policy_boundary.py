@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any
 
+import pytest
+
 from XBrainLab.llm.agent.assembler import PromptToolPublication
 from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ResourcePreflightReceipt,
@@ -12,6 +14,7 @@ from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ToolAttemptCoordinator,
     ToolAttemptRequest,
 )
+from XBrainLab.llm.agent.turn import AssistantToolInputReceipt
 from XBrainLab.llm.agent.turn_orchestrator import AssistantToolAttemptSession
 from XBrainLab.llm.agent.verifier import VerificationResult
 from XBrainLab.llm.tools.application_surface import (
@@ -89,6 +92,7 @@ def _request(
     params: dict[str, Any] | None = None,
     text: str,
     publication: PromptToolPublication | None = None,
+    tool_input_receipt: AssistantToolInputReceipt | None = None,
 ) -> ToolAttemptRequest:
     return ToolAttemptRequest(
         command_name=tool_name,
@@ -100,6 +104,7 @@ def _request(
             backend_generation=21,
         ),
         latest_user_text=text,
+        tool_input_receipt=tool_input_receipt,
     )
 
 
@@ -311,6 +316,110 @@ def test_invented_direct_parameter_returns_assistant_question_without_execution(
     assert decision.result is None
     assert decision.context == _context("resample_data", command_name="preprocess")
     assert source.reads == ["resample_data"]
+    assert verifier.calls == [(("resample_data", {"rate": 128}), 0.9)]
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "params", "reply"),
+    (
+        (
+            "apply_bandpass_filter",
+            {"low_freq": 1, "high_freq": 40},
+            "1\u201340 Hz",
+        ),
+        ("apply_notch_filter", {"freq": 50}, "50 Hz"),
+        ("resample_data", {"rate": 128}, "128 赫茲"),
+        ("set_reference", {"method": "average"}, "average"),
+        ("normalize_data", {"method": "z-score"}, "z-score"),
+    ),
+)
+def test_same_tool_clarification_reply_reaches_execution_boundary(
+    tool_name: str,
+    params: dict[str, Any],
+    reply: str,
+) -> None:
+    coordinator, source, verifier = _coordinator(
+        _context(tool_name, command_name="preprocess")
+    )
+    receipt = AssistantToolInputReceipt(
+        command_name=tool_name,
+        original_user_text="Run this preprocessing action.",
+        question="Which required value should I use?",
+        publication_generation=21,
+    )
+
+    decision = coordinator.evaluate(
+        _request(
+            tool_name,
+            params=params,
+            text=reply,
+            tool_input_receipt=receipt,
+        )
+    )
+
+    assert decision.action is ToolAttemptAction.EXECUTE
+    assert source.reads == [tool_name]
+    assert verifier.calls == [((tool_name, params), 0.9)]
+
+
+@pytest.mark.parametrize(
+    ("reply", "receipt_tool", "receipt_generation"),
+    (
+        ("This recording has 128 channels.", "resample_data", 21),
+        ("算了\uff0c不要 128 Hz", "resample_data", 21),
+        ("128 Hz", "apply_notch_filter", 21),
+        ("128 Hz", "resample_data", 20),
+    ),
+)
+def test_clarification_receipt_cannot_authorize_unrelated_or_stale_reply(
+    reply: str,
+    receipt_tool: str,
+    receipt_generation: int,
+) -> None:
+    coordinator, _source, _verifier = _coordinator(
+        _context("resample_data", command_name="preprocess")
+    )
+    receipt = AssistantToolInputReceipt(
+        command_name=receipt_tool,
+        original_user_text="Resample the EEG data.",
+        question="What resampling rate should I use?",
+        publication_generation=receipt_generation,
+    )
+
+    decision = coordinator.evaluate(
+        _request(
+            "resample_data",
+            params={"rate": 128},
+            text=reply,
+            tool_input_receipt=receipt,
+        )
+    )
+
+    assert decision.action is ToolAttemptAction.RESPOND
+
+
+def test_clarification_reply_still_passes_schema_verification_first() -> None:
+    coordinator, _source, verifier = _coordinator(
+        _context("resample_data", command_name="preprocess"),
+        verifier=_Verifier(valid=False),
+    )
+    receipt = AssistantToolInputReceipt(
+        command_name="resample_data",
+        original_user_text="Resample the EEG data.",
+        question="What resampling rate should I use?",
+        publication_generation=21,
+    )
+
+    decision = coordinator.evaluate(
+        _request(
+            "resample_data",
+            params={"rate": 128},
+            text="128 Hz",
+            tool_input_receipt=receipt,
+        )
+    )
+
+    assert decision.action is ToolAttemptAction.VERIFICATION_BLOCKED
     assert verifier.calls == [(("resample_data", {"rate": 128}), 0.9)]
 
 

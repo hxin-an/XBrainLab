@@ -199,6 +199,66 @@ check與`git diff --check`通過。Precision system prompts實測約7.8–9.6 KB
 latency或8,192-token完整壓力證據。`mkdocs build --strict`未執行，因目前Poetry environment未安裝optional
 docs group而回報`Command not found: mkdocs`；本checkpoint未為此下載依賴，也不宣稱docs／handoff gate完成。
 
+### Follow-up slice：Assistant clarification continuation
+
+Branch `fix/assistant-clarification-continuation-v1` 從 `6ecc74e9` 的3B／precision checkpoint分出，
+只修正使用者已於 `2026-08-24` 手測確認的direct preprocess多輪缺口：第一輪因缺少必要參數而
+得到具體追問後，第二輪即使提供答案也被當成新的獨立意圖，因此不會完成原action。現有5/5
+missing-parameter evidence只證明模型臆測值被擋下且零execution，沒有證明追問後可恢復；這一差距
+在交付前視為blocker。產品可見Assistant多輪行為已取得使用者明確實作授權；本slice不修改Qt layout、
+元件文案或其他UI流程。
+
+Observable outcome：五個direct preprocess action在Host因parameter-origin拒絕模型臆測值並提出具體
+追問後，使用者下一輪可只回答所缺欄位，模型仍須提出同一個exact action，既有schema、parameter
+provenance、current publication／capability與one-action gate全部重驗後才執行。取消、無關回答、
+stale publication、new chat、stop或close都不得沿用receipt或執行；另一個完整action只能丟棄舊receipt後
+按一般latest-turn admission獨立判斷，不能繼承其provenance。沒有自動continuation，沒有Host選tool，也
+不把chat文字解析成authority。
+
+Authority與scope：`PendingInteractionCoordinator`仍是唯一pending interaction owner，新增一個one-shot、
+cross-turn typed tool-input receipt，保存exact tool、第一輪user evidence、缺參數追問與prompt-time
+publication generation；`ContextAssembler`只投影該bounded receipt，`ToolAttemptCoordinator`／verifier仍
+擁有admission與parameter-origin，`ApplicationService`仍擁有current capability與mutation。Receipt只因本次
+明確跨turn／TOCTOU boundary而存在，不成為workflow state。Non-goals是新增planner、semantic Host router、
+tool membership／schema、confirmation、GUI handoff、backend command、RAG owner、模型catalog或一般長對話
+記憶。
+
+Complexity review：deletion／reuse candidates是沿用既有pending clear/reset、`ToolAttemptDecision`、
+publication與parameter-origin verification；不擴大raw history、不建立第二份capability、不保留模型臆測
+參數，也不新增controller writable alias。Owners before是PendingInteraction（confirmation／handoff）、
+ToolAttempt admission、Assembler projection與ApplicationService mutation；after只擴充既有PendingInteraction
+的第三種one-shot interaction，owner數不變。預估觸及最多5個既有production files，production約
+`+180/-30/net +150 LOC`，不新增module或state machine；新增typed receipt是必要cross-turn identity，
+因此在施工前明列此review。若production淨增超過300 LOC、觸及超過8個production files、需要第二個
+pending owner或需改model envelope，立即停止並拆成另行批准的public-contract slice。
+
+TDD步驟：先更新approved target／decision，明定clarification receipt不授權execution；再以production
+controller入口建立red cases，至少覆蓋resample單欄位回答、bandpass跨輪補值、取消／改題與stale
+publication，並斷言真正executor call與exact parameters，而非只看bubble文字。接著擴充既有pending owner、
+bounded prompt projection及same-tool provenance evidence，完成最小production修復；最後加入五個direct
+preprocess的雙語／代表性兩輪model-eval cases，確認3B能消費receipt，而不把mock green冒充真模型結果。
+
+Focused validation：先跑pending interaction、assembler、parameter-origin、tool-attempt與controller
+unit／integration；再跑Stable evaluator與exact Granite 4.0 Micro 3B兩輪clarification report，並重跑既有
+36 positive、10 direct-origin、5 missing guard與24 no-action precision，確認安全回歸。Ruff check／format
+check與diff check必須通過。只有宣稱可交使用者手測時才執行完整handoff workflow；Windows native仍由
+使用者驗收，offscreen或mock不取代。
+
+Stop condition：任一follow-up在缺值、取消、無關回答或stale publication時沿用receipt執行，或receipt替
+不同tool提供provenance；既有positive／
+origin／missing guard退步；no-action低於目前20/24；receipt跨過new chat／stop／close；或需要解析Assistant
+顯示文字才能恢復，都停止而不形成candidate。Scope-complete仍不等於handoff-ready／merge；source固定後
+交使用者手測，只有同一SHA明確通過並批准merge才開PR合併。
+
+Implementation checkpoint：既有PendingInteraction owner現保存waiting／active one-shot receipt，Assembler
+只在same generation且tool仍callable時投影；ToolAttempt重新執行schema、reply-value provenance與current
+capability後才允許exact action。完整Assistant agent／evaluator focused suite為945 passed，Ruff check／format check與
+diff check通過；production觸及7個既有files，`+280/-8/net +272 LOC`，未新增owner或module。Pre-freeze
+Granite 4.0 Micro 3B v7 run維持36/36 positive、10/10 direct origin、5/5 missing guard與20/24 precision，
+五個clarification final為5/5、source receipt皆存在；raw為0/5，四個case經1次、reference經2次既有format
+recovery才通過，因此只能宣稱final product-policy continuation，不宣稱第一發JSON紀律改善。下一步是固定
+clean exact commit並重跑同一v7 report，再交使用者Windows手測；尚未取得manual acceptance或merge授權。
+
 ### Parallel diagnostic：capability-first local model under 4B
 
 使用者於`2026-08-24`澄清4B只是產品預計上限，不是必須填滿的規格；選擇依據是非中國來源、

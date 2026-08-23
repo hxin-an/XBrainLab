@@ -116,6 +116,99 @@ def verify_direct_parameter_origins(
     return _verify_reference_origin(params.get("method"), clauses)
 
 
+def verify_direct_parameter_clarification_reply(
+    tool_name: str,
+    params: dict[str, Any],
+    latest_user_text: str,
+) -> VerificationResult:
+    """Verify values in an immediate answer to a typed direct-tool question.
+
+    The receipt supplies the exact action identity. This function supplies no
+    action selection or capability; it only proves that the model's proposed
+    values are present in the latest user-authored answer.
+    """
+    regular = verify_direct_parameter_origins(tool_name, params, latest_user_text)
+    if regular.is_valid or tool_name not in _DIRECT_PARAMETER_TOOLS:
+        return regular
+
+    text = unicodedata.normalize("NFKC", latest_user_text).strip()
+    if not text or len(text) > 256 or _clarification_reply_is_cancelled(text):
+        return regular
+
+    if tool_name == "apply_bandpass_filter":
+        range_pattern = re.compile(
+            rf"(?P<low>{_DECIMAL_NUMBER_PATTERN})\s*(?:hz\s*)?"
+            rf"(?:to|through|[-\u2013\u2014~\uff5e]|到|至)\s*"
+            rf"(?P<high>{_DECIMAL_NUMBER_PATTERN})\s*(?:hz)?",
+            re.IGNORECASE,
+        )
+        return (
+            VerificationResult(True)
+            if any(
+                _numbers_equal(params.get("low_freq"), match.group("low"))
+                and _numbers_equal(params.get("high_freq"), match.group("high"))
+                for match in range_pattern.finditer(text)
+            )
+            else regular
+        )
+
+    if tool_name in {"apply_notch_filter", "resample_data"}:
+        field_name = "freq" if tool_name == "apply_notch_filter" else "rate"
+        return (
+            VerificationResult(True)
+            if _clarification_reply_contains_number(params.get(field_name), text)
+            else regular
+        )
+
+    if tool_name == "normalize_data":
+        method = str(params.get("method", "")).strip().lower()
+        patterns = {
+            "z-score": r"\bz[\s-]*score\b",
+            "min-max": r"\bmin[\s-]*max\b",
+        }
+        pattern = patterns.get(method)
+        return (
+            VerificationResult(True)
+            if pattern is not None and re.search(pattern, text, re.IGNORECASE)
+            else regular
+        )
+
+    method = str(params.get("method", "")).strip()
+    if not method:
+        return regular
+    return (
+        VerificationResult(True)
+        if re.search(rf"(?<!\w){re.escape(method)}(?!\w)", text, re.IGNORECASE)
+        else regular
+    )
+
+
+def _clarification_reply_is_cancelled(text: str) -> bool:
+    return bool(
+        re.search(
+            r"(?:\b(?:cancel|never\s+mind|do\s+not|don't|not\s+now)\b|"
+            r"算了|取消|不要|不用|先不要)",
+            text,
+            re.IGNORECASE,
+        )
+    )
+
+
+def _clarification_reply_contains_number(value: Any, text: str) -> bool:
+    numeric_matches = tuple(re.finditer(_DECIMAL_NUMBER_PATTERN, text))
+    for match in numeric_matches:
+        if not _numbers_equal(value, match.group(0)):
+            continue
+        suffix = text[match.end() : match.end() + 8]
+        if re.match(r"\s*(?:hz|赫茲)\b", suffix, re.IGNORECASE):
+            return True
+    stripped = text.strip().rstrip(".。!\uff01")
+    return bool(
+        re.fullmatch(_DECIMAL_NUMBER_PATTERN, stripped)
+        and _numbers_equal(value, stripped)
+    )
+
+
 def _verify_bandpass_origins(
     params: dict[str, Any],
     clauses: tuple[str, ...],

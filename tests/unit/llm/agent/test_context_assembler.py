@@ -31,7 +31,11 @@ from XBrainLab.llm.agent.context_encoding import (
 from XBrainLab.llm.agent.decision_context import (
     build_workflow_decision_context,
 )
-from XBrainLab.llm.agent.turn import AssistantResponseContract, AssistantTurnScope
+from XBrainLab.llm.agent.turn import (
+    AssistantResponseContract,
+    AssistantToolInputReceipt,
+    AssistantTurnScope,
+)
 from XBrainLab.llm.pipeline_state import STAGE_CONFIG, PipelineStage
 from XBrainLab.llm.tools.base import BaseTool
 from XBrainLab.llm.tools.definitions.training_def import BaseStartTrainingTool
@@ -1055,6 +1059,101 @@ def test_prompt_history_keeps_only_latest_visible_assistant_message() -> None:
         {"speaker": "assistant", "text": "Latest visible answer"}
     ]
     assert messages[-1] == {"role": "user", "content": "Why is that useful?"}
+
+
+def test_current_tool_input_receipt_is_projected_as_bounded_context() -> None:
+    state = _state(
+        pipeline_stage="data_loaded",
+        raw=RawStateSnapshot(loaded=True, count=1),
+        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
+    )
+    publication = ApplicationViewPublication(
+        generation=81,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    registry = ToolRegistry()
+    registry.register(_NamedTool("resample_data"))
+    assembler = ContextAssembler(
+        registry,
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
+    assembler.set_tool_input_receipt(
+        AssistantToolInputReceipt(
+            command_name="resample_data",
+            original_user_text="Resample the EEG data.",
+            question="What resampling rate should I use?",
+            publication_generation=81,
+        )
+    )
+
+    messages = assembler.get_messages(
+        [
+            {
+                "role": "assistant",
+                "content": "What resampling rate should I use?",
+            },
+            {"role": "user", "content": "128 Hz"},
+        ]
+    )
+
+    context = _untrusted_context(messages)
+    clarification = _context_item(context, "tool_input_clarification")
+    assert clarification["source"]["kind"] == "assistant_tool_input_receipt"
+    assert clarification["data"] == {
+        "action": "resample_data",
+        "original_user_request": "Resample the EEG data.",
+        "question": "What resampling rate should I use?",
+        "publication_generation": 81,
+        "one_shot": True,
+    }
+    assert "tool_input_clarification" in messages[0]["content"]
+    assert messages[-1] == {"role": "user", "content": "128 Hz"}
+
+
+@pytest.mark.parametrize(
+    ("receipt_generation", "receipt_tool"),
+    (
+        (80, "resample_data"),
+        (81, "not_registered_for_this_stage"),
+    ),
+)
+def test_stale_or_unavailable_tool_input_receipt_is_not_projected(
+    receipt_generation: int,
+    receipt_tool: str,
+) -> None:
+    state = _state(
+        pipeline_stage="data_loaded",
+        raw=RawStateSnapshot(loaded=True, count=1),
+        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
+    )
+    publication = ApplicationViewPublication(
+        generation=81,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    registry = ToolRegistry()
+    registry.register(_NamedTool("resample_data"))
+    assembler = ContextAssembler(
+        registry,
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
+    assembler.set_tool_input_receipt(
+        AssistantToolInputReceipt(
+            command_name=receipt_tool,
+            original_user_text="Run a preprocessing action.",
+            question="Which required value should I use?",
+            publication_generation=receipt_generation,
+        )
+    )
+
+    context = _untrusted_context(
+        assembler.get_messages([{"role": "user", "content": "128 Hz"}])
+    )
+
+    assert all(item["type"] != "tool_input_clarification" for item in context["items"])
 
 
 def test_referential_explanation_keeps_immediate_conversation_context() -> None:

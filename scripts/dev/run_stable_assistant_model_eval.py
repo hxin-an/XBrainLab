@@ -45,6 +45,7 @@ from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ToolAttemptRequest,
 )
 from XBrainLab.llm.agent.tool_feedback import summarize_tool_result
+from XBrainLab.llm.agent.turn import AssistantToolInputReceipt
 from XBrainLab.llm.agent.verifier import (
     ToolSchemaValidator,
     VerificationLayer,
@@ -72,8 +73,12 @@ DEFAULT_CHALLENGES = ROOT / "scripts" / "dev" / "stable_assistant_challenge_case
 DEFAULT_PRECISION_CASES = (
     ROOT / "scripts" / "dev" / "stable_assistant_no_action_precision_cases.json"
 )
-REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v6"
+DEFAULT_CLARIFICATION_CASES = (
+    ROOT / "scripts" / "dev" / "stable_assistant_clarification_cases.json"
+)
+REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v7"
 PRECISION_CASE_COUNT = 24
+CLARIFICATION_CASE_COUNT = 5
 MISSING_PARAMETER_HOST_TOOLS = {
     "missing_bandpass_bounds_01": "apply_bandpass_filter",
     "missing_notch_frequency_01": "apply_notch_filter",
@@ -116,6 +121,17 @@ class PrecisionCase:
     workflow_stage: str
     category: str
     requested_tool: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ClarificationCase:
+    """One second-turn answer bound to a missing-parameter precision case."""
+
+    case_id: str
+    source_case_id: str
+    reply: str
+    expected_tool: str
+    expected_parameters: dict[str, Any]
 
 
 @dataclass(frozen=True, slots=True)
@@ -416,6 +432,75 @@ def load_precision_cases(
     return tuple(cases)
 
 
+def load_clarification_cases(
+    path: Path = DEFAULT_CLARIFICATION_CASES,
+    *,
+    precision_cases: tuple[PrecisionCase, ...],
+) -> tuple[ClarificationCase, ...]:
+    """Load five exact continuations for the missing-parameter precision cases."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Could not load clarification cases: {exc}") from exc
+    if not isinstance(payload, list):
+        raise ValueError("Clarification cases must be one JSON array.")
+
+    sources = {
+        case.case_id: case
+        for case in precision_cases
+        if case.category == "missing_parameter"
+    }
+    cases: list[ClarificationCase] = []
+    seen_ids: set[str] = set()
+    seen_sources: set[str] = set()
+    for row in payload:
+        required = {
+            "id",
+            "source_case_id",
+            "reply",
+            "expected_tool",
+            "expected_parameters",
+        }
+        if not isinstance(row, dict) or set(row) != required:
+            raise ValueError("Each clarification case must use the exact schema.")
+        case_id = row["id"]
+        source_case_id = row["source_case_id"]
+        reply = row["reply"]
+        expected_tool = row["expected_tool"]
+        expected_parameters = row["expected_parameters"]
+        source = sources.get(source_case_id)
+        if not isinstance(case_id, str) or not case_id or case_id in seen_ids:
+            raise ValueError(f"Invalid or duplicate clarification id: {case_id!r}")
+        if source is None or source_case_id in seen_sources:
+            raise ValueError(
+                f"Clarification {case_id} must reference one unique missing case."
+            )
+        if not isinstance(reply, str) or not reply.strip():
+            raise ValueError(f"Clarification {case_id} lacks a reply.")
+        if (
+            not isinstance(expected_tool, str)
+            or expected_tool != source.requested_tool
+            or expected_tool not in DIRECT_PARAMETER_TOOLS
+            or not isinstance(expected_parameters, dict)
+        ):
+            raise ValueError(f"Clarification {case_id} has an invalid expected call.")
+        cases.append(
+            ClarificationCase(
+                case_id=case_id,
+                source_case_id=source_case_id,
+                reply=reply.strip(),
+                expected_tool=expected_tool,
+                expected_parameters=expected_parameters,
+            )
+        )
+        seen_ids.add(case_id)
+        seen_sources.add(source_case_id)
+
+    if len(cases) != CLARIFICATION_CASE_COUNT or seen_sources != set(sources):
+        raise ValueError("Clarification suite must cover all five missing cases once.")
+    return tuple(cases)
+
+
 def _stage_catalog(
     case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
     registry: ToolRegistry,
@@ -489,6 +574,46 @@ def _precision_case_projection(
     )
     system_prompt = assembler.build_system_prompt(case.user_input)
     return system_prompt, assembler.latest_tool_publication, publication
+
+
+def build_clarification_messages(
+    case: ClarificationCase,
+    source: PrecisionCase,
+    *,
+    question: str,
+    registry: ToolRegistry,
+    recovery_messages: tuple[str, ...] = (),
+) -> tuple[
+    list[dict[str, str]],
+    PromptToolPublication,
+    ApplicationViewPublication,
+    AssistantToolInputReceipt,
+]:
+    """Project one real second-turn receipt through the product assembler."""
+    if source.case_id != case.source_case_id or source.category != "missing_parameter":
+        raise ValueError("Clarification source does not match its missing case.")
+    publication = _precision_application_publication(source)
+    assembler = ContextAssembler(
+        registry,
+        _PublicationBackedEvaluatorStudy(),
+        application_runtime=_EvaluatorApplicationRuntime(publication),
+    )
+    receipt = AssistantToolInputReceipt(
+        command_name=case.expected_tool,
+        original_user_text=source.user_input,
+        question=question,
+        publication_generation=publication.generation,
+    )
+    assembler.set_tool_input_receipt(receipt)
+    for message in recovery_messages:
+        assembler.add_context(message)
+    messages = assembler.get_messages(
+        [
+            {"role": "assistant", "content": question},
+            {"role": "user", "content": case.reply},
+        ]
+    )
+    return messages, assembler.latest_tool_publication, publication, receipt
 
 
 def build_case_messages(
@@ -906,6 +1031,79 @@ def score_precision_response(
     )
 
 
+def score_clarification_response(
+    case: ClarificationCase,
+    response: str,
+    registry: ToolRegistry,
+    *,
+    prompt_publication: PromptToolPublication,
+    backend_publication: ApplicationViewPublication,
+    receipt: AssistantToolInputReceipt,
+) -> TargetEvalScore:
+    """Require an exact second-turn proposal to reach the product execute boundary."""
+    envelope = CommandParser.parse_product(response)
+    if envelope.status is not ToolEnvelopeStatus.VALID:
+        return TargetEvalScore(
+            False,
+            "output_format",
+            response[:1000],
+            envelope.workflow_stage,
+            "respond_to_user"
+            if envelope.status is ToolEnvelopeStatus.NO_TOOL
+            else None,
+            None,
+            envelope.error or "Clarification reply did not select the pending action.",
+            PrecisionProductOutcome("respond", envelope.message),
+        )
+
+    tool_name, parameters = envelope.commands[0]
+    coordinator = _precision_attempt_coordinator(
+        registry,
+        publication=backend_publication,
+    )
+    decision = coordinator.evaluate(
+        ToolAttemptRequest(
+            command_name=tool_name,
+            params=parameters,
+            confidence=1.0,
+            publication=prompt_publication,
+            latest_user_text=case.reply,
+            tool_input_receipt=receipt,
+        )
+    )
+    permitted = decision.action is ToolAttemptAction.EXECUTE
+    exact = bool(
+        envelope.workflow_stage == "data_loaded"
+        and tool_name == case.expected_tool
+        and parameters == case.expected_parameters
+    )
+    passed = permitted and exact
+    return TargetEvalScore(
+        passed,
+        "none" if passed else "clarification_continuation",
+        response[:1000],
+        envelope.workflow_stage,
+        tool_name,
+        parameters,
+        (
+            "Exact continuation reached the verified execution boundary."
+            if passed
+            else "Second-turn proposal did not reach the exact execution boundary."
+        ),
+        PrecisionProductOutcome(
+            "execute_boundary" if permitted else decision.action.value,
+            decision.message,
+            confirmation_requested=(
+                decision.action is ToolAttemptAction.CONFIRMATION_REQUIRED
+            ),
+            gui_handoff_permitted=permitted,
+            application_service_permitted=permitted,
+            tool_executor_permitted=permitted,
+            state_mutation_permitted=permitted,
+        ),
+    )
+
+
 def _score_case_response(
     case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
     response: str,
@@ -939,36 +1137,30 @@ def _recovery_envelope(
     return parsed, parsed_stage
 
 
-def evaluate_case_trajectory(
-    case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
-    registry: ToolRegistry,
+def _evaluate_trajectory(
+    *,
+    workflow_stage: str,
+    build_messages: Callable[[tuple[str, ...]], list[dict[str, str]]],
+    score_response: Callable[[str], TargetEvalScore],
     generate_response: Callable[[list[dict[str, str]]], str],
 ) -> CaseTrajectoryResult:
-    """Generate and score one case through the product strict-recovery policy."""
+    """Generate one strict-envelope trajectory through the production policy."""
     recovery_messages: list[str] = []
     attempts: list[ModelGenerationAttempt] = []
     raw_score: TargetEvalScore | None = None
 
     while True:
-        messages = (
-            build_case_messages(case, registry)
-            if not recovery_messages
-            else _build_recovery_case_messages(
-                case,
-                registry,
-                tuple(recovery_messages),
-            )
-        )
+        messages = build_messages(tuple(recovery_messages))
         response = generate_response(messages)
         if type(response) is not str:
             raise TypeError("Model generation must return one exact string.")
         response = response.strip()
         if raw_score is None:
-            raw_score = _score_case_response(case, response, registry)
+            raw_score = score_response(response)
 
         envelope, parsed_stage = _recovery_envelope(
             response,
-            workflow_stage=case.workflow_stage,
+            workflow_stage=workflow_stage,
         )
         decision = DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY.decide(
             StrictEnvelopeRecoveryRequest(
@@ -994,7 +1186,7 @@ def evaluate_case_trajectory(
             recovery_messages.append(decision.message.content)
             continue
 
-        final_score = _score_case_response(case, response, registry)
+        final_score = score_response(response)
         if decision.action is StrictEnvelopeRecoveryAction.EXHAUSTED:
             final_score = replace(
                 final_score,
@@ -1009,6 +1201,70 @@ def evaluate_case_trajectory(
             final_response=response,
             attempts=tuple(attempts),
         )
+
+
+def evaluate_case_trajectory(
+    case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
+    registry: ToolRegistry,
+    generate_response: Callable[[list[dict[str, str]]], str],
+) -> CaseTrajectoryResult:
+    """Generate and score one case through the product strict-recovery policy."""
+
+    def messages(recovery: tuple[str, ...]) -> list[dict[str, str]]:
+        return (
+            _build_recovery_case_messages(case, registry, recovery)
+            if recovery
+            else build_case_messages(case, registry)
+        )
+
+    return _evaluate_trajectory(
+        workflow_stage=case.workflow_stage,
+        build_messages=messages,
+        score_response=lambda response: _score_case_response(
+            case,
+            response,
+            registry,
+        ),
+        generate_response=generate_response,
+    )
+
+
+def evaluate_clarification_trajectory(
+    case: ClarificationCase,
+    source: PrecisionCase,
+    *,
+    question: str,
+    registry: ToolRegistry,
+    generate_response: Callable[[list[dict[str, str]]], str],
+) -> CaseTrajectoryResult:
+    """Generate the receipt-backed second turn through the same recovery policy."""
+    _messages, prompt_publication, backend_publication, receipt = (
+        build_clarification_messages(
+            case,
+            source,
+            question=question,
+            registry=registry,
+        )
+    )
+    return _evaluate_trajectory(
+        workflow_stage=source.workflow_stage,
+        build_messages=lambda recovery: build_clarification_messages(
+            case,
+            source,
+            question=question,
+            registry=registry,
+            recovery_messages=recovery,
+        )[0],
+        score_response=lambda response: score_clarification_response(
+            case,
+            response,
+            registry,
+            prompt_publication=prompt_publication,
+            backend_publication=backend_publication,
+            receipt=receipt,
+        ),
+        generate_response=generate_response,
+    )
 
 
 def score_missing_parameter_host_guard(
@@ -1127,7 +1383,9 @@ def _build_report(
     complete: bool,
     generation_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    core_rows = [row for row in results if row.get("suite") != "precision"]
+    core_rows = [
+        row for row in results if row.get("suite") in {"positive", "challenge"}
+    ]
     passed_count = sum(bool(row["score"]["passed"]) for row in core_rows)
     suite_summary: dict[str, dict[str, int]] = {}
     for suite in ("positive", "challenge"):
@@ -1140,8 +1398,12 @@ def _build_report(
         }
     precision_rows = [row for row in results if row.get("suite") == "precision"]
     precision_passed = sum(bool(row["score"]["passed"]) for row in precision_rows)
+    clarification_rows = [row for row in results if row.get("suite") == "clarification"]
+    clarification_passed = sum(
+        bool(row["score"]["passed"]) for row in clarification_rows
+    )
     raw_generation_summary: dict[str, dict[str, int]] = {}
-    for suite in ("positive", "challenge", "precision"):
+    for suite in ("positive", "challenge", "precision", "clarification"):
         suite_rows = [row for row in results if row.get("suite") == suite]
         raw_passed = sum(
             bool(row.get("raw_score", row["score"])["passed"]) for row in suite_rows
@@ -1181,7 +1443,15 @@ def _build_report(
     precision_passed_gate = bool(
         precision_complete and precision_passed == PRECISION_CASE_COUNT
     )
-    candidate_passed = frozen_core_passed and precision_passed_gate
+    clarification_complete = bool(
+        complete and len(clarification_rows) == CLARIFICATION_CASE_COUNT
+    )
+    clarification_passed_gate = bool(
+        clarification_complete and clarification_passed == CLARIFICATION_CASE_COUNT
+    )
+    candidate_passed = (
+        frozen_core_passed and precision_passed_gate and clarification_passed_gate
+    )
     spec = local_model_spec(model_id)
     return {
         "schema_version": REPORT_SCHEMA,
@@ -1210,6 +1480,10 @@ def _build_report(
                 "required": PRECISION_CASE_COUNT,
                 "passed": precision_passed,
             },
+            "clarification_continuation": {
+                "required": CLARIFICATION_CASE_COUNT,
+                "passed": clarification_passed,
+            },
             "passed": candidate_passed,
         },
         "summary": {
@@ -1228,14 +1502,23 @@ def _build_report(
             "complete": precision_complete,
             "passed": precision_passed_gate,
         },
+        "clarification_summary": {
+            "expected_case_count": CLARIFICATION_CASE_COUNT,
+            "case_count": len(clarification_rows),
+            "passed_count": clarification_passed,
+            "failed_count": len(clarification_rows) - clarification_passed,
+            "complete": clarification_complete,
+            "passed": clarification_passed_gate,
+        },
         "results": results,
         "claim_boundary": (
             "Frozen bilingual core preserves exact selection for 36 complete requests plus the "
             "deterministic host parameter-origin boundary for five missing-value "
             "requests. Candidate gates use the final bounded strict-envelope recovery, "
-            "parser, attempt, and presentation outcome; raw first-generation scores remain "
-            "separate diagnostics. Neither suite is workflow success or thesis-grade model "
-            "accuracy."
+            "parser, attempt, and presentation outcome. Five receipt-backed second turns "
+            "must reach the verified execution boundary; raw first-generation scores remain "
+            "separate diagnostics. These suites are not workflow success or thesis-grade "
+            "model accuracy."
         ),
     }
 
@@ -1253,6 +1536,7 @@ def _experiment_identity(
     cases_path: Path,
     challenges_path: Path,
     precision_cases_path: Path,
+    clarification_cases_path: Path,
 ) -> dict[str, Any]:
     """Bind the completed evaluator artifact to source and frozen corpora."""
     git = shutil.which("git")
@@ -1280,6 +1564,7 @@ def _experiment_identity(
         "challenge_cases_sha256": digest(challenges_path),
     }
     identity["precision_cases_sha256"] = digest(precision_cases_path)
+    identity["clarification_cases_sha256"] = digest(clarification_cases_path)
     return identity
 
 
@@ -1325,6 +1610,7 @@ def run_eval(
     *,
     challenge_cases: tuple[TargetChallengeCase, ...] = (),
     precision_cases: tuple[PrecisionCase, ...],
+    clarification_cases: tuple[ClarificationCase, ...],
     checkpoint_path: Path | None = None,
 ) -> dict[str, Any]:
     """Load one exact local engine and score every frozen target case."""
@@ -1336,6 +1622,10 @@ def run_eval(
     if len(precision_cases) != PRECISION_CASE_COUNT:
         raise ValueError(
             f"Candidate evaluation requires exactly {PRECISION_CASE_COUNT} precision cases."
+        )
+    if len(clarification_cases) != CLARIFICATION_CASE_COUNT:
+        raise ValueError(
+            "Candidate evaluation requires exactly five clarification cases."
         )
 
     generation_policy = _evaluation_generation_policy(config)
@@ -1349,9 +1639,10 @@ def run_eval(
             *challenge_cases,
             *precision_cases,
         )
+        total_case_count = len(all_cases) + len(clarification_cases)
         for index, case in enumerate(all_cases, start=1):
             print(
-                f"Stable Assistant model eval {index}/{len(all_cases)}: {case.case_id}",
+                f"Stable Assistant model eval {index}/{total_case_count}: {case.case_id}",
                 file=sys.stderr,
                 flush=True,
             )
@@ -1420,6 +1711,91 @@ def run_eval(
                         generation_policy=generation_policy,
                     ),
                 )
+        precision_by_id = {case.case_id: case for case in precision_cases}
+        result_by_id = {row["case"]["case_id"]: row for row in results}
+        for offset, case in enumerate(clarification_cases, start=1):
+            index = len(all_cases) + offset
+            print(
+                f"Stable Assistant model eval {index}/{total_case_count}: {case.case_id}",
+                file=sys.stderr,
+                flush=True,
+            )
+            source = precision_by_id[case.source_case_id]
+            source_row = result_by_id[case.source_case_id]
+            source_score = source_row["score"]
+            source_outcome = source_score.get("product_outcome", {})
+            question = source_outcome.get("message")
+            source_has_receipt = bool(
+                source_score.get("passed") is True
+                and source_score.get("parsed_tool") == case.expected_tool
+                and source_outcome.get("disposition") == "respond"
+                and isinstance(question, str)
+                and question.strip()
+            )
+            if source_has_receipt:
+                trajectory = evaluate_clarification_trajectory(
+                    case,
+                    source,
+                    question=question,
+                    registry=registry,
+                    generate_response=lambda messages: "".join(
+                        engine.generate_stream(
+                            messages,
+                            profile=GenerationProfile.STRUCTURED_DECISION,
+                        )
+                    ),
+                )
+                score_payload = asdict(trajectory.final_score)
+                raw_score_payload = asdict(trajectory.raw_score)
+                attempts = [asdict(attempt) for attempt in trajectory.attempts]
+            else:
+                unavailable = TargetEvalScore(
+                    False,
+                    "source_without_host_receipt",
+                    "",
+                    source.workflow_stage,
+                    source_score.get("parsed_tool"),
+                    source_score.get("parsed_parameters"),
+                    "First turn did not produce the exact Host clarification receipt.",
+                )
+                score_payload = asdict(unavailable)
+                raw_score_payload = dict(score_payload)
+                attempts = []
+            if score_payload.get("product_outcome") is None:
+                score_payload.pop("product_outcome", None)
+            if raw_score_payload.get("product_outcome") is None:
+                raw_score_payload.pop("product_outcome", None)
+            results.append(
+                {
+                    "suite": "clarification",
+                    "case": asdict(case),
+                    "source_case": asdict(source),
+                    "source_has_host_receipt": source_has_receipt,
+                    "raw_score": raw_score_payload,
+                    "score": score_payload,
+                    "trajectory": {
+                        "attempts": attempts,
+                        "recovery_attempts_used": max(len(attempts) - 1, 0),
+                        "terminal_action": (
+                            attempts[-1]["recovery_action"] if attempts else None
+                        ),
+                        "terminal_taxonomy": (
+                            attempts[-1]["taxonomy"] if attempts else None
+                        ),
+                    },
+                }
+            )
+            if checkpoint_path is not None:
+                _write_report(
+                    checkpoint_path,
+                    _build_report(
+                        model_id=selection.model_id,
+                        results=results,
+                        expected_case_count=len(cases) + len(challenge_cases),
+                        complete=False,
+                        generation_policy=generation_policy,
+                    ),
+                )
     finally:
         with suppress(Exception):
             engine.close()
@@ -1438,6 +1814,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument("--challenges", type=Path, default=DEFAULT_CHALLENGES)
     parser.add_argument("--precision-cases", type=Path, default=DEFAULT_PRECISION_CASES)
+    parser.add_argument(
+        "--clarification-cases",
+        type=Path,
+        default=DEFAULT_CLARIFICATION_CASES,
+    )
     parser.add_argument("--json-out", type=Path)
     parser.add_argument("--device", choices=("cpu", "cuda"))
     parser.add_argument("--strict", action="store_true")
@@ -1448,17 +1829,23 @@ def main(argv: list[str] | None = None) -> int:
         device=args.device,
     )
     try:
+        precision_cases = load_precision_cases(args.precision_cases)
         report = run_eval(
             config,
             load_target_cases(args.cases),
             challenge_cases=load_challenge_cases(args.challenges),
-            precision_cases=load_precision_cases(args.precision_cases),
+            precision_cases=precision_cases,
+            clarification_cases=load_clarification_cases(
+                args.clarification_cases,
+                precision_cases=precision_cases,
+            ),
             checkpoint_path=args.json_out,
         )
         report["experiment_identity"] = _experiment_identity(
             cases_path=args.cases,
             challenges_path=args.challenges,
             precision_cases_path=args.precision_cases,
+            clarification_cases_path=args.clarification_cases,
         )
     except Exception as exc:
         report = {
