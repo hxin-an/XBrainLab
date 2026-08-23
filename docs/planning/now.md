@@ -103,6 +103,13 @@ handoff 後一次性交付真人手測。
 - 下一步只執行 source quality gates、凍結並 push exact SHA、從頭重跑 canonical manifest，以及確認同一
   SHA 的所有 non-skipped CI completed/success；任何失敗都回到 checkpoint。若需要任何 production 修改、
   測試只能靠 auto-accept modal 或削弱 observable assertion才會通過，立即停止並使目前 evidence 失效。
+- 首次重跑已讓 complete regression 的八個 authoritative Linux groups 通過，並下載、校驗 required-ci
+  public fixture profile；但 escalated canonical Basedpyright 揭露 3D overlay 新增的 `resizeEvent` 參數仍
+  誤標為一般 `QEvent`。先前 sandboxed type run 因未實際掃到 diagnostics 而是假綠；相關 evidence 已失效。
+  修正限定同一個 3D view file：改用 `QResizeEvent`，同時刪除兩行非必要新增註解，使 owner 不變且 production
+  diff 維持 `+886/-614`、touched 1,500、net +272。Focused 3D/visualization `140 passed`；canonical
+  escalated Basedpyright 實際掃描 70 個既有 diagnostics、沒有新增 diagnostic並已通過。下一步重新凍結
+  exact SHA、push、從 section 1 重跑完整 manifest與同 SHA CI。
 
 ## Focused validation
 
