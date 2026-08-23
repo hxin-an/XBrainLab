@@ -88,9 +88,14 @@ handoff 後一次性交付真人手測。
   但完整UI shards揭露多個測試仍patch已退役的raw `QMessageBox` seam；backend visualization shard另有一個
   測試仍要求本slice已明確移除的Spectrogram suptitle。這些是過期test contract，不以production alias
   或恢復舊copy掩蓋。
+- Draft PR另確認Windows／macOS lifecycle只被同一Dataset test seams阻擋；platform native lifecycle本身
+  通過。Default visual candidate只有Visualization panel改變，且符合已核准的selector/order/layout outcome，
+  但CI verifier仍只接受舊schema v1，和capture的canonical schema v2不一致。
 - 下一步限定tests-only：依owner校準到實際`show_warning`／`show_error`／`ask_confirmation`／
   `present_unexpected_error` helper，保留直接call argument與absence assertions；Spectrogram測試改保護
-  no-suptitle outcome。各affected selector與完整shard通過後重新凍結SHA並從頭跑canonical manifest。
+  no-suptitle outcome；artifact verifier只接受目前schema v2並對其他版本fail closed。各affected selector、
+  integration／platform shards與完整shard通過後，review exact-source candidate並更新唯一有意變更的approved
+  Visualization reference，再重新凍結SHA並從頭跑canonical manifest。
   若需要任何production修改、測試只能靠auto-accept modal或削弱observable assertion才會通過，立即停止。
 
 ## Focused validation
