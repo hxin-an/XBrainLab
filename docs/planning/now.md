@@ -141,8 +141,11 @@ handoff 後一次性交付真人手測。
   不先啟動canonical heavy gates。
 - Responsive width 已恢復使用 sidebar-aware 可用寬度並保留 wide／medium／narrow 三段；760px panel走三列、
   1180px panel走單列，幾何與不重疊 contract `87 passed`。15秒真render walkthrough通過且primary artifact
-  review確認2D controls／canvas／colorbar正常；3D blocked capture的method/class瞬間狀態需由真人確認是否可見。
-  下一步凍結、push新SHA並交使用者輕量手測；在明確UI okay前不補跑post-regression heavy tail。
+  review確認2D controls／canvas／colorbar正常。交付前盤點另以真實tab transition重現並修正3D blocked view：
+  montage readiness現在保留已發布method、從All自動選第一個可用class，且top-level 2D detail reset不再於3D重複。
+  Red reproduction已轉綠，focused visualization `236 passed`、Ruff／format與15秒真render通過；新primary artifact
+  確認blocked 3D顯示`Gradient`／`left`、沒有第二個top-level reset。下一步凍結、push exact SHA並交使用者輕量手測；
+  在明確UI okay前不補跑post-regression heavy tail。
 
 ## Focused validation
 

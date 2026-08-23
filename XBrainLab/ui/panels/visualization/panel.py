@@ -1341,7 +1341,20 @@ class VisualizationPanel(BasePanel):
 
         blocked_view_message = self._selected_view_blocked_message()
         if blocked_view_message:
-            self._sync_method_options({})
+            method_coverage = self._published_coverage_for_selection()
+            if method_coverage is None:
+                self._sync_method_options({})
+            else:
+                method_name = self._sync_method_options(method_coverage)
+                selected_coverage = method_coverage.get(
+                    method_name,
+                    SaliencyMethodCoverageSnapshot(method=method_name),
+                )
+                self._sync_saliency_class_controls(selected_coverage)
+                if hasattr(self, "tab_3d"):
+                    self.tab_3d.select_class_key(
+                        self.saliency_class_combo.currentData()
+                    )
             self._show_widget_message(current_widget, blocked_view_message)
             return
 
@@ -1648,7 +1661,9 @@ class VisualizationPanel(BasePanel):
                     "all" if class_key is None else "single"
                 )
             )
-        self.saliency_reset_view.setVisible(class_key is not None)
+        self.saliency_reset_view.setVisible(
+            class_key is not None and self.tabs.currentWidget() is not self.tab_3d
+        )
 
     def _on_saliency_combo_changed(self, _index: int) -> None:
         """Project the selected scope once; renderers never own a second selector."""
@@ -1666,7 +1681,7 @@ class VisualizationPanel(BasePanel):
                 index = self.saliency_class_combo.findData(class_key)
                 if index >= 0:
                     self.saliency_class_combo.setCurrentIndex(index)
-        detail = class_key is not None
+        detail = class_key is not None and self.tabs.currentWidget() is not self.tab_3d
         self.saliency_reset_view.setVisible(detail)
         self.on_update()
 

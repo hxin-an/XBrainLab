@@ -299,13 +299,6 @@ def test_switching_to_3d_from_all_classes_selects_the_first_renderable_class(
     qtbot,
 ) -> None:
     panel, _ = _make_panel(qtbot)
-    _publish_panel_state(
-        panel,
-        _application_query_with_saliency_state(
-            PostTrainingSaliencyStatus.idle(),
-            _complete_coverage("Gradient", "left", "right"),
-        ),
-    )
     coverage = replace(
         _complete_coverage("Gradient", "left", "right"),
         classes=[
@@ -318,15 +311,38 @@ def test_switching_to_3d_from_all_classes_selects_the_first_renderable_class(
             for index, name in enumerate(("left", "right"))
         ],
     )
-    panel._sync_saliency_class_controls(coverage)
+    result = _application_query_with_saliency_state(
+        PostTrainingSaliencyStatus.idle(),
+        coverage,
+    )
+    _publish_panel_state(panel, result)
+    panel.on_update()
+
+    assert panel.method_combo.currentText() == "Gradient"
     assert panel.saliency_combo.currentData() is None
     assert panel.saliency_combo.count() == 3
+
+    panel.last_application_query = CommandResult.success_result(
+        command_name="visualize",
+        message="Results available",
+        state=result.state,
+        changed_state=ChangedState(),
+        diagnostics={
+            "payload_type": "visualization_summary",
+            "available": True,
+            "blocked_views": {
+                "3D plot": ["Set a 3D montage before opening the 3D plot."]
+            },
+        },
+    )
+
     panel.tabs.setCurrentWidget(panel.tab_3d)
-    panel._sync_saliency_class_controls(coverage)
 
     assert panel.tabs.currentWidget() is panel.tab_3d
+    assert panel.method_combo.currentText() == "Gradient"
     assert panel.saliency_combo.currentData() == 0
     assert panel.saliency_combo.currentText() == "left"
+    assert panel.saliency_reset_view.isHidden()
 
 
 def test_spectrogram_does_not_reserve_absolute_control_hole(qtbot) -> None:
