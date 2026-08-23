@@ -601,14 +601,9 @@ class SaliencySpectrogramMapViz(Visualizer):
             left=0.10,
             right=0.86,
             bottom=0.12,
-            top=0.84,
+            top=0.92,
             wspace=0.38,
             hspace=0.55,
-        )
-        fig.suptitle(
-            "Attribution magnitude spectrogram",
-            color="#cccccc",
-            fontsize=10,
         )
         plot_axes = []
         image = None

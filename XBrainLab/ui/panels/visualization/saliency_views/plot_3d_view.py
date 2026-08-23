@@ -12,7 +12,15 @@ from typing import Any, TypeVar, cast
 
 import pyvistaqt
 from PyQt6 import sip
-from PyQt6.QtCore import QEvent, QObject, Qt, QThread, QThreadPool, QTimer
+from PyQt6.QtCore import (
+    QEvent,
+    QObject,
+    QSignalBlocker,
+    Qt,
+    QThread,
+    QThreadPool,
+    QTimer,
+)
 from PyQt6.QtGui import QStandardItemModel
 from PyQt6.QtWidgets import (
     QApplication,
@@ -285,7 +293,6 @@ class Saliency3DPlotWidget(QWidget):
         class_layout.addWidget(self.class_semantics, stretch=1)
         class_layout.addStretch(1)
         self.class_controls.hide()
-        layout.addWidget(self.class_controls)
 
         self.scene_controls = QWidget(self)
         scene_layout = QHBoxLayout(self.scene_controls)
@@ -309,7 +316,6 @@ class Saliency3DPlotWidget(QWidget):
         self.reset_camera_button.clicked.connect(self._reset_camera)
         scene_layout.addWidget(self.reset_camera_button)
         self.scene_controls.hide()
-        layout.addWidget(self.scene_controls)
 
         # Plot Area
         self.plot_container = QWidget()
@@ -324,6 +330,7 @@ class Saliency3DPlotWidget(QWidget):
         self.plot_layout.addWidget(lbl)
 
         layout.addWidget(self.plot_container, stretch=1)
+        layout.addWidget(self.scene_controls)
 
         self.plotter_widget: Any = None
 
@@ -731,12 +738,10 @@ class Saliency3DPlotWidget(QWidget):
         else:
             self._requested_class_key = self.class_combo.itemData(selected_index)
             event = selected_coverage.event_code
-            event_text = f" · Event code: {event}" if event is not None else ""
             self.class_semantics.setText(
-                "Mean over EEG epochs"
-                f"{event_text} · epoch-relative time · not source localisation"
+                f"Event code: {event}" if event is not None else ""
             )
-        self.class_controls.show()
+        self.class_controls.hide()
 
     def select_class_key(self, class_key: object) -> None:
         """Select a backend-admitted class key from the shared 2D controls."""
@@ -758,7 +763,8 @@ class Saliency3DPlotWidget(QWidget):
             )
             index = self.class_combo.findData(key)
             if index >= 0:
-                self.class_combo.setCurrentIndex(index)
+                with QSignalBlocker(self.class_combo):
+                    self.class_combo.setCurrentIndex(index)
 
     def _on_class_changed(self, index: int) -> None:
         if self._selector_syncing or index < 0 or self._current_plot_request is None:
