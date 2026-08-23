@@ -42,9 +42,11 @@ from XBrainLab.llm.tools.result_contract import (
 
 from .assembler import PromptToolPublication
 from .execution_policy import HostExecutionPolicy
+from .turn import AssistantToolInputReceipt
 from .verifier import (
     PathProvenanceVerifier,
     VerificationResult,
+    verify_direct_parameter_clarification_reply,
     verify_direct_parameter_origins,
 )
 
@@ -130,6 +132,7 @@ class ToolAttemptRequest:
     latest_user_text: str
     repeated: bool = False
     enforce_direct_parameter_origins: bool = True
+    tool_input_receipt: AssistantToolInputReceipt | None = None
 
 
 @dataclass(frozen=True)
@@ -335,11 +338,22 @@ class ToolAttemptCoordinator:
             )
 
         if request.enforce_direct_parameter_origins:
-            origin_validation = verify_direct_parameter_origins(
+            receipt = request.tool_input_receipt
+            if receipt is not None and receipt.matches(
                 command_name,
-                params,
-                request.latest_user_text,
-            )
+                request.publication.backend_generation,
+            ):
+                origin_validation = verify_direct_parameter_clarification_reply(
+                    command_name,
+                    params,
+                    request.latest_user_text,
+                )
+            else:
+                origin_validation = verify_direct_parameter_origins(
+                    command_name,
+                    params,
+                    request.latest_user_text,
+                )
             if not origin_validation.is_valid:
                 return ToolAttemptDecision(
                     ToolAttemptAction.RESPOND,

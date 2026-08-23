@@ -13,6 +13,7 @@ import pytest
 
 from XBrainLab.backend.application import CommandName
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
+from XBrainLab.llm.agent.assembler import PromptToolPublication
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantAttentionKind,
     AssistantDecisionOwner,
@@ -56,6 +57,7 @@ from XBrainLab.llm.agent.turn import (
     AssistantGenerationStopAcknowledgement,
     AssistantGenerationStopRequest,
     AssistantResponseContract,
+    AssistantToolInputReceipt,
     AssistantTurnCorrelation,
     AssistantTurnDeliveryPhase,
     AssistantTurnRequest,
@@ -2690,6 +2692,14 @@ class TestResetConversation:
         ctrl._turn_orchestrator.excluded_commands = frozenset({CommandName.PREPROCESS})
         ctrl._turn_orchestrator.admitted_command_name = CommandName.SCAN_SOURCE.value
         ctrl._turn_orchestrator.admitted_publication_generation = 7
+        ctrl.pending_interactions.begin_tool_input(
+            AssistantToolInputReceipt(
+                command_name="resample_data",
+                original_user_text="Resample the EEG data.",
+                question="What resampling rate should I use?",
+                publication_generation=7,
+            )
+        )
         ctrl.reset_conversation()
         assert ctrl.history == []
         assert ctrl._tool_attempt_session.retry_count == 0
@@ -2698,8 +2708,28 @@ class TestResetConversation:
         assert ctrl._turn_orchestrator.excluded_commands == frozenset()
         assert ctrl._turn_orchestrator.admitted_command_name is None
         assert ctrl._turn_orchestrator.admitted_publication_generation is None
+        assert ctrl.pending_interactions.tool_input is None
+        assert ctrl.pending_interactions.active_tool_input is None
         ctrl.assembler.clear_context.assert_called()
         ctrl.assembler.clear_turn_authorization.assert_called()
+        ctrl.assembler.set_tool_input_receipt.assert_called_once_with(None)
+
+
+def test_turn_terminal_consumes_active_receipt(ctrl):
+    active = AssistantToolInputReceipt(
+        command_name="resample_data",
+        original_user_text="Resample the EEG data.",
+        question="What resampling rate should I use?",
+        publication_generation=7,
+    )
+    ctrl.pending_interactions.begin_tool_input(active)
+    ctrl.pending_interactions.activate_tool_input()
+
+    ctrl._emit_processing_finished()
+
+    assert ctrl.pending_interactions.active_tool_input is None
+    assert ctrl.pending_interactions.tool_input is None
+    ctrl.assembler.set_tool_input_receipt.assert_called_once_with(None)
 
 
 # --- execute_debug_tool ---
@@ -2835,6 +2865,7 @@ class TestExecuteDebugTool:
         ctrl.panel_navigation_requested.emit.assert_not_called()
 
     def test_parameter_origin_response_uses_normal_assistant_message(self, ctrl):
+        ctrl._append_history("user", "Resample the EEG data.")
         ctrl._finalize_turn = MagicMock()
         ctrl._handle_tool_attempt_blocked = MagicMock()
         decision = ToolAttemptDecision(
@@ -2852,6 +2883,75 @@ class TestExecuteDebugTool:
         )
         ctrl._handle_tool_attempt_blocked.assert_not_called()
         ctrl.panel_navigation_requested.emit.assert_not_called()
+        receipt = ctrl.pending_interactions.tool_input
+        assert isinstance(receipt, AssistantToolInputReceipt)
+        assert receipt.command_name == "resample_data"
+        assert receipt.original_user_text == "Resample the EEG data."
+        assert receipt.question == "What resampling rate should I use?"
+        assert receipt.publication_generation == 17
+
+    def test_parameter_followup_receipt_executes_same_direct_action(self, ctrl):
+        receipt = AssistantToolInputReceipt(
+            command_name="resample_data",
+            original_user_text="Resample the EEG data.",
+            question="What resampling rate should I use?",
+            publication_generation=17,
+        )
+        ctrl.pending_interactions.begin_tool_input(receipt)
+        ctrl._append_history("assistant", receipt.question)
+        ctrl._append_history("user", "128 Hz")
+
+        ctrl._reset_user_turn_state()
+
+        assert ctrl.pending_interactions.active_tool_input is receipt
+        ctrl.assembler.set_tool_input_receipt.assert_called_once_with(receipt)
+        ctrl._turn_orchestrator.active_publication = PromptToolPublication(
+            tool_names=frozenset({"resample_data"}),
+            workflow_stage="data_loaded",
+            backend_generation=17,
+        )
+        _set_context_reader(
+            ctrl,
+            return_value=_enabled_tool_context("resample_data", generation=17),
+        )
+        ctrl.registry.get_tool.return_value.requires_confirmation = False
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl._execute_tool_attempt = MagicMock()
+
+        ctrl._process_tool_calls(
+            [("resample_data", {"rate": 128})],
+            '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
+            '"parameters":{"rate":128}}',
+        )
+
+        executed = ctrl._execute_tool_attempt.call_args.args[0]
+        assert executed.action is ToolAttemptAction.EXECUTE
+        assert executed.command_name == "resample_data"
+        assert executed.params == {"rate": 128}
+
+    def test_parameter_followup_response_does_not_rearm_receipt(self, ctrl):
+        receipt = AssistantToolInputReceipt(
+            command_name="resample_data",
+            original_user_text="Resample the EEG data.",
+            question="What resampling rate should I use?",
+            publication_generation=17,
+        )
+        ctrl.pending_interactions.begin_tool_input(receipt)
+        ctrl.pending_interactions.activate_tool_input()
+        ctrl._append_history("user", "算了\uff0c不要重採樣。")
+        ctrl._finalize_turn = MagicMock()
+        decision = ToolAttemptDecision(
+            ToolAttemptAction.RESPOND,
+            "resample_data",
+            {"rate": 128},
+            context=_enabled_tool_context("resample_data", generation=17),
+            message="What resampling rate should I use?",
+        )
+
+        assert ctrl._present_tool_attempt_boundary(decision) is True
+
+        assert ctrl.pending_interactions.tool_input is None
+        assert ctrl.pending_interactions.active_tool_input is receipt
 
     def test_model_invented_parameter_publishes_message_and_never_executes(
         self,

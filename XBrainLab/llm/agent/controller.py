@@ -106,6 +106,7 @@ from .turn import (
     AssistantGenerationStopAcknowledgement,
     AssistantGenerationStopRequest,
     AssistantResponseContract,
+    AssistantToolInputReceipt,
     AssistantTurnCorrelation,
     AssistantTurnDeliveryAcknowledgement,
     AssistantTurnDeliveryPhase,
@@ -645,6 +646,8 @@ class LLMController(QObject):
 
     def _emit_processing_finished(self, outcome: str = "completed") -> None:
         """Publish UI completion and a correlated host terminal exactly once."""
+        self.pending_interactions.clear_active_tool_input()
+        self.assembler.set_tool_input_receipt(None)
         correlation = self._turn_orchestrator.finish_host_turn()
         self.processing_finished.emit()
         if correlation is not None:
@@ -747,6 +750,8 @@ class LLMController(QObject):
         self._tool_attempt_session.reset_for_user_turn()
         self._turn_orchestrator.reset_for_user_turn()
         self.pending_interactions.clear_workflow_handoff()
+        receipt = self.pending_interactions.activate_tool_input()
+        self.assembler.set_tool_input_receipt(receipt)
         self.assembler.clear_recovery_feedback()
         self.assembler.clear_turn_authorization()
 
@@ -1241,6 +1246,7 @@ class LLMController(QObject):
                 publication=publication,
                 latest_user_text=latest_user_text,
                 repeated=repeated,
+                tool_input_receipt=self.pending_interactions.active_tool_input,
             )
         )
 
@@ -1251,9 +1257,24 @@ class LLMController(QObject):
             self._handle_loop_detected(cmd)
             return True
         if decision.action is ToolAttemptAction.RESPOND:
-            self._finalize_turn(
-                decision.message or "Please provide the required values."
-            )
+            message = decision.message or "Please provide the required values."
+            context = decision.context
+            latest_user_text = self._latest_user_request_text()
+            if (
+                isinstance(context, ToolAvailabilityContext)
+                and type(context.generation) is int
+                and latest_user_text
+                and self.pending_interactions.active_tool_input is None
+            ):
+                self.pending_interactions.begin_tool_input(
+                    AssistantToolInputReceipt(
+                        command_name=cmd,
+                        original_user_text=latest_user_text,
+                        question=message,
+                        publication_generation=context.generation,
+                    )
+                )
+            self._finalize_turn(message)
             return True
         if decision.action in {
             ToolAttemptAction.PUBLICATION_BLOCKED,
@@ -2639,6 +2660,7 @@ class LLMController(QObject):
         # Clear Assembler context as well
         self.assembler.clear_context()
         self.assembler.clear_turn_authorization()
+        self.assembler.set_tool_input_receipt(None)
 
         self.status_update.emit("Conversation reset.")
         self._publish_activity(AssistantTurnActivityPhase.IDLE)

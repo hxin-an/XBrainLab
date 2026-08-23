@@ -96,6 +96,11 @@ Assistant candidate必須在同一clean/explained exact source依序閉合下列
    `ApplicationViewPublication`及既有agent capability policy產生；直接使用hand-authored stage list或把
    scorer context中的所有tool設為enabled，不構成unavailable-action projection證據。Frozen core仍保留
    原catalog路徑以維持歷史可比，兩種suite不得互換claim。
+   同一v7 evaluator另固定五個clarification continuation cases：source必須是precision suite中五個
+   missing-parameter turn之一，且第一輪真的由production parameter-origin boundary產生exact tool／question
+   receipt；模型直接`respond_to_user`而沒有Host receipt時不得合成或代填。第二輪只提供缺值，仍須經相同
+   parser、schema、publication、capability與attempt policy得到5/5 final execute-boundary；raw第一發與最多
+   兩次format recovery分開保存。這個gate不取代24/24 precision，也不等於ToolExecutor已產生真side effect。
 3. 真model safe E2E依normal ChatPanel路徑完成Switch Dataset → Import GUI → Select Channels →
    direct Resample；不得用debug transport或fake generator替代。
 4. 使用者在同一candidate source完成Complete Workflow、Lifecycle／Navigation、Contract Failures三份

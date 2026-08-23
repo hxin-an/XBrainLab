@@ -179,7 +179,7 @@ timeout 30m prlimit --core=0 -- \
 
 這個評分會真的讓 Granite 回答固定 prompt，但不會執行模型選出的工具。
 
-執行前先確認 active decision 指定的 Granite 3.3 2B 已存在 D-mounted cache。將下列兩個範例
+執行前先確認 active decision 指定的 Granite 4.0 Micro 3B exact revision已存在active model cache。將下列兩個範例
 路徑換成本機實際位置：
 
 ```bash
@@ -199,14 +199,18 @@ timeout 30m prlimit --core=0 -- \
 `HF_HUB_OFFLINE=1` 和 `TRANSFORMERS_OFFLINE=1` 會禁止執行期間下載模型，也不允許靜默改用另一個
 模型。
 
-目前 runner 固定執行 50 個案例：36 個 positive cases 和 14 個 challenge cases。候選 gate 要求：
+目前v7 runner固定執行79個案例：36個positive、14個challenge、24個雙語no-action precision與
+5個receipt-backed clarification continuation。候選 gate 要求：
 
 - 36/36 positive cases 的工具與參數完全正確。
 - 10/10 明確參數來源檢查通過。
 - 5/5 缺少參數時的 host guard 通過。
+- 24/24 no-action precision outcomes沒有confirmation、GUI handoff、execution或state mutation。
+- 5/5 clarification continuation在第一輪真Host receipt後抵達verified execute boundary；raw第一發與
+  最多兩次format recovery分開記錄。
 
-其餘 challenge 結果用來記錄模型限制，不計入上述候選 gate。產生的 JSON report 只支持該次
-使用的 exact model、revision、source 和 50 個固定案例；它不能證明任意對話、工具實際執行或
+其餘 challenge 結果用來記錄模型限制，不回填raw-model accuracy。產生的 JSON report 只支持該次
+使用的 exact model、revision、source 和79個固定案例；它不能證明任意對話、工具實際執行或
 論文等級的整體正確率。
 
 ### C. 打開 GUI：檢查實際互動

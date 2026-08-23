@@ -189,6 +189,11 @@ Granite 每次只能輸出一個 JSON object，且 top level 恰有三個欄位�
 `respond_to_user.parameters` 只能有 `message`。Answer、clarification與blocked reply不建立額外
 decision enum。
 
+Direct preprocess若已由模型提出exact tool，但parameter-origin guard發現模型填入了使用者未提供的
+必要值，Host可以在零execution的具體追問旁建立一個one-shot typed tool-input receipt。Receipt只保存：
+exact tool ID、第一輪bounded user evidence、追問文字及prompt-time publication generation；不得保存或
+授權模型臆測的參數。它不是新的model output branch，也不改變三欄envelope。
+
 Repair budget 是 initial generation 加最多兩次 repair：
 
 - 可 repair malformed JSON、wrong stage、unpublished tool、extra／invalid parameter。
@@ -208,6 +213,9 @@ Repair budget 是 initial generation 加最多兩次 repair：
 4. hidden minimal state card。
 5. 最新 user message。
 6. 最多上一則 Assistant-visible message。
+7. 若存在尚未消費且generation仍相符的direct-preprocess tool-input receipt，加入一筆獨立、host-owned、
+   bounded clarification context，指出可由最新回答補齊的exact action；不把它渲染成chat role或callable
+   authority。
 
 Callable集合固定為approved stage membership、同一份ApplicationService publication的enabled
 `ToolAvailability`與目前registry／target membership的交集。其餘已註冊target tools只可出現在明確分隔的
@@ -230,7 +238,8 @@ State card 只投影 ApplicationService publication：
 - trained：finished run count、results available。
 
 不放 file paths、完整 channels、完整 settings、diagnostics、recommended next step、full capability map、
-舊 tool output或 pending intent。
+舊 tool output或一般pending intent。唯一例外是上述direct-preprocess one-shot clarification receipt；其
+tool仍須同時存在於current callable publication，receipt本身不能恢復stale capability。
 
 RAG／examples規則：
 
@@ -249,6 +258,13 @@ runtime本身失敗時不做生成，ChatPanel顯示local runtime error。
 
 Verification順序固定為：strict schema → backend generation／stage → target publication → parameter
 schema → ApplicationService capability → confirmation。Prompt與UI不可成為alternate readiness engine。
+
+Direct-preprocess clarification follow-up仍由模型選擇action，Host不自動continuation。只有模型在receipt的
+下一個admitted user turn再次提出同一exact tool時，parameter-origin verifier才可把receipt綁定的第一輪
+user evidence與最新回答合併成該tool的一次性provenance；模型提出其他tool時，舊receipt先丟棄，該tool只
+按最新訊息的一般規則驗證。Receipt在下一輪terminal、new chat、stop、close或publication generation改變時
+失效。取消、無關回答與仍缺值都不得執行；所有schema、range、current publication／capability與one-action
+限制照常重驗。
 
 GUI completion使用既有 pending interaction與request correlation。`accepted`、`navigated`、
 `command_pending`或`deferred_to_ui`是否terminal必須依execution kind判斷：GUI completion只能等實際
@@ -292,6 +308,9 @@ tool-selection failure重分類為通過。
 - 五個missing-parameter cases可以由模型直接`respond_to_user`，或由模型提出tool後被同一production
   parameter-origin guard轉成一般Assistant追問；兩條路徑都必須零ApplicationService／ToolExecutor
   execution，且追問指出缺少的欄位。
+- 對Host parameter-origin guard建立的五種direct-preprocess追問，另以兩輪cases證明只提供所缺值即可讓
+  同一exact action在current publication下執行；取消、無關回答、stale generation與不同tool不得使用該
+  receipt取得execution authority。這是clarification recovery evidence，不回填第一輪raw-model accuracy。
 - Core gate要求36/36 positive、其中10/10 direct preprocess origin checks，以及5/5
   missing-parameter composed outcomes；其餘9個raw challenge結果完整保存為known limitations，
   不改寫舊分母，也不得宣稱raw model已解決。

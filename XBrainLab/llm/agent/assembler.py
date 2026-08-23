@@ -49,6 +49,7 @@ from .tool_feedback import ToolRecoveryFeedback
 from .turn import (
     AssistantGenerationRequest,
     AssistantResponseContract,
+    AssistantToolInputReceipt,
     AssistantTurnScope,
 )
 
@@ -151,6 +152,7 @@ Action Contract Catalog (input definitions, never an output array):
         self.context_notes: list[str] = []
         self._latest_context_items: tuple[UntrustedContextItem, ...] = ()
         self._recovery_feedback: ToolRecoveryFeedback | None = None
+        self._tool_input_receipt: AssistantToolInputReceipt | None = None
         self._latest_tool_publication = PromptToolPublication.empty()
         self._turn_authorized_command: str | None = None
         self._turn_authorization_is_continuation = False
@@ -276,7 +278,9 @@ Action Contract Catalog (input definitions, never an output array):
         sections = [
             "Decision checkpoint (apply after reading the catalog):",
             "Choose a callable action only when the latest user request asks for "
-            "exactly one listed action, unambiguously, with every required input. "
+            "exactly one listed action, unambiguously, with every required input, "
+            "or completely answers the exact action in a present "
+            "tool_input_clarification item. "
             "Use respond_to_user for informational, negated, unavailable, "
             "ambiguous, incomplete, or multi-action requests. For multiple "
             "actions, ask which one to do first and call none. Never claim an "
@@ -483,6 +487,34 @@ Action Contract Catalog (input definitions, never an output array):
                 ),
             )
         ]
+        receipt = self._tool_input_receipt
+        if (
+            receipt is not None
+            and receipt.matches(receipt.command_name, policy_read.backend_generation)
+            and receipt.command_name in allowed_tools
+            and not workflow_status_unavailable
+        ):
+            context_items.append(
+                UntrustedContextItem(
+                    item_type="tool_input_clarification",
+                    source=UntrustedContextSource(
+                        kind="assistant_tool_input_receipt",
+                    ),
+                    data={
+                        "action": receipt.command_name,
+                        "original_user_request": sanitize_untrusted_text(
+                            receipt.original_user_text,
+                            max_chars=MAX_UNTRUSTED_STRING_CHARS,
+                        ),
+                        "question": sanitize_untrusted_text(
+                            receipt.question,
+                            max_chars=MAX_UNTRUSTED_STRING_CHARS,
+                        ),
+                        "publication_generation": receipt.publication_generation,
+                        "one_shot": True,
+                    },
+                )
+            )
         if self._recovery_feedback is not None:
             context_items.append(
                 UntrustedContextItem(
@@ -665,6 +697,15 @@ Action Contract Catalog (input definitions, never an output array):
         """Clear request/continuation authorization at a user-turn boundary."""
         self._turn_authorized_command = None
         self._turn_authorization_is_continuation = False
+
+    def set_tool_input_receipt(
+        self,
+        receipt: AssistantToolInputReceipt | None,
+    ) -> None:
+        """Bind one host-owned clarification receipt to the current turn."""
+        if receipt is not None and not isinstance(receipt, AssistantToolInputReceipt):
+            raise TypeError("Assistant tool-input receipt must be typed.")
+        self._tool_input_receipt = receipt
 
     def clear_recovery_feedback(self) -> None:
         """Discard failure feedback at a user-turn or success boundary."""

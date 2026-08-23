@@ -243,11 +243,14 @@ cache不代表product support，Settings不發布它。Phi仍不可選，也不�
 
 `LLMConfig` 和 `AssistantRuntimeSelection` 是 runtime truth。UI 顯示文字不能當成真實 backend 狀態。
 
-目前只宣稱Granite固定正向selection suite與bounded no-action checkpoint。Host保留strict schema、stage/publication、
-capability與confirmation verification，但不做intent narrowing或deterministic continuation。這種
+目前只宣稱Granite固定正向selection suite、bounded no-action checkpoint與一次性direct-input
+clarification continuation。Host保留strict schema、stage/publication、capability與confirmation
+verification，不做intent narrowing、選tool或自動continuation；跨輪receipt只讓模型看見同一個待補值
+action，第二輪仍須由模型提出exact tool並重新驗證。這種
 工程evidence不能替代真人workflow或thesis accuracy，也不能把歷史`117/117`、`121/121`或Phi
 candidate分數移植成Granite claim；3B目前維持36/36 positive、10/10 direct parameter-origin、5/5
-missing-parameter host guard與20/24 final no-action outcomes，未達24/24所以不是handoff-ready。
+missing-parameter host guard、5/5 final clarification continuation與20/24 final no-action outcomes；
+clarification raw第一發為0/5且各需1–2次format recovery，未達24/24 no-action所以不是handoff-ready。
 4-bit loading 仍是 optional path；`accelerate` / `bitsandbytes` 不是預設產品啟動硬需求。
 
 Gemini/API 不再列為產品驗證目標；default dependencies 不包含 remote SDK。若歷史研究需要遠端
@@ -446,7 +449,8 @@ settings全部完成後才是`dataset_ready`。
 - registry精確發布18個approved target tools；retired wrappers在adapter前fail closed。
 - direct tools進`ApplicationService.execute(...)`；GUI tools進既有correlated handoff owner。
 - `LLMController`會做strict parser、stage/publication verification、capability、confirmation與單一tool
-  turn limit，不做Host intent narrowing或continuation。
+  turn limit；Host不做intent narrowing或自動continuation，只保存一次性direct-input receipt供下一輪
+  模型重新選擇同一action。
 - `pipeline_state.py`使用ApplicationService publication的workflow stage。
 - runtime backend selection 已由 structured config 管理，不應再用 UI label 判斷。
 
@@ -455,9 +459,10 @@ settings全部完成後才是`dataset_ready`。
 - local model catalog、download preflight 和 health-check script 存在。
 - active cache的3B與2B都通過exact revision／completeness inspection；3B真產品引擎的structured
   no-action turn首輪通過，峰值allocated／reserved為`6,771.76 / 6,872.00 MiB`，關閉後已釋放。
-- Granite 3B固定跑36 positive＋14 challenge diagnostics＋24 precision。Final checkpoint為36/36
-  positive、10/10 direct parameter-origin、5/5 missing-parameter host guard與20/24 precision；四個
-  remaining failures完整保留，不能用舊34-case或較小分母替代。
+- Granite 3B evaluator v7固定跑36 positive＋14 challenge diagnostics＋24 precision＋5 clarification。
+  Final checkpoint為36/36 positive、10/10 direct parameter-origin、5/5 missing-parameter host guard、
+  20/24 precision與5/5 clarification continuation；clarification raw為0/5並需要format recovery。四個
+  precision failures完整保留，不能用舊34-case或較小分母替代。
 - local runtime unavailable 時，chat panel 會保持可開並顯示原因；first-run consent 只在
   local backend 還未 acknowledged 且即將啟用時出現。
 - no-model diagnostic runtime可走真ChatPanel、MainWindow、ApplicationService與tool correlation，
@@ -477,8 +482,9 @@ settings全部完成後才是`dataset_ready`。
 - Windows native layout、dialog interaction與完整PhysioNet CPU workflow仍需要使用者手測。
 
 Historical Phi evaluation artifacts are not current product or thesis evidence. Superseded raw、
-host-assisted或`121/121` reports不得作為current Granite accuracy。只有同一candidate source的
-50-case strict report可支撐本輪bounded selection claim，且仍不等於tool execution或產品ready。
+host-assisted或`121/121` reports不得作為current Granite accuracy。只有同一candidate source的v7
+report（core 50＋precision 24＋clarification 5）可支撐本輪bounded selection／continuation claim，且
+verified execution boundary仍不等於真ToolExecutor side effect或產品ready。
 
 ## 架構評斷
 

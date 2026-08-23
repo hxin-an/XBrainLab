@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from XBrainLab.llm.agent.controller import LLMController
+from XBrainLab.llm.agent.pending_interaction import PendingInteractionCoordinator
 from XBrainLab.llm.agent.response_presentation import AssistantResponsePresentation
 from XBrainLab.llm.agent.turn import (
     AssistantGenerationEvent,
@@ -252,6 +253,8 @@ class TestAgentWorkerTimeout:
                     cancelled=True,
                 )
                 self._tool_attempt_session = AssistantToolAttemptSession()
+                self.pending_interactions = PendingInteractionCoordinator()
+                self.assembler = MagicMock()
                 self.is_processing = True
                 self.history: list[dict[str, str]] = []
 
