@@ -212,7 +212,13 @@ def test_saliency_view_selector_is_inside_the_visible_control_bar(qtbot) -> None
 
 @pytest.mark.parametrize(
     ("control_width", "expected_mode"),
-    ((1200, "wide"), (800, "medium"), (650, "narrow"), (500, "narrow")),
+    (
+        (1200, "wide"),
+        (800, "wide"),
+        (720, "medium"),
+        (650, "narrow"),
+        (500, "narrow"),
+    ),
 )
 def test_visualization_controls_use_responsive_layout_modes(
     qtbot,
@@ -233,6 +239,33 @@ def test_visualization_controls_use_responsive_layout_modes(
         absolute_index,
     )
     assert (normalize_row, normalize_column) < (absolute_row, absolute_column)
+
+
+def test_visualization_controls_use_rendered_bar_width_without_overlap(qtbot) -> None:
+    panel, _ = _make_panel(qtbot)
+    panel.resize(800, 800)
+    panel.show()
+    qtbot.waitExposed(panel)
+    panel._refresh_control_layout_for_width()
+
+    assert panel.ctrl_bar.width() < 700
+    assert panel._controls_layout_mode == "narrow"
+    visible_controls = (
+        panel.plan_label,
+        panel.plan_combo,
+        panel.run_label,
+        panel.run_combo,
+        panel.method_label,
+        panel.method_combo,
+        panel.normalize_check,
+        panel.abs_check,
+        panel.saliency_view_label,
+        panel.saliency_combo,
+    )
+    for index, left in enumerate(visible_controls):
+        assert panel.ctrl_bar.rect().contains(left.geometry())
+        for right in visible_controls[index + 1 :]:
+            assert not left.geometry().intersects(right.geometry())
 
 
 def test_medium_visualization_controls_do_not_overlap_transform_and_reset_actions(
@@ -990,7 +1023,7 @@ def test_spectrogram_normalize_uses_raw_publication_and_display_transform(
     }
 
 
-def test_visualization_controls_stay_in_a_compact_two_row_grid(qtbot):
+def test_visualization_controls_stay_in_a_compact_narrow_grid(qtbot):
     panel, _ctrl = _make_panel(qtbot)
     panel.abs_check.setChecked(True)
     panel.resize(760, 720)
@@ -1007,7 +1040,7 @@ def test_visualization_controls_stay_in_a_compact_two_row_grid(qtbot):
     assert isinstance(layout, QGridLayout)
     plan_item = layout.itemAtPosition(0, 1)
     run_item = layout.itemAtPosition(0, 3)
-    method_item = layout.itemAtPosition(0, 5)
+    method_item = layout.itemAtPosition(1, 1)
     absolute_item = layout.itemAtPosition(1, 3)
     normalize_item = layout.itemAtPosition(1, 2)
     assert plan_item is not None
@@ -1021,9 +1054,9 @@ def test_visualization_controls_stay_in_a_compact_two_row_grid(qtbot):
     assert absolute_item.widget() is panel.abs_check
     assert normalize_item.widget() is panel.normalize_check
     assert abs(panel.plan_combo.y() - panel.run_combo.y()) <= 8
-    assert panel.plan_combo.y() < panel.abs_check.y()
-    assert panel.plan_combo.y() < panel.normalize_check.y()
-    assert panel.plan_combo.y() == panel.method_combo.y()
+    assert panel.plan_combo.y() < panel.method_combo.y()
+    assert abs(panel.method_combo.y() - panel.abs_check.y()) <= 8
+    assert abs(panel.method_combo.y() - panel.normalize_check.y()) <= 8
 
     widgets = [
         panel.plan_combo,
@@ -1088,6 +1121,7 @@ def test_visualization_controls_use_one_row_when_panel_is_wide(qtbot):
     )
     layout = control_group.layout()
     assert isinstance(layout, QGridLayout)
+    assert panel._controls_layout_mode == "wide", panel.ctrl_bar.contentsRect().width()
 
     assert panel.plan_combo.y() == panel.run_combo.y()
     assert panel.plan_combo.y() == panel.method_combo.y()

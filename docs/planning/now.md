@@ -133,6 +133,16 @@ handoff 後一次性交付真人手測。
   保留原 grid slot，直接違反本 slice 的「不得留空洞」contract。下一步只做 tests／evidence contract
   校準：要求 hidden Absolute 無 grid position、Normalize slot 穩定且在 visible Absolute 前；focused validator
   與單一 visualization render 通過後才凍結新 SHA，既有 `faba9a0c` evidence 不宣稱 handoff-ready。
+- `6f603e41` 已讓上述 visualization validator與真 render通過；完整回歸亦通過，但並行 post-regression
+  lanes 使單獨只需53秒、`94 passed`的Assistant security suite超過1,800秒timeout。使用者要求後續UI先
+  輕量手測、確認後才跑重型驗證，因此不再重跑heavy tail。Primary artifact review另在800px panel揭露
+  control mode誤用整個panel寬度，導致實際約496px的control bar仍選medium並讓Fold combo／Run label重疊。
+  下一步只修正既有responsive width判斷、補窄寬observable test並重拍輕量圖；通過後交使用者手測，
+  不先啟動canonical heavy gates。
+- Responsive width 已恢復使用 sidebar-aware 可用寬度並保留 wide／medium／narrow 三段；760px panel走三列、
+  1180px panel走單列，幾何與不重疊 contract `87 passed`。15秒真render walkthrough通過且primary artifact
+  review確認2D controls／canvas／colorbar正常；3D blocked capture的method/class瞬間狀態需由真人確認是否可見。
+  下一步凍結、push新SHA並交使用者輕量手測；在明確UI okay前不補跑post-regression heavy tail。
 
 ## Focused validation
 

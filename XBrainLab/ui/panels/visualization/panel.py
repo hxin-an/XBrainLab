@@ -729,8 +729,8 @@ class VisualizationPanel(BasePanel):
     def _refresh_control_layout_for_width(self) -> None:
         if not hasattr(self, "ctrl_bar"):
             return
-        available_width = max(self.ctrl_bar.width(), self.width())
-        if available_width >= 1080:
+        available_width = max(self.ctrl_bar.width(), self.width() - 340)
+        if available_width >= 760:
             layout_mode = "wide"
         elif available_width >= 700:
             layout_mode = "medium"
