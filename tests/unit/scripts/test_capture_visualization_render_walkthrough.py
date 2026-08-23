@@ -553,13 +553,13 @@ def _transform_controls(tab: str, *, absolute_visible: bool) -> dict[str, object
             "visible": absolute_visible,
             "enabled": absolute_visible,
             "checked": True,
-            "grid_position": [0, 6, 1, 1],
+            "grid_position": [0, 7, 1, 1] if absolute_visible else [],
         },
         "normalize": {
             "visible": True,
             "enabled": True,
             "checked": True,
-            "grid_position": [0, 7, 1, 1],
+            "grid_position": [0, 6, 1, 1],
         },
         "selector_geometry": {
             "plan": [10, 12, 160, 28],
@@ -994,6 +994,33 @@ def test_validate_visualization_payload_requires_absolute_restoration(tmp_path):
     assert ok is False
     assert "Topographic Map" in reason
     assert "restored" in reason
+
+
+def test_validate_visualization_payload_rejects_hidden_absolute_layout_hole(tmp_path):
+    payload = _payload_with_screenshots(tmp_path)
+    payload["renders"][1]["transform_controls"]["absolute"]["grid_position"] = [
+        0,
+        7,
+        1,
+        1,
+    ]
+
+    ok, reason = validate_visualization_render_payload(payload)
+
+    assert ok is False
+    assert "empty Absolute control slot" in reason
+
+
+def test_validate_visualization_payload_requires_normalize_before_absolute(tmp_path):
+    payload = _payload_with_screenshots(tmp_path)
+    for render in (payload["renders"][0], payload["renders"][2]):
+        render["transform_controls"]["absolute"]["grid_position"] = [0, 6, 1, 1]
+        render["transform_controls"]["normalize"]["grid_position"] = [0, 7, 1, 1]
+
+    ok, reason = validate_visualization_render_payload(payload)
+
+    assert ok is False
+    assert "Normalize before Absolute" in reason
 
 
 def test_validate_visualization_payload_rejects_selector_jump(tmp_path):

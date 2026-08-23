@@ -127,6 +127,12 @@ handoff 後一次性交付真人手測。
   個 teacher／multisubject optional skips；canonical integration UI `130 passed / 2` 個 teacher-only skips，
   resource-receipt三個真 modal cases全數通過。Production diff仍為30 files、`+886/-614`、touched 1,500；
   下一步只剩final quality gates、凍結/push exact SHA、完整manifest與同 SHA CI。
+- `faba9a0c` 的 manifest 已通過 section 1、完整回歸、required fixture、跨來源訓練、Assistant、import、
+  human-like 與 UI baseline，最後在 visualization render fail closed。Artifact 證明產品正確移除
+  Spectrogram 的 Absolute layout item 並於其他 tab 恢復，但 walkthrough validator 仍要求 hidden control
+  保留原 grid slot，直接違反本 slice 的「不得留空洞」contract。下一步只做 tests／evidence contract
+  校準：要求 hidden Absolute 無 grid position、Normalize slot 穩定且在 visible Absolute 前；focused validator
+  與單一 visualization render 通過後才凍結新 SHA，既有 `faba9a0c` evidence 不宣稱 handoff-ready。
 
 ## Focused validation
 

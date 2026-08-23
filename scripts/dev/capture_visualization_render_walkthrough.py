@@ -1700,12 +1700,21 @@ def _validate_transform_control_evidence(
     for tab, state in states.items():
         if state.get("selector_geometry") != baseline_selectors:
             return False, f"{tab} selector geometry jumped across tab changes."
-        if (state.get("absolute") or {}).get("grid_position") != baseline_absolute_slot:
-            return False, f"{tab} changed the Absolute control slot."
         if (state.get("normalize") or {}).get(
             "grid_position"
         ) != baseline_normalize_slot:
             return False, f"{tab} changed the Normalize control slot."
+        absolute_slot = (state.get("absolute") or {}).get("grid_position")
+        if tab == "Spectrogram":
+            if absolute_slot:
+                return False, "Spectrogram retained an empty Absolute control slot."
+            continue
+        if absolute_slot != baseline_absolute_slot:
+            return False, f"{tab} changed the Absolute control slot."
+        if not baseline_normalize_slot or not absolute_slot:
+            return False, f"{tab} transform control positions are incomplete."
+        if tuple(baseline_normalize_slot[:2]) >= tuple(absolute_slot[:2]):
+            return False, f"{tab} must place Normalize before Absolute."
     return True, ""
 
 
