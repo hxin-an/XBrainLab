@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.backend.training import TestOnlyOption, parse_device_name
 from XBrainLab.backend.training.input_contract import DEFAULT_TRAINING_OUTPUT_DIR
-from XBrainLab.ui.components.modal_message_box import ModalMessageBox as QMessageBox
+from XBrainLab.ui.components.modal_presentation import show_warning
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
@@ -113,7 +113,7 @@ class TestOnlySettingWindow(BaseDialog):
             )
             self.accept()
         except ValueError:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Validation Error",
                 "Enter a positive whole-number batch size and review the "

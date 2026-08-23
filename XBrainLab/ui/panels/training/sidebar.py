@@ -74,11 +74,12 @@ from XBrainLab.ui.application_capabilities import (
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
-from XBrainLab.ui.components.modal_message_box import ModalMessageBox as QMessageBox
 from XBrainLab.ui.components.modal_presentation import (
     AlertSeverity,
     ask_confirmation,
     show_alert,
+    show_error,
+    show_warning,
 )
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
@@ -421,7 +422,7 @@ class TrainingSidebar(QWidget):
         """Read controller compatibility state only for mock UI contexts."""
         if self._has_product_publication_context():
             if blocked_title is not None:
-                QMessageBox.warning(
+                show_warning(
                     self,
                     blocked_title,
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -431,7 +432,7 @@ class TrainingSidebar(QWidget):
             return True, run_controller_compatibility_call(self, fallback)
         except ControllerCompatibilityUnavailableError as exc:
             if blocked_title is not None:
-                QMessageBox.warning(self, blocked_title, str(exc))
+                show_warning(self, blocked_title, str(exc))
             return False, None
 
     def check_ready_to_train(
@@ -705,7 +706,7 @@ class TrainingSidebar(QWidget):
             else self._command_capability(CommandName.CONFIGURE_TRAINING)
         )
         if configure_capability is not None and not configure_capability.enabled:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Training Configuration Blocked",
                 blocked_reason(configure_capability, fallback_message),
@@ -720,7 +721,7 @@ class TrainingSidebar(QWidget):
                 return True
             if not is_training:
                 return False
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Training Running",
                 fallback_message,
@@ -813,7 +814,6 @@ class TrainingSidebar(QWidget):
                 self,
                 UnexpectedErrorContext.TRAINING_DATA_SPLITTING,
                 error_info=error,
-                message_box=QMessageBox,
             )
 
         if self._execute_action_async(
@@ -828,7 +828,7 @@ class TrainingSidebar(QWidget):
             return InteractionOutcome.accepted("Data splitting settings will be saved.")
 
         if self._has_product_publication_context():
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Data Splitting Blocked",
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -844,7 +844,7 @@ class TrainingSidebar(QWidget):
             ),
         )
         if result is None:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Data Splitting Blocked",
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -877,7 +877,7 @@ class TrainingSidebar(QWidget):
         if not available:
             return True
         if not data_list:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "No Data",
                 "Please load and preprocess data first.",
@@ -891,7 +891,7 @@ class TrainingSidebar(QWidget):
         if not available:
             return True
         if epoch_data is None:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "No EEG Epochs",
                 "Create EEG epochs in the Preprocess panel first.",
@@ -905,7 +905,7 @@ class TrainingSidebar(QWidget):
         if not available:
             return True
         if is_training:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Training Running",
                 "Cannot change data splitting while training is running.",
@@ -926,7 +926,7 @@ class TrainingSidebar(QWidget):
         if generate_capability is None or generate_capability.enabled:
             return False
 
-        QMessageBox.warning(
+        show_warning(
             self,
             "Data Splitting Blocked",
             blocked_reason(
@@ -942,7 +942,7 @@ class TrainingSidebar(QWidget):
         expected_publication_generation: int | None = None,
     ) -> DatasetSplitDialogBinding | None:
         if expected_publication_generation is None:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Data Splitting Blocked",
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -973,7 +973,7 @@ class TrainingSidebar(QWidget):
                     "after_generation",
                 )
             )
-            QMessageBox.warning(
+            show_warning(
                 self,
                 (
                     "Review Data Splitting Again"
@@ -984,14 +984,14 @@ class TrainingSidebar(QWidget):
             )
             return None
         except (TypeError, ValueError):
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Data Splitting Blocked",
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
             )
             return None
         if binding is None or not binding.split_context.epoch_available:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Data Splitting Blocked",
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -1138,7 +1138,7 @@ class TrainingSidebar(QWidget):
         model_holder = win.get_result()
         if model_holder is None:
             message = "No model was selected."
-            QMessageBox.warning(self, "Model Selection", message)
+            show_warning(self, "Model Selection", message)
             return InteractionOutcome.failed(message)
         return model_holder
 
@@ -1265,7 +1265,7 @@ class TrainingSidebar(QWidget):
         option = win.get_result()
         if option is None:
             message = "No training settings were selected."
-            QMessageBox.warning(self, "Training Settings", message)
+            show_warning(self, "Training Settings", message)
             return InteractionOutcome.failed(message)
         device_getter = getattr(win, "get_device_value", None)
         device = device_getter() if callable(device_getter) else None
@@ -1646,7 +1646,7 @@ class TrainingSidebar(QWidget):
             **command_kwargs,
         )
         if result is None:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 blocked_title,
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -1655,14 +1655,14 @@ class TrainingSidebar(QWidget):
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
             )
         if is_stale_publication_result(result):
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Review Training Configuration Again",
                 result.message,
             )
             return InteractionOutcome.blocked(result.message)
         if result.failed:
-            QMessageBox.critical(
+            show_error(
                 self,
                 failed_title,
                 result.message,
@@ -1702,7 +1702,7 @@ class TrainingSidebar(QWidget):
                 **command_kwargs,
             )
         if result is None:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Training Settings Blocked",
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -1711,7 +1711,7 @@ class TrainingSidebar(QWidget):
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
             )
         if is_stale_publication_result(result):
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Review Training Configuration Again",
                 result.message,
@@ -1723,7 +1723,7 @@ class TrainingSidebar(QWidget):
                 if result.recoverable
                 else "Training Settings Failed"
             )
-            QMessageBox.warning(
+            show_warning(
                 self,
                 title,
                 result.message,
@@ -1740,7 +1740,7 @@ class TrainingSidebar(QWidget):
         try:
             review_context = self._command_review_context(CommandName.TRAIN)
             if review_context is None and self._has_product_publication_context():
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Start Training Blocked",
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -1752,14 +1752,14 @@ class TrainingSidebar(QWidget):
                 else self._command_capability(CommandName.TRAIN)
             )
             if review_context is not None and train_capability is None:
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Start Training Blocked",
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
             if train_capability is not None and not train_capability.enabled:
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Training Not Ready",
                     blocked_reason(
@@ -1780,7 +1780,6 @@ class TrainingSidebar(QWidget):
             present_unexpected_error(
                 self,
                 UnexpectedErrorContext.TRAINING_START,
-                message_box=QMessageBox,
             )
 
     def _dispatch_start_training(
@@ -1811,7 +1810,6 @@ class TrainingSidebar(QWidget):
                 self,
                 UnexpectedErrorContext.TRAINING_START,
                 error_info=error,
-                message_box=QMessageBox,
             )
 
         self._show_status("Preparing data split")
@@ -1841,7 +1839,7 @@ class TrainingSidebar(QWidget):
             )
         if started:
             return True
-        QMessageBox.warning(
+        show_warning(
             self,
             "Start Training Blocked",
             CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -1863,7 +1861,7 @@ class TrainingSidebar(QWidget):
 
         if is_stale_publication_result(result):
             self._show_status("Training start changed · Review settings again")
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Review Training Again",
                 result.message,
@@ -1900,7 +1898,7 @@ class TrainingSidebar(QWidget):
                 challenge = preflight.challenge
                 if challenge is None:
                     self._show_status("Training could not start · Recheck resources")
-                    QMessageBox.critical(
+                    show_error(
                         self,
                         "Training Resource Check",
                         "XBrainLab could not verify this resource warning. "
@@ -1946,7 +1944,7 @@ class TrainingSidebar(QWidget):
             return
 
         self._show_status("Training could not start · Check settings")
-        QMessageBox.critical(
+        show_error(
             self,
             "Error",
             f"Failed to start training: {result.message}",
@@ -1982,7 +1980,7 @@ class TrainingSidebar(QWidget):
             return
         stop_capability = self._command_capability(CommandName.STOP_TRAINING)
         if stop_capability is not None and not stop_capability.enabled:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Stop Training Blocked",
                 blocked_reason(stop_capability, "No training run is active."),
@@ -1999,14 +1997,14 @@ class TrainingSidebar(QWidget):
 
         result = self._execute_action(StopTrainingCommand())
         if result is None:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Stop Training Blocked",
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
             )
             return
         elif result.failed:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Warning",
                 f"Failed to stop training: {result.message}",
@@ -2022,7 +2020,7 @@ class TrainingSidebar(QWidget):
         try:
             publication = self._application_publication()
             if publication is None and self._has_product_publication_context():
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Clear History Blocked",
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -2037,14 +2035,14 @@ class TrainingSidebar(QWidget):
                 else self._command_capability(CommandName.CLEAR_TRAINING_HISTORY)
             )
             if clear_capability is None and self._has_product_publication_context():
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Clear History Blocked",
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
             if clear_capability is not None and not clear_capability.enabled:
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Clear History Blocked",
                     blocked_reason(
@@ -2061,7 +2059,7 @@ class TrainingSidebar(QWidget):
                 if not available:
                     return
                 if is_training:
-                    QMessageBox.warning(
+                    show_warning(
                         self,
                         "Warning",
                         "Cannot clear history while training is running.",
@@ -2084,21 +2082,21 @@ class TrainingSidebar(QWidget):
                 ),
             )
             if result is None:
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Clear History Blocked",
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
             elif is_stale_publication_result(result):
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Review Clear History Again",
                     result.message,
                 )
                 return
             elif result.failed:
-                QMessageBox.warning(self, "Warning", result.message)
+                show_warning(self, "Warning", result.message)
                 return
 
             self._show_status("Training history cleared")
@@ -2106,7 +2104,6 @@ class TrainingSidebar(QWidget):
             present_unexpected_error(
                 self,
                 UnexpectedErrorContext.TRAINING_HISTORY_CLEAR,
-                message_box=QMessageBox,
             )
 
     def on_training_started(self, *, refresh_ready: bool = True):

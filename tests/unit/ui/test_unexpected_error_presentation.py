@@ -132,7 +132,7 @@ def test_training_start_unexpected_exception_is_private_and_actionable(
 ) -> None:
     sidebar = _training_widget(qtbot)
     critical = MagicMock()
-    monkeypatch.setattr(training_sidebar.QMessageBox, "critical", critical)
+    monkeypatch.setattr(training_sidebar, "show_error", critical)
     monkeypatch.setattr(
         training_sidebar,
         "get_command_capability",
@@ -159,7 +159,7 @@ def test_training_start_async_exception_is_private_and_logged(
 ) -> None:
     sidebar = _training_widget(qtbot)
     critical = MagicMock()
-    monkeypatch.setattr(training_sidebar.QMessageBox, "critical", critical)
+    monkeypatch.setattr(training_sidebar, "show_error", critical)
     monkeypatch.setattr(
         training_sidebar,
         "get_command_capability",
@@ -334,7 +334,7 @@ def test_preprocess_async_exception_is_private_and_logged(
 ) -> None:
     sidebar = _preprocess_widget(qtbot)
     critical = MagicMock()
-    monkeypatch.setattr(preprocess_sidebar.QMessageBox, "critical", critical)
+    monkeypatch.setattr(preprocess_sidebar, "show_error", critical)
 
     def dispatch(_context, _command, *, on_error, **_kwargs) -> bool:
         on_error(
@@ -377,7 +377,7 @@ def test_preprocess_sync_exception_is_private_and_returns_stable_outcome(
 ) -> None:
     sidebar = _preprocess_widget(qtbot)
     critical = MagicMock()
-    monkeypatch.setattr(preprocess_sidebar.QMessageBox, "critical", critical)
+    monkeypatch.setattr(preprocess_sidebar, "show_error", critical)
     monkeypatch.setattr(
         preprocess_sidebar,
         "execute_application_command_async",
@@ -420,7 +420,7 @@ def test_reset_preprocess_sync_exception_is_private(
 ) -> None:
     sidebar = _preprocess_widget(qtbot)
     critical = MagicMock()
-    monkeypatch.setattr(preprocess_sidebar.QMessageBox, "critical", critical)
+    monkeypatch.setattr(preprocess_sidebar, "show_error", critical)
     monkeypatch.setattr(
         preprocess_sidebar,
         "get_application_view_publication",
@@ -441,9 +441,9 @@ def test_reset_preprocess_sync_exception_is_private(
         ),
     )
     monkeypatch.setattr(
-        preprocess_sidebar.QMessageBox,
-        "question",
-        lambda *_args: preprocess_sidebar.QMessageBox.StandardButton.Yes,
+        preprocess_sidebar,
+        "ask_confirmation",
+        lambda *_args: True,
     )
     monkeypatch.setattr(
         preprocess_sidebar,
@@ -588,7 +588,7 @@ def test_training_settings_unexpected_exception_uses_stable_warning(
     dialog = training_setting_dialog.TrainingSettingDialog(None, controller)
     qtbot.addWidget(dialog)
     warning = MagicMock()
-    monkeypatch.setattr(training_setting_dialog.QMessageBox, "warning", warning)
+    monkeypatch.setattr(training_setting_dialog, "show_warning", warning)
     monkeypatch.setattr(
         training_setting_dialog,
         "TrainingOption",
@@ -737,7 +737,7 @@ def test_structured_training_failure_keeps_backend_recovery_message(
 ) -> None:
     sidebar = _training_widget(qtbot)
     critical = MagicMock()
-    monkeypatch.setattr(training_sidebar.QMessageBox, "critical", critical)
+    monkeypatch.setattr(training_sidebar, "show_error", critical)
     recovery_message = "Reduce the batch size to 16, then start training again."
     result = SimpleNamespace(
         failed=True,

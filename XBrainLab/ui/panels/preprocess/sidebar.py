@@ -39,8 +39,12 @@ from XBrainLab.ui.application_capabilities import (
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
-from XBrainLab.ui.components.modal_message_box import ModalMessageBox as QMessageBox
-from XBrainLab.ui.components.modal_presentation import AlertSeverity, ask_confirmation
+from XBrainLab.ui.components.modal_presentation import (
+    AlertSeverity,
+    ask_confirmation,
+    show_error,
+    show_warning,
+)
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
@@ -336,7 +340,7 @@ class PreprocessSidebar(QWidget):
                 return self._compatibility_preprocessed_channel_names(
                     "Re-reference Blocked",
                 )
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Re-reference Blocked",
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -347,7 +351,7 @@ class PreprocessSidebar(QWidget):
             return None
         rows = getattr(result, "diagnostics", {}).get("preprocessed_rows")
         if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Re-reference Blocked",
                 "Preprocessed channel information is unavailable.",
@@ -357,7 +361,7 @@ class PreprocessSidebar(QWidget):
         if not isinstance(channels, list) or any(
             not isinstance(channel, str) for channel in channels
         ):
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Re-reference Blocked",
                 "Preprocessed channel information is unavailable.",
@@ -373,7 +377,7 @@ class PreprocessSidebar(QWidget):
             failure_title,
         )
         if not data_list:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 failure_title,
                 "Preprocessed channel information is unavailable.",
@@ -382,7 +386,7 @@ class PreprocessSidebar(QWidget):
         try:
             channels = list(data_list[0].get_mne().ch_names)
         except (AttributeError, TypeError):
-            QMessageBox.warning(
+            show_warning(
                 self,
                 failure_title,
                 "Preprocessed channel information is unavailable.",
@@ -401,7 +405,7 @@ class PreprocessSidebar(QWidget):
                 self.controller.get_preprocessed_data_list,
             )
         except ControllerCompatibilityUnavailableError:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 failure_title,
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -561,7 +565,7 @@ class PreprocessSidebar(QWidget):
             return False
         preprocess_capability = get_command_capability(self, CommandName.PREPROCESS)
         if preprocess_capability is not None and not preprocess_capability.enabled:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Action Blocked",
                 blocked_reason(
@@ -572,7 +576,7 @@ class PreprocessSidebar(QWidget):
             return True
         if preprocess_capability is None:
             if has_real_application_context(self):
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Action Blocked",
                     _PREPROCESS_AVAILABILITY_UNAVAILABLE,
@@ -588,7 +592,7 @@ class PreprocessSidebar(QWidget):
             if not fallback_ok:
                 return True
             if is_epoched:
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Action Blocked",
                     "Preprocessing is locked because EEG epochs were created.\n"
@@ -608,7 +612,7 @@ class PreprocessSidebar(QWidget):
         """
         preprocess_capability = get_command_capability(self, CommandName.PREPROCESS)
         if preprocess_capability is not None and not preprocess_capability.enabled:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Warning",
                 blocked_reason(
@@ -619,14 +623,14 @@ class PreprocessSidebar(QWidget):
             return False
         if preprocess_capability is None:
             if has_real_application_context(self):
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Warning",
                     _PREPROCESS_AVAILABILITY_UNAVAILABLE,
                 )
                 return False
             if not self.controller:
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Warning",
                     "No data loaded. Please import data first.",
@@ -639,7 +643,7 @@ class PreprocessSidebar(QWidget):
             if not fallback_ok:
                 return False
             if not has_data:
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Warning",
                     "No data loaded. Please import data first.",
@@ -653,7 +657,7 @@ class PreprocessSidebar(QWidget):
         logger.info(message)
 
     def _show_command_failure(self, title: str, message: str) -> None:
-        QMessageBox.critical(self, title, message)
+        show_error(self, title, message)
 
     def _show_epoch_success(self, result) -> None:
         message = "EEG epochs created. Preprocessing is now locked."
@@ -674,7 +678,7 @@ class PreprocessSidebar(QWidget):
         try:
             return True, run_controller_compatibility_call(self, fallback)
         except ControllerCompatibilityUnavailableError as exc:
-            QMessageBox.warning(self, blocked_title, str(exc))
+            show_warning(self, blocked_title, str(exc))
             return False, None
 
     def _begin_preprocess_review(
@@ -685,7 +689,7 @@ class PreprocessSidebar(QWidget):
         review_context = get_command_review_context(self, CommandName.PREPROCESS)
         if review_context is None:
             if has_real_application_context(self):
-                QMessageBox.warning(
+                show_warning(
                     self,
                     blocked_title,
                     _PREPROCESS_AVAILABILITY_UNAVAILABLE,
@@ -697,14 +701,14 @@ class PreprocessSidebar(QWidget):
 
         capability = getattr(review_context, "capability", None)
         if capability is None:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 blocked_title,
                 _PREPROCESS_AVAILABILITY_UNAVAILABLE,
             )
             return review_context, False
         if not capability.enabled:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 blocked_title,
                 blocked_reason(
@@ -729,7 +733,7 @@ class PreprocessSidebar(QWidget):
 
         def _handle_result(result) -> InteractionOutcome:
             if is_stale_publication_result(result):
-                QMessageBox.warning(
+                show_warning(
                     self,
                     stale_review_title or f"Review {blocked_title} Again",
                     result.message,
@@ -770,7 +774,7 @@ class PreprocessSidebar(QWidget):
             return InteractionOutcome.accepted("Preprocessing command was scheduled.")
 
         if has_real_application_context(self):
-            QMessageBox.warning(
+            show_warning(
                 self,
                 blocked_title,
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -786,7 +790,7 @@ class PreprocessSidebar(QWidget):
                 expected_publication_generation=expected_publication_generation,
             )
             if result is None:
-                QMessageBox.warning(
+                show_warning(
                     self,
                     blocked_title,
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -1000,7 +1004,7 @@ class PreprocessSidebar(QWidget):
             dialog_context.require_usable()
         except PreconditionError as exc:
             message = str(exc)
-            QMessageBox.warning(self, "Create EEG Epochs Blocked", message)
+            show_warning(self, "Create EEG Epochs Blocked", message)
             return InteractionOutcome.blocked(message)
 
         epoch_capability = dialog_context.capability
@@ -1009,14 +1013,14 @@ class PreprocessSidebar(QWidget):
                 "Creating EEG epochs is unavailable because workflow state "
                 "could not be verified."
             )
-            QMessageBox.warning(self, "Create EEG Epochs Blocked", message)
+            show_warning(self, "Create EEG Epochs Blocked", message)
             return InteractionOutcome.blocked(message)
         if not epoch_capability.enabled:
             message = blocked_reason(
                 epoch_capability,
                 "Creating EEG epochs is not available.",
             )
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Create EEG Epochs Blocked",
                 message,
@@ -1027,7 +1031,7 @@ class PreprocessSidebar(QWidget):
         epoch_setup = dialog_context.epoch_setup
         if epoch_handoff is None or epoch_setup is None:
             message = "EEG epoch setup is unavailable."
-            QMessageBox.warning(self, "Create EEG Epochs Blocked", message)
+            show_warning(self, "Create EEG Epochs Blocked", message)
             return InteractionOutcome.blocked(message)
         dialog_kwargs: dict[str, Any] = {
             "epoch_context": dict(epoch_setup),
@@ -1064,7 +1068,7 @@ class PreprocessSidebar(QWidget):
         """Prompt the user and reset all preprocessing steps to the original data."""
         publication = get_application_view_publication(self)
         if publication is None and has_real_application_context(self):
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Reset Blocked",
                 _RESET_PREPROCESS_AVAILABILITY_UNAVAILABLE,
@@ -1076,14 +1080,14 @@ class PreprocessSidebar(QWidget):
             else get_command_capability(self, CommandName.RESET_PREPROCESS)
         )
         if reset_capability is None and has_real_application_context(self):
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Reset Blocked",
                 _RESET_PREPROCESS_AVAILABILITY_UNAVAILABLE,
             )
             return
         if reset_capability is not None and not reset_capability.enabled:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Reset Blocked",
                 blocked_reason(
@@ -1120,14 +1124,14 @@ class PreprocessSidebar(QWidget):
                 ),
             )
             if result is None:
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Reset Blocked",
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
             elif is_stale_publication_result(result):
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Review Reset Preprocessing Again",
                     result.message,
