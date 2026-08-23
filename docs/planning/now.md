@@ -1,136 +1,102 @@
 # XBrainLab Now
 
-最後更新：`2026-08-22`
+最後更新：`2026-08-23`
 
 ## 目前焦點
 
-GUI polish integration的product implementation、focused validation與subagent gate已完成。前三個
-canonical handoff checkpoint揭露的typed boundary、private renderer all-class compatibility與臨時
-worktree editable-environment問題都已收旂。目前只等待新clean exact source的replacement
-handoff；完成後交付Windows／Linux真人手測，PR applicable non-skipped checks全部
-success後才能merge。
+`integration/gui-polish-v1` 的前一個 exact-source handoff 已通過，但其後 Windows／Linux 真人手測
+揭露 Data Import cancel、Evaluation operation presentation、Saliency result admission／controls、2D／3D
+layout 與 warning modal consistency 問題。Source 將再次修改，因此前一份 manual acceptance 與 handoff
+evidence 均已失效；本 slice 完成前不得宣稱 handoff-ready 或可 merge。
 
-本candidate整合三個已取得明確UI授權、可獨立回退的checkpoint：
+本 slice 已取得明確 UI 修改授權。目標是在同一 branch 以多個可回退 commit 完成所有已列出的 GUI
+缺陷、全面收斂 user-visible modal presentation，經 focused tests、非作者 subagent gate 與 canonical
+handoff 後一次性交付真人手測。
 
-- XBrainLab-styled Modal presentation foundation：第一批只遷移Model Settings、VRAM warning與
-  Local Runtime first-run。Caller仍決定copy、recovery與mutation；Cancel是default、Escape reject，
-  destructive confirm必須explicit accept。
-- Data Import loading presentation：使用單一presentation session投影既有backend operation，移除
-  admission／discovery內部術語與重複0–100；cancel、late-callback fence、rollback與Apply-cancel
-  exact-review reopen仍由既有ApplicationService／OwnedWork owner決定。
-- Saliency readability：2D views在共享色階下支援`All classes`與`Single class`，class selection使用
-  canonical key；Map提供必要的垂直scroll與detail zoom／pan／reset，colorbar不得覆蓋plot或sidebar。
-  3D controls位於Qt layout，時間只稱`Epoch time (s)`；沒有reviewed anchor DTO時不顯示event marker。
+## 問題與 observable outcome
 
-## Claim boundary
+### Import 與 operation lifecycle
 
-- 不宣稱所有native warning dialogs都已遷移；其餘call sites留給後續bounded product slice。
-- 不改Data Interpretation、BIDS、label、event或loader semantics；profiling只比較同process中的first／
-  repeat fresh-service pass，不控制OS page cache，也不支持效能預算或cache／hash／loader重構結論。
-- `All classes`是多個class-specific plots的同頁比較，不是跨class數學aggregate。
-- Saliency不代表科學有效性、brain source localisation或因果；offscreen evidence不代表Windows native
-  focus／DPI或interactive 3D acceptance。
+- `Confirm and Import` 後按橘色 `Cancel Import`，重新開啟 Review 必須保留已確認 class、label source 與
+  其他 review choices；產品資料仍未 mutation。Review 頁面的灰色 Cancel 仍只丟棄未確認編輯。
+- Evaluation 的 detached render 不是 user-owned workflow，不顯示橘色 `Cancel Evaluation`；replacement、
+  navigation、close 與 shutdown 仍可取消並完整 cleanup。
 
-## Complexity與ownership
+### Saliency publication 與 controls
 
-整合相對`main`為20個production files、`+963/-266/net +697`，觸發跨surface complexity review但未新增
-authoritative owner。Deletion／reuse包括raw first-run QDialog與第一批QMessageBox construction、第二個
-Data Import polling timer與重複loading fields、PyVista slider／checkbox／text overlays。Backend仍擁有
-command、publication、cancel、rollback與saliency data；UI只擁有presentation與native canvas lifecycle。
+- Evaluation-admitted Fold Set 必須立即列出；尚未計算 Saliency 的 Fold Set 顯示明確 Compute prompt，
+  不得借用舊 Fold 圖。重新訓練後自動選最新 Fold Set；舊結果仍可手動選取。
+- `Saliency view` 與 `True class` 合併成單一 `Saliency:` combo，item data 使用 backend class key。
+  `All classes` 不提供單一 tile zoom；點 tile 進入該 class detail。3D 收到 All 時自動選第一個可用 class。
+- controls 依可用寬度排成一至三列；順序永遠是 `Normalize` 再 `Absolute`。Spectrogram 隱藏 Absolute
+  時不得保留空 slot；非負 method 的 Absolute 仍顯示 disabled 與原因 tooltip。
+- Run option 移除 `(Summary)`；2D detail 使用緊湊 `Reset zoom`，All classes 不顯示 reset。
 
-## Candidate validation與人工驗收
+### Visualization
 
-Focused suites、Ruff、format、diff check、MkDocs strict及clean exact-source Visualization walkthrough已
-通過。Public-fixture cases在獨立worktree缺資料時只記為skip，不能替代canonical source-diverse dataset gate。
-`ab52ebb2` handoff在完成identity／Ruff後停於Basedpyright：17個new diagnostics只來自本次
-ModalAlert Qt button Optional、Saliency Matplotlib dynamic attributes／mouse event typing、Visualization
-widget dispatch與optional cancel binding；完整regression與後續gate未執行。
+- Spectrogram 移除 `Attribution magnitude spectrogram` suptitle，保留 class title 與 colorbar。
+- 3D 只保留 top-level class selector；canvas 左下放 `Electrodes`、`Head surface`、`Reset view`，
+  Epoch time slider 位於圖下，右上只有一個 orientation display。
+- `Mean over ...` 不作 visible copy，只保留 tooltip／accessible description。
+- 一個 accepted terminal publication 只允許一次 3D scene update／commit。
 
-`1d9a5d04` 的direct analyzer雖為0 error，replacement recorded gate仍在sanitized environment辨識出13個
-new diagnostics：Matplotlib callback需要接受base Event、axis limit需收斂成built-in float，另有窄幅
-PyVista actor／scalar-bar external typing seam。這些仍屬同一typed-boundary repair；不得更新baseline或加入
-ignore來放行。
-`ac85437c` 的recorded Basedpyright已通過；完整regression其後揭露兩類checkpoint：(a) 三個舊private
-Topo／Spectrogram renderer tests未帶新增的class display參數；(b) 臨時worktree借用main editable venv，
-11個scripts tests被active-checkout guard正確阻擋。前者以等同既有all-class行為的default arguments收斂；
-後者只用lock-exact worktree Poetry sync修正執行環境，不修改或放寬checkout guard。
-`1640d683` replacement handoff通過static／architecture後，complete regression在scripts shard揭露
-三個測試環境contract：兩個capture tests觸發確定性download-failure alert卻未明確interaction
-fixture；一個missing-fixture test沒有隔離handoff提供的`XBRAINLAB_DATA_DIR`。只在這三個
-tests明確declare modal與空cache環境，不變更product modal、public fixture resolver或runner policy。
-這三個red nodes已在handoff同款`XBRAINLAB_DATA_DIR`環境下通過；Modal／Data Import／Saliency
-focused behavior suites為`407 passed`，authoritative scripts shard為`1155 passed`，兩個非重疊
-subagent closure gate無新blocker／major。Saliency的舊capture不屬於final integration SHA，因此不用它
-作為candidate evidence；由final canonical visualization gate重產exact-source artifact。
-final handoff的`chatpanel-dpi`進一步暴露standalone capture仍patch舊`QMessageBox.critical`，
-未隔離新`show_alert`，因此在download-failure evidence卡住至180秒timeout。Pytest不得以
-`auto_accept_modals`掩蓋此問題；capture script改為明確patch已遷移的presentation seam，原測試維持
-unexpected-modal fail-fast。不改product modal或DPI gate timeout／artifact policy。
-原三個red nodes在此fail-fast設定下再次`3 passed`，standalone ChatPanel DPI gate的三個scale
-subprocess全部完成並在22秒內通過；Ruff、format與Basedpyright無新diagnostic。
-`25335fe1` handoff的unit UI components inner shard在約200 nodes後單次超過1200秒；其他
-2195個UI nodes已通過，telemetry顯示UI shard peak RSS約1.7 GiB且無OOM。可疑node、前後檔案群與
-完整components selector加正式coverage皆無法重現，後者為`471 passed`、79秒。因此不變更
-product／test semantics、timeout或runner topology；允許一次新clean SHA的replacement，同類timeout
-再現即停止並另門runner reliability slice。
-replacement handoff的complete regression已通過，但`visualization-render`在完成四張截圖、JSON、
-Markdown與MainWindow close後以native `-11`終止。同argv／Qt／MNE環境單獨執行無法
-重現且exit 0，但capture source確實在`window.close()`後立即`app.quit()`，沒有等待既有
-`shutdown_completed`或在QApplication存活時drain native wrappers。只修正capture／evidence owner：
-bounded wait typed clean-shutdown snapshot、驗證owned workers／subprocesses為零、使用既有Qt drain helper。
-Product MainWindow／renderer不變，validator必須fail closed拒絕缺少或不潔淨的shutdown evidence。
-capture修正後focused validator為`64 passed`；同Qt／MNE環境的真MainWindow walkthrough在約8秒內
-exit 0，四個render皆通過，typed shutdown snapshot記錄application closed、idle、worker/subprocess為零、
-視窗不可見且無uncaught exception。Ruff、format與diff check通過；現有capture腳本其他區段的13個
-Optional basedpyright diagnostics不屬本次shutdown diff，留給其原owner，不在closure擴修。
-exact `e0917959` replacement handoff的complete regression、Visualization clean shutdown與native lanes
-皆通過；最後由`real-data-interpretation-training`以2個disallowed skip fail closed。兩個必要fixture
-實際存在於`XBRAINLAB_DATA_DIR/datasets/public-fixtures`，但該單一test檔仍硬編碼空的
-`tests/fixtures/data/public`，與其餘public-data gates使用的canonical resolver不一致。只修正test/evidence
-routing，保留strict zero-skip policy與三條真資料workflow；不下載、不改產品data semantics。
-修正後同一required-pytest observer實際回報`4 passed`、`executed=4`、`skipped=0`、`exit_code=0`；
-包含canonical-root regression、Graz external labels完整訓練、MNE-BIDS epoch/split readiness與PhysioNet
-internal events完整訓練。Ruff、format與diff check通過。
-`dc2b71f7` exact handoff再次通過complete regression、Visualization/native與上述real-data gate，下一個
-`wizard-format-matrix`由同一root cause留下的1個hardcoded repo-local BIDS path skip而fail closed。全體
-strict handoff selectors掃描顯示只剩該檔未用canonical resolver；`required-public-io`與其餘strict tests
-已收斂。將wizard matrix改用同一resolver後，先單獨跑wizard與required-public-io兩個相鄰strict gates，
-兩者都須all executed/pass、零skip，再重建exact dossier；不放寬任何outcome policy。
-Focused結果為wizard `10 passed`、required-public-io `39 passed`，兩者皆0 skip／xfail／deselect且
-observer exit 0；後者實際涵蓋public formats、BIDS與cross-source training。Ruff、format與diff check
-通過。Behavior gates本身會在canonical root退化時skip並fail closed，故不另增source-string guard。
-`991579e1` exact handoff已讓complete regression、Visualization clean shutdown、native與三個strict
-public-data gates連續通過；最後只因`ui-visual-baseline`正確偵測`panel-visualization.png`的2.03%漂移
-而fail closed。舊／新圖人工比對確認差異只包含已核准的Saliency view／True class controls新增與重排，
-其餘shell、empty-state、summary/configuration未變。只更新該一張canonical reference，其他baseline不動；
-先用同capture驗證exact inventory與零drift，再提交最後candidate。
-更新reference後native focused capture已證明7張artifact為max mean diff 0／changed 0%，但成功訊息後以
-native 139終止。`capture_ui_baseline.py`仍在最後一張圖後直接`window.close(); app.quit()`，沒有等待
-既有`shutdown_completed`或drain Qt native wrappers，與已修復的Visualization capture為同一evidence
-lifecycle defect。只修dev capture：所有capture terminal先走bounded typed shutdown，驗證idle／worker／
-subprocess為零，event loop返回後使用既有`drain_qt_runtime_after_event_loop`；evidence validator拒絕缺漏或
-不潔淨snapshot。MainWindow、renderer與產品UI不變。
-修正後unit regression為`9 passed`；Ruff、format、Basedpyright與diff check皆綠。Native Xvfb capture
-產出7張完全相符的reference（max mean diff 0／changed 0%），typed snapshot為application closed、idle、
-worker/subprocess 0、window不可見、無timeout，process exit 0；同一manifest validate-only亦通過。
+### 全站 modal presentation
 
-下一步固定為：
+- 同步 main 後重新盤點 Dataset、Preprocess、Training、Evaluation、Visualization、Assistant 與 Main Window
+  的 warning／critical／information／confirmation。所有 blocking modal 最終必須走既有
+  `modal_presentation`，production UI 不再直接使用 raw `QMessageBox`。
+- 共用 modal 使用內容驅動高度、compact spacing、可選取且可換行的文字；長訊息在 bounded viewport
+  捲動。Warning／Error／Information 使用 orange／red／blue severity。
+- confirmation 的 Cancel／安全選項為 default，Escape 一律安全 reject。Resource receipt、destructive
+  command、external HTTPS link、shutdown Retry／Close 與 worker preview lifecycle 必須保留現有 command、
+  receipt、retry、cancel semantics。
+- Inline epoch validation、review footer、loading status、saliency canvas error 等仍留在 workflow context，
+  只校準 XBrainLab theme／spacing，不改成 modal。
 
-1. 凍結／push已通過baseline lifecycle與zero-drift focused evidence的最後SHA，執行exact-source
-   replacement handoff；同類post-artifact native abort再現即停止。
-2. 自動evidence完整後交付Windows／Linux手測：modal default／Escape／destructive action；single-file、
-   folder、BIDS review/cancel/retry且status不重複跑百分比；Saliency All／Single、long class／many channel、
-   zoom／pan／reset、3D class／epoch-time／camera controls與close lifecycle。
-3. 使用者明確確認final source產品行為正常並同意merge後才開PR；PR head、base與所有applicable checks
-   必須精確一致且completed/success。
+## Scope、non-goals 與 ownership
+
+- 不改 EEG interpretation、label、event、loader、training、evaluation 或 saliency 科學語意。
+- 不自動 compute Saliency；既有 explicit command 仍負責所有 finished runs。
+- 不新增 authoritative owner、state machine、receipt、compatibility path 或 public command。
+- Application Service／workflow coordinator 繼續擁有 admission、mutation、publication 與 async lifecycle；
+  modal component 只擁有 presentation。
+- Deletion／reuse first：移除 raw QMessageBox helpers、第二套 3D selector、duplicate 3D dispatch、
+  Evaluation visible cancel presenter、分離的 Saliency view/class controls，以及 hidden Absolute retained size。
+- 預估 production diff `+350/-450/net -100`，但會超過 8 個 production files；依 workflow 拆 commit，
+  每批由非作者 reviewer gate。若任一 coherent batch 淨增超過 300 production LOC 或總 production diff
+  超過 1,500 LOC，停止並重新做 complexity split，不以 abstraction 隱藏規模。
+
+## 修理順序
+
+1. Merge 最新 main，建立 compact modal foundation 與 stable raw-QMessageBox source guard。
+2. Dataset／Import：exact review reopen、dataset alerts／confirmations 與 async cancel tests。
+3. Evaluation／Saliency lifecycle：移除 detached-render cancel presentation，publish unavailable Fold choices，
+   對最新 uncomputed choice fail closed。
+4. Visualization：合併 selector、responsive controls、2D interaction、Spectrogram title、3D layout／single commit。
+5. Training／Preprocess／App／Chat：分批遷移 modal，保留 receipt、destructive、external-link 與 shutdown semantics。
+6. 非作者 subagent review、focused closure、canonical exact-source handoff，最後才交付真人手測。
+
+## Focused validation
+
+- Red／green tests：Cancel Import exact choices、無 visible Cancel Evaluation、Fold Set unavailable/Compute、
+  old result accessibility、single 3D commit、selector identity、All/detail zoom policy、Normalize→Absolute 三段 layout。
+- Modal component tests：severity、compact geometry、long text、safe default、Escape、destructive style；各 workflow
+  測試 receipt replay、cancel、retry、stale callback 與 shutdown fence。
+- 每批執行對應 unit／integration selectors、Ruff、format check 與 diff check；source guard 阻止 raw
+  QMessageBox 回流，但不限制 intentional inline status。
+- Final handoff 使用 `scripts/dev/handoff_gate_spec.py` 的唯一 registry；本 slice 涉及 import、training、
+  evaluation、visualization，canonical source-diverse dataset 與 native Qt／MNE gates 均 applicable。
+- 可見修改產出 exact-source screenshot／walkthrough。Offscreen 不取代 Windows native focus、Escape、DPI、
+  OpenGL／3D 與真人 acceptance。
 
 ## Stop conditions
 
-- 任一owner、command／publication identity、cancel／rollback或artifact identity改變；
-- modal destructive action無法accept，Cancel／Escape semantics改變或raw exception漏出；
-- Data Import出現假overall percentage、Cancel作用到stale operation、late dialog或partial commit；
-- All／Single切換不重繪、重名class選錯identity、colorbar不可見／疊圖或stale 3D controls可操作；
-- 新skip／xfail／deselect、native abort、leaked process、source identity不符、required artifact缺失，或
-  final check不是exact current head。
+- Cancel Import 無法恢復 exact review choices，或取消後 product data 已部分 mutation；
+- 未計算 Fold 顯示舊圖、自動啟動 Compute，或 stale callback 覆蓋較新 selection；
+- 一次 terminal publication 觸發多次 3D commit，或 close 後仍有 worker／native wrapper；
+- modal migration 改變 receipt、confirmation、retry、destructive 或 security semantics；
+- raw QMessageBox source guard、focused test、Ruff、type gate、canonical data gate、native walkthrough 或 exact
+  source identity 任一失敗；
+- final source 修改後沿用舊 handoff 或 manual acceptance。
 
-任一條件發生即停在checkpoint；不得以其他family已通過、provider outage、retry或人工目測掩蓋。
+任一條件發生即停在 checkpoint 修正；不得以其他 family 已通過、skip、retry 或人工目測掩蓋。
