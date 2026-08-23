@@ -6,9 +6,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Never
 
-from PyQt6.QtWidgets import QMessageBox
-
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.ui.components.modal_presentation import AlertSeverity, show_alert
 
 
 class _UnexpectedErrorSeverity(Enum):
@@ -257,27 +256,28 @@ def present_unexpected_error(
     context: UnexpectedErrorContext,
     *,
     error_info: object | None = None,
-    message_box: Any = QMessageBox,
+    message_box: Any | None = None,
     title: str | None = None,
 ) -> str:
     """Log technical details and show only stable recovery guidance."""
+    # Keep the legacy injection argument temporarily so workflow callers can
+    # migrate independently; visible presentation is always the shared shell.
+    del message_box
     presentation = context.value
     if error_info is None:
         _safe_logger_error(presentation.log_message, exc_info=True)
     else:
         _log_worker_error(presentation.log_message, error_info)
-    if presentation.severity is _UnexpectedErrorSeverity.WARNING:
-        message_box.warning(
-            parent,
-            title or presentation.title,
-            presentation.message,
-        )
-    else:
-        message_box.critical(
-            parent,
-            title or presentation.title,
-            presentation.message,
-        )
+    show_alert(
+        parent,
+        severity=(
+            AlertSeverity.WARNING
+            if presentation.severity is _UnexpectedErrorSeverity.WARNING
+            else AlertSeverity.CRITICAL
+        ),
+        title=title or presentation.title,
+        message=presentation.message,
+    )
     return presentation.message
 
 

@@ -18,7 +18,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -48,6 +47,7 @@ from XBrainLab.ui.application_capabilities import (
     ControllerCompatibilityUnavailableError,
     run_controller_compatibility_call,
 )
+from XBrainLab.ui.components.modal_message_box import ModalMessageBox as QMessageBox
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,

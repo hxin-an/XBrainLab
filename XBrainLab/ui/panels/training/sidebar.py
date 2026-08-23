@@ -9,10 +9,12 @@ from PyQt6.QtWidgets import (
     QApplication,
     QFrame,
     QGroupBox,
-    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
+)
+from PyQt6.QtWidgets import (
+    QMessageBox as QtMessageBox,
 )
 
 from XBrainLab.backend.application import (
@@ -72,6 +74,12 @@ from XBrainLab.ui.application_capabilities import (
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
+from XBrainLab.ui.components.modal_message_box import ModalMessageBox as QMessageBox
+from XBrainLab.ui.components.modal_presentation import (
+    AlertSeverity,
+    ask_confirmation,
+    show_alert,
+)
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
@@ -545,19 +553,14 @@ class TrainingSidebar(QWidget):
             return None
 
     def _show_training_resource_blocking_dialog(self, message: str) -> None:
-        dialog = QMessageBox(self)
-        dialog.setIcon(QMessageBox.Icon.Critical)
-        dialog.setWindowTitle("Training Resource Check")
-        dialog.setText("Training cannot start safely.")
-        dialog.setInformativeText(message)
-        adjust_button = dialog.addButton(
-            "Adjust Settings",
-            QMessageBox.ButtonRole.AcceptRole,
-        )
-        dialog.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
-        dialog.setDefaultButton(adjust_button)
-        dialog.exec()
-        if dialog.clickedButton() is adjust_button:
+        if ask_confirmation(
+            self,
+            severity=AlertSeverity.CRITICAL,
+            title="Training Resource Check",
+            message=f"Training cannot start safely.\n\n{message}",
+            confirm_text="Adjust Settings",
+            cancel_text="Cancel",
+        ):
             self.training_setting()
 
     def _training_resource_dialog_message(
@@ -790,14 +793,14 @@ class TrainingSidebar(QWidget):
         def _handle_generate_result(result) -> InteractionOutcome:
             if is_stale_publication_result(result):
                 self._show_message_box(
-                    QMessageBox.Icon.Warning,
+                    QtMessageBox.Icon.Warning,
                     "Review Data Splitting Again",
                     result.message,
                 )
                 return InteractionOutcome.blocked(result.message)
             if result.failed:
                 self._show_message_box(
-                    QMessageBox.Icon.Critical,
+                    QtMessageBox.Icon.Critical,
                     "Data Splitting Failed",
                     result.message,
                 )
@@ -853,20 +856,18 @@ class TrainingSidebar(QWidget):
 
     def _show_message_box(
         self,
-        icon: QMessageBox.Icon,
+        icon: QtMessageBox.Icon,
         title: str,
         text: str,
     ) -> None:
-        message = QMessageBox(self)
-        message.setIcon(icon)
-        message.setWindowTitle(title)
-        message.setText(text)
-        message.setStandardButtons(QMessageBox.StandardButton.Ok)
-        for button in message.buttons():
-            if isinstance(button, QPushButton):
-                button.setAutoDefault(False)
-                button.setDefault(False)
-        message.exec()
+        severity = (
+            AlertSeverity.CRITICAL
+            if icon is QtMessageBox.Icon.Critical
+            else AlertSeverity.WARNING
+            if icon is QtMessageBox.Icon.Warning
+            else AlertSeverity.INFORMATION
+        )
+        show_alert(self, severity=severity, title=title, message=text)
 
     def _compatibility_data_splitting_preflight_blocked(self) -> bool:
         available, data_list = self._compatibility_controller_value(
@@ -1885,15 +1886,17 @@ class TrainingSidebar(QWidget):
                     expected_publication_generation=(expected_publication_generation),
                 )
                 return
-            reply = QMessageBox.question(
+            if ask_confirmation(
                 self,
-                "Training Resource Check",
-                self._training_resource_dialog_message(preflight)
-                + "\n\nContinue starting training?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if reply == QMessageBox.StandardButton.Yes:
+                severity=AlertSeverity.WARNING,
+                title="Training Resource Check",
+                message=(
+                    self._training_resource_dialog_message(preflight)
+                    + "\n\nContinue starting training?"
+                ),
+                confirm_text="Continue",
+                cancel_text="Cancel",
+            ):
                 challenge = preflight.challenge
                 if challenge is None:
                     self._show_status("Training could not start · Recheck resources")
@@ -2064,14 +2067,15 @@ class TrainingSidebar(QWidget):
                         "Cannot clear history while training is running.",
                     )
                     return
-            reply = QMessageBox.question(
+            if not ask_confirmation(
                 self,
-                "Clear Training History",
-                "Clear all training history records? This cannot be undone.",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if reply == QMessageBox.StandardButton.No:
+                severity=AlertSeverity.WARNING,
+                title="Clear Training History",
+                message="Clear all training history records? This cannot be undone.",
+                confirm_text="Clear history",
+                cancel_text="Cancel",
+                destructive=True,
+            ):
                 return
             result = self._execute_action(
                 ClearTrainingHistoryCommand(confirmed=True),

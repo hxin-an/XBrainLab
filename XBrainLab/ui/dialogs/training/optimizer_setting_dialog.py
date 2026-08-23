@@ -12,7 +12,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QMessageBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -25,6 +24,7 @@ from XBrainLab.backend.training.utils import (
     instantiate_optimizer,
     parse_optimizer_param,
 )
+from XBrainLab.ui.components.modal_message_box import ModalMessageBox as QMessageBox
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
