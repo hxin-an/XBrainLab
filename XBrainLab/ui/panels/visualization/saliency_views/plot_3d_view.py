@@ -235,6 +235,7 @@ class Saliency3DPlotWidget(QWidget):
         self._post_training_saliency_status = PostTrainingSaliencyStatus.idle()
         self._selector_syncing = False
         self._saliency_scene: Saliency3D | None = None
+        self._active_scene_key: tuple[object, ...] | None = None
         self.init_ui()
 
     def set_post_training_saliency_status(
@@ -294,33 +295,48 @@ class Saliency3DPlotWidget(QWidget):
         class_layout.addStretch(1)
         self.class_controls.hide()
 
+        # Only the temporal selector belongs below the canvas.  Scene actions
+        # are overlay controls so they stay next to the 3-D object they alter.
         self.scene_controls = QWidget(self)
+        self.scene_controls.setObjectName("Saliency3DEpochTimeControls")
         scene_layout = QHBoxLayout(self.scene_controls)
         scene_layout.setContentsMargins(8, 0, 8, 0)
         scene_layout.addWidget(QLabel("Epoch time (s):", self.scene_controls))
         self.time_slider = QSlider(Qt.Orientation.Horizontal, self.scene_controls)
+        self.time_slider.setObjectName("Saliency3DEpochTimeSlider")
         self.time_slider.setRange(0, 1000)
         self.time_slider.valueChanged.connect(self._set_epoch_time)
         scene_layout.addWidget(self.time_slider, stretch=1)
-        self.electrodes_button = QPushButton("Electrodes", self.scene_controls)
-        self.electrodes_button.setCheckable(True)
-        self.electrodes_button.setChecked(True)
-        self.electrodes_button.toggled.connect(self._toggle_electrodes)
-        scene_layout.addWidget(self.electrodes_button)
-        self.head_button = QPushButton("Head surface", self.scene_controls)
-        self.head_button.setCheckable(True)
-        self.head_button.setChecked(True)
-        self.head_button.toggled.connect(self._toggle_head)
-        scene_layout.addWidget(self.head_button)
-        self.reset_camera_button = QPushButton("Reset view", self.scene_controls)
-        self.reset_camera_button.clicked.connect(self._reset_camera)
-        scene_layout.addWidget(self.reset_camera_button)
         self.scene_controls.hide()
 
         # Plot Area
         self.plot_container = QWidget()
         self.plot_layout = QVBoxLayout(self.plot_container)
         self.plot_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.scene_overlay = QWidget(self.plot_container)
+        self.scene_overlay.setObjectName("Saliency3DSceneOverlay")
+        self.scene_overlay.setStyleSheet("background: transparent;")
+        overlay_layout = QHBoxLayout(self.scene_overlay)
+        overlay_layout.setContentsMargins(0, 0, 0, 0)
+        overlay_layout.setSpacing(6)
+        self.electrodes_button = QPushButton("Electrodes", self.scene_overlay)
+        self.electrodes_button.setObjectName("Saliency3DElectrodesToggle")
+        self.electrodes_button.setCheckable(True)
+        self.electrodes_button.setChecked(True)
+        self.electrodes_button.toggled.connect(self._toggle_electrodes)
+        overlay_layout.addWidget(self.electrodes_button)
+        self.head_button = QPushButton("Head surface", self.scene_overlay)
+        self.head_button.setObjectName("Saliency3DHeadSurfaceToggle")
+        self.head_button.setCheckable(True)
+        self.head_button.setChecked(True)
+        self.head_button.toggled.connect(self._toggle_head)
+        overlay_layout.addWidget(self.head_button)
+        self.reset_camera_button = QPushButton("Reset view", self.scene_overlay)
+        self.reset_camera_button.setObjectName("Saliency3DResetView")
+        self.reset_camera_button.clicked.connect(self._reset_camera)
+        overlay_layout.addWidget(self.reset_camera_button)
+        self.scene_overlay.hide()
 
         # Initial Placeholder
         lbl = QLabel("Select a fold and method to visualize")
@@ -425,7 +441,9 @@ class Saliency3DPlotWidget(QWidget):
 
     def _clear_plot_widgets(self) -> bool:
         self._saliency_scene = None
+        self._active_scene_key = None
         self.scene_controls.hide()
+        self.scene_overlay.hide()
         plotter = self.plotter_widget
         delete_later: Callable[[], object] | None = None
         if plotter is not None:
@@ -481,6 +499,7 @@ class Saliency3DPlotWidget(QWidget):
 
     def invalidate_render_publication(self) -> None:
         """Reject every callback owned by an older application publication."""
+        self._active_scene_key = None
         self._invalidate_async_requests()
         self._clear_prepared_engine_cache()
 
@@ -585,11 +604,8 @@ class Saliency3DPlotWidget(QWidget):
                 self.show_error(message)
             return
         try:
-            request_id = self._invalidate_async_requests()
-            self._current_publication_generation = publication.generation
             data = publication.data
             method = data.method
-            self._current_plot_request = (publication, absolute)
             method_coverage = self._saliency_coverage
             if method_coverage is None or method_coverage.method != method:
                 self._sync_class_selector([], method=method)
@@ -618,6 +634,18 @@ class Saliency3DPlotWidget(QWidget):
                 )
                 return
 
+            scene_key = self._prepared_engine_cache_key(
+                publication,
+                selected_event,
+                absolute=absolute,
+            )
+            if scene_key == getattr(self, "_active_scene_key", None):
+                return
+
+            request_id = self._invalidate_async_requests()
+            self._current_publication_generation = publication.generation
+            self._current_plot_request = (publication, absolute)
+
             # Montage Check
             positions = data.channel_positions
             if positions is None or len(positions) == 0:
@@ -645,11 +673,8 @@ class Saliency3DPlotWidget(QWidget):
                 self.show_message(reason)
                 return
 
-            cache_key = self._prepared_engine_cache_key(
-                publication,
-                selected_event,
-                absolute=absolute,
-            )
+            cache_key = scene_key
+            self._active_scene_key = scene_key
             prepared = self._cached_prepared_engine(cache_key, publication)
             if prepared is not None:
                 self._show_prepared_engine(
@@ -1138,6 +1163,8 @@ class Saliency3DPlotWidget(QWidget):
             saliency.get_3d_head_plot()
             self._saliency_scene = saliency
             self.scene_controls.show()
+            self.scene_overlay.show()
+            self._position_scene_overlay()
         except Exception as e:
             logger.error("Error executing 3D plot: %s", e, exc_info=True)
             if not self._qt_object_deleted(self):
@@ -1167,6 +1194,23 @@ class Saliency3DPlotWidget(QWidget):
             reset = getattr(self.plotter_widget, "reset_camera", None)
             if callable(reset):
                 reset()
+
+    def resizeEvent(self, event: QEvent) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._position_scene_overlay()
+
+    def _position_scene_overlay(self) -> None:
+        """Keep scene actions inside the canvas at its lower-left edge."""
+        if self.scene_overlay.isHidden():
+            return
+        size = self.scene_overlay.sizeHint()
+        self.scene_overlay.setGeometry(
+            12,
+            max(12, self.plot_container.height() - size.height() - 12),
+            size.width(),
+            size.height(),
+        )
+        self.scene_overlay.raise_()
 
     @staticmethod
     def _qt_object_deleted(obj) -> bool:
