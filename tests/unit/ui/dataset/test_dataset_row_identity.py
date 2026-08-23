@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from PyQt6.QtCore import QPoint, Qt
-from PyQt6.QtWidgets import QMainWindow, QMessageBox
+from PyQt6.QtWidgets import QMainWindow
 
 from XBrainLab.backend.application.capabilities import CommandCapability
 from XBrainLab.backend.application.commands import (
@@ -177,8 +177,8 @@ def test_inline_metadata_edit_rejects_replaced_rendered_row(
     panel, current, mutations = rendered_dataset
     warnings: list[tuple[Any, ...]] = []
     monkeypatch.setattr(
-        panel_module.QMessageBox,
-        "warning",
+        panel_module,
+        "show_warning",
         lambda *args: warnings.append(args),
     )
     subject_item = panel.table.item(0, 1)
@@ -234,14 +234,19 @@ def test_context_menu_rejects_rows_reordered_while_menu_is_open(
     panel.table.selectRow(0)
     warnings: list[tuple[Any, ...]] = []
     monkeypatch.setattr(
-        actions.QMessageBox,
-        "warning",
+        actions,
+        "show_warning",
         lambda *args: warnings.append(args),
     )
     monkeypatch.setattr(
-        actions.QMessageBox,
-        "question",
-        lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes,
+        panel_module,
+        "show_warning",
+        lambda *args: warnings.append(args),
+    )
+    monkeypatch.setattr(
+        actions,
+        "ask_confirmation",
+        lambda *_args, **_kwargs: True,
     )
     monkeypatch.setattr(
         actions.QInputDialog,
@@ -291,12 +296,12 @@ def test_table_mutations_fail_before_prompt_without_product_review(
         ),
     )
     input_dialog = MagicMock(return_value=("", False))
-    confirmation = MagicMock(return_value=QMessageBox.StandardButton.No)
+    confirmation = MagicMock(return_value=False)
     warning = MagicMock()
     monkeypatch.setattr(actions, "get_command_review_context", lambda *_args: None)
     monkeypatch.setattr(actions.QInputDialog, "getText", input_dialog)
-    monkeypatch.setattr(actions.QMessageBox, "question", confirmation)
-    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+    monkeypatch.setattr(actions, "ask_confirmation", confirmation)
+    monkeypatch.setattr(actions, "show_warning", warning)
 
     if action_name == "metadata":
         handler._batch_set(selection, "Subject")
