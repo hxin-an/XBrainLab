@@ -325,6 +325,45 @@ def test_3d_engine_start_failure_releases_worker_and_allows_retry(
     show_error.assert_called_once()
 
 
+def test_failed_3d_engine_preparation_allows_retry_of_the_same_scene(
+    widget,
+    monkeypatch,
+):
+    """A failed preparation must not reserve its scene key indefinitely."""
+    publication = _render_publication(generation=13)
+    widget.set_saliency_coverage(
+        plot_3d_view.SaliencyMethodCoverageSnapshot(
+            method="Gradient",
+            available=True,
+            complete=True,
+            classes=[
+                plot_3d_view.SaliencyClassCoverageSnapshot(
+                    class_index=0,
+                    display_name="left",
+                    available=True,
+                ),
+            ],
+        )
+    )
+
+    monkeypatch.setattr(
+        Saliency3DPlotWidget,
+        "_interactive_3d_runtime_available",
+        staticmethod(lambda: (True, "")),
+    )
+    workers, pool, _ = _install_manual_workers(widget, monkeypatch)
+    widget.update_plot(publication, False)
+    workers[0].signals.error.emit((RuntimeError, RuntimeError("engine failed"), ""))
+    workers[0].signals.finished.emit()
+
+    assert widget._active_scene_key is None
+
+    widget.update_plot(publication, False)
+
+    assert pool.workers == workers
+    assert widget._engine_worker is workers[1]
+
+
 @pytest.mark.parametrize("failure_stage", ["constructor", "pool_start"])
 def test_3d_runtime_probe_start_failure_releases_worker_and_allows_retry(
     widget,
