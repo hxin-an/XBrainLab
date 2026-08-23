@@ -22,6 +22,7 @@ from XBrainLab.backend.application.state import (
     SaliencyMethodCoverageSnapshot,
 )
 from XBrainLab.ui.components.modal_presentation import AlertSeverity
+from XBrainLab.ui.components.user_error_presentation import UnexpectedErrorContext
 from XBrainLab.ui.interaction_outcome import InteractionOutcome, InteractionStatus
 
 
@@ -182,17 +183,17 @@ class TestDatasetActionHandler:
         )
         return h
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_import_data_locked(self, mock_mb, handler):
         handler.panel.controller = MagicMock()
         handler.panel.controller.is_locked.return_value = True
         outcome = handler.import_data()
 
         assert outcome.status is InteractionStatus.BLOCKED
-        mock_mb.warning.assert_called_once()
+        mock_mb.assert_called_once()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_import_data_no_files(self, mock_mb, mock_fd, handler):
         handler.panel.controller = MagicMock()
         handler.panel.controller.is_locked.return_value = False
@@ -203,7 +204,7 @@ class TestDatasetActionHandler:
         handler.panel.controller.import_files.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.present_unexpected_error")
     def test_import_data_exception_returns_failed(self, mock_mb, mock_fd, handler):
         handler.panel.controller = MagicMock()
         handler.panel.controller.is_locked.return_value = False
@@ -217,10 +218,13 @@ class TestDatasetActionHandler:
             outcome = handler.import_data()
 
         assert outcome.status is InteractionStatus.FAILED
-        mock_mb.critical.assert_called_once()
+        mock_mb.assert_called_once_with(
+            handler.panel,
+            UnexpectedErrorContext.DATA_IMPORT,
+        )
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_import_data_file_picker_does_not_hide_files(
         self,
         mock_mb,
@@ -241,7 +245,7 @@ class TestDatasetActionHandler:
         assert "*.VHDR" in filter_text
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_import_data_picker_starts_from_canonical_dataset_root(
         self,
         mock_mb,
@@ -431,7 +435,7 @@ class TestDatasetActionHandler:
         (("import_folder_source", "datasets"), ("import_bids_source", "datasets/bids")),
     )
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_directory_pickers_use_the_canonical_dataset_hierarchy(
         self,
         mock_mb,
@@ -455,7 +459,7 @@ class TestDatasetActionHandler:
         assert mock_fd.getExistingDirectory.call_args.args[2] == str(expected)
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_import_data_without_command_service_does_not_import_via_controller(
         self,
         mock_mb,
@@ -467,11 +471,11 @@ class TestDatasetActionHandler:
         mock_fd.getOpenFileNames.return_value = (["/a.set"], "")
         handler.import_data()
         handler.panel.controller.import_files.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Interpretation Blocked"
+        mock_mb.assert_called_once()
+        assert mock_mb.call_args.args[1] == "Interpretation Blocked"
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_import_data_service_load_success_does_not_fallback_to_controller(
         self,
         mock_mb,
@@ -503,7 +507,7 @@ class TestDatasetActionHandler:
         handler.panel.update_panel.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_import_data_refuses_real_study_direct_load_fallback(
         self,
         mock_mb,
@@ -531,20 +535,21 @@ class TestDatasetActionHandler:
                 "XBrainLab.ui.panels.dataset.actions.execute_application_command",
                 return_value=None,
             ) as mock_execute,
+            patch("XBrainLab.ui.panels.dataset.actions.show_error") as mock_error,
         ):
             handler.import_data()
 
         mock_execute.assert_not_called()
         handler.panel.controller.import_files.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Interpretation Blocked"
-        assert mock_mb.warning.call_args.args[2] == (
+        mock_mb.assert_called_once()
+        assert mock_mb.call_args.args[1] == "Interpretation Blocked"
+        assert mock_mb.call_args.args[2] == (
             "Data interpretation availability is unavailable right now."
         )
-        mock_mb.critical.assert_not_called()
+        mock_error.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_error")
     def test_import_data_does_not_bypass_interpretation_when_command_surface_exists(
         self,
         mock_mb,
@@ -579,7 +584,7 @@ class TestDatasetActionHandler:
 
         mock_execute.assert_not_called()
         handler.panel.controller.import_files.assert_not_called()
-        mock_mb.critical.assert_called_once_with(
+        mock_mb.assert_called_once_with(
             handler.panel,
             "Interpretation unavailable",
             "Data Interpretation command service is unavailable.",
@@ -587,7 +592,7 @@ class TestDatasetActionHandler:
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_import_data_real_study_uses_interpretation_commands(
         self,
         mock_mb,
@@ -657,7 +662,7 @@ class TestDatasetActionHandler:
         handler.panel.update_panel.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_import_data_real_study_does_not_sync_review_when_worker_unavailable(
         self,
         mock_mb,
@@ -695,9 +700,9 @@ class TestDatasetActionHandler:
             handler.import_data()
 
         mock_execute.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Interpretation Blocked"
-        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
+        mock_mb.assert_called_once()
+        assert mock_mb.call_args.args[1] == "Interpretation Blocked"
+        assert "could not safely complete" in mock_mb.call_args.args[2]
 
     def test_import_data_prefers_backend_scan_capability_over_stale_controller(
         self,
@@ -718,7 +723,7 @@ class TestDatasetActionHandler:
                     "Data interpretation review started."
                 ),
             ) as mock_interpret,
-            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
         ):
             mock_fd.getOpenFileNames.return_value = (
                 ["/tmp/sub-01_task-mi_raw.fif"],
@@ -732,7 +737,7 @@ class TestDatasetActionHandler:
             ["/tmp/sub-01_task-mi_raw.fif"],
             source_hint="file",
         )
-        mock_mb.warning.assert_not_called()
+        mock_mb.assert_not_called()
 
     def test_import_data_blocks_real_study_when_scan_capability_is_unavailable(
         self,
@@ -752,7 +757,7 @@ class TestDatasetActionHandler:
                 return_value=None,
             ),
             patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
-            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
         ):
             mock_fd.getOpenFileNames.return_value = ([], "")
             outcome = handler.import_data()
@@ -760,7 +765,7 @@ class TestDatasetActionHandler:
         handler.panel.controller.is_locked.assert_not_called()
         mock_fd.getOpenFileNames.assert_not_called()
         assert outcome.status is InteractionStatus.BLOCKED
-        mock_mb.warning.assert_called_once_with(
+        mock_mb.assert_called_once_with(
             handler.panel,
             "Interpretation Blocked",
             "Data interpretation availability is unavailable right now.",
@@ -768,7 +773,7 @@ class TestDatasetActionHandler:
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_import_folder_source_uses_folder_or_bids_root(
         self,
         mock_mb,
@@ -827,7 +832,7 @@ class TestDatasetActionHandler:
     @patch("XBrainLab.ui.panels.dataset.actions.BidsSubjectSelectionDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_import_bids_source_routes_bids_source_hint(
         self,
         mock_mb,
@@ -885,9 +890,12 @@ class TestDatasetActionHandler:
                 return _command_result(applied_interpretation={})
             raise AssertionError(f"unexpected command: {command!r}")
 
-        with patch(
-            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-            side_effect=fake_execute,
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                side_effect=fake_execute,
+            ),
+            patch("XBrainLab.ui.panels.dataset.actions.show_error") as mock_error,
         ):
             handler.import_bids_source()
 
@@ -897,7 +905,7 @@ class TestDatasetActionHandler:
         assert commands[1].source_path == "/tmp/bids-root"
         assert commands[1].source_hint == "bids"
         assert commands[1].choices["selected_bids_subjects"] == ["02"]
-        mock_mb.critical.assert_not_called()
+        mock_error.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.BidsSubjectSelectionDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
@@ -968,6 +976,7 @@ class TestDatasetActionHandler:
                     "BIDS discovery must not block the UI thread"
                 ),
             ),
+            patch("XBrainLab.ui.panels.dataset.actions.show_error") as mock_error,
         ):
             handler.import_bids_source()
 
@@ -995,14 +1004,14 @@ class TestDatasetActionHandler:
                 "_run_data_interpretation_import",
                 return_value=True,
             ) as mock_interpret,
-            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
         ):
             mock_fd.getExistingDirectory.return_value = "/tmp/bids-root"
             handler.import_folder_source()
 
         mock_fd.getExistingDirectory.assert_called_once()
         mock_interpret.assert_called_once_with(["/tmp/bids-root"])
-        mock_mb.warning.assert_not_called()
+        mock_mb.assert_not_called()
 
     def test_import_folder_refuses_real_study_no_capability_lock_fallback(
         self,
@@ -1022,19 +1031,19 @@ class TestDatasetActionHandler:
                 return_value=None,
             ),
             patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
-            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
         ):
             handler.import_folder_source()
 
         handler.panel.controller.is_locked.assert_not_called()
         mock_fd.getExistingDirectory.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Interpretation Blocked"
-        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
+        mock_mb.assert_called_once()
+        assert mock_mb.call_args.args[1] == "Interpretation Blocked"
+        assert "could not safely complete" in mock_mb.call_args.args[2]
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_reload_interpretation_recipe_reviews_then_applies(
         self,
         mock_mb,
@@ -1099,14 +1108,16 @@ class TestDatasetActionHandler:
         assert commands[1].confirmed is True
         handler.panel.update_panel.assert_not_called()
 
+    @patch("XBrainLab.ui.panels.dataset.actions.show_error")
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_reload_interpretation_recipe_repreviews_blocked_label_carrier_remap(
         self,
         mock_mb,
         mock_fd,
         mock_preview_dialog,
+        mock_error,
         handler,
     ):
         from XBrainLab.backend.application import (
@@ -1203,17 +1214,19 @@ class TestDatasetActionHandler:
         assert isinstance(apply_command, ApplyInterpretationCommand)
         assert apply_command.candidate_id == "candidate-2"
         assert apply_command.confirmed is True
-        mock_mb.critical.assert_not_called()
+        mock_error.assert_not_called()
         handler.panel.update_panel.assert_not_called()
 
+    @patch("XBrainLab.ui.panels.dataset.actions.show_error")
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_reload_interpretation_recipe_repreviews_blocked_eeg_file_remap(
         self,
         mock_mb,
         mock_fd,
         mock_preview_dialog,
+        mock_error,
         handler,
     ):
         from XBrainLab.backend.application import (
@@ -1307,11 +1320,11 @@ class TestDatasetActionHandler:
         assert isinstance(apply_command, ApplyInterpretationCommand)
         assert apply_command.candidate_id == "candidate-2"
         assert apply_command.confirmed is True
-        mock_mb.critical.assert_not_called()
+        mock_error.assert_not_called()
         handler.panel.update_panel.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_reload_interpretation_recipe_uses_reload_capability_gate(
         self,
         mock_mb,
@@ -1337,13 +1350,13 @@ class TestDatasetActionHandler:
         ):
             handler.reload_interpretation_recipe()
 
-        mock_mb.warning.assert_called_once()
-        assert "Recipe reload is unavailable" in mock_mb.warning.call_args.args[2]
+        mock_mb.assert_called_once()
+        assert "Recipe reload is unavailable" in mock_mb.call_args.args[2]
         mock_fd.getOpenFileName.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_import_data_needs_confirmation_applies_confirmed(
         self,
         mock_mb,
@@ -1402,7 +1415,7 @@ class TestDatasetActionHandler:
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_import_data_reviews_and_applies_off_ui_thread(
         self,
         mock_mb,
@@ -1659,7 +1672,7 @@ class TestDatasetActionHandler:
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_import_data_repreviews_choices_that_resolve_initial_blocker(
         self,
         mock_mb,
@@ -1754,7 +1767,7 @@ class TestDatasetActionHandler:
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_import_data_rescans_after_add_label_folder_product_flow(
         self,
         mock_mb,
@@ -1905,7 +1918,7 @@ class TestDatasetActionHandler:
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_import_data_saves_recipe_when_requested(
         self,
         mock_mb,
@@ -1965,7 +1978,7 @@ class TestDatasetActionHandler:
 
         assert saved
         assert saved[0].recipe_path == "/recipes/import_recipe.json"
-        mock_mb.information.assert_not_called()
+        mock_mb.assert_not_called()
 
     def test_save_interpretation_recipe_uses_backend_capability_before_file_dialog(
         self,
@@ -1978,7 +1991,7 @@ class TestDatasetActionHandler:
 
         with (
             patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
-            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
         ):
             handled = handler._data_interpretation._save_interpretation_recipe(
                 on_complete=completions.append,
@@ -1987,10 +2000,10 @@ class TestDatasetActionHandler:
         assert handled is True
         assert completions == [""]
         mock_fd.getSaveFileName.assert_not_called()
-        mock_mb.warning.assert_called_once()
+        mock_mb.assert_called_once()
         assert (
             "Apply an interpretation before saving a recipe."
-            in mock_mb.warning.call_args.args[2]
+            in mock_mb.call_args.args[2]
         )
 
     def test_offer_label_recipe_save_skips_confirmation_when_save_blocked(
@@ -2004,17 +2017,20 @@ class TestDatasetActionHandler:
 
         with (
             patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
-            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.ask_confirmation"
+            ) as mock_confirmation,
         ):
             message = handler._offer_label_recipe_save(result)
 
         assert message == "Interpretation recipe trace updated in this session."
-        mock_mb.question.assert_not_called()
+        mock_confirmation.assert_not_called()
         mock_fd.getSaveFileName.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_import_data_blocked_preview_does_not_apply(
         self,
         mock_mb,
@@ -2053,19 +2069,22 @@ class TestDatasetActionHandler:
                 raise AssertionError("blocked interpretation must not apply")
             raise AssertionError(f"unexpected command: {command!r}")
 
-        with patch(
-            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-            side_effect=fake_execute,
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                side_effect=fake_execute,
+            ),
+            patch("XBrainLab.ui.panels.dataset.actions.show_error") as mock_error,
         ):
             outcome = handler.import_data()
 
         assert outcome.status is InteractionStatus.BLOCKED
-        mock_mb.critical.assert_not_called()
+        mock_error.assert_not_called()
         handler.panel.controller.import_files.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_import_data_blocks_multi_parent_selection_missing_from_scan(
         self,
         mock_mb,
@@ -2121,16 +2140,19 @@ class TestDatasetActionHandler:
                 raise AssertionError("blocked multi-parent selection must not apply")
             raise AssertionError(f"unexpected command: {command!r}")
 
-        with patch(
-            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-            side_effect=fake_execute,
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                side_effect=fake_execute,
+            ),
+            patch("XBrainLab.ui.panels.dataset.actions.show_error") as mock_error,
         ):
             outcome = handler.import_data()
 
         assert isinstance(commands[0], ReviewInterpretationCommand)
         assert commands[0].source_path == first_file
         assert outcome.status is InteractionStatus.BLOCKED
-        mock_mb.critical.assert_not_called()
+        mock_error.assert_not_called()
         handler.panel.controller.import_files.assert_not_called()
 
     def test_interpretation_source_avoids_common_root_scan(self, handler):
@@ -2145,16 +2167,16 @@ class TestDatasetActionHandler:
             "selected_eeg_files": ["/mnt/a/sub-01.fif", "/tmp/b/sub-02.fif"],
         }
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_on_import_finished_success(self, mock_mb, handler):
         handler.on_import_finished(2, [])
         handler.panel.update_panel.assert_not_called()
-        mock_mb.warning.assert_not_called()
+        mock_mb.assert_not_called()
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_on_import_finished_errors(self, mock_mb, handler):
         handler.on_import_finished(1, ["err1", "err2"])
-        mock_mb.warning.assert_called_once()
+        mock_mb.assert_called_once()
 
     @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_open_smart_parser_locked(self, mock_mb, handler):
@@ -2228,9 +2250,6 @@ class TestDatasetActionHandler:
                 return_value=None,
             ),
         ):
-            mock_mb.StandardButton.Yes = 1
-            mock_mb.StandardButton.No = 2
-            mock_mb.question.return_value = 1
             handler._remove_files([0])
 
         handler.panel.controller.remove_files.assert_not_called()
@@ -2252,9 +2271,6 @@ class TestDatasetActionHandler:
                 return_value=_command_result(),
             ),
         ):
-            mock_mb.StandardButton.Yes = 1
-            mock_mb.StandardButton.No = 2
-            mock_mb.question.return_value = 1
             handler._remove_files([0])
 
         handler.panel.update_panel.assert_not_called()
@@ -2265,10 +2281,15 @@ class TestDatasetActionHandler:
         handler.panel.study = Study()
         handler.panel.controller = MagicMock()
 
-        with patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb:
+        with (
+            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.ask_confirmation"
+            ) as mock_confirmation,
+        ):
             handler._remove_files([0, 1])
 
-        mock_mb.question.assert_not_called()
+        mock_confirmation.assert_not_called()
         mock_mb.assert_called_once()
         assert "Load raw data before removing files." in mock_mb.call_args.args[2]
         handler.panel.controller.remove_files.assert_not_called()
@@ -2328,27 +2349,23 @@ class TestDatasetActionHandler:
         assert mock_mb.call_args.args[1] == "Review Metadata Again"
         assert "Refresh Dataset" in mock_mb.call_args.args[2]
 
-    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
+    @patch("XBrainLab.ui.panels.dataset.actions.ask_confirmation")
     def test_get_target_files_no_selection_apply_all(self, mock_mb, handler):
         handler.panel.table.selectedIndexes.return_value = []
-        mock_mb.StandardButton.Yes = 1
-        mock_mb.StandardButton.No = 2
-        mock_mb.question.return_value = 1
+        mock_mb.return_value = True
         handler.panel.controller = MagicMock()
         handler.panel.controller.get_loaded_data_list.return_value = ["a", "b", "c"]
         result = handler._get_target_files_for_import()
         assert len(result) == 3
-        assert mock_mb.question.call_args.args[1] == "Add Labels to Loaded Data"
-        assert mock_mb.question.call_args.args[2] == (
+        assert mock_mb.call_args.kwargs["title"] == "Add Labels to Loaded Data"
+        assert mock_mb.call_args.kwargs["message"] == (
             "No files selected. Add labels to all loaded files?"
         )
 
-    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
+    @patch("XBrainLab.ui.panels.dataset.actions.ask_confirmation")
     def test_get_target_files_no_selection_cancel(self, mock_mb, handler):
         handler.panel.table.selectedIndexes.return_value = []
-        mock_mb.StandardButton.Yes = 1
-        mock_mb.StandardButton.No = 2
-        mock_mb.question.return_value = 2
+        mock_mb.return_value = False
         result = handler._get_target_files_for_import()
         assert result == []
 
@@ -2555,14 +2572,14 @@ class TestDatasetActionHandler:
     def test_import_label_returns_early_no_files(self, handler):
         """import_label calls _get_target_files_for_import first; if empty, returns."""
         handler.panel.table.selectedIndexes.return_value = []
-        with patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb:
-            mock_mb.StandardButton.Yes = 1
-            mock_mb.StandardButton.No = 2
-            mock_mb.question.return_value = 2  # user cancels
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.ask_confirmation",
+            return_value=False,
+        ) as mock_confirm:
             handler.import_label()
-            # No warning called since user just cancelled target selection
+        mock_confirm.assert_called_once()
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_without_loaded_rows_guides_to_interpret_source(
         self,
@@ -2577,11 +2594,11 @@ class TestDatasetActionHandler:
 
         handler.import_label()
 
-        mock_mb.warning.assert_called_once()
-        assert "Interpret a data source" in mock_mb.warning.call_args.args[2]
+        mock_mb.assert_called_once()
+        assert "Interpret a data source" in mock_mb.call_args.args[2]
         mock_dlg.assert_not_called()
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_respects_backend_capability_block(
         self,
@@ -2599,14 +2616,13 @@ class TestDatasetActionHandler:
         ):
             handler.import_label()
 
-        mock_mb.warning.assert_called_once()
+        mock_mb.assert_called_once()
         assert (
-            "Reset the session before changing labels."
-            in (mock_mb.warning.call_args.args[2])
+            "Reset the session before changing labels." in (mock_mb.call_args.args[2])
         )
         mock_dlg.assert_not_called()
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_dialog_cancelled(self, mock_dlg, mock_mb, handler):
         idx = MagicMock()
@@ -2618,7 +2634,7 @@ class TestDatasetActionHandler:
         handler.import_label()
         handler.panel.controller.apply_labels_sequence.assert_not_called()
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_passes_target_context_to_dialog(
         self,
@@ -2638,7 +2654,7 @@ class TestDatasetActionHandler:
 
         mock_dlg.assert_called_once_with(handler.panel, target_files=[data_obj])
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_compatibility_path_uses_controller_without_product_runtime(
         self,
@@ -2664,7 +2680,7 @@ class TestDatasetActionHandler:
         handler.panel.controller.get_loaded_data_list.assert_called_once()
         handler.panel.table.item.assert_not_called()
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_import_label_real_study_refuses_controller_target_fallback(
         self,
         mock_mb,
@@ -2690,9 +2706,9 @@ class TestDatasetActionHandler:
 
         assert result == []
         handler.panel.controller.get_loaded_data_list.assert_not_called()
-        mock_mb.warning.assert_called()
+        mock_mb.assert_called()
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_null_label_map(self, mock_dlg, mock_mb, handler):
         idx = MagicMock()
@@ -2704,7 +2720,7 @@ class TestDatasetActionHandler:
         mock_dlg.return_value.get_result.return_value = (None, None)
         handler.import_label()
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_single_same_length(self, mock_dlg, mock_mb, handler):
         idx = MagicMock()
@@ -2735,9 +2751,9 @@ class TestDatasetActionHandler:
         handler.panel.controller.apply_labels_sequence.assert_not_called()
         assert len(captured) == 1
         assert captured[0].plan.preview_id == "label-preview-test"
-        mock_mb.warning.assert_not_called()
+        mock_mb.assert_not_called()
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_refuses_real_study_controller_fallback(
         self,
@@ -2784,11 +2800,11 @@ class TestDatasetActionHandler:
 
         handler.panel.controller.apply_labels_sequence.assert_not_called()
         handler.panel.controller.apply_labels_batch.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Add Labels Blocked"
-        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
+        mock_mb.assert_called_once()
+        assert mock_mb.call_args.args[1] == "Add Labels Blocked"
+        assert "could not safely complete" in mock_mb.call_args.args[2]
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_warns_when_no_labels_applied(
         self,
@@ -2814,11 +2830,11 @@ class TestDatasetActionHandler:
         ):
             handler.import_label()
 
-        mock_mb.warning.assert_called()
-        assert mock_mb.warning.call_args.args[1] == "No Labels Applied"
+        mock_mb.assert_called()
+        assert mock_mb.call_args.args[1] == "No Labels Applied"
 
     @patch("XBrainLab.ui.panels.dataset.actions.LabelMappingDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_batch(self, mock_dlg, mock_mb, mock_map_dlg, handler):
         idx = MagicMock()
@@ -2841,11 +2857,11 @@ class TestDatasetActionHandler:
         handler.panel.controller.apply_labels_batch.return_value = 1
         handler.import_label()
         handler.panel.controller.apply_labels_batch.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Label Import Blocked"
+        mock_mb.assert_called_once()
+        assert mock_mb.call_args.args[1] == "Label Import Blocked"
 
     @patch("XBrainLab.ui.panels.dataset.actions.LabelMappingDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_batch_mapping_cancelled(
         self,
@@ -2872,10 +2888,10 @@ class TestDatasetActionHandler:
         handler.import_label()
 
         handler.panel.controller.apply_labels_batch.assert_not_called()
-        mock_mb.warning.assert_not_called()
+        mock_mb.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.LabelMappingDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_batch_inconsistent_sequence_lengths_no_target_hint(
         self,
@@ -2912,10 +2928,10 @@ class TestDatasetActionHandler:
 
         mock_filter.assert_called_once_with([data_obj], None)
         handler.panel.controller.apply_labels_batch.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Label Import Blocked"
+        mock_mb.assert_called_once()
+        assert mock_mb.call_args.args[1] == "Label Import Blocked"
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_error")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_mixed_label_modes_rejected(self, mock_dlg, mock_mb, handler):
         idx = MagicMock()
@@ -2935,9 +2951,9 @@ class TestDatasetActionHandler:
 
         handler.panel.controller.apply_labels_batch.assert_not_called()
         handler.panel.controller.apply_labels_sequence.assert_not_called()
-        mock_mb.critical.assert_called_once()
+        mock_mb.assert_called_once()
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_timestamp(self, mock_dlg, mock_mb, handler):
         idx = MagicMock()
@@ -2956,11 +2972,11 @@ class TestDatasetActionHandler:
         handler.panel.controller.apply_labels_batch.return_value = 1
         handler.import_label()
         handler.panel.controller.apply_labels_batch.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Label Import Blocked"
+        mock_mb.assert_called_once()
+        assert mock_mb.call_args.args[1] == "Label Import Blocked"
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_offers_to_save_updated_recipe(
         self,
@@ -2987,9 +3003,6 @@ class TestDatasetActionHandler:
             _label_selection(["label1.txt"], target_count=2),
             {0: "left", 1: "right"},
         )
-        mock_mb.StandardButton.Yes = 1
-        mock_mb.StandardButton.No = 2
-        mock_mb.question.return_value = 1
         mock_fd.getSaveFileName.return_value = ("/recipes/with_labels.json", "")
         saved: list[SaveInterpretationRecipeCommand] = []
 
@@ -3006,19 +3019,24 @@ class TestDatasetActionHandler:
                 "XBrainLab.ui.panels.dataset.actions.execute_application_command",
                 side_effect=fake_execute,
             ),
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.ask_confirmation",
+                return_value=True,
+            ),
         ):
             handler.import_label()
 
         assert saved
         assert saved[0].recipe_path == "/recipes/with_labels.json"
-        mock_mb.information.assert_not_called()
+        mock_mb.assert_not_called()
         status_bar = handler.panel.main_window.statusBar.return_value
         assert "Recipe saved." in status_bar.showMessage.call_args.args[0]
         handler.panel.update_panel.assert_not_called()
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_error")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
-    def test_import_label_exception(self, mock_dlg, mock_mb, handler):
+    def test_import_label_exception(self, mock_dlg, mock_mb, mock_error, handler):
         idx = MagicMock()
         idx.row.return_value = 0
         handler.panel.table.selectedIndexes.return_value = [idx]
@@ -3036,9 +3054,9 @@ class TestDatasetActionHandler:
         )
         handler.import_label()
         handler.panel.controller.apply_labels_sequence.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Label Import Blocked"
-        mock_mb.critical.assert_not_called()
+        mock_mb.assert_called_once()
+        assert mock_mb.call_args.args[1] == "Label Import Blocked"
+        mock_error.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.EventFilterDialog")
     def test_filter_events_no_raw_files(self, mock_efd, handler):
@@ -3135,9 +3153,9 @@ class TestDatasetActionHandler:
         assert result is False
 
     def test_on_import_finished_many_errors(self, handler):
-        with patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb:
+        with patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb:
             handler.on_import_finished(0, [f"err{i}" for i in range(15)])
-            mock_mb.warning.assert_called_once()
+            mock_mb.assert_called_once()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QInputDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMenu")
@@ -3153,14 +3171,17 @@ class TestDatasetActionHandler:
         menu.addAction.side_effect = [a_subj, a_sess, a_rem]
         menu.exec.return_value = a_rem
         handler.panel.controller = MagicMock()
-        with patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb:
-            mock_mb.StandardButton.Yes = 1
-            mock_mb.StandardButton.No = 2
-            mock_mb.question.return_value = 1
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.ask_confirmation",
+                return_value=True,
+            ),
+            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
+        ):
             handler.show_context_menu(MagicMock())
         handler.panel.controller.remove_files.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Remove Files Blocked"
+        mock_mb.assert_called_once()
+        assert mock_mb.call_args.args[1] == "Remove Files Blocked"
 
     @patch("XBrainLab.ui.panels.dataset.actions.QInputDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMenu")
@@ -3177,13 +3198,13 @@ class TestDatasetActionHandler:
         menu.exec.return_value = a_sess
         mock_input.getText.return_value = ("sess1", True)
         handler.panel.controller = MagicMock()
-        with patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb:
+        with patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb:
             handler.show_context_menu(MagicMock())
         handler.panel.controller.update_metadata.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Metadata Update Blocked"
+        mock_mb.assert_called_once()
+        assert mock_mb.call_args.args[1] == "Metadata Update Blocked"
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_with_event_filter(self, mock_dlg, mock_mb, handler):
         """Tests import_label where target has raw events requiring filtering."""
@@ -3208,8 +3229,8 @@ class TestDatasetActionHandler:
             mock_efd.return_value.get_selected_ids.return_value = ["left"]
             handler.import_label()
         handler.panel.controller.apply_labels_sequence.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Label Import Blocked"
+        mock_mb.assert_called_once()
+        assert mock_mb.call_args.args[1] == "Label Import Blocked"
 
     def test_build_label_import_plan_carries_reviewed_preview_identity(self, handler):
         selection = _label_selection(["file1.txt"], target_count=4)
