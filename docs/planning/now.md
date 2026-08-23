@@ -91,12 +91,19 @@ routing，保留strict zero-skip policy與三條真資料workflow；不下載、
 修正後同一required-pytest observer實際回報`4 passed`、`executed=4`、`skipped=0`、`exit_code=0`；
 包含canonical-root regression、Graz external labels完整訓練、MNE-BIDS epoch/split readiness與PhysioNet
 internal events完整訓練。Ruff、format與diff check通過。
+`dc2b71f7` exact handoff再次通過complete regression、Visualization/native與上述real-data gate，下一個
+`wizard-format-matrix`由同一root cause留下的1個hardcoded repo-local BIDS path skip而fail closed。全體
+strict handoff selectors掃描顯示只剩該檔未用canonical resolver；`required-public-io`與其餘strict tests
+已收斂。將wizard matrix改用同一resolver後，先單獨跑wizard與required-public-io兩個相鄰strict gates，
+兩者都須all executed/pass、零skip，再重建exact dossier；不放寬任何outcome policy。
+Focused結果為wizard `10 passed`、required-public-io `39 passed`，兩者皆0 skip／xfail／deselect且
+observer exit 0；後者實際涵蓋public formats、BIDS與cross-source training。Ruff、format與diff check
+通過。Behavior gates本身會在canonical root退化時skip並fail closed，故不另增source-string guard。
 
 下一步固定為：
 
-1. Canonical runner沒有resume介面，且reboot已清除`/tmp`內未完成的deferred dossier；舊SHA records
-   不得拼入新source。凍結／push已通過real-data strict gate的新SHA後，執行一次必要的exact-source
-   replacement handoff。這是source binding重建，不作效能量測；同類既知failure再現即停止。
+1. 凍結／push已通過兩個相鄰strict gates的新SHA並執行一次exact-source replacement handoff。
+   這是source binding重建，不作效能量測；同類既知failure再現即停止。
 2. 自動evidence完整後交付Windows／Linux手測：modal default／Escape／destructive action；single-file、
    folder、BIDS review/cancel/retry且status不重複跑百分比；Saliency All／Single、long class／many channel、
    zoom／pan／reset、3D class／epoch-time／camera controls與close lifecycle。
