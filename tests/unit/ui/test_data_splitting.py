@@ -509,7 +509,7 @@ class TestDataSplittingPreviewDialogSplitters:
         dlg.preview_worker = MagicMock()
         dlg.preview_worker.is_alive.return_value = True
         with patch(
-            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.QMessageBox"
+            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.show_warning"
         ):
             dlg.confirm()
 
@@ -539,9 +539,15 @@ class TestDataSplittingPreviewDialogSplitters:
         dlg.preview_worker = MagicMock()
         dlg.preview_worker.is_alive.return_value = False
         dlg._set_preview_state(dlg._preview_generation_id, "idle")
-        with patch.object(dlg, "_show_message_box") as message:
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.show_error"
+        ) as message:
             dlg.confirm()
-        message.assert_called_once()
+        message.assert_called_once_with(
+            dlg,
+            "Data splitting failed",
+            "The split preview failed. Adjust the split settings and try again.",
+        )
 
     def test_unexpected_preview_exception_is_visible_and_confirm_does_not_retry(
         self,
@@ -569,7 +575,9 @@ class TestDataSplittingPreviewDialogSplitters:
         assert dlg.tree.topLevelItem(0).text(0) == "Preview failed"
         assert dlg.btn_confirm.isEnabled() is False
 
-        with patch.object(dlg, "_show_message_box") as message:
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.show_error"
+        ) as message:
             dlg.confirm()
 
         assert "split backend failed" in message.call_args.args[2]
@@ -800,7 +808,7 @@ class TestDataSplittingPreviewDialogSplitters:
                 "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.QTimer.singleShot"
             ) as retry,
             patch(
-                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.QMessageBox.warning"
+                "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.show_warning"
             ) as warning,
         ):
             dlg.reject()
