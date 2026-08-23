@@ -119,6 +119,14 @@ handoff 後一次性交付真人手測。
   profile；resource-receipt 必須操作實際 visible shared modal buttons，不使用 auto-accept、presenter mock、
   production alias 或削弱 mutation／terminal assertions。Focused required-fixture tests與完整 affected shards
   通過後，重新凍結 SHA、push並從 section 1 重跑完整 manifest。
+- Shared modal driver 整合後，confirm case另證明舊 `generation == before + 1` 把單次 import mutation與獨立
+  async BIDS montage publication混為一談；實際 montage已合法進入ready並產生第二個generation。測試改保護
+  generation必須前進、raw truth完成、一次loaded item、零legacy import event／panel refresh、一次terminal與
+  receipt consumption；不得固定為`+2`或移除 mutation/lifecycle assertions。
+- 兩個 required-fixture contracts 已 tests-only 修正並在完整 cache 重驗：integration IO `56 passed / 11`
+  個 teacher／multisubject optional skips；canonical integration UI `130 passed / 2` 個 teacher-only skips，
+  resource-receipt三個真 modal cases全數通過。Production diff仍為30 files、`+886/-614`、touched 1,500；
+  下一步只剩final quality gates、凍結/push exact SHA、完整manifest與同 SHA CI。
 
 ## Focused validation
 
