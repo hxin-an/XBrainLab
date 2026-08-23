@@ -11,11 +11,11 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPushButton,
     QVBoxLayout,
 )
 
+from XBrainLab.ui.components.modal_presentation import show_warning
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import normalize_dialog_button_box
 
@@ -155,12 +155,7 @@ class ChannelSelectionDialog(BaseDialog):
                 item.setCheckState(state)
 
     def accept(self):
-        """Validate selection and accept the dialog.
-
-        Raises:
-            QMessageBox: Warning displayed if no channels are selected.
-
-        """
+        """Validate selection and accept the dialog."""
         if self.list_widget is None:
             super().accept()
             return
@@ -172,7 +167,7 @@ class ChannelSelectionDialog(BaseDialog):
                 selected_channels.append(item.text())
 
         if not selected_channels:
-            QMessageBox.warning(self, "Warning", "Please select at least one channel.")
+            show_warning(self, "Warning", "Please select at least one channel.")
             return
 
         self.selected_channels = selected_channels

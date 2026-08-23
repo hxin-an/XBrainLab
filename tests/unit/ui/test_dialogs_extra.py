@@ -40,7 +40,7 @@ class TestEventFilterDialog:
     def test_empty_selection_warns_and_keeps_dialog_unaccepted(self, dlg):
         dlg.set_all_checked(False)
         with patch(
-            "XBrainLab.ui.dialogs.dataset.event_filter_dialog.QMessageBox.warning"
+            "XBrainLab.ui.dialogs.dataset.event_filter_dialog.show_warning"
         ) as warning:
             dlg.accept()
 
@@ -200,8 +200,16 @@ class TestChannelSelectionDialog:
 
     def test_accept_none_selected(self, dlg):
         dlg.set_all_checked(False)
-        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.channel_selection_dialog.show_warning"
+        ) as warning:
             dlg.accept()
+
+        warning.assert_called_once_with(
+            dlg,
+            "Warning",
+            "Please select at least one channel.",
+        )
 
 
 # ============ OptimizerSettingDialog ============
@@ -723,7 +731,7 @@ class TestEpochingDialog:
             dialog.event_list.item(row, 0).setCheckState(Qt.CheckState.Unchecked)
 
         with patch(
-            "XBrainLab.ui.dialogs.preprocess.epoching_dialog.QMessageBox.warning"
+            "XBrainLab.ui.dialogs.preprocess.epoching_dialog.show_warning"
         ) as warning:
             dialog.accept()
 
@@ -753,7 +761,7 @@ class TestEpochingDialog:
         dialog.b_max_spin.setValue(0.0)
 
         with patch(
-            "XBrainLab.ui.dialogs.preprocess.epoching_dialog.QMessageBox.warning"
+            "XBrainLab.ui.dialogs.preprocess.epoching_dialog.show_warning"
         ) as warning:
             dialog.accept()
 

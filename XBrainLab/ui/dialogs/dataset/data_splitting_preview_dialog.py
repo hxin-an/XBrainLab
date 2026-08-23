@@ -23,7 +23,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLayout,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -51,6 +50,7 @@ from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.utils.public_diagnostics import (
     public_exception_message,
 )
+from XBrainLab.ui.components.modal_presentation import show_error, show_warning
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import checkbox_stylesheet
 from XBrainLab.ui.product_language import fold_display_label
@@ -1208,8 +1208,8 @@ class DataSplittingPreviewDialog(BaseDialog):
         if status == PREVIEW_STATUS_RUNNING or (
             self.preview_worker and self.preview_worker.is_alive()
         ):
-            self._show_message_box(
-                QMessageBox.Icon.Warning,
+            show_warning(
+                self,
                 "Data splitting",
                 "Generating dataset, please wait.",
             )
@@ -1223,16 +1223,16 @@ class DataSplittingPreviewDialog(BaseDialog):
                     "and try again."
                 )
             )
-            self._show_message_box(
-                QMessageBox.Icon.Critical,
+            show_error(
+                self,
                 "Data splitting failed",
                 message,
             )
             return
 
         if status != PREVIEW_STATUS_SUCCEEDED or not rows:
-            self._show_message_box(
-                QMessageBox.Icon.Critical,
+            show_error(
+                self,
                 "Data splitting failed",
                 _PREVIEW_FAILURE_MESSAGE,
             )
@@ -1240,23 +1240,6 @@ class DataSplittingPreviewDialog(BaseDialog):
         self._stop_preview_ui_timers()
         self._clear_preview_close_state()
         super().accept()
-
-    def _show_message_box(
-        self,
-        icon: QMessageBox.Icon,
-        title: str,
-        text: str,
-    ) -> None:
-        message = QMessageBox(self)
-        message.setIcon(icon)
-        message.setWindowTitle(title)
-        message.setText(text)
-        message.setStandardButtons(QMessageBox.StandardButton.Ok)
-        for button in message.buttons():
-            if isinstance(button, QPushButton):
-                button.setAutoDefault(False)
-                button.setDefault(False)
-        message.exec()
 
     def closeEvent(self, event):  # noqa: N802
         """Stop the polling timer and interrupt background workers on close."""
@@ -1327,7 +1310,7 @@ class DataSplittingPreviewDialog(BaseDialog):
             ):
                 if not self._preview_close_warning_shown:
                     self._preview_close_warning_shown = True
-                    QMessageBox.warning(
+                    show_warning(
                         self,
                         "Preview is still stopping",
                         "The data-splitting preview is taking longer than expected "

@@ -6,6 +6,8 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog
 
 from XBrainLab.backend.application.commands import PreviewLabelImportCommand
+from XBrainLab.backend.application.results import ErrorType
+from XBrainLab.ui.components.modal_presentation import AlertSeverity
 from XBrainLab.ui.dialogs.dataset import (
     EventFilterDialog,
     ImportLabelDialog,
@@ -185,19 +187,20 @@ def test_import_label_dialog_worker_failure_does_not_expose_private_path(
     qtbot.addWidget(dialog)
 
     with patch(
-        "XBrainLab.ui.dialogs.dataset.import_label_dialog.QMessageBox.critical"
+        "XBrainLab.ui.components.user_error_presentation.show_alert"
     ) as critical:
         dialog.load_file(str(label_path))
 
-    critical.assert_called_once_with(
-        dialog,
-        "Label preview failed",
-        (
+    critical.assert_called_once()
+    assert critical.call_args.kwargs == {
+        "severity": AlertSeverity.CRITICAL,
+        "title": "Label preview failed",
+        "message": (
             "XBrainLab could not inspect the selected label files. "
             "Review the files and try again."
         ),
-    )
-    assert private_path not in critical.call_args.args[2]
+    }
+    assert private_path not in critical.call_args.kwargs["message"]
 
 
 def test_import_label_dialog_presents_stale_preview_as_review_again(
@@ -227,7 +230,7 @@ def test_import_label_dialog_presents_stale_preview_as_review_again(
     qtbot.addWidget(dialog)
 
     with patch(
-        "XBrainLab.ui.dialogs.dataset.import_label_dialog.QMessageBox.warning"
+        "XBrainLab.ui.dialogs.dataset.import_label_dialog.show_warning"
     ) as warning:
         dialog.load_file(str(label_path))
 
@@ -237,6 +240,64 @@ def test_import_label_dialog_presents_stale_preview_as_review_again(
         "The reviewed dataset changed.",
     )
     assert dialog.preview_summary == {}
+
+
+@pytest.mark.parametrize("confirmed", [True, False])
+def test_import_label_resource_confirmation_replays_only_after_confirmation(
+    qtbot,
+    confirmed,
+):
+    receipt_id = "label-preview-receipt-1"
+    dialog = ImportLabelDialog()
+    qtbot.addWidget(dialog)
+    result = SimpleNamespace(
+        diagnostics={
+            "resource_preflight": {
+                "schema_version": 1,
+                "risk_level": "warning",
+                "requires_confirmation": True,
+                "message": "Estimated RAM requires confirmation.",
+                "confirmation_challenge": {
+                    "schema_version": 1,
+                    "challenge_id": receipt_id,
+                    "command_name": "preview_label_import",
+                    "scope_fingerprint": "scope-1",
+                    "ttl_seconds": 120.0,
+                },
+            },
+        },
+        error_type=ErrorType.CONFIRMATION_REQUIRED,
+        message="Estimated RAM requires confirmation.",
+    )
+
+    with (
+        patch(
+            "XBrainLab.ui.dialogs.dataset.import_label_dialog.ask_confirmation",
+            return_value=confirmed,
+        ) as ask_confirmation,
+        patch.object(dialog, "_request_preview") as request_preview,
+    ):
+        outcome = dialog._handle_preview_failure(result)
+
+    ask_confirmation.assert_called_once_with(
+        dialog,
+        severity=AlertSeverity.WARNING,
+        title="Label Resource Check",
+        message=(
+            "Estimated RAM requires confirmation.\n\n"
+            "Continue reviewing these label files?"
+        ),
+        confirm_text="Continue",
+    )
+    if confirmed:
+        request_preview.assert_called_once_with(
+            confirmed=True,
+            token=receipt_id,
+        )
+        assert outcome.status.value == "accepted"
+    else:
+        request_preview.assert_not_called()
+        assert outcome.status.value == "cancelled"
 
 
 def test_import_label_dialog_accept_success(qtbot):
@@ -334,7 +395,7 @@ def test_event_filter_dialog_defaults_to_all_when_history_has_no_overlap(qtbot):
     assert dialog.list_widget.item(1).checkState() == Qt.CheckState.Checked
 
 
-@patch("XBrainLab.ui.dialogs.dataset.event_filter_dialog.QMessageBox.warning")
+@patch("XBrainLab.ui.dialogs.dataset.event_filter_dialog.show_warning")
 def test_event_filter_dialog_rejects_empty_selection(mock_warning, qtbot):
     """The dialog should not accept an empty keep-list."""
     with patch(
@@ -503,12 +564,12 @@ class TestImportLabelDialogBrowse:
                 "XBrainLab.ui.dialogs.dataset.import_label_dialog.QFileDialog"
             ) as mock_fd,
             patch(
-                "XBrainLab.ui.dialogs.dataset.import_label_dialog.QMessageBox"
-            ) as mock_mb,
+                "XBrainLab.ui.dialogs.dataset.import_label_dialog.show_error"
+            ) as show_error,
         ):
             mock_fd.getOpenFileNames.return_value = (["/tmp/bad.txt"], "")
             dialog.browse_files()
-        mock_mb.critical.assert_called_once()
+        show_error.assert_called_once()
         assert dialog.preview_summary == {}
 
     def test_remove_files(self, qtbot):
@@ -574,9 +635,7 @@ class TestImportLabelDialogBrowse:
     def test_accept_no_labels(self, qtbot):
         dialog = ImportLabelDialog()
         qtbot.addWidget(dialog)
-        with patch(
-            "XBrainLab.ui.dialogs.dataset.import_label_dialog.QMessageBox.warning"
-        ):
+        with patch("XBrainLab.ui.dialogs.dataset.import_label_dialog.show_warning"):
             dialog.accept()
         assert dialog.result() != QDialog.DialogCode.Accepted
 
@@ -588,8 +647,6 @@ class TestImportLabelDialogBrowse:
         )
         # Clear the event name so mapping is empty
         dialog.map_table.item(0, 1).setText("")
-        with patch(
-            "XBrainLab.ui.dialogs.dataset.import_label_dialog.QMessageBox.warning"
-        ):
+        with patch("XBrainLab.ui.dialogs.dataset.import_label_dialog.show_warning"):
             dialog.accept()
         assert dialog.result() != QDialog.DialogCode.Accepted
