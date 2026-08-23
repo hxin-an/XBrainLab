@@ -81,12 +81,21 @@ Assistant candidate必須在同一clean/explained exact source依序閉合下列
 
 1. Unit/integration證明18-tool registry、strict envelope、backend-owned stage、confirmation、GUI
    correlation與no-model diagnostic terminal；mock或manifest-only測試不等於真人workflow。
-2. Frozen Granite report固定50 cases：36 positive（18 tools各2）與14 challenge diagnostics。Candidate
+2. Frozen Granite core report固定50 cases：36 positive（18 tools各2）與14 challenge diagnostics。Core
    gate要求36/36 positive exact tool＋parameters、其中10/10 direct preprocess通過production
-   parameter-origin guard，以及5/5 missing-parameter經同一guard得到零execution與英文追問。其餘9個
-   raw challenge必須完整保留為known
-   limitations，不計入promotion pass，也不得宣稱raw model已解決。這只支撐bounded selection與該
-   deterministic guard，不支撐完整tool execution或產品ready。
+   parameter-origin guard，以及5/5 missing-parameter經同一guard得到零execution與具體追問。其餘9個
+   raw challenge必須完整保留為known limitations，不改寫舊分母，也不得宣稱raw model已解決。
+   同一evaluator另執行24個雙語no-action precision cases；24/24 product outcomes都必須沒有confirmation、
+   GUI handoff、ApplicationService／ToolExecutor execution或state mutation。Raw model decision與Host
+   composed outcome分開記錄；第一次raw generation與最多兩次production strict-envelope recovery的每次
+   response／taxonomy都必須保存，final gate只看最後accepted或exhausted presentation outcome。Generation
+   token budget使用production structured-decision resolver，不得另設較小的evaluator cap。回覆文字的
+   自然度與完整語意由同一SHA真人驗收，不以固定required keyword group作promotion gate。這只支撐
+   bounded selection與production admission outcome，不支撐產品ready。
+   Precision prompt與attempt scorer的callable set／blocked reasons必須由同一個production
+   `ApplicationViewPublication`及既有agent capability policy產生；直接使用hand-authored stage list或把
+   scorer context中的所有tool設為enabled，不構成unavailable-action projection證據。Frozen core仍保留
+   原catalog路徑以維持歷史可比，兩種suite不得互換claim。
 3. 真model safe E2E依normal ChatPanel路徑完成Switch Dataset → Import GUI → Select Channels →
    direct Resample；不得用debug transport或fake generator替代。
 4. 使用者在同一candidate source完成Complete Workflow、Lifecycle／Navigation、Contract Failures三份

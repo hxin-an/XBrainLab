@@ -46,7 +46,21 @@ def _write_complete_model_cache(cache_dir: Path, model_id: str) -> Path:
 class TestDefaults:
     def test_default_model_name(self):
         cfg = LLMConfig()
-        assert cfg.model_name == "ibm-granite/granite-3.3-2b-instruct"
+        assert cfg.model_name == "ibm-granite/granite-4.0-micro"
+
+    def test_supported_lower_memory_selection_survives_settings_reload(self, tmp_path):
+        filepath = tmp_path / "settings.json"
+        lower_memory = "ibm-granite/granite-3.3-2b-instruct"
+        filepath.write_text(
+            json.dumps(_settings_payload(lower_memory)),
+            encoding="utf-8",
+        )
+
+        loaded = LLMConfig.load_from_file(str(filepath))
+
+        assert loaded is not None
+        assert loaded.model_name == lower_memory
+        assert loaded.configured_model_unavailable_message() is None
 
     def test_default_device_is_string(self):
         cfg = LLMConfig()

@@ -25,9 +25,9 @@ from XBrainLab.llm.core.model_download_lifecycle import (
     _ModelCacheCleanupWorker,
 )
 
-PRIMARY_MODEL_ID = "ibm-granite/granite-3.3-2b-instruct"
+PRIMARY_MODEL_ID = "ibm-granite/granite-4.0-micro"
 PRIMARY_MODEL_REVISION = (
-    "707f574c62054322f6b5b04b6d075f0a8f05e0f0"  # pragma: allowlist secret
+    "56111ae135df9c53a78c99028e7bc24035a9e979"  # pragma: allowlist secret
 )
 VALID_TEST_WEIGHT_BYTES = 300_000_000
 BACKGROUND_WORK_WAIT_SECONDS = 5.0

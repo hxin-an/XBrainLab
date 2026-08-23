@@ -6,15 +6,41 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from XBrainLab.backend.application.view_publication import ApplicationViewPublication
+from XBrainLab.backend.utils.public_diagnostics import (
+    PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER,
+    DiagnosticTextLayout,
+    public_diagnostic_text,
+)
 
-from ..tools.application_surface import ApplicationToolRuntime
+from ..tools.application_surface import (
+    ApplicationToolRuntime,
+    build_agent_tool_policy,
+)
 
 PromptPolicyErrorCode = Literal["publication_read_failed"]
+_MAX_BLOCKED_REASON_UTF8_BYTES = 512
 
 _POLICY_UNAVAILABLE_MESSAGE = (
     "Backend workflow state is temporarily unavailable. Workflow actions "
     "are disabled until XBrainLab can refresh it."
 )
+
+
+def _bounded_public_reason(value: str) -> str:
+    """Return one single-line, public-safe prompt reason with a hard byte cap."""
+    reason = public_diagnostic_text(
+        value,
+        layout=DiagnosticTextLayout.SINGLE_LINE,
+    ).strip()
+    encoded = reason.encode("utf-8")
+    if len(encoded) <= _MAX_BLOCKED_REASON_UTF8_BYTES:
+        return reason
+    marker = PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER.encode("utf-8")
+    prefix = encoded[: _MAX_BLOCKED_REASON_UTF8_BYTES - len(marker)].decode(
+        "utf-8",
+        errors="ignore",
+    )
+    return f"{prefix.rstrip()}{PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER}"
 
 
 @dataclass(frozen=True)
@@ -34,14 +60,18 @@ class StrictToolResponsePromptPolicy:
         """Return the strict decision contract without Host intent routing."""
         return (
             "STRICT RESPONSE CONTRACT - DECISION ORDER (decide silently):\n"
-            "1. Find the exact requested action in the backend-stage-published "
-            "tool contracts.\n"
-            "- No exact matching contract or an informational request: use "
-            "respond_to_user with a concise message.\n"
-            "- Exact match but a required parameter is absent from the latest user "
-            "request or verified state: use respond_to_user to ask only for it.\n"
-            "- Exact match with complete inputs: call that exact enabled tool with "
-            "only supported parameters.\n"
+            "1. Classify the latest user request before choosing a contract.\n"
+            "- Use respond_to_user for an informational request, a request that "
+            "negates an action, no exact matching enabled contract, an unavailable "
+            "action, or an ambiguous request.\n"
+            "- If the request contains more than one action, use respond_to_user "
+            "to ask which action to do first. Do not call any tool in that turn.\n"
+            "- If exactly one action matches but a required parameter is absent "
+            "from the latest user request or verified state, use respond_to_user "
+            "to ask only for it.\n"
+            "- Only when exactly one action matches unambiguously and all required "
+            "inputs are present, call that exact enabled tool with only supported "
+            "parameters.\n"
             "2. Never call a prerequisite, substitute, or retired alias. Tool "
             "availability does not make it relevant to the user's request.\n"
             "3. Required values must come from the latest user request or verified "
@@ -56,11 +86,13 @@ class StrictToolResponsePromptPolicy:
             "parameters {}. Never invent or copy dialog choices into a contract "
             "whose parameter properties are empty; the user chooses them in the "
             "opened product UI.\n"
-            "6. Return exactly one DECISION ENVELOPE. The root object must be exactly "
-            '{"workflow_stage":"'
+            "6. Never claim that an action completed unless a trusted tool result "
+            "confirms completion. A proposed call is not a completed action.\n"
+            "7. Return exactly one DECISION ENVELOPE. The root object must contain "
+            "exactly workflow_stage, tool_name, and parameters, with no other "
+            "top-level fields. Copy workflow_stage as "
             + workflow_stage
-            + '","tool_name":"<exact enabled name>","parameters":{...}}. '
-            "Never wrap it in tool-call, tool_call, action, or function. For a "
+            + ". Never wrap it in tool-call, tool_call, action, or function. For a "
             "no-tool decision use respond_to_user with parameters containing "
             "exactly message. workflow_stage acknowledges the backend publication; "
             "it does not grant permission.\n"
@@ -146,8 +178,7 @@ def read_prompt_policy(
     *,
     runtime: ApplicationToolRuntime | None,
 ) -> PromptPolicyReadResult:
-    """Read exactly one ApplicationService publication without Host projection."""
-    del study_state
+    """Read one publication and project its existing agent capability policy."""
     if runtime is None:
         return PromptPolicyReadResult.not_applicable()
     try:
@@ -156,4 +187,27 @@ def read_prompt_policy(
         return PromptPolicyReadResult.failed()
     if not isinstance(publication, ApplicationViewPublication):
         return PromptPolicyReadResult.failed()
-    return PromptPolicyReadResult(publication=publication)
+    try:
+        tool_policy = build_agent_tool_policy(
+            study_state,
+            publication=publication,
+            runtime=runtime,
+        )
+    except Exception:
+        return PromptPolicyReadResult.failed()
+    return PromptPolicyReadResult(
+        publication=publication,
+        published_tools=frozenset(
+            tool_name
+            for tool_name, availability in tool_policy.items()
+            if availability.enabled
+        ),
+        blocked_reasons=tuple(
+            sorted(
+                (tool_name, reason)
+                for tool_name, availability in tool_policy.items()
+                if not availability.enabled
+                and (reason := _bounded_public_reason(availability.reason_text))
+            )
+        ),
+    )

@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-08-22`
+最後更新：`2026-08-24`
 
 ## 目前焦點
 
@@ -9,7 +9,7 @@ CI reliability branch 已在 PR #44 的 exact head
 `2026-08-21` 回報 Windows 與 Linux 真人手測正常，並以 merge commit
 `8d8dcf6030d0b4bd79783b3a086e1efa101d0cd2` 合併至 `main`。
 
-目前唯一 active slice 是 branch `feature/braindecode-full-catalog-v1`：固定 Braindecode `1.6.1`
+目前主要長期 active slice 是 branch `feature/braindecode-full-catalog-v1`：固定 Braindecode `1.6.1`
 的完整模型目錄，以 upstream Braindecode 作正常 provider，將逐檔確認可重散布的模型碼移入
 XBrainLab 作 provider unavailable 時才顯示的本地 recovery／legacy catalog，並把現行 13 項的
 Model Selection combo 改為可搜尋、可理解 unavailable reason 的完整目錄。
@@ -58,6 +58,258 @@ Selection或產品source failure。修正scope只為該test等待既有`evaluati
 replacement exact SHA並執行一次replacement canonical handoff；不為計時或成功率重跑舊SHA。
 
 Data Import 與 4B Assistant 模型不在本 slice。
+
+### Parallel slice：Assistant no-action precision
+
+Branch `fix/assistant-no-action-precision-v1` 只處理既有 Assistant 在資訊詢問、否定、模糊、
+缺參數、out-of-stage 與 multi-action 請求上錯誤提出 workflow action 的產品體驗。使用者已於
+`2026-08-23` 確認：hard gate 以產品最終零誤動作為準；multi-action 必須先詢問要執行哪一項；
+保留 frozen 50 cases，另加同一 evaluator 擁有的雙語 precision suite；回覆自然度由同一 SHA
+真人手測，不以固定關鍵字冒充語意品質。產品可見 Assistant 回覆行為已取得實作授權；不授權
+其他 UI layout、文案或互動 redesign。
+
+Observable outcome：不該執行時只發布正確 response／blocked result，不產生 confirmation、GUI
+handoff、`ApplicationService`／`ToolExecutor` execution 或 state mutation；明確、完整、單一 action
+仍維持既有 exact tool 與 parameters。Scope 只包含 approved target／validation truth、共用 prompt
+policy／assembler、Stable evaluator、直接相關 tests 與 exact-model evidence。Non-goals 是改 18-tool
+membership、parser envelope、confirmation、backend capability、controller owner、RAG owner、模型 catalog、
+Import 或 thesis accuracy。Owners before／after不變；prompt只表達 approved decision，production
+`ToolAttemptCoordinator`／verifier 仍是唯一 admission owner。預估最多兩個 production files且淨增低於
+100 LOC；不得新增 module、public class、state machine、semantic Host router或model-specific fallback。
+
+TDD 步驟：先以現行 36 positive 建 passing characterization，再新增 24-case precision product-outcome
+scorer並以 pinned 2B 取得 target red；scorer必須重用 production parser／attempt decision，不複製
+admission。Treatment A 將 compact decision precedence與精確 no-action envelope放到catalog後方，平衡
+目前反覆的action output shapes；若 positive退步則恢復必要shape，若precision仍失敗只再加入四個不複製
+case wording的通用contrastive examples。第二個treatment後仍未同時達到36/36 positive、10/10 direct
+origin、5/5 missing composed outcome與24/24 precision即停止；不放寬parser、分母或增加Host heuristic。
+
+Focused validation：prompt／parser／attempt coordinator／controller terminal／evaluator unit與integration，
+同一clean exact source的offline 2B deterministic report，接著才執行canonical handoff。Windows normal app
+手測 capability question、missing bandpass、ambiguous preprocess、out-of-stage training、multi-action、
+negated import，以及完整 resample／navigation regression；任何 dialog、confirmation、navigation或mutation
+誤觸即失敗。只有 PR current head CI 全綠、使用者對同一 SHA 手測通過並明確批准 merge 後才合併。
+
+`2026-08-23` checkpoint：Treatment A 保持36/36 positive、10/10 direct origin與5/5 missing
+composed outcomes，但precision只有12/24。依預先聲明的唯一後續，四個通用contrastive examples的
+Treatment B把precision提高至16/24，卻使positive降為32/36、direct origin降為8/10；因此已丟棄B並
+回到不回歸既有action的A。兩者都未達24/24 hard gate，predeclared treatments已用盡。本branch不是
+handoff candidate，不開PR也不merge；不再加入model-specific prompt、放寬parser／分母或建立Host
+semantic router。使用者於`2026-08-23`同意先以隔離的diagnostic組合，讓已下載的Granite 4.0 Micro
+3B跑同一74-case gate；本步不修改Settings、product default或其他public contract，結果只作checkpoint，
+是否改變PR順序與模型產品定位仍需另行決定。
+
+3B diagnostic結果：`ibm-granite/granite-4.0-micro` exact revision
+`56111ae135df9c53a78c99028e7bc24035a9e979`維持36/36 positive、10/10 direct origin與5/5
+missing composed outcomes，precision為17/24，優於2B Treatment A的12/24但仍未過24/24。七個失敗是
+三個out-of-stage、中文general長回覆被128-token deterministic cap截斷、中文ambiguous，以及中英文
+multi-action各輸出兩個相鄰JSON。臨時diagnostic catalog／selector已移除；本結果不批准3B Settings、
+product default、PR或merge，也不改變predeclared stop condition。
+
+使用者於`2026-08-23`批准新的兩階段方向，但要求依序取得證據：第一階段先修正evaluator只看單次raw
+generation、未走產品最多兩次strict-envelope recovery，且硬切128-token而未對齊產品generation
+設定的證據缺口；第二階段才依第一階段結果定稿backend-owned unavailable-action projection。現在只施工
+第一階段，不改prompt、tool membership、backend capability、admission、Settings或UI。Observable outcome
+是同一50+24分母同時保留first-generation score與完整parser／recovery／attempt／presentation final score，
+每次recovery都使用production recovery instructions與原始conversation，並記錄attempt taxonomy、response、
+token budget及最終零執行結果；candidate gate以final trajectory為準，raw score只作診斷，不因format retry
+或截斷自動通過。假設產品structured-decision token budget就是runtime config的`max_new_tokens`；若source顯示
+另有owner則停止校準，不在evaluator另造數值。
+
+第一階段TDD：先加入scripted generation seam，證明第一次format error後使用production policy重試、最多
+兩次、最後一個合法envelope才進既有scorer，並證明exhausted、unsafe recovered action及partial report都
+fail closed；再移除128-token evaluator override，讓report記錄exact generation policy。Focused validation
+只跑evaluator unit、strict recovery production integration、Ruff與同一exact 3B的74-case deterministic
+report；人工檢閱24個final visible messages。Stop condition是能區分raw failure、recovered pass、recovery
+exhaustion與semantic failure，且frozen core不退步；完成後先回報，不在同一checkpoint實作第二階段。
+第二階段仍不得新增readiness owner或semantic Host router，其public projection欄位、blocked reason與
+admission語意必須先由第一階段殘餘案例確認。此slice沒有UI修改，因此不需要新增UI確認。
+
+第一階段checkpoint已完成：evaluator schema v6以production `StrictEnvelopeRecoveryPolicy`重建原始
+request並最多重試兩次，保留每次response／taxonomy，同時分開`raw_score`與final `score`；structured
+generation直接使用production resolver，這次exact 3B為512 tokens、greedy，不再硬切128。Evaluator／
+recovery focused suite為135 passed，Ruff與format通過。Exact 3B revision
+`56111ae135df9c53a78c99028e7bc24035a9e979`維持36/36 positive、10/10 direct origin、5/5 missing
+guard；raw與final precision都是18/24。相較舊17/24，只有原本被128-token截斷的中文general因產品
+budget而轉為合法response；兩個multi-action在三次generation都重複輸出兩個相鄰action objects，最後
+安全進入`format_recovery_exhausted`，recovery沒有把任何case由fail變pass。其餘四個失敗仍是中文
+epochs誤選import、start回覆暗示開始、reset誤選navigation及ambiguous誤選channels。
+
+24個final visible messages已逐一人工檢閱。自動通過只證明沒有confirmation／handoff／execution／
+mutation，不能宣稱內容品質：多個out-of-stage回覆改問channels、montage、split ratio、model或training
+settings而未說明目前不可用；stop／clear history使用了切換面板或confirmation措辭；saliency改問資料；
+中文general含錯字及不存在的visualization模式。這些結果支持第二階段必須投影backend-owned blocked
+action與reason，而不是再堆prompt example；也要求第二階段測試同時驗證zero-action與對應blocked reason，
+不能只檢查合法`respond_to_user` envelope。下一步先更新approved target／decision，定義非callable、
+不授權execution、與callable schemas明確分隔的unavailable-action projection，再以這六個failures及上述
+內容誤導案例建立red gate；尚未修改產品projection。
+
+第二階段現已取得使用者`2026-08-23`實作授權並開始。問題證據是exact 3B final precision仍為18/24：
+三個out-of-stage案例改呼叫import／navigation或以文字暗示已開始，另有多個自動safe回覆未說明真正
+workflow blocker。Observable outcome是模型只看到當下callable schemas，同時能用backend已知的exact
+unavailable action與reason回答；被問到未發布action時只`respond_to_user`說明，不提出前置／替代action，
+且即使模型輸出該unavailable stable ID，既有attempt boundary也以同一reason、零confirmation／handoff／
+execution／mutation fail closed。
+
+Authority與scope：`ApplicationViewPublication`仍是atomic state／capability truth，既有
+`build_agent_tool_policy`投影per-tool `ToolAvailability`，`STAGE_CONFIG`仍擁有approved model-facing stage
+membership；`ContextAssembler`只做交集與render，`ToolAttemptCoordinator`仍是唯一admission owner。
+Callable等於stage target、同一generation backend-enabled policy、registry與target membership的交集。
+其餘registered target tools只進獨立non-callable reference：backend-disabled沿用原始public reason；backend
+enabled但stage省略者使用bounded「not callable in workflow stage」reason。Enabled但需要confirmation者仍
+callable。Non-goals是新增tool／schema／owner／state machine、改capability／confirmation／parser／RAG
+owner、建立semantic Host router、修改UI、Settings或model catalog。預估仍只觸及兩個既有production files，
+production淨增低於100 LOC；deletion／reuse優先，不新增module或public class。此slice沒有UI修改，既有
+Assistant回覆行為授權已涵蓋本次projection，無需額外UI確認。
+
+第二階段TDD／施工順序：先更新approved target／decision；再新增red tests證明同一publication只讀一次、
+enabled只出現在callable、disabled只出現在unavailable且沒有schema、原始backend reason與stage-only reason
+都綁定同一generation、confirmation-required仍callable、unreliable publication fail closed、RAG只含
+callable；接著以既有policy builder填入`PromptPolicyReadResult`，在assembler做交集與reference render，
+不複製capability判斷。Boundary test再證明精確unavailable proposal得到`PUBLICATION_BLOCKED`與同一reason，
+且不讀execution context、不驗證、不確認或執行。Focused validation跑prompt policy／assembler／RAG／attempt
+boundary與直接相關controller integration、Ruff及diff check；之後才以exact Granite 4.0 Micro revision
+`56111ae135df9c53a78c99028e7bc24035a9e979`重跑36+14+24並人工檢閱24個final messages。
+
+Stop condition：36/36 positive、10/10 direct origin或5/5 missing guard任一退步就不形成candidate；precision
+未達24/24則如實保留checkpoint，不加入model-specific wording、替代執行或Host semantic router。預期本階段
+直接處理out-of-stage與誤導blocker回覆，但不宣稱能修正當下確實callable的ambiguous或multi-action格式失敗。
+完成focused green與exact-model report後先回報，不開PR、不merge；product行為仍需同一SHA真人手測與明確
+merge批准。
+
+第二階段已依stop condition收斂為checkpoint。Precision evaluator現對24 cases建立production
+`ApplicationViewPublication`／capability snapshot，prompt與attempt scorer共享同一generation的callable
+set／blocked reasons；frozen core仍保留原catalog路徑。Final exact Granite 4.0 Micro report維持36/36
+positive、10/10 direct origin、5/5 missing guard；raw precision為19/24、final為20/24。相較第一階段18/24，
+start/reset out-of-stage不再進execution，中文general的一次format failure由production recovery安全修正。
+四個final failures是中文epochs仍替代呼叫import、中文ambiguous仍呼叫channels，以及雙語multi-action三次
+皆輸出兩個JSON後exhaust recovery。
+
+24個final messages已人工檢閱，內容品質仍未通過：Start／Stop／Reset帶有已開始或confirmation語氣，
+Channel／Montage／Split／Model／Training Settings多數仍詢問設定值而非說明真正blocker，中文Model列出
+產品不存在的模型類型；只有General中文與部分Clear History／Saliency回覆比第一階段清楚。通用「reason是
+狀態而非prerequisite命令」規則只在真的有unavailable entries時發布，避免讓frozen positive raw output
+退步；它沒有把precision推過20/24，因此不再堆prompt。Final report位於
+`/tmp/xbrainlab-no-action-granite-4-micro-3b-phase2-final-v6.json`，SHA-256
+`f4b6caf48614ba6899d59e9a0b645b594b01291ba1d8eecbd3006e8c33234de9`；臨時model selector已刪除，
+未修改product catalog、Settings或cache。此branch不是candidate，不開PR、不merge；下一步若要處理
+callable ambiguous與multi-action，需要另開bounded decision，不能把本checkpoint延伸成Host semantic router。
+Focused projection／RAG／attempt／recovery／controller／evaluator suite為194 passed；Ruff check、Ruff format
+check與`git diff --check`通過。Precision system prompts實測約7.8–9.6 KB，低於既有request bound；這不是
+latency或8,192-token完整壓力證據。`mkdocs build --strict`未執行，因目前Poetry environment未安裝optional
+docs group而回報`Command not found: mkdocs`；本checkpoint未為此下載依賴，也不宣稱docs／handoff gate完成。
+
+### Parallel diagnostic：capability-first local model under 4B
+
+使用者於`2026-08-24`澄清4B只是產品預計上限，不是必須填滿的規格；選擇依據是非中國來源、
+不超過4B、中文與英文的strict JSON／tool-call能力，以及現有本機資源。第一個新候選固定為
+`mistralai/Ministral-3-3B-Instruct-2512-BF16` exact revision
+`ecc3ba8b43a45610e709327c049d24b009bfec88`：Mistral AI、Apache-2.0、3.4B language model加
+0.4B vision encoder、官方宣稱中文、native function calling與JSON output。這是runtime compatibility
+inventory與model-facing evidence，不批准product catalog、Settings、default model或promotion。
+
+Preflight證據：active cache `/home/administrator/.local/share/xbrainlab/models`下載前實測
+`11,887,393,909` bytes；候選只允許下載兩個indexed BF16 shards與必要config／tokenizer，排除重複的
+`consolidated.safetensors`，exact allow-list為`7,732,474,120` bytes。下載後產品scanner實測候選
+`7,732,474,788` bytes、總cache `19,619,868,697` bytes，仍低於原20 GB產品上限。RTX 5070 Ti為
+16,303 MiB，preflight時used 1,299 MiB／free 14,697 MiB；不宣稱BF16一定可載入。Repository整包約
+15.4 GB且含重複權重，禁止使用無allow-list的現行product downloader。量化不是本次變數；若BF16
+無法在資源gate內載入，停止而不silent fallback到4-bit。Cache下載前後都要以產品size scanner驗證，
+單模型不得超過10 GB、總cache不得超過20 GB。
+
+使用者於下載期間另授權本次diagnostic最多10 GB額外總cache緩衝，即絕對上限30 GB；這不放寬單模型
+10 GB上限，也不授權重複權重、第二個新候選或silent fallback。實際下載未使用這項例外，仍在原20 GB
+內，因此後續load／smoke維持較嚴格的現況，不因緩衝額度擴大scope。
+
+Observable outcome：在同一dirty-but-explained Phase 2 source，以evaluator-owned、exact-whitelist、
+`trust_remote_code=False`、`local_files_only=True`的`AutoModelForImageTextToText` adapter載入候選；先用
+固定一般回覆、明確single action與ambiguous/no-action三個case做不具promotion效力的smoke，再以同一
+36 positive＋14 frozen challenge＋24 precision分母跑完整報告。Prompt／backend publication／callable
+projection、production parser、最多兩次strict recovery、attempt scorer、512-token greedy policy與GPU
+保持不變；只替換model／tokenizer transport。評分停在execution前，不呼叫ApplicationService、
+ToolExecutor、GUI handoff或任何產品mutation。
+
+Scope只包含既有Stable evaluator、直接unit tests、必要的exact snapshot下載與`/tmp`報告；不修改
+`XBrainLab/llm/core/`、model catalog、downloader、Settings、UI、tool membership、prompt、parser、
+admission owner或root `settings.json`。Production `+0/-0/net 0`，owner before／after不變。Evaluator
+adapter是受限外部模型seam，不接受任意repo ID、revision、remote code或fallback。UI確認狀態為不適用，
+因本diagnostic沒有使用者可見產品修改。
+
+施工順序：先加red tests鎖定exact candidate identity、image-text loader、local-only／no-remote-code與
+smoke非promotion語意；再實作最小adapter與CLI candidate selector。Focused green後才以allow-list下載，
+先做load＋三case smoke並記錄peak VRAM／format；只有load與smoke都成功才跑完整74 cases。Full gate仍是
+36/36 positive、10/10 direct origin、5/5 missing guard與24/24 precision，另人工檢閱24個final messages；
+低於此門檻或文字品質不合格都只保留checkpoint。Stop condition是projected／actual cache超限、
+`trust_remote_code=False`不能載入、BF16 OOM、任一core gate退步、smoke不能產生可評分envelope，或需要
+production backend／model-specific prompt才能繼續；任一發生即停止，不擴大成產品整合或下載另一模型。
+
+使用者於`2026-08-24`批准執行上述diagnostic，並指定收斂決策：Ministral只有在同一74-case gate達到
+24/24 precision、36/36 positive、10/10 direct origin、5/5 missing guard，且24個final messages人工
+檢閱明顯優於Granite時，才值得另提runtime整合；任何較低結果、只小幅領先或需要額外產品架構都視為
+與現行3B差不多，停止Ministral lane並固定`ibm-granite/granite-4.0-micro` exact revision
+`56111ae135df9c53a78c99028e7bc24035a9e979`作本次進步版候選。Granite路徑要先收斂Phase 2 diff、閉合
+applicable candidate evidence並建立exact handtest source，之後交由使用者真人手測；只有使用者對未再
+變更的同一source明確回報手測通過並再次同意merge，才可建立／完成PR merge。自動報告不替代批准。
+
+使用者同日再明確授權：交付真人手測前，獲選模型必須完成Assistant Settings的使用者可見產品整合，
+不得要求手改root `settings.json`或以dev evaluator代替產品啟動。這項授權只在model decision後生效；
+diagnostic期間仍不把Ministral或Granite臨時加入product catalog。Observable outcome是獲選exact model在
+既有單一catalog／download lifecycle／runtime activation spine中顯示正確label與資源資訊，能從Settings
+完成選擇、下載或辨識既有完整cache、切換、持久化、重新開啟、啟動與安全刪除，unsupported／incomplete／
+OOM或載入失敗仍使用既有fail-closed presentation，且primary default是否改變必須依model結果明確決定，
+不silent fallback。Owners before／after不變，不新增第二套readiness、下載、設定或runtime state。
+
+Settings收斂採TDD：先以catalog／config／download lifecycle／dialog／AgentManager現有observable contracts
+建立獲選model的red cases，再做最小catalog與既有UI projection接線；focused green後跑真cache inspection、
+產品runtime load與一組Assistant turn，並產生exact-source Settings screenshot／walkthrough。若獲選model的
+loader與現有product backend不相容，先回報complexity review與最小拆分，不在同一變更偷偷加入平行backend。
+任何可見layout、文案、互動或狀態調整已由本段取得明確UI實作授權，但Windows native真人acceptance仍由
+使用者對final未變更SHA執行；source再改即撤銷該次批准。
+
+Diagnostic已依stop condition結束。Exact allow-list adapter與report identity的27個focused tests先完成
+red→green；但三case smoke在模型配置任何VRAM或generation前即以`KeyError: 'ministral3'` fail closed。
+Snapshot宣告`transformers_version: 5.0.0.dev0`，outer `mistral3`內含目前產品Transformers 4.57.6未註冊的
+`ministral3` text config；同一exact snapshot的`AutoConfig`在`trust_remote_code=False`重現相同失敗。
+`AutoTokenizer`只有在顯式`fix_mistral_regex=True`時可載入，不能證明model runtime相容。Smoke artifact為
+`/tmp/xbrainlab-ministral-3b-bf16-smoke.json`，SHA-256
+`71ff68c5fc76df9480a92797fc4b4129e65a767fdef069726a5b6aa2a129c9f7`，peak allocated／reserved皆0；
+沒有執行74 cases，也沒有模型品質分數。繼續需要升級核心Transformers或不正確改寫architecture，皆超出
+本slice，因此Ministral不形成candidate；diagnostic-only adapter／tests要在Settings施工前刪除，避免留下
+未被產品使用的runner。已下載cache暫時保留且總量仍低於20 GB，不冒充product-ready model。
+
+依使用者預先指定的收斂規則，本次產品候選固定為`ibm-granite/granite-4.0-micro` exact revision
+`56111ae135df9c53a78c99028e7bc24035a9e979`。Assistant Settings要把Granite 4.0 Micro 3B列為新的primary／
+recommended default，保留Granite 3.3 2B作lower-memory選項；既有已儲存且仍受支援的2B selection不得被
+silent rewrite，新安裝／缺漏／retired selection才解析到3B primary。這是既有單一catalog的membership與
+default順序變更，不新增owner；exact revision、Apache-2.0、download／VRAM估計與system-role／dtype contract
+都由同一`LocalModelSpec`擁有。先更新approved decision／target，再以catalog、config migration、完整／
+incomplete cache、dialog model rows、switch rollback與persistence red cases驅動最小實作。
+
+Handoff直接相依也必須同步：canonical `granite-runtime` gate與開發者真模型walkthrough命令都要指向
+同一primary 3B，不得仍以2B通過後冒充primary證據；unit contract先鎖定gate argv中的catalog primary，
+再更新executable registry與文件。Settings完成後以真cache inspection、產品`LLMEngine`一個structured
+turn、完整74-case report，以及既有Assistant Settings七狀態walkthrough閉合。若24-case precision仍未
+達24/24，只能固定為可供比較的checkpoint，不能宣稱`handoff-ready`；是否進入真人產品試用由使用者在
+看過四個remaining failures與安全邊界後決定，PR／merge仍等待同一未變更SHA的明確manual acceptance。
+
+Settings development checkpoint已閉合：單一`LOCAL_MODEL_SPECS`現在發布3B recommended primary與2B
+lower-memory，retired selection只在UI解析到primary且不改寫stored value，已支援2B selection原樣保留；
+現有download／inspection／activate／delete／rollback owner未變。Settings／catalog／runtime／download／
+AgentManager focused suite為440 passed；canonical handoff `granite-runtime` argv與developer真模型命令已由
+red→green contract同步到3B。Active cache兩個Granite exact revision都回報`gpu-ready`，總量
+`19,619,868,697` bytes；3B真產品`LLMEngine`的`general_en` structured turn首輪通過，peak allocated／
+reserved為`6,771.76 / 6,872.00 MiB`且close後釋放。既有Assistant Settings七狀態offscreen walkthrough
+PASS，ready／advanced畫面已人工檢閱，沒有clipping、horizontal overflow或primary action問題；Windows
+native仍未驗收。
+
+同一development source的74-case report為36/36 positive、10/10 direct origin、5/5 missing guard、raw
+19/24與final 20/24 precision。四個final failures仍是`epochs_before_data_zh`錯呼叫import、`ambiguous_zh`
+錯呼叫channels，以及`multi_en`／`multi_zh`連續三次輸出相鄰JSON而安全exhaust；前兩案仍可能進入GUI
+handoff／execution admission，因此不是安全零誤動作候選。暫存報告
+`/tmp/xbrainlab-granite-4-micro-3b-settings-convergence.json`的SHA-256為
+`dea97c6da73efb5cbb5feee00dd02cad8ebb37acc3857db3d9815ff677dc4079`，但它綁定dirty source，final
+checkpoint commit後必須重跑，不能作handoff-ready證據。Settings artifact位於
+`/tmp/xbrainlab-assistant-settings-convergence/`；offscreen PASS不取代Windows真人判斷。
 
 施工 checkpoint：catalog／provider chain至`627c5492`已由獨立gate確認無blocker／major；metadata
 discovery保持barrel-free，只有checked provider status能啟用projection。`f27eabfa`已鎖定61-symbol逐檔

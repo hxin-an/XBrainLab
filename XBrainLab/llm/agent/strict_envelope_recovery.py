@@ -8,6 +8,11 @@ from enum import Enum
 from .parser import ToolEnvelopeParseResult, ToolEnvelopeStatus
 from .prompt_policy import STRICT_TOOL_RESPONSE_PROMPT_POLICY
 
+STRICT_ENVELOPE_EXHAUSTED_MESSAGE = (
+    "The assistant could not produce a valid assistant action. Try again "
+    "or describe one workflow step more specifically."
+)
+
 
 class StrictEnvelopeRecoveryAction(str, Enum):
     """Host action after classifying one complete model generation."""

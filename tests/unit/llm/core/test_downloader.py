@@ -25,9 +25,9 @@ from XBrainLab.llm.core.downloader import (
 )
 from XBrainLab.llm.core.model_catalog import DownloadConsumptionResult
 
-PRIMARY_MODEL_ID = "ibm-granite/granite-3.3-2b-instruct"
+PRIMARY_MODEL_ID = "ibm-granite/granite-4.0-micro"
 PRIMARY_MODEL_REVISION = (
-    "707f574c62054322f6b5b04b6d075f0a8f05e0f0"  # pragma: allowlist secret
+    "56111ae135df9c53a78c99028e7bc24035a9e979"  # pragma: allowlist secret
 )
 VALID_TEST_WEIGHT_BYTES = 300_000_000
 
@@ -748,7 +748,7 @@ class TestDownloadWorker:
                 total_cache_bytes=model_bytes,
                 available_disk_bytes=10_000_000_000,
             )
-            for model_bytes in (2_540_000_000, 1_000_000_000, 8_000_000_000)
+            for model_bytes in (3_410_000_000, 1_000_000_000, 8_000_000_000)
         ]
 
         with patch(
@@ -760,7 +760,7 @@ class TestDownloadWorker:
             assert worker._check_consumption_if_due(now=102.0) is True
 
         assert progress == [
-            (50, "Downloaded 2.54 GB of about 5.08 GB."),
+            (50, "Downloaded 3.41 GB of about 6.82 GB."),
             (99, "Finalizing and verifying model…"),
         ]
 
