@@ -257,15 +257,12 @@ def test_training_panel_start_training_success(
     # subsequent UI updates
     mock_controller.is_training.side_effect = [False] + [True] * 50
 
-    with (
-        patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,
-        patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
-    ):
+    with patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning:
         panel.sidebar.start_training_ui_action()
 
         mock_controller.start_training.assert_not_called()
-        assert not mock_critical.called
         mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[0] is panel.sidebar
         assert mock_warning.call_args.args[1] == "Start Training Blocked"
 
 
@@ -393,12 +390,7 @@ def test_training_panel_split_data_success(mock_main_window, mock_controller, qt
 
     with (
         patch("XBrainLab.ui.panels.training.sidebar.DataSplittingDialog") as MockDialog,
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.QMessageBox.information"
-        ) as mock_info,
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.QMessageBox.warning"
-        ) as mock_warning,
+        patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
     ):
         # Setup Dialog Mock
         instance = MockDialog.return_value
@@ -418,8 +410,8 @@ def test_training_panel_split_data_success(mock_main_window, mock_controller, qt
 
         MockDialog.assert_not_called()
         mock_controller.apply_data_splitting.assert_not_called()
-        mock_info.assert_not_called()
         mock_warning.assert_called_once()
+        assert mock_warning.call_args.args[0] is panel.sidebar
         assert mock_warning.call_args.args[1] == "Data Splitting Blocked"
 
 
@@ -437,13 +429,12 @@ def test_training_panel_stop_training(mock_main_window, mock_controller, qtbot):
     # Simulate Training
     mock_controller.is_training.return_value = True
 
-    with patch(
-        "XBrainLab.ui.panels.training.sidebar.QMessageBox.warning"
-    ) as mock_warning:
+    with patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning:
         panel.sidebar.stop_training()
 
     mock_controller.stop_training.assert_not_called()
     mock_warning.assert_called_once()
+    assert mock_warning.call_args.args[0] is panel.sidebar
     assert mock_warning.call_args.args[1] == "Stop Training Blocked"
 
 
@@ -1595,9 +1586,8 @@ def test_training_panel_clears_log_on_history_cleared(
     )
     qtbot.addWidget(panel)
 
-    with patch("PyQt6.QtWidgets.QMessageBox.information"):
-        panel._on_training_started()
-        panel._on_training_stopped()
+    panel._on_training_started()
+    panel._on_training_stopped()
 
     assert "Training started" in panel.log_text.toPlainText()
 
@@ -2245,12 +2235,9 @@ def test_training_panel_high_level_events_refresh_coordinator_scope(
     )
     qtbot.addWidget(panel)
 
-    with (
-        patch("PyQt6.QtWidgets.QMessageBox.information"),
-        patch(
-            "XBrainLab.ui.panels.training.panel.refresh_after_observer",
-        ) as refresh,
-    ):
+    with patch(
+        "XBrainLab.ui.panels.training.panel.refresh_after_observer",
+    ) as refresh:
         controller.notify("training_started")
         qtbot.wait(50)
         controller.notify("config_changed")
@@ -2373,9 +2360,8 @@ def test_training_panel_clears_log_on_config_changed(
 
     panel.update_loop()
 
-    with patch("PyQt6.QtWidgets.QMessageBox.information"):
-        panel._on_training_started()
-        panel._on_training_stopped()
+    panel._on_training_started()
+    panel._on_training_stopped()
 
     controller.get_formatted_history.return_value = [new_entry]
     controller.notify("config_changed")

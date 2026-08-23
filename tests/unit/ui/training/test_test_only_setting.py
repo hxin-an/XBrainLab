@@ -92,11 +92,15 @@ class TestConfirm:
     def test_confirm_invalid_batch(self, dialog):
         dialog.bs_entry.setText("not_a_number")
         with patch(
-            "XBrainLab.ui.panels.training.test_only_setting.QMessageBox.warning",
+            "XBrainLab.ui.panels.training.test_only_setting.show_warning",
         ) as warning:
             dialog.confirm()
 
-        warning.assert_called_once()
+        warning.assert_called_once_with(
+            dialog,
+            "Validation Error",
+            "Enter a positive whole-number batch size and review the test settings.",
+        )
         assert dialog.training_option is None
 
     def test_confirm_default_values(self, dialog):
