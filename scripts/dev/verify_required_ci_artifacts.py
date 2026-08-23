@@ -70,7 +70,7 @@ def _human_like_failure(payload: Mapping[str, Any]) -> str | None:
 
 def _ui_baseline_failure(payload: Mapping[str, Any]) -> str | None:
     if (
-        payload.get("schema_version") != 1
+        payload.get("schema_version") != 2
         or payload.get("artifact_type") != "xbrainlab.ui_visual_baseline"
         or payload.get("passed") is not True
     ):
