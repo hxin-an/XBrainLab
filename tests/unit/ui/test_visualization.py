@@ -9,7 +9,7 @@ import numpy as np
 from PyQt6 import sip
 from PyQt6.QtCore import QObject, Qt
 from PyQt6.QtGui import QStandardItemModel
-from PyQt6.QtWidgets import QLabel
+from PyQt6.QtWidgets import QLabel, QPushButton
 
 from XBrainLab.backend.application.saliency_render import (
     SaliencyPlanIdentity,
@@ -813,6 +813,7 @@ class TestSaliency3DPlotWidget:
             cast(Any, w).plotter_widget = plotter
             cast(Any, w)._saliency_scene = MagicMock()
             w.scene_controls.show()
+            w.scene_overlay.show()
 
             w.clear_plot()
 
@@ -822,6 +823,56 @@ class TestSaliency3DPlotWidget:
             assert w.plotter_widget is None
             assert cast(Any, w)._saliency_scene is None
             assert w.scene_controls.isHidden()
+            assert w.scene_overlay.isHidden()
+
+    def test_3d_scene_actions_are_lower_left_canvas_overlay(self, qtbot):
+        with patch(
+            "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
+        ):
+            from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
+                Saliency3DPlotWidget,
+            )
+
+            widget = Saliency3DPlotWidget(parent=None)
+            qtbot.addWidget(widget)
+            widget.resize(900, 600)
+            widget.show()
+            widget.scene_overlay.show()
+            widget._position_scene_overlay()
+
+        assert widget.scene_overlay.parentWidget() is widget.plot_container
+        assert widget.scene_overlay.geometry().left() == 12
+        assert (
+            widget.scene_overlay.geometry().bottom()
+            <= widget.plot_container.contentsRect().bottom() - 12
+        )
+        assert widget.scene_controls.findChildren(QPushButton) == []
+        assert widget.time_slider.parentWidget() is widget.scene_controls
+
+    def test_terminal_publication_starts_one_3d_scene_update(self, qtbot):
+        with patch(
+            "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
+        ):
+            from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
+                Saliency3DPlotWidget,
+            )
+
+            widget = Saliency3DPlotWidget(parent=None)
+            qtbot.addWidget(widget)
+            publication = _render_publication()
+            widget.set_saliency_coverage(_published_method_coverage())
+            with (
+                patch.object(
+                    widget,
+                    "_interactive_3d_runtime_available",
+                    return_value=(True, ""),
+                ),
+                patch.object(widget, "_start_3d_engine_worker") as start_worker,
+            ):
+                widget.update_plot(publication, absolute=False)
+                widget.update_plot(publication, absolute=False)
+
+        start_worker.assert_called_once()
 
     def test_3d_pending_canonical_key_survives_first_duplicate_name_sync(
         self,
@@ -1338,9 +1389,10 @@ class TestSaliency3DPlotWidget:
             def __init__(self):
                 self.slider_ranges = []
                 self.camera = MagicMock()
+                self.orientation_widget_calls = 0
 
             def add_camera_orientation_widget(self):
-                pass
+                self.orientation_widget_calls += 1
 
             def add_slider_widget(self, **kwargs):
                 self.slider_ranges.append(kwargs["rng"])
@@ -1382,6 +1434,7 @@ class TestSaliency3DPlotWidget:
         saliency.get_3d_head_plot()
 
         assert saliency.plotter.slider_ranges == []
+        assert saliency.plotter.orientation_widget_calls == 1
 
     def test_3d_head_plot_centers_scene_after_adding_meshes(self):
         from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_head import (

@@ -210,6 +210,51 @@ def test_saliency_view_selector_is_inside_the_visible_control_bar(qtbot) -> None
     )
 
 
+@pytest.mark.parametrize(
+    ("control_width", "expected_mode"),
+    ((1200, "wide"), (800, "medium"), (650, "narrow"), (500, "narrow")),
+)
+def test_visualization_controls_use_responsive_layout_modes(
+    qtbot,
+    control_width,
+    expected_mode,
+) -> None:
+    panel, _ = _make_panel(qtbot)
+    panel.ctrl_bar.resize(control_width, 120)
+    panel._refresh_control_layout_for_width()
+
+    assert panel._controls_layout_mode == expected_mode
+    normalize_index = panel.ctrl_layout.indexOf(panel.normalize_check)
+    absolute_index = panel.ctrl_layout.indexOf(panel.abs_check)
+    normalize_row, normalize_column, _, _ = panel.ctrl_layout.getItemPosition(
+        normalize_index,
+    )
+    absolute_row, absolute_column, _, _ = panel.ctrl_layout.getItemPosition(
+        absolute_index,
+    )
+    assert (normalize_row, normalize_column) < (absolute_row, absolute_column)
+
+
+def test_spectrogram_does_not_reserve_absolute_control_hole(qtbot) -> None:
+    panel, _ = _make_panel(qtbot)
+    panel._apply_visualization_control_layout("medium")
+    panel.tabs.setCurrentWidget(panel.tab_spectro)
+    panel._refresh_absolute_control()
+
+    assert panel.abs_check.isHidden()
+    assert panel.ctrl_layout.indexOf(panel.abs_check) == -1
+    assert panel.ctrl_layout.indexOf(panel.normalize_check) >= 0
+
+
+def test_legacy_saliency_projection_selectors_remain_hidden(qtbot) -> None:
+    panel, _ = _make_panel(qtbot)
+
+    assert panel.saliency_view_mode.isHidden()
+    assert panel.saliency_class_combo.isHidden()
+    assert panel.ctrl_layout.indexOf(panel.saliency_view_mode) == -1
+    assert panel.ctrl_layout.indexOf(panel.saliency_class_combo) == -1
+
+
 def test_visualization_shutdown_cancels_active_explicit_saliency(qtbot, monkeypatch):
     panel, _ = _make_panel(qtbot)
     panel._active_saliency_operation_id = "saliency-operation-1"

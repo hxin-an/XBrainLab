@@ -481,8 +481,8 @@ class VisualizationPanel(BasePanel):
         self.saliency_reset_view.setStyleSheet(Stylesheets.BTN_GHOST)
         self.saliency_reset_view.clicked.connect(self._reset_saliency_detail_view)
         self.saliency_reset_view.hide()
-        self._controls_single_row = None
-        self._apply_visualization_control_layout(single_row=False)
+        self._controls_layout_mode: str | None = None
+        self._apply_visualization_control_layout("narrow")
         left_layout.addWidget(self.ctrl_bar)
 
         # 2. Saliency compute entry point
@@ -728,21 +728,23 @@ class VisualizationPanel(BasePanel):
         if not hasattr(self, "ctrl_bar"):
             return
         available_width = max(self.ctrl_bar.width(), self.width() - 340)
-        self._apply_visualization_control_layout(
-            single_row=available_width >= 780,
-        )
+        if available_width >= 1080:
+            layout_mode = "wide"
+        elif available_width >= 700:
+            layout_mode = "medium"
+        else:
+            layout_mode = "narrow"
+        self._apply_visualization_control_layout(layout_mode)
 
-    def _apply_visualization_control_layout(self, single_row: bool) -> None:
-        wide = self.ctrl_bar.width() >= 1080
-        layout_key = (single_row, wide)
-        if getattr(self, "_controls_single_row", None) == layout_key:
+    def _apply_visualization_control_layout(self, layout_mode: str) -> None:
+        if getattr(self, "_controls_layout_mode", None) == layout_mode:
             return
 
-        self._controls_single_row = layout_key
+        self._controls_layout_mode = layout_mode
         for column in range(12):
             self.ctrl_layout.setColumnStretch(column, 0)
 
-        if single_row:
+        if layout_mode in {"wide", "medium"}:
             self.plan_combo.setMinimumWidth(150)
             self.plan_combo.setMaximumWidth(210)
             self.run_combo.setMinimumWidth(105)
@@ -757,7 +759,7 @@ class VisualizationPanel(BasePanel):
             self.ctrl_layout.addWidget(self.method_label, 0, 4)
             self.ctrl_layout.addWidget(self.method_combo, 0, 5)
             self.ctrl_layout.setColumnStretch(11, 1)
-            self._position_transform_controls(wide=wide)
+            self._position_transform_controls(layout_mode)
             return
 
         self.plan_combo.setMinimumWidth(150)
@@ -774,9 +776,9 @@ class VisualizationPanel(BasePanel):
         self.ctrl_layout.addWidget(self.method_label, 1, 0)
         self.ctrl_layout.addWidget(self.method_combo, 1, 1)
         self.ctrl_layout.setColumnStretch(5, 1)
-        self._position_transform_controls(wide=False)
+        self._position_transform_controls(layout_mode)
 
-    def _position_transform_controls(self, *, wide: bool) -> None:
+    def _position_transform_controls(self, layout_mode: str) -> None:
         """Place compact transforms without reserving hidden-control holes."""
         self.ctrl_layout.removeWidget(self.abs_check)
         self.ctrl_layout.removeWidget(self.normalize_check)
@@ -791,8 +793,7 @@ class VisualizationPanel(BasePanel):
         self.abs_check.setVisible(show_absolute)
         self.normalize_check.setVisible(True)
 
-        single_row = bool(self._controls_single_row and self._controls_single_row[0])
-        if single_row:
+        if layout_mode == "wide":
             row = 0
             normalize_column = 6
             absolute_column = 7
@@ -804,11 +805,11 @@ class VisualizationPanel(BasePanel):
         self.ctrl_layout.addWidget(self.normalize_check, row, normalize_column)
         if show_absolute:
             self.ctrl_layout.addWidget(self.abs_check, row, absolute_column)
-        if wide:
+        if layout_mode == "wide":
             self.ctrl_layout.addWidget(self.saliency_view_label, 0, 8)
             self.ctrl_layout.addWidget(self.saliency_combo, 0, 9)
             self.ctrl_layout.addWidget(self.saliency_reset_view, 0, 10)
-        elif single_row:
+        elif layout_mode == "medium":
             self.ctrl_layout.addWidget(self.saliency_view_label, 1, 0)
             self.ctrl_layout.addWidget(self.saliency_combo, 1, 1)
             self.ctrl_layout.addWidget(self.saliency_reset_view, 1, 2)
@@ -1220,10 +1221,8 @@ class VisualizationPanel(BasePanel):
         """Hide or disable an irrelevant transform while preserving its choice."""
         if not hasattr(self, "abs_check") or not hasattr(self, "tabs"):
             return
-        self._apply_visualization_control_layout(
-            single_row=max(self.ctrl_bar.width(), self.width() - 340) >= 780,
-        )
-        self._position_transform_controls(wide=self.ctrl_bar.width() >= 1080)
+        self._refresh_control_layout_for_width()
+        self._position_transform_controls(self._controls_layout_mode or "narrow")
         method = self.method_combo.currentText()
         if self.tabs.currentIndex() == 1:
             self.abs_check.setEnabled(False)
