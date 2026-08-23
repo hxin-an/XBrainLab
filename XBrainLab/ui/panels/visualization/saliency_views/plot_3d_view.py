@@ -603,6 +603,7 @@ class Saliency3DPlotWidget(QWidget):
             if not self._qt_object_deleted(self):
                 self.show_error(message)
             return
+        reserved_scene_key = None
         try:
             data = publication.data
             method = data.method
@@ -675,6 +676,7 @@ class Saliency3DPlotWidget(QWidget):
 
             cache_key = scene_key
             self._active_scene_key = scene_key
+            reserved_scene_key = scene_key
             prepared = self._cached_prepared_engine(cache_key, publication)
             if prepared is not None:
                 self._show_prepared_engine(
@@ -700,6 +702,8 @@ class Saliency3DPlotWidget(QWidget):
             )
 
         except Exception as e:
+            if self._active_scene_key == reserved_scene_key:
+                self._active_scene_key = None
             logger.error("Error initializing 3D plot: %s", e, exc_info=True)
             if not self._qt_object_deleted(self):
                 self.show_error(SALIENCY_PREPARATION_FAILED_TEXT)
