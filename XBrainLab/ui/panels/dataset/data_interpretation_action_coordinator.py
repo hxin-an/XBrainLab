@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from PyQt6.QtCore import QObject, QTimer
-from PyQt6.QtWidgets import QFileDialog, QMessageBox, QWidget
+from PyQt6.QtWidgets import QFileDialog, QWidget
 
 from XBrainLab.backend.application.commands import (
     ApplyInterpretationCommand,
@@ -49,6 +49,9 @@ from XBrainLab.ui.application_capabilities import (
     is_stale_publication_result,
 )
 from XBrainLab.ui.async_command_runner import qt_object_deleted
+from XBrainLab.ui.components.modal_presentation import (
+    StyledModalMessageBox as QMessageBox,
+)
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,

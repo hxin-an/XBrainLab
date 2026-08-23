@@ -1401,6 +1401,7 @@ def test_visible_bids_apply_cancel_reopens_identical_review_and_retries(
     }
 
     reopened_identities: list[dict[str, Any]] = []
+    reopened_class_evidence: list[list[dict[str, Any]]] = []
     retry_timer = QTimer()
 
     def _accept_reopened_review() -> None:
@@ -1410,6 +1411,9 @@ def test_visible_bids_apply_cancel_reopens_identical_review_and_retries(
         reopened_identities.append(
             dict(modal.apply_button.property("reviewSessionIdentity") or {})
         )
+        editor = modal.event_value_editor
+        assert editor is not None
+        reopened_class_evidence.append(editor.evidence_rows())
         assert modal.apply_button.isEnabled()
         QTEST.mouseClick(modal.apply_button, Qt.MouseButton.LeftButton)
         retry_timer.stop()
@@ -1431,6 +1435,13 @@ def test_visible_bids_apply_cancel_reopens_identical_review_and_retries(
         timeout=20_000,
     )
     assert reopened_identities == [expected_identity]
+    assert reopened_class_evidence
+    assert any(
+        choice["event_value"] == "show_stimulus"
+        and choice["use_as_class"] is True
+        and choice["class_name"] == "show stimulus"
+        for choice in reopened_class_evidence[0]
+    )
     assert runtime.get_view_publication() == before
     assert runtime.get_interpretation_review() == review_before
     assert host.study.loaded_data_list == []

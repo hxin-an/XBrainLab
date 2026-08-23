@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import QApplication, QPushButton
 from XBrainLab.ui.components.modal_presentation import (
     AlertSeverity,
     ModalAlertDialog,
+    StyledModalMessageBox,
     ask_confirmation,
     show_alert,
     show_error,
@@ -224,3 +225,38 @@ def test_public_confirmation_maps_rejected_result_to_false(monkeypatch):
         confirm_text="Delete",
         destructive=True,
     )
+
+
+def test_styled_message_box_keeps_qmessagebox_question_result_contract(monkeypatch):
+    calls: list[dict[str, object]] = []
+
+    def _ask_confirmation(parent, **kwargs):
+        calls.append({"parent": parent, **kwargs})
+        return True
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.components.modal_presentation.ask_confirmation",
+        _ask_confirmation,
+    )
+
+    answer = StyledModalMessageBox.question(
+        None,
+        "Continue",
+        "Continue importing?",
+        StyledModalMessageBox.StandardButton.Yes
+        | StyledModalMessageBox.StandardButton.No,
+        StyledModalMessageBox.StandardButton.No,
+    )
+
+    assert answer is StyledModalMessageBox.StandardButton.Yes
+    assert calls == [
+        {
+            "parent": None,
+            "severity": AlertSeverity.WARNING,
+            "title": "Continue",
+            "message": "Continue importing?",
+            "confirm_text": "Yes",
+            "cancel_text": "No",
+            "destructive": False,
+        }
+    ]

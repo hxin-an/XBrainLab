@@ -20,6 +20,9 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QVBoxLayout,
 )
+from PyQt6.QtWidgets import (
+    QMessageBox as QtMessageBox,
+)
 
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.styles.theme import Theme
@@ -286,3 +289,50 @@ def show_error(parent: Any, title: str, message: str) -> None:
         title=title,
         message=message,
     )
+
+
+class StyledModalMessageBox:
+    """QMessageBox-compatible presentation seam for migrated UI callers.
+
+    The static surface deliberately matches the small blocking-dialog subset
+    used by legacy UI owners, so existing injected test seams remain valid
+    while production no longer opens a platform-native QMessageBox.
+    """
+
+    StandardButton = QtMessageBox.StandardButton
+
+    @staticmethod
+    def information(parent: Any, title: str, message: str, *_args: Any) -> None:
+        show_information(parent, title, message)
+
+    @staticmethod
+    def warning(parent: Any, title: str, message: str, *_args: Any) -> None:
+        show_warning(parent, title, message)
+
+    @staticmethod
+    def critical(parent: Any, title: str, message: str, *_args: Any) -> None:
+        show_error(parent, title, message)
+
+    @classmethod
+    def question(
+        cls,
+        parent: Any,
+        title: str,
+        message: str,
+        buttons: QtMessageBox.StandardButton = (
+            QtMessageBox.StandardButton.Yes | QtMessageBox.StandardButton.No
+        ),
+        default_button: QtMessageBox.StandardButton = QtMessageBox.StandardButton.No,
+    ) -> QtMessageBox.StandardButton:
+        del buttons, default_button
+        destructive = title == "Confirm" and message.startswith("Remove ")
+        accepted = ask_confirmation(
+            parent,
+            severity=AlertSeverity.WARNING,
+            title=title,
+            message=message,
+            confirm_text="Remove files" if destructive else "Yes",
+            cancel_text="No",
+            destructive=destructive,
+        )
+        return cls.StandardButton.Yes if accepted else cls.StandardButton.No

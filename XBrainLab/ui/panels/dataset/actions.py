@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QInputDialog,
     QMenu,
-    QMessageBox,
 )
 
 from XBrainLab.backend.application.commands import (
@@ -45,6 +44,9 @@ from XBrainLab.ui.application_capabilities import (
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.async_command_runner import qt_object_deleted
+from XBrainLab.ui.components.modal_presentation import (
+    StyledModalMessageBox as QMessageBox,
+)
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
