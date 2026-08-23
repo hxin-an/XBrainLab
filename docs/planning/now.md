@@ -84,7 +84,14 @@ handoff 後一次性交付真人手測。
   policy-installed keyboard、same-scene retry與stale-key tests保護；非作者closure無blocking finding。
 - 同一整合focused denominator為926 passed；Ruff、format、Basedpyright、diff與raw `QMessageBox` guard均通過。
   Production diff為`+887/-613`、touched 1,500，未超過強制拆分門檻；owner數不變。
-- 下一步是凍結exact source、完成artifact review與canonical handoff；在此之前維持checkpoint。
+- Exact-source canonical manifest已在`complete-regression` fail closed：production行為focused tests仍綠，
+  但完整UI shards揭露多個測試仍patch已退役的raw `QMessageBox` seam；backend visualization shard另有一個
+  測試仍要求本slice已明確移除的Spectrogram suptitle。這些是過期test contract，不以production alias
+  或恢復舊copy掩蓋。
+- 下一步限定tests-only：依owner校準到實際`show_warning`／`show_error`／`ask_confirmation`／
+  `present_unexpected_error` helper，保留直接call argument與absence assertions；Spectrogram測試改保護
+  no-suptitle outcome。各affected selector與完整shard通過後重新凍結SHA並從頭跑canonical manifest。
+  若需要任何production修改、測試只能靠auto-accept modal或削弱observable assertion才會通過，立即停止。
 
 ## Focused validation
 
