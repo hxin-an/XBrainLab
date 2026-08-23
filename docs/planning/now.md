@@ -110,6 +110,15 @@ handoff 後一次性交付真人手測。
   diff 維持 `+886/-614`、touched 1,500、net +272。Focused 3D/visualization `140 passed`；canonical
   escalated Basedpyright 實際掃描 70 個既有 diagnostics、沒有新增 diagnostic並已通過。下一步重新凍結
   exact SHA、push、從 section 1 重跑完整 manifest與同 SHA CI。
+- 新 SHA 的 section 1／architecture／type gate 通過；required-ci profile 完整安裝後，complete regression
+  額外執行先前缺 fixture 的路徑並揭露兩個 tests-only contract：teacher preflight 把合法 required-ci
+  OpenNeuro cache 誤判成 teacher profile 部分安裝；resource-receipt integration helper 仍只會操作退役的
+  `QMessageBox`，無法點擊 shared modal。該 manifest 已有確定 IO failure，因此主動中止本 agent 的單一
+  session，避免等待三個 modal timeout；evidence 不可沿用。
+- 下一步限定修正這兩個 test contracts：teacher gate 必須區分完整 required-ci 與真正 partial teacher
+  profile；resource-receipt 必須操作實際 visible shared modal buttons，不使用 auto-accept、presenter mock、
+  production alias 或削弱 mutation／terminal assertions。Focused required-fixture tests與完整 affected shards
+  通過後，重新凍結 SHA、push並從 section 1 重跑完整 manifest。
 
 ## Focused validation
 
