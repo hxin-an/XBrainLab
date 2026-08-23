@@ -1497,8 +1497,13 @@ class EvaluationPanel(BasePanel):
 
     def _current_evaluation_render_request(self) -> EvaluationRenderRequest | None:
         generation = self._application_generation
-        selection = self.run_combo.currentData()
-        split = self.split_combo.currentData()
+        try:
+            selection = self.run_combo.currentData()
+            split = self.split_combo.currentData()
+        except RuntimeError:
+            # A terminal worker callback can arrive after Qt has deleted the
+            # panel during close; it is no longer eligible to publish.
+            return None
         if (
             generation is None
             or not isinstance(

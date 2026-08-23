@@ -12,7 +12,6 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QMainWindow,
-    QMessageBox,
     QWidget,
 )
 
@@ -41,6 +40,7 @@ from XBrainLab.backend.training_state_contract import (
     TrainingRunIdentity,
 )
 from XBrainLab.backend.utils.observer import Observable
+from XBrainLab.ui.components.modal_presentation import AlertSeverity
 from XBrainLab.ui.interaction_outcome import (
     InteractionCompletionSession,
     InteractionCompletionStatus,
@@ -946,9 +946,9 @@ def test_visualization_controls_stay_in_a_compact_two_row_grid(qtbot):
     assert isinstance(layout, QGridLayout)
     plan_item = layout.itemAtPosition(0, 1)
     run_item = layout.itemAtPosition(0, 3)
-    method_item = layout.itemAtPosition(1, 1)
+    method_item = layout.itemAtPosition(0, 5)
     absolute_item = layout.itemAtPosition(1, 3)
-    normalize_item = layout.itemAtPosition(1, 4)
+    normalize_item = layout.itemAtPosition(1, 2)
     assert plan_item is not None
     assert run_item is not None
     assert method_item is not None
@@ -960,9 +960,9 @@ def test_visualization_controls_stay_in_a_compact_two_row_grid(qtbot):
     assert absolute_item.widget() is panel.abs_check
     assert normalize_item.widget() is panel.normalize_check
     assert abs(panel.plan_combo.y() - panel.run_combo.y()) <= 8
-    assert abs(panel.method_combo.y() - panel.abs_check.y()) <= 8
-    assert abs(panel.method_combo.y() - panel.normalize_check.y()) <= 8
-    assert panel.plan_combo.y() < panel.method_combo.y()
+    assert panel.plan_combo.y() < panel.abs_check.y()
+    assert panel.plan_combo.y() < panel.normalize_check.y()
+    assert panel.plan_combo.y() == panel.method_combo.y()
 
     widgets = [
         panel.plan_combo,
@@ -978,11 +978,11 @@ def test_visualization_controls_stay_in_a_compact_two_row_grid(qtbot):
 
     control_height = control_group.height()
     transform_row_y = panel.normalize_check.y()
-    selector_geometry = {
-        "plan": panel.plan_combo.geometry(),
-        "run": panel.run_combo.geometry(),
-        "method": panel.method_combo.geometry(),
-        "normalize": panel.normalize_check.geometry(),
+    selector_rows = {
+        "plan": panel.plan_combo.y(),
+        "run": panel.run_combo.y(),
+        "method": panel.method_combo.y(),
+        "normalize": panel.normalize_check.y(),
     }
     panel.tabs.setCurrentIndex(1)
     qtbot.wait(20)
@@ -990,14 +990,14 @@ def test_visualization_controls_stay_in_a_compact_two_row_grid(qtbot):
     assert panel.abs_check.isHidden()
     assert panel.abs_check.isChecked()
     assert not panel.normalize_check.isHidden()
-    assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (1, 3)
-    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (1, 4)
+    assert layout.indexOf(panel.abs_check) == -1
+    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (1, 2)
     assert panel.normalize_check.y() == transform_row_y
     assert control_group.height() == control_height
-    assert panel.plan_combo.geometry() == selector_geometry["plan"]
-    assert panel.run_combo.geometry() == selector_geometry["run"]
-    assert panel.method_combo.geometry() == selector_geometry["method"]
-    assert panel.normalize_check.geometry() == selector_geometry["normalize"]
+    assert panel.plan_combo.y() == selector_rows["plan"]
+    assert panel.run_combo.y() == selector_rows["run"]
+    assert panel.method_combo.y() == selector_rows["method"]
+    assert panel.normalize_check.y() == selector_rows["normalize"]
 
     panel.tabs.setCurrentIndex(2)
     qtbot.wait(20)
@@ -1005,12 +1005,12 @@ def test_visualization_controls_stay_in_a_compact_two_row_grid(qtbot):
     assert not panel.abs_check.isHidden()
     assert panel.abs_check.isChecked()
     assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (1, 3)
-    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (1, 4)
+    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (1, 2)
     assert control_group.height() == control_height
-    assert panel.plan_combo.geometry() == selector_geometry["plan"]
-    assert panel.run_combo.geometry() == selector_geometry["run"]
-    assert panel.method_combo.geometry() == selector_geometry["method"]
-    assert panel.normalize_check.geometry() == selector_geometry["normalize"]
+    assert panel.plan_combo.y() == selector_rows["plan"]
+    assert panel.run_combo.y() == selector_rows["run"]
+    assert panel.method_combo.y() == selector_rows["method"]
+    assert panel.normalize_check.y() == selector_rows["normalize"]
 
 
 def test_visualization_controls_use_one_row_when_panel_is_wide(qtbot):
@@ -1047,11 +1047,11 @@ def test_visualization_controls_use_one_row_when_panel_is_wide(qtbot):
 
     control_height = control_group.height()
     transform_row_y = panel.normalize_check.y()
-    selector_geometry = {
-        "plan": panel.plan_combo.geometry(),
-        "run": panel.run_combo.geometry(),
-        "method": panel.method_combo.geometry(),
-        "normalize": panel.normalize_check.geometry(),
+    selector_rows = {
+        "plan": panel.plan_combo.y(),
+        "run": panel.run_combo.y(),
+        "method": panel.method_combo.y(),
+        "normalize": panel.normalize_check.y(),
     }
     panel.tabs.setCurrentIndex(1)
     qtbot.wait(20)
@@ -1059,27 +1059,27 @@ def test_visualization_controls_use_one_row_when_panel_is_wide(qtbot):
     assert panel.abs_check.isHidden()
     assert panel.abs_check.isChecked()
     assert not panel.normalize_check.isHidden()
-    assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (0, 6)
-    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (0, 7)
+    assert layout.indexOf(panel.abs_check) == -1
+    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (0, 6)
     assert panel.normalize_check.y() == transform_row_y
     assert control_group.height() == control_height
-    assert panel.plan_combo.geometry() == selector_geometry["plan"]
-    assert panel.run_combo.geometry() == selector_geometry["run"]
-    assert panel.method_combo.geometry() == selector_geometry["method"]
-    assert panel.normalize_check.geometry() == selector_geometry["normalize"]
+    assert panel.plan_combo.y() == selector_rows["plan"]
+    assert panel.run_combo.y() == selector_rows["run"]
+    assert panel.method_combo.y() == selector_rows["method"]
+    assert panel.normalize_check.y() == selector_rows["normalize"]
 
     panel.tabs.setCurrentIndex(3)
     qtbot.wait(20)
 
     assert not panel.abs_check.isHidden()
     assert panel.abs_check.isChecked()
-    assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (0, 6)
-    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (0, 7)
+    assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (0, 7)
+    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (0, 6)
     assert control_group.height() == control_height
-    assert panel.plan_combo.geometry() == selector_geometry["plan"]
-    assert panel.run_combo.geometry() == selector_geometry["run"]
-    assert panel.method_combo.geometry() == selector_geometry["method"]
-    assert panel.normalize_check.geometry() == selector_geometry["normalize"]
+    assert panel.plan_combo.y() == selector_rows["plan"]
+    assert panel.run_combo.y() == selector_rows["run"]
+    assert panel.method_combo.y() == selector_rows["method"]
+    assert panel.normalize_check.y() == selector_rows["normalize"]
 
 
 def test_visualization_panel_defers_service_queries_until_opened(
@@ -2887,7 +2887,9 @@ def test_saliency_resource_preflight_safe_dispatches_once_without_confirmation(
         fake_execute_async,
     )
     question = MagicMock(side_effect=AssertionError("safe preflight must not prompt"))
-    monkeypatch.setattr(QMessageBox, "question", question)
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.ask_confirmation", question
+    )
     params = {"profile": "recommended", "methods": ["Gradient"]}
 
     assert panel._start_saliency_compute(
@@ -2942,8 +2944,10 @@ def test_saliency_resource_preflight_approval_uses_host_receipt_not_param_token(
         "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
         fake_execute_async,
     )
-    question = MagicMock(return_value=QMessageBox.StandardButton.Yes)
-    monkeypatch.setattr(QMessageBox, "question", question)
+    question = MagicMock(return_value=True)
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.ask_confirmation", question
+    )
     params = {
         "profile": "recommended",
         "methods": ["Gradient"],
@@ -2978,7 +2982,7 @@ def test_saliency_resource_preflight_approval_uses_host_receipt_not_param_token(
     assert confirmed.method == initial.method == "Gradient"
     assert confirmed.params == initial.params == params
     question.assert_called_once()
-    assert resource_message in question.call_args.args[2]
+    assert resource_message in question.call_args.kwargs["message"]
 
     second_outcome = callbacks[1](
         CommandResult.success_result(
@@ -3015,9 +3019,8 @@ def test_saliency_resource_preflight_cancel_does_not_mutate_evaluator(
         fake_execute_async,
     )
     monkeypatch.setattr(
-        QMessageBox,
-        "question",
-        MagicMock(return_value=QMessageBox.StandardButton.No),
+        "XBrainLab.ui.panels.visualization.panel.ask_confirmation",
+        MagicMock(return_value=False),
     )
 
     assert panel._start_saliency_compute(
@@ -3057,8 +3060,10 @@ def test_saliency_resource_preflight_blocking_does_not_dispatch_confirmation(
     )
     question = MagicMock(side_effect=AssertionError("blocking must not prompt"))
     critical = MagicMock()
-    monkeypatch.setattr(QMessageBox, "question", question)
-    monkeypatch.setattr(QMessageBox, "critical", critical)
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.ask_confirmation", question
+    )
+    monkeypatch.setattr("XBrainLab.ui.panels.visualization.panel.show_alert", critical)
     resource_message = "Saliency exceeds the available memory limit."
 
     assert panel._start_saliency_compute(
@@ -3074,7 +3079,12 @@ def test_saliency_resource_preflight_blocking_does_not_dispatch_confirmation(
     assert outcome.status is InteractionStatus.BLOCKED
     assert len(commands) == 1
     question.assert_not_called()
-    critical.assert_called_once_with(panel, "Saliency Resource Check", resource_message)
+    critical.assert_called_once_with(
+        panel,
+        severity=AlertSeverity.CRITICAL,
+        title="Saliency Resource Check",
+        message=resource_message,
+    )
 
 
 def test_saliency_resource_preflight_rejects_mismatched_host_challenge(
@@ -3096,7 +3106,9 @@ def test_saliency_resource_preflight_rejects_mismatched_host_challenge(
         fake_execute_async,
     )
     question = MagicMock(side_effect=AssertionError("mismatched receipt must fail"))
-    monkeypatch.setattr(QMessageBox, "question", question)
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.ask_confirmation", question
+    )
 
     assert panel._start_saliency_compute(
         params={"profile": "recommended", "methods": ["Gradient"]},
@@ -3136,8 +3148,10 @@ def test_saliency_resource_preflight_rejected_receipt_never_retries_twice(
         "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
         fake_execute_async,
     )
-    question = MagicMock(return_value=QMessageBox.StandardButton.Yes)
-    monkeypatch.setattr(QMessageBox, "question", question)
+    question = MagicMock(return_value=True)
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.ask_confirmation", question
+    )
 
     assert panel._start_saliency_compute(
         params={"profile": "recommended", "methods": ["Gradient"]},
