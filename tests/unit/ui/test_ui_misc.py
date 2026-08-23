@@ -21,6 +21,7 @@ from XBrainLab.backend.application.state import (
     SaliencyClassCoverageSnapshot,
     SaliencyMethodCoverageSnapshot,
 )
+from XBrainLab.ui.components.modal_presentation import AlertSeverity
 from XBrainLab.ui.interaction_outcome import InteractionOutcome, InteractionStatus
 
 
@@ -2155,20 +2156,20 @@ class TestDatasetActionHandler:
         handler.on_import_finished(1, ["err1", "err2"])
         mock_mb.warning.assert_called_once()
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_open_smart_parser_locked(self, mock_mb, handler):
         handler.panel.controller = MagicMock()
         handler.panel.controller.is_locked.return_value = True
         handler.open_smart_parser()
-        mock_mb.warning.assert_called_once()
+        mock_mb.assert_called_once()
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_open_smart_parser_no_data(self, mock_mb, handler):
         handler.panel.controller = MagicMock()
         handler.panel.controller.is_locked.return_value = False
         handler.panel.controller.has_data.return_value = False
         handler.open_smart_parser()
-        mock_mb.warning.assert_called_once()
+        mock_mb.assert_called_once()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QInputDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMenu")
@@ -2185,22 +2186,28 @@ class TestDatasetActionHandler:
         menu.exec.return_value = a_subj
         mock_input.getText.return_value = ("S1", True)
         handler.panel.controller = MagicMock()
-        with patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb:
+        with patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb:
             handler.show_context_menu(MagicMock())
         handler.panel.controller.update_metadata.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Metadata Update Blocked"
+        mock_mb.assert_called_once()
+        assert mock_mb.call_args.args[1] == "Metadata Update Blocked"
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
-    def test_remove_files(self, mock_mb, handler):
-        mock_mb.question.return_value = MagicMock()
-        mock_mb.StandardButton.Yes = MagicMock()
-        mock_mb.question.return_value = mock_mb.StandardButton.Yes
+    @patch("XBrainLab.ui.panels.dataset.actions.ask_confirmation", return_value=True)
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
+    def test_remove_files(self, mock_mb, ask_confirmation, handler):
         handler.panel.controller = MagicMock()
         handler._remove_files([0, 1])
         handler.panel.controller.remove_files.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Remove Files Blocked"
+        mock_mb.assert_called_once()
+        assert mock_mb.call_args.args[1] == "Remove Files Blocked"
+        assert ask_confirmation.call_args.kwargs == {
+            "severity": AlertSeverity.WARNING,
+            "title": "Confirm",
+            "message": "Remove 2 files?",
+            "confirm_text": "Remove files",
+            "cancel_text": "Cancel",
+            "destructive": True,
+        }
 
     def test_remove_files_refuses_real_study_controller_fallback(self, handler):
         from XBrainLab.backend.study import Study
@@ -2211,7 +2218,11 @@ class TestDatasetActionHandler:
         handler.panel.controller = MagicMock()
 
         with (
-            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.ask_confirmation",
+                return_value=True,
+            ),
             patch(
                 "XBrainLab.ui.panels.dataset.actions.execute_application_command",
                 return_value=None,
@@ -2223,15 +2234,19 @@ class TestDatasetActionHandler:
             handler._remove_files([0])
 
         handler.panel.controller.remove_files.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Review File Removal Again"
-        assert "Refresh Dataset" in mock_mb.warning.call_args.args[2]
+        mock_mb.assert_called_once()
+        assert mock_mb.call_args.args[1] == "Review File Removal Again"
+        assert "Refresh Dataset" in mock_mb.call_args.args[2]
 
     def test_remove_files_service_success_uses_coordinator_refresh(self, handler):
         handler.panel.controller = MagicMock()
 
         with (
-            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.ask_confirmation",
+                return_value=True,
+            ),
             patch(
                 "XBrainLab.ui.panels.dataset.actions.execute_application_command",
                 return_value=_command_result(),
@@ -2250,25 +2265,23 @@ class TestDatasetActionHandler:
         handler.panel.study = Study()
         handler.panel.controller = MagicMock()
 
-        with patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb:
+        with patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb:
             handler._remove_files([0, 1])
 
         mock_mb.question.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert (
-            "Load raw data before removing files." in mock_mb.warning.call_args.args[2]
-        )
+        mock_mb.assert_called_once()
+        assert "Load raw data before removing files." in mock_mb.call_args.args[2]
         handler.panel.controller.remove_files.assert_not_called()
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_batch_set_session(self, mock_mb, handler):
         handler.panel.controller = MagicMock()
         with patch("XBrainLab.ui.panels.dataset.actions.QInputDialog") as mock_input:
             mock_input.getText.return_value = ("sess1", True)
             handler._batch_set([0], "Session")
         handler.panel.controller.update_metadata.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Metadata Update Blocked"
+        mock_mb.assert_called_once()
+        assert mock_mb.call_args.args[1] == "Metadata Update Blocked"
 
     def test_batch_set_uses_backend_capability_before_prompt(self, handler):
         from XBrainLab.backend.study import Study
@@ -2278,16 +2291,13 @@ class TestDatasetActionHandler:
 
         with (
             patch("XBrainLab.ui.panels.dataset.actions.QInputDialog") as mock_input,
-            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
         ):
             handler._batch_set([0], "Session")
 
         mock_input.getText.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert (
-            "Load raw data before updating metadata."
-            in (mock_mb.warning.call_args.args[2])
-        )
+        mock_mb.assert_called_once()
+        assert "Load raw data before updating metadata." in (mock_mb.call_args.args[2])
         handler.panel.controller.update_metadata.assert_not_called()
 
     def test_batch_set_refuses_real_study_controller_fallback(self, handler):
@@ -2300,7 +2310,11 @@ class TestDatasetActionHandler:
 
         with (
             patch("XBrainLab.ui.panels.dataset.actions.QInputDialog") as mock_input,
-            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.ask_confirmation",
+                return_value=True,
+            ),
             patch(
                 "XBrainLab.ui.panels.dataset.actions.execute_application_command",
                 return_value=None,
@@ -2310,11 +2324,11 @@ class TestDatasetActionHandler:
             handler._batch_set([0], "Session")
 
         handler.panel.controller.update_metadata.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Review Metadata Again"
-        assert "Refresh Dataset" in mock_mb.warning.call_args.args[2]
+        mock_mb.assert_called_once()
+        assert mock_mb.call_args.args[1] == "Review Metadata Again"
+        assert "Refresh Dataset" in mock_mb.call_args.args[2]
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_get_target_files_no_selection_apply_all(self, mock_mb, handler):
         handler.panel.table.selectedIndexes.return_value = []
         mock_mb.StandardButton.Yes = 1
@@ -2329,7 +2343,7 @@ class TestDatasetActionHandler:
             "No files selected. Add labels to all loaded files?"
         )
 
-    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.show_warning")
     def test_get_target_files_no_selection_cancel(self, mock_mb, handler):
         handler.panel.table.selectedIndexes.return_value = []
         mock_mb.StandardButton.Yes = 1
@@ -2347,11 +2361,11 @@ class TestDatasetActionHandler:
 
             MockDlg.return_value.exec.return_value = QDialog.DialogCode.Accepted
             MockDlg.return_value.get_result.return_value = {"rule": "test"}
-            with patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb:
+            with patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb:
                 handler.open_smart_parser()
                 handler.panel.controller.apply_smart_parse.assert_not_called()
-                mock_mb.warning.assert_called_once()
-                assert mock_mb.warning.call_args.args[1] == "Smart Parse Blocked"
+                mock_mb.assert_called_once()
+                assert mock_mb.call_args.args[1] == "Smart Parse Blocked"
 
     def test_open_smart_parser_uses_backend_capability(self, handler):
         from XBrainLab.backend.study import Study
@@ -2365,15 +2379,14 @@ class TestDatasetActionHandler:
             patch(
                 "XBrainLab.ui.panels.dataset.actions.SmartParserDialog",
             ) as mock_dialog,
-            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
         ):
             handler.open_smart_parser()
 
         mock_dialog.assert_not_called()
-        mock_mb.warning.assert_called_once()
+        mock_mb.assert_called_once()
         assert (
-            "Load raw data before applying smart parse."
-            in (mock_mb.warning.call_args.args[2])
+            "Load raw data before applying smart parse." in (mock_mb.call_args.args[2])
         )
 
     def test_open_smart_parser_prefers_backend_capability_over_stale_controller(
@@ -2411,7 +2424,7 @@ class TestDatasetActionHandler:
                 "XBrainLab.ui.panels.dataset.actions.execute_application_command",
                 side_effect=[query_result, apply_result],
             ) as mock_execute,
-            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
         ):
             mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             mock_dialog.return_value.get_result.return_value = {
@@ -2426,7 +2439,7 @@ class TestDatasetActionHandler:
         )
         assert mock_execute.call_count == 2
         handler.panel.controller.apply_smart_parse.assert_not_called()
-        mock_mb.warning.assert_not_called()
+        mock_mb.assert_not_called()
 
     def test_open_smart_parser_refuses_real_study_controller_fallback(
         self,
@@ -2460,7 +2473,7 @@ class TestDatasetActionHandler:
                 "XBrainLab.ui.panels.dataset.actions.execute_application_command",
                 side_effect=[query_result, None],
             ),
-            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
         ):
             mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             mock_dialog.return_value.get_result.return_value = {
@@ -2469,9 +2482,9 @@ class TestDatasetActionHandler:
             handler.open_smart_parser()
 
         handler.panel.controller.apply_smart_parse.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Smart Parse Blocked"
-        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
+        mock_mb.assert_called_once()
+        assert mock_mb.call_args.args[1] == "Smart Parse Blocked"
+        assert "could not safely complete" in mock_mb.call_args.args[2]
 
     def test_open_smart_parser_refuses_real_study_no_capability_preflight_fallback(
         self,
@@ -2496,19 +2509,16 @@ class TestDatasetActionHandler:
             patch(
                 "XBrainLab.ui.panels.dataset.actions.SmartParserDialog",
             ) as mock_dialog,
-            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
         ):
             handler.open_smart_parser()
 
         handler.panel.controller.is_locked.assert_not_called()
         handler.panel.controller.has_data.assert_not_called()
         mock_dialog.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Smart Parse Blocked"
-        assert (
-            "Load raw data before applying smart parse."
-            in mock_mb.warning.call_args.args[2]
-        )
+        mock_mb.assert_called_once()
+        assert mock_mb.call_args.args[1] == "Smart Parse Blocked"
+        assert "Load raw data before applying smart parse." in mock_mb.call_args.args[2]
 
     def test_open_smart_parser_refuses_real_study_filename_fallback(
         self,
@@ -2532,15 +2542,15 @@ class TestDatasetActionHandler:
                 "XBrainLab.ui.panels.dataset.actions.execute_application_command",
                 return_value=None,
             ),
-            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_mb,
         ):
             handler.open_smart_parser()
 
         handler.panel.controller.get_filenames.assert_not_called()
         mock_dialog.assert_not_called()
-        mock_mb.warning.assert_called_once()
-        assert mock_mb.warning.call_args.args[1] == "Smart Parse Blocked"
-        assert "could not safely complete" in mock_mb.warning.call_args.args[2]
+        mock_mb.assert_called_once()
+        assert mock_mb.call_args.args[1] == "Smart Parse Blocked"
+        assert "could not safely complete" in mock_mb.call_args.args[2]
 
     def test_import_label_returns_early_no_files(self, handler):
         """import_label calls _get_target_files_for_import first; if empty, returns."""
