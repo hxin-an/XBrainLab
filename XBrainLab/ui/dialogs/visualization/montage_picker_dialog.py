@@ -14,7 +14,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -25,6 +24,11 @@ from XBrainLab.backend.utils.mne_helper import (
     get_builtin_montages,
     get_montage_channel_positions,
     get_montage_positions,
+)
+from XBrainLab.ui.components.modal_presentation import (
+    show_error,
+    show_information,
+    show_warning,
 )
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
@@ -147,7 +151,7 @@ class PickMontageDialog(BaseDialog):
     def init_ui(self):
         """Initialize the dialog UI with montage selector and mapping table."""
         if not self.channel_names:
-            QMessageBox.critical(self, "Error", "No valid channel name is provided")
+            show_error(self, "Error", "No valid channel name is provided")
             self.reject()
             return
 
@@ -537,7 +541,7 @@ class PickMontageDialog(BaseDialog):
         # Reload montage (triggers Smart Match since settings are gone)
         self.on_montage_select(montage_name)
 
-        QMessageBox.information(
+        show_information(
             self,
             "Reset",
             f"Saved settings for '{montage_name}' have been cleared.\n"
@@ -551,9 +555,8 @@ class PickMontageDialog(BaseDialog):
     def accept(self):
         """Build the channel mapping, save settings, and accept the dialog.
 
-        Raises:
-            QMessageBox: Warning if no channels are mapped or montage
-                processing fails.
+        Displays a warning if no channels are mapped. Unexpected montage
+        processing failures use the central error presentation.
 
         """
         if not self.table or not self.montage_combo:
@@ -574,7 +577,7 @@ class PickMontageDialog(BaseDialog):
                     selected_map[dataset_ch] = selected_montage_ch
 
         if not selected_map:
-            QMessageBox.warning(self, "Warning", "No channels mapped.")
+            show_warning(self, "Warning", "No channels mapped.")
             return
 
         # Save settings

@@ -4,7 +4,6 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
     QGroupBox,
-    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -29,6 +28,7 @@ from XBrainLab.ui.application_capabilities import (
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
+from XBrainLab.ui.components.modal_presentation import show_warning
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
@@ -145,7 +145,7 @@ class ControlSidebar(QWidget):
         )
         if review_context is None and has_real_application_context(self):
             message = CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
-            QMessageBox.warning(self, "Montage blocked", message)
+            show_warning(self, "Montage blocked", message)
             return InteractionOutcome.blocked(message)
         capability = (
             getattr(review_context, "capability", None)
@@ -154,14 +154,14 @@ class ControlSidebar(QWidget):
         )
         if review_context is not None and capability is None:
             message = CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
-            QMessageBox.warning(self, "Montage blocked", message)
+            show_warning(self, "Montage blocked", message)
             return InteractionOutcome.blocked(message)
         if capability is not None and not capability.enabled:
             message = blocked_reason(
                 capability,
                 "Create EEG epochs before applying a montage.",
             )
-            QMessageBox.warning(self, "Montage blocked", message)
+            show_warning(self, "Montage blocked", message)
             return InteractionOutcome.blocked(message)
 
         if capability is None:
@@ -173,7 +173,7 @@ class ControlSidebar(QWidget):
                 )
             if not has_epoch_data:
                 message = "No EEG epochs are available."
-                QMessageBox.warning(self, "Warning", message)
+                show_warning(self, "Warning", message)
                 return InteractionOutcome.blocked(message)
 
         reviewed_generation = (
@@ -195,7 +195,7 @@ class ControlSidebar(QWidget):
                 if channel_query.recoverable
                 else "Montage failed"
             )
-            QMessageBox.warning(
+            show_warning(
                 self,
                 title,
                 channel_query.message,
@@ -213,7 +213,7 @@ class ControlSidebar(QWidget):
             )
         if not channels:
             message = "No EEG epoch channel names are available for montage setup."
-            QMessageBox.warning(self, "Montage blocked", message)
+            show_warning(self, "Montage blocked", message)
             return InteractionOutcome.blocked(message)
 
         normalized_warning = " ".join(str(warning or "").split())
@@ -227,7 +227,7 @@ class ControlSidebar(QWidget):
         selected_channels, positions = dialog.get_result()
         if selected_channels is None or positions is None:
             message = "No valid montage configuration was selected."
-            QMessageBox.warning(self, "Montage blocked", message)
+            show_warning(self, "Montage blocked", message)
             return InteractionOutcome.blocked(message)
         try:
             normalized_positions = normalize_montage_positions(
@@ -262,7 +262,7 @@ class ControlSidebar(QWidget):
                 if result.recoverable
                 else "Montage failed"
             )
-            QMessageBox.warning(
+            show_warning(
                 self,
                 title,
                 result.message,
@@ -312,7 +312,7 @@ class ControlSidebar(QWidget):
         )
         if review_context is None and has_real_application_context(self):
             message = CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
-            QMessageBox.warning(self, "Saliency blocked", message)
+            show_warning(self, "Saliency blocked", message)
             return InteractionOutcome.blocked(message)
         capability = (
             getattr(review_context, "capability", None)
@@ -321,14 +321,14 @@ class ControlSidebar(QWidget):
         )
         if review_context is not None and capability is None:
             message = CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
-            QMessageBox.warning(self, "Saliency blocked", message)
+            show_warning(self, "Saliency blocked", message)
             return InteractionOutcome.blocked(message)
         if capability is not None and not capability.enabled:
             message = blocked_reason(
                 capability,
                 "Saliency analysis is not ready yet.",
             )
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Saliency blocked",
                 message,
@@ -354,7 +354,7 @@ class ControlSidebar(QWidget):
                 if query_result.recoverable
                 else "Saliency failed"
             )
-            QMessageBox.warning(
+            show_warning(
                 self,
                 title,
                 query_result.message,
@@ -366,7 +366,7 @@ class ControlSidebar(QWidget):
             query_result,
         )
         if configuration_block_reason is not None:
-            QMessageBox.warning(self, "Saliency blocked", configuration_block_reason)
+            show_warning(self, "Saliency blocked", configuration_block_reason)
             return InteractionOutcome.blocked(configuration_block_reason)
         try:
             dialog_params = self._saliency_dialog_params(query_result)
@@ -391,7 +391,7 @@ class ControlSidebar(QWidget):
                     "Visualization results or the selected run changed. "
                     "Refresh Visualization, then review Saliency Settings again."
                 )
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Review Saliency Settings Again",
                     message,
@@ -431,7 +431,7 @@ class ControlSidebar(QWidget):
                 "Visualization results or the selected run changed while settings "
                 "were open. Review Saliency Settings again."
             )
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Review Saliency Settings Again",
                 message,
@@ -476,4 +476,4 @@ class ControlSidebar(QWidget):
         )
 
     def _show_compatibility_fallback_warning(self, title: str) -> None:
-        QMessageBox.warning(self, title, CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE)
+        show_warning(self, title, CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE)
