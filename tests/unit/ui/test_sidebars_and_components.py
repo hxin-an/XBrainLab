@@ -622,7 +622,6 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=_command_result(),
             ) as mock_execute,
-            patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning"),
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = "z-score"
@@ -969,7 +968,6 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.get_epoch_dialog_context",
                 return_value=dialog_context,
             ) as read_dialog_context,
-            patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning"),
         ):
             MockDlg.return_value.exec.return_value = True
             MockDlg.return_value.get_params.return_value = (
@@ -1213,7 +1211,6 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=_command_result(),
             ),
-            patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning"),
         ):
             sidebar.reset_preprocess()
 
@@ -1306,7 +1303,6 @@ class TestPreprocessSidebar:
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
                 return_value=_command_result(),
             ) as mock_execute,
-            patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning"),
         ):
             sidebar.reset_preprocess()
 
@@ -1500,7 +1496,6 @@ class TestTrainingSidebar:
                 return_value=None,
             ),
             patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
-            patch("XBrainLab.ui.panels.training.sidebar.show_alert"),
         ):
             MockDlg.return_value.exec.return_value = QDialog.DialogCode.Accepted
             MockDlg.return_value.get_result.return_value = generator
@@ -1788,7 +1783,6 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command_async",
                 return_value=True,
             ) as mock_execute_async,
-            patch("XBrainLab.ui.panels.training.sidebar.show_alert"),
         ):
             MockDlg.return_value.exec.return_value = QDialog.DialogCode.Accepted
             MockDlg.return_value.get_result.return_value = generator
@@ -1927,7 +1921,6 @@ class TestTrainingSidebar:
                 side_effect=fake_async,
             ),
             patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
-            patch("XBrainLab.ui.panels.training.sidebar.show_alert"),
         ):
             mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             mock_dialog.return_value.get_result.return_value = generator
@@ -2052,7 +2045,6 @@ class TestTrainingSidebar:
                 return_value=_command_result(),
             ) as mock_execute_sync,
             patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
-            patch("XBrainLab.ui.panels.training.sidebar.show_alert"),
         ):
             mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             mock_dialog.return_value.get_result.return_value = generator
@@ -2117,7 +2109,6 @@ class TestTrainingSidebar:
                 side_effect=fake_async,
             ) as mock_async,
             patch("XBrainLab.ui.panels.training.sidebar.show_warning") as mock_warning,
-            patch("XBrainLab.ui.panels.training.sidebar.show_alert"),
         ):
             mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
             mock_dialog.return_value.get_result.return_value = generator
@@ -3657,10 +3648,6 @@ class TestDatasetSidebar:
 
         with (
             patch(
-                "XBrainLab.ui.panels.dataset.sidebar.show_warning",
-                return_value=True,
-            ) as question,
-            patch(
                 "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog",
             ) as mock_dialog,
             patch(
@@ -3675,7 +3662,6 @@ class TestDatasetSidebar:
 
         mock_dialog.assert_called_once()
         assert outcome.status is InteractionStatus.COMPLETED
-        question.assert_not_called()
         assert isinstance(mock_execute.call_args.args[1], PreprocessCommand)
         panel.controller.apply_channel_selection.assert_not_called()
         panel.update_panel.assert_not_called()
@@ -3797,10 +3783,6 @@ class TestDatasetSidebar:
 
         with (
             patch(
-                "XBrainLab.ui.panels.dataset.sidebar.show_warning",
-                return_value=True,
-            ),
-            patch(
                 "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
                 return_value=publication,
             ),
@@ -3843,10 +3825,6 @@ class TestDatasetSidebar:
 
         with (
             patch(
-                "XBrainLab.ui.panels.dataset.sidebar.show_warning",
-                return_value=True,
-            ),
-            patch(
                 "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
                 return_value=None,
             ),
@@ -3884,10 +3862,6 @@ class TestDatasetSidebar:
         sidebar.panel.controller.is_locked.return_value = False
         sidebar.panel.controller.get_loaded_data_list.return_value = [raw]
         with (
-            patch(
-                "XBrainLab.ui.panels.dataset.sidebar.show_warning",
-                return_value=True,
-            ),
             patch(
                 "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
                 return_value=None,
