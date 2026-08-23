@@ -349,15 +349,17 @@ def test_saliency_spectrogram_uses_stft_bin_support_without_boundary_padding():
     fig = visualizer.get_plt("Gradient")
     plot_axes = [axis for axis in fig.axes if axis.get_title()]
 
-    assert plot_axes
+    assert [axis.get_title() for axis in plot_axes] == ["left", "right"]
     for axis in plot_axes:
         x_min, x_max, y_min, y_max = axis.images[0].get_extent()
         assert x_min == pytest.approx(-0.25)
         assert x_max == pytest.approx(0.75)
         assert y_min == pytest.approx(0.0)
         assert y_max == pytest.approx(64.0)
-    assert fig._suptitle is not None
-    assert "attribution magnitude" in fig._suptitle.get_text().lower()
+    colorbar_axes = [axis for axis in fig.axes if not axis.images]
+    assert len(colorbar_axes) == 1
+    assert "attribution magnitude" in colorbar_axes[0].get_ylabel().lower()
+    assert fig._suptitle is None
 
     plt.close(fig)
 
