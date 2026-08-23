@@ -32,8 +32,8 @@ class _DialogButtonPolicy(QObject):
         ):
             _normalize_button(watched)
             if event.type() is QEvent.Type.Show:
-                # QMessageBox may assign its default button while handling the
-                # show event. Normalize once more after that handler returns.
+                # A platform dialog may assign its default button while handling
+                # the show event. Normalize once more after that handler returns.
                 QTimer.singleShot(
                     0,
                     lambda button=watched: _normalize_button_if_alive(button),
