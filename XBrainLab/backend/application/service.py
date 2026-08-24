@@ -2162,6 +2162,13 @@ class ApplicationService(Observable):
         """Return immutable operation truth without acquiring the command lock."""
         return self.owned_work.snapshot(operation_id)
 
+    def get_active_owned_operation(
+        self,
+        kind: OwnedWorkKind,
+    ) -> OwnedOperationSnapshot | None:
+        """Return the oldest active operation of one product work kind."""
+        return self.owned_work.first_active(kind)
+
     def fail_owned_operation(
         self,
         operation_id: str,

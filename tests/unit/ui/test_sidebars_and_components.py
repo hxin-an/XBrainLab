@@ -97,6 +97,7 @@ def _make_panel_mock():
     p.controller.is_locked.return_value = False
     p.controller.has_data.return_value = True
     p.controller.is_epoched.return_value = False
+    p.import_is_finishing.return_value = False
     return p
 
 
@@ -122,6 +123,30 @@ class TestPreprocessSidebar:
         sb = PreprocessSidebar(panel)
         qtbot.addWidget(sb)
         return sb
+
+    def test_import_pending_disables_preprocess_actions_without_a_warning_modal(
+        self,
+        sidebar,
+        monkeypatch,
+    ) -> None:
+        sidebar.panel.import_is_finishing.return_value = True
+        warning = MagicMock()
+        monkeypatch.setattr(
+            "XBrainLab.ui.panels.preprocess.sidebar.show_warning",
+            warning,
+        )
+
+        sidebar.update_sidebar()
+
+        assert not sidebar.import_finishing_label.isHidden()
+        assert sidebar.import_finishing_label.text() == "Import is still finishing..."
+        assert not sidebar.btn_filter.isEnabled()
+        assert not sidebar.btn_epoch.isEnabled()
+        assert not sidebar.btn_reset.isEnabled()
+
+        sidebar.open_filtering()
+
+        warning.assert_not_called()
 
     def test_right_sidebars_keep_operation_area_at_consistent_y(self, qtbot):
         from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar

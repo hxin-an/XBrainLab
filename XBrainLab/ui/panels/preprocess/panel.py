@@ -4,6 +4,7 @@ from typing import cast
 
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
+from XBrainLab.backend.application.owned_work import OwnedWorkKind
 from XBrainLab.backend.application.preprocess_render import (
     PreprocessRenderPublication,
     PreprocessSignalState,
@@ -196,6 +197,26 @@ class PreprocessPanel(BasePanel):
         if pending is not None and pending.revision > self._last_application_revision:
             return pending
         return self._application_view_publication
+
+    def import_is_finishing(self) -> bool:
+        """Return whether Data Import still owns review or apply work."""
+        port = self._publication_port
+        if port is None:
+            return False
+        active_operation = getattr(port, "get_active_owned_operation", None)
+        if not callable(active_operation):
+            return False
+        try:
+            return any(
+                active_operation(kind) is not None
+                for kind in (OwnedWorkKind.IMPORT_REVIEW, OwnedWorkKind.IMPORT_APPLY)
+            )
+        except Exception:
+            logger.error(
+                "Preprocess could not read active Data Import work.",
+                exc_info=True,
+            )
+            return True
 
     def init_ui(self):
         """Build the panel layout with preview, history, and sidebar widgets."""

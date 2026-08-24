@@ -1884,6 +1884,59 @@ def test_repreview_hands_loading_ownership_to_the_visible_preview(
     assert loading_token is handler._data_interpretation._loading_session.token
 
 
+def test_repreview_cancel_reopens_the_exact_preserved_match_labels_draft(
+    monkeypatch,
+) -> None:
+    """Orange Cancel Import must restore the edited review, not its defaults."""
+    handler = DatasetActionHandler(MagicMock())
+    coordinator = handler._data_interpretation
+    loading = MagicMock()
+    loading.cancelled_by_user = False
+    cast(Any, coordinator)._loading_dialog_class = lambda: (
+        lambda *_args, **_kwargs: loading
+    )
+    choices = {"label_carrier_choices": {"events.tsv": "trial_type"}}
+    review_state = _review_state(publication_generation=17)
+    reopened = MagicMock(return_value=InteractionOutcome.accepted("Reopened."))
+    continue_flow = MagicMock(return_value=InteractionOutcome.accepted("Review ready."))
+    monkeypatch.setattr(coordinator, "_schedule_cancelled_review_reopen", reopened)
+    monkeypatch.setattr(
+        coordinator, "_continue_data_interpretation_import", continue_flow
+    )
+
+    def cancel_preview(*, on_cancelled, **_kwargs):
+        return on_cancelled(review_state)
+
+    monkeypatch.setattr(
+        coordinator,
+        "_preview_and_validate_interpretation_async",
+        cancel_preview,
+    )
+
+    outcome = coordinator._repreview_interpretation_async(
+        source_path="/data",
+        source_hint="bids",
+        choices=choices,
+        label_sources=["events.tsv"],
+        review_state=review_state,
+        initial_step="Match Labels",
+    )
+
+    assert outcome is not None
+    assert outcome.status is InteractionStatus.ACCEPTED
+    retry = reopened.call_args.args[0]
+    retry()
+    assert continue_flow.call_args.kwargs["choices"] == choices
+    assert continue_flow.call_args.kwargs["label_sources"] == ["events.tsv"]
+    assert continue_flow.call_args.kwargs["review_state"].scan == review_state.scan
+    assert (
+        continue_flow.call_args.kwargs["review_state"].decision == review_state.decision
+    )
+    assert (
+        reopened.call_args.kwargs["cancelled_message"] == "The operation was cancelled."
+    )
+
+
 def test_apply_uses_the_generation_reviewed_by_the_user(qtbot, monkeypatch):
     panel = QWidget()
     qtbot.addWidget(panel)

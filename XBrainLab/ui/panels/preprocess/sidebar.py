@@ -7,6 +7,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
     QGroupBox,
+    QLabel,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -71,6 +72,7 @@ _RESET_PREPROCESS_AVAILABILITY_UNAVAILABLE = (
     "Reset preprocessing availability is unavailable right now."
 )
 _APPLICATION_PUBLICATION_UNSET = object()
+_IMPORT_FINISHING_MESSAGE = "Import is still finishing..."
 
 
 class PreprocessSidebar(QWidget):
@@ -139,6 +141,12 @@ class PreprocessSidebar(QWidget):
         self.info_panel = AggregateInfoPanel(self.main_window)
         self.info_panel.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
         layout.addWidget(self.info_panel)
+
+        self.import_finishing_label = QLabel(_IMPORT_FINISHING_MESSAGE)
+        self.import_finishing_label.setObjectName("PreprocessImportFinishingStatus")
+        self.import_finishing_label.setWordWrap(True)
+        self.import_finishing_label.setVisible(False)
+        layout.addWidget(self.import_finishing_label)
 
         # Separator
         layout.addSpacing(10)
@@ -492,15 +500,19 @@ class PreprocessSidebar(QWidget):
                 "Preprocessing is locked (EEG epochs created). Click for details."
             )
 
+        import_finishing = self._import_is_finishing()
+        self.import_finishing_label.setVisible(import_finishing)
         for button in (
             self.btn_filter,
             self.btn_resample,
             self.btn_rereference,
             self.btn_normalize,
         ):
-            button.setEnabled(preprocess_enabled)
-        self.btn_epoch.setEnabled(epoch_enabled)
-        self.btn_reset.setEnabled(reset_enabled and not is_epoched)
+            button.setEnabled(preprocess_enabled and not import_finishing)
+        self.btn_epoch.setEnabled(epoch_enabled and not import_finishing)
+        self.btn_reset.setEnabled(
+            reset_enabled and not is_epoched and not import_finishing
+        )
         self.btn_reset.setToolTip(
             reset_reason
             if product_context and reset_capability is None
@@ -516,6 +528,11 @@ class PreprocessSidebar(QWidget):
         )
 
         # Filter
+        if import_finishing:
+            self._set_import_finishing_tooltips()
+            self._apply_operation_busy_state()
+            return
+
         if not preprocess_enabled or (preprocess_capability is None and is_epoched):
             self.btn_filter.setToolTip(preprocess_reason)
         else:
@@ -549,6 +566,29 @@ class PreprocessSidebar(QWidget):
             self.btn_epoch.setText("Create EEG Epochs")
             self.btn_epoch.setToolTip("Segment continuous EEG into EEG epochs")
         self._apply_operation_busy_state()
+
+    def _import_is_finishing(self) -> bool:
+        checker = getattr(self.panel, "import_is_finishing", None)
+        return bool(checker()) if callable(checker) else False
+
+    def _set_import_finishing_tooltips(self) -> None:
+        for button in (
+            self.btn_filter,
+            self.btn_resample,
+            self.btn_rereference,
+            self.btn_normalize,
+            self.btn_epoch,
+            self.btn_reset,
+        ):
+            button.setToolTip(_IMPORT_FINISHING_MESSAGE)
+
+    def _guard_import_finishing(self) -> bool:
+        if not self._import_is_finishing():
+            return False
+        self.import_finishing_label.setVisible(True)
+        self._set_import_finishing_tooltips()
+        self._show_status(_IMPORT_FINISHING_MESSAGE)
+        return True
 
     # --- Action Logic ---
 
@@ -686,6 +726,8 @@ class PreprocessSidebar(QWidget):
         blocked_title: str,
     ) -> tuple[Any | None, bool]:
         """Capture one authoritative publication before opening an edit dialog."""
+        if self._guard_import_finishing():
+            return None, False
         review_context = get_command_review_context(self, CommandName.PREPROCESS)
         if review_context is None:
             if has_real_application_context(self):
@@ -999,6 +1041,8 @@ class PreprocessSidebar(QWidget):
         suggested_values: dict[str, str] | None = None,
     ) -> InteractionOutcome:
         """Open the epoching dialog and segment the continuous data into epochs."""
+        if self._guard_import_finishing():
+            return InteractionOutcome.blocked(_IMPORT_FINISHING_MESSAGE)
         dialog_context = get_epoch_dialog_context(self)
         try:
             dialog_context.require_usable()
@@ -1066,6 +1110,8 @@ class PreprocessSidebar(QWidget):
 
     def reset_preprocess(self):
         """Prompt the user and reset all preprocessing steps to the original data."""
+        if self._guard_import_finishing():
+            return
         publication = get_application_view_publication(self)
         if publication is None and has_real_application_context(self):
             show_warning(

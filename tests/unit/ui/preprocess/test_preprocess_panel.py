@@ -7,6 +7,7 @@ import pytest
 from PyQt6.QtWidgets import QAbstractItemView, QMainWindow
 
 from XBrainLab.backend.application import CommandCapability, CommandName
+from XBrainLab.backend.application.owned_work import OwnedWorkKind
 from XBrainLab.backend.application.preprocess_render import (
     PreprocessRenderData,
     PreprocessRenderPublication,
@@ -15,6 +16,48 @@ from XBrainLab.backend.application.preprocess_render import (
     SignalSeries,
 )
 from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
+
+
+@pytest.mark.parametrize(
+    ("active_kind", "expected"),
+    [
+        (OwnedWorkKind.IMPORT_REVIEW, True),
+        (OwnedWorkKind.IMPORT_APPLY, True),
+        (None, False),
+    ],
+)
+def test_preprocess_import_finishing_reads_backend_owned_work(
+    qtbot,
+    active_kind: OwnedWorkKind | None,
+    expected: bool,
+) -> None:
+    port = MagicMock()
+    port.get_active_owned_operation.side_effect = lambda kind: (
+        object() if kind is active_kind else None
+    )
+    panel = PreprocessPanel(
+        controller=MagicMock(),
+        dataset_controller=MagicMock(),
+        publication_port=port,
+    )
+    qtbot.addWidget(panel)
+
+    assert panel.import_is_finishing() is expected
+
+
+def test_preprocess_import_finishing_fails_closed_when_work_truth_is_unavailable(
+    qtbot,
+) -> None:
+    port = MagicMock()
+    port.get_active_owned_operation.side_effect = RuntimeError("registry unavailable")
+    panel = PreprocessPanel(
+        controller=MagicMock(),
+        dataset_controller=MagicMock(),
+        publication_port=port,
+    )
+    qtbot.addWidget(panel)
+
+    assert panel.import_is_finishing() is True
 
 
 def _render_publication(

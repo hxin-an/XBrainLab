@@ -1741,6 +1741,35 @@ class DataInterpretationActionCoordinator:
         """Reopen edited choices without rediscovering the admitted source."""
 
         loading_token: object | None = None
+        preserved_review_state = review_state
+
+        def _retry_cancelled_repreview() -> InteractionOutcome:
+            return self._continue_data_interpretation_import(
+                source_path=source_path,
+                source_hint=source_hint,
+                choices=dict(choices),
+                label_sources=list(label_sources),
+                review_state=preserved_review_state,
+                initial_step=initial_step,
+            )
+
+        def _reopen_cancelled_review(
+            preview_state: _InterpretationReviewState | None,
+        ) -> InteractionOutcome:
+            nonlocal preserved_review_state
+            if preview_state is not None:
+                preserved_review_state = _InterpretationReviewState(
+                    scan=dict(preview_state.scan),
+                    preview=dict(preview_state.preview),
+                    candidate=dict(preview_state.candidate),
+                    candidate_id=preview_state.candidate_id,
+                    decision=dict(review_state.decision),
+                    publication_generation=preview_state.publication_generation,
+                )
+            return self._schedule_cancelled_review_reopen(
+                _retry_cancelled_repreview,
+                cancelled_message="The operation was cancelled.",
+            )
 
         def _open_validated_review(
             validated_state: _InterpretationReviewState,
@@ -1778,6 +1807,7 @@ class DataInterpretationActionCoordinator:
                 on_validated=_open_validated_review,
                 error_title="Interpretation preview failed",
                 loading_token=loading_token,
+                on_cancelled=_reopen_cancelled_review,
             )
 
         loading_token = self._open_loading_dialog(
