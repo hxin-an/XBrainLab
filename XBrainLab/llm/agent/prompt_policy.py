@@ -59,7 +59,7 @@ class StrictToolResponsePromptPolicy:
     ) -> str:
         """Return the strict decision contract without Host intent routing."""
         return (
-            "STRICT RESPONSE CONTRACT - DECISION ORDER (decide silently):\n"
+            "STRICT RESPONSE CONTRACT - DECISION ORDER (decide silently):\n"  # noqa: S608 - model prompt construction, not a SQL query
             "1. Classify the latest user request before choosing a contract.\n"
             "- Use respond_to_user for an informational request, a request that "
             "negates an action, no exact matching enabled contract, an unavailable "
@@ -70,6 +70,16 @@ class StrictToolResponsePromptPolicy:
             "parameters are absent, use respond_to_user to ask only for them. "
             "Include pending_action and missing_inputs only for that exact action; "
             "otherwise respond with message only.\n"
+            "Never supply a typical, recommended, conventional, or product-default "
+            "value that the user did not provide; every absent required value is "
+            "missing. Typed missing-input example (shape only, not execution "
+            "permission; replace every angle-bracket placeholder using the exact "
+            "published contract and never output angle brackets): "
+            '{"workflow_stage":"<current workflow_stage>",'
+            '"tool_name":"respond_to_user","parameters":{"message":'
+            '"Which required value should I use?","pending_action":'
+            '"<exact published action>","missing_inputs":'
+            '["<absent required input>"]}}\n'
             "- When a tool_input_clarification context item is present and the "
             "latest reply supplies every remaining requested value, propose the "
             "same exact action with only values supplied in that reply. Do not "

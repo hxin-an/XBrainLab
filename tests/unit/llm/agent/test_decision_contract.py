@@ -36,6 +36,21 @@ def test_prompt_policy_describes_typed_clarification_for_user_responses() -> Non
         assert "command, tool, name, arguments, or reasons" not in text
 
 
+def test_prompt_policy_demonstrates_missing_input_without_inventing_defaults() -> None:
+    prompt = StrictToolResponsePromptPolicy().decision_instructions().lower()
+
+    assert (
+        "never supply a typical, recommended, conventional, or product-default"
+        in prompt
+    )
+    assert '"tool_name":"respond_to_user"' in prompt
+    assert '"workflow_stage":"<current workflow_stage>"' in prompt
+    assert '"pending_action":"<exact published action>"' in prompt
+    assert '"missing_inputs":["<absent required input>"]' in prompt
+    assert "never output angle brackets" in prompt
+    assert "apply a bandpass filter." not in prompt
+
+
 def test_prompt_policy_contains_no_evaluator_answer_fields() -> None:
     prompt = StrictToolResponsePromptPolicy().decision_instructions().lower()
 

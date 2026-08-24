@@ -410,11 +410,31 @@ bandpass field三個blocker皆已關閉。
 
 目前工程驗證為完整LLM／Agent `1820 passed`、完整UI加兩個product walkthrough `2695 passed`、receipt／
 capture focused `155 passed`；35個modified Python files通過Ruff check／format check，`git diff --check`與
-`mkdocs build --strict`通過，三個capture CLI help可啟動。Current v8 exact Granite report不得沿用v7分數，
-只能在source凍結後、GPU資源足夠時產生；RTX 5070 Ti目前只剩約6586 MiB free，低於本候選約8 GB估計，
-且佔用來源不是本agent程序，因此未冒險啟動或終止它。Active slice在exact report與同一SHA Windows真人
-手測前仍只是checkpoint；不開PR、不merge。Post-freeze report是外部exact-SHA evidence，source不得為了
-補寫分數再變更；最終分數與artifact identity在交付回報中綁定該SHA。
+`mkdocs build --strict`通過，三個capture CLI help可啟動。
+
+Exact `6df0cc87c683b68ec9c028cadaa0c008e32a0da0` 的v8 Granite 4.0 Micro 3B report已在
+GPU資源恢復後完成：36/36 positive、10/10 explicit parameter origin、5/5 missing guard與20/24
+no-action floor維持，但7條clarification final為0/7。五個direct source都先輸出帶常見臆測值的exact
+tool call，production origin boundary安全改為追問但沒有typed receipt；generic filter先錯選bandpass，
+partial bandpass也先填`0.1–30 Hz`，所以原本真人缺參數loop仍未形成handtest candidate。Artifact為
+`/tmp/xbrainlab-assistant-handtest-blockers-v2-v8-6df0cc87.json`，SHA-256
+`782cf742a5ce1c37c29eea4c15b9d34f5132455d2cbd9b59d1265f4ea1ed079b`；sandbox內零case的CUDA
+precondition failure不是本report，只有GPU-enabled exact run具分數效力。
+
+使用者於`2026-08-24`授權再嘗試一個bounded prompt treatment。Scope只改既有
+`StrictToolResponsePromptPolicy`、直接contract test與exact v8 evidence；不改parser、receipt／pending
+owner、ToolAttempt admission、tool schema／membership、UI、Settings或Host semantic routing。Observable
+outcome是模型在exact direct preprocess action缺required value時，輸出typed `respond_to_user`而不是填
+typical／recommended／product-default值；一般ambiguous action仍只能message-only response。Treatment只加
+一個不複製evaluator user wording的compact contrastive JSON example與明確no-default規則，不加入五工具各自
+case或Granite-specific workaround。Production預估1個既有file、低於30 LOC，owner數不變。
+
+TDD先以prompt contract red case鎖定example含message／pending_action／missing_inputs完整shape、明確禁止
+typical defaults，且不包含frozen request原句；再做最小prompt change，跑prompt／assembler／parser／
+controller與evaluator unit。Source clean freeze後只跑一次同一81-case exact Granite report。Stop condition是
+36/36、10/10、5/5任一退步、no-action低於20/24，或clarification未達7/7；失敗就保留checkpoint並回報，
+不在同一slice再加第二個example或Host fallback。只有7/7與core floors同時成立才恢復Windows手測資格；
+24/24 promotion gate仍獨立未滿足，不可宣稱handoff-ready或merge。
 
 ### Parallel diagnostic：capability-first local model under 4B
 
