@@ -186,13 +186,19 @@ Granite 每次只能輸出一個 JSON object，且 top level 恰有三個欄位�
 }
 ```
 
-`respond_to_user.parameters` 只能有 `message`。Answer、clarification與blocked reply不建立額外
-decision enum。
+`respond_to_user.parameters` 接受兩種 strict shape：一般 answer／blocked reply 為
+`{"message": "..."}`；只有模型已精確辨識一個目前 callable 的 direct-preprocess action、且只缺
+該 schema 必要欄位時，clarification 可為
+`{"message": "...", "pending_action": "<exact direct tool>", "missing_inputs": ["<required field>", ...]}`。
+這仍是 no-execution branch，不增加 top-level field、tool 或 decision enum。`pending_action` 不得用於
+generic filter／模糊 action，Host 不從 user text 或 bubble 推測它；模型必須先以一般回覆請使用者選定
+exact action。
 
-Direct preprocess若已由模型提出exact tool，但parameter-origin guard發現模型填入了使用者未提供的
-必要值，Host可以在零execution的具體追問旁建立一個one-shot typed tool-input receipt。Receipt只保存：
-exact tool ID、第一輪bounded user evidence、追問文字及prompt-time publication generation；不得保存或
-授權模型臆測的參數。它不是新的model output branch，也不改變三欄envelope。
+符合上述 typed clarification 的 response，或 direct tool 被 parameter-origin guard 擋下時，Host 可以在
+零 execution 的具體追問旁建立 typed tool-input receipt。Receipt 只保存 exact tool ID、實際缺少欄位、
+可由 user 原文驗證的 values、bounded question evidence、prompt-time publication generation 與最多兩次
+parameter reply budget；不得保存或授權模型臆測的參數。它不是新的 model output branch，也不改變三欄
+envelope。
 
 Repair budget 是 initial generation 加最多兩次 repair：
 
@@ -238,7 +244,7 @@ State card 只投影 ApplicationService publication：
 - trained：finished run count、results available。
 
 不放 file paths、完整 channels、完整 settings、diagnostics、recommended next step、full capability map、
-舊 tool output或一般pending intent。唯一例外是上述direct-preprocess one-shot clarification receipt；其
+舊 tool output或一般pending intent。唯一例外是上述direct-preprocess bounded clarification receipt；其
 tool仍須同時存在於current callable publication，receipt本身不能恢復stale capability。
 
 RAG／examples規則：
@@ -259,12 +265,13 @@ runtime本身失敗時不做生成，ChatPanel顯示local runtime error。
 Verification順序固定為：strict schema → backend generation／stage → target publication → parameter
 schema → ApplicationService capability → confirmation。Prompt與UI不可成為alternate readiness engine。
 
-Direct-preprocess clarification follow-up仍由模型選擇action，Host不自動continuation。只有模型在receipt的
-下一個admitted user turn再次提出同一exact tool時，parameter-origin verifier才可把receipt綁定的第一輪
-user evidence與最新回答合併成該tool的一次性provenance；模型提出其他tool時，舊receipt先丟棄，該tool只
-按最新訊息的一般規則驗證。Receipt在下一輪terminal、new chat、stop、close或publication generation改變時
-失效。取消、無關回答與仍缺值都不得執行；所有schema、range、current publication／capability與one-action
-限制照常重驗。
+Direct-preprocess clarification follow-up仍由模型選擇action，Host不自動continuation。只有模型在 receipt
+reply budget 內再次提出同一 exact tool 時，parameter-origin verifier 才可把 receipt 的 verified user
+evidence 與最新回答合併；latest-turn explicitly supplied value 永遠優先，Host 只補仍缺 key，並重跑
+schema、range、current publication、capability、confirmation 與 one-action checks。模型提出其他 tool／topic、
+explicit cancel、stale publication、new chat、stop、close 或第三次 parameter reply 都清除 receipt，零 execution。
+同 action 的 parameter-bearing NO_TOOL 或 format failure 只可在剩餘 reply budget 內 requeue；無關回答與
+仍缺值不得執行。
 
 GUI completion使用既有 pending interaction與request correlation。`accepted`、`navigated`、
 `command_pending`或`deferred_to_ui`是否terminal必須依execution kind判斷：GUI completion只能等實際
@@ -308,9 +315,11 @@ tool-selection failure重分類為通過。
 - 五個missing-parameter cases可以由模型直接`respond_to_user`，或由模型提出tool後被同一production
   parameter-origin guard轉成一般Assistant追問；兩條路徑都必須零ApplicationService／ToolExecutor
   execution，且追問指出缺少的欄位。
-- 對Host parameter-origin guard建立的五種direct-preprocess追問，另以兩輪cases證明只提供所缺值即可讓
-  同一exact action在current publication下執行；取消、無關回答、stale generation與不同tool不得使用該
-  receipt取得execution authority。這是clarification recovery evidence，不回填第一輪raw-model accuracy。
+- Clarification gate固定為7條production trajectory：五種direct-preprocess追問證明只提供所缺值即可讓
+  同一exact action在current publication下執行；generic filter先選bandpass後才建立typed receipt；bandpass
+  先補low、再補high時只累積可驗證值並重跑完整admission。取消、無關回答、stale generation與不同tool
+  不得使用receipt取得execution authority。這是clarification recovery evidence，不回填第一輪raw-model
+  accuracy。
 - Core gate要求36/36 positive、其中10/10 direct preprocess origin checks，以及5/5
   missing-parameter composed outcomes；其餘9個raw challenge結果完整保存為known limitations，
   不改寫舊分母，也不得宣稱raw model已解決。

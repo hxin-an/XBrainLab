@@ -72,6 +72,7 @@ class ToolEnvelopeParseResult:
     workflow_stage: str | None = None
     decision: ModelDecision | None = None
     intent: str = ""
+    pending_action: str = ""
     missing_inputs: tuple[str, ...] = ()
     message: str = ""
 
@@ -82,12 +83,14 @@ class ToolEnvelopeParseResult:
         workflow_stage: str | None = None,
         intent: str = "",
         missing_inputs: tuple[str, ...] = (),
+        pending_action: str = "",
         message: str = "",
     ) -> ToolEnvelopeParseResult:
         return cls(
             ToolEnvelopeStatus.NO_TOOL,
             workflow_stage=workflow_stage,
             intent=intent,
+            pending_action=pending_action,
             missing_inputs=missing_inputs,
             message=message,
         )
@@ -233,9 +236,38 @@ class CommandParser:
         workflow_stage: str,
     ) -> ToolEnvelopeParseResult:
         """Validate the reserved no-execution response envelope."""
-        if frozenset(parameters) != {"message"}:
+        parameter_keys = frozenset(parameters)
+        if parameter_keys == {"message"}:
+            pending_action = ""
+            missing_inputs: tuple[str, ...] = ()
+        elif parameter_keys == {"message", "pending_action", "missing_inputs"}:
+            pending_action_value = parameters["pending_action"]
+            missing_value = parameters["missing_inputs"]
+            if (
+                not isinstance(pending_action_value, str)
+                or not pending_action_value.strip()
+            ):
+                return ToolEnvelopeParseResult.format_error(
+                    "pending_action must be a non-empty string.",
+                )
+            if (
+                not isinstance(missing_value, list)
+                or not 1 <= len(missing_value) <= 2
+                or any(
+                    not isinstance(name, str) or not name.strip()
+                    for name in missing_value
+                )
+                or len({name.strip() for name in missing_value}) != len(missing_value)
+            ):
+                return ToolEnvelopeParseResult.format_error(
+                    "missing_inputs must be one or two unique non-empty field names.",
+                )
+            pending_action = pending_action_value.strip()
+            missing_inputs = tuple(name.strip() for name in missing_value)
+        else:
             return ToolEnvelopeParseResult.format_error(
-                "respond_to_user parameters must contain exactly message.",
+                "respond_to_user parameters must be message only or a typed "
+                "clarification.",
             )
 
         message = parameters["message"]
@@ -251,6 +283,8 @@ class CommandParser:
         return ToolEnvelopeParseResult.no_tool(
             workflow_stage=workflow_stage,
             intent="no_tool",
+            pending_action=pending_action,
+            missing_inputs=missing_inputs,
             message=message.strip(),
         )
 

@@ -27,11 +27,13 @@ from XBrainLab.llm.agent.context_encoding import (
     UntrustedContextSource,
     encode_untrusted_context,
 )
+from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.agent.parser import (
     CommandParser,
     ToolEnvelopeParseResult,
     ToolEnvelopeStatus,
 )
+from XBrainLab.llm.agent.pending_interaction import PendingInteractionCoordinator
 from XBrainLab.llm.agent.prompt_policy import STRICT_TOOL_RESPONSE_PROMPT_POLICY
 from XBrainLab.llm.agent.strict_envelope_recovery import (
     DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY,
@@ -42,10 +44,15 @@ from XBrainLab.llm.agent.strict_envelope_recovery import (
 from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ToolAttemptAction,
     ToolAttemptCoordinator,
+    ToolAttemptDecision,
     ToolAttemptRequest,
 )
 from XBrainLab.llm.agent.tool_feedback import summarize_tool_result
 from XBrainLab.llm.agent.turn import AssistantToolInputReceipt
+from XBrainLab.llm.agent.turn_orchestrator import (
+    AssistantToolAttemptSession,
+    AssistantTurnOrchestrator,
+)
 from XBrainLab.llm.agent.verifier import (
     ToolSchemaValidator,
     VerificationLayer,
@@ -76,9 +83,9 @@ DEFAULT_PRECISION_CASES = (
 DEFAULT_CLARIFICATION_CASES = (
     ROOT / "scripts" / "dev" / "stable_assistant_clarification_cases.json"
 )
-REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v7"
+REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v8"
 PRECISION_CASE_COUNT = 24
-CLARIFICATION_CASE_COUNT = 5
+CLARIFICATION_CASE_COUNT = 7
 MISSING_PARAMETER_HOST_TOOLS = {
     "missing_bandpass_bounds_01": "apply_bandpass_filter",
     "missing_notch_frequency_01": "apply_notch_filter",
@@ -128,10 +135,12 @@ class ClarificationCase:
     """One second-turn answer bound to a missing-parameter precision case."""
 
     case_id: str
-    source_case_id: str
-    reply: str
     expected_tool: str
     expected_parameters: dict[str, Any]
+    source_case_id: str = ""
+    reply: str = ""
+    trajectory_kind: str = "direct"
+    turns: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,6 +191,16 @@ class CaseTrajectoryResult:
     final_score: TargetEvalScore
     final_response: str
     attempts: tuple[ModelGenerationAttempt, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ClarificationAdmission:
+    """One controller-admitted typed receipt retained for evaluator follow-up."""
+
+    receipt: AssistantToolInputReceipt
+    harness: _EvaluatorControllerHarness
+    prompt_publication: PromptToolPublication
+    backend_publication: ApplicationViewPublication
 
 
 def target_tool_registry() -> ToolRegistry:
@@ -437,7 +456,7 @@ def load_clarification_cases(
     *,
     precision_cases: tuple[PrecisionCase, ...],
 ) -> tuple[ClarificationCase, ...]:
-    """Load five exact continuations for the missing-parameter precision cases."""
+    """Load five direct and two discriminated clarification trajectories."""
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -454,15 +473,59 @@ def load_clarification_cases(
     seen_ids: set[str] = set()
     seen_sources: set[str] = set()
     for row in payload:
-        required = {
+        direct_required = {
             "id",
             "source_case_id",
             "reply",
             "expected_tool",
             "expected_parameters",
         }
-        if not isinstance(row, dict) or set(row) != required:
-            raise ValueError("Each clarification case must use the exact schema.")
+        trajectory_required = {
+            "id",
+            "trajectory_kind",
+            "workflow_stage",
+            "turns",
+            "expected_tool",
+            "expected_parameters",
+        }
+        if not isinstance(row, dict) or set(row) not in {
+            frozenset(direct_required),
+            frozenset(trajectory_required),
+        }:
+            raise ValueError(
+                "Each clarification case must use a supported strict schema."
+            )
+        if set(row) == trajectory_required:
+            case_id = row["id"]
+            kind = row["trajectory_kind"]
+            workflow_stage = row["workflow_stage"]
+            turns = row["turns"]
+            expected_tool = row["expected_tool"]
+            expected_parameters = row["expected_parameters"]
+            if (
+                not isinstance(case_id, str)
+                or case_id in seen_ids
+                or kind
+                not in {"generic_filter_selection", "partial_bandpass_accumulation"}
+                or workflow_stage != "data_loaded"
+                or not isinstance(turns, list)
+                or not all(isinstance(turn, str) and turn.strip() for turn in turns)
+                or len(turns) != 3
+                or expected_tool != "apply_bandpass_filter"
+                or not isinstance(expected_parameters, dict)
+            ):
+                raise ValueError(f"Invalid clarification trajectory: {case_id!r}")
+            cases.append(
+                ClarificationCase(
+                    case_id=case_id,
+                    expected_tool=expected_tool,
+                    expected_parameters=expected_parameters,
+                    trajectory_kind=kind,
+                    turns=tuple(turn.strip() for turn in turns),
+                )
+            )
+            seen_ids.add(case_id)
+            continue
         case_id = row["id"]
         source_case_id = row["source_case_id"]
         reply = row["reply"]
@@ -496,8 +559,19 @@ def load_clarification_cases(
         seen_ids.add(case_id)
         seen_sources.add(source_case_id)
 
-    if len(cases) != CLARIFICATION_CASE_COUNT or seen_sources != set(sources):
-        raise ValueError("Clarification suite must cover all five missing cases once.")
+    expected_trajectory_kinds = {
+        "generic_filter_selection",
+        "partial_bandpass_accumulation",
+    }
+    if (
+        len(cases) != CLARIFICATION_CASE_COUNT
+        or seen_sources != set(sources)
+        or {case.trajectory_kind for case in cases if case.trajectory_kind != "direct"}
+        != expected_trajectory_kinds
+    ):
+        raise ValueError(
+            "Clarification suite must cover five direct and two trajectories."
+        )
     return tuple(cases)
 
 
@@ -533,6 +607,97 @@ class _PublicationBackedEvaluatorStudy(Study):
 
     def __init__(self) -> None:
         pass
+
+
+class _EvaluatorControllerHarness:
+    """Minimal evaluator adapter that invokes the controller's existing policy.
+
+    It owns no policy: every admission, proposal selection, and continuation
+    transition below is an unbound ``LLMController`` method.  The harness only
+    supplies deterministic evaluator fixtures in place of Qt/RAG execution.
+    """
+
+    def __init__(
+        self,
+        *,
+        registry: ToolRegistry,
+        publication: ApplicationViewPublication,
+    ) -> None:
+        self.registry = registry
+        self._turn_orchestrator = AssistantTurnOrchestrator()
+        self._turn_orchestrator.active_publication = PromptToolPublication.empty()
+        self._tool_attempt_session = AssistantToolAttemptSession()
+        self._max_tool_executions = 5
+        self._pending_interactions = PendingInteractionCoordinator()
+        self._history: list[dict[str, str]] = []
+        self._publication = publication
+        runtime = _EvaluatorApplicationRuntime(publication)
+        self.assembler = ContextAssembler(
+            registry,
+            _PublicationBackedEvaluatorStudy(),
+            application_runtime=runtime,
+        )
+        self._tool_attempt_coordinator = _precision_attempt_coordinator(
+            registry,
+            publication=publication,
+        )
+
+    @property
+    def pending_interactions(self) -> PendingInteractionCoordinator:
+        return self._pending_interactions
+
+    @property
+    def history(self) -> list[dict[str, str]]:
+        return self._history
+
+    def _append_history(self, role: str, content: str) -> None:
+        self._history.append({"role": role, "content": content})
+
+    def _latest_user_request_text(self) -> str:
+        return LLMController._latest_user_request_text(self)  # type: ignore[arg-type]
+
+    def _active_policy_mode(self) -> str:
+        return LLMController._active_policy_mode(self)  # type: ignore[arg-type]
+
+    def _remaining_tool_input_question(self, receipt: AssistantToolInputReceipt) -> str:
+        return LLMController._remaining_tool_input_question(receipt)
+
+    def begin_turn(
+        self,
+        user_text: str,
+        publication: PromptToolPublication,
+    ) -> AssistantToolInputReceipt | None:
+        self._append_history("user", user_text)
+        LLMController._reset_user_turn_state(self)  # type: ignore[arg-type]
+        self._turn_orchestrator.active_publication = publication
+        return self.pending_interactions.active_tool_input
+
+    def admit_typed_response(self, response: str) -> AssistantToolInputReceipt | None:
+        envelope = CommandParser.parse_product(response)
+        if envelope.status is not ToolEnvelopeStatus.NO_TOOL:
+            return None
+        LLMController._begin_typed_tool_input(self, envelope)  # type: ignore[arg-type]
+        return self.pending_interactions.tool_input
+
+    def evaluate_proposal(
+        self,
+        response: str,
+    ) -> tuple[ToolAttemptDecision | None, dict[str, Any] | None]:
+        envelope = CommandParser.parse_product(response)
+        if envelope.status is not ToolEnvelopeStatus.VALID:
+            return None, None
+        command = LLMController._select_tool_proposal(  # type: ignore[arg-type]
+            self,
+            list(envelope.commands),
+        )
+        if command is None:
+            return None, None
+        decision = LLMController._evaluate_tool_proposal(  # type: ignore[arg-type]
+            self,
+            command,
+            response,
+        )
+        return decision, command[1]
 
 
 def _precision_application_publication(
@@ -580,17 +745,18 @@ def build_clarification_messages(
     case: ClarificationCase,
     source: PrecisionCase,
     *,
-    question: str,
+    receipt: AssistantToolInputReceipt,
     registry: ToolRegistry,
     recovery_messages: tuple[str, ...] = (),
 ) -> tuple[
     list[dict[str, str]],
     PromptToolPublication,
     ApplicationViewPublication,
-    AssistantToolInputReceipt,
 ]:
-    """Project one real second-turn receipt through the product assembler."""
-    if source.case_id != case.source_case_id or source.category != "missing_parameter":
+    """Project an admitted production receipt through the product assembler."""
+    if (
+        case.trajectory_kind == "direct" and source.case_id != case.source_case_id
+    ) or source.category != "missing_parameter":
         raise ValueError("Clarification source does not match its missing case.")
     publication = _precision_application_publication(source)
     assembler = ContextAssembler(
@@ -598,22 +764,16 @@ def build_clarification_messages(
         _PublicationBackedEvaluatorStudy(),
         application_runtime=_EvaluatorApplicationRuntime(publication),
     )
-    receipt = AssistantToolInputReceipt(
-        command_name=case.expected_tool,
-        original_user_text=source.user_input,
-        question=question,
-        publication_generation=publication.generation,
-    )
     assembler.set_tool_input_receipt(receipt)
     for message in recovery_messages:
         assembler.add_context(message)
     messages = assembler.get_messages(
         [
-            {"role": "assistant", "content": question},
+            {"role": "assistant", "content": receipt.question},
             {"role": "user", "content": case.reply},
         ]
     )
-    return messages, assembler.latest_tool_publication, publication, receipt
+    return messages, assembler.latest_tool_publication, publication
 
 
 def build_case_messages(
@@ -1031,79 +1191,6 @@ def score_precision_response(
     )
 
 
-def score_clarification_response(
-    case: ClarificationCase,
-    response: str,
-    registry: ToolRegistry,
-    *,
-    prompt_publication: PromptToolPublication,
-    backend_publication: ApplicationViewPublication,
-    receipt: AssistantToolInputReceipt,
-) -> TargetEvalScore:
-    """Require an exact second-turn proposal to reach the product execute boundary."""
-    envelope = CommandParser.parse_product(response)
-    if envelope.status is not ToolEnvelopeStatus.VALID:
-        return TargetEvalScore(
-            False,
-            "output_format",
-            response[:1000],
-            envelope.workflow_stage,
-            "respond_to_user"
-            if envelope.status is ToolEnvelopeStatus.NO_TOOL
-            else None,
-            None,
-            envelope.error or "Clarification reply did not select the pending action.",
-            PrecisionProductOutcome("respond", envelope.message),
-        )
-
-    tool_name, parameters = envelope.commands[0]
-    coordinator = _precision_attempt_coordinator(
-        registry,
-        publication=backend_publication,
-    )
-    decision = coordinator.evaluate(
-        ToolAttemptRequest(
-            command_name=tool_name,
-            params=parameters,
-            confidence=1.0,
-            publication=prompt_publication,
-            latest_user_text=case.reply,
-            tool_input_receipt=receipt,
-        )
-    )
-    permitted = decision.action is ToolAttemptAction.EXECUTE
-    exact = bool(
-        envelope.workflow_stage == "data_loaded"
-        and tool_name == case.expected_tool
-        and parameters == case.expected_parameters
-    )
-    passed = permitted and exact
-    return TargetEvalScore(
-        passed,
-        "none" if passed else "clarification_continuation",
-        response[:1000],
-        envelope.workflow_stage,
-        tool_name,
-        parameters,
-        (
-            "Exact continuation reached the verified execution boundary."
-            if passed
-            else "Second-turn proposal did not reach the exact execution boundary."
-        ),
-        PrecisionProductOutcome(
-            "execute_boundary" if permitted else decision.action.value,
-            decision.message,
-            confirmation_requested=(
-                decision.action is ToolAttemptAction.CONFIRMATION_REQUIRED
-            ),
-            gui_handoff_permitted=permitted,
-            application_service_permitted=permitted,
-            tool_executor_permitted=permitted,
-            state_mutation_permitted=permitted,
-        ),
-    )
-
-
 def _score_case_response(
     case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
     response: str,
@@ -1229,41 +1316,260 @@ def evaluate_case_trajectory(
     )
 
 
+def admit_clarification_receipt(
+    source: PrecisionCase,
+    response: str,
+    *,
+    expected_tool: str,
+    registry: ToolRegistry,
+) -> ClarificationAdmission | None:
+    """Replay the first response through product admission before follow-up.
+
+    The evaluator must not manufacture a receipt from the case fixture.  It
+    derives one only from the model's first response plus the same parser,
+    attempt coordinator, and pending-interaction owner used by the product.
+    """
+    _system, prompt_publication, backend_publication = _precision_case_projection(
+        source,
+        registry,
+    )
+    harness = _EvaluatorControllerHarness(
+        registry=registry,
+        publication=backend_publication,
+    )
+    harness.begin_turn(source.user_input, prompt_publication)
+    receipt = harness.admit_typed_response(response)
+    if receipt is None or receipt.command_name != expected_tool:
+        return None
+    return ClarificationAdmission(
+        receipt=receipt,
+        harness=harness,
+        prompt_publication=prompt_publication,
+        backend_publication=backend_publication,
+    )
+
+
 def evaluate_clarification_trajectory(
     case: ClarificationCase,
     source: PrecisionCase,
     *,
-    question: str,
+    admission: ClarificationAdmission,
     registry: ToolRegistry,
     generate_response: Callable[[list[dict[str, str]]], str],
 ) -> CaseTrajectoryResult:
-    """Generate the receipt-backed second turn through the same recovery policy."""
-    _messages, prompt_publication, backend_publication, receipt = (
-        build_clarification_messages(
-            case,
-            source,
-            question=question,
-            registry=registry,
+    """Generate an admitted receipt-backed second turn through recovery policy."""
+    harness = admission.harness
+    receipt = harness.begin_turn(case.reply, admission.prompt_publication)
+    if receipt is None:
+        raise RuntimeError("Controller did not activate the admitted clarification.")
+    observed: dict[str, TargetEvalScore] = {}
+
+    def score(response: str) -> TargetEvalScore:
+        cached = observed.get(response)
+        if cached is not None:
+            return cached
+        envelope = CommandParser.parse_product(response)
+        decision, _supplied = harness.evaluate_proposal(response)
+        parameters = decision.params if decision is not None else None
+        passed = bool(
+            envelope.status is ToolEnvelopeStatus.VALID
+            and envelope.workflow_stage == source.workflow_stage
+            and envelope.commands[0][0] == case.expected_tool
+            and parameters == case.expected_parameters
+            and decision is not None
+            and decision.action is ToolAttemptAction.EXECUTE
         )
-    )
+        observed[response] = TargetEvalScore(
+            passed,
+            "none" if passed else "clarification_continuation",
+            response[:1000],
+            envelope.workflow_stage,
+            envelope.commands[0][0]
+            if envelope.status is ToolEnvelopeStatus.VALID
+            else None,
+            parameters,
+            (
+                "Controller reached the exact verified execution boundary."
+                if passed
+                else "Controller did not admit the exact continuation for execution."
+            ),
+            PrecisionProductOutcome(
+                "execute_boundary"
+                if decision is not None and decision.action is ToolAttemptAction.EXECUTE
+                else (
+                    decision.action.value if decision is not None else "format_error"
+                ),
+                decision.message if decision is not None else envelope.message,
+                gui_handoff_permitted=bool(
+                    decision is not None
+                    and decision.action is ToolAttemptAction.EXECUTE
+                ),
+                application_service_permitted=bool(
+                    decision is not None
+                    and decision.action is ToolAttemptAction.EXECUTE
+                ),
+                tool_executor_permitted=bool(
+                    decision is not None
+                    and decision.action is ToolAttemptAction.EXECUTE
+                ),
+                state_mutation_permitted=bool(
+                    decision is not None
+                    and decision.action is ToolAttemptAction.EXECUTE
+                ),
+            ),
+        )
+        return observed[response]
+
     return _evaluate_trajectory(
         workflow_stage=source.workflow_stage,
         build_messages=lambda recovery: build_clarification_messages(
             case,
             source,
-            question=question,
+            receipt=receipt,
             registry=registry,
             recovery_messages=recovery,
         )[0],
-        score_response=lambda response: score_clarification_response(
-            case,
-            response,
-            registry,
-            prompt_publication=prompt_publication,
-            backend_publication=backend_publication,
-            receipt=receipt,
-        ),
+        score_response=score,
         generate_response=generate_response,
+    )
+
+
+def evaluate_discriminated_clarification_trajectory(
+    case: ClarificationCase,
+    registry: ToolRegistry,
+    generate_response: Callable[[list[dict[str, str]]], str],
+) -> CaseTrajectoryResult:
+    """Run the two approved multi-turn clarification trajectories."""
+    if (
+        case.trajectory_kind
+        not in {
+            "generic_filter_selection",
+            "partial_bandpass_accumulation",
+        }
+        or len(case.turns) != 3
+    ):
+        raise ValueError("Unsupported discriminated clarification trajectory.")
+    first = PrecisionCase(
+        case_id=f"{case.case_id}_first",
+        user_input=case.turns[0],
+        workflow_stage="data_loaded",
+        category="general"
+        if case.trajectory_kind == "generic_filter_selection"
+        else "missing_parameter",
+        requested_tool=(
+            None
+            if case.trajectory_kind == "generic_filter_selection"
+            else case.expected_tool
+        ),
+    )
+    first_trajectory = evaluate_case_trajectory(first, registry, generate_response)
+    first_envelope = CommandParser.parse_product(first_trajectory.final_response)
+    if case.trajectory_kind == "generic_filter_selection":
+        first_ok = (
+            first_trajectory.final_score.passed
+            and first_envelope.status is ToolEnvelopeStatus.NO_TOOL
+            and not first_envelope.pending_action
+        )
+        action_request = "bandpass"
+    else:
+        first_ok = first_trajectory.final_score.passed
+        action_request = first.user_input
+    if case.trajectory_kind == "partial_bandpass_accumulation":
+        source = first
+        action_trajectory = first_trajectory
+        admission = admit_clarification_receipt(
+            source,
+            first_trajectory.final_response,
+            expected_tool=case.expected_tool,
+            registry=registry,
+        )
+    else:
+        source = PrecisionCase(
+            case_id=f"{case.case_id}_action",
+            user_input=action_request,
+            workflow_stage="data_loaded",
+            category="missing_parameter",
+            requested_tool=case.expected_tool,
+        )
+        action_trajectory = evaluate_case_trajectory(
+            source, registry, generate_response
+        )
+        admission = admit_clarification_receipt(
+            source,
+            action_trajectory.final_response,
+            expected_tool=case.expected_tool,
+            registry=registry,
+        )
+    if not first_ok or admission is None:
+        failed = replace(
+            action_trajectory.final_score,
+            passed=False,
+            failure_type="clarification_admission",
+            detail="The prior model turn did not admit the required receipt.",
+        )
+        return CaseTrajectoryResult(
+            raw_score=first_trajectory.raw_score,
+            final_score=failed,
+            final_response=action_trajectory.final_response,
+            attempts=(
+                first_trajectory.attempts
+                if action_trajectory is first_trajectory
+                else first_trajectory.attempts + action_trajectory.attempts
+            ),
+        )
+    if case.trajectory_kind == "partial_bandpass_accumulation":
+        harness = admission.harness
+        partial_case = replace(case, reply=case.turns[1])
+        receipt = harness.begin_turn(case.turns[1], admission.prompt_publication)
+        if receipt is None:
+            raise RuntimeError("Controller did not activate partial clarification.")
+        messages, _prompt, _backend = build_clarification_messages(
+            partial_case, source, receipt=receipt, registry=registry
+        )
+        partial_response = generate_response(messages)
+        partial_decision, partial_parameters = harness.evaluate_proposal(
+            partial_response
+        )
+        requeued = harness.pending_interactions.tool_input
+        if (
+            partial_decision is None
+            or partial_decision.action is not ToolAttemptAction.RESPOND
+            or partial_parameters != {"low_freq": 12}
+            or requeued is None
+            or dict(requeued.verified_parameters) != {"low_freq": 12}
+            or requeued.remaining_reply_budget != 1
+        ):
+            failed = replace(
+                action_trajectory.final_score,
+                passed=False,
+                failure_type="partial_accumulation",
+                detail="Controller did not verify and requeue the partial reply.",
+            )
+            return CaseTrajectoryResult(
+                first_trajectory.raw_score,
+                failed,
+                partial_response,
+                first_trajectory.attempts + action_trajectory.attempts,
+            )
+    final_case = replace(case, reply=case.turns[2])
+    final_trajectory = evaluate_clarification_trajectory(
+        final_case,
+        source,
+        admission=admission,
+        registry=registry,
+        generate_response=generate_response,
+    )
+    return CaseTrajectoryResult(
+        raw_score=first_trajectory.raw_score,
+        final_score=final_trajectory.final_score,
+        final_response=final_trajectory.final_response,
+        attempts=(
+            first_trajectory.attempts + final_trajectory.attempts
+            if action_trajectory is first_trajectory
+            else first_trajectory.attempts
+            + action_trajectory.attempts
+            + final_trajectory.attempts
+        ),
     )
 
 
@@ -1515,10 +1821,11 @@ def _build_report(
             "Frozen bilingual core preserves exact selection for 36 complete requests plus the "
             "deterministic host parameter-origin boundary for five missing-value "
             "requests. Candidate gates use the final bounded strict-envelope recovery, "
-            "parser, attempt, and presentation outcome. Five receipt-backed second turns "
-            "must reach the verified execution boundary; raw first-generation scores remain "
-            "separate diagnostics. These suites are not workflow success or thesis-grade "
-            "model accuracy."
+            "parser, attempt, and presentation outcome. Seven controller-backed "
+            "clarification trajectories (five direct actions, generic filter selection, "
+            "and partial bandpass accumulation) must reach the verified execution boundary; "
+            "raw first-generation scores remain separate diagnostics. These suites are not "
+            "workflow success or thesis-grade model accuracy."
         ),
     }
 
@@ -1625,7 +1932,7 @@ def run_eval(
         )
     if len(clarification_cases) != CLARIFICATION_CASE_COUNT:
         raise ValueError(
-            "Candidate evaluation requires exactly five clarification cases."
+            "Candidate evaluation requires exactly seven clarification cases."
         )
 
     generation_policy = _evaluation_generation_policy(config)
@@ -1720,25 +2027,11 @@ def run_eval(
                 file=sys.stderr,
                 flush=True,
             )
-            source = precision_by_id[case.source_case_id]
-            source_row = result_by_id[case.source_case_id]
-            source_score = source_row["score"]
-            source_outcome = source_score.get("product_outcome", {})
-            question = source_outcome.get("message")
-            source_has_receipt = bool(
-                source_score.get("passed") is True
-                and source_score.get("parsed_tool") == case.expected_tool
-                and source_outcome.get("disposition") == "respond"
-                and isinstance(question, str)
-                and question.strip()
-            )
-            if source_has_receipt:
-                trajectory = evaluate_clarification_trajectory(
+            if case.trajectory_kind != "direct":
+                trajectory = evaluate_discriminated_clarification_trajectory(
                     case,
-                    source,
-                    question=question,
-                    registry=registry,
-                    generate_response=lambda messages: "".join(
+                    registry,
+                    lambda messages: "".join(
                         engine.generate_stream(
                             messages,
                             profile=GenerationProfile.STRUCTURED_DECISION,
@@ -1748,19 +2041,52 @@ def run_eval(
                 score_payload = asdict(trajectory.final_score)
                 raw_score_payload = asdict(trajectory.raw_score)
                 attempts = [asdict(attempt) for attempt in trajectory.attempts]
+                source = None
+                source_has_receipt = True
             else:
-                unavailable = TargetEvalScore(
-                    False,
-                    "source_without_host_receipt",
-                    "",
-                    source.workflow_stage,
-                    source_score.get("parsed_tool"),
-                    source_score.get("parsed_parameters"),
-                    "First turn did not produce the exact Host clarification receipt.",
+                source = precision_by_id[case.source_case_id]
+                source_row = result_by_id[case.source_case_id]
+                source_score = source_row["score"]
+                admission = (
+                    admit_clarification_receipt(
+                        source,
+                        str(source_score.get("response", "")),
+                        expected_tool=case.expected_tool,
+                        registry=registry,
+                    )
+                    if source_score.get("passed") is True
+                    else None
                 )
-                score_payload = asdict(unavailable)
-                raw_score_payload = dict(score_payload)
-                attempts = []
+                source_has_receipt = admission is not None
+                if admission is not None:
+                    trajectory = evaluate_clarification_trajectory(
+                        case,
+                        source,
+                        admission=admission,
+                        registry=registry,
+                        generate_response=lambda messages: "".join(
+                            engine.generate_stream(
+                                messages,
+                                profile=GenerationProfile.STRUCTURED_DECISION,
+                            )
+                        ),
+                    )
+                    score_payload = asdict(trajectory.final_score)
+                    raw_score_payload = asdict(trajectory.raw_score)
+                    attempts = [asdict(attempt) for attempt in trajectory.attempts]
+                else:
+                    unavailable = TargetEvalScore(
+                        False,
+                        "source_without_host_receipt",
+                        "",
+                        source.workflow_stage,
+                        None,
+                        None,
+                        "First turn did not produce the exact Host clarification receipt.",
+                    )
+                    score_payload = asdict(unavailable)
+                    raw_score_payload = dict(score_payload)
+                    attempts = []
             if score_payload.get("product_outcome") is None:
                 score_payload.pop("product_outcome", None)
             if raw_score_payload.get("product_outcome") is None:
@@ -1769,7 +2095,7 @@ def run_eval(
                 {
                     "suite": "clarification",
                     "case": asdict(case),
-                    "source_case": asdict(source),
+                    "source_case": asdict(source) if source is not None else None,
                     "source_has_host_receipt": source_has_receipt,
                     "raw_score": raw_score_payload,
                     "score": score_payload,

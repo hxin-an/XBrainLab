@@ -1,26 +1,31 @@
 """Stable-v2 local-model selection evaluation contracts."""
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from scripts.dev.run_stable_assistant_model_eval import (
     DEFAULT_CHALLENGES,
     DEFAULT_CLARIFICATION_CASES,
     DEFAULT_PRECISION_CASES,
+    CaseTrajectoryResult,
+    ModelGenerationAttempt,
+    TargetEvalScore,
     _build_report,
     _evaluation_generation_policy,
     _experiment_identity,
     _stable_eval_config,
+    admit_clarification_receipt,
     build_case_messages,
     build_clarification_messages,
     evaluate_case_trajectory,
     evaluate_clarification_trajectory,
+    evaluate_discriminated_clarification_trajectory,
     load_challenge_cases,
     load_clarification_cases,
     load_precision_cases,
     load_target_cases,
+    run_eval,
     score_challenge_response,
-    score_clarification_response,
     score_missing_parameter_host_guard,
     score_model_response,
     score_positive_parameter_host_guard,
@@ -106,17 +111,101 @@ def test_clarification_cases_cover_each_direct_parameter_tool_once() -> None:
         precision_cases=precision_cases,
     )
 
-    assert len(cases) == 5
-    assert {case.expected_tool for case in cases} == {
+    direct_cases = [case for case in cases if case.trajectory_kind == "direct"]
+    assert len(cases) == 7
+    assert {case.expected_tool for case in direct_cases} == {
         "apply_bandpass_filter",
         "apply_notch_filter",
         "resample_data",
         "set_reference",
         "normalize_data",
     }
-    assert {case.source_case_id for case in cases} == {
+    assert {case.source_case_id for case in direct_cases} == {
         case.case_id for case in precision_cases if case.category == "missing_parameter"
     }
+    assert {
+        case.trajectory_kind for case in cases if case.trajectory_kind != "direct"
+    } == {
+        "generic_filter_selection",
+        "partial_bandpass_accumulation",
+    }
+
+
+def test_run_eval_admits_direct_receipts_from_serialized_final_response(
+    monkeypatch,
+) -> None:
+    response = (
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '"parameters":{"message":"Please provide the required value.",'
+        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
+    )
+    score = TargetEvalScore(
+        True,
+        "",
+        response,
+        "data_loaded",
+        "respond_to_user",
+        {"message": "Please provide the required value."},
+        "accepted",
+    )
+    trajectory = CaseTrajectoryResult(
+        raw_score=score,
+        final_score=score,
+        final_response=response,
+        attempts=(
+            ModelGenerationAttempt(
+                attempt_number=1,
+                response=response,
+                envelope_status="no_tool",
+                workflow_stage="data_loaded",
+                recovery_action="accept",
+                taxonomy="respond",
+                recovery_attempts_after=0,
+            ),
+        ),
+    )
+    config = _stable_eval_config(LLMConfig(), device="cpu")
+    monkeypatch.setattr(config, "local_backend_ready", lambda _model_id: True)
+    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    clarification_cases = load_clarification_cases(
+        DEFAULT_CLARIFICATION_CASES,
+        precision_cases=precision_cases,
+    )
+    engine = MagicMock()
+
+    with (
+        patch(
+            "scripts.dev.run_stable_assistant_model_eval.LLMEngine",
+            return_value=engine,
+        ),
+        patch(
+            "scripts.dev.run_stable_assistant_model_eval.evaluate_case_trajectory",
+            return_value=trajectory,
+        ),
+        patch(
+            "scripts.dev.run_stable_assistant_model_eval."
+            "evaluate_clarification_trajectory",
+            return_value=trajectory,
+        ),
+        patch(
+            "scripts.dev.run_stable_assistant_model_eval."
+            "evaluate_discriminated_clarification_trajectory",
+            return_value=trajectory,
+        ),
+        patch(
+            "scripts.dev.run_stable_assistant_model_eval.admit_clarification_receipt",
+            return_value=object(),
+        ) as admit_receipt,
+    ):
+        run_eval(
+            config,
+            (),
+            precision_cases=precision_cases,
+            clarification_cases=clarification_cases,
+        )
+
+    assert len(admit_receipt.call_args_list) == 5
+    assert {call.args[1] for call in admit_receipt.call_args_list} == {response}
 
 
 def test_clarification_prompt_and_score_use_product_receipt_boundary() -> None:
@@ -133,13 +222,24 @@ def test_clarification_prompt_and_score_use_product_receipt_boundary() -> None:
     source = next(
         item for item in precision_cases if item.case_id == case.source_case_id
     )
-    messages, prompt_publication, backend_publication, receipt = (
-        build_clarification_messages(
-            case,
-            source,
-            question="What resampling rate should I use?",
-            registry=registry,
-        )
+    first_response = (
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '"parameters":{"message":"What resampling rate should I use?",'
+        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
+    )
+    admission = admit_clarification_receipt(
+        source,
+        first_response,
+        expected_tool=case.expected_tool,
+        registry=registry,
+    )
+    assert admission is not None
+    receipt = admission.receipt
+    messages, _prompt_publication, _backend_publication = build_clarification_messages(
+        case,
+        source,
+        receipt=receipt,
+        registry=registry,
     )
 
     assert messages[-1] == {"role": "user", "content": "128 Hz"}
@@ -148,19 +248,39 @@ def test_clarification_prompt_and_score_use_product_receipt_boundary() -> None:
         '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
         '"parameters":{"rate":128}}'
     )
-    score = score_clarification_response(
+    trajectory = evaluate_clarification_trajectory(
         case,
-        response,
-        registry,
-        prompt_publication=prompt_publication,
-        backend_publication=backend_publication,
-        receipt=receipt,
+        source,
+        admission=admission,
+        registry=registry,
+        generate_response=lambda _messages: response,
     )
 
-    assert score.passed is True
-    assert score.product_outcome is not None
-    assert score.product_outcome.disposition == "execute_boundary"
-    assert score.product_outcome.tool_executor_permitted is True
+    assert trajectory.final_score.passed is True
+    assert trajectory.final_score.product_outcome is not None
+    assert trajectory.final_score.product_outcome.disposition == "execute_boundary"
+    assert trajectory.final_score.product_outcome.tool_executor_permitted is True
+
+
+def test_clarification_admission_rejects_incomplete_tool_call_fixture() -> None:
+    registry = target_tool_registry()
+    source = next(
+        case
+        for case in load_precision_cases(DEFAULT_PRECISION_CASES)
+        if case.case_id == "missing_resample_en"
+    )
+
+    admission = admit_clarification_receipt(
+        source,
+        (
+            '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
+            '"parameters":{}}'
+        ),
+        expected_tool="resample_data",
+        registry=registry,
+    )
+
+    assert admission is None
 
 
 def test_clarification_trajectory_uses_product_format_recovery() -> None:
@@ -187,10 +307,22 @@ def test_clarification_trajectory_uses_product_format_recovery() -> None:
         )
     )
 
+    first_response = (
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '"parameters":{"message":"What resampling rate should I use?",'
+        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
+    )
+    admission = admit_clarification_receipt(
+        source,
+        first_response,
+        expected_tool=case.expected_tool,
+        registry=registry,
+    )
+    assert admission is not None
     trajectory = evaluate_clarification_trajectory(
         case,
         source,
-        question="What resampling rate should I use?",
+        admission=admission,
         registry=registry,
         generate_response=lambda _messages: next(responses),
     )
@@ -199,6 +331,97 @@ def test_clarification_trajectory_uses_product_format_recovery() -> None:
     assert trajectory.final_score.passed is True
     assert len(trajectory.attempts) == 2
     assert trajectory.attempts[0].recovery_action == "retry_format"
+
+
+def test_discriminated_clarification_trajectories_use_scripted_model_turns() -> None:
+    registry = target_tool_registry()
+    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    cases = load_clarification_cases(
+        DEFAULT_CLARIFICATION_CASES,
+        precision_cases=precision_cases,
+    )
+    generic = next(
+        case for case in cases if case.trajectory_kind == "generic_filter_selection"
+    )
+    partial = next(
+        case
+        for case in cases
+        if case.trajectory_kind == "partial_bandpass_accumulation"
+    )
+    generic_responses = iter(
+        (
+            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '"parameters":{"message":"Should I apply a bandpass or notch filter?"}}',
+            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '"parameters":{"message":"What low and high cutoffs should I use?",'
+            '"pending_action":"apply_bandpass_filter",'
+            '"missing_inputs":["low_freq","high_freq"]}}',
+            '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
+            '"parameters":{"low_freq":12,"high_freq":40}}',
+        )
+    )
+    partial_responses = iter(
+        (
+            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '"parameters":{"message":"What low and high cutoffs should I use?",'
+            '"pending_action":"apply_bandpass_filter",'
+            '"missing_inputs":["low_freq","high_freq"]}}',
+            '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
+            '"parameters":{"low_freq":12}}',
+            '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
+            '"parameters":{"high_freq":128}}',
+        )
+    )
+
+    generic_result = evaluate_discriminated_clarification_trajectory(
+        generic, registry, lambda _messages: next(generic_responses)
+    )
+    partial_result = evaluate_discriminated_clarification_trajectory(
+        partial, registry, lambda _messages: next(partial_responses)
+    )
+
+    assert generic_result.final_score.passed is True
+    assert partial_result.final_score.passed is True
+    assert generic_result.final_score.product_outcome is not None
+    assert partial_result.final_score.product_outcome is not None
+
+
+def test_partial_trajectory_fails_when_controller_rejects_the_partial_proposal() -> (
+    None
+):
+    registry = target_tool_registry()
+    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    partial = next(
+        case
+        for case in load_clarification_cases(
+            DEFAULT_CLARIFICATION_CASES,
+            precision_cases=precision_cases,
+        )
+        if case.trajectory_kind == "partial_bandpass_accumulation"
+    )
+    responses = iter(
+        (
+            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '"parameters":{"message":"What low and high cutoffs should I use?",'
+            '"pending_action":"apply_bandpass_filter",'
+            '"missing_inputs":["low_freq","high_freq"]}}',
+            '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
+            '"parameters":{"low_freq":12}}',
+        )
+    )
+
+    with patch(
+        "scripts.dev.run_stable_assistant_model_eval.LLMController._evaluate_tool_proposal",
+        return_value=None,
+    ):
+        result = evaluate_discriminated_clarification_trajectory(
+            partial,
+            registry,
+            lambda _messages: next(responses),
+        )
+
+    assert result.final_score.passed is False
+    assert result.final_score.failure_type == "partial_accumulation"
 
 
 def test_precision_scoring_uses_parser_and_host_attempt_outcome_not_keywords() -> None:
@@ -481,14 +704,14 @@ def test_precision_report_is_separate_from_frozen_core_gate() -> None:
                     "raw_score": {"passed": True},
                     "score": {"passed": True},
                 }
-                for _ in range(5)
+                for _ in range(7)
             ],
         ],
         expected_case_count=50,
         complete=True,
     )
 
-    assert report["schema_version"] == "xbrainlab.stable_assistant_model_eval.v7"
+    assert report["schema_version"] == "xbrainlab.stable_assistant_model_eval.v8"
     assert report["suite_summary"]["positive"]["case_count"] == 36
     assert report["suite_summary"]["challenge"]["case_count"] == 14
     assert report["summary"] == {
@@ -513,20 +736,20 @@ def test_precision_report_is_separate_from_frozen_core_gate() -> None:
         "passed": 24,
     }
     assert report["candidate_gate"]["clarification_continuation"] == {
-        "required": 5,
-        "passed": 5,
+        "required": 7,
+        "passed": 7,
     }
     assert report["candidate_gate"]["passed"] is True
     assert report["raw_generation_summary"] == {
         "positive": {"case_count": 36, "passed_count": 36, "failed_count": 0},
         "challenge": {"case_count": 14, "passed_count": 0, "failed_count": 14},
         "precision": {"case_count": 24, "passed_count": 23, "failed_count": 1},
-        "clarification": {"case_count": 5, "passed_count": 5, "failed_count": 0},
+        "clarification": {"case_count": 7, "passed_count": 7, "failed_count": 0},
     }
     assert report["clarification_summary"] == {
-        "expected_case_count": 5,
-        "case_count": 5,
-        "passed_count": 5,
+        "expected_case_count": 7,
+        "case_count": 7,
+        "passed_count": 7,
         "failed_count": 0,
         "complete": True,
         "passed": True,
@@ -801,7 +1024,7 @@ def test_candidate_report_requires_positive_and_host_guard_gates() -> None:
         "missing_parameter_host_guard": {"required": 5, "passed": 5},
         "frozen_core_passed": True,
         "precision_no_action": {"required": 24, "passed": 0},
-        "clarification_continuation": {"required": 5, "passed": 0},
+        "clarification_continuation": {"required": 7, "passed": 0},
         "passed": False,
     }
     assert report["summary"]["passed"] is False

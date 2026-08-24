@@ -346,6 +346,7 @@ def test_same_tool_clarification_reply_reaches_execution_boundary(
         original_user_text="Run this preprocessing action.",
         question="Which required value should I use?",
         publication_generation=21,
+        missing_inputs=tuple(params),
     )
 
     decision = coordinator.evaluate(
@@ -384,6 +385,7 @@ def test_clarification_receipt_cannot_authorize_unrelated_or_stale_reply(
         original_user_text="Resample the EEG data.",
         question="What resampling rate should I use?",
         publication_generation=receipt_generation,
+        missing_inputs=("rate",),
     )
 
     decision = coordinator.evaluate(
@@ -408,6 +410,7 @@ def test_clarification_reply_still_passes_schema_verification_first() -> None:
         original_user_text="Resample the EEG data.",
         question="What resampling rate should I use?",
         publication_generation=21,
+        missing_inputs=("rate",),
     )
 
     decision = coordinator.evaluate(

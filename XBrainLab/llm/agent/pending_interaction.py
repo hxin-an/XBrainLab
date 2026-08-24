@@ -8,7 +8,7 @@ history, and product presentation.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 
 from .confirmation import (
@@ -133,7 +133,7 @@ class PendingInteractionCoordinator:
 
     @property
     def active_tool_input(self) -> AssistantToolInputReceipt | None:
-        """Return the one-shot receipt leased to the current user turn."""
+        """Return the bounded-reply receipt leased to the current user turn."""
         return self._active_tool_input
 
     @property
@@ -169,9 +169,38 @@ class PendingInteractionCoordinator:
         return receipt
 
     def clear_active_tool_input(self) -> AssistantToolInputReceipt | None:
-        """End the current turn's one-shot clarification lease."""
+        """End the current bounded clarification lease."""
         receipt = self._active_tool_input
         self._active_tool_input = None
+        return receipt
+
+    def requeue_active_tool_input_for_reply(self) -> AssistantToolInputReceipt | None:
+        """Return one typed clarification lease for its bounded next reply."""
+        receipt = self._active_tool_input
+        if receipt is None or receipt.remaining_reply_budget <= 1:
+            return None
+        if self._tool_input is not None:
+            raise RuntimeError("Assistant tool input is already pending.")
+        requeued = replace(
+            receipt,
+            remaining_reply_budget=receipt.remaining_reply_budget - 1,
+        )
+        self._active_tool_input = None
+        self._tool_input = requeued
+        return requeued
+
+    def replace_active_tool_input(
+        self,
+        receipt: AssistantToolInputReceipt,
+    ) -> AssistantToolInputReceipt:
+        """Persist verifier-approved user values on the current lease."""
+        active = self._active_tool_input
+        if active is None or not receipt.matches(
+            active.command_name,
+            active.publication_generation,
+        ):
+            raise RuntimeError("Assistant tool-input receipt is not active.")
+        self._active_tool_input = receipt
         return receipt
 
     def begin_confirmation(
