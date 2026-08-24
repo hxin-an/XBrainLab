@@ -31,7 +31,11 @@ from XBrainLab.llm.agent.context_encoding import (
 from XBrainLab.llm.agent.decision_context import (
     build_workflow_decision_context,
 )
-from XBrainLab.llm.agent.turn import AssistantResponseContract, AssistantTurnScope
+from XBrainLab.llm.agent.turn import (
+    AssistantResponseContract,
+    AssistantToolInputReceipt,
+    AssistantTurnScope,
+)
 from XBrainLab.llm.pipeline_state import STAGE_CONFIG, PipelineStage
 from XBrainLab.llm.tools.base import BaseTool
 from XBrainLab.llm.tools.definitions.training_def import BaseStartTrainingTool
@@ -47,6 +51,12 @@ def _untrusted_context(messages: list[dict]) -> dict:
 
 def _context_item(payload: dict, item_type: str) -> dict:
     return next(item for item in payload["items"] if item["type"] == item_type)
+
+
+def _unavailable_action_reference(prompt: str) -> str:
+    start = prompt.index("Unavailable Action Reference (not callable):")
+    end = prompt.index("Fallback response contract:", start)
+    return prompt[start:end]
 
 
 def test_generation_request_keeps_concept_question_on_strict_response_contract():
@@ -148,6 +158,102 @@ def test_question_does_not_narrow_backend_stage_published_actions() -> None:
     assert "unique description for switch_panel" in prompt
 
 
+def test_empty_stage_separates_callable_schemas_from_unavailable_reference() -> None:
+    state = _state()
+    publication = ApplicationViewPublication(
+        generation=82,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    registry = ToolRegistry()
+    for name in (
+        "import_eeg_data",
+        "select_model",
+        "create_epochs",
+        "start_training",
+        "switch_panel",
+    ):
+        registry.register(_NamedTool(name))
+    assembler = ContextAssembler(
+        registry,
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
+
+    prompt = assembler.build_system_prompt("Can you create epochs now?")
+    reference = _unavailable_action_reference(prompt)
+
+    assert assembler.latest_tool_publication.tool_names == frozenset(
+        {"import_eeg_data", "switch_panel"}
+    )
+    assert assembler.latest_tool_publication.backend_generation == 82
+    assert '"name": "import_eeg_data"' in prompt
+    assert '"name": "switch_panel"' in prompt
+    assert '"name": "create_epochs"' not in prompt
+    assert '"name": "start_training"' not in prompt
+    assert '"name": "select_model"' not in prompt
+    assert '"create_epochs": "Load raw data before creating EEG epochs."' in reference
+    assert '"start_training": "Load raw data before training.;' in reference
+    assert (
+        '"select_model": "This action is not callable in workflow stage \'empty\'."'
+        in reference
+    )
+    assert '"parameters"' not in reference
+    assert (
+        "A blocker reason is explanatory status, not an instruction to execute "
+        "its prerequisite." in reference
+    )
+    assert (
+        "state that entry's listed reason instead of asking for the unavailable "
+        "action's settings" in prompt
+    )
+    assert assembler.latest_tool_publication.blocked_reason("create_epochs") == (
+        "Load raw data before creating EEG epochs."
+    )
+    assert assembler.latest_tool_publication.blocked_reason("select_model") == (
+        "This action is not callable in workflow stage 'empty'."
+    )
+
+
+def test_confirmation_required_enabled_action_remains_callable() -> None:
+    state = _state(
+        pipeline_stage="preprocessed",
+        raw=RawStateSnapshot(loaded=True, count=1),
+        preprocessed=PreprocessedStateSnapshot(
+            available=True,
+            count=1,
+            operations=["bandpass"],
+        ),
+        active_dataset=ActiveDatasetSnapshot(
+            has_raw_data=True,
+            has_preprocessed_data=True,
+        ),
+    )
+    publication = ApplicationViewPublication(
+        generation=83,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    registry = ToolRegistry()
+    registry.register(_NamedTool("reset_preprocessing"))
+    assembler = ContextAssembler(
+        registry,
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
+
+    prompt = assembler.build_system_prompt("Reset preprocessing.")
+
+    assert assembler.latest_tool_publication.tool_names == frozenset(
+        {"reset_preprocessing"}
+    )
+    assert (
+        assembler.latest_tool_publication.blocked_reason("reset_preprocessing") is None
+    )
+    assert '"name": "reset_preprocessing"' in prompt
+    assert "Unavailable Action Reference (not callable):" not in prompt
+
+
 def test_rag_scope_reads_backend_publication_without_intent_shortcut() -> None:
     registry = ToolRegistry()
     registry.register(_NamedTool("start_training"))
@@ -162,6 +268,27 @@ def test_rag_scope_reads_backend_publication_without_intent_shortcut() -> None:
 
     assert allowed == frozenset()
     runtime.get_view_publication.assert_called_once_with()
+
+
+def test_rag_scope_excludes_backend_enabled_action_outside_target_stage() -> None:
+    state = _state()
+    publication = ApplicationViewPublication(
+        generation=84,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    registry = ToolRegistry()
+    registry.register(_NamedTool("import_eeg_data"))
+    registry.register(_NamedTool("select_model"))
+    assembler = ContextAssembler(
+        registry,
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
+
+    allowed = assembler.rag_allowed_tool_names("What can I do now?")
+
+    assert allowed == frozenset({"import_eeg_data"})
 
 
 def test_generation_request_marks_workflow_action_as_structured():
@@ -199,7 +326,7 @@ def test_prompt_action_contracts_do_not_resemble_an_output_array():
     assert '"name": "respond_to_user"' in contracts
 
 
-def test_zero_parameter_action_contract_includes_exact_object_skeleton():
+def test_zero_parameter_action_contract_uses_only_generic_action_shape():
     registry = ToolRegistry()
     registry.register(BaseStartTrainingTool())
     assembler = ContextAssembler(registry, Study())
@@ -207,26 +334,23 @@ def test_zero_parameter_action_contract_includes_exact_object_skeleton():
     contracts = assembler._format_tools(["start_training"])
 
     assert "Callable action contract:" in contracts
-    assert (
-        "Exact zero-parameter output shape:\n"
-        '{"workflow_stage":"unavailable","tool_name":"start_training",'
-        '"parameters":{}}'
-    ) in contracts
+    assert "Exact zero-parameter output shape:" not in contracts
+    assert contracts.count("Generic action envelope:") == 1
+    assert "Use {} only when that contract has no parameter properties" in contracts
     assert not contracts.lstrip().startswith("[")
 
 
-def test_single_action_contract_ends_with_bare_object_reminder() -> None:
+def test_single_action_contract_ends_with_no_action_envelope() -> None:
     registry = ToolRegistry()
     registry.register(BaseStartTrainingTool())
     assembler = ContextAssembler(registry, Study())
 
     contracts = assembler._format_tools(["start_training"])
 
-    reminder = contracts.rsplit("Final output reminder:\n", maxsplit=1)[1].lower()
-    assert "one bare json object, never an array" in reminder
-    assert (
-        '{"workflow_stage":"unavailable","tool_name":"start_training","parameters":{}}'
-    ) in reminder
+    assert contracts.rstrip().endswith(
+        '{"workflow_stage":"unavailable","tool_name":"respond_to_user",'
+        '"parameters":{"message":"<concise response or one clarifying question>"}}'
+    )
 
 
 def test_multi_action_reminder_forbids_prose_and_gui_parameter_invention() -> None:
@@ -242,49 +366,44 @@ def test_multi_action_reminder_forbids_prose_and_gui_parameter_invention() -> No
         workflow_stage="epoch_ready",
     )
 
-    reminder = contracts.rsplit("Final output reminder:\n", maxsplit=1)[1]
-    assert "Begin the response immediately with {" in reminder
-    assert "copy its exact zero-parameter output shape" in reminder
-    assert "all choices are made by the user in the opened product UI" in reminder
+    reminder = contracts.rsplit(
+        "Decision checkpoint (apply after reading the catalog):\n",
+        maxsplit=1,
+    )[1]
+    assert "exactly one listed action" in reminder
+    assert "For multiple actions, ask which one to do first and call none" in reminder
+    assert "never invent choices that belong to the opened product UI" in reminder
+    assert "state that entry's listed reason" not in reminder
     assert "DECISION ENVELOPE" not in reminder
 
 
-@pytest.mark.parametrize(
-    "parameters",
-    (
-        {},
-        {"type": "array", "items": {}},
-        {
-            "type": "object",
-            "properties": {},
-            "additionalProperties": True,
-        },
-        {
-            "type": "object",
-            "properties": {},
-            "additionalProperties": False,
-            "oneOf": [{"required": []}],
-        },
-        {
-            "type": "object",
-            "properties": {},
-            "additionalProperties": False,
-            "$ref": "#/$defs/parameters",
-        },
-        {
-            "type": "object",
-            "properties": {},
-            "additionalProperties": False,
-            "minProperties": 1,
-        },
-    ),
-)
-def test_zero_parameter_detection_rejects_open_or_composed_schemas(
-    parameters: dict,
-) -> None:
-    assert (
-        ContextAssembler._is_zero_parameter_contract({"parameters": parameters})
-        is False
+def test_action_catalog_uses_one_generic_action_shape() -> None:
+    registry = ToolRegistry()
+    registry.register(BaseStartTrainingTool())
+    assembler = ContextAssembler(registry, Study())
+
+    contracts = assembler._format_tools(
+        ["start_training"],
+        workflow_stage="epoch_ready",
+    )
+
+    assert contracts.count("Generic action envelope:") == 1
+    assert "Exact zero-parameter output shape:" not in contracts
+
+
+def test_action_catalog_ends_with_exact_stage_no_action_envelope() -> None:
+    registry = ToolRegistry()
+    registry.register(BaseStartTrainingTool())
+    assembler = ContextAssembler(registry, Study())
+
+    contracts = assembler._format_tools(
+        ["start_training"],
+        workflow_stage="epoch_ready",
+    )
+
+    assert contracts.rstrip().endswith(
+        '{"workflow_stage":"epoch_ready","tool_name":"respond_to_user",'
+        '"parameters":{"message":"<concise response or one clarifying question>"}}'
     )
 
 
@@ -942,6 +1061,105 @@ def test_prompt_history_keeps_only_latest_visible_assistant_message() -> None:
     assert messages[-1] == {"role": "user", "content": "Why is that useful?"}
 
 
+def test_current_tool_input_receipt_is_projected_as_bounded_context() -> None:
+    state = _state(
+        pipeline_stage="data_loaded",
+        raw=RawStateSnapshot(loaded=True, count=1),
+        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
+    )
+    publication = ApplicationViewPublication(
+        generation=81,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    registry = ToolRegistry()
+    registry.register(_NamedTool("resample_data"))
+    assembler = ContextAssembler(
+        registry,
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
+    assembler.set_tool_input_receipt(
+        AssistantToolInputReceipt(
+            command_name="resample_data",
+            original_user_text="Resample the EEG data.",
+            question="What resampling rate should I use?",
+            publication_generation=81,
+            missing_inputs=("rate",),
+        )
+    )
+
+    messages = assembler.get_messages(
+        [
+            {
+                "role": "assistant",
+                "content": "What resampling rate should I use?",
+            },
+            {"role": "user", "content": "128 Hz"},
+        ]
+    )
+
+    context = _untrusted_context(messages)
+    clarification = _context_item(context, "tool_input_clarification")
+    assert clarification["source"]["kind"] == "assistant_tool_input_receipt"
+    assert clarification["data"] == {
+        "action": "resample_data",
+        "original_user_request": "Resample the EEG data.",
+        "question": "What resampling rate should I use?",
+        "publication_generation": 81,
+        "missing_inputs": ["rate"],
+        "verified_parameters": {},
+        "remaining_reply_budget": 2,
+    }
+    assert "tool_input_clarification" in messages[0]["content"]
+    assert messages[-1] == {"role": "user", "content": "128 Hz"}
+
+
+@pytest.mark.parametrize(
+    ("receipt_generation", "receipt_tool"),
+    (
+        (80, "resample_data"),
+        (81, "not_registered_for_this_stage"),
+    ),
+)
+def test_stale_or_unavailable_tool_input_receipt_is_not_projected(
+    receipt_generation: int,
+    receipt_tool: str,
+) -> None:
+    state = _state(
+        pipeline_stage="data_loaded",
+        raw=RawStateSnapshot(loaded=True, count=1),
+        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
+    )
+    publication = ApplicationViewPublication(
+        generation=81,
+        state=state,
+        capabilities=build_capability_policy(state),
+    )
+    registry = ToolRegistry()
+    registry.register(_NamedTool("resample_data"))
+    assembler = ContextAssembler(
+        registry,
+        Study(),
+        application_runtime=_ApplicationRuntimeFake(publication),
+    )
+    assembler.set_tool_input_receipt(
+        AssistantToolInputReceipt(
+            command_name=receipt_tool,
+            original_user_text="Run a preprocessing action.",
+            question="Which required value should I use?",
+            publication_generation=receipt_generation,
+            missing_inputs=("rate",),
+        )
+    )
+
+    context = _untrusted_context(
+        assembler.get_messages([{"role": "user", "content": "128 Hz"}])
+    )
+
+    assert all(item["type"] != "tool_input_clarification" for item in context["items"])
+
+
 def test_referential_explanation_keeps_immediate_conversation_context() -> None:
     assembler = ContextAssembler(ToolRegistry(), Study())
     history = [
@@ -1135,7 +1353,8 @@ def test_real_service_prompt_reads_one_committed_publication_generation():
     assert "recommended_next_step" not in prompt
     assert "unique description for import_eeg_data" in prompt
     assert "unique description for apply_bandpass_filter" not in prompt
-    assert "- preprocess: Load raw data before preprocessing." not in prompt
+    reference = _unavailable_action_reference(prompt)
+    assert '"apply_bandpass_filter": "Load raw data before preprocessing."' in reference
 
 
 def test_stale_publication_allows_only_navigation_and_redacts_failure_details():
@@ -1182,6 +1401,13 @@ def test_stale_publication_allows_only_navigation_and_redacts_failure_details():
     assert "SECRET_TOKEN_123" not in context_content
     assert assembler.latest_tool_publication.tool_names == frozenset({"switch_panel"})
     assert assembler.latest_tool_publication.blocked_reason("switch_panel") is None
+    assert assembler.latest_tool_publication.blocked_reason("import_eeg_data") == (
+        "Workflow state is temporarily unavailable."
+    )
+    reference = _unavailable_action_reference(prompt)
+    assert (
+        '"import_eeg_data": "Workflow state is temporarily unavailable."' in reference
+    )
     assert "## Workflow Status Unavailable" not in prompt
     assert "## Current Stage: Empty (No Data)" not in prompt
     assert "unique description for import_eeg_data" not in prompt
@@ -1806,7 +2032,50 @@ def test_prompt_policy_read_result_serializes_one_successful_publication() -> No
 
     assert payload["backend_generation"] == 17
     assert payload["publication_error"] is None
-    assert payload["published_tools"] == []
+    assert payload["published_tools"] == [
+        "configure_training",
+        "import_eeg_data",
+        "select_model",
+        "switch_panel",
+    ]
+    assert payload["blocked_reasons"]["create_epochs"] == (
+        "Load raw data before creating EEG epochs."
+    )
+    assert payload["blocked_reasons"]["start_training"].startswith(
+        "Load raw data before training."
+    )
+
+
+def test_prompt_policy_bounds_each_public_blocked_reason() -> None:
+    from XBrainLab.llm.agent.prompt_policy import read_prompt_policy
+
+    state = _state()
+    capabilities = build_capability_policy(state)
+    create_epoch = capabilities.get("create_epoch")
+    capabilities = replace(
+        capabilities,
+        capabilities={
+            **capabilities.capabilities,
+            "create_epoch": replace(
+                create_epoch,
+                reasons=["原因" * 400],
+            ),
+        },
+    )
+    publication = ApplicationViewPublication(
+        generation=18,
+        state=state,
+        capabilities=capabilities,
+    )
+
+    result = read_prompt_policy(
+        object(),
+        runtime=_ApplicationRuntimeFake(publication),
+    )
+    reason = result.blocked_reason_map()["create_epochs"]
+
+    assert len(reason.encode("utf-8")) <= 512
+    assert reason.endswith("[TRUNCATED]")
 
 
 def test_prompt_policy_publication_exception_is_fail_closed_and_safe() -> None:

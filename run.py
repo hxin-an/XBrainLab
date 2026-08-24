@@ -338,10 +338,9 @@ def main() -> None:
         logger.info("Tool Debug Mode enabled. Script: %s", args.tool_debug)
         app.setProperty("tool_debug_script", args.tool_debug)
 
-    # Apply the local-only model override for this session only (not persisted)
+    # ``local`` selects the local backend; model selection stays in persisted settings.
     if args.model:
-        app.setProperty("model_override", args.model)
-        logger.info("CLI override: inference mode set to '%s'", args.model)
+        logger.info("CLI local backend compatibility mode requested")
 
     app.setStyle("Fusion")
     from XBrainLab.ui.dialog_button_policy import install_dialog_button_policy

@@ -1,6 +1,6 @@
 # XBrainLab Agent 目標
 
-最後更新：`2026-08-18`
+最後更新：`2026-08-24`
 
 這份文件是 XBrainLab Assistant 產品目標的唯一權威。Runtime inventory、目前測試集合與歷史
 artifact 只能描述 current implementation，不能反推本文件的產品契約。
@@ -21,6 +21,21 @@ autonomous planner。
 - 每個 user turn 最多一個 tool 或一個 `respond_to_user`；成功、blocked、取消或失敗都結束 turn。
 - GUI decision 由既有 dialog／panel 的使用者操作完成；模型不代填高影響選項。
 - tool result 直接使用 trusted backend／UI public result，不再交給 Granite 改寫。
+
+## Local model selection contract
+
+Assistant Settings與runtime共用`XBrainLab/llm/core/model_catalog.py`的單一allow-list：
+
+| Role | Exact model | Revision | Visible positioning |
+| --- | --- | --- | --- |
+| primary | `ibm-granite/granite-4.0-micro` | `56111ae135df9c53a78c99028e7bc24035a9e979` | Granite 4.0 Micro 3B，recommended default |
+| lower-memory | `ibm-granite/granite-3.3-2b-instruct` | `707f574c62054322f6b5b04b6d075f0a8f05e0f0` | Granite 3.3 2B，較低資源選項 |
+
+新安裝、缺漏model choice或retired selection解析至primary；已儲存且仍在allow-list的2B choice保持原值。
+Settings可完成exact model的install／status／activate／delete與generation settings，但不自行判斷cache或
+runtime readiness。選定model若缺少、不完整、OOM或載入失敗，既有catalog／download lifecycle／runtime
+owner必須fail closed並顯示對應狀態，不得silent fallback到另一個model。Primary變更不授權改寫現有使用者
+的root `settings.json`，也不把downloaded-but-unsupported cache冒充可選model。
 
 ## Authority layers
 
@@ -126,7 +141,7 @@ Confirmation、resource receipt、generation token與 filesystem path 都由 tru
 
 沿用既有 `PipelineStage`，不建立 Agent state machine：
 
-| Stage | Backend meaning | Published target behavior |
+| Stage | Backend meaning | Target candidates before capability filtering |
 | --- | --- | --- |
 | `empty` | 無 raw data | Import、Switch |
 | `data_loaded` | 有 raw、尚無 derived preprocessing | Channel、五項 direct preprocess、Epoch、Switch |
@@ -138,8 +153,9 @@ Confirmation、resource receipt、generation token與 filesystem path 都由 tru
 
 `select_channels` 或任一 direct preprocess 成功會自然投影為 `preprocessed`。Raw data可直接建立
 Epoch；`CreateEpochCommand`要求raw與合法epoch context，不以preprocessing operation作前置條件，成功後
-直接投影為`epoch_ready`。Montage只在epoch後提供、不改變stage。`start_training` 在 `epoch_ready`
-可被提出，但backend必須精確回覆缺少的split、model或training settings，不能部分執行。
+直接投影為`epoch_ready`。Montage只在epoch後提供、不改變stage。`start_training` 是 `epoch_ready`
+stage candidate，但split、model或training settings未齊時由同一publication capability排除schema並在
+unavailable reference精確說明缺項，不能部分執行；全部ready後才成為callable。
 
 Stage、setup flags、running state與completed runs都從同一份 immutable ApplicationService
 publication產生。若 publication generation 在生成、repair、confirmation或GUI handoff期間改變，
@@ -170,8 +186,19 @@ Granite 每次只能輸出一個 JSON object，且 top level 恰有三個欄位�
 }
 ```
 
-`respond_to_user.parameters` 只能有 `message`。Answer、clarification與blocked reply不建立額外
-decision enum。
+`respond_to_user.parameters` 接受兩種 strict shape：一般 answer／blocked reply 為
+`{"message": "..."}`；只有模型已精確辨識一個目前 callable 的 direct-preprocess action、且只缺
+該 schema 必要欄位時，clarification 可為
+`{"message": "...", "pending_action": "<exact direct tool>", "missing_inputs": ["<required field>", ...]}`。
+這仍是 no-execution branch，不增加 top-level field、tool 或 decision enum。`pending_action` 不得用於
+generic filter／模糊 action，Host 不從 user text 或 bubble 推測它；模型必須先以一般回覆請使用者選定
+exact action。
+
+符合上述 typed clarification 的 response，或 direct tool 被 parameter-origin guard 擋下時，Host 可以在
+零 execution 的具體追問旁建立 typed tool-input receipt。Receipt 只保存 exact tool ID、實際缺少欄位、
+可由 user 原文驗證的 values、bounded question evidence、prompt-time publication generation 與最多兩次
+parameter reply budget；不得保存或授權模型臆測的參數。它不是新的 model output branch，也不改變三欄
+envelope。
 
 Repair budget 是 initial generation 加最多兩次 repair：
 
@@ -186,10 +213,27 @@ Repair budget 是 initial generation 加最多兩次 repair：
 每回合 prompt 只含：
 
 1. 固定 policy 與 strict envelope。
-2. backend stage 發布的 target schemas。
-3. hidden minimal state card。
-4. 最新 user message。
-5. 最多上一則 Assistant-visible message。
+2. backend stage 與同一generation capability都允許的 target callable schemas。
+3. 已註冊但本回合不可呼叫的target action reference；每項只有stable tool ID與bounded public reason，
+   不含schema，也不是合法output candidate。
+4. hidden minimal state card。
+5. 最新 user message。
+6. 最多上一則 Assistant-visible message。
+7. 若存在尚未消費且generation仍相符的direct-preprocess tool-input receipt，加入一筆獨立、host-owned、
+   bounded clarification context，指出可由最新回答補齊的exact action；不把它渲染成chat role或callable
+   authority。
+
+Callable集合固定為approved stage membership、同一份ApplicationService publication的enabled
+`ToolAvailability`與目前registry／target membership的交集。其餘已註冊target tools只可出現在明確分隔的
+unavailable-action reference：backend capability disabled時沿用同一publication的public reason；capability
+enabled但target stage未發布時，使用「此action在目前workflow stage不可呼叫」的bounded projection reason。
+Confirmation-required但enabled的action仍是callable，不得列為unavailable。
+
+Unavailable reference不建立新tool、schema、readiness owner、RAG example、confirmation、GUI handoff或
+execution permission。模型被問到這些action時應以`respond_to_user`說明對應blocker，不得改呼叫前置或
+替代action；若模型仍輸出該stable tool ID，既有`PromptToolPublication`／attempt admission以同一backend
+generation與同一reason fail closed。Prompt projection不加入general semantic Host router，也不以文字
+heuristic推翻另一個當下確實callable的model proposal。
 
 State card 只投影 ApplicationService publication：
 
@@ -200,14 +244,16 @@ State card 只投影 ApplicationService publication：
 - trained：finished run count、results available。
 
 不放 file paths、完整 channels、完整 settings、diagnostics、recommended next step、full capability map、
-舊 tool output或 pending intent。
+舊 tool output或一般pending intent。唯一例外是上述direct-preprocess bounded clarification receipt；其
+tool仍須同時存在於current callable publication，receipt本身不能恢復stale capability。
 
 RAG／examples規則：
 
-- stage 只發布 1–3 tools 時，使用每個 visible tool 一個 compact canonical example，不做 semantic
+- stage 只發布 1–3 callable tools 時，使用每個 visible tool 一個 compact canonical example，不做 semantic
   retrieval。
-- stage 發布 4 個以上 tools 時，只在該 stage 的 approved examples中取 top 2。
+- stage 發布 4 個以上 callable tools 時，只在該 stage 的 approved examples中取 top 2。
 - example retrieval failure時退回schema／format，不擴大tool surface。
+- unavailable-action reference永遠不提供example，也不進RAG allowed tool names。
 - example不能授予capability、confirmation或continuation權限。
 
 Backend state不可靠時，state card固定為 `workflow_stage: "unavailable"`、
@@ -218,6 +264,14 @@ runtime本身失敗時不做生成，ChatPanel顯示local runtime error。
 
 Verification順序固定為：strict schema → backend generation／stage → target publication → parameter
 schema → ApplicationService capability → confirmation。Prompt與UI不可成為alternate readiness engine。
+
+Direct-preprocess clarification follow-up仍由模型選擇action，Host不自動continuation。只有模型在 receipt
+reply budget 內再次提出同一 exact tool 時，parameter-origin verifier 才可把 receipt 的 verified user
+evidence 與最新回答合併；latest-turn explicitly supplied value 永遠優先，Host 只補仍缺 key，並重跑
+schema、range、current publication、capability、confirmation 與 one-action checks。模型提出其他 tool／topic、
+explicit cancel、stale publication、new chat、stop、close 或第三次 parameter reply 都清除 receipt，零 execution。
+同 action 的 parameter-bearing NO_TOOL 或 format failure 只可在剩餘 reply budget 內 requeue；無關回答與
+仍缺值不得執行。
 
 GUI completion使用既有 pending interaction與request correlation。`accepted`、`navigated`、
 `command_pending`或`deferred_to_ui`是否terminal必須依execution kind判斷：GUI completion只能等實際
@@ -244,10 +298,16 @@ command policy或fake backend。
 
 ## Candidate validation與claims
 
-Engineering candidate suite在新增`compute_saliency`後仍固定為50 cases：36個positive cases（18個
-target tool各2個）加14個challenge diagnostics。Challenge必須包含五個missing-parameter、跨stage
-lifecycle、out-of-stage、general、ambiguous與multi-mutation；raw score保留用來暴露2B模型限制，不把
-Host拒絕冒充raw-model accuracy。Candidate gates：
+Engineering candidate的core suite在新增`compute_saliency`後仍固定為50 cases：36個positive cases
+（18個target tool各2個）加14個challenge diagnostics。Challenge必須包含五個missing-parameter、跨stage
+lifecycle、out-of-stage、general、ambiguous與multi-mutation；raw score保留用來暴露選定模型限制，不把
+Host拒絕冒充raw-model accuracy。另以同一 evaluator、同一model／revision與同一source執行24個雙語
+no-action precision cases；core 50的cases、hash與raw結果保持可比較。Candidate gates：
+
+Evaluator保留第一次generation的raw score，但candidate判定必須走與產品相同的structured-decision
+token resolver、strict parser及最多兩次format recovery；每次response／taxonomy都留在artifact，最後一個
+accepted或exhausted presentation outcome才是final score。Format recovery只修envelope，不得把semantic
+tool-selection failure重分類為通過。
 
 - invalid／out-of-stage／stale execution、cancel後continuation與multi-mutation partial action皆為0。
 - 36個positive全部得到exact final tool＋parameters，且五個direct preprocess的值都能從latest user
@@ -255,11 +315,20 @@ Host拒絕冒充raw-model accuracy。Candidate gates：
 - 五個missing-parameter cases可以由模型直接`respond_to_user`，或由模型提出tool後被同一production
   parameter-origin guard轉成一般Assistant追問；兩條路徑都必須零ApplicationService／ToolExecutor
   execution，且追問指出缺少的欄位。
-- Candidate gate要求36/36 positive、其中10/10 direct preprocess origin checks，以及5/5
-  missing-parameter composed outcomes；其餘9個raw challenge
-  結果完整保存為known limitations，不加入promotion分母，也不得宣稱已解決。使用者已接受具完整明確
-  參數的ambiguous／multi-action request可能只執行模型選中的一個action；one-command cap後不得自動
-  執行第二項。
+- Clarification gate固定為7條production trajectory：五種direct-preprocess追問證明只提供所缺值即可讓
+  同一exact action在current publication下執行；generic filter先選bandpass後才建立typed receipt；bandpass
+  先補low、再補high時只累積可驗證值並重跑完整admission。取消、無關回答、stale generation與不同tool
+  不得使用receipt取得execution authority。這是clarification recovery evidence，不回填第一輪raw-model
+  accuracy。
+- Core gate要求36/36 positive、其中10/10 direct preprocess origin checks，以及5/5
+  missing-parameter composed outcomes；其餘9個raw challenge結果完整保存為known limitations，
+  不改寫舊分母，也不得宣稱raw model已解決。
+- Precision gate要求24/24 product outcomes沒有confirmation、GUI handoff、ApplicationService／ToolExecutor
+  execution或state mutation。五個缺參數direct tools可由既有parameter-origin guard轉成具體追問；
+  out-of-stage的精確requested tool可由既有publication／capability boundary安全阻擋。General、negated、
+  ambiguous與multi-action不得以任何substitute tool進入執行路徑。Raw model選擇另行記錄，不冒充產品結果。
+- 同一訊息要求多個mutation時一律用`respond_to_user`請使用者選擇第一個要執行的action；本回合不部分
+  執行，也不在下一回合自動continuation。
 - 真model safe E2E：Switch Dataset、Import GUI、direct Resample。
 
 這些是產品候選gate，不是thesis benchmark或安全零容忍。Thesis evidence另由frozen source、case set、

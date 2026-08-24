@@ -661,7 +661,7 @@ class MessageBubble(QWidget):
             int(container_width * self._MAX_WIDTH_RATIO),
             self._MAX_WIDTH_PX,
         )
-        min_bubble_width = 50 if self.is_user else 96
+        min_bubble_width = 50
 
         # Margins: 15+15=30 horizontal, 10+10=20 vertical
         layout_h_margins = 30

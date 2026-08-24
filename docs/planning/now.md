@@ -4,44 +4,47 @@
 
 ## 目前焦點
 
-完成 `v0.8.0` release metadata 與 exact-commit 發布。產品 PR #48 已在使用者明確確認
-`24f13b02bc6ac54c1610d1103a3c4530c047b764` 後合併；目前產品基線 merge commit 為
-`5e5073e0d7a34927f18a40aff6e49d475e17467e`。
-
-本 slice 只同步版本與 release truth，不再修改已驗收的產品行為。發布完成後沒有預設 active
-implementation slice；下一個產品施工方向回到使用者討論與排序。
+完成 PR #50 的 **Agent 改版與新增 Granite 3B 模型** 最終整合。使用者已在 WSLg 手測原候選
+`13088c41762bfc3902ca9c6ed2ade9ca2004e75c`，接受中文輸入為本輪已知限制並同意 merge；但之後
+`main` 經 PR #48／#51 推進至 `v0.8.0` merge commit
+`f1fd85333d3b297a28651a01c2464a886647002f`，因此舊 exact-SHA acceptance 已失效。
 
 ## Outcome 與 evidence
 
-- `pyproject.toml`、package fallback 與 `AppConfig.VERSION` 一致為 `0.8.0`。
-- CHANGELOG、README 與 current truth 以 **XBrainLab 0.8.0 — Saliency Refresh** 描述同一個
-  source release boundary。
-- Release metadata PR 必須由最新 `main` 建立，所有 non-skipped checks 對 exact head
-  `completed/success` 後才可 merge。
-- Annotated tag `v0.8.0` 與 GitHub Release 只能指向 release metadata PR 的 exact main merge commit。
+- Granite 4.0 Micro 3B 是 recommended primary，Granite 3.3 2B 是 lower-memory 選項。
+- 支援的最後模型選擇持久化；已退役 model setting 靜默正規化為 3B，不恢復 blocking first-run modal。
+- 保留 inline setup、Space/New Chat guard、compact bubble、typed multi-turn clarification infrastructure、
+  18-action command spine，以及 `v0.8.0` 已驗收的 GUI／Saliency 行為。
+- 凍結模型基準為 36/36 positive、10/10 explicit parameter origin、5/5 missing guard、20/24 no-action、
+  0/7 production-controller clarification；這是 bounded improved baseline，不是 Stable promotion。
 
 ## Scope、non-goals 與 UI 確認
 
-- Scope：四處既有版本 contract、CHANGELOG、README、current truth、直接版本測試與 active plan cleanup。
-- Non-goals：不改 UI、workflow、Assistant、資料、模型、訓練、evaluation、Saliency 計算或 packaging；不建立
-  installer、compatibility path、owner、state machine 或第二套 release truth。
-- Product UI／workflow 的 exact-head manual acceptance 已於 2026-08-24 取得並記錄在 PR #48；本 metadata-only
-  slice 沒有新的使用者可見互動，因此不需要第二次 UI 手測。
-- Release 只宣稱經驗收與 CI 保護的 source/desktop workflow refresh；不宣稱 signed installer、科學有效性、
-  任意資料集／模型支援、安全零容忍或產品 1.0。
+- Scope：將固定 `main` `f1fd8533` 整合進既有 Assistant 候選，只處理直接衝突、owner 語意、回歸測試、
+  canonical truth 與 exact-source evidence。
+- Non-goals：不修中文 IME、不再調 prompt／tool contract、不改 import、不新增模型、owner、state machine、
+  compatibility path 或可見設計。
+- 舊 first-run modal 在 Assistant 候選已退役且沒有 production caller；modify/delete 衝突維持刪除，
+  不把阻塞流程帶回產品。
+- Owners before／after不變：AgentManager／AssistantRuntimeLifecycle擁有 UI admission 與 runtime lifecycle，
+  LLMController協調 turn，ToolAttemptCoordinator擁有 tool admission，PendingInteractionCoordinator保存必要
+  cross-turn receipt，ApplicationService仍是 authoritative command spine。
+- 使用者已批准原 Agent/UI scope；本次不引入新的可見行為。因 source SHA 改變，仍必須重新交付 WSLg
+  手測並取得 merge 同意。
 
 ## 施工與 focused validation
 
-1. 同步版本 contract，新增 `0.8.0` changelog，校準 README 與 `docs/current.md`。
-2. 執行版本 contract test、`poetry check`、changed-source Ruff／format、MkDocs strict build 與 diff check。
-3. 建立 metadata-only PR，確認 exact head/base 與所有 non-skipped CI completed/success。
-4. Merge 後建立 annotated `v0.8.0` tag 與同名 GitHub Release，再核對 `main`、peeled tag 與 Release target。
+1. 保留 `v0.8.0` current truth與共用 modal migration，保留 Assistant 對舊 first-run modal 的刪除。
+2. 審查自動合併的 Assistant bubble、Settings 與直接 tests，先跑 conflict-adjacent focused suites。
+3. 在 clean exact commit 執行 applicable handoff manifest／UI artifact／Granite report並推送 PR #50。
+4. 等待所有 non-skipped PR checks `completed/success`，再交付同一 SHA 給使用者做精簡 WSLg 回歸。
+5. 只有使用者回報新 SHA 通過並再次明確同意，才經 PR merge commit 合入 `main`。
 
 ## Stop conditions
 
-- 任一版本來源、release title、tag 或 current truth 不一致；
-- release diff 含產品行為、UI 或 dependency 變更；
-- PR SHA／base 漂移，或 CI missing、pending、cancelled、failed；
-- tag 已存在、tag target 不是 exact release merge commit，或 GitHub Release target 不一致。
+- 任一衝突需要新的產品取捨、owner、public contract 或可見行為；
+- Granite denominator低於凍結 baseline，或 Settings／Space／bubble／multi-turn action出現回歸；
+- exact source、artifact、PR head/base不一致；
+- 任一 applicable check missing、pending、cancelled、failed，或使用者尚未重新批准。
 
-任一條件成立即停止，不 merge、不 tag、不發布。
+任一條件成立即停止，不 merge。

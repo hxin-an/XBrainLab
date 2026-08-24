@@ -20,9 +20,9 @@ CONFIGURED_TEST_OPTIONS = ResolvedGenerationOptions(
     temperature=0.7,
     top_p=0.9,
 )
-GRANITE_MODEL_ID = "ibm-granite/granite-3.3-2b-instruct"
+GRANITE_MODEL_ID = "ibm-granite/granite-4.0-micro"
 GRANITE_MODEL_REVISION = (
-    "707f574c62054322f6b5b04b6d075f0a8f05e0f0"  # pragma: allowlist secret
+    "56111ae135df9c53a78c99028e7bc24035a9e979"  # pragma: allowlist secret
 )
 PRIMARY_MODEL_REVISION = GRANITE_MODEL_REVISION
 

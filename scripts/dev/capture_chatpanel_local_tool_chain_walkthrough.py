@@ -24,6 +24,8 @@ from PyQt6.QtCore import QPoint, QSettings, QSize, QTimer
 from PyQt6.QtWidgets import QApplication
 
 from scripts.dev.capture_chatpanel_local_walkthrough import (
+    ASSISTANT_SETUP_REQUIRED_MESSAGE,
+    _assistant_setup_required,
     collect_executed_tools,
     collect_visible_messages,
     has_raw_debug_text,
@@ -65,18 +67,13 @@ def main() -> int:
         default=520,
         help="Maximum time for the full tool-chain walkthrough.",
     )
-    parser.add_argument(
-        "--model",
-        default="",
-        help="Optional approved local model id to prefer for this process.",
-    )
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     _force_offline_hf_runtime()
-    config = _load_capture_config(args.model)
+    config = _load_capture_config()
     runtime = classify_runtime(config)
     if runtime["classification"] not in {"gpu-ready", "cpu-fallback"}:
         payload = _blocked_payload(args, runtime)
@@ -87,8 +84,6 @@ def main() -> int:
     source_path = write_synthetic_raw_fif()
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    if args.model:
-        app.setProperty("model_override", args.model)
 
     payload = run_tool_chain(
         app,
@@ -246,6 +241,9 @@ def run_tool_chain(
         panel = manager.chat_panel
         if panel is None or not manager.chat_dock or not manager.chat_dock.isVisible():
             fail("Assistant dock did not open.")
+            return
+        if _assistant_setup_required(panel):
+            fail(ASSISTANT_SETUP_REQUIRED_MESSAGE)
             return
         ready_path = output_dir / READY_SCREENSHOT
         if _capture_current_window(window, ready_path) != 0:
@@ -593,14 +591,8 @@ def _force_offline_hf_runtime() -> None:
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 
-def _load_capture_config(model_override: str) -> LLMConfig:
+def _load_capture_config() -> LLMConfig:
     config = LLMConfig.load_from_file() or LLMConfig()
-    if model_override:
-        config.apply_runtime_selection(
-            "local",
-            model_id=model_override,
-            ui_active_mode="local",
-        )
     return config
 
 

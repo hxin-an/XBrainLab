@@ -143,6 +143,7 @@ class ChatPanel(QWidget):
     stop_generation = pyqtSignal()
     debug_tool_requested = pyqtSignal(str, dict, bool, str)
     open_settings_requested = pyqtSignal()
+    inline_setup_requested = pyqtSignal(str)
     retry_local_assistant_requested = pyqtSignal()
     confirmation_decision_requested = pyqtSignal(AgentConfirmationResolution)
     header_status_changed = pyqtSignal(str)
@@ -333,6 +334,7 @@ class ChatPanel(QWidget):
         input_layout.setSpacing(6)
 
         self.input_field = AssistantComposer()
+        self._restore_composer_focus_after_turn = False
         self.input_field.setPlaceholderText("Ask about EEG...")
         self.input_field.setAccessibleName("Assistant message")
         self.input_field.setAccessibleDescription(
@@ -453,6 +455,7 @@ class ChatPanel(QWidget):
         action_layout.setSpacing(8)
 
         self.retry_runtime_btn = QPushButton("Retry local assistant")
+        self._runtime_primary_action = "retry"
         self.retry_runtime_btn.setObjectName("AssistantRetryRuntimeButton")
         self.retry_runtime_btn.setMinimumHeight(34)
         self.retry_runtime_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -472,9 +475,7 @@ class ChatPanel(QWidget):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
-        self.retry_runtime_btn.clicked.connect(
-            lambda _checked=False: self._request_runtime_retry()
-        )
+        self.retry_runtime_btn.clicked.connect(self._dispatch_runtime_primary_action)
         self.retry_runtime_btn.setVisible(False)
         self.retry_runtime_btn.setEnabled(False)
         action_layout.addWidget(self.retry_runtime_btn, 1)
@@ -503,6 +504,38 @@ class ChatPanel(QWidget):
         state_layout.addWidget(self.runtime_actions)
         state.setVisible(False)
         return state
+
+    def show_inline_setup(self, detail: str, *, cache_ready: bool) -> None:
+        """Present first-run setup without starting the local runtime."""
+        self._hide_runtime_surfaces()
+        self.runtime_state_title.setText("Start XBrainLab Assistant")
+        self.runtime_state_detail.setText(detail)
+        self.runtime_state_widget.setVisible(True)
+        self.retry_runtime_btn.setVisible(True)
+        self.retry_runtime_btn.setEnabled(True)
+        self._runtime_primary_action = "enable" if cache_ready else "open_settings"
+        primary_label = "Enable Assistant" if cache_ready else "Set up model"
+        self.retry_runtime_btn.setText(primary_label)
+        self.retry_runtime_btn.setProperty("assistantFullLabel", primary_label)
+        self.retry_runtime_btn.setAccessibleName(self.retry_runtime_btn.text())
+        self.retry_runtime_btn.setStyleSheet(RUNTIME_PRIMARY_ACTION_STYLE)
+        self.setup_btn.setText("Assistant Settings")
+        self.setup_btn.setProperty("assistantFullLabel", "Assistant Settings")
+        self.setup_btn.setAccessibleName("Assistant Settings")
+        self.setup_btn.setStyleSheet(RUNTIME_SECONDARY_ACTION_STYLE)
+        self.setup_btn.setVisible(True)
+        self.runtime_actions.setVisible(True)
+        self._fit_runtime_state_to_contents()
+        self._publish_header_status()
+        self._place_transient_surfaces_after_messages()
+        self._sync_content_alignment()
+        self._reflow_chat_content()
+
+    def _dispatch_runtime_primary_action(self) -> None:
+        if self._runtime_primary_action == "retry":
+            self._request_runtime_retry()
+        else:
+            self.inline_setup_requested.emit(self._runtime_primary_action)
 
     def _request_runtime_retry(self) -> None:
         """Request another local-runtime start only from a failed state."""
@@ -1232,9 +1265,22 @@ class ChatPanel(QWidget):
         """Clear only the exact draft that the runtime accepted."""
         submitted = str(text or "").strip()
         if submitted and self.input_field.text().strip() == submitted:
+            self._restore_composer_focus_after_turn = self.input_field.hasFocus()
             self.input_field.clear()
         if self._notice_owner == "submission":
             self._set_notice("", timeout_ms=0, owner=None)
+
+    def restore_composer_focus_after_turn(self) -> None:
+        """Return focus only to the composer that submitted the completed turn."""
+        restore = self._restore_composer_focus_after_turn
+        self._restore_composer_focus_after_turn = False
+        if (
+            restore
+            and self.isVisible()
+            and self.input_field.isEnabled()
+            and not self.confirmation_card_widget.isVisible()
+        ):
+            self.input_field.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def reject_composer_submission(self, text: str, message: str) -> None:
         """Keep a rejected request editable and expose a persistent inline reason."""
@@ -1363,6 +1409,7 @@ class ChatPanel(QWidget):
                 self.empty_state_widget.setVisible(True)
         else:
             is_failed = self._runtime_phase is AssistantRuntimePhase.FAILED
+            self._runtime_primary_action = "retry"
             title = "Assistant unavailable" if is_failed else "Assistant setup required"
             detail = self._plain_runtime_message(message)
             if not detail:

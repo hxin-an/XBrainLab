@@ -9,7 +9,7 @@ from enum import Enum
 from itertools import count
 from typing import Any, Protocol, cast
 
-from PyQt6.QtCore import QCoreApplication, QObject, QTimer, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QObject, QTimer, pyqtSignal, pyqtSlot
 
 from XBrainLab.backend.application.commands import CommandName
 from XBrainLab.backend.utils.logger import logger
@@ -80,7 +80,7 @@ class _RuntimeDispatcher(Protocol):
 
 
 class RuntimeSetupAction(str, Enum):
-    """Next UI action after a local-runtime first-run choice."""
+    """Next UI action after a persisted local-runtime setup choice."""
 
     CONTINUE = "continue"
     OPEN_SETTINGS = "open_settings"
@@ -89,7 +89,7 @@ class RuntimeSetupAction(str, Enum):
 
 @dataclass(frozen=True)
 class RuntimeSetupOutcome:
-    """Result of applying one persisted first-run runtime choice."""
+    """Result of applying one persisted local-runtime setup choice."""
 
     action: RuntimeSetupAction
     message: str = ""
@@ -466,26 +466,16 @@ class AssistantRuntimeLifecycle(QObject):
 
     @staticmethod
     def needs_first_run(config: LLMConfig) -> bool:
-        """Return whether local-runtime consent is required before startup."""
-        if not hasattr(config, "model_name"):
-            return False
+        """Return whether the dock must present local-runtime setup first."""
         return (
             str(getattr(config, "inference_mode", "")).strip().lower() == "local"
             and bool(getattr(config, "local_model_enabled", True))
-            and not bool(
-                getattr(config, "local_runtime_notice_acknowledged", False),
-            )
+            and not bool(getattr(config, "local_runtime_notice_acknowledged", False))
         )
 
-    @staticmethod
-    def _application_model_override() -> str | None:
-        """Read the transient CLI model override at the resolver-owner boundary."""
-        app = QCoreApplication.instance()
-        if app is None:
-            return None
-        value = app.property("model_override")
-        normalized = str(value or "").strip()
-        return normalized or None
+    def preview_launch(self, config: LLMConfig) -> AssistantRuntimeLaunchResolution:
+        """Expose the resolver-owned selected-model preview without starting it."""
+        return self._resolve_launch(config)
 
     def _resolve_launch(
         self,
@@ -493,12 +483,9 @@ class AssistantRuntimeLifecycle(QObject):
         *,
         requested_model_id: str | None = None,
     ) -> AssistantRuntimeLaunchResolution:
-        model_id = requested_model_id
-        if model_id is None:
-            model_id = self._application_model_override()
         return self._resolver.resolve(
             config,
-            requested_model_id=model_id,
+            requested_model_id=requested_model_id,
         )
 
     @staticmethod
@@ -512,38 +499,14 @@ class AssistantRuntimeLifecycle(QObject):
         )
 
     @staticmethod
-    def apply_first_run_choice(
-        config: LLMConfig,
-        choice: str,
-    ) -> RuntimeSetupOutcome:
-        """Persist one first-run choice and return the required UI action."""
-        normalized = str(choice or "").strip()
-        if normalized in {"enable", "use_existing_cache"}:
+    def apply_first_run_choice(config: LLMConfig, choice: str) -> RuntimeSetupOutcome:
+        """Persist a bounded inline setup choice through the lifecycle owner."""
+        if str(choice or "").strip() in {"enable", "use_existing_cache"}:
             config.local_model_enabled = True
             config.local_runtime_notice_acknowledged = True
             config.save_to_file()
             return RuntimeSetupOutcome(RuntimeSetupAction.CONTINUE)
-
-        if normalized == "download":
-            config.local_runtime_notice_acknowledged = True
-            config.save_to_file()
-            return RuntimeSetupOutcome(RuntimeSetupAction.OPEN_SETTINGS)
-
-        if normalized == "disable":
-            config.local_model_enabled = False
-            config.local_runtime_notice_acknowledged = True
-            config.save_to_file()
-            return RuntimeSetupOutcome(
-                RuntimeSetupAction.STOP,
-                "Assistant is disabled. Open assistant settings when you want "
-                "to enable it.",
-            )
-
-        return RuntimeSetupOutcome(
-            RuntimeSetupAction.STOP,
-            "Assistant setup was deferred. Open assistant settings when you are "
-            "ready to continue.",
-        )
+        return RuntimeSetupOutcome(RuntimeSetupAction.OPEN_SETTINGS)
 
     def activate(
         self,

@@ -670,16 +670,17 @@ class TestMessageBubble:
             layout.documentSize().height() <= text_edit.fontMetrics().lineSpacing() + 3
         )
 
-    def test_short_assistant_message_does_not_use_large_minimum_width(self, qtbot):
-        bubble = MessageBubble("Done.", is_user=False)
+    def test_short_assistant_message_fits_content_without_trailing_void(self, qtbot):
+        bubble = MessageBubble("hello", is_user=False)
         qtbot.addWidget(bubble)
 
+        bubble.ensurePolished()
+        bubble.content_view.ensurePolished()
+        natural_text_width = bubble.content_view.natural_content_width()
         bubble.adjust_width(380)
 
-        bubble_frame = bubble.bubble_frame
-        assert bubble_frame is not None
-
-        assert 84 <= bubble_frame.width() <= 122
+        assert bubble.text_edit is not None
+        assert bubble.text_edit.width() - ceil(natural_text_width) <= 2
 
     def test_short_two_word_message_stays_on_one_visual_line(self, qtbot) -> None:
         bubble = MessageBubble("EEG ready", is_user=False)

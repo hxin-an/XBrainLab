@@ -40,6 +40,19 @@ def test_product_parser_accepts_message_only_response_contract():
     assert result.missing_inputs == ()
 
 
+def test_product_parser_accepts_typed_direct_clarification_response_contract():
+    result = CommandParser.parse_product(
+        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '"parameters":{"message":"What cutoffs should I use?",'
+        '"pending_action":"apply_bandpass_filter",'
+        '"missing_inputs":["low_freq","high_freq"]}}'
+    )
+
+    assert result.status is ToolEnvelopeStatus.NO_TOOL
+    assert result.pending_action == "apply_bandpass_filter"
+    assert result.missing_inputs == ("low_freq", "high_freq")
+
+
 def test_product_parser_rejects_retired_response_decision_fields():
     result = CommandParser.parse_product(
         '{"workflow_stage":"empty","tool_name":"respond_to_user",'
@@ -47,7 +60,7 @@ def test_product_parser_rejects_retired_response_decision_fields():
     )
 
     assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
-    assert "exactly message" in result.error
+    assert "message" in result.error
 
 
 def test_product_parser_rejects_tool_call_wrapper_even_when_inner_shape_is_valid():

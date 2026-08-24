@@ -481,7 +481,7 @@ _GATE_SPECS = (
             "python",
             "scripts/dev/inspect_local_assistant_runtime.py",
             "--model",
-            "ibm-granite/granite-3.3-2b-instruct",
+            "ibm-granite/granite-4.0-micro",
             "--format",
             "json",
             "--prompt-smoke",

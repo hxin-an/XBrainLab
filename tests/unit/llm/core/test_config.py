@@ -46,7 +46,21 @@ def _write_complete_model_cache(cache_dir: Path, model_id: str) -> Path:
 class TestDefaults:
     def test_default_model_name(self):
         cfg = LLMConfig()
-        assert cfg.model_name == "ibm-granite/granite-3.3-2b-instruct"
+        assert cfg.model_name == "ibm-granite/granite-4.0-micro"
+
+    def test_supported_lower_memory_selection_survives_settings_reload(self, tmp_path):
+        filepath = tmp_path / "settings.json"
+        lower_memory = "ibm-granite/granite-3.3-2b-instruct"
+        filepath.write_text(
+            json.dumps(_settings_payload(lower_memory)),
+            encoding="utf-8",
+        )
+
+        loaded = LLMConfig.load_from_file(str(filepath))
+
+        assert loaded is not None
+        assert loaded.model_name == lower_memory
+        assert loaded.configured_model_unavailable_message() is None
 
     def test_default_device_is_string(self):
         cfg = LLMConfig()
@@ -136,6 +150,105 @@ class TestToDict:
 
 
 class TestSaveAndLoad:
+    def test_default_user_settings_repairs_retired_model_and_persists_default(
+        self,
+        tmp_path,
+    ):
+        user_path = tmp_path / "user" / "settings.json"
+        user_path.parent.mkdir(parents=True)
+        user_path.write_text(
+            json.dumps(_settings_payload("microsoft/Phi-4-mini-instruct")),
+            encoding="utf-8",
+        )
+
+        with (
+            patch.object(
+                LLMConfig,
+                "_default_settings_path",
+                return_value=str(user_path),
+            ),
+            patch.object(config_module, "_cuda_available", return_value=False),
+        ):
+            loaded = LLMConfig.load_from_file()
+
+        assert loaded is not None
+        assert loaded.model_name == LLMConfig.default_local_model_id()
+        assert loaded.local_model_enabled is True
+        assert loaded.local_runtime_notice_acknowledged is True
+        assert loaded.temperature == 0.4
+        assert loaded.top_p == 0.8
+        assert loaded.max_new_tokens == 256
+        persisted = json.loads(user_path.read_text(encoding="utf-8"))
+        assert persisted["local"]["model_name"] == loaded.model_name
+        assert persisted["local"]["enabled"] is True
+        assert persisted["local"]["runtime_notice_acknowledged"] is True
+        assert persisted["generation"] == {
+            "temperature": 0.4,
+            "top_p": 0.8,
+            "max_new_tokens": 256,
+        }
+
+    def test_default_user_settings_preserve_supported_lower_memory_selection(
+        self,
+        tmp_path,
+    ):
+        lower_memory = "ibm-granite/granite-3.3-2b-instruct"
+        user_path = tmp_path / "user" / "settings.json"
+        user_path.parent.mkdir(parents=True)
+        user_path.write_text(
+            json.dumps(_settings_payload(lower_memory)),
+            encoding="utf-8",
+        )
+        original = user_path.read_bytes()
+
+        with (
+            patch.object(
+                LLMConfig,
+                "_default_settings_path",
+                return_value=str(user_path),
+            ),
+            patch.object(config_module, "_cuda_available", return_value=False),
+            patch.object(LLMConfig, "save_to_file") as save,
+        ):
+            loaded = LLMConfig.load_from_file()
+
+        assert loaded is not None
+        assert loaded.model_name == lower_memory
+        assert user_path.read_bytes() == original
+        save.assert_not_called()
+
+    def test_default_user_settings_repair_failure_uses_default_in_memory(
+        self,
+        tmp_path,
+        capture_product_logs,
+    ):
+        retired_model = "microsoft/Phi-4-mini-instruct"
+        user_path = tmp_path / "user" / "settings.json"
+        user_path.parent.mkdir(parents=True)
+        user_path.write_text(
+            json.dumps(_settings_payload(retired_model)),
+            encoding="utf-8",
+        )
+        original = user_path.read_bytes()
+
+        with (
+            capture_product_logs(logging.ERROR) as captured,
+            patch.object(
+                LLMConfig,
+                "_default_settings_path",
+                return_value=str(user_path),
+            ),
+            patch.object(config_module, "_cuda_available", return_value=False),
+            patch.object(LLMConfig, "save_to_file", return_value=False),
+        ):
+            loaded = LLMConfig.load_from_file()
+
+        assert loaded is not None
+        assert loaded.model_name == LLMConfig.default_local_model_id()
+        assert user_path.read_bytes() == original
+        assert retired_model not in captured.text
+        assert "using the product default for this session" in captured.text
+
     def test_retired_phi_config_is_preserved_and_reported_without_rewrite(
         self,
         tmp_path,
@@ -422,7 +535,7 @@ class TestPerUserSettingsBoundary:
         assert "cache_dir" not in user_path.read_text(encoding="utf-8")
         assert not missing_legacy_path.exists()
 
-    def test_valid_legacy_file_migrates_once_without_modifying_source(
+    def test_retired_legacy_file_migrates_to_default_without_modifying_source(
         self,
         tmp_path,
         capture_product_logs,
@@ -460,9 +573,12 @@ class TestPerUserSettingsBoundary:
 
         assert first is not None
         assert second is not None
-        assert first.model_name == legacy_model
-        assert second.model_name == legacy_model
+        product_model = LLMConfig.default_local_model_id()
+        assert first.model_name == product_model
+        assert second.model_name == product_model
         assert user_path.is_file()
+        persisted = json.loads(user_path.read_text(encoding="utf-8"))
+        assert persisted["local"]["model_name"] == product_model
         assert "Migrated local LLM settings" in captured.text
 
     def test_existing_malformed_user_file_never_falls_back_to_legacy(self, tmp_path):

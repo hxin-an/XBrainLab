@@ -72,18 +72,13 @@ def main() -> int:
         default=300,
         help="Maximum time to wait for local model load and response.",
     )
-    parser.add_argument(
-        "--model",
-        default="",
-        help="Optional approved local model id to prefer for this process.",
-    )
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     _force_offline_hf_runtime()
-    config = _load_capture_config(args.model)
+    config = _load_capture_config()
     runtime = classify_runtime(config)
     if runtime["classification"] not in {"gpu-ready", "cpu-fallback"}:
         payload = _blocked_payload(args, runtime)
@@ -93,8 +88,6 @@ def main() -> int:
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    if args.model:
-        app.setProperty("model_override", args.model)
 
     payload = run_walkthrough(app, output_dir, args.prompt, args.timeout_seconds)
     _write_artifacts(output_dir, payload)
@@ -179,6 +172,9 @@ def run_walkthrough(
         dock = manager.chat_dock
         if panel is None or dock is None or not dock.isVisible():
             fail("Assistant dock did not open.")
+            return
+        if _assistant_setup_required(panel):
+            fail(ASSISTANT_SETUP_REQUIRED_MESSAGE)
             return
         ready_path = output_dir / READY_SCREENSHOT
         if _capture_current_window(window, ready_path) != 0:
@@ -467,12 +463,26 @@ def _runtime_summary(runtime: dict[str, object]) -> dict[str, object]:
     }
 
 
-def _load_capture_config(model_id: str) -> LLMConfig:
+ASSISTANT_SETUP_REQUIRED_MESSAGE = (
+    "Assistant setup must be acknowledged in Assistant Settings before "
+    "an unattended capture."
+)
+
+
+def _assistant_setup_required(panel: Any) -> bool:
+    """Detect inline setup without accepting or mutating runtime settings."""
+    title = getattr(panel, "runtime_state_title", None)
+    state = getattr(panel, "runtime_state_widget", None)
+    return bool(
+        title is not None
+        and state is not None
+        and title.text() == "Start XBrainLab Assistant"
+        and state.isVisible()
+    )
+
+
+def _load_capture_config() -> LLMConfig:
     config = LLMConfig.load_from_file() or LLMConfig()
-    if model_id:
-        config.apply_runtime_selection(
-            "local", model_id=model_id, ui_active_mode="local"
-        )
     return config
 
 

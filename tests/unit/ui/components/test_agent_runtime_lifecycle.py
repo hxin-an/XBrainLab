@@ -1009,6 +1009,7 @@ def test_pending_agent_decision_resolves_through_real_ui_handoff_signal(
             lambda: controller.pending_interactions.workflow_handoff is None,
             timeout=WATCHDOG_MS,
         )
+        qtbot.waitUntil(lambda: len(outcome_spy) == 1, timeout=WATCHDOG_MS)
         assert switched_pages == [1]
         assert len(outcome_spy) == 1
         assert outcome_spy[0][0] == AgentInteractionOutcome(

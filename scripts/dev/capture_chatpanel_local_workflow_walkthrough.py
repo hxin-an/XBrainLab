@@ -19,6 +19,8 @@ from PyQt6.QtCore import QPoint, QSettings, QSize, QTimer
 from PyQt6.QtWidgets import QApplication
 
 from scripts.dev.capture_chatpanel_local_walkthrough import (
+    ASSISTANT_SETUP_REQUIRED_MESSAGE,
+    _assistant_setup_required,
     collect_executed_tools,
     collect_visible_messages,
     has_raw_debug_text,
@@ -35,8 +37,7 @@ MD_ARTIFACT = "chatpanel-local-workflow-walkthrough.md"
 BASELINE_WINDOW_SIZE = QSize(1280, 800)
 DEFAULT_PROMPTS = [
     (
-        "Check what is ready in the current XBrainLab workflow. Use the state "
-        "query tool if needed, then answer in one short sentence."
+        "In one short sentence, describe what is ready in the current XBrainLab workflow."
     ),
     ("Explain in one short sentence what EEG preprocessing prepares data for."),
 ]
@@ -54,11 +55,6 @@ def main() -> int:
         type=int,
         default=420,
         help="Maximum time for the full multi-turn walkthrough.",
-    )
-    parser.add_argument(
-        "--model",
-        default="",
-        help="Optional approved local model id to prefer for this process.",
     )
     parser.add_argument(
         "--exercise-deactivation",
@@ -80,11 +76,10 @@ def main() -> int:
             parser.error("--exercise-deactivation requires --isolated-settings-path")
         _prepare_isolated_settings(
             Path(args.isolated_settings_path),
-            model_id=args.model,
         )
 
     _force_offline_hf_runtime()
-    config = _load_capture_config(args.model)
+    config = _load_capture_config()
     runtime = classify_runtime(config)
     if runtime["classification"] not in {"gpu-ready", "cpu-fallback"}:
         payload = _blocked_payload(args, runtime)
@@ -94,13 +89,12 @@ def main() -> int:
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    if args.model:
-        app.setProperty("model_override", args.model)
 
     payload = run_workflow(
         app,
         output_dir,
         args.timeout_seconds,
+        runtime_inspection=runtime,
         exercise_deactivation=bool(args.exercise_deactivation),
     )
     _write_artifacts(output_dir, payload)
@@ -114,6 +108,7 @@ def run_workflow(
     output_dir: Path,
     timeout_seconds: int,
     *,
+    runtime_inspection: dict[str, object],
     exercise_deactivation: bool = False,
 ) -> dict[str, Any]:
     """Run a two-turn ChatPanel workflow and return the artifact payload."""
@@ -142,6 +137,7 @@ def run_workflow(
         "input_enabled": False,
         "chat_processing": True,
         "controller_processing": True,
+        "loaded_model_id": "",
         "deactivation": {
             "requested": False,
             "terminal_ok": False,
@@ -196,7 +192,6 @@ def run_workflow(
                 {"ok": bool(ok), "message": str(message or "")}
             )
         )
-        _disable_first_run_dialog_for_unattended_capture(window)
         window.ai_btn.click()
         QTimer.singleShot(250, wait_for_assistant_ready)
 
@@ -207,6 +202,10 @@ def run_workflow(
         manager = window.agent_manager
         if manager is None:
             fail("Assistant manager disappeared during startup.")
+            return
+        panel = manager.chat_panel
+        if panel is not None and _assistant_setup_required(panel):
+            fail(ASSISTANT_SETUP_REQUIRED_MESSAGE)
             return
         if not _assistant_is_ready(manager):
             QTimer.singleShot(250, wait_for_assistant_ready)
@@ -283,6 +282,15 @@ def run_workflow(
         if manager is None or manager.chat_panel is None:
             fail("Assistant was not available for the ready capture.")
             return
+        controller = manager.agent_controller
+        if controller is None:
+            fail("Assistant controller was not available for runtime identity.")
+            return
+        snapshot = controller.runtime_snapshot()
+        if not snapshot.model_id:
+            fail("Assistant runtime did not publish its loaded model identity.")
+            return
+        state["loaded_model_id"] = snapshot.model_id
         ready_path = output_dir / READY_SCREENSHOT
         if _capture_current_window(window, ready_path) != 0:
             fail("Ready screenshot was blank or could not be saved.")
@@ -435,7 +443,6 @@ def run_workflow(
         state["failure_reason"] = _post_close_failure_reason(post_close)
 
     config = LLMConfig.load_from_file() or LLMConfig()
-    runtime = classify_runtime(config)
     state["deactivation"]["config_final_enabled"] = bool(config.local_model_enabled)
     if (
         exercise_deactivation
@@ -456,11 +463,20 @@ def run_workflow(
         state["failure_reason"] = (
             "Assistant deactivation/re-enable evidence was incomplete."
         )
+    runtime_summary = _runtime_summary(
+        runtime_inspection,
+        loaded_model_id=str(state["loaded_model_id"] or ""),
+    )
+    if state["status"] == "passed" and not runtime_summary["model_identity_matches"]:
+        state["status"] = "failed"
+        state["failure_reason"] = (
+            "Loaded Assistant model did not match the inspected runtime selection."
+        )
     return {
         "status": state["status"],
         "failure_reason": state["failure_reason"],
         "prompts": DEFAULT_PROMPTS,
-        "runtime": _runtime_summary(runtime),
+        "runtime": runtime_summary,
         "capture_first_run_policy": (
             "isolated_temp_settings_deactivation"
             if exercise_deactivation
@@ -487,7 +503,7 @@ def run_workflow(
     }
 
 
-def _prepare_isolated_settings(path: Path, *, model_id: str) -> None:
+def _prepare_isolated_settings(path: Path) -> None:
     """Bind mutable capture settings to an explicit OS temp path."""
     resolved = path.expanduser().resolve()
     temp_root = Path(tempfile.gettempdir()).resolve()
@@ -498,7 +514,7 @@ def _prepare_isolated_settings(path: Path, *, model_id: str) -> None:
     LLMConfig._default_settings_path = staticmethod(  # type: ignore[method-assign]
         lambda: str(resolved)
     )
-    config = LLMConfig(model_name=model_id or LLMConfig.default_local_model_id())
+    config = LLMConfig(model_name=LLMConfig.default_local_model_id())
     config.local_model_enabled = True
     config.local_runtime_notice_acknowledged = True
     config.apply_runtime_selection(
@@ -631,10 +647,20 @@ def _blocked_payload(
     }
 
 
-def _runtime_summary(runtime: dict[str, object]) -> dict[str, object]:
+def _runtime_summary(
+    runtime: dict[str, object],
+    *,
+    loaded_model_id: str = "",
+) -> dict[str, object]:
+    inspected_model_id = str(runtime.get("current_model_id") or "")
+    actual_model_id = loaded_model_id or inspected_model_id
     return {
         "classification": runtime.get("classification"),
-        "model_id": runtime.get("current_model_id"),
+        "model_id": actual_model_id,
+        "inspected_model_id": inspected_model_id,
+        "model_identity_matches": bool(
+            actual_model_id and actual_model_id == inspected_model_id
+        ),
         "message": runtime.get("message"),
         "cache_dir": runtime.get("cache_dir"),
         "cache_usage": runtime.get("cache_usage"),
@@ -687,14 +713,8 @@ def _has_unpainted_main_surface(path: Path) -> bool:
     return sum(histogram[:8]) / pixel_count > 0.9
 
 
-def _load_capture_config(model_id: str) -> LLMConfig:
+def _load_capture_config() -> LLMConfig:
     config = LLMConfig.load_from_file() or LLMConfig()
-    if model_id:
-        config.apply_runtime_selection(
-            "local",
-            model_id=model_id,
-            ui_active_mode="local",
-        )
     return config
 
 
@@ -711,15 +731,6 @@ def _set_baseline_window_geometry(window: Any) -> None:
     else:
         window.move(QPoint(0, 0))
     window.resize(BASELINE_WINDOW_SIZE)
-
-
-def _disable_first_run_dialog_for_unattended_capture(window: Any) -> None:
-    """Bypass only the modal consent prompt without persisting user settings."""
-    manager = getattr(window, "agent_manager", None)
-    if manager is None:
-        raise RuntimeError("Assistant manager must be initialized before capture setup")
-    runtime = manager._assistant_runtime
-    runtime.needs_first_run = lambda _config: False
 
 
 def _assistant_is_ready(manager: Any) -> bool:
@@ -838,17 +849,23 @@ def _turn_contract_failure(
     new_tools: list[dict[str, Any]],
 ) -> str | None:
     if index == 0:
-        state_calls = [tool for tool in new_tools if tool.get("name") == "query_state"]
-        if not state_calls:
-            return (
-                "Turn 1 did not execute query_state for a workflow readiness request."
-            )
-        if len(state_calls) != 1:
-            return "Turn 1 must execute query_state exactly once."
-        if len(new_tools) != 1:
-            return "Turn 1 must not call other tools for a state-only request."
-        if not any(tool.get("success") is True for tool in state_calls):
-            return "Turn 1 query_state execution did not succeed."
+        if new_tools:
+            return "Turn 1 workflow readiness question must not call a workflow tool."
+        normalized = assistant_text.lower()
+        readiness_terms = (
+            "ready",
+            "workflow",
+            "dataset",
+            "data",
+            "eeg",
+            "import",
+            "empty",
+        )
+        if not any(term in normalized for term in readiness_terms):
+            return "Turn 1 response did not contain recognizable workflow readiness."
+        sentence_endings = re.findall(r"[.!?](?=\s|$)", assistant_text.strip())
+        if len(sentence_endings) > 1 or "\n\n" in assistant_text:
+            return "Turn 1 did not follow the requested one short sentence format."
         return None
 
     if index == 1:
@@ -861,7 +878,6 @@ def _turn_contract_failure(
             marker in normalized
             for marker in (
                 "workflow status",
-                "state query tool",
                 "current xbrainlab workflow",
             )
         ):

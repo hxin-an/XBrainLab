@@ -391,7 +391,7 @@ def _request_workflow_stage(request: AssistantGenerationRequest) -> str:
         if not isinstance(items, list):
             continue
         for item in items:
-            if not isinstance(item, dict) or item.get("type") != "workflow_decision":
+            if not isinstance(item, dict) or item.get("type") != "state_card":
                 continue
             assert item.get("source") == {"kind": "application_service_publication"}
             data = item.get("data")

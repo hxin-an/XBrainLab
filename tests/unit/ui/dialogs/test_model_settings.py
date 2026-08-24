@@ -301,7 +301,10 @@ class TestModelSettingsInit:
         ]
 
         assert model_ids == LLMConfig.allowed_local_model_ids()
-        assert model_ids == ["ibm-granite/granite-3.3-2b-instruct"]
+        assert model_ids == [
+            "ibm-granite/granite-4.0-micro",
+            "ibm-granite/granite-3.3-2b-instruct",
+        ]
         expected_labels: list[str] = []
         for model_id in model_ids:
             spec = local_model_spec(model_id)
@@ -310,6 +313,10 @@ class TestModelSettingsInit:
         assert model_labels == expected_labels
         assert all("/" not in label for label in model_labels)
         assert all("Qwen" not in str(model_id) for model_id in model_ids)
+        assert model_labels == [
+            "Granite 4.0 Micro 3B (Recommended)",
+            "Granite 3.3 2B (Lower memory)",
+        ]
         assert dialog.model_section_label.buddy() is dialog.local_model_combo
         assert dialog.local_model_combo.accessibleName() == "Assistant model"
 
@@ -330,11 +337,27 @@ class TestModelSettingsInit:
 
         assert config.model_name == legacy_model
         assert created.local_model_combo.currentData() == (
-            "ibm-granite/granite-3.3-2b-instruct"
+            "ibm-granite/granite-4.0-micro"
         )
         assert created.model_migration_label.isHidden() is False
         assert "no longer available" in created.model_migration_label.text()
         assert "not changed" in created.model_migration_label.text()
+
+    def test_supported_lower_memory_selection_is_preserved_in_settings(self, qtbot):
+        from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
+
+        lower_memory = "ibm-granite/granite-3.3-2b-instruct"
+        config = LLMConfig(model_name=lower_memory, device="cpu")
+        created = ModelSettingsDialog(
+            parent=None,
+            config=config,
+            download_lifecycle=_FakeDownloadLifecycle(),
+        )
+        qtbot.addWidget(created)
+
+        assert config.model_name == lower_memory
+        assert created.local_model_combo.currentData() == lower_memory
+        assert created.model_migration_label.isHidden() is True
 
     def test_no_remote_runtime_widgets_are_exposed(self, dialog):
         assert not hasattr(dialog, "api_key_input")

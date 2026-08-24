@@ -21,6 +21,7 @@ from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ToolAttemptAction,
     ToolAttemptDecision,
 )
+from XBrainLab.llm.agent.turn import AssistantToolInputReceipt
 from XBrainLab.llm.agent.ui_handoff import (
     WorkflowUiHandoffRequest,
     WorkflowUiHandoffResolution,
@@ -45,6 +46,123 @@ def _confirmation_pair(
         publication_generation=7,
     )
     return decision, request
+
+
+def _tool_input_receipt() -> AssistantToolInputReceipt:
+    return AssistantToolInputReceipt(
+        command_name="resample_data",
+        original_user_text="Resample the EEG data.",
+        question="What resampling rate should I use?",
+        publication_generation=7,
+        missing_inputs=("rate",),
+    )
+
+
+def test_tool_input_receipt_requires_typed_missing_fields() -> None:
+    with pytest.raises(ValueError, match="one or two"):
+        AssistantToolInputReceipt(
+            command_name="resample_data",
+            original_user_text="Resample the EEG data.",
+            question="What resampling rate should I use?",
+            publication_generation=7,
+            missing_inputs=(),
+        )
+
+
+def test_tool_input_receipt_is_nonblocking_and_activates_once() -> None:
+    session = PendingInteractionCoordinator()
+    receipt = _tool_input_receipt()
+
+    session.begin_tool_input(receipt)
+
+    assert session.tool_input is receipt
+    assert session.active_tool_input is None
+    assert session.has_pending is False
+
+    assert session.activate_tool_input() is receipt
+    assert session.tool_input is None
+    assert session.active_tool_input is receipt
+    assert session.activate_tool_input() is None
+
+    assert session.clear_active_tool_input() is receipt
+    assert session.active_tool_input is None
+
+
+def test_active_typed_receipt_requeues_once_for_a_second_parameter_reply() -> None:
+    session = PendingInteractionCoordinator()
+    receipt = AssistantToolInputReceipt(
+        command_name="apply_bandpass_filter",
+        original_user_text="Apply a bandpass filter.",
+        question="What low cutoff should I use?",
+        publication_generation=7,
+        missing_inputs=("low_freq", "high_freq"),
+        remaining_reply_budget=2,
+    )
+    session.begin_tool_input(receipt)
+    session.activate_tool_input()
+
+    requeued = session.requeue_active_tool_input_for_reply()
+
+    assert requeued is not None
+    assert requeued.remaining_reply_budget == 1
+    assert session.active_tool_input is None
+    assert session.tool_input is requeued
+
+
+def test_typed_receipt_cannot_requeue_a_third_parameter_reply() -> None:
+    session = PendingInteractionCoordinator()
+    receipt = AssistantToolInputReceipt(
+        command_name="apply_bandpass_filter",
+        original_user_text="Apply a bandpass filter.",
+        question="What low cutoff should I use?",
+        publication_generation=7,
+        missing_inputs=("low_freq", "high_freq"),
+        remaining_reply_budget=1,
+    )
+    session.begin_tool_input(receipt)
+    session.activate_tool_input()
+
+    assert session.requeue_active_tool_input_for_reply() is None
+    assert session.active_tool_input is receipt
+    assert session.tool_input is None
+
+
+def test_active_tool_input_cannot_rearm_another_receipt() -> None:
+    session = PendingInteractionCoordinator()
+    active = _tool_input_receipt()
+    waiting = AssistantToolInputReceipt(
+        command_name="apply_notch_filter",
+        original_user_text="Apply a notch filter.",
+        question="What notch frequency should I use?",
+        publication_generation=7,
+        missing_inputs=("freq",),
+    )
+    session.begin_tool_input(active)
+    session.activate_tool_input()
+
+    with pytest.raises(RuntimeError, match="already active"):
+        session.begin_tool_input(waiting)
+
+
+def test_clear_removes_waiting_or_active_tool_input_receipt() -> None:
+    waiting_session = PendingInteractionCoordinator()
+    waiting = _tool_input_receipt()
+    waiting_session.begin_tool_input(waiting)
+
+    waiting_cleared = waiting_session.clear()
+
+    assert waiting_cleared.tool_input is waiting
+    assert waiting_session.tool_input is None
+
+    active_session = PendingInteractionCoordinator()
+    active = _tool_input_receipt()
+    active_session.begin_tool_input(active)
+    active_session.activate_tool_input()
+
+    active_cleared = active_session.clear()
+
+    assert active_cleared.active_tool_input is active
+    assert active_session.active_tool_input is None
 
 
 def test_confirmation_is_created_and_exposed_as_one_pair() -> None:

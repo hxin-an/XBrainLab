@@ -20,7 +20,7 @@ local Granite透過18個核准action進入相同GUI與Command workflow。
 | Model catalog | Pinned Braindecode 1.6.1提供61個可搜尋contracts，其中54個符合目前classification workflow而可選；provider失效時改列distinct `legacy.braindecode.*` recovery IDs。Model Selection使用catalog reviewed defaults。 | 不可選contracts會顯示license、task或resource reason；桌面UI不提供model constructor調參；upstream與legacy禁止silent fallback，catalog execution不代表科學品質。 |
 | Evaluation | Individual fold/run支援Train、Validation、Test；cross-fold Summary只pool同一training round的disjoint Test masks。 | `All Folds`的Split只有Test是刻意的統計邊界。 |
 | Saliency | 明確Compute Saliency、累加method recompute、exact Fold／Evaluation-admitted Fold Set publication存在；尚未計算者顯示Compute要求，舊結果可刻意回看；單一class selector可切all-class比較與single-class細看，3D控制使用epoch-relative time並在重複render維持單一orientation widget。 | 不代表attribution具科學有效性或腦內source localisation，不把epoch time冒充已審查event marker，也不保證所有模型梯度相容。 |
-| Assistant | 固定Local Granite、strict envelope、18-action stage surface、parameter provenance、capability、confirmation、GUI handoff與model-free walkthrough存在。 | 2B模型不是安全零容忍；deterministic guards不代表語意意圖完全正確，也不外推到任意長session。 |
+| Assistant | Local catalog以Granite 4.0 Micro 3B作recommended primary、Granite 3.3 2B作lower-memory選項；per-user settings保留上次確認的supported model，已退役selection會靜默正規化為recommended model。Strict envelope、18-action stage surface、parameter provenance、typed pending receipt infrastructure、capability、confirmation、GUI handoff與model-free walkthrough存在。 | 凍結3B baseline為36/36 positive、10/10 explicit parameter origin、5/5 missing guard、20/24 no-action與0/7 production-controller clarification final；這是bounded improved baseline，不是Stable promotion或安全零容忍，任一新source仍須自己的exact report。 |
 | MCP | Executable package、transport、CLI、capture、schema projection與tests已退役；provenance只留在Git history。 | 不是release能力；未來若要恢復，必須另開public contract、security與validation decision。 |
 | Packaging | Windows launcher與source啟動方式存在。 | 沒有signed installer。 |
 
@@ -50,5 +50,6 @@ seed、cache authority或retired worktree。
 ## Release boundary
 
 `v0.8.0`只宣稱經使用者workflow手測、strict host guards與CI保護的Desktop GUI／Local Assistant／
-Saliency Refresh source baseline；不宣稱signed installer、安全零容忍、scientific quality、任意dataset
-或模型全面支援或產品1.0。
+Saliency Refresh source baseline；Assistant可包含明列且由使用者接受的bounded model limitations，不等於
+Stable promotion。不宣稱signed installer、安全零容忍、scientific quality、任意dataset或模型全面支援
+或產品1.0。

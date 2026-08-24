@@ -179,8 +179,12 @@ timeout 30m prlimit --core=0 -- \
 
 這個評分會真的讓 Granite 回答固定 prompt，但不會執行模型選出的工具。
 
-執行前先確認 active decision 指定的 Granite 3.3 2B 已存在 D-mounted cache。將下列兩個範例
+執行前先確認 active decision 指定的 Granite 4.0 Micro 3B exact revision已存在active model cache。將下列兩個範例
 路徑換成本機實際位置：
+
+先用`nvidia-smi`確認3B evaluator啟動前至少約有8 GiB可用VRAM；不足時停止並等待資源釋放，不終止
+不是本次驗證啟動的程序，也不要把OOM／資源不足寫成模型品質回歸。以下命令不會silent fallback到CPU或
+另一個model。
 
 ```bash
 export XBRAINLAB_MODEL_CACHE_DIR=/mnt/d/path/to/model-cache
@@ -192,21 +196,27 @@ TRANSFORMERS_OFFLINE=1 \
 timeout 30m prlimit --core=0 -- \
   poetry run python scripts/dev/run_stable_assistant_model_eval.py \
   --device cuda \
-  --strict \
   --json-out build/dev-artifacts/stable-assistant-model-eval.json
 ```
 
 `HF_HUB_OFFLINE=1` 和 `TRANSFORMERS_OFFLINE=1` 會禁止執行期間下載模型，也不允許靜默改用另一個
-模型。
+模型。上面的非strict模式會完整產生report，即使Stable promotion gate未過也不把已知限制偽裝成runner
+故障；只用於bounded baseline比較。只有要判定Stable promotion時才加入`--strict`，canonical handoff
+registry也維持strict模式。
 
-目前 runner 固定執行 50 個案例：36 個 positive cases 和 14 個 challenge cases。候選 gate 要求：
+目前v8 runner固定執行81個案例：36個positive、14個challenge、24個雙語no-action precision與
+7個controller-backed clarification trajectories。候選 gate 要求：
 
 - 36/36 positive cases 的工具與參數完全正確。
 - 10/10 明確參數來源檢查通過。
 - 5/5 缺少參數時的 host guard 通過。
+- 24/24 no-action precision outcomes沒有confirmation、GUI handoff、execution或state mutation。
+- 7/7 clarification trajectories經production controller抵達verified execute boundary：五個direct
+  preprocess continuation、generic filter選擇bandpass後再追問，以及bandpass先low再high的partial
+  accumulation；raw第一發與最多兩次format recovery分開記錄。
 
-其餘 challenge 結果用來記錄模型限制，不計入上述候選 gate。產生的 JSON report 只支持該次
-使用的 exact model、revision、source 和 50 個固定案例；它不能證明任意對話、工具實際執行或
+其餘 challenge 結果用來記錄模型限制，不回填raw-model accuracy。產生的 JSON report 只支持該次
+使用的 exact model、revision、source 和81個固定案例；它不能證明任意對話、工具實際執行或
 論文等級的整體正確率。
 
 ### C. 打開 GUI：檢查實際互動
@@ -267,8 +277,51 @@ step ID 和 screenshot 後停止該次 session。
 Profile JSON 是實際步驟順序的權威來源；完整的人工驗收條件與 Complete Workflow 測試資料設定
 見[Assistant 人工操作驗證](../validation/README.md#assistant-manual-walkthrough-commands)。
 
+### D. Windows native：Assistant bounded baseline
+
+這份清單專門驗收inline setup、輸入、短bubble與bounded Granite行為；offscreen test、tool-debug profile或
+自動capture都不能取代。開始前在候選branch執行`git rev-parse HEAD`並記下完整SHA；手測期間source若再改，
+本次結果失效。使用拋棄式測試資料，不對重要資料執行已知誤操作案例。
+
+從repository root啟動正常產品：
+
+```bash
+poetry run python run.py --model local
+```
+
+依序檢查：
+
+1. 開啟Assistant Settings。Model清單必須同時有`Granite 4.0 Micro 3B (Recommended)`與
+   `Granite 3.3 2B (Lower memory)`；選擇3B並完成既有cache／download流程。
+2. 第一次打開Assistant Dock只能看到`Start XBrainLab Assistant` inline setup，不得出現
+   `Local Assistant Runtime` modal。Cache完整時`Enable Assistant`可按；缺cache時`Set up model`與
+   `Assistant Settings`都能回到唯一Settings流程。
+3. 在空composer連按多次Space。對話不得被清除、不得開New Chat；接著送出`hello`，assistant的短回覆
+   bubble要貼合內容，不得在文字後留下大片空白。
+4. 使用Microsoft Pinyin輸入中文，以Enter選字。候選字commit時不得提前送出、不得遺失中文；組字完成後
+   再按一次Enter，該訊息只能送出一次。Assistant terminal後，若沒有點到其他控制，focus應回composer；
+   若手動把focus移到其他控制，Assistant不得搶回。
+5. 用完整單一要求`Apply a 12 to 40 Hz bandpass filter`確認既有confirmation／GUI workflow仍可到達，
+   但不要把confirmation、dialog或working-copy mutation誤寫成raw EEG被覆寫。
+6. 診斷多輪路徑：輸入`Filter the data`→`bandpass`→`12 to 40 Hz`，再於New Chat輸入
+   `Apply a bandpass filter`→`12 to 40 Hz`。記錄每輪terminal與是否只產生一個bounded action；目前exact
+   v8的production-controller final為0/7，因此無法續接或再次追問可列為已知限制，不得宣稱已解決。
+7. 在對應安全stage重現`請建立 EEG epochs。`、`幫我處理一下這些 EEG 資料。`、
+   `Apply a 4 to 38 Hz bandpass and then resample to 128 Hz.`與`先套用 4 到 38 Hz 帶通，再重採樣成
+   128 Hz。`。記錄response、confirmation／handoff與bounded action；必要時取消dialog／confirmation。
+
+Modal、按鈕不可用、Space清對話、中文無法commit／重複送出、focus被搶、短bubble尾端空白、完整單一
+action回歸、crash、資料損失、跨New Chat／Stop／Close繼承receipt或失控重複執行都算失敗並停止。第6、7步
+若只重現exact report已列出的bounded limitation則記錄但不阻擋baseline merge；任何更差結果仍阻擋。
+通過後回報日期、完整SHA、實測範圍與Windows輸入法；只有同一SHA的明確通過回報、已知限制接受與merge
+批准，才能完成PR／merge。
+
 若要讓真 Granite 經由可見的 ChatPanel 執行 Data Interpretation 的
 scan → preview → validate，使用：
+
+先在正常產品的 Assistant Settings 選好 Granite 4.0 Micro 3B，確認模型cache完整並完成一次
+`Enable Assistant`。Capture不會代替使用者同意啟用，也不會覆寫model selection；若仍顯示inline setup，
+它會fail closed並要求先回Settings完成設定。
 
 ```bash
 MNE_DONTWRITE_HOME=true \
@@ -276,7 +329,6 @@ HF_HUB_OFFLINE=1 \
 TRANSFORMERS_OFFLINE=1 \
 timeout 10m prlimit --core=0 -- \
   poetry run python scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py \
-  --model ibm-granite/granite-3.3-2b-instruct \
   --output-dir build/dev-artifacts/chatpanel-local-tool-chain
 ```
 

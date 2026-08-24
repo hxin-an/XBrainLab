@@ -4,25 +4,35 @@ from XBrainLab.llm.agent.decision_contract import model_response_tool_contract
 from XBrainLab.llm.agent.prompt_policy import StrictToolResponsePromptPolicy
 
 
-def test_model_response_schema_is_message_only() -> None:
+def test_model_response_schema_allows_only_ordinary_or_typed_clarification() -> None:
     contract = model_response_tool_contract()
     parameters = contract["parameters"]
 
     assert contract["name"] == "respond_to_user"
-    assert parameters["type"] == "object"
-    assert set(parameters["properties"]) == {"message"}
-    assert parameters["required"] == ["message"]
-    assert parameters["additionalProperties"] is False
+    ordinary, clarification = parameters["oneOf"]
+    assert set(ordinary["properties"]) == {"message"}
+    assert ordinary["required"] == ["message"]
+    assert ordinary["additionalProperties"] is False
+    assert set(clarification["properties"]) == {
+        "message",
+        "pending_action",
+        "missing_inputs",
+    }
+    assert clarification["required"] == [
+        "message",
+        "pending_action",
+        "missing_inputs",
+    ]
+    assert clarification["additionalProperties"] is False
 
 
-def test_prompt_policy_describes_only_message_for_user_responses() -> None:
+def test_prompt_policy_describes_typed_clarification_for_user_responses() -> None:
     policy = StrictToolResponsePromptPolicy()
     instructions = policy.decision_instructions()
     recovery = policy.recovery_instructions()
 
     for text in (instructions, recovery):
-        assert "parameters containing exactly message" in text
-        assert "missing_inputs" not in text
+        assert "missing_inputs" in text
         assert "command, tool, name, arguments, or reasons" not in text
 
 
@@ -48,12 +58,15 @@ def test_prompt_policy_keeps_enabled_direct_actions_behind_host_confirmation() -
 
 def test_prompt_policy_makes_the_action_root_shape_unambiguous() -> None:
     policy = StrictToolResponsePromptPolicy()
+    decision = policy.decision_instructions().lower()
+    recovery = policy.recovery_instructions().lower()
 
-    for prompt in (
-        policy.decision_instructions().lower(),
-        policy.recovery_instructions().lower(),
-    ):
-        assert 'root object must be exactly {"workflow_stage":' in prompt
+    assert (
+        "root object must contain exactly workflow_stage, tool_name, and parameters"
+        in decision
+    )
+    assert 'root object must be exactly {"workflow_stage":' in recovery
+    for prompt in (decision, recovery):
         assert "never wrap it in tool-call, tool_call, action, or function" in prompt
         assert "tool-call branch" not in prompt
 
@@ -68,3 +81,26 @@ def test_prompt_policy_preserves_explicit_supported_optional_values() -> None:
     assert "copy every supported value explicitly stated" in prompt
     assert "even when the schema marks it optional" in prompt
     assert "never omit an explicitly requested supported value" in prompt
+
+
+def test_prompt_policy_uses_no_action_for_ambiguous_or_negated_requests() -> None:
+    prompt = StrictToolResponsePromptPolicy().decision_instructions().lower()
+
+    assert "negates an action" in prompt
+    assert "ambiguous" in prompt
+    assert "use respond_to_user" in prompt
+
+
+def test_prompt_policy_defers_multi_action_requests_without_execution() -> None:
+    prompt = StrictToolResponsePromptPolicy().decision_instructions().lower()
+
+    assert "more than one action" in prompt
+    assert "ask which action to do first" in prompt
+    assert "do not call any tool in that turn" in prompt
+
+
+def test_prompt_policy_forbids_unverified_completion_claims() -> None:
+    prompt = StrictToolResponsePromptPolicy().decision_instructions().lower()
+
+    assert "never claim that an action completed" in prompt
+    assert "trusted tool result confirms completion" in prompt

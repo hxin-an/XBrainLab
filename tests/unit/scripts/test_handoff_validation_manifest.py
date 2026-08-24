@@ -16,6 +16,7 @@ from scripts.dev.handoff_gate_spec import (
     OutcomePolicy,
 )
 from scripts.dev.update_quality_dashboard import REQUIRED_PUBLIC_IO_TEST_NODES
+from XBrainLab.llm.core.model_catalog import PRIMARY_LOCAL_MODEL_ID
 
 ROOT = Path(__file__).resolve().parents[3]
 VALIDATION_DOC = ROOT / "docs" / "validation" / "README.md"
@@ -337,6 +338,7 @@ def test_gate_registry_tracks_security_and_artifact_policy() -> None:
     granite = HANDOFF_GATE_SPECS["granite-runtime"]
     assert granite.stdout_artifact_path == "granite-runtime.json"
     assert granite.required_artifact_paths == ("granite-runtime.json",)
+    assert granite.argv[granite.argv.index("--model") + 1] == PRIMARY_LOCAL_MODEL_ID
 
     frontend = HANDOFF_GATE_SPECS["assistant-frontend-contract"]
     assert frontend.required_artifact_paths == (
