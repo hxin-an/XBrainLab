@@ -5,6 +5,16 @@ from typing import Any
 from ..base import BaseTool
 from ..result_contract import ToolExecutionResult
 
+_DIRECT_INPUT_POLICY = (
+    " Required values must come from the latest user request. If any are absent, "
+    "use respond_to_user with pending_action and missing_inputs instead of calling "
+    "this action."
+)
+_REQUIRED_VALUE_ORIGIN = (
+    " Copy only a value explicitly supplied in the latest user request. There is "
+    "no model or product default."
+)
+
 
 class BaseBandPassFilterTool(BaseTool):
     @property
@@ -13,15 +23,23 @@ class BaseBandPassFilterTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Apply only a single bandpass filter to the data."
+        return "Apply only a single bandpass filter to the data." + _DIRECT_INPUT_POLICY
 
     @property
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
-                "low_freq": {"type": "number"},
-                "high_freq": {"type": "number"},
+                "low_freq": {
+                    "type": "number",
+                    "description": "Required low cutoff in Hz."
+                    + _REQUIRED_VALUE_ORIGIN,
+                },
+                "high_freq": {
+                    "type": "number",
+                    "description": "Required high cutoff in Hz."
+                    + _REQUIRED_VALUE_ORIGIN,
+                },
             },
             "required": ["low_freq", "high_freq"],
         }
@@ -37,13 +55,19 @@ class BaseNotchFilterTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Apply notch filter to remove power line noise."
+        return "Apply a notch filter to the data." + _DIRECT_INPUT_POLICY
 
     @property
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
-            "properties": {"freq": {"type": "number"}},
+            "properties": {
+                "freq": {
+                    "type": "number",
+                    "description": "Required notch frequency in Hz."
+                    + _REQUIRED_VALUE_ORIGIN,
+                }
+            },
             "required": ["freq"],
         }
 
@@ -58,13 +82,19 @@ class BaseResampleTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Resample data to a new sampling rate."
+        return "Resample data to a new sampling rate." + _DIRECT_INPUT_POLICY
 
     @property
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
-            "properties": {"rate": {"type": "integer"}},
+            "properties": {
+                "rate": {
+                    "type": "integer",
+                    "description": "Required resampling rate in Hz."
+                    + _REQUIRED_VALUE_ORIGIN,
+                }
+            },
             "required": ["rate"],
         }
 
@@ -79,14 +109,21 @@ class BaseNormalizeTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Normalize data using Z-Score or Min-Max scaling."
+        return "Normalize data using the user's explicit method." + _DIRECT_INPUT_POLICY
 
     @property
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
-                "method": {"type": "string", "enum": ["z-score", "min-max"]},
+                "method": {
+                    "type": "string",
+                    "enum": ["z-score", "min-max"],
+                    "description": (
+                        "Required normalization method; enum values are constraints, "
+                        "not recommendations." + _REQUIRED_VALUE_ORIGIN
+                    ),
+                },
             },
             "required": ["method"],
         }
@@ -102,13 +139,22 @@ class BaseRereferenceTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Set EEG reference (e.g., average or specific channels)."
+        return (
+            "Set the EEG reference using the user's explicit method."
+            + _DIRECT_INPUT_POLICY
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
-            "properties": {"method": {"type": "string"}},
+            "properties": {
+                "method": {
+                    "type": "string",
+                    "description": "Required EEG reference method."
+                    + _REQUIRED_VALUE_ORIGIN,
+                }
+            },
             "required": ["method"],
         }
 

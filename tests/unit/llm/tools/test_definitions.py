@@ -20,6 +20,7 @@ from XBrainLab.llm.tools.definitions.ui_control_def import (
     BaseSwitchPanelTool,
     WorkflowHandoffTool,
 )
+from XBrainLab.llm.tools.schema_contract import tool_contract_for_llm
 
 
 def _property_value(prop: property) -> Any:
@@ -41,6 +42,14 @@ DIRECT_CONTRACTS = {
     BaseStopTrainingTool: ("stop_training", ()),
 }
 
+DIRECT_PREPROCESS_TOOLS = (
+    BaseBandPassFilterTool,
+    BaseNotchFilterTool,
+    BaseResampleTool,
+    BaseNormalizeTool,
+    BaseRereferenceTool,
+)
+
 
 @pytest.mark.parametrize(("tool_cls", "contract"), DIRECT_CONTRACTS.items())
 def test_direct_definition_has_exact_schema(tool_cls, contract) -> None:
@@ -61,6 +70,29 @@ def test_normalize_method_is_closed_to_target_choices() -> None:
     schema = BaseNormalizeTool().parameters
 
     assert schema["properties"]["method"]["enum"] == ["z-score", "min-max"]
+
+
+@pytest.mark.parametrize("tool_cls", DIRECT_PREPROCESS_TOOLS)
+def test_direct_preprocess_projection_requires_latest_user_values_without_defaults(
+    tool_cls,
+) -> None:
+    tool = tool_cls()
+    description = tool.description.lower()
+    projected = tool_contract_for_llm(tool)
+
+    assert "latest user request" in description
+    assert "respond_to_user" in description
+    assert "pending_action" in description
+    assert "missing_inputs" in description
+    for parameter_name in tool.parameters["required"]:
+        parameter = tool.parameters["properties"][parameter_name]
+        projected_parameter = projected["parameters"]["properties"][parameter_name]
+        parameter_description = parameter["description"].lower()
+
+        assert "latest user request" in parameter_description
+        assert "no model or product default" in parameter_description
+        assert "default" not in parameter
+        assert projected_parameter["description"] == parameter["description"]
 
 
 def test_start_training_requires_confirmation_and_stop_does_not() -> None:

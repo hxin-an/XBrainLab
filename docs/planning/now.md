@@ -416,6 +416,47 @@ capture focused `155 passed`；35個modified Python files通過Ruff check／form
 手測前仍只是checkpoint；不開PR、不merge。Post-freeze report是外部exact-SHA evidence，source不得為了
 補寫分數再變更；最終分數與artifact identity在交付回報中綁定該SHA。
 
+#### Bounded follow-up：direct-preprocess no-default contracts
+
+GPU恢復後，exact `6df0cc87c683b68ec9c028cadaa0c008e32a0da0` Granite 4.0 Micro 3B v8 report確認
+36/36 positive、10/10 explicit parameter origin、5/5 missing guard、20/24 no-action，但clarification
+final仍為0/7。另一個獨立、不得合併的global-prompt experiment `bcaeaf9e05fa29066e76b6fab42e1338020e6d6a`
+只把no-action提高到21/24，clarification仍0/7，並讓missing guard退成4/5；因此本follow-up從
+`6df0cc87`建立，不疊加該prompt treatment。
+
+使用者於`2026-08-24`批准測試contract-local方案。Observable outcome是五個direct preprocess action的
+required參數在model-facing projection明確標示：值只能逐字來自latest user request、沒有model或product
+default；缺值時不得呼叫該action。`normalize_data`的enum仍只是closed choices，不推薦`z-score`；
+`set_reference`不再以`average`作例子；notch、resample與bandpass不得從常見EEG值補參數。模型應使用既有
+typed `respond_to_user`建立receipt，後續仍由既有pending／attempt／origin-verification owners處理。
+
+Authority不變：`ApplicationService`與backend capability仍擁有readiness／side effect，tool definitions只
+是目前model-facing projection，`ToolAttemptCoordinator`仍做admission，direct-origin verifier仍是值來源
+安全邊界。Scope只改既有`XBrainLab/llm/tools/definitions/preprocess_def.py`、直接contract／projection tests
+與一次exact evaluator evidence；不改global prompt、parser、receipt、Host routing、tool membership／name、
+confirmation、execution、UI、Settings或root `settings.json`，也不新增JSON Schema `default`。Production預估
+1個既有file、低於50 LOC、owner數不變；可見Assistant contract treatment已取得使用者確認，UI code／layout
+確認不適用。
+
+TDD先加RED contract cases，要求五個tool的每個required property都有latest-user provenance與no-default
+語意，並要求projection保留description、不可用stage不洩漏tool。最小實作只調整tool／property description；
+同一GREEN後跑definition、schema projection、assembler stage、verifier、attempt／controller與evaluator unit，
+再跑完整LLM／Agent、Ruff／format／diff check與MkDocs strict。Source clean freeze後只跑一次同model、revision、
+runner與81-case denominator的exact report。
+
+Stop condition：36/36 positive、10/10 explicit origin、5/5 missing guard任一退步，no-action低於20/24，或
+clarification仍未達7/7，就停在checkpoint，不在同一slice加入第二層prompt或Host fallback。五個direct source
+receipt改善但generic／partial仍失敗，只能證明default hallucination縮小，不能宣稱完整continuation修復。
+即使automatic gate通過，仍需同一未再修改SHA的Windows真人手測與明確merge批准；本slice不自行開PR或合併。
+
+Implementation checkpoint：五個tool共用既有definition內的direct-input policy，六個required properties各自
+描述latest-user value origin且沒有JSON Schema `default`；normalize enum明示為constraint而非recommendation，
+reference description已移除`average`例子。Production為1個既有file、`+57/-11/net +46 LOC`，沒有新增
+module、class、owner或readiness policy。TDD由五個expected contract failures轉為5 passed；definition／
+projection／stage／verifier／attempt／controller／parser／evaluator focused共`630 passed`。完整LLM／Agent
+為`1573 passed`；modified Python files通過Ruff check／format check，`git diff --check`與MkDocs
+strict build通過。Next step是freeze clean commit並執行唯一一次exact model report。
+
 ### Parallel diagnostic：capability-first local model under 4B
 
 使用者於`2026-08-24`澄清4B只是產品預計上限，不是必須填滿的規格；選擇依據是非中國來源、
