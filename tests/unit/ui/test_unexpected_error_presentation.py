@@ -104,6 +104,7 @@ def _preprocess_widget(qtbot) -> PreprocessSidebar:
     panel = MagicMock()
     panel.controller = MagicMock()
     panel.dataset_controller = MagicMock()
+    panel.import_is_finishing.return_value = False
     panel.main_window = QMainWindow()
     qtbot.addWidget(panel.main_window)
     widget = PreprocessSidebar(panel)

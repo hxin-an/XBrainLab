@@ -38,6 +38,20 @@ handoff-ready 或可 merge。
 若sync改變product tree、canonical gate缺失／失敗、PR SHA不符、CI missing／pending／failed，或release
 metadata與tag不一致，即停止，不merge或發布。
 
+### Canonical gate blocker
+
+- Exact head `dbb89391`的canonical manifest在`complete-regression` fail closed。Production blocker是
+  Saliency typed target加入後，automation schema reflection沒有提供`SaliencySelectionIdentity` local
+  namespace，導致`command_specs()` NameError；同run另揭露Visualization sidebar stubs缺少既有
+  `refresh_view_controls()`與Preprocess fixture把未設定MagicMock誤判為active import。
+- 只修一個production type-hint namespace與三個test fixture seams；不改Saliency target、UI layout、
+  lifecycle或public schema內容。先跑三組原失敗focused selectors，再建立新exact head並從頭重跑manifest。
+- Production source將因namespace修正改變，因此上方manual acceptance只保留為歷史checkpoint，不再授權
+  新head merge；自動gates與CI閉合後必須重新取得適用的explicit acceptance。
+- 修正只新增SaliencyCommand type-hint local namespace與三個fixture defaults；原backend失敗集合88 passed、
+  原UI失敗集合42 passed，changed-file Ruff、format與diff check通過。下一步建立並推送新exact head，
+  canonical manifest必須從頭重跑，不沿用`dbb89391`的部分PASS。
+
 ## 2026-08-24 3D orientation widget 單一實例 closure
 
 ### 問題、outcome 與 scope

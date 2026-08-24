@@ -274,6 +274,7 @@ def _make_panel(
         def __init__(self, *args, **kwargs):
             super().__init__()
             self.update_info = MagicMock()
+            self.refresh_view_controls = MagicMock()
 
     with (
         patch(
@@ -314,6 +315,7 @@ def _make_real_saliency_panel(qtbot, *, application_runtime=None, parent=None):
         def __init__(self, *args, **kwargs):
             super().__init__()
             self.update_info = MagicMock()
+            self.refresh_view_controls = MagicMock()
 
     with patch(
         "XBrainLab.ui.panels.visualization.panel.ControlSidebar",
