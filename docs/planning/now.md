@@ -55,4 +55,15 @@
 - Assistant geometry tests `7/7`、完整 MainWindow sync `99/99`、相關 product walkthrough `3/3`、window geometry `22/22` 通過。
 - 隔離本機 QSettings 的 1280×800 UI baseline `7/7` 與 approved references 相符；它只證明 responsive fallback，外推仍需 WSLg 真人畫面驗收。
 - 獨立 final diff review blocker `0`；production `+109/-1/net +108 LOC`，僅一個 production file，未觸發 complexity review。
-- Next：freeze exact commit，執行 exact-source UI／CI gate，交付使用者 WSLg normal／maximized／repeat-toggle 手測。
+- Exact commit `8fcdfeee7666188b6afac352e702a2bf953bfeeb` 的本機 authoritative
+  `linux-unit-ui` gate 全部通過；既有 runtime lifecycle 疑點 test 另以 bounded process
+  重跑 `5/5` 通過。
+- PR #54 的 Linux Python 3.11 `components` shard 連續兩次在 1200 秒 watchdog
+  timeout；兩次停在同一個既有 `test_agent_runtime_lifecycle.py` 區段但不同 case
+  boundary。上一個 main baseline 同一 components domain 為 `477 passed`，本 slice
+  沒有修改 `XBrainLab/ui/components/` 或其 tests，因此目前沒有 MainWindow regression
+  證據，但 remote non-skipped gate 尚未成功，不能交付或合併。
+- Blocker／Next：停止盲目 rerun；取得使用者同意後，以獨立 tests-only slice 隔離
+  Assistant runtime lifecycle tests 的 Qt process boundary，再把通過的 main baseline
+  帶回本 UI branch、重跑 exact-head gate，最後交付 WSLg normal／maximized／repeat-toggle
+  手測。
