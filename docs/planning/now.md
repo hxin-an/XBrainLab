@@ -12,6 +12,32 @@ handoff-ready 或可 merge。
 本輪 UI 修改已取得明確授權。先做 red/green focused protection、non-author review 與輕量 walkthrough，
 凍結 exact checkpoint 交使用者確認；只有同一 source 獲得 UI／流程確認後才跑 canonical heavy handoff。
 
+## 2026-08-24 Saliency Refresh merge 與 v0.8.0 release
+
+### Manual acceptance
+
+- 使用者於2026-08-24明確回報手測通過並同意merge；驗收product source為
+  `b389406e3a293993fb9ca3b309864cfd09fe3a9e`、tree
+  `8c69bc0d0904f17575e6c5691d7f5a83a9c7f830`。
+- 驗收範圍涵蓋本branch的Data Import cancel/review recovery、重複Training後Compute Saliency、Saliency
+  class／fold controls、warning與3D presentation、全寬Epoch time、置中色條，以及重複render後單一XYZ軸。
+- 使用者未在本次訊息指定OS／DPI／dataset，因此不外推為新的cross-platform、source-diverse或scientific
+  claim；既有automated evidence與本次manual acceptance各自維持原邊界。
+
+### Merge、version 與 gates
+
+- 先把latest `origin/main` ancestry同步進product branch；main-only `2fe5f2b7`與branch既有`1bac475c`
+  patch-id相同，只改同一個teacher-fixture test。同步後若product tree改變，manual acceptance失效並停止；
+  若tree維持相同，記錄exact pushed head並跑完整canonical handoff manifest。
+- Product PR必須以exact head對main、所有non-skipped checks completed/success後才merge。合併後另從新main開
+  `release/v0.8.0-saliency-refresh`，只同步四處版本metadata、CHANGELOG、README與必要current truth；release
+  metadata不混入已驗收product diff。
+- Release名稱固定為`XBrainLab 0.8.0 — Saliency Refresh`，annotated tag為`v0.8.0`。Release PR同樣CI
+  fail closed；merge後tag與GitHub Release只能指向exact main merge commit。
+
+若sync改變product tree、canonical gate缺失／失敗、PR SHA不符、CI missing／pending／failed，或release
+metadata與tag不一致，即停止，不merge或發布。
+
 ## 2026-08-24 3D orientation widget 單一實例 closure
 
 ### 問題、outcome 與 scope
