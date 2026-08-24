@@ -1370,7 +1370,7 @@ class TestSaliency3DPlotWidget:
         assert captured_kwargs["method"] == "VarGrad"
         assert captured_kwargs["absolute"] is True
 
-    def test_3d_head_plot_leaves_interaction_controls_to_qt(self):
+    def test_3d_head_plot_keeps_one_orientation_widget_across_repeated_builds(self):
         from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_head import (
             Saliency3D,
         )
@@ -1380,9 +1380,16 @@ class TestSaliency3DPlotWidget:
                 self.slider_ranges = []
                 self.camera = MagicMock()
                 self.orientation_widget_calls = 0
+                self.clear_camera_widget_calls = 0
+                self.active_orientation_widgets = 0
 
             def add_camera_orientation_widget(self):
                 self.orientation_widget_calls += 1
+                self.active_orientation_widgets += 1
+
+            def clear_camera_widgets(self):
+                self.clear_camera_widget_calls += 1
+                self.active_orientation_widgets = 0
 
             def add_slider_widget(self, **kwargs):
                 self.slider_ranges.append(kwargs["rng"])
@@ -1422,9 +1429,12 @@ class TestSaliency3DPlotWidget:
         cast(Any, saliency).cmap = "coolwarm"
 
         saliency.get_3d_head_plot()
+        saliency.get_3d_head_plot()
 
         assert saliency.plotter.slider_ranges == []
-        assert saliency.plotter.orientation_widget_calls == 1
+        assert saliency.plotter.orientation_widget_calls == 2
+        assert saliency.plotter.clear_camera_widget_calls == 2
+        assert saliency.plotter.active_orientation_widgets == 1
 
     def test_3d_head_plot_centers_scene_after_adding_meshes(self):
         from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_head import (
@@ -1454,6 +1464,9 @@ class TestSaliency3DPlotWidget:
                 self.calls.append(("camera_position", value))
 
             def add_camera_orientation_widget(self):
+                pass
+
+            def clear_camera_widgets(self):
                 pass
 
             def add_slider_widget(self, **_kwargs):

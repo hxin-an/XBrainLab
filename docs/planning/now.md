@@ -12,6 +12,36 @@ handoff-ready 或可 merge。
 本輪 UI 修改已取得明確授權。先做 red/green focused protection、non-author review 與輕量 walkthrough，
 凍結 exact checkpoint 交使用者確認；只有同一 source 獲得 UI／流程確認後才跑 canonical heavy handoff。
 
+## 2026-08-24 3D orientation widget 單一實例 closure
+
+### 問題、outcome 與 scope
+
+- Ready 3D scene重複render後右上角會累積兩個XYZ orientation widgets。根因是dedicated QtInteractor被
+  復用時，PyVista `clear()`只清actors／scalar bars，不會清`camera_widgets`；現有scene build每次又新增一個。
+- 同一plotter無論首次、重複render或class／method切換，完成時只能保留一個active camera orientation widget。
+- 只修既有Saliency3D scene presentation owner與直接測試；不重建QtInteractor、不改camera、mesh、Saliency、
+  scalar bar、epoch time或async lifecycle，不新增owner／state／compatibility path。
+
+### Repair、validation 與 stop condition
+
+1. 先以同一plotter連續建立scene的red test證明active orientation widget由1累積成2。
+2. Scene owner在新增widget前明確清除既有camera widgets，再新增唯一widget；復用PyVista public lifecycle API，
+   不以widget座標或條件旗標掩蓋重複實例。
+3. 跑3D scene/time-slider與直接相鄰Visualization focused tests、changed-file Ruff／format與diff check；交付
+   native 3D repeated-render手測。使用者確認前不跑canonical heavy handoff。
+
+若第二次render後active widget不是1、scene controls／camera reset退化，或需要第二套orientation ownership，
+即停在checkpoint。
+
+### 施工狀態
+
+- Repeated-scene red test證明舊行為連續新增2次、清除0次，active XYZ widgets由1累積成2；修正後每次
+  scene build先呼叫`clear_camera_widgets()`再新增，連續build完成時active count固定為1。
+- Production只在既有Saliency3D owner增加1行，沒有新增state、flag或owner；相鄰Visualization focused
+  234 passed，changed-file Ruff、format與diff check通過。
+- 本環境無法以offscreen renderer驗收native XYZ widget，最終可見結果保留給Windows/native repeated-render
+  手測；確認前仍不執行canonical heavy handoff。
+
 ## 2026-08-24 3D Plot 水平分布 closure
 
 ### 問題、outcome 與 scope

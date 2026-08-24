@@ -181,6 +181,7 @@ class Saliency3D:
             # Return empty plotter if init failed?
             return self.plotter
 
+        self.plotter.clear_camera_widgets()
         self.plotter.add_camera_orientation_widget()
 
         self.channelActor = [self.plotter.add_mesh(ch, color="w") for ch in self.chs]

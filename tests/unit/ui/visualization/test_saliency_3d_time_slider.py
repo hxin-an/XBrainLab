@@ -46,6 +46,9 @@ class _PlotterStub:
     def add_camera_orientation_widget(self) -> None:
         pass
 
+    def clear_camera_widgets(self) -> None:
+        pass
+
     def add_slider_widget(self, **kwargs: Any) -> None:
         self.slider_kwargs = kwargs
 
