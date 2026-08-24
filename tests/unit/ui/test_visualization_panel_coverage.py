@@ -24,6 +24,7 @@ from XBrainLab.backend.application import (
     SaliencyRenderRequest,
     SaliencyRunIdentity,
 )
+from XBrainLab.backend.application.commands import SaliencyCommand
 from XBrainLab.backend.application.results import ChangedState, CommandResult
 from XBrainLab.backend.application.saliency_render import (
     normalized_saliency_render_publication,
@@ -38,6 +39,7 @@ from XBrainLab.backend.application.state import (
 from XBrainLab.backend.application.view_publication import ApplicationViewStore
 from XBrainLab.backend.training_state_contract import TrainingReadBoundary
 from XBrainLab.backend.utils.observer import Observable
+from XBrainLab.ui.interaction_outcome import InteractionStatus
 
 
 def _complete_coverage(method: str = "Gradient") -> SaliencyMethodCoverageSnapshot:
@@ -1400,6 +1402,70 @@ class TestRefreshCombos:
         assert panel.run_combo.currentText() == "Run 1"
         assert isinstance(panel.run_combo.currentData(), SaliencyCrossFoldIdentity)
         assert panel._published_coverage_for_selection() == {}
+
+    def test_evaluation_admitted_fold_set_dispatches_one_exact_batch_compute(
+        self,
+        panel_and_controller,
+        monkeypatch,
+    ):
+        """All Folds is a legal explicit target, not a settings-review error."""
+        panel, _controller = panel_and_controller
+        admitted = {
+            "identity": {
+                "members": [
+                    {"plan_index": 2, "run_index": 0},
+                    {"plan_index": 3, "run_index": 0},
+                ]
+            },
+            "display_name": "Fold Set 2",
+            "run_label": "Run 1 (Summary)",
+            "evaluation_splits": ["test"],
+            "fold_count": 2,
+            "sample_count": 12,
+            "saliency_available": False,
+            "saliency_reason": "Saliency has not been computed for this Fold Set.",
+        }
+        result = _visualization_result(
+            _run_coverage(
+                plan_index=2,
+                run_index=0,
+                model_name="EEGNet",
+                methods=(SaliencyMethodCoverageSnapshot(method="Gradient"),),
+            ),
+            _run_coverage(
+                plan_index=3,
+                run_index=0,
+                model_name="EEGNet",
+                methods=(SaliencyMethodCoverageSnapshot(method="Gradient"),),
+            ),
+            evaluation_cross_fold_choices=(admitted,),
+        )
+        publication = _publish_panel_state(panel, result)
+        identity = panel.run_combo.currentData()
+        assert isinstance(identity, SaliencyCrossFoldIdentity)
+        assert panel.compute_saliency_btn.isEnabled()
+        commands: list[SaliencyCommand] = []
+
+        def execute_async(_panel, command, **_kwargs):
+            commands.append(command)
+            return True
+
+        monkeypatch.setattr(
+            "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+            execute_async,
+        )
+
+        outcome = panel._compute_saliency_from_action_bar()
+
+        assert outcome.status is InteractionStatus.ACCEPTED
+        assert len(commands) == 1
+        assert commands[0].target == identity
+        assert panel._saliency_settings_review_required is False
+        assert panel.saliency_settings_target() == (
+            publication.generation,
+            identity,
+            "EEGNet",
+        )
 
     def test_cross_fold_normalize_during_first_load_reschedules_owned_variant(
         self,

@@ -14,6 +14,7 @@ from XBrainLab.backend.application import (
     CommandName,
     QueryStateCommand,
     SaliencyCommand,
+    SaliencyCrossFoldIdentity,
     SaliencyRunIdentity,
 )
 from XBrainLab.ui.application_capabilities import (
@@ -376,7 +377,14 @@ class ControlSidebar(QWidget):
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
             )
 
-        reviewed_target: tuple[int, SaliencyRunIdentity, str] | None = None
+        reviewed_target: (
+            tuple[
+                int,
+                SaliencyRunIdentity | SaliencyCrossFoldIdentity,
+                str,
+            ]
+            | None
+        ) = None
         target_reader = getattr(self.panel, "saliency_settings_target", None)
         if reviewed_generation is not None:
             candidate_target = target_reader() if callable(target_reader) else None
@@ -384,7 +392,10 @@ class ControlSidebar(QWidget):
                 not isinstance(candidate_target, tuple)
                 or len(candidate_target) != 3
                 or candidate_target[0] != reviewed_generation
-                or not isinstance(candidate_target[1], SaliencyRunIdentity)
+                or not isinstance(
+                    candidate_target[1],
+                    (SaliencyRunIdentity, SaliencyCrossFoldIdentity),
+                )
                 or not isinstance(candidate_target[2], str)
             ):
                 message = (

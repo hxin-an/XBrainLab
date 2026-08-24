@@ -180,7 +180,7 @@ class _SaliencySettingsTarget:
     """Immutable result identity reviewed by the saliency settings dialog."""
 
     publication_generation: int
-    run_identity: SaliencyRunIdentity
+    run_identity: SaliencyRunIdentity | SaliencyCrossFoldIdentity
     model_name: str
 
 
@@ -1139,15 +1139,17 @@ class VisualizationPanel(BasePanel):
             self.on_update()  # Trigger update to clear if empty
 
     def _refresh_selection_actions(self) -> None:
-        """Keep aggregate summaries read-only without hiding plot controls."""
-        cross_fold = isinstance(
-            self.run_combo.currentData(),
-            SaliencyCrossFoldIdentity,
+        """Keep Saliency settings bound to the exact selected result identity."""
+        selection = self.run_combo.currentData()
+        cross_fold = isinstance(selection, SaliencyCrossFoldIdentity)
+        selectable = isinstance(
+            selection,
+            (SaliencyRunIdentity, SaliencyCrossFoldIdentity),
         )
         if hasattr(self, "sidebar") and hasattr(self.sidebar, "btn_saliency"):
-            self.sidebar.btn_saliency.setEnabled(not cross_fold)
+            self.sidebar.btn_saliency.setEnabled(selectable)
             self.sidebar.btn_saliency.setToolTip(
-                "Select one fold to configure or recompute saliency."
+                "Configure one method profile for every Fold in this set."
                 if cross_fold
                 else "Configure saliency methods and parameters."
             )
@@ -2174,7 +2176,14 @@ class VisualizationPanel(BasePanel):
 
     def saliency_settings_target(
         self,
-    ) -> tuple[int, SaliencyRunIdentity, str] | None:
+    ) -> (
+        tuple[
+            int,
+            SaliencyRunIdentity | SaliencyCrossFoldIdentity,
+            str,
+        ]
+        | None
+    ):
         """Return the immutable publication/run/model identity visible to Settings."""
         target = self._current_saliency_settings_target()
         if target is None:
@@ -2190,7 +2199,7 @@ class VisualizationPanel(BasePanel):
         params: dict[str, object],
         *,
         publication_generation: int | None = None,
-        run_identity: SaliencyRunIdentity | None = None,
+        run_identity: SaliencyRunIdentity | SaliencyCrossFoldIdentity | None = None,
         model_name: str | None = None,
     ) -> bool:
         """Keep dialog choices local and bind them to the reviewed result."""
@@ -2203,7 +2212,10 @@ class VisualizationPanel(BasePanel):
         )
         if provided_target and (
             publication_generation is None
-            or not isinstance(run_identity, SaliencyRunIdentity)
+            or not isinstance(
+                run_identity,
+                (SaliencyRunIdentity, SaliencyCrossFoldIdentity),
+            )
             or model_name is None
         ):
             raise ValueError(
@@ -2218,7 +2230,10 @@ class VisualizationPanel(BasePanel):
             )
             if provided_target
             and publication_generation is not None
-            and isinstance(run_identity, SaliencyRunIdentity)
+            and isinstance(
+                run_identity,
+                (SaliencyRunIdentity, SaliencyCrossFoldIdentity),
+            )
             and model_name is not None
             else current_target
         )
@@ -2440,7 +2455,7 @@ class VisualizationPanel(BasePanel):
         current_widget,
         attempt_key: tuple[object, ...],
         expected_publication_generation: int | None = None,
-        run_identity: SaliencyRunIdentity | None = None,
+        run_identity: SaliencyRunIdentity | SaliencyCrossFoldIdentity | None = None,
         model_name: str | None = None,
     ) -> bool:
         """Run configured saliency computation in the ApplicationService worker."""
@@ -2451,7 +2466,10 @@ class VisualizationPanel(BasePanel):
                     run_identity=run_identity,
                     model_name=str(model_name),
                 )
-                if isinstance(run_identity, SaliencyRunIdentity)
+                if isinstance(
+                    run_identity,
+                    (SaliencyRunIdentity, SaliencyCrossFoldIdentity),
+                )
                 and model_name is not None
                 else None
             )
@@ -2495,6 +2513,7 @@ class VisualizationPanel(BasePanel):
             current_widget=current_widget,
             attempt_key=attempt_key,
             expected_publication_generation=expected_publication_generation,
+            target=run_identity,
         )
 
     def _dispatch_saliency_compute_command(
@@ -2505,6 +2524,7 @@ class VisualizationPanel(BasePanel):
         current_widget,
         attempt_key: tuple[object, ...],
         expected_publication_generation: int | None,
+        target: SaliencyRunIdentity | SaliencyCrossFoldIdentity | None = None,
         resource_preflight_confirmed: bool = False,
         resource_preflight_token: str | None = None,
         resource_confirmation_replayed: bool = False,
@@ -2519,6 +2539,7 @@ class VisualizationPanel(BasePanel):
                 params=params,
                 method_name=method_name,
                 expected_publication_generation=expected_publication_generation,
+                target=target,
                 resource_confirmation_replayed=resource_confirmation_replayed,
             )
 
@@ -2535,6 +2556,7 @@ class VisualizationPanel(BasePanel):
                 SaliencyCommand(
                     method=method_name,
                     params=dict(params),
+                    target=target,
                     resource_preflight_confirmed=resource_preflight_confirmed,
                     resource_preflight_token=resource_preflight_token,
                 ),
@@ -2830,6 +2852,7 @@ class VisualizationPanel(BasePanel):
         params: dict[str, object] | None = None,
         method_name: str | None = None,
         expected_publication_generation: int | None = None,
+        target: SaliencyRunIdentity | SaliencyCrossFoldIdentity | None = None,
         resource_confirmation_replayed: bool = False,
     ) -> InteractionOutcome:
         if not isinstance(result, CommandResult):
@@ -2880,7 +2903,9 @@ class VisualizationPanel(BasePanel):
                 "Saliency compute command failed: %s",
                 result.error_message or result.message,
             )
-            if is_stale_publication_result(result):
+            if is_stale_publication_result(result) or result.diagnostics.get(
+                "stale_saliency_target"
+            ):
                 self._require_saliency_settings_review(
                     _SALIENCY_RESULTS_CHANGED_DETAIL,
                     current_widget=current_widget,
@@ -2912,6 +2937,7 @@ class VisualizationPanel(BasePanel):
                     params=params,
                     method_name=method_name,
                     expected_publication_generation=(expected_publication_generation),
+                    target=target,
                     resource_confirmation_replayed=(resource_confirmation_replayed),
                     attempt_key=attempt_key,
                     current_widget=current_widget,
@@ -2955,6 +2981,7 @@ class VisualizationPanel(BasePanel):
         params: dict[str, object] | None,
         method_name: str | None,
         expected_publication_generation: int | None,
+        target: SaliencyRunIdentity | SaliencyCrossFoldIdentity | None,
         resource_confirmation_replayed: bool,
         attempt_key: tuple[object, ...] | None,
         current_widget,
@@ -2992,6 +3019,13 @@ class VisualizationPanel(BasePanel):
             or not params
             or not isinstance(method_name, str)
             or not method_name.strip()
+            or (
+                target is not None
+                and not isinstance(
+                    target,
+                    (SaliencyRunIdentity, SaliencyCrossFoldIdentity),
+                )
+            )
         ):
             return invalid_outcome()
 
@@ -3028,6 +3062,7 @@ class VisualizationPanel(BasePanel):
             current_widget=current_widget,
             attempt_key=attempt_key,
             expected_publication_generation=expected_publication_generation,
+            target=target,
             resource_preflight_confirmed=True,
             resource_preflight_token=challenge.challenge_id,
             resource_confirmation_replayed=True,
@@ -3120,16 +3155,42 @@ class VisualizationPanel(BasePanel):
         """Return the selected result identity from one accepted publication."""
         publication = self._application_view_publication
         run_identity = self.run_combo.currentData()
-        run_coverage = self._selected_run_coverage()
         if (
             publication is None
             or not publication.usable
-            or not isinstance(run_identity, SaliencyRunIdentity)
-            or run_coverage is None
+            or not isinstance(
+                run_identity,
+                (SaliencyRunIdentity, SaliencyCrossFoldIdentity),
+            )
         ):
             return None
+        members = (
+            run_identity.members
+            if isinstance(run_identity, SaliencyCrossFoldIdentity)
+            else (run_identity,)
+        )
+        if isinstance(run_identity, SaliencyCrossFoldIdentity) and (
+            run_identity not in self._known_evaluation_cross_fold_identities
+        ):
+            return None
+        run_coverages = tuple(
+            self._run_coverage_for_identity(member) for member in members
+        )
+        if any(coverage is None for coverage in run_coverages):
+            return None
+        model_names = sorted(
+            {
+                str(coverage.model_name).strip()
+                for coverage in run_coverages
+                if coverage is not None and str(coverage.model_name or "").strip()
+            }
+        )
         model_name = (
-            run_coverage.model_name or publication.state.training.model_name or ""
+            model_names[0]
+            if len(model_names) == 1
+            else " + ".join(model_names)
+            if model_names
+            else publication.state.training.model_name or ""
         )
         return _SaliencySettingsTarget(
             publication_generation=publication.generation,
@@ -3190,11 +3251,18 @@ class VisualizationPanel(BasePanel):
 
     def _selected_run_coverage(self) -> SaliencyRunCoverageSnapshot | None:
         """Return selected result coverage from the accepted publication only."""
-        publication = self._application_view_publication
-        if publication is None or not publication.usable:
-            return None
         run_identity = self.run_combo.currentData()
         if not isinstance(run_identity, SaliencyRunIdentity):
+            return None
+        return self._run_coverage_for_identity(run_identity)
+
+    def _run_coverage_for_identity(
+        self,
+        run_identity: SaliencyRunIdentity,
+    ) -> SaliencyRunCoverageSnapshot | None:
+        """Return one exact run coverage from the accepted publication."""
+        publication = self._application_view_publication
+        if publication is None or not publication.usable:
             return None
         for run_coverage in publication.state.visualization.saliency_coverage:
             if (
