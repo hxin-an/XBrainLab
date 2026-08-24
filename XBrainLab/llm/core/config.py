@@ -313,10 +313,17 @@ class LLMConfig:
     def configured_model_unavailable_message(self) -> str | None:
         """Return migration guidance for an unsupported persisted model.
 
-        Loading settings is intentionally read-only. Callers may present this
-        message and let the user explicitly save the exact product model.
+        Explicit-path and injected configs remain read-only. Product-default
+        loads normalize retired selections before those configs reach callers.
         """
         return local_model_policy_error(self.model_name)
+
+    def _normalize_unsupported_product_model(self) -> bool:
+        """Select the product default when a persisted model was retired."""
+        if local_model_policy_error(self.model_name) is None:
+            return False
+        self.model_name = self.default_local_model_id()
+        return True
 
     @staticmethod
     def allowed_local_model_ids() -> list[str]:
@@ -458,7 +465,20 @@ class LLMConfig:
         using_default_path = filepath is None
         target_path = Path(filepath or cls._default_settings_path())
         if target_path.exists():
-            return cls._load_existing_file(target_path)
+            loaded_config = cls._load_existing_file(target_path)
+            if loaded_config is None or not using_default_path:
+                return loaded_config
+            if loaded_config._normalize_unsupported_product_model():
+                if loaded_config.save_to_file(str(target_path)):
+                    logging.getLogger(__name__).info(
+                        "Updated retired local model selection to the product default"
+                    )
+                else:
+                    logging.getLogger(__name__).error(
+                        "Retired local model selection could not be updated; "
+                        "using the product default for this session"
+                    )
+            return loaded_config
 
         if not using_default_path:
             return None
@@ -467,6 +487,7 @@ class LLMConfig:
         if legacy_path != target_path and legacy_path.is_file():
             migrated_config = cls._load_existing_file(legacy_path)
             if migrated_config is not None:
+                migrated_config._normalize_unsupported_product_model()
                 if migrated_config.save_to_file(str(target_path)):
                     logging.getLogger(__name__).info(
                         "Migrated local LLM settings from %s to %s",

@@ -107,6 +107,29 @@ focused green後再重跑完整suite。PR #50首輪CI的Windows product-lifecycl
 content-relative regression直接證明text widget與Qt natural width差不超過2 px。此重複的platform-specific
 pixel assertion刪除，不放寬content-relative contract，也不修改production UI；新HEAD重新綁定全部必要證據。
 
+Final Settings repair：使用者於`2026-08-24`手測exact `f5d7c80f`時觀察到首次開啟
+Assistant Settings會無限停在`Checking`，按`Check again`後才正常。量測證實cache
+inspection首次約`1.02 s`且Qt lifecycle有回傳；根因是default per-user config不存在時
+讀取repo-root legacy `settings.json`的已退役Phi-4，worker回傳Phi-4 result，而combo停在
+Granite 3B，dialog因model identity不同丟棄result卻未終止`Checking`。Observable outcome是
+default product load將unsupported persisted model靜默正規化為recommended Granite 3B並原子寫回
+per-user settings；支援的2B／3B繼續保存使用者上次確認選擇，repo-root legacy檔、
+explicit-path reads、malformed file、missing cache與CPU fallback語意不變。使用者已明確授權
+此可見流程變更並選擇無提示的靜默修復。Scope限於現有`LLMConfig`設定owner、直接
+Settings bootstrap regressions與truth sync；不新增UI state／copy、owner、fallback或public API。先以
+config-none＋unsupported legacy＋ready 3B cache的red regression重現無終止`Checking`，再加入最小
+load-time normalization；驗證supported selection no-rewrite、legacy source unchanged、atomic-save
+failure與explicit-path read-only。新product SHA使`f5d7c80f`的UI artifact、non-strict report、CI與手測
+全數失效；只有新exact source重建同等evidence、PR #50全部applicable checks成功、使用者
+回報同SHA手測通過並再次明確同意merge後才能合併。
+Implementation checkpoint：production只修改`LLMConfig`一個owner file，`+24/-3/net +21 LOC`，
+owner數、public API與UI source不變。Owner-level red regression先精確因Phi-4未正規化失敗，
+最小load-time repair後config／lifecycle／Settings focused為125 passed，完整`tests/unit/llm`為
+1542 passed，完整`tests/unit/ui`為2659 passed，Assistant walkthrough／DPI／evaluator contracts加
+integration handoff為322 passed。Ruff、format check、configured Basedpyright與MkDocs strict全通過。
+下一步只建立focused commit，在clean exact SHA重建UI artifact與non-strict 3B report；任何
+未達frozen baseline denominator或source identity不一致就停止，不以舊evidence補足。
+
 施工 checkpoint：catalog／provider chain至`627c5492`已由獨立gate確認無blocker／major；metadata
 discovery保持barrel-free，只有checked provider status能啟用projection。`f27eabfa`已鎖定61-symbol逐檔
 provenance、hash、license與excluded set。第一個baseline convolution family已完成private namespace、minimal

@@ -78,6 +78,68 @@ def _make_worker():
 
 
 class TestLocalBootstrapValidation:
+    def test_first_settings_load_repairs_retired_legacy_model_without_stalling(
+        self,
+        qtbot,
+        tmp_path,
+    ):
+        from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
+
+        retired_repo = "microsoft/Phi-4-mini-instruct"
+        product_repo = LLMConfig.default_local_model_id()
+        user_settings_path = tmp_path / "user" / "settings.json"
+        legacy_settings_path = tmp_path / "repo" / "settings.json"
+        cache_dir = tmp_path / "models"
+        legacy_settings_path.parent.mkdir(parents=True)
+        _write_settings(legacy_settings_path, retired_repo)
+        _create_hf_cache(cache_dir, product_repo)
+        original_legacy_settings = legacy_settings_path.read_bytes()
+
+        with (
+            patch.object(
+                LLMConfig,
+                "_default_settings_path",
+                return_value=str(user_settings_path),
+            ),
+            patch.object(
+                LLMConfig,
+                "_legacy_settings_path",
+                return_value=str(legacy_settings_path),
+            ),
+            patch(
+                "XBrainLab.llm.core.config.user_model_cache_dir",
+                return_value=cache_dir,
+            ),
+            patch(
+                "XBrainLab.llm.core.config.importlib.util.find_spec",
+                return_value=object(),
+            ),
+        ):
+            dialog = ModelSettingsDialog(
+                parent=None,
+                config=None,
+                agent_manager=MagicMock(),
+            )
+            qtbot.addWidget(dialog)
+            qtbot.waitUntil(
+                lambda: (
+                    dialog._pending_inspection_request_id is None
+                    and dialog._current_local_model_state is not None
+                    and dialog._current_local_model_state.request.model_name
+                    == product_repo
+                ),
+                timeout=3000,
+            )
+
+        persisted = json.loads(user_settings_path.read_text(encoding="utf-8"))
+        assert persisted["local"]["model_name"] == product_repo
+        assert legacy_settings_path.read_bytes() == original_legacy_settings
+        assert dialog.config.model_name == product_repo
+        assert dialog.local_model_combo.currentData() == product_repo
+        assert dialog.local_status_label.text() == "Ready"
+        assert dialog.local_action_btn.text() == "Delete"
+        assert dialog.model_migration_label.isHidden() is True
+
     def test_saved_local_config_and_hf_cache_keep_ui_truth_consistent(
         self,
         qtbot,
