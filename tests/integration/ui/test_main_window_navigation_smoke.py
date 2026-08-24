@@ -150,7 +150,6 @@ class TestAIAssistantDock:
         test_app.init_agent()
         runtime = test_app.agent_manager.assistant_runtime
         monkeypatch.setattr(runtime, "load_config", lambda: object())
-        monkeypatch.setattr(runtime, "needs_first_run", lambda _config: False)
         monkeypatch.setattr(
             runtime,
             "activate",

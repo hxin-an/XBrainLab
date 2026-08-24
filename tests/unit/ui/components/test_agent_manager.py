@@ -75,10 +75,6 @@ from XBrainLab.llm.agent.ui_handoff import (
     WorkflowUiHandoffResolutionStatus,
 )
 from XBrainLab.llm.core.config import LLMConfig
-from XBrainLab.llm.core.runtime_selection import (
-    AssistantRuntimeSelectionFailure,
-    AssistantRuntimeSelectionFailureCode,
-)
 from XBrainLab.llm.tools.application_surface import ToolCommandResult
 from XBrainLab.ui.chat.message_bubble import MessageBubble
 from XBrainLab.ui.chat.presentation import (
@@ -93,7 +89,6 @@ from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     RuntimeCommandAdmissionResult,
     RuntimeCommandAdmissionStatus,
     RuntimeSetupAction,
-    RuntimeSetupOutcome,
 )
 from XBrainLab.ui.components.assistant_status_projection import (
     AssistantStatusProjection,
@@ -2992,156 +2987,78 @@ class TestAgentManagerMethods:
             agent_mgr._assistant_runtime.load_config.return_value,
         )
 
-    @pytest.mark.parametrize(
-        ("choice", "message", "visible_message"),
-        [
-            (
-                "later",
-                "Assistant setup was deferred. Open assistant settings when you are "
-                "ready to continue.",
-                "Assistant setup was deferred. Open assistant settings when you are "
-                "ready to continue.",
-            ),
-            (
-                "disable",
-                "Assistant is disabled. Open assistant settings when you want to "
-                "enable it.",
-                "Assistant is disabled. Open assistant settings to enable it.",
-            ),
-        ],
-    )
-    def test_first_run_stop_keeps_setup_recovery_surface(
-        self,
-        agent_mgr,
-        choice,
-        message,
-        visible_message,
-    ):
+    def test_first_open_setup_is_inline_and_does_not_activate(self, agent_mgr):
         agent_mgr._assistant_runtime.initialized = False
         agent_mgr._assistant_runtime.needs_first_run.return_value = True
-        agent_mgr._assistant_runtime.apply_first_run_choice.return_value = (
-            RuntimeSetupOutcome(
-                RuntimeSetupAction.STOP,
-                message,
-            )
-        )
         agent_mgr.chat_panel = MagicMock()
         agent_mgr.chat_dock = MagicMock()
-        agent_mgr._show_local_runtime_first_run_dialog = MagicMock(
-            return_value=choice,
-        )
-        status_messages: list[str] = []
-        agent_mgr.status_message_received.connect(status_messages.append)
 
         agent_mgr.toggle()
 
-        agent_mgr.chat_dock.show.assert_called_once_with()
-        agent_mgr.chat_dock.close.assert_not_called()
-        agent_mgr.main_window.ai_btn.setChecked.assert_called_with(True)
         agent_mgr._assistant_runtime.activate.assert_not_called()
-        agent_mgr.chat_panel.set_runtime_state.assert_called_once_with(
-            AssistantRuntimePhase.IDLE.value,
-            visible_message,
-        )
-        agent_mgr.chat_controller.add_agent_message.assert_not_called()
-        assert status_messages[-1] == visible_message
+        agent_mgr.chat_panel.show_inline_setup.assert_called_once()
 
-    def test_first_run_download_keeps_dock_open_and_routes_to_settings(
-        self,
-        agent_mgr,
+    @pytest.mark.parametrize(
+        ("failure", "cache_ready"), [(None, True), (object(), False)]
+    )
+    def test_inline_setup_projects_catalog_label_memory_and_preview(
+        self, agent_mgr, failure, cache_ready
     ):
-        agent_mgr._assistant_runtime.initialized = False
-        agent_mgr._assistant_runtime.needs_first_run.return_value = True
-        agent_mgr._assistant_runtime.apply_first_run_choice.return_value = (
-            RuntimeSetupOutcome(RuntimeSetupAction.OPEN_SETTINGS)
+        config = MagicMock(model_name="ibm-granite/granite-4.0-micro")
+        agent_mgr._assistant_runtime.preview_launch.return_value.failure = failure
+        agent_mgr.chat_panel = MagicMock()
+
+        agent_mgr._show_inline_setup(config)
+
+        detail = agent_mgr.chat_panel.show_inline_setup.call_args.args[0]
+        assert detail == "Granite 4.0 Micro 3B (Recommended)\nEstimated 8 GB VRAM"
+        assert (
+            agent_mgr.chat_panel.show_inline_setup.call_args.kwargs["cache_ready"]
+            is cache_ready
+        )
+
+    def test_inline_enable_persists_reloads_and_surfaces_activation_failure(
+        self, agent_mgr
+    ):
+        config = MagicMock()
+        reloaded = MagicMock()
+        agent_mgr._assistant_runtime.load_config.side_effect = [config, reloaded]
+        agent_mgr._assistant_runtime.apply_first_run_choice.return_value.action = (
+            RuntimeSetupAction.CONTINUE
+        )
+        agent_mgr._assistant_runtime.activate.return_value = RuntimeActivationResult(
+            RuntimeActivationStatus.UNAVAILABLE, message="Model cache not found."
         )
         agent_mgr.chat_panel = MagicMock()
-        agent_mgr.chat_dock = MagicMock()
-        agent_mgr._show_local_runtime_first_run_dialog = MagicMock(
-            return_value="download",
+        agent_mgr.refresh_backend_status = MagicMock()
+
+        agent_mgr._handle_inline_setup("enable")
+
+        agent_mgr._assistant_runtime.apply_first_run_choice.assert_called_once_with(
+            config, "enable"
         )
+        agent_mgr._assistant_runtime.activate.assert_called_once_with(reloaded)
+        agent_mgr.refresh_backend_status.assert_called_once()
+        agent_mgr.chat_panel.show_runtime_notice.assert_called_once()
+
+    def test_inline_open_settings_never_activates(self, agent_mgr):
         agent_mgr.open_settings_dialog = MagicMock()
 
-        agent_mgr.toggle()
+        agent_mgr._handle_inline_setup("open_settings")
 
-        agent_mgr.chat_dock.show.assert_called_once_with()
-        agent_mgr.chat_dock.close.assert_not_called()
         agent_mgr.open_settings_dialog.assert_called_once_with()
         agent_mgr._assistant_runtime.activate.assert_not_called()
 
-    def test_later_surface_can_close_and_reopen_without_losing_setup_recovery(
-        self,
-        agent_mgr,
-    ):
-        agent_mgr._assistant_runtime.initialized = False
-        agent_mgr._assistant_runtime.needs_first_run.return_value = True
-        message = (
-            "Assistant setup was deferred. Open assistant settings when you are "
-            "ready to continue."
-        )
-        agent_mgr._assistant_runtime.apply_first_run_choice.return_value = (
-            RuntimeSetupOutcome(RuntimeSetupAction.STOP, message)
-        )
-        agent_mgr.chat_panel = MagicMock()
+    def test_initialized_toggle_closes_then_reopens_dock(self, agent_mgr):
+        agent_mgr._assistant_runtime.initialized = True
         agent_mgr.chat_dock = MagicMock()
-        agent_mgr.chat_dock.isVisible.side_effect = [False, True, False]
-        agent_mgr._show_local_runtime_first_run_dialog = MagicMock(
-            return_value="later",
-        )
+        agent_mgr.chat_dock.isVisible.side_effect = [True, False]
 
         agent_mgr.toggle()
         agent_mgr.toggle()
-        agent_mgr.toggle()
 
-        assert agent_mgr.chat_dock.show.call_count == 2
         agent_mgr.chat_dock.close.assert_called_once_with()
-        assert agent_mgr._show_local_runtime_first_run_dialog.call_count == 2
-        assert agent_mgr.chat_panel.set_runtime_state.call_count == 2
-
-    def test_disabled_surface_reopens_as_setup_required_not_crashed(
-        self,
-        agent_mgr,
-    ):
-        agent_mgr._assistant_runtime.initialized = False
-        agent_mgr._assistant_runtime.needs_first_run.side_effect = [True, False]
-        disabled_message = (
-            "Local assistant runtime is disabled. Enable it in assistant settings "
-            "when you want to use the local model."
-        )
-        agent_mgr._assistant_runtime.apply_first_run_choice.return_value = (
-            RuntimeSetupOutcome(
-                RuntimeSetupAction.STOP,
-                "Assistant is disabled.",
-            )
-        )
-        agent_mgr._assistant_runtime.activate.return_value = RuntimeActivationResult(
-            RuntimeActivationStatus.UNAVAILABLE,
-            message=disabled_message,
-            failure=AssistantRuntimeSelectionFailure(
-                code=AssistantRuntimeSelectionFailureCode.RUNTIME_DISABLED,
-                message=disabled_message,
-                requested_backend_id="local",
-                requested_model_id="test-model",
-            ),
-        )
-        agent_mgr.chat_panel = MagicMock()
-        agent_mgr.chat_dock = MagicMock()
-        agent_mgr.chat_dock.isVisible.side_effect = [False, True, False]
-        agent_mgr._show_local_runtime_first_run_dialog = MagicMock(
-            return_value="disable",
-        )
-
-        agent_mgr.toggle()
-        agent_mgr.toggle()
-        agent_mgr.toggle()
-
-        assert agent_mgr.chat_dock.show.call_count == 2
-        agent_mgr.chat_dock.close.assert_called_once_with()
-        agent_mgr._assistant_runtime.activate.assert_called_once()
-        phase, visible = agent_mgr.chat_panel.set_runtime_state.call_args.args
-        assert phase == AssistantRuntimePhase.IDLE.value
-        assert "disabled" in visible.lower()
-        agent_mgr.chat_panel.show_runtime_notice.assert_not_called()
+        agent_mgr.chat_dock.show.assert_called_once_with()
 
     def test_settings_retry_ready_recovery_uses_runtime_publications(
         self,
@@ -3783,6 +3700,29 @@ class TestAgentManagerProductChatFlow:
         assert manager.chat_controller.is_processing is False
         assert manager.chat_panel.is_processing is False
 
+    def test_completed_chat_returns_focus_so_spaces_do_not_start_new_chat(
+        self,
+        qtbot,
+    ) -> None:
+        manager, _fake = _make_real_manager_with_fake_controller(qtbot, "normal")
+        manager.main_window.show()
+        manager.chat_dock.show()
+        composer = manager.chat_panel.input_field
+        new_chat_requests: list[bool] = []
+        manager.new_conv_title_btn.clicked.connect(
+            lambda _checked=False: new_chat_requests.append(True)
+        )
+        composer.setFocus()
+        qtbot.waitUntil(composer.hasFocus)
+        composer.setText("hello")
+
+        qtbot.keyClick(composer, Qt.Key.Key_Return)
+        qtbot.waitUntil(composer.hasFocus)
+        qtbot.keyClicks(composer, "   ")
+
+        assert composer.text() == "   "
+        assert new_chat_requests == []
+
     def test_empty_response_fallback_is_visible(self, qtbot):
         manager, _fake = _make_real_manager_with_fake_controller(qtbot, "empty")
 
@@ -3837,11 +3777,6 @@ class TestAgentManagerProductChatFlow:
                 manager._assistant_runtime,
                 "load_config",
                 return_value=MagicMock(),
-            ),
-            patch.object(
-                manager._assistant_runtime,
-                "needs_first_run",
-                return_value=False,
             ),
             patch.object(
                 manager._assistant_runtime,

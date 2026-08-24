@@ -43,7 +43,6 @@ from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     RuntimeActivationStatus,
     RuntimeCommandAdmissionResult,
     RuntimeCommandAdmissionStatus,
-    RuntimeSetupAction,
 )
 
 TEST_ACTIVE_MODEL_ID = "test/runtime-active"
@@ -1936,32 +1935,6 @@ def test_activate_closed_lifecycle_reports_unavailable_instead_of_started() -> N
     assert lifecycle.controller is None
     assert lifecycle.initialized is False
     assert factory_calls == 0
-
-
-def test_lifecycle_first_run_decision_persists_runtime_policy(monkeypatch) -> None:
-    lifecycle = AssistantRuntimeLifecycle(
-        study=object(),
-        controller_factory=lambda _study: _Controller(),
-        dispatcher=_Dispatcher(),
-        config_loader=_ready_config,
-    )
-    config = LLMConfig()
-    saves: list[LLMConfig] = []
-    monkeypatch.setattr(
-        config, "save_to_file", lambda filepath=None: saves.append(config)
-    )
-
-    disabled = lifecycle.apply_first_run_choice(config, "disable")
-    assert disabled.action is RuntimeSetupAction.STOP
-    assert "disabled" in disabled.message.lower()
-    assert config.local_model_enabled is False
-    assert config.local_runtime_notice_acknowledged is True
-    assert saves == [config]
-
-    deferred_config = LLMConfig()
-    deferred = lifecycle.apply_first_run_choice(deferred_config, "later")
-    assert deferred.action is RuntimeSetupAction.STOP
-    assert "deferred" in deferred.message.lower()
 
 
 def test_agent_manager_keeps_runtime_state_out_of_its_instance(qtbot) -> None:
