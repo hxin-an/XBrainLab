@@ -12,6 +12,39 @@ handoff-ready 或可 merge。
 本輪 UI 修改已取得明確授權。先做 red/green focused protection、non-author review 與輕量 walkthrough，
 凍結 exact checkpoint 交使用者確認；只有同一 source 獲得 UI／流程確認後才跑 canonical heavy handoff。
 
+## 2026-08-24 3D Plot 水平分布 closure
+
+### 問題、outcome 與 scope
+
+- 前一輪把 `Epoch time (s)` 與 slider 包在固定 `360–480px` 的置中 row；這只置中了整組，沒有像
+  Preprocess time navigation 一樣使用完整可用寬度。PyVista horizontal scalar bar 亦沿用預設
+  `position_x=0.35`、`width=0.6`，因此 `saliency` 色條明顯偏右。
+- Ready 3D view 必須讓 saliency 色條以畫布中心為中心、左右留白對稱；Epoch time label固定在左，slider
+  吃滿剩餘寬度，800與1180px皆左右margin對稱、無裁切或重疊。
+- 只改3D presentation與直接幾何測試；不增加spin box，不改時間換算、Saliency計算、PyVista lifecycle、
+  sidebar或其他Visualization views。沿用既有Saliency3D與Saliency3DPlotWidget owner，不新增abstraction。
+
+### Repair、validation 與 stop condition
+
+1. 先把既有固定寬置中assert改為observable red tests：scalar bar明確對稱、Qt time row填滿可用寬度。
+2. 明確設定horizontal scalar bar的對稱position／width，刪除固定寬wrapper，讓scene controls直接採用
+   Preprocess同型的label + expanding slider layout。
+3. 跑3D time-slider與直接相鄰Visualization focused tests、changed-file Ruff／format與diff check；產生
+   ready 3D輕量screenshot目視800／1180px分布。真人確認前仍不跑canonical heavy handoff。
+
+若scalar bar中心不在畫布中心、time slider未隨寬度擴展、左右margin不對稱，或scene clear／time update
+行為退化，即停在checkpoint，不交付手測。
+
+### 施工狀態
+
+- Red tests分別失敗於缺少explicit scalar-bar position與slider仍由固定寬wrapper擁有；最小修正後同組
+  3 passed，相鄰Visualization focused維持234 passed。
+- Production只觸及既有兩個3D view files，刪除固定寬nested row並明確指定色條`0.1 + 0.8 + 0.1`
+  對稱分布；owner、public interface與行為policy均未增加。
+- Changed-file Ruff、format與diff check通過；800／1180px Qt screenshots確認Epoch row全寬且無overlap。
+  本WSL環境沒有可用X server，不能以offscreen PyVista artifact取代Windows/native 3D scalar-bar acceptance；
+  exact position由direct API test固定，真人手測仍是本checkpoint的下一個gate。
+
 ## 2026-08-24 BIDS cancel 與 Saliency repeat-training closure
 
 ### 問題、證據與 observable outcome

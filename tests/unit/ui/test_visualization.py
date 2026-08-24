@@ -837,7 +837,7 @@ class TestSaliency3DPlotWidget:
 
         assert not hasattr(widget, "scene_overlay")
         assert widget.scene_controls.findChildren(QPushButton) == []
-        assert widget.time_slider.parentWidget() is widget.epoch_time_row
+        assert widget.time_slider.parentWidget() is widget.scene_controls
 
     def test_terminal_publication_starts_one_3d_scene_update(self, qtbot):
         with patch(

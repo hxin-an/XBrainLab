@@ -39,6 +39,8 @@ def test_initial_3d_prompt_uses_warning_color(qtbot, monkeypatch) -> None:
 class _PlotterStub:
     def __init__(self) -> None:
         self.slider_kwargs: dict[str, Any] = {}
+        self.scalar_bar_args: tuple[Any, ...] = ()
+        self.scalar_bar_kwargs: dict[str, Any] = {}
         self.camera = MagicMock()
 
     def add_camera_orientation_widget(self) -> None:
@@ -56,8 +58,9 @@ class _PlotterStub:
     def add_mesh(self, *_args: Any, **_kwargs: Any) -> object:
         return object()
 
-    def add_scalar_bar(self, *_args: Any, **_kwargs: Any) -> None:
-        pass
+    def add_scalar_bar(self, *args: Any, **kwargs: Any) -> None:
+        self.scalar_bar_args = args
+        self.scalar_bar_kwargs = kwargs
 
     def update_scalar_bar_range(self, *_args: Any, **_kwargs: Any) -> None:
         pass
@@ -103,6 +106,13 @@ def test_3d_scene_has_no_overlay_slider_and_accepts_epoch_time_seconds() -> None
     # PyVista canvas free of overlays prevents controls and labels from
     # covering the saliency surface.
     assert plotter.slider_kwargs == {}
+    assert plotter.scalar_bar_args == ("saliency",)
+    assert plotter.scalar_bar_kwargs["position_x"] == 0.1
+    assert plotter.scalar_bar_kwargs["width"] == 0.8
+    assert (
+        plotter.scalar_bar_kwargs["position_x"] + plotter.scalar_bar_kwargs["width"] / 2
+        == 0.5
+    )
 
     saliency._set_time_seconds(-0.04)
 
@@ -111,22 +121,29 @@ def test_3d_scene_has_no_overlay_slider_and_accepts_epoch_time_seconds() -> None
     update.assert_called_once_with()
 
 
-def test_epoch_time_controls_are_centered_at_wide_and_narrow_widths(
+def test_epoch_time_controls_fill_available_width_at_wide_and_narrow_widths(
     qtbot,
     monkeypatch,
 ) -> None:
     widget = _new_widget(qtbot, monkeypatch)
     widget.scene_controls.show()
 
+    time_label = next(
+        label
+        for label in widget.scene_controls.findChildren(QLabel)
+        if label.text() == "Epoch time (s):"
+    )
+
     for width in (1180, 800):
         widget.resize(width, 600)
         widget.show()
         QApplication.processEvents()
-        row = widget.findChild(type(widget.scene_controls), "Saliency3DEpochTimeRow")
-        assert row is not None
-        assert 360 <= row.width() <= 480
-        assert widget.time_slider.width() >= 240
+
+        assert time_label.parentWidget() is widget.scene_controls
+        assert widget.time_slider.parentWidget() is widget.scene_controls
+        assert time_label.geometry().left() == 8
         assert (
-            abs(row.geometry().center().x() - widget.scene_controls.rect().center().x())
-            <= 1
+            widget.scene_controls.width() - widget.time_slider.geometry().right() - 1
+            == 8
         )
+        assert widget.time_slider.width() >= width - 160

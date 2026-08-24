@@ -201,6 +201,8 @@ class Saliency3D:
             interactive=False,
             vertical=False,
             color=Theme.TEXT_PRIMARY,
+            position_x=0.1,
+            width=0.8,
         )
         self.plotter.update_scalar_bar_range(self.engine.scalar_bar_range, "saliency")
         self.plotter.add_mesh(self.engine.brain_scaled, color=Theme.BRAIN_MESH)

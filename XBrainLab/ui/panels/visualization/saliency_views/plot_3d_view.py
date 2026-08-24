@@ -300,27 +300,14 @@ class Saliency3DPlotWidget(QWidget):
         self.scene_controls.setObjectName("Saliency3DEpochTimeControls")
         scene_layout = QHBoxLayout(self.scene_controls)
         scene_layout.setContentsMargins(8, 0, 8, 0)
-        scene_layout.setSpacing(0)
-        scene_layout.addStretch(1)
-        self.epoch_time_row = QWidget(self.scene_controls)
-        self.epoch_time_row.setObjectName("Saliency3DEpochTimeRow")
-        self.epoch_time_row.setMinimumWidth(360)
-        self.epoch_time_row.setMaximumWidth(480)
-        self.epoch_time_row.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Preferred,
-        )
-        row_layout = QHBoxLayout(self.epoch_time_row)
-        row_layout.setContentsMargins(0, 0, 0, 0)
-        row_layout.setSpacing(8)
-        row_layout.addWidget(QLabel("Epoch time (s):", self.epoch_time_row))
-        self.time_slider = QSlider(Qt.Orientation.Horizontal, self.epoch_time_row)
+        scene_layout.setSpacing(8)
+        self.epoch_time_label = QLabel("Epoch time (s):", self.scene_controls)
+        scene_layout.addWidget(self.epoch_time_label)
+        self.time_slider = QSlider(Qt.Orientation.Horizontal, self.scene_controls)
         self.time_slider.setObjectName("Saliency3DEpochTimeSlider")
         self.time_slider.setRange(0, 1000)
         self.time_slider.valueChanged.connect(self._set_epoch_time)
-        row_layout.addWidget(self.time_slider, stretch=1)
-        scene_layout.addWidget(self.epoch_time_row, stretch=8)
-        scene_layout.addStretch(1)
+        scene_layout.addWidget(self.time_slider, stretch=1)
         self.scene_controls.hide()
 
         # Plot Area
