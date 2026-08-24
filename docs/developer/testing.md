@@ -182,6 +182,10 @@ timeout 30m prlimit --core=0 -- \
 執行前先確認 active decision 指定的 Granite 4.0 Micro 3B exact revision已存在active model cache。將下列兩個範例
 路徑換成本機實際位置：
 
+先用`nvidia-smi`確認3B evaluator啟動前至少約有8 GiB可用VRAM；不足時停止並等待資源釋放，不終止
+不是本次驗證啟動的程序，也不要把OOM／資源不足寫成模型品質回歸。以下命令不會silent fallback到CPU或
+另一個model。
+
 ```bash
 export XBRAINLAB_MODEL_CACHE_DIR=/mnt/d/path/to/model-cache
 export XBRAINLAB_RAG_CACHE_DIR=/mnt/d/path/to/rag-cache
@@ -271,6 +275,41 @@ step ID 和 screenshot 後停止該次 session。
 
 Profile JSON 是實際步驟順序的權威來源；完整的人工驗收條件與 Complete Workflow 測試資料設定
 見[Assistant 人工操作驗證](../validation/README.md#assistant-manual-walkthrough-commands)。
+
+### D. Windows native：Assistant handtest blockers v2
+
+這份清單專門驗收inline setup、輸入、短bubble與跨輪補參數；offscreen test、tool-debug profile或
+自動capture都不能取代。開始前在候選branch執行`git rev-parse HEAD`並記下完整SHA；手測期間source若再改，
+本次結果失效。
+
+從repository root啟動正常產品：
+
+```bash
+poetry run python run.py --model local
+```
+
+依序檢查：
+
+1. 開啟Assistant Settings。Model清單必須同時有`Granite 4.0 Micro 3B (Recommended)`與
+   `Granite 3.3 2B (Lower memory)`；選擇3B並完成既有cache／download流程。
+2. 第一次打開Assistant Dock只能看到`Start XBrainLab Assistant` inline setup，不得出現
+   `Local Assistant Runtime` modal。Cache完整時`Enable Assistant`可按；缺cache時`Set up model`與
+   `Assistant Settings`都能回到唯一Settings流程。
+3. 在空composer連按多次Space。對話不得被清除、不得開New Chat；接著送出`hello`，assistant的短回覆
+   bubble要貼合內容，不得在文字後留下大片空白。
+4. 使用Microsoft Pinyin輸入中文，以Enter選字。候選字commit時不得提前送出、不得遺失中文；組字完成後
+   再按一次Enter，該訊息只能送出一次。Assistant terminal後，若沒有點到其他控制，focus應回composer；
+   若手動把focus移到其他控制，Assistant不得搶回。
+5. 載入可安全套用40 Hz high cutoff的EEG資料後，輸入`Filter the data`。Assistant應先問bandpass或notch，
+   不得直接執行；回答`bandpass`後才追問cutoff。回答`12 Hz`後只追問high cutoff，再回答`40 Hz`時只執行
+   一次`apply_bandpass_filter(low_freq=12, high_freq=40)`，不得再次宣稱low／high缺失。
+6. 另開New Chat測direct路徑：輸入`Apply a bandpass filter`，再以單一回覆`12 to 40 Hz`補齊；應在重驗
+   current schema、publication與capability後執行一次。重新測一次但在追問後輸入取消語句，必須零execution，
+   且下一個無關turn不得繼承舊值。
+
+任何modal、按鈕不可用、Space清對話、中文無法commit／重複送出、focus被搶、短bubble尾端空白、不同tool
+繼承參數、補值後仍陷入missing loop，或未完成參數就執行，都算失敗並停止。通過後回報日期、完整SHA、
+實測範圍與Windows輸入法；只有同一SHA的明確通過回報與merge批准，才能進PR／merge。
 
 若要讓真 Granite 經由可見的 ChatPanel 執行 Data Interpretation 的
 scan → preview → validate，使用：
