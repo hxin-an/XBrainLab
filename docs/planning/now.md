@@ -4,14 +4,71 @@
 
 ## 目前焦點
 
-`integration/gui-polish-v1` 的前一個 exact-source handoff 已通過，但其後 Windows／Linux 真人手測
-揭露 Data Import cancel、Evaluation operation presentation、Saliency result admission／controls、2D／3D
-layout 與 warning modal consistency 問題。Source 將再次修改，因此前一份 manual acceptance 與 handoff
-evidence 均已失效；本 slice 完成前不得宣稱 handoff-ready 或可 merge。
+`integration/gui-polish-v1` 的前一個 visual checkpoint 在 2026-08-24 真人手測又揭露 BIDS revalidation
+Cancel、Saliency repeat-training admission 與三項 3D／提示 presentation defect。Source 將再次修改，因此
+既有 manual acceptance、focused totals 與 handoff evidence 均已失效；本 slice 完成前不得宣稱
+handoff-ready 或可 merge。
 
-本 slice 已取得明確 UI 修改授權。目標是在同一 branch 以多個可回退 commit 完成所有已列出的 GUI
-缺陷、全面收斂 user-visible modal presentation，經 focused tests、非作者 subagent gate 與 canonical
-handoff 後一次性交付真人手測。
+本輪 UI 修改已取得明確授權。先做 red/green focused protection、non-author review 與輕量 walkthrough，
+凍結 exact checkpoint 交使用者確認；只有同一 source 獲得 UI／流程確認後才跑 canonical heavy handoff。
+
+## 2026-08-24 BIDS cancel 與 Saliency repeat-training closure
+
+### 問題、證據與 observable outcome
+
+- BIDS subject route 在 `Confirm and Import -> Preview/Validate -> Cancel Import` 重開 review 時，staged
+  `value_decisions` 會整包覆蓋 backend observed mapping，導致 occurrence count／evidence 消失；hydrated rows
+  又被當作未編輯 baseline，使 recheck false、顯示 `Cannot import yet`。重開後必須保留 count、evidence、
+  `Use as`、class name 與所有未修改 event values，且不需再碰 controls 即可重新驗證；取消期間不得 apply、
+  rescan 或 mutation。真正 incomplete／malformed review 仍 fail closed。
+- 正常 async Compute Saliency 成功 publication 漏清已套用的 pending settings。第二次 training 產生新
+  generation 後，UI 因此誤要求 `Review Saliency Settings Again`。只在 matching operation `SUCCEEDED` 時把
+  staged settings settle 為 applied；尚未 Compute 的 custom settings 仍綁原 result 並要求 review。
+- Saliency canvas 在結果可見前的 non-error empty／ready／rendering提示統一為 warning yellow；error維持紅色。
+  Ready 3D scene 在 sidebar 顯示獨立 `3D PLOT` 群組，只包含 `Electrodes` 與 `Head surface`；Reset仍在
+  `CONFIGURATION`。圖下 `Epoch time (s)` 與 slider 必須整組置中，800／1180px不得偏移或重疊。
+
+### Scope、ownership 與 complexity review
+
+- 不改 EEG event/class 科學語意、backend validation、Apply boundary、Saliency algorithm、自動計算政策、
+  public command/schema、receipt或ownership；不加入PhysionetMI dataset特例或legacy contract fallback。
+- ApplicationService仍擁有validation／mutation／publication；Data Interpretation coordinator仍擁有Qt
+  continuation；event editor只投影backend evidence加user semantic draft；Visualization panel/sidebar只擁有
+  既有UI lifecycle與presentation。owner數前後不變，不新增module、public class或state machine。
+- Deletion／reuse first：以per-value overlay取代whole-map replacement、復用既有strict submission projection，
+  共用兩條success path的pending-clear transition，並移動既有3D controls而非複製callbacks。完成後production
+  diff為12 files、`+352/-134/net +218`，已觸發並完成complexity review；owner delta為0，沒有新增module、
+  public class或state machine。以Data Import與Visualization兩個各自coherent、低於300 net LOC的product
+  commit拆分；planning/evidence closure另成docs commit。若任一批net超過300 LOC、新增owner或總diff超過
+  1,500 LOC，立即停止再拆分。
+
+### Repair、focused validation 與 stop condition
+
+1. 先以真dialog red tests固定backend counts/evidence與staged semantics分層，再以BIDS subject cancellation
+   path固定Preview／Validate cancel、no mutation、recheck與retry；保留既有真正Apply-cancel regression。
+2. 修正matched async Saliency success settle，新增first compute success -> unchanged retraining -> second compute
+   可dispatch；保留unapplied staged settings遇新publication仍要求review的既有contract。
+3. 完成prompt warning token、`3D PLOT` contextual group與centered epoch row，驗證empty/ready/error、tab
+   visibility、toggle/reset callbacks與800／1180pxgeometry。
+4. 跑focused selectors、changed-file Ruff／format check、diff check及輕量UI screenshot/walkthrough；主agent目視
+   hierarchy、contrast、text fit與overlap。使用者確認前不跑canonical heavy manifest、source-diverse gate或CI。
+
+若重開後任一count/evidence或choice遺失、staged choice可未經revalidation直接Apply、真正invalid review被放行、
+第二次training仍顯示Review Settings、錯誤訊息被改黃、3D群組出現在unready/非3D view，或epoch row未置中，
+即停在checkpoint，不交付正式handoff。
+
+### 施工狀態
+
+- BIDS observed evidence與staged semantics已分層；真BIDS subject Preview-revalidation cancel會重開同一可recheck
+  review，counts／class choices完整、無`Cannot import yet`且零資料mutation。Commit-source Import focused為
+  227 passed、2 skipped；兩個skip只因CHB-MIT與Sleep-EDFx optional public fixture尚未下載。
+- Matching async Saliency success已settle pending settings；unchanged retraining可再次Compute，unapplied staged
+  settings的stale-publication gate仍保留。Visualization focused為234 passed。
+- Warning-yellow prompts、`3D PLOT` contextual group與480px centered epoch row已完成；exact-source focused
+  walkthrough通過並產生Map／Spectrogram／Topomap／blocked-3D artifacts，另檢查ready sidebar與800px epoch row。
+- Non-author code review無blocking finding；changed-file Ruff、format與diff check通過。Data Import與
+  Visualization product commits已分開收束，commit-source focused selectors均通過；目前凍結為真人手測
+  checkpoint。Windows native與canonical heavy handoff仍依使用者要求留在UI／流程確認之後。
 
 ## 2026-08-24 追加手測阻擋
 
@@ -98,13 +155,14 @@ partial saliency被發布、stale target可覆寫新selection、或任一control
   `All classes` 不提供單一 tile zoom；點 tile 進入該 class detail。3D 收到 All 時自動選第一個可用 class。
 - controls 依可用寬度排成一至三列；順序永遠是 `Normalize` 再 `Absolute`。Spectrogram 隱藏 Absolute
   時不得保留空 slot；非負 method 的 Absolute 仍顯示 disabled 與原因 tooltip。
-- Run option 移除 `(Summary)`；2D detail 使用緊湊 `Reset zoom`，All classes 不顯示 reset。
+- Run option 移除 `(Summary)`；2D detail在右側`CONFIGURATION`顯示contextual `Reset view`，All classes不顯示
+  reset。
 
 ### Visualization
 
 - Spectrogram 移除 `Attribution magnitude spectrogram` suptitle，保留 class title 與 colorbar。
-- 3D 只保留 top-level class selector；canvas 左下放 `Electrodes`、`Head surface`、`Reset view`，
-  Epoch time slider 位於圖下，右上只有一個 orientation display。
+- 3D 只保留 top-level class selector；`Electrodes`、`Head surface` 與contextual `Reset view` 放在右側
+  `CONFIGURATION`，canvas不放action overlay。Epoch time slider位於圖下，右上只有一個orientation display。
 - `Mean over ...` 不作 visible copy，只保留 tooltip／accessible description。
 - 一個 accepted terminal publication 只允許一次 3D scene update／commit。
 
