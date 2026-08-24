@@ -5,7 +5,37 @@ Git and merged pull requests.
 
 ## [Unreleased]
 
-No user-visible changes are queued after the Local Assistant baseline.
+No user-visible changes are queued after the Saliency Refresh baseline.
+
+## [0.8.0] - 2026-08-24
+
+### Changed
+
+- Saliency selection now distinguishes exact Fold and Evaluation-admitted Fold Set targets, shows
+  uncomputed targets explicitly, and keeps older computed results available for deliberate review.
+- Saliency Map class navigation, responsive settings, Spectrogram presentation, Topographic Map, and
+  3D controls were consolidated for clearer all-class comparison and single-class inspection.
+- The 3D view now uses epoch-relative time below the scene, a centered Saliency scale, contextual
+  configuration actions, and one orientation widget across repeated renders.
+- Blocking warnings and confirmations use the shared XBrainLab modal presentation, while detached
+  Evaluation rendering no longer presents a misleading user-owned cancel action.
+
+### Fixed
+
+- Cancel Import and review recovery preserve staged label choices and observed event evidence without
+  partially mutating product data.
+- Repeated Training followed by Compute Saliency correctly admits the newest result without requiring
+  an unchanged settings review or reusing stale Fold Set output.
+- Saliency empty-state messaging, render publication, reset controls, class selectors, narrow layouts,
+  and repeated 3D scene updates no longer overlap, duplicate controls, or publish intermediate scenes.
+
+### Release boundary
+
+- This is a manually accepted source/desktop workflow refresh, not a signed installer or a scientific
+  validity certification for attribution results.
+- Cross-platform CI protects source startup and lifecycle contracts; it does not replace native
+  installer, arbitrary hardware, DPI, OpenGL, or dataset certification.
+- Safety-zero-tolerance, arbitrary dataset/model support, and product 1.0 remain outside this release.
 
 ## [0.7.0] - 2026-08-20
 
