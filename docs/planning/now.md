@@ -76,9 +76,10 @@ partial saliency被發布、stale target可覆寫新selection、或任一control
 - 合併後focused denominator目前為452 passed，另有backend saliency publication lifecycle 35 passed；Ruff、
   format、diff與configured Basedpyright沒有新增diagnostic。低-mock gate涵蓋真async/Qt cancel reopen、真
   ApplicationService owned-work transition，以及selected Fold Set cancel後同members retry且零partial publish。
-- 下一步只凍結第四個commit並對不再變動的source重跑一次輕量visualization render；四張2D／3D候選圖與
-  source identity通過、主agent目視完成後即交使用者手測。使用者明確確認UI okay前不跑canonical heavy
-  manifest、跨來源資料集gate或CI。
+- 第四個review-closure commit已凍結並push；clean exact-source輕量visualization render的四張2D／3D
+  候選圖、control contract、source identity與clean shutdown皆通過，主agent目視亦未發現overlap、殘影或
+  hidden-control空洞。下一步停在使用者手測；使用者明確確認UI okay前不跑canonical heavy manifest、
+  跨來源資料集gate或CI，也不merge。
 
 ## 問題與 observable outcome
 
