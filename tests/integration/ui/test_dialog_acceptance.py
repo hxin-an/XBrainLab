@@ -354,7 +354,7 @@ def test_epoching_baseline_boundaries_match_live_and_accept_validation(
     assert dialog.create_button.isEnabled() is (expected_error is None)
 
     with patch(
-        "XBrainLab.ui.dialogs.preprocess.epoching_dialog.QMessageBox.warning"
+        "XBrainLab.ui.dialogs.preprocess.epoching_dialog.show_warning"
     ) as warning:
         dialog.accept()
 
@@ -405,7 +405,7 @@ def test_epoching_dialog_unknown_window_mode_needs_review_and_blocks_submit(qtbo
     assert not dialog.create_button.isEnabled()
 
     with patch(
-        "XBrainLab.ui.dialogs.preprocess.epoching_dialog.QMessageBox.warning"
+        "XBrainLab.ui.dialogs.preprocess.epoching_dialog.show_warning"
     ) as warning:
         dialog.accept()
 
@@ -497,7 +497,7 @@ def test_epoching_live_and_accept_share_event_and_window_validation(
     assert dialog.warning_label.isVisible()
 
     with patch(
-        "XBrainLab.ui.dialogs.preprocess.epoching_dialog.QMessageBox.warning"
+        "XBrainLab.ui.dialogs.preprocess.epoching_dialog.show_warning"
     ) as warning:
         dialog.accept()
 
@@ -623,7 +623,7 @@ def test_epoching_dialog_displays_and_returns_backend_duration_requirement(
     assert dialog.confirmation_check.text() == requirement["confirmation_label"]
 
     with patch(
-        "XBrainLab.ui.dialogs.preprocess.epoching_dialog.QMessageBox.warning"
+        "XBrainLab.ui.dialogs.preprocess.epoching_dialog.show_warning"
     ) as warning:
         dialog.accept()
     warning.assert_called_once_with(

@@ -1280,7 +1280,7 @@ class TestSetOptimizer:
         expected_params,
     ):
         with patch(
-            "XBrainLab.ui.dialogs.training.optimizer_setting_dialog.QMessageBox.warning"
+            "XBrainLab.ui.dialogs.training.optimizer_setting_dialog.show_warning"
         ) as warning:
             dialog = OptimizerSettingDialog(None)
             qtbot.addWidget(dialog)
@@ -1308,12 +1308,15 @@ class TestSetOptimizer:
         dialog.params_table.item(betas_row, 1).setText("not-a-tuple")
 
         with patch(
-            "XBrainLab.ui.dialogs.training.optimizer_setting_dialog.QMessageBox.warning"
+            "XBrainLab.ui.dialogs.training.optimizer_setting_dialog.show_warning"
         ) as warning:
             dialog.accept()
 
         warning.assert_called_once()
-        assert "betas" in warning.call_args.args[2]
+        parent, title, message = warning.call_args.args
+        assert parent is dialog
+        assert title == "Validation Error"
+        assert "betas" in message
 
 
 class TestSetDevice:

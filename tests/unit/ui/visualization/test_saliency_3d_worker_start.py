@@ -325,6 +325,135 @@ def test_3d_engine_start_failure_releases_worker_and_allows_retry(
     show_error.assert_called_once()
 
 
+def test_failed_3d_engine_preparation_allows_retry_of_the_same_scene(
+    widget,
+    monkeypatch,
+):
+    """A failed preparation must not reserve its scene key indefinitely."""
+    publication = _render_publication(generation=13)
+    widget.set_saliency_coverage(
+        plot_3d_view.SaliencyMethodCoverageSnapshot(
+            method="Gradient",
+            available=True,
+            complete=True,
+            classes=[
+                plot_3d_view.SaliencyClassCoverageSnapshot(
+                    class_index=0,
+                    display_name="left",
+                    available=True,
+                ),
+            ],
+        )
+    )
+
+    monkeypatch.setattr(
+        Saliency3DPlotWidget,
+        "_interactive_3d_runtime_available",
+        staticmethod(lambda: (True, "")),
+    )
+    workers, pool, _ = _install_manual_workers(widget, monkeypatch)
+    widget.update_plot(publication, False)
+    workers[0].signals.error.emit((RuntimeError, RuntimeError("engine failed"), ""))
+    workers[0].signals.finished.emit()
+
+    assert widget._active_scene_key is None
+
+    widget.update_plot(publication, False)
+
+    assert pool.workers == workers
+    assert widget._engine_worker is workers[1]
+
+
+def test_failed_final_3d_render_allows_retry_of_the_same_scene(
+    widget,
+    monkeypatch,
+):
+    """A head-plot failure releases the current scene key for an exact retry."""
+    publication = _render_publication(generation=14)
+    plotter = QWidget(widget.plot_container)
+    widget.plot_layout.addWidget(plotter)
+    widget.plotter_widget = plotter
+    request_id = widget._invalidate_async_requests()
+    widget._current_publication_generation = publication.generation
+    widget._active_scene_key = widget._prepared_engine_cache_key(
+        publication,
+        "left",
+        absolute=False,
+    )
+    failed_scene = SimpleNamespace(
+        init_error="",
+        engine=object(),
+        get_3d_head_plot=MagicMock(side_effect=RuntimeError("head plot failed")),
+    )
+    rendered_scene = SimpleNamespace(
+        init_error="",
+        engine=object(),
+        get_3d_head_plot=MagicMock(),
+    )
+    monkeypatch.setattr(
+        plot_3d_view,
+        "Saliency3D",
+        MagicMock(side_effect=(failed_scene, rendered_scene)),
+    )
+
+    widget._do_3d_plot_if_alive(
+        request_id,
+        plotter,
+        publication.data,
+        "left",
+        publication_generation=publication.generation,
+    )
+
+    assert widget._active_scene_key is None
+
+    retry_request_id = widget._invalidate_async_requests()
+    widget._current_publication_generation = publication.generation
+    retry_plotter = QWidget(widget.plot_container)
+    widget.plot_layout.addWidget(retry_plotter)
+    widget.plotter_widget = retry_plotter
+    widget._do_3d_plot_if_alive(
+        retry_request_id,
+        retry_plotter,
+        publication.data,
+        "left",
+        publication_generation=publication.generation,
+    )
+
+    assert plot_3d_view.Saliency3D.call_count == 2
+    assert widget._saliency_scene is rendered_scene
+
+
+def test_stale_final_3d_render_failure_keeps_newer_scene_key(
+    widget,
+    monkeypatch,
+):
+    publication = _render_publication(generation=15)
+    plotter = QWidget(widget.plot_container)
+    widget.plot_layout.addWidget(plotter)
+    widget.plotter_widget = plotter
+    stale_request_id = widget._invalidate_async_requests()
+    widget._current_publication_generation = publication.generation
+    widget._invalidate_async_requests()
+    widget._current_publication_generation = publication.generation + 1
+    newer_scene_key = ("newer-scene",)
+    widget._active_scene_key = newer_scene_key
+    saliency_constructor = MagicMock(
+        side_effect=AssertionError("stale render must not construct a scene"),
+    )
+    monkeypatch.setattr(plot_3d_view, "Saliency3D", saliency_constructor)
+
+    widget._do_3d_plot_if_alive(
+        stale_request_id,
+        plotter,
+        publication.data,
+        "left",
+        publication_generation=publication.generation,
+    )
+
+    saliency_constructor.assert_not_called()
+    assert widget._active_scene_key == newer_scene_key
+
+
 @pytest.mark.parametrize("failure_stage", ["constructor", "pool_start"])
 def test_3d_runtime_probe_start_failure_releases_worker_and_allows_retry(
     widget,

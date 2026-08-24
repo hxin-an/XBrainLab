@@ -20,6 +20,7 @@ from scripts.dev.report_data_interpretation_format_matrix import (
     _reviewed_choice_evidence,
     _workflow_choices,
     build_format_capability_snapshot,
+    build_import_loading_profile,
     build_real_workflow_snapshot,
     capture_public_fixture_facts,
     render_markdown,
@@ -231,6 +232,68 @@ def test_real_workflow_case_proves_scan_preview_validate_and_apply(tmp_path: Pat
     }
     assert result["observations"]["raw_file_count"] == 1
     assert result["observations"]["label_apply_status"] == "not_applicable"
+
+
+def test_real_workflow_timing_is_opt_in_and_records_each_command(tmp_path: Path):
+    fixture = tmp_path / "timed_raw.fif"
+    info = mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg")
+    mne.io.RawArray(np.zeros((1, 500)), info, verbose="ERROR").save(
+        fixture,
+        overwrite=True,
+        verbose="ERROR",
+    )
+    case = RealWorkflowCase(
+        case_id="timed_fif",
+        title="Timed real FIF lifecycle",
+        evidence_scope="test",
+        dataset_source_id="unit-test-source",
+        source_family="unit test",
+        format_name="FIF",
+        tier_category="Generic EEG files with internal events / annotations",
+        source_entry=fixture.name,
+    )
+
+    result = run_real_workflow_case(case, tmp_path, collect_timing=True)
+
+    assert result["status"] == "passed"
+    assert set(result["timings"]) == {"scan", "preview", "validate", "apply"}
+    assert all(
+        timing["wall_seconds"] >= 0
+        and timing["cpu_seconds"] >= 0
+        and timing["rss_bytes"] > 0
+        for timing in result["timings"].values()
+    )
+
+
+def test_import_loading_profile_labels_fresh_service_passes_without_cache_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = tmp_path / "tests/fixtures/data/multiformat/A01T-mini-real.edf"
+    fixture.parent.mkdir(parents=True)
+    fixture.write_bytes(b"fixture")
+    observed: list[tuple[str, bool]] = []
+
+    def _run(case, repo_root, *, collect_timing):
+        observed.append((case.case_id, collect_timing))
+        return {
+            "status": "passed",
+            "failed_stage": "",
+            "timings": {"scan": {"wall_seconds": 0.0}},
+        }
+
+    monkeypatch.setattr(format_matrix, "run_real_workflow_case", _run)
+
+    profile = build_import_loading_profile(tmp_path)
+
+    assert len(profile["samples"]) == 6
+    assert [sample["pass"] for sample in profile["samples"]] == [
+        "first_fresh_service_pass",
+        "repeat_fresh_service_pass",
+    ] * 3
+    assert profile["repeat_pass_definition"].startswith("fresh ApplicationService")
+    assert profile["repeat_pass_definition"].endswith("same process")
+    assert all(collect_timing for _case_id, collect_timing in observed)
 
 
 def test_nonempty_fake_fixture_does_not_count_as_real_workflow_evidence(

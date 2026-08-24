@@ -35,7 +35,7 @@ class SaliencySpectrogramWidget(BaseSaliencyView):
             0.5,
             0.5,
             "Select a fold and method to visualize",
-            color=Theme.TEXT_MUTED,
+            color=Theme.WARNING,
             ha="center",
             va="center",
         )
@@ -47,6 +47,8 @@ class SaliencySpectrogramWidget(BaseSaliencyView):
         absolute: bool,
         *,
         display_normalized: bool | None = None,
+        selected_label_key: object | None = None,
+        display_mode: str = "all",
     ) -> None:
         del absolute
         if not isinstance(publication, SaliencyRenderPublication):
@@ -75,6 +77,8 @@ class SaliencySpectrogramWidget(BaseSaliencyView):
                         if display_normalized is None
                         else bool(display_normalized)
                     ),
+                    selected_label_key,
+                    display_mode,
                 ),
                 error_context="saliency spectrogram",
                 publication_generation=publication.generation,
@@ -91,6 +95,8 @@ class SaliencySpectrogramWidget(BaseSaliencyView):
         preparation_cache: SaliencySpectrogramPreparationCache,
         preparation_key: tuple[object, ...],
         display_normalized: bool,
+        selected_label_key: object | None = None,
+        display_mode: str = "all",
     ):
         visualizer = VisualizerType.SaliencySpectrogramMap.value(data)
         return visualizer.get_plt(
@@ -98,6 +104,8 @@ class SaliencySpectrogramWidget(BaseSaliencyView):
             display_normalized=display_normalized,
             preparation_cache=preparation_cache,
             preparation_key=preparation_key,
+            selected_label_key=selected_label_key,
+            display_mode=display_mode,
         )
 
     def closeEvent(self, event):  # noqa: N802

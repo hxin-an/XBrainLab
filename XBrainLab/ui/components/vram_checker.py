@@ -10,9 +10,8 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from PyQt6.QtWidgets import QMessageBox
-
 from XBrainLab.llm.agent.runtime_state import AssistantRuntimeSnapshot
+from XBrainLab.ui.components.modal_presentation import AlertSeverity, show_alert
 
 if TYPE_CHECKING:
     from typing import Any
@@ -75,12 +74,15 @@ class VRAMConflictChecker:
 
         is_3d_active = self._is_3d_active(switching_to_3d)
         if is_local and is_3d_active:
-            QMessageBox.warning(
+            show_alert(
                 self.main_window,
-                "VRAM Warning",
-                "This requires significant VRAM (Video Memory). "
-                "If you experience crashes or lag, please close the 3D view "
-                "before using the assistant.",
+                severity=AlertSeverity.WARNING,
+                title="VRAM Warning",
+                message=(
+                    "This requires significant VRAM (Video Memory). "
+                    "If you experience crashes or lag, please close the 3D view "
+                    "before using the assistant."
+                ),
             )
 
     # ------------------------------------------------------------------

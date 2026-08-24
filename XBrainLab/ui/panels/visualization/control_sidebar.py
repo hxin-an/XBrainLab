@@ -4,7 +4,6 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
     QGroupBox,
-    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -15,6 +14,7 @@ from XBrainLab.backend.application import (
     CommandName,
     QueryStateCommand,
     SaliencyCommand,
+    SaliencyCrossFoldIdentity,
     SaliencyRunIdentity,
 )
 from XBrainLab.ui.application_capabilities import (
@@ -29,6 +29,7 @@ from XBrainLab.ui.application_capabilities import (
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
+from XBrainLab.ui.components.modal_presentation import show_warning
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
@@ -41,6 +42,7 @@ from XBrainLab.ui.interaction_outcome import InteractionOutcome
 from XBrainLab.ui.montage_positions import normalize_montage_positions
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
+from XBrainLab.ui.styles.theme import Theme
 
 
 class ControlSidebar(QWidget):
@@ -118,7 +120,41 @@ class ControlSidebar(QWidget):
         self.btn_saliency.clicked.connect(self.set_saliency)
         config_layout.addWidget(self.btn_saliency)
 
+        self.btn_reset_view = QPushButton("Reset view")
+        self.btn_reset_view.setObjectName("VisualizationResetView")
+        self.btn_reset_view.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.btn_reset_view.clicked.connect(self._reset_active_view)
+        self.btn_reset_view.hide()
+        config_layout.addWidget(self.btn_reset_view)
+
+        self.three_d_controls_group = QGroupBox("3D PLOT")
+        self.three_d_controls_group.setObjectName("Visualization3DControls")
+        self.three_d_controls_group.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
+        three_d_layout = QVBoxLayout(self.three_d_controls_group)
+        three_d_layout.setContentsMargins(0, 10, 0, 0)
+        three_d_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        self.btn_3d_electrodes = QPushButton("Electrodes")
+        self.btn_3d_electrodes.setObjectName("Visualization3DElectrodesToggle")
+        self.btn_3d_electrodes.setCheckable(True)
+        self.btn_3d_electrodes.setChecked(True)
+        self.btn_3d_electrodes.setStyleSheet(self._three_d_toggle_style())
+        self.btn_3d_electrodes.toggled.connect(self._toggle_3d_electrodes)
+        three_d_layout.addWidget(self.btn_3d_electrodes)
+
+        self.btn_3d_head_surface = QPushButton("Head surface")
+        self.btn_3d_head_surface.setObjectName("Visualization3DHeadSurfaceToggle")
+        self.btn_3d_head_surface.setCheckable(True)
+        self.btn_3d_head_surface.setChecked(True)
+        self.btn_3d_head_surface.setStyleSheet(self._three_d_toggle_style())
+        self.btn_3d_head_surface.toggled.connect(self._toggle_3d_head_surface)
+        three_d_layout.addWidget(self.btn_3d_head_surface)
+
+        self.three_d_controls_group.hide()
+
         layout.addWidget(config_group)
+        layout.addSpacing(Stylesheets.SIDEBAR_GROUP_GAP)
+        layout.addWidget(self.three_d_controls_group)
         layout.addSpacing(Stylesheets.SIDEBAR_GROUP_GAP)
         layout.addStretch()
 
@@ -128,6 +164,59 @@ class ControlSidebar(QWidget):
             return
 
         # Handled by InfoPanelService
+
+    @staticmethod
+    def _three_d_toggle_style() -> str:
+        """Return the selected-state styling for 3D scene toggles."""
+        return (
+            Stylesheets.SIDEBAR_BTN + "\nQPushButton:checked {"
+            f" background-color: {Theme.TABLE_SELECTION};"
+            f" color: {Theme.TEXT_PRIMARY};"
+            f" border: 1px solid {Theme.ACCENT_PRIMARY};"
+            "}"
+        )
+
+    def refresh_view_controls(self) -> None:
+        """Show only the controls that apply to the currently visible view."""
+        tabs = getattr(self.panel, "tabs", None)
+        current_view = tabs.currentWidget() if tabs is not None else None
+        three_d_view = getattr(self.panel, "tab_3d", None)
+        is_three_d = current_view is three_d_view
+        scene_ready = bool(getattr(three_d_view, "scene_ready", False))
+        detail_active = bool(
+            not is_three_d
+            and getattr(self.panel, "saliency_combo", None) is not None
+            and self.panel.saliency_combo.currentData() is not None
+        )
+
+        self.btn_reset_view.setVisible(detail_active or (is_three_d and scene_ready))
+        self.three_d_controls_group.setVisible(is_three_d and scene_ready)
+        if is_three_d and scene_ready:
+            self._toggle_3d_electrodes(self.btn_3d_electrodes.isChecked())
+            self._toggle_3d_head_surface(self.btn_3d_head_surface.isChecked())
+
+    def _reset_active_view(self) -> None:
+        """Reset the current detail canvas or the ready 3D camera."""
+        current_view = self.panel.tabs.currentWidget()
+        if current_view is getattr(self.panel, "tab_3d", None):
+            reset_camera = getattr(current_view, "_reset_camera", None)
+            if callable(reset_camera):
+                reset_camera()
+            return
+        reset_view = getattr(current_view, "reset_view", None)
+        if callable(reset_view):
+            reset_view()
+
+    def _toggle_3d_electrodes(self, checked: bool) -> None:
+        three_d_view = getattr(self.panel, "tab_3d", None)
+        toggle = getattr(three_d_view, "_toggle_electrodes", None)
+        if callable(toggle):
+            toggle(checked)
+
+    def _toggle_3d_head_surface(self, checked: bool) -> None:
+        toggle = getattr(getattr(self.panel, "tab_3d", None), "_toggle_head", None)
+        if callable(toggle):
+            toggle(checked)
 
     # --- Actions ---
 
@@ -145,7 +234,7 @@ class ControlSidebar(QWidget):
         )
         if review_context is None and has_real_application_context(self):
             message = CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
-            QMessageBox.warning(self, "Montage blocked", message)
+            show_warning(self, "Montage blocked", message)
             return InteractionOutcome.blocked(message)
         capability = (
             getattr(review_context, "capability", None)
@@ -154,14 +243,14 @@ class ControlSidebar(QWidget):
         )
         if review_context is not None and capability is None:
             message = CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
-            QMessageBox.warning(self, "Montage blocked", message)
+            show_warning(self, "Montage blocked", message)
             return InteractionOutcome.blocked(message)
         if capability is not None and not capability.enabled:
             message = blocked_reason(
                 capability,
                 "Create EEG epochs before applying a montage.",
             )
-            QMessageBox.warning(self, "Montage blocked", message)
+            show_warning(self, "Montage blocked", message)
             return InteractionOutcome.blocked(message)
 
         if capability is None:
@@ -173,7 +262,7 @@ class ControlSidebar(QWidget):
                 )
             if not has_epoch_data:
                 message = "No EEG epochs are available."
-                QMessageBox.warning(self, "Warning", message)
+                show_warning(self, "Warning", message)
                 return InteractionOutcome.blocked(message)
 
         reviewed_generation = (
@@ -195,7 +284,7 @@ class ControlSidebar(QWidget):
                 if channel_query.recoverable
                 else "Montage failed"
             )
-            QMessageBox.warning(
+            show_warning(
                 self,
                 title,
                 channel_query.message,
@@ -213,7 +302,7 @@ class ControlSidebar(QWidget):
             )
         if not channels:
             message = "No EEG epoch channel names are available for montage setup."
-            QMessageBox.warning(self, "Montage blocked", message)
+            show_warning(self, "Montage blocked", message)
             return InteractionOutcome.blocked(message)
 
         normalized_warning = " ".join(str(warning or "").split())
@@ -227,7 +316,7 @@ class ControlSidebar(QWidget):
         selected_channels, positions = dialog.get_result()
         if selected_channels is None or positions is None:
             message = "No valid montage configuration was selected."
-            QMessageBox.warning(self, "Montage blocked", message)
+            show_warning(self, "Montage blocked", message)
             return InteractionOutcome.blocked(message)
         try:
             normalized_positions = normalize_montage_positions(
@@ -262,7 +351,7 @@ class ControlSidebar(QWidget):
                 if result.recoverable
                 else "Montage failed"
             )
-            QMessageBox.warning(
+            show_warning(
                 self,
                 title,
                 result.message,
@@ -312,7 +401,7 @@ class ControlSidebar(QWidget):
         )
         if review_context is None and has_real_application_context(self):
             message = CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
-            QMessageBox.warning(self, "Saliency blocked", message)
+            show_warning(self, "Saliency blocked", message)
             return InteractionOutcome.blocked(message)
         capability = (
             getattr(review_context, "capability", None)
@@ -321,14 +410,14 @@ class ControlSidebar(QWidget):
         )
         if review_context is not None and capability is None:
             message = CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
-            QMessageBox.warning(self, "Saliency blocked", message)
+            show_warning(self, "Saliency blocked", message)
             return InteractionOutcome.blocked(message)
         if capability is not None and not capability.enabled:
             message = blocked_reason(
                 capability,
                 "Saliency analysis is not ready yet.",
             )
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Saliency blocked",
                 message,
@@ -354,7 +443,7 @@ class ControlSidebar(QWidget):
                 if query_result.recoverable
                 else "Saliency failed"
             )
-            QMessageBox.warning(
+            show_warning(
                 self,
                 title,
                 query_result.message,
@@ -366,7 +455,7 @@ class ControlSidebar(QWidget):
             query_result,
         )
         if configuration_block_reason is not None:
-            QMessageBox.warning(self, "Saliency blocked", configuration_block_reason)
+            show_warning(self, "Saliency blocked", configuration_block_reason)
             return InteractionOutcome.blocked(configuration_block_reason)
         try:
             dialog_params = self._saliency_dialog_params(query_result)
@@ -376,7 +465,14 @@ class ControlSidebar(QWidget):
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
             )
 
-        reviewed_target: tuple[int, SaliencyRunIdentity, str] | None = None
+        reviewed_target: (
+            tuple[
+                int,
+                SaliencyRunIdentity | SaliencyCrossFoldIdentity,
+                str,
+            ]
+            | None
+        ) = None
         target_reader = getattr(self.panel, "saliency_settings_target", None)
         if reviewed_generation is not None:
             candidate_target = target_reader() if callable(target_reader) else None
@@ -384,14 +480,17 @@ class ControlSidebar(QWidget):
                 not isinstance(candidate_target, tuple)
                 or len(candidate_target) != 3
                 or candidate_target[0] != reviewed_generation
-                or not isinstance(candidate_target[1], SaliencyRunIdentity)
+                or not isinstance(
+                    candidate_target[1],
+                    (SaliencyRunIdentity, SaliencyCrossFoldIdentity),
+                )
                 or not isinstance(candidate_target[2], str)
             ):
                 message = (
                     "Visualization results or the selected run changed. "
                     "Refresh Visualization, then review Saliency Settings again."
                 )
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Review Saliency Settings Again",
                     message,
@@ -431,7 +530,7 @@ class ControlSidebar(QWidget):
                 "Visualization results or the selected run changed while settings "
                 "were open. Review Saliency Settings again."
             )
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Review Saliency Settings Again",
                 message,
@@ -476,4 +575,4 @@ class ControlSidebar(QWidget):
         )
 
     def _show_compatibility_fallback_warning(self, title: str) -> None:
-        QMessageBox.warning(self, title, CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE)
+        show_warning(self, title, CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE)

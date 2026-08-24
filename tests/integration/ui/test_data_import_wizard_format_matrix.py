@@ -6,6 +6,7 @@ import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog, QLabel, QTreeWidget
 
+from scripts.dev.fetch_public_eeg_fixtures import resolve_public_fixture_dir
 from scripts.dev.report_data_interpretation_format_matrix import (
     FORMAT_CASES,
     FormatCase,
@@ -30,13 +31,7 @@ STEP_TITLES = (
     "Match Labels",
     "Review and Import",
 )
-PUBLIC_BIDS_ROOT = (
-    Path(__file__).resolve().parents[2]
-    / "fixtures"
-    / "data"
-    / "public"
-    / "mne-bids-tiny-eeg"
-)
+PUBLIC_BIDS_ROOT = resolve_public_fixture_dir() / "mne-bids-tiny-eeg"
 PUBLIC_BIDS_EEG = (
     PUBLIC_BIDS_ROOT
     / "sub-01"

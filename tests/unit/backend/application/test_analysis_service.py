@@ -32,6 +32,10 @@ from XBrainLab.backend.application.resource_guard import (
     ResourcePreflightResult,
 )
 from XBrainLab.backend.application.resource_preflight import ResourcePreflightView
+from XBrainLab.backend.application.saliency_render import (
+    SaliencyPlanIdentity,
+    SaliencyRunIdentity,
+)
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ActiveTrainingSnapshot,
@@ -552,6 +556,19 @@ def test_analysis_service_keeps_appended_fold_round_summaries_independent() -> N
         for choice in first_diagnostics["cross_fold_choices"]
     ] == [(0, 1), (2, 3)]
 
+    _message, visualization = _expect_payload(
+        service.handle_visualize(VisualizeCommand(view="summary")),
+    )
+    assert [
+        choice["display_name"]
+        for choice in visualization["evaluation_cross_fold_choices"]
+    ] == ["Fold Set 1", "Fold Set 2"]
+    assert all(
+        choice["saliency_available"] is False
+        and "Compute Saliency" in choice["saliency_reason"]
+        for choice in visualization["evaluation_cross_fold_choices"]
+    )
+
 
 def test_analysis_service_reports_validation_fallback_provenance() -> None:
     plan = _Plan(
@@ -872,6 +889,106 @@ def test_explicit_saliency_accumulates_verified_complete_methods_before_prefligh
         expected_methods
     )
     assert visualization.params == admitted_params[0]
+
+
+def test_explicit_saliency_accumulates_methods_only_from_selected_members(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    smoothgrad_params = {
+        "nt_samples": 9,
+        "nt_samples_batch_size": 3,
+        "stdevs": 0.4,
+    }
+    first_run = _Run(finished=True)
+    first_run.eval_record = SimpleNamespace(
+        saliency_method_parameters={
+            "Gradient": {},
+            "SmoothGrad": smoothgrad_params,
+        }
+    )
+    second_run = _Run(finished=True)
+    second_run.eval_record = SimpleNamespace(
+        saliency_method_parameters={"Gradient * Input": {}}
+    )
+    coverage = [
+        SaliencyRunCoverageSnapshot(
+            plan_index=0,
+            run_index=0,
+            methods=[
+                SaliencyMethodCoverageSnapshot(
+                    method="Gradient",
+                    available=True,
+                    complete=True,
+                ),
+                SaliencyMethodCoverageSnapshot(
+                    method="SmoothGrad",
+                    available=True,
+                    complete=True,
+                ),
+            ],
+        ),
+        SaliencyRunCoverageSnapshot(
+            plan_index=0,
+            run_index=1,
+            methods=[
+                SaliencyMethodCoverageSnapshot(
+                    method="Gradient * Input",
+                    available=True,
+                    complete=True,
+                )
+            ],
+        ),
+    ]
+    state = _state(
+        has_trainer=True,
+        finished_runs=2,
+        saliency_available=True,
+        saliency_configured=True,
+        saliency_coverage=coverage,
+    )
+    visualization = _SchedulingVisualizationController()
+    service = AnalysisCommandService(
+        training_runtime=_TrainingRuntime([_Plan("Plan A", [first_run, second_run])]),
+        visualization=visualization,
+        get_state=lambda: state,
+    )
+    admitted_params: list[dict[str, Any]] = []
+
+    def safe_preflight(_datasets, _option, _model, params, **_kwargs):
+        admitted_params.append(params)
+        return _saliency_preflight("safe")
+
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.analysis_service."
+        "check_saliency_resource_preflight",
+        safe_preflight,
+    )
+    target = PostTrainingSaliencyTarget(
+        run=TrainingRunIdentity(trainer_id="trainer-a", run_id=1),
+        finished_runs_before=0,
+        finished_runs_after=2,
+        append=False,
+        explicit=True,
+        selected_members=((0, 0),),
+    )
+
+    with post_training_saliency_target(target):
+        _message, diagnostics = _expect_payload(
+            service.handle_saliency(
+                SaliencyCommand(
+                    method="VarGrad",
+                    params={
+                        "nt_samples": 7,
+                        "nt_samples_batch_size": 2,
+                        "stdevs": 0.25,
+                    },
+                )
+            )
+        )
+
+    assert admitted_params[0]["_methods"] == ["Gradient", "SmoothGrad", "VarGrad"]
+    assert admitted_params[0]["SmoothGrad"] == smoothgrad_params
+    assert diagnostics["params"] == admitted_params[0]
 
 
 def test_explicit_saliency_rejects_conflicting_retained_artifact_params_before_preflight(
@@ -1353,6 +1470,46 @@ def test_analysis_service_rejects_mismatched_saliency_receipt(
             SaliencyCommand(
                 method="SmoothGrad",
                 params={"nt_samples": 2},
+                resource_preflight_confirmed=True,
+                resource_preflight_token=first.challenge_id,
+            )
+        )
+
+    replacement = _resource_challenge(mismatched.value)
+    assert replacement.challenge_id != first.challenge_id
+    assert replacement.scope_fingerprint != first.scope_fingerprint
+    assert visualization.params is None
+
+
+def test_analysis_service_rejects_saliency_receipt_for_different_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, visualization = _service(
+        state=_state(has_trainer=True, finished_runs=1),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.backend.application.analysis_service."
+        "check_saliency_resource_preflight",
+        lambda *_args, **_kwargs: _saliency_preflight("warning"),
+    )
+    first_target = SaliencyRunIdentity(
+        plan=SaliencyPlanIdentity(plan_index=0),
+        run_index=0,
+    )
+    second_target = SaliencyRunIdentity(
+        plan=SaliencyPlanIdentity(plan_index=1),
+        run_index=0,
+    )
+
+    with pytest.raises(ResourceConfirmationRequiredError) as raised:
+        service.handle_saliency(SaliencyCommand(method="Gradient", target=first_target))
+    first = _resource_challenge(raised.value)
+
+    with pytest.raises(ResourceConfirmationRequiredError) as mismatched:
+        service.handle_saliency(
+            SaliencyCommand(
+                method="Gradient",
+                target=second_target,
                 resource_preflight_confirmed=True,
                 resource_preflight_token=first.challenge_id,
             )

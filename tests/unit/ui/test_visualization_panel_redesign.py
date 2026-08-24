@@ -7,11 +7,11 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QMainWindow,
-    QMessageBox,
     QWidget,
 )
 
@@ -40,6 +40,7 @@ from XBrainLab.backend.training_state_contract import (
     TrainingRunIdentity,
 )
 from XBrainLab.backend.utils.observer import Observable
+from XBrainLab.ui.components.modal_presentation import AlertSeverity
 from XBrainLab.ui.interaction_outcome import (
     InteractionCompletionSession,
     InteractionCompletionStatus,
@@ -48,14 +49,20 @@ from XBrainLab.ui.interaction_outcome import (
 )
 
 
+class _SaliencyWidgetStub(QWidget):
+    class_selected = pyqtSignal(object)
+
+
 def _widget_factory(parent=None):
-    widget = QWidget(parent)
+    widget = _SaliencyWidgetStub(parent)
     mock_widget = cast(Any, widget)
     mock_widget.show_error = MagicMock()
     mock_widget.show_message = MagicMock()
     mock_widget.set_saliency_coverage = MagicMock()
     mock_widget.update_plot = MagicMock()
+    mock_widget.select_class_key = MagicMock()
     mock_widget.repaint = MagicMock()
+    mock_widget.reset_view = MagicMock()
     return widget
 
 
@@ -188,6 +195,254 @@ def test_visualization_selectors_have_visible_dropdown_affordance(qtbot):
         style = combo.styleSheet()
         assert "QComboBox::down-arrow" in style
         assert "chevron-down.svg" in style
+
+
+def test_saliency_view_selector_is_inside_the_visible_control_bar(qtbot) -> None:
+    panel, _ = _make_panel(qtbot)
+    panel.resize(800, 800)
+    panel.show()
+    qtbot.waitExposed(panel)
+
+    assert panel.saliency_view_label.isVisible()
+    assert panel.saliency_combo.isVisible()
+    assert (
+        panel.saliency_combo.geometry().bottom()
+        <= panel.ctrl_bar.contentsRect().bottom()
+    )
+
+
+@pytest.mark.parametrize("layout_mode", ("wide", "medium", "narrow"))
+def test_visualization_controls_keep_saliency_before_method_and_transforms(
+    qtbot,
+    layout_mode,
+) -> None:
+    """Visible controls read Fold, Run, Saliency, Method, Normalize, Absolute."""
+    panel, _ = _make_panel(qtbot)
+    panel._apply_visualization_control_layout(layout_mode)
+
+    layout = panel.ctrl_layout
+    ordered = (
+        panel.plan_label,
+        panel.plan_combo,
+        panel.run_label,
+        panel.run_combo,
+        panel.saliency_view_label,
+        panel.saliency_combo,
+        panel.method_label,
+        panel.method_combo,
+        panel.normalize_check,
+        panel.abs_check,
+    )
+    positions = []
+    for control in ordered:
+        index = layout.indexOf(control)
+        assert index >= 0
+        row, column, _, _ = layout.getItemPosition(index)
+        positions.append((row, column))
+    assert positions == sorted(positions)
+
+
+@pytest.mark.parametrize(
+    ("control_width", "expected_mode"),
+    (
+        (1200, "wide"),
+        (800, "wide"),
+        (720, "medium"),
+        (650, "narrow"),
+        (500, "narrow"),
+    ),
+)
+def test_visualization_controls_use_responsive_layout_modes(
+    qtbot,
+    control_width,
+    expected_mode,
+) -> None:
+    panel, _ = _make_panel(qtbot)
+    panel.ctrl_bar.resize(control_width, 120)
+    panel._refresh_control_layout_for_width()
+
+    assert panel._controls_layout_mode == expected_mode
+    normalize_index = panel.ctrl_layout.indexOf(panel.normalize_check)
+    absolute_index = panel.ctrl_layout.indexOf(panel.abs_check)
+    normalize_row, normalize_column, _, _ = panel.ctrl_layout.getItemPosition(
+        normalize_index,
+    )
+    absolute_row, absolute_column, _, _ = panel.ctrl_layout.getItemPosition(
+        absolute_index,
+    )
+    assert (normalize_row, normalize_column) < (absolute_row, absolute_column)
+
+
+def test_visualization_controls_use_rendered_bar_width_without_overlap(qtbot) -> None:
+    panel, _ = _make_panel(qtbot)
+    panel.resize(800, 800)
+    panel.show()
+    qtbot.waitExposed(panel)
+    panel._refresh_control_layout_for_width()
+
+    assert panel.ctrl_bar.width() < 700
+    assert panel._controls_layout_mode == "narrow"
+    visible_controls = (
+        panel.plan_label,
+        panel.plan_combo,
+        panel.run_label,
+        panel.run_combo,
+        panel.method_label,
+        panel.method_combo,
+        panel.normalize_check,
+        panel.abs_check,
+        panel.saliency_view_label,
+        panel.saliency_combo,
+    )
+    for index, left in enumerate(visible_controls):
+        assert panel.ctrl_bar.rect().contains(left.geometry())
+        for right in visible_controls[index + 1 :]:
+            assert not left.geometry().intersects(right.geometry())
+
+
+def test_medium_visualization_controls_do_not_include_reset_action(
+    qtbot,
+) -> None:
+    """Reset is contextual in the sidebar, leaving the control bar uncluttered."""
+    panel, _ = _make_panel(qtbot)
+    panel._apply_visualization_control_layout("medium")
+
+    controls = (
+        panel.method_label,
+        panel.method_combo,
+        panel.normalize_check,
+        panel.abs_check,
+        panel.saliency_view_label,
+        panel.saliency_combo,
+    )
+    occupied_cells: dict[tuple[int, int], QWidget] = {}
+    for control in controls:
+        index = panel.ctrl_layout.indexOf(control)
+        assert index >= 0
+        row, column, row_span, column_span = panel.ctrl_layout.getItemPosition(index)
+        for cell_row in range(row, row + row_span):
+            for cell_column in range(column, column + column_span):
+                assert (cell_row, cell_column) not in occupied_cells
+                occupied_cells[(cell_row, cell_column)] = control
+
+
+def test_sidebar_reset_view_follows_detail_and_3d_scene_context(qtbot) -> None:
+    panel, _ = _make_panel(qtbot)
+
+    panel.saliency_combo.addItem("left", 0)
+    panel.saliency_combo.setCurrentIndex(1)
+
+    assert not panel.sidebar.btn_reset_view.isHidden()
+    panel.sidebar.btn_reset_view.click()
+    panel.tab_map.reset_view.assert_called_once_with()
+
+    cast(Any, panel.tab_3d).scene_ready = True
+    cast(Any, panel.tab_3d)._reset_camera = MagicMock()
+    cast(Any, panel.tab_3d)._toggle_electrodes = MagicMock()
+    cast(Any, panel.tab_3d)._toggle_head = MagicMock()
+    panel.tabs.setCurrentWidget(panel.tab_3d)
+
+    assert not panel.sidebar.btn_reset_view.isHidden()
+    assert not panel.sidebar.btn_3d_electrodes.isHidden()
+    assert not panel.sidebar.btn_3d_head_surface.isHidden()
+    panel.sidebar.btn_reset_view.click()
+    cast(Any, panel.tab_3d)._reset_camera.assert_called_once_with()
+    panel.sidebar.btn_3d_electrodes.click()
+    cast(Any, panel.tab_3d)._toggle_electrodes.assert_called_with(False)
+
+    panel.tabs.setCurrentWidget(panel.tab_map)
+
+    assert panel.sidebar.three_d_controls_group.isHidden()
+    assert not panel.sidebar.btn_3d_electrodes.isVisibleTo(panel.sidebar)
+    assert not panel.sidebar.btn_3d_head_surface.isVisibleTo(panel.sidebar)
+
+
+def test_sidebar_3d_actions_fit_the_fixed_width_sidebar(qtbot) -> None:
+    panel, _ = _make_panel(qtbot)
+    cast(Any, panel.tab_3d).scene_ready = True
+    cast(Any, panel.tab_3d)._toggle_electrodes = MagicMock()
+    cast(Any, panel.tab_3d)._toggle_head = MagicMock()
+    panel.tabs.setCurrentWidget(panel.tab_3d)
+    panel.resize(640, 600)
+    panel.show()
+    qtbot.waitExposed(panel)
+
+    for button in (
+        panel.sidebar.btn_reset_view,
+        panel.sidebar.btn_3d_electrodes,
+        panel.sidebar.btn_3d_head_surface,
+    ):
+        assert button.geometry().right() <= panel.sidebar.contentsRect().right()
+
+
+def test_switching_to_3d_from_all_classes_selects_the_first_renderable_class(
+    qtbot,
+) -> None:
+    panel, _ = _make_panel(qtbot)
+    coverage = replace(
+        _complete_coverage("Gradient", "left", "right"),
+        classes=[
+            SaliencyClassCoverageSnapshot(
+                class_index=index,
+                display_name=name,
+                store_key=index,
+                available=True,
+            )
+            for index, name in enumerate(("left", "right"))
+        ],
+    )
+    result = _application_query_with_saliency_state(
+        PostTrainingSaliencyStatus.idle(),
+        coverage,
+    )
+    _publish_panel_state(panel, result)
+    panel.on_update()
+
+    assert panel.method_combo.currentText() == "Gradient"
+    assert panel.saliency_combo.currentData() is None
+    assert panel.saliency_combo.count() == 3
+
+    panel.last_application_query = CommandResult.success_result(
+        command_name="visualize",
+        message="Results available",
+        state=result.state,
+        changed_state=ChangedState(),
+        diagnostics={
+            "payload_type": "visualization_summary",
+            "available": True,
+            "blocked_views": {
+                "3D plot": ["Set a 3D montage before opening the 3D plot."]
+            },
+        },
+    )
+
+    panel.tabs.setCurrentWidget(panel.tab_3d)
+
+    assert panel.tabs.currentWidget() is panel.tab_3d
+    assert panel.method_combo.currentText() == "Gradient"
+    assert panel.saliency_combo.currentData() == 0
+    assert panel.saliency_combo.currentText() == "left"
+    assert panel.sidebar.btn_reset_view.isHidden()
+
+
+def test_spectrogram_does_not_reserve_absolute_control_hole(qtbot) -> None:
+    panel, _ = _make_panel(qtbot)
+    panel._apply_visualization_control_layout("medium")
+    panel.tabs.setCurrentWidget(panel.tab_spectro)
+    panel._refresh_absolute_control()
+
+    assert panel.abs_check.isHidden()
+    assert panel.ctrl_layout.indexOf(panel.abs_check) == -1
+    assert panel.ctrl_layout.indexOf(panel.normalize_check) >= 0
+
+
+def test_legacy_saliency_projection_selectors_remain_hidden(qtbot) -> None:
+    panel, _ = _make_panel(qtbot)
+
+    assert panel.saliency_view_mode.isHidden()
+    assert panel.saliency_class_combo.isHidden()
+    assert panel.ctrl_layout.indexOf(panel.saliency_view_mode) == -1
+    assert panel.ctrl_layout.indexOf(panel.saliency_class_combo) == -1
 
 
 def test_visualization_shutdown_cancels_active_explicit_saliency(qtbot, monkeypatch):
@@ -619,7 +874,7 @@ def test_visualization_panel_keeps_aggregation_in_tooltip_without_extra_chrome(q
         panel.tabs.setCurrentIndex(0)
 
     assert panel.tabs.toolTip() == (
-        "motor-imagery · Fold 1 (EEGNet) · Run 1 · True class · Mean over EEG epochs"
+        "motor-imagery · Fold 1 · Run 1 · True class · Mean over EEG epochs"
     )
 
     _publish_panel_state(
@@ -637,7 +892,7 @@ def test_visualization_panel_keeps_aggregation_in_tooltip_without_extra_chrome(q
         ),
     )
 
-    assert panel.tabs.toolTip().startswith("motor-imagery · Fold 1 (EEGNet) · Run 1")
+    assert panel.tabs.toolTip().startswith("motor-imagery · Fold 1 · Run 1")
     assert "new-current-file.edf" not in panel.tabs.toolTip()
 
 
@@ -857,10 +1112,14 @@ def test_spectrogram_normalize_uses_raw_publication_and_display_transform(
     publication, absolute = spectrogram.update_plot.call_args.args
     assert publication.data.normalized is False
     assert absolute is False
-    assert spectrogram.update_plot.call_args.kwargs == {"display_normalized": True}
+    assert spectrogram.update_plot.call_args.kwargs == {
+        "display_normalized": True,
+        "selected_label_key": None,
+        "display_mode": "all",
+    }
 
 
-def test_visualization_controls_stay_in_a_compact_two_row_grid(qtbot):
+def test_visualization_controls_stay_in_a_compact_narrow_grid(qtbot):
     panel, _ctrl = _make_panel(qtbot)
     panel.abs_check.setChecked(True)
     panel.resize(760, 720)
@@ -877,23 +1136,26 @@ def test_visualization_controls_stay_in_a_compact_two_row_grid(qtbot):
     assert isinstance(layout, QGridLayout)
     plan_item = layout.itemAtPosition(0, 1)
     run_item = layout.itemAtPosition(0, 3)
-    method_item = layout.itemAtPosition(1, 1)
-    absolute_item = layout.itemAtPosition(1, 3)
-    normalize_item = layout.itemAtPosition(1, 4)
+    saliency_item = layout.itemAtPosition(1, 1)
+    method_item = layout.itemAtPosition(2, 1)
+    absolute_item = layout.itemAtPosition(2, 3)
+    normalize_item = layout.itemAtPosition(2, 2)
     assert plan_item is not None
     assert run_item is not None
+    assert saliency_item is not None
     assert method_item is not None
     assert absolute_item is not None
     assert normalize_item is not None
     assert plan_item.widget() is panel.plan_combo
     assert run_item.widget() is panel.run_combo
+    assert saliency_item.widget() is panel.saliency_combo
     assert method_item.widget() is panel.method_combo
     assert absolute_item.widget() is panel.abs_check
     assert normalize_item.widget() is panel.normalize_check
     assert abs(panel.plan_combo.y() - panel.run_combo.y()) <= 8
+    assert panel.plan_combo.y() < panel.saliency_combo.y() < panel.method_combo.y()
     assert abs(panel.method_combo.y() - panel.abs_check.y()) <= 8
     assert abs(panel.method_combo.y() - panel.normalize_check.y()) <= 8
-    assert panel.plan_combo.y() < panel.method_combo.y()
 
     widgets = [
         panel.plan_combo,
@@ -909,11 +1171,11 @@ def test_visualization_controls_stay_in_a_compact_two_row_grid(qtbot):
 
     control_height = control_group.height()
     transform_row_y = panel.normalize_check.y()
-    selector_geometry = {
-        "plan": panel.plan_combo.geometry(),
-        "run": panel.run_combo.geometry(),
-        "method": panel.method_combo.geometry(),
-        "normalize": panel.normalize_check.geometry(),
+    selector_rows = {
+        "plan": panel.plan_combo.y(),
+        "run": panel.run_combo.y(),
+        "method": panel.method_combo.y(),
+        "normalize": panel.normalize_check.y(),
     }
     panel.tabs.setCurrentIndex(1)
     qtbot.wait(20)
@@ -921,27 +1183,27 @@ def test_visualization_controls_stay_in_a_compact_two_row_grid(qtbot):
     assert panel.abs_check.isHidden()
     assert panel.abs_check.isChecked()
     assert not panel.normalize_check.isHidden()
-    assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (1, 3)
-    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (1, 4)
+    assert layout.indexOf(panel.abs_check) == -1
+    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (2, 2)
     assert panel.normalize_check.y() == transform_row_y
     assert control_group.height() == control_height
-    assert panel.plan_combo.geometry() == selector_geometry["plan"]
-    assert panel.run_combo.geometry() == selector_geometry["run"]
-    assert panel.method_combo.geometry() == selector_geometry["method"]
-    assert panel.normalize_check.geometry() == selector_geometry["normalize"]
+    assert panel.plan_combo.y() == selector_rows["plan"]
+    assert panel.run_combo.y() == selector_rows["run"]
+    assert panel.method_combo.y() == selector_rows["method"]
+    assert panel.normalize_check.y() == selector_rows["normalize"]
 
     panel.tabs.setCurrentIndex(2)
     qtbot.wait(20)
 
     assert not panel.abs_check.isHidden()
     assert panel.abs_check.isChecked()
-    assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (1, 3)
-    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (1, 4)
+    assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (2, 3)
+    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (2, 2)
     assert control_group.height() == control_height
-    assert panel.plan_combo.geometry() == selector_geometry["plan"]
-    assert panel.run_combo.geometry() == selector_geometry["run"]
-    assert panel.method_combo.geometry() == selector_geometry["method"]
-    assert panel.normalize_check.geometry() == selector_geometry["normalize"]
+    assert panel.plan_combo.y() == selector_rows["plan"]
+    assert panel.run_combo.y() == selector_rows["run"]
+    assert panel.method_combo.y() == selector_rows["method"]
+    assert panel.normalize_check.y() == selector_rows["normalize"]
 
 
 def test_visualization_controls_use_one_row_when_panel_is_wide(qtbot):
@@ -958,6 +1220,7 @@ def test_visualization_controls_use_one_row_when_panel_is_wide(qtbot):
     )
     layout = control_group.layout()
     assert isinstance(layout, QGridLayout)
+    assert panel._controls_layout_mode == "wide", panel.ctrl_bar.contentsRect().width()
 
     assert panel.plan_combo.y() == panel.run_combo.y()
     assert panel.plan_combo.y() == panel.method_combo.y()
@@ -978,11 +1241,11 @@ def test_visualization_controls_use_one_row_when_panel_is_wide(qtbot):
 
     control_height = control_group.height()
     transform_row_y = panel.normalize_check.y()
-    selector_geometry = {
-        "plan": panel.plan_combo.geometry(),
-        "run": panel.run_combo.geometry(),
-        "method": panel.method_combo.geometry(),
-        "normalize": panel.normalize_check.geometry(),
+    selector_rows = {
+        "plan": panel.plan_combo.y(),
+        "run": panel.run_combo.y(),
+        "method": panel.method_combo.y(),
+        "normalize": panel.normalize_check.y(),
     }
     panel.tabs.setCurrentIndex(1)
     qtbot.wait(20)
@@ -990,27 +1253,27 @@ def test_visualization_controls_use_one_row_when_panel_is_wide(qtbot):
     assert panel.abs_check.isHidden()
     assert panel.abs_check.isChecked()
     assert not panel.normalize_check.isHidden()
-    assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (0, 6)
-    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (0, 7)
+    assert layout.indexOf(panel.abs_check) == -1
+    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (0, 9)
     assert panel.normalize_check.y() == transform_row_y
     assert control_group.height() == control_height
-    assert panel.plan_combo.geometry() == selector_geometry["plan"]
-    assert panel.run_combo.geometry() == selector_geometry["run"]
-    assert panel.method_combo.geometry() == selector_geometry["method"]
-    assert panel.normalize_check.geometry() == selector_geometry["normalize"]
+    assert panel.plan_combo.y() == selector_rows["plan"]
+    assert panel.run_combo.y() == selector_rows["run"]
+    assert panel.method_combo.y() == selector_rows["method"]
+    assert panel.normalize_check.y() == selector_rows["normalize"]
 
     panel.tabs.setCurrentIndex(3)
     qtbot.wait(20)
 
     assert not panel.abs_check.isHidden()
     assert panel.abs_check.isChecked()
-    assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (0, 6)
-    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (0, 7)
+    assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (0, 10)
+    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (0, 9)
     assert control_group.height() == control_height
-    assert panel.plan_combo.geometry() == selector_geometry["plan"]
-    assert panel.run_combo.geometry() == selector_geometry["run"]
-    assert panel.method_combo.geometry() == selector_geometry["method"]
-    assert panel.normalize_check.geometry() == selector_geometry["normalize"]
+    assert panel.plan_combo.y() == selector_rows["plan"]
+    assert panel.run_combo.y() == selector_rows["run"]
+    assert panel.method_combo.y() == selector_rows["method"]
+    assert panel.normalize_check.y() == selector_rows["normalize"]
 
 
 def test_visualization_panel_defers_service_queries_until_opened(
@@ -1121,12 +1384,12 @@ def test_visualization_panel_populates_controls_for_published_runs(qtbot):
     )
 
     assert panel.plan_combo.count() == 3
-    assert panel.plan_combo.currentText() == "Fold 1 (EEGNet)"
+    assert panel.plan_combo.currentText() == "Fold 1"
     assert panel.run_combo.count() == 2
 
     panel.plan_combo.setCurrentIndex(2)
 
-    assert panel.plan_combo.currentText() == "Fold 2 (SCCNet)"
+    assert panel.plan_combo.currentText() == "Fold 2"
     assert panel.run_combo.count() == 1
     assert panel.run_combo.findText("Average") == -1
     ctrl.get_trainers.assert_not_called()
@@ -2518,6 +2781,84 @@ def test_terminal_saliency_publication_releases_visible_compute_state(qtbot):
     assert panel.compute_saliency_btn.text() == "Compute Saliency"
 
 
+def test_terminal_saliency_success_settles_staged_settings_before_retraining(
+    qtbot,
+    monkeypatch,
+):
+    panel, _ctrl = _make_panel(qtbot)
+    _publish_panel_state(
+        panel,
+        _result_with_run_coverages(
+            SaliencyRunCoverageSnapshot(
+                plan_index=0,
+                run_index=0,
+                model_name="EEGNet",
+                methods=[SaliencyMethodCoverageSnapshot(method="VarGrad")],
+            ),
+        ),
+    )
+    publication = panel._application_view_publication
+    assert publication is not None
+    run_identity = panel.run_combo.currentData()
+    assert isinstance(run_identity, SaliencyRunIdentity)
+    assert panel.stage_saliency_params(
+        {
+            "profile": "advanced",
+            "methods": ["VarGrad"],
+            "VarGrad": {"nt_samples": 5},
+        },
+        publication_generation=publication.generation,
+        run_identity=run_identity,
+        model_name="EEGNet",
+    )
+    panel._saliency_compute_in_progress = True
+    panel._active_saliency_operation_id = "saliency-operation-1"
+    panel._active_saliency_generation = 3
+    terminal_state = replace(
+        publication.state,
+        visualization=replace(
+            publication.state.visualization,
+            post_training_saliency=_post_training_saliency_status(
+                PostTrainingSaliencyPhase.SUCCEEDED,
+                generation=3,
+            ),
+        ),
+    )
+    terminal_publication = replace(publication, state=terminal_state)
+
+    assert panel._accept_application_publication(terminal_publication)
+
+    assert panel._pending_saliency_params is None
+    assert panel._pending_saliency_target is None
+    assert panel._pending_saliency_method is None
+    assert panel._saliency_settings_review_required is False
+
+    retrained_publication = replace(
+        terminal_publication,
+        generation=terminal_publication.generation + 1,
+        state=replace(
+            terminal_state,
+            visualization=replace(
+                terminal_state.visualization,
+                post_training_saliency=PostTrainingSaliencyStatus.idle(),
+            ),
+        ),
+    )
+    assert panel._accept_application_publication(retrained_publication)
+    starts = []
+    monkeypatch.setattr(
+        panel,
+        "_start_saliency_compute",
+        lambda **kwargs: starts.append(kwargs) or True,
+    )
+
+    outcome = panel._compute_saliency_from_action_bar()
+
+    assert outcome.status is InteractionStatus.ACCEPTED
+    assert len(starts) == 1
+    assert panel.saliency_action_title.text() != "Review Saliency Settings Again"
+
+
 def test_old_terminal_does_not_release_new_saliency_operation(qtbot):
     panel, _ctrl = _make_panel(qtbot)
     panel._saliency_compute_in_progress = True
@@ -2818,7 +3159,9 @@ def test_saliency_resource_preflight_safe_dispatches_once_without_confirmation(
         fake_execute_async,
     )
     question = MagicMock(side_effect=AssertionError("safe preflight must not prompt"))
-    monkeypatch.setattr(QMessageBox, "question", question)
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.ask_confirmation", question
+    )
     params = {"profile": "recommended", "methods": ["Gradient"]}
 
     assert panel._start_saliency_compute(
@@ -2873,8 +3216,10 @@ def test_saliency_resource_preflight_approval_uses_host_receipt_not_param_token(
         "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
         fake_execute_async,
     )
-    question = MagicMock(return_value=QMessageBox.StandardButton.Yes)
-    monkeypatch.setattr(QMessageBox, "question", question)
+    question = MagicMock(return_value=True)
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.ask_confirmation", question
+    )
     params = {
         "profile": "recommended",
         "methods": ["Gradient"],
@@ -2909,7 +3254,7 @@ def test_saliency_resource_preflight_approval_uses_host_receipt_not_param_token(
     assert confirmed.method == initial.method == "Gradient"
     assert confirmed.params == initial.params == params
     question.assert_called_once()
-    assert resource_message in question.call_args.args[2]
+    assert resource_message in question.call_args.kwargs["message"]
 
     second_outcome = callbacks[1](
         CommandResult.success_result(
@@ -2946,9 +3291,8 @@ def test_saliency_resource_preflight_cancel_does_not_mutate_evaluator(
         fake_execute_async,
     )
     monkeypatch.setattr(
-        QMessageBox,
-        "question",
-        MagicMock(return_value=QMessageBox.StandardButton.No),
+        "XBrainLab.ui.panels.visualization.panel.ask_confirmation",
+        MagicMock(return_value=False),
     )
 
     assert panel._start_saliency_compute(
@@ -2988,8 +3332,10 @@ def test_saliency_resource_preflight_blocking_does_not_dispatch_confirmation(
     )
     question = MagicMock(side_effect=AssertionError("blocking must not prompt"))
     critical = MagicMock()
-    monkeypatch.setattr(QMessageBox, "question", question)
-    monkeypatch.setattr(QMessageBox, "critical", critical)
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.ask_confirmation", question
+    )
+    monkeypatch.setattr("XBrainLab.ui.panels.visualization.panel.show_alert", critical)
     resource_message = "Saliency exceeds the available memory limit."
 
     assert panel._start_saliency_compute(
@@ -3005,7 +3351,12 @@ def test_saliency_resource_preflight_blocking_does_not_dispatch_confirmation(
     assert outcome.status is InteractionStatus.BLOCKED
     assert len(commands) == 1
     question.assert_not_called()
-    critical.assert_called_once_with(panel, "Saliency Resource Check", resource_message)
+    critical.assert_called_once_with(
+        panel,
+        severity=AlertSeverity.CRITICAL,
+        title="Saliency Resource Check",
+        message=resource_message,
+    )
 
 
 def test_saliency_resource_preflight_rejects_mismatched_host_challenge(
@@ -3027,7 +3378,9 @@ def test_saliency_resource_preflight_rejects_mismatched_host_challenge(
         fake_execute_async,
     )
     question = MagicMock(side_effect=AssertionError("mismatched receipt must fail"))
-    monkeypatch.setattr(QMessageBox, "question", question)
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.ask_confirmation", question
+    )
 
     assert panel._start_saliency_compute(
         params={"profile": "recommended", "methods": ["Gradient"]},
@@ -3067,8 +3420,10 @@ def test_saliency_resource_preflight_rejected_receipt_never_retries_twice(
         "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
         fake_execute_async,
     )
-    question = MagicMock(return_value=QMessageBox.StandardButton.Yes)
-    monkeypatch.setattr(QMessageBox, "question", question)
+    question = MagicMock(return_value=True)
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.ask_confirmation", question
+    )
 
     assert panel._start_saliency_compute(
         params={"profile": "recommended", "methods": ["Gradient"]},
@@ -3325,13 +3680,13 @@ def test_visualization_panel_preserves_selection_across_publication_refresh(qtbo
     panel.plan_combo.setCurrentIndex(2)
     panel.run_combo.setCurrentIndex(1)
 
-    assert panel.plan_combo.currentText() == "Fold 2 (SCCNet)"
+    assert panel.plan_combo.currentText() == "Fold 2"
     assert panel.run_combo.currentText() == "Run 2"
 
     panel.mark_refresh_dirty()
     _publish_panel_state(panel, result)
 
-    assert panel.plan_combo.currentText() == "Fold 2 (SCCNet)"
+    assert panel.plan_combo.currentText() == "Fold 2"
     assert panel.run_combo.currentText() == "Run 2"
     ctrl.get_trainers.assert_not_called()
 
@@ -3898,7 +4253,7 @@ def test_visualization_panel_uses_typed_render_publication_without_live_getters(
         plan=plan_identity,
         run_index=0,
     )
-    assert panel.plan_combo.currentText() == "Fold 1 (EEGNet)"
+    assert panel.plan_combo.currentText() == "Fold 1"
     assert panel.run_combo.count() == 1
     assert panel.run_combo.findText("Average") == -1
     assert render_requests
@@ -3915,4 +4270,6 @@ def test_visualization_panel_uses_typed_render_publication_without_live_getters(
             operation_id="render-operation",
         ),
         False,
+        selected_label_key=None,
+        display_mode="all",
     )

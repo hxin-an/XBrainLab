@@ -12,7 +12,6 @@ from PyQt6.QtWidgets import (
     QFrame,
     QHeaderView,
     QMainWindow,
-    QMessageBox,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -632,19 +631,13 @@ def test_dataset_panel_import_data_success(mock_main_window, mock_controller, qt
         _AcceptedChooser
     )
 
-    with (
-        patch(
-            "XBrainLab.ui.panels.dataset.actions.QMessageBox.information",
-        ) as mock_info,
-        patch(
-            "XBrainLab.ui.panels.dataset.actions.QMessageBox.warning",
-        ) as mock_warning,
-    ):
+    with patch(
+        "XBrainLab.ui.panels.dataset.actions.show_warning",
+    ) as mock_warning:
         panel.action_handler.import_data()
         mock_controller.import_files.assert_not_called()
         mock_warning.assert_called_once()
         assert mock_warning.call_args.args[1] == "Interpretation Blocked"
-        mock_info.assert_not_called()
 
 
 def test_dataset_panel_update_table(mock_main_window, mock_controller, qtbot):
@@ -1005,12 +998,9 @@ def test_dataset_panel_apply_loader_refuses_real_study(
     qtbot.addWidget(window)
     cast(Any, window).study = Study()
     warnings: list[tuple[Any, ...]] = []
-    infos: list[tuple[Any, ...]] = []
-    monkeypatch.setattr(QMessageBox, "warning", lambda *args: warnings.append(args))
     monkeypatch.setattr(
-        QMessageBox,
-        "information",
-        lambda *args: infos.append(args),
+        "XBrainLab.ui.panels.dataset.panel.show_warning",
+        lambda *args: warnings.append(args),
     )
     panel = DatasetPanel(parent=window)
     qtbot.addWidget(panel)
@@ -1019,7 +1009,6 @@ def test_dataset_panel_apply_loader_refuses_real_study(
     panel.apply_loader(loader)
 
     loader.apply.assert_not_called()
-    assert infos == []
     assert warnings
     assert warnings[0][1] == "Import EEG Data"
     assert "guided import workflow" in warnings[0][2]
@@ -1161,7 +1150,7 @@ def test_dataset_panel_on_item_changed(mock_main_window, mock_controller, qtbot)
     # triggering the signal)
     with (
         patch.object(panel, "update_panel"),
-        patch("XBrainLab.ui.panels.dataset.panel.QMessageBox.warning") as mock_warning,
+        patch("XBrainLab.ui.panels.dataset.panel.show_warning") as mock_warning,
     ):
         # Simulate editing Subject (Column 1)
         item = panel.table.item(0, 1)  # Subject
@@ -1254,7 +1243,7 @@ def test_dataset_panel_metadata_edit_refuses_real_study_controller_fallback(qtbo
             "XBrainLab.ui.panels.dataset.panel.execute_application_command",
             return_value=None,
         ),
-        patch.object(QMessageBox, "warning") as mock_warning,
+        patch("XBrainLab.ui.panels.dataset.panel.show_warning") as mock_warning,
     ):
         panel.on_item_changed(subject_item)
 
@@ -1437,7 +1426,7 @@ def test_dataset_panel_metadata_edit_fails_closed_without_product_capability(qtb
             "XBrainLab.ui.panels.dataset.panel.execute_application_command",
         ) as execute,
         patch.object(panel, "update_panel"),
-        patch.object(QMessageBox, "warning") as warning,
+        patch("XBrainLab.ui.panels.dataset.panel.show_warning") as warning,
     ):
         panel.on_item_changed(subject_item)
 
@@ -1465,8 +1454,8 @@ def test_dataset_panel_smart_parse(mock_main_window, mock_controller, qtbot):
 
         mock_controller.apply_smart_parse.return_value = 1
 
-        with patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb:
+        with patch("XBrainLab.ui.panels.dataset.actions.show_warning") as mock_warning:
             panel.action_handler.open_smart_parser()
             mock_controller.apply_smart_parse.assert_not_called()
-            mock_mb.warning.assert_called_once()
-            assert mock_mb.warning.call_args.args[1] == "Smart Parse Blocked"
+            mock_warning.assert_called_once()
+            assert mock_warning.call_args.args[1] == "Smart Parse Blocked"

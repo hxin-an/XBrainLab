@@ -14,7 +14,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
-    QPushButton,
     QSizePolicy,
     QStackedWidget,
     QTabWidget,
@@ -57,7 +56,6 @@ from XBrainLab.ui.application_capabilities import (
     execute_application_command,
     execute_application_command_async,
     fail_application_operation,
-    get_application_operation,
     get_application_view_publication,
     run_evaluation_render_operation,
 )
@@ -68,7 +66,6 @@ from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.components.presentation import ElidingComboBox, ResponsiveControlsBar
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.core.worker import PythonThreadWorker
-from XBrainLab.ui.owned_operation_presenter import OwnedOperationPresenter
 from XBrainLab.ui.panels.evaluation.confusion_matrix import ConfusionMatrixWidget
 from XBrainLab.ui.panels.evaluation.metrics_bar_chart import MetricsBarChartWidget
 from XBrainLab.ui.panels.evaluation.metrics_table import MetricsTableWidget
@@ -263,20 +260,6 @@ class EvaluationPanel(BasePanel):
         self._action_port = action_port if action_port is not None else runtime
         self._subscribe_to_application_publications()
         self.init_ui()
-        self._evaluation_operation_presenter = OwnedOperationPresenter(
-            self,
-            cancel_button=self.btn_cancel_evaluation,
-            snapshot_getter=lambda operation_id: get_application_operation(
-                self,
-                operation_id,
-                runtime=cast(ApplicationUiRuntime, self._query_port),
-            ),
-            canceller=lambda operation_id: cancel_application_operation(
-                self,
-                operation_id,
-                runtime=cast(ApplicationUiRuntime, self._query_port),
-            ),
-        )
 
     def _subscribe_to_application_publications(self) -> None:
         """Refresh state-changing content from the sole application truth."""
@@ -1361,14 +1344,9 @@ class EvaluationPanel(BasePanel):
         self._evaluation_render_active_operation_id = operation_id
         self._evaluation_render_pending_request = None
         self._evaluation_render_result_seen = False
-        self._evaluation_operation_presenter.bind(
-            operation_id,
-            stage="Queued evaluation render",
-        )
         try:
             worker.start()
         except Exception:
-            self._evaluation_operation_presenter.abandon()
             fail_application_operation(
                 self,
                 operation_id,
@@ -1519,8 +1497,13 @@ class EvaluationPanel(BasePanel):
 
     def _current_evaluation_render_request(self) -> EvaluationRenderRequest | None:
         generation = self._application_generation
-        selection = self.run_combo.currentData()
-        split = self.split_combo.currentData()
+        try:
+            selection = self.run_combo.currentData()
+            split = self.split_combo.currentData()
+        except RuntimeError:
+            # A terminal worker callback can arrive after Qt has deleted the
+            # panel during close; it is no longer eligible to publish.
+            return None
         if (
             generation is None
             or not isinstance(
@@ -1607,7 +1590,6 @@ class EvaluationPanel(BasePanel):
         """Cancel queued renders and release the publication subscription."""
         self._evaluation_render_cleaned_up = True
         self.begin_evaluation_render_shutdown()
-        self._evaluation_operation_presenter.abandon()
         self._invalidate_model_summary_request()
         self._clear_evaluation_render_retry()
         self._application_render_ledger.cleanup()
@@ -1955,24 +1937,13 @@ class EvaluationPanel(BasePanel):
         )
         self.chk_percentage.toggled.connect(self._on_percentage_toggled)
 
-        self.btn_cancel_evaluation = QPushButton("Cancel Evaluation")
-        self.btn_cancel_evaluation.setObjectName("EvaluationCancelButton")
-        self.btn_cancel_evaluation.setToolTip(
-            "Cancel the active Evaluation summary without waiting for other commands."
-        )
-        self.btn_cancel_evaluation.setStyleSheet(Stylesheets.BTN_WARNING)
-        self.btn_cancel_evaluation.setSizePolicy(
-            QSizePolicy.Policy.Fixed,
-            QSizePolicy.Policy.Fixed,
-        )
-
         self.evaluation_controls_bar = ResponsiveControlsBar(
             [
                 ("Fold", self.model_combo),
                 ("Run", self.run_combo),
                 ("Split", self.split_combo),
             ],
-            [self.chk_percentage, self.btn_cancel_evaluation],
+            [self.chk_percentage],
             wrap_width=760,
             greedy_wrap=True,
         )

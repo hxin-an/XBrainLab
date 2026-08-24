@@ -183,7 +183,7 @@ def test_import_apply_bounds_snapshot_detail_and_preserves_cancel_terminal(
 
     presenter.bind("operation-apply", stage="Preparing import")
     status = window.statusBar()
-    assert status.currentMessage() == "Importing reviewed EEG data · 20%"
+    assert status.currentMessage() == "Importing reviewed EEG data · Working…"
     assert status.property("stage") == stage
     assert 0 < len(status.property("operationDetail")) <= 240
     assert status.accessibleDescription() == status.property("operationDetail")
@@ -243,7 +243,7 @@ def test_typed_import_apply_immediately_replaces_transient_and_stays_visible(
     presenter.bind("operation-apply", stage="Preparing import")
 
     qtbot.wait(0)
-    assert status.currentMessage() == "Importing reviewed EEG data · 25%"
+    assert status.currentMessage() == "Importing reviewed EEG data · Working…"
     assert status.property("operationId") == "operation-apply"
     assert status.property("operationKind") == "import_apply"
     assert status.property("stage") == stage
@@ -262,9 +262,7 @@ def test_typed_import_apply_immediately_replaces_transient_and_stays_visible(
         )
         presenter.refresh()
         qtbot.wait(0)
-        assert status.currentMessage() == (
-            f"Importing reviewed EEG data · {completed * 25}%"
-        )
+        assert status.currentMessage() == "Importing reviewed EEG data · Working…"
         assert status.property("operationId") == "operation-apply"
         assert status.property("stage") == next_stage
         assert status.property("operationDetail") == next_stage

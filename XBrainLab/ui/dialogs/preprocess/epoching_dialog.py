@@ -21,7 +21,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -40,6 +39,7 @@ from XBrainLab.backend.application.epoch_context import (
     validated_epoch_context_availability,
     validated_epoch_window_mode,
 )
+from XBrainLab.ui.components.modal_presentation import show_warning
 from XBrainLab.ui.components.presentation import fit_table_to_all_rows
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import (
@@ -1334,7 +1334,7 @@ class EpochingDialog(BaseDialog):
         """Validate parameters and accept the dialog.
 
         Raises:
-            QMessageBox: Warning if no events are selected or time range
+            Warning dialog: shown if no events are selected or time range
                 is invalid.
 
         """
@@ -1356,7 +1356,7 @@ class EpochingDialog(BaseDialog):
         if validation is None:
             return
         if not validation.allowed:
-            QMessageBox.warning(self, validation.title, validation.message)
+            show_warning(self, validation.title, validation.message)
             return
 
         baseline = None

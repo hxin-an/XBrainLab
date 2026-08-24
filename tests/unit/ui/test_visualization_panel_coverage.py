@@ -24,6 +24,7 @@ from XBrainLab.backend.application import (
     SaliencyRenderRequest,
     SaliencyRunIdentity,
 )
+from XBrainLab.backend.application.commands import SaliencyCommand
 from XBrainLab.backend.application.results import ChangedState, CommandResult
 from XBrainLab.backend.application.saliency_render import (
     normalized_saliency_render_publication,
@@ -38,6 +39,7 @@ from XBrainLab.backend.application.state import (
 from XBrainLab.backend.application.view_publication import ApplicationViewStore
 from XBrainLab.backend.training_state_contract import TrainingReadBoundary
 from XBrainLab.backend.utils.observer import Observable
+from XBrainLab.ui.interaction_outcome import InteractionStatus
 
 
 def _complete_coverage(method: str = "Gradient") -> SaliencyMethodCoverageSnapshot:
@@ -59,6 +61,7 @@ def _complete_coverage(method: str = "Gradient") -> SaliencyMethodCoverageSnapsh
 def _visualization_result(
     *run_coverages: SaliencyRunCoverageSnapshot,
     cross_fold_choices: tuple[dict[str, object], ...] = (),
+    evaluation_cross_fold_choices: tuple[dict[str, object], ...] = (),
 ) -> CommandResult:
     state = replace(
         ApplicationStateSnapshot.empty(),
@@ -79,6 +82,7 @@ def _visualization_result(
             "available": True,
             "plot_views_available": True,
             "saliency_cross_fold_choices": list(cross_fold_choices),
+            "evaluation_cross_fold_choices": list(evaluation_cross_fold_choices),
         },
     )
 
@@ -250,6 +254,8 @@ def _make_panel(
 
     def _widget_factory(parent=None):
         widget = cast(Any, QWidget(parent))
+        widget.class_selected = MagicMock()
+        widget.select_class_key = MagicMock()
         widget.show_error = MagicMock()
         widget.show_message = MagicMock()
         widget.set_saliency_coverage = MagicMock()
@@ -268,6 +274,7 @@ def _make_panel(
         def __init__(self, *args, **kwargs):
             super().__init__()
             self.update_info = MagicMock()
+            self.refresh_view_controls = MagicMock()
 
     with (
         patch(
@@ -308,6 +315,7 @@ def _make_real_saliency_panel(qtbot, *, application_runtime=None, parent=None):
         def __init__(self, *args, **kwargs):
             super().__init__()
             self.update_info = MagicMock()
+            self.refresh_view_controls = MagicMock()
 
     with patch(
         "XBrainLab.ui.panels.visualization.panel.ControlSidebar",
@@ -342,6 +350,113 @@ def _current_widget(panel) -> Any:
     widget = panel.tabs.currentWidget()
     assert widget is not None
     return cast(Any, widget)
+
+
+def test_overview_class_activation_invalidates_existing_native_binding(qtbot):
+    """Changing display mode/class must rerender an already bound canvas."""
+    coverage = SaliencyMethodCoverageSnapshot(
+        method="Gradient",
+        available=True,
+        complete=True,
+        classes=[
+            SaliencyClassCoverageSnapshot(
+                class_index=0,
+                display_name="motor",
+                event_code=10,
+                store_key="left-key",
+                available=True,
+            ),
+            SaliencyClassCoverageSnapshot(
+                class_index=1,
+                display_name="motor",
+                event_code=20,
+                store_key="right-key",
+                available=True,
+            ),
+        ],
+    )
+    result = _visualization_result(
+        _run_coverage(
+            plan_index=0,
+            run_index=0,
+            model_name="EEGNet",
+            methods=(coverage,),
+        )
+    )
+    panel = _make_real_saliency_panel(qtbot)
+    publication = _publish_panel_state(panel, result)
+    run_identity = SaliencyRunIdentity(
+        plan=SaliencyPlanIdentity(plan_index=0),
+        run_index=0,
+    )
+    _select_run(panel, run_identity)
+    render_data = SaliencyRenderData(
+        method="Gradient",
+        saliency_by_class={
+            "left-key": np.ones((1, 2, 3)),
+            "right-key": np.ones((1, 2, 3)) * 2,
+        },
+        class_map=(("left-key", "motor"), ("right-key", "motor")),
+        event_ids={"motor": 10},
+        channel_names=("C3", "C4"),
+        channel_positions=((-0.04, 0.0, 0.08), (0.04, 0.0, 0.08)),
+        sfreq=128.0,
+        tmin=-0.2,
+    )
+    base_render = SaliencyRenderPublication(
+        request=SaliencyRenderRequest(
+            publication_generation=publication.generation,
+            run=run_identity,
+            method="Gradient",
+            view="channel_time",
+        ),
+        generation=publication.generation,
+        training_generation=1,
+        data=render_data,
+    )
+    panel.tab_map.update_plot = MagicMock()
+
+    def render_for(request):
+        return replace(base_render, request=request)
+
+    def cancel_binding(widget):
+        panel._native_render_bindings.pop(widget, None)
+        return True
+
+    with (
+        patch.object(panel, "_saliency_render_is_cached", return_value=True),
+        patch.object(
+            panel,
+            "_saliency_render_publication",
+            side_effect=render_for,
+        ),
+        patch.object(panel, "_bind_native_render_terminal"),
+        patch.object(
+            panel,
+            "_cancel_native_render_binding",
+            side_effect=cancel_binding,
+        ) as cancel,
+    ):
+        panel.on_update()
+        first_publication = panel.tab_map.update_plot.call_args.args[0]
+        panel._native_render_bindings[panel.tab_map] = (
+            1,
+            publication.generation,
+            "render-overview",
+            first_publication,
+            (False, False, "all", "left-key"),
+        )
+
+        panel._open_saliency_class_detail("right-key")
+
+    assert cancel.call_count == 1
+    assert panel.tab_map.update_plot.call_count == 2
+    assert panel.tab_map.update_plot.call_args.kwargs == {
+        "selected_label_key": "right-key",
+        "display_mode": "single",
+    }
+    assert panel.saliency_view_mode.currentData() == "single"
+    assert panel.saliency_class_combo.currentData() == "right-key"
 
 
 @pytest.mark.parametrize(
@@ -533,7 +648,7 @@ def test_real_panel_close_ignores_global_pool_saturation_before_submission(
             global_release.wait(timeout=5.0)
             global_finished.set()
 
-    def render(_data, _absolute) -> Figure:
+    def render(_data, _absolute, *_display_options) -> Figure:
         render_started.set()
         assert render_release.wait(timeout=5.0)
         figure = Figure()
@@ -932,7 +1047,7 @@ def test_cancelled_shutdown_resubmits_2d_publication_to_true_worker(
     worker_threads: list[int] = []
     render_count = 0
 
-    def render(_data, _absolute) -> Figure:
+    def render(_data, _absolute, *_display_options) -> Figure:
         nonlocal render_count
         render_count += 1
         worker_threads.append(threading.get_ident())
@@ -1119,7 +1234,7 @@ class TestRefreshCombos:
         assert [
             panel.plan_combo.itemText(index)
             for index in range(panel.plan_combo.count())
-        ] == ["Select a fold", "Fold 1 (EEGNet)", "Fold 2 (SCCNet)"]
+        ] == ["Select a fold", "Fold 1", "Fold 2"]
         assert panel.plan_combo.itemData(1) == plan_zero
         assert panel.plan_combo.itemData(2) == plan_one
         assert isinstance(panel.plan_combo.itemData(1), SaliencyPlanIdentity)
@@ -1190,7 +1305,7 @@ class TestRefreshCombos:
 
         identity = panel.run_combo.currentData()
         assert isinstance(identity, SaliencyCrossFoldIdentity)
-        assert panel.run_combo.currentText() == "Run 1 (Summary)"
+        assert panel.run_combo.currentText() == "Run 1"
         assert [member.plan.plan_index for member in identity.members] == [0, 1]
         coverage = panel._published_coverage_for_selection()
         assert coverage is not None
@@ -1241,6 +1356,118 @@ class TestRefreshCombos:
         assert rendered.request.normalize is True
         assert rendered.data.normalized is True
         assert rendered.data.fold_count == 2
+
+    def test_evaluation_admitted_fold_set_is_selectable_before_saliency_exists(
+        self,
+        panel_and_controller,
+    ):
+        """Newly finished folds must not inherit an earlier rendered result."""
+        panel, _controller = panel_and_controller
+        admitted = {
+            "identity": {
+                "members": [
+                    {"plan_index": 2, "run_index": 0},
+                    {"plan_index": 3, "run_index": 0},
+                ]
+            },
+            "display_name": "Fold Set 2",
+            "run_label": "Run 1 (Summary)",
+            "evaluation_splits": ["test"],
+            "fold_count": 2,
+            "sample_count": 12,
+            "saliency_available": False,
+            "saliency_reason": "Saliency has not been computed for this Fold Set.",
+        }
+        result = _visualization_result(
+            _run_coverage(plan_index=0, run_index=0, model_name="EEGNet"),
+            _run_coverage(
+                plan_index=2,
+                run_index=0,
+                model_name="EEGNet",
+                methods=(SaliencyMethodCoverageSnapshot(method="Gradient"),),
+            ),
+            _run_coverage(
+                plan_index=3,
+                run_index=0,
+                model_name="EEGNet",
+                methods=(SaliencyMethodCoverageSnapshot(method="Gradient"),),
+            ),
+            evaluation_cross_fold_choices=(admitted,),
+        )
+
+        _publish_panel_state(panel, result)
+
+        fold_set_index = panel.plan_combo.findText("Fold Set 2")
+        assert fold_set_index > 0
+        # First publication defaults to the latest admitted training round.
+        assert panel.plan_combo.currentIndex() == fold_set_index
+        assert panel.run_combo.currentText() == "Run 1"
+        assert isinstance(panel.run_combo.currentData(), SaliencyCrossFoldIdentity)
+        assert panel._published_coverage_for_selection() == {}
+
+    def test_evaluation_admitted_fold_set_dispatches_one_exact_batch_compute(
+        self,
+        panel_and_controller,
+        monkeypatch,
+    ):
+        """All Folds is a legal explicit target, not a settings-review error."""
+        panel, _controller = panel_and_controller
+        admitted = {
+            "identity": {
+                "members": [
+                    {"plan_index": 2, "run_index": 0},
+                    {"plan_index": 3, "run_index": 0},
+                ]
+            },
+            "display_name": "Fold Set 2",
+            "run_label": "Run 1 (Summary)",
+            "evaluation_splits": ["test"],
+            "fold_count": 2,
+            "sample_count": 12,
+            "saliency_available": False,
+            "saliency_reason": "Saliency has not been computed for this Fold Set.",
+        }
+        result = _visualization_result(
+            _run_coverage(
+                plan_index=2,
+                run_index=0,
+                model_name="EEGNet",
+                methods=(SaliencyMethodCoverageSnapshot(method="Gradient"),),
+            ),
+            _run_coverage(
+                plan_index=3,
+                run_index=0,
+                model_name="EEGNet",
+                methods=(SaliencyMethodCoverageSnapshot(method="Gradient"),),
+            ),
+            evaluation_cross_fold_choices=(admitted,),
+        )
+        publication = _publish_panel_state(panel, result)
+        identity = panel.run_combo.currentData()
+        assert isinstance(identity, SaliencyCrossFoldIdentity)
+        assert panel.compute_saliency_btn.isEnabled()
+        commands: list[SaliencyCommand] = []
+
+        def execute_async(_panel, command, **_kwargs):
+            commands.append(command)
+            return True
+
+        monkeypatch.setattr(
+            "XBrainLab.ui.panels.visualization.panel.execute_application_command_async",
+            execute_async,
+        )
+
+        outcome = panel._compute_saliency_from_action_bar()
+
+        assert outcome.status is InteractionStatus.ACCEPTED
+        assert len(commands) == 1
+        assert commands[0].target == identity
+        assert panel._saliency_settings_review_required is False
+        assert panel.saliency_settings_target() == (
+            publication.generation,
+            identity,
+            "EEGNet",
+        )
 
     def test_cross_fold_normalize_during_first_load_reschedules_owned_variant(
         self,
@@ -1404,7 +1631,7 @@ class TestRefreshCombos:
         )
 
         assert panel.plan_combo.currentData() == selected_run.plan
-        assert panel.plan_combo.currentText() == "Fold 2 (SCCNet v2)"
+        assert panel.plan_combo.currentText() == "Fold 2"
         assert panel.run_combo.currentData() == selected_run
         assert panel.run_combo.currentText() == "Run 2"
 

@@ -16,17 +16,21 @@ import sys
 import tempfile
 import time
 import traceback
+from contextlib import suppress
 from io import BytesIO
 from pathlib import Path
 from typing import Any, cast
 
-from XBrainLab.ui.qt_runtime import configure_qt_platform_for_runtime
+from XBrainLab.ui.qt_runtime import (
+    configure_qt_platform_for_runtime,
+    drain_qt_runtime_after_event_loop,
+)
 
 configure_qt_platform_for_runtime()
 
-from PyQt6.QtCore import QBuffer, QIODevice, QTimer
+from PyQt6.QtCore import QBuffer, QEventLoop, QIODevice, QTimer
 from PyQt6.QtGui import QColor, QPixmap
-from PyQt6.QtWidgets import QApplication, QLabel, QMessageBox, QWidget
+from PyQt6.QtWidgets import QApplication, QLabel, QMessageBox, QScrollArea, QWidget
 
 from scripts.dev.capture_chatpanel_local_tool_chain_walkthrough import (
     _clear_saved_main_window_geometry,
@@ -88,6 +92,7 @@ THREE_D_TAB_SPECS: list[dict[str, str]] = [
 UNCAUGHT_EXCEPTIONS: list[str] = []
 DETERMINISTIC_CAPTURE_SEED = 1729
 _RUNTIME_DEPENDENT = "<runtime-dependent>"
+SHUTDOWN_TIMEOUT_MS = 20_000
 _UNPAINTED_CAPTURE_SENTINEL = QColor(255, 0, 255)
 SALIENCY_RENDER_TIMEOUT_MS = 15_000
 THREE_D_CAPTURE_TIMEOUT_MS = 12_000
@@ -289,6 +294,7 @@ def run_visualization_render_walkthrough(
         "dismissed_dialogs": [],
         "screenshots": {"ready": ""},
         "final_state": {},
+        "shutdown": {},
         "ui_state": {},
         "elapsed_seconds": 0.0,
         "uncaught_exceptions": [],
@@ -376,15 +382,69 @@ def run_visualization_render_walkthrough(
                 )
 
     payload["final_state"] = service.get_state().to_dict()
+    payload["shutdown"] = _close_window_for_capture(app, window)
     payload["uncaught_exceptions"] = list(UNCAUGHT_EXCEPTIONS)
     _seal_source_identity(payload)
     ok, reason = validate_visualization_render_payload(payload)
     payload["status"] = "passed" if ok else "failed"
     payload["failure_reason"] = "" if ok else reason
     payload["elapsed_seconds"] = round(time.monotonic() - started_at, 3)
-    window.close()
-    app.quit()
     return payload
+
+
+def _shutdown_snapshot_is_clean(snapshot: object) -> bool:
+    if not isinstance(snapshot, dict):
+        return False
+    return (
+        snapshot.get("application_closed") is True
+        and snapshot.get("pre_close_application_idle") is True
+        and snapshot.get("pre_close_remaining_workers") == 0
+        and snapshot.get("pre_close_remaining_subprocesses") == 0
+        and isinstance(snapshot.get("close_attempt_id"), str)
+        and bool(str(snapshot["close_attempt_id"]).strip())
+    )
+
+
+def _close_window_for_capture(app: QApplication, window: Any) -> dict[str, Any]:
+    """Observe clean MainWindow shutdown before native wrappers are finalized."""
+    snapshots: list[dict[str, Any]] = []
+    shutdown_loop = QEventLoop()
+    shutdown_timer = QTimer()
+    shutdown_timer.setSingleShot(True)
+
+    def _finish_shutdown(snapshot: object) -> None:
+        if isinstance(snapshot, dict):
+            snapshots.append(dict(snapshot))
+        if shutdown_loop.isRunning():
+            shutdown_loop.quit()
+
+    app.setQuitOnLastWindowClosed(False)
+    window.shutdown_completed.connect(_finish_shutdown)
+    shutdown_timer.timeout.connect(shutdown_loop.quit)
+    shutdown_timer.start(SHUTDOWN_TIMEOUT_MS)
+    QTimer.singleShot(0, window.close)
+    shutdown_loop.exec()
+    timed_out = not snapshots and not shutdown_timer.isActive()
+    shutdown_timer.stop()
+    app.processEvents()
+
+    snapshot = snapshots[-1] if snapshots else None
+    try:
+        window_visible = bool(window.isVisible())
+    except RuntimeError:
+        window_visible = False
+    clean = _shutdown_snapshot_is_clean(snapshot) and not window_visible
+    if clean:
+        with suppress(RuntimeError):
+            window.deleteLater()
+    drain_qt_runtime_after_event_loop(app)
+    app.quit()
+    return {
+        "ok": clean,
+        "timed_out": timed_out,
+        "window_visible": window_visible,
+        "snapshot": snapshot or {},
+    }
 
 
 def _prepare_tiny_trained_state(
@@ -575,11 +635,11 @@ def _provenance_context_matches(context: str, expected_aggregation: str) -> bool
     if len(identity) != 3:
         return False
     dataset_label, plan_label, run_label = identity
+    fold_number = plan_label.removeprefix("Fold ")
     return (
         bool(dataset_label)
-        and plan_label.startswith("Fold ")
-        and "(" in plan_label
-        and plan_label.endswith(")")
+        and fold_number.isdigit()
+        and int(fold_number) > 0
         and bool(run_label)
     )
 
@@ -1416,6 +1476,15 @@ def validate_visualization_render_payload(
         first = str(payload["uncaught_exceptions"][0]).splitlines()[-1]
         return False, f"Uncaught Qt/runtime exception during capture: {first}"
 
+    shutdown = payload.get("shutdown") or {}
+    if (
+        shutdown.get("ok") is not True
+        or shutdown.get("timed_out") is not False
+        or shutdown.get("window_visible") is not False
+        or not _shutdown_snapshot_is_clean(shutdown.get("snapshot"))
+    ):
+        return False, "MainWindow did not publish a clean terminal shutdown."
+
     training = payload.get("training") or {}
     if int(training.get("finished_run_count") or 0) < 1:
         return False, "No completed tiny training run was captured."
@@ -1631,12 +1700,21 @@ def _validate_transform_control_evidence(
     for tab, state in states.items():
         if state.get("selector_geometry") != baseline_selectors:
             return False, f"{tab} selector geometry jumped across tab changes."
-        if (state.get("absolute") or {}).get("grid_position") != baseline_absolute_slot:
-            return False, f"{tab} changed the Absolute control slot."
         if (state.get("normalize") or {}).get(
             "grid_position"
         ) != baseline_normalize_slot:
             return False, f"{tab} changed the Normalize control slot."
+        absolute_slot = (state.get("absolute") or {}).get("grid_position")
+        if tab == "Spectrogram":
+            if absolute_slot:
+                return False, "Spectrogram retained an empty Absolute control slot."
+            continue
+        if absolute_slot != baseline_absolute_slot:
+            return False, f"{tab} changed the Absolute control slot."
+        if not baseline_normalize_slot or not absolute_slot:
+            return False, f"{tab} transform control positions are incomplete."
+        if tuple(baseline_normalize_slot[:2]) >= tuple(absolute_slot[:2]):
+            return False, f"{tab} must place Normalize before Absolute."
     return True, ""
 
 
@@ -1784,6 +1862,7 @@ def _capture_fully_rendered_window(
     """Capture the complete widget tree, including native OpenGL children."""
     window.ensurePolished()
     window.update()
+    window.repaint()
     QApplication.sendPostedEvents()
     QApplication.processEvents()
 
@@ -1870,25 +1949,74 @@ def _capture_matplotlib_window(
 
     parent = canvas.parentWidget()
     layout = parent.layout() if parent is not None else None
-    if parent is None or layout is None or layout.indexOf(canvas) < 0:
+    scroll_area = parent.parentWidget() if parent is not None else None
+    scroll_owned = (
+        isinstance(scroll_area, QScrollArea) and scroll_area.widget() is canvas
+    )
+    layout_owned = layout is not None and layout.indexOf(canvas) >= 0
+    if parent is None or not (layout_owned or scroll_owned):
         print("Matplotlib canvas is not owned by a visible Qt layout.", file=sys.stderr)
         return 3
 
-    placeholder = QWidget(parent)
+    capture_geometry = canvas_geometry
+    if scroll_owned:
+        viewport = scroll_area.viewport()
+        viewport_geometry = _widget_geometry(viewport, window)
+        if viewport_geometry.get("ok") is False:
+            print(
+                "Scrollable Matplotlib viewport geometry is unavailable.",
+                file=sys.stderr,
+            )
+            return 3
+        array = np.asarray(framebuffer)
+        canvas_width = max(int(canvas.width()), 1)
+        canvas_height = max(int(canvas.height()), 1)
+        x_offset = int(scroll_area.horizontalScrollBar().value())
+        y_offset = int(scroll_area.verticalScrollBar().value())
+        visible_width = min(int(viewport.width()), canvas_width - x_offset)
+        visible_height = min(int(viewport.height()), canvas_height - y_offset)
+        if visible_width <= 0 or visible_height <= 0:
+            print(
+                "Scrollable Matplotlib canvas has no visible region.", file=sys.stderr
+            )
+            return 3
+        x_scale = array.shape[1] / canvas_width
+        y_scale = array.shape[0] / canvas_height
+        x0 = max(0, round(x_offset * x_scale))
+        y0 = max(0, round(y_offset * y_scale))
+        x1 = min(array.shape[1], round((x_offset + visible_width) * x_scale))
+        y1 = min(array.shape[0], round((y_offset + visible_height) * y_scale))
+        framebuffer = array[y0:y1, x0:x1].copy()
+        capture_geometry = viewport_geometry
+
+    placeholder = QWidget(scroll_area if scroll_owned else parent)
     placeholder.setObjectName("VisualizationCaptureCanvasPlaceholder")
     placeholder.setFixedSize(canvas.size())
     placeholder.setStyleSheet("background: transparent; border: none;")
-    replaced_item = layout.replaceWidget(canvas, placeholder)
-    if replaced_item is None:
-        placeholder.deleteLater()
-        print("Failed to isolate the Matplotlib canvas for capture.", file=sys.stderr)
-        return 3
+    if scroll_owned:
+        detached_canvas = scroll_area.takeWidget()
+        if detached_canvas is not canvas:
+            placeholder.deleteLater()
+            print(
+                "Failed to isolate the scrollable Matplotlib canvas.", file=sys.stderr
+            )
+            return 3
+        scroll_area.setWidget(placeholder)
+    else:
+        replaced_item = layout.replaceWidget(canvas, placeholder)
+        if replaced_item is None:
+            placeholder.deleteLater()
+            print(
+                "Failed to isolate the Matplotlib canvas for capture.", file=sys.stderr
+            )
+            return 3
 
     capture_code = 3
     try:
         canvas.hide()
         placeholder.show()
-        layout.activate()
+        if layout is not None:
+            layout.activate()
         QApplication.sendPostedEvents()
         QApplication.processEvents()
         capture_code = _capture_fully_rendered_window(
@@ -1898,10 +2026,15 @@ def _capture_matplotlib_window(
             validate_complete=False,
         )
     finally:
-        layout.replaceWidget(placeholder, canvas)
+        if scroll_owned:
+            scroll_area.takeWidget()
+            scroll_area.setWidget(canvas)
+        else:
+            layout.replaceWidget(placeholder, canvas)
         placeholder.hide()
         canvas.show()
-        layout.activate()
+        if layout is not None:
+            layout.activate()
         placeholder.deleteLater()
         QApplication.sendPostedEvents()
         QApplication.processEvents()
@@ -1912,7 +2045,7 @@ def _capture_matplotlib_window(
         _compose_native_framebuffer(
             output_path,
             framebuffer,
-            region_geometry=canvas_geometry,
+            region_geometry=capture_geometry,
             window_size={"width": int(window.width()), "height": int(window.height())},
         )
         _normalize_png_artifact(output_path)
@@ -2335,7 +2468,11 @@ def stable_artifact_payload(payload: dict[str, Any]) -> dict[str, Any]:
 def _mask_runtime_values(value: Any) -> None:
     if isinstance(value, dict):
         for key in list(value):
-            if key in {"available_ram_bytes", "available_vram_bytes"}:
+            if key in {
+                "available_ram_bytes",
+                "available_vram_bytes",
+                "close_attempt_id",
+            }:
                 value[key] = _RUNTIME_DEPENDENT
             elif key == "metrics" and isinstance(value[key], dict):
                 value[key] = {"status": "available"}
@@ -2374,6 +2511,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- ready screenshot: `{payload.get('screenshots', {}).get('ready', '')}`",
         f"- elapsed seconds: `{payload['elapsed_seconds']}`",
         f"- uncaught exceptions: `{len(payload.get('uncaught_exceptions') or [])}`",
+        f"- clean shutdown: `{bool((payload.get('shutdown') or {}).get('ok'))}`",
         "",
         "## Rendered Tabs",
         "",

@@ -515,6 +515,8 @@ class SaliencySpectrogramMapViz(Visualizer):
         display_normalized: bool | None = None,
         preparation_cache: SaliencySpectrogramPreparationCache | None = None,
         preparation_key: Hashable | None = None,
+        selected_label_key: object | None = None,
+        display_mode: str = "all",
     ) -> Any:
         """Render the saliency spectrogram figure.
 
@@ -540,9 +542,6 @@ class SaliencySpectrogramMapViz(Visualizer):
             ax.text(0.5, 0.5, "No saliency data for this run.", ha="center")
             ax.set_axis_off()
             return fig
-        visible_label_number = len(saliency_by_label)
-        rows = 1 if visible_label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
-        cols = int(np.ceil(visible_label_number / rows))
         raw_sources = tuple(np.asarray(entry[2]) for entry in saliency_by_label)
 
         def prepare() -> _PreparedSpectrogram:
@@ -573,6 +572,20 @@ class SaliencySpectrogramMapViz(Visualizer):
         )
         self.spectrogram_diagnostics = prepared.diagnostics
         self.spectrogram_display_scale = dict(scale_details)
+        if display_mode not in {"all", "single"}:
+            raise ValueError("display_mode must be 'all' or 'single'")
+        plotted_classes = prepared.classes
+        if display_mode == "single":
+            plotted_classes = tuple(
+                item
+                for item in prepared.classes
+                if item.label_key == selected_label_key
+            )
+            if not plotted_classes:
+                raise ValueError("Selected saliency class is not available.")
+        visible_label_number = len(plotted_classes)
+        rows = 1 if visible_label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
+        cols = int(np.ceil(visible_label_number / rows))
         for diagnostic in prepared.diagnostics:
             logger.debug("Attribution spectrogram diagnostics: %s", diagnostic)
         logger.info(
@@ -588,18 +601,13 @@ class SaliencySpectrogramMapViz(Visualizer):
             left=0.10,
             right=0.86,
             bottom=0.12,
-            top=0.84,
+            top=0.92,
             wspace=0.38,
             hspace=0.55,
         )
-        fig.suptitle(
-            "Attribution magnitude spectrogram",
-            color="#cccccc",
-            fontsize=10,
-        )
         plot_axes = []
         image = None
-        for plot_index, prepared_class in enumerate(prepared.classes):
+        for plot_index, prepared_class in enumerate(plotted_classes):
             ax = fig.add_subplot(rows, cols, plot_index + 1)
             plot_axes.append(ax)
 

@@ -4,6 +4,7 @@ from dataclasses import replace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QWidget
 
 from XBrainLab.backend.application import SaliencyCommand, VisualizeCommand
@@ -112,13 +113,18 @@ class _VisualizationApplicationPort(Observable):
         super().unsubscribe(event_name, callback)
 
 
+class _SaliencyWidgetStub(QWidget):
+    class_selected = pyqtSignal(object)
+
+
 def _widget_factory(parent=None):
-    widget = cast(Any, QWidget(parent))
+    widget = cast(Any, _SaliencyWidgetStub(parent))
     widget.show_error = MagicMock()
     widget.show_message = MagicMock()
     widget.set_saliency_coverage = MagicMock()
     widget.set_post_training_saliency_status = MagicMock()
     widget.update_plot = MagicMock()
+    widget.select_class_key = MagicMock()
     widget.invalidate_render_publication = MagicMock()
     widget.begin_render_shutdown = MagicMock()
     widget.cancel_render_shutdown = MagicMock()

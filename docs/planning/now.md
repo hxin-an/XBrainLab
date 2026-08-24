@@ -1,457 +1,402 @@
 # XBrainLab Now
 
-最後更新：`2026-08-22`
+最後更新：`2026-08-24`
 
 ## 目前焦點
 
-CI reliability branch 已在 PR #44 的 exact head
-`a679f1417649f4266a2af84809684e40b2109293` 完成所有 applicable non-skipped checks，使用者於
-`2026-08-21` 回報 Windows 與 Linux 真人手測正常，並以 merge commit
-`8d8dcf6030d0b4bd79783b3a086e1efa101d0cd2` 合併至 `main`。
+`integration/gui-polish-v1` 的前一個 visual checkpoint 在 2026-08-24 真人手測又揭露 BIDS revalidation
+Cancel、Saliency repeat-training admission 與三項 3D／提示 presentation defect。Source 將再次修改，因此
+既有 manual acceptance、focused totals 與 handoff evidence 均已失效；本 slice 完成前不得宣稱
+handoff-ready 或可 merge。
 
-目前唯一 active slice 是 branch `feature/braindecode-full-catalog-v1`：固定 Braindecode `1.6.1`
-的完整模型目錄，以 upstream Braindecode 作正常 provider，將逐檔確認可重散布的模型碼移入
-XBrainLab 作 provider unavailable 時才顯示的本地 recovery／legacy catalog，並把現行 13 項的
-Model Selection combo 改為可搜尋、可理解 unavailable reason 的完整目錄。
+本輪 UI 修改已取得明確授權。先做 red/green focused protection、non-author review 與輕量 walkthrough，
+凍結 exact checkpoint 交使用者確認；只有同一 source 獲得 UI／流程確認後才跑 canonical heavy handoff。
 
-使用者已明確確認：
+## 2026-08-24 Saliency Refresh merge 與 v0.8.0 release
 
-- upstream 與 legacy 使用不同 stable ID，禁止 silent fallback；
-- 所有 upstream model contracts 都可搜尋，不符合目前產品能力者 disabled 並顯示原因；
-- legacy 正常時隱藏，只有 upstream provider unavailable 時才顯示；
-- legacy source包含逐檔確認的 BSD-3-Clause、MIT、Apache-2.0 code，保留 notices；
-- 授權本 slice 使用單一 branch／單一超大型 PR、多個可回退 commit，並對約 `35,000+`
-  production LOC 明確例外；所有 commit 完成及 final evidence閉合後才交付一次手測。
+### Manual acceptance
 
-Final Model Selection refinement 已取得明確 UI 授權：正常 provider ready banner 是不必要的
-資訊噪音；現行 Model parameters 表只涵蓋64個visible contracts中的13個，另外51個只顯示
-no-editable-parameters，且文字型別推斷與重新開啟不保留自訂值，不足以作為完整進階設定。
-本 refinement 的 observable outcome 是：(1) provider checking期間保留短暫狀態，healthy完成後整列
-隱藏，provider unavailable時仍保留local recovery警示；(2)移除Model parameters編輯區，Confirm直接
-使用catalog目前的非`None`預設值，保持未手動修改時的既有模型建構語意；(3)`model_params` command、
-resource preview、artifact與script contract保持不變；(4)現行disabled／unavailable rows、reason、
-dataset-context admission、stable IDs、provider recovery與pretrained-weight行為完全不改。
-Scope只包含既有Model Selection widget、直接相關catalog UI metadata、tests、visual artifact與truth sync；
-不改Training其他頁面、availability分類／文案、model factory、catalog membership或backend owner。
-Owners before／after不變；deletion candidates是QTableWidget參數編輯器、文字parser、empty／resize／selection
-helpers；`ModelSpec`的key／default／label metadata仍保留為reviewed default contract，不另做backend
-schema refactor。先跑既有selector characterization，再加
-healthy-banner-hidden與catalog-default Confirm regressions，完成後跑同一focused suite、Ruff／format、
-basedpyright、exact-source default-scale artifact，最後freeze新SHA並只跑一次canonical handoff。
-若default model parameters、unavailable行為、provider identity、search／keyboard／Confirm、pretrained
-weight或Training command結果改變，立即停止而不以UI簡化為由接受回歸。任何source變更使`a9ca317f`
-舊handoff evidence失效；新exact head閉合後才交付Windows／Linux真人手測。
+- 使用者於2026-08-24明確回報手測通過並同意merge；驗收product source為
+  `b389406e3a293993fb9ca3b309864cfd09fe3a9e`、tree
+  `8c69bc0d0904f17575e6c5691d7f5a83a9c7f830`。
+- 驗收範圍涵蓋本branch的Data Import cancel/review recovery、重複Training後Compute Saliency、Saliency
+  class／fold controls、warning與3D presentation、全寬Epoch time、置中色條，以及重複render後單一XYZ軸。
+- 使用者未在本次訊息指定OS／DPI／dataset，因此不外推為新的cross-platform、source-diverse或scientific
+  claim；既有automated evidence與本次manual acceptance各自維持原邊界。
 
-Refinement實作已完成：Model Selection production diff為單一owner file `+21/-179/net -158`，owner數
-不變；正常banner與參數表／parser已刪，recovery banner、unavailable rows、search／keyboard、pretrained
-weight與backend admission未改。Selector baseline由25 passed收斂為18個observable cases；直接耦合的
-catalog／TrainingService／sidebar合計185 passed，capture／DPI script contracts為49 passed。Ruff全repo、
-format check、configured basedpyright與MkDocs strict均通過；provisional Xvfb screenshot已人工確認無clipping、
-overlap、雙重scroll或舊參數卡高度。下一步只建立focused commit、產生clean exact-source artifact並執行
-一次canonical handoff；若失敗只修recorded owner，不為計時重跑。
+### Merge、version 與 gates
 
-Exact `b25ee339` 的第一次canonical handoff已按規則在complete-regression停止：8,289個已執行
-cases中8,288 passed、1個既有Evaluation lifecycle test失敗；失敗測試在retry render publication到達後
-立即斷言worker已由稍後的finished callback釋放，屬observable terminal之前的test race，沒有Model
-Selection或產品source failure。修正scope只為該test等待既有`evaluation_background_work_idle` terminal；
-不改Evaluation product lifecycle、timeout或UI。先以該node的重複focused執行證明race已收斂，再建立
-replacement exact SHA並執行一次replacement canonical handoff；不為計時或成功率重跑舊SHA。
+- 先把latest `origin/main` ancestry同步進product branch；main-only `2fe5f2b7`與branch既有`1bac475c`
+  patch-id相同，只改同一個teacher-fixture test。同步後若product tree改變，manual acceptance失效並停止；
+  若tree維持相同，記錄exact pushed head並跑完整canonical handoff manifest。
+- Product PR必須以exact head對main、所有non-skipped checks completed/success後才merge。合併後另從新main開
+  `release/v0.8.0-saliency-refresh`，只同步四處版本metadata、CHANGELOG、README與必要current truth；release
+  metadata不混入已驗收product diff。
+- Release名稱固定為`XBrainLab 0.8.0 — Saliency Refresh`，annotated tag為`v0.8.0`。Release PR同樣CI
+  fail closed；merge後tag與GitHub Release只能指向exact main merge commit。
 
-Data Import 與 4B Assistant 模型不在本 slice。
+若sync改變product tree、canonical gate缺失／失敗、PR SHA不符、CI missing／pending／failed，或release
+metadata與tag不一致，即停止，不merge或發布。
 
-施工 checkpoint：catalog／provider chain至`627c5492`已由獨立gate確認無blocker／major；metadata
-discovery保持barrel-free，只有checked provider status能啟用projection。`f27eabfa`已鎖定61-symbol逐檔
-provenance、hash、license與excluded set。第一個baseline convolution family已完成private namespace、minimal
-no-Hub base、逐symbol support provenance與六個model的strict state-dict／deterministic output parity；獨立
-gate要求移除未使用的support symbols後已收斂到18個實際primitive，並新增restricted／unrelated source guard。
-`861ce481`的複核已PASS。Sleep／temporal family再加入7個models與3個實際support primitives；每個model
-已完成upstream strict state-dict／deterministic output parity，兩個代表完成finite backward，且`2fa43d1c`
-獨立gate已PASS。Filter-bank family目前加入FBCNet、FBMSNet、FBLightConvNet與IFNet；mixed-license
-`filter.py`只摘取BSD的`FilterBankLayer`，未帶入`GeneralizedGaussianFilter`，IFNet另保留MIT notice。
-四個model皆完成strict state-dict／deterministic output parity，FBCNet／IFNet完成finite backward；catalog、
-provenance與三個family的focused驗證為55 passed，且`09f5482b`獨立gate已PASS。Convolutional／TCN
-family目前再加入EEGInceptionMI、EEGITNet、EEGTCNet、EEGSimpleConv、SPARCNet、ContraWR、TSception、
-SyncNet、SincShallowNet與SSTDPN；十個model皆完成strict state-dict／deterministic output parity，三個代表
-完成finite backward，新增support只限MaxNorm與MaxNormLinear，且`f183d0de`獨立gate已PASS。下一個
-bounded family為attention／transformer；STEEGFormer的upstream Hub channel-index下載不會移入legacy，
-legacy contract改為使用者顯式提供index或在無channel metadata時沿用identity mapping，禁止網路fallback。
-本family現已加入ATCNet、AttentionBaseNet、CTNet、EEGConformer、MEDFormer、MSVTNet、MVPFormer、
-PBT、STEEGFormer與TCFormer；10個model皆完成strict state-dict／deterministic output parity，三個代表完成
-finite backward。Support closure只新增12個實際attention primitives、PatchTokenizer、FeedForwardBlock、
-DropPath、Conv1dWithConstraint與6個直接所需functional symbols；STEEGFormer的Hub lookup已刪除並有
-fail-closed regression。六個family加provenance focused suite為58 passed，Ruff／format／basedpyright皆通過，
-`c71e5266`的獨立gate指出STEEGFormer仍保留Hub loader surface；`0f1cf3c9`已刪除相關文件、
-`_hub_mixin_config`與`from_pretrained`語意，擴充source guard後re-gate PASS。Attention／transformer family
-正式關閉。Foundation core／interpolated family目前加入EEGPT、BIOT、BENDR及其三個Interpolated variants；
-support closure只新增`InterpolatedModel`與`ChannelInterpolationLayer`所需的6個實際symbols，三個model的
-remote loader文件與surface均未移入。六個contracts完成upstream strict state-dict／deterministic output
-parity，三個base model完成finite backward；全部既有legacy family加provenance focused suite為68 passed，
-Ruff／format／basedpyright皆通過，`61735254`獨立gate已PASS。Foundation leaf family目前再加入
-CBraMod、CodeBrain、DGCNN與EEGDINO；support只擴充直接需要的
-`CrissCrossTransformerEncoderLayer`與`extract_channel_locations_from_chs_info`，四個model的remote
-loader文件與surface均未移入。四個contracts完成upstream strict state-dict／deterministic output parity及
-finite backward；全部既有legacy family加provenance focused suite為77 passed，Ruff／format／
-basedpyright皆通過，`84d64ff9`獨立gate已PASS。LaBraM／EEGSym family目前再加入Labram、
-InterpolatedLaBraM與EEGSym；support只擴充直接需要的MLP、parameter rescale與兩個hemisphere channel
-helpers，remote loader文件與surface均未移入。三個contracts完成upstream strict state-dict／deterministic
-output parity，Labram／EEGSym完成finite backward；全部既有legacy family加provenance focused suite為
-83 passed，Ruff／format／basedpyright皆通過，`8190155d`獨立gate已PASS。SignalJEPA／LUNA family
-目前加入SignalJEPA、InterpolatedSignalJEPA、三個classification variants與LUNA；兩個source只依賴
-local legacy base／modules，Hub／download文件與可執行loader surface均未移入。六個contracts完成upstream
-strict state-dict／deterministic output parity，SignalJEPA／LUNA完成finite backward；全部既有legacy family
-加provenance focused suite為92 passed，Ruff／format／basedpyright皆通過，`c0d045b3`獨立gate已PASS。
-最後一個REVE family目前已移入其BSD model source，但刪除position-bank HTTP／cache／JSON loader與
-remote pretrained surface；legacy forward只接受caller明確提供的`pos`，channel-name lookup在沒有local
-position data時fail closed。REVE完成upstream strict state-dict／deterministic output parity與finite backward；
-全部既有legacy family加provenance focused suite為96 passed，Ruff／format／basedpyright皆通過，
-`fe4b3959`獨立gate已PASS；57個permissive contracts的legacy vendoring正式關閉，四個restricted contracts
-只保留metadata。Admission第一個checkpoint目前已建立provider-aware projection：healthy時顯示完整61個
-upstream contracts，provider unavailable時改列57個distinct `legacy.braindecode.*` recovery IDs，且explicit
-legacy ID在healthy環境仍可解析但不會顯示整份legacy catalog。Catalog factory只傳model宣告的signal context，
-Epochs補上detached `chs_info`，TrainingService拒絕disabled contract並把provider／revision寫入ModelHolder；
-相關catalog、training service、epochs focused suite為422 passed。下一步是提交本checkpoint並取得同一獨立gate
-複核；`0f2d04ac`已關閉legacy alias與舊dialog projection findings，re-gate PASS。Artifact identity checkpoint
-目前把exact model ID／provider／source revision寫入ModelHolder、每個新TrainingRecord與saliency producer
-fingerprint；同目錄checkpoint／evaluation records因此由training record identity約束，upstream artifact用
-legacy identity重開會fail closed，舊artifact缺identity時不會被補寫或冒充某個provider。相關focused suite為
-108 passed；malformed identity也會在任何record mutation／evaluation load前以typed error fail closed，
-`168dd127`獨立gate已PASS。Model Selection search cutover目前已完成可搜尋result list、name／ID／alias／
-family／task filter、disabled reason、no-match、keyboard、selection preservation與provider recovery presentation；
-provider true import preflight在Python-owned background thread執行，Matplotlib style side effect由既有lock＋
-`rc_context`隔離。Healthy projection顯示61 upstream＋3 local，missing／broken provider顯示57 distinct recovery＋
-3 local；找不到原ID時Confirm保持disabled，不替使用者選另一個identity。Catalog＋UI focused suite為52 passed，
-focused offscreen screenshot亦已人工檢視。`5cd736a3`的獨立gate發現Enter可繞過hidden／no-match selection；
-目前已讓keyboard與`accept()`共用visible＋enabled＋Confirm guard，並以no-match及hidden-selection兩條red→green
-regression關閉，UI focused suite為23 passed；`5b6b4016` re-gate已PASS。UI checkpoint正式關閉。下一步進入
-全部selectable models的catalog construction／forward與family workflow matrix，不提前執行full handoff。
+### Canonical gate blocker
 
-Model matrix第一輪bounded diagnostic已完成且不重跑：目前static catalog的54個selectable upstream contracts，
-在22-channel／512-sample且無montage context有43個產生finite logits；在22-channel／256-sample且有標準10–20
-montage context有47個產生finite logits。失敗不是單一factory defect，而是可靜態描述的signal contract：
-interpolated／DGCNN／SignalJEPA contextual需要finite electrode positions；SleepStagerBlanco2020與AttnSleep
-需要較長sleep windows，AttnSleep另有原始100／125 Hz window contract；Labram需要原始128-channel order及
-200-sample patch divisibility，InterpolatedLaBraM需要montage及相同divisibility；LUNA／CBraMod分別需要40／
-200-sample patch divisibility；EEGDINO目前最多19 channels。下一個coherent change會在既有ModelCatalog加入
-pure dataset-context availability projection，Model Selection只從`controller.get_epoch_data().get_model_args()`
-取得detached snapshot，TrainingCommandService在configure時用同一projection重新admit。禁止UI自行推導、
-禁止trial construction決定availability、禁止遇到constructor error後fallback。Focused tests要證明各條件的
-allow／block、UI reason、UI與command一致及每個enabled contract的bounded construction／finite forward。
-目前pure projection與兩個consumer已完成：interpolated／DGCNN／SignalJEPA contextual會要求reviewed finite
-positions；SleepStagerBlanco2020要求至少450 samples且預設group-compatible channel count；AttnSleep只接受
-single-channel 30-second 100／125 Hz contract，125 Hz由同一adapter固定其documented `d_model=100`；Labram
-要求canonical 128-channel order與200-sample divisibility，InterpolatedLaBraM／LUNA／CBraMod分別檢查其
-200／40／200 patch contract，EEGDINO限制最多19 channels。Upstream與legacy recovery共用判定；UI只顯示
-reason，TrainingCommandService在任何configuration mutation前重新讀Epochs model args並fail closed。三個
-focused files目前127 passed，Ruff／format／basedpyright通過。下一步為提交本checkpoint、獨立gate複核，
-之後才建立compatible-context construction／finite-forward matrix；不再執行前述兩個diagnostic矩陣。
-`a44918a7`獨立gate已PASS。Model matrix下一個slice不新增runner或availability owner：47個一般contract沿用
-22-channel／256-sample／standard montage context；七個特殊contract分別使用Blanco 512 samples、AttnSleep
-single-channel 3000 samples at 100 Hz、Labram canonical 128-channel／400 samples、InterpolatedLaBraM
-22-channel／400 samples、LUNA 22-channel／280 samples、CBraMod 22-channel／400 samples及EEGDINO
-19-channel／256 samples。每個static-eligible upstream ID必須由同一catalog projection判為available，以產品
-factory與default params產生`(1, 4)`finite logits及至少一個finite gradient；不量scientific accuracy、不以
-construction結果回寫availability。Focused evidence是一個獨立integration matrix，任一model失敗即停在該
-contract修復，不重跑整個舊diagnostic矩陣。
-第一輪完整matrix已一次通過：54個static-eligible upstream IDs全數由產品factory產生`(1, 4)`finite logits
-與finite gradient，inventory case合計55 passed／15.25 seconds。Run同時暴露STEEGFormer沒有收到既有
-`chs_info`後仍嘗試從Hub下載channel vocabulary並在離線時退回identity mapping；產品從零訓練而不載入
-預訓練embedding，因此同一既有adapter明確傳入deterministic local `chan_pos_idx=range(n_chans)`，不新增
-optional-input abstraction、不觸發網路、也不假裝具有預訓練montage alignment。以單一factory regression
-及該model matrix selector驗證，不重跑54-model matrix。Focused STEEGFormer regression為2 passed／
-4.52 seconds，原Hub vocabulary／identity-fallback warning已消失；Ruff／format／basedpyright通過。
-`48a031a9`獨立gate已PASS。下一個workflow checkpoint不重跑54-model construction matrix，也不新增
-training／artifact／saliency owner：以六個catalog family的代表`EEGNet`（Convolutional）、`EEGConformer`
-（Attention）、`FBCNet`（Filter bank）、`BIOT`（Foundation）、`DGCNN`（Graph）及`DeepSleepNet`
-（Sleep），在同一真實MNE-backed 22-channel／256-sample兩類Dataset上，各走CPU one epoch。每一case必須
-由checked catalog取得factory與exact provider identity、產生selected validation checkpoint、完成test
-evaluation、寫出safe record／EvalRecord／model-state artifacts，並用artifact reader strict-load至fresh同ID model。
-每一family另只算`Gradient` saliency並驗證finite attribution及producer identity；不跑SmoothGrad family、
-不比較scientific metrics。先以EEGNet單一selector打通harness；任何產品contract不相容即停在該family修正，
-不把測試改成mock trainer／mock persistence。
-Workflow matrix已完成：EEGNet先以單一case通過；其餘family第一次執行時DGCNN正確拒絕只有MNE Info、
-但尚未commit到`Epochs.channel_position`的montage，確認是test harness沒有走產品reviewed-montage state而非
-model defect。Harness改用`Epochs.set_channels()`正式套用同一standard montage後，六個family整檔一次通過
-（6 passed／9.88 seconds）。每例均使用真Trainer、真safe artifact IO、fresh strict-load、test evaluation及
-Gradient saliency；未patch persistence或model owner。下一步提交checkpoint並由同一獨立gate複核；不再重跑
-此workflow matrix，除非相關training／artifact／saliency source再變。
-`e34d2c81`獨立gate已PASS。Platform checkpoint只重用既有`platform-product-lifecycle` registry：Windows
-執行54個selectable upstream models的bounded construction／forward／gradient matrix；macOS在同一test module
-只執行六個family representatives，Linux authoritative integration仍執行完整54個。這不新增CI job、runner或
-timeout，不把macOS best-effort升格為真人desktop claim；focused validation只跑runner contract與本機Linux
-collection/cardinality，不在本機重跑model matrix。Registry／Windows-full／macOS-family policy focused
-tests為5 passed；Linux collection保留54個model execution cases（另含3個inventory／platform policy cases），
-Ruff／format通過，basedpyright只有既有PyYAML source-resolution warning。
-`08b39997`獨立gate已PASS。Canonical truth sync更新`current.md`的model-catalog邊界、backend的唯一owner／
-artifact identity／legacy license closure、UI的search／provider recovery投影，以及validation的exact-source
-Braindecode candidate與Windows手測契約；不新增第二份plan或歷史worklog。MkDocs strict build通過。下一步
-提交docs checkpoint，之後freeze product source、產生exact-source Model Selection UI artifact並執行一次
-canonical handoff；若任何gate失敗，只修其recorded owner後建立新的candidate，不為計時重跑。
-Docs gate指出architecture將identityless legacy stats-only compatibility寫成全面fail closed；實作的正確邊界是
-identified／model-backed reopen拒絕缺漏／malformed／mismatch，而current identity同樣unknown時可讀舊statistics
-且不可rebind／re-export。只修正該canonical wording後re-gate，不改產品或重跑model tests。
-`7d059bff`的第一次canonical handoff在啟動complete regression前由architecture-compliance fail closed：
-`ModelSelectionDialog`讀dataset signal context時直接呼叫`controller.get_epoch_data()`，繞過已存在的
-ApplicationService command spine。修復只新增一個ApplicationService-owned detached model-signal query，
-由既有ApplicationUiRuntime adapter轉交給dialog；不改catalog判定、畫面、搜尋、training mutation或owner數。
-Focused validation必須證明product dialog只使用typed runtime query、無runtime時回到metadata-only projection，
-並重跑architecture-compliance。建立新frozen SHA後才執行一次replacement canonical handoff；舊SHA的失敗
-evidence保留為歷史，不重跑其完整suite。
-第一版修復收斂為5個production files、production `+60/-10/net +50`、owner數不變；3個focused behavior
-cases、Ruff、basedpyright、MkDocs strict與architecture-compliance均通過。下一步提交並由既有獨立gate
-複核；只有新SHA通過後才重建exact-source UI artifact與replacement canonical handoff。
-獨立gate指出第一版仍漏接typed product wiring：`TrainingPanel`在typed mode刻意不保留controller，真實
-query owner位於既有`_query_port`；只將controller傳入dialog會錯誤退化為metadata-only projection。
-修正必須由`TrainingSidebar`把既有TrainingQueryPort顯式注入dialog，helper直接使用該narrow port，並以
-真widget＋typed fake port證明context read發生且不相容model被disabled；standalone context才允許fallback。
-Typed port wiring已補齊；5個focused cases、Ruff、basedpyright與architecture-compliance通過。第一版
-`31f31d1c`尚未push，會以同一focused commit amend後重新取得獨立gate，不保留兩個假候選SHA。
-最終修復為6個production files、production `+75/-11/net +64`、owner數不變；`f0a77b80`獨立
-re-gate已PASS。
-`555ff17f`的replacement canonical handoff在complete regression fail closed。這不是selector evidence
-遺失：`linux-unit-backend`有9個由新model identity／channel metadata contract暴露的失真測試fixture，另有
-一個cold-import timeout；`linux-unit-rest`的兩個真spawn lifecycle cases在重型54-model backend matrix並行
-時未能於既有watchdog內啟動。修復scope只包含：(1)讓saliency、Epochs與ModelHolder fixtures帶有真實
-constructor會建立的identity／channel欄位；(2)讓local handoff runner禁止resource-heavy backend group與
-spawn-sensitive rest group重疊，但保留八個authoritative Linux groups、unit→integration barrier、coverage與
-fail-closed outcome policy。Non-goals是不增加watchdog掩蓋競爭、不刪模型／測試、不改產品行為、CI matrix
-或handtest contract。Focused validation為受影響fixture tests、spawn/cold-import cases、runner scheduling
-contract、Ruff與architecture guard；通過後建立新frozen SHA，才執行一次新的replacement handoff。若
-focused cases仍在隔離狀態失敗、任何test count／coverage policy改變，或排程仍允許兩group重疊即停止。
-修復沒有production source變更（production `+0/-0/net 0`，owner數不變）；原9個fixture failures與3個
-spawn／cold-import cases均在原watchdog下通過，runner scheduling tests 6 passed，Ruff、format、
-basedpyright與architecture-compliance通過。下一步建立單一checkpoint commit並交既有獨立gate複核；
-只有PASS後才push並執行新的exact-source replacement handoff。
-`0b7d7168`的replacement handoff確認fixture與backend/rest排程問題已關閉，但`linux-unit-rest`仍有5個
-runtime-process startup timeout。完整runtime-process test file在獨立process且保留`--cov`時可重現，移除
-coverage時原watchdog通過；根因是pytest-cov的`COV_CORE_*`被spawn child繼承，child啟動coverage造成
-process-lifecycle probe本身失真。完整core selector進一步證明Downloader的真spawn seam同樣受影響，因此
-下一修復只在`tests/unit/llm/core` scoped fixture啟動真child前移除child-only coverage env，
-父pytest／其餘group coverage、八group topology與產品timeout不變；先跑完整runtime-process file，再跑
-完整`tests/unit/llm/core`的canonical coverage argv。兩者未全通過即停止，不重跑handoff。
-Scoped child-coverage isolation完成後，完整runtime-process file在原coverage argv為10 passed，完整
-`tests/unit/llm/core`為242 passed；父pytest仍產出coverage且所有原watchdog未變。Ruff、format與diff
-check通過，production `+0/-0/net 0`、owner數不變。下一步建立checkpoint並由獨立gate確認沒有coverage／
-topology降級；PASS後push並建立新的exact-source candidate。
-`0d0eeaaa`的新candidate已使全部unit groups通過，但integration-rest的
-`test_saliency_view_publication_lifecycle.py`有16個case在共同fixture建立producer identity時失敗；該fixture
-以`object.__new__(TrainRecord)`繞過constructor且漏設`model_identity`，所以尚未進入各自race／cancel／render
-assertion。修復只補上同一fixture的`model_holder.catalog_identity`，完整執行該integration file；不改product
-saliency或artifact fail-closed規則。若仍有其他failure即停止並按新record分類。
-Shared integration fixture補齊後，該file 35 passed，原16個lifecycle cases已跨過producer identity並完成
-各自assertions；production `+0/-0/net 0`、owner數不變。下一步做Ruff／diff check、checkpoint與獨立gate，
-PASS後才push並重建exact-source evidence。
-`cdb222fb`在具備原生CUDA權限的replacement handoff先通過source preflight、Ruff與format，之後由
-basedpyright fail closed，尚未進入complete regression。相同gate在sandbox錯誤觀察為0 diagnostics；在
-handoff相同原生權限下可穩定重現624個observed diagnostics，其中537個new diagnostics只位於逐檔保留的
-`legacy_braindecode`第三方原碼，另7個位於XBrainLab-owned Model Selection Qt Optional access。修復scope
-只包含：(1)將exact legacy third-party namespace加入basedpyright exclude，同時保留provenance、model parity、
-54-model execution與六family workflow作其authoritative evidence；(2)實際收斂Model Selection的optional
-style／list-item access；(3)加入typecheck config contract，防止排除範圍擴張至catalog／adapter／UI。
-不更新baseline、不逐行改寫上游vendored演算法、不忽略XBrainLab-owned diagnostics，也不改可見UI行為。
-Focused validation須在原生權限下使basedpyright regression為0 new diagnostics，並通過selector、typecheck
-contract、Ruff與format；若exclude涵蓋legacy namespace以外、仍有owned-code diagnostics或任何selector
-行為改變即停止。通過後建立新SHA並交既有獨立gate，只有PASS才執行replacement canonical handoff。
-修復完成後selector＋typecheck contract為29 passed，Ruff／format／diff check通過；原生權限下的
-basedpyright regression為80 observed、0 new、1 resolved，沒有更新81筆既有baseline。排除範圍只包含
-reviewed legacy third-party namespace與原有LLM model source，catalog／adapter／artifact／UI仍受檢；
-production變更為UI null-safe access `+14/-7/net +7`，owner數不變且沒有可見行為改動。下一步建立
-checkpoint並由既有獨立gate複核，PASS後push新exact head並執行replacement canonical handoff。
-`18d43be4`的replacement handoff已通過source/static、complete regression、Assistant／GPU、UI／native
-lifecycle及source-diverse data gates，但在deferred record聚合時由`startup-smoke` fail closed。Artifact顯示
-entrypoint在MainWindow前拒絕缺少`XBRAINLAB_CONFIG_DIR`；這是CI reliability已新增的正確產品安全要求，
-而local canonical handoff的startup runner仍未提供隔離root。修復只在既有`run_startup_smoke.py` owner內：
-未顯式提供root的local probe自建一個含空格與非ASCII的owned temporary root，重用
-`build_isolated_environment()`產生全部mutable paths並只注入child；CI顯式root路徑與`run.py` fail-closed
-要求保持不變。先讓現有clean-close test對缺少isolated root／environment轉紅，再實作並跑startup unit、
-prepare-native contract及一次focused xvfb startup command。若root逃出owned temp、child未收到全部required env、
-product設定被寫入真實user path、cleanup掩蓋surviving child或CI explicit-root contract改變即停止。
-紅測先以`isolated_root=None`精確失敗；修復後startup＋prepare-native unit contracts為8 passed，包含local
-owned-root cleanup與CI explicit-root preservation。原生Xvfb focused smoke實際觀察MainWindow initialized、
-Qt `xcb`、close requested、return 0及process-tree quiescent，九個mutable paths全位於含空格與非ASCII的
-temporary root；sandbox內同命令因不能連X display而native abort，未被計為產品失敗或pass。修復只觸及
-既有dev runner與test，production `+0/-0/net 0`、owner數不變；Ruff／format／diff check通過。下一步建立
-checkpoint並由既有獨立gate複核，PASS後push新exact head，再執行replacement canonical handoff。
-`735d8a91`的replacement handoff已關閉startup isolation，但complete regression在unit phase fail closed：
-`linux-unit-backend`的5,342個cases中只有
-`test_policy_import_does_not_cold_start_visualization_stack`失敗，原因是其10秒subprocess probe timeout；
-其餘5,341 passed，integration依unit barrier正確未啟動。修復scope只處理這個cold-import test seam：先以
-無coverage與handoff相同coverage argv各執行一次，確認產品import contract與`COV_CORE_*` child
-instrumentation的差異；若確認，僅讓該probe child不繼承coverage activation，父pytest coverage、10秒
-watchdog、`visualization`／`matplotlib.pyplot` absence assertions與產品碼全部保持不變。Non-goals是不提高
-timeout、不把import assertion改弱、不改saliency產品行為、runner topology或coverage policy。Focused
-validation為同一selector在canonical coverage argv下由red轉green、完整saliency policy file、Ruff／format／
-diff check；若無coverage仍timeout、child隔離後assertion失敗，或父coverage artifact消失即停止並按產品import
-defect重新分類。通過後建立一個tests/docs-only checkpoint，交既有獨立gate複核並push；之後只執行一次新的
-exact-source canonical handoff，不為計時重跑。
-Focused red evidence來自`735d8a91` canonical backend shard的10秒timeout；同selector在無coverage時
-為1 passed／4.54 seconds，加入父coverage但未隔離child時雖在空載環境通過，整體增至21.61 seconds。
-Probe現只移除其child environment的`COV_CORE_*`並反向斷言未繼承；同selector＋coverage為
-1 passed／11.97 seconds，完整saliency policy file＋coverage為18 passed／12.19 seconds，父pytest仍產生
-coverage artifact。產品source、assertions、watchdog與runner皆未改（production `+0/-0/net 0`，owner數
-不變）；Python Ruff／format、MkDocs strict與diff check均通過。下一步建立checkpoint並交既有獨立gate；
-PASS後push並只跑一次replacement canonical handoff。
-PR #45在exact head `398c4e56`啟動完整remote scope後，Windows product／startup與macOS platform
-contracts通過，但required `macos-product-py311`在Training panel（index 2）既有20秒first-open watchdog
-fail closed。這不是本branch regression：同一PR base／current main `8d8dcf60`的相同job亦以同一panel 2
-timeout失敗。兩份macOS ARM64 log均顯示fresh isolated `MPLCONFIGDIR`在probe期間第一次建立Matplotlib
-font cache；main lifecycle step約32秒後於20秒panel budget終止，沒有construction exception或provider
-transport failure。修復scope只調整dev／CI evidence contract：Windows仍保留20秒per-panel上限；macOS
-product row顯式使用45秒上限，以涵蓋fresh native font-cache cold start且仍bounded，artifact記錄實際budget。
-不得retry test、移除macOS job、改成continue-on-error、預熱／共用user cache、改產品／UI，或放寬shutdown、
-platform、isolated-root與five-panel assertions。先讓workflow contract對platform-specific budget與CLI wiring轉紅，
-再做最小script／workflow修復；focused validation為native smoke unit、CI workflow reliability contract、Ruff／
-format／MkDocs／diff check。若macOS exact-head rerun仍timeout、出現materialization exception，或任何其他
-non-skipped check失敗即停止按新owner分類。此tests／scripts／CI source變更會使舊local dossier失效；remote
-全綠後仍需對final SHA執行一次canonical handoff，才交使用者手測。
-Workflow contract先因兩個product rows缺少platform-specific budget而精確轉紅；修復後native smoke與CI
-reliability兩個files為19 passed。Windows 20秒與macOS 45秒由finite matrix明列，runner拒絕超過60秒，
-CLI forwarding及artifact budget有focused coverage；Ruff／format、MkDocs strict與diff check通過。舊SHA的
-其餘所有non-skipped remote checks已completed／success，只有已分類的macOS smoke失敗。下一步建立
-tests／scripts／CI checkpoint並交既有獨立gate；PASS後push，等待新exact-head remote CI全綠，再對final
-SHA執行一次canonical handoff。
-`c0173c49`的macOS native product smoke已在真實ARM64 runner通過，Windows native product／startup、DPI、
-product lifecycle、macOS platform、Linux八shard及aggregate也通過；唯一新失敗是Windows
-`platform-core-contracts`的model-status background-thread unit test。產品work沒有在GUI thread執行，失敗來自
-shared runner的`QThread.start()` admission耗時1.094秒，超過測試歷史上由50ms→150ms→750ms反覆放寬的
-wall-clock oracle。修復scope只把cache cleanup與model inspection兩條同型test改為causal synchronization：
-release前worker不得完成，Qt heartbeat必須在worker仍blocked時被處理；同步退化會由finite 5秒worker wait
-精確失敗。不得提高產品timeout、改lifecycle source、retry pytest、放寬heartbeat／shutdown assertion或改CI
-topology。先以舊750ms oracle對1.094秒remote evidence為red，focused執行完整lifecycle test與Windows
-platform-core selector contract；Ruff／format／diff check通過後建立新checkpoint交同一獨立gate。PASS後push
-並等待新exact-head全綠；因source再變，最後仍只跑一次新SHA canonical handoff，不為計時重跑。
+- Exact head `dbb89391`的canonical manifest在`complete-regression` fail closed。Production blocker是
+  Saliency typed target加入後，automation schema reflection沒有提供`SaliencySelectionIdentity` local
+  namespace，導致`command_specs()` NameError；同run另揭露Visualization sidebar stubs缺少既有
+  `refresh_view_controls()`與Preprocess fixture把未設定MagicMock誤判為active import。
+- 只修一個production type-hint namespace與三個test fixture seams；不改Saliency target、UI layout、
+  lifecycle或public schema內容。先跑三組原失敗focused selectors，再建立新exact head並從頭重跑manifest。
+- Production source將因namespace修正改變，因此上方manual acceptance只保留為歷史checkpoint，不再授權
+  新head merge；自動gates與CI閉合後必須重新取得適用的explicit acceptance。
+- 修正只新增SaliencyCommand type-hint local namespace與三個fixture defaults；原backend失敗集合88 passed、
+  原UI失敗集合42 passed，changed-file Ruff、format與diff check通過。下一步建立並推送新exact head，
+  canonical manifest必須從頭重跑，不沿用`dbb89391`的部分PASS。
 
-## 問題與證據
+## 2026-08-24 3D orientation widget 單一實例 closure
 
-- Current catalog只手工發布10個`braindecode.*`模型與3個`xbrainlab.*`本地模型；Braindecode 1.6.1
-  自己維護61個model construction contracts。原本QComboBox無法清楚呈現數十個model、task、provider
-  與unavailable reason。
-- Current factory以`import braindecode.models`載入整個barrel。目錄取得、UI startup與model execution
-  沒有分離，barrel也會接觸未選用的model/module和額外import side effects。
-- Braindecode 1.6.1 `models/`約33,020 LOC。直接可辨識的source licenses包括BSD-3-Clause、MIT、
-  Apache-2.0及至少四個CC BY-NC model；package NOTICE沒有完整列出所有檔案級例外，不能把整個package
-  或NOTICE視為單一授權。
-- 明確不得移入可發布legacy namespace的model為`EEGMiner`、`MetaNeuromotorHand`、
-  `EMG2QwertyNet`、`BrainModule`；`GeneralizedGaussianFilter`另有CC BY-NC與專利
-  `GB2609265`聲明。Mixed module只能摘取已確認permissive symbol。
-- Braindecode包含一般classification、sleep、foundation／pretrained、interpolated及非classification
-  output contracts。Current Trainer預期class logits；「在上游存在」不等於「可由目前supervised
-  classification workflow執行」。
-- Current`ModelSpec`只表達ID、顯示名、source、factory及少量手工參數；`model_requirements.py`只精確
-  描述三個XBrainLab local model。UI、capability、training、checkpoint和saliency尚未共享完整provider／
-  task／input／revision contract。
+### 問題、outcome 與 scope
 
-## Observable outcome
+- Ready 3D scene重複render後右上角會累積兩個XYZ orientation widgets。根因是dedicated QtInteractor被
+  復用時，PyVista `clear()`只清actors／scalar bars，不會清`camera_widgets`；現有scene build每次又新增一個。
+- 同一plotter無論首次、重複render或class／method切換，完成時只能保留一個active camera orientation widget。
+- 只修既有Saliency3D scene presentation owner與直接測試；不重建QtInteractor、不改camera、mesh、Saliency、
+  scalar bar、epoch time或async lifecycle，不新增owner／state／compatibility path。
 
-1. Catalog以checked-in Braindecode 1.6.1 metadata列出61個model contracts；目錄與搜尋不import
-   `braindecode.models` barrel。所有ID唯一，default仍為`braindecode.eegnet`，既有10個upstream ID和
-   三個`xbrainlab.*`語意不變。
-2. Upstream IDs使用`braindecode.<model>`；本地副本使用`legacy.braindecode.<model>`；既有
-   `xbrainlab.*`仍代表原本XBrainLab implementations。Training artifact、checkpoint、evaluation與
-   saliency provenance記錄exact model ID、provider及source revision。
-3. `ModelSpec`／catalog projection能表達provider、revision、family、task、aliases、license class、
-   input requirements、parameter schema、static／dataset-scoped availability及user-safe disabled reason。
-4. 每個與current supervised classification workflow相容的upstream model在本slice完成adapter後才可選；
-   non-classification、license-restricted、需要未支援modality或external pretrained resource者disabled。
-   `adapter not implemented`不是final candidate可接受的disabled reason。
-5. Upstream provider正常時Model Selection只顯示upstream catalog。Package不存在、版本不是1.6.1或
-   provider preflight失敗時，dialog顯示明確banner並改列可用legacy models；不自動改變已選ID、不執行
-   自動fallback。單一model的shape、parameter、checkpoint或training failure必須保留真正typed error。
-6. Model Selection使用搜尋欄與可捲動結果列表，支援name、stable ID、alias、family與task；disabled row
-   顯示reason且不能Confirm。Keyboard、clear、no-match、cancel、selection preservation、narrow width及
-   Windows 100／125／150% DPI均有明確行為。
-7. Legacy namespace只含逐檔／逐symbol確認的BSD-3-Clause、MIT、Apache-2.0 closure，保留copyright、
-   license notice、Braindecode version、upstream path與hash；不得import installed Braindecode作隱藏依賴，
-   不含CC BY-NC／patent code，也不silent下載weights。
-8. Final exact head在Windows與Linux完成automated evidence後才交使用者手測；source再變即撤銷批准。
+### Repair、validation 與 stop condition
 
-## Scope／non-goals與complexity review
+1. 先以同一plotter連續建立scene的red test證明active orientation widget由1累積成2。
+2. Scene owner在新增widget前明確清除既有camera widgets，再新增唯一widget；復用PyVista public lifecycle API，
+   不以widget座標或條件旗標掩蓋重複實例。
+3. 跑3D scene/time-slider與直接相鄰Visualization focused tests、changed-file Ruff／format與diff check；交付
+   native 3D repeated-render手測。使用者確認前不跑canonical heavy handoff。
 
-- In scope：model catalog／factory／requirements、training model identity、permissive vendored model closure、
-  Model Selection UI、直接必要的checkpoint／evaluation／saliency provenance、tests、CI selectors與canonical
-  truth。
-- Non-goals：Data Import、4B Assistant model、Trainer task-generalization、非classification trainer、遠端
-  pretrained model下載、installer／signing、Braindecode版本升級、scientific accuracy claim。
-- User-visible UI modification authorization：已確認。核准範圍只限Model Selection搜尋、result list、
-  unavailable state與provider recovery presentation；不重新設計Training其他頁面。
-- Owners before／after：`ModelCatalog`仍是唯一model discovery／identity／factory／availability owner；
-  `ApplicationService／TrainingCommandService`仍是configure／admission owner；UI只render catalog projection；
-  checkpoint／evaluation／saliency各自既有owner不變。Owner count不增加。
-- Explicit exception：預估legacy model sources約29k permissive model LOC，加精準support closure、adapters、
-  catalog與UI後約`35k–40k`production LOC，遠超normal 1,500 LOC ceiling。使用者核准單一超大型PR；施工仍
-  必須以family commits、focused evidence和per-commit rollback控制風險。
-- Deletion candidates：現行10-model `_BRAINCDECODE_MODELS`手工tuple、broad barrel factory、QComboBox-only
-  selector、依model name token判斷的零散requirements、只為barrel side effect存在的workaround。Braindecode
-  dependency保留，因它是primary provider。
+若第二次render後active widget不是1、scene controls／camera reset退化，或需要第二套orientation ownership，
+即停在checkpoint。
 
-## 施工順序
+### 施工狀態
 
-### A. Catalog／license／provider contract
+- Repeated-scene red test證明舊行為連續新增2次、清除0次，active XYZ widgets由1累積成2；修正後每次
+  scene build先呼叫`clear_camera_widgets()`再新增，連續build完成時active count固定為1。
+- Production只在既有Saliency3D owner增加1行，沒有新增state、flag或owner；相鄰Visualization focused
+  234 passed，changed-file Ruff、format與diff check通過。
+- 本環境無法以offscreen renderer驗收native XYZ widget，最終可見結果保留給Windows/native repeated-render
+  手測；確認前仍不執行canonical heavy handoff。
 
-1. 建立exact 1.6.1 model inventory和per-file／per-symbol provenance manifest；61個contracts逐一標記task、
-   family、constructor context、license、primary module與產品eligibility。Ambiguous source先blocked，不猜。
-2. 先加passing characterization：既有10個ID/default、三個local names、lazy startup、ModelHolder／artifact
-   identity及current dialog selection。新增target contract tests需先red於完整membership／search／recovery。
-3. 擴充immutable`ModelSpec`和catalog projection；用explicit module/class metadata建upstream factories，
-   移除目錄enumeration對barrel import的依賴。Provider preflight只判斷package／exact version／bounded
-   provider load，不把model-specific execution error誤判成provider outage。
+## 2026-08-24 3D Plot 水平分布 closure
 
-### B. Legacy permissive closure
+### 問題、outcome 與 scope
 
-1. 建立private legacy namespace與third-party notices。Common base／functional／modules只保留實際model
-   callers；mixed-license files按symbol拆分，不copy barrels、Hub publishing、datasets或skorch trainer。
-2. 依dependency family分commit移入：baseline convolution、sleep／temporal、filter-bank、inception／TCN、
-   attention／transformer、foundation／interpolated。每個commit列新增source、license、direct dependencies、
-   parity models與rollback path。
-3. Legacy imports只能指向XBrainLab legacy namespace或XBrainLab明確direct dependencies。若Braindecode
-   package移除後legacy import失敗，該family不得完成。
-4. Restricted models只保留upstream disabled metadata；不得為達membership而移入source。
+- 前一輪把 `Epoch time (s)` 與 slider 包在固定 `360–480px` 的置中 row；這只置中了整組，沒有像
+  Preprocess time navigation 一樣使用完整可用寬度。PyVista horizontal scalar bar 亦沿用預設
+  `position_x=0.35`、`width=0.6`，因此 `saliency` 色條明顯偏右。
+- Ready 3D view 必須讓 saliency 色條以畫布中心為中心、左右留白對稱；Epoch time label固定在左，slider
+  吃滿剩餘寬度，800與1180px皆左右margin對稱、無裁切或重疊。
+- 只改3D presentation與直接幾何測試；不增加spin box，不改時間換算、Saliency計算、PyVista lifecycle、
+  sidebar或其他Visualization views。沿用既有Saliency3D與Saliency3DPlotWidget owner，不新增abstraction。
 
-### C. Admission／artifact與UI
+### Repair、validation 與 stop condition
 
-1. 將signal context映射、minimum samples、chs_info／montage、sfreq／n_times、task output與pretrained
-   resource requirement集中成catalog-owned pure adapters；UI與TrainingService使用相同結果。
-2. Provider與source revision寫入ModelHolder、training plan／record及saliency producer identity。舊
-   `braindecode.*` state dict只由同ID upstream factory strict-load；legacy ID沒有silent migration。
-3. 以搜尋欄＋result model／list取代combo。Upstream healthy只顯示upstream；provider unavailable時顯示
-   recovery banner和legacy results。若current persisted selection本來就是legacy ID，resolver仍可執行，
-   但healthy catalog不因此顯示整份legacy list。
-4. Selection、search query與provider status不得建立第二份catalog；UI只持有detached projection和目前
-   selection。Cancel不mutation；no-match／disabled不能Confirm。
+1. 先把既有固定寬置中assert改為observable red tests：scalar bar明確對稱、Qt time row填滿可用寬度。
+2. 明確設定horizontal scalar bar的對稱position／width，刪除固定寬wrapper，讓scene controls直接採用
+   Preprocess同型的label + expanding slider layout。
+3. 跑3D time-slider與直接相鄰Visualization focused tests、changed-file Ruff／format與diff check；產生
+   ready 3D輕量screenshot目視800／1180px分布。真人確認前仍不跑canonical heavy handoff。
 
-### D. Candidate與merge
+若scalar bar中心不在畫布中心、time slider未隨寬度擴展、左右margin不對稱，或scene clear／time update
+行為退化，即停在checkpoint，不交付手測。
 
-1. 每個meaningful commit後只跑family-focused tests，由最多一個獨立subagent gate審architecture／license／
-   test evidence；blocker／major以後續commit關閉後才進下一family。
-2. 中途不反覆跑complete regression或canonical handoff。所有family、UI、artifact與source guards完成後
-   freeze branch，執行一次full handoff、push exact head並等待remote current-head CI。
-3. 產生exact-source UI screenshots／walkthrough與Windows操作清單；使用者手測通過並明確同意merge後才
-   merge。任何product source改動都使manual acceptance失效。
+### 施工狀態
+
+- Red tests分別失敗於缺少explicit scalar-bar position與slider仍由固定寬wrapper擁有；最小修正後同組
+  3 passed，相鄰Visualization focused維持234 passed。
+- Production只觸及既有兩個3D view files，刪除固定寬nested row並明確指定色條`0.1 + 0.8 + 0.1`
+  對稱分布；owner、public interface與行為policy均未增加。
+- Changed-file Ruff、format與diff check通過；800／1180px Qt screenshots確認Epoch row全寬且無overlap。
+  本WSL環境沒有可用X server，不能以offscreen PyVista artifact取代Windows/native 3D scalar-bar acceptance；
+  exact position由direct API test固定，真人手測仍是本checkpoint的下一個gate。
+
+## 2026-08-24 BIDS cancel 與 Saliency repeat-training closure
+
+### 問題、證據與 observable outcome
+
+- BIDS subject route 在 `Confirm and Import -> Preview/Validate -> Cancel Import` 重開 review 時，staged
+  `value_decisions` 會整包覆蓋 backend observed mapping，導致 occurrence count／evidence 消失；hydrated rows
+  又被當作未編輯 baseline，使 recheck false、顯示 `Cannot import yet`。重開後必須保留 count、evidence、
+  `Use as`、class name 與所有未修改 event values，且不需再碰 controls 即可重新驗證；取消期間不得 apply、
+  rescan 或 mutation。真正 incomplete／malformed review 仍 fail closed。
+- 正常 async Compute Saliency 成功 publication 漏清已套用的 pending settings。第二次 training 產生新
+  generation 後，UI 因此誤要求 `Review Saliency Settings Again`。只在 matching operation `SUCCEEDED` 時把
+  staged settings settle 為 applied；尚未 Compute 的 custom settings 仍綁原 result 並要求 review。
+- Saliency canvas 在結果可見前的 non-error empty／ready／rendering提示統一為 warning yellow；error維持紅色。
+  Ready 3D scene 在 sidebar 顯示獨立 `3D PLOT` 群組，只包含 `Electrodes` 與 `Head surface`；Reset仍在
+  `CONFIGURATION`。圖下 `Epoch time (s)` 與 slider 必須整組置中，800／1180px不得偏移或重疊。
+
+### Scope、ownership 與 complexity review
+
+- 不改 EEG event/class 科學語意、backend validation、Apply boundary、Saliency algorithm、自動計算政策、
+  public command/schema、receipt或ownership；不加入PhysionetMI dataset特例或legacy contract fallback。
+- ApplicationService仍擁有validation／mutation／publication；Data Interpretation coordinator仍擁有Qt
+  continuation；event editor只投影backend evidence加user semantic draft；Visualization panel/sidebar只擁有
+  既有UI lifecycle與presentation。owner數前後不變，不新增module、public class或state machine。
+- Deletion／reuse first：以per-value overlay取代whole-map replacement、復用既有strict submission projection，
+  共用兩條success path的pending-clear transition，並移動既有3D controls而非複製callbacks。完成後production
+  diff為12 files、`+352/-134/net +218`，已觸發並完成complexity review；owner delta為0，沒有新增module、
+  public class或state machine。以Data Import與Visualization兩個各自coherent、低於300 net LOC的product
+  commit拆分；planning/evidence closure另成docs commit。若任一批net超過300 LOC、新增owner或總diff超過
+  1,500 LOC，立即停止再拆分。
+
+### Repair、focused validation 與 stop condition
+
+1. 先以真dialog red tests固定backend counts/evidence與staged semantics分層，再以BIDS subject cancellation
+   path固定Preview／Validate cancel、no mutation、recheck與retry；保留既有真正Apply-cancel regression。
+2. 修正matched async Saliency success settle，新增first compute success -> unchanged retraining -> second compute
+   可dispatch；保留unapplied staged settings遇新publication仍要求review的既有contract。
+3. 完成prompt warning token、`3D PLOT` contextual group與centered epoch row，驗證empty/ready/error、tab
+   visibility、toggle/reset callbacks與800／1180pxgeometry。
+4. 跑focused selectors、changed-file Ruff／format check、diff check及輕量UI screenshot/walkthrough；主agent目視
+   hierarchy、contrast、text fit與overlap。使用者確認前不跑canonical heavy manifest、source-diverse gate或CI。
+
+若重開後任一count/evidence或choice遺失、staged choice可未經revalidation直接Apply、真正invalid review被放行、
+第二次training仍顯示Review Settings、錯誤訊息被改黃、3D群組出現在unready/非3D view，或epoch row未置中，
+即停在checkpoint，不交付正式handoff。
+
+### 施工狀態
+
+- BIDS observed evidence與staged semantics已分層；真BIDS subject Preview-revalidation cancel會重開同一可recheck
+  review，counts／class choices完整、無`Cannot import yet`且零資料mutation。Commit-source Import focused為
+  227 passed、2 skipped；兩個skip只因CHB-MIT與Sleep-EDFx optional public fixture尚未下載。
+- Matching async Saliency success已settle pending settings；unchanged retraining可再次Compute，unapplied staged
+  settings的stale-publication gate仍保留。Visualization focused為234 passed。
+- Warning-yellow prompts、`3D PLOT` contextual group與480px centered epoch row已完成；exact-source focused
+  walkthrough通過並產生Map／Spectrogram／Topomap／blocked-3D artifacts，另檢查ready sidebar與800px epoch row。
+- Non-author code review無blocking finding；changed-file Ruff、format與diff check通過。Data Import與
+  Visualization product commits已分開收束，commit-source focused selectors均通過；目前凍結為真人手測
+  checkpoint。Windows native與canonical heavy handoff仍依使用者要求留在UI／流程確認之後。
+
+## 2026-08-24 追加手測阻擋
+
+前一輪輕量 walkthrough 後，使用者再確認六項必須在交付手測前修完的 observable defect；任何既有
+manual acceptance 與 handoff evidence 仍不可沿用。本輪 UI 修改已取得明確授權，並依使用者要求先做
+focused validation／輕量 screenshot，再交真人手測；只有使用者確認 UI okay 後才執行 canonical heavy
+handoff。
+
+- Match Labels 的背景 re-preview 按橘色 `Cancel Import` 後，必須重開同一 review 並保留 label pairing、
+  placement、class 與 source choices；不得 apply、rescan 或因回到預設值額外觸發 alignment 提示。
+- Import Review／Apply 尚未 terminal committed publication 時可以瀏覽 Preprocess，但 Filtering、Resample、
+  Re-reference、Normalize、Epoch 與 Reset 等 mutation actions 必須 disabled，並以 inline
+  `Import is still finishing...` 說明；不得用 warning modal 呈現正常 pending state。
+- Saliency Map 在尚未 compute 時保留完整 `Gradient saliency has not been computed...` copy，並在 action
+  bar 下方的剩餘 view 中置中，不得被 hidden scroll surface 推到底部。
+- `Fold Set / All Folds` 是合法 explicit Compute Saliency target：按鈕保持可按，一次 command 綁定 backend
+  admitted exact members，依 canonical Fold 順序逐筆 compute，全部成功才原子發布；任一 failure／cancel
+  保留舊結果。設定與 selection 未變時不得誤入 `Review Saliency Settings Again`。單一 Fold 同樣必須
+  exact-targeted，不得暗中計算所有 finished records。
+- Visualization 的 Fold label 移除 model name，但 item identity／model truth 保留；其他 panel 文案不變。
+- Control reading order 固定為 `Fold -> Run -> Saliency -> Method -> Normalize -> Absolute`，1180px 優先
+  單排，800px／窄版最多三排且不得 overlap 或留下 hidden Absolute 空洞。
+
+### Scope、ownership 與 complexity review
+
+- 不改 import／label／event 科學語意、Saliency algorithm、Assistant tool schema、其他 panel Fold naming，
+  也不自動 compute Saliency。
+- 復用 `DataInterpretationActionCoordinator` 的 cancelled-review continuation、`OwnedWorkRegistry` 的 active
+  operation truth，以及 TrainingManager 現有 sequential compute／atomic publication；不新增 owner、state
+  machine、receipt family或compatibility path。
+- `SaliencyCommand` 增加 optional typed selection target；visible product Compute 一律帶 target，query-only與
+  既有無 selection caller維持原contract。resource receipt必須包含canonical target identity。
+- 預估觸及約9個production files、`+240/-70/net +170 LOC`，超過8-file complexity review門檻但不增加owner；
+  拆成 Import/Preprocess、Saliency target/batch、Visualization presentation 三個可回退commit。若production
+  淨增超過300 LOC、新增owner/state machine，或本追加slice接近1,500 LOC，立即停止重新切分。
+
+### Repair、focused validation 與 stop condition
+
+1. 先以 observable red tests固定 re-preview cancel draft、import-pending preprocess fence、Fold Set compute、
+   exact target、atomic failure/cancel、placeholder geometry、short Fold label與responsive control order。
+2. 完成三個bounded implementation commits；各批跑相同red/green selector與直接相鄰test，再做非作者
+   cross-review，不以mock choreography或production alias換取綠燈。
+3. 執行focused unit/integration、Ruff／format check、configured type check及輕量UI screenshot/walkthrough；
+   主agent目視pending、empty、compute與800/1180px states後交使用者手測，不先跑heavy manifest。
+4. 使用者確認UI okay且source凍結後，才重跑canonical exact-source handoff與同SHA CI。
+
+若cancel後draft不一致、pending import仍可進preprocess mutation、All Folds Compute未建立單一owned operation、
+partial saliency被發布、stale target可覆寫新selection、或任一control／placeholder overlap，即停在checkpoint；
+不得把其他focused PASS或舊evidence當成完成。
+
+### 追加 slice 施工狀態
+
+- 三個主要可回退commit已完成：`7765c587`收斂placeholder／Fold label／control order，`5bc95369`
+  修正re-preview cancel與import-pending preprocess fence，`9207b177`建立exact Fold／Fold Set target、receipt
+  scope、selected-method retention與原子publication。非作者review另找出active target會掉回legacy全量路徑、
+  單Fold未綁current coverage，以及三條低-mock evidence缺口；第四個follow-up commit將只收斂這些
+  fail-closed與tests/evidence contract，不擴大產品scope。
+- Complexity review實際production diff為12 files、`+477/-84/net +393`；分批分別為net `+27`、`+118`、
+  `+230`、`+18`，每批皆低於300 LOC，owner數沒有增加。保留typed target與ApplicationService registry adapter
+  是維持exact command spine所必需；已避免的刪除候選是第二套batch coordinator、state machine、partial
+  publisher與UI直讀registry。總diff遠低於1,500 LOC，不需要architecture exception。
+- 合併後focused denominator目前為452 passed，另有backend saliency publication lifecycle 35 passed；Ruff、
+  format、diff與configured Basedpyright沒有新增diagnostic。低-mock gate涵蓋真async/Qt cancel reopen、真
+  ApplicationService owned-work transition，以及selected Fold Set cancel後同members retry且零partial publish。
+- 第四個review-closure commit已凍結並push；clean exact-source輕量visualization render的四張2D／3D
+  候選圖、control contract、source identity與clean shutdown皆通過，主agent目視亦未發現overlap、殘影或
+  hidden-control空洞。下一步停在使用者手測；使用者明確確認UI okay前不跑canonical heavy manifest、
+  跨來源資料集gate或CI，也不merge。
+
+## 問題與 observable outcome
+
+### Import 與 operation lifecycle
+
+- `Confirm and Import` 後按橘色 `Cancel Import`，重新開啟 Review 必須保留已確認 class、label source 與
+  其他 review choices；產品資料仍未 mutation。Review 頁面的灰色 Cancel 仍只丟棄未確認編輯。
+- Evaluation 的 detached render 不是 user-owned workflow，不顯示橘色 `Cancel Evaluation`；replacement、
+  navigation、close 與 shutdown 仍可取消並完整 cleanup。
+
+### Saliency publication 與 controls
+
+- Evaluation-admitted Fold Set 必須立即列出；尚未計算 Saliency 的 Fold Set 顯示明確 Compute prompt，
+  不得借用舊 Fold 圖。重新訓練後自動選最新 Fold Set；舊結果仍可手動選取。
+- `Saliency view` 與 `True class` 合併成單一 `Saliency:` combo，item data 使用 backend class key。
+  `All classes` 不提供單一 tile zoom；點 tile 進入該 class detail。3D 收到 All 時自動選第一個可用 class。
+- controls 依可用寬度排成一至三列；順序永遠是 `Normalize` 再 `Absolute`。Spectrogram 隱藏 Absolute
+  時不得保留空 slot；非負 method 的 Absolute 仍顯示 disabled 與原因 tooltip。
+- Run option 移除 `(Summary)`；2D detail在右側`CONFIGURATION`顯示contextual `Reset view`，All classes不顯示
+  reset。
+
+### Visualization
+
+- Spectrogram 移除 `Attribution magnitude spectrogram` suptitle，保留 class title 與 colorbar。
+- 3D 只保留 top-level class selector；`Electrodes`、`Head surface` 與contextual `Reset view` 放在右側
+  `CONFIGURATION`，canvas不放action overlay。Epoch time slider位於圖下，右上只有一個orientation display。
+- `Mean over ...` 不作 visible copy，只保留 tooltip／accessible description。
+- 一個 accepted terminal publication 只允許一次 3D scene update／commit。
+
+### 全站 modal presentation
+
+- 同步 main 後重新盤點 Dataset、Preprocess、Training、Evaluation、Visualization、Assistant 與 Main Window
+  的 warning／critical／information／confirmation。所有 blocking modal 最終必須走既有
+  `modal_presentation`，production UI 不再直接使用 raw `QMessageBox`。
+- 共用 modal 使用內容驅動高度、compact spacing、可選取且可換行的文字；長訊息在 bounded viewport
+  捲動。Warning／Error／Information 使用 orange／red／blue severity。
+- confirmation 的 Cancel／安全選項為 default，Escape 一律安全 reject。Resource receipt、destructive
+  command、external HTTPS link、shutdown Retry／Close 與 worker preview lifecycle 必須保留現有 command、
+  receipt、retry、cancel semantics。
+- Inline epoch validation、review footer、loading status、saliency canvas error 等仍留在 workflow context，
+  只校準 XBrainLab theme／spacing，不改成 modal。
+
+## Scope、non-goals 與 ownership
+
+- 不改 EEG interpretation、label、event、loader、training、evaluation 或 saliency 科學語意。
+- 不自動 compute Saliency；既有 explicit command 仍負責所有 finished runs。
+- 不新增 authoritative owner、state machine、receipt、compatibility path 或 public command。
+- Application Service／workflow coordinator 繼續擁有 admission、mutation、publication 與 async lifecycle；
+  modal component 只擁有 presentation。
+- Deletion／reuse first：移除 raw QMessageBox helpers、第二套 3D selector、duplicate 3D dispatch、
+  Evaluation visible cancel presenter、分離的 Saliency view/class controls，以及 hidden Absolute retained size。
+- 預估 production diff `+350/-450/net -100`，但會超過 8 個 production files；依 workflow 拆 commit，
+  每批由非作者 reviewer gate。若任一 coherent batch 淨增超過 300 production LOC 或總 production diff
+  超過 1,500 LOC，停止並重新做 complexity split，不以 abstraction 隱藏規模。
+
+## 修理順序
+
+1. Merge 最新 main，建立 compact modal foundation 與 stable raw-QMessageBox source guard。
+2. Dataset／Import：exact review reopen、dataset alerts／confirmations 與 async cancel tests。
+3. Evaluation／Saliency lifecycle：移除 detached-render cancel presentation，publish unavailable Fold choices，
+   對最新 uncomputed choice fail closed。
+4. Visualization：合併 selector、responsive controls、2D interaction、Spectrogram title、3D layout／single commit。
+5. Training／Preprocess／App／Chat：分批遷移 modal，保留 receipt、destructive、external-link 與 shutdown semantics。
+6. 非作者 subagent review、focused closure、canonical exact-source handoff，最後才交付真人手測。
+
+## 目前施工狀態
+
+- 步驟 1–5 與非作者 review closure 已完成並以可回退 commit 收斂；production UI 的 raw
+  `QMessageBox` source guard 已通過，沒有加入 compatibility alias。
+- Global dialog policy 的安全 Cancel default 與 3D preparation／final scene failure retry 已由
+  policy-installed keyboard、same-scene retry與stale-key tests保護；非作者closure無blocking finding。
+- 同一整合focused denominator為926 passed；Ruff、format、Basedpyright、diff與raw `QMessageBox` guard均通過。
+  Production diff為`+887/-613`、touched 1,500，未超過強制拆分門檻；owner數不變。
+- Exact-source canonical manifest已在`complete-regression` fail closed：production行為focused tests仍綠，
+  但完整UI shards揭露多個測試仍patch已退役的raw `QMessageBox` seam；backend visualization shard另有一個
+  測試仍要求本slice已明確移除的Spectrogram suptitle。這些是過期test contract，不以production alias
+  或恢復舊copy掩蓋。
+- Draft PR另確認Windows／macOS lifecycle只被同一Dataset test seams阻擋；platform native lifecycle本身
+  通過。Default visual candidate只有Visualization panel改變，且符合已核准的selector/order/layout outcome，
+  但CI verifier仍只接受舊schema v1，和capture的canonical schema v2不一致。
+- Tests-only closure 已改到實際 `show_warning`／`show_error`／`ask_confirmation`／
+  `present_unexpected_error` helper，並移除會掩蓋意外 modal 的成功路徑 patch；沒有加入 auto-accept 或
+  production alias。Spectrogram no-suptitle、UI baseline schema v2 fail-closed contract、完整 unit UI
+  `2,686 passed`、integration UI `115 passed / 17 optional-public-fixture skipped` 與 verifier contract
+  `33 passed` 均通過。
+- 唯一有意變更的 Visualization reference 已由目前 production source 重新 capture、目視審查並更新；
+  本地 exact-source offscreen 與前一 Linux CI/Xvfb candidate 位元組相同，更新後七張 baseline 為
+  `0.00%` diff。本機 Xvfb 因唯讀 `/tmp/.X11-unix` owner/mode 錯誤無法啟動，不以 offscreen 取代最終
+  Linux CI/Xvfb、Windows native 或真人 acceptance。
+- 下一步只執行 source quality gates、凍結並 push exact SHA、從頭重跑 canonical manifest，以及確認同一
+  SHA 的所有 non-skipped CI completed/success；任何失敗都回到 checkpoint。若需要任何 production 修改、
+  測試只能靠 auto-accept modal 或削弱 observable assertion才會通過，立即停止並使目前 evidence 失效。
+- 首次重跑已讓 complete regression 的八個 authoritative Linux groups 通過，並下載、校驗 required-ci
+  public fixture profile；但 escalated canonical Basedpyright 揭露 3D overlay 新增的 `resizeEvent` 參數仍
+  誤標為一般 `QEvent`。先前 sandboxed type run 因未實際掃到 diagnostics 而是假綠；相關 evidence 已失效。
+  修正限定同一個 3D view file：改用 `QResizeEvent`，同時刪除兩行非必要新增註解，使 owner 不變且 production
+  diff 維持 `+886/-614`、touched 1,500、net +272。Focused 3D/visualization `140 passed`；canonical
+  escalated Basedpyright 實際掃描 70 個既有 diagnostics、沒有新增 diagnostic並已通過。下一步重新凍結
+  exact SHA、push、從 section 1 重跑完整 manifest與同 SHA CI。
+- 新 SHA 的 section 1／architecture／type gate 通過；required-ci profile 完整安裝後，complete regression
+  額外執行先前缺 fixture 的路徑並揭露兩個 tests-only contract：teacher preflight 把合法 required-ci
+  OpenNeuro cache 誤判成 teacher profile 部分安裝；resource-receipt integration helper 仍只會操作退役的
+  `QMessageBox`，無法點擊 shared modal。該 manifest 已有確定 IO failure，因此主動中止本 agent 的單一
+  session，避免等待三個 modal timeout；evidence 不可沿用。
+- 下一步限定修正這兩個 test contracts：teacher gate 必須區分完整 required-ci 與真正 partial teacher
+  profile；resource-receipt 必須操作實際 visible shared modal buttons，不使用 auto-accept、presenter mock、
+  production alias 或削弱 mutation／terminal assertions。Focused required-fixture tests與完整 affected shards
+  通過後，重新凍結 SHA、push並從 section 1 重跑完整 manifest。
+- Shared modal driver 整合後，confirm case另證明舊 `generation == before + 1` 把單次 import mutation與獨立
+  async BIDS montage publication混為一談；實際 montage已合法進入ready並產生第二個generation。測試改保護
+  generation必須前進、raw truth完成、一次loaded item、零legacy import event／panel refresh、一次terminal與
+  receipt consumption；不得固定為`+2`或移除 mutation/lifecycle assertions。
+- 兩個 required-fixture contracts 已 tests-only 修正並在完整 cache 重驗：integration IO `56 passed / 11`
+  個 teacher／multisubject optional skips；canonical integration UI `130 passed / 2` 個 teacher-only skips，
+  resource-receipt三個真 modal cases全數通過。Production diff仍為30 files、`+886/-614`、touched 1,500；
+  下一步只剩final quality gates、凍結/push exact SHA、完整manifest與同 SHA CI。
+- `faba9a0c` 的 manifest 已通過 section 1、完整回歸、required fixture、跨來源訓練、Assistant、import、
+  human-like 與 UI baseline，最後在 visualization render fail closed。Artifact 證明產品正確移除
+  Spectrogram 的 Absolute layout item 並於其他 tab 恢復，但 walkthrough validator 仍要求 hidden control
+  保留原 grid slot，直接違反本 slice 的「不得留空洞」contract。下一步只做 tests／evidence contract
+  校準：要求 hidden Absolute 無 grid position、Normalize slot 穩定且在 visible Absolute 前；focused validator
+  與單一 visualization render 通過後才凍結新 SHA，既有 `faba9a0c` evidence 不宣稱 handoff-ready。
+- `6f603e41` 已讓上述 visualization validator與真 render通過；完整回歸亦通過，但並行 post-regression
+  lanes 使單獨只需53秒、`94 passed`的Assistant security suite超過1,800秒timeout。使用者要求後續UI先
+  輕量手測、確認後才跑重型驗證，因此不再重跑heavy tail。Primary artifact review另在800px panel揭露
+  control mode誤用整個panel寬度，導致實際約496px的control bar仍選medium並讓Fold combo／Run label重疊。
+  下一步只修正既有responsive width判斷、補窄寬observable test並重拍輕量圖；通過後交使用者手測，
+  不先啟動canonical heavy gates。
+- Responsive width 已恢復使用 sidebar-aware 可用寬度並保留 wide／medium／narrow 三段；760px panel走三列、
+  1180px panel走單列，幾何與不重疊 contract `87 passed`。15秒真render walkthrough通過且primary artifact
+  review確認2D controls／canvas／colorbar正常。交付前盤點另以真實tab transition重現並修正3D blocked view：
+  montage readiness現在保留已發布method、從All自動選第一個可用class，且top-level 2D detail reset不再於3D重複。
+  Red reproduction已轉綠，focused visualization `236 passed`、Ruff／format與15秒真render通過；新primary artifact
+  確認blocked 3D顯示`Gradient`／`left`、沒有第二個top-level reset。下一步凍結、push exact SHA並交使用者輕量手測；
+  在明確UI okay前不補跑post-regression heavy tail。
 
 ## Focused validation
 
-- Catalog／provider：既有`test_model_catalog`characterization，加exact 61 membership、unique IDs、default、
-  provider version、no barrel enumeration、no silent fallback及provider unavailable projection。
-- License／source：provenance manifest completeness、allowed license set、hash/path、legacy self-contained imports，
-  banned model／symbol／patent-source absence。
-- Model parity：每個selectable upstream model以適當synthetic context執行constructor、forward與finite
-  backward；每個legacy model比對upstream 1.6.1 state-dict keys／shapes及deterministic loaded-state output。
-  Disabled model只驗證typed reason，不進Trainer。
-- Workflow：每個model family至少一條real CPU one-epoch → selected checkpoint → save/reload → evaluation；
-  支援gradient的family另驗證saliency。Data semantics仍由既有source-diverse gate擁有。
-- UI：search／alias／family、keyboard、clear、no-match、disabled、selection preservation、cancel、healthy／
-  unavailable provider、narrow window與default-scale screenshot；Windows跑100／125／150% native DPI。
-- Platforms：Linux完整model matrix；Windows執行所有selectable model的bounded construction／forward及native
-  selector smoke；macOS執行catalog／import contract和resource-bounded代表family，不宣稱真人desktop。
-- Final handtest：正常Braindecode目錄搜尋，EEGNet與至少一個transformer完成CPU training／evaluation／
-  Compute Saliency；provider unavailable walkthrough只顯示legacy且不自動換ID；artifact reopen及close／reopen。
+- Red／green tests：Cancel Import exact choices、無 visible Cancel Evaluation、Fold Set unavailable/Compute、
+  old result accessibility、single 3D commit、selector identity、All/detail zoom policy、Normalize→Absolute 三段 layout。
+- Modal component tests：severity、compact geometry、long text、safe default、Escape、destructive style；各 workflow
+  測試 receipt replay、cancel、retry、stale callback 與 shutdown fence。
+- 每批執行對應 unit／integration selectors、Ruff、format check 與 diff check；source guard 阻止 raw
+  QMessageBox 回流，但不限制 intentional inline status。
+- Final handoff 使用 `scripts/dev/handoff_gate_spec.py` 的唯一 registry；本 slice 涉及 import、training、
+  evaluation、visualization，canonical source-diverse dataset 與 native Qt／MNE gates 均 applicable。
+- 可見修改產出 exact-source screenshot／walkthrough。Offscreen 不取代 Windows native focus、Escape、DPI、
+  OpenGL／3D 與真人 acceptance。
 
 ## Stop conditions
 
-- 任一copied file／symbol的license或來源不能逐項確認，或完成某model必須帶入CC BY-NC／patent code。
-- 需要silent provider fallback、同一stable ID代表不同implementation、第二套model／training／checkpoint owner，
-  或UI自行推導availability。
-- 任一selectable model不能在其declared input contract下construct／forward，或只能靠未核准remote download。
-- Provider preflight會阻塞UI、造成native abort，或legacy仍暗中依賴installed Braindecode。
-- Windows model matrix出現unbounded memory／time、native abort或不可重現結果；停止該family並回報，不以
-  skip、timeout放寬或降級claim取得green。
-- Scope需要擴到non-classification Trainer、Data Import、4B Assistant或installer時停止並取得新決策。
+- Cancel Import 無法恢復 exact review choices，或取消後 product data 已部分 mutation；
+- 未計算 Fold 顯示舊圖、自動啟動 Compute，或 stale callback 覆蓋較新 selection；
+- 一次 terminal publication 觸發多次 3D commit，或 close 後仍有 worker／native wrapper；
+- modal migration 改變 receipt、confirmation、retry、destructive 或 security semantics；
+- raw QMessageBox source guard、focused test、Ruff、type gate、canonical data gate、native walkthrough 或 exact
+  source identity 任一失敗；
+- final source 修改後沿用舊 handoff 或 manual acceptance。
+
+任一條件發生即停在 checkpoint 修正；不得以其他 family 已通過、skip、retry 或人工目測掩蓋。

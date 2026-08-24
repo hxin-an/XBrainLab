@@ -18,7 +18,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -48,6 +47,7 @@ from XBrainLab.ui.application_capabilities import (
     ControllerCompatibilityUnavailableError,
     run_controller_compatibility_call,
 )
+from XBrainLab.ui.components.modal_presentation import show_warning
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
@@ -1003,11 +1003,11 @@ class TrainingSettingDialog(BaseDialog):
         """Validate all inputs, build TrainingOption, and accept the dialog.
 
         Raises:
-            QMessageBox: Warning if input validation fails.
+            Warning dialog: shown if input validation fails.
 
         """
         if self._device_recommendation_refresh_failed:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Training Recommendation Changed",
                 "The selected device could not be reconciled with the current "
@@ -1068,7 +1068,7 @@ class TrainingSettingDialog(BaseDialog):
             )
             super().accept()
         except ValueError:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Validation Error",
                 "Review the numeric training values and configuration, then try again.",

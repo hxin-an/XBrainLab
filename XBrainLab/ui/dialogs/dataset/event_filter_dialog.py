@@ -12,11 +12,11 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMenu,
-    QMessageBox,
     QPushButton,
     QVBoxLayout,
 )
 
+from XBrainLab.ui.components.modal_presentation import show_warning
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import normalize_dialog_button_box
 
@@ -193,7 +193,7 @@ class EventFilterDialog(BaseDialog):
                     self.selected_names.append(item.text())
 
             if not self.selected_names:
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "No Events Selected",
                     "Select at least one event to keep for synchronization.",

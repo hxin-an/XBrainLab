@@ -7,7 +7,7 @@ import logging
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtWidgets import QMainWindow
@@ -55,6 +55,18 @@ _PREPROCESS_MESSAGE = (
     "XBrainLab could not apply preprocessing because of an unexpected problem. "
     "Review the preprocessing settings and try again."
 )
+
+
+def _record_shared_alert(target: MagicMock):
+    """Preserve concise legacy assertions while checking shared alert metadata."""
+
+    def present(parent, *, severity, title, message):
+        target(parent, title, message)
+        target.severity = severity
+
+    return present
+
+
 _RESET_PREPROCESS_MESSAGE = (
     "XBrainLab could not reset preprocessing because of an unexpected problem. "
     "Review the current workflow state and try again."
@@ -92,6 +104,7 @@ def _preprocess_widget(qtbot) -> PreprocessSidebar:
     panel = MagicMock()
     panel.controller = MagicMock()
     panel.dataset_controller = MagicMock()
+    panel.import_is_finishing.return_value = False
     panel.main_window = QMainWindow()
     qtbot.addWidget(panel.main_window)
     widget = PreprocessSidebar(panel)
@@ -132,7 +145,9 @@ def test_training_start_unexpected_exception_is_private_and_actionable(
 ) -> None:
     sidebar = _training_widget(qtbot)
     critical = MagicMock()
-    monkeypatch.setattr(training_sidebar.QMessageBox, "critical", critical)
+    monkeypatch.setattr(
+        user_error_presentation, "show_alert", _record_shared_alert(critical)
+    )
     monkeypatch.setattr(
         training_sidebar,
         "get_command_capability",
@@ -159,11 +174,13 @@ def test_training_start_async_exception_is_private_and_logged(
 ) -> None:
     sidebar = _training_widget(qtbot)
     critical = MagicMock()
-    monkeypatch.setattr(training_sidebar.QMessageBox, "critical", critical)
+    monkeypatch.setattr(
+        user_error_presentation, "show_alert", _record_shared_alert(critical)
+    )
     monkeypatch.setattr(
         training_sidebar,
         "get_command_capability",
-        lambda *_args: SimpleNamespace(enabled=True, reasons=[]),
+        lambda *_args, **_kwargs: SimpleNamespace(enabled=True, reasons=[]),
     )
 
     def dispatch(_context, _command, *, on_error, **_kwargs) -> bool:
@@ -223,7 +240,9 @@ def test_data_import_unexpected_exception_keeps_failed_outcome_without_leaking(
         _AcceptedChooser
     )
     critical = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "critical", critical)
+    monkeypatch.setattr(
+        user_error_presentation, "show_alert", _record_shared_alert(critical)
+    )
     monkeypatch.setattr(
         handler._data_interpretation,
         "_run_data_interpretation_import",
@@ -254,7 +273,9 @@ def test_data_import_review_payload_failure_is_private_and_stays_failed(
 
     handler = DatasetActionHandler(MagicMock())
     critical = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "critical", critical)
+    monkeypatch.setattr(
+        user_error_presentation, "show_alert", _record_shared_alert(critical)
+    )
     monkeypatch.setattr(
         handler._data_interpretation,
         "_read_interpretation_review",
@@ -289,7 +310,9 @@ def test_recipe_reload_worker_failure_is_private_and_logged(
     panel = MagicMock()
     handler = DatasetActionHandler(panel)
     critical = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "critical", critical)
+    monkeypatch.setattr(
+        user_error_presentation, "show_alert", _record_shared_alert(critical)
+    )
     monkeypatch.setattr(
         actions,
         "get_command_capability",
@@ -334,7 +357,9 @@ def test_preprocess_async_exception_is_private_and_logged(
 ) -> None:
     sidebar = _preprocess_widget(qtbot)
     critical = MagicMock()
-    monkeypatch.setattr(preprocess_sidebar.QMessageBox, "critical", critical)
+    monkeypatch.setattr(
+        user_error_presentation, "show_alert", _record_shared_alert(critical)
+    )
 
     def dispatch(_context, _command, *, on_error, **_kwargs) -> bool:
         on_error(
@@ -377,7 +402,9 @@ def test_preprocess_sync_exception_is_private_and_returns_stable_outcome(
 ) -> None:
     sidebar = _preprocess_widget(qtbot)
     critical = MagicMock()
-    monkeypatch.setattr(preprocess_sidebar.QMessageBox, "critical", critical)
+    monkeypatch.setattr(
+        user_error_presentation, "show_alert", _record_shared_alert(critical)
+    )
     monkeypatch.setattr(
         preprocess_sidebar,
         "execute_application_command_async",
@@ -420,7 +447,9 @@ def test_reset_preprocess_sync_exception_is_private(
 ) -> None:
     sidebar = _preprocess_widget(qtbot)
     critical = MagicMock()
-    monkeypatch.setattr(preprocess_sidebar.QMessageBox, "critical", critical)
+    monkeypatch.setattr(
+        user_error_presentation, "show_alert", _record_shared_alert(critical)
+    )
     monkeypatch.setattr(
         preprocess_sidebar,
         "get_application_view_publication",
@@ -441,9 +470,9 @@ def test_reset_preprocess_sync_exception_is_private(
         ),
     )
     monkeypatch.setattr(
-        preprocess_sidebar.QMessageBox,
-        "question",
-        lambda *_args: preprocess_sidebar.QMessageBox.StandardButton.Yes,
+        preprocess_sidebar,
+        "ask_confirmation",
+        lambda *_args, **_kwargs: True,
     )
     monkeypatch.setattr(
         preprocess_sidebar,
@@ -534,46 +563,37 @@ def test_worker_error_presentation_fails_closed_for_hostile_payloads(
     error_info,
     caplog,
 ) -> None:
-    message_box = MagicMock()
-
-    with _capture_public_xbrainlab_logs(caplog):
+    with (
+        _capture_public_xbrainlab_logs(caplog),
+        patch("XBrainLab.ui.components.user_error_presentation.show_alert") as alert,
+    ):
         message = present_unexpected_error(
             None,
             UnexpectedErrorContext.PREPROCESS_EXECUTION,
             error_info=error_info,
-            message_box=message_box,
         )
 
     assert message == _PREPROCESS_MESSAGE
-    message_box.critical.assert_called_once_with(
-        None,
-        "Preprocessing could not be applied",
-        _PREPROCESS_MESSAGE,
-    )
+    assert alert.call_args.kwargs["message"] == _PREPROCESS_MESSAGE
     _assert_logged_exception(caplog)
 
 
 def test_worker_logging_failure_does_not_hide_stable_message(monkeypatch) -> None:
-    message_box = MagicMock()
     monkeypatch.setattr(
         user_error_presentation.logger,
         "error",
         MagicMock(side_effect=RuntimeError("logger failed")),
     )
 
-    message = present_unexpected_error(
-        None,
-        UnexpectedErrorContext.PREPROCESS_EXECUTION,
-        error_info=(RuntimeError, RuntimeError(_SENTINEL), _SENTINEL),
-        message_box=message_box,
-    )
+    with patch("XBrainLab.ui.components.user_error_presentation.show_alert") as alert:
+        message = present_unexpected_error(
+            None,
+            UnexpectedErrorContext.PREPROCESS_EXECUTION,
+            error_info=(RuntimeError, RuntimeError(_SENTINEL), _SENTINEL),
+        )
 
     assert message == _PREPROCESS_MESSAGE
-    message_box.critical.assert_called_once_with(
-        None,
-        "Preprocessing could not be applied",
-        _PREPROCESS_MESSAGE,
-    )
+    assert alert.call_args.kwargs["message"] == _PREPROCESS_MESSAGE
 
 
 def test_training_settings_unexpected_exception_uses_stable_warning(
@@ -597,7 +617,9 @@ def test_training_settings_unexpected_exception_uses_stable_warning(
     dialog = training_setting_dialog.TrainingSettingDialog(None, controller)
     qtbot.addWidget(dialog)
     warning = MagicMock()
-    monkeypatch.setattr(training_setting_dialog.QMessageBox, "warning", warning)
+    monkeypatch.setattr(
+        user_error_presentation, "show_alert", _record_shared_alert(warning)
+    )
     monkeypatch.setattr(
         training_setting_dialog,
         "TrainingOption",
@@ -626,7 +648,9 @@ def test_saliency_settings_unexpected_exception_uses_stable_warning(
     dialog = saliency_setting_dialog.SaliencySettingDialog(None)
     qtbot.addWidget(dialog)
     warning = MagicMock()
-    monkeypatch.setattr(saliency_setting_dialog.QMessageBox, "warning", warning)
+    monkeypatch.setattr(
+        user_error_presentation, "show_alert", _record_shared_alert(warning)
+    )
     monkeypatch.setattr(
         dialog,
         "_editor_value",
@@ -693,7 +717,9 @@ def test_visualization_sidebar_montage_exception_returns_stable_outcome(
         MagicMock(side_effect=RuntimeError(_SENTINEL)),
     )
     critical = MagicMock()
-    monkeypatch.setattr(control_sidebar.QMessageBox, "critical", critical)
+    monkeypatch.setattr(
+        user_error_presentation, "show_alert", _record_shared_alert(critical)
+    )
 
     with _capture_public_xbrainlab_logs(caplog):
         outcome = sidebar.set_montage()
@@ -726,7 +752,9 @@ def test_dataset_panel_loader_exception_uses_stable_message(
         MagicMock(side_effect=RuntimeError(_SENTINEL)),
     )
     critical = MagicMock()
-    monkeypatch.setattr(dataset_panel.QMessageBox, "critical", critical)
+    monkeypatch.setattr(
+        user_error_presentation, "show_alert", _record_shared_alert(critical)
+    )
 
     with _capture_public_xbrainlab_logs(caplog):
         panel.apply_loader(MagicMock())
@@ -746,7 +774,7 @@ def test_structured_training_failure_keeps_backend_recovery_message(
 ) -> None:
     sidebar = _training_widget(qtbot)
     critical = MagicMock()
-    monkeypatch.setattr(training_sidebar.QMessageBox, "critical", critical)
+    monkeypatch.setattr(training_sidebar, "show_error", critical)
     recovery_message = "Reduce the batch size to 16, then start training again."
     result = SimpleNamespace(
         failed=True,

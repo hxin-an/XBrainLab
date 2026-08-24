@@ -4,7 +4,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
-from PyQt6.QtCore import QEvent, Qt, QThread
+from PyQt6.QtCore import QEvent, QSignalBlocker, Qt, QThread
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QPushButton,
     QTabWidget,
     QVBoxLayout,
@@ -86,6 +85,11 @@ from XBrainLab.ui.application_capabilities import (
 )
 from XBrainLab.ui.application_publication_renderer import (
     ApplicationPublicationRenderLedger,
+)
+from XBrainLab.ui.components.modal_presentation import (
+    AlertSeverity,
+    ask_confirmation,
+    show_alert,
 )
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.core.worker import PythonThreadWorker
@@ -176,7 +180,7 @@ class _SaliencySettingsTarget:
     """Immutable result identity reviewed by the saliency settings dialog."""
 
     publication_generation: int
-    run_identity: SaliencyRunIdentity
+    run_identity: SaliencyRunIdentity | SaliencyCrossFoldIdentity
     model_name: str
 
 
@@ -273,6 +277,9 @@ class VisualizationPanel(BasePanel):
             SaliencyCrossFoldIdentity,
             _SaliencyCrossFoldChoice,
         ] = {}
+        self._known_evaluation_cross_fold_identities: set[SaliencyCrossFoldIdentity] = (
+            set()
+        )
         self.last_application_query: CommandResult | None = None
         self.last_saliency_query: CommandResult | None = None
         self._last_active_saliency_view: QWidget | None = None
@@ -318,7 +325,7 @@ class VisualizationPanel(BasePanel):
                 int,
                 str,
                 SaliencyRenderPublication,
-                tuple[bool, bool],
+                tuple[object, ...],
             ],
         ] = {}
 
@@ -458,8 +465,22 @@ class VisualizationPanel(BasePanel):
         )
         self.normalize_check.setStyleSheet(Stylesheets.CHECKBOX_MUTED)
         self.normalize_check.stateChanged.connect(self.on_update)
-        self._controls_single_row = None
-        self._apply_visualization_control_layout(single_row=False)
+
+        # One selector owns the user-visible saliency scope.  The two hidden
+        # widgets below remain only as an internal compatibility projection for
+        # renderers that receive ``display_mode`` plus an exact class key.
+        self.saliency_combo = QComboBox()
+        self.saliency_combo.addItem("All classes", None)
+        self.saliency_combo.setMinimumWidth(180)
+        self.saliency_combo.setStyleSheet(Stylesheets.COMBO_BOX)
+        self.saliency_combo.currentIndexChanged.connect(self._on_saliency_combo_changed)
+        self.saliency_view_mode = QComboBox()
+        self.saliency_view_mode.addItem("All classes", "all")
+        self.saliency_view_mode.addItem("Single class", "single")
+        self.saliency_class_combo = QComboBox()
+        self.saliency_view_label = QLabel("Saliency:")
+        self._controls_layout_mode: str | None = None
+        self._apply_visualization_control_layout("narrow")
         left_layout.addWidget(self.ctrl_bar)
 
         # 2. Saliency compute entry point
@@ -480,6 +501,7 @@ class VisualizationPanel(BasePanel):
 
         # Tab 1: Saliency Map
         self.tab_map = SaliencyMapWidget(self)
+        self.tab_map.class_selected.connect(self._open_saliency_class_detail)
         self.tab_map.setObjectName("SaliencyMapRenderStatus")
         self.tab_map.setProperty("renderStatus", "idle")
         self.tab_map.setProperty("operationId", "")
@@ -560,6 +582,9 @@ class VisualizationPanel(BasePanel):
 
         # Connect tab signal now that everything is initialized
         self.tabs.currentChanged.connect(self.on_tab_changed)
+        scene_controls_changed = getattr(self.tab_3d, "scene_controls_changed", None)
+        if scene_controls_changed is not None:
+            scene_controls_changed.connect(self._refresh_sidebar_view_controls)
         self._refresh_explanation_context()
         self._refresh_absolute_control()
 
@@ -704,54 +729,96 @@ class VisualizationPanel(BasePanel):
         if not hasattr(self, "ctrl_bar"):
             return
         available_width = max(self.ctrl_bar.width(), self.width() - 340)
-        self._apply_visualization_control_layout(
-            single_row=available_width >= 780,
-        )
+        if available_width >= 760:
+            layout_mode = "wide"
+        elif available_width >= 700:
+            layout_mode = "medium"
+        else:
+            layout_mode = "narrow"
+        self._apply_visualization_control_layout(layout_mode)
 
-    def _apply_visualization_control_layout(self, single_row: bool) -> None:
-        if getattr(self, "_controls_single_row", None) == single_row:
+    def _apply_visualization_control_layout(self, layout_mode: str) -> None:
+        if getattr(self, "_controls_layout_mode", None) == layout_mode:
             return
 
-        self._controls_single_row = single_row
-        for column in range(9):
+        self._controls_layout_mode = layout_mode
+        for column in range(12):
             self.ctrl_layout.setColumnStretch(column, 0)
 
-        if single_row:
+        controls = (
+            self.plan_label,
+            self.plan_combo,
+            self.run_label,
+            self.run_combo,
+            self.saliency_view_label,
+            self.saliency_combo,
+            self.method_label,
+            self.method_combo,
+            self.normalize_check,
+            self.abs_check,
+        )
+        for control in controls:
+            self.ctrl_layout.removeWidget(control)
+
+        if layout_mode == "wide":
             self.plan_combo.setMinimumWidth(150)
             self.plan_combo.setMaximumWidth(210)
             self.run_combo.setMinimumWidth(105)
             self.run_combo.setMaximumWidth(145)
             self.method_combo.setMinimumWidth(150)
             self.method_combo.setMaximumWidth(190)
-
             self.ctrl_layout.addWidget(self.plan_label, 0, 0)
             self.ctrl_layout.addWidget(self.plan_combo, 0, 1)
             self.ctrl_layout.addWidget(self.run_label, 0, 2)
             self.ctrl_layout.addWidget(self.run_combo, 0, 3)
-            self.ctrl_layout.addWidget(self.method_label, 0, 4)
-            self.ctrl_layout.addWidget(self.method_combo, 0, 5)
-            self.ctrl_layout.setColumnStretch(8, 1)
-            self._position_transform_controls()
+            self.ctrl_layout.addWidget(self.saliency_view_label, 0, 4)
+            self.ctrl_layout.addWidget(self.saliency_combo, 0, 5)
+            self.ctrl_layout.addWidget(self.method_label, 0, 6)
+            self.ctrl_layout.addWidget(self.method_combo, 0, 7)
+            self.ctrl_layout.setColumnStretch(11, 1)
+            self._position_transform_controls(layout_mode)
             return
 
-        self.plan_combo.setMinimumWidth(150)
-        self.plan_combo.setMaximumWidth(220)
-        self.run_combo.setMinimumWidth(120)
-        self.run_combo.setMaximumWidth(180)
-        self.method_combo.setMinimumWidth(150)
-        self.method_combo.setMaximumWidth(220)
+        if layout_mode == "medium":
+            self.plan_combo.setMinimumWidth(150)
+            self.plan_combo.setMaximumWidth(210)
+            self.run_combo.setMinimumWidth(105)
+            self.run_combo.setMaximumWidth(145)
+            self.method_combo.setMinimumWidth(150)
+            self.method_combo.setMaximumWidth(190)
+            self.saliency_combo.setMinimumWidth(160)
+            self.ctrl_layout.addWidget(self.plan_label, 0, 0)
+            self.ctrl_layout.addWidget(self.plan_combo, 0, 1)
+            self.ctrl_layout.addWidget(self.run_label, 0, 2)
+            self.ctrl_layout.addWidget(self.run_combo, 0, 3)
+            self.ctrl_layout.addWidget(self.saliency_view_label, 0, 4)
+            self.ctrl_layout.addWidget(self.saliency_combo, 0, 5)
+            self.ctrl_layout.addWidget(self.method_label, 1, 0)
+            self.ctrl_layout.addWidget(self.method_combo, 1, 1)
+            self.ctrl_layout.setColumnStretch(7, 1)
+            self._position_transform_controls(layout_mode)
+            return
 
+        self.plan_combo.setMinimumWidth(115)
+        self.plan_combo.setMaximumWidth(150)
+        self.run_combo.setMinimumWidth(90)
+        self.run_combo.setMaximumWidth(120)
+        self.method_combo.setMinimumWidth(100)
+        self.method_combo.setMaximumWidth(135)
+        self.saliency_combo.setMinimumWidth(135)
         self.ctrl_layout.addWidget(self.plan_label, 0, 0)
         self.ctrl_layout.addWidget(self.plan_combo, 0, 1)
         self.ctrl_layout.addWidget(self.run_label, 0, 2)
         self.ctrl_layout.addWidget(self.run_combo, 0, 3)
-        self.ctrl_layout.addWidget(self.method_label, 1, 0)
-        self.ctrl_layout.addWidget(self.method_combo, 1, 1)
+        self.ctrl_layout.addWidget(self.saliency_view_label, 1, 0)
+        self.ctrl_layout.addWidget(self.saliency_combo, 1, 1)
+        self.ctrl_layout.addWidget(self.method_label, 2, 0)
+        self.ctrl_layout.addWidget(self.method_combo, 2, 1)
         self.ctrl_layout.setColumnStretch(5, 1)
-        self._position_transform_controls()
+        self._position_transform_controls(layout_mode)
 
-    def _position_transform_controls(self) -> None:
-        """Hide Absolute without changing any responsive control grid slots."""
+    def _position_transform_controls(self, layout_mode: str) -> None:
+        """Place compact transforms without reserving hidden-control holes."""
         self.ctrl_layout.removeWidget(self.abs_check)
         self.ctrl_layout.removeWidget(self.normalize_check)
 
@@ -762,30 +829,40 @@ class VisualizationPanel(BasePanel):
         self.abs_check.setVisible(show_absolute)
         self.normalize_check.setVisible(True)
 
-        if self._controls_single_row:
+        if layout_mode == "wide":
             row = 0
-            absolute_column = 6
-            normalize_column = 7
-        else:
+            normalize_column = 9
+            absolute_column = 10
+        elif layout_mode == "medium":
             row = 1
+            normalize_column = 2
             absolute_column = 3
-            normalize_column = 4
+        else:
+            row = 2
+            normalize_column = 2
+            absolute_column = 3
 
-        self.ctrl_layout.addWidget(self.abs_check, row, absolute_column)
         self.ctrl_layout.addWidget(self.normalize_check, row, normalize_column)
+        if show_absolute:
+            self.ctrl_layout.addWidget(self.abs_check, row, absolute_column)
 
     def _cross_fold_choices_from_query(
         self,
     ) -> tuple[_SaliencyCrossFoldChoice, ...]:
         """Parse backend-admitted summary identities without inferring cohorts."""
         payload = self._visualization_query_payload()
-        raw_choices = (
-            payload.get("saliency_cross_fold_choices", [])
-            if payload is not None
-            else []
-        )
-        if not isinstance(raw_choices, list):
+        if payload is None:
             return ()
+        evaluation_choices = payload.get("evaluation_cross_fold_choices", [])
+        saliency_choices = payload.get("saliency_cross_fold_choices", [])
+        if not isinstance(evaluation_choices, list) or not isinstance(
+            saliency_choices, list
+        ):
+            return ()
+        # Evaluation admits a Fold Set before saliency exists.  A verified
+        # saliency entry with the same exact identity replaces that read-only
+        # placeholder once it can be rendered.
+        raw_choices = [*evaluation_choices, *saliency_choices]
         choices: list[_SaliencyCrossFoldChoice] = []
         for raw_choice in raw_choices:
             if not isinstance(raw_choice, dict):
@@ -794,14 +871,13 @@ class VisualizationPanel(BasePanel):
             raw_members = (
                 raw_identity.get("members") if isinstance(raw_identity, dict) else None
             )
-            raw_methods = raw_choice.get("methods")
-            raw_classes = raw_choice.get("classes")
-            if not isinstance(raw_members, list) or not isinstance(
-                raw_methods,
-                list,
+            raw_methods = raw_choice.get("methods", [])
+            raw_classes = raw_choice.get("classes", [])
+            if (
+                not isinstance(raw_members, list)
+                or not isinstance(raw_methods, list)
+                or not isinstance(raw_classes, list)
             ):
-                continue
-            if not isinstance(raw_classes, list):
                 continue
             try:
                 members = tuple(
@@ -833,22 +909,57 @@ class VisualizationPanel(BasePanel):
                 )
             except (KeyError, TypeError, ValueError):
                 continue
-            if not methods or not classes:
-                continue
             choices.append(
                 _SaliencyCrossFoldChoice(
                     identity=identity,
                     display_name=str(raw_choice.get("display_name") or "All Folds"),
                     run_label=str(
-                        raw_choice.get("run_label")
-                        or f"Run {identity.run_index + 1} (Summary)"
-                    ),
+                        raw_choice.get("run_label") or f"Run {identity.run_index + 1}"
+                    ).replace(" (Summary)", ""),
                     methods=methods,
                     source_split=str(raw_choice.get("source_split") or "unknown"),
                     classes=classes,
                 )
             )
-        return tuple(choices)
+        by_identity = {choice.identity: choice for choice in choices}
+        return tuple(by_identity.values())
+
+    def _evaluation_cross_fold_identities_from_query(
+        self,
+        choices: tuple[_SaliencyCrossFoldChoice, ...],
+    ) -> set[SaliencyCrossFoldIdentity]:
+        """Return only backend-admitted Fold Sets, never inferred exact folds."""
+        payload = self._visualization_query_payload()
+        raw_choices = (
+            payload.get("evaluation_cross_fold_choices", []) if payload else []
+        )
+        if not isinstance(raw_choices, list):
+            return set()
+        raw_members: set[tuple[tuple[int, int], ...]] = set()
+        for raw in raw_choices:
+            identity = raw.get("identity") if isinstance(raw, dict) else None
+            members = identity.get("members") if isinstance(identity, dict) else None
+            if not isinstance(members, list):
+                continue
+            try:
+                raw_members.add(
+                    tuple(
+                        (int(member["plan_index"]), int(member["run_index"]))
+                        for member in members
+                        if isinstance(member, dict)
+                    )
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
+        return {
+            choice.identity
+            for choice in choices
+            if tuple(
+                (member.plan.plan_index, member.run_index)
+                for member in choice.identity.members
+            )
+            in raw_members
+        }
 
     def refresh_combos(self):
         """Refresh plan/run identities from one immutable view publication."""
@@ -865,11 +976,6 @@ class VisualizationPanel(BasePanel):
         previous_run = self.run_combo.currentData()
         previous_run_text = self.run_combo.currentText()
         publication = self._application_view_publication
-        published_model_name = (
-            publication.state.training.model_name
-            if publication is not None and publication.usable
-            else ""
-        )
         coverage = (
             publication.state.visualization.saliency_coverage
             if publication is not None and publication.usable
@@ -888,12 +994,9 @@ class VisualizationPanel(BasePanel):
             )
             run_label = run_display_label(run_coverage.run_index)
             grouped_runs.setdefault(plan_identity, []).append((run_identity, run_label))
-            model_name = (
-                run_coverage.model_name or published_model_name or "Unknown model"
-            )
             plan_labels.setdefault(
                 plan_identity,
-                fold_display_label(run_coverage.plan_index, model_name),
+                fold_display_label(run_coverage.plan_index),
             )
 
         cross_fold_choices = self._cross_fold_choices_from_query()
@@ -944,19 +1047,44 @@ class VisualizationPanel(BasePanel):
         for plan_identity in plan_order:
             self.plan_combo.addItem(plan_labels[plan_identity], plan_identity)
 
-        # If items exist, select first real plan
+        evaluation_identities = self._evaluation_cross_fold_identities_from_query(
+            cross_fold_choices,
+        )
+        new_evaluation_identities = (
+            evaluation_identities - self._known_evaluation_cross_fold_identities
+        )
+        self._known_evaluation_cross_fold_identities = evaluation_identities
+
+        # A newly admitted training round must not leave the user looking at a
+        # previous round's completed saliency. Prefer its aggregate Fold Set;
+        # if it is not cross-validation, select its first exact fold instead.
         if self.plan_combo.count() > 1:
             selected_index = 1
-            for i in range(1, self.plan_combo.count()):
-                if self.plan_combo.itemData(i) == previous_plan:
-                    selected_index = i
-                    break
-                if (
-                    previous_plan_text
-                    and self.plan_combo.itemText(i) == previous_plan_text
-                ):
-                    selected_index = i
-                    break
+            if new_evaluation_identities:
+                newest = max(
+                    new_evaluation_identities,
+                    key=lambda identity: max(
+                        member.plan.plan_index for member in identity.members
+                    ),
+                )
+                for i in range(1, self.plan_combo.count()):
+                    candidate = self.plan_combo.itemData(i)
+                    if isinstance(candidate, _SaliencyCrossFoldGroup) and tuple(
+                        candidate.plan_indexes
+                    ) == tuple(member.plan.plan_index for member in newest.members):
+                        selected_index = i
+                        break
+            else:
+                for i in range(1, self.plan_combo.count()):
+                    if self.plan_combo.itemData(i) == previous_plan:
+                        selected_index = i
+                        break
+                    if (
+                        previous_plan_text
+                        and self.plan_combo.itemText(i) == previous_plan_text
+                    ):
+                        selected_index = i
+                        break
             self.plan_combo.setCurrentIndex(selected_index)
             self.plan_combo.blockSignals(False)
             self.run_combo.blockSignals(False)
@@ -1006,15 +1134,17 @@ class VisualizationPanel(BasePanel):
             self.on_update()  # Trigger update to clear if empty
 
     def _refresh_selection_actions(self) -> None:
-        """Keep aggregate summaries read-only without hiding plot controls."""
-        cross_fold = isinstance(
-            self.run_combo.currentData(),
-            SaliencyCrossFoldIdentity,
+        """Keep Saliency settings bound to the exact selected result identity."""
+        selection = self.run_combo.currentData()
+        cross_fold = isinstance(selection, SaliencyCrossFoldIdentity)
+        selectable = isinstance(
+            selection,
+            (SaliencyRunIdentity, SaliencyCrossFoldIdentity),
         )
         if hasattr(self, "sidebar") and hasattr(self.sidebar, "btn_saliency"):
-            self.sidebar.btn_saliency.setEnabled(not cross_fold)
+            self.sidebar.btn_saliency.setEnabled(selectable)
             self.sidebar.btn_saliency.setToolTip(
-                "Select one fold to configure or recompute saliency."
+                "Configure one method profile for every Fold in this set."
                 if cross_fold
                 else "Configure saliency methods and parameters."
             )
@@ -1037,6 +1167,7 @@ class VisualizationPanel(BasePanel):
         self._last_active_saliency_view = current_widget
         self._refresh_explanation_context()
         self._refresh_absolute_control()
+        self._refresh_sidebar_view_controls()
         # Montage button is now always visible as per user request
         # self.btn_montage.setVisible(True) # It's visible by default
 
@@ -1148,7 +1279,8 @@ class VisualizationPanel(BasePanel):
         """Hide or disable an irrelevant transform while preserving its choice."""
         if not hasattr(self, "abs_check") or not hasattr(self, "tabs"):
             return
-        self._position_transform_controls()
+        self._refresh_control_layout_for_width()
+        self._position_transform_controls(self._controls_layout_mode or "narrow")
         method = self.method_combo.currentText()
         if self.tabs.currentIndex() == 1:
             self.abs_check.setEnabled(False)
@@ -1209,6 +1341,8 @@ class VisualizationPanel(BasePanel):
     def on_update(self):
         """Gather settings and call update_plot on current tab."""
         current_widget = self.tabs.currentWidget()
+        if current_widget is None:
+            return
         self._hide_saliency_action_bar()
         if self._application_summary_dirty or self.last_application_query is None:
             self._refresh_application_query(
@@ -1228,7 +1362,20 @@ class VisualizationPanel(BasePanel):
 
         blocked_view_message = self._selected_view_blocked_message()
         if blocked_view_message:
-            self._sync_method_options({})
+            method_coverage = self._published_coverage_for_selection()
+            if method_coverage is None:
+                self._sync_method_options({})
+            else:
+                method_name = self._sync_method_options(method_coverage)
+                selected_coverage = method_coverage.get(
+                    method_name,
+                    SaliencyMethodCoverageSnapshot(method=method_name),
+                )
+                self._sync_saliency_class_controls(selected_coverage)
+                if hasattr(self, "tab_3d"):
+                    self.tab_3d.select_class_key(
+                        self.saliency_class_combo.currentData()
+                    )
             self._show_widget_message(current_widget, blocked_view_message)
             return
 
@@ -1292,6 +1439,9 @@ class VisualizationPanel(BasePanel):
             method_name,
             SaliencyMethodCoverageSnapshot(method=method_name),
         )
+        self._sync_saliency_class_controls(selected_coverage)
+        if hasattr(self, "tab_3d"):
+            self.tab_3d.select_class_key(self.saliency_class_combo.currentData())
         self._publish_saliency_view_state(
             current_widget,
             coverage=selected_coverage,
@@ -1349,7 +1499,19 @@ class VisualizationPanel(BasePanel):
             if current_widget is self.tab_spectro
             else request
         )
-        display_key = (bool(absolute), bool(normalize))
+        display_key = (
+            bool(absolute),
+            bool(normalize),
+            str(self.saliency_view_mode.currentData() or "all"),
+            self.saliency_class_combo.currentData(),
+        )
+        set_detail_interactions = getattr(
+            current_widget,
+            "set_detail_interactions_enabled",
+            None,
+        )
+        if callable(set_detail_interactions):
+            set_detail_interactions(display_key[2] == "single")
         active_binding = self._native_render_bindings.get(current_widget)
         if (
             active_binding is not None
@@ -1434,6 +1596,8 @@ class VisualizationPanel(BasePanel):
                 typed_render_publication,
                 absolute,
                 display_normalized=normalize,
+                selected_label_key=self.saliency_class_combo.currentData(),
+                display_mode=str(self.saliency_view_mode.currentData() or "all"),
             )
             self._publish_saliency_render_identity(
                 self.tab_spectro,
@@ -1444,8 +1608,17 @@ class VisualizationPanel(BasePanel):
                 typed_render_publication,
                 display_key=display_key,
             )
-        elif current_widget and hasattr(current_widget, "update_plot"):
-            current_widget.update_plot(typed_render_publication, absolute)
+        elif current_widget in {self.tab_map, self.tab_topo}:
+            if current_widget is self.tab_map:
+                target_widget = self.tab_map
+            else:
+                target_widget = self.tab_topo
+            target_widget.update_plot(
+                typed_render_publication,
+                absolute,
+                selected_label_key=self.saliency_class_combo.currentData(),
+                display_mode=str(self.saliency_view_mode.currentData() or "all"),
+            )
             self._publish_saliency_render_identity(
                 current_widget,
                 typed_render_publication,
@@ -1455,6 +1628,92 @@ class VisualizationPanel(BasePanel):
                 typed_render_publication,
                 display_key=display_key,
             )
+        elif current_widget is self.tab_3d:
+            self.tab_3d.update_plot(typed_render_publication, absolute)
+            self._publish_saliency_render_identity(
+                self.tab_3d,
+                typed_render_publication,
+            )
+            self._bind_native_render_terminal(
+                self.tab_3d,
+                typed_render_publication,
+                display_key=display_key,
+            )
+
+    def _sync_saliency_class_controls(
+        self,
+        coverage: SaliencyMethodCoverageSnapshot,
+    ) -> None:
+        """Project one visible scope selector using backend class keys."""
+        previous = self.saliency_combo.currentData()
+        with (
+            QSignalBlocker(self.saliency_class_combo),
+            QSignalBlocker(self.saliency_combo),
+        ):
+            self.saliency_class_combo.clear()
+            self.saliency_combo.clear()
+            self.saliency_combo.addItem("All classes", None)
+            for item in coverage.classes:
+                if item.available:
+                    self.saliency_class_combo.addItem(item.display_name, item.store_key)
+                    self.saliency_combo.addItem(item.display_name, item.store_key)
+            if self.saliency_class_combo.count() > 0:
+                index = self.saliency_class_combo.findData(previous)
+                self.saliency_class_combo.setCurrentIndex(max(index, 0))
+            selected = self.saliency_combo.findData(previous)
+            if (
+                selected <= 0
+                and hasattr(self, "tabs")
+                and self.tabs.currentWidget() is getattr(self, "tab_3d", None)
+            ):
+                selected = next(
+                    (
+                        index
+                        for index in range(1, self.saliency_combo.count())
+                        if self.saliency_combo.itemData(index) is not None
+                    ),
+                    selected,
+                )
+            self.saliency_combo.setCurrentIndex(max(selected, 0))
+        class_key = self.saliency_combo.currentData()
+        with QSignalBlocker(self.saliency_view_mode):
+            self.saliency_view_mode.setCurrentIndex(
+                self.saliency_view_mode.findData(
+                    "all" if class_key is None else "single"
+                )
+            )
+        self._refresh_sidebar_view_controls()
+
+    def _on_saliency_combo_changed(self, _index: int) -> None:
+        """Project the selected scope once; renderers never own a second selector."""
+        class_key = self.saliency_combo.currentData()
+        with (
+            QSignalBlocker(self.saliency_view_mode),
+            QSignalBlocker(self.saliency_class_combo),
+        ):
+            self.saliency_view_mode.setCurrentIndex(
+                self.saliency_view_mode.findData(
+                    "all" if class_key is None else "single"
+                )
+            )
+            if class_key is not None:
+                index = self.saliency_class_combo.findData(class_key)
+                if index >= 0:
+                    self.saliency_class_combo.setCurrentIndex(index)
+        self._refresh_sidebar_view_controls()
+        self.on_update()
+
+    def _open_saliency_class_detail(self, class_key: object) -> None:
+        """Turn an overview tile activation into an exact-key detailed view."""
+        index = self.saliency_combo.findData(class_key)
+        if index < 0:
+            return
+        self.saliency_combo.setCurrentIndex(index)
+
+    def _refresh_sidebar_view_controls(self) -> None:
+        """Synchronize contextual view actions after selection or scene changes."""
+        if hasattr(self, "sidebar"):
+            self.sidebar.refresh_view_controls()
 
     def _saliency_render_publication(
         self,
@@ -1909,7 +2168,14 @@ class VisualizationPanel(BasePanel):
 
     def saliency_settings_target(
         self,
-    ) -> tuple[int, SaliencyRunIdentity, str] | None:
+    ) -> (
+        tuple[
+            int,
+            SaliencyRunIdentity | SaliencyCrossFoldIdentity,
+            str,
+        ]
+        | None
+    ):
         """Return the immutable publication/run/model identity visible to Settings."""
         target = self._current_saliency_settings_target()
         if target is None:
@@ -1925,7 +2191,7 @@ class VisualizationPanel(BasePanel):
         params: dict[str, object],
         *,
         publication_generation: int | None = None,
-        run_identity: SaliencyRunIdentity | None = None,
+        run_identity: SaliencyRunIdentity | SaliencyCrossFoldIdentity | None = None,
         model_name: str | None = None,
     ) -> bool:
         """Keep dialog choices local and bind them to the reviewed result."""
@@ -1938,7 +2204,10 @@ class VisualizationPanel(BasePanel):
         )
         if provided_target and (
             publication_generation is None
-            or not isinstance(run_identity, SaliencyRunIdentity)
+            or not isinstance(
+                run_identity,
+                (SaliencyRunIdentity, SaliencyCrossFoldIdentity),
+            )
             or model_name is None
         ):
             raise ValueError(
@@ -1953,7 +2222,10 @@ class VisualizationPanel(BasePanel):
             )
             if provided_target
             and publication_generation is not None
-            and isinstance(run_identity, SaliencyRunIdentity)
+            and isinstance(
+                run_identity,
+                (SaliencyRunIdentity, SaliencyCrossFoldIdentity),
+            )
             and model_name is not None
             else current_target
         )
@@ -2175,7 +2447,7 @@ class VisualizationPanel(BasePanel):
         current_widget,
         attempt_key: tuple[object, ...],
         expected_publication_generation: int | None = None,
-        run_identity: SaliencyRunIdentity | None = None,
+        run_identity: SaliencyRunIdentity | SaliencyCrossFoldIdentity | None = None,
         model_name: str | None = None,
     ) -> bool:
         """Run configured saliency computation in the ApplicationService worker."""
@@ -2186,7 +2458,10 @@ class VisualizationPanel(BasePanel):
                     run_identity=run_identity,
                     model_name=str(model_name),
                 )
-                if isinstance(run_identity, SaliencyRunIdentity)
+                if isinstance(
+                    run_identity,
+                    (SaliencyRunIdentity, SaliencyCrossFoldIdentity),
+                )
                 and model_name is not None
                 else None
             )
@@ -2230,6 +2505,7 @@ class VisualizationPanel(BasePanel):
             current_widget=current_widget,
             attempt_key=attempt_key,
             expected_publication_generation=expected_publication_generation,
+            target=run_identity,
         )
 
     def _dispatch_saliency_compute_command(
@@ -2240,6 +2516,7 @@ class VisualizationPanel(BasePanel):
         current_widget,
         attempt_key: tuple[object, ...],
         expected_publication_generation: int | None,
+        target: SaliencyRunIdentity | SaliencyCrossFoldIdentity | None = None,
         resource_preflight_confirmed: bool = False,
         resource_preflight_token: str | None = None,
         resource_confirmation_replayed: bool = False,
@@ -2254,6 +2531,7 @@ class VisualizationPanel(BasePanel):
                 params=params,
                 method_name=method_name,
                 expected_publication_generation=expected_publication_generation,
+                target=target,
                 resource_confirmation_replayed=resource_confirmation_replayed,
             )
 
@@ -2270,6 +2548,7 @@ class VisualizationPanel(BasePanel):
                 SaliencyCommand(
                     method=method_name,
                     params=dict(params),
+                    target=target,
                     resource_preflight_confirmed=resource_preflight_confirmed,
                     resource_preflight_token=resource_preflight_token,
                 ),
@@ -2435,7 +2714,7 @@ class VisualizationPanel(BasePanel):
         widget: QWidget,
         publication: SaliencyRenderPublication,
         *,
-        display_key: tuple[bool, bool],
+        display_key: tuple[object, ...],
     ) -> None:
         operation_id = str(publication.operation_id or "").strip()
         generation = getattr(widget, "active_render_generation", None)
@@ -2506,6 +2785,8 @@ class VisualizationPanel(BasePanel):
         )
 
     def _cancel_native_render_binding(self, widget: QWidget | None) -> bool:
+        if widget is None:
+            return True
         binding = self._native_render_bindings.get(widget)
         if binding is None:
             return True
@@ -2563,6 +2844,7 @@ class VisualizationPanel(BasePanel):
         params: dict[str, object] | None = None,
         method_name: str | None = None,
         expected_publication_generation: int | None = None,
+        target: SaliencyRunIdentity | SaliencyCrossFoldIdentity | None = None,
         resource_confirmation_replayed: bool = False,
     ) -> InteractionOutcome:
         if not isinstance(result, CommandResult):
@@ -2613,7 +2895,9 @@ class VisualizationPanel(BasePanel):
                 "Saliency compute command failed: %s",
                 result.error_message or result.message,
             )
-            if is_stale_publication_result(result):
+            if is_stale_publication_result(result) or result.diagnostics.get(
+                "stale_saliency_target"
+            ):
                 self._require_saliency_settings_review(
                     _SALIENCY_RESULTS_CHANGED_DETAIL,
                     current_widget=current_widget,
@@ -2631,10 +2915,11 @@ class VisualizationPanel(BasePanel):
                     attempt_key=attempt_key,
                     current_widget=current_widget,
                 )
-                QMessageBox.critical(
+                show_alert(
                     self,
-                    _SALIENCY_RESOURCE_DIALOG_TITLE,
-                    message,
+                    severity=AlertSeverity.CRITICAL,
+                    title=_SALIENCY_RESOURCE_DIALOG_TITLE,
+                    message=message,
                 )
                 return InteractionOutcome.blocked(message)
             if result.error_type is ErrorType.CONFIRMATION_REQUIRED:
@@ -2644,6 +2929,7 @@ class VisualizationPanel(BasePanel):
                     params=params,
                     method_name=method_name,
                     expected_publication_generation=(expected_publication_generation),
+                    target=target,
                     resource_confirmation_replayed=(resource_confirmation_replayed),
                     attempt_key=attempt_key,
                     current_widget=current_widget,
@@ -2658,11 +2944,7 @@ class VisualizationPanel(BasePanel):
         self._saliency_compute_in_progress = False
         self._clear_active_saliency_operation()
         self._set_saliency_action_busy(False)
-        self._pending_saliency_params = None
-        self._pending_saliency_target = None
-        self._pending_saliency_method = None
-        self._saliency_settings_review_required = False
-        self._saliency_settings_review_detail = ""
+        self._settle_applied_saliency_settings()
         show_status_message(self, "Saliency ready")
         self._application_summary_dirty = True
         self._saliency_summary_dirty = True
@@ -2687,6 +2969,7 @@ class VisualizationPanel(BasePanel):
         params: dict[str, object] | None,
         method_name: str | None,
         expected_publication_generation: int | None,
+        target: SaliencyRunIdentity | SaliencyCrossFoldIdentity | None,
         resource_confirmation_replayed: bool,
         attempt_key: tuple[object, ...] | None,
         current_widget,
@@ -2724,18 +3007,26 @@ class VisualizationPanel(BasePanel):
             or not params
             or not isinstance(method_name, str)
             or not method_name.strip()
+            or (
+                target is not None
+                and not isinstance(
+                    target,
+                    (SaliencyRunIdentity, SaliencyCrossFoldIdentity),
+                )
+            )
         ):
             return invalid_outcome()
 
         message = resource_preflight.message or result.message
-        reply = QMessageBox.question(
+        reply = ask_confirmation(
             self,
-            _SALIENCY_RESOURCE_DIALOG_TITLE,
-            f"{message}\n\nContinue computing saliency?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+            severity=AlertSeverity.WARNING,
+            title=_SALIENCY_RESOURCE_DIALOG_TITLE,
+            message=f"{message}\n\nContinue computing saliency?",
+            confirm_text="Continue",
+            cancel_text="Cancel",
         )
-        if reply != QMessageBox.StandardButton.Yes:
+        if not reply:
             self._finish_saliency_compute_cancelled(
                 attempt_key=attempt_key,
                 current_widget=current_widget,
@@ -2759,6 +3050,7 @@ class VisualizationPanel(BasePanel):
             current_widget=current_widget,
             attempt_key=attempt_key,
             expected_publication_generation=expected_publication_generation,
+            target=target,
             resource_preflight_confirmed=True,
             resource_preflight_token=challenge.challenge_id,
             resource_confirmation_replayed=True,
@@ -2851,22 +3143,56 @@ class VisualizationPanel(BasePanel):
         """Return the selected result identity from one accepted publication."""
         publication = self._application_view_publication
         run_identity = self.run_combo.currentData()
-        run_coverage = self._selected_run_coverage()
         if (
             publication is None
             or not publication.usable
-            or not isinstance(run_identity, SaliencyRunIdentity)
-            or run_coverage is None
+            or not isinstance(
+                run_identity,
+                (SaliencyRunIdentity, SaliencyCrossFoldIdentity),
+            )
         ):
             return None
+        members = (
+            run_identity.members
+            if isinstance(run_identity, SaliencyCrossFoldIdentity)
+            else (run_identity,)
+        )
+        if isinstance(run_identity, SaliencyCrossFoldIdentity) and (
+            run_identity not in self._known_evaluation_cross_fold_identities
+        ):
+            return None
+        run_coverages = tuple(
+            self._run_coverage_for_identity(member) for member in members
+        )
+        if any(coverage is None for coverage in run_coverages):
+            return None
+        model_names = sorted(
+            {
+                str(coverage.model_name).strip()
+                for coverage in run_coverages
+                if coverage is not None and str(coverage.model_name or "").strip()
+            }
+        )
         model_name = (
-            run_coverage.model_name or publication.state.training.model_name or ""
+            model_names[0]
+            if len(model_names) == 1
+            else " + ".join(model_names)
+            if model_names
+            else publication.state.training.model_name or ""
         )
         return _SaliencySettingsTarget(
             publication_generation=publication.generation,
             run_identity=run_identity,
             model_name=str(model_name),
         )
+
+    def _settle_applied_saliency_settings(self) -> None:
+        """Release settings after their matching compute succeeds."""
+        self._pending_saliency_params = None
+        self._pending_saliency_target = None
+        self._pending_saliency_method = None
+        self._saliency_settings_review_required = False
+        self._saliency_settings_review_detail = ""
 
     def _require_saliency_settings_review(
         self,
@@ -2921,11 +3247,18 @@ class VisualizationPanel(BasePanel):
 
     def _selected_run_coverage(self) -> SaliencyRunCoverageSnapshot | None:
         """Return selected result coverage from the accepted publication only."""
-        publication = self._application_view_publication
-        if publication is None or not publication.usable:
-            return None
         run_identity = self.run_combo.currentData()
         if not isinstance(run_identity, SaliencyRunIdentity):
+            return None
+        return self._run_coverage_for_identity(run_identity)
+
+    def _run_coverage_for_identity(
+        self,
+        run_identity: SaliencyRunIdentity,
+    ) -> SaliencyRunCoverageSnapshot | None:
+        """Return one exact run coverage from the accepted publication."""
+        publication = self._application_view_publication
+        if publication is None or not publication.usable:
             return None
         for run_coverage in publication.state.visualization.saliency_coverage:
             if (
@@ -3243,6 +3576,7 @@ class VisualizationPanel(BasePanel):
                 self._settle_saliency_interaction(
                     InteractionOutcome.completed("Saliency computation completed.")
                 )
+                self._settle_applied_saliency_settings()
                 self._clear_active_saliency_operation()
                 self._set_saliency_action_busy(False)
                 show_status_message(self, "Saliency ready")

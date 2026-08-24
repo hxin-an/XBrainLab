@@ -8,7 +8,6 @@ from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
     QGroupBox,
-    QMessageBox,
     QPushButton,
     QSizePolicy,
     QSpacerItem,
@@ -39,6 +38,7 @@ from XBrainLab.ui.application_capabilities import (
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
+from XBrainLab.ui.components.modal_presentation import show_error, show_warning
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
@@ -367,7 +367,7 @@ class DatasetSidebar(QWidget):
             return True, run_controller_compatibility_call(self, fallback)
         except ControllerCompatibilityUnavailableError as exc:
             if blocked_title is not None:
-                QMessageBox.warning(self, blocked_title, str(exc))
+                show_warning(self, blocked_title, str(exc))
             return False, None
 
     def _compatibility_sidebar_state(self) -> tuple[bool, bool, bool]:
@@ -615,7 +615,7 @@ class DatasetSidebar(QWidget):
 
         publication = get_application_view_publication(self)
         if publication is None and has_real_application_context(self):
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Channel Selection Blocked",
                 _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE,
@@ -629,7 +629,7 @@ class DatasetSidebar(QWidget):
             else get_command_capability(self, CommandName.PREPROCESS)
         )
         if preprocess_capability is not None and not preprocess_capability.enabled:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Channel Selection Blocked",
                 blocked_reason(
@@ -646,7 +646,7 @@ class DatasetSidebar(QWidget):
 
         if preprocess_capability is None:
             if has_real_application_context(self):
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Channel Selection Blocked",
                     _CHANNEL_SELECTION_AVAILABILITY_UNAVAILABLE,
@@ -663,7 +663,7 @@ class DatasetSidebar(QWidget):
                     "Channel Selection is unavailable in this session."
                 )
             if not has_data:
-                QMessageBox.warning(self, "Warning", "No data loaded.")
+                show_warning(self, "Warning", "No data loaded.")
                 return InteractionOutcome.blocked(
                     "Load raw data before selecting channels."
                 )
@@ -677,7 +677,7 @@ class DatasetSidebar(QWidget):
                     "Channel Selection is unavailable in this session."
                 )
             if is_locked:
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Action Blocked",
                     "Dataset is locked because a data operation has "
@@ -724,7 +724,7 @@ class DatasetSidebar(QWidget):
                         reviewed_preprocess_boundary=reviewed_boundary,
                     )
                     if command_result is None:
-                        QMessageBox.warning(
+                        show_warning(
                             self,
                             "Channel Selection Blocked",
                             CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -750,7 +750,7 @@ class DatasetSidebar(QWidget):
                             )
                             != _channel_selection_raw_identity(command_result.state)
                         )
-                        QMessageBox.warning(
+                        show_warning(
                             self,
                             (
                                 "Channels Changed"
@@ -769,7 +769,7 @@ class DatasetSidebar(QWidget):
                             else _DATASET_CHANGED_MESSAGE
                         )
                     elif command_result.failed:
-                        QMessageBox.critical(
+                        show_error(
                             self,
                             "Error",
                             f"Channel selection failed: {command_result.message}",

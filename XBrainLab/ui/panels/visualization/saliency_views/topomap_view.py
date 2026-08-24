@@ -31,7 +31,7 @@ class SaliencyTopographicMapWidget(BaseSaliencyView):
             0.5,
             0.5,
             "Select a fold and method to visualize",
-            color=Theme.TEXT_MUTED,
+            color=Theme.WARNING,
             ha="center",
             va="center",
         )
@@ -52,6 +52,9 @@ class SaliencyTopographicMapWidget(BaseSaliencyView):
         self,
         publication: SaliencyRenderPublication,
         absolute: bool,
+        *,
+        selected_label_key: object | None = None,
+        display_mode: str = "all",
     ) -> None:
         if not isinstance(publication, SaliencyRenderPublication):
             message = "saliency render publication is invalid"
@@ -72,7 +75,13 @@ class SaliencyTopographicMapWidget(BaseSaliencyView):
                 return
 
             self._render_figure_async(
-                partial(SaliencyTopographicMapWidget._render_plot, data, absolute),
+                partial(
+                    SaliencyTopographicMapWidget._render_plot,
+                    data,
+                    absolute,
+                    selected_label_key,
+                    display_mode,
+                ),
                 error_context="topographic saliency map",
                 publication_generation=publication.generation,
             )
@@ -84,6 +93,16 @@ class SaliencyTopographicMapWidget(BaseSaliencyView):
             self.show_error(SALIENCY_PREPARATION_FAILED_TEXT)
 
     @staticmethod
-    def _render_plot(data: SaliencyRenderData, absolute: bool):
+    def _render_plot(
+        data: SaliencyRenderData,
+        absolute: bool,
+        selected_label_key: object | None = None,
+        display_mode: str = "all",
+    ):
         visualizer = VisualizerType.SaliencyTopoMap.value(data)
-        return visualizer.get_plt(method=data.method, absolute=absolute)
+        return visualizer.get_plt(
+            method=data.method,
+            absolute=absolute,
+            selected_label_key=selected_label_key,
+            display_mode=display_mode,
+        )

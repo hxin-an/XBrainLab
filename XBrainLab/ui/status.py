@@ -276,20 +276,13 @@ def _display_progress(
     completed: int | None,
     total: int | None,
 ) -> str:
-    """Use a compact percentage only for stable Data Import status copy."""
-    if kind != "import_apply":
+    """Only expose aggregate progress when its denominator is workflow-wide."""
+    if kind not in {"import_review", "import_apply"}:
         return progress
-    if not isinstance(completed, int) or not isinstance(total, int):
-        try:
-            completed_text, total_text = progress.split("/", maxsplit=1)
-            completed = int(completed_text)
-            total = int(total_text)
-        except (TypeError, ValueError):
-            return progress
-    if total <= 0:
-        return progress
-    percentage = min(max(int((completed / total) * 100), 0), 100)
-    return f"{percentage}%"
+    # Scan, preview, validate and apply publish their own local counters.
+    # They are useful diagnostic facts but cannot honestly form one import
+    # percentage, so do not repeatedly show users a false 0-100% lifecycle.
+    return "indeterminate"
 
 
 def _owned_operation_message(

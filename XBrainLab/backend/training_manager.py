@@ -112,6 +112,7 @@ class PostTrainingSaliencyTarget:
     finished_runs_after: int
     append: bool
     explicit: bool = False
+    selected_members: tuple[tuple[int, int], ...] | None = None
     _command_completed: Event = field(
         default_factory=Event,
         init=False,
@@ -144,6 +145,32 @@ class PostTrainingSaliencyTarget:
             raise TypeError("append must be a boolean")
         if not isinstance(self.explicit, bool):
             raise TypeError("explicit must be a boolean")
+        members = self.selected_members
+        if members is not None:
+            if not self.explicit or self.append:
+                raise ValueError(
+                    "selected saliency members require an explicit replacement target"
+                )
+            if not isinstance(members, tuple) or not members:
+                raise ValueError("selected saliency members must be a non-empty tuple")
+            for member in members:
+                if (
+                    not isinstance(member, tuple)
+                    or len(member) != 2
+                    or any(
+                        isinstance(value, bool)
+                        or not isinstance(value, int)
+                        or value < 0
+                        for value in member
+                    )
+                ):
+                    raise TypeError(
+                        "selected saliency members must contain non-negative indexes"
+                    )
+            if len(set(members)) != len(members):
+                raise ValueError("selected saliency members must be unique")
+            if members != tuple(sorted(members)):
+                raise ValueError("selected saliency members must use canonical order")
 
     def mark_command_completed(self) -> None:
         """Release heavy computation after the command boundary has returned."""
@@ -1016,7 +1043,7 @@ class TrainingManager:
                 training_generation=token.generation,
             )
         try:
-            entries = self._finished_record_entries(trainer)
+            indexed_entries = self._finished_record_entries(trainer)
         except Exception as exc:
             logger.warning(
                 "Automatic saliency could not read finished records",
@@ -1031,7 +1058,7 @@ class TrainingManager:
                 training_generation=token.generation,
                 diagnostic_type=type(exc).__name__,
             )
-        if len(entries) != target.finished_runs_after:
+        if len(indexed_entries) != target.finished_runs_after:
             return self._terminal_schedule_outcome(
                 target,
                 request_generation=request_generation,
@@ -1051,7 +1078,29 @@ class TrainingManager:
                     reason=PostTrainingSaliencyScheduleReason.NO_NEW_FINISHED_RUNS,
                     training_generation=token.generation,
                 )
-            entries = entries[-new_count:]
+            indexed_entries = indexed_entries[-new_count:]
+        elif target.selected_members is not None:
+            entries_by_member = {
+                member: (holder, record) for member, holder, record in indexed_entries
+            }
+            if any(
+                member not in entries_by_member for member in target.selected_members
+            ):
+                return self._terminal_schedule_outcome(
+                    target,
+                    request_generation=request_generation,
+                    methods=methods,
+                    disposition=PostTrainingSaliencyScheduleDisposition.STALE,
+                    reason=(
+                        PostTrainingSaliencyScheduleReason.FINISHED_RUN_COUNT_CHANGED
+                    ),
+                    training_generation=token.generation,
+                )
+            indexed_entries = [
+                (member, *entries_by_member[member])
+                for member in target.selected_members
+            ]
+        entries = [(holder, record) for _member, holder, record in indexed_entries]
         if not entries:
             return self._terminal_schedule_outcome(
                 target,
@@ -1657,12 +1706,12 @@ class TrainingManager:
     @staticmethod
     def _finished_record_entries(
         trainer: Trainer,
-    ) -> list[tuple[TrainingPlanHolder, TrainRecord]]:
-        """Return finished records in stable holder/repeat order."""
+    ) -> list[tuple[tuple[int, int], TrainingPlanHolder, TrainRecord]]:
+        """Return indexed finished records in stable holder/repeat order."""
         return [
-            (holder, record)
-            for holder in trainer.get_training_plan_holders()
-            for record in holder.get_plans()
+            ((plan_index, run_index), holder, record)
+            for plan_index, holder in enumerate(trainer.get_training_plan_holders())
+            for run_index, record in enumerate(holder.get_plans())
             if record.is_finished()
         ]
 

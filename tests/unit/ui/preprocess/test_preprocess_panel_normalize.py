@@ -38,8 +38,8 @@ class TestNormalizeDialog(unittest.TestCase):
         self.panel = PreprocessPanel(parent=self.mock_window)
 
     @patch("XBrainLab.ui.panels.preprocess.sidebar.NormalizeDialog")
-    @patch("XBrainLab.ui.panels.preprocess.sidebar.QMessageBox")
-    def test_open_normalize(self, MockBox, MockDialog):
+    @patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning")
+    def test_open_normalize(self, mock_warning, MockDialog):
         """Opening normalize blocks instead of mutating the controller compatibility."""
         mock_instance = MockDialog.return_value
         mock_instance.exec.return_value = True
@@ -51,6 +51,5 @@ class TestNormalizeDialog(unittest.TestCase):
             self.panel.controller.apply_normalization.assert_not_called()
 
             mock_update.assert_not_called()
-            MockBox.warning.assert_called_once()
-            self.assertEqual(MockBox.warning.call_args.args[1], "Normalization Blocked")
-            MockBox.information.assert_not_called()
+            mock_warning.assert_called_once()
+            self.assertEqual(mock_warning.call_args.args[1], "Normalization Blocked")

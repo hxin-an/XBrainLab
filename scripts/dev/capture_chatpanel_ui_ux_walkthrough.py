@@ -56,7 +56,6 @@ from PyQt6.QtWidgets import (
     QDockWidget,
     QLabel,
     QMainWindow,
-    QMessageBox,
     QWidget,
 )
 
@@ -3076,7 +3075,7 @@ def _capture_assistant_settings(
         expected_status="Downloaded 2.13 GB of about 5.08 GB.",
         expected_action="Cancel",
     )
-    with patch.object(QMessageBox, "critical"):
+    with patch("XBrainLab.ui.dialogs.model_settings_dialog.show_alert"):
         lifecycle.publish_download_failure()
     _settle_layout(app, dialog)
     failed = record(

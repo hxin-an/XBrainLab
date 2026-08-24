@@ -1,6 +1,6 @@
 """Channel-by-time saliency map visualiser."""
 
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -21,7 +21,14 @@ class SaliencyMapViz(Visualizer):
     time on the x-axis.
     """
 
-    def _get_plt(self, method, absolute: bool) -> Any:
+    def _get_plt(
+        self,
+        method,
+        absolute: bool,
+        *,
+        selected_label_key: object | None = None,
+        display_mode: str = "all",
+    ) -> Any:
         """Render the saliency map figure.
 
         Args:
@@ -43,9 +50,6 @@ class SaliencyMapViz(Visualizer):
             ax.text(0.5, 0.5, "No saliency data for this run.", ha="center")
             ax.set_axis_off()
             return fig
-        visible_label_number = len(saliency_by_label)
-        rows = 1 if visible_label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
-        cols = int(np.ceil(visible_label_number / rows))
         display_by_label = []
         for label_key, label_name, raw_saliency in saliency_by_label:
             saliency = mean_saliency_over_trials(
@@ -54,6 +58,16 @@ class SaliencyMapViz(Visualizer):
             )
             display_by_label.append((label_key, label_name, saliency))
 
+        if display_mode not in {"all", "single"}:
+            raise ValueError("display_mode must be 'all' or 'single'")
+        plotted_by_label = display_by_label
+        if display_mode == "single":
+            plotted_by_label = [
+                item for item in display_by_label if item[0] == selected_label_key
+            ]
+            if not plotted_by_label:
+                raise ValueError("Selected saliency class is not available.")
+
         cmap, color_min, color_max = saliency_color_scale(
             method,
             [saliency for _label_key, _label_name, saliency in display_by_label],
@@ -61,12 +75,30 @@ class SaliencyMapViz(Visualizer):
             normalized=bool(getattr(self.epoch_data, "normalized", False)),
         )
         display_cmap = attribution_colormap(cmap)
+        visible_label_number = len(plotted_by_label)
+        if display_mode == "single":
+            rows, cols = 1, 1
+        else:
+            cols = min(3, max(1, int(np.ceil(np.sqrt(visible_label_number)))))
+            rows = int(np.ceil(visible_label_number / cols))
+            cast(Any, fig)._xbrainlab_min_canvas_height = max(420, rows * 240)
+        # Reserving this column prevents the colorbar from competing with the
+        # final data axes when a compact desktop canvas is fitted later.
+        grid = fig.add_gridspec(
+            rows,
+            cols + 1,
+            width_ratios=[1.0] * cols + [0.075],
+            wspace=0.38,
+            hspace=0.45,
+        )
         plot_axes = []
         image = None
-        for plot_index, (_label_key, label_name, saliency) in enumerate(
-            display_by_label,
+        for plot_index, (label_key, label_name, saliency) in enumerate(
+            plotted_by_label,
         ):
-            ax = fig.add_subplot(rows, cols, plot_index + 1)
+            ax = fig.add_subplot(grid[plot_index // cols, plot_index % cols])
+            ax.set_gid(f"saliency-class:{label_key!r}")
+            cast(Any, ax)._xbrainlab_class_key = label_key
             plot_axes.append(ax)
 
             image = ax.imshow(
@@ -81,7 +113,21 @@ class SaliencyMapViz(Visualizer):
             ax.set_xlabel("Time (s)")
             ax.set_ylabel("Channel")
             ch_names = self.epoch_data.get_channel_names()
-            ax.set_yticks(ticks=range(len(ch_names)), labels=ch_names, fontsize=6)
+            if display_mode == "single" and len(ch_names) > 12:
+                tick_indices = np.unique(
+                    np.linspace(0, len(ch_names) - 1, 12, dtype=int),
+                )
+            elif display_mode == "all" and len(ch_names) > 8:
+                tick_indices = np.unique(
+                    np.linspace(0, len(ch_names) - 1, 8, dtype=int),
+                )
+            else:
+                tick_indices = np.arange(len(ch_names))
+            ax.set_yticks(
+                ticks=tick_indices,
+                labels=[ch_names[index] for index in tick_indices],
+                fontsize=6,
+            )
             sample_count = int(saliency.shape[-1])
             sfreq = float(self.epoch_data.get_model_args()["sfreq"])
             if sfreq <= 0:
@@ -101,22 +147,19 @@ class SaliencyMapViz(Visualizer):
             ax.tick_params(axis="x", labelsize=7)
             # The view already names the plot type. Repeating it on every
             # subplot makes class titles overlap in the desktop panel.
-            ax.set_title(str(label_name))
+            ax.set_title(str(label_name), fontsize=9 if display_mode == "all" else 11)
         if image is not None:
+            colorbar_axis = fig.add_subplot(grid[:, -1])
             colorbar = fig.colorbar(
                 image,
-                ax=plot_axes,
+                cax=colorbar_axis,
                 orientation="vertical",
-                fraction=0.035,
-                pad=0.04,
             )
             style_attribution_colorbar(colorbar)
         fig.subplots_adjust(
             left=0.10,
-            right=0.88,
+            right=0.94,
             bottom=0.12,
             top=0.88,
-            wspace=0.38,
-            hspace=0.45,
         )
         return fig

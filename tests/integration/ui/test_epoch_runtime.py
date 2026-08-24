@@ -123,13 +123,7 @@ def test_real_gdf_epoching_does_not_block_on_success_modal(qtbot, monkeypatch):
             FakeEpochingDialog,
         ),
         patch(
-            "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.information",
-        ) as success_dialog,
-        patch(
-            "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.question",
-        ) as resource_dialog,
-        patch(
-            "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.critical",
+            "XBrainLab.ui.panels.preprocess.sidebar.show_error",
         ) as error_dialog,
     ):
         preprocess_panel.sidebar.open_epoching()
@@ -152,8 +146,6 @@ def test_real_gdf_epoching_does_not_block_on_success_modal(qtbot, monkeypatch):
     state_result = service.execute(QueryStateCommand(query="state"))
     assert state_result.ok, state_result.message
     assert state_result.diagnostics["state"]["epoch"]["exists"] is True
-    success_dialog.assert_not_called()
-    resource_dialog.assert_not_called()
     error_dialog.assert_not_called()
     status_bar = cast(Any, window.statusBar())
     assert status_bar is not None
@@ -253,7 +245,7 @@ def test_epoch_ram_block_is_shown_without_copy_or_materialization(
             "XBrainLab.backend.preprocessor.time_epoch.mne.Epochs",
         ) as epoch_constructor,
         patch(
-            "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.critical",
+            "XBrainLab.ui.panels.preprocess.sidebar.show_error",
         ) as critical,
     ):
         outcome = preprocess_panel.sidebar.open_epoching()

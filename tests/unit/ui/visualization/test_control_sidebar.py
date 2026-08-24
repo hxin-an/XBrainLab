@@ -4,7 +4,14 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton
+from PyQt6.QtWidgets import (
+    QApplication,
+    QGroupBox,
+    QMainWindow,
+    QPushButton,
+    QTabWidget,
+    QWidget,
+)
 
 from XBrainLab.backend.application import (
     ApplyMontageCommand,
@@ -54,6 +61,37 @@ def test_sidebar_init(mock_panel, qtbot):
     assert sidebar.btn_saliency.text() == "Saliency Settings"
 
 
+def test_3d_controls_are_grouped_and_hidden_until_the_ready_3d_tab(mock_panel, qtbot):
+    tabs = QTabWidget()
+    regular = QWidget()
+    three_d = QWidget()
+    tabs.addTab(regular, "Map")
+    tabs.addTab(three_d, "3D Plot")
+    three_d.scene_ready = False
+    mock_panel.tabs = tabs
+    mock_panel.tab_3d = three_d
+    mock_panel.saliency_combo.currentData.return_value = None
+    sidebar = ControlSidebar(mock_panel)
+    qtbot.addWidget(sidebar)
+    sidebar.show()
+
+    group = sidebar.findChild(QGroupBox, "Visualization3DControls")
+    assert group is not None
+    assert group.title() == "3D PLOT"
+    assert group.isHidden()
+    assert sidebar.btn_reset_view.parentWidget() is not group
+    assert sidebar.btn_3d_electrodes.parentWidget() is group
+    assert sidebar.btn_3d_head_surface.parentWidget() is group
+
+    tabs.setCurrentWidget(three_d)
+    three_d.scene_ready = True
+    sidebar.refresh_view_controls()
+
+    assert group.isVisible()
+    assert sidebar.btn_3d_electrodes.isVisible()
+    assert sidebar.btn_3d_head_surface.isVisible()
+
+
 def test_sidebar_set_montage(mock_panel, qtbot):
     sidebar = ControlSidebar(mock_panel)
     qtbot.addWidget(sidebar)
@@ -62,9 +100,6 @@ def test_sidebar_set_montage(mock_panel, qtbot):
         patch(
             "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
         ) as MockDialog,
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information"
-        ) as mock_info,
         patch(
             "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command"
         ) as mock_execute,
@@ -89,7 +124,6 @@ def test_sidebar_set_montage(mock_panel, qtbot):
         assert apply_command.positions == [(0.0, 0.0, 0.0)]
         mock_panel.controller.set_montage.assert_not_called()
         mock_panel.on_update.assert_not_called()
-        mock_info.assert_not_called()
         assert mock_panel.main_window.statusBar().currentMessage() == "Montage set"
 
 
@@ -157,7 +191,7 @@ def test_sidebar_set_montage_blocked_by_backend_capability(qtbot):
             "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
         ) as mock_dialog,
         patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
+            "XBrainLab.ui.panels.visualization.control_sidebar.show_warning"
         ) as mock_warning,
     ):
         sidebar.set_montage()
@@ -191,9 +225,6 @@ def test_sidebar_set_montage_real_study_uses_application_service(qtbot):
         patch(
             "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
         ) as mock_dialog,
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information"
-        ) as mock_info,
     ):
         mock_dialog.return_value.exec.return_value = True
         mock_dialog.return_value.get_result.return_value = (
@@ -207,7 +238,6 @@ def test_sidebar_set_montage_real_study_uses_application_service(qtbot):
         ["Ch1", "Ch2"],
         [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
     )
-    mock_info.assert_not_called()
     status_bar = main_window.statusBar()
     assert status_bar is not None
     assert status_bar.currentMessage() == "Montage set"
@@ -222,11 +252,8 @@ def test_sidebar_set_montage_surfaces_command_failure(mock_panel, qtbot):
             "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
         ) as MockDialog,
         patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
+            "XBrainLab.ui.panels.visualization.control_sidebar.show_warning"
         ) as mock_warning,
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information"
-        ) as mock_info,
         patch(
             "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command"
         ) as mock_execute,
@@ -243,7 +270,6 @@ def test_sidebar_set_montage_surfaces_command_failure(mock_panel, qtbot):
         sidebar.set_montage()
 
         mock_panel.controller.set_montage.assert_not_called()
-        mock_info.assert_not_called()
         mock_warning.assert_called_once()
 
 
@@ -260,10 +286,7 @@ def test_sidebar_set_montage_command_result_blocks_controller_fallback(
             "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
         ) as mock_dialog,
         patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information",
-        ) as mock_info,
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning",
+            "XBrainLab.ui.panels.visualization.control_sidebar.show_warning",
         ) as mock_warning,
     ):
         mock_dialog.return_value.exec.return_value = True
@@ -273,7 +296,6 @@ def test_sidebar_set_montage_command_result_blocks_controller_fallback(
 
     mock_panel.controller.set_montage.assert_not_called()
     mock_panel.on_update.assert_not_called()
-    mock_info.assert_not_called()
     mock_warning.assert_called_once()
     assert mock_warning.call_args.args[1] == "Montage blocked"
 
@@ -310,7 +332,7 @@ def test_sidebar_set_montage_refuses_real_study_controller_fallback(qtbot):
             return_value=None,
         ),
         patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
+            "XBrainLab.ui.panels.visualization.control_sidebar.show_warning"
         ) as mock_warning,
     ):
         mock_dialog.return_value.exec.return_value = True
@@ -357,11 +379,8 @@ def test_sidebar_set_montage_apply_none_refuses_real_study_controller_fallback(q
             side_effect=[query_result, None],
         ),
         patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
+            "XBrainLab.ui.panels.visualization.control_sidebar.show_warning"
         ) as mock_warning,
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information"
-        ) as mock_info,
     ):
         mock_dialog.return_value.exec.return_value = True
         mock_dialog.return_value.get_result.return_value = (["Ch1"], [[0, 0, 0]])
@@ -370,7 +389,6 @@ def test_sidebar_set_montage_apply_none_refuses_real_study_controller_fallback(q
     controller.set_montage.assert_not_called()
     mock_warning.assert_called_once()
     assert "could not safely complete" in mock_warning.call_args.args[2]
-    mock_info.assert_not_called()
 
 
 def test_sidebar_set_montage_uses_query_channels_before_stale_controller(
@@ -400,9 +418,6 @@ def test_sidebar_set_montage_uses_query_channels_before_stale_controller(
             "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
             side_effect=[query_result, apply_result],
         ) as mock_execute,
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information"
-        ),
     ):
         mock_dialog.return_value.exec.return_value = True
         mock_dialog.return_value.get_result.return_value = (
@@ -437,7 +452,7 @@ def test_sidebar_set_saliency_blocked_by_backend_capability(qtbot):
             "XBrainLab.ui.panels.visualization.control_sidebar.SaliencySettingDialog"
         ) as mock_dialog,
         patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
+            "XBrainLab.ui.panels.visualization.control_sidebar.show_warning"
         ) as mock_warning,
     ):
         outcome = sidebar.set_saliency()
@@ -509,7 +524,7 @@ def test_sidebar_set_saliency_nonrecoverable_query_failure_returns_failed(
             "execute_application_command",
             return_value=query_result,
         ),
-        patch("XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"),
+        patch("XBrainLab.ui.panels.visualization.control_sidebar.show_warning"),
     ):
         outcome = sidebar.set_saliency()
 
@@ -555,7 +570,7 @@ def test_sidebar_set_saliency_uses_query_configuration_readiness(qtbot):
             "XBrainLab.ui.panels.visualization.control_sidebar.SaliencySettingDialog"
         ) as mock_dialog,
         patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
+            "XBrainLab.ui.panels.visualization.control_sidebar.show_warning"
         ) as mock_warning,
     ):
         sidebar.set_saliency()
@@ -598,7 +613,7 @@ def test_sidebar_set_saliency_refuses_real_study_controller_fallback(qtbot):
             return_value=None,
         ),
         patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
+            "XBrainLab.ui.panels.visualization.control_sidebar.show_warning"
         ) as mock_warning,
     ):
         mock_dialog.return_value.exec.return_value = True
@@ -663,11 +678,8 @@ def test_sidebar_set_saliency_stages_for_real_study_without_controller_fallback(
             return_value=query_result,
         ),
         patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
+            "XBrainLab.ui.panels.visualization.control_sidebar.show_warning"
         ) as mock_warning,
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information"
-        ) as mock_info,
     ):
         mock_dialog.return_value.exec.return_value = True
         mock_dialog.return_value.get_result.return_value = {
@@ -684,7 +696,6 @@ def test_sidebar_set_saliency_stages_for_real_study_without_controller_fallback(
         model_name="EEGNet",
     )
     mock_warning.assert_not_called()
-    mock_info.assert_not_called()
 
 
 def test_sidebar_set_saliency_stages_params_without_starting_compute(
@@ -706,9 +717,6 @@ def test_sidebar_set_saliency_stages_params_without_starting_compute(
                 diagnostics={"payload_type": "saliency_summary", "params": None},
             ),
         ) as mock_execute,
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information"
-        ),
     ):
         mock_dialog.return_value.exec.return_value = True
         mock_dialog.return_value.get_result.return_value = {"method": "gradient"}
@@ -750,9 +758,6 @@ def test_sidebar_set_saliency_uses_query_defaults_before_stale_controller(
             "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
             return_value=query_result,
         ) as mock_execute,
-        patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information"
-        ),
     ):
         mock_dialog.return_value.exec.return_value = True
         mock_dialog.return_value.get_result.return_value = {
@@ -878,7 +883,7 @@ def test_sidebar_set_saliency_surfaces_selection_change_while_dialog_is_open(
             return_value=query_result,
         ),
         patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
+            "XBrainLab.ui.panels.visualization.control_sidebar.show_warning"
         ) as mock_warning,
     ):
         mock_dialog.return_value.exec.return_value = True
@@ -946,7 +951,7 @@ def test_visualization_actions_fail_before_command_or_dialog_without_product_rev
             "XBrainLab.ui.panels.visualization.control_sidebar.SaliencySettingDialog",
         ) as saliency_dialog,
         patch(
-            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning",
+            "XBrainLab.ui.panels.visualization.control_sidebar.show_warning",
         ) as warning,
     ):
         outcome = (

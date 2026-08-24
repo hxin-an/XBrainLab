@@ -91,6 +91,7 @@ class _DecisionRow:
     coverage_label: QLabel
     evidence_label: QLabel
     edited: bool = False
+    staged: bool = False
 
     @property
     def raw_value(self) -> str:
@@ -264,14 +265,16 @@ class EventValueDecisionEditor(QWidget):
         self.decisions_changed.emit()
 
     def changed_decisions_by_carrier(self) -> dict[str, dict[str, dict[str, Any]]]:
-        """Return only user-edited semantic choices, keyed by carrier and value."""
+        """Return edited or reopened staged choices, keyed by carrier and value."""
         changed: dict[str, dict[str, dict[str, Any]]] = {}
         for row in self._rows:
-            if not row.edited:
+            if not row.edited and not row.staged:
                 continue
             current_semantics = self._current_semantics(row)
             for occurrence in row.occurrences:
-                if current_semantics == self._initial_semantics(occurrence.decision):
+                if not row.staged and current_semantics == self._initial_semantics(
+                    occurrence.decision
+                ):
                     continue
                 changed.setdefault(occurrence.carrier_key, {})[occurrence.raw_value] = (
                     self._choice_payload(row, occurrence)
@@ -375,6 +378,10 @@ class EventValueDecisionEditor(QWidget):
             class_name_editor=class_name_editor,
             coverage_label=coverage_label,
             evidence_label=evidence_label,
+            staged=any(
+                occurrence.decision.get("_staged_user_choice") is True
+                for occurrence in occurrences
+            ),
         )
         self._sync_class_name_editor(row)
         role_selector.currentIndexChanged.connect(

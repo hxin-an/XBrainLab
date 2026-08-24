@@ -120,6 +120,7 @@ from .evaluation_render import (
     EvaluationRenderPublication,
     EvaluationRenderPublisher,
     EvaluationRenderRequest,
+    build_evaluation_cross_fold_choices,
 )
 from .evaluation_work import EvaluationWorkController
 from .lifecycle_service import LifecycleCommandService
@@ -159,9 +160,11 @@ from .resource_guard import (
 from .results import ChangedState, CommandResult, ErrorType
 from .saliency_coverage import SaliencyCoverageProjector
 from .saliency_render import (
+    SaliencyCrossFoldIdentity,
     SaliencyRenderPublication,
     SaliencyRenderPublisher,
     SaliencyRenderRequest,
+    SaliencyRunIdentity,
 )
 from .saliency_render_work import SaliencyRenderWorkController
 from .state import (
@@ -2162,6 +2165,13 @@ class ApplicationService(Observable):
         """Return immutable operation truth without acquiring the command lock."""
         return self.owned_work.snapshot(operation_id)
 
+    def get_active_owned_operation(
+        self,
+        kind: OwnedWorkKind,
+    ) -> OwnedOperationSnapshot | None:
+        """Return the oldest active operation of one product work kind."""
+        return self.owned_work.first_active(kind)
+
     def fail_owned_operation(
         self,
         operation_id: str,
@@ -2266,12 +2276,87 @@ class ApplicationService(Observable):
         finished_runs = current_state.evaluation.finished_runs
         if finished_runs <= 0:
             return None
+        selection = command.target
+        selected_members = (
+            self._saliency_target_members(selection)
+            if isinstance(
+                selection,
+                (SaliencyRunIdentity, SaliencyCrossFoldIdentity),
+            )
+            else None
+        )
         return PostTrainingSaliencyTarget(
             run=outcome.run,
             finished_runs_before=0,
             finished_runs_after=finished_runs,
             append=False,
             explicit=True,
+            selected_members=selected_members,
+        )
+
+    @staticmethod
+    def _saliency_target_members(
+        target: SaliencyRunIdentity | SaliencyCrossFoldIdentity,
+    ) -> tuple[tuple[int, int], ...]:
+        runs = (
+            target.members
+            if isinstance(target, SaliencyCrossFoldIdentity)
+            else (target,)
+        )
+        return tuple((run.plan.plan_index, run.run_index) for run in runs)
+
+    def _require_saliency_target_admitted(
+        self,
+        target: object,
+        state: ApplicationStateSnapshot,
+    ) -> None:
+        """Validate one UI-selected run or Fold Set against current backend truth."""
+        if not isinstance(target, (SaliencyRunIdentity, SaliencyCrossFoldIdentity)):
+            raise TypeError(
+                "SaliencyCommand.target must be a saliency run or Fold Set identity."
+            )
+        status = self.training_runtime.saliency_status()
+        if status.phase in {
+            PostTrainingSaliencyPhase.PENDING,
+            PostTrainingSaliencyPhase.RUNNING,
+        }:
+            raise PreconditionError(
+                "Saliency computation is already running. Wait for it to finish "
+                "or cancel it before starting another selection.",
+                diagnostics={
+                    "saliency_compute_active": True,
+                    "retryable": True,
+                },
+            )
+        holders = tuple(self.training_runtime.training_plan_holders())
+        members = self._saliency_target_members(target)
+        if isinstance(target, SaliencyRunIdentity):
+            plan_index, run_index = members[0]
+            admitted_runs = {
+                (coverage.plan_index, coverage.run_index)
+                for coverage in state.visualization.saliency_coverage
+            }
+            if (plan_index, run_index) in admitted_runs and plan_index < len(holders):
+                records = tuple(holders[plan_index].get_plans())
+                if run_index < len(records) and records[run_index].is_finished():
+                    return
+        else:
+            admitted_members = {
+                tuple(
+                    (member.plan.plan_index, member.run_index)
+                    for member in choice.identity.members
+                )
+                for choice in build_evaluation_cross_fold_choices(holders)
+            }
+            if members in admitted_members:
+                return
+        raise PreconditionError(
+            "Visualization results or the selected Fold changed. "
+            "Refresh Visualization and review Saliency Settings again.",
+            diagnostics={
+                "stale_saliency_target": True,
+                "retryable": True,
+            },
         )
 
     def _continue_scheduled_saliency_operation(
@@ -3042,7 +3127,7 @@ class ApplicationService(Observable):
         """Run source discovery outside the shared lock and publish if current."""
         name = command_name(command)
         with self._command_lock:
-            owned_work_checkpoint("Admitting Data Import discovery")
+            owned_work_checkpoint("Preparing selected EEG data")
             admission = self.shutdown_lifecycle.snapshot()
             if admission.closed:
                 return self._closed_command_result(command)
@@ -3117,7 +3202,7 @@ class ApplicationService(Observable):
                 )
 
         with self._command_lock:
-            owned_work_checkpoint("Admitting prepared Data Import discovery")
+            owned_work_checkpoint("Checking selected EEG data")
             admission = self.shutdown_lifecycle.snapshot()
             if admission.closed:
                 return self._closed_command_result(command)
@@ -3314,7 +3399,7 @@ class ApplicationService(Observable):
         """Prepare Raw data outside the command lock, then commit a guarded payload."""
         name = CommandName.APPLY_INTERPRETATION
         with self._command_lock:
-            owned_work_checkpoint("Admitting interpretation apply")
+            owned_work_checkpoint("Preparing reviewed EEG import")
             admission = self.shutdown_lifecycle.snapshot()
             if admission.closed:
                 return self._closed_command_result(command)
@@ -4162,6 +4247,8 @@ class ApplicationService(Observable):
         training_boundary = self._training_read_boundary(command, name)
         if training_boundary is not None and not training_boundary.stable:
             raise self._training_read_changed_error(training_boundary, None)
+        if isinstance(command, SaliencyCommand) and command.target is not None:
+            self._require_saliency_target_admitted(command.target, before)
         read_only = self._is_read_only_command(command, name)
         if not read_only:
             self._view_coordinator.mark_stale(

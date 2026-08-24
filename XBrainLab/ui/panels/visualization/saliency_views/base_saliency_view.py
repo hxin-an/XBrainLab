@@ -13,11 +13,20 @@ from types import ModuleType
 from typing import Any, cast
 
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
+from matplotlib.backend_bases import Event, MouseEvent
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PyQt6 import sip
 from PyQt6.QtCore import QEvent, QObject, Qt, QThread, QThreadPool, pyqtSignal, pyqtSlot
-from PyQt6.QtWidgets import QApplication, QLabel, QSizePolicy, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QApplication,
+    QLabel,
+    QScrollArea,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from XBrainLab.backend.application.state import SaliencyMethodCoverageSnapshot
 from XBrainLab.ui.core.worker import Worker
@@ -833,6 +842,15 @@ class BaseSaliencyView(QWidget):
         self._native_plot_cleanup_state: _NativePlotCleanupState | None = None
         self._saliency_coverage: SaliencyMethodCoverageSnapshot | None = None
         self._render_commit_guard: Callable[[int, int], bool] | None = None
+        self._pan_state: (
+            tuple[Axes, float, float, tuple[float, float], tuple[float, float]] | None
+        ) = None
+        self._initial_axis_limits: dict[
+            int,
+            tuple[tuple[float, float], tuple[float, float]],
+        ] = {}
+        self._canvas_scroll_area: QScrollArea | None = None
+        self._detail_interactions_enabled = True
 
         self.init_ui()
 
@@ -847,7 +865,18 @@ class BaseSaliencyView(QWidget):
         # Apply Theme
         Theme.apply_matplotlib_dark_theme(self.fig)
 
-        self.main_layout.addWidget(self.canvas)
+        if getattr(self, "_scrollable_canvas", False):
+            scroll_area = QScrollArea(self)
+            scroll_area.setWidgetResizable(True)
+            scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+            scroll_area.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+            )
+            scroll_area.setWidget(self.canvas)
+            self._canvas_scroll_area = scroll_area
+            self.main_layout.addWidget(scroll_area)
+        else:
+            self.main_layout.addWidget(self.canvas)
 
         # 2. Error Message (Hidden by default)
         self.error_label = QLabel()
@@ -856,7 +885,7 @@ class BaseSaliencyView(QWidget):
         self.error_label.setContentsMargins(16, 8, 16, 8)
         self.error_label.setSizePolicy(
             QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Expanding,
         )
         self.error_label.setStyleSheet(
             f"color: {Theme.ACCENT_ERROR}; font-size: 14px; font-weight: bold;",
@@ -870,8 +899,7 @@ class BaseSaliencyView(QWidget):
         self._display_error(message)
 
     def _display_error(self, message):
-        if self.canvas is not None:
-            self.canvas.hide()
+        self._set_plot_surface_visible(False)
         self.error_label.setStyleSheet(
             f"color: {Theme.ACCENT_ERROR}; font-size: 14px; font-weight: bold;",
         )
@@ -884,10 +912,9 @@ class BaseSaliencyView(QWidget):
         self._display_message(message)
 
     def _display_message(self, message):
-        if self.canvas is not None:
-            self.canvas.hide()
+        self._set_plot_surface_visible(False)
         self.error_label.setStyleSheet(
-            f"color: {Theme.TEXT_SECONDARY}; font-size: 14px; font-weight: bold;",
+            f"color: {Theme.WARNING}; font-size: 14px; font-weight: bold;",
         )
         self.error_label.setText(message)
         self.error_label.show()
@@ -907,12 +934,17 @@ class BaseSaliencyView(QWidget):
         self.error_label.setStyleSheet(
             f"color: {Theme.ACCENT_ERROR}; font-size: 14px; font-weight: bold;",
         )
-        if self.canvas is not None:
-            self.canvas.show()
+        self._set_plot_surface_visible(True)
         if self.fig is None or self.canvas is None:
             return
         self.fig.clear()
         self._draw_canvas_now()
+
+    def _set_plot_surface_visible(self, visible: bool) -> None:
+        """Toggle the widget which actually reserves plot layout space."""
+        surface = self._canvas_scroll_area or self.canvas
+        if surface is not None:
+            surface.setVisible(visible)
 
     def _draw_canvas_now(self) -> None:
         if self.canvas is None:
@@ -980,7 +1012,10 @@ class BaseSaliencyView(QWidget):
         if hasattr(canvas, "_draw_pending"):
             canvas._draw_pending = False
         with suppress(RuntimeError):
-            self.main_layout.removeWidget(canvas)
+            if self._canvas_scroll_area is not None:
+                self._canvas_scroll_area.takeWidget()
+            else:
+                self.main_layout.removeWidget(canvas)
         with suppress(RuntimeError):
             canvas.hide()
             canvas.close()
@@ -1014,8 +1049,16 @@ class BaseSaliencyView(QWidget):
         self.fig = figure
         self.canvas = installed_canvas
         try:
-            self.main_layout.insertWidget(0, installed_canvas)
+            min_height = int(getattr(figure, "_xbrainlab_min_canvas_height", 0))
+            if min_height > 0:
+                installed_canvas.setMinimumHeight(min_height)
+            if self._canvas_scroll_area is not None:
+                old_canvas = self._canvas_scroll_area.takeWidget()
+                self._canvas_scroll_area.setWidget(installed_canvas)
+            else:
+                self.main_layout.insertWidget(0, installed_canvas)
             installed_canvas.show()
+            self._set_plot_surface_visible(True)
             self.main_layout.activate()
             self._fit_current_figure()
         except Exception as exc:
@@ -1023,12 +1066,107 @@ class BaseSaliencyView(QWidget):
             self.fig = old_figure
             self.canvas = old_canvas
             self._dispose_candidate_canvas(installed_canvas, figure)
+            if self._canvas_scroll_area is not None and old_canvas is not None:
+                self._canvas_scroll_area.setWidget(old_canvas)
             self._display_error(SALIENCY_RENDER_FAILED_TEXT)
             return False
 
         self._release_previous_plot(old_canvas, old_figure)
+        self._install_canvas_interactions(installed_canvas)
         self.error_label.hide()
         return True
+
+    def reset_view(self) -> None:
+        """Restore the rendered axes to their data extents."""
+        if self.fig is None:
+            return
+        for axis in self.fig.axes:
+            limits = self._initial_axis_limits.get(id(axis))
+            if axis.images and limits is not None:
+                axis.set_xlim(limits[0])
+                axis.set_ylim(limits[1])
+        self._draw_canvas_now()
+
+    def set_detail_interactions_enabled(self, enabled: bool) -> None:
+        """Keep overview tiles click-only; detail mode owns zoom and pan."""
+        self._detail_interactions_enabled = bool(enabled)
+
+    def _install_canvas_interactions(self, canvas: FigureCanvas) -> None:
+        """Enable pointer-local zoom and drag pan for detailed saliency plots."""
+        figure = canvas.figure
+        self._initial_axis_limits = {
+            id(axis): (axis.get_xlim(), axis.get_ylim())
+            for axis in figure.axes
+            if axis.images
+        }
+        canvas.mpl_connect("scroll_event", self._on_canvas_scroll)
+        canvas.mpl_connect("button_press_event", self._on_canvas_press)
+        canvas.mpl_connect("motion_notify_event", self._on_canvas_motion)
+        canvas.mpl_connect("button_release_event", self._on_canvas_release)
+
+    def _on_canvas_scroll(self, event: Event) -> None:
+        if not self._detail_interactions_enabled:
+            return
+        mouse_event = cast(MouseEvent, event)
+        axis = getattr(mouse_event, "inaxes", None)
+        if axis is None or not getattr(axis, "images", None):
+            return
+        xdata = getattr(mouse_event, "xdata", None)
+        ydata = getattr(mouse_event, "ydata", None)
+        if xdata is None or ydata is None:
+            return
+        factor = 0.8 if getattr(mouse_event, "step", 0) > 0 else 1.25
+        x0, x1 = axis.get_xlim()
+        y0, y1 = axis.get_ylim()
+        axis.set_xlim(xdata - (xdata - x0) * factor, xdata + (x1 - xdata) * factor)
+        axis.set_ylim(ydata - (ydata - y0) * factor, ydata + (y1 - ydata) * factor)
+        self._draw_canvas_now()
+
+    def _on_canvas_press(self, event: Event) -> None:
+        if not self._detail_interactions_enabled:
+            return
+        mouse_event = cast(MouseEvent, event)
+        axis = getattr(mouse_event, "inaxes", None)
+        xdata = getattr(mouse_event, "xdata", None)
+        ydata = getattr(mouse_event, "ydata", None)
+        if (
+            getattr(mouse_event, "button", None) != 1
+            or axis is None
+            or not getattr(axis, "images", None)
+            or xdata is None
+            or ydata is None
+        ):
+            return
+        x_limits = axis.get_xlim()
+        y_limits = axis.get_ylim()
+        self._pan_state = (
+            axis,
+            float(xdata),
+            float(ydata),
+            (float(x_limits[0]), float(x_limits[1])),
+            (float(y_limits[0]), float(y_limits[1])),
+        )
+
+    def _on_canvas_motion(self, event: Event) -> None:
+        if not self._detail_interactions_enabled:
+            return
+        mouse_event = cast(MouseEvent, event)
+        state = self._pan_state
+        if state is None or getattr(mouse_event, "inaxes", None) is not state[0]:
+            return
+        xdata = getattr(mouse_event, "xdata", None)
+        ydata = getattr(mouse_event, "ydata", None)
+        if xdata is None or ydata is None:
+            return
+        axis, start_x, start_y, xlim, ylim = state
+        dx = start_x - float(xdata)
+        dy = start_y - float(ydata)
+        axis.set_xlim(xlim[0] + dx, xlim[1] + dx)
+        axis.set_ylim(ylim[0] + dy, ylim[1] + dy)
+        self._draw_canvas_now()
+
+    def _on_canvas_release(self, _event: Event) -> None:
+        self._pan_state = None
 
     def _dispose_candidate_canvas(
         self,
@@ -1036,7 +1174,10 @@ class BaseSaliencyView(QWidget):
         figure: Figure,
     ) -> None:
         with suppress(RuntimeError):
-            self.main_layout.removeWidget(canvas)
+            if self._canvas_scroll_area is not None:
+                self._canvas_scroll_area.takeWidget()
+            else:
+                self.main_layout.removeWidget(canvas)
             canvas.hide()
             canvas.close()
             canvas.setParent(None)
@@ -1053,7 +1194,8 @@ class BaseSaliencyView(QWidget):
         if canvas is not None:
             if hasattr(canvas, "_draw_pending"):
                 canvas._draw_pending = False
-            self.main_layout.removeWidget(canvas)
+            if self._canvas_scroll_area is None:
+                self.main_layout.removeWidget(canvas)
             with suppress(RuntimeError):
                 canvas.hide()
                 canvas.close()
