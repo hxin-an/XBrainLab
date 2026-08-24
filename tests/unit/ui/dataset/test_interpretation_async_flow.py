@@ -1693,9 +1693,7 @@ def test_confirm_import_revalidation_cancel_reopens_edited_review_without_failur
         source_hint="bids",
         choices=revised_choices,
         label_sources=["/data/sub-01/sub-01_events.tsv"],
-        review_state=(
-            preview_state if cancelled_command == "validation" else review_state
-        ),
+        review_state=review_state,
         initial_step="Review and Import",
         validated_choices={},
     )

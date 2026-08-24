@@ -36,7 +36,12 @@ from scripts.dev.fetch_public_eeg_fixtures import (
 )
 from tests.integration.ui.modal_helpers import visible_modal_dialog
 from XBrainLab.backend.application import (
+    ApplicationService,
+    PreviewInterpretationCommand,
+    ScanSourceCommand,
+    ValidateInterpretationCommand,
     data_interpretation_scan,
+    data_interpretation_service,
     get_application_service,
 )
 from XBrainLab.backend.application.owned_work import OwnedWorkPhase
@@ -1081,6 +1086,73 @@ def _block_first_apply_raw_load(service: Any) -> tuple[Event, Event, Event]:
     return load_started, release_load, real_load_finished
 
 
+def test_physionet_r04_staged_review_restores_t1_t2_choices(qtbot: Any) -> None:
+    """The real PhysicalMI-shaped preview must rehydrate a cancelled T1/T2 draft."""
+    _require_manifest_group("physionet-edf-motor")
+    service = ApplicationService()
+    class_map = {"T1": "left fist", "T2": "right fist"}
+    staged_choices = {
+        "label_carrier": "embedded_events",
+        "class_map": class_map,
+        "internal_event_selection": {
+            "label_event_codes": ["T1", "T2"],
+            "class_map": class_map,
+        },
+        "run_event_mappings": {PHYSIONET_MOTOR_EDF.name: class_map},
+    }
+    try:
+        scan_result = service.execute(
+            ScanSourceCommand(
+                source_path=str(PHYSIONET_MOTOR_EDF),
+                source_hint="file",
+            )
+        )
+        preview_result = service.execute(PreviewInterpretationCommand(choices={}))
+        validation_result = service.execute(ValidateInterpretationCommand())
+        assert scan_result.ok, scan_result.message
+        assert preview_result.ok, preview_result.message
+        assert validation_result.ok, validation_result.message
+
+        dialog = DataInterpretationPreviewDialog(
+            scan_result=scan_result.diagnostics["scan_result"],
+            preview=preview_result.diagnostics["preview"],
+            validation_decision=validation_result.diagnostics["validation_decision"],
+            initial_step="Review and Import",
+            choices=staged_choices,
+        )
+        qtbot.addWidget(dialog)
+        dialog.resize(1040, 760)
+        dialog.show()
+        qtbot.wait(0)
+
+        assert dialog.step_stack.currentIndex() == dialog._step_titles.index(
+            "Review and Import"
+        )
+        action_text = "\n".join(
+            label.text()
+            for label in dialog.review_actions_panel.findChildren(QLabel)
+            if label.text().strip()
+        )
+        assert "Cannot import yet" not in action_text
+
+        dialog._go_to_step(dialog._step_titles.index("Match Labels"))
+        qtbot.wait(0)
+        visible_class_map = {
+            code: dialog._class_map_item_text(item)
+            for item, code, _original in dialog._class_map_items
+        }
+        assert visible_class_map == class_map
+        restored = dialog.get_result()["choices"]
+        assert restored["class_map"] == class_map
+        assert (
+            restored["internal_event_selection"]
+            == (staged_choices["internal_event_selection"])
+        )
+        assert restored["run_event_mappings"] == staged_choices["run_event_mappings"]
+    finally:
+        service.close()
+
+
 @pytest.mark.parametrize(
     "case",
     PUBLIC_FILE_ACCEPTANCE_CASES,
@@ -1466,6 +1538,131 @@ def test_visible_bids_apply_cancel_reopens_identical_review_and_retries(
     )
     assert service.get_owned_operation(retry_operation_id).phase is (
         OwnedWorkPhase.COMPLETED
+    )
+
+
+def test_visible_bids_revalidation_cancel_preserves_counts_and_recheck(
+    qtbot: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cancel during edited BIDS revalidation reopens one actionable draft."""
+    _require_manifest_group("mne-bids-tiny-eeg")
+    monkeypatch.setattr(
+        QFileDialog,
+        "getExistingDirectory",
+        staticmethod(
+            lambda _parent, _title, _directory, **_kwargs: str(PUBLIC_BIDS_ROOT)
+        ),
+    )
+    real_builder = data_interpretation_service.build_interpretation_candidate
+    revalidation_started = Event()
+    release_revalidation = Event()
+    builder_calls = 0
+
+    def _blocking_second_candidate(*args: Any, **kwargs: Any):
+        nonlocal builder_calls
+        builder_calls += 1
+        if builder_calls == 2:
+            revalidation_started.set()
+            if not release_revalidation.wait(timeout=20.0):
+                raise TimeoutError("Timed out waiting to release BIDS revalidation.")
+        return real_builder(*args, **kwargs)
+
+    monkeypatch.setattr(
+        data_interpretation_service,
+        "build_interpretation_candidate",
+        _blocking_second_candidate,
+    )
+    host, panel, runtime = _build_dataset_panel(qtbot)
+    service = get_application_service(host.study)
+    driver = _start_wizard_driver(
+        resolve_bids_values=True,
+        source_picker="folder",
+    )
+
+    QTEST.mouseClick(panel.sidebar.import_btn, Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(revalidation_started.is_set, timeout=45_000)
+    driver.timer.stop()
+    publication_before = runtime.get_view_publication()
+    review_before = runtime.get_interpretation_review()
+    preview = review_before["preview"]
+    carriers = preview.get("label_carrier_preview") or []
+    expected_counts = {
+        str(raw_value): int(decision.get("count") or 0)
+        for carrier in carriers
+        if isinstance(carrier, dict)
+        for raw_value, decision in (carrier.get("value_decisions") or {}).items()
+        if isinstance(decision, dict)
+    }
+    assert expected_counts
+    presenter = panel.action_handler._data_interpretation._operation_presenter
+    assert presenter is not None
+    cancelled_operation_id = presenter.active_operation_id
+    assert isinstance(cancelled_operation_id, str) and cancelled_operation_id
+    assert panel.sidebar.import_cancel_btn.isVisibleTo(panel)
+    assert panel.sidebar.import_cancel_btn.isEnabled()
+
+    reopened_snapshots: list[dict[str, Any]] = []
+    reopen_timer = QTimer()
+
+    def _inspect_and_close_reopened_review() -> None:
+        modal = visible_modal_dialog()
+        if not isinstance(modal, DataInterpretationPreviewDialog):
+            return
+        editor = modal.event_value_editor
+        if editor is None:
+            return
+        action_text = "\n".join(
+            label.text()
+            for label in modal.review_actions_panel.findChildren(QLabel)
+            if label.text().strip()
+        )
+        reopened_snapshots.append(
+            {
+                "step": modal._step_titles[modal.step_stack.currentIndex()],
+                "coverage": {
+                    raw_value: editor.coverage_text(raw_value)
+                    for raw_value in expected_counts
+                },
+                "evidence": {row["event_value"]: row for row in editor.evidence_rows()},
+                "recheck": modal._event_value_decisions_ready_for_recheck(),
+                "action_text": action_text,
+                "apply_enabled": modal.apply_button.isEnabled(),
+            }
+        )
+        QTEST.mouseClick(modal.cancel_button, Qt.MouseButton.LeftButton)
+        reopen_timer.stop()
+
+    reopen_timer.timeout.connect(_inspect_and_close_reopened_review)
+    reopen_timer.start(10)
+    QTEST.mouseClick(panel.sidebar.import_cancel_btn, Qt.MouseButton.LeftButton)
+    release_revalidation.set()
+    qtbot.waitUntil(
+        lambda: service.get_owned_operation(cancelled_operation_id).phase
+        is OwnedWorkPhase.CANCELLED,
+        timeout=20_000,
+    )
+    qtbot.waitUntil(
+        lambda: bool(reopened_snapshots),
+        timeout=20_000,
+    )
+    assert len(reopened_snapshots) == 1
+    reopened = reopened_snapshots[0]
+    assert reopened["step"] == "Review and Import"
+    for raw_value, count in expected_counts.items():
+        assert f"{count} occurrences" in reopened["coverage"][raw_value]
+    evidence = reopened["evidence"]
+    assert evidence["show_stimulus"]["use_as_class"] is True
+    assert evidence["show_stimulus"]["class_name"] == "show stimulus"
+    assert reopened["recheck"] is True
+    assert "Cannot import yet" not in reopened["action_text"]
+    assert reopened["apply_enabled"] is True
+    assert runtime.get_view_publication() == publication_before
+    assert host.study.loaded_data_list == []
+
+    qtbot.waitUntil(
+        lambda: application_command_registry().active_count(panel) == 0,
+        timeout=20_000,
     )
 
 

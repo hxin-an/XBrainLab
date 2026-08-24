@@ -1206,6 +1206,217 @@ def test_match_labels_internal_source_uses_task_panel_for_suggested_events(qtbot
     }
 
 
+def test_cancelled_physionet_revalidation_restores_staged_event_draft(qtbot):
+    """A cancelled recheck must render the exact T1/T2 draft over its baseline."""
+    source = "/tmp/physionet-eegmmidb-S008R04.edf"
+    class_map = {"T1": "left fist", "T2": "right fist"}
+    staged_choices = {
+        "label_carrier": "embedded_events",
+        "class_map": class_map,
+        "internal_event_selection": {
+            "label_event_codes": ["T1", "T2"],
+            "class_map": class_map,
+        },
+        "run_event_mappings": {
+            Path(source).name: class_map,
+        },
+    }
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": source,
+            "eeg_files": [source],
+        },
+        preview={
+            "summary": "Found 1 EEG file(s).",
+            "metadata_preview": [
+                {
+                    "file": Path(source).name,
+                    "subject": {"value": "S008", "decision": "safe"},
+                    "session": {"value": "", "decision": "safe"},
+                    "task": {"value": "motor imagery", "decision": "safe"},
+                    "run": {"value": "04", "decision": "safe"},
+                }
+            ],
+            "internal_event_preview": {
+                "pattern_status": "Run-dependent event names need review",
+                "names_reliable": False,
+                "candidate_label_events": [],
+                "not_used_events": [
+                    {"event_code": "T0", "event_count": 15},
+                    {"event_code": "T1", "event_count": 7},
+                    {"event_code": "T2", "event_count": 8},
+                ],
+            },
+        },
+        validation_decision=_validation_decision(
+            "blocked",
+            [
+                _review_action(
+                    target_step="Match Labels",
+                    issue="Confirm run-dependent T1/T2 event mapping.",
+                    severity="blocked",
+                )
+            ],
+        ),
+        initial_step="Review and Import",
+        choices=staged_choices,
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1040, 760)
+    dialog.show()
+    qtbot.wait(0)
+
+    assert dialog.step_stack.currentIndex() == dialog._step_titles.index(
+        "Review and Import"
+    )
+    action_text = "\n".join(
+        label.text()
+        for label in dialog.review_actions_panel.findChildren(QLabel)
+        if label.text().strip()
+    )
+    assert "Cannot import yet" not in action_text
+    assert not dialog.review_actions_panel.isVisibleTo(dialog)
+    assert dialog.apply_button.isEnabled()
+
+    _show_step(dialog, "Match Labels")
+    visible_class_map = {
+        code: dialog._class_map_item_text(item)
+        for item, code, _original in dialog._class_map_items
+    }
+    assert visible_class_map == class_map
+    assert dialog.get_result()["choices"] == staged_choices
+
+
+def test_cancelled_revalidation_restores_staged_metadata_draft(qtbot):
+    source = "/tmp/sub-08_task-mi_run-04.edf"
+    staged_choices = {
+        "metadata_overrides": {
+            Path(source).name: {
+                "subject": "S008",
+                "task": "motor imagery",
+            }
+        }
+    }
+    dialog = DataInterpretationPreviewDialog(
+        scan_result={"source_path": source, "eeg_files": [source]},
+        preview={
+            "metadata_preview": [
+                {
+                    "file": Path(source).name,
+                    "subject": {"value": "", "decision": "missing"},
+                    "session": {"value": "", "decision": "safe"},
+                    "task": {"value": "", "decision": "missing"},
+                    "run": {"value": "04", "decision": "safe"},
+                }
+            ],
+            "internal_event_preview": {
+                "candidate_label_events": [
+                    {"event_code": "T1", "class_name": "left fist"},
+                ]
+            },
+        },
+        validation_decision=_validation_decision(
+            "blocked",
+            [
+                _review_action(
+                    target_step="Review Metadata",
+                    issue="Subject metadata is missing.",
+                    severity="blocked",
+                )
+            ],
+        ),
+        initial_step="Review and Import",
+        choices=staged_choices,
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.wait(0)
+
+    item = dialog.file_tree.topLevelItem(0)
+    assert item is not None
+    assert item.text(1) == "S008"
+    assert item.text(3) == "motor imagery"
+    assert (
+        dialog.get_result()["choices"]["metadata_overrides"]
+        == (staged_choices["metadata_overrides"])
+    )
+    assert dialog.apply_button.isEnabled()
+    assert not dialog.review_actions_panel.isVisibleTo(dialog)
+
+
+def test_cancelled_revalidation_restores_staged_external_label_draft(qtbot):
+    eeg = "/tmp/A01T.gdf"
+    label = "/tmp/A01T.csv"
+    carrier_choices = {
+        "target_file": Path(eeg).name,
+        "label_field": "classlabel",
+        "anchor": "event_id",
+        "granularity": "trial",
+        "role": "class cue labels",
+        "placement_method": "event_code",
+    }
+    dialog = DataInterpretationPreviewDialog(
+        scan_result={
+            "source_path": eeg,
+            "eeg_files": [eeg],
+            "label_carriers": [label],
+        },
+        preview={
+            "metadata_preview": [
+                {
+                    "file": Path(eeg).name,
+                    "subject": {"value": "A01", "decision": "safe"},
+                    "session": {"value": "", "decision": "safe"},
+                    "task": {"value": "mi", "decision": "safe"},
+                    "run": {"value": "", "decision": "safe"},
+                }
+            ],
+            "label_carrier_preview": [
+                {
+                    "path": label,
+                    "name": Path(label).name,
+                    "format": "CSV",
+                    "label_candidates": ["classlabel"],
+                    "event_code_candidates": ["event_id"],
+                }
+            ],
+        },
+        validation_decision=_validation_decision(
+            "blocked",
+            [
+                _review_action(
+                    target_step="Match Labels",
+                    issue="Label placement needs review.",
+                    severity="blocked",
+                )
+            ],
+        ),
+        initial_step="Review and Import",
+        choices={"label_carrier_choices": {label: carrier_choices}},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.wait(0)
+
+    item, _original = dialog._label_carrier_items[0]
+    assert dialog._label_carrier_item_text(item, 1) == Path(eeg).name
+    assert dialog._label_carrier_item_text(item, 2) == "classlabel"
+    assert dialog._label_carrier_item_text(item, 3) == "event_id"
+    assert dialog._label_carrier_item_text(item, 4) == "trial"
+    assert dialog._label_carrier_item_text(item, 5) == "class cue labels"
+    assert dialog._combo_current_data(dialog.rule_placement_method_combo) == (
+        "event_code"
+    )
+    restored = dialog.get_result()["choices"]["label_carrier_choices"][label]
+    for key, value in carrier_choices.items():
+        if key == "target_file":
+            continue
+        assert restored[key] == value
+    assert dialog.apply_button.isEnabled()
+    assert not dialog.review_actions_panel.isVisibleTo(dialog)
+
+
 def test_class_name_suggestions_do_not_mix_in_non_class_event_uses() -> None:
     choices = dict(DataInterpretationPreviewDialog._class_label_choices(""))
 
@@ -3640,6 +3851,98 @@ def test_bids_value_decisions_are_returned_to_backend_choices(qtbot):
     assert "2 event values reviewed" in review_rows["Label placement"]["summary"]
     assert "Needs review" not in _visible_step_text(dialog, "Review and Import")
     assert dialog.apply_button.isEnabled() is True
+
+
+def test_bids_staged_value_decisions_keep_baseline_evidence_and_recheck(qtbot):
+    """A reopened BIDS review retains facts but returns its saved semantics."""
+    events_path = "/tmp/source/sub-01_task-mi_events.tsv"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "source_kind": "bids",
+            "eeg_files": ["/tmp/source/sub-01_task-mi_eeg.vhdr"],
+            "label_carriers": [events_path],
+            "bids": {"is_bids": True, "events_files": [events_path]},
+        },
+        preview={
+            "label_carrier_preview": [
+                {
+                    "path": events_path,
+                    "name": "sub-01_task-mi_events.tsv",
+                    "format": "BIDS events",
+                    "selected_target_file": "/tmp/source/sub-01_task-mi_eeg.vhdr",
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "selected_duration_field": "duration",
+                    "time_model": "seconds",
+                    "placement_method": "interval",
+                    "granularity": "event",
+                    "role": "external labels",
+                    "value_decisions": {
+                        "left": {
+                            "role": "stimulus",
+                            "keep_event": True,
+                            "use_as_class": True,
+                            "class_name": "Suggested left",
+                            "suggested_name": "Left hand",
+                            "decision": "resolved",
+                            "decision_source": "dataset_evidence",
+                            "count": 7,
+                            "provenance": "BIDS trial_type",
+                        },
+                    },
+                }
+            ],
+        },
+        validation_decision=_validation_decision(
+            "blocked",
+            [
+                _review_action(
+                    target_step="Match Labels",
+                    issue="Event values are unresolved.",
+                    severity="blocked",
+                )
+            ],
+        ),
+        choices={
+            "label_carrier_choices": {
+                events_path: {
+                    "value_decisions": {
+                        "left": {
+                            "role": "stimulus",
+                            "keep_event": True,
+                            "use_as_class": True,
+                            "class_name": "Left hand",
+                            "decision_source": "user_choice",
+                            "provenance": "ui_event_value_editor",
+                        }
+                    }
+                }
+            }
+        },
+    )
+    qtbot.addWidget(dialog)
+
+    assert dialog.event_value_editor is not None
+    assert "7 occurrences" in dialog.event_value_editor.coverage_text("left")
+    evidence = dialog.event_value_editor.findChild(
+        QLabel,
+        "DataImportValueDecisionEvidence",
+    )
+    assert evidence is not None
+    assert evidence.text() == "BIDS trial_type"
+    assert dialog.event_value_editor.is_complete() is True
+    assert dialog._event_value_decisions_ready_for_recheck() is True
+    assert dialog._label_carrier_choices()[events_path]["value_decisions"]["left"] == {
+        "role": "stimulus",
+        "keep_event": True,
+        "use_as_class": True,
+        "class_name": "Left hand",
+        "suggested_name": "Left hand",
+        "decision_source": "user_choice",
+        "provenance": "ui_event_value_editor",
+    }
 
 
 def test_event_value_edits_defer_hidden_review_rebuilds(qtbot, monkeypatch):

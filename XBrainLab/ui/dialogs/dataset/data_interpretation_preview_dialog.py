@@ -428,7 +428,12 @@ class DataInterpretationPreviewDialog(
         self._event_role_items: list[tuple[QTreeWidgetItem, str, str]] = []
         self._class_map_items: list[tuple[QTreeWidgetItem, str, str]] = []
         self._class_map_widgets: dict[int, QComboBox] = {}
-        self._internal_event_user_roles: dict[str, str] = {}
+        self._initial_internal_event_user_roles = (
+            self._staged_internal_event_roles_from_choices(self._initial_choices)
+        )
+        self._internal_event_user_roles: dict[str, str] = dict(
+            self._initial_internal_event_user_roles
+        )
         self._internal_class_name_edits: dict[str, str] = {}
         self._target_event_code_selection: list[str] = []
         self._target_event_selection_touched = False
@@ -3623,13 +3628,14 @@ class DataInterpretationPreviewDialog(
         if isinstance(metadata_preview, list) and metadata_preview:
             for item in metadata_preview:
                 if isinstance(item, dict):
+                    file_key = str(item.get("file") or "").strip()
                     tree_item = QTreeWidgetItem(
                         [
-                            str(item.get("file", "")),
-                            self._field_value(item.get("subject")),
-                            self._field_value(item.get("session")),
-                            self._field_value(item.get("task")),
-                            self._field_value(item.get("run")),
+                            file_key,
+                            self._staged_metadata_value(item, file_key, "subject"),
+                            self._staged_metadata_value(item, file_key, "session"),
+                            self._staged_metadata_value(item, file_key, "task"),
+                            self._staged_metadata_value(item, file_key, "run"),
                         ],
                     )
                     tree_item.setFlags(tree_item.flags() | Qt.ItemFlag.ItemIsEditable)
@@ -3661,6 +3667,7 @@ class DataInterpretationPreviewDialog(
 
     def _populate_event_tree(self) -> None:
         class_map = self._class_map_for_current_label_source()
+        staged_class_map = self._staged_class_map()
         has_class_map = bool(class_map)
         if has_class_map:
             self.event_group.setTitle("")
@@ -3668,20 +3675,24 @@ class DataInterpretationPreviewDialog(
                 tree_item = QTreeWidgetItem([str(code), "class name", str(label)])
                 self._class_map_items.append((tree_item, str(code), str(label)))
                 self.event_tree.addTopLevelItem(tree_item)
-                self._install_class_map_selector(tree_item, str(label))
+                self._install_class_map_selector(
+                    tree_item,
+                    staged_class_map.get(str(code), str(label)),
+                )
             return
 
         self.event_group.setTitle("Event use")
         event_roles = self.preview.get("event_roles") or {}
         if isinstance(event_roles, dict):
             for name, role in event_roles.items():
+                staged_role = self._staged_event_roles().get(str(name), str(role))
                 tree_item = QTreeWidgetItem(
                     [self._event_role_display_name(str(name)), "event use", str(role)]
                 )
                 tree_item.setToolTip(0, f"Source event field: {name}")
                 self._event_role_items.append((tree_item, str(name), str(role)))
                 self.event_tree.addTopLevelItem(tree_item)
-                self._install_event_role_selector(tree_item, str(role))
+                self._install_event_role_selector(tree_item, staged_role)
 
         if self.event_tree.topLevelItemCount() == 0:
             has_carriers = bool(self.scan_result.get("label_carriers") or [])
@@ -3721,6 +3732,137 @@ class DataInterpretationPreviewDialog(
             for code, label in class_map.items()
             if str(code).strip() and str(label).strip()
         }
+
+    def _staged_class_map(self) -> dict[str, str]:
+        values = self._initial_choices.get("class_map")
+        if not isinstance(values, dict):
+            return {}
+        return {
+            str(code): str(label)
+            for code, label in values.items()
+            if str(code).strip() and str(label).strip()
+        }
+
+    def _staged_event_roles(self) -> dict[str, str]:
+        values = self._initial_choices.get("event_roles")
+        if not isinstance(values, dict):
+            return {}
+        return {
+            str(name): str(role)
+            for name, role in values.items()
+            if str(name).strip() and str(role).strip()
+        }
+
+    @staticmethod
+    def _staged_internal_event_roles_from_choices(
+        choices: dict[str, Any],
+    ) -> dict[str, str]:
+        roles: dict[str, str] = {}
+        raw_selection = choices.get("internal_event_selection")
+        selection = raw_selection if isinstance(raw_selection, dict) else {}
+        for code in selection.get("label_event_codes", []) or []:
+            code_text = str(code).strip()
+            if code_text:
+                roles[code_text] = "class label"
+        for code in selection.get("not_label_event_codes", []) or []:
+            code_text = str(code).strip()
+            if code_text:
+                roles[code_text] = "not a label"
+        raw_roles = choices.get("event_roles")
+        if isinstance(raw_roles, dict):
+            for code, role in raw_roles.items():
+                code_text = str(code).strip()
+                role_text = str(role).strip().lower()
+                if code_text and role_text in {"class label", "not a label"}:
+                    roles[code_text] = role_text
+        return roles
+
+    def _staged_metadata_value(
+        self,
+        item: dict[str, Any],
+        file_key: str,
+        field: str,
+    ) -> str:
+        baseline = self._field_value(item.get(field))
+        raw_overrides = self._initial_choices.get("metadata_overrides")
+        if not isinstance(raw_overrides, dict):
+            return baseline
+        override = self._choice_for_source_key(raw_overrides, file_key)
+        if not isinstance(override, dict):
+            return baseline
+        value = str(override.get(field) or "").strip()
+        return value or baseline
+
+    @staticmethod
+    def _choice_for_source_key(values: dict[Any, Any], source_key: str) -> Any:
+        if source_key in values:
+            return values[source_key]
+        source_name = Path(source_key).name
+        name_matches = [
+            value for key, value in values.items() if Path(str(key)).name == source_name
+        ]
+        return name_matches[0] if len(name_matches) == 1 else None
+
+    def _staged_label_carrier_choices(
+        self,
+        carrier: dict[str, Any],
+    ) -> dict[str, Any]:
+        values = self._initial_choices.get("label_carrier_choices")
+        if not isinstance(values, dict):
+            return {}
+        carrier_key = str(carrier.get("path") or carrier.get("name") or "").strip()
+        staged = self._choice_for_source_key(values, carrier_key)
+        return dict(staged) if isinstance(staged, dict) else {}
+
+    def _carrier_plan_with_staged_choices(
+        self,
+        carrier: dict[str, Any],
+    ) -> dict[str, Any]:
+        plan = dict(carrier)
+        staged = self._staged_label_carrier_choices(carrier)
+        field_map = {
+            "target_file": "selected_target_file",
+            "label_field": "selected_label_field",
+            "anchor": "selected_anchor",
+            "duration_field": "selected_duration_field",
+            "target_event_codes": "selected_target_event_codes",
+        }
+        for key, value in staged.items():
+            if key == "value_decisions":
+                baseline = plan.get("value_decisions")
+                if not isinstance(baseline, dict) or not isinstance(value, dict):
+                    continue
+                decisions: dict[str, dict[str, Any]] = {
+                    str(raw_value): dict(decision)
+                    for raw_value, decision in baseline.items()
+                    if isinstance(decision, dict)
+                }
+                for raw_value, raw_choice in value.items():
+                    if not isinstance(raw_choice, dict):
+                        continue
+                    decision = decisions.get(str(raw_value))
+                    if decision is None:
+                        continue
+                    # Counts and provenance are backend evidence.  A reopened
+                    # dialog overlays only the semantic draft that awaits recheck.
+                    for semantic_key in (
+                        "role",
+                        "keep_event",
+                        "use_as_class",
+                        "class_name",
+                        "suggested_name",
+                        "decision_source",
+                    ):
+                        if semantic_key in raw_choice:
+                            decision[semantic_key] = raw_choice[semantic_key]
+                    # UI-only provenance: the visible semantics still await
+                    # backend revalidation even when the observed baseline was
+                    # already resolved.
+                    decision["_staged_user_choice"] = True
+                plan["value_decisions"] = decisions
+                continue
+            plan[field_map.get(str(key), str(key))] = value
+        return plan
 
     def _build_class_map_rows_widget(self) -> QWidget:
         container = QFrame()
@@ -3787,18 +3929,22 @@ class DataInterpretationPreviewDialog(
             if not isinstance(carrier, dict):
                 continue
             carrier_path = str(carrier.get("path") or carrier.get("name") or "").strip()
-            match_text = pairing_suggestions.get(carrier_path, "Needs review")
+            baseline_match = pairing_suggestions.get(carrier_path, "Needs review")
+            visible_carrier = self._carrier_plan_with_staged_choices(carrier)
+            match_text = str(
+                visible_carrier.get("selected_target_file") or baseline_match
+            ).strip()
             match_display = self._label_target_display(match_text)
             original = dict(carrier)
-            original["_matched_eeg_text"] = match_text
+            original["_matched_eeg_text"] = baseline_match
             item = QTreeWidgetItem(
                 [
                     str(carrier.get("name") or Path(str(carrier.get("path", ""))).name),
                     match_display,
-                    str(carrier.get("selected_label_field") or ""),
-                    self._alignment_text(carrier),
-                    str(carrier.get("granularity") or ""),
-                    str(carrier.get("role") or "external labels"),
+                    str(visible_carrier.get("selected_label_field") or ""),
+                    self._alignment_text(visible_carrier),
+                    str(visible_carrier.get("granularity") or ""),
+                    str(visible_carrier.get("role") or "external labels"),
                 ],
             )
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
@@ -3815,7 +3961,7 @@ class DataInterpretationPreviewDialog(
             item.setToolTip(5, "How this label file should be used in the recipe.")
             self._label_carrier_items.append((item, original))
             self.label_carrier_tree.addTopLevelItem(item)
-            self._install_label_carrier_selectors(item, carrier)
+            self._install_label_carrier_selectors(item, visible_carrier)
         if self.label_carrier_tree.topLevelItemCount() == 0:
             self.label_carrier_tree.addTopLevelItem(
                 QTreeWidgetItem(
@@ -4074,6 +4220,7 @@ class DataInterpretationPreviewDialog(
                 key=lambda item: item[0].casefold(),
             )
             if role in {"class label", "not a label"}
+            and self._initial_internal_event_user_roles.get(code) != role
         }
 
     def _install_event_role_selector(
@@ -4314,7 +4461,7 @@ class DataInterpretationPreviewDialog(
                 original.get("path") or original.get("name") or ""
             ).strip()
             if carrier_key and not self._is_label_carrier_excluded(carrier_key):
-                plans.append(dict(original))
+                plans.append(self._carrier_plan_with_staged_choices(original))
         return plans
 
     def _handle_event_value_decisions_changed(self) -> None:

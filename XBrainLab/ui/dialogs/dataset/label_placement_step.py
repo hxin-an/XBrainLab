@@ -765,9 +765,15 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
 
     def _default_placement_method(self) -> str:
         values = {
-            str(original.get("placement_method") or "").strip()
+            str(
+                self._carrier_plan_with_staged_choices(original).get("placement_method")
+                or ""
+            ).strip()
             for _item, original in self._label_carrier_items
-            if str(original.get("placement_method") or "").strip()
+            if str(
+                self._carrier_plan_with_staged_choices(original).get("placement_method")
+                or ""
+            ).strip()
         }
         if len(values) == 1:
             return next(iter(values))
@@ -1619,12 +1625,22 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             "label_candidates",
         )
         selected_fields = {
-            str(original.get("selected_label_field") or "").strip()
+            str(
+                self._carrier_plan_with_staged_choices(original).get(
+                    "selected_label_field"
+                )
+                or ""
+            ).strip()
             for item, original in self._label_carrier_items
             if not self._is_label_carrier_excluded(
                 self._label_carrier_key(item, original)
             )
-            and str(original.get("selected_label_field") or "").strip()
+            and str(
+                self._carrier_plan_with_staged_choices(original).get(
+                    "selected_label_field"
+                )
+                or ""
+            ).strip()
         }
         if len(selected_fields) > 1:
             return [("Mixed selections - review", ""), *choices]
@@ -1845,10 +1861,11 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
     ) -> list[tuple[str, str]]:
         values: list[str] = []
         for _item, carrier in self._label_carrier_items:
-            selected = str(carrier.get(selected_key) or "").strip()
+            visible_carrier = self._carrier_plan_with_staged_choices(carrier)
+            selected = str(visible_carrier.get(selected_key) or "").strip()
             if selected and selected not in values:
                 values.append(selected)
-            candidates = carrier.get(candidate_key) or []
+            candidates = visible_carrier.get(candidate_key) or []
             if not isinstance(candidates, list):
                 continue
             for candidate in candidates:
@@ -1882,9 +1899,11 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
 
     def _common_carrier_value(self, key: str) -> str:
         values = {
-            str(original.get(key) or "").strip()
+            str(self._carrier_plan_with_staged_choices(original).get(key) or "").strip()
             for _item, original in self._label_carrier_items
-            if str(original.get(key) or "").strip()
+            if str(
+                self._carrier_plan_with_staged_choices(original).get(key) or ""
+            ).strip()
         }
         return next(iter(values)) if len(values) == 1 else ""
 
