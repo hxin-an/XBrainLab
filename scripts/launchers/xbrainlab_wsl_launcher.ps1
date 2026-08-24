@@ -50,6 +50,35 @@ export XBRAINLAB_MODEL_CACHE_DIR='$ModelCache'
 export XBRAINLAB_RAG_CACHE_DIR='$RagCache'
 mkdir -p -- '$ModelCache' '$RagCache'
 "@
+$InputMethodEnvironment = @"
+# WSLg does not bridge the Windows IME into Linux Qt applications.  Export the
+# Qt/GTK input-method contract before Qt starts, then keep launch usable when
+# the optional local IBus setup is unavailable.
+export QT_IM_MODULE=ibus
+export GTK_IM_MODULE=ibus
+export XMODIFIERS=@im=ibus
+if ! command -v ibus >/dev/null 2>&1; then
+  echo "IBus is unavailable; install ibus and ibus-chewing, then launch again. Continuing with English input."
+else
+  if ! ibus list-engine >/dev/null 2>&1; then
+    echo "IBus daemon is not ready; starting it for this WSL user."
+    timeout 3s ibus-daemon -d -x >/dev/null 2>&1 || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      if ibus list-engine >/dev/null 2>&1; then
+        break
+      fi
+      sleep 0.3
+    done
+  fi
+  if ! ibus list-engine >/dev/null 2>&1; then
+    echo "IBus readiness check: timed out; continuing with English input."
+  elif ! ibus list-engine 2>/dev/null | grep -Fqi 'chewing'; then
+    echo "IBus Chewing is unavailable; install ibus-chewing, then launch again. Continuing with English input."
+  else
+    echo "IBus readiness check: ready."
+  fi
+fi
+"@
 $LogDir = Join-Path $env:LOCALAPPDATA "XBrainLab\logs"
 New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
 $LauncherLogRetentionCount = 5
@@ -174,8 +203,9 @@ if ($env:XBRAINLAB_LAUNCHER_SMOKE -eq "wsl") {
 }
 
 if ($env:XBRAINLAB_LAUNCHER_SMOKE -eq "startup") {
-    $StartupCommand = @"
+$StartupCommand = @"
 $CacheEnvironment
+$InputMethodEnvironment
 set -o pipefail
 cd '$Repo'
 export PYTHONUNBUFFERED=1
@@ -203,6 +233,7 @@ exit "`$status"
 
 $Command = @"
 $CacheEnvironment
+$InputMethodEnvironment
 set -o pipefail
 cd '$Repo'
 export PYTHONUNBUFFERED=1
