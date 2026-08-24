@@ -107,10 +107,7 @@ def test_capture_saliency_uses_explicit_panel_action_and_waits_for_terminal(
 
 
 def test_explanation_context_comes_from_information_control(qapp) -> None:
-    expected = (
-        "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · "
-        "True class · Mean over EEG epochs"
-    )
+    expected = "A01T.gdf +2 files · Fold 1 · Run 1 · True class · Mean over EEG epochs"
     tabs = QTabWidget()
     tabs.setToolTip(expected)
     panel = SimpleNamespace(tabs=tabs)
@@ -121,12 +118,16 @@ def test_explanation_context_comes_from_information_control(qapp) -> None:
 def test_visualization_provenance_contract_requires_result_identity() -> None:
     aggregation = "True class · Mean over EEG epochs"
     assert _provenance_context_matches(
-        "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · " + aggregation,
+        "A01T.gdf +2 files · Fold 1 · Run 1 · " + aggregation,
         aggregation,
     )
     assert not _provenance_context_matches(aggregation, aggregation)
     assert not _provenance_context_matches(
-        "Fold 1 (EEGNet) · Run 1 · " + aggregation,
+        "Fold 1 · Run 1 · " + aggregation,
+        aggregation,
+    )
+    assert not _provenance_context_matches(
+        "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · " + aggregation,
         aggregation,
     )
 
@@ -633,7 +634,7 @@ def _base_payload():
                     "Saliency Map", absolute_visible=True
                 ),
                 "explanation_context": (
-                    "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · "
+                    "A01T.gdf +2 files · Fold 1 · Run 1 · "
                     "True class · Mean over EEG epochs"
                 ),
                 "screenshot": "map.png",
@@ -652,7 +653,7 @@ def _base_payload():
                     "Spectrogram", absolute_visible=False
                 ),
                 "explanation_context": (
-                    "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · "
+                    "A01T.gdf +2 files · Fold 1 · Run 1 · "
                     "True class · Mean magnitude over EEG epochs and channels"
                 ),
                 "screenshot": "spectrogram.png",
@@ -671,7 +672,7 @@ def _base_payload():
                     "Topographic Map", absolute_visible=True
                 ),
                 "explanation_context": (
-                    "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · "
+                    "A01T.gdf +2 files · Fold 1 · Run 1 · "
                     "True class · Mean over EEG epochs and time"
                 ),
                 "screenshot": "topomap.png",

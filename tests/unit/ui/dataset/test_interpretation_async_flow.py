@@ -15,7 +15,7 @@ import mne
 import numpy as np
 import pytest
 from PyQt6 import sip
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, pyqtSignal
 from PyQt6.QtWidgets import QDialog, QMainWindow, QPushButton, QWidget
 
 from XBrainLab.backend.application import (
@@ -38,7 +38,7 @@ from XBrainLab.backend.application.capabilities import (
     CommandCapability,
     build_capability_policy,
 )
-from XBrainLab.backend.application.owned_work import OwnedWorkKind
+from XBrainLab.backend.application.owned_work import OwnedWorkKind, OwnedWorkRegistry
 from XBrainLab.backend.application.state import (
     ApplicationStateSnapshot,
     InterpretationStateSnapshot,
@@ -1935,6 +1935,132 @@ def test_repreview_cancel_reopens_the_exact_preserved_match_labels_draft(
     assert (
         reopened.call_args.kwargs["cancelled_message"] == "The operation was cancelled."
     )
+
+
+def test_repreview_cancelled_worker_queues_exact_match_labels_reopen(
+    qtbot,
+    monkeypatch,
+) -> None:
+    """A real coordinator must reopen its preserved draft after worker cancellation."""
+    window = QMainWindow()
+    panel = QWidget(window)
+    cancel = QPushButton("Cancel Import", panel)
+    qtbot.addWidget(window)
+    window.show()
+    cast(Any, panel).study = Study()
+    cast(Any, panel).main_window = window
+    cast(Any, panel).sidebar = SimpleNamespace(import_cancel_btn=cancel)
+    cast(Any, panel).set_busy = lambda _busy: None
+    handler = DatasetActionHandler(panel)
+    coordinator = handler._data_interpretation
+    worker_started = threading.Event()
+    worker_release = threading.Event()
+    reopened: list[dict[str, Any]] = []
+    commands: list[object] = []
+
+    class _LoadingDialog(QDialog):
+        retry_requested = pyqtSignal()
+
+        def __init__(self, parent, *, initial_step="") -> None:
+            super().__init__(parent)
+            self.initial_step = initial_step
+            self.cancelled_by_user = False
+
+        def set_stage(self, _title, _detail) -> None:
+            return None
+
+        def show_error(self, _message, *, retry_available=True) -> None:
+            del retry_available
+
+    class _ReopenedReview:
+        def __init__(self, _parent, **kwargs) -> None:
+            reopened.append(kwargs)
+
+        @staticmethod
+        def exec() -> int:
+            return int(QDialog.DialogCode.Rejected)
+
+        @staticmethod
+        def get_result() -> dict[str, Any]:
+            return {}
+
+    class _Runtime:
+        def __init__(self) -> None:
+            self.registry = OwnedWorkRegistry()
+
+        def begin_owned_operation(self, command):
+            commands.append(command)
+            assert isinstance(command, PreviewInterpretationCommand)
+            return self.registry.begin(OwnedWorkKind.IMPORT_REVIEW, cancellable=True)
+
+        def cancel_owned_operation(self, operation_id):
+            return self.registry.cancel(operation_id)
+
+        def get_owned_operation(self, operation_id):
+            return self.registry.snapshot(operation_id)
+
+        def fail_owned_operation(self, operation_id, *, message):
+            return self.registry.fail(operation_id, message=message)
+
+        def execute(
+            self,
+            command,
+            *,
+            expected_publication_generation=None,
+            operation_id=None,
+        ):
+            assert isinstance(command, PreviewInterpretationCommand)
+            assert expected_publication_generation == 17
+            assert operation_id is not None
+            worker_started.set()
+            assert worker_release.wait(timeout=2.0)
+            self.registry.finish_cancelled(operation_id)
+            return _cancelled_result("preview_interpretation")
+
+    runtime = _Runtime()
+    coordinator._loading_dialog_class = lambda: _LoadingDialog
+    coordinator._preview_dialog_class = lambda: _ReopenedReview
+    monkeypatch.setattr(
+        application_capabilities,
+        "application_ui_runtime",
+        lambda _context: runtime,
+    )
+    choices = {
+        "label_carrier_choices": {
+            "events.tsv": {"label_field": "trial_type", "class_name": "Left"}
+        }
+    }
+    review_state = _review_state(publication_generation=17)
+    review_state = replace(
+        review_state,
+        decision={"candidate_id": "candidate-1", "decision": "safe", "keep": True},
+    )
+
+    outcome = coordinator._repreview_interpretation_async(
+        source_path="/data/source",
+        source_hint="bids",
+        choices=choices,
+        label_sources=["events.tsv"],
+        review_state=review_state,
+        initial_step="Match Labels",
+    )
+
+    assert outcome is not None
+    assert outcome.status is InteractionStatus.ACCEPTED
+    assert worker_started.wait(timeout=1.0)
+    assert coordinator._loading_session is not None
+    loading = coordinator._loading_session.dialog
+    assert isinstance(loading, _LoadingDialog)
+    loading.cancelled_by_user = True
+    loading.reject()
+    worker_release.set()
+
+    qtbot.waitUntil(lambda: len(reopened) == 1, timeout=2_000)
+    assert [type(command) for command in commands] == [PreviewInterpretationCommand]
+    assert reopened[0]["initial_step"] == "Match Labels"
+    assert reopened[0]["choices"] == choices
+    assert reopened[0]["scan_result"] == review_state.scan
+    assert reopened[0]["validation_decision"] == review_state.decision
 
 
 def test_apply_uses_the_generation_reviewed_by_the_user(qtbot, monkeypatch):

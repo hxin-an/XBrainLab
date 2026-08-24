@@ -635,11 +635,11 @@ def _provenance_context_matches(context: str, expected_aggregation: str) -> bool
     if len(identity) != 3:
         return False
     dataset_label, plan_label, run_label = identity
+    fold_number = plan_label.removeprefix("Fold ")
     return (
         bool(dataset_label)
-        and plan_label.startswith("Fold ")
-        and "(" in plan_label
-        and plan_label.endswith(")")
+        and fold_number.isdigit()
+        and int(fold_number) > 0
         and bool(run_label)
     )
 
@@ -1862,6 +1862,7 @@ def _capture_fully_rendered_window(
     """Capture the complete widget tree, including native OpenGL children."""
     window.ensurePolished()
     window.update()
+    window.repaint()
     QApplication.sendPostedEvents()
     QApplication.processEvents()
 

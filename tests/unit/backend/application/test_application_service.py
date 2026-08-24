@@ -8043,6 +8043,62 @@ def test_explicit_saliency_compute_runs_outside_shared_command_lock() -> None:
     )
 
 
+def test_targeted_saliency_rejects_a_second_command_while_work_is_active() -> None:
+    service, trainer, _holder, _record, _old_eval_record = _saliency_recompute_service()
+    trainer._terminal_outcome = TrainingTerminalOutcome(
+        state=TrainingOutcomeState.COMPLETED,
+        run=TrainingRunIdentity(
+            trainer_id=trainer.get_state_snapshot_identity(),
+            run_id=1,
+        ),
+    )
+    selected = SaliencyRunIdentity(
+        plan=SaliencyPlanIdentity(plan_index=0),
+        run_index=0,
+    )
+    compute_started = Event()
+    release_compute = Event()
+
+    def evaluate(*_args, **_kwargs):
+        compute_started.set()
+        assert release_compute.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        return MagicMock()
+
+    command = SaliencyCommand(
+        method="Gradient",
+        params={
+            "profile": "recommended",
+            "methods": ["Gradient", "Gradient * Input"],
+        },
+        target=selected,
+    )
+    with patch.object(
+        Evaluator,
+        "evaluate_with_saliency",
+        side_effect=evaluate,
+    ) as evaluator:
+        first = service.execute(command)
+        assert first.ok is True
+        assert compute_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        executor = ThreadPoolExecutor(max_workers=1)
+        try:
+            second_future = executor.submit(service.execute, command)
+            second = second_future.result(timeout=1.0)
+        finally:
+            release_compute.set()
+            executor.shutdown(wait=True)
+        assert service.wait_for_background_tasks(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert second.failed is True
+    assert second.error_type is ErrorType.PRECONDITION
+    assert second.recoverable is True
+    assert second.diagnostics["saliency_compute_active"] is True
+    assert evaluator.call_count == 1
+    assert service.training_runtime.saliency_status().phase is (
+        PostTrainingSaliencyPhase.SUCCEEDED
+    )
+
+
 def test_explicit_saliency_compute_mutates_only_the_selected_run() -> None:
     service, trainer, holder, first_record, _old_eval_record = (
         _saliency_recompute_service()
@@ -8119,6 +8175,53 @@ def test_explicit_saliency_compute_rejects_a_stale_selected_run() -> None:
                     "methods": ["Gradient", "Gradient * Input"],
                 },
                 target=stale,
+            )
+        )
+
+    assert result.failed is True
+    assert result.error_type is ErrorType.PRECONDITION
+    assert result.recoverable is True
+    assert result.diagnostics["stale_saliency_target"] is True
+    evaluate.assert_not_called()
+
+
+def test_explicit_saliency_compute_rejects_a_run_missing_from_current_coverage() -> (
+    None
+):
+    service, trainer, _holder, _record, _old_eval_record = _saliency_recompute_service()
+    trainer._terminal_outcome = TrainingTerminalOutcome(
+        state=TrainingOutcomeState.COMPLETED,
+        run=TrainingRunIdentity(
+            trainer_id=trainer.get_state_snapshot_identity(),
+            run_id=1,
+        ),
+    )
+    selected = SaliencyRunIdentity(
+        plan=SaliencyPlanIdentity(plan_index=0),
+        run_index=0,
+    )
+    current = service.get_state()
+    without_coverage = replace(
+        current,
+        visualization=replace(current.visualization, saliency_coverage=[]),
+    )
+
+    with (
+        patch.object(
+            service,
+            "_state_before_command",
+            return_value=without_coverage,
+        ),
+        patch.object(Evaluator, "evaluate_with_saliency") as evaluate,
+    ):
+        result = service.execute(
+            SaliencyCommand(
+                method="Gradient",
+                params={
+                    "profile": "recommended",
+                    "methods": ["Gradient", "Gradient * Input"],
+                },
+                target=selected,
             )
         )
 

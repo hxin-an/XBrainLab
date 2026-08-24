@@ -2,11 +2,16 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
+import mne
 import numpy as np
 import pytest
 from PyQt6.QtWidgets import QAbstractItemView, QMainWindow
 
-from XBrainLab.backend.application import CommandCapability, CommandName
+from XBrainLab.backend.application import (
+    CommandCapability,
+    CommandName,
+    get_application_service,
+)
 from XBrainLab.backend.application.owned_work import OwnedWorkKind
 from XBrainLab.backend.application.preprocess_render import (
     PreprocessRenderData,
@@ -15,6 +20,8 @@ from XBrainLab.backend.application.preprocess_render import (
     PreprocessSignalState,
     SignalSeries,
 )
+from XBrainLab.backend.load_data.raw import Raw
+from XBrainLab.backend.study import Study
 from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
 
 
@@ -58,6 +65,73 @@ def test_preprocess_import_finishing_fails_closed_when_work_truth_is_unavailable
     qtbot.addWidget(panel)
 
     assert panel.import_is_finishing() is True
+
+
+def test_preprocess_sidebar_fences_real_import_operations_until_terminal_refresh(
+    qtbot,
+    monkeypatch,
+) -> None:
+    """The visible Preprocess owner reads the real service registry, not a mock."""
+    study = Study()
+    raw = Raw(
+        "memory.fif",
+        mne.io.RawArray(
+            np.zeros((1, 100)),
+            mne.create_info(["Cz"], 100.0, "eeg"),
+            verbose="ERROR",
+        ),
+    )
+    study.loaded_data_list = [raw]
+    study.preprocessed_data_list = [raw]
+    service = get_application_service(study)
+    window = QMainWindow()
+    window.study = study
+    panel = PreprocessPanel(parent=window)
+    qtbot.addWidget(window)
+    panel.show()
+    warning = MagicMock()
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.preprocess.sidebar.show_warning",
+        warning,
+    )
+
+    try:
+        sidebar = panel.sidebar
+        sidebar.update_sidebar(publication=service.get_view_publication())
+        assert sidebar.btn_filter.isEnabled()
+        assert sidebar.btn_epoch.isEnabled()
+        assert sidebar.btn_reset.isEnabled()
+
+        review = service.owned_work.begin(OwnedWorkKind.IMPORT_REVIEW, cancellable=True)
+        sidebar.update_sidebar(publication=service.get_view_publication())
+        assert not sidebar.import_finishing_label.isHidden()
+        assert not sidebar.btn_filter.isEnabled()
+        assert not sidebar.btn_epoch.isEnabled()
+        assert not sidebar.btn_reset.isEnabled()
+        sidebar.btn_filter.click()
+        assert warning.call_count == 0
+
+        service.owned_work.complete(review.operation_id)
+        sidebar.update_sidebar(publication=service.get_view_publication())
+        assert sidebar.import_finishing_label.isHidden()
+        assert sidebar.btn_filter.isEnabled()
+        assert sidebar.btn_epoch.isEnabled()
+        assert sidebar.btn_reset.isEnabled()
+
+        apply = service.owned_work.begin(OwnedWorkKind.IMPORT_APPLY, cancellable=True)
+        sidebar.update_sidebar(publication=service.get_view_publication())
+        assert not sidebar.btn_filter.isEnabled()
+        assert service.cancel_owned_operation(apply.operation_id)
+        service.owned_work.finish_cancelled(apply.operation_id)
+        sidebar.update_sidebar(publication=service.get_view_publication())
+        assert sidebar.import_finishing_label.isHidden()
+        assert sidebar.btn_filter.isEnabled()
+        assert sidebar.btn_epoch.isEnabled()
+        assert sidebar.btn_reset.isEnabled()
+    finally:
+        panel.close()
+        window.close()
+        service.close()
 
 
 def _render_publication(

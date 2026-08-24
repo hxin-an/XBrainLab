@@ -62,6 +62,24 @@ handoff。
 partial saliency被發布、stale target可覆寫新selection、或任一control／placeholder overlap，即停在checkpoint；
 不得把其他focused PASS或舊evidence當成完成。
 
+### 追加 slice 施工狀態
+
+- 三個主要可回退commit已完成：`7765c587`收斂placeholder／Fold label／control order，`5bc95369`
+  修正re-preview cancel與import-pending preprocess fence，`9207b177`建立exact Fold／Fold Set target、receipt
+  scope、selected-method retention與原子publication。非作者review另找出active target會掉回legacy全量路徑、
+  單Fold未綁current coverage，以及三條低-mock evidence缺口；第四個follow-up commit將只收斂這些
+  fail-closed與tests/evidence contract，不擴大產品scope。
+- Complexity review實際production diff為12 files、`+477/-84/net +393`；分批分別為net `+27`、`+118`、
+  `+230`、`+18`，每批皆低於300 LOC，owner數沒有增加。保留typed target與ApplicationService registry adapter
+  是維持exact command spine所必需；已避免的刪除候選是第二套batch coordinator、state machine、partial
+  publisher與UI直讀registry。總diff遠低於1,500 LOC，不需要architecture exception。
+- 合併後focused denominator目前為452 passed，另有backend saliency publication lifecycle 35 passed；Ruff、
+  format、diff與configured Basedpyright沒有新增diagnostic。低-mock gate涵蓋真async/Qt cancel reopen、真
+  ApplicationService owned-work transition，以及selected Fold Set cancel後同members retry且零partial publish。
+- 下一步只凍結第四個commit並對不再變動的source重跑一次輕量visualization render；四張2D／3D候選圖與
+  source identity通過、主agent目視完成後即交使用者手測。使用者明確確認UI okay前不跑canonical heavy
+  manifest、跨來源資料集gate或CI。
+
 ## 問題與 observable outcome
 
 ### Import 與 operation lifecycle

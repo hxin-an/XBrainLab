@@ -2308,17 +2308,35 @@ class ApplicationService(Observable):
     def _require_saliency_target_admitted(
         self,
         target: object,
+        state: ApplicationStateSnapshot,
     ) -> None:
         """Validate one UI-selected run or Fold Set against current backend truth."""
         if not isinstance(target, (SaliencyRunIdentity, SaliencyCrossFoldIdentity)):
             raise TypeError(
                 "SaliencyCommand.target must be a saliency run or Fold Set identity."
             )
+        status = self.training_runtime.saliency_status()
+        if status.phase in {
+            PostTrainingSaliencyPhase.PENDING,
+            PostTrainingSaliencyPhase.RUNNING,
+        }:
+            raise PreconditionError(
+                "Saliency computation is already running. Wait for it to finish "
+                "or cancel it before starting another selection.",
+                diagnostics={
+                    "saliency_compute_active": True,
+                    "retryable": True,
+                },
+            )
         holders = tuple(self.training_runtime.training_plan_holders())
         members = self._saliency_target_members(target)
         if isinstance(target, SaliencyRunIdentity):
             plan_index, run_index = members[0]
-            if plan_index < len(holders):
+            admitted_runs = {
+                (coverage.plan_index, coverage.run_index)
+                for coverage in state.visualization.saliency_coverage
+            }
+            if (plan_index, run_index) in admitted_runs and plan_index < len(holders):
                 records = tuple(holders[plan_index].get_plans())
                 if run_index < len(records) and records[run_index].is_finished():
                     return
@@ -4230,7 +4248,7 @@ class ApplicationService(Observable):
         if training_boundary is not None and not training_boundary.stable:
             raise self._training_read_changed_error(training_boundary, None)
         if isinstance(command, SaliencyCommand) and command.target is not None:
-            self._require_saliency_target_admitted(command.target)
+            self._require_saliency_target_admitted(command.target, before)
         read_only = self._is_read_only_command(command, name)
         if not read_only:
             self._view_coordinator.mark_stale(
