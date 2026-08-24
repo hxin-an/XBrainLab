@@ -228,12 +228,15 @@ class AssistantTurnScope(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class AssistantToolInputReceipt:
-    """One-shot evidence linking a direct-input answer to an earlier action."""
+    """Bounded reply evidence linking direct input to an earlier action."""
 
     command_name: str
     original_user_text: str
     question: str
     publication_generation: int
+    missing_inputs: tuple[str, ...]
+    verified_parameters: tuple[tuple[str, Any], ...] = ()
+    remaining_reply_budget: int = 2
 
     def __post_init__(self) -> None:
         fields = {
@@ -261,6 +264,36 @@ class AssistantToolInputReceipt:
             or generation < 0
         ):
             raise ValueError("Tool-input publication generation must be non-negative.")
+        missing_inputs = tuple(self.missing_inputs)
+        if (
+            not 1 <= len(missing_inputs) <= 2
+            or any(
+                not isinstance(name, str) or not name.strip() for name in missing_inputs
+            )
+            or len(set(missing_inputs)) != len(missing_inputs)
+        ):
+            raise ValueError(
+                "Tool-input receipt requires one or two unique missing-field names."
+            )
+        object.__setattr__(
+            self,
+            "missing_inputs",
+            tuple(name.strip() for name in missing_inputs),
+        )
+        verified_parameters = tuple(self.verified_parameters)
+        if any(
+            not isinstance(item, tuple)
+            or len(item) != 2
+            or not isinstance(item[0], str)
+            or item[0] not in self.missing_inputs
+            for item in verified_parameters
+        ) or len({item[0] for item in verified_parameters}) != len(verified_parameters):
+            raise ValueError(
+                "Tool-input receipt verified parameters must match missing fields."
+            )
+        object.__setattr__(self, "verified_parameters", verified_parameters)
+        if self.remaining_reply_budget not in {1, 2}:
+            raise ValueError("Tool-input receipt reply budget must be one or two.")
 
     def matches(self, command_name: str, publication_generation: int | None) -> bool:
         """Return whether this receipt can inform one current proposal."""

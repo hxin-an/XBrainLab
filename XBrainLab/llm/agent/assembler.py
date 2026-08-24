@@ -511,7 +511,9 @@ Action Contract Catalog (input definitions, never an output array):
                             max_chars=MAX_UNTRUSTED_STRING_CHARS,
                         ),
                         "publication_generation": receipt.publication_generation,
-                        "one_shot": True,
+                        "missing_inputs": receipt.missing_inputs,
+                        "verified_parameters": dict(receipt.verified_parameters),
+                        "remaining_reply_budget": receipt.remaining_reply_budget,
                     },
                 )
             )

@@ -1085,6 +1085,7 @@ def test_current_tool_input_receipt_is_projected_as_bounded_context() -> None:
             original_user_text="Resample the EEG data.",
             question="What resampling rate should I use?",
             publication_generation=81,
+            missing_inputs=("rate",),
         )
     )
 
@@ -1106,7 +1107,9 @@ def test_current_tool_input_receipt_is_projected_as_bounded_context() -> None:
         "original_user_request": "Resample the EEG data.",
         "question": "What resampling rate should I use?",
         "publication_generation": 81,
-        "one_shot": True,
+        "missing_inputs": ["rate"],
+        "verified_parameters": {},
+        "remaining_reply_budget": 2,
     }
     assert "tool_input_clarification" in messages[0]["content"]
     assert messages[-1] == {"role": "user", "content": "128 Hz"}
@@ -1146,6 +1149,7 @@ def test_stale_or_unavailable_tool_input_receipt_is_not_projected(
             original_user_text="Run a preprocessing action.",
             question="Which required value should I use?",
             publication_generation=receipt_generation,
+            missing_inputs=("rate",),
         )
     )
 

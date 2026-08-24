@@ -46,7 +46,7 @@ class VerificationResult(NamedTuple):
     error_message: str | None = None
 
 
-_DIRECT_PARAMETER_TOOLS = frozenset(
+DIRECT_PARAMETER_TOOLS = frozenset(
     {
         "apply_bandpass_filter",
         "apply_notch_filter",
@@ -74,7 +74,7 @@ def verify_direct_parameter_origins(
     context.  This check deliberately verifies value provenance only; it does
     not infer intent or select a different action.
     """
-    if tool_name not in _DIRECT_PARAMETER_TOOLS:
+    if tool_name not in DIRECT_PARAMETER_TOOLS:
         return VerificationResult(True)
 
     text = unicodedata.normalize("NFKC", latest_user_text).strip()
@@ -128,7 +128,7 @@ def verify_direct_parameter_clarification_reply(
     values are present in the latest user-authored answer.
     """
     regular = verify_direct_parameter_origins(tool_name, params, latest_user_text)
-    if regular.is_valid or tool_name not in _DIRECT_PARAMETER_TOOLS:
+    if regular.is_valid or tool_name not in DIRECT_PARAMETER_TOOLS:
         return regular
 
     text = unicodedata.normalize("NFKC", latest_user_text).strip()
@@ -181,6 +181,39 @@ def verify_direct_parameter_clarification_reply(
         if re.search(rf"(?<!\w){re.escape(method)}(?!\w)", text, re.IGNORECASE)
         else regular
     )
+
+
+def verify_direct_parameter_reply_values(
+    tool_name: str,
+    params: dict[str, Any],
+    latest_user_text: str,
+) -> VerificationResult:
+    """Verify a bounded partial answer without selecting an action."""
+    text = unicodedata.normalize("NFKC", latest_user_text).strip()
+    if not text or len(text) > 256 or _clarification_reply_is_cancelled(text):
+        return VerificationResult(False, "The requested value was not provided.")
+    if tool_name == "apply_bandpass_filter":
+        return VerificationResult(
+            all(
+                any(
+                    _numbers_equal(value, match.group(0))
+                    for match in re.finditer(_DECIMAL_NUMBER_PATTERN, text)
+                )
+                for value in params.values()
+            ),
+            "The requested cutoff values were not provided.",
+        )
+    if tool_name in {"apply_notch_filter", "resample_data"}:
+        return VerificationResult(
+            all(
+                _clarification_reply_contains_number(value, text)
+                for value in params.values()
+            ),
+            "The requested frequency was not provided.",
+        )
+    if tool_name == "normalize_data":
+        return verify_direct_parameter_clarification_reply(tool_name, params, text)
+    return verify_direct_parameter_clarification_reply(tool_name, params, text)
 
 
 def _clarification_reply_is_cancelled(text: str) -> bool:

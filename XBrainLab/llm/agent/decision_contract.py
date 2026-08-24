@@ -25,10 +25,30 @@ def model_response_tool_contract() -> dict[str, Any]:
         ),
         "taxonomy": "Assistant Decision",
         "parameters": {
-            "type": "object",
-            "properties": {"message": _message_schema()},
-            "required": ["message"],
-            "additionalProperties": False,
+            "oneOf": [
+                {
+                    "type": "object",
+                    "properties": {"message": _message_schema()},
+                    "required": ["message"],
+                    "additionalProperties": False,
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "message": _message_schema(),
+                        "pending_action": {"type": "string", "pattern": r"\S"},
+                        "missing_inputs": {
+                            "type": "array",
+                            "items": {"type": "string", "pattern": r"\S"},
+                            "minItems": 1,
+                            "maxItems": 2,
+                            "uniqueItems": True,
+                        },
+                    },
+                    "required": ["message", "pending_action", "missing_inputs"],
+                    "additionalProperties": False,
+                },
+            ]
         },
         "requires_confirmation": False,
         "decision_boundary": None,

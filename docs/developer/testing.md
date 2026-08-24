@@ -199,18 +199,19 @@ timeout 30m prlimit --core=0 -- \
 `HF_HUB_OFFLINE=1` 和 `TRANSFORMERS_OFFLINE=1` 會禁止執行期間下載模型，也不允許靜默改用另一個
 模型。
 
-目前v7 runner固定執行79個案例：36個positive、14個challenge、24個雙語no-action precision與
-5個receipt-backed clarification continuation。候選 gate 要求：
+目前v8 runner固定執行81個案例：36個positive、14個challenge、24個雙語no-action precision與
+7個controller-backed clarification trajectories。候選 gate 要求：
 
 - 36/36 positive cases 的工具與參數完全正確。
 - 10/10 明確參數來源檢查通過。
 - 5/5 缺少參數時的 host guard 通過。
 - 24/24 no-action precision outcomes沒有confirmation、GUI handoff、execution或state mutation。
-- 5/5 clarification continuation在第一輪真Host receipt後抵達verified execute boundary；raw第一發與
-  最多兩次format recovery分開記錄。
+- 7/7 clarification trajectories經production controller抵達verified execute boundary：五個direct
+  preprocess continuation、generic filter選擇bandpass後再追問，以及bandpass先low再high的partial
+  accumulation；raw第一發與最多兩次format recovery分開記錄。
 
 其餘 challenge 結果用來記錄模型限制，不回填raw-model accuracy。產生的 JSON report 只支持該次
-使用的 exact model、revision、source 和79個固定案例；它不能證明任意對話、工具實際執行或
+使用的 exact model、revision、source 和81個固定案例；它不能證明任意對話、工具實際執行或
 論文等級的整體正確率。
 
 ### C. 打開 GUI：檢查實際互動
@@ -274,13 +275,16 @@ Profile JSON 是實際步驟順序的權威來源；完整的人工驗收條件�
 若要讓真 Granite 經由可見的 ChatPanel 執行 Data Interpretation 的
 scan → preview → validate，使用：
 
+先在正常產品的 Assistant Settings 選好 Granite 4.0 Micro 3B，確認模型cache完整並完成一次
+`Enable Assistant`。Capture不會代替使用者同意啟用，也不會覆寫model selection；若仍顯示inline setup，
+它會fail closed並要求先回Settings完成設定。
+
 ```bash
 MNE_DONTWRITE_HOME=true \
 HF_HUB_OFFLINE=1 \
 TRANSFORMERS_OFFLINE=1 \
 timeout 10m prlimit --core=0 -- \
   poetry run python scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py \
-  --model ibm-granite/granite-4.0-micro \
   --output-dir build/dev-artifacts/chatpanel-local-tool-chain
 ```
 

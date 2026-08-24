@@ -44,10 +44,11 @@ from .assembler import PromptToolPublication
 from .execution_policy import HostExecutionPolicy
 from .turn import AssistantToolInputReceipt
 from .verifier import (
+    DIRECT_PARAMETER_TOOLS,
     PathProvenanceVerifier,
     VerificationResult,
-    verify_direct_parameter_clarification_reply,
     verify_direct_parameter_origins,
+    verify_direct_parameter_reply_values,
 )
 
 logger = logging.getLogger(__name__)
@@ -133,6 +134,7 @@ class ToolAttemptRequest:
     repeated: bool = False
     enforce_direct_parameter_origins: bool = True
     tool_input_receipt: AssistantToolInputReceipt | None = None
+    supplied_parameters: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -229,6 +231,47 @@ class ToolAttemptCoordinator:
         self._context_source = context_source
         self._execution_policy = execution_policy or HostExecutionPolicy()
         self._path_verifier = path_verifier or PathProvenanceVerifier()
+
+    def admit_typed_clarification(
+        self,
+        *,
+        command_name: str,
+        missing_inputs: tuple[str, ...],
+        question: str,
+        original_user_text: str,
+        publication: PromptToolPublication,
+    ) -> AssistantToolInputReceipt | None:
+        """Admit one exact direct-tool clarification without granting execution."""
+        if command_name not in DIRECT_PARAMETER_TOOLS or not publication.permits(
+            command_name
+        ):
+            return None
+        generation = publication.backend_generation
+        if type(generation) is not int or generation < 0:
+            return None
+        tool = self._registry.get_tool(command_name)
+        schema = getattr(tool, "parameters", None)
+        required = schema.get("required") if isinstance(schema, dict) else None
+        if not isinstance(required, list):
+            return None
+        required_names = tuple(
+            name.strip() for name in required if isinstance(name, str) and name.strip()
+        )
+        if (
+            not 1 <= len(required_names) <= 2
+            or len(set(required_names)) != len(required_names)
+            or not 1 <= len(missing_inputs) <= 2
+            or len(set(missing_inputs)) != len(missing_inputs)
+            or bool(set(missing_inputs) - set(required_names))
+        ):
+            return None
+        return AssistantToolInputReceipt(
+            command_name=command_name,
+            original_user_text=original_user_text,
+            question=question,
+            publication_generation=generation,
+            missing_inputs=required_names,
+        )
 
     def select_proposal(
         self,
@@ -343,9 +386,10 @@ class ToolAttemptCoordinator:
                 command_name,
                 request.publication.backend_generation,
             ):
-                origin_validation = verify_direct_parameter_clarification_reply(
+                supplied = request.supplied_parameters or params
+                origin_validation = verify_direct_parameter_reply_values(
                     command_name,
-                    params,
+                    supplied,
                     request.latest_user_text,
                 )
             else:

@@ -302,6 +302,120 @@ chat UI同類suite為233 passed，Ruff check／format check與diff check通過�
 combined v7 model report與Windows native手測仍依上述contract執行；offscreen green不代表中文輸入法
 已由真人驗收，也不改變既有20/24 no-action checkpoint。
 
+### Active repair：Assistant handtest blockers v2
+
+Branch `fix/assistant-handtest-blockers-v2` 從 exact `d53a2ceb` 建立；該舊checkpoint已被使用者於
+`2026-08-24` 的Windows真人手測否決，不是manual acceptance或merge candidate。實測缺陷共有四項：
+(1) composer輸入多個空白時會意外觸發New Chat；(2)短回覆`hello`的assistant bubble有明顯尾端空白；
+(3)中文IME仍無法在native Windows完成輸入；(4)direct preprocess缺參數的第二、第三輪即使明確補值，
+仍反覆宣稱缺值而不執行。另有同一啟動路徑的阻擋問題：第一次開啟會顯示未套用產品樣式的
+`Local Assistant Runtime` modal，Enable不可用或啟動失敗，且模型選擇看似只有2B。使用者已明確授權
+修正上述全部可見UI／輸入／Assistant行為；沒有授權其他畫面redesign、merge或放寬既有安全gate。
+
+本repair分成兩個可獨立檢查與回退的commit slice。共同outcome是從正常app啟動、在Assistant Settings
+選擇既有Granite 4.0 Micro 3B或Granite 3.3 2B、於Dock啟用runtime，完成中英文輸入與跨輪bandpass補值；
+空白鍵不會清除對話、短bubble貼合內容、所有execution仍通過current publication、schema、provenance、
+confirmation與one-action admission。`settings.json`仍是protected local file，不stage、commit、覆寫或隱藏。
+
+#### Slice A：desktop runtime、input與presentation
+
+Observable outcome：第一次開啟Assistant只在Dock顯示inline setup，不再建立first-run modal。Setup區顯示
+`Start XBrainLab Assistant`、目前精確模型label與估計記憶體；cache ready時primary action是
+`Enable Assistant`，缺少模型時是可按的`Set up model`並開啟唯一的Assistant Settings，secondary action
+也是`Assistant Settings`。Settings仍是唯一model selector，保留3B Recommended與2B Lower memory，
+不加入虛構4B或第二份catalog。`run.py --model local`只保留為「使用local backend」的compatibility輸入，
+不再把字串`local`冒充model ID；runtime依persisted exact model解析，無silent fallback。
+
+Composer在accepted submit前記錄是否持有focus；busy terminal後若Dock仍active、沒有modal／confirmation，
+才把focus還給composer，不搶走其他正常操作。Space與連續空白只進composer／IME，永遠不呼叫New Chat。
+IME owner顯式啟用Qt input-method；preedit期間Enter要求platform input method commit並消費該key，不送出、
+不插入換行，Qt commit event保留中文，之後普通Enter只送出一次。Assistant短文字bubble使用與user一致的
+content-fit最小寬度，保留raw text、padding、max width、code block與semantic label。
+
+Scope只含既有startup／lifecycle／AgentManager／chat panel／composer／bubble owners、刪除first-run dialog、
+直接測試與capture contract；non-goals是全域shortcut redesign、其他輸入元件、model downloader、backend
+command、theme重做或新增真正4B。Deletion candidates是`LocalRuntimeFirstRunDialog`、其bypass與
+`QApplication.model_override=local` seam；owners before／after不變，AgentManager仍做UI admission，
+lifecycle仍做runtime啟停，Settings仍擁有model selection。預估production最多7 files，約
+`+100/-170/net -70 LOC`，不新增module／public class／owner；若超過8 production files或bug fix淨增
+300 LOC，停止並拆分。UI實作確認：已取得。
+
+TDD先建立red cases：busy→idle focus、連續Space不清history；preedit Enter呼叫input-method commit但不
+submit／newline、中文commit後普通Enter只submit一次；`hello` raw/rendered text與content-fit width；首次
+開啟無modal、cached model可Enable、missing model導向Settings、Settings兩個model、`--model local`解析
+persisted model。再以deletion／reuse first做最小修復。Focused validation以`prlimit --core=0`及明確timeout
+執行startup、lifecycle、AgentManager、chat component與walkthrough tests，接著Ruff／format／diff check，
+最後產生default與narrow width／相關DPI screenshot並由主agent檢視。Offscreen只支撐engineering evidence；
+Microsoft Pinyin選字、focus與多空白仍須同一SHA的Windows native真人手測。
+
+#### Slice B：typed direct-preprocess clarification
+
+產品contract改為：top-level envelope仍只能有`workflow_stage`、`tool_name`、`parameters`，tool數仍為18；
+`respond_to_user.parameters`只接受兩種strict shape：(1)一般回覆`{"message": ...}`；(2)模型已精確辨識
+direct preprocess action且只缺schema欄位時，使用`{"message": ..., "pending_action":
+"apply_bandpass_filter", "missing_inputs": ["low_freq", "high_freq"]}`。一般`filter the data`不得預設
+bandpass，先以普通回覆問bandpass或notch且不建立receipt；使用者回答`bandpass`後，模型才可發typed
+clarification。精確action最多接納兩個parameter follow-up replies，只累積可由使用者原文驗證的值。
+
+`PendingInteractionCoordinator`仍是唯一cross-turn interaction owner，擴充既有receipt保存exact action、
+publication generation、actual missing fields、verified user-authored parameters、bounded question evidence與
+remaining reply budget；receipt本身不授權execution。`ToolAttemptCoordinator`仍是admission owner：typed
+clarification先驗證pending action是當下callable direct preprocess tool、missing names屬於實際schema，
+再使用既有direct-origin verification只保留使用者原文中的值。後續同tool proposal只把receipt values補入
+仍缺的keys，絕不覆寫當輪explicit value，然後重跑schema／range／publication／capability／confirmation／
+one-action checks。若最新回答已含足夠值但模型仍誤報missing，沿用既有bounded in-turn correction要求exact
+tool；若`12–128 Hz`違反目前資料Nyquist，顯示exact range blocker而非宣稱缺值。
+
+Explicit cancel、不同tool／topic、stale generation、New Chat、Stop、Close或第三個parameter reply都清除
+receipt且零execution。同action parameter-bearing NO_TOOL／format failure只可在兩次reply budget內requeue。
+Non-goals是第19個tool、Host semantic router、一般聊天記憶、模型臆測值、第二個capability owner、改backend
+command／confirmation或為Granite堆model-specific prompt。Prompt只補一般ambiguity與typed exact-action
+missing-input的通用precedence，不複製evaluator case wording。
+
+Complexity review：本次是public envelope與cross-turn receipt delta。Deletion／reuse candidates是取代現有
+one-shot clarification path、移除evaluator synthetic receipt、重用pending clear lifecycle、tool schema、
+direct-origin verifier、publication與strict recovery。Owners before／after不變；production預估最多10 files、
+`+320/-90/net +230 LOC`，不新增module／public class／state machine。若超過12 production files、feature淨增
+800 LOC、需要新owner或另一條compatibility path，停止並拆PR。可見Assistant行為授權：已取得。
+
+TDD先從production controller入口建立red trajectories：generic filter→選bandpass→追問low/high→一次完整
+補值並execute；explicit bandpass→先low再high→merge execute；false-missing由bounded correction收斂；
+cancel、不同tool、stale、New Chat、Stop、Close、第三次reply及invented values皆零execution；`12–128`依
+backend truth得到execute或range blocker。Assertions觀察exact executor call／parameters、terminal result與
+pending lifecycle，不以bubble文字或mock choreography代替。Stable evaluator改走同一production trajectory，
+不得再直接合成receipt；固定五個direct preprocess、generic filter選擇與partial accumulation共7條trajectory。
+
+Focused validation跑decision contract／parser／pending／assembler／origin verifier／attempt／controller及
+evaluator tests；exact Granite 3B同時保留36/36 positive、10/10 direct origin、5/5 missing與目前20/24
+no-action floor，並執行7條clarification trajectory。Canonical promotion gate仍是24/24 no-action；若仍為
+20/24只能稱scope-complete checkpoint，不能稱handoff-ready。任一不同action繼承值、臆測值執行、range
+錯誤被說成missing、receipt越過clear lifecycle，或既有core分數下降，都停止。兩slice完成且source clean後
+才評估canonical handoff；無論自動證據如何，沒有使用者在未再修改的exact SHA完成Windows手測並明確批准
+merge，就不開PR／不合併。
+
+Implementation checkpoint：Slice A已刪除first-run modal與`model_override=local` seam，改由Dock inline
+setup與既有Settings／runtime lifecycle接線；composer IME、terminal focus與短bubble直接由既有owner修正。
+Production共7個既有／刪除files，`+113/-201/net -88 LOC`，owner數不變。三個local capture script不再
+代替使用者點Enable，也不接受model ID override；未完成setup時會fail closed，deactivation寫入仍只允許
+顯式OS-temp isolated settings path。Default與360px engineering screenshots已人工確認inline setup及短
+bubble沒有clipping／尾端大片空白；這不取代Windows native IME／focus驗收。
+
+Slice B已把一般response與typed `pending_action`／`missing_inputs`分成strict shape；receipt必須包含1–2個
+typed fields，且唯一production建立點是既有`ToolAttemptCoordinator`。Admission以published tool schema
+補齊模型漏列的required fields；未知field進strict recovery，不顯示無receipt的追問。Partial reply只累積
+latest-user-origin值，舊的任意`RESPOND` re-arm路徑及evaluator synthetic receipt已刪除。Production共9個
+既有files，`+359/-52/net +307 LOC`；沒有新增module、public class、owner或state machine，receipt仍只服務
+本次cross-turn／TOCTOU boundary。獨立唯讀複查確認legacy receipt、capture settings mutation及模型漏列
+bandpass field三個blocker皆已關閉。
+
+目前工程驗證為完整LLM／Agent `1820 passed`、完整UI加兩個product walkthrough `2695 passed`、receipt／
+capture focused `155 passed`；35個modified Python files通過Ruff check／format check，`git diff --check`與
+`mkdocs build --strict`通過，三個capture CLI help可啟動。Current v8 exact Granite report不得沿用v7分數，
+只能在source凍結後、GPU資源足夠時產生；RTX 5070 Ti目前只剩約6586 MiB free，低於本候選約8 GB估計，
+且佔用來源不是本agent程序，因此未冒險啟動或終止它。Active slice在exact report與同一SHA Windows真人
+手測前仍只是checkpoint；不開PR、不merge。Post-freeze report是外部exact-SHA evidence，source不得為了
+補寫分數再變更；最終分數與artifact identity在交付回報中綁定該SHA。
+
 ### Parallel diagnostic：capability-first local model under 4B
 
 使用者於`2026-08-24`澄清4B只是產品預計上限，不是必須填滿的規格；選擇依據是非中國來源、

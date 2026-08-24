@@ -4,25 +4,35 @@ from XBrainLab.llm.agent.decision_contract import model_response_tool_contract
 from XBrainLab.llm.agent.prompt_policy import StrictToolResponsePromptPolicy
 
 
-def test_model_response_schema_is_message_only() -> None:
+def test_model_response_schema_allows_only_ordinary_or_typed_clarification() -> None:
     contract = model_response_tool_contract()
     parameters = contract["parameters"]
 
     assert contract["name"] == "respond_to_user"
-    assert parameters["type"] == "object"
-    assert set(parameters["properties"]) == {"message"}
-    assert parameters["required"] == ["message"]
-    assert parameters["additionalProperties"] is False
+    ordinary, clarification = parameters["oneOf"]
+    assert set(ordinary["properties"]) == {"message"}
+    assert ordinary["required"] == ["message"]
+    assert ordinary["additionalProperties"] is False
+    assert set(clarification["properties"]) == {
+        "message",
+        "pending_action",
+        "missing_inputs",
+    }
+    assert clarification["required"] == [
+        "message",
+        "pending_action",
+        "missing_inputs",
+    ]
+    assert clarification["additionalProperties"] is False
 
 
-def test_prompt_policy_describes_only_message_for_user_responses() -> None:
+def test_prompt_policy_describes_typed_clarification_for_user_responses() -> None:
     policy = StrictToolResponsePromptPolicy()
     instructions = policy.decision_instructions()
     recovery = policy.recovery_instructions()
 
     for text in (instructions, recovery):
-        assert "parameters containing exactly message" in text
-        assert "missing_inputs" not in text
+        assert "missing_inputs" in text
         assert "command, tool, name, arguments, or reasons" not in text
 
 

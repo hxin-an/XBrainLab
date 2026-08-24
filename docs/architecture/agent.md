@@ -218,9 +218,9 @@ cache不代表product support，Settings不發布它。Phi仍不可選，也不�
 
 - `XBrainLab/llm/core/model_catalog.py` 是 local model allow-list / block-list / size policy 的單一來源。
 - 下載前必須通過 `plan_model_download()`，限制單模型 10GB、總 cache 20GB。
-- `AgentManager` first-run consent 會在首次啟用 local runtime 前顯示 GPU/CPU resource
-  notice、download estimate、cache status，並提供 Enable / Download / Use existing cache /
-  Later / Disable；app startup 不會自動載入大型 local model。
+- `AgentManager` 首次啟用 local runtime 時只在 Assistant Dock 顯示 inline setup：exact selected model
+  label、estimated VRAM、cached model的`Enable Assistant`，或missing cache的`Set up model`與唯一
+  `Assistant Settings`入口；不再建立first-run modal，app startup也不會自動載入大型local model。
 - runtime resolver 只啟動設定中明確選定且可用的 exact model；若不可用就回 typed unavailable，
   不靜默改用另一個 catalog model。
 - `LocalBackend` 會阻擋未列入 product catalog 或被中國模型 policy 擋下的 repo id。
@@ -243,10 +243,10 @@ cache不代表product support，Settings不發布它。Phi仍不可選，也不�
 
 `LLMConfig` 和 `AssistantRuntimeSelection` 是 runtime truth。UI 顯示文字不能當成真實 backend 狀態。
 
-目前只宣稱Granite固定正向selection suite、bounded no-action checkpoint與一次性direct-input
+目前只宣稱Granite固定正向selection suite、bounded no-action checkpoint與bounded direct-input
 clarification continuation。Host保留strict schema、stage/publication、capability與confirmation
-verification，不做intent narrowing、選tool或自動continuation；跨輪receipt只讓模型看見同一個待補值
-action，第二輪仍須由模型提出exact tool並重新驗證。這種
+verification，不做intent narrowing、選tool或自動continuation；跨輪receipt最多接納兩次parameter
+reply，只累積latest user text可驗證的值，每輪仍須由模型提出同一exact tool並重新驗證。這種
 工程evidence不能替代真人workflow或thesis accuracy，也不能把歷史`117/117`、`121/121`或Phi
 candidate分數移植成Granite claim；3B目前維持36/36 positive、10/10 direct parameter-origin、5/5
 missing-parameter host guard、5/5 final clarification continuation與20/24 final no-action outcomes；
@@ -449,8 +449,8 @@ settings全部完成後才是`dataset_ready`。
 - registry精確發布18個approved target tools；retired wrappers在adapter前fail closed。
 - direct tools進`ApplicationService.execute(...)`；GUI tools進既有correlated handoff owner。
 - `LLMController`會做strict parser、stage/publication verification、capability、confirmation與單一tool
-  turn limit；Host不做intent narrowing或自動continuation，只保存一次性direct-input receipt供下一輪
-  模型重新選擇同一action。
+  turn limit；Host不做intent narrowing或自動continuation，只由既有PendingInteraction保存bounded
+  direct-input receipt，供最多兩輪parameter reply重新選擇同一action。
 - `pipeline_state.py`使用ApplicationService publication的workflow stage。
 - runtime backend selection 已由 structured config 管理，不應再用 UI label 判斷。
 
@@ -459,12 +459,13 @@ settings全部完成後才是`dataset_ready`。
 - local model catalog、download preflight 和 health-check script 存在。
 - active cache的3B與2B都通過exact revision／completeness inspection；3B真產品引擎的structured
   no-action turn首輪通過，峰值allocated／reserved為`6,771.76 / 6,872.00 MiB`，關閉後已釋放。
-- Granite 3B evaluator v7固定跑36 positive＋14 challenge diagnostics＋24 precision＋5 clarification。
-  Final checkpoint為36/36 positive、10/10 direct parameter-origin、5/5 missing-parameter host guard、
-  20/24 precision與5/5 clarification continuation；clarification raw為0/5並需要format recovery。四個
-  precision failures完整保留，不能用舊34-case或較小分母替代。
-- local runtime unavailable 時，chat panel 會保持可開並顯示原因；first-run consent 只在
-  local backend 還未 acknowledged 且即將啟用時出現。
+- 最新已完成的Granite 3B exact-model artifact仍是v7：36 positive＋14 challenge diagnostics＋24
+  precision＋5 clarification；Final checkpoint為36/36 positive、10/10 direct parameter-origin、5/5
+  missing-parameter host guard、20/24 precision與5/5 clarification continuation。Current v8 source改為
+  7條production-controller clarification trajectories、總計81 cases；任何v8分數claim都必須綁定同一
+  exact candidate source的新report，不得移植v7分數。
+- local runtime unavailable 時，chat panel 會保持可開並顯示原因；未acknowledged的first-run setup只在
+  Assistant Dock內出現，不建立blocking dialog。
 - no-model diagnostic runtime可走真ChatPanel、MainWindow、ApplicationService與tool correlation，
   但manifest/automated test不等於三份真人walkthrough已完成。
 - product-flow tests 覆蓋 normal chat response、empty response、worker error、local unavailable、
@@ -482,8 +483,8 @@ settings全部完成後才是`dataset_ready`。
 - Windows native layout、dialog interaction與完整PhysioNet CPU workflow仍需要使用者手測。
 
 Historical Phi evaluation artifacts are not current product or thesis evidence. Superseded raw、
-host-assisted或`121/121` reports不得作為current Granite accuracy。只有同一candidate source的v7
-report（core 50＋precision 24＋clarification 5）可支撐本輪bounded selection／continuation claim，且
+host-assisted或`121/121` reports不得作為current Granite accuracy。Current v8 claim必須使用同一candidate
+source的81-case report（core 50＋precision 24＋clarification 7）；舊v7 artifact只保留歷史checkpoint，且
 verified execution boundary仍不等於真ToolExecutor side effect或產品ready。
 
 ## 架構評斷
