@@ -13,7 +13,7 @@ def test_loading_dialog_shows_wizard_context_and_cancel(qtbot):
     dialog.show()
 
     assert dialog.windowTitle() == "Import EEG Data"
-    assert dialog.status_title.text() == "Updating label matches"
+    assert dialog.status_title.text() == "Checking selected EEG data"
     assert dialog.status_detail.text() == (
         "Checking the selected label values and EEG events."
     )

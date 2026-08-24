@@ -230,7 +230,7 @@ def test_required_ci_artifacts_reject_unknown_contract(monkeypatch, tmp_path) ->
         (
             "ui-baseline",
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "artifact_type": "xbrainlab.ui_visual_baseline",
                 "passed": True,
             },
@@ -273,3 +273,39 @@ def test_required_ci_artifact_contract_accepts_successful_payload(
     )
 
     assert failures == ()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        {
+            "schema_version": 1,
+            "artifact_type": "xbrainlab.ui_visual_baseline",
+            "passed": True,
+        },
+        {
+            "schema_version": 3,
+            "artifact_type": "xbrainlab.ui_visual_baseline",
+            "passed": True,
+        },
+        {
+            "schema_version": "2",
+            "artifact_type": "xbrainlab.ui_visual_baseline",
+            "passed": True,
+        },
+        {
+            "schema_version": 2,
+            "artifact_type": "xbrainlab.ui_visual_baseline",
+            "passed": False,
+        },
+        {
+            "schema_version": 2,
+            "artifact_type": "wrong-artifact-type",
+            "passed": True,
+        },
+    ),
+)
+def test_ui_baseline_contract_fails_closed_for_noncanonical_payload(payload) -> None:
+    assert verifier._ui_baseline_failure(payload) == (
+        "UI baseline is not a passed canonical result"
+    )

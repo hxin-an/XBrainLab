@@ -863,6 +863,7 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
         self._event_role_widgets.clear()
         self._class_map_widgets.clear()
         self.event_tree.clear()
+        staged_class_map = self._staged_class_map()
         for row in rows:
             code = str(row.get("code") or "").strip()
             if not code:
@@ -871,4 +872,7 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
             tree_item = QTreeWidgetItem([code, "class name", class_name])
             self._class_map_items.append((tree_item, code, class_name))
             self.event_tree.addTopLevelItem(tree_item)
-            self._install_class_map_selector(tree_item, class_name)
+            self._install_class_map_selector(
+                tree_item,
+                staged_class_map.get(code, class_name),
+            )

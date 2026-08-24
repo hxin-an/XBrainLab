@@ -12,7 +12,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QMessageBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -25,6 +24,7 @@ from XBrainLab.backend.training.utils import (
     instantiate_optimizer,
     parse_optimizer_param,
 )
+from XBrainLab.ui.components.modal_presentation import show_warning
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
@@ -153,7 +153,7 @@ class OptimizerSettingDialog(BaseDialog):
         """Parse and validate optimizer parameters, then accept the dialog.
 
         Raises:
-            QMessageBox: Warning if parameter validation or test
+            Warning dialog: shown if parameter validation or test
                 instantiation fails.
 
         """
@@ -185,13 +185,13 @@ class OptimizerSettingDialog(BaseDialog):
             super().accept()
 
         except OptimizerParameterError as exc:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Validation Error",
                 str(exc),
             )
         except (TypeError, ValueError) as exc:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Validation Error",
                 f"Optimizer configuration: {exc}",

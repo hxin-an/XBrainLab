@@ -15,6 +15,7 @@ class OwnedOperationPresenter(QObject):
     """Bind a visible Cancel action and status surface to immutable snapshots."""
 
     terminal = pyqtSignal(str, str)
+    snapshot_updated = pyqtSignal(str, object)
 
     def __init__(
         self,
@@ -106,6 +107,10 @@ class OwnedOperationPresenter(QObject):
             indeterminate=indeterminate,
             cancel_requested=cancel_requested,
         )
+        # A single immutable snapshot drives every visible surface for this
+        # operation. Consumers must not start a second poll loop merely to
+        # mirror it in another widget.
+        self.snapshot_updated.emit(operation_id, snapshot)
         terminal = phase in {"completed", "cancelled", "failed"}
         self._cancel_button.setEnabled(
             not terminal

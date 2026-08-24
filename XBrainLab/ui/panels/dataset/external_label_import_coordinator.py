@@ -6,8 +6,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
-from PyQt6.QtWidgets import QMessageBox
-
 from XBrainLab.backend.application.commands import (
     CommandName,
     ImportLabelsCommand,
@@ -23,6 +21,12 @@ from XBrainLab.ui.application_capabilities import (
     get_command_review_context,
     has_real_application_context,
     is_stale_publication_result,
+)
+from XBrainLab.ui.components.modal_presentation import (
+    AlertSeverity,
+    ask_confirmation,
+    show_error,
+    show_warning,
 )
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
@@ -117,7 +121,9 @@ class ExternalLabelSelectionSnapshot:
 class ExternalLabelImportBindings:
     """Replaceable UI/application ports resolved by the composition root."""
 
-    message_box: Callable[[], Any]
+    show_warning: Callable[[Any, str, str], None]
+    show_error: Callable[[Any, str, str], None]
+    ask_confirmation: Callable[..., bool]
     get_command_review_context: Callable[..., Any]
     get_command_capability: Callable[..., Any]
     has_real_application_context: Callable[..., bool]
@@ -130,7 +136,9 @@ class ExternalLabelImportBindings:
 def default_external_label_import_bindings() -> ExternalLabelImportBindings:
     """Build production bindings for direct coordinator use."""
     return ExternalLabelImportBindings(
-        message_box=lambda: QMessageBox,
+        show_warning=show_warning,
+        show_error=show_error,
+        ask_confirmation=ask_confirmation,
         get_command_review_context=get_command_review_context,
         get_command_capability=get_command_capability,
         has_real_application_context=has_real_application_context,
@@ -208,13 +216,12 @@ class ExternalLabelImportCoordinator:
     def import_label(self) -> None:
         """Review and apply external label files to selected loaded EEG data."""
         bindings = self._bindings
-        message_box = bindings.message_box()
         review_context = bindings.get_command_review_context(
             self.panel,
             CommandName.IMPORT_LABELS,
         )
         if review_context is None and bindings.has_real_application_context(self.panel):
-            message_box.warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Label Import Blocked",
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -229,14 +236,14 @@ class ExternalLabelImportCoordinator:
             )
         )
         if review_context is not None and label_capability is None:
-            message_box.warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Label Import Blocked",
                 _DATA_INTERPRETATION_AVAILABILITY_UNAVAILABLE,
             )
             return
         if label_capability is not None and not label_capability.enabled:
-            message_box.warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Label Import Blocked",
                 bindings.blocked_reason(
@@ -270,7 +277,7 @@ class ExternalLabelImportCoordinator:
 
         preview_mode = str(selection.mode or "").lower()
         if preview_mode not in {"sequence", "timestamp"}:
-            message_box.critical(
+            self._bindings.show_error(
                 self.panel,
                 "Label Import Failed",
                 "Timestamp and sequence label files cannot be mixed in one import.",
@@ -332,7 +339,6 @@ class ExternalLabelImportCoordinator:
             bindings.present_unexpected_error(
                 self.panel,
                 UnexpectedErrorContext.LABEL_IMPORT,
-                message_box=message_box,
             )
 
     def execute_label_import_async(
@@ -342,18 +348,17 @@ class ExternalLabelImportCoordinator:
         expected_publication_generation: int | None = None,
     ) -> None:
         """Apply one exact reviewed label plan away from the GUI thread."""
-        message_box = self._bindings.message_box()
 
         def _handle_result(result: Any) -> InteractionOutcome:
             if result.failed:
                 if self._bindings.is_stale_publication_result(result):
-                    message_box.warning(
+                    self._bindings.show_warning(
                         self.panel,
                         "Review Label Import Again",
                         result.message,
                     )
                 else:
-                    message_box.critical(
+                    self._bindings.show_error(
                         self.panel,
                         "Label Import Failed",
                         result.message,
@@ -369,7 +374,7 @@ class ExternalLabelImportCoordinator:
                     "No labels were applied. Check whether the label count, event "
                     "selection, or file mapping matches the selected data."
                 )
-                message_box.warning(self.panel, "No Labels Applied", message)
+                self._bindings.show_warning(self.panel, "No Labels Applied", message)
                 return InteractionOutcome.blocked(message)
 
             def _finish_label_import(recipe_message: str = "") -> None:
@@ -401,7 +406,7 @@ class ExternalLabelImportCoordinator:
             unexpected_error_context=UnexpectedErrorContext.LABEL_IMPORT,
         )
         if outcome is None:
-            message_box.warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Label Import Blocked",
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -414,7 +419,6 @@ class ExternalLabelImportCoordinator:
         on_complete: Callable[[str], None] | None = None,
     ) -> str | None:
         bindings = self._bindings
-        message_box = bindings.message_box()
         diagnostics = getattr(result, "diagnostics", {}) or {}
         if not bool(diagnostics.get("recipe_updated")):
             return ""
@@ -443,14 +447,17 @@ class ExternalLabelImportCoordinator:
         )
         if recipe_block_reason is not None:
             return "Interpretation recipe trace updated in this session."
-        reply = message_box.question(
+        if self._bindings.ask_confirmation(
             self.panel,
-            "Save Updated Recipe",
-            "External labels were added to the current data interpretation "
-            "recipe. Save the updated recipe now?",
-            message_box.StandardButton.Yes | message_box.StandardButton.No,
-        )
-        if reply == message_box.StandardButton.Yes:
+            severity=AlertSeverity.INFORMATION,
+            title="Save Updated Recipe",
+            message=(
+                "External labels were added to the current data interpretation "
+                "recipe. Save the updated recipe now?"
+            ),
+            confirm_text="Save recipe",
+            cancel_text="Cancel",
+        ):
             started = self._host._save_interpretation_recipe(
                 on_complete=on_complete,
                 review_context=review_context,
@@ -462,9 +469,8 @@ class ExternalLabelImportCoordinator:
     def get_target_files_for_import(self) -> list[Any]:
         """Resolve selected table-backed target files without stale index guesses."""
         self._remember_target_file_indices([])
-        message_box = self._bindings.message_box()
         if self.panel.table.rowCount() <= 0:
-            message_box.warning(
+            self._bindings.show_warning(
                 self.panel,
                 "No Data Loaded",
                 "Interpret a data source before adding labels.",
@@ -475,13 +481,14 @@ class ExternalLabelImportCoordinator:
             {index.row() for index in self.panel.table.selectedIndexes()},
         )
         if not selected_rows:
-            reply = message_box.question(
+            if self._bindings.ask_confirmation(
                 self.panel,
-                "Add Labels to Loaded Data",
-                "No files selected. Add labels to all loaded files?",
-                message_box.StandardButton.Yes | message_box.StandardButton.No,
-            )
-            if reply == message_box.StandardButton.Yes:
+                severity=AlertSeverity.WARNING,
+                title="Add Labels to Loaded Data",
+                message="No files selected. Add labels to all loaded files?",
+                confirm_text="Add labels",
+                cancel_text="Cancel",
+            ):
                 selected_rows = list(range(self.panel.table.rowCount()))
             else:
                 return []
@@ -532,7 +539,6 @@ class ExternalLabelImportCoordinator:
         target_count: int,
         publication_generation: int,
     ) -> list[LabelImportTarget]:
-        message_box = self._bindings.message_box()
         result = self._bindings.execute_application_command(
             self.panel,
             QueryStateCommand(
@@ -546,7 +552,7 @@ class ExternalLabelImportCoordinator:
             expected_publication_generation=publication_generation,
         )
         if result is None:
-            message_box.warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Label Import Blocked",
                 CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -558,14 +564,14 @@ class ExternalLabelImportCoordinator:
                 if self._bindings.is_stale_publication_result(result)
                 else "Label Import Blocked"
             )
-            message_box.warning(self.panel, title, result.message)
+            self._bindings.show_warning(self.panel, title, result.message)
             return []
         diagnostics = getattr(result, "diagnostics", {}) or {}
         payloads = diagnostics.get("targets")
         if diagnostics.get("payload_type") != "label_import_targets" or not isinstance(
             payloads, list
         ):
-            message_box.warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Label Import Blocked",
                 "XBrainLab could not verify the selected EEG label targets.",
@@ -581,14 +587,14 @@ class ExternalLabelImportCoordinator:
             ]
         except ValueError as exc:
             logger.warning("Invalid detached label-target payload: %s", exc)
-            message_box.warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Label Import Blocked",
                 "XBrainLab could not verify the selected EEG label targets.",
             )
             return []
         if [target.index for target in targets] != target_indices:
-            message_box.warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Review Label Targets Again",
                 "The selected EEG files changed while label import was being reviewed.",
@@ -684,7 +690,7 @@ class ExternalLabelImportCoordinator:
         ]
         generations = {target.publication_generation for target in targets}
         if len(generations) != 1:
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Review Label Targets Again",
                 "The selected EEG files do not belong to one reviewed dataset state.",
@@ -706,7 +712,7 @@ class ExternalLabelImportCoordinator:
             None,
         )
         if failed_target is not None:
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 "Label Event Review Failed",
                 "XBrainLab could not read EEG events from "
@@ -719,7 +725,7 @@ class ExternalLabelImportCoordinator:
             event_name for target in raw_targets for event_name in target.event_names
         }
         if not unique:
-            self._bindings.message_box().warning(
+            self._bindings.show_warning(
                 self.panel,
                 "No EEG Events Available",
                 "Sequence labels require at least one target EEG event.",

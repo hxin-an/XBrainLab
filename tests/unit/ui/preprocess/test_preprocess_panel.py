@@ -2,11 +2,17 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
+import mne
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QAbstractItemView, QMainWindow, QMessageBox
+from PyQt6.QtWidgets import QAbstractItemView, QMainWindow
 
-from XBrainLab.backend.application import CommandCapability, CommandName
+from XBrainLab.backend.application import (
+    CommandCapability,
+    CommandName,
+    get_application_service,
+)
+from XBrainLab.backend.application.owned_work import OwnedWorkKind
 from XBrainLab.backend.application.preprocess_render import (
     PreprocessRenderData,
     PreprocessRenderPublication,
@@ -14,7 +20,118 @@ from XBrainLab.backend.application.preprocess_render import (
     PreprocessSignalState,
     SignalSeries,
 )
+from XBrainLab.backend.load_data.raw import Raw
+from XBrainLab.backend.study import Study
 from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
+
+
+@pytest.mark.parametrize(
+    ("active_kind", "expected"),
+    [
+        (OwnedWorkKind.IMPORT_REVIEW, True),
+        (OwnedWorkKind.IMPORT_APPLY, True),
+        (None, False),
+    ],
+)
+def test_preprocess_import_finishing_reads_backend_owned_work(
+    qtbot,
+    active_kind: OwnedWorkKind | None,
+    expected: bool,
+) -> None:
+    port = MagicMock()
+    port.get_active_owned_operation.side_effect = lambda kind: (
+        object() if kind is active_kind else None
+    )
+    panel = PreprocessPanel(
+        controller=MagicMock(),
+        dataset_controller=MagicMock(),
+        publication_port=port,
+    )
+    qtbot.addWidget(panel)
+
+    assert panel.import_is_finishing() is expected
+
+
+def test_preprocess_import_finishing_fails_closed_when_work_truth_is_unavailable(
+    qtbot,
+) -> None:
+    port = MagicMock()
+    port.get_active_owned_operation.side_effect = RuntimeError("registry unavailable")
+    panel = PreprocessPanel(
+        controller=MagicMock(),
+        dataset_controller=MagicMock(),
+        publication_port=port,
+    )
+    qtbot.addWidget(panel)
+
+    assert panel.import_is_finishing() is True
+
+
+def test_preprocess_sidebar_fences_real_import_operations_until_terminal_refresh(
+    qtbot,
+    monkeypatch,
+) -> None:
+    """The visible Preprocess owner reads the real service registry, not a mock."""
+    study = Study()
+    raw = Raw(
+        "memory.fif",
+        mne.io.RawArray(
+            np.zeros((1, 100)),
+            mne.create_info(["Cz"], 100.0, "eeg"),
+            verbose="ERROR",
+        ),
+    )
+    study.loaded_data_list = [raw]
+    study.preprocessed_data_list = [raw]
+    service = get_application_service(study)
+    window = QMainWindow()
+    window.study = study
+    panel = PreprocessPanel(parent=window)
+    qtbot.addWidget(window)
+    panel.show()
+    warning = MagicMock()
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.preprocess.sidebar.show_warning",
+        warning,
+    )
+
+    try:
+        sidebar = panel.sidebar
+        sidebar.update_sidebar(publication=service.get_view_publication())
+        assert sidebar.btn_filter.isEnabled()
+        assert sidebar.btn_epoch.isEnabled()
+        assert sidebar.btn_reset.isEnabled()
+
+        review = service.owned_work.begin(OwnedWorkKind.IMPORT_REVIEW, cancellable=True)
+        sidebar.update_sidebar(publication=service.get_view_publication())
+        assert not sidebar.import_finishing_label.isHidden()
+        assert not sidebar.btn_filter.isEnabled()
+        assert not sidebar.btn_epoch.isEnabled()
+        assert not sidebar.btn_reset.isEnabled()
+        sidebar.btn_filter.click()
+        assert warning.call_count == 0
+
+        service.owned_work.complete(review.operation_id)
+        sidebar.update_sidebar(publication=service.get_view_publication())
+        assert sidebar.import_finishing_label.isHidden()
+        assert sidebar.btn_filter.isEnabled()
+        assert sidebar.btn_epoch.isEnabled()
+        assert sidebar.btn_reset.isEnabled()
+
+        apply = service.owned_work.begin(OwnedWorkKind.IMPORT_APPLY, cancellable=True)
+        sidebar.update_sidebar(publication=service.get_view_publication())
+        assert not sidebar.btn_filter.isEnabled()
+        assert service.cancel_owned_operation(apply.operation_id)
+        service.owned_work.finish_cancelled(apply.operation_id)
+        sidebar.update_sidebar(publication=service.get_view_publication())
+        assert sidebar.import_finishing_label.isHidden()
+        assert sidebar.btn_filter.isEnabled()
+        assert sidebar.btn_epoch.isEnabled()
+        assert sidebar.btn_reset.isEnabled()
+    finally:
+        panel.close()
+        window.close()
+        service.close()
 
 
 def _render_publication(
@@ -362,11 +479,9 @@ def test_preprocess_panel_filtering(mock_main_window, mock_controller, qtbot):
         )  # l_freq, h_freq, notch
 
         with (
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning") as mock_info,
             patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.information"
-            ) as mock_info,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
             ) as mock_warning,
         ):
             panel.sidebar.open_filtering()
@@ -399,11 +514,9 @@ def test_preprocess_panel_resample(mock_main_window, mock_controller, qtbot):
         instance.get_params.return_value = 256.0
 
         with (
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning") as mock_info,
             patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.information"
-            ) as mock_info,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
             ) as mock_warning,
         ):
             panel.sidebar.open_resample()
@@ -438,11 +551,9 @@ def test_preprocess_panel_epoching(mock_main_window, mock_controller, qtbot):
         mock_controller.apply_epoching.return_value = True
 
         with (
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning") as mock_info,
             patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.information"
-            ) as mock_info,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
             ) as mock_warning,
         ):
             panel.sidebar.open_epoching()
@@ -467,15 +578,11 @@ def test_preprocess_panel_reset(mock_main_window, mock_controller, qtbot):
     with (
         patch.object(panel.plotter, "plot_sample_data"),
         patch(
-            "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.question",
-            return_value=QMessageBox.StandardButton.Yes,
+            "XBrainLab.ui.panels.preprocess.sidebar.ask_confirmation",
+            return_value=True,
         ),
-        patch(
-            "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.information"
-        ) as mock_info,
-        patch(
-            "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
-        ) as mock_warning,
+        patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning") as mock_info,
+        patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning") as mock_warning,
         patch.object(panel.sidebar, "info_panel") as mock_info_panel,
     ):
         panel.sidebar.reset_preprocess()
@@ -661,7 +768,7 @@ def test_preprocess_action_fails_closed_without_product_review(
         patch(
             "XBrainLab.ui.panels.preprocess.sidebar.FilteringDialog",
         ) as dialog,
-        patch.object(QMessageBox, "warning") as warning,
+        patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning") as warning,
     ):
         panel.sidebar.open_filtering()
 
@@ -703,8 +810,8 @@ def test_reset_preprocess_fails_closed_without_product_capability(qtbot):
                 "real product actions must not consult controller compatibility"
             ),
         ) as compatibility_call,
-        patch.object(QMessageBox, "warning") as warning,
-        patch.object(QMessageBox, "question") as question,
+        patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning") as warning,
+        patch("XBrainLab.ui.panels.preprocess.sidebar.ask_confirmation") as question,
         patch(
             "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
         ) as execute,
@@ -742,11 +849,9 @@ class TestPreprocessSidebarOps:
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.RereferenceDialog"
             ) as MockDlg,
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning") as mock_info,
             patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.information"
-            ) as mock_info,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
             ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
@@ -765,11 +870,9 @@ class TestPreprocessSidebarOps:
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.RereferenceDialog"
             ) as MockDlg,
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_error") as mock_crit,
             patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.critical"
-            ) as mock_crit,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
             ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
@@ -785,11 +888,9 @@ class TestPreprocessSidebarOps:
         with (
             patch.object(panel.plotter, "plot_sample_data"),
             patch("XBrainLab.ui.panels.preprocess.sidebar.NormalizeDialog") as MockDlg,
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning") as mock_info,
             patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.information"
-            ) as mock_info,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
             ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
@@ -806,11 +907,9 @@ class TestPreprocessSidebarOps:
         with (
             patch.object(panel.plotter, "plot_sample_data"),
             patch("XBrainLab.ui.panels.preprocess.sidebar.NormalizeDialog") as MockDlg,
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_error") as mock_crit,
             patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.critical"
-            ) as mock_crit,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
             ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
@@ -827,11 +926,9 @@ class TestPreprocessSidebarOps:
         with (
             patch.object(panel.plotter, "plot_sample_data"),
             patch("XBrainLab.ui.panels.preprocess.sidebar.FilteringDialog") as MockDlg,
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_error") as mock_crit,
             patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.critical"
-            ) as mock_crit,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
             ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
@@ -900,11 +997,9 @@ class TestPreprocessSidebarOps:
         with (
             patch.object(panel.plotter, "plot_sample_data"),
             patch("XBrainLab.ui.panels.preprocess.sidebar.ResampleDialog") as MockDlg,
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_error") as mock_crit,
             patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.critical"
-            ) as mock_crit,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
             ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
@@ -921,11 +1016,9 @@ class TestPreprocessSidebarOps:
         with (
             patch.object(panel.plotter, "plot_sample_data"),
             patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as MockDlg,
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_error") as mock_crit,
             patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.critical"
-            ) as mock_crit,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
             ) as mock_warning,
         ):
             MockDlg.return_value.exec.return_value = True
@@ -947,14 +1040,12 @@ class TestPreprocessSidebarOps:
         with (
             patch.object(panel.plotter, "plot_sample_data"),
             patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.question",
-                return_value=QMessageBox.StandardButton.Yes,
+                "XBrainLab.ui.panels.preprocess.sidebar.ask_confirmation",
+                return_value=True,
             ),
+            patch("XBrainLab.ui.panels.preprocess.sidebar.show_error") as mock_crit,
             patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.critical"
-            ) as mock_crit,
-            patch(
-                "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
+                "XBrainLab.ui.panels.preprocess.sidebar.show_warning"
             ) as mock_warning,
         ):
             panel.sidebar.reset_preprocess()
@@ -1028,9 +1119,7 @@ class TestPreprocessSidebarOps:
     def test_check_lock_when_epoched(self, setup):
         panel, mock_ctrl, _ = setup
         mock_ctrl.is_epoched.return_value = True
-        with patch(
-            "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
-        ) as mock_warn:
+        with patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning") as mock_warn:
             result = panel.sidebar.check_lock()
         assert result is True
         mock_warn.assert_called_once()
@@ -1038,9 +1127,7 @@ class TestPreprocessSidebarOps:
     def test_check_data_loaded_false(self, setup):
         panel, mock_ctrl, _ = setup
         mock_ctrl.has_data.return_value = False
-        with patch(
-            "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.warning"
-        ) as mock_warn:
+        with patch("XBrainLab.ui.panels.preprocess.sidebar.show_warning") as mock_warn:
             result = panel.sidebar.check_data_loaded()
         assert result is False
         mock_warn.assert_called_once()

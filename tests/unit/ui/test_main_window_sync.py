@@ -17,7 +17,7 @@ from PyQt6.QtCore import (
     QTimer,
 )
 from PyQt6.QtGui import QCloseEvent
-from PyQt6.QtWidgets import QDockWidget, QMessageBox, QWidget
+from PyQt6.QtWidgets import QDockWidget, QWidget
 
 from XBrainLab.backend.application import StopTrainingCommand
 from XBrainLab.backend.application.capabilities import build_capability_policy
@@ -1534,10 +1534,7 @@ def test_shutdown_fence_release_failure_enters_visible_shutdown_only_state(
             "XBrainLab.ui.main_window.QTimer.singleShot",
             side_effect=lambda _delay, callback: callbacks.append(callback),
         ),
-        patch(
-            "XBrainLab.ui.main_window.QMessageBox.question",
-            return_value=QMessageBox.StandardButton.Close,
-        ),
+        patch("XBrainLab.ui.main_window.ask_confirmation", return_value=True),
         patch.object(main_window, "close") as close,
     ):
         main_window._cancel_close_attempt()

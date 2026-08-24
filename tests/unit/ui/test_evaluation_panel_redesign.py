@@ -1185,7 +1185,7 @@ def test_all_folds_preparation_keeps_gui_responsive_and_drops_stale_result(
     )
 
 
-def test_all_folds_cancel_releases_owned_worker_and_retry_publishes_new_identity(
+def test_all_folds_internal_cancel_releases_owned_worker_and_retry_publishes_new_identity(
     qtbot,
     monkeypatch,
 ) -> None:
@@ -1218,9 +1218,9 @@ def test_all_folds_cancel_releases_owned_worker_and_retry_publishes_new_identity
         "alive_workers": 1,
         "operation_id": first_operation_id,
     }
-    assert panel.btn_cancel_evaluation.isVisibleTo(panel)
+    assert not hasattr(panel, "btn_cancel_evaluation")
 
-    qtbot.mouseClick(panel.btn_cancel_evaluation, Qt.MouseButton.LeftButton)
+    panel.cancel_evaluation_render()
     assert (
         runtime._evaluation_registry.snapshot(first_operation_id).cancel_requested
         is True
@@ -1272,7 +1272,7 @@ def test_all_folds_cancel_releases_owned_worker_and_retry_publishes_new_identity
     assert runtime._evaluation_registry.active_snapshots() == ()
 
 
-def test_all_folds_owned_operation_is_visible_on_product_status_surface(
+def test_all_folds_internal_operation_does_not_claim_product_status_surface(
     qtbot,
     monkeypatch,
 ) -> None:
@@ -1303,10 +1303,7 @@ def test_all_folds_owned_operation_is_visible_on_product_status_surface(
     assert operation_id
 
     status_bar = host.statusBar()
-    assert status_bar.property("operationId") == operation_id
-    assert status_bar.property("stage")
-    assert status_bar.property("operationPhase") in {"pending", "running"}
-    assert status_bar.property("indeterminate") is True
+    assert status_bar.property("operationId") is None
 
     release.set()
     qtbot.waitUntil(panel.evaluation_background_work_idle, timeout=1_000)

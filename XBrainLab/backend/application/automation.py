@@ -675,6 +675,10 @@ def _command_input_schema(command_type: type[Any]) -> dict[str, Any]:
         )
 
         localns["DatasetSplitPreviewReceipt"] = DatasetSplitPreviewReceipt
+    if command_type is SaliencyCommand:
+        from .saliency_render import SaliencySelectionIdentity  # noqa: PLC0415
+
+        localns["SaliencySelectionIdentity"] = SaliencySelectionIdentity
     type_hints = get_type_hints(command_type, localns=localns)
     for field_info in fields(command_type):
         if _field_hidden_from_automation(command_type, field_info.name):

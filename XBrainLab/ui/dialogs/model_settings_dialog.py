@@ -24,7 +24,6 @@ from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QProgressBar,
     QPushButton,
     QScrollArea,
@@ -62,6 +61,11 @@ from XBrainLab.ui.chat.segmented_control import AssistantSegmentedControl
 from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     RuntimeCommandAdmissionResult,
     RuntimeCommandAdmissionStatus,
+)
+from XBrainLab.ui.components.modal_presentation import (
+    AlertSeverity,
+    ask_confirmation,
+    show_alert,
 )
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.styles.theme import Theme
@@ -1077,10 +1081,11 @@ class ModelSettingsDialog(BaseDialog):
                 if state.cleanup_candidates
                 else ""
             )
-            QMessageBox.warning(
+            show_alert(
                 self,
-                "Model Download Blocked",
-                (
+                severity=AlertSeverity.WARNING,
+                title="Model Download Blocked",
+                message=(
                     "The model download cannot start because the storage or "
                     "model policy check did not pass.\n\n"
                     f"Current cache: {format_bytes(state.current_cache_bytes)}\n"
@@ -1145,10 +1150,11 @@ class ModelSettingsDialog(BaseDialog):
             reason=ModelCacheCleanupReason.USER_DELETE,
         )
         if not started:
-            QMessageBox.warning(
+            show_alert(
                 self,
-                "Model Cleanup Busy",
-                "Another model download or cleanup is still active.",
+                severity=AlertSeverity.WARNING,
+                title="Model Cleanup Busy",
+                message="Another model download or cleanup is still active.",
             )
             return
         self.is_downloading = True
@@ -1161,30 +1167,6 @@ class ModelSettingsDialog(BaseDialog):
         self.local_action_btn.setEnabled(False)
         self.update_validation_state()
 
-    def _build_destructive_confirmation(
-        self,
-        *,
-        title: str,
-        text: str,
-        confirm_text: str,
-    ) -> tuple[QMessageBox, QPushButton]:
-        """Build the shared Settings danger/cancel confirmation hierarchy."""
-        box = QMessageBox(QMessageBox.Icon.Warning, title, text, parent=self)
-        confirm_button = box.addButton(
-            confirm_text,
-            QMessageBox.ButtonRole.DestructiveRole,
-        )
-        cancel_button = box.addButton(
-            "Cancel",
-            QMessageBox.ButtonRole.RejectRole,
-        )
-        confirm_button.setObjectName("AssistantDestructiveConfirmButton")
-        cancel_button.setObjectName("AssistantSecondaryButton")
-        box.setStyleSheet(self.styleSheet())
-        box.setDefaultButton(cancel_button)
-        box.setEscapeButton(cancel_button)
-        return box, confirm_button
-
     def _confirm_destructive_action(
         self,
         *,
@@ -1193,13 +1175,14 @@ class ModelSettingsDialog(BaseDialog):
         confirm_text: str,
     ) -> bool:
         """Return true only when the explicit dangerous action was clicked."""
-        box, confirm_button = self._build_destructive_confirmation(
+        return ask_confirmation(
+            self,
+            severity=AlertSeverity.WARNING,
             title=title,
-            text=text,
+            message=text,
             confirm_text=confirm_text,
+            destructive=True,
         )
-        box.exec()
-        return box.clickedButton() is confirm_button
 
     def _model_deletion_is_allowed(self, repo_id: str) -> bool:
         """Keep deletion warnings inside this dialog's modal hierarchy."""
@@ -1208,11 +1191,14 @@ class ModelSettingsDialog(BaseDialog):
             blocked = blocked or not self.agent_manager.prepare_model_deletion(repo_id)
         if not blocked:
             return True
-        QMessageBox.warning(
+        show_alert(
             self,
-            "Assistant Model In Use",
-            "The Assistant is using this model. Open Advanced, choose Disable, "
-            "and wait for unloading to finish before deleting it.",
+            severity=AlertSeverity.WARNING,
+            title="Assistant Model In Use",
+            message=(
+                "The Assistant is using this model. Open Advanced, choose Disable, "
+                "and wait for unloading to finish before deleting it."
+            ),
         )
         return False
 
@@ -1258,7 +1244,12 @@ class ModelSettingsDialog(BaseDialog):
         self.is_downloading = not self.download_lifecycle.is_idle()
         self.download_progress.setVisible(False)
         self.check_local_model_status()
-        QMessageBox.information(self, "Success", "Model downloaded successfully!")
+        show_alert(
+            self,
+            severity=AlertSeverity.INFORMATION,
+            title="Success",
+            message="Model downloaded successfully!",
+        )
 
     def on_download_failed(self, outcome: object):
         """Handle download failure.
@@ -1294,10 +1285,11 @@ class ModelSettingsDialog(BaseDialog):
             self._schedule_fit()
         else:
             self.check_local_model_status()
-        QMessageBox.critical(
+        show_alert(
             self,
-            "Download Failed",
-            model_download_public_failure_message(outcome),
+            severity=AlertSeverity.CRITICAL,
+            title="Download Failed",
+            message=model_download_public_failure_message(outcome),
         )
 
     def on_cache_cleanup_finished(self, result: object) -> None:
@@ -1316,10 +1308,11 @@ class ModelSettingsDialog(BaseDialog):
                 result.target.repo_id,
                 result.diagnostic_errors,
             )
-            QMessageBox.warning(
+            show_alert(
                 self,
-                "Model Cleanup Failed",
-                result.public_message,
+                severity=AlertSeverity.WARNING,
+                title="Model Cleanup Failed",
+                message=result.public_message,
             )
 
     def update_validation_state(self):
@@ -1360,10 +1353,14 @@ class ModelSettingsDialog(BaseDialog):
         if self.config.local_model_enabled and (
             state is None or state.request.model_name != self.config.model_name
         ):
-            QMessageBox.warning(
+            show_alert(
                 self,
-                "Model Status Pending",
-                "Wait for the selected model status check to finish, then try again.",
+                severity=AlertSeverity.WARNING,
+                title="Model Status Pending",
+                message=(
+                    "Wait for the selected model status check to finish, then "
+                    "try again."
+                ),
             )
             self.check_local_model_status()
             return
@@ -1376,10 +1373,11 @@ class ModelSettingsDialog(BaseDialog):
         )
 
         if self.config.local_model_enabled and not local_ready:
-            QMessageBox.critical(
+            show_alert(
                 self,
-                "Local Runtime Unavailable",
-                (
+                severity=AlertSeverity.CRITICAL,
+                title="Local Runtime Unavailable",
+                message=(
                     state.runtime_message
                     if state is not None
                     else "Local runtime status is unavailable. Try again."
@@ -1427,32 +1425,36 @@ class ModelSettingsDialog(BaseDialog):
             None,
         )
         if not callable(request):
-            QMessageBox.warning(
+            show_alert(
                 self,
-                "Assistant Unavailable",
-                "Assistant cannot be disabled safely from this dialog.",
+                severity=AlertSeverity.WARNING,
+                title="Assistant Unavailable",
+                message="Assistant cannot be disabled safely from this dialog.",
             )
             return
         result = request(self.config)
         if not isinstance(result, RuntimeCommandAdmissionResult):
-            QMessageBox.warning(
+            show_alert(
                 self,
-                "Assistant Could Not Be Disabled",
-                "Assistant returned an invalid disable result.",
+                severity=AlertSeverity.WARNING,
+                title="Assistant Could Not Be Disabled",
+                message="Assistant returned an invalid disable result.",
             )
             return
         if result.status is RuntimeCommandAdmissionStatus.BUSY:
-            QMessageBox.information(
+            show_alert(
                 self,
-                "Assistant Is Busy",
-                result.message,
+                severity=AlertSeverity.INFORMATION,
+                title="Assistant Is Busy",
+                message=result.message,
             )
             return
         if not result.accepted:
-            QMessageBox.warning(
+            show_alert(
                 self,
-                "Assistant Could Not Be Disabled",
-                result.message or "Assistant could not be disabled safely.",
+                severity=AlertSeverity.WARNING,
+                title="Assistant Could Not Be Disabled",
+                message=result.message or "Assistant could not be disabled safely.",
             )
             return
         if self.config.local_model_enabled:

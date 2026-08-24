@@ -151,8 +151,10 @@ def widget(qtbot, monkeypatch) -> Saliency3DPlotWidget:
 
 
 def _select_class(widget: Saliency3DPlotWidget, name: str) -> None:
+    index = widget.class_combo.findText(name)
+    widget._requested_class_key = widget.class_combo.itemData(index)
     widget._selector_syncing = True
-    widget.class_combo.setCurrentIndex(widget.class_combo.findData(name))
+    widget.class_combo.setCurrentIndex(index)
     widget._selector_syncing = False
 
 
@@ -307,3 +309,73 @@ def test_stale_prepared_engine_result_is_not_cached_or_rendered(
     assert not widget._prepared_engine_cache
     widget._do_3d_plot_if_alive.assert_not_called()
     widget._engine_worker = None
+
+
+def test_stale_engine_failure_does_not_clear_a_newer_active_scene(
+    widget: Saliency3DPlotWidget,
+) -> None:
+    publication = _publication(generation=32)
+    stale_request_id = widget._invalidate_async_requests()
+    widget._current_publication_generation = publication.generation
+    worker = object()
+    widget._engine_worker = worker
+
+    widget._invalidate_async_requests()
+    widget._current_publication_generation = publication.generation + 1
+    newer_scene_key = ("newer-scene",)
+    widget._active_scene_key = newer_scene_key
+    widget._on_3d_engine_error(
+        worker,
+        stale_request_id,
+        (RuntimeError, RuntimeError("stale engine failure"), ""),
+        publication_generation=publication.generation,
+    )
+
+    assert widget._active_scene_key == newer_scene_key
+    widget._engine_worker = None
+
+
+def test_cached_engine_failure_releases_scene_key_for_identical_retry(
+    widget: Saliency3DPlotWidget,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    publication = _publication(generation=33)
+    monkeypatch.setattr(
+        widget,
+        "_cached_prepared_engine",
+        MagicMock(side_effect=RuntimeError("cached engine unavailable")),
+    )
+    widget.show_error = MagicMock()
+
+    widget.update_plot(publication, False)
+
+    assert widget._active_scene_key is None
+
+    prepared = (object(), 2)
+    monkeypatch.setattr(
+        widget,
+        "_cached_prepared_engine",
+        MagicMock(return_value=prepared),
+    )
+    widget.update_plot(publication, False)
+
+    widget._do_3d_plot_if_alive.assert_called_once()
+
+
+def test_cached_engine_failure_preserves_newer_scene_key(
+    widget: Saliency3DPlotWidget,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    publication = _publication(generation=34)
+    newer_scene_key = ("newer-scene",)
+
+    def fail_after_newer_scene_key(*_args, **_kwargs):
+        widget._active_scene_key = newer_scene_key
+        raise RuntimeError("cached engine unavailable")
+
+    monkeypatch.setattr(widget, "_cached_prepared_engine", fail_after_newer_scene_key)
+    widget.show_error = MagicMock()
+
+    widget.update_plot(publication, False)
+
+    assert widget._active_scene_key == newer_scene_key

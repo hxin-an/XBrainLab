@@ -1,6 +1,6 @@
 # UI 目前架構
 
-最後更新：`2026-08-21`
+最後更新：`2026-08-23`
 
 ## 範圍
 
@@ -76,6 +76,7 @@ Windows desktop acceptance。
 | `XBrainLab/ui/components/agent_manager.py` | UI 與 assistant / LLM controller 的接線層。 |
 | `XBrainLab/ui/components/assistant_command_dispatcher.py` | 把 assistant command 放進專用 Qt thread，管理 shutdown / retry ownership，不讓失敗 teardown 的 thread reference 被提前釋放。 |
 | `XBrainLab/ui/components/info_panel_service.py` | aggregate info panel 的集中更新服務；product runtime 由 command/navigation/observer shared refresh 呼叫 `MainWindow.update_info_panel()` -> `notify_all()`，mock / compatibility context 才可直接訂閱 `data_changed` / `preprocess_changed`。 |
+| `XBrainLab/ui/components/modal_presentation.py` | blocking alert／confirmation 的共用 presentation；caller仍擁有copy、confirmation policy與後續mutation，dialog只負責severity、compact geometry、long-text scroll與安全按鍵預設。 |
 | `XBrainLab/ui/owned_operation_presenter.py` | 只呈現 backend-owned operation snapshot，轉送 cancel intent，並防止較舊 operation 更新目前 control / status。 |
 | `XBrainLab/ui/chat/` | in-app assistant 的 chat UI。 |
 
@@ -155,7 +156,7 @@ blocked reason copy、command execution、post-command refresh，以及 mock / c
 | Preprocess / epoch | `preprocess`、`create_epoch` | filter / resample / rereference / normalize / epoch 走 owned command；epoch dialog 只讀 reviewed import handoff 綁定的 context。Visible action / status bar 顯示 matching operation stage，Cancel 後同一 workflow 可重試。 |
 | Dataset split / training config | `configure_dataset_split`、`clear_datasets`、`configure_training` | split Confirm 只保存 specification / fingerprint / preview receipt；model selection 與 training settings defaults 不再以 stale controller echo 判定 service success。 |
 | Training | `train`、`stop_training` | enabled capability 直接 dispatch confirmed owned command；Stop 是 lock-independent control acknowledgement，terminal state仍由 matching training publication 決定。controller running checks 只在 no-capability fallback。 |
-| Evaluation / visualization / saliency | `evaluate`、`visualize`、`saliency` | Model Summary、metrics、Saliency publication 與 render preparation 在 background work 執行，以 request / generation / producer identity 擋 stale result。Training terminal 不自動算 Saliency；visible `Compute Saliency` 是唯一 product admission。 |
+| Evaluation / visualization / saliency | `evaluate`、`visualize`、`saliency` | Model Summary、metrics、Saliency publication 與 render preparation 在 background work 執行，以 request / generation / producer identity 擋 stale result。Detached Evaluation render不呈現user-owned Cancel；Training terminal不自動算 Saliency，visible `Compute Saliency` 是唯一 product admission。Evaluation-admitted但未計算的Fold仍列出並fail closed到Compute提示。 |
 | Montage | `QueryStateCommand(state)`、`apply_montage` | dialog channel defaults 走 state query；confirmed positions 走 `ApplyMontageCommand`；picker/matching 仍是 UI request。 |
 | Chat diagnostics | `ApplicationViewPublication` | assistant status、decision context、tool policy 讀同一 generation 的 state/capability，不把 missing capability 顯示成 debug error。 |
 

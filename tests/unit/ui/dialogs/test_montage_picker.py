@@ -199,8 +199,7 @@ class TestAcceptReject:
 
     def test_reset_saved_settings(self, dialog):
         with patch(
-            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog."
-            "QMessageBox.information"
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.show_information"
         ) as information:
             dialog.reset_saved_settings()
 
@@ -229,7 +228,7 @@ class TestMontagePickerEdgeCases:
     def test_accept_no_mapped_channels(self, dialog):
         dialog.clear_selections()
         with patch(
-            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.QMessageBox.warning"
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.show_warning"
         ):
             dialog.accept()
         # Should not accept
@@ -246,7 +245,8 @@ class TestMontagePickerEdgeCases:
                 side_effect=RuntimeError("bad montage"),
             ),
             patch(
-                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.QMessageBox.critical"
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog."
+                "present_unexpected_error"
             ),
         ):
             dialog.accept()
@@ -259,8 +259,8 @@ class TestMontagePickerEdgeCases:
                 return_value=["standard_1020"],
             ),
             patch(
-                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.QMessageBox"
-            ) as mock_mb,
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.show_error"
+            ) as mock_error,
         ):
             from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
                 PickMontageDialog,
@@ -268,7 +268,7 @@ class TestMontagePickerEdgeCases:
 
             dlg = PickMontageDialog(parent=None, channel_names=[])
             qtbot.addWidget(dlg)
-            mock_mb.critical.assert_called_once()
+            mock_error.assert_called_once()
 
     def test_on_montage_select_error(self, dialog):
         with (
@@ -277,7 +277,8 @@ class TestMontagePickerEdgeCases:
                 side_effect=RuntimeError("fail"),
             ),
             patch(
-                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.QMessageBox.warning"
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog."
+                "present_unexpected_error"
             ),
         ):
             dialog.on_montage_select("standard_1020")

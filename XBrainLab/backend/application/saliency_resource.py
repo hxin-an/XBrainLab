@@ -100,7 +100,7 @@ class SaliencyResourceAdmission:
         preflight: ResourcePreflightResult,
     ) -> ResourcePreflightResult:
         """Consume a matching receipt or raise a backend-issued challenge."""
-        annotated = self._annotate(params, preflight)
+        annotated = self._annotate(command, params, preflight)
         token = command.resource_preflight_token
         with self._lock:
             if annotated.blocking:
@@ -144,13 +144,26 @@ class SaliencyResourceAdmission:
 
     @staticmethod
     def _annotate(
+        command: SaliencyCommand,
         params: dict[str, Any],
         preflight: ResourcePreflightResult,
     ) -> ResourcePreflightResult:
+        target = command.target
+        target_serializer = getattr(target, "to_dict", None)
+        target_payload = target_serializer() if callable(target_serializer) else None
+        raw_members = getattr(target, "members", None)
+        target_member_count = (
+            len(raw_members)
+            if isinstance(raw_members, tuple)
+            else 1
+            if target is not None
+            else None
+        )
         configuration_fingerprint = fingerprint_resource_scope(
             {
                 "command": CommandName.SALIENCY.value,
                 "params": params,
+                "target": target_payload,
             }
         )
         preflight_fingerprint = fingerprint_resource_preflight(
@@ -172,6 +185,7 @@ class SaliencyResourceAdmission:
         return _with_diagnostics(
             preflight,
             payload_type="saliency_resource_preflight",
+            target_member_count=target_member_count,
             configuration_fingerprint=configuration_fingerprint,
             preflight_fingerprint=preflight_fingerprint,
             scope_fingerprint=scope_fingerprint,

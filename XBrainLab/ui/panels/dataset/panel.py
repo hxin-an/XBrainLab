@@ -12,7 +12,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QMessageBox,
     QPushButton,
     QSizePolicy,
     QStackedWidget,
@@ -55,6 +54,7 @@ from XBrainLab.ui.application_capabilities import (
 from XBrainLab.ui.application_publication_renderer import (
     ApplicationPublicationRenderLedger,
 )
+from XBrainLab.ui.components.modal_presentation import show_warning
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
@@ -485,7 +485,7 @@ class DatasetPanel(BasePanel):
             )
         except ControllerCompatibilityUnavailableError:
             logger.warning("Blocked compatibility loader apply in real Study context.")
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Import EEG Data",
                 "Use Import Data so the data goes through the guided import workflow.",
@@ -991,7 +991,7 @@ class DatasetPanel(BasePanel):
         action_description: str,
         detail: str,
     ) -> None:
-        QMessageBox.warning(
+        show_warning(
             self,
             title,
             f"{detail}\n\nRefresh the Dataset table before you "
@@ -1074,7 +1074,7 @@ class DatasetPanel(BasePanel):
         if selection.publication_generation is None and has_real_application_context(
             self
         ):
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Metadata blocked",
                 _METADATA_AVAILABILITY_UNAVAILABLE,
@@ -1087,7 +1087,7 @@ class DatasetPanel(BasePanel):
             else get_command_capability(self, CommandName.UPDATE_METADATA)
         )
         if metadata_capability is None and has_real_application_context(self):
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Metadata blocked",
                 _METADATA_AVAILABILITY_UNAVAILABLE,
@@ -1095,7 +1095,7 @@ class DatasetPanel(BasePanel):
             self.update_panel()
             return
         if metadata_capability is not None and not metadata_capability.enabled:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Metadata blocked",
                 blocked_reason(
@@ -1123,7 +1123,7 @@ class DatasetPanel(BasePanel):
                 expected_publication_generation=expected_generation,
             )
             if result is None:
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Metadata blocked",
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -1136,7 +1136,7 @@ class DatasetPanel(BasePanel):
                     if is_stale_publication_result(result)
                     else "Metadata blocked"
                 )
-                QMessageBox.warning(self, title, result.message)
+                show_warning(self, title, result.message)
                 self._restore_rejected_metadata_edit()
                 return
         elif col == 2:  # Session
@@ -1146,7 +1146,7 @@ class DatasetPanel(BasePanel):
                 expected_publication_generation=expected_generation,
             )
             if result is None:
-                QMessageBox.warning(
+                show_warning(
                     self,
                     "Metadata blocked",
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
@@ -1159,6 +1159,6 @@ class DatasetPanel(BasePanel):
                     if is_stale_publication_result(result)
                     else "Metadata blocked"
                 )
-                QMessageBox.warning(self, title, result.message)
+                show_warning(self, title, result.message)
                 self._restore_rejected_metadata_edit()
                 return

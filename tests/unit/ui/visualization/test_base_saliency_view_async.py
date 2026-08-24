@@ -7,6 +7,7 @@ import threading
 import time
 import weakref
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -20,6 +21,14 @@ from XBrainLab.ui.panels.visualization.saliency_views import base_saliency_view
 from XBrainLab.ui.panels.visualization.saliency_views.base_saliency_view import (
     BaseSaliencyView,
 )
+from XBrainLab.ui.panels.visualization.saliency_views.map_view import SaliencyMapWidget
+from XBrainLab.ui.panels.visualization.saliency_views.spectrogram_view import (
+    SaliencySpectrogramWidget,
+)
+from XBrainLab.ui.panels.visualization.saliency_views.topomap_view import (
+    SaliencyTopographicMapWidget,
+)
+from XBrainLab.ui.styles.theme import Theme
 
 
 def test_saliency_render_returns_before_background_work_finishes(qtbot):
@@ -66,6 +75,55 @@ def test_saliency_render_result_is_published_on_widget_thread(qtbot):
         qtbot.waitUntil(lambda: bool(publish_threads), timeout=3000)
 
     assert publish_threads == [view.thread()]
+
+
+def test_detail_canvas_zoom_pan_and_reset_follow_replacement_canvas(qtbot):
+    view = BaseSaliencyView()
+    qtbot.addWidget(view)
+    first = Figure()
+    first_axis = first.add_subplot(111)
+    first_axis.imshow([[0.0, 1.0], [2.0, 3.0]])
+    assert view._replace_figure(first) is True
+    initial_xlim = first_axis.get_xlim()
+    initial_ylim = first_axis.get_ylim()
+
+    view._on_canvas_scroll(
+        SimpleNamespace(
+            inaxes=first_axis,
+            xdata=0.5,
+            ydata=0.5,
+            step=1,
+        )
+    )
+    assert first_axis.get_xlim() != initial_xlim
+    view._on_canvas_press(
+        SimpleNamespace(
+            button=1,
+            inaxes=first_axis,
+            xdata=0.5,
+            ydata=0.5,
+        )
+    )
+    view._on_canvas_motion(
+        SimpleNamespace(
+            inaxes=first_axis,
+            xdata=0.7,
+            ydata=0.8,
+        )
+    )
+    view._on_canvas_release(SimpleNamespace())
+    view.reset_view()
+    assert first_axis.get_xlim() == pytest.approx(initial_xlim)
+    assert first_axis.get_ylim() == pytest.approx(initial_ylim)
+
+    second = Figure()
+    second_axis = second.add_subplot(111)
+    second_axis.imshow([[5.0, 6.0], [7.0, 8.0]])
+    assert view._replace_figure(second) is True
+
+    assert id(first_axis) not in view._initial_axis_limits
+    assert id(second_axis) in view._initial_axis_limits
+    assert view._pan_state is None
 
 
 def test_cross_view_worker_waits_until_gui_install_is_terminal(qtbot):
@@ -805,3 +863,51 @@ def test_replaced_figure_becomes_visible_after_loading_state(qtbot):
     assert view.canvas is not None
     assert view.canvas.isVisibleTo(view)
     assert view.error_label.isHidden()
+
+
+def test_pre_result_message_uses_warning_color_but_errors_remain_error_colored(qtbot):
+    """Readiness guidance is visually distinct without weakening error affordance."""
+    view = BaseSaliencyView()
+    qtbot.addWidget(view)
+
+    view.show_message("Gradient saliency has not been computed for this fold.")
+
+    assert "color: " + Theme.WARNING in view.error_label.styleSheet()
+
+    view.show_error("rendering failed")
+
+    assert "color: " + Theme.ACCENT_ERROR in view.error_label.styleSheet()
+
+
+@pytest.mark.parametrize(
+    "view_type",
+    (SaliencyMapWidget, SaliencySpectrogramWidget, SaliencyTopographicMapWidget),
+)
+def test_initial_2d_saliency_canvas_prompt_uses_warning_color(qtbot, view_type):
+    view = view_type()
+    qtbot.addWidget(view)
+
+    assert view.fig is not None
+    prompt = view.fig.axes[0].texts[0]
+    assert prompt.get_text() == "Select a fold and method to visualize"
+    assert prompt.get_color() == Theme.WARNING
+
+
+def test_scrollable_map_placeholder_hides_plot_surface_and_centers_message(qtbot):
+    """An empty Saliency Map must not reserve its hidden scroll canvas height."""
+    view = SaliencyMapWidget()
+    qtbot.addWidget(view)
+    view.resize(640, 360)
+    view.show()
+    qtbot.waitExposed(view)
+
+    view.show_message("Gradient saliency has not been computed for this fold.")
+    qtbot.wait(0)
+
+    assert view._canvas_scroll_area is not None
+    assert view._canvas_scroll_area.isHidden()
+    assert view.error_label.isVisible()
+    assert (
+        abs(view.error_label.geometry().center().y() - view.contentsRect().center().y())
+        <= 3
+    )

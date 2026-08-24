@@ -18,7 +18,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -35,6 +34,12 @@ from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
     execute_application_command_async,
     is_stale_publication_result,
+)
+from XBrainLab.ui.components.modal_presentation import (
+    AlertSeverity,
+    ask_confirmation,
+    show_error,
+    show_warning,
 )
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
@@ -288,7 +293,7 @@ class ImportLabelDialog(BaseDialog):
             raw_summary = getattr(result, "diagnostics", {}).get("label_preview")
             if not isinstance(raw_summary, Mapping):
                 self._clear_preview("The backend returned an invalid label preview.")
-                QMessageBox.critical(
+                show_error(
                     self,
                     "Label Preview Failed",
                     "The backend returned an invalid label preview.",
@@ -323,7 +328,7 @@ class ImportLabelDialog(BaseDialog):
         if not started:
             self._set_preview_busy(False)
             self._clear_preview("Label preview is unavailable.")
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Label Preview Unavailable",
                 "The application backend is unavailable for label review.",
@@ -332,7 +337,7 @@ class ImportLabelDialog(BaseDialog):
     def _handle_preview_failure(self, result: Any) -> InteractionOutcome:
         if is_stale_publication_result(result):
             self._clear_preview("The loaded data changed. Review label import again.")
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Review Label Import Again",
                 str(result.message),
@@ -356,15 +361,15 @@ class ImportLabelDialog(BaseDialog):
             and preflight.challenge is not None
             and error_type == ErrorType.CONFIRMATION_REQUIRED.value
         ):
-            reply = QMessageBox.question(
+            confirmed = ask_confirmation(
                 self,
-                "Label Resource Check",
-                (preflight.message or result.message)
+                severity=AlertSeverity.WARNING,
+                title="Label Resource Check",
+                message=(preflight.message or result.message)
                 + "\n\nContinue reviewing these label files?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
+                confirm_text="Continue",
             )
-            if reply == QMessageBox.StandardButton.Yes:
+            if confirmed:
                 self._request_preview(
                     confirmed=True,
                     token=preflight.challenge.challenge_id,
@@ -375,7 +380,7 @@ class ImportLabelDialog(BaseDialog):
             self._clear_preview("Label review was cancelled.")
             return InteractionOutcome.cancelled("Label review was cancelled.")
         self._clear_preview("Label preview failed.")
-        QMessageBox.critical(self, "Label Preview Failed", str(result.message))
+        show_error(self, "Label Preview Failed", str(result.message))
         return InteractionOutcome.blocked(str(result.message))
 
     def _apply_preview_summary(self, summary: Mapping[str, Any]) -> None:
@@ -508,20 +513,20 @@ class ImportLabelDialog(BaseDialog):
 
     def accept(self) -> None:
         if self._preview_pending:
-            QMessageBox.warning(self, "Warning", "Label review is still running.")
+            show_warning(self, "Warning", "Label review is still running.")
             return
         selection, mapping = self.get_results()
         if selection is None:
-            QMessageBox.warning(self, "Warning", "No labels have been reviewed.")
+            show_warning(self, "Warning", "No labels have been reviewed.")
             return
         if selection.mode == "mixed":
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Warning",
                 "Timestamp and sequence label files cannot be mixed in one import.",
             )
             return
         if not mapping or len(mapping) != len(self.unique_labels):
-            QMessageBox.warning(self, "Warning", "Please provide all event names.")
+            show_warning(self, "Warning", "Please provide all event names.")
             return
         super().accept()

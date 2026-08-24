@@ -12,7 +12,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
-    QMessageBox,
     QSizePolicy,
     QSpinBox,
     QTabWidget,
@@ -29,6 +28,7 @@ from XBrainLab.backend.application.saliency_policy import (
     selected_saliency_methods_from_params,
 )
 from XBrainLab.backend.visualization import supported_saliency_methods
+from XBrainLab.ui.components.modal_presentation import show_warning
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
@@ -250,7 +250,7 @@ class SaliencySettingDialog(BaseDialog):
             super().accept()
 
         except ValueError:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Validation Error",
                 "Select at least one saliency method and review its parameters.",

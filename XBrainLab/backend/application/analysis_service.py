@@ -291,6 +291,31 @@ class AnalysisCommandService:
             if available_views
             else "No visualization views are ready yet."
         )
+        holders = tuple(self.training_runtime.training_plan_holders())
+        saliency_cross_fold_choices = build_saliency_cross_fold_choices(holders)
+        saliency_choice_members = {
+            tuple(
+                (member.plan.plan_index, member.run_index)
+                for member in choice.identity.members
+            )
+            for choice in saliency_cross_fold_choices
+        }
+        evaluation_cross_fold_choices = []
+        for choice in build_evaluation_cross_fold_choices(holders):
+            payload = choice.to_dict()
+            members = tuple(
+                (member.plan.plan_index, member.run_index)
+                for member in choice.identity.members
+            )
+            available = members in saliency_choice_members
+            payload["saliency_available"] = available
+            payload["saliency_reason"] = (
+                ""
+                if available
+                else "Saliency has not been computed for this Fold Set. "
+                "Use Compute Saliency to continue."
+            )
+            evaluation_cross_fold_choices.append(payload)
         diagnostics: dict[str, Any] = {
             "payload_type": "visualization_summary",
             "available": bool(available_views),
@@ -311,11 +336,9 @@ class AnalysisCommandService:
             "saliency_configured": state.visualization.saliency_configured,
             "saliency_available": state.visualization.saliency_available,
             "saliency_cross_fold_choices": [
-                choice.to_dict()
-                for choice in build_saliency_cross_fold_choices(
-                    self.training_runtime.training_plan_holders()
-                )
+                choice.to_dict() for choice in saliency_cross_fold_choices
             ],
+            "evaluation_cross_fold_choices": evaluation_cross_fold_choices,
         }
         return (
             message,
@@ -337,7 +360,11 @@ class AnalysisCommandService:
                 raise PreconditionError("; ".join(configure_reasons))
             automatic_target = current_post_training_saliency_target()
             if automatic_target is not None and automatic_target.explicit:
-                params = self._accumulated_saliency_recompute_params(params, state)
+                params = self._accumulated_saliency_recompute_params(
+                    params,
+                    state,
+                    selected_members=automatic_target.selected_members,
+                )
             resource_preflight = self._saliency_resource_preflight(
                 command,
                 params,
@@ -501,11 +528,19 @@ class AnalysisCommandService:
         self,
         incoming_params: dict[str, Any],
         state: ApplicationStateSnapshot,
+        *,
+        selected_members: tuple[tuple[int, int], ...] | None = None,
     ) -> dict[str, Any]:
-        """Add verified completed methods to one explicit full recomputation."""
+        """Retain completed methods for exactly the records being replaced."""
+        selected = set(selected_members) if selected_members is not None else None
+        coverage = tuple(
+            run
+            for run in state.visualization.saliency_coverage
+            if selected is None or (run.plan_index, run.run_index) in selected
+        )
         completed_methods = {
             method.method
-            for run in state.visualization.saliency_coverage
+            for run in coverage
             for method in run.methods
             if method.available and method.complete
         }
@@ -516,6 +551,7 @@ class AnalysisCommandService:
         retained_params = self._retained_saliency_method_params(
             state,
             retained_advanced,
+            selected_members=selected,
         )
         try:
             return merge_saliency_recompute_params(
@@ -530,6 +566,8 @@ class AnalysisCommandService:
         self,
         state: ApplicationStateSnapshot,
         retained_methods: set[str],
+        *,
+        selected_members: set[tuple[int, int]] | None = None,
     ) -> dict[str, dict[str, Any]]:
         if not retained_methods:
             return {}
@@ -542,6 +580,15 @@ class AnalysisCommandService:
 
         retained: dict[str, dict[str, Any]] = {}
         for run_coverage in state.visualization.saliency_coverage:
+            if (
+                selected_members is not None
+                and (
+                    run_coverage.plan_index,
+                    run_coverage.run_index,
+                )
+                not in selected_members
+            ):
+                continue
             covered_methods = {
                 method.method
                 for method in run_coverage.methods

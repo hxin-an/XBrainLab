@@ -71,7 +71,9 @@ from XBrainLab.backend.application.bids_montage_preparation import (
 from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.errors import ApplicationError
 from XBrainLab.backend.application.evaluation_render import (
+    EvaluationCrossFoldIdentity,
     EvaluationPlanIdentity,
+    EvaluationRunIdentity,
     EvaluationSummaryIdentity,
 )
 from XBrainLab.backend.application.montage_preparation_lifecycle import (
@@ -90,6 +92,11 @@ from XBrainLab.backend.application.resource_guard import (
     TrainingResourcePreviewRequest,
     TrainingResourcePreviewResult,
     TrainingResourceRefinement,
+)
+from XBrainLab.backend.application.saliency_render import (
+    SaliencyCrossFoldIdentity,
+    SaliencyPlanIdentity,
+    SaliencyRunIdentity,
 )
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
@@ -8034,6 +8041,303 @@ def test_explicit_saliency_compute_runs_outside_shared_command_lock() -> None:
     assert service.training_runtime.saliency_status().phase is (
         PostTrainingSaliencyPhase.SUCCEEDED
     )
+
+
+def test_targeted_saliency_rejects_a_second_command_while_work_is_active() -> None:
+    service, trainer, _holder, _record, _old_eval_record = _saliency_recompute_service()
+    trainer._terminal_outcome = TrainingTerminalOutcome(
+        state=TrainingOutcomeState.COMPLETED,
+        run=TrainingRunIdentity(
+            trainer_id=trainer.get_state_snapshot_identity(),
+            run_id=1,
+        ),
+    )
+    selected = SaliencyRunIdentity(
+        plan=SaliencyPlanIdentity(plan_index=0),
+        run_index=0,
+    )
+    compute_started = Event()
+    release_compute = Event()
+
+    def evaluate(*_args, **_kwargs):
+        compute_started.set()
+        assert release_compute.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        return MagicMock()
+
+    command = SaliencyCommand(
+        method="Gradient",
+        params={
+            "profile": "recommended",
+            "methods": ["Gradient", "Gradient * Input"],
+        },
+        target=selected,
+    )
+    with patch.object(
+        Evaluator,
+        "evaluate_with_saliency",
+        side_effect=evaluate,
+    ) as evaluator:
+        first = service.execute(command)
+        assert first.ok is True
+        assert compute_started.wait(timeout=THREAD_WATCHDOG_SECONDS)
+        executor = ThreadPoolExecutor(max_workers=1)
+        try:
+            second_future = executor.submit(service.execute, command)
+            second = second_future.result(timeout=1.0)
+        finally:
+            release_compute.set()
+            executor.shutdown(wait=True)
+        assert service.wait_for_background_tasks(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert second.failed is True
+    assert second.error_type is ErrorType.PRECONDITION
+    assert second.recoverable is True
+    assert second.diagnostics["saliency_compute_active"] is True
+    assert evaluator.call_count == 1
+    assert service.training_runtime.saliency_status().phase is (
+        PostTrainingSaliencyPhase.SUCCEEDED
+    )
+
+
+def test_explicit_saliency_compute_mutates_only_the_selected_run() -> None:
+    service, trainer, holder, first_record, _old_eval_record = (
+        _saliency_recompute_service()
+    )
+    second_record = object.__new__(TrainRecord)
+    second_record._state_tracker = None
+    second_record.epoch = first_record.epoch
+    second_record.option = first_record.option
+    second_record.eval_record = cast(Any, object())
+    second_record.model = first_record.model
+    second_record.repeat = 1
+    second_record.seed = 8
+    second_record.plan_id = first_record.plan_id
+    second_record.model_identity = first_record.model_identity
+    holder.train_record_list.append(second_record)
+    run = TrainingRunIdentity(
+        trainer_id=trainer.get_state_snapshot_identity(),
+        run_id=1,
+    )
+    trainer._terminal_outcome = TrainingTerminalOutcome(
+        state=TrainingOutcomeState.COMPLETED,
+        run=run,
+    )
+    selected = SaliencyRunIdentity(
+        plan=SaliencyPlanIdentity(plan_index=0),
+        run_index=0,
+    )
+    replacement = MagicMock()
+    second_before = second_record.eval_record
+
+    with patch.object(
+        Evaluator,
+        "evaluate_with_saliency",
+        return_value=replacement,
+    ) as evaluate:
+        result = service.execute(
+            SaliencyCommand(
+                method="Gradient",
+                params={
+                    "profile": "recommended",
+                    "methods": ["Gradient", "Gradient * Input"],
+                },
+                target=selected,
+            )
+        )
+        assert result.ok is True
+        assert service.wait_for_background_tasks(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert evaluate.call_count == 1
+    assert first_record.get_saliency_eval_record() is replacement
+    assert second_record.get_saliency_eval_record() is second_before
+
+
+def test_explicit_saliency_compute_rejects_a_stale_selected_run() -> None:
+    service, trainer, _holder, _record, _old_eval_record = _saliency_recompute_service()
+    trainer._terminal_outcome = TrainingTerminalOutcome(
+        state=TrainingOutcomeState.COMPLETED,
+        run=TrainingRunIdentity(
+            trainer_id=trainer.get_state_snapshot_identity(),
+            run_id=1,
+        ),
+    )
+    stale = SaliencyRunIdentity(
+        plan=SaliencyPlanIdentity(plan_index=0),
+        run_index=9,
+    )
+
+    with patch.object(Evaluator, "evaluate_with_saliency") as evaluate:
+        result = service.execute(
+            SaliencyCommand(
+                method="Gradient",
+                params={
+                    "profile": "recommended",
+                    "methods": ["Gradient", "Gradient * Input"],
+                },
+                target=stale,
+            )
+        )
+
+    assert result.failed is True
+    assert result.error_type is ErrorType.PRECONDITION
+    assert result.recoverable is True
+    assert result.diagnostics["stale_saliency_target"] is True
+    evaluate.assert_not_called()
+
+
+def test_explicit_saliency_compute_rejects_a_run_missing_from_current_coverage() -> (
+    None
+):
+    service, trainer, _holder, _record, _old_eval_record = _saliency_recompute_service()
+    trainer._terminal_outcome = TrainingTerminalOutcome(
+        state=TrainingOutcomeState.COMPLETED,
+        run=TrainingRunIdentity(
+            trainer_id=trainer.get_state_snapshot_identity(),
+            run_id=1,
+        ),
+    )
+    selected = SaliencyRunIdentity(
+        plan=SaliencyPlanIdentity(plan_index=0),
+        run_index=0,
+    )
+    current = service.get_state()
+    without_coverage = replace(
+        current,
+        visualization=replace(current.visualization, saliency_coverage=[]),
+    )
+
+    with (
+        patch.object(
+            service,
+            "_state_before_command",
+            return_value=without_coverage,
+        ),
+        patch.object(Evaluator, "evaluate_with_saliency") as evaluate,
+    ):
+        result = service.execute(
+            SaliencyCommand(
+                method="Gradient",
+                params={
+                    "profile": "recommended",
+                    "methods": ["Gradient", "Gradient * Input"],
+                },
+                target=selected,
+            )
+        )
+
+    assert result.failed is True
+    assert result.error_type is ErrorType.PRECONDITION
+    assert result.recoverable is True
+    assert result.diagnostics["stale_saliency_target"] is True
+    evaluate.assert_not_called()
+
+
+def test_explicit_saliency_compute_admits_one_exact_cross_fold_batch() -> None:
+    service, trainer, _first_holder, _first_record, _old_eval_record = (
+        _saliency_recompute_service()
+    )
+    _other_service, _other_trainer, second_holder, _second_record, _other_old = (
+        _saliency_recompute_service()
+    )
+    trainer.add_plan(second_holder)
+    run = TrainingRunIdentity(
+        trainer_id=trainer.get_state_snapshot_identity(),
+        run_id=1,
+    )
+    trainer._terminal_outcome = TrainingTerminalOutcome(
+        state=TrainingOutcomeState.COMPLETED,
+        run=run,
+    )
+    target = SaliencyCrossFoldIdentity(
+        members=(
+            SaliencyRunIdentity(SaliencyPlanIdentity(0), 0),
+            SaliencyRunIdentity(SaliencyPlanIdentity(1), 0),
+        )
+    )
+    admitted = SimpleNamespace(
+        identity=EvaluationCrossFoldIdentity(
+            members=(
+                EvaluationRunIdentity(EvaluationPlanIdentity(0), 0),
+                EvaluationRunIdentity(EvaluationPlanIdentity(1), 0),
+            )
+        )
+    )
+
+    with (
+        patch(
+            "XBrainLab.backend.application.service.build_evaluation_cross_fold_choices",
+            return_value=(admitted,),
+        ),
+        patch.object(
+            Evaluator,
+            "evaluate_with_saliency",
+            side_effect=(MagicMock(), MagicMock()),
+        ) as evaluate,
+    ):
+        result = service.execute(
+            SaliencyCommand(
+                method="Gradient",
+                params={
+                    "profile": "recommended",
+                    "methods": ["Gradient", "Gradient * Input"],
+                },
+                target=target,
+            )
+        )
+        assert result.ok is True
+        assert service.wait_for_background_tasks(timeout=THREAD_WATCHDOG_SECONDS)
+
+    assert evaluate.call_count == 2
+    assert service.training_runtime.saliency_status().phase is (
+        PostTrainingSaliencyPhase.SUCCEEDED
+    )
+
+
+def test_explicit_saliency_compute_rejects_an_unadmitted_cross_fold_batch() -> None:
+    service, trainer, _first_holder, _first_record, _old_eval_record = (
+        _saliency_recompute_service()
+    )
+    _other_service, _other_trainer, second_holder, _second_record, _other_old = (
+        _saliency_recompute_service()
+    )
+    trainer.add_plan(second_holder)
+    trainer._terminal_outcome = TrainingTerminalOutcome(
+        state=TrainingOutcomeState.COMPLETED,
+        run=TrainingRunIdentity(
+            trainer_id=trainer.get_state_snapshot_identity(),
+            run_id=1,
+        ),
+    )
+    target = SaliencyCrossFoldIdentity(
+        members=(
+            SaliencyRunIdentity(SaliencyPlanIdentity(0), 0),
+            SaliencyRunIdentity(SaliencyPlanIdentity(1), 0),
+        )
+    )
+
+    with (
+        patch(
+            "XBrainLab.backend.application.service.build_evaluation_cross_fold_choices",
+            return_value=(),
+        ),
+        patch.object(Evaluator, "evaluate_with_saliency") as evaluate,
+    ):
+        result = service.execute(
+            SaliencyCommand(
+                method="Gradient",
+                params={
+                    "profile": "recommended",
+                    "methods": ["Gradient", "Gradient * Input"],
+                },
+                target=target,
+            )
+        )
+
+    assert result.failed is True
+    assert result.error_type is ErrorType.PRECONDITION
+    assert result.recoverable is True
+    assert result.diagnostics["stale_saliency_target"] is True
+    evaluate.assert_not_called()
 
 
 def test_application_service_explicit_saliency_recompute_accumulates_committed_methods() -> (

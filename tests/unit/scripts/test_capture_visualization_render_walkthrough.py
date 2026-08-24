@@ -5,11 +5,20 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import numpy as np
+import pytest
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 from PIL import Image
 from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QLabel, QMainWindow, QTabWidget, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QScrollArea,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from scripts.dev import capture_visualization_render_walkthrough as capture_script
 from scripts.dev.capture_visualization_render_walkthrough import (
@@ -98,10 +107,7 @@ def test_capture_saliency_uses_explicit_panel_action_and_waits_for_terminal(
 
 
 def test_explanation_context_comes_from_information_control(qapp) -> None:
-    expected = (
-        "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · "
-        "True class · Mean over EEG epochs"
-    )
+    expected = "A01T.gdf +2 files · Fold 1 · Run 1 · True class · Mean over EEG epochs"
     tabs = QTabWidget()
     tabs.setToolTip(expected)
     panel = SimpleNamespace(tabs=tabs)
@@ -112,12 +118,16 @@ def test_explanation_context_comes_from_information_control(qapp) -> None:
 def test_visualization_provenance_contract_requires_result_identity() -> None:
     aggregation = "True class · Mean over EEG epochs"
     assert _provenance_context_matches(
-        "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · " + aggregation,
+        "A01T.gdf +2 files · Fold 1 · Run 1 · " + aggregation,
         aggregation,
     )
     assert not _provenance_context_matches(aggregation, aggregation)
     assert not _provenance_context_matches(
-        "Fold 1 (EEGNet) · Run 1 · " + aggregation,
+        "Fold 1 · Run 1 · " + aggregation,
+        aggregation,
+    )
+    assert not _provenance_context_matches(
+        "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · " + aggregation,
         aggregation,
     )
 
@@ -362,6 +372,58 @@ def test_matplotlib_window_capture_falls_back_to_visible_qt_canvas(
         assert red > green > blue
 
 
+def test_matplotlib_window_capture_preserves_scroll_area_canvas(
+    qapp,
+    tmp_path,
+) -> None:
+    class FramebufferCanvas(QWidget):
+        def draw(self) -> None:
+            return None
+
+        def buffer_rgba(self) -> np.ndarray:
+            frame = np.zeros((60, 160, 4), dtype=np.uint8)
+            frame[:, :, 0] = 180
+            frame[:, :, 1] = 70
+            frame[:, :, 2] = 45
+            frame[:, :, 3] = 255
+            return frame
+
+    window = QMainWindow()
+    content = QWidget()
+    layout = QHBoxLayout(content)
+    scroll_area = QScrollArea()
+    scroll_area.setWidgetResizable(False)
+    canvas = FramebufferCanvas()
+    canvas.setFixedSize(260, 180)
+    scroll_area.setWidget(canvas)
+    sidebar = QLabel("Sidebar")
+    sidebar.setStyleSheet("background: rgb(20, 150, 40); color: white;")
+    sidebar.setFixedWidth(90)
+    layout.addWidget(scroll_area, 1)
+    layout.addWidget(sidebar)
+    window.setCentralWidget(content)
+    window.resize(340, 240)
+    window.show()
+    qapp.processEvents()
+    geometry = capture_script._widget_geometry(canvas, window)
+    screenshot = tmp_path / "scrollable-matplotlib-window.png"
+
+    capture_code = _capture_matplotlib_window(
+        window,
+        canvas,
+        screenshot,
+        canvas_geometry=geometry,
+        validate_complete=False,
+    )
+
+    assert capture_code == 0
+    assert scroll_area.widget() is canvas
+    assert canvas.isVisible()
+    with Image.open(screenshot) as image:
+        red, green, blue = image.getpixel((300, 120))
+        assert green > blue > red
+
+
 def test_three_d_artifact_claims_follow_the_actual_runtime() -> None:
     blocked = _three_d_runtime_contract(
         platform_name="offscreen",
@@ -492,13 +554,13 @@ def _transform_controls(tab: str, *, absolute_visible: bool) -> dict[str, object
             "visible": absolute_visible,
             "enabled": absolute_visible,
             "checked": True,
-            "grid_position": [0, 6, 1, 1],
+            "grid_position": [0, 7, 1, 1] if absolute_visible else [],
         },
         "normalize": {
             "visible": True,
             "enabled": True,
             "checked": True,
-            "grid_position": [0, 7, 1, 1],
+            "grid_position": [0, 6, 1, 1],
         },
         "selector_geometry": {
             "plan": [10, 12, 160, 28],
@@ -572,7 +634,7 @@ def _base_payload():
                     "Saliency Map", absolute_visible=True
                 ),
                 "explanation_context": (
-                    "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · "
+                    "A01T.gdf +2 files · Fold 1 · Run 1 · "
                     "True class · Mean over EEG epochs"
                 ),
                 "screenshot": "map.png",
@@ -591,7 +653,7 @@ def _base_payload():
                     "Spectrogram", absolute_visible=False
                 ),
                 "explanation_context": (
-                    "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · "
+                    "A01T.gdf +2 files · Fold 1 · Run 1 · "
                     "True class · Mean magnitude over EEG epochs and channels"
                 ),
                 "screenshot": "spectrogram.png",
@@ -610,7 +672,7 @@ def _base_payload():
                     "Topographic Map", absolute_visible=True
                 ),
                 "explanation_context": (
-                    "A01T.gdf +2 files · Fold 1 (EEGNet) · Run 1 · "
+                    "A01T.gdf +2 files · Fold 1 · Run 1 · "
                     "True class · Mean over EEG epochs and time"
                 ),
                 "screenshot": "topomap.png",
@@ -649,6 +711,18 @@ def _base_payload():
                 "saliency_configured": True,
                 "saliency_available": True,
                 "montage_available": True,
+            },
+        },
+        "shutdown": {
+            "ok": True,
+            "timed_out": False,
+            "window_visible": False,
+            "snapshot": {
+                "application_closed": True,
+                "pre_close_application_idle": True,
+                "pre_close_remaining_workers": 0,
+                "pre_close_remaining_subprocesses": 0,
+                "close_attempt_id": "capture-close-attempt",
             },
         },
         "ui_state": {
@@ -827,6 +901,40 @@ def test_validate_visualization_payload_accepts_rendered_tabs(tmp_path):
     assert reason == ""
 
 
+@pytest.mark.parametrize(
+    "shutdown",
+    [
+        {},
+        {
+            "ok": False,
+            "timed_out": True,
+            "window_visible": True,
+            "snapshot": {},
+        },
+        {
+            "ok": True,
+            "timed_out": False,
+            "window_visible": False,
+            "snapshot": {
+                "application_closed": True,
+                "pre_close_application_idle": True,
+                "pre_close_remaining_workers": 1,
+                "pre_close_remaining_subprocesses": 0,
+                "close_attempt_id": "capture-close-attempt",
+            },
+        },
+    ],
+)
+def test_validate_visualization_payload_requires_clean_shutdown(tmp_path, shutdown):
+    payload = _payload_with_screenshots(tmp_path)
+    payload["shutdown"] = shutdown
+
+    ok, reason = validate_visualization_render_payload(payload)
+
+    assert ok is False
+    assert reason == "MainWindow did not publish a clean terminal shutdown."
+
+
 def test_validate_visualization_payload_requires_explicit_compute_terminal(tmp_path):
     payload = _payload_with_screenshots(tmp_path)
     payload["saliency_compute"] = {
@@ -887,6 +995,33 @@ def test_validate_visualization_payload_requires_absolute_restoration(tmp_path):
     assert ok is False
     assert "Topographic Map" in reason
     assert "restored" in reason
+
+
+def test_validate_visualization_payload_rejects_hidden_absolute_layout_hole(tmp_path):
+    payload = _payload_with_screenshots(tmp_path)
+    payload["renders"][1]["transform_controls"]["absolute"]["grid_position"] = [
+        0,
+        7,
+        1,
+        1,
+    ]
+
+    ok, reason = validate_visualization_render_payload(payload)
+
+    assert ok is False
+    assert "empty Absolute control slot" in reason
+
+
+def test_validate_visualization_payload_requires_normalize_before_absolute(tmp_path):
+    payload = _payload_with_screenshots(tmp_path)
+    for render in (payload["renders"][0], payload["renders"][2]):
+        render["transform_controls"]["absolute"]["grid_position"] = [0, 6, 1, 1]
+        render["transform_controls"]["normalize"]["grid_position"] = [0, 7, 1, 1]
+
+    ok, reason = validate_visualization_render_payload(payload)
+
+    assert ok is False
+    assert "Normalize before Absolute" in reason
 
 
 def test_validate_visualization_payload_rejects_selector_jump(tmp_path):

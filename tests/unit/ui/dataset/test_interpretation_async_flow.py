@@ -15,7 +15,7 @@ import mne
 import numpy as np
 import pytest
 from PyQt6 import sip
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, pyqtSignal
 from PyQt6.QtWidgets import QDialog, QMainWindow, QPushButton, QWidget
 
 from XBrainLab.backend.application import (
@@ -38,7 +38,7 @@ from XBrainLab.backend.application.capabilities import (
     CommandCapability,
     build_capability_policy,
 )
-from XBrainLab.backend.application.owned_work import OwnedWorkKind
+from XBrainLab.backend.application.owned_work import OwnedWorkKind, OwnedWorkRegistry
 from XBrainLab.backend.application.state import (
     ApplicationStateSnapshot,
     InterpretationStateSnapshot,
@@ -249,7 +249,9 @@ def test_cancelled_catalog_scan_closes_without_failure_dialog(monkeypatch) -> No
     subjects = MagicMock()
     coordinator._bindings = replace(
         coordinator._bindings,
-        message_box=lambda: message_box,
+        show_warning=message_box.warning,
+        show_error=message_box.critical,
+        ask_confirmation=lambda *_args, **_kwargs: False,
     )
     monkeypatch.setattr(handler, "_show_status", statuses.append)
     monkeypatch.setattr(
@@ -602,7 +604,7 @@ def test_review_current_import_identity_mismatch_fails_closed(
     )
     monkeypatch.setattr(actions, "application_ui_runtime", lambda _panel: runtime)
     warning = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+    monkeypatch.setattr(actions, "show_warning", warning)
     continue_review = MagicMock()
     monkeypatch.setattr(
         handler._data_interpretation,
@@ -647,7 +649,7 @@ def test_review_current_import_rejects_identity_change_during_read(
 
     runtime = _ChangingRuntime(matching, review)
     monkeypatch.setattr(actions, "application_ui_runtime", lambda _panel: runtime)
-    monkeypatch.setattr(actions.QMessageBox, "warning", MagicMock())
+    monkeypatch.setattr(actions, "show_warning", MagicMock())
     continue_review = MagicMock()
     monkeypatch.setattr(
         handler._data_interpretation,
@@ -674,7 +676,7 @@ def test_review_current_import_without_runtime_fails_closed(monkeypatch) -> None
     handler = DatasetActionHandler(panel)
     monkeypatch.setattr(actions, "application_ui_runtime", lambda _panel: None)
     warning = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+    monkeypatch.setattr(actions, "show_warning", warning)
     continue_review = MagicMock()
     monkeypatch.setattr(
         handler._data_interpretation,
@@ -1489,8 +1491,8 @@ def test_confirm_import_revalidation_worker_failure_replaces_preparing_status(
     panel = MagicMock()
     revised_choices = {"class_map": {"1": "Target"}}
     statuses: list[tuple[str, int]] = []
-    message_box = MagicMock()
-    monkeypatch.setattr(actions, "QMessageBox", message_box)
+    warning = MagicMock()
+    monkeypatch.setattr(actions, "show_warning", warning)
     handler = DatasetActionHandler(panel)
 
     class _Dialog:
@@ -1533,8 +1535,8 @@ def test_confirm_import_revalidation_worker_failure_replaces_preparing_status(
     assert statuses == [
         ("Dataset import failed · Review the import settings", 7000),
     ]
-    message_box.warning.assert_called_once()
-    warning_text = message_box.warning.call_args.args[2]
+    warning.assert_called_once()
+    warning_text = warning.call_args.args[2]
     assert "revalidation failed" in warning_text
     assert "Reopen Import EEG Data" in warning_text
 
@@ -1646,7 +1648,9 @@ def test_confirm_import_revalidation_cancel_reopens_edited_review_without_failur
         single_shot=lambda _delay, callback: callback(),
         qt_object_deleted=lambda _owner: False,
         reserve_interaction_continuation=lambda: None,
-        message_box=lambda: SimpleNamespace(warning=warning, critical=critical),
+        show_warning=warning,
+        show_error=critical,
+        ask_confirmation=lambda *_args, **_kwargs: False,
     )
 
     outcome = coordinator._continue_data_interpretation_import(
@@ -1689,9 +1693,7 @@ def test_confirm_import_revalidation_cancel_reopens_edited_review_without_failur
         source_hint="bids",
         choices=revised_choices,
         label_sources=["/data/sub-01/sub-01_events.tsv"],
-        review_state=(
-            preview_state if cancelled_command == "validation" else review_state
-        ),
+        review_state=review_state,
         initial_step="Review and Import",
         validated_choices={},
     )
@@ -1774,8 +1776,16 @@ def test_blocked_review_closes_without_a_second_error_dialog(monkeypatch) -> Non
             return {"confirmed": False, "choices": {}}
 
     monkeypatch.setattr(actions, "DataInterpretationPreviewDialog", _Dialog)
-    critical = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "critical", critical)
+    present_error = MagicMock(
+        return_value=(
+            "XBrainLab could not prepare the Data Import review. "
+            "Reopen the source and try again."
+        )
+    )
+    handler._data_interpretation._bindings = replace(
+        handler._data_interpretation._bindings,
+        present_unexpected_error=present_error,
+    )
     review_state = replace(
         _review_state(),
         decision={
@@ -1794,7 +1804,7 @@ def test_blocked_review_closes_without_a_second_error_dialog(monkeypatch) -> Non
     )
 
     assert outcome.status is InteractionStatus.BLOCKED
-    critical.assert_not_called()
+    present_error.assert_not_called()
 
 
 def test_choice_repreview_uses_existing_scan_without_rescanning(monkeypatch) -> None:
@@ -1869,7 +1879,186 @@ def test_repreview_hands_loading_ownership_to_the_visible_preview(
     assert outcome.status is InteractionStatus.CANCELLED
     loading.accept.assert_not_called()
     loading_token = continue_flow.call_args.kwargs["loading_token"]
-    assert loading_token is handler._data_interpretation._active_loading_token
+    assert loading_token is handler._data_interpretation._loading_session.token
+
+
+def test_repreview_cancel_reopens_the_exact_preserved_match_labels_draft(
+    monkeypatch,
+) -> None:
+    """Orange Cancel Import must restore the edited review, not its defaults."""
+    handler = DatasetActionHandler(MagicMock())
+    coordinator = handler._data_interpretation
+    loading = MagicMock()
+    loading.cancelled_by_user = False
+    cast(Any, coordinator)._loading_dialog_class = lambda: (
+        lambda *_args, **_kwargs: loading
+    )
+    choices = {"label_carrier_choices": {"events.tsv": "trial_type"}}
+    review_state = _review_state(publication_generation=17)
+    reopened = MagicMock(return_value=InteractionOutcome.accepted("Reopened."))
+    continue_flow = MagicMock(return_value=InteractionOutcome.accepted("Review ready."))
+    monkeypatch.setattr(coordinator, "_schedule_cancelled_review_reopen", reopened)
+    monkeypatch.setattr(
+        coordinator, "_continue_data_interpretation_import", continue_flow
+    )
+
+    def cancel_preview(*, on_cancelled, **_kwargs):
+        return on_cancelled(review_state)
+
+    monkeypatch.setattr(
+        coordinator,
+        "_preview_and_validate_interpretation_async",
+        cancel_preview,
+    )
+
+    outcome = coordinator._repreview_interpretation_async(
+        source_path="/data",
+        source_hint="bids",
+        choices=choices,
+        label_sources=["events.tsv"],
+        review_state=review_state,
+        initial_step="Match Labels",
+    )
+
+    assert outcome is not None
+    assert outcome.status is InteractionStatus.ACCEPTED
+    retry = reopened.call_args.args[0]
+    retry()
+    assert continue_flow.call_args.kwargs["choices"] == choices
+    assert continue_flow.call_args.kwargs["label_sources"] == ["events.tsv"]
+    assert continue_flow.call_args.kwargs["review_state"].scan == review_state.scan
+    assert (
+        continue_flow.call_args.kwargs["review_state"].decision == review_state.decision
+    )
+    assert (
+        reopened.call_args.kwargs["cancelled_message"] == "The operation was cancelled."
+    )
+
+
+def test_repreview_cancelled_worker_queues_exact_match_labels_reopen(
+    qtbot,
+    monkeypatch,
+) -> None:
+    """A real coordinator must reopen its preserved draft after worker cancellation."""
+    window = QMainWindow()
+    panel = QWidget(window)
+    cancel = QPushButton("Cancel Import", panel)
+    qtbot.addWidget(window)
+    window.show()
+    cast(Any, panel).study = Study()
+    cast(Any, panel).main_window = window
+    cast(Any, panel).sidebar = SimpleNamespace(import_cancel_btn=cancel)
+    cast(Any, panel).set_busy = lambda _busy: None
+    handler = DatasetActionHandler(panel)
+    coordinator = handler._data_interpretation
+    worker_started = threading.Event()
+    worker_release = threading.Event()
+    reopened: list[dict[str, Any]] = []
+    commands: list[object] = []
+
+    class _LoadingDialog(QDialog):
+        retry_requested = pyqtSignal()
+
+        def __init__(self, parent, *, initial_step="") -> None:
+            super().__init__(parent)
+            self.initial_step = initial_step
+            self.cancelled_by_user = False
+
+        def set_stage(self, _title, _detail) -> None:
+            return None
+
+        def show_error(self, _message, *, retry_available=True) -> None:
+            del retry_available
+
+    class _ReopenedReview:
+        def __init__(self, _parent, **kwargs) -> None:
+            reopened.append(kwargs)
+
+        @staticmethod
+        def exec() -> int:
+            return int(QDialog.DialogCode.Rejected)
+
+        @staticmethod
+        def get_result() -> dict[str, Any]:
+            return {}
+
+    class _Runtime:
+        def __init__(self) -> None:
+            self.registry = OwnedWorkRegistry()
+
+        def begin_owned_operation(self, command):
+            commands.append(command)
+            assert isinstance(command, PreviewInterpretationCommand)
+            return self.registry.begin(OwnedWorkKind.IMPORT_REVIEW, cancellable=True)
+
+        def cancel_owned_operation(self, operation_id):
+            return self.registry.cancel(operation_id)
+
+        def get_owned_operation(self, operation_id):
+            return self.registry.snapshot(operation_id)
+
+        def fail_owned_operation(self, operation_id, *, message):
+            return self.registry.fail(operation_id, message=message)
+
+        def execute(
+            self,
+            command,
+            *,
+            expected_publication_generation=None,
+            operation_id=None,
+        ):
+            assert isinstance(command, PreviewInterpretationCommand)
+            assert expected_publication_generation == 17
+            assert operation_id is not None
+            worker_started.set()
+            assert worker_release.wait(timeout=2.0)
+            self.registry.finish_cancelled(operation_id)
+            return _cancelled_result("preview_interpretation")
+
+    runtime = _Runtime()
+    coordinator._loading_dialog_class = lambda: _LoadingDialog
+    coordinator._preview_dialog_class = lambda: _ReopenedReview
+    monkeypatch.setattr(
+        application_capabilities,
+        "application_ui_runtime",
+        lambda _context: runtime,
+    )
+    choices = {
+        "label_carrier_choices": {
+            "events.tsv": {"label_field": "trial_type", "class_name": "Left"}
+        }
+    }
+    review_state = _review_state(publication_generation=17)
+    review_state = replace(
+        review_state,
+        decision={"candidate_id": "candidate-1", "decision": "safe", "keep": True},
+    )
+
+    outcome = coordinator._repreview_interpretation_async(
+        source_path="/data/source",
+        source_hint="bids",
+        choices=choices,
+        label_sources=["events.tsv"],
+        review_state=review_state,
+        initial_step="Match Labels",
+    )
+
+    assert outcome is not None
+    assert outcome.status is InteractionStatus.ACCEPTED
+    assert worker_started.wait(timeout=1.0)
+    assert coordinator._loading_session is not None
+    loading = coordinator._loading_session.dialog
+    assert isinstance(loading, _LoadingDialog)
+    loading.cancelled_by_user = True
+    loading.reject()
+    worker_release.set()
+
+    qtbot.waitUntil(lambda: len(reopened) == 1, timeout=2_000)
+    assert [type(command) for command in commands] == [PreviewInterpretationCommand]
+    assert reopened[0]["initial_step"] == "Match Labels"
+    assert reopened[0]["choices"] == choices
+    assert reopened[0]["scan_result"] == review_state.scan
+    assert reopened[0]["validation_decision"] == review_state.decision
 
 
 def test_apply_uses_the_generation_reviewed_by_the_user(qtbot, monkeypatch):
@@ -1965,7 +2154,7 @@ def test_apply_failure_explains_that_existing_data_was_preserved(
     critical = MagicMock()
     handler._data_interpretation._bindings = replace(
         handler._data_interpretation._bindings,
-        message_box=lambda: SimpleNamespace(critical=critical),
+        show_error=critical,
     )
 
     outcome = handler._data_interpretation._apply_interpretation_async(
@@ -2069,7 +2258,7 @@ def test_apply_owned_cancel_reopens_review_without_presenting_a_failure(
         single_shot=lambda _delay, callback: callback(),
         qt_object_deleted=lambda _owner: False,
         reserve_interaction_continuation=lambda: None,
-        message_box=lambda: SimpleNamespace(critical=critical),
+        show_error=critical,
     )
 
     outcome = handler._data_interpretation._apply_interpretation_async(
@@ -2439,7 +2628,7 @@ def test_label_import_real_runtime_fails_closed_without_second_publication_read(
     monkeypatch.setattr(actions, "has_real_application_context", lambda _panel: True)
     monkeypatch.setattr(actions, "get_command_capability", capability_read)
     monkeypatch.setattr(actions, "ImportLabelDialog", dialog_factory)
-    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+    monkeypatch.setattr(actions, "show_warning", warning)
 
     handler.import_label()
 
@@ -2470,7 +2659,7 @@ def test_recipe_save_uses_generation_reviewed_before_question(
 
     def question(*_args, **_kwargs):
         current_generation["value"] = 32
-        return actions.QMessageBox.StandardButton.Yes
+        return True
 
     def execute_async(
         _command,
@@ -2494,10 +2683,10 @@ def test_recipe_save_uses_generation_reviewed_before_question(
     monkeypatch.setattr(
         handler._data_interpretation, "_recipe_save_block_reason", lambda: None
     )
-    monkeypatch.setattr(actions.QMessageBox, "question", question)
+    monkeypatch.setattr(actions, "ask_confirmation", question)
     monkeypatch.setattr(
-        actions.QMessageBox,
-        "warning",
+        actions,
+        "show_warning",
         lambda *args: warnings.append(args),
     )
     monkeypatch.setattr(
@@ -2621,8 +2810,16 @@ def test_worker_exception_cleans_up_and_reports_without_nested_wait(
         "application_ui_runtime",
         lambda _study: _Service(),
     )
-    critical = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "critical", critical)
+    present_error = MagicMock(
+        return_value=(
+            "XBrainLab could not prepare the Data Import review. "
+            "Reopen the source and try again."
+        )
+    )
+    handler._data_interpretation._bindings = replace(
+        handler._data_interpretation._bindings,
+        present_unexpected_error=present_error,
+    )
 
     outcome = handler._data_interpretation._execute_interpretation_command_async(
         QueryStateCommand(),
@@ -2632,16 +2829,16 @@ def test_worker_exception_cleans_up_and_reports_without_nested_wait(
     assert outcome is not None
     assert outcome.status is InteractionStatus.ACCEPTED
 
-    qtbot.waitUntil(lambda: critical.call_count == 1, timeout=1000)
+    qtbot.waitUntil(lambda: present_error.call_count == 1, timeout=1000)
     qtbot.waitUntil(
         lambda: application_command_registry().active_count(panel) == 0,
         timeout=1000,
     )
-    assert critical.call_args.args[2] == (
+    assert present_error.call_args.args[1].value.title == "Interpretation review failed"
+    assert present_error.return_value == (
         "XBrainLab could not prepare the Data Import review. "
         "Reopen the source and try again."
     )
-    assert "scan failed" not in critical.call_args.args[2]
     assert cast(Any, panel).set_busy.call_args_list == [((True,),), ((False,),)]
 
 
@@ -2800,7 +2997,7 @@ def test_review_flow_uses_slow_worker_without_blocking_gui(qtbot, monkeypatch):
 
     assert started is not None
     assert started.status is InteractionStatus.ACCEPTED
-    assert statuses == ["Preparing import review..."]
+    assert statuses == ["Preparing selected EEG data..."]
     assert elapsed < 0.1
     assert len(loading_dialogs) == 1
     assert loading_dialogs[0].visible is True
@@ -2808,12 +3005,12 @@ def test_review_flow_uses_slow_worker_without_blocking_gui(qtbot, monkeypatch):
     QTimer.singleShot(0, lambda: heartbeat.append(True))
     qtbot.waitUntil(lambda: bool(heartbeat), timeout=1000)
 
-    loading_token = handler._data_interpretation._active_loading_token
+    loading_token = handler._data_interpretation._loading_session.token
     worker_release.set()
     qtbot.waitUntil(lambda: continue_flow.call_count == 1, timeout=1000)
     assert loading_dialogs[0].closed is False
     assert continue_flow.call_args.kwargs["loading_token"] is loading_token
-    assert statuses == ["Preparing import review...", "Import review ready."]
+    assert statuses == ["Preparing selected EEG data...", "Import review ready."]
     handler._data_interpretation._close_loading_dialog(loading_token)
 
 
@@ -2849,13 +3046,13 @@ def test_review_keeps_atomic_loading_ownership_across_slow_preview_construction(
         def __init__(self, parent, **_kwargs) -> None:
             super().__init__(parent)
             preview_instances.append(self)
-            loading = handler._data_interpretation._active_loading_dialog
+            loading = handler._data_interpretation._loading_session.dialog
             progress = getattr(loading, "progress_bar", None)
             assert loading is not None and loading.isVisible()
             assert progress is not None
             assert progress.property("operationId") == "review-operation-1"
             time.sleep(5.1)
-            assert loading is handler._data_interpretation._active_loading_dialog
+            assert loading is handler._data_interpretation._loading_session.dialog
             assert loading.isVisible()
             assert progress.property("operationId") == "review-operation-1"
 
@@ -2939,7 +3136,7 @@ def test_review_keeps_atomic_loading_ownership_across_slow_preview_construction(
     qtbot.waitUntil(lambda: bool(preview_results), timeout=8_000)
     assert preview_results == [int(QDialog.DialogCode.Rejected)]
     assert release_visibility == [True]
-    assert handler._data_interpretation._active_loading_dialog is None
+    assert handler._data_interpretation._loading_session is None
 
 
 def test_loading_dialog_projects_owned_operation_kind(qtbot) -> None:
@@ -2953,7 +3150,8 @@ def test_loading_dialog_projects_owned_operation_kind(qtbot) -> None:
         initial_step="",
         retry=lambda: None,
     )
-    coordinator._active_loading_operation_id = "apply-operation-1"
+    assert coordinator._loading_session is not None
+    coordinator._loading_session.operation_id = "apply-operation-1"
     coordinator._bindings = replace(
         coordinator._bindings,
         get_application_operation=lambda _owner, _operation_id: SimpleNamespace(
@@ -2966,9 +3164,13 @@ def test_loading_dialog_projects_owned_operation_kind(qtbot) -> None:
         ),
     )
 
-    coordinator._refresh_loading_operation_status()
+    coordinator._present_loading_operation_snapshot(
+        "apply-operation-1",
+        coordinator._bindings.get_application_operation(panel, "apply-operation-1"),
+    )
 
-    loading = coordinator._active_loading_dialog
+    assert coordinator._loading_session is not None
+    loading = coordinator._loading_session.dialog
     assert loading is not None
     assert loading.progress_bar.property("operationKind") == "import_apply"
     coordinator._close_loading_dialog(token)
@@ -2986,7 +3188,8 @@ def test_preview_constructor_failure_keeps_recoverable_loading_error(
         initial_step="",
         retry=lambda: None,
     )
-    loading = handler._data_interpretation._active_loading_dialog
+    assert handler._data_interpretation._loading_session is not None
+    loading = handler._data_interpretation._loading_session.dialog
     assert loading is not None
 
     class _BrokenPreviewDialog:
@@ -3005,8 +3208,9 @@ def test_preview_constructor_failure_keeps_recoverable_loading_error(
     )
 
     assert outcome.status is InteractionStatus.FAILED
-    assert handler._data_interpretation._active_loading_token is token
-    assert handler._data_interpretation._active_loading_dialog is loading
+    assert handler._data_interpretation._loading_session is not None
+    assert handler._data_interpretation._loading_session.token is token
+    assert handler._data_interpretation._loading_session.dialog is loading
     assert loading.isVisible()
     assert loading.status_title.text() == "Import review could not be prepared"
     assert loading.retry_button.isVisible()
@@ -3057,7 +3261,7 @@ def test_preview_does_not_exec_after_transition_context_is_invalidated(
 
     assert outcome.status is InteractionStatus.CANCELLED
     assert exec_calls == []
-    assert handler._data_interpretation._active_loading_dialog is None
+    assert handler._data_interpretation._loading_session is None
 
 
 def test_loading_dialog_is_not_disabled_with_the_busy_dataset_panel(qtbot):
@@ -3071,7 +3275,8 @@ def test_loading_dialog_is_not_disabled_with_the_busy_dataset_panel(qtbot):
         initial_step="",
         retry=lambda: None,
     )
-    dialog = handler._data_interpretation._active_loading_dialog
+    assert handler._data_interpretation._loading_session is not None
+    dialog = handler._data_interpretation._loading_session.dialog
     panel.setEnabled(False)
 
     assert handler._data_interpretation._loading_dialog_is_active(token)
@@ -3197,15 +3402,8 @@ def test_cancelled_review_loading_does_not_reopen_wizard(qtbot, monkeypatch):
 
     assert outcome is not None
     assert worker_started.wait(timeout=1.0)
-    loading = handler._data_interpretation._active_loading_dialog
-    qtbot.waitUntil(
-        lambda: bool(loading.stages) and loading.stages[-1][0] == "Reading BIDS events",
-        timeout=1_000,
-    )
-    assert loading.stages[-1] == (
-        "Reading BIDS events",
-        "2 of 5 items complete",
-    )
+    assert handler._data_interpretation._loading_session is not None
+    loading = handler._data_interpretation._loading_session.dialog
     loading.cancelled_by_user = True
     loading.rejected.emit()
     assert cancelled_operations == ["review-operation-1"]
@@ -3259,9 +3457,9 @@ def test_review_warning_confirmation_retries_before_opening_preview(
         lambda _study: _Service(),
     )
     monkeypatch.setattr(
-        actions.QMessageBox,
-        "question",
-        lambda *_args, **_kwargs: actions.QMessageBox.StandardButton.Yes,
+        actions,
+        "ask_confirmation",
+        lambda *_args, **_kwargs: True,
     )
     single_shot = MagicMock(side_effect=lambda _delay, callback: callback())
     monkeypatch.setattr(actions.QTimer, "singleShot", single_shot)
@@ -3318,8 +3516,8 @@ def test_review_warning_without_typed_challenge_never_resubmits(
     )
     question = MagicMock()
     critical = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "question", question)
-    monkeypatch.setattr(actions.QMessageBox, "critical", critical)
+    monkeypatch.setattr(actions, "ask_confirmation", question)
+    monkeypatch.setattr(actions, "show_error", critical)
 
     outcome = handler._data_interpretation._start_interpretation_review_async(
         "/tmp/sub-01_raw.fif",
@@ -3368,8 +3566,8 @@ def test_review_warning_with_mismatched_challenge_command_never_resubmits(
     )
     question = MagicMock()
     critical = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "question", question)
-    monkeypatch.setattr(actions.QMessageBox, "critical", critical)
+    monkeypatch.setattr(actions, "ask_confirmation", question)
+    monkeypatch.setattr(actions, "show_error", critical)
 
     outcome = handler._data_interpretation._start_interpretation_review_async(
         "/tmp/sub-01_raw.fif",
@@ -3416,8 +3614,8 @@ def test_review_blocking_resource_result_never_resubmits(
     )
     question = MagicMock()
     critical = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "question", question)
-    monkeypatch.setattr(actions.QMessageBox, "critical", critical)
+    monkeypatch.setattr(actions, "ask_confirmation", question)
+    monkeypatch.setattr(actions, "show_error", critical)
 
     handler._data_interpretation._start_interpretation_review_async(
         "/tmp/sub-01_raw.fif",
@@ -3497,9 +3695,9 @@ def test_reload_warning_confirmation_retries_with_receipt_and_same_continuation(
         ),
     )
     monkeypatch.setattr(
-        actions.QMessageBox,
-        "question",
-        lambda *_args, **_kwargs: actions.QMessageBox.StandardButton.Yes,
+        actions,
+        "ask_confirmation",
+        lambda *_args, **_kwargs: True,
     )
     single_shot = MagicMock(side_effect=lambda _delay, callback: callback())
     monkeypatch.setattr(actions.QTimer, "singleShot", single_shot)
@@ -3578,9 +3776,9 @@ def test_reloaded_preview_warning_retries_with_receipt_and_same_continuation(
         lambda **_kwargs: _review_state(publication_generation=22),
     )
     monkeypatch.setattr(
-        actions.QMessageBox,
-        "question",
-        lambda *_args, **_kwargs: actions.QMessageBox.StandardButton.Yes,
+        actions,
+        "ask_confirmation",
+        lambda *_args, **_kwargs: True,
     )
     single_shot = MagicMock(side_effect=lambda _delay, callback: callback())
     monkeypatch.setattr(actions.QTimer, "singleShot", single_shot)
@@ -3701,9 +3899,9 @@ def test_apply_warning_confirmation_resubmits_trusted_receipt_async(
         lambda _study: _Service(),
     )
     monkeypatch.setattr(
-        actions.QMessageBox,
-        "question",
-        lambda *_args, **_kwargs: actions.QMessageBox.StandardButton.Yes,
+        actions,
+        "ask_confirmation",
+        lambda *_args, **_kwargs: True,
     )
     status = MagicMock()
     monkeypatch.setattr(handler, "_show_status", status)
@@ -3758,9 +3956,9 @@ def test_apply_warning_handoff_ack_completes_without_result_refresh(
         command_result_refresh,
     )
     monkeypatch.setattr(
-        actions.QMessageBox,
-        "question",
-        lambda *_args, **_kwargs: actions.QMessageBox.StandardButton.Yes,
+        actions,
+        "ask_confirmation",
+        lambda *_args, **_kwargs: True,
     )
     status = MagicMock()
     monkeypatch.setattr(handler, "_show_status", status)
@@ -3812,9 +4010,9 @@ def test_apply_warning_handoff_refusal_reports_only_cancelled(
         lambda _study: _Service(),
     )
     monkeypatch.setattr(
-        actions.QMessageBox,
-        "question",
-        lambda *_args, **_kwargs: actions.QMessageBox.StandardButton.No,
+        actions,
+        "ask_confirmation",
+        lambda *_args, **_kwargs: False,
     )
     status = MagicMock()
     monkeypatch.setattr(handler, "_show_status", status)
@@ -3865,12 +4063,12 @@ def test_apply_warning_handoff_retry_start_failure_reports_only_failed(
         lambda _study: _Service(),
     )
     monkeypatch.setattr(
-        actions.QMessageBox,
-        "question",
-        lambda *_args, **_kwargs: actions.QMessageBox.StandardButton.Yes,
+        actions,
+        "ask_confirmation",
+        lambda *_args, **_kwargs: True,
     )
     warning = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+    monkeypatch.setattr(actions, "show_warning", warning)
     real_execute_async = actions.execute_application_command_async
 
     def _execute_or_reject_retry(context, command, **kwargs):
@@ -3925,7 +4123,7 @@ def test_apply_resource_callback_is_dropped_after_owner_deletion(qtbot, monkeypa
         "application_ui_runtime",
         lambda _study: _Service(),
     )
-    monkeypatch.setattr(actions.QMessageBox, "question", question)
+    monkeypatch.setattr(actions, "ask_confirmation", question)
 
     outcome = handler._data_interpretation._apply_interpretation_async(
         _review_state(),
@@ -3968,8 +4166,8 @@ def test_apply_blocking_resource_result_is_presented_without_resubmit(
     )
     critical = MagicMock()
     question = MagicMock()
-    monkeypatch.setattr(actions.QMessageBox, "critical", critical)
-    monkeypatch.setattr(actions.QMessageBox, "question", question)
+    monkeypatch.setattr(actions, "show_error", critical)
+    monkeypatch.setattr(actions, "ask_confirmation", question)
 
     outcome = handler._data_interpretation._apply_interpretation_async(
         _review_state(),
@@ -4018,7 +4216,7 @@ def test_import_label_fails_before_target_or_dialog_when_review_capability_is_mi
         target_reader,
     )
     monkeypatch.setattr(actions, "ImportLabelDialog", dialog)
-    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+    monkeypatch.setattr(actions, "show_warning", warning)
 
     handler.import_label()
 
@@ -4044,7 +4242,7 @@ def test_recipe_save_fails_before_chooser_when_review_capability_is_missing(
     monkeypatch.setattr(
         handler._data_interpretation, "_execute_interpretation_command_async", execute
     )
-    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+    monkeypatch.setattr(actions, "show_warning", warning)
 
     started = handler._data_interpretation._save_interpretation_recipe()
 
@@ -4059,13 +4257,13 @@ def test_recipe_offer_fails_before_confirmation_when_review_capability_is_missin
     monkeypatch,
 ):
     handler = _real_study_dataset_handler(qtbot)
-    question = MagicMock(return_value=actions.QMessageBox.StandardButton.No)
+    question = MagicMock(return_value=False)
     monkeypatch.setattr(
         actions,
         "get_command_review_context",
         lambda *_args: _missing_capability_review(),
     )
-    monkeypatch.setattr(actions.QMessageBox, "question", question)
+    monkeypatch.setattr(actions, "ask_confirmation", question)
 
     message = handler._offer_label_recipe_save(
         SimpleNamespace(diagnostics={"recipe_updated": True}),
@@ -4089,7 +4287,7 @@ def test_recipe_reload_fails_before_chooser_when_product_review_disappears(
     )
     monkeypatch.setattr(actions, "get_command_review_context", lambda *_args: None)
     monkeypatch.setattr(actions.QFileDialog, "getOpenFileName", chooser)
-    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+    monkeypatch.setattr(actions, "show_warning", warning)
 
     handler.reload_interpretation_recipe()
 
@@ -4110,7 +4308,7 @@ def test_smart_parser_fails_before_query_when_product_review_disappears(
     monkeypatch.setattr(actions, "get_command_capability", lambda *_args: enabled)
     monkeypatch.setattr(handler, "_smart_parse_filenames", query)
     monkeypatch.setattr(actions, "SmartParserDialog", dialog)
-    monkeypatch.setattr(actions.QMessageBox, "warning", warning)
+    monkeypatch.setattr(actions, "show_warning", warning)
 
     handler.open_smart_parser()
 

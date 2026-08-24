@@ -16,6 +16,7 @@ from XBrainLab.backend.application.commands import (
     CommandName,
     QueryStateCommand,
 )
+from XBrainLab.backend.application.owned_work import OwnedWorkKind
 from XBrainLab.backend.application.results import CommandResult
 from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.study import Study
@@ -415,6 +416,13 @@ class ApplicationUiRuntime(
         """Return immutable progress for one scheduled operation."""
         ...
 
+    def get_active_owned_operation(
+        self,
+        kind: OwnedWorkKind,
+    ) -> OwnedOperationSnapshot | None:
+        """Return the oldest active operation of one product work kind."""
+        ...
+
     def fail_owned_operation(
         self,
         operation_id: str,
@@ -568,6 +576,12 @@ class _StudyApplicationUiRuntime:
 
     def get_owned_operation(self, operation_id: str) -> OwnedOperationSnapshot:
         return self._service().get_owned_operation(operation_id)
+
+    def get_active_owned_operation(
+        self,
+        kind: OwnedWorkKind,
+    ) -> OwnedOperationSnapshot | None:
+        return self._service().get_active_owned_operation(kind)
 
     def fail_owned_operation(
         self,

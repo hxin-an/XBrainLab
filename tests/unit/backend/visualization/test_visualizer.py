@@ -349,15 +349,17 @@ def test_saliency_spectrogram_uses_stft_bin_support_without_boundary_padding():
     fig = visualizer.get_plt("Gradient")
     plot_axes = [axis for axis in fig.axes if axis.get_title()]
 
-    assert plot_axes
+    assert [axis.get_title() for axis in plot_axes] == ["left", "right"]
     for axis in plot_axes:
         x_min, x_max, y_min, y_max = axis.images[0].get_extent()
         assert x_min == pytest.approx(-0.25)
         assert x_max == pytest.approx(0.75)
         assert y_min == pytest.approx(0.0)
         assert y_max == pytest.approx(64.0)
-    assert fig._suptitle is not None
-    assert "attribution magnitude" in fig._suptitle.get_text().lower()
+    colorbar_axes = [axis for axis in fig.axes if not axis.images]
+    assert len(colorbar_axes) == 1
+    assert "attribution magnitude" in colorbar_axes[0].get_ylabel().lower()
+    assert fig._suptitle is None
 
     plt.close(fig)
 
@@ -917,6 +919,67 @@ def test_saliency_class_panels_share_one_colorbar(visualizer_type):
     assert len(titled_axes) == 2
     assert len(fig.axes) == 3  # two class plots and one shared colorbar
     assert titled_axes[0].get_position().x1 < titled_axes[1].get_position().x0
+    plt.close(fig)
+
+
+def test_saliency_map_detail_keeps_shared_scale_and_reserves_colorbar_column():
+    epochs = Epochs(get_preprocessed_data_list(2))
+    epochs.label_map = {0: "left", 1: "right"}
+    epochs.event_id = {"left": 0, "right": 1}
+    epochs.ch_names = [f"EEG {index:02d}" for index in range(32)]
+    gradient = {
+        0: np.ones((2, 32, 64)),
+        1: np.ones((2, 32, 64)) * 3,
+    }
+    eval_record = _bound_eval_record(
+        epochs,
+        np.array([0, 1, 0, 1]),
+        np.ones((4, 2)),
+        gradient,
+        gradient.copy(),
+        gradient.copy(),
+        gradient.copy(),
+        gradient.copy(),
+    )
+
+    fig = VisualizerType.SaliencyMap.value(eval_record, epochs).get_plt(
+        "Gradient",
+        False,
+        selected_label_key=1,
+        display_mode="single",
+    )
+    image_axes = [axis for axis in fig.axes if axis.images]
+    colorbar_axis = next(axis for axis in fig.axes if not axis.images)
+
+    assert len(image_axes) == 1
+    assert image_axes[0].get_title() == "right"
+    assert image_axes[0].images[0].get_clim()[1] == pytest.approx(3.0)
+    assert image_axes[0].get_position().x1 < colorbar_axis.get_position().x0
+    assert len(image_axes[0].get_yticks()) <= 12
+    plt.close(fig)
+
+
+def test_saliency_map_overview_declares_minimum_scrollable_tile_height():
+    epochs = Epochs(get_preprocessed_data_list(2))
+    epochs.label_map = {index: f"class {index}" for index in range(8)}
+    epochs.event_id = {f"class {index}": index for index in range(8)}
+    gradient = {index: np.ones((1, len(ch_names), 32)) for index in range(8)}
+    eval_record = _bound_eval_record(
+        epochs,
+        np.arange(8),
+        np.ones((8, 8)),
+        gradient,
+        gradient.copy(),
+        gradient.copy(),
+        gradient.copy(),
+        gradient.copy(),
+    )
+
+    fig = VisualizerType.SaliencyMap.value(eval_record, epochs).get_plt(
+        "Gradient", False
+    )
+
+    assert fig._xbrainlab_min_canvas_height >= 720
     plt.close(fig)
 
 

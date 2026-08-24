@@ -7,6 +7,7 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication, QDialog, QPushButton
 
 _POLICY_ATTRIBUTE = "_xbrainlab_dialog_button_policy"
+_SAFE_DEFAULT_PROPERTY = "_xbrainlab_preserve_safe_default"
 _NORMALIZED_LABELS = {"ok", "cancel"}
 _NORMALIZE_EVENTS = {
     QEvent.Type.ParentChange,
@@ -32,8 +33,8 @@ class _DialogButtonPolicy(QObject):
         ):
             _normalize_button(watched)
             if event.type() is QEvent.Type.Show:
-                # QMessageBox may assign its default button while handling the
-                # show event. Normalize once more after that handler returns.
+                # A platform dialog may assign its default button while handling
+                # the show event. Normalize once more after that handler returns.
                 QTimer.singleShot(
                     0,
                     lambda button=watched: _normalize_button_if_alive(button),
@@ -63,6 +64,8 @@ def _is_standard_dialog_button(button: QPushButton) -> bool:
 def _normalize_button(button: QPushButton) -> None:
     button.setIcon(QIcon())
     button.setIconSize(QSize(0, 0))
+    if button.property(_SAFE_DEFAULT_PROPERTY):
+        return
     button.setAutoDefault(False)
     button.setDefault(False)
 

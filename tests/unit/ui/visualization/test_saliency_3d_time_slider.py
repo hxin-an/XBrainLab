@@ -4,16 +4,49 @@ from typing import Any, cast
 from unittest.mock import MagicMock
 
 import numpy as np
+from PyQt6.QtWidgets import QApplication, QLabel
 
 from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_head import Saliency3D
+from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
+    Saliency3DPlotWidget,
+)
+from XBrainLab.ui.styles.theme import Theme
+
+
+def _new_widget(qtbot, monkeypatch) -> Saliency3DPlotWidget:
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view."
+        "Saliency3DPlotWidget._active_qt_platform_name",
+        staticmethod(lambda: "offscreen"),
+    )
+    widget = Saliency3DPlotWidget(parent=None)
+    qtbot.addWidget(widget)
+    return widget
+
+
+def test_initial_3d_prompt_uses_warning_color(qtbot, monkeypatch) -> None:
+    widget = _new_widget(qtbot, monkeypatch)
+
+    prompt = next(
+        label
+        for label in widget.findChildren(QLabel)
+        if label.text() == "Select a fold and method to visualize"
+    )
+
+    assert "color: " + Theme.WARNING in prompt.styleSheet()
 
 
 class _PlotterStub:
     def __init__(self) -> None:
         self.slider_kwargs: dict[str, Any] = {}
+        self.scalar_bar_args: tuple[Any, ...] = ()
+        self.scalar_bar_kwargs: dict[str, Any] = {}
         self.camera = MagicMock()
 
     def add_camera_orientation_widget(self) -> None:
+        pass
+
+    def clear_camera_widgets(self) -> None:
         pass
 
     def add_slider_widget(self, **kwargs: Any) -> None:
@@ -28,8 +61,9 @@ class _PlotterStub:
     def add_mesh(self, *_args: Any, **_kwargs: Any) -> object:
         return object()
 
-    def add_scalar_bar(self, *_args: Any, **_kwargs: Any) -> None:
-        pass
+    def add_scalar_bar(self, *args: Any, **kwargs: Any) -> None:
+        self.scalar_bar_args = args
+        self.scalar_bar_kwargs = kwargs
 
     def update_scalar_bar_range(self, *_args: Any, **_kwargs: Any) -> None:
         pass
@@ -66,18 +100,53 @@ def _saliency_with_time_axis() -> tuple[
     return saliency, plotter, engine, update
 
 
-def test_3d_slider_uses_seconds_and_converts_callback_to_sample_index() -> None:
+def test_3d_scene_has_no_overlay_slider_and_accepts_epoch_time_seconds() -> None:
     saliency, plotter, engine, update = _saliency_with_time_axis()
 
     saliency.get_3d_head_plot()
 
-    slider = plotter.slider_kwargs
-    assert slider["title"] == "Time (s)"
-    assert slider["rng"] == (-0.2, 0.0)
-    assert slider["value"] == -0.2
+    # The Qt view owns the visible ``Epoch time (s)`` control.  Keeping the
+    # PyVista canvas free of overlays prevents controls and labels from
+    # covering the saliency surface.
+    assert plotter.slider_kwargs == {}
+    assert plotter.scalar_bar_args == ("saliency",)
+    assert plotter.scalar_bar_kwargs["position_x"] == 0.1
+    assert plotter.scalar_bar_kwargs["width"] == 0.8
+    assert (
+        plotter.scalar_bar_kwargs["position_x"] + plotter.scalar_bar_kwargs["width"] / 2
+        == 0.5
+    )
 
-    slider["callback"](-0.04)
+    saliency._set_time_seconds(-0.04)
 
     engine.sample_index_for_time.assert_called_once_with(-0.04)
     assert saliency.param["sample_index"] == 2
     update.assert_called_once_with()
+
+
+def test_epoch_time_controls_fill_available_width_at_wide_and_narrow_widths(
+    qtbot,
+    monkeypatch,
+) -> None:
+    widget = _new_widget(qtbot, monkeypatch)
+    widget.scene_controls.show()
+
+    time_label = next(
+        label
+        for label in widget.scene_controls.findChildren(QLabel)
+        if label.text() == "Epoch time (s):"
+    )
+
+    for width in (1180, 800):
+        widget.resize(width, 600)
+        widget.show()
+        QApplication.processEvents()
+
+        assert time_label.parentWidget() is widget.scene_controls
+        assert widget.time_slider.parentWidget() is widget.scene_controls
+        assert time_label.geometry().left() == 8
+        assert (
+            widget.scene_controls.width() - widget.time_slider.geometry().right() - 1
+            == 8
+        )
+        assert widget.time_slider.width() >= width - 160

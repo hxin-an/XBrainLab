@@ -1,4 +1,5 @@
 import contextlib
+from typing import Any, cast
 
 import pyvista as pv
 from matplotlib import colormaps
@@ -171,7 +172,8 @@ class Saliency3D:
                     color=Theme.TEXT_PRIMARY,
                 )
         else:
-            self.plotter.remove_actor(self.headActor)
+            if self.headActor is not None:
+                self.plotter.remove_actor(self.headActor)
             self.headActor = None
 
     def get_3d_head_plot(self):
@@ -179,40 +181,8 @@ class Saliency3D:
             # Return empty plotter if init failed?
             return self.plotter
 
+        self.plotter.clear_camera_widgets()
         self.plotter.add_camera_orientation_widget()
-
-        self.plotter.add_slider_widget(
-            callback=self._set_time_seconds,
-            rng=self.engine.time_range_seconds,
-            value=self.engine.initial_time_seconds,
-            title="Time (s)",
-            fmt="%.3f",
-            color="white",
-            pointa=(0.025, 0.08),
-            pointb=(0.31, 0.08),
-            style="modern",
-            interaction_event="always",
-        )
-
-        self.plotter.add_checkbox_button_widget(
-            self.channelBox,
-            value=self.showChannel,
-            position=(25, 200),
-            **CHECKBOX_KWARGS,
-        )
-        self.plotter.add_text(
-            "Show channel",
-            position=(60, 197),
-            **CHECKBOX_TEXT_KWARGS,
-        )
-
-        self.plotter.add_checkbox_button_widget(
-            self.headBox,
-            value=self.showHead,
-            position=(25, 250),
-            **CHECKBOX_KWARGS,
-        )
-        self.plotter.add_text("Show head", position=(60, 247), **CHECKBOX_TEXT_KWARGS)
 
         self.channelActor = [self.plotter.add_mesh(ch, color="w") for ch in self.chs]
 
@@ -227,11 +197,13 @@ class Saliency3D:
             cmap=self.cmap,
             show_scalar_bar=False,
         )
-        self.plotter.add_scalar_bar(
+        cast(Any, self.plotter).add_scalar_bar(
             "saliency",
             interactive=False,
             vertical=False,
             color=Theme.TEXT_PRIMARY,
+            position_x=0.1,
+            width=0.8,
         )
         self.plotter.update_scalar_bar_range(self.engine.scalar_bar_range, "saliency")
         self.plotter.add_mesh(self.engine.brain_scaled, color=Theme.BRAIN_MESH)

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts.dev.fetch_public_eeg_fixtures import resolve_public_fixture_dir
 from XBrainLab.backend.application import (
     ApplicationService,
     ApplyInterpretationCommand,
@@ -24,12 +25,13 @@ from XBrainLab.backend.application import (
 from XBrainLab.backend.training.record import RecordKey
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "data"
+PUBLIC_FIXTURE_ROOT = resolve_public_fixture_dir()
 GRAZ_GDF = (FIXTURE_ROOT / "A01T.gdf").resolve()
 GRAZ_LABELS = (FIXTURE_ROOT / "label" / "A01T.mat").resolve()
 OTHER_GRAZ_LABELS = [
     (FIXTURE_ROOT / "label" / f"{stem}.mat").resolve() for stem in ("A02T", "A03T")
 ]
-PUBLIC_BIDS_ROOT = (FIXTURE_ROOT / "public" / "mne-bids-tiny-eeg").resolve()
+PUBLIC_BIDS_ROOT = (PUBLIC_FIXTURE_ROOT / "mne-bids-tiny-eeg").resolve()
 PUBLIC_BIDS_EEG = (
     PUBLIC_BIDS_ROOT
     / "sub-01"
@@ -38,9 +40,7 @@ PUBLIC_BIDS_EEG = (
     / "sub-01_ses-eeg_task-rest_eeg.vhdr"
 )
 PUBLIC_BIDS_EVENTS = PUBLIC_BIDS_EEG.with_name("sub-01_ses-eeg_task-rest_events.tsv")
-PHYSIONET_MOTOR_EDF = (
-    FIXTURE_ROOT / "public" / "physionet-eegmmidb-S008R04.edf"
-).resolve()
+PHYSIONET_MOTOR_EDF = (PUBLIC_FIXTURE_ROOT / "physionet-eegmmidb-S008R04.edf").resolve()
 
 GRAZ_CLASS_NAMES = {
     "1": "left hand",
@@ -49,6 +49,13 @@ GRAZ_CLASS_NAMES = {
     "4": "tongue",
 }
 GRAZ_TARGET_EVENTS = ["769", "770", "771", "772"]
+
+
+def test_real_data_handoff_gate_uses_canonical_public_fixture_root() -> None:
+    expected_root = resolve_public_fixture_dir().resolve()
+
+    assert expected_root / "mne-bids-tiny-eeg" == PUBLIC_BIDS_ROOT
+    assert expected_root / "physionet-eegmmidb-S008R04.edf" == PHYSIONET_MOTOR_EDF
 
 
 def _class_value_decisions(

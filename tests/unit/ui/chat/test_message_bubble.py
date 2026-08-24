@@ -5,7 +5,7 @@ import pytest
 from PyQt6 import sip
 from PyQt6.QtCore import QEvent, Qt, QUrl
 from PyQt6.QtGui import QColor, QFont, QPalette
-from PyQt6.QtWidgets import QApplication, QMessageBox, QStyle, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QApplication, QStyle, QVBoxLayout, QWidget
 
 from XBrainLab.ui.chat.message_bubble import MessageBubble, MessagePresentationKind
 from XBrainLab.ui.styles.theme import Theme
@@ -193,9 +193,9 @@ class TestMessageBubble:
 
         with (
             patch(
-                "XBrainLab.ui.chat.message_bubble.QMessageBox.question",
-                return_value=QMessageBox.StandardButton.Yes,
-            ) as mock_question,
+                "XBrainLab.ui.chat.message_bubble.ask_confirmation",
+                return_value=True,
+            ) as mock_confirmation,
             patch(
                 "XBrainLab.ui.chat.message_bubble.QDesktopServices.openUrl"
             ) as mock_open,
@@ -203,7 +203,7 @@ class TestMessageBubble:
             url = QUrl("https://example.com")
             bubble._on_link_clicked(url)
 
-        assert "example.com" in mock_question.call_args.args[2]
+        assert "example.com" in mock_confirmation.call_args.kwargs["message"]
         mock_open.assert_called_once_with(url)
 
     def test_https_link_does_not_open_when_confirmation_is_declined(self, qtbot):
@@ -211,9 +211,9 @@ class TestMessageBubble:
         qtbot.addWidget(bubble)
         with (
             patch(
-                "XBrainLab.ui.chat.message_bubble.QMessageBox.question",
-                return_value=QMessageBox.StandardButton.No,
-            ) as mock_question,
+                "XBrainLab.ui.chat.message_bubble.ask_confirmation",
+                return_value=False,
+            ) as mock_confirmation,
             patch(
                 "XBrainLab.ui.chat.message_bubble.QDesktopServices.openUrl"
             ) as mock_open_url,
@@ -221,7 +221,7 @@ class TestMessageBubble:
             url = QUrl("https://example.com/private")
             bubble._on_link_clicked(url)
 
-        mock_question.assert_called_once()
+        mock_confirmation.assert_called_once()
         mock_open_url.assert_not_called()
 
     @pytest.mark.parametrize(
@@ -242,15 +242,15 @@ class TestMessageBubble:
 
         with (
             patch(
-                "XBrainLab.ui.chat.message_bubble.QMessageBox.question"
-            ) as mock_question,
+                "XBrainLab.ui.chat.message_bubble.ask_confirmation"
+            ) as mock_confirmation,
             patch(
                 "XBrainLab.ui.chat.message_bubble.QDesktopServices.openUrl"
             ) as mock_open_url,
         ):
             bubble._on_link_clicked(QUrl(target))
 
-        mock_question.assert_not_called()
+        mock_confirmation.assert_not_called()
         mock_open_url.assert_not_called()
 
     def test_dynamic_resizing(self, qtbot):
