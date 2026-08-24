@@ -75,6 +75,15 @@ exact commit完成後才可稱`handoff-ready`。
 
 純docs、tests、CI或agent-guidance變更若不可能改變產品行為，可不要求manual acceptance。
 
+### Bounded Assistant baseline merge
+
+使用者可明確批准一個尚未達Stable promotion gate、但相對既有main有可驗證進步的bounded Assistant
+baseline。這不是可重用的promotion gate，也不修改`handoff_gate_spec.py`：PR必須保存同一exact source的
+完整非strict model report、相較既有baseline不得退步的項目、全部known failures與claim boundary，並在
+所有applicable non-skipped CI成功後取得同一SHA的Windows真人手測與merge同意。這類source只能稱
+bounded baseline或checkpoint，不能稱Stable candidate、promotion或handoff-ready；後續24/24 no-action與
+7/7 clarification仍由下列strict gate判定。
+
 ### Stable Assistant candidate
 
 Assistant candidate必須在同一clean/explained exact source依序閉合下列證據：
@@ -96,11 +105,13 @@ Assistant candidate必須在同一clean/explained exact source依序閉合下列
    `ApplicationViewPublication`及既有agent capability policy產生；直接使用hand-authored stage list或把
    scorer context中的所有tool設為enabled，不構成unavailable-action projection證據。Frozen core仍保留
    原catalog路徑以維持歷史可比，兩種suite不得互換claim。
-   同一v7 evaluator另固定五個clarification continuation cases：source必須是precision suite中五個
-   missing-parameter turn之一，且第一輪真的由production parameter-origin boundary產生exact tool／question
-   receipt；模型直接`respond_to_user`而沒有Host receipt時不得合成或代填。第二輪只提供缺值，仍須經相同
-   parser、schema、publication、capability與attempt policy得到5/5 final execute-boundary；raw第一發與最多
-   兩次format recovery分開保存。這個gate不取代24/24 precision，也不等於ToolExecutor已產生真side effect。
+   同一v8 evaluator另固定7個production-controller clarification trajectories：五個direct cases的source
+   必須來自precision suite的missing-parameter turn，且第一輪真的由production parameter-origin boundary
+   產生exact tool／question receipt；模型直接`respond_to_user`而沒有Host receipt時不得合成或代填。另外
+   generic filter selection與partial bandpass accumulation都必須經真controller pending lifecycle。所有
+   trajectory仍須經相同parser、schema、publication、capability與attempt policy得到7/7 final verified
+   execute-boundary；raw第一發與最多兩次format recovery分開保存。這個gate不取代24/24 precision，也不
+   等於ToolExecutor已產生真side effect。
 3. 真model safe E2E依normal ChatPanel路徑完成Switch Dataset → Import GUI → Select Channels →
    direct Resample；不得用debug transport或fake generator替代。
 4. 使用者在同一candidate source完成Complete Workflow、Lifecycle／Navigation、Contract Failures三份

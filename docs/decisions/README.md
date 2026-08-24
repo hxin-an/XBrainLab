@@ -22,7 +22,8 @@
 | assistant runtime local-only | active | 為了簡化開發、部署、隱私和驗證，assistant product runtime 已 local-only；remote backend modules 已從 product package 移除，`openai` / `google-genai` 只留 optional `legacy-remote-llm` dependency group。 |
 | Assistant tool surface 由 approved intent 決定 | active | Tool 不由 runtime inventory 或既有測試反推。名稱、membership、side effect、confirmation 與 visible result 必須先在 `docs/target/agent.md` 的 intent ledger 取得使用者核准；current model-facing projection 只描述現況。 |
 | Assistant Stable v2 target surface | active | Target intent ledger 已鎖定17個產品tools、backend-owned stage、strict三欄envelope、一回合一動作、thin Host與GUI completion terminal。Implementation只能投影該ledger；不得用Host heuristic、silent substitution、auto continuation或runtime fallback補模型決策。 |
-| Assistant Stable v2 staged merge | active | Product重建先在暫時integration branch以小PR完成；該branch不是產品基線。只有完整candidate在同一exact SHA通過工程證據、使用者手測並取得明確merge同意後，才以merge commit進main；source改變即使批准失效。 |
+| Assistant Stable v2 staged promotion | active | Stable promotion先在暫時integration branch組裝；該branch不是產品基線。只有完整candidate在同一exact SHA通過工程證據、使用者手測並取得明確merge同意後，才可宣稱promotion或handoff-ready；source改變即使批准失效。 |
+| Assistant bounded improved baseline | active | 使用者於2026-08-24批准把Granite 4.0 Micro 3B的累積改良版作為後續疊代基準：36/36 positive、10/10 explicit parameter origin與5/5 missing guard不得退步，20/24 no-action與0/7 production-controller clarification final明列為已知限制。這是一次bounded baseline merge decision，不降低24/24與7/7 Stable promotion gate，也不授權新prompt treatment、Host semantic router或架構重構；仍須exact-source report、PR全綠、Windows真人手測與明確merge同意。 |
 | validation 是 thesis-critical | active | 測試和 evidence 是論文主張的一部分。 |
 | 文件要少數 canonical 化 | active | 短期 AI / agent 文件整合後刪除，只保留少數 canonical 文件。 |
 | Agent guidance 採 lean single-authority contract | active | Root 保存授權、safety、scope ceiling、complexity trigger 與 handoff 不變量；skills 只保存 routing/方法，workflows 保存多步程序。Static audit 只限制上限與 authority integrity，不再要求最低篇幅或大量外部 A/B。 |

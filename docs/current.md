@@ -19,7 +19,7 @@ local Granite透過18個核准action進入相同GUI與Command workflow。
 | Model catalog | Pinned Braindecode 1.6.1提供61個可搜尋contracts，其中54個符合目前classification workflow而可選；provider失效時改列distinct `legacy.braindecode.*` recovery IDs。Model Selection使用catalog reviewed defaults。 | 不可選contracts會顯示license、task或resource reason；桌面UI不提供model constructor調參；upstream與legacy禁止silent fallback，catalog execution不代表科學品質。 |
 | Evaluation | Individual fold/run支援Train、Validation、Test；cross-fold Summary只pool同一training round的disjoint Test masks。 | `All Folds`的Split只有Test是刻意的統計邊界。 |
 | Saliency | 明確Compute Saliency、累加method recompute、Map/Spectrogram/Topographic/3D publication存在。 | 不代表attribution具科學有效性，也不保證所有模型梯度相容。 |
-| Assistant | Local catalog以Granite 4.0 Micro 3B作recommended primary、Granite 3.3 2B作lower-memory選項；strict envelope、18-action stage surface、parameter provenance、最多兩次parameter reply的bounded direct-input clarification、capability、confirmation、GUI handoff與model-free walkthrough存在。 | 最新完成的3B evidence仍是v7：clarification final 5/5、no-action 20/24；current v8改為7條production-controller clarification trajectories，任何v8分數claim都必須綁定同一exact candidate source的新report，不得移植v7分數。Deterministic guards不代表安全零容忍或任意長session。 |
+| Assistant | Local catalog以Granite 4.0 Micro 3B作recommended primary、Granite 3.3 2B作lower-memory選項；strict envelope、18-action stage surface、parameter provenance、typed pending receipt infrastructure、capability、confirmation、GUI handoff與model-free walkthrough存在。 | Exact `6df0cc87`的3B v8 evidence為36/36 positive、10/10 explicit parameter origin、5/5 missing guard、20/24 no-action與0/7 production-controller clarification final。這支持bounded improved baseline，不是Stable promotion或安全零容忍；四個no-action failures與模型未建立可延續receipt是current known limitations，任何其他SHA仍須自己的exact report。 |
 | MCP | Executable package、transport、CLI、capture、schema projection與tests已退役；provenance只留在Git history。 | 不是release能力；未來若要恢復，必須另開public contract、security與validation decision。 |
 | Packaging | Windows launcher與source啟動方式存在。 | 沒有signed installer。 |
 
@@ -49,5 +49,5 @@ seed、cache authority或retired worktree。
 ## Release boundary
 
 `v0.7.0`只宣稱經使用者workflow手測、strict host guards與CI保護的Desktop GUI／Local Assistant
-source baseline；不宣稱signed installer、安全零容忍、scientific quality、任意dataset全面支援或
-產品1.0。
+source baseline；Assistant baseline可包含明列且由使用者接受的bounded model limitations，不等於Stable
+promotion。不宣稱signed installer、安全零容忍、scientific quality、任意dataset全面支援或產品1.0。
