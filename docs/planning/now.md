@@ -140,6 +140,17 @@ Scope只允許讓該test等待既有observable terminal signal，不改runtime�
 修改或第二個產品failure都停止並重新評估，不以rerun掩蓋race。新test commit仍使exact-SHA evidence
 失效，replacement SHA需重新完成必要local evidence、PR checks與使用者手測。
 
+Merge reconciliation checkpoint：使用者在WSLg手測`13088c41`後接受中文輸入為本輪已知限制，並於
+`2026-08-24`明確同意以「Agent改版與新增模型」標示合併；但PR #50在合併前gate發現`main`已由
+`5698be7a`推進到GUI／saliency rollup `5e5073e0`，GitHub將候選標為`CONFLICTING/DIRTY`。Outcome是只把
+最新`main`整合進既有Assistant候選並解直接衝突，不新增Assistant、GUI、saliency或import行為。Scope限於
+merge reconciliation、同時修改檔案的owner語意校準與直接regression；non-goals包含順手重構、中文IME
+修復、prompt／tool contract再調整及任何可見設計變更。若衝突需要新的產品取捨、owner或可見行為，立即
+停止並另取得UI／產品確認。先確認conflict set與owners，保留兩邊既有已核准行為，再跑受影響focused
+suite、完整applicable handoff／CI。新的source SHA必須重新交付WSLg手測並取得merge同意；原本
+`13088c41`的manual acceptance不得沿用。Stop condition是PR對最新main為clean、所有non-skipped checks
+completed/success、exact-source evidence重建且使用者再次接受。
+
 施工 checkpoint：catalog／provider chain至`627c5492`已由獨立gate確認無blocker／major；metadata
 discovery保持barrel-free，只有checked provider status能啟用projection。`f27eabfa`已鎖定61-symbol逐檔
 provenance、hash、license與excluded set。第一個baseline convolution family已完成private namespace、minimal
