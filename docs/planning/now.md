@@ -96,7 +96,10 @@ blocking acceptance；四個已知no-action prompts與多輪補參數失敗只�
 UI修改與本baseline acceptance界線均已取得使用者明確確認。
 
 Validation checkpoint：configured Basedpyright在`AgentManager._show_inline_setup`找到一個新的optional
-panel access；最小normal-path-neutral guard仍依repo UI規則等待使用者精確授權。完整LLM／Agent第一次執行為
+panel access；使用者已於`2026-08-24`明確授權加入最小normal-path-neutral lifecycle guard，先以red
+regression鎖定未初始化panel時no-op且不啟動preview；測試先以`NoneType.show_inline_setup`失敗，加入
+入口guard後新舊inline setup focused cases為3 passed，完整AgentManager為151 passed，configured
+Basedpyright為0 new diagnostics。完整LLM／Agent第一次執行為
 1607 passed，唯一failure是long-session helper仍尋找已退役的`workflow_decision`，而production與直接
 assembler contract已發布`state_card`；本test-only drift以精確新名稱修正，不保留compatibility alias，
 focused green後再重跑完整suite。

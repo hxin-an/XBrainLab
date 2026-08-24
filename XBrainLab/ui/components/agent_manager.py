@@ -577,6 +577,9 @@ class AgentManager(QObject):
             self.chat_dock.show()
 
     def _show_inline_setup(self, config: LLMConfig) -> None:
+        chat_panel = self.chat_panel
+        if chat_panel is None:
+            return
         resolution = self._assistant_runtime.preview_launch(config)
         spec = local_model_spec(config.model_name)
         label = spec.label if spec else str(config.model_name)
@@ -586,7 +589,7 @@ class AgentManager(QObject):
             else "Model details unavailable"
         )
         cache_ready = resolution.failure is None
-        self.chat_panel.show_inline_setup(f"{label}\n{memory}", cache_ready=cache_ready)
+        chat_panel.show_inline_setup(f"{label}\n{memory}", cache_ready=cache_ready)
 
     def _handle_inline_setup(self, action: str) -> None:
         config = self._assistant_runtime.load_config()

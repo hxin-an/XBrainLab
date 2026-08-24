@@ -2998,6 +2998,13 @@ class TestAgentManagerMethods:
         agent_mgr._assistant_runtime.activate.assert_not_called()
         agent_mgr.chat_panel.show_inline_setup.assert_called_once()
 
+    def test_inline_setup_before_ui_initialization_is_noop(self, agent_mgr):
+        agent_mgr.chat_panel = None
+
+        agent_mgr._show_inline_setup(MagicMock())
+
+        agent_mgr._assistant_runtime.preview_launch.assert_not_called()
+
     @pytest.mark.parametrize(
         ("failure", "cache_ready"), [(None, True), (object(), False)]
     )
