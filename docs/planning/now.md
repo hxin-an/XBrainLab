@@ -13,6 +13,55 @@ evidence 均已失效；本 slice 完成前不得宣稱 handoff-ready 或可 mer
 缺陷、全面收斂 user-visible modal presentation，經 focused tests、非作者 subagent gate 與 canonical
 handoff 後一次性交付真人手測。
 
+## 2026-08-24 追加手測阻擋
+
+前一輪輕量 walkthrough 後，使用者再確認六項必須在交付手測前修完的 observable defect；任何既有
+manual acceptance 與 handoff evidence 仍不可沿用。本輪 UI 修改已取得明確授權，並依使用者要求先做
+focused validation／輕量 screenshot，再交真人手測；只有使用者確認 UI okay 後才執行 canonical heavy
+handoff。
+
+- Match Labels 的背景 re-preview 按橘色 `Cancel Import` 後，必須重開同一 review 並保留 label pairing、
+  placement、class 與 source choices；不得 apply、rescan 或因回到預設值額外觸發 alignment 提示。
+- Import Review／Apply 尚未 terminal committed publication 時可以瀏覽 Preprocess，但 Filtering、Resample、
+  Re-reference、Normalize、Epoch 與 Reset 等 mutation actions 必須 disabled，並以 inline
+  `Import is still finishing...` 說明；不得用 warning modal 呈現正常 pending state。
+- Saliency Map 在尚未 compute 時保留完整 `Gradient saliency has not been computed...` copy，並在 action
+  bar 下方的剩餘 view 中置中，不得被 hidden scroll surface 推到底部。
+- `Fold Set / All Folds` 是合法 explicit Compute Saliency target：按鈕保持可按，一次 command 綁定 backend
+  admitted exact members，依 canonical Fold 順序逐筆 compute，全部成功才原子發布；任一 failure／cancel
+  保留舊結果。設定與 selection 未變時不得誤入 `Review Saliency Settings Again`。單一 Fold 同樣必須
+  exact-targeted，不得暗中計算所有 finished records。
+- Visualization 的 Fold label 移除 model name，但 item identity／model truth 保留；其他 panel 文案不變。
+- Control reading order 固定為 `Fold -> Run -> Saliency -> Method -> Normalize -> Absolute`，1180px 優先
+  單排，800px／窄版最多三排且不得 overlap 或留下 hidden Absolute 空洞。
+
+### Scope、ownership 與 complexity review
+
+- 不改 import／label／event 科學語意、Saliency algorithm、Assistant tool schema、其他 panel Fold naming，
+  也不自動 compute Saliency。
+- 復用 `DataInterpretationActionCoordinator` 的 cancelled-review continuation、`OwnedWorkRegistry` 的 active
+  operation truth，以及 TrainingManager 現有 sequential compute／atomic publication；不新增 owner、state
+  machine、receipt family或compatibility path。
+- `SaliencyCommand` 增加 optional typed selection target；visible product Compute 一律帶 target，query-only與
+  既有無 selection caller維持原contract。resource receipt必須包含canonical target identity。
+- 預估觸及約9個production files、`+240/-70/net +170 LOC`，超過8-file complexity review門檻但不增加owner；
+  拆成 Import/Preprocess、Saliency target/batch、Visualization presentation 三個可回退commit。若production
+  淨增超過300 LOC、新增owner/state machine，或本追加slice接近1,500 LOC，立即停止重新切分。
+
+### Repair、focused validation 與 stop condition
+
+1. 先以 observable red tests固定 re-preview cancel draft、import-pending preprocess fence、Fold Set compute、
+   exact target、atomic failure/cancel、placeholder geometry、short Fold label與responsive control order。
+2. 完成三個bounded implementation commits；各批跑相同red/green selector與直接相鄰test，再做非作者
+   cross-review，不以mock choreography或production alias換取綠燈。
+3. 執行focused unit/integration、Ruff／format check、configured type check及輕量UI screenshot/walkthrough；
+   主agent目視pending、empty、compute與800/1180px states後交使用者手測，不先跑heavy manifest。
+4. 使用者確認UI okay且source凍結後，才重跑canonical exact-source handoff與同SHA CI。
+
+若cancel後draft不一致、pending import仍可進preprocess mutation、All Folds Compute未建立單一owned operation、
+partial saliency被發布、stale target可覆寫新selection、或任一control／placeholder overlap，即停在checkpoint；
+不得把其他focused PASS或舊evidence當成完成。
+
 ## 問題與 observable outcome
 
 ### Import 與 operation lifecycle

@@ -21,6 +21,7 @@ from XBrainLab.ui.panels.visualization.saliency_views import base_saliency_view
 from XBrainLab.ui.panels.visualization.saliency_views.base_saliency_view import (
     BaseSaliencyView,
 )
+from XBrainLab.ui.panels.visualization.saliency_views.map_view import SaliencyMapWidget
 
 
 def test_saliency_render_returns_before_background_work_finishes(qtbot):
@@ -855,3 +856,23 @@ def test_replaced_figure_becomes_visible_after_loading_state(qtbot):
     assert view.canvas is not None
     assert view.canvas.isVisibleTo(view)
     assert view.error_label.isHidden()
+
+
+def test_scrollable_map_placeholder_hides_plot_surface_and_centers_message(qtbot):
+    """An empty Saliency Map must not reserve its hidden scroll canvas height."""
+    view = SaliencyMapWidget()
+    qtbot.addWidget(view)
+    view.resize(640, 360)
+    view.show()
+    qtbot.waitExposed(view)
+
+    view.show_message("Gradient saliency has not been computed for this fold.")
+    qtbot.wait(0)
+
+    assert view._canvas_scroll_area is not None
+    assert view._canvas_scroll_area.isHidden()
+    assert view.error_label.isVisible()
+    assert (
+        abs(view.error_label.geometry().center().y() - view.contentsRect().center().y())
+        <= 3
+    )

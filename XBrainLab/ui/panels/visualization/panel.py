@@ -746,37 +746,79 @@ class VisualizationPanel(BasePanel):
         for column in range(12):
             self.ctrl_layout.setColumnStretch(column, 0)
 
-        if layout_mode in {"wide", "medium"}:
+        controls = (
+            self.plan_label,
+            self.plan_combo,
+            self.run_label,
+            self.run_combo,
+            self.saliency_view_label,
+            self.saliency_combo,
+            self.saliency_reset_view,
+            self.method_label,
+            self.method_combo,
+            self.normalize_check,
+            self.abs_check,
+        )
+        for control in controls:
+            self.ctrl_layout.removeWidget(control)
+
+        if layout_mode == "wide":
             self.plan_combo.setMinimumWidth(150)
             self.plan_combo.setMaximumWidth(210)
             self.run_combo.setMinimumWidth(105)
             self.run_combo.setMaximumWidth(145)
             self.method_combo.setMinimumWidth(150)
             self.method_combo.setMaximumWidth(190)
-
             self.ctrl_layout.addWidget(self.plan_label, 0, 0)
             self.ctrl_layout.addWidget(self.plan_combo, 0, 1)
             self.ctrl_layout.addWidget(self.run_label, 0, 2)
             self.ctrl_layout.addWidget(self.run_combo, 0, 3)
-            self.ctrl_layout.addWidget(self.method_label, 0, 4)
-            self.ctrl_layout.addWidget(self.method_combo, 0, 5)
+            self.ctrl_layout.addWidget(self.saliency_view_label, 0, 4)
+            self.ctrl_layout.addWidget(self.saliency_combo, 0, 5)
+            self.ctrl_layout.addWidget(self.saliency_reset_view, 0, 6)
+            self.ctrl_layout.addWidget(self.method_label, 0, 7)
+            self.ctrl_layout.addWidget(self.method_combo, 0, 8)
             self.ctrl_layout.setColumnStretch(11, 1)
             self._position_transform_controls(layout_mode)
             return
 
-        self.plan_combo.setMinimumWidth(150)
-        self.plan_combo.setMaximumWidth(220)
-        self.run_combo.setMinimumWidth(120)
-        self.run_combo.setMaximumWidth(180)
-        self.method_combo.setMinimumWidth(150)
-        self.method_combo.setMaximumWidth(220)
+        if layout_mode == "medium":
+            self.plan_combo.setMinimumWidth(150)
+            self.plan_combo.setMaximumWidth(210)
+            self.run_combo.setMinimumWidth(105)
+            self.run_combo.setMaximumWidth(145)
+            self.method_combo.setMinimumWidth(150)
+            self.method_combo.setMaximumWidth(190)
+            self.saliency_combo.setMinimumWidth(160)
+            self.ctrl_layout.addWidget(self.plan_label, 0, 0)
+            self.ctrl_layout.addWidget(self.plan_combo, 0, 1)
+            self.ctrl_layout.addWidget(self.run_label, 0, 2)
+            self.ctrl_layout.addWidget(self.run_combo, 0, 3)
+            self.ctrl_layout.addWidget(self.saliency_view_label, 0, 4)
+            self.ctrl_layout.addWidget(self.saliency_combo, 0, 5)
+            self.ctrl_layout.addWidget(self.saliency_reset_view, 0, 6)
+            self.ctrl_layout.addWidget(self.method_label, 1, 0)
+            self.ctrl_layout.addWidget(self.method_combo, 1, 1)
+            self.ctrl_layout.setColumnStretch(7, 1)
+            self._position_transform_controls(layout_mode)
+            return
 
+        self.plan_combo.setMinimumWidth(115)
+        self.plan_combo.setMaximumWidth(150)
+        self.run_combo.setMinimumWidth(90)
+        self.run_combo.setMaximumWidth(120)
+        self.method_combo.setMinimumWidth(100)
+        self.method_combo.setMaximumWidth(135)
+        self.saliency_combo.setMinimumWidth(135)
         self.ctrl_layout.addWidget(self.plan_label, 0, 0)
         self.ctrl_layout.addWidget(self.plan_combo, 0, 1)
         self.ctrl_layout.addWidget(self.run_label, 0, 2)
         self.ctrl_layout.addWidget(self.run_combo, 0, 3)
-        self.ctrl_layout.addWidget(self.method_label, 1, 0)
-        self.ctrl_layout.addWidget(self.method_combo, 1, 1)
+        self.ctrl_layout.addWidget(self.saliency_view_label, 1, 0)
+        self.ctrl_layout.addWidget(self.saliency_combo, 1, 1)
+        self.ctrl_layout.addWidget(self.saliency_reset_view, 1, 2)
+        self.ctrl_layout.addWidget(self.method_label, 2, 0)
+        self.ctrl_layout.addWidget(self.method_combo, 2, 1)
         self.ctrl_layout.setColumnStretch(5, 1)
         self._position_transform_controls(layout_mode)
 
@@ -784,9 +826,6 @@ class VisualizationPanel(BasePanel):
         """Place compact transforms without reserving hidden-control holes."""
         self.ctrl_layout.removeWidget(self.abs_check)
         self.ctrl_layout.removeWidget(self.normalize_check)
-        self.ctrl_layout.removeWidget(self.saliency_view_label)
-        self.ctrl_layout.removeWidget(self.saliency_combo)
-        self.ctrl_layout.removeWidget(self.saliency_reset_view)
 
         spectrogram_active = hasattr(
             self, "tabs"
@@ -797,28 +836,20 @@ class VisualizationPanel(BasePanel):
 
         if layout_mode == "wide":
             row = 0
-            normalize_column = 6
-            absolute_column = 7
-        else:
+            normalize_column = 9
+            absolute_column = 10
+        elif layout_mode == "medium":
             row = 1
+            normalize_column = 2
+            absolute_column = 3
+        else:
+            row = 2
             normalize_column = 2
             absolute_column = 3
 
         self.ctrl_layout.addWidget(self.normalize_check, row, normalize_column)
         if show_absolute:
             self.ctrl_layout.addWidget(self.abs_check, row, absolute_column)
-        if layout_mode == "wide":
-            self.ctrl_layout.addWidget(self.saliency_view_label, 0, 8)
-            self.ctrl_layout.addWidget(self.saliency_combo, 0, 9)
-            self.ctrl_layout.addWidget(self.saliency_reset_view, 0, 10)
-        elif layout_mode == "medium":
-            self.ctrl_layout.addWidget(self.saliency_view_label, 2, 0)
-            self.ctrl_layout.addWidget(self.saliency_combo, 2, 1)
-            self.ctrl_layout.addWidget(self.saliency_reset_view, 2, 2)
-        else:
-            self.ctrl_layout.addWidget(self.saliency_view_label, 2, 0)
-            self.ctrl_layout.addWidget(self.saliency_combo, 2, 1)
-            self.ctrl_layout.addWidget(self.saliency_reset_view, 2, 2)
 
     def _cross_fold_choices_from_query(
         self,
@@ -950,11 +981,6 @@ class VisualizationPanel(BasePanel):
         previous_run = self.run_combo.currentData()
         previous_run_text = self.run_combo.currentText()
         publication = self._application_view_publication
-        published_model_name = (
-            publication.state.training.model_name
-            if publication is not None and publication.usable
-            else ""
-        )
         coverage = (
             publication.state.visualization.saliency_coverage
             if publication is not None and publication.usable
@@ -973,12 +999,9 @@ class VisualizationPanel(BasePanel):
             )
             run_label = run_display_label(run_coverage.run_index)
             grouped_runs.setdefault(plan_identity, []).append((run_identity, run_label))
-            model_name = (
-                run_coverage.model_name or published_model_name or "Unknown model"
-            )
             plan_labels.setdefault(
                 plan_identity,
-                fold_display_label(run_coverage.plan_index, model_name),
+                fold_display_label(run_coverage.plan_index),
             )
 
         cross_fold_choices = self._cross_fold_choices_from_query()

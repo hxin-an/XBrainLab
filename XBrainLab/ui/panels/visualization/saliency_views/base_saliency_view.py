@@ -885,7 +885,7 @@ class BaseSaliencyView(QWidget):
         self.error_label.setContentsMargins(16, 8, 16, 8)
         self.error_label.setSizePolicy(
             QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Expanding,
         )
         self.error_label.setStyleSheet(
             f"color: {Theme.ACCENT_ERROR}; font-size: 14px; font-weight: bold;",
@@ -899,8 +899,7 @@ class BaseSaliencyView(QWidget):
         self._display_error(message)
 
     def _display_error(self, message):
-        if self.canvas is not None:
-            self.canvas.hide()
+        self._set_plot_surface_visible(False)
         self.error_label.setStyleSheet(
             f"color: {Theme.ACCENT_ERROR}; font-size: 14px; font-weight: bold;",
         )
@@ -913,8 +912,7 @@ class BaseSaliencyView(QWidget):
         self._display_message(message)
 
     def _display_message(self, message):
-        if self.canvas is not None:
-            self.canvas.hide()
+        self._set_plot_surface_visible(False)
         self.error_label.setStyleSheet(
             f"color: {Theme.TEXT_SECONDARY}; font-size: 14px; font-weight: bold;",
         )
@@ -936,12 +934,17 @@ class BaseSaliencyView(QWidget):
         self.error_label.setStyleSheet(
             f"color: {Theme.ACCENT_ERROR}; font-size: 14px; font-weight: bold;",
         )
-        if self.canvas is not None:
-            self.canvas.show()
+        self._set_plot_surface_visible(True)
         if self.fig is None or self.canvas is None:
             return
         self.fig.clear()
         self._draw_canvas_now()
+
+    def _set_plot_surface_visible(self, visible: bool) -> None:
+        """Toggle the widget which actually reserves plot layout space."""
+        surface = self._canvas_scroll_area or self.canvas
+        if surface is not None:
+            surface.setVisible(visible)
 
     def _draw_canvas_now(self) -> None:
         if self.canvas is None:
@@ -1055,6 +1058,7 @@ class BaseSaliencyView(QWidget):
             else:
                 self.main_layout.insertWidget(0, installed_canvas)
             installed_canvas.show()
+            self._set_plot_surface_visible(True)
             self.main_layout.activate()
             self._fit_current_figure()
         except Exception as exc:

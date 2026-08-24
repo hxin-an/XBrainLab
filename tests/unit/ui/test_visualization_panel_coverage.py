@@ -1230,7 +1230,7 @@ class TestRefreshCombos:
         assert [
             panel.plan_combo.itemText(index)
             for index in range(panel.plan_combo.count())
-        ] == ["Select a fold", "Fold 1 (EEGNet)", "Fold 2 (SCCNet)"]
+        ] == ["Select a fold", "Fold 1", "Fold 2"]
         assert panel.plan_combo.itemData(1) == plan_zero
         assert panel.plan_combo.itemData(2) == plan_one
         assert isinstance(panel.plan_combo.itemData(1), SaliencyPlanIdentity)
@@ -1563,7 +1563,7 @@ class TestRefreshCombos:
         )
 
         assert panel.plan_combo.currentData() == selected_run.plan
-        assert panel.plan_combo.currentText() == "Fold 2 (SCCNet v2)"
+        assert panel.plan_combo.currentText() == "Fold 2"
         assert panel.run_combo.currentData() == selected_run
         assert panel.run_combo.currentText() == "Run 2"
 

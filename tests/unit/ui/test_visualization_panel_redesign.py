@@ -210,6 +210,37 @@ def test_saliency_view_selector_is_inside_the_visible_control_bar(qtbot) -> None
     )
 
 
+@pytest.mark.parametrize("layout_mode", ("wide", "medium", "narrow"))
+def test_visualization_controls_keep_saliency_before_method_and_transforms(
+    qtbot,
+    layout_mode,
+) -> None:
+    """Visible controls read Fold, Run, Saliency, Method, Normalize, Absolute."""
+    panel, _ = _make_panel(qtbot)
+    panel._apply_visualization_control_layout(layout_mode)
+
+    layout = panel.ctrl_layout
+    ordered = (
+        panel.plan_label,
+        panel.plan_combo,
+        panel.run_label,
+        panel.run_combo,
+        panel.saliency_view_label,
+        panel.saliency_combo,
+        panel.method_label,
+        panel.method_combo,
+        panel.normalize_check,
+        panel.abs_check,
+    )
+    positions = []
+    for control in ordered:
+        index = layout.indexOf(control)
+        assert index >= 0
+        row, column, _, _ = layout.getItemPosition(index)
+        positions.append((row, column))
+    assert positions == sorted(positions)
+
+
 @pytest.mark.parametrize(
     ("control_width", "expected_mode"),
     (
@@ -794,7 +825,7 @@ def test_visualization_panel_keeps_aggregation_in_tooltip_without_extra_chrome(q
         panel.tabs.setCurrentIndex(0)
 
     assert panel.tabs.toolTip() == (
-        "motor-imagery · Fold 1 (EEGNet) · Run 1 · True class · Mean over EEG epochs"
+        "motor-imagery · Fold 1 · Run 1 · True class · Mean over EEG epochs"
     )
 
     _publish_panel_state(
@@ -812,7 +843,7 @@ def test_visualization_panel_keeps_aggregation_in_tooltip_without_extra_chrome(q
         ),
     )
 
-    assert panel.tabs.toolTip().startswith("motor-imagery · Fold 1 (EEGNet) · Run 1")
+    assert panel.tabs.toolTip().startswith("motor-imagery · Fold 1 · Run 1")
     assert "new-current-file.edf" not in panel.tabs.toolTip()
 
 
@@ -1056,21 +1087,24 @@ def test_visualization_controls_stay_in_a_compact_narrow_grid(qtbot):
     assert isinstance(layout, QGridLayout)
     plan_item = layout.itemAtPosition(0, 1)
     run_item = layout.itemAtPosition(0, 3)
-    method_item = layout.itemAtPosition(1, 1)
-    absolute_item = layout.itemAtPosition(1, 3)
-    normalize_item = layout.itemAtPosition(1, 2)
+    saliency_item = layout.itemAtPosition(1, 1)
+    method_item = layout.itemAtPosition(2, 1)
+    absolute_item = layout.itemAtPosition(2, 3)
+    normalize_item = layout.itemAtPosition(2, 2)
     assert plan_item is not None
     assert run_item is not None
+    assert saliency_item is not None
     assert method_item is not None
     assert absolute_item is not None
     assert normalize_item is not None
     assert plan_item.widget() is panel.plan_combo
     assert run_item.widget() is panel.run_combo
+    assert saliency_item.widget() is panel.saliency_combo
     assert method_item.widget() is panel.method_combo
     assert absolute_item.widget() is panel.abs_check
     assert normalize_item.widget() is panel.normalize_check
     assert abs(panel.plan_combo.y() - panel.run_combo.y()) <= 8
-    assert panel.plan_combo.y() < panel.method_combo.y()
+    assert panel.plan_combo.y() < panel.saliency_combo.y() < panel.method_combo.y()
     assert abs(panel.method_combo.y() - panel.abs_check.y()) <= 8
     assert abs(panel.method_combo.y() - panel.normalize_check.y()) <= 8
 
@@ -1101,7 +1135,7 @@ def test_visualization_controls_stay_in_a_compact_narrow_grid(qtbot):
     assert panel.abs_check.isChecked()
     assert not panel.normalize_check.isHidden()
     assert layout.indexOf(panel.abs_check) == -1
-    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (1, 2)
+    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (2, 2)
     assert panel.normalize_check.y() == transform_row_y
     assert control_group.height() == control_height
     assert panel.plan_combo.y() == selector_rows["plan"]
@@ -1114,8 +1148,8 @@ def test_visualization_controls_stay_in_a_compact_narrow_grid(qtbot):
 
     assert not panel.abs_check.isHidden()
     assert panel.abs_check.isChecked()
-    assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (1, 3)
-    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (1, 2)
+    assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (2, 3)
+    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (2, 2)
     assert control_group.height() == control_height
     assert panel.plan_combo.y() == selector_rows["plan"]
     assert panel.run_combo.y() == selector_rows["run"]
@@ -1171,7 +1205,7 @@ def test_visualization_controls_use_one_row_when_panel_is_wide(qtbot):
     assert panel.abs_check.isChecked()
     assert not panel.normalize_check.isHidden()
     assert layout.indexOf(panel.abs_check) == -1
-    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (0, 6)
+    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (0, 9)
     assert panel.normalize_check.y() == transform_row_y
     assert control_group.height() == control_height
     assert panel.plan_combo.y() == selector_rows["plan"]
@@ -1184,8 +1218,8 @@ def test_visualization_controls_use_one_row_when_panel_is_wide(qtbot):
 
     assert not panel.abs_check.isHidden()
     assert panel.abs_check.isChecked()
-    assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (0, 7)
-    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (0, 6)
+    assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (0, 10)
+    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (0, 9)
     assert control_group.height() == control_height
     assert panel.plan_combo.y() == selector_rows["plan"]
     assert panel.run_combo.y() == selector_rows["run"]
@@ -1301,12 +1335,12 @@ def test_visualization_panel_populates_controls_for_published_runs(qtbot):
     )
 
     assert panel.plan_combo.count() == 3
-    assert panel.plan_combo.currentText() == "Fold 1 (EEGNet)"
+    assert panel.plan_combo.currentText() == "Fold 1"
     assert panel.run_combo.count() == 2
 
     panel.plan_combo.setCurrentIndex(2)
 
-    assert panel.plan_combo.currentText() == "Fold 2 (SCCNet)"
+    assert panel.plan_combo.currentText() == "Fold 2"
     assert panel.run_combo.count() == 1
     assert panel.run_combo.findText("Average") == -1
     ctrl.get_trainers.assert_not_called()
@@ -3519,13 +3553,13 @@ def test_visualization_panel_preserves_selection_across_publication_refresh(qtbo
     panel.plan_combo.setCurrentIndex(2)
     panel.run_combo.setCurrentIndex(1)
 
-    assert panel.plan_combo.currentText() == "Fold 2 (SCCNet)"
+    assert panel.plan_combo.currentText() == "Fold 2"
     assert panel.run_combo.currentText() == "Run 2"
 
     panel.mark_refresh_dirty()
     _publish_panel_state(panel, result)
 
-    assert panel.plan_combo.currentText() == "Fold 2 (SCCNet)"
+    assert panel.plan_combo.currentText() == "Fold 2"
     assert panel.run_combo.currentText() == "Run 2"
     ctrl.get_trainers.assert_not_called()
 
@@ -4092,7 +4126,7 @@ def test_visualization_panel_uses_typed_render_publication_without_live_getters(
         plan=plan_identity,
         run_index=0,
     )
-    assert panel.plan_combo.currentText() == "Fold 1 (EEGNet)"
+    assert panel.plan_combo.currentText() == "Fold 1"
     assert panel.run_combo.count() == 1
     assert panel.run_combo.findText("Average") == -1
     assert render_requests
