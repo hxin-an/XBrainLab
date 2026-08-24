@@ -813,8 +813,6 @@ class TestSaliency3DPlotWidget:
             cast(Any, w).plotter_widget = plotter
             cast(Any, w)._saliency_scene = MagicMock()
             w.scene_controls.show()
-            w.scene_overlay.show()
-
             w.clear_plot()
 
             assert label.deleted is True
@@ -823,9 +821,8 @@ class TestSaliency3DPlotWidget:
             assert w.plotter_widget is None
             assert cast(Any, w)._saliency_scene is None
             assert w.scene_controls.isHidden()
-            assert w.scene_overlay.isHidden()
 
-    def test_3d_scene_actions_are_lower_left_canvas_overlay(self, qtbot):
+    def test_3d_scene_actions_are_owned_by_the_sidebar(self, qtbot):
         with patch(
             "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
         ):
@@ -837,17 +834,10 @@ class TestSaliency3DPlotWidget:
             qtbot.addWidget(widget)
             widget.resize(900, 600)
             widget.show()
-            widget.scene_overlay.show()
-            widget._position_scene_overlay()
 
-        assert widget.scene_overlay.parentWidget() is widget.plot_container
-        assert widget.scene_overlay.geometry().left() == 12
-        assert (
-            widget.scene_overlay.geometry().bottom()
-            <= widget.plot_container.contentsRect().bottom() - 12
-        )
+        assert not hasattr(widget, "scene_overlay")
         assert widget.scene_controls.findChildren(QPushButton) == []
-        assert widget.time_slider.parentWidget() is widget.scene_controls
+        assert widget.time_slider.parentWidget() is widget.epoch_time_row
 
     def test_terminal_publication_starts_one_3d_scene_update(self, qtbot):
         with patch(

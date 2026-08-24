@@ -20,14 +20,14 @@ from PyQt6.QtCore import (
     QThread,
     QThreadPool,
     QTimer,
+    pyqtSignal,
 )
-from PyQt6.QtGui import QResizeEvent, QStandardItemModel
+from PyQt6.QtGui import QStandardItemModel
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QSizePolicy,
     QSlider,
     QVBoxLayout,
@@ -205,6 +205,7 @@ class Saliency3DPlotWidget(QWidget):
     """
 
     _MAX_PREPARED_ENGINE_CACHE_ENTRIES = 8
+    scene_controls_changed = pyqtSignal()
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -299,12 +300,27 @@ class Saliency3DPlotWidget(QWidget):
         self.scene_controls.setObjectName("Saliency3DEpochTimeControls")
         scene_layout = QHBoxLayout(self.scene_controls)
         scene_layout.setContentsMargins(8, 0, 8, 0)
-        scene_layout.addWidget(QLabel("Epoch time (s):", self.scene_controls))
-        self.time_slider = QSlider(Qt.Orientation.Horizontal, self.scene_controls)
+        scene_layout.setSpacing(0)
+        scene_layout.addStretch(1)
+        self.epoch_time_row = QWidget(self.scene_controls)
+        self.epoch_time_row.setObjectName("Saliency3DEpochTimeRow")
+        self.epoch_time_row.setMinimumWidth(360)
+        self.epoch_time_row.setMaximumWidth(480)
+        self.epoch_time_row.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
+        row_layout = QHBoxLayout(self.epoch_time_row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(8)
+        row_layout.addWidget(QLabel("Epoch time (s):", self.epoch_time_row))
+        self.time_slider = QSlider(Qt.Orientation.Horizontal, self.epoch_time_row)
         self.time_slider.setObjectName("Saliency3DEpochTimeSlider")
         self.time_slider.setRange(0, 1000)
         self.time_slider.valueChanged.connect(self._set_epoch_time)
-        scene_layout.addWidget(self.time_slider, stretch=1)
+        row_layout.addWidget(self.time_slider, stretch=1)
+        scene_layout.addWidget(self.epoch_time_row, stretch=8)
+        scene_layout.addStretch(1)
         self.scene_controls.hide()
 
         # Plot Area
@@ -312,34 +328,10 @@ class Saliency3DPlotWidget(QWidget):
         self.plot_layout = QVBoxLayout(self.plot_container)
         self.plot_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.scene_overlay = QWidget(self.plot_container)
-        self.scene_overlay.setObjectName("Saliency3DSceneOverlay")
-        self.scene_overlay.setStyleSheet("background: transparent;")
-        overlay_layout = QHBoxLayout(self.scene_overlay)
-        overlay_layout.setContentsMargins(0, 0, 0, 0)
-        overlay_layout.setSpacing(6)
-        self.electrodes_button = QPushButton("Electrodes", self.scene_overlay)
-        self.electrodes_button.setObjectName("Saliency3DElectrodesToggle")
-        self.electrodes_button.setCheckable(True)
-        self.electrodes_button.setChecked(True)
-        self.electrodes_button.toggled.connect(self._toggle_electrodes)
-        overlay_layout.addWidget(self.electrodes_button)
-        self.head_button = QPushButton("Head surface", self.scene_overlay)
-        self.head_button.setObjectName("Saliency3DHeadSurfaceToggle")
-        self.head_button.setCheckable(True)
-        self.head_button.setChecked(True)
-        self.head_button.toggled.connect(self._toggle_head)
-        overlay_layout.addWidget(self.head_button)
-        self.reset_camera_button = QPushButton("Reset view", self.scene_overlay)
-        self.reset_camera_button.setObjectName("Saliency3DResetView")
-        self.reset_camera_button.clicked.connect(self._reset_camera)
-        overlay_layout.addWidget(self.reset_camera_button)
-        self.scene_overlay.hide()
-
         # Initial Placeholder
         lbl = QLabel("Select a fold and method to visualize")
         lbl.setWordWrap(True)
-        lbl.setStyleSheet(f"color: {Theme.TEXT_MUTED}; font-size: 14px;")
+        lbl.setStyleSheet(f"color: {Theme.WARNING}; font-size: 14px;")
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.plot_layout.addWidget(lbl)
 
@@ -347,6 +339,11 @@ class Saliency3DPlotWidget(QWidget):
         layout.addWidget(self.scene_controls)
 
         self.plotter_widget: Any = None
+
+    @property
+    def scene_ready(self) -> bool:
+        """Whether a 3D scene is ready for sidebar scene actions."""
+        return self._saliency_scene is not None and self.plotter_widget is not None
 
     def show_error(self, msg):
         self._invalidate_async_requests()
@@ -441,7 +438,7 @@ class Saliency3DPlotWidget(QWidget):
         self._saliency_scene = None
         self._active_scene_key = None
         self.scene_controls.hide()
-        self.scene_overlay.hide()
+        self.scene_controls_changed.emit()
         plotter = self.plotter_widget
         delete_later: Callable[[], object] | None = None
         if plotter is not None:
@@ -1181,8 +1178,7 @@ class Saliency3DPlotWidget(QWidget):
             saliency.get_3d_head_plot()
             self._saliency_scene = saliency
             self.scene_controls.show()
-            self.scene_overlay.show()
-            self._position_scene_overlay()
+            self.scene_controls_changed.emit()
         except Exception as e:
             logger.error("Error executing 3D plot: %s", e, exc_info=True)
             self._clear_active_scene_key_for_current_render(
@@ -1228,23 +1224,6 @@ class Saliency3DPlotWidget(QWidget):
             reset = getattr(self.plotter_widget, "reset_camera", None)
             if callable(reset):
                 reset()
-
-    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
-        super().resizeEvent(event)
-        self._position_scene_overlay()
-
-    def _position_scene_overlay(self) -> None:
-        """Keep scene actions inside the canvas at its lower-left edge."""
-        if self.scene_overlay.isHidden():
-            return
-        size = self.scene_overlay.sizeHint()
-        self.scene_overlay.setGeometry(
-            12,
-            max(12, self.plot_container.height() - size.height() - 12),
-            size.width(),
-            size.height(),
-        )
-        self.scene_overlay.raise_()
 
     @staticmethod
     def _qt_object_deleted(obj) -> bool:

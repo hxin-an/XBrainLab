@@ -36,7 +36,7 @@ class SaliencyMapWidget(BaseSaliencyView):
             0.5,
             0.5,
             "Select a fold and method to visualize",
-            color=Theme.TEXT_MUTED,
+            color=Theme.WARNING,
             ha="center",
             va="center",
         )

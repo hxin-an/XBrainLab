@@ -4,7 +4,14 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton
+from PyQt6.QtWidgets import (
+    QApplication,
+    QGroupBox,
+    QMainWindow,
+    QPushButton,
+    QTabWidget,
+    QWidget,
+)
 
 from XBrainLab.backend.application import (
     ApplyMontageCommand,
@@ -52,6 +59,37 @@ def test_sidebar_init(mock_panel, qtbot):
     assert isinstance(sidebar.btn_saliency, QPushButton)
     assert sidebar.btn_montage.text() == "Set Montage"
     assert sidebar.btn_saliency.text() == "Saliency Settings"
+
+
+def test_3d_controls_are_grouped_and_hidden_until_the_ready_3d_tab(mock_panel, qtbot):
+    tabs = QTabWidget()
+    regular = QWidget()
+    three_d = QWidget()
+    tabs.addTab(regular, "Map")
+    tabs.addTab(three_d, "3D Plot")
+    three_d.scene_ready = False
+    mock_panel.tabs = tabs
+    mock_panel.tab_3d = three_d
+    mock_panel.saliency_combo.currentData.return_value = None
+    sidebar = ControlSidebar(mock_panel)
+    qtbot.addWidget(sidebar)
+    sidebar.show()
+
+    group = sidebar.findChild(QGroupBox, "Visualization3DControls")
+    assert group is not None
+    assert group.title() == "3D PLOT"
+    assert group.isHidden()
+    assert sidebar.btn_reset_view.parentWidget() is not group
+    assert sidebar.btn_3d_electrodes.parentWidget() is group
+    assert sidebar.btn_3d_head_surface.parentWidget() is group
+
+    tabs.setCurrentWidget(three_d)
+    three_d.scene_ready = True
+    sidebar.refresh_view_controls()
+
+    assert group.isVisible()
+    assert sidebar.btn_3d_electrodes.isVisible()
+    assert sidebar.btn_3d_head_surface.isVisible()
 
 
 def test_sidebar_set_montage(mock_panel, qtbot):

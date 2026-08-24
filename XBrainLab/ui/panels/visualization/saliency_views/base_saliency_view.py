@@ -914,7 +914,7 @@ class BaseSaliencyView(QWidget):
     def _display_message(self, message):
         self._set_plot_surface_visible(False)
         self.error_label.setStyleSheet(
-            f"color: {Theme.TEXT_SECONDARY}; font-size: 14px; font-weight: bold;",
+            f"color: {Theme.WARNING}; font-size: 14px; font-weight: bold;",
         )
         self.error_label.setText(message)
         self.error_label.show()

@@ -22,6 +22,13 @@ from XBrainLab.ui.panels.visualization.saliency_views.base_saliency_view import 
     BaseSaliencyView,
 )
 from XBrainLab.ui.panels.visualization.saliency_views.map_view import SaliencyMapWidget
+from XBrainLab.ui.panels.visualization.saliency_views.spectrogram_view import (
+    SaliencySpectrogramWidget,
+)
+from XBrainLab.ui.panels.visualization.saliency_views.topomap_view import (
+    SaliencyTopographicMapWidget,
+)
+from XBrainLab.ui.styles.theme import Theme
 
 
 def test_saliency_render_returns_before_background_work_finishes(qtbot):
@@ -856,6 +863,34 @@ def test_replaced_figure_becomes_visible_after_loading_state(qtbot):
     assert view.canvas is not None
     assert view.canvas.isVisibleTo(view)
     assert view.error_label.isHidden()
+
+
+def test_pre_result_message_uses_warning_color_but_errors_remain_error_colored(qtbot):
+    """Readiness guidance is visually distinct without weakening error affordance."""
+    view = BaseSaliencyView()
+    qtbot.addWidget(view)
+
+    view.show_message("Gradient saliency has not been computed for this fold.")
+
+    assert "color: " + Theme.WARNING in view.error_label.styleSheet()
+
+    view.show_error("rendering failed")
+
+    assert "color: " + Theme.ACCENT_ERROR in view.error_label.styleSheet()
+
+
+@pytest.mark.parametrize(
+    "view_type",
+    (SaliencyMapWidget, SaliencySpectrogramWidget, SaliencyTopographicMapWidget),
+)
+def test_initial_2d_saliency_canvas_prompt_uses_warning_color(qtbot, view_type):
+    view = view_type()
+    qtbot.addWidget(view)
+
+    assert view.fig is not None
+    prompt = view.fig.axes[0].texts[0]
+    assert prompt.get_text() == "Select a fold and method to visualize"
+    assert prompt.get_color() == Theme.WARNING
 
 
 def test_scrollable_map_placeholder_hides_plot_surface_and_centers_message(qtbot):

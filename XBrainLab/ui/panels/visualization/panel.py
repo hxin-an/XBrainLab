@@ -479,10 +479,6 @@ class VisualizationPanel(BasePanel):
         self.saliency_view_mode.addItem("Single class", "single")
         self.saliency_class_combo = QComboBox()
         self.saliency_view_label = QLabel("Saliency:")
-        self.saliency_reset_view = QPushButton("Reset view")
-        self.saliency_reset_view.setStyleSheet(Stylesheets.BTN_GHOST)
-        self.saliency_reset_view.clicked.connect(self._reset_saliency_detail_view)
-        self.saliency_reset_view.hide()
         self._controls_layout_mode: str | None = None
         self._apply_visualization_control_layout("narrow")
         left_layout.addWidget(self.ctrl_bar)
@@ -586,6 +582,9 @@ class VisualizationPanel(BasePanel):
 
         # Connect tab signal now that everything is initialized
         self.tabs.currentChanged.connect(self.on_tab_changed)
+        scene_controls_changed = getattr(self.tab_3d, "scene_controls_changed", None)
+        if scene_controls_changed is not None:
+            scene_controls_changed.connect(self._refresh_sidebar_view_controls)
         self._refresh_explanation_context()
         self._refresh_absolute_control()
 
@@ -753,7 +752,6 @@ class VisualizationPanel(BasePanel):
             self.run_combo,
             self.saliency_view_label,
             self.saliency_combo,
-            self.saliency_reset_view,
             self.method_label,
             self.method_combo,
             self.normalize_check,
@@ -775,9 +773,8 @@ class VisualizationPanel(BasePanel):
             self.ctrl_layout.addWidget(self.run_combo, 0, 3)
             self.ctrl_layout.addWidget(self.saliency_view_label, 0, 4)
             self.ctrl_layout.addWidget(self.saliency_combo, 0, 5)
-            self.ctrl_layout.addWidget(self.saliency_reset_view, 0, 6)
-            self.ctrl_layout.addWidget(self.method_label, 0, 7)
-            self.ctrl_layout.addWidget(self.method_combo, 0, 8)
+            self.ctrl_layout.addWidget(self.method_label, 0, 6)
+            self.ctrl_layout.addWidget(self.method_combo, 0, 7)
             self.ctrl_layout.setColumnStretch(11, 1)
             self._position_transform_controls(layout_mode)
             return
@@ -796,7 +793,6 @@ class VisualizationPanel(BasePanel):
             self.ctrl_layout.addWidget(self.run_combo, 0, 3)
             self.ctrl_layout.addWidget(self.saliency_view_label, 0, 4)
             self.ctrl_layout.addWidget(self.saliency_combo, 0, 5)
-            self.ctrl_layout.addWidget(self.saliency_reset_view, 0, 6)
             self.ctrl_layout.addWidget(self.method_label, 1, 0)
             self.ctrl_layout.addWidget(self.method_combo, 1, 1)
             self.ctrl_layout.setColumnStretch(7, 1)
@@ -816,7 +812,6 @@ class VisualizationPanel(BasePanel):
         self.ctrl_layout.addWidget(self.run_combo, 0, 3)
         self.ctrl_layout.addWidget(self.saliency_view_label, 1, 0)
         self.ctrl_layout.addWidget(self.saliency_combo, 1, 1)
-        self.ctrl_layout.addWidget(self.saliency_reset_view, 1, 2)
         self.ctrl_layout.addWidget(self.method_label, 2, 0)
         self.ctrl_layout.addWidget(self.method_combo, 2, 1)
         self.ctrl_layout.setColumnStretch(5, 1)
@@ -1172,6 +1167,7 @@ class VisualizationPanel(BasePanel):
         self._last_active_saliency_view = current_widget
         self._refresh_explanation_context()
         self._refresh_absolute_control()
+        self._refresh_sidebar_view_controls()
         # Montage button is now always visible as per user request
         # self.btn_montage.setVisible(True) # It's visible by default
 
@@ -1686,9 +1682,7 @@ class VisualizationPanel(BasePanel):
                     "all" if class_key is None else "single"
                 )
             )
-        self.saliency_reset_view.setVisible(
-            class_key is not None and self.tabs.currentWidget() is not self.tab_3d
-        )
+        self._refresh_sidebar_view_controls()
 
     def _on_saliency_combo_changed(self, _index: int) -> None:
         """Project the selected scope once; renderers never own a second selector."""
@@ -1706,8 +1700,7 @@ class VisualizationPanel(BasePanel):
                 index = self.saliency_class_combo.findData(class_key)
                 if index >= 0:
                     self.saliency_class_combo.setCurrentIndex(index)
-        detail = class_key is not None and self.tabs.currentWidget() is not self.tab_3d
-        self.saliency_reset_view.setVisible(detail)
+        self._refresh_sidebar_view_controls()
         self.on_update()
 
     def _open_saliency_class_detail(self, class_key: object) -> None:
@@ -1717,11 +1710,10 @@ class VisualizationPanel(BasePanel):
             return
         self.saliency_combo.setCurrentIndex(index)
 
-    def _reset_saliency_detail_view(self) -> None:
-        widget = self.tabs.currentWidget()
-        reset_view = getattr(widget, "reset_view", None)
-        if callable(reset_view):
-            reset_view()
+    def _refresh_sidebar_view_controls(self) -> None:
+        """Synchronize contextual view actions after selection or scene changes."""
+        if hasattr(self, "sidebar"):
+            self.sidebar.refresh_view_controls()
 
     def _saliency_render_publication(
         self,
@@ -2952,11 +2944,7 @@ class VisualizationPanel(BasePanel):
         self._saliency_compute_in_progress = False
         self._clear_active_saliency_operation()
         self._set_saliency_action_busy(False)
-        self._pending_saliency_params = None
-        self._pending_saliency_target = None
-        self._pending_saliency_method = None
-        self._saliency_settings_review_required = False
-        self._saliency_settings_review_detail = ""
+        self._settle_applied_saliency_settings()
         show_status_message(self, "Saliency ready")
         self._application_summary_dirty = True
         self._saliency_summary_dirty = True
@@ -3197,6 +3185,14 @@ class VisualizationPanel(BasePanel):
             run_identity=run_identity,
             model_name=str(model_name),
         )
+
+    def _settle_applied_saliency_settings(self) -> None:
+        """Release settings after their matching compute succeeds."""
+        self._pending_saliency_params = None
+        self._pending_saliency_target = None
+        self._pending_saliency_method = None
+        self._saliency_settings_review_required = False
+        self._saliency_settings_review_detail = ""
 
     def _require_saliency_settings_review(
         self,
@@ -3580,6 +3576,7 @@ class VisualizationPanel(BasePanel):
                 self._settle_saliency_interaction(
                     InteractionOutcome.completed("Saliency computation completed.")
                 )
+                self._settle_applied_saliency_settings()
                 self._clear_active_saliency_operation()
                 self._set_saliency_action_busy(False)
                 show_status_message(self, "Saliency ready")

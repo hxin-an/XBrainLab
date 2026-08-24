@@ -42,6 +42,7 @@ from XBrainLab.ui.interaction_outcome import InteractionOutcome
 from XBrainLab.ui.montage_positions import normalize_montage_positions
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
+from XBrainLab.ui.styles.theme import Theme
 
 
 class ControlSidebar(QWidget):
@@ -119,7 +120,41 @@ class ControlSidebar(QWidget):
         self.btn_saliency.clicked.connect(self.set_saliency)
         config_layout.addWidget(self.btn_saliency)
 
+        self.btn_reset_view = QPushButton("Reset view")
+        self.btn_reset_view.setObjectName("VisualizationResetView")
+        self.btn_reset_view.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.btn_reset_view.clicked.connect(self._reset_active_view)
+        self.btn_reset_view.hide()
+        config_layout.addWidget(self.btn_reset_view)
+
+        self.three_d_controls_group = QGroupBox("3D PLOT")
+        self.three_d_controls_group.setObjectName("Visualization3DControls")
+        self.three_d_controls_group.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
+        three_d_layout = QVBoxLayout(self.three_d_controls_group)
+        three_d_layout.setContentsMargins(0, 10, 0, 0)
+        three_d_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        self.btn_3d_electrodes = QPushButton("Electrodes")
+        self.btn_3d_electrodes.setObjectName("Visualization3DElectrodesToggle")
+        self.btn_3d_electrodes.setCheckable(True)
+        self.btn_3d_electrodes.setChecked(True)
+        self.btn_3d_electrodes.setStyleSheet(self._three_d_toggle_style())
+        self.btn_3d_electrodes.toggled.connect(self._toggle_3d_electrodes)
+        three_d_layout.addWidget(self.btn_3d_electrodes)
+
+        self.btn_3d_head_surface = QPushButton("Head surface")
+        self.btn_3d_head_surface.setObjectName("Visualization3DHeadSurfaceToggle")
+        self.btn_3d_head_surface.setCheckable(True)
+        self.btn_3d_head_surface.setChecked(True)
+        self.btn_3d_head_surface.setStyleSheet(self._three_d_toggle_style())
+        self.btn_3d_head_surface.toggled.connect(self._toggle_3d_head_surface)
+        three_d_layout.addWidget(self.btn_3d_head_surface)
+
+        self.three_d_controls_group.hide()
+
         layout.addWidget(config_group)
+        layout.addSpacing(Stylesheets.SIDEBAR_GROUP_GAP)
+        layout.addWidget(self.three_d_controls_group)
         layout.addSpacing(Stylesheets.SIDEBAR_GROUP_GAP)
         layout.addStretch()
 
@@ -129,6 +164,59 @@ class ControlSidebar(QWidget):
             return
 
         # Handled by InfoPanelService
+
+    @staticmethod
+    def _three_d_toggle_style() -> str:
+        """Return the selected-state styling for 3D scene toggles."""
+        return (
+            Stylesheets.SIDEBAR_BTN + "\nQPushButton:checked {"
+            f" background-color: {Theme.TABLE_SELECTION};"
+            f" color: {Theme.TEXT_PRIMARY};"
+            f" border: 1px solid {Theme.ACCENT_PRIMARY};"
+            "}"
+        )
+
+    def refresh_view_controls(self) -> None:
+        """Show only the controls that apply to the currently visible view."""
+        tabs = getattr(self.panel, "tabs", None)
+        current_view = tabs.currentWidget() if tabs is not None else None
+        three_d_view = getattr(self.panel, "tab_3d", None)
+        is_three_d = current_view is three_d_view
+        scene_ready = bool(getattr(three_d_view, "scene_ready", False))
+        detail_active = bool(
+            not is_three_d
+            and getattr(self.panel, "saliency_combo", None) is not None
+            and self.panel.saliency_combo.currentData() is not None
+        )
+
+        self.btn_reset_view.setVisible(detail_active or (is_three_d and scene_ready))
+        self.three_d_controls_group.setVisible(is_three_d and scene_ready)
+        if is_three_d and scene_ready:
+            self._toggle_3d_electrodes(self.btn_3d_electrodes.isChecked())
+            self._toggle_3d_head_surface(self.btn_3d_head_surface.isChecked())
+
+    def _reset_active_view(self) -> None:
+        """Reset the current detail canvas or the ready 3D camera."""
+        current_view = self.panel.tabs.currentWidget()
+        if current_view is getattr(self.panel, "tab_3d", None):
+            reset_camera = getattr(current_view, "_reset_camera", None)
+            if callable(reset_camera):
+                reset_camera()
+            return
+        reset_view = getattr(current_view, "reset_view", None)
+        if callable(reset_view):
+            reset_view()
+
+    def _toggle_3d_electrodes(self, checked: bool) -> None:
+        three_d_view = getattr(self.panel, "tab_3d", None)
+        toggle = getattr(three_d_view, "_toggle_electrodes", None)
+        if callable(toggle):
+            toggle(checked)
+
+    def _toggle_3d_head_surface(self, checked: bool) -> None:
+        toggle = getattr(getattr(self.panel, "tab_3d", None), "_toggle_head", None)
+        if callable(toggle):
+            toggle(checked)
 
     # --- Actions ---
 

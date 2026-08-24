@@ -4,8 +4,36 @@ from typing import Any, cast
 from unittest.mock import MagicMock
 
 import numpy as np
+from PyQt6.QtWidgets import QApplication, QLabel
 
 from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_head import Saliency3D
+from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
+    Saliency3DPlotWidget,
+)
+from XBrainLab.ui.styles.theme import Theme
+
+
+def _new_widget(qtbot, monkeypatch) -> Saliency3DPlotWidget:
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view."
+        "Saliency3DPlotWidget._active_qt_platform_name",
+        staticmethod(lambda: "offscreen"),
+    )
+    widget = Saliency3DPlotWidget(parent=None)
+    qtbot.addWidget(widget)
+    return widget
+
+
+def test_initial_3d_prompt_uses_warning_color(qtbot, monkeypatch) -> None:
+    widget = _new_widget(qtbot, monkeypatch)
+
+    prompt = next(
+        label
+        for label in widget.findChildren(QLabel)
+        if label.text() == "Select a fold and method to visualize"
+    )
+
+    assert "color: " + Theme.WARNING in prompt.styleSheet()
 
 
 class _PlotterStub:
@@ -81,3 +109,24 @@ def test_3d_scene_has_no_overlay_slider_and_accepts_epoch_time_seconds() -> None
     engine.sample_index_for_time.assert_called_once_with(-0.04)
     assert saliency.param["sample_index"] == 2
     update.assert_called_once_with()
+
+
+def test_epoch_time_controls_are_centered_at_wide_and_narrow_widths(
+    qtbot,
+    monkeypatch,
+) -> None:
+    widget = _new_widget(qtbot, monkeypatch)
+    widget.scene_controls.show()
+
+    for width in (1180, 800):
+        widget.resize(width, 600)
+        widget.show()
+        QApplication.processEvents()
+        row = widget.findChild(type(widget.scene_controls), "Saliency3DEpochTimeRow")
+        assert row is not None
+        assert 360 <= row.width() <= 480
+        assert widget.time_slider.width() >= 240
+        assert (
+            abs(row.geometry().center().x() - widget.scene_controls.rect().center().x())
+            <= 1
+        )

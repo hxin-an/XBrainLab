@@ -62,6 +62,7 @@ def _widget_factory(parent=None):
     mock_widget.update_plot = MagicMock()
     mock_widget.select_class_key = MagicMock()
     mock_widget.repaint = MagicMock()
+    mock_widget.reset_view = MagicMock()
     return widget
 
 
@@ -299,10 +300,10 @@ def test_visualization_controls_use_rendered_bar_width_without_overlap(qtbot) ->
             assert not left.geometry().intersects(right.geometry())
 
 
-def test_medium_visualization_controls_do_not_overlap_transform_and_reset_actions(
+def test_medium_visualization_controls_do_not_include_reset_action(
     qtbot,
 ) -> None:
-    """The medium layout gives transforms and detail reset distinct grid cells."""
+    """Reset is contextual in the sidebar, leaving the control bar uncluttered."""
     panel, _ = _make_panel(qtbot)
     panel._apply_visualization_control_layout("medium")
 
@@ -313,7 +314,6 @@ def test_medium_visualization_controls_do_not_overlap_transform_and_reset_action
         panel.abs_check,
         panel.saliency_view_label,
         panel.saliency_combo,
-        panel.saliency_reset_view,
     )
     occupied_cells: dict[tuple[int, int], QWidget] = {}
     for control in controls:
@@ -324,6 +324,55 @@ def test_medium_visualization_controls_do_not_overlap_transform_and_reset_action
             for cell_column in range(column, column + column_span):
                 assert (cell_row, cell_column) not in occupied_cells
                 occupied_cells[(cell_row, cell_column)] = control
+
+
+def test_sidebar_reset_view_follows_detail_and_3d_scene_context(qtbot) -> None:
+    panel, _ = _make_panel(qtbot)
+
+    panel.saliency_combo.addItem("left", 0)
+    panel.saliency_combo.setCurrentIndex(1)
+
+    assert not panel.sidebar.btn_reset_view.isHidden()
+    panel.sidebar.btn_reset_view.click()
+    panel.tab_map.reset_view.assert_called_once_with()
+
+    cast(Any, panel.tab_3d).scene_ready = True
+    cast(Any, panel.tab_3d)._reset_camera = MagicMock()
+    cast(Any, panel.tab_3d)._toggle_electrodes = MagicMock()
+    cast(Any, panel.tab_3d)._toggle_head = MagicMock()
+    panel.tabs.setCurrentWidget(panel.tab_3d)
+
+    assert not panel.sidebar.btn_reset_view.isHidden()
+    assert not panel.sidebar.btn_3d_electrodes.isHidden()
+    assert not panel.sidebar.btn_3d_head_surface.isHidden()
+    panel.sidebar.btn_reset_view.click()
+    cast(Any, panel.tab_3d)._reset_camera.assert_called_once_with()
+    panel.sidebar.btn_3d_electrodes.click()
+    cast(Any, panel.tab_3d)._toggle_electrodes.assert_called_with(False)
+
+    panel.tabs.setCurrentWidget(panel.tab_map)
+
+    assert panel.sidebar.three_d_controls_group.isHidden()
+    assert not panel.sidebar.btn_3d_electrodes.isVisibleTo(panel.sidebar)
+    assert not panel.sidebar.btn_3d_head_surface.isVisibleTo(panel.sidebar)
+
+
+def test_sidebar_3d_actions_fit_the_fixed_width_sidebar(qtbot) -> None:
+    panel, _ = _make_panel(qtbot)
+    cast(Any, panel.tab_3d).scene_ready = True
+    cast(Any, panel.tab_3d)._toggle_electrodes = MagicMock()
+    cast(Any, panel.tab_3d)._toggle_head = MagicMock()
+    panel.tabs.setCurrentWidget(panel.tab_3d)
+    panel.resize(640, 600)
+    panel.show()
+    qtbot.waitExposed(panel)
+
+    for button in (
+        panel.sidebar.btn_reset_view,
+        panel.sidebar.btn_3d_electrodes,
+        panel.sidebar.btn_3d_head_surface,
+    ):
+        assert button.geometry().right() <= panel.sidebar.contentsRect().right()
 
 
 def test_switching_to_3d_from_all_classes_selects_the_first_renderable_class(
@@ -373,7 +422,7 @@ def test_switching_to_3d_from_all_classes_selects_the_first_renderable_class(
     assert panel.method_combo.currentText() == "Gradient"
     assert panel.saliency_combo.currentData() == 0
     assert panel.saliency_combo.currentText() == "left"
-    assert panel.saliency_reset_view.isHidden()
+    assert panel.sidebar.btn_reset_view.isHidden()
 
 
 def test_spectrogram_does_not_reserve_absolute_control_hole(qtbot) -> None:
@@ -2730,6 +2779,84 @@ def test_terminal_saliency_publication_releases_visible_compute_state(qtbot):
     assert panel._saliency_compute_in_progress is False
     assert panel._active_saliency_operation_id is None
     assert panel.compute_saliency_btn.text() == "Compute Saliency"
+
+
+def test_terminal_saliency_success_settles_staged_settings_before_retraining(
+    qtbot,
+    monkeypatch,
+):
+    panel, _ctrl = _make_panel(qtbot)
+    _publish_panel_state(
+        panel,
+        _result_with_run_coverages(
+            SaliencyRunCoverageSnapshot(
+                plan_index=0,
+                run_index=0,
+                model_name="EEGNet",
+                methods=[SaliencyMethodCoverageSnapshot(method="VarGrad")],
+            ),
+        ),
+    )
+    publication = panel._application_view_publication
+    assert publication is not None
+    run_identity = panel.run_combo.currentData()
+    assert isinstance(run_identity, SaliencyRunIdentity)
+    assert panel.stage_saliency_params(
+        {
+            "profile": "advanced",
+            "methods": ["VarGrad"],
+            "VarGrad": {"nt_samples": 5},
+        },
+        publication_generation=publication.generation,
+        run_identity=run_identity,
+        model_name="EEGNet",
+    )
+    panel._saliency_compute_in_progress = True
+    panel._active_saliency_operation_id = "saliency-operation-1"
+    panel._active_saliency_generation = 3
+    terminal_state = replace(
+        publication.state,
+        visualization=replace(
+            publication.state.visualization,
+            post_training_saliency=_post_training_saliency_status(
+                PostTrainingSaliencyPhase.SUCCEEDED,
+                generation=3,
+            ),
+        ),
+    )
+    terminal_publication = replace(publication, state=terminal_state)
+
+    assert panel._accept_application_publication(terminal_publication)
+
+    assert panel._pending_saliency_params is None
+    assert panel._pending_saliency_target is None
+    assert panel._pending_saliency_method is None
+    assert panel._saliency_settings_review_required is False
+
+    retrained_publication = replace(
+        terminal_publication,
+        generation=terminal_publication.generation + 1,
+        state=replace(
+            terminal_state,
+            visualization=replace(
+                terminal_state.visualization,
+                post_training_saliency=PostTrainingSaliencyStatus.idle(),
+            ),
+        ),
+    )
+    assert panel._accept_application_publication(retrained_publication)
+    starts = []
+    monkeypatch.setattr(
+        panel,
+        "_start_saliency_compute",
+        lambda **kwargs: starts.append(kwargs) or True,
+    )
+
+    outcome = panel._compute_saliency_from_action_bar()
+
+    assert outcome.status is InteractionStatus.ACCEPTED
+    assert len(starts) == 1
+    assert panel.saliency_action_title.text() != "Review Saliency Settings Again"
 
 
 def test_old_terminal_does_not_release_new_saliency_operation(qtbot):
