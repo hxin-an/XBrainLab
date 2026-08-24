@@ -10,6 +10,7 @@ from PyQt6 import sip
 from PyQt6.QtCore import (
     QCoreApplication,
     QObject,
+    QRect,
     QRunnable,
     Qt,
     QThread,
@@ -225,6 +226,295 @@ def test_assistant_dock_width_keeps_constraints_on_content(main_window, qtbot):
     set_min.assert_not_called()
     resize.assert_called_once()
     assert content.minimumWidth() == main_window.ASSISTANT_DOCK_MINIMUM_WIDTH
+
+
+def _bind_hidden_assistant_dock(main_window: MainWindow) -> QDockWidget:
+    """Attach the real shell dock seam without a model/runtime dependency."""
+    dock = QDockWidget("Assistant", main_window)
+    content = QWidget(dock)
+    content.setMinimumWidth(main_window.ASSISTANT_DOCK_MINIMUM_WIDTH)
+    dock.setWidget(content)
+    main_window.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+    main_window.agent_manager = SimpleNamespace(chat_dock=dock, close=lambda: True)
+    main_window._bind_assistant_dock_presentation()
+    dock.hide()
+    return dock
+
+
+def _set_normal_shell_geometry(
+    main_window: MainWindow, width: int, height: int
+) -> None:
+    """Override the startup maximized fallback with an explicit normal window."""
+    main_window.setWindowState(Qt.WindowState.WindowNoState)
+    main_window.setGeometry(QRect(120, 120, width, height))
+
+
+def test_assistant_dock_expands_normal_shell_without_shrinking_workflow(
+    main_window,
+    qtbot,
+):
+    """A roomy normal window must preserve its pre-open workflow width."""
+    dock = _bind_hidden_assistant_dock(main_window)
+    central = main_window.centralWidget()
+    assert central is not None
+    # The test platform may expose only a small virtual screen; the presentation
+    # policy's geometry owner supplies the available workspace for this case.
+    available = QRect(0, 0, 1_920, 1_080)
+    _set_normal_shell_geometry(main_window, 860, 700)
+
+    with (
+        patch.object(
+            main_window.window_geometry,
+            "available_screen_geometry",
+            return_value=available,
+        ),
+        patch.object(
+            main_window.window_geometry,
+            "full_screen_geometry",
+            return_value=available,
+        ),
+    ):
+        main_window.show()
+        qtbot.waitUntil(main_window.isVisible, timeout=1_000)
+        workflow_width_before = central.width()
+
+        dock.show()
+        qtbot.waitUntil(dock.isVisible, timeout=1_000)
+        qtbot.wait(50)
+
+    # A two-pixel tolerance covers Qt dock chrome/frame rounding only.
+    assert abs(central.width() - workflow_width_before) <= 2
+
+
+def test_assistant_dock_hide_restores_normal_geometry(main_window, qtbot):
+    """Closing a temporarily expanded normal shell restores its baseline."""
+    dock = _bind_hidden_assistant_dock(main_window)
+    _set_normal_shell_geometry(main_window, 860, 700)
+    baseline = main_window.geometry()
+
+    available = QRect(0, 0, 1_920, 1_080)
+    with (
+        patch.object(
+            main_window.window_geometry,
+            "available_screen_geometry",
+            return_value=available,
+        ),
+        patch.object(
+            main_window.window_geometry,
+            "full_screen_geometry",
+            return_value=available,
+        ),
+    ):
+        main_window.show()
+        qtbot.waitUntil(main_window.isVisible, timeout=1_000)
+        dock.show()
+        qtbot.waitUntil(dock.isVisible, timeout=1_000)
+        qtbot.wait(50)
+        dock.hide()
+        qtbot.waitUntil(dock.isHidden, timeout=1_000)
+        qtbot.wait(50)
+
+    assert main_window.geometry() == baseline
+
+
+def test_close_persists_collapsed_geometry_when_assistant_is_visible(
+    main_window,
+    qtbot,
+):
+    """A temporary dock expansion must not become the next startup baseline."""
+    dock = _bind_hidden_assistant_dock(main_window)
+    _set_normal_shell_geometry(main_window, 860, 700)
+    baseline = main_window.geometry()
+    available = QRect(0, 0, 1_920, 1_080)
+
+    with (
+        patch.object(
+            main_window.window_geometry,
+            "available_screen_geometry",
+            return_value=available,
+        ),
+        patch.object(
+            main_window.window_geometry,
+            "full_screen_geometry",
+            return_value=available,
+        ),
+    ):
+        main_window.show()
+        qtbot.waitUntil(main_window.isVisible, timeout=1_000)
+        dock.show()
+        qtbot.waitUntil(dock.isVisible, timeout=1_000)
+        qtbot.waitUntil(lambda: main_window.width() > baseline.width(), timeout=1_000)
+
+    persisted_geometry: list[QRect] = []
+    event = QCloseEvent()
+    with (
+        patch.object(
+            main_window, "_ensure_shutdown_fence_for_close", return_value=True
+        ),
+        patch.object(main_window, "_stop_training_for_close", return_value=True),
+        patch.object(main_window, "_close_assistant_for_shutdown", return_value=True),
+        patch.object(main_window, "_owned_ui_background_work_idle", return_value=True),
+        patch.object(
+            main_window, "_capture_pre_close_background_snapshot", return_value=True
+        ),
+        patch.object(
+            main_window,
+            "_finalize_visualization_native_render_resources",
+            return_value=True,
+        ),
+        patch.object(
+            main_window,
+            "_finalize_preprocess_native_plots_for_shutdown",
+            return_value=True,
+        ),
+        patch.object(
+            main_window,
+            "_finalize_application_publication_renderer_for_shutdown",
+            return_value=True,
+        ),
+        patch("XBrainLab.ui.main_window.close_application_runtime", return_value=True),
+        patch.object(main_window, "_publish_terminal_shutdown_snapshot"),
+        patch.object(
+            main_window.window_geometry,
+            "persist_before_close",
+            side_effect=lambda: persisted_geometry.append(main_window.geometry())
+            or True,
+        ),
+        patch.object(main_window, "_delegate_close_event_if_alive", return_value=True),
+    ):
+        main_window.closeEvent(event)
+
+    assert persisted_geometry == [baseline]
+
+
+def test_assistant_dock_repeated_toggle_does_not_accumulate_normal_width(
+    main_window,
+    qtbot,
+):
+    """Every open uses the same baseline instead of compounding shell growth."""
+    dock = _bind_hidden_assistant_dock(main_window)
+    _set_normal_shell_geometry(main_window, 860, 700)
+    baseline_width = main_window.width()
+
+    available = QRect(0, 0, 1_920, 1_080)
+    with (
+        patch.object(
+            main_window.window_geometry,
+            "available_screen_geometry",
+            return_value=available,
+        ),
+        patch.object(
+            main_window.window_geometry,
+            "full_screen_geometry",
+            return_value=available,
+        ),
+    ):
+        main_window.show()
+        qtbot.waitUntil(main_window.isVisible, timeout=1_000)
+        for _ in range(3):
+            dock.show()
+            qtbot.waitUntil(dock.isVisible, timeout=1_000)
+            qtbot.wait(30)
+            dock.hide()
+            qtbot.waitUntil(dock.isHidden, timeout=1_000)
+            qtbot.wait(30)
+
+    assert main_window.width() == baseline_width
+
+
+def test_assistant_dock_uses_responsive_bounds_when_screen_space_is_insufficient(
+    main_window,
+    qtbot,
+):
+    """A constrained or maximized shell must keep the existing responsive split."""
+    dock = _bind_hidden_assistant_dock(main_window)
+    central = main_window.centralWidget()
+    assert central is not None
+    _set_normal_shell_geometry(main_window, 760, 620)
+    baseline = main_window.geometry()
+
+    available = QRect(0, 0, 760, 620)
+    with (
+        patch.object(
+            main_window.window_geometry,
+            "available_screen_geometry",
+            return_value=available,
+        ),
+        patch.object(
+            main_window.window_geometry,
+            "full_screen_geometry",
+            return_value=available,
+        ),
+    ):
+        main_window.show()
+        qtbot.waitUntil(main_window.isVisible, timeout=1_000)
+        dock.show()
+        qtbot.waitUntil(dock.isVisible, timeout=1_000)
+        qtbot.wait(50)
+
+    assert main_window.geometry() == baseline
+    assert dock.width() >= main_window.ASSISTANT_DOCK_MINIMUM_WIDTH
+    assert dock.width() <= main_window.ASSISTANT_DOCK_STANDARD_WIDTH
+    # Qt's dock separator/chrome consumes four client pixels on the test platform.
+    assert central.width() >= main_window.ASSISTANT_DOCK_CENTRAL_MINIMUM_WIDTH - 4
+
+
+def test_assistant_dock_does_not_expand_a_maximized_shell(main_window, qtbot):
+    """Maximized windows retain the responsive dock split instead of growing."""
+    dock = _bind_hidden_assistant_dock(main_window)
+    central = main_window.centralWidget()
+    assert central is not None
+    main_window.showMaximized()
+    qtbot.waitUntil(main_window.isMaximized, timeout=1_000)
+    qtbot.wait(300)
+    maximized_width = main_window.width()
+
+    dock.show()
+    qtbot.waitUntil(dock.isVisible, timeout=1_000)
+    qtbot.wait(50)
+
+    assert main_window.isMaximized()
+    assert main_window.width() == maximized_width
+    assert dock.width() >= main_window.ASSISTANT_DOCK_MINIMUM_WIDTH
+    assert dock.width() <= main_window.ASSISTANT_DOCK_STANDARD_WIDTH
+    assert central.width() >= main_window.ASSISTANT_DOCK_CENTRAL_MINIMUM_WIDTH - 4
+
+
+def test_hiding_assistant_after_maximizing_preserves_collapsed_normal_geometry(
+    main_window,
+    qtbot,
+):
+    """A maximize/hide cycle stays maximized and restores the pre-open normal size."""
+    dock = _bind_hidden_assistant_dock(main_window)
+    _set_normal_shell_geometry(main_window, 860, 700)
+    baseline = main_window.geometry()
+    available = QRect(0, 0, 1_920, 1_080)
+
+    with (
+        patch.object(
+            main_window.window_geometry,
+            "available_screen_geometry",
+            return_value=available,
+        ),
+        patch.object(
+            main_window.window_geometry,
+            "full_screen_geometry",
+            return_value=available,
+        ),
+    ):
+        main_window.show()
+        dock.show()
+        qtbot.waitUntil(lambda: main_window.width() > baseline.width(), timeout=1_000)
+        main_window.showMaximized()
+        qtbot.waitUntil(main_window.isMaximized, timeout=1_000)
+
+        dock.hide()
+        qtbot.waitUntil(dock.isHidden, timeout=1_000)
+        qtbot.waitUntil(main_window.isMaximized, timeout=1_000)
+        main_window.showNormal()
+        qtbot.waitUntil(lambda: not main_window.isMaximized(), timeout=1_000)
+
+    assert main_window.geometry() == baseline
 
 
 def test_product_shell_repeated_hide_show_keeps_fixed_right_dock_and_heartbeat(

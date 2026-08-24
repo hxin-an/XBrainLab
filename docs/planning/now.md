@@ -1,66 +1,58 @@
 # XBrainLab Now
 
-最後更新：`2026-08-24`
+最後更新：`2026-08-25`
 
-## 目前焦點：WSLg 中文輸入可用性
+## 目前焦點：Assistant dock 向外擴張主視窗
 
 ### 問題與證據
 
-- WSLg／XCB 下 Assistant 輸入框完全無法輸入中文，不是送出或 Enter 語意問題。
-- 使用者使用台灣注音／ㄅㄆㄇㄈ，不是漢語拼音；初始診斷安裝的
-  `ibus-libpinyin`／Intelligent Pinyin 不是本次驗收 engine。
-- WSL 已安裝 IBus base，但尚未安裝或驗證專用的 `ibus-chewing`／Chewing
-  注音 engine。
-- `AssistantComposer` 已開啟 Qt input-method attribute 並處理 preedit；先修復環境輸入鏈，
-  再用標準 Qt editor 對照判定是否有 product defect。
+- 一般視窗開啟 Assistant 後，既有 workflow panel 會向內縮；使用者已確認希望保留目前調整良好的預設 panel 大小。
+- `AgentManager` 只建立、停靠及顯示固定右側 `QDockWidget`；真正的 presentation owner 是 `MainWindow`。
+- `MainWindow._apply_assistant_dock_width()` 目前只在既有 top-level width 內，以 `resizeDocks()` 分配 320–420 px 給 Assistant；中央區 436 px 是最低保護，不是開啟前寬度，因此內縮是現行 policy 的必然結果。
+- 現有測試涵蓋 320–420 px dock、中央最低寬度與重複開關，但未要求開啟前後中央區寬度一致，也未防止 top-level width 累積增長。
 
 ### Outcome
 
-WSLg 使用者透過現有 Windows launcher 啟動後，可在 XBrainLab Qt 輸入中文，並能從
-launcher 的可操作訊息判斷 IBus 套件／daemon／engine 缺失。
+在螢幕空間足夠的一般視窗中，開啟 Assistant 時主視窗向外擴張，既有 workflow panel 維持開啟前寬度；關閉後恢復原視窗幾何，反覆開關不累積增長。
 
 ### Scope／non-goals
 
-- Scope：WSLg Ubuntu 24.04、XCB、IBus Chewing（酷音／注音）、標準大千鍵盤、
-  現有 WSL launcher、必要的使用文件。
-- 只在標準 Qt editor 可輸入而 `AssistantComposer` 仍失敗時，才使用已取得的
-  UI 授權做最小 Composer 修復。
-- Non-goals：Wayland 切換、Windows native IME 認證、launcher 自動 sudo／安裝／全域
-  engine 選擇、新 launcher、Assistant 視覺改版。
+- Scope：`MainWindow` 既有 Assistant dock presentation policy、直接可觀察的 Qt tests、必要的 active plan truth。
+- 空間足夠時可在同一螢幕內向左平移主視窗，以保留右側 Assistant 所需空間。
+- 最大化、全螢幕或螢幕總空間不足時保留目前 responsive fallback：dock 維持 320–420 px，中央區至少 436 px，不把視窗推出可用畫面。
+- 關閉程式時若 Assistant 仍開啟，不把暫時擴張後的幾何當成下次啟動基準。
+- Non-goals：Assistant 視覺改版、dock 浮動／改側、ChatPanel 或 AgentManager 重構、視窗幾何 owner 重寫、多螢幕 policy 全面改版。
 
-### 假設與施工步驟
+### 假設、owner 與施工步驟
 
-1. 建立 launcher 特徵測試，要求啟動 Qt 前輸出 IBus 環境變數、做有上限的 daemon
-   readiness check，缺失時繼續英文啟動並顯示修復方式。
-2. 實作最小 launcher 修正；不記錄輸入內容，不中止非本 launcher 建立的程序。
-3. 在本機安裝／設定 IBus 後，比較標準 Qt editor 與 `AssistantComposer`。
-4. 若環境修復即可用，不修 Composer；若只有 Composer 失敗，先加最小 red
-   reproduction 再修復。
-5. 同步 WSLg 使用文件，明確區分 Windows IME 與 WSL IBus。
+- Before／after owner 都是 `MainWindow`；沿用 `WindowGeometryLifecycle` 的 screen geometry 與 persistence，不新增 state machine、receipt、public class 或 production module。
+- Deletion／reuse first：重用既有 dock width policy、available screen geometry 與 bounded placement；若新策略取代舊有「只保護中央最低寬度」假設，同步刪除或改寫衝突測試，不建立第二套 dock sizing policy。
+
+1. 先新增最小 red tests：一般視窗開啟後中央寬度維持、hide 後恢復、重複開關不累積增長。
+2. 新增 responsive red test：最大化／空間不足時不擴出 available geometry，仍符合既有 dock 與中央最低寬度。
+3. 在 `MainWindow` 既有 visibility／resize policy 內實作最小修正；hidden 時建立／更新本次 normal geometry 基準，visible 時只做一次 bounded outward expansion。
+4. 確保 close persistence 使用未擴張的 normal geometry，且使用者於 hidden 狀態手動 resize 可成為下一次基準。
+5. 跑相同 focused tests、直接相關 window geometry／walkthrough 回歸，再交付 WSLg 實畫面手測。
 
 ### Focused validation
 
-- Launcher 特徵／privacy tests 與 PowerShell parser check。
-- 現有 Composer IME、Enter、多空白與 New Chat 回歸測試。
-- WSLg 手測：中文組字、候選字、退格、中英切換、Enter 選字／送出，以及
-  重複啟動。
+- Assistant dock unit／integration tests：中央寬度維持、420 px 標準寬度、320 px floor、hide restore、repeat toggle、narrow／maximized fallback。
+- 直接相關的 window geometry lifecycle 與 product walkthrough tests。
+- `ruff check`／format 與 `git diff --check`。
+- WSLg 手測：一般視窗初次及重複開關、hide 恢復、最大化 fallback、關閉後重開；確認五個 workflow panel 與 top navigation 沒有 clipping。
 
 ### Stop condition 與 UI 確認
 
-- 若標準 Qt editor 也無法輸入，停在 IBus／DBus／Qt plugin 診斷，不改 product UI。
-- 只有全部 focused evidence 通過並交付使用者 WSLg 手測後才稱為 handoff candidate。
-- 使用者已條件式授權最小 Composer 行為修復；其他可見 UI／文案變更未獲授權。
+- 若 Qt／window manager 無法在不越過 available geometry 的情況保留中央寬度，停止外推並使用既有 responsive fallback，不新增平台專屬 geometry owner。
+- Source 改動後必須重新取得使用者的 WSLg 可見行為手測；offscreen 測試不取代真人驗收。
+- 使用者已於 2026-08-25 明確批准：合併中文輸入 PR 後，依上述向外擴張／hide 恢復／空間不足 fallback 規格開始此 UI slice。
 
 ### 目前狀態
 
-- 本機已安裝 `ibus 1.5.29` 與 `ibus-chewing 2.0.0`，Qt 6 的 IBus
-  input-context plugin 已實際載入；daemon 刷新後可列出 `chewing`，本次手測
-  session 也已選為 `chewing`。
-- Launcher 已以 red／green 改為 `ibus-chewing`／`chewing` discoverability，不宣稱能驗證
-  或自動選擇大千鍵盤；non-replace lifecycle、bounded poll 與英文 fallback 保持不變。
-- Local setup authority 已改為 Chewing／酷音／注音，大千設定仍由使用者掌握；
-  launcher focused tests `12/12` 與 strict MkDocs build 通過。
-- 獨立 final audit 已關閉全部 blocker；2026-08-24 使用者已在標準 Qt editor
-  完成 Chewing／大千注音組字並回報正常，因此不觸發 `AssistantComposer` 程式修復。
-- Next：freeze exact commit，從現有 Windows／WSLg launcher 開啟完整 XBrainLab，交付
-  `AssistantComposer` 注音組字、Enter、多空白與重複啟動手測。
+- WSLg 中文輸入 PR #53 已完成 exact-head CI、兩次真人手測並合併為 `064f5fc5ce56cce253b6ebe7fbeee182cefdf92f`。
+- Red reproduction 已確認一般視窗開啟 dock 後，中央區從 860 px 縮為 436 px；修正後同一測試維持 860 px。
+- `MainWindow` 已在螢幕空間足夠時 bounded outward expansion，hide／close 恢復原 geometry；沒有修改 `AgentManager`／`ChatPanel` 或新增 owner。
+- Assistant geometry tests `7/7`、完整 MainWindow sync `99/99`、相關 product walkthrough `3/3`、window geometry `22/22` 通過。
+- 隔離本機 QSettings 的 1280×800 UI baseline `7/7` 與 approved references 相符；它只證明 responsive fallback，外推仍需 WSLg 真人畫面驗收。
+- 獨立 final diff review blocker `0`；production `+109/-1/net +108 LOC`，僅一個 production file，未觸發 complexity review。
+- Next：freeze exact commit，執行 exact-source UI／CI gate，交付使用者 WSLg normal／maximized／repeat-toggle 手測。

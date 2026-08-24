@@ -19,6 +19,7 @@ from PyQt6.QtCore import (
     QCoreApplication,
     QEvent,
     QObject,
+    QRect,
     QSignalBlocker,
     Qt,
     QThread,
@@ -379,6 +380,11 @@ class MainWindow(QMainWindow):
         ] = []
         self._startup_prewarm_retry_pending = False
         self._assistant_dock_resize_pending = False
+        self._assistant_dock_expand_pending = False
+        self._assistant_dock_collapsed_geometry: QRect | None = None
+        self._assistant_dock_collapsed_central_width: int | None = None
+        self._assistant_dock_shell_expanded = False
+        self._assistant_dock_geometry_transition = False
 
         # Apply VS Code Dark Theme (Adjusted for Top Bar)
         self.apply_vscode_theme()
@@ -660,6 +666,7 @@ class MainWindow(QMainWindow):
         super().resizeEvent(event)
         if hasattr(self, "top_bar"):
             QTimer.singleShot(0, self._update_navigation_layout)
+        self._remember_assistant_collapsed_geometry()
         self._schedule_assistant_dock_resize()
 
     def _update_navigation_layout(self) -> None:
@@ -1221,6 +1228,7 @@ class MainWindow(QMainWindow):
         dock.installEventFilter(self)
         dock.visibilityChanged.connect(self._on_assistant_dock_visibility_changed)
         self._sync_assistant_central_width_floor()
+        self._remember_assistant_collapsed_geometry()
 
     def eventFilter(self, watched, event):  # noqa: N802
         """Reapply dock policy after Qt or child layouts resize the Assistant."""
@@ -1234,10 +1242,47 @@ class MainWindow(QMainWindow):
         return super().eventFilter(watched, event)
 
     def _on_assistant_dock_visibility_changed(self, visible: bool) -> None:
-        """Restore the standard dock width after every open."""
+        """Expand normal windows for the dock and restore them after hiding."""
         self._sync_assistant_central_width_floor()
         if visible:
             self._schedule_assistant_dock_resize()
+        else:
+            self._restore_assistant_collapsed_geometry()
+
+    def _remember_assistant_collapsed_geometry(self) -> None:
+        """Capture the normal shell geometry before the Assistant consumes width."""
+        dock = self._assistant_dock()
+        central = self.centralWidget()
+        if (
+            dock is None
+            or dock.isVisible()
+            or central is None
+            or self.isMaximized()
+            or self.isFullScreen()
+            or self._assistant_dock_geometry_transition
+        ):
+            return
+        self._assistant_dock_collapsed_geometry = QRect(self.geometry())
+        self._assistant_dock_collapsed_central_width = central.width()
+        self._assistant_dock_shell_expanded = False
+
+    def _restore_assistant_collapsed_geometry(self) -> None:
+        """Return a shell expanded for the Assistant to its pre-open geometry."""
+        geometry = self._assistant_dock_collapsed_geometry
+        if not self._assistant_dock_shell_expanded or geometry is None:
+            return
+        window_state = self.windowState()
+        restore_window_state = self.isMaximized() or self.isFullScreen()
+        self._assistant_dock_geometry_transition = True
+        try:
+            if restore_window_state:
+                self.setWindowState(Qt.WindowState.WindowNoState)
+            self.setGeometry(geometry)
+            if restore_window_state:
+                self.setWindowState(window_state)
+        finally:
+            self._assistant_dock_geometry_transition = False
+        self._assistant_dock_shell_expanded = False
 
     def _sync_assistant_central_width_floor(self) -> None:
         """Protect workflow controls while the Assistant consumes shell width."""
@@ -1281,6 +1326,67 @@ class MainWindow(QMainWindow):
             [target_width],
             Qt.Orientation.Horizontal,
         )
+        self._schedule_assistant_window_expansion()
+
+    def _schedule_assistant_window_expansion(self) -> None:
+        """Expand after Qt has applied the requested dock width."""
+        if self._assistant_dock_expand_pending or self._assistant_dock_shell_expanded:
+            return
+        dock = self._assistant_dock()
+        if dock is None or not dock.isVisible():
+            return
+        self._assistant_dock_expand_pending = True
+        QTimer.singleShot(0, self._expand_assistant_window_if_possible)
+
+    def _expand_assistant_window_if_possible(self) -> None:
+        """Preserve workflow width by growing a normal shell within its screen."""
+        self._assistant_dock_expand_pending = False
+        dock = self._assistant_dock()
+        central = self.centralWidget()
+        collapsed = self._assistant_dock_collapsed_geometry
+        collapsed_central_width = self._assistant_dock_collapsed_central_width
+        if (
+            dock is None
+            or not dock.isVisible()
+            or central is None
+            or collapsed is None
+            or collapsed_central_width is None
+            or self.isMaximized()
+            or self.isFullScreen()
+        ):
+            return
+
+        missing_workflow_width = collapsed_central_width - central.width()
+        if missing_workflow_width <= 0:
+            return
+        current = self.geometry()
+        target_width = current.width() + missing_workflow_width
+        available = self.window_geometry.available_screen_geometry()
+        if target_width > available.width() or current.height() > available.height():
+            return
+
+        target_x, target_y = self.window_geometry.bounded_position(
+            available,
+            target_width,
+            current.height(),
+            current.x(),
+            current.y(),
+            screen_geometry=self.window_geometry.full_screen_geometry(),
+        )
+        target = QRect(
+            target_x,
+            target_y,
+            target_width,
+            current.height(),
+        )
+        if target == current:
+            return
+        self._assistant_dock_geometry_transition = True
+        try:
+            self.setGeometry(target)
+        finally:
+            self._assistant_dock_geometry_transition = False
+        self._assistant_dock_shell_expanded = True
 
     def _connect_agent_visualization_monitor(self) -> None:
         """Connect VRAM monitoring once both agent and visualization panel exist."""
@@ -1303,6 +1409,7 @@ class MainWindow(QMainWindow):
             self.init_agent()
         if self.agent_manager is None:
             return
+        self._remember_assistant_collapsed_geometry()
         self.agent_manager.toggle()
 
     def _schedule_startup_prewarm(self) -> None:
@@ -1580,6 +1687,7 @@ class MainWindow(QMainWindow):
             self._schedule_close_retry()
             return
         self._publish_terminal_shutdown_snapshot()
+        self._restore_assistant_collapsed_geometry()
         if not self.window_geometry.persist_before_close():
             event.accept()
             return
