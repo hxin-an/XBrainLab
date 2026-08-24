@@ -130,6 +130,16 @@ integration handoff為322 passed。Ruff、format check、configured Basedpyright
 下一步只建立focused commit，在clean exact SHA重建UI artifact與non-strict 3B report；任何
 未達frozen baseline denominator或source identity不一致就停止，不以舊evidence補足。
 
+Exact `e75602b0` 的PR #50 CI在`linux-unit-ui` components shard重現既有handoff test race：
+前205個case完成後，`test_pending_agent_decision_resolves_through_real_ui_handoff_signal`只等待
+controller內部pending receipt被清除，沒有等待稍後送達GUI thread的既有`interaction_resolved`
+terminal signal，完整coverage shard因此可在signal到達前斷言失敗；失敗teardown在GitHub runner
+再拖至1200秒timeout。Settings dialogs shard為371 passed，production Settings修理沒有新failure。
+Scope只允許讓該test等待既有observable terminal signal，不改runtime、handoff、timeout或UI；先以
+完整components coverage shard重現red，再跑同一shard及直接lifecycle suite green。任何production
+修改或第二個產品failure都停止並重新評估，不以rerun掩蓋race。新test commit仍使exact-SHA evidence
+失效，replacement SHA需重新完成必要local evidence、PR checks與使用者手測。
+
 施工 checkpoint：catalog／provider chain至`627c5492`已由獨立gate確認無blocker／major；metadata
 discovery保持barrel-free，只有checked provider status能啟用projection。`f27eabfa`已鎖定61-symbol逐檔
 provenance、hash、license與excluded set。第一個baseline convolution family已完成private namespace、minimal
