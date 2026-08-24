@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtCore import QEvent, QMimeData, QPoint, QRect, QSize, Qt
-from PyQt6.QtGui import QFont, QInputMethodEvent
+from PyQt6.QtGui import QFont, QGuiApplication, QInputMethodEvent
 from PyQt6.QtWidgets import (
     QApplication,
     QBoxLayout,
@@ -2170,13 +2170,95 @@ class TestChatPanelSendMessage:
         composer.submit_requested.connect(submit_requested)
         QApplication.sendEvent(composer, QInputMethodEvent("zhong", []))
 
-        qtbot.keyClick(composer, Qt.Key.Key_Return)
+        with patch.object(
+            QGuiApplication, "inputMethod", return_value=MagicMock()
+        ) as input_method:
+            qtbot.keyClick(composer, Qt.Key.Key_Return)
 
         submit_requested.assert_not_called()
+        input_method.return_value.commit.assert_called_once_with()
         commit = QInputMethodEvent()
         commit.setCommitString("中")
         QApplication.sendEvent(composer, commit)
         assert composer.text() == "中"
+
+    def test_completed_turn_restores_focus_only_for_the_submitting_composer(
+        self,
+        chat_panel,
+        qtbot,
+    ) -> None:
+        chat_panel.show()
+        qtbot.wait(10)
+        composer = chat_panel.input_field
+        composer.setFocus()
+        composer.setText("inspect events")
+
+        chat_panel.accept_composer_submission("inspect events")
+        chat_panel.restore_composer_focus_after_turn()
+
+        assert composer.hasFocus()
+
+        other = QWidget(chat_panel)
+        other.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        other.show()
+        other.setFocus()
+        chat_panel.restore_composer_focus_after_turn()
+
+        assert other.hasFocus()
+
+    def test_spaces_remain_in_the_composer_without_submitting(self, chat_panel, qtbot):
+        composer = chat_panel.input_field
+        composer.setFocus()
+        sent = MagicMock()
+        chat_panel.send_message.connect(sent)
+
+        qtbot.keyClicks(composer, "   ")
+
+        assert composer.text() == "   "
+        sent.assert_not_called()
+
+    def test_inline_setup_ready_primary_requests_enable(self, chat_panel, qtbot):
+        chat_panel.show_inline_setup(
+            "Granite 4.0 Micro 3B\nEstimated 8 GB VRAM", cache_ready=True
+        )
+
+        with qtbot.waitSignal(chat_panel.inline_setup_requested) as emitted:
+            qtbot.mouseClick(chat_panel.retry_runtime_btn, Qt.MouseButton.LeftButton)
+
+        assert chat_panel.runtime_state_title.text() == "Start XBrainLab Assistant"
+        assert chat_panel.retry_runtime_btn.text() == "Enable Assistant"
+        assert emitted.args == ["enable"]
+
+    def test_inline_setup_missing_primary_and_secondary_open_settings(
+        self, chat_panel, qtbot
+    ):
+        chat_panel.show_inline_setup(
+            "Granite 4.0 Micro 3B\nEstimated 8 GB VRAM", cache_ready=False
+        )
+
+        with qtbot.waitSignal(chat_panel.inline_setup_requested) as primary:
+            qtbot.mouseClick(chat_panel.retry_runtime_btn, Qt.MouseButton.LeftButton)
+        with qtbot.waitSignal(chat_panel.open_settings_requested):
+            qtbot.mouseClick(chat_panel.setup_btn, Qt.MouseButton.LeftButton)
+
+        assert chat_panel.retry_runtime_btn.text() == "Set up model"
+        assert chat_panel.setup_btn.text() == "Assistant Settings"
+        assert primary.args == ["open_settings"]
+
+    @pytest.mark.parametrize(
+        ("cache_ready", "primary"),
+        [(True, "Enable Assistant"), (False, "Set up model")],
+    )
+    def test_inline_setup_reflow_retains_action_labels(
+        self, chat_panel, cache_ready, primary
+    ):
+        chat_panel.show_inline_setup(
+            "Granite 4.0 Micro 3B\nEstimated 8 GB VRAM", cache_ready=cache_ready
+        )
+        chat_panel._fit_runtime_state_to_contents()
+
+        assert chat_panel.retry_runtime_btn.text() == primary
+        assert chat_panel.setup_btn.text() == "Assistant Settings"
 
     def test_composer_commits_chinese_then_next_enter_submits(
         self,

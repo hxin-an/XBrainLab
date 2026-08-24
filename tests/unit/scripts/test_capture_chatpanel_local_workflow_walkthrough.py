@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from PIL import Image
 
+from scripts.dev.capture_chatpanel_local_walkthrough import (
+    _assistant_setup_required,
+)
 from scripts.dev.capture_chatpanel_local_workflow_walkthrough import (
     DEFAULT_OUTPUT_DIR,
     DEFAULT_PROMPTS,
     ROOT,
     _assistant_is_ready,
     _build_post_close_evidence,
-    _disable_first_run_dialog_for_unattended_capture,
     _has_unpainted_main_surface,
     _prepare_isolated_settings,
     _runtime_summary,
@@ -25,30 +29,35 @@ def test_default_output_uses_dev_artifact_namespace() -> None:
     )
 
 
-def test_unattended_capture_bypasses_first_run_without_persistence() -> None:
-    class FakeRuntime:
-        def needs_first_run(self, config: object) -> bool:
+def test_unattended_capture_detects_setup_without_clicking_it() -> None:
+    class FakeLabel:
+        def text(self) -> str:
+            return "Start XBrainLab Assistant"
+
+    class FakeWidget:
+        def isVisible(self) -> bool:
             return True
 
-    class FakeManager:
-        _assistant_runtime = FakeRuntime()
+    class FakeButton:
+        def __init__(self, text: str) -> None:
+            self.label = text
+            self.clicks = 0
 
-    class FakeWindow:
-        agent_manager = FakeManager()
+        def text(self) -> str:
+            return self.label
 
-    window = FakeWindow()
+        def click(self) -> None:
+            self.clicks += 1
 
-    _disable_first_run_dialog_for_unattended_capture(window)
+    enable = FakeButton("Enable Assistant")
+    panel = SimpleNamespace(
+        runtime_state_title=FakeLabel(),
+        runtime_state_widget=FakeWidget(),
+        retry_runtime_btn=enable,
+    )
 
-    assert window.agent_manager._assistant_runtime.needs_first_run(object()) is False
-
-
-def test_unattended_capture_requires_initialized_assistant_manager() -> None:
-    class FakeWindow:
-        agent_manager = None
-
-    with pytest.raises(RuntimeError, match="must be initialized"):
-        _disable_first_run_dialog_for_unattended_capture(FakeWindow())
+    assert _assistant_setup_required(panel) is True
+    assert enable.clicks == 0
 
 
 def test_deactivation_capture_settings_are_isolated_below_temp(
@@ -66,10 +75,7 @@ def test_deactivation_capture_settings_are_isolated_below_temp(
     )
     settings_path = tmp_path / "capture" / "settings.json"
 
-    _prepare_isolated_settings(
-        settings_path,
-        model_id=LLMConfig.default_local_model_id(),
-    )
+    _prepare_isolated_settings(settings_path)
 
     loaded = LLMConfig.load_from_file()
     assert settings_path.is_file()
@@ -80,10 +86,7 @@ def test_deactivation_capture_settings_are_isolated_below_temp(
 
 def test_deactivation_capture_rejects_repo_settings_path() -> None:
     with pytest.raises(ValueError, match="OS temp"):
-        _prepare_isolated_settings(
-            ROOT / "settings.json",
-            model_id=LLMConfig.default_local_model_id(),
-        )
+        _prepare_isolated_settings(ROOT / "settings.json")
 
 
 def test_assistant_ready_requires_visible_enabled_idle_controls() -> None:

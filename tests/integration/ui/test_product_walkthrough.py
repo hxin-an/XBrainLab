@@ -72,21 +72,17 @@ from XBrainLab.llm.agent.turn import (
 )
 from XBrainLab.llm.agent.ui_handoff import WorkflowUiHandoffRequest
 from XBrainLab.llm.agent.worker import AgentWorker
+from XBrainLab.llm.core.model_catalog import PRIMARY_LOCAL_MODEL_ID
 from XBrainLab.ui.components.agent_manager import AgentManager
 from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     RuntimeActivationResult,
     RuntimeActivationStatus,
     RuntimeCommandAdmissionResult,
     RuntimeCommandAdmissionStatus,
-    RuntimeSetupAction,
-    RuntimeSetupOutcome,
 )
 from XBrainLab.ui.components.assistant_status_projection import (
     AssistantWorkflowSurface,
     build_assistant_status_projection,
-)
-from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
-    LocalRuntimeFirstRunDialog,
 )
 from XBrainLab.ui.panels.dataset.data_interpretation_action_coordinator import (
     _dataset_dialog_start_directory,
@@ -667,39 +663,15 @@ def test_assistant_dock_preserves_workflow_width_with_wide_platform_title(
     )
 
 
-@pytest.mark.parametrize(
-    ("choice", "outcome_message", "visible_message"),
-    [
-        (
-            LocalRuntimeFirstRunDialog.LATER,
-            "Assistant setup was deferred.",
-            "Assistant setup was deferred. Open assistant settings when you are "
-            "ready to continue.",
-        ),
-        (
-            LocalRuntimeFirstRunDialog.DISABLE,
-            "Assistant is disabled.",
-            "Assistant is disabled. Open assistant settings to enable it.",
-        ),
-    ],
-)
-def test_assistant_first_open_preserves_local_runtime_confirmation(
-    test_app,
-    qtbot,
-    choice,
-    outcome_message,
-    visible_message,
-):
-    """Opening the dock still reaches the local runtime first-run confirmation."""
+def test_assistant_first_open_uses_inline_setup_without_activation(test_app, qtbot):
     test_app.init_agent()
     manager = test_app.agent_manager
-    status_messages: list[str] = []
-    manager.status_message_received.connect(status_messages.append)
+    config = SimpleNamespace(model_name=PRIMARY_LOCAL_MODEL_ID)
     with (
         patch.object(
             manager.assistant_runtime,
             "load_config",
-            return_value=SimpleNamespace(),
+            return_value=config,
         ),
         patch.object(
             manager.assistant_runtime,
@@ -707,30 +679,24 @@ def test_assistant_first_open_preserves_local_runtime_confirmation(
             return_value=True,
         ),
         patch.object(
-            manager,
-            "_show_local_runtime_first_run_dialog",
-            return_value=choice,
-        ) as show_first_run,
-        patch.object(
             manager.assistant_runtime,
-            "apply_first_run_choice",
-            return_value=RuntimeSetupOutcome(
-                RuntimeSetupAction.STOP,
-                outcome_message,
-            ),
+            "preview_launch",
+            return_value=SimpleNamespace(failure=None),
         ),
         patch.object(manager.assistant_runtime, "activate") as activate,
     ):
         _click(qtbot, test_app.ai_btn)
 
     assert manager.chat_dock.isVisible() is True
-    assert test_app.ai_btn.isChecked() is True
-    show_first_run.assert_called_once()
+    assert manager.chat_panel.runtime_state_title.text() == (
+        "Start XBrainLab Assistant"
+    )
+    assert manager.chat_panel.runtime_state_detail.text() == (
+        "Granite 4.0 Micro 3B (Recommended)\nEstimated 8 GB VRAM"
+    )
+    assert manager.chat_panel.retry_runtime_btn.text() == "Enable Assistant"
+    assert manager.chat_panel.setup_btn.text() == "Assistant Settings"
     activate.assert_not_called()
-    assert status_messages[-1] == visible_message
-    assert manager.chat_panel.runtime_state_title.text() == "Assistant setup required"
-    assert manager.chat_panel.runtime_state_detail.text() == visible_message
-    assert manager.chat_panel.setup_btn.isVisible()
 
 
 def test_assistant_status_uses_real_interpretation_confirmation_publication(

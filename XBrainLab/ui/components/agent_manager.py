@@ -70,6 +70,7 @@ from XBrainLab.llm.agent.ui_handoff import (
     WorkflowUiHandoffResolutionStatus,
 )
 from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.llm.core.model_catalog import local_model_spec
 from XBrainLab.llm.core.model_download_lifecycle import ModelDownloadLifecycle
 from XBrainLab.llm.core.runtime_selection import (
     AssistantRuntimeSelectionFailureCode,
@@ -108,9 +109,6 @@ from XBrainLab.ui.components.assistant_status_projection import (
 from XBrainLab.ui.components.vram_checker import VRAMConflictChecker
 from XBrainLab.ui.components.workflow_ui_handoff_host import WorkflowUiHandoffHost
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
-from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
-    LocalRuntimeFirstRunDialog,
-)
 from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
 from XBrainLab.ui.styles.icons import Icons
 from XBrainLab.ui.styles.stylesheets import Stylesheets
@@ -411,6 +409,7 @@ class AgentManager(QObject):
         chat_panel.stop_generation.connect(self.stop_generation)
         chat_panel.debug_tool_requested.connect(self._handle_debug_tool_requested)
         chat_panel.open_settings_requested.connect(self.open_settings_dialog)
+        chat_panel.inline_setup_requested.connect(self._handle_inline_setup)
         retry_runtime_requested = getattr(
             chat_panel,
             "retry_local_assistant_requested",
@@ -460,6 +459,8 @@ class AgentManager(QObject):
 
         # New chat clears only the assistant conversation, never workflow state.
         self.new_conv_title_btn = QPushButton("+")
+        self.new_conv_title_btn.setAutoDefault(False)
+        self.new_conv_title_btn.setDefault(False)
         self.new_conv_title_btn.setIconSize(QSize(16, 16))
         self.new_conv_title_btn.setFixedSize(30, 30)
         self.new_conv_title_btn.setToolTip("New chat")
@@ -560,23 +561,9 @@ class AgentManager(QObject):
 
             config = self._assistant_runtime.load_config()
             if self._assistant_runtime.needs_first_run(config):
-                choice = self._show_local_runtime_first_run_dialog(config)
-                outcome = self._assistant_runtime.apply_first_run_choice(
-                    config,
-                    choice,
-                )
-                if outcome.action is RuntimeSetupAction.OPEN_SETTINGS:
-                    self.open_settings_dialog()
-                    return
-                if outcome.action is RuntimeSetupAction.STOP:
-                    self.refresh_backend_status()
-                    self._show_runtime_setup_required(outcome.message)
-                    return
-                config = self._assistant_runtime.load_config()
-
-            activation = self._assistant_runtime.activate(
-                config,
-            )
+                self._show_inline_setup(config)
+                return
+            activation = self._assistant_runtime.activate(config)
             self.refresh_backend_status()
             if activation.available:
                 self._runtime_unavailable_notice = None
@@ -589,12 +576,35 @@ class AgentManager(QObject):
         elif self.chat_dock:
             self.chat_dock.show()
 
-    def _show_local_runtime_first_run_dialog(self, config: LLMConfig) -> str:
-        """Show the local-runtime consent dialog and return the selected choice."""
-        dialog = LocalRuntimeFirstRunDialog(self.main_window, config)
-        if dialog.exec():
-            return dialog.choice
-        return LocalRuntimeFirstRunDialog.LATER
+    def _show_inline_setup(self, config: LLMConfig) -> None:
+        resolution = self._assistant_runtime.preview_launch(config)
+        spec = local_model_spec(config.model_name)
+        label = spec.label if spec else str(config.model_name)
+        memory = (
+            f"Estimated {spec.estimated_vram_gb:g} GB VRAM"
+            if spec
+            else "Model details unavailable"
+        )
+        cache_ready = resolution.failure is None
+        self.chat_panel.show_inline_setup(f"{label}\n{memory}", cache_ready=cache_ready)
+
+    def _handle_inline_setup(self, action: str) -> None:
+        config = self._assistant_runtime.load_config()
+        if action == "open_settings":
+            self.open_settings_dialog()
+            return
+        outcome = self._assistant_runtime.apply_first_run_choice(config, "enable")
+        if outcome.action is RuntimeSetupAction.CONTINUE:
+            activation = self._assistant_runtime.activate(
+                self._assistant_runtime.load_config(),
+            )
+            self.refresh_backend_status()
+            if activation.available:
+                self._runtime_unavailable_notice = None
+            elif self._activation_is_disabled_setup(activation):
+                self._show_runtime_setup_required(activation.message)
+            else:
+                self._show_runtime_unavailable(activation.message)
 
     def _show_runtime_unavailable(self, message: str) -> None:
         """Surface assistant startup blockers in the chat panel."""
@@ -1504,6 +1514,8 @@ class AgentManager(QObject):
             self.chat_controller.set_processing(False)
         elif self.chat_panel:
             self.chat_panel.set_turn_activity(ChatTurnPresentation.idle())
+        if self.chat_panel:
+            self.chat_panel.restore_composer_focus_after_turn()
         self._flush_assistant_training_terminal()
         self.refresh_backend_status()
 

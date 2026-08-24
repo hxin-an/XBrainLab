@@ -2953,7 +2953,6 @@ def test_agent_manager_runtime_lifecycle_has_one_focused_owner():
     )
     assert {
         "load_config",
-        "apply_first_run_choice",
         "activate",
         "start",
         "switch_model",

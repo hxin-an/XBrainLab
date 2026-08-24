@@ -19,6 +19,8 @@ from PyQt6.QtCore import QPoint, QSettings, QSize, QTimer
 from PyQt6.QtWidgets import QApplication
 
 from scripts.dev.capture_chatpanel_local_walkthrough import (
+    ASSISTANT_SETUP_REQUIRED_MESSAGE,
+    _assistant_setup_required,
     collect_executed_tools,
     collect_visible_messages,
     has_raw_debug_text,
@@ -55,11 +57,6 @@ def main() -> int:
         help="Maximum time for the full multi-turn walkthrough.",
     )
     parser.add_argument(
-        "--model",
-        default="",
-        help="Optional approved local model id to prefer for this process.",
-    )
-    parser.add_argument(
         "--exercise-deactivation",
         action="store_true",
         help="Unload and re-enable Assistant before the two-turn workflow.",
@@ -79,11 +76,10 @@ def main() -> int:
             parser.error("--exercise-deactivation requires --isolated-settings-path")
         _prepare_isolated_settings(
             Path(args.isolated_settings_path),
-            model_id=args.model,
         )
 
     _force_offline_hf_runtime()
-    config = _load_capture_config(args.model)
+    config = _load_capture_config()
     runtime = classify_runtime(config)
     if runtime["classification"] not in {"gpu-ready", "cpu-fallback"}:
         payload = _blocked_payload(args, runtime)
@@ -93,8 +89,6 @@ def main() -> int:
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    if args.model:
-        app.setProperty("model_override", args.model)
 
     payload = run_workflow(
         app,
@@ -198,7 +192,6 @@ def run_workflow(
                 {"ok": bool(ok), "message": str(message or "")}
             )
         )
-        _disable_first_run_dialog_for_unattended_capture(window)
         window.ai_btn.click()
         QTimer.singleShot(250, wait_for_assistant_ready)
 
@@ -209,6 +202,10 @@ def run_workflow(
         manager = window.agent_manager
         if manager is None:
             fail("Assistant manager disappeared during startup.")
+            return
+        panel = manager.chat_panel
+        if panel is not None and _assistant_setup_required(panel):
+            fail(ASSISTANT_SETUP_REQUIRED_MESSAGE)
             return
         if not _assistant_is_ready(manager):
             QTimer.singleShot(250, wait_for_assistant_ready)
@@ -506,7 +503,7 @@ def run_workflow(
     }
 
 
-def _prepare_isolated_settings(path: Path, *, model_id: str) -> None:
+def _prepare_isolated_settings(path: Path) -> None:
     """Bind mutable capture settings to an explicit OS temp path."""
     resolved = path.expanduser().resolve()
     temp_root = Path(tempfile.gettempdir()).resolve()
@@ -517,7 +514,7 @@ def _prepare_isolated_settings(path: Path, *, model_id: str) -> None:
     LLMConfig._default_settings_path = staticmethod(  # type: ignore[method-assign]
         lambda: str(resolved)
     )
-    config = LLMConfig(model_name=model_id or LLMConfig.default_local_model_id())
+    config = LLMConfig(model_name=LLMConfig.default_local_model_id())
     config.local_model_enabled = True
     config.local_runtime_notice_acknowledged = True
     config.apply_runtime_selection(
@@ -716,14 +713,8 @@ def _has_unpainted_main_surface(path: Path) -> bool:
     return sum(histogram[:8]) / pixel_count > 0.9
 
 
-def _load_capture_config(model_id: str) -> LLMConfig:
+def _load_capture_config() -> LLMConfig:
     config = LLMConfig.load_from_file() or LLMConfig()
-    if model_id:
-        config.apply_runtime_selection(
-            "local",
-            model_id=model_id,
-            ui_active_mode="local",
-        )
     return config
 
 
@@ -740,15 +731,6 @@ def _set_baseline_window_geometry(window: Any) -> None:
     else:
         window.move(QPoint(0, 0))
     window.resize(BASELINE_WINDOW_SIZE)
-
-
-def _disable_first_run_dialog_for_unattended_capture(window: Any) -> None:
-    """Bypass only the modal consent prompt without persisting user settings."""
-    manager = getattr(window, "agent_manager", None)
-    if manager is None:
-        raise RuntimeError("Assistant manager must be initialized before capture setup")
-    runtime = manager._assistant_runtime
-    runtime.needs_first_run = lambda _config: False
 
 
 def _assistant_is_ready(manager: Any) -> bool:
