@@ -670,17 +670,6 @@ class TestMessageBubble:
             layout.documentSize().height() <= text_edit.fontMetrics().lineSpacing() + 3
         )
 
-    def test_short_assistant_message_does_not_use_large_minimum_width(self, qtbot):
-        bubble = MessageBubble("Done.", is_user=False)
-        qtbot.addWidget(bubble)
-
-        bubble.adjust_width(380)
-
-        bubble_frame = bubble.bubble_frame
-        assert bubble_frame is not None
-
-        assert 50 <= bubble_frame.width() <= 84
-
     def test_short_assistant_message_fits_content_without_trailing_void(self, qtbot):
         bubble = MessageBubble("hello", is_user=False)
         qtbot.addWidget(bubble)

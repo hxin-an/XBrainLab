@@ -102,7 +102,10 @@ regression鎖定未初始化panel時no-op且不啟動preview；測試先以`None
 Basedpyright為0 new diagnostics。完整LLM／Agent第一次執行為
 1607 passed，唯一failure是long-session helper仍尋找已退役的`workflow_decision`，而production與直接
 assembler contract已發布`state_card`；本test-only drift以精確新名稱修正，不保留compatibility alias，
-focused green後再重跑完整suite。
+focused green後再重跑完整suite。PR #50首輪CI的Windows product-lifecycle另發現短assistant bubble的
+`84 px`固定上限只符合Linux字型metrics；同SHA的Windows DPI／human-like walkthrough皆通過，且相鄰
+content-relative regression直接證明text widget與Qt natural width差不超過2 px。此重複的platform-specific
+pixel assertion刪除，不放寬content-relative contract，也不修改production UI；新HEAD重新綁定全部必要證據。
 
 施工 checkpoint：catalog／provider chain至`627c5492`已由獨立gate確認無blocker／major；metadata
 discovery保持barrel-free，只有checked provider status能啟用projection。`f27eabfa`已鎖定61-symbol逐檔
