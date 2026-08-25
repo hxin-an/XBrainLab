@@ -57,4 +57,8 @@
 - Assistant geometry tests `7/7`、完整 MainWindow sync `99/99`、相關 product walkthrough `3/3`、window geometry `22/22` 通過。
 - 隔離本機 QSettings 的 1280×800 UI baseline `7/7` 與 approved references 相符；它只證明 responsive fallback，外推仍需 WSLg 真人畫面驗收。
 - Assistant runtime lifecycle tests-only PR #55 已在 exact head `2d454c670770120c0d145db85838cef7c51825d0` 全部 non-skipped CI success，並透過 PR 合併 main 為 `298e9e3704cb492a00b4314e4554e54947485288`；16 個 cases 現由獨立 integration domain 在 Linux per-case fork 執行。
-- Next：完成本次 main merge commit，重跑 PR #54 最新 exact-head focused／CI evidence；全部成功後才交付 WSLg normal／maximized／repeat-toggle 真人手測。
+- 最新 main 已合入本分支為 merge commit `4ea5d177ba3a8e7a98cbc242f742df53e8f919ea`；同步後
+  focused MainWindow／window geometry／product walkthrough `122/122`、authoritative
+  `linux-unit-ui` `2716/2716` 通過，其中 components domain `461/461` 在 49.91 秒完成。
+- Next：完成 lint／format／diff checks 並推送 PR #54 新 exact head；全部 non-skipped CI success
+  後才交付 WSLg normal／maximized／repeat-toggle 真人手測。
