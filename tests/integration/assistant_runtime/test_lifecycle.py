@@ -1,4 +1,4 @@
-"""Real Qt lifecycle regressions for the in-app assistant runtime.
+"""Full-topology integration regressions for the in-app assistant runtime.
 
 These tests keep the production ``AgentManager`` -> ``LLMController`` ->
 ``AgentWorker`` thread topology intact.  The model engine is replaced by an
@@ -8,6 +8,7 @@ unrelated workflow-surface router is isolated while its parallel slice changes.
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ from threading import Event, Lock
 from types import SimpleNamespace
 from typing import Any, cast
 
+import pytest
 from PyQt6 import sip
 from PyQt6.QtCore import QEventLoop, QObject, Qt, QThread, QTimer, pyqtSignal, pyqtSlot
 from PyQt6.QtTest import QSignalSpy
@@ -74,6 +76,9 @@ from XBrainLab.ui.dialogs.training import (
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
 from XBrainLab.ui.panels.training.sidebar import TrainingSidebar
 from XBrainLab.ui.qt_runtime import drain_qt_runtime_after_event_loop
+
+if sys.platform.startswith("linux"):
+    pytestmark = pytest.mark.forked
 
 WATCHDOG_MS = 5_000
 WATCHDOG_SECONDS = WATCHDOG_MS / 1_000
@@ -232,7 +237,7 @@ class _NoopRagRetriever:
 
 
 class _NoopRagLifecycle:
-    """Keep runtime lifecycle tests deterministic without a child process."""
+    """Keep runtime lifecycle tests deterministic without a RAG child process."""
 
     def __init__(self) -> None:
         self.retriever = _NoopRagRetriever()
