@@ -292,11 +292,23 @@ def test_linux_ci_isolates_only_wall_clock_agent_timing_from_coverage() -> None:
     )
 
 
-def test_linux_ci_isolates_ui_domains_in_separate_qt_processes() -> None:
+def test_linux_ci_isolates_qt_domains_in_separate_processes() -> None:
     groups = dict(run_tests.LINUX_CI_GROUPS)
 
     assert groups["linux-unit-ui"] == run_tests.UI_UNIT_SHARDS
     assert all(paths != ("tests/unit/ui",) for _label, paths in groups["linux-unit-ui"])
+    assert dict(groups["linux-integration-rest"])["assistant-runtime"] == (
+        "tests/integration/assistant_runtime",
+    )
+    unit_ui_files = {
+        path
+        for _label, paths in groups["linux-unit-ui"]
+        for path in _expand_test_paths(paths)
+    }
+    assert (
+        Path("tests/integration/assistant_runtime/test_lifecycle.py")
+        not in unit_ui_files
+    )
 
 
 def test_linux_ci_group_preserves_declared_process_boundaries(monkeypatch) -> None:
