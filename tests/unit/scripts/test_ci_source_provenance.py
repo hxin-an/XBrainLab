@@ -99,6 +99,8 @@ def _payload(
     *,
     tree: str = TREE_SHA,
     github_job: str = "linux-shard",
+    run_id: str = "123",
+    run_attempt: str = "1",
 ) -> dict[str, str]:
     return {
         "schema": ci_source_provenance.CI_SOURCE_PROVENANCE_SCHEMA,
@@ -107,8 +109,8 @@ def _payload(
         "repository": "hxin-an/XBrainLab",
         "workflow": "CI",
         "github_job": github_job,
-        "run_id": "123",
-        "run_attempt": "1",
+        "run_id": run_id,
+        "run_attempt": run_attempt,
         "runner_os": "Linux",
         "runner_arch": "X64",
         "github_sha": MERGE_SHA,
@@ -159,6 +161,71 @@ def test_linux_provenance_requires_exact_checked_in_job_set(tmp_path) -> None:
     assert aggregate is not None
     assert aggregate["job_keys"] == list(jobs)
     assert aggregate_path.exists()
+
+
+def test_linux_provenance_accepts_earlier_attempt_from_same_run_and_source(
+    tmp_path,
+) -> None:
+    jobs = ("linux-a", "linux-b")
+    provenance_root = tmp_path / "source-provenance"
+    expected_path = _write_linux_provenance_set(provenance_root, jobs)
+    _write_payload(
+        expected_path,
+        _payload("linux-test", github_job="linux-test", run_attempt="2"),
+    )
+    linux_b_path = (
+        provenance_root
+        / f"{ci_source_provenance.LINUX_PROVENANCE_ARTIFACT_PREFIX}linux-b"
+        / f"{ci_source_provenance.LINUX_PROVENANCE_PREFIX}linux-b.json"
+    )
+    _write_payload(linux_b_path, _payload("linux-b", run_attempt="2"))
+
+    aggregate, failures = ci_source_provenance.verify_linux_source_provenance(
+        provenance_root,
+        expected_job_keys=jobs,
+        expected_provenance_path=expected_path,
+        aggregate_path=tmp_path / "all-linux-source-provenance.json",
+    )
+
+    assert failures == ()
+    assert aggregate is not None
+    assert [member["run_attempt"] for member in aggregate["members"]] == ["1", "2"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("run_id", "456"), ("run_attempt", "3")],
+)
+def test_linux_provenance_rejects_other_run_or_future_attempt(
+    tmp_path,
+    field,
+    value,
+) -> None:
+    jobs = ("linux-a", "linux-b")
+    provenance_root = tmp_path / "source-provenance"
+    expected_path = _write_linux_provenance_set(provenance_root, jobs)
+    _write_payload(
+        expected_path,
+        _payload("linux-test", github_job="linux-test", run_attempt="2"),
+    )
+    linux_b_path = (
+        provenance_root
+        / f"{ci_source_provenance.LINUX_PROVENANCE_ARTIFACT_PREFIX}linux-b"
+        / f"{ci_source_provenance.LINUX_PROVENANCE_PREFIX}linux-b.json"
+    )
+    payload = _payload("linux-b")
+    payload[field] = value
+    _write_payload(linux_b_path, payload)
+
+    aggregate, failures = ci_source_provenance.verify_linux_source_provenance(
+        provenance_root,
+        expected_job_keys=jobs,
+        expected_provenance_path=expected_path,
+        aggregate_path=tmp_path / "all-linux-source-provenance.json",
+    )
+
+    assert aggregate is None
+    assert failures
 
 
 @pytest.mark.parametrize(
@@ -255,4 +322,13 @@ def test_validate_provenance_rejects_malformed_or_wrong_job(tmp_path) -> None:
             path, expected_job_key="linux-a"
         )[1]
         == "CI source provenance job key does not match."
+    )
+
+    invalid_attempt = _payload("linux-a", run_attempt="0")
+    _write_payload(path, invalid_attempt)
+    assert (
+        ci_source_provenance.validate_ci_source_provenance(
+            path, expected_job_key="linux-a"
+        )[1]
+        == "CI source provenance run attempt is invalid."
     )
