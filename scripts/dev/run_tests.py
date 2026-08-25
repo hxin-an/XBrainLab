@@ -89,6 +89,7 @@ UNIT_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 INTEGRATION_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("agent", ("tests/integration/agent",)),
+    ("assistant-runtime", ("tests/integration/assistant_runtime",)),
     ("backend", ("tests/integration/backend",)),
     ("controller", ("tests/integration/controller",)),
     ("debug", ("tests/integration/debug",)),
@@ -223,6 +224,7 @@ LINUX_CI_GROUPS: tuple[tuple[str, tuple[tuple[str, tuple[str, ...]], ...]], ...]
     (
         "linux-integration-rest",
         (
+            ("assistant-runtime", ("tests/integration/assistant_runtime",)),
             ("agent-contracts", INTEGRATION_AGENT_COVERED_TESTS),
             ("backend", ("tests/integration/backend",)),
             ("controller", ("tests/integration/controller",)),

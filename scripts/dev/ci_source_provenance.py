@@ -32,6 +32,9 @@ _COMMON_IDENTITY_FIELDS = (
     "checked_out_head_sha",
     "checked_out_tree_sha",
 )
+_CROSS_ATTEMPT_IDENTITY_FIELDS = tuple(
+    field for field in _COMMON_IDENTITY_FIELDS if field != "run_attempt"
+)
 
 
 def _git_output(*args: str, root: Path) -> str:
@@ -152,6 +155,8 @@ def validate_ci_source_provenance(
     for field in (*_COMMON_IDENTITY_FIELDS, "github_job", "runner_os", "runner_arch"):
         if not isinstance(payload.get(field), str):
             return None, f"CI source provenance field {field!r} is malformed."
+    if re.fullmatch(r"[1-9][0-9]*", payload["run_attempt"]) is None:
+        return None, "CI source provenance run attempt is invalid."
     if not payload["expected_head_sha"]:
         return None, "CI source provenance expected head is missing."
     for field in (
@@ -256,13 +261,21 @@ def verify_linux_source_provenance(
             payloads.append(payload)
 
     if expected_payload is not None:
-        reference = tuple(expected_payload[field] for field in _COMMON_IDENTITY_FIELDS)
+        reference = tuple(
+            expected_payload[field] for field in _CROSS_ATTEMPT_IDENTITY_FIELDS
+        )
+        aggregate_attempt = int(expected_payload["run_attempt"])
         for payload in payloads:
-            identity = tuple(payload[field] for field in _COMMON_IDENTITY_FIELDS)
+            identity = tuple(payload[field] for field in _CROSS_ATTEMPT_IDENTITY_FIELDS)
             if identity != reference:
                 failures.append(
                     f"{payload['job_key']}: CI source provenance differs from "
                     "the aggregate job checkout."
+                )
+            elif int(payload["run_attempt"]) > aggregate_attempt:
+                failures.append(
+                    f"{payload['job_key']}: CI source provenance comes from a "
+                    "future workflow attempt."
                 )
 
     aggregate_path.unlink(missing_ok=True)
