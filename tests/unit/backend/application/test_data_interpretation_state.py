@@ -7,6 +7,8 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from XBrainLab.backend.application.commands import LabelImportPlan
 from XBrainLab.backend.application.data_interpretation import AppliedInterpretation
 from XBrainLab.backend.application.data_interpretation_candidate import (
@@ -30,6 +32,7 @@ from XBrainLab.backend.application.data_interpretation_review import (
 from XBrainLab.backend.application.data_interpretation_scan import ScanResult
 from XBrainLab.backend.application.data_interpretation_state import (
     DataInterpretationSessionState,
+    StagedInterpretationSessionState,
 )
 
 
@@ -44,6 +47,15 @@ def _data_filepath(data: Any) -> str:
 
 def _state() -> DataInterpretationSessionState:
     return DataInterpretationSessionState(data_filepath=_data_filepath)
+
+
+def test_staged_session_state_transfers_once() -> None:
+    state = _state()
+    staged = StagedInterpretationSessionState(state.checkpoint_session_state())
+
+    assert staged.take().scans == {}
+    with pytest.raises(RuntimeError, match="already transferred"):
+        staged.take()
 
 
 def _scan(scan_id: str) -> ScanResult:
@@ -230,7 +242,7 @@ def test_discard_failed_replacement_restores_previous_applied_interpretation() -
     assert state.snapshot().latest_interpretation_id == old_applied.interpretation_id
 
 
-def test_apply_checkpoint_restores_applied_and_recipe_state() -> None:
+def test_session_checkpoint_restores_applied_and_recipe_state() -> None:
     state = _state()
     old_scan = _scan(state.next_id("scan"))
     old_candidate = _candidate(old_scan, state.next_id("candidate"))
@@ -238,13 +250,13 @@ def test_apply_checkpoint_restores_applied_and_recipe_state() -> None:
     old_recipe = _recipe(state, old_applied)
     state.record_applied(old_applied)
     state.record_recipe(old_recipe, recipe_path="/tmp/xbrainlab/old-recipe.json")
-    checkpoint = state.checkpoint_apply_state()
+    checkpoint = state.checkpoint_session_state()
     new_scan = _scan(state.next_id("scan"))
     new_candidate = _candidate(new_scan, state.next_id("candidate"))
     new_applied = _applied(state, new_candidate)
     state.record_applied(new_applied)
 
-    state.restore_apply_state(checkpoint)
+    state.restore_session_state(checkpoint)
 
     restored_applied = state.resolve_applied_interpretation()
     restored_recipe = state.resolve_recipe(None)
@@ -307,7 +319,6 @@ def test_all_session_mutators_advance_the_lightweight_revision() -> None:
         "record_validation",
         "record_applied",
         "discard_applied",
-        "restore_apply_state",
         "record_recipe",
         "record_recipe_reload",
         "clear",

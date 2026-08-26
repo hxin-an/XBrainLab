@@ -136,30 +136,6 @@ def test_discovery_commit_publishes_prepared_state_without_commit_time_copy(
     assert service.state.snapshot().has_scan_result is True
 
 
-def test_discovery_commit_isolates_live_nested_state_from_prepared_receipt(
-    tmp_path: Path,
-) -> None:
-    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
-    eeg_path.write_bytes(b"stable EEG header")
-    service, _dataset = _service()
-    plan = service.begin_interpretation_discovery(
-        ScanSourceCommand(source_path=str(eeg_path)),
-        application_boundary=ApplicationDiscoveryBoundary(
-            publication_generation=0,
-            publication_revision=0,
-            state=ApplicationStateSnapshot.empty(),
-        ),
-    )
-    prepared = service.prepare_interpretation_discovery(plan)
-
-    service.commit_prepared_interpretation_discovery(prepared)
-    [prepared_scan] = prepared.state_after.scans.values()
-    prepared_scan.eeg_files.append(str(tmp_path / "mutated-after-commit.fif"))
-
-    live_scan = service.state.resolve_scan(None)
-    assert live_scan.eeg_files == [str(eeg_path.resolve())]
-
-
 def test_discovery_prepared_state_is_one_shot_without_second_live_mutation(
     tmp_path: Path,
 ) -> None:
