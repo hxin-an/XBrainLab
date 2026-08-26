@@ -21,6 +21,9 @@ from XBrainLab.backend.application import (
     resource_guard,
 )
 from XBrainLab.backend.application import (
+    data_interpretation_scan as scan_module,
+)
+from XBrainLab.backend.application import (
     data_interpretation_service as service_module,
 )
 from XBrainLab.backend.application.commands import (
@@ -908,6 +911,69 @@ def test_review_blocks_bids_participants_before_scan_tsv_materialization(
     assert str(participants.resolve()) in {
         item["path"] for item in diagnostics["files"]
     }
+
+
+def test_review_keeps_preflight_bids_summary_separate_from_admitted_materialization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bids_root = tmp_path / "bids"
+    eeg_dir = bids_root / "sub-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    (bids_root / "dataset_description.json").write_text(
+        json.dumps({"Name": "Admitted review", "BIDSVersion": "1.9.0"}),
+        encoding="utf-8",
+    )
+    participants = bids_root / "participants.tsv"
+    participants.write_text("participant_id\tage\nsub-01\t25\n", encoding="utf-8")
+    eeg_path = eeg_dir / "sub-01_task-mi_eeg.fif"
+    events_path = eeg_dir / "sub-01_task-mi_events.tsv"
+    channels_path = eeg_dir / "sub-01_task-mi_channels.tsv"
+    eeg_path.write_bytes(b"header only")
+    events_path.write_text(
+        "onset\tduration\ttrial_type\n0\t1\tleft\n", encoding="utf-8"
+    )
+    channels_path.write_text("name\tstatus\nCz\tgood\n", encoding="utf-8")
+    summaries: list[tuple[bool, bool]] = []
+    original_summary = scan_module._bids_summary
+
+    def _tracked_summary(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        summaries.append(
+            (
+                bool(kwargs.get("materialize")),
+                kwargs.get("metadata_file_guard") is not None,
+            )
+        )
+        return original_summary(*args, **kwargs)
+
+    monkeypatch.setattr(scan_module, "_bids_summary", _tracked_summary)
+    service, _dataset = _service()
+
+    _message, payload = _expect_payload(
+        service.handle_review_interpretation(
+            ReviewInterpretationCommand(
+                source_path=str(bids_root),
+                source_hint="bids",
+                choices={
+                    "label_carrier_choices": {
+                        str(events_path.resolve()): {
+                            "label_field": "trial_type",
+                            "anchor": "onset",
+                            "time_model": "seconds",
+                            "granularity": "trial",
+                            "value_decisions": _class_value_decisions({"left": "left"}),
+                        },
+                    },
+                },
+            )
+        )
+    )
+
+    assert summaries == [(False, False), (True, True)]
+    assert payload["scan_result"]["bids"]["metadata_materialized"] is True
+    assert payload["scan_result"]["bids"]["participants"] == [
+        {"participant_id": "sub-01", "age": "25"}
+    ]
 
 
 def test_reload_blocks_bids_channels_before_scan_tsv_materialization(
