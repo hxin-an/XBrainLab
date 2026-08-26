@@ -89,7 +89,10 @@ from .data_interpretation_scan import (
     discover_explicit_file_preflight_scope,
     discover_source_preflight_scope,
 )
-from .data_interpretation_state import DataInterpretationSessionState
+from .data_interpretation_state import (
+    DataInterpretationSessionState,
+    StagedInterpretationSessionState,
+)
 from .errors import (
     ApplicationError,
     ConfirmationRequiredError,
@@ -275,10 +278,14 @@ class DataInterpretationCommandService:
     ) -> InterpretationDiscoveryPlan:
         """Capture immutable review state before detached filesystem work."""
         owned_work_checkpoint("Preparing selected EEG data")
+        interpretation_identity = self.state.session_identity()
         return InterpretationDiscoveryPlan.capture(
             command,
             application=application_boundary,
-            state_before=self.state.checkpoint_session_state(),
+            interpretation_identity=interpretation_identity,
+            staged_state=StagedInterpretationSessionState(
+                self.state.checkpoint_session_state()
+            ),
             safe_preview_admissions=self._safe_preview_admissions,
             bids_dataset_indexes=self._bids_dataset_indexes,
         )
@@ -312,7 +319,9 @@ class DataInterpretationCommandService:
         message, diagnostics = self._normalize_handler_result(handler_result)
         prepared = PreparedInterpretationDiscovery.create(
             plan=plan,
-            state_after=detached.state.stage_session_state(),
+            staged_state=StagedInterpretationSessionState(
+                detached.state.stage_session_state()
+            ),
             message=message,
             diagnostics=diagnostics,
             safe_preview_admissions=detached._safe_preview_admissions,
@@ -328,7 +337,9 @@ class DataInterpretationCommandService:
         """Publish one exact detached review after final cancellation admission."""
         if not isinstance(prepared, PreparedInterpretationDiscovery):
             raise TypeError("prepared must be PreparedInterpretationDiscovery")
-        if not self.state.session_checkpoint_is_current(prepared.plan.state_before):
+        if not self.state.session_identity_is_current(
+            prepared.plan.interpretation_identity
+        ):
             raise PreconditionError(
                 "Data Import review state changed while discovery was prepared. "
                 "Review the current source and retry.",
@@ -354,7 +365,7 @@ class DataInterpretationCommandService:
         """Return whether the exact review session captured by a plan still owns it."""
         if not isinstance(plan, InterpretationDiscoveryPlan):
             raise TypeError("plan must be InterpretationDiscoveryPlan")
-        return self.state.session_checkpoint_is_current(plan.state_before)
+        return self.state.session_identity_is_current(plan.interpretation_identity)
 
     def _detached_discovery_service(
         self,
@@ -367,7 +378,7 @@ class DataInterpretationCommandService:
             data_filepath=self._data_filepath,
             pipeline_transaction=None,
         )
-        detached.state.restore_session_state(plan.state_before)
+        detached.state.publish_staged_session_state(plan.staged_state.take())
         detached._import_preflight_receipts = self._import_preflight_receipts
         detached._preview_preflight_receipts = self._preview_preflight_receipts
         detached._review_preflight_receipts = self._review_preflight_receipts
@@ -764,7 +775,7 @@ class DataInterpretationCommandService:
             else None
         )
         snapshot = self._snapshot_raw_state()
-        state_checkpoint = self.state.checkpoint_apply_state()
+        state_checkpoint = self.state.checkpoint_session_state()
         try:
             owned_work_checkpoint("Loading reviewed EEG recordings")
             count, errors = self._replace_active_raw_data(
@@ -819,7 +830,7 @@ class DataInterpretationCommandService:
                 else False
             )
         except Exception:
-            self.state.restore_apply_state(state_checkpoint)
+            self.state.restore_session_state(state_checkpoint)
             self._restore_raw_state(snapshot)
             raise
         applied_payload = self.state.resolve_applied_interpretation().to_dict()
@@ -876,10 +887,8 @@ class DataInterpretationCommandService:
                 "Interpretation apply preparation requires a pipeline transaction."
             )
         owned_work_checkpoint("Preparing interpretation apply")
-        candidate = deepcopy(self.state.resolve_candidate(command.candidate_id))
-        decision = deepcopy(
-            self.state.resolve_validation_decision(candidate.candidate_id)
-        )
+        candidate = self.state.resolve_candidate(command.candidate_id)
+        decision = self.state.resolve_validation_decision(candidate.candidate_id)
         if decision is None:
             raise PreconditionError("Validate an interpretation before applying it.")
         self._ensure_candidate_can_apply(command, candidate, decision)
@@ -890,8 +899,7 @@ class DataInterpretationCommandService:
         pipeline_snapshot = self._pipeline_transaction.capture()
         return InterpretationApplyPlan(
             command=command,
-            candidate=candidate,
-            decision=decision,
+            candidate_id=candidate.candidate_id,
             content_scope_sha256=str(
                 candidate.content_identity.get("scope_sha256") or ""
             ),
@@ -901,6 +909,9 @@ class DataInterpretationCommandService:
             pipeline_snapshot=pipeline_snapshot,
             pipeline_identity=PipelineStateIdentity.from_snapshot(pipeline_snapshot),
             interpretation_identity=self.state.session_identity(),
+            staged_state=StagedInterpretationSessionState(
+                self.state.checkpoint_session_state()
+            ),
         )
 
     def prepare_apply_interpretation(
@@ -910,8 +921,15 @@ class DataInterpretationCommandService:
         """Load and annotate replacement Raw holders without mutating the Study."""
         if not isinstance(plan, InterpretationApplyPlan):
             raise TypeError("plan must be an InterpretationApplyPlan")
-        candidate = plan.candidate
         self._ensure_apply_session_is_current(plan)
+        detached_state = DataInterpretationSessionState(
+            data_filepath=self._data_filepath,
+        )
+        detached_state.publish_staged_session_state(plan.staged_state.take())
+        candidate = detached_state.resolve_candidate(plan.candidate_id)
+        decision = detached_state.resolve_validation_decision(candidate.candidate_id)
+        if decision is None:
+            raise PreconditionError("Validate an interpretation before applying it.")
         preflight, _preflight_receipt, receipt_reused = (
             self._resolve_apply_resource_preflight(
                 command=plan.command,
@@ -926,7 +944,6 @@ class DataInterpretationCommandService:
             preflight,
         )
         self._ensure_apply_session_is_current(plan)
-        detached_state = deepcopy(self.state)
         self._ensure_apply_session_is_current(plan)
         prepared_dataset = self.dataset.prepare_replacement_import(
             candidate.selected_eeg_files
@@ -970,7 +987,7 @@ class DataInterpretationCommandService:
         applied = self._build_applied_interpretation(
             interpretation_id=interpretation_id,
             candidate=candidate,
-            decision=plan.decision,
+            decision=decision,
             loaded_files=loaded_files,
         )
         detached_state.record_applied(applied)
@@ -999,7 +1016,11 @@ class DataInterpretationCommandService:
         return PreparedInterpretationApply(
             plan=plan,
             dataset=prepared_dataset,
-            interpretation_state_after=detached_state.checkpoint_apply_state(),
+            candidate=candidate,
+            decision=decision,
+            staged_state=StagedInterpretationSessionState(
+                detached_state.stage_session_state()
+            ),
             resource_preflight=preflight,
             resource_preflight_receipt_reused=receipt_reused,
             label_resources=label_resources,
@@ -1020,7 +1041,7 @@ class DataInterpretationCommandService:
             raise TypeError("prepared must be a PreparedInterpretationApply")
         owned_work_checkpoint("Verifying prepared import content")
         observed_identity = self._reviewed_content_identity(
-            prepared.plan.candidate,
+            prepared.candidate,
         )
         return replace(
             prepared,
@@ -1040,13 +1061,13 @@ class DataInterpretationCommandService:
                 "Interpretation apply commit requires a pipeline transaction."
             )
         plan = prepared.plan
-        candidate = self.state.resolve_candidate(plan.candidate.candidate_id)
+        candidate = self.state.resolve_candidate(plan.candidate_id)
         decision = self.state.resolve_validation_decision(candidate.candidate_id)
         current_scope_sha256 = str(candidate.content_identity.get("scope_sha256") or "")
         current_pipeline = transaction.capture()
         if (
-            candidate != plan.candidate
-            or decision != plan.decision
+            candidate != prepared.candidate
+            or decision != prepared.decision
             or current_scope_sha256 != plan.content_scope_sha256
             or not self.state.session_identity_is_current(plan.interpretation_identity)
             or PipelineStateIdentity.from_snapshot(current_pipeline)
@@ -1062,16 +1083,18 @@ class DataInterpretationCommandService:
                 },
             )
         assert_source_content_boundaries_match(
-            plan.candidate.content_identity,
+            prepared.candidate.content_identity,
             prepared.source_files,
         )
         assert_source_file_boundaries_current(prepared.source_files)
         owned_work_commit_boundary("Committing interpreted dataset")
-        rollback_state = self.state.checkpoint_apply_state()
+        rollback_state = StagedInterpretationSessionState(
+            self.state.stage_session_state()
+        )
 
         def publish() -> None:
             self.dataset.commit_prepared_import(prepared.dataset)
-            self.state.restore_apply_state(prepared.interpretation_state_after)
+            self.state.publish_staged_session_state(prepared.take_staged_state())
 
         try:
             trainer_retired = transaction.commit_pipeline_replacement(
@@ -1097,7 +1120,9 @@ class DataInterpretationCommandService:
                     )
                 )
                 restore_without_replacing_control_flow(
-                    lambda: self.state.restore_apply_state(rollback_state)
+                    lambda: self.state.publish_staged_session_state(
+                        rollback_state.take()
+                    )
                 )
                 restore_without_replacing_control_flow(
                     lambda: transaction.restore(plan.pipeline_snapshot)
@@ -1116,7 +1141,9 @@ class DataInterpretationCommandService:
                     plan.training_startup_snapshot,
                 )
             )
-            restore_or_record(lambda: self.state.restore_apply_state(rollback_state))
+            restore_or_record(
+                lambda: self.state.publish_staged_session_state(rollback_state.take())
+            )
             restore_or_record(lambda: transaction.restore(plan.pipeline_snapshot))
             if rollback_errors:
                 mapped = map_exception(exc)
@@ -1158,7 +1185,7 @@ class DataInterpretationCommandService:
                     dict(item) for item in prepared.source_identity_apply
                 ],
                 "channels_apply": [dict(item) for item in prepared.channels_apply],
-                "label_carriers_pending": list(plan.candidate.label_carriers),
+                "label_carriers_pending": list(prepared.candidate.label_carriers),
                 "label_apply": deepcopy(prepared.label_apply),
                 "internal_epoch_hints": [
                     dict(item) for item in prepared.internal_epoch_hints

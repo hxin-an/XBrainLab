@@ -60,21 +60,6 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class InterpretationApplyCheckpoint:
-    """Interpretation records that must roll back with an apply failure."""
-
-    candidates: dict[str, InterpretationCandidate]
-    previews: dict[str, InterpretationPreview]
-    validation_decisions: dict[str, ValidationDecision]
-    applied_interpretations: dict[str, AppliedInterpretation]
-    recipes: dict[str, ImportRecipe]
-    latest_interpretation_id: str | None
-    latest_recipe_id: str | None
-    latest_recipe_path: str | None
-    interpretation_counter: int
-
-
-@dataclass(frozen=True)
 class InterpretationLabelImportCheckpoint:
     """Interpretation records changed by a post-load label import."""
 
@@ -104,6 +89,24 @@ class InterpretationSessionCheckpoint:
     latest_recipe_id: str | None
     latest_recipe_path: str | None
     interpretation_counter: int
+
+
+class StagedInterpretationSessionState:
+    """Transfer detached session dictionaries exactly once."""
+
+    __slots__ = ("_checkpoint",)
+
+    def __init__(self, checkpoint: InterpretationSessionCheckpoint) -> None:
+        if not isinstance(checkpoint, InterpretationSessionCheckpoint):
+            raise TypeError("checkpoint must be InterpretationSessionCheckpoint")
+        self._checkpoint: InterpretationSessionCheckpoint | None = checkpoint
+
+    def take(self) -> InterpretationSessionCheckpoint:
+        checkpoint = self._checkpoint
+        if checkpoint is None:
+            raise RuntimeError("staged interpretation session was already transferred")
+        self._checkpoint = None
+        return checkpoint
 
 
 @dataclass(frozen=True, slots=True)
@@ -371,33 +374,6 @@ class DataInterpretationSessionState:
                 reversed(self._applied_interpretations),
                 None,
             )
-        self._advance_session_revision()
-
-    def checkpoint_apply_state(self) -> InterpretationApplyCheckpoint:
-        """Capture interpretation records changed by the apply transaction."""
-        return InterpretationApplyCheckpoint(
-            candidates=deepcopy(self._candidates),
-            previews=deepcopy(self._previews),
-            validation_decisions=deepcopy(self._validation_decisions),
-            applied_interpretations=deepcopy(self._applied_interpretations),
-            recipes=deepcopy(self._recipes),
-            latest_interpretation_id=self._latest_interpretation_id,
-            latest_recipe_id=self._latest_recipe_id,
-            latest_recipe_path=self._latest_recipe_path,
-            interpretation_counter=self._interpretation_counter,
-        )
-
-    def restore_apply_state(self, checkpoint: InterpretationApplyCheckpoint) -> None:
-        """Restore interpretation records after an apply transaction fails."""
-        self._candidates = deepcopy(checkpoint.candidates)
-        self._previews = deepcopy(checkpoint.previews)
-        self._validation_decisions = deepcopy(checkpoint.validation_decisions)
-        self._applied_interpretations = deepcopy(checkpoint.applied_interpretations)
-        self._recipes = deepcopy(checkpoint.recipes)
-        self._latest_interpretation_id = checkpoint.latest_interpretation_id
-        self._latest_recipe_id = checkpoint.latest_recipe_id
-        self._latest_recipe_path = checkpoint.latest_recipe_path
-        self._interpretation_counter = checkpoint.interpretation_counter
         self._advance_session_revision()
 
     def record_recipe(

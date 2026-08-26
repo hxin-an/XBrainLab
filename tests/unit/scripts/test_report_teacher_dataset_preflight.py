@@ -252,3 +252,179 @@ def test_public_fixture_dir_uses_canonical_data_root_when_configured(
     assert preflight._public_fixture_dir(preflight.ROOT) == (
         tmp_path / "datasets" / "public-fixtures"
     )
+
+
+def test_import_performance_snapshot_runs_one_warmup_and_three_fresh_passes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dataset_root = tmp_path / "openneuro-ds003061-p300"
+    dataset_root.mkdir()
+    calls: list[Path] = []
+
+    def _passing_run(path: Path, **_kwargs: object) -> dict[str, object]:
+        calls.append(path)
+        return {
+            "status": "passed",
+            "blocking_wait_seconds": float(len(calls)),
+            "background_idle_seconds": 0.25,
+            "stable_idle_seconds": float(len(calls)) + 0.25,
+            "phases": {
+                stage: {"wall_seconds": 0.25}
+                for stage in ("catalog", "review", "apply", "background_idle")
+            },
+            "correctness": {"raw_file_count": 3},
+        }
+
+    monkeypatch.setattr(preflight, "_public_fixture_dir", lambda _root: tmp_path)
+    monkeypatch.setattr(
+        preflight,
+        "_run_openneuro_import_performance_pass",
+        _passing_run,
+    )
+
+    snapshot = preflight.build_openneuro_import_performance_snapshot(
+        tmp_path,
+        max_blocking_median_seconds=3.0,
+    )
+
+    assert len(calls) == 4
+    assert snapshot["warmup"]["status"] == "passed"
+    assert snapshot["summary"] == {
+        "ok": True,
+        "passed_pass_count": 3,
+        "required_pass_count": 3,
+        "median_blocking_wait_seconds": 3.0,
+        "median_background_idle_seconds": 0.25,
+        "median_stable_idle_seconds": 3.25,
+        "max_blocking_median_seconds": 3.0,
+        "budget_ok": True,
+    }
+
+
+def test_import_performance_snapshot_fails_closed_for_missed_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dataset_root = tmp_path / "openneuro-ds003061-p300"
+    dataset_root.mkdir()
+    monkeypatch.setattr(preflight, "_public_fixture_dir", lambda _root: tmp_path)
+    monkeypatch.setattr(
+        preflight,
+        "_run_openneuro_import_performance_pass",
+        lambda _path, **_kwargs: {
+            "status": "passed",
+            "blocking_wait_seconds": 10.1,
+            "background_idle_seconds": 1.0,
+            "stable_idle_seconds": 11.1,
+            "phases": {},
+            "correctness": {},
+        },
+    )
+
+    snapshot = preflight.build_openneuro_import_performance_snapshot(
+        tmp_path,
+        max_blocking_median_seconds=10.0,
+    )
+
+    assert snapshot["summary"]["ok"] is False
+    assert snapshot["summary"]["budget_ok"] is False
+
+
+def test_cli_import_performance_uses_profile_result_for_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    snapshot = {
+        "summary": {"ok": False},
+        "workload": {"dataset": "OpenNeuro ds003061 P300"},
+        "warmup": {"status": "passed"},
+        "measured_passes": [],
+    }
+    monkeypatch.setattr(
+        preflight,
+        "build_openneuro_import_performance_snapshot",
+        lambda **_kwargs: snapshot,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "report_teacher_dataset_preflight.py",
+            "--import-performance",
+            "--max-blocking-median-seconds",
+            "10",
+            "--format",
+            "json",
+        ],
+    )
+
+    assert preflight.main() == 1
+    assert json.loads(capsys.readouterr().out) == snapshot
+
+
+def test_import_performance_reads_recipe_trace_from_apply_diagnostics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Service:
+        def __init__(self) -> None:
+            self.study = SimpleNamespace(
+                loaded_data_list=[object(), object(), object()]
+            )
+
+        def execute(self, command: object) -> SimpleNamespace:
+            if isinstance(command, preflight.ScanSourceCommand):
+                return SimpleNamespace(
+                    ok=True,
+                    message="cataloged",
+                    diagnostics={
+                        "bids_subject_catalog": {"subjects": [{"subject": "001"}]}
+                    },
+                )
+            if isinstance(command, preflight.ReviewInterpretationCommand):
+                return SimpleNamespace(
+                    ok=True,
+                    message="reviewed",
+                    diagnostics={"validation_decision": {"decision": "safe"}},
+                )
+            return SimpleNamespace(
+                ok=True,
+                message="applied",
+                diagnostics={
+                    "label_apply": {"status": "applied"},
+                    "applied_interpretation": {"recipe_trace": ["label_import:bids:3"]},
+                },
+                state=SimpleNamespace(
+                    raw=SimpleNamespace(count=3),
+                    interpretation=SimpleNamespace(),
+                ),
+            )
+
+        def wait_for_background_tasks(self, timeout: float) -> bool:
+            assert timeout == 30.0
+            return True
+
+        def close(self) -> None:
+            pass
+
+    service = _Service()
+    monkeypatch.setattr(preflight, "ApplicationService", lambda _study: service)
+    monkeypatch.setattr(preflight, "build_openneuro_p300_choices", lambda _root: {})
+    monkeypatch.setattr(
+        preflight,
+        "_review_openneuro_event_timing",
+        lambda _data, **_kwargs: {
+            "sample_label_rows_match": True,
+            "source_sample_label_digest": "source",
+            "stored_sample_label_digest": "stored",
+        },
+    )
+
+    result = preflight._run_openneuro_import_performance_pass(
+        tmp_path,
+        background_timeout_seconds=30.0,
+    )
+
+    assert result["status"] == "passed"
+    assert result["correctness"]["recipe_trace_has_label_import"] is True

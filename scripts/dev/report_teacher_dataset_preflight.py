@@ -10,7 +10,10 @@ import gc
 import hashlib
 import io
 import json
+import os
+import statistics
 import sys
+import time
 import warnings
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -18,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import mne
+import psutil
 
 from scripts.dev.fetch_public_eeg_fixtures import (
     fixture_file_is_valid,
@@ -30,6 +34,7 @@ from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
     CreateEpochCommand,
     PreviewInterpretationCommand,
+    ReviewInterpretationCommand,
     ScanSourceCommand,
     ValidateInterpretationCommand,
 )
@@ -41,6 +46,9 @@ _REPO_PUBLIC_FIXTURE_DIR = Path("tests/fixtures/data/public")
 ARTIFACT_DIR = ROOT / "build" / "dev-artifacts" / "teacher-data-preflight"
 ARTIFACT_JSON = "teacher-dataset-preflight.json"
 ARTIFACT_MARKDOWN = "teacher-dataset-preflight.md"
+IMPORT_PERFORMANCE_ARTIFACT_JSON = "teacher-dataset-import-performance.json"
+_IMPORT_PERFORMANCE_REPEATS = 3
+_IMPORT_PERFORMANCE_BACKGROUND_TIMEOUT_SECONDS = 30.0
 REQUIRED_CASE_IDS = frozenset(
     {
         "openneuro_p300_bids",
@@ -284,6 +292,277 @@ def _review_openneuro_event_timing(
         "stored_sample_label_digest": _event_rows_digest(observed_rows),
         "sample_label_rows_match": observed_rows == expected_rows,
     }
+
+
+def _process_observation(process: psutil.Process) -> dict[str, int | float]:
+    """Capture process-local resources without making host-wide claims."""
+    cpu = process.cpu_times()
+    io_counters = process.io_counters()
+    return {
+        "cpu_seconds": float(cpu.user + cpu.system),
+        "rss_bytes": int(process.memory_info().rss),
+        "read_bytes": int(io_counters.read_bytes),
+        "write_bytes": int(io_counters.write_bytes),
+    }
+
+
+def _measure_import_phase(
+    process: psutil.Process,
+    operation: Any,
+) -> tuple[Any, dict[str, int | float]]:
+    """Measure one synchronous import command with process-local counters."""
+    before = _process_observation(process)
+    started = time.perf_counter()
+    value = operation()
+    after = _process_observation(process)
+    return value, {
+        "wall_seconds": round(time.perf_counter() - started, 6),
+        "cpu_seconds": round(after["cpu_seconds"] - before["cpu_seconds"], 6),
+        "rss_bytes": after["rss_bytes"],
+        "read_bytes": max(after["read_bytes"] - before["read_bytes"], 0),
+        "write_bytes": max(after["write_bytes"] - before["write_bytes"], 0),
+    }
+
+
+def _run_openneuro_import_performance_pass(
+    dataset_root: Path,
+    *,
+    background_timeout_seconds: float,
+) -> dict[str, Any]:
+    """Run the desktop BIDS path once from catalog discovery to idle state."""
+    choices = build_openneuro_p300_choices(dataset_root)
+    service: ApplicationService | None = None
+    result: dict[str, Any] = {
+        "status": "failed",
+        "failed_stage": "service",
+        "message": "Not run.",
+        "phases": {},
+        "correctness": {},
+    }
+    try:
+        with _quiet_runtime():
+            service = ApplicationService(Study())
+            process = psutil.Process()
+
+            def _execute(stage: str, command: Any) -> Any | None:
+                command_result, result["phases"][stage] = _measure_import_phase(
+                    process, command
+                )
+                if not command_result.ok:
+                    _failed(result, stage, command_result.message)
+                    return None
+                return command_result
+
+            catalog = _execute(
+                "catalog",
+                lambda: service.execute(
+                    ScanSourceCommand(str(dataset_root), "bids", catalog_only=True)
+                ),
+            )
+            if catalog is None:
+                return result
+            catalog_payload = catalog.diagnostics.get("bids_subject_catalog", {})
+            catalog_subjects = {
+                str(row.get("subject", ""))
+                for row in catalog_payload.get("subjects", [])
+                if isinstance(row, Mapping)
+            }
+            if "001" not in catalog_subjects:
+                return _failed(result, "catalog", "BIDS subject 001 was not cataloged.")
+
+            review = _execute(
+                "review",
+                lambda: service.execute(
+                    ReviewInterpretationCommand(
+                        source_path=str(dataset_root),
+                        source_hint="bids",
+                        choices=choices,
+                    )
+                ),
+            )
+            if review is None:
+                return result
+            if (
+                review.diagnostics.get("validation_decision", {}).get("decision")
+                != "safe"
+            ):
+                return _failed(
+                    result, "review", "Review did not produce a safe decision."
+                )
+
+            applied = _execute(
+                "apply",
+                lambda: service.execute(ApplyInterpretationCommand(confirmed=True)),
+            )
+            if applied is None:
+                return result
+
+            background_ready, result["phases"]["background_idle"] = (
+                _measure_import_phase(
+                    process,
+                    lambda: service.wait_for_background_tasks(
+                        timeout=background_timeout_seconds
+                    ),
+                )
+            )
+            if not background_ready:
+                return _failed(
+                    result,
+                    "background_idle",
+                    "Application background publications did not become idle.",
+                )
+
+            timing_checks = [
+                _review_openneuro_event_timing(
+                    data,
+                    eeg_dir=dataset_root / "sub-001" / "eeg",
+                )
+                for data in service.study.loaded_data_list
+            ]
+            result["correctness"] = correctness = {
+                "raw_file_count": int(applied.state.raw.count),
+                "label_apply_status": applied.diagnostics.get("label_apply", {}).get(
+                    "status"
+                ),
+                "recipe_trace_has_label_import": any(
+                    str(item).startswith("label_import:")
+                    for item in applied.diagnostics.get(
+                        "applied_interpretation", {}
+                    ).get("recipe_trace", [])
+                ),
+                "event_timing_all_match": bool(timing_checks)
+                and all(item["sample_label_rows_match"] for item in timing_checks),
+                "event_source_digests": [
+                    item["source_sample_label_digest"] for item in timing_checks
+                ],
+                "event_stored_digests": [
+                    item["stored_sample_label_digest"] for item in timing_checks
+                ],
+            }
+            expected = {
+                "raw_file_count": 3,
+                "label_apply_status": "applied",
+                "recipe_trace_has_label_import": True,
+                "event_timing_all_match": True,
+            }
+            mismatches = [
+                f"{key}: expected {value!r}, got {correctness.get(key)!r}"
+                for key, value in expected.items()
+                if correctness.get(key) != value
+            ]
+            if mismatches:
+                return _failed(result, "correctness", "; ".join(mismatches))
+            result["blocking_wait_seconds"] = round(
+                sum(
+                    float(result["phases"][stage]["wall_seconds"])
+                    for stage in ("catalog", "review", "apply")
+                ),
+                6,
+            )
+            result["background_idle_seconds"] = float(
+                result["phases"]["background_idle"]["wall_seconds"]
+            )
+            result["stable_idle_seconds"] = round(
+                result["blocking_wait_seconds"] + result["background_idle_seconds"],
+                6,
+            )
+            result["status"] = "passed"
+            result["failed_stage"] = ""
+            result["message"] = "Catalog, review, apply, and background idle passed."
+            return result
+    except Exception as exc:
+        return _failed(result, "exception", f"{type(exc).__name__}: {exc}")
+    finally:
+        _release_service(service)
+
+
+def build_openneuro_import_performance_snapshot(
+    repo_root: Path = ROOT,
+    *,
+    repeats: int = _IMPORT_PERFORMANCE_REPEATS,
+    max_blocking_median_seconds: float | None = None,
+) -> dict[str, Any]:
+    """Profile the user-facing three-run BIDS import path after one warm-up."""
+    if repeats < 1:
+        raise ValueError("repeats must be at least one")
+    if max_blocking_median_seconds is not None and max_blocking_median_seconds <= 0:
+        raise ValueError("max_blocking_median_seconds must be positive")
+    dataset_root = _public_fixture_dir(repo_root) / "openneuro-ds003061-p300"
+    workload = {
+        "dataset": "OpenNeuro ds003061 P300",
+        "dataset_root": str(dataset_root),
+        "selected_bids_subjects": ["001"],
+        "expected_eeg_run_count": 3,
+        "source_hint": "bids",
+        "sequence": ["catalog", "review", "apply", "background_idle"],
+        "warmup_passes": 1,
+        "measured_passes": repeats,
+    }
+    snapshot: dict[str, Any] = {
+        "schema_version": 1,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "generator": "scripts/dev/report_teacher_dataset_preflight.py",
+        "profile": "openneuro-import-performance",
+        "environment": {
+            "python": sys.version.split()[0],
+            "platform": sys.platform,
+            "pid": os.getpid(),
+            "cwd": str(Path.cwd()),
+        },
+        "workload": workload,
+        "warmup": {},
+        "measured_passes": [],
+        "summary": {},
+    }
+    if not dataset_root.exists():
+        snapshot["warmup"] = {
+            "status": "missing",
+            "message": f"Missing fixture: {dataset_root}",
+        }
+        snapshot["summary"] = {"ok": False, "message": "Fixture is missing."}
+        return snapshot
+
+    snapshot["warmup"] = _run_openneuro_import_performance_pass(
+        dataset_root,
+        background_timeout_seconds=_IMPORT_PERFORMANCE_BACKGROUND_TIMEOUT_SECONDS,
+    )
+    if snapshot["warmup"].get("status") != "passed":
+        snapshot["summary"] = {
+            "ok": False,
+            "message": "Warm-up correctness failed; no measured passes were run.",
+        }
+        return snapshot
+
+    measured = [
+        _run_openneuro_import_performance_pass(
+            dataset_root,
+            background_timeout_seconds=_IMPORT_PERFORMANCE_BACKGROUND_TIMEOUT_SECONDS,
+        )
+        for _ in range(repeats)
+    ]
+    snapshot["measured_passes"] = measured
+    passed = [item for item in measured if item.get("status") == "passed"]
+    blocking_waits = [float(item["blocking_wait_seconds"]) for item in passed]
+    background_waits = [float(item["background_idle_seconds"]) for item in passed]
+    stable_waits = [float(item["stable_idle_seconds"]) for item in passed]
+    complete = len(passed) == repeats
+    blocking_median = statistics.median(blocking_waits) if complete else None
+    background_median = statistics.median(background_waits) if complete else None
+    stable_median = statistics.median(stable_waits) if complete else None
+    budget_ok = max_blocking_median_seconds is None or (
+        blocking_median is not None and blocking_median <= max_blocking_median_seconds
+    )
+    snapshot["summary"] = {
+        "ok": bool(complete and budget_ok),
+        "passed_pass_count": len(passed),
+        "required_pass_count": repeats,
+        "median_blocking_wait_seconds": blocking_median,
+        "median_background_idle_seconds": background_median,
+        "median_stable_idle_seconds": stable_median,
+        "max_blocking_median_seconds": max_blocking_median_seconds,
+        "budget_ok": budget_ok,
+    }
+    return snapshot
 
 
 def run_openneuro_p300_case(repo_root: Path = ROOT) -> dict[str, Any]:
@@ -894,6 +1173,20 @@ def write_artifacts(
     return json_path, markdown_path
 
 
+def write_import_performance_artifact(
+    snapshot: dict[str, Any],
+    output_dir: Path = ARTIFACT_DIR,
+) -> Path:
+    """Write opt-in performance evidence beside teacher preflight artifacts."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = output_dir / IMPORT_PERFORMANCE_ARTIFACT_JSON
+    json_path.write_text(
+        json.dumps(snapshot, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return json_path
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -904,21 +1197,59 @@ def main() -> int:
     parser.add_argument("--strict", action="store_true")
     parser.add_argument("--write-artifacts", action="store_true")
     parser.add_argument(
+        "--import-performance",
+        action="store_true",
+        help=(
+            "Profile catalog, review, apply, and background idle for the local "
+            "three-run OpenNeuro ds003061 fixture."
+        ),
+    )
+    parser.add_argument(
+        "--max-blocking-median-seconds",
+        type=float,
+        default=None,
+        help=(
+            "Fail the import performance profile when the measured catalog + review + "
+            "apply median exceeds this budget. Background idle is reported separately."
+        ),
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=ARTIFACT_DIR,
     )
     args = parser.parse_args()
 
-    snapshot = build_teacher_preflight_snapshot()
+    if args.max_blocking_median_seconds is not None and not args.import_performance:
+        parser.error("--max-blocking-median-seconds requires --import-performance")
+
+    snapshot = (
+        build_openneuro_import_performance_snapshot(
+            max_blocking_median_seconds=args.max_blocking_median_seconds,
+        )
+        if args.import_performance
+        else build_teacher_preflight_snapshot()
+    )
     if args.write_artifacts:
-        json_path, markdown_path = write_artifacts(snapshot, args.output_dir)
-        print(f"Wrote {json_path}", file=sys.stderr)
-        print(f"Wrote {markdown_path}", file=sys.stderr)
+        if args.import_performance:
+            print(
+                f"Wrote {write_import_performance_artifact(snapshot, args.output_dir)}",
+                file=sys.stderr,
+            )
+        else:
+            json_path, markdown_path = write_artifacts(snapshot, args.output_dir)
+            print(f"Wrote {json_path}", file=sys.stderr)
+            print(f"Wrote {markdown_path}", file=sys.stderr)
     if args.format == "json":
         print(json.dumps(snapshot, indent=2, sort_keys=True))
     else:
-        print(render_markdown(snapshot))
+        print(
+            json.dumps(snapshot, indent=2, sort_keys=True)
+            if args.import_performance
+            else render_markdown(snapshot)
+        )
+    if args.import_performance and snapshot["summary"].get("ok") is not True:
+        return 1
     if args.strict and snapshot["summary"].get("strict_ok") is not True:
         return 1
     return 0

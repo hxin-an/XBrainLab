@@ -21,6 +21,9 @@ from XBrainLab.backend.application import (
     resource_guard,
 )
 from XBrainLab.backend.application import (
+    data_interpretation_scan as scan_module,
+)
+from XBrainLab.backend.application import (
     data_interpretation_service as service_module,
 )
 from XBrainLab.backend.application.commands import (
@@ -134,30 +137,6 @@ def test_discovery_commit_publishes_prepared_state_without_commit_time_copy(
 
     assert payload["payload_type"] == "scan_result"
     assert service.state.snapshot().has_scan_result is True
-
-
-def test_discovery_commit_isolates_live_nested_state_from_prepared_receipt(
-    tmp_path: Path,
-) -> None:
-    eeg_path = tmp_path / "sub-01_task-mi_raw.fif"
-    eeg_path.write_bytes(b"stable EEG header")
-    service, _dataset = _service()
-    plan = service.begin_interpretation_discovery(
-        ScanSourceCommand(source_path=str(eeg_path)),
-        application_boundary=ApplicationDiscoveryBoundary(
-            publication_generation=0,
-            publication_revision=0,
-            state=ApplicationStateSnapshot.empty(),
-        ),
-    )
-    prepared = service.prepare_interpretation_discovery(plan)
-
-    service.commit_prepared_interpretation_discovery(prepared)
-    [prepared_scan] = prepared.state_after.scans.values()
-    prepared_scan.eeg_files.append(str(tmp_path / "mutated-after-commit.fif"))
-
-    live_scan = service.state.resolve_scan(None)
-    assert live_scan.eeg_files == [str(eeg_path.resolve())]
 
 
 def test_discovery_prepared_state_is_one_shot_without_second_live_mutation(
@@ -932,6 +911,69 @@ def test_review_blocks_bids_participants_before_scan_tsv_materialization(
     assert str(participants.resolve()) in {
         item["path"] for item in diagnostics["files"]
     }
+
+
+def test_review_keeps_preflight_bids_summary_separate_from_admitted_materialization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bids_root = tmp_path / "bids"
+    eeg_dir = bids_root / "sub-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    (bids_root / "dataset_description.json").write_text(
+        json.dumps({"Name": "Admitted review", "BIDSVersion": "1.9.0"}),
+        encoding="utf-8",
+    )
+    participants = bids_root / "participants.tsv"
+    participants.write_text("participant_id\tage\nsub-01\t25\n", encoding="utf-8")
+    eeg_path = eeg_dir / "sub-01_task-mi_eeg.fif"
+    events_path = eeg_dir / "sub-01_task-mi_events.tsv"
+    channels_path = eeg_dir / "sub-01_task-mi_channels.tsv"
+    eeg_path.write_bytes(b"header only")
+    events_path.write_text(
+        "onset\tduration\ttrial_type\n0\t1\tleft\n", encoding="utf-8"
+    )
+    channels_path.write_text("name\tstatus\nCz\tgood\n", encoding="utf-8")
+    summaries: list[tuple[bool, bool]] = []
+    original_summary = scan_module._bids_summary
+
+    def _tracked_summary(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        summaries.append(
+            (
+                bool(kwargs.get("materialize")),
+                kwargs.get("metadata_file_guard") is not None,
+            )
+        )
+        return original_summary(*args, **kwargs)
+
+    monkeypatch.setattr(scan_module, "_bids_summary", _tracked_summary)
+    service, _dataset = _service()
+
+    _message, payload = _expect_payload(
+        service.handle_review_interpretation(
+            ReviewInterpretationCommand(
+                source_path=str(bids_root),
+                source_hint="bids",
+                choices={
+                    "label_carrier_choices": {
+                        str(events_path.resolve()): {
+                            "label_field": "trial_type",
+                            "anchor": "onset",
+                            "time_model": "seconds",
+                            "granularity": "trial",
+                            "value_decisions": _class_value_decisions({"left": "left"}),
+                        },
+                    },
+                },
+            )
+        )
+    )
+
+    assert summaries == [(False, False), (True, True)]
+    assert payload["scan_result"]["bids"]["metadata_materialized"] is True
+    assert payload["scan_result"]["bids"]["participants"] == [
+        {"participant_id": "sub-01", "age": "25"}
+    ]
 
 
 def test_reload_blocks_bids_channels_before_scan_tsv_materialization(

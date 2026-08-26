@@ -13,8 +13,9 @@ from XBrainLab.backend.training_state_contract import TrainingPipelineMutationBo
 from .commands import ApplyInterpretationCommand
 from .data_interpretation import InterpretationCandidate, ValidationDecision
 from .data_interpretation_state import (
-    InterpretationApplyCheckpoint,
+    InterpretationSessionCheckpoint,
     InterpretationSessionIdentity,
+    StagedInterpretationSessionState,
 )
 from .errors import PreconditionError
 from .label_resource_admission import AdmittedLabelResourceSession
@@ -88,8 +89,7 @@ class InterpretationApplyPlan:
     """Immutable identities captured under the short initial command admission."""
 
     command: ApplyInterpretationCommand
-    candidate: InterpretationCandidate
-    decision: ValidationDecision
+    candidate_id: str
     content_scope_sha256: str
     application: ApplicationApplyBoundary
     training: TrainingPipelineMutationBoundary
@@ -97,6 +97,7 @@ class InterpretationApplyPlan:
     pipeline_snapshot: PipelineStateSnapshot
     pipeline_identity: PipelineStateIdentity
     interpretation_identity: InterpretationSessionIdentity
+    staged_state: StagedInterpretationSessionState
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,7 +106,9 @@ class PreparedInterpretationApply:
 
     plan: InterpretationApplyPlan
     dataset: PreparedDatasetImport
-    interpretation_state_after: InterpretationApplyCheckpoint
+    candidate: InterpretationCandidate
+    decision: ValidationDecision
+    staged_state: StagedInterpretationSessionState
     resource_preflight: ResourcePreflightResult
     resource_preflight_receipt_reused: bool
     label_resources: AdmittedLabelResourceSession | None
@@ -115,6 +118,10 @@ class PreparedInterpretationApply:
     metadata_apply: tuple[dict[str, str], ...]
     label_apply: dict[str, Any]
     internal_epoch_hints: tuple[dict[str, Any], ...]
+
+    def take_staged_state(self) -> InterpretationSessionCheckpoint:
+        """Transfer prepared interpretation dictionaries to the live session."""
+        return self.staged_state.take()
 
 
 def capture_source_file_boundaries(
