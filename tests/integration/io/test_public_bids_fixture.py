@@ -340,8 +340,15 @@ def test_public_mne_bids_import_apply_recipe_and_epoch(tmp_path: Path) -> None:
     assert epoch_result.state.epoch.available is True
     assert epoch_result.state.epoch.epoch_count == 2
     assert epoch_result.state.visualization.montage_source == "bids"
-    assert epoch_result.state.visualization.channel_positions_available is True
+    assert epoch_result.state.visualization.channel_positions_available is False
+    assert (
+        epoch_result.state.visualization.three_dimensional_positions_available is False
+    )
+    assert epoch_result.state.electrode_layout.status == "limited"
     assert epoch_result.state.visualization.montage_channels
+    assert epoch_result.state.electrode_layout.positioned_channel_count == len(
+        epoch_result.state.visualization.montage_channels
+    )
     assert len(epoch_result.state.visualization.montage_channels) < (
         epoch_result.state.visualization.channel_count
     )
