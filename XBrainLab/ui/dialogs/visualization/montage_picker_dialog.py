@@ -305,14 +305,21 @@ class PickMontageDialog(BaseDialog):
         )
         normalize_dialog_button_box(buttons)
         self.button_box = buttons
+        apply_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        if apply_button is None:
+            raise RuntimeError("Electrode layout dialog is missing its primary action.")
         if self.is_bids_source:
-            buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Replace Layout")
+            apply_button.setText("Replace Layout")
             back_button = buttons.addButton(
                 "Back", QDialogButtonBox.ButtonRole.ActionRole
             )
+            if back_button is None:
+                raise RuntimeError(
+                    "Electrode layout dialog is missing its back action."
+                )
             back_button.clicked.connect(self.show_summary_page)
         if not self.layout_changes_allowed:
-            buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
+            apply_button.setEnabled(False)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         mapping_layout.addWidget(buttons)

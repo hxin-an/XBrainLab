@@ -4,9 +4,10 @@
 
 ## 目前焦點
 
-Electrode Layout 可逆 BIDS flow 已 scope-complete；目前沒有 active product implementation。candidate
-已修復首個 exact-head `linux-unit-ui` CI 揭露的 dialog intent 邊界，尚待新 exact-head CI、canonical
-handoff 與 WSLg manual acceptance，不宣稱 handoff-ready。
+Electrode Layout 可逆 BIDS flow 已 scope-complete；目前沒有 active product implementation。sandbox 外
+Basedpyright 揭露的三個 montage dialog optional dereference 已明確 narrowing，未改 layout、文案、互動
+或 owner。candidate 尚待新 exact-head CI；canonical handoff 仍被 `origin/main` 已存在的 composer／
+main-window type diagnostics 阻擋，因此維持 checkpoint，不宣稱 handoff-ready 或正式 manual acceptance。
 
 ### Electrode Layout checkpoint
 
@@ -16,12 +17,15 @@ handoff 與 WSLg manual acceptance，不宣稱 handoff-ready。
 - 同一 import 的 ready compatible BIDS snapshot 可跨多次 manual override 保留，explicit restore
   不重讀 sidecar；new import／reset、trainer guard 與 generation fence 均 fail closed。
 - owners 維持不變，沒有新增 command name／tool／module／state machine／compatibility path；production
-  change 是 8 files、`+259/-54/net +205` LOC，未觸發 complexity review 門檻。
+  change 是 8 files、`+266/-54/net +212` LOC，未觸發 complexity review 門檻。
 - TDD red 先因缺少 restore lifecycle 得到 1 failed／25 passed；dirty-source root checkpoint 的直接
   unit/integration/UI suite 是 518 passed。CI 後續揭露 dynamic dialog fake 的未知 accessor 會被
   generic truthiness 誤判為 restore intent；現只接受 exact boolean `True`，原失敗案例與 518-case
-  focused suite 均通過。Ruff、Basedpyright regression、architecture compliance、MkDocs strict 與
-  兩個 offscreen UI artifacts 通過。這些不取代 WSLg 人工驗收。
+  focused suite 均通過。Ruff、architecture compliance、MkDocs strict 與兩個 offscreen UI artifacts
+  通過。這些不取代 WSLg 人工驗收。
+- sandbox 外 Basedpyright 的可信掃描先揭露 12 個新 diagnostics；本 slice 三個 montage dialog finding
+  已全數消失，剩餘 9 個都位於 branch 未修改且與 `origin/main` 相同的 composer／main-window source。
+  dialog regression 是 25 passed，完整 focused suite 維持 518 passed。
 
 ### Data Import performance checkpoint
 
@@ -43,7 +47,8 @@ handoff 與 WSLg manual acceptance，不宣稱 handoff-ready。
 
 ### Next handoff
 
-- 將 Electrode Layout CI repair 建立 focused commit 並更新 draft PR；對 pushed exact head 執行 CI
-  與 canonical handoff。兩者通過後才交 WSLg 使用者重新手測，並在明確 merge approval 後合併。
+- 將 Electrode Layout type repair 建立 focused commit 並更新 draft PR，對 pushed exact head 重跑 CI。
+  若 CI 通過，回報 scope-complete checkpoint；canonical main type debt 必須另行決定／修復後，才可
+  宣稱 handoff-ready、進行正式 WSLg acceptance，並在明確 merge approval 後合併。
 - 已知限制是 blocking 約 `12.046s`；不宣稱 performance gate 達成或 handoff-ready。root
   `settings.json` 是使用者本機設定，不納入此 slice。
