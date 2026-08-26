@@ -18,7 +18,10 @@ from .data_interpretation_parsed_cache import (
     parsed_delimited_table,
     parsed_json_value,
 )
-from .data_interpretation_path_identity import normalized_path_identity
+from .data_interpretation_path_identity import (
+    CanonicalPathIdentityScope,
+    normalized_path_identity,
+)
 
 SAFE = "safe"
 NEEDS_CONFIRMATION = "needs_confirmation"
@@ -176,13 +179,20 @@ def bids_summary(
     metadata_read_budget: BidsMetadataReadBudget | None = None,
     on_metadata_checkpoint: Callable[[], None] | None = None,
     metadata_file_guard: Callable[[Path], AbstractContextManager[None]] | None = None,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
 ) -> dict[str, Any]:
     """Summarize BIDS entities discovered during source scan."""
     if materialize and on_metadata_checkpoint is not None:
         on_metadata_checkpoint()
     discovered_values = None if discovered_files is None else list(discovered_files)
-    discovered = _canonical_path_keys(discovered_values)
-    admitted = _canonical_path_keys(admitted_metadata_files)
+    discovered = _canonical_path_keys(
+        discovered_values,
+        path_identity_scope=path_identity_scope,
+    )
+    admitted = _canonical_path_keys(
+        admitted_metadata_files,
+        path_identity_scope=path_identity_scope,
+    )
     available_metadata = _intersect_path_scopes(discovered, admitted)
     containment_root = scan_root.expanduser().resolve(strict=False)
     if containment_root.is_file():
@@ -191,6 +201,7 @@ def bids_summary(
         scan_root,
         admitted_files=available_metadata,
         containment_root=containment_root,
+        path_identity_scope=path_identity_scope,
     )
     events_files = [
         item for item in label_carriers if item.endswith(("_events.tsv", "events.tsv"))
@@ -200,6 +211,7 @@ def bids_summary(
         dataset_description_candidate,
         available_metadata,
         containment_root=containment_root,
+        path_identity_scope=path_identity_scope,
     )
     layout = (
         [dict(row) for row in layout]
@@ -210,6 +222,7 @@ def bids_summary(
             events_files=events_files,
             admitted_files=discovered_values,
             containment_root=containment_root,
+            path_identity_scope=path_identity_scope,
         )
     )
     layout = _restrict_bids_layout_to_admitted_files(
@@ -217,20 +230,30 @@ def bids_summary(
         events_files=events_files,
         admitted_metadata=available_metadata,
         containment_root=containment_root,
+        path_identity_scope=path_identity_scope,
     )
     participants_file = _available_regular_file(
         bids_root / "participants.tsv",
         available_metadata,
         containment_root=containment_root,
+        path_identity_scope=path_identity_scope,
     )
     channels_files = _unique_paths(
-        row.get("channels_file") for row in layout if row.get("channels_file")
+        (row.get("channels_file") for row in layout if row.get("channels_file")),
+        path_identity_scope=path_identity_scope,
     )
     if materialize and on_metadata_checkpoint is not None:
         on_metadata_checkpoint()
 
     def _is_admitted(path: Path) -> bool:
-        return admitted is None or _canonical_path_key(path) in admitted
+        return (
+            admitted is None
+            or _canonical_path_key(
+                path,
+                path_identity_scope=path_identity_scope,
+            )
+            in admitted
+        )
 
     def _guard(path: Path | None) -> AbstractContextManager[None]:
         return (
@@ -302,7 +325,11 @@ def bids_summary(
         "metadata_materialized": materialize,
         "channel_status_summary": channel_status_summary,
         "layout": layout,
-        "selected_scope": bids_scope_summary(eeg_files, layout),
+        "selected_scope": bids_scope_summary(
+            eeg_files,
+            layout,
+            path_identity_scope=path_identity_scope,
+        ),
         "dataset_description": (
             str(dataset_description) if dataset_description is not None else None
         ),
@@ -328,6 +355,7 @@ def resolve_bids_root(
     *,
     admitted_files: set[str] | None = None,
     containment_root: Path | None = None,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
 ) -> Path:
     """Return the nearest ancestor that owns ``dataset_description.json``."""
     root = scan_root.resolve()
@@ -339,6 +367,7 @@ def resolve_bids_root(
                 candidate / "dataset_description.json",
                 admitted_files,
                 containment_root=containment_root,
+                path_identity_scope=path_identity_scope,
             )
             is not None
         ):
@@ -353,17 +382,31 @@ def bids_eeg_layout(
     events_files: list[str],
     admitted_files: Iterable[str | Path] | None = None,
     containment_root: Path | None = None,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
 ) -> list[dict[str, Any]]:
     """Return per-raw-file BIDS EEG layout rows with effective local sidecars."""
-    admitted = _canonical_path_keys(admitted_files)
+    admitted = _canonical_path_keys(
+        admitted_files,
+        path_identity_scope=path_identity_scope,
+    )
     events_by_name = {
-        Path(item).name: str(Path(item).resolve())
+        Path(item).name: _canonical_path_value(
+            Path(item),
+            path_identity_scope=path_identity_scope,
+        )
         for item in events_files
-        if admitted is None or _canonical_path_key(Path(item)) in admitted
+        if admitted is None
+        or _canonical_path_key(Path(item), path_identity_scope=path_identity_scope)
+        in admitted
     }
     rows: list[dict[str, Any]] = []
     for file_path in sorted(eeg_files):
-        path = Path(file_path).resolve()
+        path = Path(
+            _canonical_path_value(
+                Path(file_path),
+                path_identity_scope=path_identity_scope,
+            )
+        )
         rel = relative_text(path, bids_root)
         datatype = _bids_datatype(rel)
         stem = _bids_raw_stem(path)
@@ -374,6 +417,7 @@ def bids_eeg_layout(
                 candidate,
                 admitted,
                 containment_root=containment_root,
+                path_identity_scope=path_identity_scope,
             )
             events_file = (
                 str(admitted_candidate) if admitted_candidate is not None else ""
@@ -382,6 +426,7 @@ def bids_eeg_layout(
             path.with_name(f"{stem}_channels.tsv"),
             admitted,
             containment_root=containment_root,
+            path_identity_scope=path_identity_scope,
         )
         rows.append(
             {
@@ -405,6 +450,8 @@ def bids_eeg_layout(
 def bids_scope_summary(
     selected_eeg_files: list[str],
     layout: list[dict[str, Any]],
+    *,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
 ) -> dict[str, Any]:
     """Summarize BIDS entities and sidecars for the selected EEG scope."""
     selected = {normalized_path_identity(item) for item in selected_eeg_files}
@@ -422,10 +469,12 @@ def bids_scope_summary(
         "datatypes": _unique_strings(row.get("datatype") for row in rows),
         "eeg_files": [str(row.get("file")) for row in rows if row.get("file")],
         "events_files": _unique_paths(
-            row.get("events_file") for row in rows if row.get("events_file")
+            (row.get("events_file") for row in rows if row.get("events_file")),
+            path_identity_scope=path_identity_scope,
         ),
         "channels_files": _unique_paths(
-            row.get("channels_file") for row in rows if row.get("channels_file")
+            (row.get("channels_file") for row in rows if row.get("channels_file")),
+            path_identity_scope=path_identity_scope,
         ),
     }
 
@@ -565,16 +614,37 @@ def _channel_status_summary(
     return summary
 
 
-def _canonical_path_key(path: Path) -> str:
-    return os.path.normcase(str(path.expanduser().resolve(strict=False)))
+def _canonical_path_value(
+    path: Path,
+    *,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
+) -> str:
+    if path_identity_scope is not None and path_identity_scope.contains(path):
+        return path_identity_scope.value(path)
+    return str(path.expanduser().resolve(strict=False))
+
+
+def _canonical_path_key(
+    path: Path,
+    *,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
+) -> str:
+    return os.path.normcase(
+        _canonical_path_value(path, path_identity_scope=path_identity_scope)
+    )
 
 
 def _canonical_path_keys(
     values: Iterable[str | Path] | None,
+    *,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
 ) -> set[str] | None:
     if values is None:
         return None
-    return {_canonical_path_key(Path(value)) for value in values}
+    return {
+        _canonical_path_key(Path(value), path_identity_scope=path_identity_scope)
+        for value in values
+    }
 
 
 def _intersect_path_scopes(*scopes: set[str] | None) -> set[str] | None:
@@ -592,6 +662,7 @@ def _available_regular_file(
     admitted: set[str] | None,
     *,
     containment_root: Path | None = None,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
 ) -> Path | None:
     if containment_root is not None:
         try:
@@ -599,7 +670,11 @@ def _available_regular_file(
         except ValueError:
             return None
     try:
-        resolved = path.resolve(strict=True)
+        resolved = Path(
+            path_identity_scope.value(path)
+            if path_identity_scope is not None and path_identity_scope.contains(path)
+            else path.resolve(strict=True)
+        )
     except (OSError, RuntimeError):
         return None
     if containment_root is not None:
@@ -607,7 +682,14 @@ def _available_regular_file(
             resolved.relative_to(containment_root)
         except ValueError:
             return None
-    if admitted is not None and _canonical_path_key(resolved) not in admitted:
+    if (
+        admitted is not None
+        and _canonical_path_key(
+            resolved,
+            path_identity_scope=path_identity_scope,
+        )
+        not in admitted
+    ):
         return None
     return resolved if resolved.is_file() else None
 
@@ -618,15 +700,25 @@ def _restrict_bids_layout_to_admitted_files(
     events_files: list[str],
     admitted_metadata: set[str] | None,
     containment_root: Path,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
 ) -> list[dict[str, Any]]:
-    admitted_events = _canonical_path_keys(events_files) or set()
+    admitted_events = (
+        _canonical_path_keys(
+            events_files,
+            path_identity_scope=path_identity_scope,
+        )
+        or set()
+    )
     result: list[dict[str, Any]] = []
     for source_row in layout:
         row = dict(source_row)
         events_file = str(row.get("events_file") or "")
         if admitted_metadata is not None and (
             events_file
-            and _canonical_path_key(Path(events_file)) not in admitted_events
+            and _canonical_path_key(
+                Path(events_file), path_identity_scope=path_identity_scope
+            )
+            not in admitted_events
         ):
             row["events_file"] = ""
         channels_file = str(row.get("channels_file") or "")
@@ -635,6 +727,7 @@ def _restrict_bids_layout_to_admitted_files(
                 Path(channels_file),
                 admitted_metadata,
                 containment_root=containment_root,
+                path_identity_scope=path_identity_scope,
             )
             row["channels_file"] = (
                 str(admitted_channel) if admitted_channel is not None else ""
@@ -643,14 +736,21 @@ def _restrict_bids_layout_to_admitted_files(
     return result
 
 
-def _unique_paths(values: Iterable[Any]) -> list[str]:
+def _unique_paths(
+    values: Iterable[Any],
+    *,
+    path_identity_scope: CanonicalPathIdentityScope | None = None,
+) -> list[str]:
     result: list[str] = []
     seen: set[str] = set()
     for value in values:
         text = str(value or "").strip()
         if not text:
             continue
-        normalized = str(Path(text).resolve())
+        normalized = _canonical_path_value(
+            Path(text),
+            path_identity_scope=path_identity_scope,
+        )
         if normalized in seen:
             continue
         seen.add(normalized)

@@ -435,6 +435,9 @@ def scan_source_path(
             if materialize_metadata and resource_reader is not None
             else None
         ),
+        path_identity_scope=(
+            resource_reader.path_identity_scope if resource_reader is not None else None
+        ),
     )
     scope_issue = str(scope.bids.get("root_validation_issue") or "")
     materialized_issue = str(bids.get("root_validation_issue") or "")

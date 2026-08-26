@@ -10,6 +10,9 @@ from XBrainLab.backend.application.data_interpretation_metadata import (
     file_metadata_from_dict,
     metadata_for_file,
 )
+from XBrainLab.backend.application.data_interpretation_path_identity import (
+    CanonicalPathIdentityScope,
+)
 
 
 def test_metadata_for_bids_file_resolves_entities(tmp_path: Path):
@@ -125,7 +128,15 @@ def test_bids_summary_rejects_metadata_symlinks_outside_scan_root(
     (selected_root / "participants.tsv").symlink_to(outside_participants)
     (eeg_file.parent / "sub-01_task-mi_channels.tsv").symlink_to(outside_channels)
 
-    summary = bids_summary(selected_root, "bids", [str(eeg_file)], [])
+    summary = bids_summary(
+        selected_root,
+        "bids",
+        [str(eeg_file)],
+        [],
+        discovered_files=[str(eeg_file)],
+        admitted_metadata_files=[str(eeg_file)],
+        path_identity_scope=CanonicalPathIdentityScope.from_admitted_paths([eeg_file]),
+    )
 
     assert summary["dataset_description"] is None
     assert summary["dataset"] == {}
@@ -133,6 +144,47 @@ def test_bids_summary_rejects_metadata_symlinks_outside_scan_root(
     assert summary["participants"] == []
     assert summary["channels_files"] == []
     assert summary["channel_status_summary"]["total"] == 0
+
+
+def test_bids_summary_reuses_admitted_paths_without_resolving_them(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    eeg_dir = tmp_path / "sub-001" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    eeg_file = eeg_dir / "sub-001_task-p300_eeg.set"
+    events_file = eeg_dir / "sub-001_task-p300_events.tsv"
+    channels_file = eeg_dir / "sub-001_task-p300_channels.tsv"
+    description = tmp_path / "dataset_description.json"
+    participants = tmp_path / "participants.tsv"
+    eeg_file.write_bytes(b"EEGLAB")
+    events_file.write_text("onset\tvalue\n0\tstandard\n", encoding="utf-8")
+    channels_file.write_text("name\tstatus\nCz\tgood\n", encoding="utf-8")
+    description.write_text('{"Name":"P300","BIDSVersion":"1.9.0"}', encoding="utf-8")
+    participants.write_text("participant_id\nsub-001\n", encoding="utf-8")
+    admitted = [eeg_file, events_file, channels_file, description, participants]
+    scope = CanonicalPathIdentityScope.from_admitted_paths(admitted)
+    original_resolve = Path.resolve
+
+    def _reject_repeated_resolve(path: Path, *args, **kwargs):
+        if scope.contains(path):
+            pytest.fail(f"admitted path was resolved again: {path}")
+        return original_resolve(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", _reject_repeated_resolve)
+
+    summary = bids_summary(
+        tmp_path,
+        "bids",
+        [str(eeg_file)],
+        [str(events_file)],
+        discovered_files=[str(path) for path in admitted],
+        admitted_metadata_files=[str(path) for path in admitted],
+        path_identity_scope=scope,
+    )
+
+    assert summary["dataset_description"] == str(description)
+    assert summary["channels_files"] == [str(channels_file)]
 
 
 def test_file_metadata_from_dict_round_trips_minimal_payload():
