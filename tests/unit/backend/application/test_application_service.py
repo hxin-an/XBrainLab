@@ -10925,6 +10925,123 @@ def test_apply_montage_trainer_allows_first_attach_then_freezes_layout() -> None
     assert effective.channel_names == ("C3",)
 
 
+def _service_with_retained_bids_layout() -> ApplicationService:
+    study = Study()
+    study.data_manager.loaded_data_list = [_raw_mock()]
+    study.data_manager.epoch_data = _positive_epoch_data()
+    service = ApplicationService(study)
+    request = BidsMontageRecordingRequest(
+        recording_path="/tmp/sub-01_task-rest_eeg.fif",
+        channel_names=("C3", "C4"),
+        channel_types=("eeg", "eeg"),
+    )
+    work = service.bids_montage_preparation._lifecycle.begin((request,))
+    snapshot = MontagePreparationSnapshot(
+        state="ready",
+        generation=work.generation,
+        requested_recording_paths=(request.recording_path,),
+        recordings=(
+            RecordingMontagePreparation(
+                recording_path=request.recording_path,
+                state="ready",
+                recording_channel_names=request.channel_names,
+                channel_names=request.channel_names,
+                positions_m=((0.1, 0.0, 0.0), (-0.1, 0.0, 0.0)),
+                coordinate_system="CapTrak",
+                coordinate_frame="head",
+                coordinate_units="m",
+                source_coordinate_units="m",
+            ),
+        ),
+        aggregate=AggregateMontageCompatibility(
+            compatible=True,
+            channel_names=request.channel_names,
+            positions_m=((0.1, 0.0, 0.0), (-0.1, 0.0, 0.0)),
+            coordinate_frame="head",
+            coordinate_units="m",
+        ),
+    )
+    assert service.bids_montage_preparation._lifecycle.publish(work, snapshot).accepted
+    manual = service.execute(
+        ApplyMontageCommand(
+            channels=["C3", "C4"],
+            positions=[(0.0, 0.1, 0.0), (0.0, -0.1, 0.0)],
+            montage_name="manual",
+        )
+    )
+    assert manual.ok
+    return service
+
+
+def test_restore_bids_rejects_mixed_manual_payload_without_replacing_manual() -> None:
+    service = _service_with_retained_bids_layout()
+    try:
+        result = service.execute(
+            ApplyMontageCommand(
+                channels=["C3"],
+                positions=[(0.0, 0.0, 0.1)],
+                restore_bids=True,
+            )
+        )
+
+        assert result.failed is True
+        assert service.bids_montage_preparation.effective_montage().source == "manual"  # type: ignore[union-attr]
+    finally:
+        service.close()
+
+
+def test_restore_bids_without_snapshot_preserves_manual_layout() -> None:
+    study = Study()
+    study.data_manager.loaded_data_list = [_raw_mock()]
+    study.data_manager.epoch_data = _positive_epoch_data()
+    service = ApplicationService(study)
+    try:
+        assert service.execute(
+            ApplyMontageCommand(
+                channels=["C3"],
+                positions=[(0.0, 0.1, 0.0)],
+                montage_name="manual",
+            )
+        ).ok
+
+        result = service.execute(ApplyMontageCommand(restore_bids=True))
+
+        assert result.failed is True
+        assert service.bids_montage_preparation.effective_montage().source == "manual"  # type: ignore[union-attr]
+    finally:
+        service.close()
+
+
+def test_restore_bids_is_blocked_by_trainer_without_replacing_manual() -> None:
+    service = _service_with_retained_bids_layout()
+    service.study.training_manager.trainer = Trainer([])
+    try:
+        result = service.execute(ApplyMontageCommand(restore_bids=True))
+
+        assert result.failed is True
+        assert service.bids_montage_preparation.effective_montage().source == "manual"  # type: ignore[union-attr]
+    finally:
+        service.close()
+
+
+def test_restore_bids_publishes_retained_geometry_and_projects_it_to_epoch() -> None:
+    service = _service_with_retained_bids_layout()
+    try:
+        result = service.execute(ApplyMontageCommand(restore_bids=True))
+
+        assert result.ok is True
+        assert result.state.electrode_layout.source == "bids"
+        effective = service.bids_montage_preparation.effective_montage()
+        assert effective is not None
+        assert effective.positions_m == ((0.1, 0.0, 0.0), (-0.1, 0.0, 0.0))
+        assert service.study.epoch_data.channel_position == [
+            (0.1, 0.0, 0.0),
+            (-0.1, 0.0, 0.0),
+        ]
+    finally:
+        service.close()
+
+
 def test_query_state_returns_typed_dataset_summary():
     raw = _raw_mock()
     study = Study()

@@ -839,6 +839,9 @@ class ApplicationService(Observable):
             effective_montage_provider=(
                 self.bids_montage_preparation.effective_montage
             ),
+            bids_restore_available_provider=(
+                self.bids_montage_preparation.can_restore_bids
+            ),
         )
         initial_training_boundary = self.state_snapshot.capture_training_read_boundary()
         initial_state = self.state_snapshot.build(last_error=self._last_error)
@@ -4417,9 +4420,6 @@ class ApplicationService(Observable):
         """Commit a reviewed layout under the command lock, without preprocessing."""
         if not isinstance(command, ApplyMontageCommand):
             raise TypeError("Invalid command for apply_montage")
-        channels, electrodes, positions = self._validate_electrode_layout_command(
-            command
-        )
         epoch_data = self.study.epoch_data
         if epoch_data is not None:
             epoch_names = epoch_data.get_channel_names()
@@ -4435,6 +4435,40 @@ class ApplicationService(Observable):
                 )
             if len(set(epoch_names)) != len(epoch_names) or not channel_axis_matches:
                 raise RuntimeError("Epoch channel identity is inconsistent.")
+        if command.restore_bids:
+            if (
+                command.channels
+                or command.positions
+                or command.montage_name is not None
+                or command.electrode_names is not None
+            ):
+                raise ValueError(
+                    "Restoring BIDS electrode layout cannot include a manual layout."
+                )
+            if self.training_runtime.has_trainer():
+                raise ValueError(
+                    "Clear training before replacing an electrode layout used "
+                    "by model inputs."
+                )
+            snapshot = self.bids_montage_preparation.restore_bids()
+            self._project_effective_montage_to_epoch()
+            effective = self.bids_montage_preparation.effective_montage()
+            if effective is None:
+                raise RuntimeError(
+                    "Restored BIDS electrode layout was not available for projection."
+                )
+            return "Restored the BIDS electrode layout.", {
+                "channel_count": len(effective.channel_names),
+                "montage_preparation": {
+                    "state": snapshot.state,
+                    "generation": snapshot.generation,
+                    "reason": snapshot.reason,
+                    "import_blocking": False,
+                },
+            }
+        channels, electrodes, positions = self._validate_electrode_layout_command(
+            command
+        )
         if self.training_runtime.has_trainer():
             existing = self.bids_montage_preparation.effective_montage()
             requested = (

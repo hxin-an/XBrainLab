@@ -449,10 +449,11 @@ class SaliencyCommand:
 class ApplyMontageCommand:
     """Apply confirmed channel-to-electrode positions without changing identity."""
 
-    channels: list[str]
-    positions: list[tuple[float, float, float]]
+    channels: list[str] = field(default_factory=list)
+    positions: list[tuple[float, float, float]] = field(default_factory=list)
     montage_name: str | None = None
     electrode_names: list[str] | None = None
+    restore_bids: bool = False
 
     @property
     def name(self) -> CommandName:

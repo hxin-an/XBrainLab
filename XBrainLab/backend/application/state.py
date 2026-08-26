@@ -71,6 +71,8 @@ class ElectrodeLayoutStateSnapshot:
     positioned_channel_count: int = 0
     channel_count: int = 0
     coordinate_summary: str | None = None
+    name: str | None = None
+    bids_restore_available: bool = False
     channel_names: list[str] = field(default_factory=list)
     electrode_names: list[str] = field(default_factory=list)
 

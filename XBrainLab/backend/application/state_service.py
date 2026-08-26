@@ -97,6 +97,7 @@ class StateSnapshotService:
         training_recommendation: TrainingRecommendationService | None = None,
         montage_snapshot_provider: Callable[[], Any] | None = None,
         effective_montage_provider: Callable[[], Any] | None = None,
+        bids_restore_available_provider: Callable[[], bool] | None = None,
     ) -> None:
         self.study = study
         self.dataset = dataset
@@ -114,6 +115,7 @@ class StateSnapshotService:
         self.training_recommendation = training_recommendation
         self.montage_snapshot_provider = montage_snapshot_provider
         self.effective_montage_provider = effective_montage_provider
+        self.bids_restore_available_provider = bids_restore_available_provider
 
     def build(
         self,
@@ -437,6 +439,14 @@ class StateSnapshotService:
             positioned_channel_count=len(layout_positioned_names),
             channel_count=len(layout_names),
             coordinate_summary=(str(coordinate_frame) if coordinate_frame else None),
+            name=(str(getattr(layout_effective, "name", "")) or None)
+            if layout_effective is not None
+            else None,
+            bids_restore_available=bool(
+                self.bids_restore_available_provider()
+                if self.bids_restore_available_provider is not None
+                else False
+            ),
             channel_names=list(getattr(layout_effective, "channel_names", ()) or ()),
             electrode_names=list(
                 getattr(layout_effective, "electrode_names", ()) or ()

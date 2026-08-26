@@ -474,8 +474,10 @@ taxonomy 都以這套 Data Interpretation command sequence 作為產品資料入
 - Electrode layout 的唯一 geometry owner 是 `BidsMontagePreparationCoordinator`；
   `ApplicationService` 在 command lock 下驗證並發布 manual/BIDS layout，再將結果投影到
   `Epochs`。layout 是 `channel → electrode → position` mapping，不能 slice 或 reorder Epoch
-  channel axis。partial mapping 維持原 channel identity，state 標示為 `limited`；只有需要位置的
-  consumer 要求完整 coverage。
+  channel axis。同一 import 已發布的 ready BIDS snapshot 可跨 manual override 保留並由 explicit
+  restore command 回復，不重新讀 source；new import／reset 與 generation fence 會使舊 snapshot
+  失效。partial mapping 維持原 channel identity，state 標示為 `limited`；只有需要位置的 consumer
+  要求完整 coverage。
 - Training terminal path 只發布 metrics。只有 explicit `SaliencyCommand`（由 visible
   `Compute Saliency` action 觸發）才建立 exact completed-run target 並排程 attribution；
   generation 或 producer identity 不符的結果不得發布。

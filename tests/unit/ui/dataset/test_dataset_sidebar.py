@@ -69,7 +69,7 @@ def test_init_ui(sidebar):
 
 
 @pytest.mark.parametrize("status", ["ready", "limited"])
-def test_bids_layout_review_never_opens_manual_picker_or_dispatches_apply(
+def test_bids_layout_opens_the_same_dialog_summary_without_dispatching_apply(
     sidebar, monkeypatch, status
 ):
     dispatched = []
@@ -93,26 +93,100 @@ def test_bids_layout_review_never_opens_manual_picker_or_dispatches_apply(
                             "coordinate_summary": "head",
                             "channel_names": ["C3"],
                             "electrode_names": ["C3"],
-                        }
+                        },
+                        "interpretation": {"source_kind": "bids"},
+                        "raw": {"channels": ["C3", "C4", "P3", "P4"]},
+                        "active_training": {"has_trainer": False},
                     }
                 },
             )
         ),
     )
+    opened = []
+
+    class SummaryDialog:
+        def __init__(self, *_args, **kwargs):
+            opened.append(kwargs)
+
+        @staticmethod
+        def exec():
+            return False
+
     monkeypatch.setattr(
         "XBrainLab.ui.panels.dataset.sidebar._electrode_layout_dialog_class",
-        lambda: (_ for _ in ()).throw(AssertionError("manual picker opened")),
+        lambda: SummaryDialog,
     )
-    review = MagicMock()
-    monkeypatch.setattr("XBrainLab.ui.panels.dataset.sidebar.show_information", review)
+
+    outcome = sidebar.open_electrode_layout()
+
+    assert outcome.status.value == "cancelled"
+    assert opened == [
+        {
+            "current_layout": {
+                "source": "bids",
+                "status": status,
+                "positioned_channel_count": 3,
+                "channel_count": 4,
+                "coordinate_summary": "head",
+                "channel_names": ["C3"],
+                "electrode_names": ["C3"],
+            },
+            "is_bids_source": True,
+            "layout_changes_allowed": True,
+        }
+    ]
+    assert len(dispatched) == 1
+    assert isinstance(dispatched[0], QueryStateCommand)
+
+
+def test_bids_layout_restore_dispatches_only_the_restore_command(sidebar, monkeypatch):
+    dispatched = []
+    state = {
+        "electrode_layout": {
+            "source": "manual",
+            "status": "ready",
+            "bids_restore_available": True,
+        },
+        "interpretation": {"source_kind": "bids"},
+        "raw": {"channels": ["C3"]},
+        "active_training": {"has_trainer": False},
+    }
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
+        lambda *_: SimpleNamespace(enabled=True),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
+        lambda _widget, command, **_kwargs: (
+            dispatched.append(command)
+            or SimpleNamespace(failed=False, diagnostics={"state": state})
+        ),
+    )
+
+    class RestoreDialog:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        @staticmethod
+        def exec():
+            return True
+
+        @staticmethod
+        def restore_bids_requested():
+            return True
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar._electrode_layout_dialog_class",
+        lambda: RestoreDialog,
+    )
 
     outcome = sidebar.open_electrode_layout()
 
     assert outcome.is_completed is True
-    review.assert_called_once()
-    assert len(dispatched) == 1
     assert isinstance(dispatched[0], QueryStateCommand)
-    assert status in review.call_args.args[2]
+    assert dispatched[1].restore_bids is True
+    assert dispatched[1].channels == []
+    assert dispatched[1].positions == []
 
 
 def test_bids_layout_publication_keeps_tooltip_and_notifies_once(sidebar, monkeypatch):

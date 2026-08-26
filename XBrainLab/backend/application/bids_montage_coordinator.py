@@ -119,6 +119,21 @@ class BidsMontagePreparationCoordinator:
             self._idle.notify_all()
             return snapshot
 
+    def can_restore_bids(self) -> bool:
+        """Return whether the manual layout can revert to retained BIDS geometry."""
+        with self._idle:
+            return self._lifecycle.can_restore_bids()
+
+    def restore_bids(self) -> MontagePreparationSnapshot:
+        """Restore retained BIDS geometry without scheduling another sidecar read."""
+        with self._idle:
+            snapshot = self._lifecycle.restore_bids()
+            self._pending_work = None
+            self._validation_candidate = None
+            self._retry_candidate = None
+            self._idle.notify_all()
+            return snapshot
+
     def snapshot(self) -> MontagePreparationSnapshot:
         with self._idle:
             return self._validation_candidate or self._lifecycle.snapshot()

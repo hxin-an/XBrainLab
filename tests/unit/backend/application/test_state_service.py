@@ -484,6 +484,7 @@ def _snapshot_service(
     saliency_coverage_projector: SaliencyCoverageProjector | None = None,
     montage_snapshot_provider: Any | None = None,
     effective_montage_provider: Any | None = None,
+    bids_restore_available_provider: Any | None = None,
 ) -> StateSnapshotService:
     study = _Study()
     study.trainer = _StableTrainer()
@@ -522,6 +523,7 @@ def _snapshot_service(
         )(),
         montage_snapshot_provider=montage_snapshot_provider,
         effective_montage_provider=effective_montage_provider,
+        bids_restore_available_provider=bids_restore_available_provider,
     )
 
 
@@ -587,6 +589,31 @@ def test_state_snapshot_projects_partial_bids_geometry_without_hiding_channels()
     assert state.visualization.montage_source == "bids"
     assert state.visualization.montage_channels == ["C3"]
     assert state.visualization.montage_positions == [[0.0, 0.0, 0.08]]
+
+
+def test_state_snapshot_exposes_current_layout_name_and_bids_restore_capability() -> (
+    None
+):
+    service = _snapshot_service(
+        montage_snapshot_provider=lambda: SimpleNamespace(state="ready", reason=None),
+        effective_montage_provider=lambda: SimpleNamespace(
+            source="manual",
+            name="standard_1020",
+            channel_names=("C3", "C4"),
+            electrode_names=("C3", "C4"),
+            positions_m=((0.0, 0.0, 0.08), (0.04, 0.0, 0.08)),
+            coordinate_frame="head",
+            coordinate_dimension=3,
+            supports_topographic=True,
+            supports_three_dimensional=True,
+        ),
+        bids_restore_available_provider=lambda: True,
+    )
+
+    layout = service.build().electrode_layout
+
+    assert layout.name == "standard_1020"
+    assert layout.bids_restore_available is True
 
 
 def test_partial_four_channel_layout_is_limited_and_not_spatially_ready() -> None:

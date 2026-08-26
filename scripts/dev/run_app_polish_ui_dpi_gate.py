@@ -45,6 +45,8 @@ DPI_APP_POLISH_SURFACES = (
     "saliency-setting-single-method.png",
     "saliency-setting-empty-state.png",
     "set-montage-dialog.png",
+    "electrode-layout-bids-summary.png",
+    "electrode-layout-bids-picker.png",
     "evaluation-controls-panel.png",
     "evaluation-metrics-table.png",
     "training-history-few-rows.png",

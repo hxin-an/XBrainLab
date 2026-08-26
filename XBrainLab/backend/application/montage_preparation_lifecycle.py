@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from threading import Lock
 from typing import Literal
@@ -104,6 +104,7 @@ class MontagePreparationLifecycle:
             reason="No BIDS montage preparation has been requested.",
         )
         self._manual_override: ManualMontageOverride | None = None
+        self._bids_restore_snapshot: MontagePreparationSnapshot | None = None
         self._active_work: MontagePreparationWork | None = None
 
     def begin(
@@ -126,6 +127,7 @@ class MontagePreparationLifecycle:
         with self._lock:
             self._generation += 1
             self._manual_override = None
+            self._bids_restore_snapshot = None
             self._snapshot = MontagePreparationSnapshot.pending(
                 generation=self._generation,
                 recording_paths=(item.recording_path for item in requested),
@@ -141,10 +143,35 @@ class MontagePreparationLifecycle:
         with self._lock:
             self._generation += 1
             self._manual_override = None
+            self._bids_restore_snapshot = None
             self._active_work = None
             self._snapshot = MontagePreparationSnapshot.not_applicable(
                 generation=self._generation,
                 reason="Montage preparation was reset.",
+            )
+            return self._snapshot
+
+    def can_restore_bids(self) -> bool:
+        """Return whether this import retains a ready BIDS layout to restore."""
+        with self._lock:
+            return (
+                self._manual_override is not None
+                and self._bids_restore_snapshot is not None
+            )
+
+    def restore_bids(self) -> MontagePreparationSnapshot:
+        """Restore the already-reviewed BIDS geometry without reading sidecars again."""
+        with self._lock:
+            if self._manual_override is None or self._bids_restore_snapshot is None:
+                raise ValueError(
+                    "No retained BIDS electrode layout is available to restore."
+                )
+            self._generation += 1
+            self._manual_override = None
+            self._active_work = None
+            self._snapshot = replace(
+                self._bids_restore_snapshot,
+                generation=self._generation,
             )
             return self._snapshot
 
@@ -179,6 +206,8 @@ class MontagePreparationLifecycle:
                 )
             self._snapshot = result
             self._active_work = None
+            if result.state == "ready" and result.aggregate.compatible:
+                self._bids_restore_snapshot = result
             return MontagePublicationResult(
                 accepted=True,
                 reason="accepted",

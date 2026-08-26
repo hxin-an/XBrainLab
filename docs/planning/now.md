@@ -4,9 +4,23 @@
 
 ## 目前焦點
 
-Data Import performance slice 停在 checkpoint；目前沒有 active product implementation。
+Electrode Layout 可逆 BIDS flow 已 scope-complete；目前沒有 active product implementation。candidate
+尚待 exact-source handoff 與 WSLg manual acceptance，不宣稱 handoff-ready。
 
-### Checkpoint evidence
+### Electrode Layout checkpoint
+
+- Dataset sidebar 已移除 BIDS generic information modal special case；同一 dialog 先顯示 compact
+  summary，再由 `Change Layout` 展開既有 picker。只有 `Replace Layout` 或 `Use BIDS Layout`
+  會送出 command；Back／Cancel 與 Auto Match 不先寫入 persisted mapping。
+- 同一 import 的 ready compatible BIDS snapshot 可跨多次 manual override 保留，explicit restore
+  不重讀 sidecar；new import／reset、trainer guard 與 generation fence 均 fail closed。
+- owners 維持不變，沒有新增 command name／tool／module／state machine／compatibility path；production
+  change 是 8 files、`+259/-54/net +205` LOC，未觸發 complexity review 門檻。
+- TDD red 先因缺少 restore lifecycle 得到 1 failed／25 passed；dirty-source root checkpoint 的直接
+  unit/integration/UI suite 是 518 passed，Ruff、Basedpyright regression、architecture compliance、
+  MkDocs strict 與兩個 offscreen UI artifacts 通過。這些不取代 WSLg 人工驗收。
+
+### Data Import performance checkpoint
 
 - 在 WSL `/mnt/d` 的 OpenNeuro ds003061 `sub-001`（一次 warm-up、三次 fresh
   `ApplicationService` catalog → review → apply → background idle）中，final net `-5` candidate
@@ -26,7 +40,8 @@ Data Import performance slice 停在 checkpoint；目前沒有 active product im
 
 ### Next handoff
 
-- Electrode Layout 的 focused commit 與 draft PR 已建立。下一步對 exact head 執行 CI 與
-  canonical handoff；兩者通過後才交 WSLg 使用者手測，並在明確 merge approval 後合併。
+- 將 Electrode Layout scope-complete source 建立 focused commit 並更新 draft PR；對 pushed exact head
+  執行 CI 與 canonical handoff。兩者通過後才交 WSLg 使用者重新手測，並在明確 merge approval
+  後合併。
 - 已知限制是 blocking 約 `12.046s`；不宣稱 performance gate 達成或 handoff-ready。root
   `settings.json` 是使用者本機設定，不納入此 slice。

@@ -684,3 +684,100 @@ def test_manual_override_has_explicit_precedence_over_ready_bids_geometry(
     assert effective is not None
     assert effective.source == "manual"
     assert effective.positions_m == ((0.0, 0.1, 0.0),)
+
+
+def test_manual_override_can_restore_the_ready_bids_snapshot_without_reparsing(
+    tmp_path: Path,
+) -> None:
+    """A manual replacement remains reversible for the current BIDS import."""
+    root = tmp_path / "bids"
+    _write_bids_dataset(root)
+    recording = _write_recording(root, "01")
+    _write_geometry(
+        recording.parent,
+        "sub-01_task-rest_run-1_",
+        rows=(("Cz", "0.1", "0", "0"),),
+    )
+    lifecycle = MontagePreparationLifecycle()
+    work = lifecycle.begin((BidsMontageRecordingRequest(str(recording), ("Cz",)),))
+    prepared = prepare_bids_montage(work.recordings, generation=work.generation)
+    assert lifecycle.publish(work, prepared).accepted is True
+
+    lifecycle.select_manual(
+        ManualMontageOverride(
+            name="manual",
+            channel_names=("Cz",),
+            positions_m=((0.0, 0.1, 0.0),),
+            coordinate_frame="head",
+        )
+    )
+    lifecycle.select_manual(
+        ManualMontageOverride(
+            name="manual-again",
+            channel_names=("Cz",),
+            positions_m=((0.0, -0.1, 0.0),),
+            coordinate_frame="head",
+        )
+    )
+
+    assert lifecycle.can_restore_bids() is True
+    restored = lifecycle.restore_bids()
+    effective = lifecycle.effective_montage()
+
+    assert restored.state == "ready"
+    assert effective is not None
+    assert effective.source == "bids"
+    assert effective.positions_m == ((0.1, 0.0, 0.0),)
+
+    stale = lifecycle.publish(work, prepared)
+    assert stale.accepted is False
+    assert stale.reason == "stale_generation"
+    assert lifecycle.effective_montage() == effective
+
+
+def test_restore_availability_is_cleared_by_new_begin_and_reset(tmp_path: Path) -> None:
+    root = tmp_path / "bids"
+    _write_bids_dataset(root)
+    recording = _write_recording(root, "01")
+    _write_geometry(
+        recording.parent,
+        "sub-01_task-rest_run-1_",
+        rows=(("Cz", "0.1", "0", "0"),),
+    )
+    lifecycle = MontagePreparationLifecycle()
+    work = lifecycle.begin((BidsMontageRecordingRequest(str(recording), ("Cz",)),))
+    assert lifecycle.publish(
+        work, prepare_bids_montage(work.recordings, generation=work.generation)
+    ).accepted
+    lifecycle.select_manual(
+        ManualMontageOverride(
+            name="manual",
+            channel_names=("Cz",),
+            positions_m=((0.0, 0.1, 0.0),),
+            coordinate_frame="head",
+        )
+    )
+    assert lifecycle.can_restore_bids() is True
+
+    lifecycle.begin((BidsMontageRecordingRequest(str(recording), ("Cz",)),))
+    assert lifecycle.can_restore_bids() is False
+    lifecycle.reset()
+    assert lifecycle.can_restore_bids() is False
+
+
+def test_restore_without_retained_bids_snapshot_preserves_manual_geometry() -> None:
+    lifecycle = MontagePreparationLifecycle()
+    lifecycle.select_manual(
+        ManualMontageOverride(
+            name="manual",
+            channel_names=("Cz",),
+            positions_m=((0.0, 0.1, 0.0),),
+            coordinate_frame="head",
+        )
+    )
+    before = lifecycle.effective_montage()
+
+    with pytest.raises(ValueError, match="No retained BIDS"):
+        lifecycle.restore_bids()
+
+    assert lifecycle.effective_montage() == before

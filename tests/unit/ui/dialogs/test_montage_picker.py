@@ -120,6 +120,134 @@ class TestPickMontageInit:
             assert button is not None
             assert button.icon().isNull()
 
+    def test_bids_summary_expands_and_returns_without_persisting_changes(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={
+                "source": "bids",
+                "name": "BIDS coordinates",
+                "status": "ready",
+                "positioned_channel_count": 10,
+                "channel_count": 10,
+                "coordinate_summary": "head",
+            },
+        )
+        qtbot.addWidget(bids_dialog)
+        before = bids_dialog.settings.allKeys()
+
+        assert bids_dialog.summary_page.isHidden() is False
+        assert bids_dialog.mapping_page.isHidden() is True
+        assert bids_dialog.minimumHeight() == 200
+        bids_dialog.show_mapping_page()
+        assert bids_dialog.summary_page.isHidden() is True
+        assert bids_dialog.mapping_page.isHidden() is False
+        assert bids_dialog.minimumHeight() == 320
+        bids_dialog.show_summary_page()
+        bids_dialog.reject()
+
+        assert bids_dialog.settings.allKeys() == before
+
+    def test_bids_summary_replace_and_restore_intents_are_distinct(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        replace_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={"source": "bids", "status": "ready"},
+        )
+        qtbot.addWidget(replace_dialog)
+        replace_dialog.show_mapping_page()
+        combo = replace_dialog.table.cellWidget(0, 1)
+        assert isinstance(combo, QComboBox)
+        combo.setCurrentIndex(1)
+        replace_dialog.accept()
+        selected, positions = replace_dialog.get_result()
+        assert selected is not None
+        assert channel_names[0] in selected
+        assert positions is not None
+        assert replace_dialog.restore_bids_requested() is False
+
+        restore_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={
+                "source": "manual",
+                "status": "ready",
+                "bids_restore_available": True,
+            },
+        )
+        qtbot.addWidget(restore_dialog)
+        restore_dialog.restore_bids()
+
+        assert restore_dialog.restore_bids_requested() is True
+        assert restore_dialog.get_result() == (None, None)
+
+    def test_bids_summary_disables_replace_and_restore_while_training(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            layout_changes_allowed=False,
+            current_layout={
+                "source": "manual",
+                "status": "ready",
+                "bids_restore_available": True,
+            },
+        )
+        qtbot.addWidget(bids_dialog)
+
+        assert bids_dialog.btn_change_layout.isEnabled() is False
+        assert bids_dialog.btn_use_bids.isEnabled() is False
+
+    def test_mapping_action_labels_have_unconstrained_text_width(self, dialog):
+        assert dialog.btn_clear.minimumWidth() <= dialog.btn_clear.sizeHint().width()
+        assert dialog.btn_clear.maximumWidth() >= dialog.btn_clear.sizeHint().width()
+
+    def test_bids_auto_match_then_back_preserves_saved_mapping(
+        self, dialog, qtbot, channel_names
+    ):
+        from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+            PickMontageDialog,
+        )
+
+        montage_name = dialog.montage_combo.currentText()
+        dialog.settings.setValue(f"mapping/{montage_name}", {"Fp1": "Fp1"})
+        bids_dialog = PickMontageDialog(
+            parent=None,
+            channel_names=channel_names,
+            is_bids_source=True,
+            current_layout={"source": "bids", "status": "ready"},
+        )
+        qtbot.addWidget(bids_dialog)
+        bids_dialog.show_mapping_page()
+        bids_dialog.reset_saved_settings()
+        bids_dialog.show_summary_page()
+        bids_dialog.reject()
+
+        assert bids_dialog.settings.value(f"mapping/{montage_name}", {}) == {
+            "Fp1": "Fp1"
+        }
+
     def test_small_channel_list_fits_table_and_dialog_to_content(
         self,
         qtbot,
@@ -205,14 +333,12 @@ class TestAcceptReject:
         assert len(result) == 2
 
     def test_reset_saved_settings(self, dialog):
-        with patch(
-            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.show_information"
-        ) as information:
-            dialog.reset_saved_settings()
+        montage_name = dialog.montage_combo.currentText()
+        dialog.settings.setValue(f"mapping/{montage_name}", {"C3": "C3"})
 
-        information.assert_called_once()
-        assert information.call_args.args[0] is dialog
-        assert information.call_args.args[1] == "Reset"
+        dialog.reset_saved_settings()
+
+        assert dialog.settings.value(f"mapping/{montage_name}", {}) == {"C3": "C3"}
 
 
 class TestMontagePickerEdgeCases:

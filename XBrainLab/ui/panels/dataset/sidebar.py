@@ -43,7 +43,6 @@ from XBrainLab.ui.application_capabilities import (
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
 from XBrainLab.ui.components.modal_presentation import (
     show_error,
-    show_information,
     show_warning,
 )
 from XBrainLab.ui.components.user_error_presentation import (
@@ -321,29 +320,6 @@ class DatasetSidebar(QWidget):
             return InteractionOutcome.blocked(message)
         state = (getattr(query, "diagnostics", {}) or {}).get("state", {})
         layout = state.get("electrode_layout", {}) if isinstance(state, dict) else {}
-        if layout.get("source") == "bids":
-            message = (
-                f"Electrode layout {layout.get('status', 'ready')} — "
-                f"{layout.get('positioned_channel_count', 0)}/"
-                f"{layout.get('channel_count', 0)} EEG channels positioned."
-            )
-            self._show_status(message)
-            channels_for_review = layout.get("channel_names", [])
-            electrodes_for_review = layout.get("electrode_names", [])
-            mapping = "\n".join(
-                f"{channel} → {electrode}"
-                for channel, electrode in zip(
-                    channels_for_review, electrodes_for_review, strict=False
-                )
-            )
-            show_information(
-                self,
-                "Electrode Layout",
-                f"{message}\n\nSource: BIDS\nCoordinate frame: "
-                f"{layout.get('coordinate_summary') or 'not specified'}\n\n"
-                f"Channel mapping:\n{mapping or 'No channel mapping was published.'}",
-            )
-            return InteractionOutcome.completed(message)
         epoch = state.get("epoch", {}) if isinstance(state, dict) else {}
         raw = state.get("raw", {}) if isinstance(state, dict) else {}
         channels = epoch.get("channel_names") or raw.get("channels") or []
@@ -355,9 +331,38 @@ class DatasetSidebar(QWidget):
             self._show_status(" ".join(str(warning).split()))
         dialog_type = _electrode_layout_dialog_class()
         kwargs = {"default_montage": default_montage} if default_montage else {}
-        dialog = dialog_type(self, channels, **kwargs)
+        active_training = (
+            state.get("active_training", {}) if isinstance(state, dict) else {}
+        )
+        interpretation = (
+            state.get("interpretation", {}) if isinstance(state, dict) else {}
+        )
+        dialog = dialog_type(
+            self,
+            channels,
+            current_layout=layout,
+            is_bids_source=interpretation.get("source_kind") == "bids",
+            layout_changes_allowed=not bool(active_training.get("has_trainer")),
+            **kwargs,
+        )
         if not dialog.exec():
             return InteractionOutcome.cancelled("Electrode layout was cancelled.")
+        restore_bids_requested = getattr(dialog, "restore_bids_requested", None)
+        if callable(restore_bids_requested) and restore_bids_requested():
+            result = execute_application_command(
+                self,
+                ApplyMontageCommand(restore_bids=True),
+            )
+            if result is None or result.failed:
+                message = (
+                    result.message
+                    if result is not None
+                    else CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+                )
+                show_warning(self, "Electrode Layout blocked", message)
+                return InteractionOutcome.blocked(message)
+            self._show_status("BIDS electrode layout restored")
+            return InteractionOutcome.completed("BIDS electrode layout restored.")
         selected_channels, positions = dialog.get_result()
         if not selected_channels or not positions:
             return InteractionOutcome.blocked("No electrode layout was selected.")
