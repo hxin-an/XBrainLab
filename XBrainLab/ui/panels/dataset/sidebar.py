@@ -348,7 +348,7 @@ class DatasetSidebar(QWidget):
         if not dialog.exec():
             return InteractionOutcome.cancelled("Electrode layout was cancelled.")
         restore_bids_requested = getattr(dialog, "restore_bids_requested", None)
-        if callable(restore_bids_requested) and restore_bids_requested():
+        if callable(restore_bids_requested) and restore_bids_requested() is True:
             result = execute_application_command(
                 self,
                 ApplyMontageCommand(restore_bids=True),
