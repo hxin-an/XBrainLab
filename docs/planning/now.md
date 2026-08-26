@@ -1,87 +1,64 @@
 # XBrainLab Now
 
-最後更新：`2026-08-25`
+最後更新：`2026-08-26`
 
-## 目前焦點：Assistant runtime lifecycle 測試隔離
+## 目前焦點：Assistant dock 向外擴張主視窗
 
 ### 問題與證據
 
-- PR #54 的 Linux Python 3.11 `components` shard 連續兩次在 1200 秒 watchdog
-  timeout；兩次都進入既有 `test_agent_runtime_lifecycle.py`，但分別停在約第 6 與
-  第 15 個 lifecycle case。
-- 同一檔案目前位於 UI unit components domain，實際保留真 `AgentManager` →
-  `LLMController` → `AgentWorker` Qt/thread topology，屬於 integration lifecycle evidence。
-- main baseline 的 components domain 曾為 `477 passed`；目前本機完整 components、完整
-  `linux-unit-ui`、疑點案例 bounded repeat 都通過，沒有單一產品 assertion failure。
-- 現有 16 個案例各自保護 loading、turn admission、timeout、stop、error、handoff、model switch
-  或 shutdown transition；沒有足夠證據刪除任何案例。
-- PR #55 第一次 CI 的 lifecycle 新 shard 已 `16/16` 通過，`linux-unit-ui` 也已完整通過；
-  同次執行另有既有 debug integration stall 與 Windows startup stall。一次 bounded
-  failed-only rerun 後兩個 direct jobs 均通過，但 aggregate job 因重跑 attempt 2 與保留的
-  attempt 1 成功 artifacts 具有不同 `run_attempt` 而拒絕聚合。它們的 run ID、event、repository、
-  workflow、PR head/base、checkout head/tree 均相同，顯示 CI evidence contract 無法表達
-  GitHub Actions 的 failed-only rerun artifact 語意，而非產品或測試 assertion failure。
+- 一般視窗開啟 Assistant 後，既有 workflow panel 會向內縮；使用者已確認希望保留目前調整良好的預設 panel 大小。
+- `AgentManager` 只建立、停靠及顯示固定右側 `QDockWidget`；真正的 presentation owner 是 `MainWindow`。
+- `MainWindow._apply_assistant_dock_width()` 原本只在既有 top-level width 內，以 `resizeDocks()` 分配 320–420 px 給 Assistant；中央區 436 px 是最低保護，不是開啟前寬度，因此內縮是原 policy 的必然結果。
+- 原有測試涵蓋 320–420 px dock、中央最低寬度與重複開關，但未要求開啟前後中央區寬度一致，也未防止 top-level width 累積增長。
 
 ### Outcome
 
-將真 Assistant runtime lifecycle evidence 移到獨立 integration domain；Linux 每個 lifecycle
-case 在獨立 forked process 中執行，避免 Qt／QThread 狀態跨案例累積，同時維持 authoritative
-suite 的完整分母與既有 assertions。
+在螢幕空間足夠的一般視窗中，開啟 Assistant 時主視窗向外擴張，既有 workflow panel 維持開啟前寬度；關閉後恢復原視窗幾何，反覆開關不累積增長。
 
 ### Scope／non-goals
 
-- Scope：測試分類、Linux process boundary、canonical test registry、直接 registry tests；同一
-  workflow run／同一 exact source 的 bounded cross-attempt aggregate contract，且保留不同 run
-  ID、不同 commit/tree、不同 PR base 與 future-attempt 的 fail-closed 行為。
-- Owners before／after：`scripts/dev/run_tests.py` 仍是 executable test registry owner；產品
-  runtime、controller、worker 與 UI ownership 完全不變。
-- Deletion candidates：移除錯誤的 unit/components placement 與含糊分類文案；不刪除測試案例。
-- Production LOC：`+0/-0/net 0`；不新增 production module、owner、public API 或 compatibility path。
-- Non-goals：Assistant runtime 修理、thread timeout 放寬、skip／xfail／retry、GitHub Actions
-  matrix 擴張、跨 workflow run／跨 source 接受 evidence、面板 UI 修改。
+- Scope：`MainWindow` 既有 Assistant dock presentation policy、直接可觀察的 Qt tests、必要的 active plan truth。
+- 空間足夠時可在同一螢幕內向左平移主視窗，以保留右側 Assistant 所需空間。
+- 最大化、全螢幕或螢幕總空間不足時保留目前 responsive fallback：dock 維持 320–420 px，中央區至少 436 px，不把視窗推出可用畫面。
+- 關閉程式時若 Assistant 仍開啟，不把暫時擴張後的幾何當成下次啟動基準。
+- Non-goals：Assistant 視覺改版、dock 浮動／改側、ChatPanel 或 AgentManager 重構、視窗幾何 owner 重寫、多螢幕 policy 全面改版。
 
-### 修理步驟
+### 假設、owner 與施工步驟
 
-1. 以現有 16/16 lifecycle passing baseline 與兩次 exact CI timeout 作 characterization；不製造
-   人工 red test。
-2. 將 lifecycle 檔案移至獨立 `tests/integration/assistant_runtime/` domain，保留全部 assertions。
-3. Linux 對該 domain 套用 per-case `pytest-forked`；Windows／macOS 保留獨立 domain process，
-   不使用 Unix fork。
-4. 讓 generic integration runner 與 `linux-integration-rest` 各自把新 domain 當單一 shard；
-   `linux-unit-ui` 不再收錄它，總 authoritative partition 仍精確一次。
-5. 加強 registry tests，證明分類、process boundary 與完整分母。
-6. 先以 contract test 重現同一 run ID／exact source 的 attempt 1 artifacts 被 attempt 2 aggregate
-   拒絕，再讓 aggregate 接受 current-or-earlier attempt；different run/source 與 future attempt
-   仍 fail closed。
+- Before／after owner 都是 `MainWindow`；沿用 `WindowGeometryLifecycle` 的 screen geometry 與 persistence，不新增 state machine、receipt、public class 或 production module。
+- Deletion／reuse first：重用既有 dock width policy、available screen geometry 與 bounded placement；新策略取代舊有「只保護中央最低寬度」假設，不建立第二套 dock sizing policy。
+- Production `+109/-1/net +108 LOC`，只修改一個 production file，owner 數不變，未觸發 complexity review。
+
+1. 以 red tests 鎖定一般視窗開啟後中央寬度維持、hide 後恢復、重複開關不累積增長。
+2. 以 responsive test 鎖定最大化／空間不足時不擴出 available geometry，仍符合既有 dock 與中央最低寬度。
+3. 在 `MainWindow` 既有 visibility／resize policy 內做 bounded outward expansion；hidden 時建立／更新本次 normal geometry 基準，visible 時只做一次擴張。
+4. 確保 close persistence 使用未擴張的 normal geometry，且使用者於 hidden 狀態手動 resize 可成為下一次基準。
+5. 在已隔離 Assistant runtime lifecycle tests 的最新 main 上重建 exact-source evidence，再交付 WSLg 真人手測。
 
 ### Focused validation
 
-- Moved lifecycle domain：16/16，另含 Linux forked coverage＋JUnit。
-- `tests/unit/scripts/test_run_tests.py` registry／partition contracts。
-- Authoritative `linux-unit-ui` 與 `linux-integration-rest`。
-- Ruff check／format check、`git diff --check`、exact-head PR CI。
-- CI provenance contract tests，包含 cross-attempt success 與 run/source/future-attempt rejection。
+- Assistant dock unit／integration tests：中央寬度維持、420 px 標準寬度、320 px floor、hide restore、repeat toggle、narrow／maximized fallback。
+- 直接相關的 window geometry lifecycle 與 product walkthrough tests。
+- `linux-unit-ui`、`linux-integration-rest`、Ruff check／format、`git diff --check` 與 PR exact-head CI。
+- WSLg 手測：一般視窗初次及重複開關、hide 恢復、最大化 fallback、關閉後重開；確認五個 workflow panel 與 top navigation 沒有 clipping。
 
-### Stop condition
+### Stop condition 與 UI 確認
 
-- 若 forked domain 仍 timeout，不提高 watchdog、不重跑到綠；定位單一 case 後另開需要使用者
-  授權的產品 runtime diagnosis slice。
-- 不再對同一 SHA 重跑；provenance contract 修正必須形成新 commit，讓全部 jobs 在新 exact head
-  上產生新證據。
-- tests-only exact head 全部 non-skipped checks `completed/success` 才可合併 main；純 tests／CI
-  結構變更不要求產品 manual acceptance。
-- 合併後才將最新 main 帶回 PR #54，重新建立 exact-source UI evidence 並交付 WSLg 真人手測。
+- 若 Qt／window manager 無法在不越過 available geometry 的情況保留中央寬度，停止外推並使用既有 responsive fallback，不新增平台專屬 geometry owner。
+- Source 改動後必須重新取得使用者的 WSLg 可見行為手測；offscreen 測試不取代真人驗收。
+- 使用者已於 2026-08-25 明確批准：合併中文輸入 PR 後，依上述向外擴張／hide 恢復／空間不足 fallback 規格開始此 UI slice。
+- 只有 PR #54 最新 exact head 的所有 non-skipped checks `completed/success`，且使用者對同一 source 明確表示 WSLg 手測通過並同意 merge，才可合併。
 
 ### 目前狀態
 
-- 16 個 lifecycle cases 已完整搬移；Linux 使用 per-case fork，沒有刪除或弱化 assertion。
-- Registry contracts `39/39`、`linux-unit-ui` `2709/2709`、`linux-integration-rest`
-  `305 passed / 35 optional skipped`，Ruff check／format check 與 `git diff --check` 均通過。
-- 第一次 integration 本機執行被共用 editable environment 混入另一 checkout，active-checkout
-  guard 如預期 fail closed；移除該環境污染後，同一 gate 未修改程式即通過。
-- PR #55 attempt 1：新 lifecycle shard 與 Linux UI unit 皆通過；attempt 2 的兩個直接失敗 job
-  皆通過，只有 aggregate 因 attempt metadata mismatch 失敗。
-- Cross-attempt contract 已由先紅後綠測試鎖定：同 run／source 的 earlier attempt 可聚合，另一
-  run、future attempt、不同 tree 與 malformed attempt 仍 fail closed；focused contracts
-  `53/53`、完整 `linux-unit-scripts` `1188/1188` 通過。
-- Next：形成並推送新 exact commit；不再 rerun，等待全部 non-skipped CI checks 成功後合併 main。
+- WSLg 中文輸入 PR #53 已完成 exact-head CI、兩次真人手測並合併為 `064f5fc5ce56cce253b6ebe7fbeee182cefdf92f`。
+- Red reproduction 已確認一般視窗開啟 dock 後，中央區從 860 px 縮為 436 px；修正後同一測試維持 860 px。
+- `MainWindow` 已在螢幕空間足夠時 bounded outward expansion，hide／close 恢復原 geometry；沒有修改 `AgentManager`／`ChatPanel` 或新增 owner。
+- Assistant geometry tests `7/7`、完整 MainWindow sync `99/99`、相關 product walkthrough `3/3`、window geometry `22/22` 通過。
+- 隔離本機 QSettings 的 1280×800 UI baseline `7/7` 與 approved references 相符；它只證明 responsive fallback，外推仍需 WSLg 真人畫面驗收。
+- Assistant runtime lifecycle tests-only PR #55 已在 exact head `2d454c670770120c0d145db85838cef7c51825d0` 全部 non-skipped CI success，並透過 PR 合併 main 為 `298e9e3704cb492a00b4314e4554e54947485288`；16 個 cases 現由獨立 integration domain 在 Linux per-case fork 執行。
+- 最新 main 已合入本分支為 merge commit `4ea5d177ba3a8e7a98cbc242f742df53e8f919ea`；同步後
+  focused MainWindow／window geometry／product walkthrough `122/122`、authoritative
+  `linux-unit-ui` `2716/2716` 通過，其中 components domain `461/461` 在 49.91 秒完成。
+- Next：完成 lint／format／diff checks 並推送 PR #54 新 exact head；全部 non-skipped CI success
+  後才交付 WSLg normal／maximized／repeat-toggle 真人手測。
