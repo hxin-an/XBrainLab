@@ -1393,7 +1393,8 @@ class Epochs:
                 self.channel_position,
                 strict=True,
             ):
-                channel["loc"][:3] = np.asarray(position, dtype=float)
+                if position is not None:
+                    channel["loc"][:3] = np.asarray(position, dtype=float)
         return [dict(channel) for channel in info["chs"]]
 
     def get_data(self) -> np.ndarray:
@@ -1467,6 +1468,39 @@ class Epochs:
         self.data = reordered_data
         self.ch_names = requested_names
         self.channel_position = normalized_positions
+
+    def set_channel_positions(
+        self,
+        positions_by_channel: dict[str, tuple[float, float, float]],
+    ) -> None:
+        """Attach reviewed spatial positions without changing channel identity.
+
+        Channel selection is an independent Dataset concern.  A partial layout
+        therefore leaves unpositioned channels as ``None`` instead of dropping
+        or moving their data axis.
+        """
+        if len(set(self.ch_names)) != len(self.ch_names):
+            raise ValueError(
+                "Dataset channel names must be unique before layout apply."
+            )
+        unknown = [name for name in positions_by_channel if name not in self.ch_names]
+        if unknown:
+            raise ValueError(
+                f"Electrode layout contains unknown channel(s): {', '.join(unknown)}."
+            )
+        normalized: dict[str, tuple[float, float, float]] = {}
+        for name, raw_position in positions_by_channel.items():
+            position = tuple(float(value) for value in raw_position)
+            if len(position) != 3 or not np.isfinite(position).all():
+                raise ValueError(
+                    "Each electrode position must contain finite x, y, z values."
+                )
+            normalized[name] = position
+        if self.data.ndim != 3 or self.data.shape[1] != len(self.ch_names):
+            raise RuntimeError(
+                "Epoch data channel axis does not match the current channel names."
+            )
+        self.channel_position = [normalized.get(name) for name in self.ch_names]
 
     def get_montage_position(self) -> list | None:
         """Return the channel positions for montage visualization.

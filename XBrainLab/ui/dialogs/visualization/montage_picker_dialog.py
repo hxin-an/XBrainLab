@@ -1,7 +1,7 @@
 """Montage picker dialog for mapping dataset channels to standard montage positions.
 
-Features smart matching, saved settings persistence, and live cascading
-fill to streamline the channel-to-montage mapping workflow.
+Features reviewed name matching and saved settings persistence.  Mapping never
+infers an electrode from adjacent table rows.
 """
 
 from PyQt6.QtCore import QSettings, Qt
@@ -99,9 +99,8 @@ def _mapping_combo_stylesheet(row_color: str) -> str:
 class PickMontageDialog(BaseDialog):
     """Dialog for mapping dataset channels to standard montage channels.
 
-    Features Smart Match for automatic channel name matching, Live
-    Cascading Fill for sequential channel propagation, and persistent
-    settings for remembering previous mappings.
+    Features name-based suggestions and persistent settings for remembering
+    prior reviewed mappings.
 
     Attributes:
         channel_names: List of dataset channel names to map.
@@ -122,12 +121,9 @@ class PickMontageDialog(BaseDialog):
 
         self.chs = None
         self.positions = None
+        self.electrode_names = None
         self.montage_channels = []
         self.montage_list: list = []
-
-        # Track which rows are explicitly set (Anchors)
-        # Set of row indices
-        self.anchors = set()
 
         # Settings for persistence
         self.settings = QSettings("XBrainLab", "MontagePicker")
@@ -136,7 +132,7 @@ class PickMontageDialog(BaseDialog):
         self.montage_combo = None
         self.table = None
 
-        super().__init__(parent, title="Set Montage")
+        super().__init__(parent, title="Electrode Layout")
         self.setMinimumWidth(700)
         self.setStyleSheet(dark_dialog_stylesheet())
 
@@ -161,7 +157,7 @@ class PickMontageDialog(BaseDialog):
 
         # Top: Montage Selection
         top_layout = QHBoxLayout()
-        top_layout.addWidget(QLabel("Montage:"))
+        top_layout.addWidget(QLabel("Standard layout:"))
 
         self.montage_combo = QComboBox()
         self.montage_list = get_builtin_montages()
@@ -204,7 +200,7 @@ class PickMontageDialog(BaseDialog):
         # Center: Mapping Table
         self.table = QTableWidget()
         self.table.setColumnCount(2)
-        self.table.setHorizontalHeaderLabels(["Dataset Channel", "Montage Channel"])
+        self.table.setHorizontalHeaderLabels(["Dataset Channel", "Electrode"])
         configure_dark_table(self.table, object_name="MontageMappingTable")
         header = self.table.horizontalHeader()
         if header is not None:
@@ -274,9 +270,6 @@ class PickMontageDialog(BaseDialog):
             positions = get_montage_positions(montage_name)
             self.montage_channels = list(positions["ch_pos"].keys())
 
-            # Reset anchors for new montage
-            self.anchors.clear()
-
             # Load saved mapping for this montage
             saved_mapping = self.settings.value(f"mapping/{montage_name}", {})
 
@@ -312,24 +305,10 @@ class PickMontageDialog(BaseDialog):
                     idx = combo.findText(saved_mapping[dataset_ch])
                     if idx != -1:
                         combo.setCurrentIndex(idx)
-                        self.anchors.add(row)  # Mark as anchor
                         continue
 
                 # If no saved setting, use Smart Match
-                if self.smart_match(combo, dataset_ch):
-                    self.anchors.add(row)  # Mark as anchor
-
-            # 2. Run initial batch Sequential Fill to fill gaps
-            self.initial_sequential_fill()
-
-            # 3. Connect signals for Live Cascading Fill
-            for row in range(self.table.rowCount()):
-                widget = self.table.cellWidget(row, 1)
-                if isinstance(widget, QComboBox):
-                    # Use lambda with captured row to identify source
-                    widget.currentIndexChanged.connect(
-                        lambda idx, r=row: self.on_channel_changed(r, idx),
-                    )
+                self.smart_match(combo, dataset_ch)
 
             self._resize_mapping_table_to_content()
 
@@ -357,49 +336,6 @@ class PickMontageDialog(BaseDialog):
             minimum_height=320,
             maximum_height=640,
         )
-
-    def initial_sequential_fill(self):
-        """Run a one-pass sequential fill for initialization."""
-        if not self.table:
-            return
-
-        # Sort anchors by row index
-        sorted_anchors = sorted(self.anchors)
-
-        if not sorted_anchors:
-            return
-
-        for i in range(len(sorted_anchors)):
-            curr_row = sorted_anchors[i]
-            curr_combo = self.table.cellWidget(curr_row, 1)
-            if not isinstance(curr_combo, QComboBox):
-                continue
-            curr_ch = curr_combo.currentText()
-
-            if i < len(sorted_anchors) - 1:
-                next_row = sorted_anchors[i + 1]
-                fill_range = range(curr_row + 1, next_row)
-            else:
-                fill_range = range(curr_row + 1, self.table.rowCount())
-
-            try:
-                curr_montage_idx = self.montage_channels.index(curr_ch)
-            except ValueError:
-                continue
-
-            offset = 1
-            for target_row in fill_range:
-                target_montage_idx = curr_montage_idx + offset
-                if target_montage_idx < len(self.montage_channels):
-                    target_ch = self.montage_channels[target_montage_idx]
-                    combo = self.table.cellWidget(target_row, 1)
-
-                    if isinstance(combo, QComboBox) and target_row not in self.anchors:
-                        idx = combo.findText(target_ch)
-                        if idx != -1:
-                            combo.setCurrentIndex(idx)
-                            # Do NOT add to anchors
-                offset += 1
 
     def smart_match(self, combo, target_name):
         """Try to find the best montage channel match for a dataset channel.
@@ -449,76 +385,10 @@ class PickMontageDialog(BaseDialog):
             return True
         return False
 
-    def on_channel_changed(self, row, index):
-        """Handle channel selection changes with live cascading fill.
-
-        When a channel is selected, automatically fills subsequent rows
-        with sequential montage channels until the next anchor or end.
-
-        Args:
-            row: Row index where the change occurred.
-            index: New combo box index.
-
-        """
-        if not self.table:
-            return
-
-        if index <= 0:
-            # If cleared, remove from anchors?
-            if row in self.anchors:
-                self.anchors.remove(row)
-            return
-
-        # Mark as anchor
-        self.anchors.add(row)
-
-        combo = self.table.cellWidget(row, 1)
-        if not isinstance(combo, QComboBox):
-            return
-        current_ch = combo.currentText()
-
-        try:
-            current_montage_idx = self.montage_channels.index(current_ch)
-        except ValueError:
-            return
-
-        # Find next anchor to determine limit
-        next_anchor_row = self.table.rowCount()
-        for r in range(row + 1, self.table.rowCount()):
-            if r in self.anchors:
-                next_anchor_row = r
-                break
-
-        # Cascade fill subsequent rows
-        offset = 1
-        for target_row in range(row + 1, next_anchor_row):
-            target_combo = self.table.cellWidget(target_row, 1)
-            if not isinstance(target_combo, QComboBox):
-                continue
-
-            # Calculate next channel
-            target_montage_idx = current_montage_idx + offset
-
-            if target_montage_idx < len(self.montage_channels):
-                target_ch = self.montage_channels[target_montage_idx]
-
-                # Set the combo WITHOUT triggering signal
-                idx = target_combo.findText(target_ch)
-                if idx != -1:
-                    target_combo.blockSignals(True)
-                    target_combo.setCurrentIndex(idx)
-                    target_combo.blockSignals(False)
-                    # Do NOT add to anchors
-            else:
-                break
-
-            offset += 1
-
     def clear_selections(self):
         """Clear all channel mappings and anchors."""
         if not self.table:
             return
-        self.anchors.clear()
         for row in range(self.table.rowCount()):
             combo = self.table.cellWidget(row, 1)
             if isinstance(combo, QComboBox):
@@ -593,6 +463,7 @@ class PickMontageDialog(BaseDialog):
 
             self.chs = mapped_dataset_chs
             self.positions = positions
+            self.electrode_names = mapped_montage_chs
             super().accept()
 
         except Exception:
@@ -609,3 +480,7 @@ class PickMontageDialog(BaseDialog):
 
         """
         return self.chs, self.positions
+
+    def get_electrode_names(self):
+        """Return the reviewed electrode identity aligned with ``get_result``."""
+        return self.electrode_names

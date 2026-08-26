@@ -26,8 +26,8 @@ Data Import performance slice 停在 checkpoint；目前沒有 active product im
 
 ### Next handoff
 
-- 依使用者要求，下一步將目前 baseline 做 exact-source handoff：clean/explained exact source
-  commit 後執行 canonical handoff manifest、source-diverse dataset gate、push PR/CI，再交 WSLg
-  使用者手測與明確 merge approval。
+- 此 branch 是依已批准 stop condition 取得的 validated、尚未 commit 的 Electrode Layout
+  checkpoint。下一步先建立 focused exact-source commit，再執行 canonical handoff、PR/CI；之後才交
+  WSLg 使用者手測，並在明確 merge approval 後合併。
 - 已知限制是 blocking 約 `12.046s`；不宣稱 performance gate 達成或 handoff-ready。root
   `settings.json` 是使用者本機設定，不納入此 slice。

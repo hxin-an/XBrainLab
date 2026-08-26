@@ -406,7 +406,7 @@ def test_application_service_binds_every_command_handler_at_initialization():
         CommandName.APPLY_SMART_PARSE: service.data_table.handle_apply_smart_parse,
         CommandName.REMOVE_FILES: service.data_table.handle_remove_files,
         CommandName.PREPROCESS: service.preprocess_commands.handle_preprocess,
-        CommandName.CREATE_EPOCH: service.preprocess_commands.handle_create_epoch,
+        CommandName.CREATE_EPOCH: service._handle_create_epoch_with_layout_projection,
         CommandName.CONFIGURE_DATASET_SPLIT: (
             service.dataset_generation.handle_save_dataset_split
         ),
@@ -425,7 +425,7 @@ def test_application_service_binds_every_command_handler_at_initialization():
         CommandName.EVALUATE: service.analysis.handle_evaluate,
         CommandName.VISUALIZE: service.analysis.handle_visualize,
         CommandName.SALIENCY: service.analysis.handle_saliency,
-        CommandName.APPLY_MONTAGE: service.preprocess_commands.handle_apply_montage,
+        CommandName.APPLY_MONTAGE: service._handle_apply_montage,
         CommandName.QUERY_STATE: service.query_state_commands.handle_query_state,
         CommandName.RESET_PREPROCESS: service.lifecycle.handle_reset_preprocess,
         CommandName.RESET_SESSION: service.lifecycle.handle_reset_session,
@@ -4447,6 +4447,32 @@ def test_epoch_heavy_prepare_releases_command_lock_and_cancel_can_retry(
     assert service.study.preprocessed_data_list is not original
     assert service.study.epoch_data is not None
     assert service.study.is_locked() is True
+
+
+def test_raw_layout_projects_after_prepared_epoch_commit_without_reordering(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "layout-before-epoch_raw.fif"
+    _write_reviewed_epoch_fixture(path)
+    service = ApplicationService(Study())
+    _apply_reviewed_epoch_fixture(service, path)
+
+    layout = service.execute(
+        ApplyMontageCommand(
+            channels=["Cz"], positions=[(0.0, 0.0, 0.08)], montage_name="manual"
+        )
+    )
+    created = service.execute(
+        CreateEpochCommand(t_min=0.0, t_max=0.2, event_ids=["left", "right"])
+    )
+
+    assert layout.ok is True
+    assert created.ok is True
+    assert created.state.epoch.channel_names == ["Cz"]
+    epoch = service.study.epoch_data
+    assert epoch is not None
+    assert epoch.get_channel_names() == ["Cz"]
+    assert epoch.channel_position == [(0.0, 0.0, 0.08)]
 
 
 def test_epoch_rejects_prepare_staled_by_concurrent_mutation(
@@ -8800,8 +8826,14 @@ def test_reapplying_montage_with_new_positions_marks_visualization_changed() -> 
         def get_channel_names(self) -> list[str]:
             return list(self.ch_names)
 
+        def set_channel_positions(self, positions) -> None:
+            self.channel_position = [positions.get(name) for name in self.ch_names]
+
     service = ApplicationService(Study())
     service.study.data_manager.epoch_data = EpochWithMontage()
+    raw = _raw_mock()
+    raw.get_mne.return_value.ch_names = ["Cz"]
+    service.study.data_manager.loaded_data_list = [raw]
     first = service.execute(
         ApplyMontageCommand(
             channels=["Cz"],
@@ -10607,8 +10639,9 @@ def test_import_labels_updates_applied_interpretation_recipe_trace(tmp_path):
 
 def test_apply_montage_command_routes_confirmed_positions():
     service = ApplicationService(Study())
-    service.study.data_manager.epoch_data = MagicMock()
-    service.preprocess.apply_montage = MagicMock()
+    raw = _raw_mock()
+    raw.get_mne.return_value.ch_names = ["Cz"]
+    service.study.data_manager.loaded_data_list = [raw]
 
     result = service.execute(
         ApplyMontageCommand(
@@ -10620,10 +10653,9 @@ def test_apply_montage_command_routes_confirmed_positions():
 
     assert result.ok is True
     assert result.command_name == CommandName.APPLY_MONTAGE.value
-    service.preprocess.apply_montage.assert_called_once_with(
-        ["Cz"],
-        [(0.0, 0.0, 0.0)],
-    )
+    effective = service.bids_montage_preparation.effective_montage()
+    assert effective is not None
+    assert effective.channel_names == ("Cz",)
 
 
 @pytest.mark.parametrize(
@@ -10763,7 +10795,7 @@ def test_bids_montage_refresh_failure_retains_candidate_until_view_recovers() ->
     service.close()
 
 
-def test_apply_montage_rejects_channel_subset_after_dataset_generation():
+def test_apply_montage_partial_layout_preserves_epoch_channel_identity():
     class EpochWithChannels:
         def __init__(self) -> None:
             self.channels = ["C3", "C4"]
@@ -10774,10 +10806,14 @@ def test_apply_montage_rejects_channel_subset_after_dataset_generation():
         def set_channels(self, channels, _positions) -> None:
             self.channels = list(channels)
 
+        def set_channel_positions(self, positions) -> None:
+            self.positions = dict(positions)
+
     study = Study()
     epoch = EpochWithChannels()
     study.data_manager.epoch_data = cast(Any, epoch)
-    study.data_manager.datasets = [MagicMock()]
+    raw = _raw_mock()
+    study.data_manager.loaded_data_list = [raw]
     service = ApplicationService(study)
 
     result = service.execute(
@@ -10787,9 +10823,106 @@ def test_apply_montage_rejects_channel_subset_after_dataset_generation():
         ),
     )
 
-    assert result.failed is True
-    assert "before generating datasets" in result.message
+    assert result.ok is True
     assert epoch.channels == ["C3", "C4"]
+    assert epoch.positions == {"C3": (0.0, 0.0, 1.0)}
+
+
+def test_apply_montage_malformed_epoch_keeps_existing_layout_atomic() -> None:
+    class MalformedEpoch:
+        def get_channel_names(self) -> list[str]:
+            return ["C3", "C4"]
+
+        def get_data(self):
+            return np.zeros((2, 10))
+
+    study = Study()
+    raw = _raw_mock()
+    study.data_manager.loaded_data_list = [raw]
+    study.data_manager.epoch_data = MalformedEpoch()
+    service = ApplicationService(study)
+    service.bids_montage_preparation.select_manual(
+        ManualMontageOverride(
+            name="existing",
+            channel_names=("C3",),
+            positions_m=((0.0, 0.0, 0.0),),
+            coordinate_frame="head",
+        )
+    )
+
+    result = service.execute(
+        ApplyMontageCommand(channels=["C4"], positions=[(0.1, 0.2, 0.3)])
+    )
+
+    assert result.failed is True
+    assert service.bids_montage_preparation.effective_montage().name == "existing"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ApplyMontageCommand(channels=["C3", "C3"], positions=[(0, 0, 0), (0, 0, 0)]),
+        ApplyMontageCommand(
+            channels=["C3"], positions=[(0, 0, 0)], electrode_names=[""]
+        ),
+        ApplyMontageCommand(
+            channels=["C3", "C4"],
+            positions=[(0, 0, 0), (0, 0, 0)],
+            electrode_names=["Cz", "Cz"],
+        ),
+        ApplyMontageCommand(channels=[" C3"], positions=[(0, 0, 0)]),
+        ApplyMontageCommand(channels=["C3"], positions=[(float("nan"), 0, 0)]),
+        ApplyMontageCommand(channels=["C3"], positions=[(float("inf"), 0, 0)]),
+        ApplyMontageCommand(channels=["C3"], positions=[(0, 0, 0)], electrode_names=[]),
+    ],
+)
+def test_invalid_montage_payload_preserves_existing_effective_layout(command) -> None:
+    study = Study()
+    study.data_manager.loaded_data_list = [_raw_mock()]
+    service = ApplicationService(study)
+    service.bids_montage_preparation.select_manual(
+        ManualMontageOverride(
+            name="existing",
+            channel_names=("C4",),
+            positions_m=((0.1, 0.2, 0.3),),
+            coordinate_frame="head",
+        )
+    )
+
+    result = service.execute(command)
+
+    assert result.failed is True
+    effective = service.bids_montage_preparation.effective_montage()
+    assert effective is not None
+    assert effective.name == "existing"
+    assert effective.channel_names == ("C4",)
+    assert effective.positions_m == ((0.1, 0.2, 0.3),)
+
+
+def test_apply_montage_trainer_allows_first_attach_then_freezes_layout() -> None:
+    study = Study()
+    study.data_manager.loaded_data_list = [_raw_mock()]
+    study.training_manager.trainer = Trainer([])
+    service = ApplicationService(study)
+    command = ApplyMontageCommand(
+        channels=["C3"], positions=[(0.0, 0.0, 0.1)], montage_name="first"
+    )
+
+    first = service.execute(command)
+    exact = service.execute(command)
+    replacement = service.execute(
+        ApplyMontageCommand(
+            channels=["C4"], positions=[(0.1, 0.0, 0.1)], montage_name="other"
+        )
+    )
+
+    assert first.ok is True
+    assert exact.ok is True
+    assert exact.diagnostics["layout_noop"] is True
+    assert replacement.failed is True
+    effective = service.bids_montage_preparation.effective_montage()
+    assert effective is not None
+    assert effective.channel_names == ("C3",)
 
 
 def test_query_state_returns_typed_dataset_summary():

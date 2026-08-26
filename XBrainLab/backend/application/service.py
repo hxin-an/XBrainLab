@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import replace
@@ -3711,6 +3712,8 @@ class ApplicationService(Observable):
                     handler_result = self.preprocess_commands.commit_prepared_command(
                         prepared
                     )
+                    if name is CommandName.CREATE_EPOCH:
+                        self._project_effective_montage_to_epoch()
                     message, diagnostics = self._normalize_handler_result(
                         handler_result
                     )
@@ -3837,6 +3840,7 @@ class ApplicationService(Observable):
                     current_visualization.montage_preparation_reason
                 ),
             ),
+            electrode_layout=current.electrode_layout,
         )
         return normalized_expected == current
 
@@ -4353,15 +4357,6 @@ class ApplicationService(Observable):
                     if source_kind == "bids"
                     else self.bids_montage_preparation.reset()
                 )
-            elif name is CommandName.APPLY_MONTAGE and isinstance(
-                command,
-                ApplyMontageCommand,
-            ):
-                snapshot = self.bids_montage_preparation.select_manual_values(
-                    name=command.montage_name or "Manual montage",
-                    channel_names=command.channels,
-                    positions=command.positions,
-                )
             elif name in {
                 CommandName.LOAD_DATA,
                 CommandName.REMOVE_FILES,
@@ -4411,8 +4406,164 @@ class ApplicationService(Observable):
             )
             if not promoted:
                 return
+            self._project_effective_montage_to_epoch()
             publication = self._committed_view_publication()
         self._publish_view_changed(publication)
+
+    def _handle_apply_montage(
+        self,
+        command: Command,
+    ) -> HandlerResult:
+        """Commit a reviewed layout under the command lock, without preprocessing."""
+        if not isinstance(command, ApplyMontageCommand):
+            raise TypeError("Invalid command for apply_montage")
+        channels, electrodes, positions = self._validate_electrode_layout_command(
+            command
+        )
+        epoch_data = self.study.epoch_data
+        if epoch_data is not None:
+            epoch_names = epoch_data.get_channel_names()
+            get_data = getattr(epoch_data, "get_data", None)
+            channel_axis_matches = True
+            if callable(get_data):
+                epoch_array = get_data()
+                shape = getattr(epoch_array, "shape", None)
+                channel_axis_matches = (
+                    isinstance(shape, tuple)
+                    and len(shape) == 3
+                    and shape[1] == len(epoch_names)
+                )
+            if len(set(epoch_names)) != len(epoch_names) or not channel_axis_matches:
+                raise RuntimeError("Epoch channel identity is inconsistent.")
+        if self.training_runtime.has_trainer():
+            existing = self.bids_montage_preparation.effective_montage()
+            requested = (
+                channels,
+                electrodes,
+                positions,
+            )
+            current = (
+                (
+                    tuple(existing.channel_names),
+                    tuple(existing.electrode_names),
+                    tuple(existing.positions_m),
+                )
+                if existing is not None
+                else None
+            )
+            if current is not None and current != requested:
+                raise ValueError(
+                    "Clear training before replacing an electrode layout used "
+                    "by model inputs."
+                )
+            if current == requested:
+                return (
+                    "Electrode layout is already applied.",
+                    {"channel_count": len(channels), "layout_noop": True},
+                )
+        snapshot = self.bids_montage_preparation.select_manual_values(
+            name=command.montage_name or "Manual montage",
+            channel_names=channels,
+            positions=positions,
+            electrode_names=electrodes,
+        )
+        self._project_effective_montage_to_epoch()
+        message = (
+            f"Applied electrode layout '{command.montage_name}' to "
+            f"{len(channels)} channel(s)."
+            if command.montage_name
+            else f"Applied electrode layout to {len(channels)} channel(s)."
+        )
+        return message, {
+            "channel_count": len(channels),
+            "montage_preparation": {
+                "state": snapshot.state,
+                "generation": snapshot.generation,
+                "reason": snapshot.reason,
+                "import_blocking": False,
+            },
+        }
+
+    def _handle_create_epoch_with_layout_projection(
+        self, command: Command
+    ) -> HandlerResult:
+        """Create epochs, then deterministically attach existing layout metadata."""
+        result = self.preprocess_commands.handle_create_epoch(command)
+        self._project_effective_montage_to_epoch()
+        return result
+
+    def _validate_electrode_layout_command(
+        self, command: ApplyMontageCommand
+    ) -> tuple[
+        tuple[str, ...], tuple[str, ...], tuple[tuple[float, float, float], ...]
+    ]:
+        """Validate user layout before changing coordinator or Epoch state."""
+        raw_channels = tuple(str(value) for value in command.channels)
+        raw_electrodes = tuple(
+            str(value)
+            for value in (
+                command.channels
+                if command.electrode_names is None
+                else command.electrode_names
+            )
+        )
+        if any(value != value.strip() for value in (*raw_channels, *raw_electrodes)):
+            raise ValueError(
+                "Electrode layout names cannot have surrounding whitespace."
+            )
+        channels = raw_channels
+        electrodes = raw_electrodes
+        if not channels or len(channels) != len(command.positions):
+            raise ValueError("Electrode layout channels and positions must align.")
+        if len(set(channels)) != len(channels) or any(not name for name in channels):
+            raise ValueError(
+                "Electrode layout channel names must be non-empty and unique."
+            )
+        if len(electrodes) != len(channels) or any(not name for name in electrodes):
+            raise ValueError("Electrode layout electrode names must be non-empty.")
+        if len(set(electrodes)) != len(electrodes):
+            raise ValueError("Electrode layout electrode names must be unique.")
+        positions: list[tuple[float, float, float]] = []
+        for position in command.positions:
+            if len(position) != 3 or not all(
+                math.isfinite(float(value)) for value in position
+            ):
+                raise ValueError(
+                    "Each electrode position must contain finite x, y, z values."
+                )
+            positions.append(
+                (float(position[0]), float(position[1]), float(position[2]))
+            )
+        current = (
+            tuple(self.study.epoch_data.get_channel_names())
+            if self.study.epoch_data is not None
+            else tuple(self.get_state().raw.channels)
+        )
+        if not current or any(channel not in current for channel in channels):
+            raise ValueError(
+                "Electrode layout channels must match the current dataset."
+            )
+        return channels, electrodes, tuple(positions)
+
+    def _project_effective_montage_to_epoch(self) -> None:
+        """Project coordinator geometry without modifying Epoch identity."""
+        epoch_data = self.study.epoch_data
+        effective = self.bids_montage_preparation.effective_montage()
+        if epoch_data is None or effective is None:
+            return
+        set_channel_positions = getattr(epoch_data, "set_channel_positions", None)
+        if not callable(set_channel_positions):
+            return
+        positions_by_channel = {
+            channel: position
+            for channel, position in zip(
+                effective.channel_names,
+                effective.positions_m,
+                strict=True,
+            )
+            if channel in epoch_data.get_channel_names()
+        }
+        set_channel_positions(positions_by_channel)
 
     @staticmethod
     def _needs_training_read_guard(command: Command, name: CommandName) -> bool:
@@ -4776,7 +4927,7 @@ class ApplicationService(Observable):
             CommandName.APPLY_SMART_PARSE: self.data_table.handle_apply_smart_parse,
             CommandName.REMOVE_FILES: self.data_table.handle_remove_files,
             CommandName.PREPROCESS: self.preprocess_commands.handle_preprocess,
-            CommandName.CREATE_EPOCH: self.preprocess_commands.handle_create_epoch,
+            CommandName.CREATE_EPOCH: self._handle_create_epoch_with_layout_projection,
             CommandName.CONFIGURE_DATASET_SPLIT: (
                 self.dataset_generation.handle_save_dataset_split
             ),
@@ -4795,7 +4946,7 @@ class ApplicationService(Observable):
             CommandName.EVALUATE: self.analysis.handle_evaluate,
             CommandName.VISUALIZE: self.analysis.handle_visualize,
             CommandName.SALIENCY: self.analysis.handle_saliency,
-            CommandName.APPLY_MONTAGE: self.preprocess_commands.handle_apply_montage,
+            CommandName.APPLY_MONTAGE: self._handle_apply_montage,
             CommandName.QUERY_STATE: self.query_state_commands.handle_query_state,
             CommandName.RESET_PREPROCESS: self.lifecycle.handle_reset_preprocess,
             CommandName.RESET_SESSION: self.lifecycle.handle_reset_session,

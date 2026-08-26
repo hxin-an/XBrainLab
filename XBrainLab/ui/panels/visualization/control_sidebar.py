@@ -10,9 +10,7 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.application import (
-    ApplyMontageCommand,
     CommandName,
-    QueryStateCommand,
     SaliencyCommand,
     SaliencyCrossFoldIdentity,
     SaliencyRunIdentity,
@@ -30,16 +28,10 @@ from XBrainLab.ui.application_capabilities import (
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
 from XBrainLab.ui.components.modal_presentation import show_warning
-from XBrainLab.ui.components.user_error_presentation import (
-    UnexpectedErrorContext,
-    present_unexpected_error,
-)
 from XBrainLab.ui.dialogs.visualization import (
-    PickMontageDialog,
     SaliencySettingDialog,
 )
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
-from XBrainLab.ui.montage_positions import normalize_montage_positions
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
@@ -109,11 +101,6 @@ class ControlSidebar(QWidget):
         config_layout = QVBoxLayout(config_group)
         config_layout.setContentsMargins(0, 10, 0, 0)
         config_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-
-        self.btn_montage = QPushButton("Set Montage")
-        self.btn_montage.setStyleSheet(Stylesheets.SIDEBAR_BTN)
-        self.btn_montage.clicked.connect(self.set_montage)
-        config_layout.addWidget(self.btn_montage)
 
         self.btn_saliency = QPushButton("Saliency Settings")
         self.btn_saliency.setStyleSheet(Stylesheets.SIDEBAR_BTN)
@@ -219,179 +206,6 @@ class ControlSidebar(QWidget):
             toggle(checked)
 
     # --- Actions ---
-
-    def set_montage(
-        self,
-        _checked: bool = False,
-        *,
-        default_montage: str | None = None,
-        warning: str = "",
-    ) -> InteractionOutcome:
-        """Open the montage picker and return its observed product outcome."""
-        review_context = get_command_review_context(
-            self,
-            CommandName.APPLY_MONTAGE,
-        )
-        if review_context is None and has_real_application_context(self):
-            message = CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
-            show_warning(self, "Montage blocked", message)
-            return InteractionOutcome.blocked(message)
-        capability = (
-            getattr(review_context, "capability", None)
-            if review_context is not None
-            else get_command_capability(self, CommandName.APPLY_MONTAGE)
-        )
-        if review_context is not None and capability is None:
-            message = CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
-            show_warning(self, "Montage blocked", message)
-            return InteractionOutcome.blocked(message)
-        if capability is not None and not capability.enabled:
-            message = blocked_reason(
-                capability,
-                "Create EEG epochs before applying a montage.",
-            )
-            show_warning(self, "Montage blocked", message)
-            return InteractionOutcome.blocked(message)
-
-        if capability is None:
-            has_epoch_data = self._compatibility_has_epoch_data_for_montage()
-            if has_epoch_data is None:
-                self._show_compatibility_fallback_warning("Montage blocked")
-                return InteractionOutcome.blocked(
-                    CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
-                )
-            if not has_epoch_data:
-                message = "No EEG epochs are available."
-                show_warning(self, "Warning", message)
-                return InteractionOutcome.blocked(message)
-
-        reviewed_generation = (
-            review_context.publication_generation
-            if review_context is not None
-            else None
-        )
-        channel_query = execute_application_command(
-            self,
-            QueryStateCommand(query="state"),
-            refresh=False,
-            expected_publication_generation=reviewed_generation,
-        )
-        if channel_query is not None and channel_query.failed:
-            title = (
-                "Review Montage Again"
-                if is_stale_publication_result(channel_query)
-                else "Montage blocked"
-                if channel_query.recoverable
-                else "Montage failed"
-            )
-            show_warning(
-                self,
-                title,
-                channel_query.message,
-            )
-            if channel_query.recoverable:
-                return InteractionOutcome.blocked(channel_query.message)
-            return InteractionOutcome.failed(channel_query.message)
-
-        try:
-            channels = self._montage_channel_names(channel_query)
-        except ControllerCompatibilityUnavailableError:
-            self._show_compatibility_fallback_warning("Montage blocked")
-            return InteractionOutcome.blocked(
-                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
-            )
-        if not channels:
-            message = "No EEG epoch channel names are available for montage setup."
-            show_warning(self, "Montage blocked", message)
-            return InteractionOutcome.blocked(message)
-
-        normalized_warning = " ".join(str(warning or "").split())
-        if normalized_warning:
-            self._show_status(normalized_warning)
-        dialog_kwargs = {"default_montage": default_montage} if default_montage else {}
-        dialog = PickMontageDialog(self, channels, **dialog_kwargs)
-        if not dialog.exec():
-            return InteractionOutcome.cancelled("Montage setup was cancelled.")
-
-        selected_channels, positions = dialog.get_result()
-        if selected_channels is None or positions is None:
-            message = "No valid montage configuration was selected."
-            show_warning(self, "Montage blocked", message)
-            return InteractionOutcome.blocked(message)
-        try:
-            normalized_positions = normalize_montage_positions(
-                selected_channels,
-                positions,
-            )
-        except Exception:
-            message = present_unexpected_error(
-                self,
-                UnexpectedErrorContext.MONTAGE_SETUP,
-            )
-            return InteractionOutcome.failed(message)
-
-        result = execute_application_command(
-            self,
-            ApplyMontageCommand(
-                channels=list(selected_channels),
-                positions=normalized_positions,
-            ),
-            expected_publication_generation=reviewed_generation,
-        )
-        if result is None:
-            self._show_compatibility_fallback_warning("Montage blocked")
-            return InteractionOutcome.blocked(
-                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
-            )
-        if result.failed:
-            title = (
-                "Review Montage Again"
-                if is_stale_publication_result(result)
-                else "Montage blocked"
-                if result.recoverable
-                else "Montage failed"
-            )
-            show_warning(
-                self,
-                title,
-                result.message,
-            )
-            if result.recoverable:
-                return InteractionOutcome.blocked(result.message)
-            return InteractionOutcome.failed(result.message)
-
-        self._show_status("Montage set")
-        return InteractionOutcome.completed("Montage set.")
-
-    def _montage_channel_names(self, query_result) -> list[str]:
-        if query_result is None:
-            return self._compatibility_montage_channel_names()
-        diagnostics = getattr(query_result, "diagnostics", {}) or {}
-        state = diagnostics.get("state")
-        epoch = state.get("epoch") if isinstance(state, dict) else {}
-        names = epoch.get("channel_names") if isinstance(epoch, dict) else None
-        if not isinstance(names, list):
-            return []
-        return [str(name) for name in names]
-
-    def _compatibility_has_epoch_data_for_montage(self) -> bool | None:
-        """Return epoch availability only for mock / compatibility UI contexts."""
-        try:
-            return bool(
-                run_controller_compatibility_call(
-                    self,
-                    self.controller.has_epoch_data,
-                ),
-            )
-        except ControllerCompatibilityUnavailableError:
-            return None
-
-    def _compatibility_montage_channel_names(self) -> list[str]:
-        """Return montage channel names only for mock / compatibility UI contexts."""
-        return run_controller_compatibility_call(
-            self,
-            self.controller.get_channel_names,
-        )
 
     def set_saliency(self) -> InteractionOutcome:
         """Stage saliency settings without starting computation."""

@@ -36,18 +36,29 @@ class ManualMontageOverride:
     channel_names: tuple[str, ...]
     positions_m: tuple[tuple[float, float, float], ...]
     coordinate_frame: MontageCoordinateFrame
+    electrode_names: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         name = str(self.name).strip()
         channel_names = tuple(str(item).strip() for item in self.channel_names)
+        electrode_names = tuple(str(item).strip() for item in self.electrode_names)
+        if not electrode_names:
+            electrode_names = channel_names
         positions = tuple(
             tuple(float(value) for value in row) for row in self.positions_m
         )
         _validate_geometry(channel_names, positions)
+        if len(electrode_names) != len(channel_names) or any(
+            not name for name in electrode_names
+        ):
+            raise ValueError("manual montage electrode names must align")
+        if len(set(electrode_names)) != len(electrode_names):
+            raise ValueError("manual montage electrode names must be unique")
         if not name:
             raise ValueError("manual montage name is required")
         object.__setattr__(self, "name", name)
         object.__setattr__(self, "channel_names", channel_names)
+        object.__setattr__(self, "electrode_names", electrode_names)
         object.__setattr__(self, "positions_m", positions)
 
 
@@ -60,6 +71,7 @@ class EffectiveMontage:
     channel_names: tuple[str, ...]
     positions_m: tuple[tuple[float, float, float], ...]
     coordinate_frame: MontageCoordinateFrame
+    electrode_names: tuple[str, ...] = ()
     coordinate_units: Literal["m"] = "m"
     coordinate_dimension: MontageCoordinateDimension = 3
     supports_topographic: bool = False
@@ -215,6 +227,7 @@ class MontagePreparationLifecycle:
                     source="manual",
                     name=manual.name,
                     channel_names=manual.channel_names,
+                    electrode_names=manual.electrode_names,
                     positions_m=manual.positions_m,
                     coordinate_frame=manual.coordinate_frame,
                     coordinate_dimension=3,
@@ -272,6 +285,7 @@ def effective_montage_from_snapshot(
         source="bids",
         name=None,
         channel_names=aggregate.channel_names,
+        electrode_names=aggregate.channel_names,
         positions_m=aggregate.positions_m,
         coordinate_frame=aggregate.coordinate_frame,
         coordinate_dimension=aggregate.coordinate_dimension or 3,

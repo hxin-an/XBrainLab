@@ -678,6 +678,28 @@ def test_epochs_set_channels_reorders_data_with_channel_identity(epochs):
     np.testing.assert_array_equal(epochs.get_data(), original_data[:, [1, 0], :])
 
 
+def test_epochs_set_channel_positions_preserves_channel_axis_for_partial_layout(epochs):
+    """A layout annotates existing channels; it must never select/reorder them."""
+    original_names = list(epochs.get_channel_names())
+    original_data = epochs.get_data().copy()
+
+    epochs.set_channel_positions({"O2": (0.1, 0.2, 0.3)})
+
+    assert epochs.get_channel_names() == original_names
+    np.testing.assert_array_equal(epochs.get_data(), original_data)
+    assert epochs.get_montage_position() == [None, (0.1, 0.2, 0.3)]
+
+
+def test_epochs_partial_layout_keeps_model_context_unpositioned_channels(epochs):
+    epochs.set_channel_positions({"O2": (0.1, 0.2, 0.3)})
+
+    channel_info = epochs.get_model_args()["chs_info"]
+
+    assert channel_info[0]["ch_name"] == "O1"
+    assert np.isnan(channel_info[0]["loc"][:3]).all()
+    np.testing.assert_allclose(channel_info[1]["loc"][:3], (0.1, 0.2, 0.3))
+
+
 @pytest.mark.parametrize(
     ("channels", "positions", "message"),
     [

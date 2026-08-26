@@ -733,7 +733,7 @@ def test_reviewed_multiclass_epoch_unlocks_deferred_dataset_split(
     assert dataset_result.state.dataset.split_materialized is False
 
 
-def test_montage_reorders_real_epoch_channels_before_dataset_and_locks_afterward(
+def test_montage_preserves_real_epoch_channels_and_locks_replacement_afterward(
     tmp_path,
 ):
     service = ApplicationService()
@@ -768,10 +768,10 @@ def test_montage_reorders_real_epoch_channels_before_dataset_and_locks_afterward
     )
 
     assert montage_result.ok is True
-    assert montage_result.state.epoch.channel_names == ["EEG2", "EEG0"]
+    assert montage_result.state.epoch.channel_names == ["EEG0", "EEG1", "EEG2", "EEG3"]
     assert montage_result.state.visualization.montage_positions == [
-        [0.0, 0.1, 0.2],
         [0.3, 0.4, 0.5],
+        [0.0, 0.1, 0.2],
     ]
     generated = service.execute(
         SaveDatasetSplitCommand(
@@ -804,11 +804,11 @@ def test_montage_reorders_real_epoch_channels_before_dataset_and_locks_afterward
     )
 
     assert blocked.failed is True
-    assert "before generating datasets" in blocked.message
-    assert blocked.state.epoch.channel_names == ["EEG2", "EEG0"]
+    assert "Clear training" in blocked.message
+    assert blocked.state.epoch.channel_names == ["EEG0", "EEG1", "EEG2", "EEG3"]
     assert blocked.state.visualization.montage_positions == [
-        [0.0, 0.1, 0.2],
         [0.3, 0.4, 0.5],
+        [0.0, 0.1, 0.2],
     ]
     assert blocked.state.dataset == trained.state.dataset
 

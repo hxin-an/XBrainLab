@@ -589,6 +589,34 @@ def test_state_snapshot_projects_partial_bids_geometry_without_hiding_channels()
     assert state.visualization.montage_positions == [[0.0, 0.0, 0.08]]
 
 
+def test_partial_four_channel_layout_is_limited_and_not_spatially_ready() -> None:
+    service = _snapshot_service(
+        montage_snapshot_provider=lambda: SimpleNamespace(state="ready", reason=None),
+        effective_montage_provider=lambda: SimpleNamespace(
+            source="bids",
+            channel_names=("C3", "C4", "Cz"),
+            electrode_names=("C3", "C4", "Cz"),
+            positions_m=((0.0, 0.0, 0.08), (0.04, 0.0, 0.08), (0.0, 0.04, 0.08)),
+            coordinate_frame="head",
+            coordinate_dimension=3,
+            supports_topographic=True,
+            supports_three_dimensional=True,
+        ),
+    )
+    service.study.epoch_data = _EpochWithManualGeometry(
+        ((0.0, 0.0, 0.08), (0.04, 0.0, 0.08), (0.0, 0.04, 0.08), (0.04, 0.04, 0.08))
+    )
+    service.study.epoch_data.channel_position = [None, None, None, None]
+
+    state = service.build()
+
+    assert state.electrode_layout.status == "limited"
+    assert state.electrode_layout.positioned_channel_count == 3
+    assert state.electrode_layout.channel_count == 4
+    assert state.visualization.channel_positions_available is False
+    assert state.visualization.three_dimensional_positions_available is False
+
+
 @pytest.mark.parametrize(
     ("positions", "supports_topographic", "supports_three_dimensional"),
     [

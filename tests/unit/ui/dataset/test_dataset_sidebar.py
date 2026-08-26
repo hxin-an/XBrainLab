@@ -1,4 +1,5 @@
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import mne
@@ -6,6 +7,7 @@ import numpy as np
 import pytest
 from PyQt6.QtWidgets import QPushButton, QWidget
 
+from XBrainLab.backend.application import QueryStateCommand
 from XBrainLab.ui.panels.dataset.sidebar import (
     _ACTION_TEXT_HORIZONTAL_PADDING,
     _DATASET_SIDEBAR_BUTTON_STYLE,
@@ -58,11 +60,89 @@ def test_init_ui(sidebar):
     assert isinstance(sidebar.import_label_btn, QPushButton)
     assert isinstance(sidebar.smart_parse_btn, QPushButton)
     assert isinstance(sidebar.chan_select_btn, QPushButton)
+    assert isinstance(sidebar.electrode_layout_btn, QPushButton)
     assert not hasattr(sidebar, "clear_btn")
     assert not sidebar.findChildren(QPushButton, "ResetSessionButton")
     assert all(
         button.text() != "Reset Session" for button in sidebar.findChildren(QPushButton)
     )
+
+
+@pytest.mark.parametrize("status", ["ready", "limited"])
+def test_bids_layout_review_never_opens_manual_picker_or_dispatches_apply(
+    sidebar, monkeypatch, status
+):
+    dispatched = []
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
+        lambda *_: SimpleNamespace(enabled=True),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
+        lambda _widget, command, **_kwargs: (
+            dispatched.append(command)
+            or SimpleNamespace(
+                failed=False,
+                diagnostics={
+                    "state": {
+                        "electrode_layout": {
+                            "source": "bids",
+                            "status": status,
+                            "positioned_channel_count": 3,
+                            "channel_count": 4,
+                            "coordinate_summary": "head",
+                            "channel_names": ["C3"],
+                            "electrode_names": ["C3"],
+                        }
+                    }
+                },
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar._electrode_layout_dialog_class",
+        lambda: (_ for _ in ()).throw(AssertionError("manual picker opened")),
+    )
+    review = MagicMock()
+    monkeypatch.setattr("XBrainLab.ui.panels.dataset.sidebar.show_information", review)
+
+    outcome = sidebar.open_electrode_layout()
+
+    assert outcome.is_completed is True
+    review.assert_called_once()
+    assert len(dispatched) == 1
+    assert isinstance(dispatched[0], QueryStateCommand)
+    assert status in review.call_args.args[2]
+
+
+def test_bids_layout_publication_keeps_tooltip_and_notifies_once(sidebar, monkeypatch):
+    layout = SimpleNamespace(
+        status="ready",
+        source="bids",
+        positioned_channel_count=4,
+        channel_count=4,
+    )
+    publication = SimpleNamespace(
+        effective_capabilities={},
+        state=SimpleNamespace(electrode_layout=layout),
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.get_application_view_publication",
+        lambda *_: publication,
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.dataset.sidebar.has_real_application_context",
+        lambda *_: False,
+    )
+    status = MagicMock()
+    monkeypatch.setattr(sidebar, "_show_status", status)
+
+    sidebar.update_sidebar()
+    sidebar.update_sidebar()
+
+    assert "bids" in sidebar.electrode_layout_btn.toolTip()
+    assert "4/4" in sidebar.electrode_layout_btn.toolTip()
+    status.assert_called_once()
 
 
 def test_add_labels_compatibility_button_stays_hidden(sidebar):

@@ -10,7 +10,6 @@ import numpy as np
 import pytest
 
 from XBrainLab.backend.application.commands import (
-    ApplyMontageCommand,
     CreateEpochCommand,
     PreprocessCommand,
     PreprocessOperation,
@@ -367,59 +366,6 @@ def test_preprocess_service_maps_individual_operations_without_facade() -> None:
         ("normalize", "z-score"),
         ("rereference", ["Cz"]),
     ]
-
-
-def test_preprocess_service_owns_confirmed_montage_mutation() -> None:
-    service, preprocess, _dataset = _service()
-
-    message, diagnostics = service.handle_apply_montage(
-        ApplyMontageCommand(
-            channels=["Cz"],
-            positions=[(0.0, 0.0, 0.0)],
-            montage_name="standard_1020",
-        ),
-    )
-
-    assert preprocess.events == [
-        ("montage", (["Cz"], [(0.0, 0.0, 0.0)])),
-    ]
-    assert message == "Applied montage 'standard_1020' to 1 channel(s)."
-    assert diagnostics == {
-        "channel_count": 1,
-        "montage_name": "standard_1020",
-    }
-
-
-@pytest.mark.parametrize(
-    ("command", "message"),
-    [
-        (
-            ApplyMontageCommand(channels=[], positions=[]),
-            "channels list cannot be empty",
-        ),
-        (
-            ApplyMontageCommand(channels=["Cz"], positions=[]),
-            "positions list cannot be empty",
-        ),
-        (
-            ApplyMontageCommand(
-                channels=["C3", "C4"],
-                positions=[(0.0, 0.0, 0.0)],
-            ),
-            "channels and positions must have equal length",
-        ),
-    ],
-)
-def test_preprocess_service_validates_confirmed_montage(
-    command: ApplyMontageCommand,
-    message: str,
-) -> None:
-    service, preprocess, _dataset = _service()
-
-    with pytest.raises(PreconditionError, match=message):
-        service.handle_apply_montage(command)
-
-    assert preprocess.events == []
 
 
 def test_preprocess_service_applies_standard_preprocess_in_batch() -> None:

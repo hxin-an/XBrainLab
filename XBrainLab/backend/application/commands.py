@@ -447,11 +447,12 @@ class SaliencyCommand:
 
 @dataclass(frozen=True)
 class ApplyMontageCommand:
-    """Apply confirmed channel montage positions to epoch data."""
+    """Apply confirmed channel-to-electrode positions without changing identity."""
 
     channels: list[str]
     positions: list[tuple[float, float, float]]
     montage_name: str | None = None
+    electrode_names: list[str] | None = None
 
     @property
     def name(self) -> CommandName:

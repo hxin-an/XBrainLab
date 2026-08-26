@@ -981,7 +981,7 @@ class WorkflowUiHandoffHost:
         """Open the existing montage dialog with correlated assistant suggestions."""
         suggestions = request.suggestions
         return self._surface_result(
-            self._main_window.visualization_panel.sidebar.set_montage(
+            self._main_window.dataset_panel.sidebar.open_electrode_layout(
                 default_montage=suggestions.get("montage_name"),
                 warning=suggestions.get("warning", ""),
             )

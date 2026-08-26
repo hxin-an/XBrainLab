@@ -5,6 +5,7 @@ from typing import Any
 
 from PyQt6.QtCore import QEvent, Qt, QTimer
 from PyQt6.QtWidgets import (
+    QComboBox,
     QFrame,
     QGridLayout,
     QGroupBox,
@@ -16,9 +17,11 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.application.commands import (
+    ApplyMontageCommand,
     CommandName,
     PreprocessCommand,
     PreprocessOperation,
+    QueryStateCommand,
 )
 from XBrainLab.backend.application.preprocess_preparation import (
     ApplicationPreprocessBoundary,
@@ -38,12 +41,17 @@ from XBrainLab.ui.application_capabilities import (
     run_controller_compatibility_call,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel, SidebarScrollArea
-from XBrainLab.ui.components.modal_presentation import show_error, show_warning
+from XBrainLab.ui.components.modal_presentation import (
+    show_error,
+    show_information,
+    show_warning,
+)
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
 )
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
+from XBrainLab.ui.montage_positions import normalize_montage_positions
 from XBrainLab.ui.status import show_status_message
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
@@ -78,6 +86,14 @@ _SMART_PARSE_AVAILABILITY_UNAVAILABLE = (
 _LABEL_IMPORT_AVAILABILITY_UNAVAILABLE = (
     "Label import availability is unavailable right now."
 )
+
+
+def _electrode_layout_dialog_class():
+    from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (  # noqa: PLC0415
+        PickMontageDialog,
+    )
+
+    return PickMontageDialog
 
 
 def _channel_selection_dialog_class():
@@ -248,6 +264,15 @@ class DatasetSidebar(QWidget):
         self.chan_select_btn.clicked.connect(self.open_channel_selection)
         self.exec_layout.addWidget(self.chan_select_btn)
 
+        self.electrode_layout_btn = QPushButton("Electrode Layout")
+        self.electrode_layout_btn.setToolTip(
+            "Map existing EEG channels to reviewed electrode positions",
+        )
+        self._last_layout_status: tuple[str, str | None, int, int] | None = None
+        self.electrode_layout_btn.setStyleSheet(_DATASET_SIDEBAR_BUTTON_STYLE)
+        self.electrode_layout_btn.clicked.connect(self.open_electrode_layout)
+        self.exec_layout.addWidget(self.electrode_layout_btn)
+
         layout.addWidget(exec_group)
 
         layout.addStretch()
@@ -258,6 +283,7 @@ class DatasetSidebar(QWidget):
             self.smart_parse_btn,
             self.import_label_btn,
             self.chan_select_btn,
+            self.electrode_layout_btn,
         )
         for button in self._action_buttons:
             full_label = button.text()
@@ -265,6 +291,106 @@ class DatasetSidebar(QWidget):
             button.setAccessibleName(full_label)
         self._apply_startup_bootstrap_state()
         self._fit_action_labels()
+
+    def open_electrode_layout(
+        self,
+        _checked: bool = False,
+        *,
+        default_montage: str | None = None,
+        warning: str = "",
+    ) -> InteractionOutcome:
+        """Open the one Dataset-owned layout review surface."""
+        capability = get_command_capability(self, CommandName.APPLY_MONTAGE)
+        if capability is not None and not capability.enabled:
+            message = blocked_reason(
+                capability,
+                "Load EEG data before configuring electrode layout.",
+            )
+            show_warning(self, "Electrode Layout blocked", message)
+            return InteractionOutcome.blocked(message)
+        query = execute_application_command(
+            self, QueryStateCommand(query="state"), refresh=False
+        )
+        if query is None or query.failed:
+            message = (
+                query.message
+                if query is not None
+                else CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+            )
+            show_warning(self, "Electrode Layout blocked", message)
+            return InteractionOutcome.blocked(message)
+        state = (getattr(query, "diagnostics", {}) or {}).get("state", {})
+        layout = state.get("electrode_layout", {}) if isinstance(state, dict) else {}
+        if layout.get("source") == "bids":
+            message = (
+                f"Electrode layout {layout.get('status', 'ready')} — "
+                f"{layout.get('positioned_channel_count', 0)}/"
+                f"{layout.get('channel_count', 0)} EEG channels positioned."
+            )
+            self._show_status(message)
+            channels_for_review = layout.get("channel_names", [])
+            electrodes_for_review = layout.get("electrode_names", [])
+            mapping = "\n".join(
+                f"{channel} → {electrode}"
+                for channel, electrode in zip(
+                    channels_for_review, electrodes_for_review, strict=False
+                )
+            )
+            show_information(
+                self,
+                "Electrode Layout",
+                f"{message}\n\nSource: BIDS\nCoordinate frame: "
+                f"{layout.get('coordinate_summary') or 'not specified'}\n\n"
+                f"Channel mapping:\n{mapping or 'No channel mapping was published.'}",
+            )
+            return InteractionOutcome.completed(message)
+        epoch = state.get("epoch", {}) if isinstance(state, dict) else {}
+        raw = state.get("raw", {}) if isinstance(state, dict) else {}
+        channels = epoch.get("channel_names") or raw.get("channels") or []
+        if not isinstance(channels, list) or not channels:
+            message = "No EEG channel names are available for electrode layout."
+            show_warning(self, "Electrode Layout blocked", message)
+            return InteractionOutcome.blocked(message)
+        if warning:
+            self._show_status(" ".join(str(warning).split()))
+        dialog_type = _electrode_layout_dialog_class()
+        kwargs = {"default_montage": default_montage} if default_montage else {}
+        dialog = dialog_type(self, channels, **kwargs)
+        if not dialog.exec():
+            return InteractionOutcome.cancelled("Electrode layout was cancelled.")
+        selected_channels, positions = dialog.get_result()
+        if not selected_channels or not positions:
+            return InteractionOutcome.blocked("No electrode layout was selected.")
+        try:
+            normalized = normalize_montage_positions(selected_channels, positions)
+        except Exception:
+            present_unexpected_error(self, UnexpectedErrorContext.MONTAGE_SETUP)
+            return InteractionOutcome.failed("Electrode layout could not be applied.")
+        montage_combo = getattr(dialog, "montage_combo", None)
+        montage_name = (
+            montage_combo.currentText()
+            if isinstance(montage_combo, QComboBox) and montage_combo is not None
+            else None
+        )
+        result = execute_application_command(
+            self,
+            ApplyMontageCommand(
+                channels=list(selected_channels),
+                positions=normalized,
+                montage_name=montage_name,
+                electrode_names=dialog.get_electrode_names(),
+            ),
+        )
+        if result is None or result.failed:
+            message = (
+                result.message
+                if result is not None
+                else CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE
+            )
+            show_warning(self, "Electrode Layout blocked", message)
+            return InteractionOutcome.blocked(message)
+        self._show_status("Electrode layout applied")
+        return InteractionOutcome.completed("Electrode layout applied.")
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         """Refit action labels after the fixed sidebar viewport settles."""
@@ -423,6 +549,11 @@ class DatasetSidebar(QWidget):
                 if capabilities is not None
                 else None
             )
+            layout_capability = (
+                capabilities.get(CommandName.APPLY_MONTAGE)
+                if capabilities is not None
+                else None
+            )
             product_context = has_real_application_context(self)
             compatibility_state_available = not product_context
             compatibility_is_locked = False
@@ -521,6 +652,51 @@ class DatasetSidebar(QWidget):
             else:
                 self.chan_select_btn.setEnabled(True)
                 self.chan_select_btn.setToolTip("Select specific channels to keep")
+
+            if layout_capability is not None:
+                self.electrode_layout_btn.setEnabled(layout_capability.enabled)
+                self.electrode_layout_btn.setToolTip(
+                    "Map existing EEG channels to reviewed electrode positions"
+                    if layout_capability.enabled
+                    else blocked_reason(
+                        layout_capability,
+                        "Load EEG data before configuring electrode layout.",
+                    )
+                )
+            elif not compatibility_state_available:
+                self.electrode_layout_btn.setEnabled(False)
+            else:
+                self.electrode_layout_btn.setEnabled(compatibility_has_data)
+
+            if publication is not None:
+                layout = publication.state.electrode_layout
+                current_layout = (
+                    layout.status,
+                    layout.source,
+                    layout.positioned_channel_count,
+                    layout.channel_count,
+                )
+                self.electrode_layout_btn.setToolTip(
+                    f"Electrode layout: {layout.status}"
+                    + (f" ({layout.source})" if layout.source else "")
+                    + f" — {layout.positioned_channel_count}/"
+                    f"{layout.channel_count} EEG channels positioned"
+                )
+                if current_layout != self._last_layout_status:
+                    self._last_layout_status = current_layout
+                    if layout.source == "bids" and layout.status in {
+                        "ready",
+                        "limited",
+                        "failed",
+                    }:
+                        source = (
+                            f" from {layout.source.upper()}" if layout.source else ""
+                        )
+                        self._show_status(
+                            f"Electrode layout {layout.status}{source} — "
+                            f"{layout.positioned_channel_count}/"
+                            f"{layout.channel_count} EEG channels positioned."
+                        )
 
             if smart_parse_capability is not None:
                 self.smart_parse_btn.setEnabled(smart_parse_capability.enabled)

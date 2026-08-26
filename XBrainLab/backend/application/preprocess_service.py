@@ -23,7 +23,6 @@ from XBrainLab.backend.services.preprocess_state_service import (
 )
 
 from .commands import (
-    ApplyMontageCommand,
     Command,
     CreateEpochCommand,
     PreprocessCommand,
@@ -493,31 +492,6 @@ class PreprocessCommandService:
         if isinstance(value, tuple):
             return str(value[0]), dict(value[1])
         return str(value), {}
-
-    def handle_apply_montage(self, command: Command) -> HandlerResult:
-        if not isinstance(command, ApplyMontageCommand):
-            raise TypeError("Invalid command for apply_montage")
-        if not command.channels:
-            raise PreconditionError("channels list cannot be empty.")
-        if not command.positions:
-            raise PreconditionError("positions list cannot be empty.")
-        if len(command.channels) != len(command.positions):
-            raise PreconditionError("channels and positions must have equal length.")
-
-        self.preprocess.apply_montage(command.channels, command.positions)
-        message = (
-            f"Applied montage '{command.montage_name}' "
-            f"to {len(command.channels)} channel(s)."
-            if command.montage_name
-            else f"Applied montage to {len(command.channels)} channel(s)."
-        )
-        return (
-            message,
-            {
-                "channel_count": len(command.channels),
-                "montage_name": command.montage_name,
-            },
-        )
 
     def handle_create_epoch(self, command: Command) -> HandlerResult:
         if not isinstance(command, CreateEpochCommand):

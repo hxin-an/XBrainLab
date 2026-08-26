@@ -191,6 +191,7 @@ class BidsMontagePreparationCoordinator:
         name: str,
         channel_names: Iterable[str],
         positions: Iterable[Iterable[float]],
+        electrode_names: Iterable[str] | None = None,
     ) -> MontagePreparationSnapshot:
         """Normalize one confirmed manual selection under montage ownership."""
         rows: list[tuple[float, float, float]] = []
@@ -199,10 +200,13 @@ class BidsMontagePreparationCoordinator:
             if len(row) != 3:
                 raise ValueError("Manual montage positions must contain x, y, and z.")
             rows.append((float(row[0]), float(row[1]), float(row[2])))
+        normalized_channel_names = tuple(channel_names)
+        normalized_electrode_names = tuple(electrode_names or normalized_channel_names)
         return self.select_manual(
             ManualMontageOverride(
                 name=name or "Manual montage",
-                channel_names=tuple(channel_names),
+                channel_names=normalized_channel_names,
+                electrode_names=normalized_electrode_names,
                 positions_m=tuple(rows),
                 coordinate_frame="head",
             )

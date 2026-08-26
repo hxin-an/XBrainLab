@@ -70,7 +70,7 @@ def dialog(qtbot, channel_names, montage_positions, monkeypatch, tmp_path):
 
 class TestPickMontageInit:
     def test_creates_dialog(self, dialog):
-        assert dialog.windowTitle() == "Set Montage"
+        assert dialog.windowTitle() == "Electrode Layout"
 
     def test_has_montage_combo(self, dialog):
         assert isinstance(dialog.montage_combo, QComboBox)
@@ -79,6 +79,8 @@ class TestPickMontageInit:
     def test_has_table(self, dialog):
         assert isinstance(dialog.table, QTableWidget)
         assert dialog.table.rowCount() == 10
+        assert dialog.table.horizontalHeaderItem(0).text() == "Dataset Channel"
+        assert dialog.table.horizontalHeaderItem(1).text() == "Electrode"
 
     def test_mapping_table_uses_integrated_dark_table_style(self, dialog):
         assert dialog.table.objectName() == "MontageMappingTable"
@@ -163,8 +165,16 @@ class TestMontageSelection:
         # Should populate montage channels
         assert isinstance(dialog.montage_channels, list)
 
-    def test_initial_sequential_fill(self, dialog):
-        dialog.initial_sequential_fill()
+    def test_unmatched_channel_is_not_inferred_from_row_order(self, dialog):
+        # A change to one reviewed row must not fill its neighbour with the
+        # next standard-layout electrode.
+        first = dialog.table.cellWidget(0, 1)
+        second = dialog.table.cellWidget(1, 1)
+        assert isinstance(first, QComboBox)
+        assert isinstance(second, QComboBox)
+        second.setCurrentIndex(0)
+        first.setCurrentIndex(first.findText("F3"))
+        assert second.currentText() == ""
 
     def test_smart_match(self, dialog):
         combo = dialog.table.cellWidget(0, 1)
@@ -176,9 +186,6 @@ class TestMontageSelection:
 class TestTableActions:
     def test_clear_selections(self, dialog):
         dialog.clear_selections()
-
-    def test_on_channel_changed(self, dialog):
-        dialog.on_channel_changed(0, 0)
 
 
 class TestAcceptReject:
@@ -210,20 +217,6 @@ class TestAcceptReject:
 
 class TestMontagePickerEdgeCases:
     """Additional edge-case tests for PickMontageDialog methods."""
-
-    def test_on_channel_changed_clears_anchor(self, dialog):
-        # Row 0 is an anchor — selecting index 0 (empty) removes it
-        dialog.anchors.add(0)
-        dialog.on_channel_changed(0, 0)
-        assert 0 not in dialog.anchors
-
-    def test_on_channel_changed_cascades(self, dialog):
-        # Set row 0 to a valid channel and check cascade fill
-        combo0 = dialog.table.cellWidget(0, 1)
-        if isinstance(combo0, QComboBox) and combo0.count() > 2:
-            combo0.setCurrentIndex(1)
-            dialog.on_channel_changed(0, 1)
-            assert 0 in dialog.anchors
 
     def test_accept_no_mapped_channels(self, dialog):
         dialog.clear_selections()
