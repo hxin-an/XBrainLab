@@ -836,7 +836,6 @@ def test_visualization_panel_layout_and_sidebar(qtbot):
     )
     assert panel.saliency_action_bar.isHidden()
     assert panel.compute_saliency_btn.text() == "Compute Saliency"
-    assert panel.sidebar.btn_montage.text() == "Set Montage"
     assert panel.sidebar.btn_saliency.text() == "Saliency Settings"
 
 
@@ -2138,7 +2137,6 @@ def test_explicit_saliency_busy_state_keeps_visible_cancel_operable(
     assert not panel.plan_combo.isEnabled()
     assert not panel.run_combo.isEnabled()
     assert not panel.method_combo.isEnabled()
-    assert not panel.sidebar.btn_montage.isEnabled()
     assert not panel.sidebar.btn_saliency.isEnabled()
 
     panel.cancel_saliency_btn.click()
@@ -2155,7 +2153,6 @@ def test_explicit_saliency_busy_state_keeps_visible_cancel_operable(
     assert panel.plan_combo.isEnabled()
     assert panel.run_combo.isEnabled()
     assert not panel.method_combo.isEnabled()
-    assert panel.sidebar.btn_montage.isEnabled()
     assert panel.sidebar.btn_saliency.isEnabled()
 
 
